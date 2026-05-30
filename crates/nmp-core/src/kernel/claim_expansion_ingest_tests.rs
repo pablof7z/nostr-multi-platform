@@ -44,6 +44,40 @@ mod production_ingest_tests {
         }
     }
 
+    /// Sign a kind:30023 addressable (long-form) article with a `d` tag, so a
+    /// real `naddr` coordinate can be built from `(kind, pubkey, d_tag)` and
+    /// the EVENT passes `verify_and_persist`'s signature check on the wire path.
+    fn signed_article(
+        keys: &::nostr::Keys,
+        d_tag: &str,
+        title: &str,
+        content: &str,
+        ts: u64,
+    ) -> crate::kernel::NostrEvent {
+        use nostr::{EventBuilder, Kind, Tag, Timestamp};
+        let nostr_event = EventBuilder::new(Kind::from_u16(30023), content)
+            .tags([
+                Tag::parse(["d", d_tag]).expect("valid d tag"),
+                Tag::parse(["title", title]).expect("valid title tag"),
+            ])
+            .custom_created_at(Timestamp::from(ts))
+            .sign_with_keys(keys)
+            .expect("sign_with_keys cannot fail with a generated keypair");
+        crate::kernel::NostrEvent {
+            id: nostr_event.id.to_hex(),
+            pubkey: nostr_event.pubkey.to_hex(),
+            created_at: nostr_event.created_at.as_secs(),
+            kind: nostr_event.kind.as_u16() as u32,
+            tags: nostr_event
+                .tags
+                .iter()
+                .map(|t: &::nostr::Tag| t.as_slice().to_vec())
+                .collect(),
+            content: nostr_event.content.clone(),
+            sig: nostr_event.sig.to_string(),
+        }
+    }
+
     fn event_frame(sub_id: &str, event: &crate::kernel::NostrEvent) -> String {
         serde_json::json!([
             "EVENT",
@@ -558,6 +592,110 @@ mod production_ingest_tests {
         );
         assert_eq!(entry["primary_id"], primary_id);
         assert_eq!(entry["kind"], 1);
+
+        test_support::clear_claim_expansion_subs();
+    }
+
+    // ── T-P8: DIAGNOSTIC — naddr (kind:30023) resolves through the REAL wire
+    //          ingest path (claim → wire frame → handle_text EVENT → projection) ─
+
+    /// Drives a kind:30023 addressable article through the SAME production wire
+    /// ingest the `claim_event_naddr_matches_kind_pubkey_dtag_in_store` unit
+    /// test does NOT exercise. That unit test pre-injects the article into the
+    /// store (`ingest_pre_verified_event`) and then claims, so it only proves
+    /// the store→projection coordinate lookup (stage d). It never feeds a real
+    /// signed EVENT through `handle_text` for a coordinate claim.
+    ///
+    /// This test closes that gap: claim the `naddr`, register the planner wire
+    /// frame, deliver the matching signed kind:30023 EVENT through `handle_text`,
+    /// and assert `claimed_events[kind:pubkey:d_tag]` surfaces. If this PASSES,
+    /// the shared kernel's addressable wire path is sound and the Android
+    /// embed-article gap is Android-bridge-specific. If it FAILS, the kernel
+    /// itself drops addressable events on the wire path and the unit test was
+    /// masking it.
+    #[test]
+    fn claimed_naddr_article_surfaces_via_production_wire_ingest() {
+        use super::super::test_support;
+        use crate::nip19::{encode_naddr, NaddrData};
+        use crate::subs::WireFrame;
+
+        test_support::clear_claim_expansion_subs();
+
+        let relay_url = "wss://has-article.relay";
+        let shared_sub_id = "sub-naddr-article-0001";
+        let d_tag = "the-internet-left-me";
+
+        let keys = ::nostr::Keys::generate();
+        let event = signed_article(
+            &keys,
+            d_tag,
+            "What's left of the internet?",
+            "long-form body",
+            1_700_000_000,
+        );
+        let author_hex = event.pubkey.clone();
+        let coord_key = format!("30023:{author_hex}:{d_tag}");
+
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+        // Claim through the production `claim_event` primitive with a real
+        // `naddr` URI. This refcounts `event_claims[coord_key]` (the key the
+        // projection walks) AND registers the W5 PendingClaim. The naddr's
+        // author TLV (= pubkey) seeds `claim_expansion_match_author`, the
+        // `should_store_event` clause that lets the EVENT store even though the
+        // author is NOT in `timeline_authors`.
+        let bech = encode_naddr(&NaddrData {
+            identifier: d_tag.to_string(),
+            pubkey: author_hex.clone(),
+            kind: 30023,
+            relays: vec![relay_url.to_string()],
+        })
+        .expect("encode_naddr");
+        let _ = kernel.claim_event(format!("nostr:{bech}"), "view-0".to_string(), true);
+
+        let interest_id = kernel
+            .test_claim_interest_id(&coord_key)
+            .expect("claim_event must register a pending claim with an interest_id for the naddr");
+
+        // Register the planner wire frame so `claim_sub_index` is populated and
+        // `handle_text(EVENT)` routes the hit to this claim's sub.
+        let frames = vec![WireFrame::Req {
+            relay_url: relay_url.to_string(),
+            sub_id: shared_sub_id.to_string(),
+            // The filter body is cosmetic here — `register_wire_frames_for_test`
+            // indexes the claim by `sub_id`, it does not re-parse the filter.
+            filter_json: r#"{"kinds":[30023],"limit":1}"#.to_string(),
+            interest_id,
+            lifecycle: crate::planner::InterestLifecycle::OneShot,
+        }];
+        kernel.register_wire_frames_for_test(&frames);
+
+        // Pre-arrival: claim row exists, event not yet ingested → absent.
+        let snap = kernel.make_update_value_for_test(true);
+        assert!(
+            snap["projections"]["claimed_events"][&coord_key].is_null(),
+            "claim row exists but the kind:30023 event has not arrived yet"
+        );
+
+        // Deliver the matching signed kind:30023 EVENT through production ingest.
+        kernel.handle_text(
+            RelayRole::Indexer,
+            relay_url,
+            &event_frame(shared_sub_id, &event),
+        );
+
+        // The addressable article MUST now surface in the projection, keyed by
+        // the coordinate string.
+        let snap = kernel.make_update_value_for_test(true);
+        let entry = &snap["projections"]["claimed_events"][&coord_key];
+        assert!(
+            entry.is_object(),
+            "claimed kind:30023 article must surface in claimed_events[{coord_key}] \
+             after arriving on the production wire path — got {entry:?}"
+        );
+        assert_eq!(entry["primary_id"], coord_key);
+        assert_eq!(entry["kind"], 30023);
+        assert_eq!(entry["author_pubkey"], author_hex);
 
         test_support::clear_claim_expansion_subs();
     }
