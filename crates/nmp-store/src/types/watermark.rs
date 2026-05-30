@@ -55,9 +55,7 @@ pub enum Coverage {
 /// `Coverage` type both store backends (`mem`, `lmdb`) project into — keeping
 /// the two backends from drifting to different windows.
 ///
-/// D9 caveat: the `coverage()` callers currently read wall-clock via a bare
-/// `SystemTime::now()` because the `EventStore` trait does not yet thread the
-/// kernel-owned clock into the store layer. The window value is policy and is
-/// owned here; the *time source* is a known transitional site pending the
-/// store-clock plumbing tracked for a later milestone.
+/// D7 compliance: `coverage()` receives `now_secs` from the caller — the store
+/// never reads the clock directly. The window value is pure policy and lives
+/// here so the mem and lmdb backends cannot drift to different values.
 pub const COVERAGE_STALENESS_WINDOW_SECS: u64 = 300;

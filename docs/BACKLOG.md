@@ -720,15 +720,9 @@ a zeroizable key type or mutable erasure hook, then delete the partial-mitigatio
 comment and prove all in-memory secret copies wipe on drop. Until upstream support
 exists, do not claim full zeroization for local-key accounts.
 
-### V-59 · `EventStore` trait missing kernel clock injection — `SystemTime::now()` in watermarks and queries [LOW · correctness]
+### V-59 · `EventStore` trait missing kernel clock injection — `SystemTime::now()` in watermarks and queries [LOW · correctness] — **DONE 2026-05-30**
 
-**Verified:**
-- `crates/nmp-store/src/types/watermark.rs:59-61` — inline note: "the `EventStore` trait does not yet thread the kernel clock into the store … this is a known transitional site pending the store-clock plumbing tracked for a later milestone."
-- `crates/nmp-store/src/lmdb/query.rs:433` and `src/mem/query.rs:373` — same note verbatim; `SystemTime::now()` substituted for the missing kernel clock.
-
-**Impact:** watermark timestamps and query "current time" are sourced from the OS wall clock, not the kernel's monotonic clock. This creates subtle divergence in test environments (where the kernel clock can be controlled) and in long-running sessions where clock skew could affect expiry and ordering logic.
-
-**Correct fix:** thread a `ClockSource` or `Instant`-provider through the `EventStore` trait so all time reads inside the store use the same clock as the rest of the kernel.
+**Fixed:** `EventStore::coverage()` now takes an explicit `now_secs: u64` parameter. The store no longer reads the clock directly (D7 compliant). Both `lmdb/query.rs` and `mem/query.rs` use the threaded-in value; the stale "transitional site" comment in `watermark.rs` is updated. Note: `lmdb/gc.rs` and `mem/gc.rs` still contain `SystemTime::now()` for NIP-40 expiry and tombstone reaping — those are V-60's responsibility (LMDB LRU eviction, sequenced to follow this entry).
 
 ---
 

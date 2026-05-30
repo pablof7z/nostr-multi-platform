@@ -133,8 +133,8 @@ impl EventStore for LmdbEventStore {
         query::write_watermark(&self.inner, row)
     }
 
-    fn coverage(&self, key: &WatermarkKey) -> Result<Coverage, StoreError> {
-        query::coverage(&self.inner, key)
+    fn coverage(&self, key: &WatermarkKey, now_secs: u64) -> Result<Coverage, StoreError> {
+        query::coverage(&self.inner, key, now_secs)
     }
 
     fn list_watermarks_for_relay<'a>(

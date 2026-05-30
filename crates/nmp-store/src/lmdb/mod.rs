@@ -256,7 +256,7 @@ impl EventStore for LmdbEventStore {
     fn write_watermark(&self, _row: WatermarkRow) -> Result<(), StoreError> {
         Err(Self::not_enabled())
     }
-    fn coverage(&self, _key: &WatermarkKey) -> Result<Coverage, StoreError> {
+    fn coverage(&self, _key: &WatermarkKey, _now_secs: u64) -> Result<Coverage, StoreError> {
         Err(Self::not_enabled())
     }
     fn list_watermarks_for_relay<'a>(

@@ -376,20 +376,20 @@ pub(super) fn write_watermark(store: &MemEventStore, row: WatermarkRow) -> Resul
     Ok(())
 }
 
-pub(super) fn coverage(store: &MemEventStore, key: &WatermarkKey) -> Result<Coverage, StoreError> {
+pub(super) fn coverage(
+    store: &MemEventStore,
+    key: &WatermarkKey,
+    now_secs: u64,
+) -> Result<Coverage, StoreError> {
     let row = read_watermark(store, key)?;
     let Some(row) = row else {
         return Ok(Coverage::Unknown);
     };
     // Staleness window is coverage policy; defined once next to the `Coverage`
-    // type so the mem + lmdb backends cannot drift. D9 caveat (transitional):
-    // the `EventStore` trait does not yet thread the kernel clock into the
-    // store, so wall-clock is read via a bare `SystemTime::now()` here.
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let age = now.saturating_sub(row.updated_at);
+    // type so the mem + lmdb backends cannot drift. `now_secs` is threaded in
+    // from the caller (D7 — the kernel owns the wall clock; lower layers
+    // receive time, they do not read it).
+    let age = now_secs.saturating_sub(row.updated_at);
     if age <= COVERAGE_STALENESS_WINDOW_SECS {
         Ok(Coverage::CompleteAsOf(row.synced_up_to))
     } else {
