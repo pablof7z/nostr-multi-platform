@@ -1424,6 +1424,37 @@ field in `UpdateEnvelope` so tests can use a typed `recv()`. (2) Add an
 
 ---
 
+### V-108 · `ChirpTests/NoteContentRenderingTests.swift` references removed `noteContentGroups`/old `.inline` API — whole ChirpTests target fails to compile [MEDIUM · test rot · ChirpTests not CI-gated]
+
+**Verified:** `ios/Chirp/ChirpTests/NoteContentRenderingTests.swift` calls
+`noteContentGroups(tree)` (`:36`) and asserts against `ContentGroup.inline([1,2,3])`
+plus an `embedDepth:` argument (`:75`). None of those symbols exist in the app
+target anymore: commit `98dcd313` ("refactor(ios/chirp): align Swift consumers
+with ADR-0032 raw-data doctrine") renamed the function to `nostrContentGroups`
+(`Chirp/Components/NostrContent/NostrContentGrouping.swift:36`) and changed the
+enum to `NostrContentGroup.inline(level:children:)` (`:10`). The stale test was
+never updated, so the **entire `ChirpTests` target fails to compile** with
+`Cannot find 'noteContentGroups' in scope` / `Type 'Equatable' has no member
+'inline'` / `Extra argument 'embedDepth' in call`.
+
+**Why it survived:** `ChirpTests` is **not gated in CI** — no `.github/workflows/*`
+invokes `xcodebuild`/`-scheme Chirp`/`ChirpTests` (the iOS smoke suite runs only
+under `NMP_SMOKE=1`, and `SmokeScenariosTests` self-`XCTSkip`s otherwise). The
+break has been latent since `98dcd313`.
+
+**Impact:** any agent running the Chirp Swift unit suite hits a target-wide compile
+failure and cannot run *any* ChirpTests class (e.g. the new
+`ProfileNameFallbackTests`) without first neutralizing this file locally.
+
+**Correct fix:** re-derive the assertions under the new `nostrContentGroups` /
+`NostrContentGroup.inline(level:children:)` semantics (group count + `level`
+values changed; do NOT mechanically swap names — the old `groups.count == 2` /
+`.inline([1,2,3])` expectations encode the pre-98dcd313 grouping and would be a
+compiling-but-wrong test). Separately, decide whether `ChirpTests` should be
+CI-gated so this class of rot is caught at the PR boundary rather than latently.
+
+---
+
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
 

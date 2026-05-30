@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import os.log
+import os.signpost
 
 private let kmLog = Logger(subsystem: "io.f7z.chirp", category: "KernelModel")
 
@@ -9,6 +10,14 @@ private let kmLog = Logger(subsystem: "io.f7z.chirp", category: "KernelModel")
 /// dedicated `org.nmp.chirp.diag` subsystem keeps the perf trace filterable
 /// without polluting the primary `io.f7z.chirp` stream.
 private let diagLog = Logger(subsystem: "org.nmp.chirp.diag", category: "KernelModel")
+
+#if DEBUG
+/// Signpost log for reliability instrumentation (B2 empty-after-nonempty
+/// fault). Debug-only — never compiled into a shipped build. Filter in
+/// Instruments / `log stream` on subsystem `org.nmp.chirp.diag`,
+/// category `reliability`.
+private let reliabilityLog = OSLog(subsystem: "org.nmp.chirp.diag", category: "reliability")
+#endif
 
 /// `ObservableObject` mirror of the kernel snapshot. The Rust actor pushes
 /// binary FlatBuffers updates via the callback; the bridge decodes them and
@@ -328,6 +337,18 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         kernel.configure(visibleLimit: visibleLimit, emitHz: emitHz)
     }
 
+    #if DEBUG
+    /// Test-only seam: inject a synthetic decoded snapshot directly into the
+    /// `snapshot` slot so unit tests can exercise the projection accessors
+    /// (`claimedProfiles`, `mentionProfiles`, `profile(forPubkey:)`) on the
+    /// real read path — including the `.convertFromSnakeCase` CodingKey
+    /// mapping the kernel relies on — without starting the Rust actor.
+    /// Never compiled into a shipped build.
+    func setSnapshotForTesting(_ update: KernelUpdate) {
+        snapshot = update
+    }
+    #endif
+
     func loadOlderTimeline(after cursor: TimelineWindowCursor) {
         // When Rust reaches the feed cap, `hasMore` flips false and this
         // returns before the repeated last-row `onAppear` can retry.
@@ -386,6 +407,23 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 npubShort: pubkey.shortHex
             )
         }
+        #if DEBUG
+        // A2: name-regression instrumentation. A nil return here forces the
+        // caller (`NoteRowView.authorDisplayLabel`) to fall through to
+        // `shortHex`. The defect we are chasing is a TRANSIENT nil — a pubkey
+        // that resolved to a real name a tick ago, lost from `claimed_profiles`
+        // for 1–2 ticks, then re-resolved.
+        //
+        // TODO(reliability): scope this counter to pubkeys that are STILL
+        // on-screen (an active claim) so it measures genuine regressions, not
+        // benign first-load misses. The Swift snapshot exposes no active-claim
+        // set today (`SnapshotProjections` carries `claimed_profiles` /
+        // `resolved_profiles`, but not the live claim registry). When the
+        // kernel surfaces the active-claim set as a projection, gate this on
+        // `pubkey ∈ activeClaims`. Until then this is an upper-bound counter,
+        // not invent a wrong on-screen condition.
+        appMetrics.recordNameRegression()
+        #endif
         return nil
     }
 
@@ -614,6 +652,16 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 "apply: activeAccount \(priorActiveAccount ?? "nil") → \(update.activeAccount ?? "nil")")
         }
 
+        #if DEBUG
+        // B2: capture the rendered timeline-card count BEFORE the
+        // snapshot/typedHomeFeed assignments below. `modularTimeline` reads
+        // through those slots, so reading it after the assignment would
+        // compare a value against itself and the empty-after-nonempty
+        // detector would never fire. `cards` is the per-thread-root row set
+        // the home feed renders.
+        let prevTimelineCount = modularTimeline.cards.count
+        #endif
+
         // Single source-of-truth assignment — every projection accessor
         // reads through this slot. `lastErrorToast` stays distinct because
         // tap-to-dismiss has nowhere else to land.
@@ -623,6 +671,22 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // projections.homeFeed fallback applies for this tick.
         typedHomeFeed = result.typedHomeFeed
         lastErrorToast = update.lastErrorToast
+
+        #if DEBUG
+        // B1: track the typed-decode success rate. A nil `typedHomeFeed` means
+        // this tick fell back to the generic `projections.homeFeed` decode.
+        appMetrics.recordTypedDecode(success: result.typedHomeFeed != nil)
+
+        // B2: empty-after-nonempty detection. If the freshly-applied snapshot
+        // emptied a previously-populated timeline, flag a fault signpost so
+        // the churn is visible in Instruments and bump the counter for tests.
+        if modularTimeline.cards.isEmpty && prevTimelineCount > 0 {
+            appMetrics.recordEmptyAfterNonEmpty()
+            os_signpost(
+                .event, log: reliabilityLog, name: "timeline_empty_after_nonempty",
+                "rev=%llu prev_count=%ld", update.rev, prevTimelineCount)
+        }
+        #endif
 
         let activeAccountChanged = update.activeAccount != priorActiveAccount
         if marmotRegistrationRequested, activeAccountChanged {
@@ -714,6 +778,52 @@ struct AppRuntimeMetrics {
     private(set) var maxApplyMicros = 0
     private(set) var maxCallbackToAppliedMicros = 0
     private(set) var lastPayloadBytes = 0
+
+    #if DEBUG
+    // ── Reliability instrumentation (debug-only) ─────────────────────────
+    // These counters exist purely to quantify the profile-name flicker
+    // defect and the typed-decode reliability of the snapshot pipeline.
+    // They are NOT shipped to users (`#if DEBUG`) and feed no production
+    // view — they are read by tests and `os_signpost` diagnostics only.
+
+    /// A2: Name-regression counter — how many times a pubkey that should
+    /// resolve to a real name regressed to `shortHex` because
+    /// `claimed_profiles` lost it. See `KernelModel.profile(forPubkey:)`.
+    private(set) var nameRegressionCount: Int = 0
+
+    /// B1: Typed-decode tick counters. `typedHomeFeed` is the ADR-0038
+    /// typed NOFS+NFCT decode; a nil result on a tick means the generic
+    /// `projections.homeFeed` fallback was used instead.
+    private(set) var typedDecodeSuccessCount: UInt64 = 0
+    private(set) var typedDecodeFailCount: UInt64 = 0
+
+    var typedDecodeSuccessRate: Double {
+        let total = typedDecodeSuccessCount + typedDecodeFailCount
+        guard total > 0 else { return 1.0 }
+        return Double(typedDecodeSuccessCount) / Double(total)
+    }
+
+    /// B2: Empty-after-nonempty counter — the timeline went from a
+    /// populated set of items to empty across a single tick, a strong
+    /// signal of a projection churn / wipe defect.
+    private(set) var emptyAfterNonEmptyCount: Int = 0
+
+    mutating func recordNameRegression() {
+        nameRegressionCount += 1
+    }
+
+    mutating func recordTypedDecode(success: Bool) {
+        if success {
+            typedDecodeSuccessCount &+= 1
+        } else {
+            typedDecodeFailCount &+= 1
+        }
+    }
+
+    mutating func recordEmptyAfterNonEmpty() {
+        emptyAfterNonEmptyCount += 1
+    }
+    #endif
 
     mutating func record(
         decodeMicros: Int,

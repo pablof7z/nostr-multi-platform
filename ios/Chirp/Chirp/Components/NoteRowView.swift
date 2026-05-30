@@ -41,11 +41,40 @@ struct NoteRowView: View {
     /// ADR-0032 presentation-layer derivations of the raw `authorPubkey`
     /// hex. Kept as computed properties so the view body stays readable.
     private var authorDisplayLabel: String {
-        model.profile(forPubkey: item.authorPubkey)?.display
-            ?? item.authorDisplayName                         // ← baked into snapshot, claim-independent
-            ?? eventCards[item.id]?.authorDisplayName
-            ?? mentionProfiles[item.authorPubkey]?.display
-            ?? item.authorPubkey.shortHex
+        Self.resolveAuthorLabel(
+            profileDisplay: model.profile(forPubkey: item.authorPubkey)?.display,
+            itemAuthorName: item.authorDisplayName,
+            eventCardName: eventCards[item.id]?.authorDisplayName,
+            mentionDisplay: mentionProfiles[item.authorPubkey]?.display,
+            shortHex: item.authorPubkey.shortHex)
+    }
+
+    /// Pure resolution of the author-label fallback chain, extracted so the
+    /// precedence is unit-testable in isolation (a SwiftUI `View`'s private
+    /// computed property and its `@EnvironmentObject` cannot be exercised
+    /// from XCTest). The order is load-bearing:
+    ///
+    ///   1. `profileDisplay`  — `model.profile(forPubkey:)` (claimed → mention).
+    ///   2. `itemAuthorName`  — baked into the TimelineItem snapshot at Rust
+    ///      build time; claim-independent fallback that eliminates the
+    ///      250–500ms flicker gap (PR #823).
+    ///   3. `eventCardName`   — NOFS gap-filler from the typed decoder.
+    ///   4. `mentionDisplay`  — resolved-profiles fallback.
+    ///   5. `shortHex`        — last-resort raw-key abbreviation.
+    ///
+    /// Each rung is exercised by `ProfileNameFallbackTests`.
+    static func resolveAuthorLabel(
+        profileDisplay: String?,
+        itemAuthorName: String? = nil,
+        eventCardName: String?,
+        mentionDisplay: String?,
+        shortHex: String
+    ) -> String {
+        profileDisplay
+            ?? itemAuthorName
+            ?? eventCardName
+            ?? mentionDisplay
+            ?? shortHex
     }
 
     private var authorAvatarInitials: String {
