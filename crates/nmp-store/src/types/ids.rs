@@ -39,6 +39,18 @@ pub(super) fn hex_to_bytes32(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
+/// Decode a 64-character lowercase/uppercase hex string to an `EventId`.
+///
+/// Alias of `hex_to_bytes32` with a domain-typed return, exposed at
+/// `pub(crate)` so `mem::list_seen_on` can convert stored hex ids back to
+/// typed `EventId` values without re-implementing the decode.
+///
+/// Returns `None` for invalid hex strings — callers in `list_seen_on` skip
+/// malformed entries (stored hex ids are always valid after `is_structurally_valid`).
+pub(crate) fn hex_to_event_id(s: &str) -> Option<EventId> {
+    hex_to_bytes32(s)
+}
+
 /// Decode a single hex nibble. Returns `None` for non-hex bytes.
 pub(super) fn hex_nibble(b: u8) -> Option<u8> {
     match b {

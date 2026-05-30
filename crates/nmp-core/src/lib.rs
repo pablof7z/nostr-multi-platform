@@ -82,6 +82,13 @@ pub mod planner {
     // paths so the migration is a pure compile-only no-op.
     pub use nmp_planner::{compiler, interest, lattice, plan, selection};
 }
+/// V-52 — single-relay browsing via the `nmp.browse_relay` action namespace.
+///
+/// Exposes [`browse::BrowseRelayAction`] and [`browse::BrowseRelayModule`] so
+/// a host can subscribe to one relay without NIP-65 fan-out. The module builds
+/// a [`planner::LogicalInterest`] with `relay_pin = Some(url)` and dispatches
+/// `ActorCommand::PushInterest` — no `actor/mod.rs` modifications required.
+pub mod browse;
 pub mod publish;
 mod relay;
 mod transport;

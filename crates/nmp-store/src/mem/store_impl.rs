@@ -111,6 +111,11 @@ impl EventStore for MemEventStore {
         query::provenance_for(self, id)
     }
 
+    fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError> {
+        let st = self.lock()?;
+        Ok(super::list_seen_on(&st, relay_url))
+    }
+
     fn insert(
         &self,
         event: VerifiedEvent,

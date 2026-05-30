@@ -17,6 +17,7 @@ pub use errors::{StoreError, VerifyError};
 pub use events::{RawEvent, StoredEvent, VerifiedEvent};
 pub use gc::{ClaimerId, DeleteFilter, DumpFormat, DumpStats, GcBudget, GcReport};
 pub use ids::{EventId, PubKey, RelayUrl};
+pub(crate) use ids::hex_to_event_id;
 pub use outcomes::{InsertOutcome, ProvenanceEntry, RejectReason, TombstoneOrigin, TombstoneRow};
 pub use query::StoreQuery;
 pub use watermark::{

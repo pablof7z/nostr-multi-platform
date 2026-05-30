@@ -706,3 +706,7 @@ mod tests_lanes;
 #[cfg(test)]
 #[path = "router/tests_v75.rs"]
 mod tests_v75;
+
+#[cfg(test)]
+#[path = "router/tests_v52.rs"]
+mod tests_v52;
