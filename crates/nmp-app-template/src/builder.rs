@@ -224,7 +224,9 @@ impl NmpAppBuilder<Unstarted> {
         // Transfer pointer ownership to the new builder WITHOUT running our
         // own Drop: `*mut NmpApp` is `Copy`, so writing `self.app` would
         // copy the pointer and then Drop on `self` would double-free it.
-        // `mem::ManuallyDrop` suppresses the destructor on `self`.
+        // `mem::forget` suppresses the builder's destructor so `NmpApp::drop`
+        // does not run here (the pointer was copied out above; ownership
+        // transfers to the returned builder).
         let app = self.app;
         std::mem::forget(self);
         NmpAppBuilder {

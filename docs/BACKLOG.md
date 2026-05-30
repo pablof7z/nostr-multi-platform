@@ -1291,24 +1291,13 @@ degradation) but a distinct startup-latency issue. **Confirmed live.**
 emitted; open LMDB asynchronously or on a background task that resolves before the
 first publish command needs it.
 
-### V-94 · 10+ must-call-before-`nmp_app_start` constraints have no type enforcement [MEDIUM · P3 · issue #618]
+### V-94 · `nmp_app_start` ordering — C-ABI runtime guard for non-Rust hosts [MEDIUM · P3 · issue #618]
 
-**DONE (2026-05-30).** `NmpAppBuilder<S>` typestate shipped in
-`crates/nmp-app-template/src/builder.rs`. Design decision resolved: **consume-and-return
-typestate** (not in-place runtime flag). Type-state chain:
-`NmpAppBuilder<Unstarted>` → `.storage_path(p)` / `.in_memory()` →
-`NmpAppBuilder<StorageSet>` → `.start(RunConfig)` → `*mut NmpApp`.
-The builder implements `AppHost + ActionRegistrar` so `register_defaults` and all
-per-NIP wiring calls work against it unchanged. `start()` only exists on `StorageSet`
-— calling it without a storage choice is a **compile error** (proven by `compile_fail`
-doctest). `storage_path` is the one required field (silent data-loss default → explicit
-choice). All `AppHost` setters are reachable on both states and move-semantics prevent
-any setter from being called post-start.
+Rust composition root is now compile-time-enforced (`NmpAppBuilder<S>` typestate,
+`crates/nmp-app-template/src/builder.rs`; design: `docs/design/v94-app-config-ordering.md`).
 
-**Scope note:** This enforcement reaches Rust composition roots only. Swift/Kotlin
-hosts driving raw C-ABI symbols (`nmp_app_start`, `nmp_app_set_*`) get no compile-time
-guarantee — that surface requires a runtime `KernelDiagnostic::LateWiring` (future work,
-not in this PR). See `docs/design/v94-app-config-ordering.md` §3.2.
+**Open:** Swift/Kotlin hosts driving raw C-ABI symbols get no compile guarantee —
+add a runtime `KernelDiagnostic::LateWiring` (design doc §3.2).
 
 ### V-95 · WalletRuntime initialization order not type-enforced — OnceLock error risk [MEDIUM · P2/P3 · issue #619]
 
