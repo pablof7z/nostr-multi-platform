@@ -136,6 +136,7 @@ struct NoteRowView: View {
                 .font(.headline)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
+                .accessibilityIdentifier("timeline-author-name")
 
             Spacer(minLength: 0)
 
