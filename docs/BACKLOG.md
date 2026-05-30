@@ -71,31 +71,12 @@ next refactored:
   lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
   plus explicit allowlists for sanctioned adapter crates.
 
-### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 1+2-thread DONE, Stage 2-author+Stage 3 OPEN]
+### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 2-author+Stage 3 OPEN]
 
-**Verified 2026-05-28:** `nmp-core` and `nmp-planner` still contain social-client
-subscription defaults that belong in NIP/app modules. The four sites and their
-status (Stage 1 landed 2026-05-29, Stage 2 thread-half landed 2026-05-30):
+**Stages 1 and Stage 2 thread-half landed (2026-05-29/30).** `nmp-planner/src/interest.rs`,
+`nmp-core/src/kernel/ingest/mod.rs`, and `nmp-core/src/kernel/requests/thread.rs` no longer
+carry the `{1, 6}` literal. Remaining open sites:
 
-- ✅ **DONE** `crates/nmp-planner/src/interest.rs` — `InterestShape::timeline_for`
-  no longer injects `[1, 6]`; it now takes `kinds: BTreeSet<u32>` and carries the
-  caller-supplied set verbatim. It has **zero production callers** (every caller is
-  a test or a real-relay integration test); the constructor is now kind-agnostic and
-  tests pass arbitrary host kinds (`{30023}`), with the NIP-01-scoped real-relay
-  tests explicitly declaring `{1, 6}` as the host.
-- ✅ **DONE** `crates/nmp-core/src/kernel/ingest/mod.rs` — the mailbox-change trace
-  fire now passes `&[]` instead of `&[1, 6]`. This site's routing decision is
-  kind-independent (the trace URL result is discarded, and `is_discovery_kind`
-  covers only `{0, 3, 10000–19999}` so content kinds never alter the lane), so the
-  removal is behavior-preserving.
-- ✅ **DONE (Stage 2 thread-half)** `crates/nmp-core/src/kernel/requests/thread.rs` —
-  `ActorCommand::OpenThread` now carries `kinds: BTreeSet<u32>`; `open_thread`
-  stores them in `ThreadViewState::reply_kinds` before the `can_send` branch so the
-  deferred-relay path also reads the stored set. The `{1, 6}` literal has moved to
-  `nmp-ffi/src/timeline.rs` (`nmp_app_open_thread`), mirroring the
-  `nmp_app_open_timeline` precedent. Three kernel tests prove externalization (T1:
-  behavior preserved, T2: arbitrary kinds `{30023}`, T3: deferred path reads stored
-  kinds). ABI-safe — C signature unchanged.
 - ⏳ **OPEN (Stage 2 author-half)** `crates/nmp-core/src/kernel/requests/profile.rs:~532-550`
   still hardcodes selected-author note/repost requests as `{"kinds":[1,6], ...}`.
   Deferred until the iOS peer agent lands `ActorCommand::OpenAuthor { kinds }` +
@@ -220,70 +201,12 @@ from the 2026-05-29 audit:*
 - `crates/nmp-core/src/publish/engine.rs` — now 458 LOC, under ceiling.
 - `crates/nmp-core/src/kernel/relay_diagnostics.rs` — now 420 LOC, under ceiling.
 
-### V-14 · Bunker has no reconnect — relay flap silently bricks the session [MEDIUM] — **DONE** (PR #431)
+### V-14 · Bunker reconnect — host-visible `BunkerConnectionState` projection missing [MEDIUM]
 
-**Remaining:** step b — host-visible `BunkerConnectionState` projection (Connected / Connecting / TransportLost) so the host shell can surface a non-silent indicator.
+**Reconnect logic landed (PR #431).** Remaining: step b — host-visible `BunkerConnectionState` projection (Connected / Connecting / TransportLost) so the host shell can surface a non-silent indicator.
 
 **Deadline:** before v1-A. Either this is fixed or `aim.md` and v1 copy drop
 NIP-46 as a v1 sign-in method.
-
----
-
-### V-37 · Snapshot output seam doesn't support non-Chirp apps reading kernel state [HIGH] — OBVIATED by ADR-0039
-
-**OBVIATED / CLOSE (2026-05-29, ADR-0039).** The push projection seam
-(`register_snapshot_projection` → `KernelSnapshot::projections` → pushed frame)
-already delivers kernel state to non-Chirp apps. Affordance (a) context-pointer is
-obviated by closure capture; (b) generic pull path is **rejected** as a polling
-anti-pattern; (c) follow-set interest is provided by ADR-0036. The premise below
-("the framework does not expose those seams generically") is false at HEAD. See
-ADR-0039 §Decision 3. Retained below for history.
-
-**Verified (2026-05-24 — Notes rewrite investigation):** PD-033-A requires Notes to be
-rewritten against "real framework seams (LogicalInterest, kernel-owned timeline projection,
-handshake gate)." Code-grounded inspection found the current framework does not expose those
-seams generically:
-
-1. **`NmpSnapshotProjector` is zero-arg** (`crates/nmp-ffi/src/snapshot.rs:39`):
-   ```rust
-   pub type NmpSnapshotProjector = unsafe extern "C" fn() -> *const c_char;
-   ```
-   The callback receives no kernel-state argument and no context pointer. A registered
-   projector must obtain state through side-channels (raw event observers, separate globals).
-   There is no mechanism for the kernel to *push* a typed view to a non-Chirp app.
-
-2. **No generic `nmp_app_snapshot`** — only `nmp_app_chirp_snapshot` exists
-   (`apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs:14`), typed to `*mut ChirpHandle`.
-   A non-Chirp app has no pull path either. (As of the 2026-05-29 audit,
-   `nmp_app_chirp_snapshot` is now `#[deprecated]` per ADR-0037.)
-
-3. **No follow-set-aware `LogicalInterest` seam without `nmp-nip02`** — subscribing to
-   "kind:1 from the active user's follow set, outbox-routed" requires `nmp-nip02`'s
-   `FollowListProjection`. A second app that doesn't want Chirp's full NIP-02 stack has no
-   lightweight path to the canonical social feed.
-
-**Impact:** PD-033-A cannot be closed by a rewrite alone — the prerequisites don't exist.
-Any honest "rewrite Notes" attempt will rediscover these three gaps and either (a) use the
-same raw-event bypass again, or (b) pull in all of `nmp-nip02` as a hidden Chirp dependency.
-V-37 is the *blocker* for PD-033-A, not a separate concern.
-
-**Required:** Add three affordances before attempting the rewrite:
-- (a) `NmpSnapshotProjector` gains a `*const c_void` context pointer (or is replaced by a
-  richer registration model);
-- (b) a generic `nmp_app_get_snapshot(app, namespace) -> *mut c_char` pull path;
-- (c) a `LogicalInterest::FollowSetKind1` variant (or equivalent) in a substrate crate
-  that does not pull in Chirp-level NIP-02 machinery.
-
-These are new framework affordances — they require an ADR before implementation
-(ffi-surface-freeze gate). Tag: **needs ADR before work begins**.
-
-**V-37 is the actual PD-033-A blocker (review #18 finding 10):** the ADR for these
-three affordances has not been written. Until the ADR exists and the affordances are
-built, PD-033-A cannot close without re-using the Notes raw-event bypass. Either
-promote V-37 to a v1 blocker or drop PD-033-A from the v1 exit criteria with a
-written rationale. V-45 splits sub-item (c) into its own tracked item.
-
----
 
 ### V-107 · Migrate gallery + marmot consumers off bespoke pull-snapshot symbols onto the canonical projection seam [HIGH · PRIORITIZED FOR AWARENESS]
 
@@ -330,38 +253,29 @@ real shell changes, gated on orchestrator review, not run by an autonomous agent
 The ADR-0025 Step-12 sanction that keeps the Marmot read leg alive cites the
 **now-deleted** Chirp pull precedent — so that sanction must be re-decided here too.
 
-**Blocking prerequisite — V-37 + an unresolved architectural question:** V-37
-already tracks the missing affordances. Note the tension: V-37 item (b) frames
-the need as a generic *pull* path (`nmp_app_get_snapshot`), but the
-podcast-player incident is direct evidence that the architecturally-correct
-direction is the *push* registry (`register_snapshot_projection`), which is D8-
-clean and already exists. **The V-37 ADR must explicitly decide push-vs-pull for
-non-Chirp app projections before this migration begins.**
+**Prerequisite — satisfied by ADR-0039 (2026-05-29):** ADR-0039 resolved the
+push-vs-pull architectural question, mandating the push seam
+(`register_snapshot_projection`). The earlier "blocked on V-37" framing is
+obsolete — ADR-0039 confirmed the push seam already satisfies what V-37's
+affordances were meant to provide.
 
-**Related tracking (do not duplicate):** V-37 (HIGH — missing seam affordances +
-needs-ADR), PD-039 (bespoke `nmp_app_*` symbol retirement calendar; gallery/marmot
-pulls fall under it), PD-041 (Marmot formally in the v1 support matrix), V-87
-item 4 (stale `apps/nmp-gallery/tui/src/live.rs:161-195` citation — re-audit
-before touching gallery). Positive builder-guide guidance for the seam is being
-added by the same 2026-05-29 workflow (root-cause fix for the recurrence).
+**Related tracking (do not duplicate):** PD-039 (bespoke `nmp_app_*` symbol
+retirement calendar; gallery/marmot pulls fall under it), PD-041 (Marmot
+formally in the v1 support matrix), V-87 item 4 (stale
+`apps/nmp-gallery/tui/src/live.rs:161-195` citation — re-audit before touching
+gallery). Positive builder-guide guidance for the seam is being added by the
+same 2026-05-29 workflow (root-cause fix for the recurrence).
 
 ---
 
-### V-42 · NIP-23 / NIP-51 / NIP-94 / NIP-96 absent from crates and untracked [HIGH · v1-A for mute · post-v1 for rest]
+### V-42 · NIP-23 / NIP-94 / NIP-96 absent from crates and untracked [post-v1]
 
-**Evidence:** `ls crates/` shows `nmp-nip{01,02,17,29,42,57,59,65}` only.
-`crates/nmp-content-fixtures/src/dto.rs:186-213` defines a `Nip51List` DTO for tests
-but no production projection exists. kind:30023 appears in `crates/nmp-core/src/tags.rs`
-only as a constant — no decoder, no projection, no action module.
+**NIP-51 mute lists landed (2026-05-30).** `crates/nmp-nip51/` ships `MuteListProjection`.
 
-- **NIP-51 mute lists (kind:10000)** — DONE (2026-05-30). `crates/nmp-nip51/` ships
-  `MuteListProjection` (a `KernelEventObserver` + `SuppressionLookup` impl). The substrate
-  seam `SuppressionLookup` in `nmp-core` lets `ModularTimelineProjection` apply suppression
-  without a `nmp-nip01 → nmp-nip51` sibling dep. Public `p`/`e` tags only (no NIP-44
-  private-mute decryption — that is post-v1). kind:10001 not implemented (post-v1).
-  **Follow-up (tracked here):** `nmp-wot` independently parses kind:10000 `p` tags in
-  `WotGraph::ingest_mute_list` for trust-scoring. Consolidating both onto `nmp-nip51`'s
-  decode (making `nmp-wot` depend on `nmp-nip51`) is a clean-up step, not v1 scope.
+**Follow-up (tracked here):** `nmp-wot` independently parses kind:10000 `p` tags in
+`WotGraph::ingest_mute_list` for trust-scoring. Consolidating both onto `nmp-nip51`'s
+decode (making `nmp-wot` depend on `nmp-nip51`) is a clean-up step, not v1 scope.
+
 - **NIP-23 long-form articles** — post-v1. kind:30023 constant already in `tags.rs`.
   Need: decoder + `KernelEventObserver` projection. Effort: ~2 days.
 - **NIP-94 / NIP-96 file metadata + media servers** — post-v1. Ships in every modern
@@ -384,28 +298,6 @@ total; the full kernel link far exceeds that.
 `unwrap_gift_wrap(envelope_json: &str, local_nsec: &str) -> Result<String, String>`.
 No actor, no storage, no relay code. Target: ~2 MB static lib.
 
----
-
-### V-45 · No `LogicalInterest::SocialTimeline` substrate seam [CLOSED — replaced by ADR-0036 composition-root approach]
-
-**Resolved (V-80 rung 4, 2026-05-28):** `LogicalInterest::SocialTimeline` was
-deliberately NOT added. The composition-root approach (`ActiveFollowSet`
-closure-based predicate in `nmp-nip02`, wired at `nmp-app-template`) supersedes
-this item. See ADR-0036. This entry is closed.
-
-**Evidence (extracted from V-37c):** every "show me notes from people I follow" app
-needs this pattern. Today it requires reading 30+ lines of Chirp's
-`apps/chirp/nmp-app-chirp/src/ffi/register.rs:370-403` to assemble the follow-list
-wiring. The substrate offers no affordance for the most common Nostr-client read
-pattern. `aim.md` §1 says "one-shot a working Nostr application" — this is the
-one affordance a social read app needs.
-
-**Recommended action:** design `LogicalInterest::SocialTimeline { viewer: Pubkey, kinds: Vec<u16> }`
-that pulls in the follow-set automatically and routes through the outbox planner.
-Drop V-37(c) as a sub-item; track here separately.
-
----
-
 ### V-49 · F-05 codegen coverage is ~20% (9/45 structs as of 2026-05-29 audit) — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
 
 **Evidence (code-grounded):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
@@ -421,112 +313,24 @@ The v1 pilot was a proof-of-concept — call it that.
 
 ---
 
-### V-50 · Relay routing per-kind dispatch table — RESOLVED (shipped as `nmp-router`); residual re-scoped [was HIGH · post-v1]
+### V-50 · Relay pool lifecycle + MailboxCache unification [post-v1 · residual from shipped nmp-router]
 
-**RESOLVED — already shipped (2026-05-29 `open-backlog-resolution` audit; citation
-fully drifted).** The cited `crates/nmp-core/src/kernel/outbox.rs` (447 LOC) no longer
-exists. Per-kind routing shipped as the **`nmp-router`** crate: `GenericOutboxRouter`
-(7 routing lanes, `crates/nmp-router/src/router.rs:147`), the `OutboxRouter` substrate
-trait (`substrate/routing.rs:259`, kernel holds `Arc<dyn OutboxRouter>` at
-`kernel/mod.rs:588`), kind-aware `Nip65OutboxResolver.resolve(kind)`
-(`nip65_resolver.rs:92`), wired in `nmp-app-template/src/lib.rs:204`. DM routing no
-longer leaks into the kernel (`PublishTarget::Explicit` + the `DmInboxLookup` substrate
-trait, not a hardwired kind:10050 case); NIP-29 routes h-tag relays; Marmot uses
-`publish_signed_explicit`. The V-50-as-written deliverable is **DONE**, and it no longer
-blocks V-39/V-40 (their DM routing already shipped without it).
+Per-kind routing shipped as `nmp-router` (2026-05-29). Two open residuals with unresolved decisions:
 
-**Residual (NOT the V-50 above) — re-scope or open fresh if pursued:** (1) optional
-`nmp-router`→`nmp-relay-pool` rename + relay-pool *lifecycle* ownership
-(connect/reconnect — genuinely new, exists nowhere); (2) unify the planner-side mixed
-`MailboxCache` (NIP-65 + NIP-17) with the NIP-65-only `substrate::MailboxCache` (the
-V-40 follow-up named in `substrate/routing.rs:10-26`). Both still carry open decisions.
+1. Optional `nmp-router`→`nmp-relay-pool` rename + relay-pool *lifecycle* ownership
+   (connect/reconnect — genuinely new, exists nowhere).
+2. Unify the planner-side mixed `MailboxCache` (NIP-65 + NIP-17) with the NIP-65-only
+   `substrate::MailboxCache` (the V-40 follow-up named in `substrate/routing.rs:10-26`).
 
-**Evidence:** `crates/nmp-core/src/kernel/outbox.rs` (447 LOC) implements one routing
-strategy — consult kind:10002 write relays for all event kinds. This is correct for kind:1
-public notes but wrong for everything else. The kernel has no per-kind routing dispatch at all.
-
-**The full picture — routing is kind-specific:**
-
-Different event shapes route to completely different relay sets, none of which are kind:10002:
-
-| Event shape | Relay source | Kind |
-|---|---|---|
-| Public notes (kind:1/6/7/…) | Author's NIP-65 write relays | kind:10002 |
-| DMs (kind:14/1059) | **Recipient's** DM inbox | kind:10050 |
-| NIP-29 group events | Group relay from `h` tag | (tag-derived) |
-| Marmot/MLS group events | MLS group relay | (group state) |
-| Drafts | Author's private storage relay | TBD |
-| Long-form (kind:30023) | Author's write relays | kind:10002 (default) |
-| NIP-51 sets | Author's write relays | kind:10002 (default) |
-
-NIP-51 documents the full taxonomy of kind-specific relay lists: kind:10002 (general),
-kind:10050 (DM), kind:30002 (named relay sets), kind:10009 (group relay lists), etc. The
-routing algorithm must dispatch on event kind (and sometimes tags like `h`) to consult
-the right relay list kind for the right pubkey.
-
-Today this dispatch does not exist — `kernel/outbox.rs` hardwires kind:10002 for every
-publish, and V-39/V-40 show that DM relay routing leaks into the kernel as a special case
-rather than being handled by the dispatch table that should own it.
-
-**Correct design — `crates/nmp-relay-pool/`:**
-
-A new crate (analogous to applesauce's `relay` package) owning:
-1. **Per-kind routing dispatch table:** given an unsigned event, select the right relay
-   list kind and target pubkey, then resolve to a concrete relay URL set.
-2. **`MailboxCache` implementation** (currently `InMemoryMailboxCache` in `crates/nmp-router/src/cache.rs`, marked
-   "Phase 2: replace with nmp-router implementation" — that future destination is here).
-3. **The NIP-65 `publish_relay_list` ActionModule** from `crates/nmp-router/src/publish_relay_list.rs`
-   (that file is too thin to stand alone; absorb it here).
-4. **Relay pool lifecycle** — connect/disconnect/reconnect, not just routing math.
-
-`nmp-core` substrate defines `trait OutboxRouter` + `trait MailboxCache`; the kernel holds
-injected `Arc<dyn>` of each. `nmp-relay-pool` provides the concrete implementations.
-
-`crates/nmp-router/src/publish_relay_list.rs` is deleted after the ActionModule migrates.
-
-**Migration difficulty: MEDIUM-HARD.** The `MailboxCache` trait seam exists; `OutboxRouter`
-trait needs to be designed carefully to express the per-kind dispatch without leaking NIP
-knowledge into the substrate. The per-kind dispatch table itself is new design work, not just
-a refactor. Prerequisite for V-39 (DM routing) and V-40 (DM ingest) clean migrations.
-
-**Phase: post-v1.** Prerequisite for any competing outbox strategy and for NIP-17 DM routing
-to leave the kernel cleanly. Pairs with V-38/V-39/V-41 (open-ActorCommand seam).
+**Phase: post-v1.** Pairs with V-38/V-39/V-41 (open-ActorCommand seam).
 
 ---
 
-### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH] — **Phases 1, 2, 4, 5 DONE; phase 3 pending**
+### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH] — **Phase 3 pending**
 
-**Phase 1 — substrate observer + bounded projection** ✅ PR #457 merged
-(efe72537). `RoutingTraceObserver` trait + `RoutingTraceProjection`
-bounded ring buffer (capacity 64 per stream) in `nmp-core`; both
-`nmp_router::GenericOutboxRouter` and `nmp-core`'s default router fan
-out to the observer.
-
-**Phase 2 — FFI/wasm snapshot surface** ✅ PR #476. New FFI symbol
-`nmp_app_recent_routing_decisions` (heap-owned, freed via
-`nmp_app_free_string`) returns a stable schema-versioned JSON document
-(`schema_version: 1`) listing recent publishes + subscriptions with
-per-URL lane attribution. Wasm sibling
-`NmpWasmRuntime::recent_routing_decisions()` returns the identical
-payload shape via a `wasm-bindgen` method backed by
-`KernelReducer::recent_routing_decisions_json`. JSON shape lives in
-`nmp_core::kernel::routing_trace_dto` (consumer-side renderer; substrate
-types stay free of `serde::Serialize`). `NmpCore.h` updated; CI drift
-gate passes.
-
-**Phase 4 — validation harness** ✅ PR #461 merged (b9e0fc15).
-`chirp-repl routing-trace` subcommand + `cargo test -p nmp-testing
---test routing_trace_real_nostr -- --ignored` integration test that
-fetches pablof7z's real NIP-65 from `wss://relay.damus.io` and asserts
-`Nip65/Read` lane attribution. `scripts/validate-routing.sh` shell
-smoke.
-
-**Phase 5 — kernel-router observability cut-over** ✅ PR #462 merged
-(1dbff579). Kernel calls injected `OutboxRouter` on subscription
-dispatch sites + kind:10002 ingest; chirp wires `GenericOutboxRouter`
-via `set_routing_substrate`. **Caveat**: this is *observe-only* — the
-kernel still picks REQ relays via cache helpers. Make-substrate-honest
-follow-up promotes the router to the decision authority.
+**Phases 1, 2, 4, 5 landed** (PRs #457, #476, #461, #462). Substrate observer,
+FFI snapshot surface, validation harness, and kernel observability cut-over are all
+in place.
 
 **Phase 3 (Chirp inspector UI)** — not started. Pending the iOS / web
 shell consumers of the phase 2 JSON payload (a `RoutingInspectorView`
@@ -547,37 +351,12 @@ be visibly targeted or the diagnostics must show why they were not.
 
 ---
 
-### V-52 · Single-relay browsing — read events from one relay only, with cache origin tracking [DONE]
+### V-52 · LMDB relay index for `list_events_seen_on` [LOW · follow-up from single-relay browsing feature]
 
-**Shipped in PR feat/v52-single-relay-browsing (2026-05-30).**
-
-**What was done:**
-
-- `crates/nmp-store/` — added `relay_index: HashMap<RelayUrl, BTreeSet<event_id_hex>>`
-  to `MemState`, maintained symmetrically with `provenance` on every insert/delete/GC.
-  Added `EventStore::list_events_seen_on(relay_url) -> Result<Vec<EventId>, StoreError>`
-  to the trait (default: `NotSupported`; `MemEventStore` impl: O(1) lookup via index).
-  `StoreError::NotSupported` variant added for LMDB stub path (LMDB relay index is
-  a tracked follow-up — see open follow-up below).
-
-- `crates/nmp-core/src/browse/` — new `BrowseRelayModule` / `BrowseRelayAction`
-  (`nmp.browse_relay` ActionModule namespace). `Open` variant sets `relay_pin` on a
-  `LogicalInterest` and dispatches `ActorCommand::PushInterest`; `Close` dispatches
-  `ActorCommand::WithdrawInterest`. No `actor/mod.rs` changes needed. Routing is
-  handled by the planner's existing `case_e_relay_pinned` (Case E), which suppresses
-  all four-lane NIP-65 fan-out when `relay_pin` is set. D0-compliant: all types are
-  substrate-pure (String, Vec<u32>).
-
-**Design decision:** reused `InterestShape::relay_pin` (planner Case E) rather than
-adding a new `scope_relays` field. Rationale: `relay_pin` already provides exactly the
-"exactly one relay, no NIP-65 fan-out, merge Rule 9 safe" semantics needed. Adding a
-parallel field would be fragmentation; two routing seams for the same thing is the
-definition of D0 violation.
-
-**Open follow-up:** LMDB backend `list_events_seen_on` — the MemEventStore has the full
-O(1) relay index; LMDB returns `StoreError::NotSupported` until a secondary
-relay_url→event_ids B-tree index is added there. Callers can detect this error and
-fall back to a provenance-scan if needed before the LMDB index lands.
+Single-relay browsing shipped (PR feat/v52-single-relay-browsing, 2026-05-30). The
+`MemEventStore` has an O(1) `relay_url→event_ids` index; LMDB returns
+`StoreError::NotSupported` until a secondary relay_url→event_ids B-tree index is added.
+Callers can fall back to a provenance-scan in the meantime.
 
 ---
 
@@ -675,25 +454,6 @@ a zeroizable key type or mutable erasure hook, then delete the partial-mitigatio
 comment and prove all in-memory secret copies wipe on drop. Until upstream support
 exists, do not claim full zeroization for local-key accounts.
 
-### V-59 · `EventStore` trait missing kernel clock injection — `SystemTime::now()` in watermarks and queries [LOW · correctness] — **DONE 2026-05-30**
-
-**Fixed:** `EventStore::coverage()` now takes an explicit `now_secs: u64` parameter. The store no longer reads the clock directly (D7 compliant). Both `lmdb/query.rs` and `mem/query.rs` use the threaded-in value; the stale "transitional site" comment in `watermark.rs` is updated. Note: `lmdb/gc.rs` and `mem/gc.rs` still contain `SystemTime::now()` for NIP-40 expiry and tombstone reaping — those are V-60's responsibility (LMDB LRU eviction, sequenced to follow this entry).
-
----
-
-### V-60 · LMDB `gc_step` never evicts — LRU eviction not implemented [MEDIUM · resource management] — **DONE 2026-05-30**
-
-**Fixed:** `GcBudget` gains `max_total_events: usize` (ceiling; `usize::MAX` = disabled).  Both `mem/gc.rs` and `lmdb/gc.rs` implement LRU eviction in `gc_step` Phase 2: events are sorted ascending by access-sequence counter (strictly monotonic, no ties), un-pinned candidates are evicted oldest-first until the store is at or under the ceiling, and pinned (claimed) events are always skipped.  Access is stamped on insert and on `get_by_id` hits.
-
-**D7 fix:** `gc_step` now takes `now_secs: u64` (kernel-clock-supplied); `SystemTime::now()` calls removed from both gc files.  All call sites updated to pass an explicit timestamp.
-
-**Index consistency:** evicted events are removed from all secondary indexes symmetrically — `provenance`, `relay_index` (Mem), `lru_access` (LMDB) — matching the pattern established by V-52.  No tombstone is written for LRU-evicted events (they remain valid and may be re-fetched).
-
-**Tests:** `crates/nmp-testing/tests/store_lru_eviction.rs` — 7 tests covering basic eviction, ceiling enforcement, LRU order (recently-read survive), pinned-event safety, relay-index consistency, D7 clock determinism, and no-op below ceiling.  All pass on both backends.
-
----
-
-
 ### V-106 · iOS Chirp hardcoded 21,000 msat (21 sat) zap default — production UX hazard [MEDIUM · v1-A Chirp UX]
 
 **Verified:** `ios/Chirp/Chirp/Bridge/KernelModel.swift:446` — `func zap(...) { amountMsats: UInt64 = 21_000, ... }` with a doc-comment at `:433-434` stating "defaults to 21,000 msats (21 sats) until an amount picker lands." Every zap dispatch from the iOS shell that doesn't explicitly pass an amount sends 21 sats.
@@ -740,316 +500,6 @@ exists, do not claim full zeroization for local-key accounts.
 
 ---
 
-### V-80 · Home feed is thread-roots-only with reply attribution [HIGH · v1 PRODUCT-MODEL FIX]
-
-> **Numbering note (2026-05-28):** the design doc
-> [`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md)
-> §8 drafted this entry as "V-59". V-59 (and every number through V-79) was
-> already assigned by the time rung 1 landed, so this entry takes the next
-> free number, **V-80**. The design doc's internal "V-59" references all
-> point to *this* item.
-
-**Status:** spec proposed 2026-05-27 in
-[`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md).
-**Rung 1 (Stage 0 kernel substrate additions) landed 2026-05-28** — five pure
-kernel additions with no consumer yet (see WIP.md / the rung-1 PR).
-**Rung 2 (Stage 1 — lossless `TimelineBlock::Standalone`) landed 2026-05-28**
-— `Standalone(EventId)` reshaped to `Standalone { id, root: Option<ThreadPointer> }`;
-the grouper's chain-length-1 path (`grouper.rs:367`) and the module-collapse
-removal path now preserve the resolved root pointer, closing the
-root-dropping bug. Every Rust + Swift consumer of the serialized shape was
-patched atomically. Behavior delta: chirp-tui's ↳ "reply in thread"
-indicator now fires for `Standalone` reply rows (it previously only lit for
-`Module` blocks). Home feed still rides `ModularTimelineProjection` (the
-projection swap is rung 7).
-**Rung 3 (Stage 2 — generic `RootIndexedFeed` engine in `nmp-feed`) landed
-2026-05-28** — `trait AttributionPayload` (associated `type Profile`, the B1
-dep-cycle fix), `struct RootIndexedFeed<R, A, C>` state machine
-(`KernelEventObserver` + `FeedController`), `RootCard<C, A>` /
-`RootFeedSnapshot<C, A>` (raw `Vec<A>` attribution, no `attribution_total` —
-Q1), `ClaimRequest{Claim,Release}` carrying a `ThreadPointer` (codex M2).
-Capabilities are closures, not traits (D7): follow predicate, event lookup,
-claim sink. ADR-0035. CI grep gate
-(`crates/nmp-testing/tests/op_feed_doctrine_lint.rs`) enforces zero
-protocol/profile tokens in `crates/nmp-feed/src/`. V-81 resolved via option
-(a) — the engine treats `event_claim_released` as non-terminal (see V-81).
-Engine ships **unwired** with 17 synthetic tests; Chirp unchanged, master
-green. Rungs 4–7 remain.
-**Rung 4 (Stage 3a — `ActiveFollowSet` follow-set producer in `nmp-nip02`)
-landed 2026-05-28** — `struct ActiveFollowSet` (`crates/nmp-nip02/src/active_follow_set.rs`)
-with `Arc<RwLock<BTreeSet<String>>>` internal state, an internal
-`KernelEventObserver` that rebuilds the set from the active account's kind:3
-(author-gated, self-inclusion mirroring `contacts.rs::sync_follow_feed_interests`
-lines 162-164), and the explicit account-change seam
-`notify_account_changed()` (rebuilds on switch, clears on logout). Public API
-is closures-only — **no `FollowSetLookup` trait** (B1/§3-D override):
-`follows() -> Vec<String>`, `predicate() -> Arc<dyn Fn(&str) -> bool + Send +
-Sync>` (captures a clone of the internal `Arc<RwLock<…>>`, so a handed-out
-predicate reflects later set changes live), `on_change(Box<dyn Fn() + …>)`.
-Constructor takes the kernel's `ActiveAccountSlot` (re-exported via
-`nmp_core::slots`), **not** `&NmpApp` — that keeps `nmp-nip02` on `nmp-core`
-only (no new `nmp-feed` edge, no production `nmp-ffi` edge; `cargo tree -p
-nmp-nip02` unchanged). ADR-0036 records the composition-root expansion
-decision (no planner `SocialTimeline` seam). Producer ships **unwired** with
-12 synthetic tests; rungs 5 (`nmp-nip01` instance) + 6 (`nmp-app-template`
-composition) consume it. Chirp unchanged, master green. Rungs 5–7 remain.
-**Rung 5 (Stage 3b — `nmp-nip01` OP-feed instance) landed 2026-05-28** —
-`crates/nmp-nip01/src/op_feed/` binds the generic engine to NIP-10:
-`Nip10ReplyAttribution` implements `nmp_feed::AttributionPayload` with
-`type Profile = ProfileDisplay` (raw pubkey + reply id + raw `created_at` +
-`Option<String>` display-name/picture mirrors per the 2026-05-25 display-
-separation doctrine; `refresh_for_profile` mirrors
-`ModularTimelineProjection::refresh_author_cards`). `register_op_feed(viewer,
-follow_predicate, event_lookup, claim_sink) -> Arc<OpFeedEngine>` constructs
-`RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution, TimelineEventCard>`;
-`build_actor_claim_sink(dispatch)` encodes the `ThreadPointer` as a `nostr:`
-URI (`nevent` for `Event`, `naddr` for `Address`; `External` terminal) and
-dispatches the existing `ActorCommand::ClaimEvent` / `ReleaseEvent` (the
-Rust seam behind `nmp_app_claim_event`, never the `extern "C"` symbol). A
-new public `TimelineEventCard::from_event_for_op_feed(root, target)` is the
-stateless card-builder reuse seam (the private `from_event` needs kernel-
-internal caches). **Spec-vs-code drift surfaced & followed:** (1) the
-engine is `RootIndexedFeed<R, A, C>` with a 7-arg constructor, not the
-doc's `<R, A>`; (2) `register_op_feed` takes `nmp-core` primitives, **not**
-`&NmpApp` (same `nmp-ffi`-edge inversion rung 4 rejected — composition root
-rung 6 does the `NmpApp` registration); (3) `event_lookup` is
-`Fn(&EventId)`, not the doc's `Fn(&str)`; (4) `from_event` is private with a
-5-arg signature, so a new public stateless helper was added. Instance ships
-**unwired in production** (only tests register `"nmp.feed.home"`; Chirp keeps
-`ModularTimelineProjection` until rung 7) with 13 tests covering repost
-L-1…L-5, claim-URI shape, profile refresh, snapshot shape, and the V-81
-non-terminal release signal. `cargo test -p nmp-nip01` 108 pass;
-`cargo build -p nmp-app-chirp` clean; doctrine-lint smoke 42 pass. Rungs
-6–7 remain.
-**Rung 6 (Stage 5 — `nmp-app-template` composition root) landed 2026-05-28** —
-`crates/nmp-app-template/src/op_feed_defaults.rs` adds
-`register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, active_account_slot:
-ActiveAccountSlot) -> Arc<OpFeedEngine>`. It constructs
-`nmp_nip02::ActiveFollowSet` over the slot, registers it as a
-`KernelEventObserver`, builds the engine via `nmp_nip01::register_op_feed`
-(follow predicate = `ActiveFollowSet::predicate()`, claim sink =
-`build_actor_claim_sink` over `app.actor_sender()`, no-op `event_lookup`),
-registers the engine as both a `KernelEventObserver` (ingest) and a
-`FeedController` under `"nmp.feed.home"` (output), and wires a self-detecting
-`on_change` callback that resets the engine ONLY on an account switch (the
-pubkey actually changed), never on a kind:3 update (the predicate is live).
-**CRITICAL DECISION — no `expand_follow_timeline_interests`:** the design doc
-§5 Stage 5 / ADR-0036 sketch per-follow `LogicalInterest` registration at the
-composition root "mirroring `sync_follow_feed_interests`," but the kernel
-**still owns** `sync_follow_feed_interests`
-(`crates/nmp-core/src/kernel/ingest/contacts.rs:119`), which already registers
-those interests on the active account's kind:3 and on identity change.
-Re-registering at the composition root would be **duplicate REQ
-subscriptions** — so this rung registers the engine + follow-set observer
-ONLY, no interest expansion. The doc predates the kernel keeping
-`sync_follow_feed_interests`. **Spec-vs-code drift followed:** (1) the
-function takes an explicit `active_account_slot` param — `NmpApp` exposes no
-synchronous `ActiveAccountSlot` accessor (kernel makes its own at
-`mod.rs:1406`, never threaded back); a thin accessor is filed as **V-82**;
-(2) `event_lookup` is a no-op `|_| None` — no synchronous event-by-id read API
-on `NmpApp`; the engine's L-2 re-key fallback keeps it correctness-preserving;
-the optimization is filed as **V-83**; (3) `send_cmd` is crate-private, so the
-claim sink dispatches through `actor_sender()`. **`register_op_feed_defaults`
-is NOT called by `register_defaults` and NOT wired into Chirp this rung** —
-defined + tested only (4 integration tests:
-`crates/nmp-app-template/tests/op_feed_defaults_test.rs`); rung 7 makes Chirp
-call it and removes the `ModularTimelineProjection` registration. `cargo test
--p nmp-app-template` 7 pass (4 new + 3 existing); `cargo build -p
-nmp-app-chirp` clean; doctrine-lint smoke 42 pass. Master green; Chirp
-unchanged. **Rung-7 note:** the engine's repost cards key the root slot by
-`target_id` (`card.id == target_id`, `ingest.rs:101`), differing from
-`ModularTimelineProjection`'s wrapper-id keying — rung 7's chirp-tui /
-codegen swap must account for this.
-
-**MIGRATION COMPLETE (2026-05-29).** Rung 7 (Chirp cutover, #747) plus the
-ADR-0038 typed-`NOFS` ladder all landed: B1 typed schema/encoder/emission
-(#752), B2 chirp-tui typed decoder (#753), B3 iOS decoder (#755), B4 Android
-decoder (#757), plus V-82 (#745) + V-83 (#756). The OP-centric home feed is
-**LIVE on master**: chirp-tui reads via the typed `NOFS` path; iOS/Android
-read via the generic `RootFeedSnapshot` fallback (their typed decoders ship
-**decoder-only** — wiring them into render needs a Swift/Kotlin NFCT
-content-tree decoder, tracked as **V-84/V-85** below). Behavior verified
-through the real production composition + projection + render via integration
-and unit tests (`op_feed_defaults_test`, `op_feed_repost_hydration_test`,
-chirp-tui snapshot/render-parity, B1 golden-wire, B4 Kotlin golden 5/5).
-**Live tmux / iOS-sim runtime confirmation was blocked by environment only**
-(unsigned-binary macOS keychain prompt; incomplete Xcode-26-beta `UIUtilities`
-framework stubs in `/tmp/LocalFrameworks` + missing `docs/dev/xcode26-workarounds.md`)
-— reproducible by a developer in a configured GUI/Xcode env. See
-[`docs/perf/pending-user-decisions.md`](perf/pending-user-decisions.md).
-
-**Evidence:** today's home feed (chirp-tui left pane, Chirp iOS home) shows
-replies as standalone feed rows. PR #710 added a ↳ "reply in thread"
-indicator as a partial mitigation, but the product model the user wants is
-different: **feed = thread roots only; follows' replies attribute back to
-their root**. A follow's reply to a non-followed OP should surface the OP
-with a "↳ Alice replied" badge. Reply rows never stand alone.
-
-Today's code drops the root pointer on chain-length-1 standalone blocks
-(`crates/nmp-threading/src/grouper.rs:367`), defeats attribution at the
-threading layer, and lacks any mechanism to fetch a non-followed root id
-into the local store (the existing thread-hydration logic
-`enqueue_thread_hydration_from_event` only fires when a thread detail view
-is open — `crates/nmp-core/src/kernel/ingest/timeline.rs`).
-
-**Architectural shape:** the engine `RootIndexedFeed<R: ParentResolver, A:
-AttributionPayload>` lives in `nmp-feed` (generic substrate, zero protocol
-knowledge). `nmp-nip01` provides the NIP-10 instance
-(`Nip10ReplyAttribution` + `register_op_feed`); a future `nmp-nip22`
-provides the kind:1111 instance covering ALL non-kind:1 root kinds
-(NIP-23, NIP-94, NIP-99, podcasts, …). One engine, two foreseeable
-instances; no per-kind state-machine explosion.
-
-**Rung 1 (DONE 2026-05-28) — kernel substrate additions in `nmp-core`:**
-1. `Kernel::active_timeline_authors()` — public typed read accessor over
-   the `timeline_authors` projection (raw pubkeys).
-2. `pre_kind3_buffer` — bounded staging map that parks kind:1/kind:6 events
-   whose author is not yet followed, replayed by
-   `sync_follow_feed_interests` once the author is followed.
-3. `OneshotApi::request` gains a `hints: Vec<RelayHint>` parameter;
-   `claim_event` seeds the initial REQ with the URI's NIP-19 relay TLVs.
-4. `event_claim_released` — bounded ring projection + in-process
-   `EventClaimReleasedObserver`; `complete_unknown_oneshot` clears claim
-   state and pushes the id on EOSE-no-match.
-5. `release_event` calls `release_claim_expansion` on refcount-zero (codex
-   M3).
-All five are pure additions with no consumer yet; master behavior is
-unchanged.
-
-**Prerequisite:** V-45 (`LogicalInterest::SocialTimeline` substrate seam) +
-`FollowSetLookup` capability — delivered in a later rung per the doc's §5
-Stage 0 (note: the doc's §5 "Stage 0" is the V-45/FollowSetLookup work; the
-rung-1 PR that landed is a DIFFERENT five-addition decomposition than the
-doc's §5 text — see the PR's spec-drift report).
-
-**Recommended action:** seven-rung PR ladder per
-[`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md)
-§5–§6. Net add ~1,700 LOC across `nmp-threading`, `nmp-core` (substrate
-seam only), `nmp-planner`, `nmp-feed` (engine), `nmp-nip01` (instance),
-`nmp-app-template`, and `apps/chirp/`. Net delete ~250 LOC (partial-chain
-machinery in chirp-tui + hand-rolled follow-set wiring in nmp-app-chirp).
-Two new ADRs: ADR-0033 (`FollowSetLookup` capability) and ADR-0034
-(generic root-indexed feed engine in `nmp-feed`; protocol-specific
-instances in NIP crates).
-
-**Open user decisions** carried to `docs/perf/op-centric-feed-architecture.md`
-§7: Q1 (attribution cap + deletion semantics), Q2 (LogicalInterest enum vs
-discriminator), Q3 (repost behavior under OP-centric model), Q4
-(self-replies), Q5 (NIP-22 scope deferred to post-v1), Q6 (root-hydration
-latency trade-off). All have flagged defaults if the user is unavailable.
-
-**Out of scope (post-v1):** the `nmp-nip22` instance over kind:1111
-comment trees. Implementation is ~150 LOC (one `ParentResolver` impl
-plus one `AttributionPayload` impl plus one wiring helper); engine code
-is zero new lines. Tracked separately when `nmp-nip22` crate is created.
-
----
-
-### V-82 · `NmpApp` does not expose the kernel's active-account slot — OP-feed composition root (rung 7) + Chirp cannot read the live active account [MEDIUM · sub-item of V-80, rung-7 prerequisite] — LANDED 2026-05-28
-
-**Origin (rung-6 finding):** the kernel owns the authoritative
-`ActiveAccountSlot` (`Arc<Mutex<Option<String>>>`, the active account's hex
-pubkey, written by the actor reducer on sign-in / account-switch / logout).
-The kernel "makes its own, never threaded back" — `NmpApp` exposed no
-accessor — so host code (the V-80 OP-feed composition root at rung 7, and
-Chirp) could not read the real slot to seed `ActiveFollowSet::new` or drive
-`ActiveFollowSet::notify_account_changed` on an account switch.
-
-**Fix (LANDED):** `NmpApp::active_account_handle(&self) -> ActiveAccountSlot`
-in `nmp-ffi` (`crates/nmp-ffi/src/lib.rs`). Single source of truth, no
-divergent mirror: `nmp_app_new` constructs the slot once and hands the SAME
-`Arc` to the kernel at actor startup via the new
-`Kernel::with_storage_path_and_account_slot` constructor (the kernel's
-internal `Arc::clone` — including the test-support outbox resolver — references
-the supplied slot, so no internal consumer diverges). The `Reset` dispatch arm
-rebuilds the kernel through the same constructor with the actor-held slot, so
-the shared handle survives a state wipe (mirrors the routing-trace re-publish
-contract). The actor reducer remains the sole writer (D4); reads happen
-through the host handle. Substrate-clean: the slot holds a raw pubkey `String`
-— no NIP noun, D0 stays clean (generic identity plumbing).
-
-**Tests:** 3 nmp-ffi tests driving REAL sign-in / account-switch / Reset
-through the actor (not a direct slot poke), incl. an `Arc::as_ptr` identity
-check that rules out two divergent slots and a Reset-then-sign-in survival
-test (`crates/nmp-ffi/src/active_account_handle_tests.rs`). `cargo test -p
-nmp-ffi` 61 pass; `cargo test -p nmp-core --lib` 997 pass; doctrine-lint smoke
-42 pass; `cargo build -p nmp-app-template -p nmp-app-chirp` clean.
-
-**Spec-vs-code drift:** the kernel's `ActiveAccountSlot` construction is at
-`crates/nmp-core/src/kernel/mod.rs` ~line 1413 (`new_active_account_slot()`),
-not ~1406 (the repo moved); the kernel already had a `active_account_handle()`
-accessor (`kernel/mod.rs` ~line 1340) — the gap was only the `NmpApp` → kernel
-*sharing* at construction, which this item closes.
-
----
-
-### V-81 · `event_claim_released` signal fires on Phase-1 EOSE, not final give-up — rung-3 consumer must not drop pending attribution early [MEDIUM · sub-item of V-80, blocks rung 3 correctness]
-
-**Origin:** rung-1 (PR #727, commit `171090d3`) added the
-`event_claim_released` ring buffer + in-process observer so the OP-feed
-engine learns when a root claim resolves to nothing. The push currently
-fires inside `complete_unknown_oneshot` on **Phase-1 EOSE**.
-
-**Risk:** Phase-1 EOSE is *not* the final "this event will never arrive"
-verdict. Claim expansion (Phase-2 relay retargeting, the W5/W7 hint path)
-may still be in flight against other relays. If the rung-3 engine treats
-the `event_claim_released` signal as terminal, it will drop the buffered
-`pending_attributions[root_id]` while Phase-2 is still trying — so Bob's
-OP arrives, but the "Alice replied" badge was already discarded. The user
-sees a root card with no attribution even though attribution was known.
-
-**Correct fix (decide in rung 3):** either (a) the engine ignores the
-release signal until a true `terminate_claim` (all phases exhausted), or
-(b) move the ring push from Phase-1 EOSE to `terminate_claim` in
-`nmp-core` as a rung-1 follow-up. (b) is cleaner if `terminate_claim` is
-the single authoritative give-up point; (a) keeps rung 1 untouched but
-puts the burden on every future consumer. The rung-3 implementer (the
-`nmp-feed` `RootIndexedFeed` engine) MUST resolve this before wiring the
-release observer to attribution eviction. See
-[`docs/perf/op-centric-feed-architecture.md`](perf/op-centric-feed-architecture.md)
-§3-K for the buffering model this protects.
-
-**Resolution (rung 3, 2026-05-28): option (a) implemented.**
-`RootIndexedFeed::on_event_claim_released` is a no-op beyond a diagnostic
-`AtomicU64` counter — it does NOT drop `pending_attributions`. (This
-supersedes the design doc §3-D, which predates V-81 and said to drop on the
-signal.) A pending attribution survives a release signal and is dropped only
-when the root actually arrives (drain) or the bounded map evicts it under D5
-pressure. Proven by
-`v81_release_signal_does_not_drop_pending_attribution`. Recorded in ADR-0035.
-**Option (b) — moving the `nmp-core` ring push from Phase-1 EOSE to
-`terminate_claim` — remains a possible rung-1 follow-up.** It is no longer
-load-bearing for OP-feed correctness (the engine is robust to the current
-Phase-1-EOSE behavior), so this item is downgraded to a cleanup. If pursued,
-it would let the engine treat the signal as terminal and proactively emit
-`Release` + drop pending, instead of relying on arrival/eviction.
-
----
-
-### V-83 · OP-feed `event_lookup` reads the kernel event store (replace no-op closure) [LOW · sub-item of V-80, optimization only] — LANDED 2026-05-29 (#756)
-
-**Origin:** rung 6 wires the engine's
-`event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent>>` as a no-op
-`|_| None`. There is **no synchronous event-by-id read API on `NmpApp`** — the
-kernel's `EventStore::get_by_id` (`crates/nmp-store/src/events.rs:149`) lives
-on the actor thread and is never published back to `NmpApp`. The no-op is
-**correctness-preserving** for the OP feed: the engine's L-2 fallback holds an
-attribution against the (unresolved) wrapper id and re-keys it when the wrapper
-later arrives via the observer fan-out (§3-L step 2); L-5 shows the placeholder
-card until the target arrives.
-
-**Fix (optimization, not correctness):** expose a kernel-owned, thread-safe
-event-by-id read handle on `NmpApp` (an `Arc<dyn EventStore>` clone, or a
-typed `Kernel::event_by_id` accessor surfaced like `relay_edit_rows_handle`),
-and wire it into the `event_lookup` closure so the engine can resolve a
-locally-cached parent/target immediately instead of waiting for the observer
-re-key. Only matters for repost L-2/L-5 cold-start latency. **DONE 2026-05-29 (#756):**
-landed via a publish-back `EventStoreSlot` + `NmpApp::event_by_id` (single-writer
-actor, Reset-survivable); the no-op closure is replaced and repost L-2/L-5
-hydration is exercised by `op_feed_repost_hydration_test.rs`.
-
----
-
 > **Provenance — V-87 … V-105 (2026-05-29 GH-issue audit, issues #600–#630).**
 > These nineteen entries fold the 31 open GitHub issues from the offline-first /
 > doctrine audit into Section 1. Every citation below was re-confirmed against
@@ -1059,68 +509,38 @@ hydration is exercised by `op_feed_repost_hydration_test.rs`.
 > the described violation is **already fixed at HEAD**, the entry says so and the
 > action is to close the stale GH issue rather than re-open a phantom violation.
 
-### V-87 · D1 startup violations cluster [HIGH · pre-v1 · issues #600–#606]
+### V-87 · D1 startup violations cluster — iOS/shell legs open [HIGH · pre-v1 · issues #603–#606]
 
 The D1 / offline-first contract (`docs/product-spec/offline-first.md` §1–§6):
 the first rendered frame must not depend on relay I/O or relay connectivity.
-Seven candidate sites were filed; HEAD-verified status below.
 
-**Kernel half DONE (PR fix/v87-kernel-d1-startup, 2026-05-30):**
-Items #601 and #602 are resolved in `crates/nmp-core/src/actor/`. Tests added
-in `actor/v87_d1_startup_tests.rs` (3 tests: pre-command frame, zero-relay
-startup, end-to-end no-deadlock). Existing D8 retention tests updated.
+Items #600, #601, #602 (kernel half) resolved in PR fix/v87-kernel-d1-startup
+(2026-05-30). Remaining open items:
 
-1. **#600 — ALREADY FIXED AT HEAD. Close the issue.**
-   `crates/nmp-core/src/actor/dispatch.rs:443-451` — the `Start` arm now calls
-   `emit_now` (`:444`) **before** `spawn_missing_relays` (`:445`), with the
-   explicit comment "first snapshot must reach the shell before any relay TCP
-   connection is dialed, so emit_now precedes spawn_missing_relays". The order
-   the issue asked for is already in place. No live violation; mark #600 resolved.
-2. **#601 — FIXED.** `crates/nmp-core/src/actor/mod.rs` — actor now emits a
-   pre-flight snapshot (empty, `running=false`) from a temporary bare kernel
-   BEFORE the blocking `command_rx.recv()`. A host waiting for the first frame
-   before sending `Start` no longer deadlocks. The real kernel is still built
-   post-`recv()` with the correct LMDB storage path; the pre-flight frame is
-   discarded by the host as `running=false`. See
-   `actor/v87_d1_startup_tests.rs::v87_601_first_snapshot_arrives_before_start_command`.
-3. **#602 — FIXED.** `crates/nmp-core/src/actor/relay_mgmt.rs` —
-   `maybe_send_startup` no longer gates on `all_relays_connected`. Bootstrap
-   interests (`startup_requests()`) and deferred view requests
-   (`pending_view_requests()`) are registered immediately when `running=true`,
-   independent of relay connectivity. The planner compiles interests into wire
-   REQs on the next `drain_lifecycle_tick` and the pool delivers them as
-   relays connect — no pre-condition at the actor level. See
-   `actor/v87_d1_startup_tests.rs::v87_602_start_with_zero_relays_emits_running_snapshot`.
-4. **#603 — CITATION STALE. Re-scope before fixing.** The filed citation
+1. **#603 — CITATION STALE. Re-scope before fixing.** The filed citation
    `apps/nmp-gallery/tui/src/live.rs:161-195` (`bootstrap()` chaining six
    `recv_timeout` loops) does **not** exist at HEAD: `live.rs` is 217 lines, has
-   no `bootstrap` fn and no `recv_timeout` call. The polling bootstrap appears to
-   have been refactored out. Re-audit the gallery TUI live path (`live.rs`,
-   `embed_host.rs`) for any remaining pre-first-frame blocking loop and re-file
-   with a HEAD-accurate citation, or close #603.
-5. `ios/Chirp/Chirp/Features/HomeFeedView.swift:101` [#604] — empty
+   no `bootstrap` fn and no `recv_timeout` call. Re-audit the gallery TUI live
+   path (`live.rs`, `embed_host.rs`) for any remaining pre-first-frame blocking
+   loop and re-file with a HEAD-accurate citation, or close #603.
+2. `ios/Chirp/Chirp/Features/HomeFeedView.swift:101` [#604] — empty
    `blocks`/`items` renders `ChirpPlaceholder(…)` until the first kernel tick;
    the shell cannot distinguish "no events" from "not yet ticked". **DEFERRED
-   (iOS/shell leg — live peer agent mid-refactor in iOS profile/byline zone).**
-6. **#605 — CITATION STALE.** `ios/Chirp/Chirp/Features/ThreadScreen.swift` (202
+   (iOS/shell leg).**
+3. **#605 — CITATION STALE.** `ios/Chirp/Chirp/Features/ThreadScreen.swift` (202
    lines) does **not** contain the string "Fetching notes from the relay network"
    anywhere in the iOS tree, and the `threadView == nil` hard-gate at `:30-64` is
    not present as filed. Re-audit `ThreadScreen.swift` for the current loading
    gate and re-file with a HEAD-accurate `file:line`, or close #605. (See V-99 —
    the user-facing-copy half of this issue is also stale.) **DEFERRED (iOS/shell
    leg).**
-7. `crates/nmp-core/src/kernel/types.rs:184` [#606] — `ProfileCard.has_profile:
+4. `crates/nmp-core/src/kernel/types.rs:184` [#606] — `ProfileCard.has_profile:
    bool` is consumed as a render gate at
    `ios/Chirp/Chirp/Features/ProfileView.swift:142,168` (`profile?.hasProfile ==
    true`). It trains callers to block fields on relay data. **Confirmed live**
    (the iOS gate is real; the originally-filed gallery `live.rs:419` cite is
    stale — `live.rs` is only 217 lines — so the gallery half needs re-citing).
    **DEFERRED (iOS/shell leg).**
-
-**Status:** Items #601 and #602 (kernel half) done at HEAD. Items #604, #605,
-#606 (iOS/shell legs) deferred — live peer agent in the iOS profile/byline zone;
-collision risk. Item #603 needs re-citation or closure. Item #600 close-issue
-only.
 
 ### V-88 · View payload `state` string invites render-gating [MEDIUM · P2/D1 · issue #607]
 
@@ -1134,37 +554,6 @@ concern and must not surface on the view payload as a render gate.
 **Correct fix:** Remove `state` from `AuthorViewPayload`/`ThreadViewPayload`;
 always emit whatever local data is available; move lifecycle state to a
 debug/diagnostics-only channel.
-
-### V-89 · Sentinel API values cause double-stamping — P2 type-safety gaps [MEDIUM · issues #608 #609 #610]
-
-Three builders require sentinel (zero/empty) inputs that callers must not replace
-with real values, with no type-level enforcement of the distinction:
-
-1. ~~**#608 — CITATION STALE; re-scope to the real seam.** The filed cite
-   `crates/nmp-nip59/src/wrap.rs:41-55` (dual-public `gift_wrap` /
-   `gift_wrap_with_signer`) does **not** match HEAD: `wrap.rs` exposes only
-   `unwrap_gift_wrap` (`:33`); there is no `gift_wrap(sender: &Keys, …)` free
-   function. The signer seam is `gift_wrap_with_signer` at
-   `crates/nmp-nip59/src/signer_seal.rs:234` (re-exported `lib.rs:38`). PR #760
-   already made `wallet_connect` `pub(crate)`. Re-file #608 against the actual
-   `signer_seal.rs` API surface, or close it if the dual-path no longer exists.~~
-   **(#1 was already stale at original filing; nip59 cite did not match HEAD.)**
-2. ~~`crates/nmp-nip17/src/lib.rs:107` [#609] — `build_dm_rumor(input,
-   sender_pubkey: &str)` writes `pubkey: sender_pubkey.to_string()` (`:125`);
-   action-executor call sites must pass `sender_pubkey = ""` and a real value
-   double-stamps. No type enforcement.~~ **DONE** — `sender_pubkey` param
-   removed; `pubkey` set internally to `""` (D7 sentinel). Callers updated.
-3. ~~`crates/nmp-nip57/src/build.rs:117-122`, `action.rs:200` [#610] —
-   `ZapRequestBuilder::build(author, created_at)` (`build.rs:117`, writes
-   `pubkey: author.into()` at `:155`) is called with `String::new(), 0` at
-   `action.rs:200`; `created_at = 0` is the documented D7 sentinel (`action.rs:199`)
-   and real values double-stamp.~~ **DONE** — `author` and `created_at` params
-   removed from `build()`; both set internally as D7 sentinels. All callers updated,
-   including `fetch_bolt11_for_zap` (standalone path re-stamps `created_at` directly).
-
-~~**Correct fix:** Each function should accept `Option<T>` or use a builder/typestate
-split (`Unsigned*` type at action call time, signed variant post-actor-signing).~~
-All three items resolved; V-89 is fully closed.
 
 ### V-90 · Actor thread blocking during remote-signer operations [HIGH · D8 violation · issues #612 #613]
 
@@ -1303,16 +692,6 @@ state) for any remaining relay-dependency phrasing and re-file #624 with accurat
 `file:line`, or close it. The doctrine (never communicate relay-dependency to
 users; offline-first copy only) stands regardless. Paired with V-87 items 5–6.
 
-### V-100 · iOS WalletView validates the NIP-47 URI scheme in Swift [DONE · PR refactor/v100-nwc-uri-validation-rust]
-
-**Fixed:** `WalletConnectModule::start()` in `crates/nmp-nip47/src/action.rs` now
-validates the `nostr+walletconnect://` scheme prefix (case-insensitive) and returns
-`ActionRejection::Invalid` for invalid URIs. The `nmp_app_wallet_connect` FFI shim
-in `crates/nmp-ffi/src/wallet.rs` checks the dispatch result and surfaces rejections
-as `ActorCommand::ShowToast` so the error reaches `last_error_toast` in the kernel
-snapshot. `schemeLooksValid(_:)` and its `.disabled(!schemeLooksValid(uri))` call
-removed from `WalletView.swift`; the button now gates only on non-empty input.
-
 ### V-101 · iOS NIP-29 group relay URL hardcoded in Swift `@State` [LOW · P5 · issue #626]
 
 **Verified:** `ios/Chirp/Chirp/Features/NewGroupSheet.swift:26` —
@@ -1334,38 +713,6 @@ windowing, feed cursor) but are exported from a protocol crate. "Timeline" and
 **Correct fix:** Move these types to `crates/nmp-app-template/` or a new
 `crates/nmp-social-feed/` crate. The protocol crate retains only the raw event
 data types.
-
-### ~~V-103 · Missing D1 bootstrap regression test~~ [CLOSED · test coverage]
-
-**DONE:** PR #826 implemented D1 regression test in `crates/nmp-core/src/kernel/d1_offline_bootstrap_tests.rs`:
-- `d1_offline_store_content_appears_in_snapshot_without_relays` — seeds a kind:1 note into the in-memory store
-  (zero relays connected), opens the timeline view, calls `make_update_json_for_test`, and asserts the seeded
-  event id and content appear in `projections.timeline`. Fails if the offline store-read path breaks.
-
-Colocated in nmp-core (not nmp-testing) because it requires `pub(crate)` `make_update_json_for_test` access.
-Runs as part of `cargo test -p nmp-core --lib d1_offline_bootstrap`.
-
-### V-104 · Six `e2e_full_pipeline` tests are unimplemented stubs [MEDIUM · test coverage · issue #629]
-
-**RESOLVED (2026-05-30):** All 6 tests implemented and passing in PR
-`test/v104-e2e-full-pipeline`. `#[ignore]` removed from all six.
-`negentropy_skips_redundant_req` exercises the shipping T129 watermark→`since`
-rewrite path (`SubscriptionLifecycle::set_watermark_fn`): warm store (watermark=1700)
-→ REQ filter carries `"since":1701`; cold store (watermark=None) → no `since` field.
-This is the real coverage narrowing mechanism that shipped after nmp-nip77 deletion.
-All 6/6 live tests pass: `cargo test -p nmp-testing --test e2e_full_pipeline` +
-doctrine_lint_smoke green.
-
-### ~~V-105 · Test infra: `wait_for_snapshot_predicate` uses untyped substring scanning~~ [DONE — 2026-05-30]
-
-**Fixed:** Added `ActorCommand::Barrier { ack: SyncSender<()> }` (test-support only)
-to `nmp-core/src/actor/mod.rs` + dispatch arm in `dispatch.rs`. Added typed snapshot
-helpers `wait_barrier`, `snapshot_projection_str`, `snapshot_projection`, and
-`snapshot_last_error_toast` to `nmp_core::testing`. Rewrote both integration tests to
-use typed JSON field navigation (no substring scanning) and `Barrier` in place of the
-blind drain loop. All substring `.contains()` probes replaced. PR: test/v105-typed-observables.
-
----
 
 ### V-108 · `ChirpTests/NoteContentRenderingTests.swift` references removed `noteContentGroups`/old `.inline` API — whole ChirpTests target fails to compile [MEDIUM · test rot · ChirpTests not CI-gated]
 
@@ -1697,9 +1044,9 @@ exact byte set as the M16 cross-platform wire-contract truth.
 content rendering system.
 Architectural decisions: [`ADR-0034`](decisions/0034-kind-dispatch-content-rendering.md).
 Items F-CR-01 through F-CR-12 below are ordered by dependency. Pick the topmost
-open item not already in Section 2. PR #588 closes F-CR-01 and F-CR-06; the next
-highest-value open item is F-CR-02, because Android must join `ContentTreeWire`
-before the Compose registry can replace the old embed card.
+open item not already in Section 2. F-CR-01 and F-CR-06 landed (PR #588). The next highest-value open item is
+F-CR-02, because Android must join `ContentTreeWire` before the Compose registry
+can replace the old embed card.
 
 #### F-CR-00 · Reference-driven reactive component contract [HIGH · all platforms]
 
@@ -1731,27 +1078,6 @@ identities or event payloads.
 **Dependencies:** source-of-truth update in product spec and M16 plan. **Scope:**
 medium-large.
 
-#### F-CR-01 · Rust `EmbedKindProjection` + `EmbeddedEventEnvelope` [DONE · PR #588]
-
-New module `crates/nmp-content/src/embed_projection/`. Creates the typed envelope
-(`EmbeddedEventEnvelope`) and variant enum (`EmbedKindProjection`) that carry
-per-kind projection data across the wire to all three platforms.
-
-Variants: `ShortNote`, `Article`, `Highlight`, `Profile`, `Unknown`. The `Unknown`
-variant carries `kind: u32`, raw `tags: Vec<Vec<String>>`, `content: String`,
-`content_tree: ContentTreeWire`, and `alt_text` — enough for native kind handlers
-to extract any custom field without a Rust-side change.
-
-Also adds `RenderContextWire` (serialisable form of `nmp-content::RenderContext`)
-and `resolve_embed_projection(event, ctx)` — the single `match event.kind` dispatch
-point in the workspace. All fields follow ADR-0032 (raw protocol data, no formatted
-strings).
-
-Add golden fixture JSONs under `crates/nmp-content-fixtures/fixtures/embed/` for
-each variant. Tests in `nmp-content` pin the serde round-trip.
-
-**Dependencies:** none. **Scope:** medium. **Status:** implemented by PR #588.
-
 #### F-CR-02 · Android gallery → `ContentTreeWire` migration [PREREQUISITE · Android]
 
 Migrate `android/gallery/` off `ContentTreeDto` / `SegmentDto` / `MarkdownNodeDto`
@@ -1765,8 +1091,7 @@ onto `ContentTreeWire` / `WireNode` (already the iOS + TUI wire format).
 
 Run `./gradlew :gallery:test` to verify no regressions.
 
-**Dependencies:** F-CR-01 (envelope shape needed to scope the conversion).
-**Scope:** medium.
+**Dependencies:** F-CR-01 (landed, PR #588). **Scope:** medium.
 
 #### F-CR-05 · iOS `NostrKindRegistry` + `EmbeddedEvent` + `EmbedChromeContainer` [HIGH · iOS]
 
@@ -1784,23 +1109,7 @@ New registry component at `crates/nmp-cli/registry/swiftui/content-kind-registry
 - Update `NostrContentView.swift` `EventRef` arm to use `EmbeddedEvent`.
 - Deprecate (one release) `quoteCardProvider` closure API.
 
-**Dependencies:** F-CR-01. **Scope:** medium-large.
-
-#### F-CR-06 · TUI `NostrKindRegistry` + `EmbeddedEvent` widget [DONE · PR #588]
-
-New registry component at `crates/nmp-cli/registry/tui/content-kind-registry/`.
-
-- `NostrKindRegistry` — `HashMap<u32, Arc<dyn KindRenderer>>` plus typed slots;
-  `resolve(&projection)` returns the right renderer.
-- `KindRenderer` trait — `render(…, area, buf)` + `preferred_height(…, width)`.
-- `EmbeddedEvent` widget — `impl Widget`, wraps chosen renderer in
-  `EmbedChromeContainer` (left-border + indent).
-- Update `nostr_content_view.rs` `WireNode::EventRef` arm to call `EmbeddedEvent`.
-- Add default short-note and unknown renderers bound in `make_default()`. The
-  short-note renderer reuses the existing content-tree render path instead of
-  carrying a second quote-card implementation.
-
-**Dependencies:** F-CR-01. **Scope:** medium. **Status:** implemented by PR #588.
+**Dependencies:** F-CR-01 (landed, PR #588). **Scope:** medium-large.
 
 #### F-CR-07 · Android `NostrKindRegistry` + `EmbeddedEvent` composable [HIGH · Android]
 
@@ -1814,7 +1123,7 @@ New registry component at `crates/nmp-cli/registry/compose/content-kind-registry
 - Delete `android/gallery/src/main/java/org/nmp/gallery/ui/EmbedCard.kt`.
 - Wire `WireNode.EventRef` in `WireNodeView.kt` to `EmbeddedEvent`.
 
-**Dependencies:** F-CR-01, F-CR-02. **Scope:** medium-large.
+**Dependencies:** F-CR-01 (landed, PR #588), F-CR-02. **Scope:** medium-large.
 
 #### F-CR-09 · `content-kind-30023` — Long-form article handler [MEDIUM · all platforms]
 
@@ -1823,21 +1132,21 @@ proper article preview card (title, summary, hero image, author, read-time). Der
 from the existing `ArticlePreview` composable in Android's old `EmbedCard.kt`; new for
 iOS and TUI. Independently installable: `nmp add component swiftui/content-kind-30023`.
 
-**Dependencies:** F-CR-05, F-CR-06, F-CR-07. **Scope:** medium.
+**Dependencies:** F-CR-05, F-CR-06 (landed, PR #588), F-CR-07. **Scope:** medium.
 
 #### F-CR-10 · `content-kind-9802` — NIP-84 highlight handler [SMALL · all platforms]
 
 Left-accent bar + italic highlighted text + source footer. New `crates/nmp-nip84/`
 crate for the `HighlightProjection` decoder. Independently installable.
 
-**Dependencies:** F-CR-05, F-CR-06, F-CR-07. **Scope:** small.
+**Dependencies:** F-CR-05, F-CR-06 (landed, PR #588), F-CR-07. **Scope:** small.
 
 #### F-CR-11 · `content-kind-0` — Profile card handler [SMALL · all platforms]
 
 Avatar + display name + npub chip + about preview. No new crate needed (profile data
 already in kernel projections). Independently installable.
 
-**Dependencies:** F-CR-05, F-CR-06, F-CR-07. **Scope:** small.
+**Dependencies:** F-CR-05, F-CR-06 (landed, PR #588), F-CR-07. **Scope:** small.
 
 #### F-CR-12 · Nested-embed regression fixtures + golden tests [MEDIUM · all platforms]
 
