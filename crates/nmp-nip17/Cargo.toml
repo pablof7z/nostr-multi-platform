@@ -30,3 +30,6 @@ tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# Tests for ADR-0040 Site 1 implement a delayed `SignerForSeal` to prove
+# `run()` returns before `op.wait` completes.
+nmp-signer-iface = { path = "../nmp-signer-iface" }

@@ -423,10 +423,10 @@ green because the fixture types do not include these projection shapes).
 
 ### V-54 · NIP-46 onboarding still blocks the actor thread [MEDIUM · remote-signer UX] (related: GH #611 AccountsView polling, GH #612 op.wait blocks actor)
 
-**DESIGN PRODUCED (2026-05-29, ADR-pending) — see V-90 cluster note.** V-54's three
+**ADR-0040 ratified (Accepted 2026-05-31) — see V-90 cluster note.** V-54's three
 cold-start signs reuse the existing PendingSign park/poll/settle path verbatim (no new
-mechanism). Bundled with V-90 in one off-actor design; needs the ADR there before
-implementation.
+mechanism). Bundled with V-90 in one off-actor design; ADR-0040 now ratified, Site 3
+(cold-start signs) is the next PR after Site 2.
 
 **Verified:** `crates/nmp-core/src/actor/commands/identity.rs:826`, `:864`, and
 `:1019` still call the synchronous `sign_active` path while publishing the
@@ -557,37 +557,28 @@ debug/diagnostics-only channel.
 
 ### V-90 · Actor thread blocking during remote-signer operations [HIGH · D8 violation · issues #612 #613]
 
-**DESIGN PRODUCED (2026-05-29 `open-backlog-resolution`, ADR-pending).** Off-actor
+**ADR-0040 ratified (Accepted 2026-05-31, `docs/decisions/0040-capability-worker-seam.md`).** Off-actor
 architecture (V-54 + V-90 as one cluster): three precedented primitives, no ad-hoc
 copies — (A) **PendingSign** park/poll/settle for signing (V-54); (B) **worker-thread
-re-entry** for one-shot off-actor I/O — the dm `op.wait` path reuses the *existing*
-`nmp-nip57` lnurl pattern (`lnurl/mod.rs:244-296`), so it is NOT new design; (C) a
+re-entry** for one-shot off-actor I/O (Site 1, shipped); (C) a
 **serialized capability worker thread** (dedicated thread draining a queue via blocking
-`recv` — never a poll) for ordered native capability I/O, re-entering the actor once via
-a typed `ActorCommand`. (C) is the only genuinely new piece: per-op spawn is wrong
-(account-switch forget/persist would race). **ADR-0040 drafted (Proposed 2026-05-30,
-`docs/decisions/0040-capability-worker-seam.md`), pending ratification.**
+`recv` — never a poll) for ordered native capability I/O (Site 2, pending PR 3).
 
-Two D8 violations (no blocking on the actor thread):
+Remaining D8 violations (Site 1 shipped via `fix/v90-site1-dm-offactor`):
 
-1. `crates/nmp-nip17/src/dm_send.rs:221` [#612] — `ProtocolCommand::run` calls
-   `op.wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)`, blocking up to the 12 s gift-wrap
-   budget for the remote-signer response on the actor thread, stalling the kernel
-   loop for all other commands. **Confirmed live.**
-2. `crates/nmp-ffi/src/capability.rs:56` (`nmp_app_dispatch_capability`), invoked
+1. `crates/nmp-ffi/src/capability.rs:56` (`nmp_app_dispatch_capability`), invoked
    in-actor via `self.dispatch_capability(&req)` at
    `crates/nmp-ffi/src/lib.rs:1524,1541` [#613] — the registered platform
    capability callback runs synchronously on the actor thread; iOS Keychain
-   blocks hundreds of ms. **Confirmed live** (filed `lib.rs:1399` drifted; the
-   real in-actor call sites are `:1524,:1541`).
+   blocks hundreds of ms. **Site 2** — needs serialized capability-worker thread
+   (ADR-0040 §3, PR 3). Per-op spawn rejected (account-switch forget/persist
+   would race).
 
 **Note:** Related to V-54 (NIP-46 onboarding blocks the actor thread, at
-`identity.rs:826,864,1019`). V-90 covers two additional blocking paths not in
-V-54's scope.
+`identity.rs:826,864,1019`). V-90 covers Site 2 (capability) in addition to V-54.
 
-**Correct fix:** Move both operations off the actor thread. The protocol command
-must use a non-blocking async channel; capability dispatch must queue the callback
-and settle via a dedicated capability thread.
+**Correct fix for remaining site:** Serialized capability-worker thread as specified
+in ADR-0040 §3; `ActorCommand::CapabilityResultReady` re-entry with account-id check.
 
 ### V-91 · Android nativeNextUpdate blocks calling thread 250ms per poll [MEDIUM · P2/P3 · issue #614]
 

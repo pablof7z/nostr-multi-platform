@@ -1,6 +1,6 @@
 # ADR-0040 — Capability-worker seam: take remote-signer and capability I/O off the actor thread
 
-- **Status:** Proposed (2026-05-30)
+- **Status:** Accepted (2026-05-31) — implementation begun (Site 1 / DM off-actor, `fix/v90-site1-dm-offactor`)
 - **Relates to:**
   - **Resolves V-90** (actor thread blocking during remote-signer operations,
     HIGH · D8 violation · GH #612 #613).
