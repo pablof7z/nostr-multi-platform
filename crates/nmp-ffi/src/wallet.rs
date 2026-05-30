@@ -40,6 +40,14 @@ pub(crate) const INFLIGHT_BOLT11_TTL: Duration = Duration::from_secs(60);
 ///
 /// V-38: thin shim — translates into a `nmp.wallet.connect` dispatch action.
 /// The actual wallet runtime lives in `nmp-nip47`.
+///
+/// V-100: URI scheme validation now lives in `WalletConnectModule::start()`
+/// (thin-shell doctrine). When `dispatch_action_json` returns an `{"error":…}`
+/// envelope (i.e. `start()` rejected the URI), the error message is surfaced
+/// as a `ShowToast` actor command so it reaches `last_error_toast` in the
+/// kernel snapshot and is displayed to the user. The Swift shell no longer
+/// gates on a local `schemeLooksValid` check — the button always dispatches,
+/// and the kernel is the sole validator.
 #[no_mangle]
 pub extern "C" fn nmp_app_wallet_connect(app: *mut NmpApp, uri: *const c_char) {
     let Some(app) = app_ref(app) else {
@@ -53,7 +61,17 @@ pub extern "C" fn nmp_app_wallet_connect(app: *mut NmpApp, uri: *const c_char) {
         Ok(s) => s,
         Err(_) => return,
     };
-    let _ = dispatch_action_json(Some(app), "nmp.wallet.connect", &action_json);
+    let result = dispatch_action_json(Some(app), "nmp.wallet.connect", &action_json);
+    // Surface a synchronous rejection (e.g. invalid URI scheme) as a toast so
+    // the user sees a human-readable error. A successful dispatch or an
+    // idempotency-guard repeat both carry `correlation_id` (not `error`).
+    if let Ok(obj) = serde_json::from_str::<serde_json::Value>(&result) {
+        if let Some(msg) = obj.get("error").and_then(|v| v.as_str()) {
+            app.send_cmd(nmp_core::ActorCommand::ShowToast {
+                message: msg.to_string(),
+            });
+        }
+    }
 }
 
 /// Disconnect the current NIP-47 wallet.

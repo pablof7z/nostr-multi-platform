@@ -189,7 +189,9 @@ private struct ConnectWalletSheet: View {
                     } label: {
                         Label("Connect", systemImage: "bolt.fill")
                     }
-                    .disabled(!schemeLooksValid(uri))
+                    // V-100: URI scheme validation moved to Rust (WalletConnectModule::start).
+                    // The kernel rejects invalid URIs and surfaces the reason as a toast.
+                    .disabled(uri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .buttonStyle(.borderedProminent)
                     .tint(ChirpColor.zap)
                 }
@@ -206,10 +208,6 @@ private struct ConnectWalletSheet: View {
         }
     }
 
-    private func schemeLooksValid(_ s: String) -> Bool {
-        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.lowercased().hasPrefix("nostr+walletconnect://")
-    }
 }
 
 // ── Technology tile ────────────────────────────────────────────────────────
