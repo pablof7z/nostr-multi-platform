@@ -10,3 +10,8 @@ description = "NIP-59 gift-wrap / seal / rumor. Shared envelope for NIP-17 DMs a
 nostr = { version = "0.44", features = ["nip44", "nip59"] }
 futures = { version = "0.3", default-features = false, features = ["executor"] }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
+# Zero-dependency Layer-0 kind-integer registry. nmp-nip59 cannot import
+# KIND_GIFT_WRAP from nmp-core (that direction would create a compile cycle
+# because nmp-core → nmp-nip59 already). nmp-kinds has zero workspace deps
+# so the cycle is structurally impossible.
+nmp-kinds = { path = "../nmp-kinds" }

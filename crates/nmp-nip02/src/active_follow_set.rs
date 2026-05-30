@@ -98,12 +98,10 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, RwLock};
 
+use nmp_core::kinds::KIND_CONTACT_LIST;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
-
-/// NIP-02 contact list kind.
-const KIND_CONTACT_LIST: u32 = 3;
 
 /// A registered change callback. Fires on every follow-set transition
 /// (kind:3 update, account switch, logout).

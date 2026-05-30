@@ -1,0 +1,9 @@
+[package]
+name = "nmp-kinds"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "Zero-dependency Layer-0 registry of canonical Nostr kind integers for the NMP workspace. Shared by nmp-core and every NIP crate (including nmp-nip59) without risk of a compile cycle: this crate depends on nothing in the workspace."
+
+[dependencies]

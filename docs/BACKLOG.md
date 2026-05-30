@@ -45,89 +45,31 @@ explicit coordination.
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
 
-### V-57 · 2026-05-26 architecture audit follow-up queue [HIGH · priority tracker]
+### V-57 · Remaining kind-constant duplicates to migrate to nmp-kinds [LOW · cleanup]
 
-**ARCH ASSESSMENT CLOSED 2026-05-27.** Codex confirmed **ARCHITECTURE IS IN VERY GOOD STANDING** (all 6 checks passed) against master commit `7213d7ba` (PR #656). Two additional P1 violations found by the assessment were fixed and merged: D0 — `swap_nip17_dm_inbox_observer` renamed to `swap_dm_inbox_observer` in `AppHost` substrate trait (PR #654); D6 — `display::short_npub` removed from `publish_outbox` kernel projection (PR #655). P2–P6 items below remain as ongoing debt tracked here.
+Kind-constant centralisation is partially done (`nmp-kinds` Layer-0 crate exists; seven
+constants migrated; `nmp-core::kinds` and `nmp-nip59::kinds` are now re-exports). The
+following duplicates are still crate-local and must be migrated when each NIP crate is
+next refactored:
 
-**Scope:** this is the canonical roll-up for the six-agent architecture audit run on
-2026-05-26. PR #578 removes the duplicate planning/status authorities; the remaining
-findings below are ordered by architectural risk. When a slice gets a dedicated V/PD entry
-or a fixing PR, remove or strike that bullet here instead of creating a parallel plan.
+- `nmp-nip57` — `KIND_ZAP_REQUEST` / `KIND_ZAP_RECEIPT`
+- `nmp-nip17` — `KIND_DM_RELAY_LIST`
+- `nmp-nip51` — `KIND_MUTE_LIST`
+- `nmp-router` — `KIND_BLOCKED_RELAYS`
+- `nmp-nip17/src/inbox.rs:75` — `KIND_CHAT_MESSAGE` (u16, used against `rumor.kind.as_u16()`; needs cast, separate change)
+- `nmp-nip29` — `KIND_CHAT_MESSAGE = 9` (distinct semantic from registry `= 14`; stays crate-local unless semantics are unified)
 
-**Priority order:**
-2. **P2 — centralise Nostr kind constants in `nmp-core`.** _Direction changed
-   2026-05-27._ The original framing treated `nmp-core` naming `1059` / `10002`
-   as a D0 leak; the owner reframed this on 2026-05-27 — integer kind numbers
-   are wire-protocol data, not app/protocol *nouns*, and centralising the
-   integers in one place removes the duplication risk without growing the
-   kernel's semantic surface.
+**Open items from the 2026-05-26 audit that remain:**
 
-   **Stage 1 — DONE.** `crates/nmp-core/src/kinds.rs` is the new canonical
-   workspace registry for the kind integers `nmp-core` actively names
-   (`KIND_PROFILE_METADATA`, `KIND_SHORT_TEXT_NOTE`, `KIND_CONTACT_LIST`,
-   `KIND_REACTION`, `KIND_CHAT_MESSAGE`, `KIND_GIFT_WRAP`, `KIND_RELAY_LIST`).
-   `actor/commands/{publish,relays}.rs`, `actor/commands/identity.rs`,
-   `kernel/{discovery,publish_outbox,requests/profile}.rs`, and
-   `subs/recompile.rs` all use the constants from this module — no production
-   `nmp-core` code path holds a hand-rolled `1059` / `10002` literal any
-   more. The doc-prose and log strings in `publish.rs` no longer name `NIP-17`,
-   kind `10050`, or `Marmot`; the kind:1059 D10 guard now refers to "the
-   author's public-relay outbox" in substrate-neutral terms.
-
-   **Stage 2 — nmp-router DONE (2026-05-30).** `nmp-router` no longer holds
-   any hand-rolled `10002` / `KIND_RELAY_LIST` production literals:
-   `publish_relay_list.rs`, `ingest.rs`, and `nip65_resolver.rs` all import
-   `nmp_core::kinds::KIND_RELAY_LIST`. The existing `nmp-core` dependency edge
-   in `nmp-router/Cargo.toml` covers this without adding any new edge.
-   Test assertions in `publish_relay_list_tests.rs` intentionally retain the
-   literal (asserting against an imported constant is tautological).
-
-   **Stage 2 — nmp-nip59 BLOCKED (owner decision required).** The boundary
-   spec (`docs/architecture/crate-boundaries.md` §2 Layer 4) places
-   `nmp-nip59`'s dependency as `nmp-proto` only, and explicitly reserves
-   `nmp-core → nmp-nip59` as the blessed direction (the kernel may consume the
-   wrap primitive without owning DM semantics). `nmp-core/Cargo.toml` already
-   depends on `nmp-nip59`, so adding `nmp-nip59 → nmp-core` would create a
-   **compile-time cycle**. The spec also contradicts itself: `kinds.rs`'s doc
-   comment names `nmp-nip59::kinds::KIND_GIFT_WRAP` as a duplicate that
-   "should import from here instead" — but that direction is structurally
-   illegal. Resolution options for the owner:
-   (a) Keep `nmp-nip59::kinds::KIND_GIFT_WRAP = 1059` as the source of truth
-       and have `nmp-core::kinds` re-export from `nmp-nip59` (reverses the
-       current import direction in `kinds.rs` doc comment).
-   (b) Accept that `nmp-nip59::kinds` keeps its own copy (1059 is a fixed
-       NIP-59 wire constant; divergence risk is very low) and strike the
-       "should import from here" claim from `kinds.rs`.
-   (c) Move `KIND_GIFT_WRAP` to Layer 0 (`nmp-proto` or a new `nmp-nip59-types`
-       crate) that both `nmp-nip59` and `nmp-core` can depend on.
-
-   **Files still needing migration (2026-05-30 audit):** `nmp-nip59`
-   `KIND_GIFT_WRAP` (blocked — see above); `nmp-nip17` `KIND_DM_RELAY_LIST` +
-   `KIND_CHAT_MESSAGE`; `nmp-nip57` `KIND_ZAP_REQUEST` + `KIND_ZAP_RECEIPT`;
-   `nmp-marmot` `KIND_GIFT_WRAP` (same cycle as nmp-nip59). Note: `nmp-nip29`'s
-   `KIND_CHAT_MESSAGE` (value `9`) is a different kind from `nmp-nip17`'s
-   `KIND_CHAT_MESSAGE` (value `14`) and should stay crate-local — it is not a
-   duplicate of the canonical registry constant.
-3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
-   ~~`apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses in the
-   TUI~~: **FIXED** — now routes through `runtime.zap()`. ~~`apps/chirp/chirp-tui/src/runtime_commands.rs:249-269`
-   bypasses the action door for Marmot~~: **ACCEPTABLE** — `marmot_register_active` is
-   identity setup, not a reactive dispatch bypass.
-   `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` **CURRENT:** dispatches two
-   protocol publishes while tracking only one correlation id. **Next step:** expose a
-   composite Rust action / action-stage projection for the relay-settings publish.
-4. ~~**P4 — make wasm use the same snapshot and error contract as native.**~~
-   **DONE (2026-05-29 audit):** all 5 cited TODO markers resolved. Wasm is
-   post-v1 per user direction 2026-05-29.
-5. ~~**P5 — close native update-loop and envelope discipline gaps.**~~
-   **DONE (2026-05-29 audit):** Gallery polling now properly handles disconnect
-   (`IllegalStateException` pattern); the `recv_timeout` two-arm pattern on the
-   Rust side is correct.
-6. **P6 — strengthen enforcement so these regressions trip earlier.**
-   V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
-   dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
-   lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
-   plus explicit allowlists for sanctioned adapter crates.
+- **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
+  `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` dispatches two
+  protocol publishes while tracking only one correlation id. **Next step:** expose a
+  composite Rust action / action-stage projection for the relay-settings publish.
+- **P6 — strengthen enforcement so these regressions trip earlier.**
+  V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
+  dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
+  lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
+  plus explicit allowlists for sanctioned adapter crates.
 
 ### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 1+2-thread DONE, Stage 2-author+Stage 3 OPEN]
 

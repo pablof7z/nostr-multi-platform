@@ -106,6 +106,10 @@ name = "nmp-nip42"
 path = "crates/nmp-nip42"
 
 [[public_crates]]
+name = "nmp-kinds"
+path = "crates/nmp-kinds"
+
+[[public_crates]]
 name = "nmp-nip42-types"
 path = "crates/nmp-nip42-types"
 

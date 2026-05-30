@@ -4532,6 +4532,7 @@ dependencies = [
  "chrono",
  "flatbuffers",
  "indexmap",
+ "nmp-kinds",
  "nmp-network",
  "nmp-nip42-types",
  "nmp-nip59",
@@ -4610,6 +4611,10 @@ dependencies = [
  "serde_json",
  "ureq",
 ]
+
+[[package]]
+name = "nmp-kinds"
+version = "0.1.0"
 
 [[package]]
 name = "nmp-marmot"
@@ -4760,6 +4765,7 @@ name = "nmp-nip59"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "nmp-kinds",
  "nmp-signer-iface",
  "nostr",
 ]
