@@ -1386,11 +1386,12 @@ data types.
 
 ### ~~V-103 · Missing D1 bootstrap regression test~~ [CLOSED · test coverage]
 
-**DONE:** PR #??? implemented D1 regression tests in `crates/nmp-core/src/kernel/d1_offline_bootstrap_tests.rs`:
-- `d1_fresh_kernel_emits_snapshot_without_relays` — validates kernel snapshot structure is ready before relay I/O
-- `d1_offline_no_account_snapshot_omits_no_configured_relays` — validates snapshot omits diagnostics in cold state
+**DONE:** PR #826 implemented D1 regression test in `crates/nmp-core/src/kernel/d1_offline_bootstrap_tests.rs`:
+- `d1_offline_store_content_appears_in_snapshot_without_relays` — seeds a kind:1 note into the in-memory store
+  (zero relays connected), opens the timeline view, calls `make_update_json_for_test`, and asserts the seeded
+  event id and content appear in `projections.timeline`. Fails if the offline store-read path breaks.
 
-Tests colocated in nmp-core (not nmp-testing) because they require `pub(crate)` `make_update_json_for_test` access.
+Colocated in nmp-core (not nmp-testing) because it requires `pub(crate)` `make_update_json_for_test` access.
 Runs as part of `cargo test -p nmp-core --lib d1_offline_bootstrap`.
 
 ### V-104 · Six `e2e_full_pipeline` tests are unimplemented stubs [MEDIUM · test coverage · issue #629]

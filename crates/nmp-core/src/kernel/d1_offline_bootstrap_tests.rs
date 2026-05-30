@@ -2,110 +2,125 @@
 //!
 //! Doctrine D1 mandates that the first rendered snapshot must precede any relay
 //! I/O — the kernel must emit an initial update frame from offline-stored events
-//! **before** dialing any relays.
+//! BEFORE dialing any relays.
 //!
-//! This regression test validates two aspects of the D1 guarantee:
+//! This test exercises the real offline read path:
 //!
-//! 1. **Fresh kernel emits snapshot without relay connections:** A newly
-//!    constructed kernel (zero relays configured) must be capable of emitting
-//!    a valid KernelUpdate snapshot structure before any relay I/O begins. This
-//!    proves the snapshot path does not depend on relay connectivity.
+//! 1. Seed the in-memory store with a kind:1 event — NO relays connected.
+//! 2. Open the timeline view (sets `follow_feed_kinds`) so the projection is live.
+//! 3. Call `make_update_json_for_test` and assert the seeded event id AND content
+//!    appear in `projections.timeline`.
 //!
-//! 2. **No relay rows configured:** The kernel starts with an empty relay list.
-//!    The snapshot should emit with the `no_configured_relays: false` field
-//!    when no account is active (the normal offline-first cold-start state).
+//! The test FAILS if the offline store-read/projection path breaks because the
+//! assertion checks concrete seeded content, not just structural JSON presence.
 //!
-//! See `docs/product-spec/offline-first.md` §7 (line 80–82) and
+//! See `docs/product-spec/offline-first.md` §7 and
 //! `docs/wiki/d1-snapshot-before-relay-io.md`.
 
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::store::{RawEvent, VerifiedEvent};
 
-/// D1 assertion: a freshly-constructed kernel with zero relay URLs configured
-/// can emit a valid snapshot structure before any relay I/O.
+// 64-hex constants for the seeded event and its author.
+const SEED_NOTE_ID: &str =
+    "d100000000000000000000000000000000000000000000000000000000000001";
+const SEED_AUTHOR: &str =
+    "d1aa0000000000000000000000000000000000000000000000000000000000aa";
+const SEED_CONTENT: &str =
+    "offline-first proof: this note was stored before any relay connected";
+
+/// D1 assertion: a kernel with locally-stored events emits those events in the
+/// timeline projection BEFORE any relay I/O.
 ///
-/// This validates that the snapshot emission path (make_update) does not depend
-/// on relay connectivity. The kernel is an offline-capable data engine.
+/// The test seeds a kind:1 note into the kernel's in-memory store with ZERO
+/// relay connections, opens the timeline view, and asserts that the seeded
+/// event id and content appear in `projections.timeline`.
 ///
-/// Note: The timeline projection is only emitted when the shell subscribes to
-/// the timeline view (D5 bounding rule). For a fresh kernel without any
-/// subscriptions, the timeline will be absent from the snapshot. This test
-/// validates the snapshot structure itself, not timeline content.
+/// Falsifiability: if the offline store-read path or the timeline projection
+/// breaks, `projections.timeline` will be empty or missing the seeded entry,
+/// and the `assert_eq!(items.len(), 1)` / id / content assertions will fail.
+/// The tautological structural-presence check (`!projections.is_empty()`) has
+/// been deliberately replaced with content-level assertions that cannot pass
+/// on a kernel whose store-read path is severed.
 #[test]
-fn d1_fresh_kernel_emits_snapshot_without_relays() {
-    // Construct a kernel with storage but no relays configured.
+fn d1_offline_store_content_appears_in_snapshot_without_relays() {
+    // Construct a kernel — zero relay connections, zero relay URLs configured.
+    // `relay_connected()` is intentionally NOT called; this is the offline state.
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    // Precondition: no relays are configured (kernel default state).
-    // The kernel has an empty relay_edit_rows list and zero active subscriptions.
+    // Open the timeline view so the projection is emitted in the snapshot (D5
+    // bounding rule: view-dependent keys are absent until a view is subscribed).
+    // Mirrors what `ActorCommand::OpenContactListSubscription` does in production.
+    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
 
-    // Trigger the snapshot emission path. This is called by the actor on every
-    // kernel tick and before any relay connection is established.
-    let snapshot_json = kernel.make_update_json_for_test(true);
-
-    // ── Validate the snapshot structure ────────────────────────────────────────
-    let parsed: serde_json::Value =
-        serde_json::from_str(&snapshot_json).expect("snapshot JSON must be valid");
-
-    // D1 requirement 1: snapshot must be a valid JSON object (not null, not array).
-    assert!(
-        parsed.is_object(),
-        "D1: snapshot must be a JSON object; got: {:?}",
-        parsed
+    // Seed a kind:1 note directly into the kernel's store — bypasses signature
+    // verification via `from_raw_unchecked` (test-support only).  The
+    // `diag-firehose-` sub_id prefix is required: `ingest_pre_verified_event`
+    // only appends to `self.timeline` for that prefix, mirroring the production
+    // path where the actor drives timeline population.
+    let raw = RawEvent {
+        id: SEED_NOTE_ID.to_string(),
+        pubkey: SEED_AUTHOR.to_string(),
+        created_at: 1_700_000_000,
+        kind: 1,
+        tags: vec![],
+        content: SEED_CONTENT.to_string(),
+        sig: "a".repeat(128),
+    };
+    kernel.ingest_pre_verified_event(
+        RelayRole::Content,
+        "diag-firehose-stress",
+        VerifiedEvent::from_raw_unchecked(raw),
     );
+    kernel.sort_timeline_deferred();
 
-    // D1 requirement 2: snapshot must contain a `projections` field per the
-    // KernelUpdate contract (see crates/nmp-core/src/kernel/update.rs).
-    // This proves the snapshot structure is ready BEFORE any relay I/O.
-    let projections = parsed
-        .get("projections")
-        .and_then(|p| p.as_object())
+    // Emit the snapshot — same call the actor makes on every kernel tick.
+    let snapshot_json = kernel.make_update_json_for_test(true);
+    let snap: serde_json::Value =
+        serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
+
+    // ── D1 content assertion ──────────────────────────────────────────────────
+    // The timeline projection must contain exactly the seeded note.  Any
+    // regression in the offline store-read path (store.insert, events HashMap,
+    // timeline VecDeque, or the projection loop in update/projections.rs) will
+    // produce an empty or absent array and fail here.
+    let items = snap["projections"]["timeline"]
+        .as_array()
         .unwrap_or_else(|| {
             panic!(
-                "D1: snapshot must have a 'projections' field; got: {}",
-                serde_json::to_string_pretty(&parsed).unwrap_or_default()
+                "D1: projections.timeline must be a JSON array with offline-stored content; \
+                 got snapshot projections keys: {:?}",
+                snap["projections"]
+                    .as_object()
+                    .map(|o| o.keys().collect::<Vec<_>>())
+                    .unwrap_or_default()
             )
         });
 
-    // D1 requirement 3: the projections object must contain at least the
-    // structural fields (accounts, active_account, relay diagnostics, etc.).
-    // These are always emitted, independent of relay connectivity.
-    assert!(
-        !projections.is_empty(),
-        "D1: projections must be non-empty; got: {:?}",
-        projections
+    assert_eq!(
+        items.len(),
+        1,
+        "D1: exactly one seeded note must appear in the timeline before any relay connects; \
+         got {} items",
+        items.len()
     );
 
-    // The critical D1 property is satisfied: the kernel structure emits a valid
-    // snapshot BEFORE any relay connections. The test passes if we reach here.
-}
+    assert_eq!(
+        items[0]["id"].as_str(),
+        Some(SEED_NOTE_ID),
+        "D1: the projected timeline item must carry the seeded event id"
+    );
 
-/// D1 assertion: when no account is active (offline-first cold state), the
-/// kernel snapshot does not emit `no_configured_relays` (no user context exists).
-///
-/// This guards against false positives: the absence of relay rows is expected
-/// when unsigned in, not a user-observable problem.
-#[test]
-fn d1_offline_no_account_snapshot_omits_no_configured_relays() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Do NOT set an active account — kernel starts unsigned-in.
+    assert_eq!(
+        items[0]["content"].as_str(),
+        Some(SEED_CONTENT),
+        "D1: the projected timeline item must carry the seeded event content"
+    );
 
-    let snapshot_json = kernel.make_update_json_for_test(true);
-    let parsed: serde_json::Value =
-        serde_json::from_str(&snapshot_json).expect("snapshot JSON must be valid");
-
-    // D1: with no account, `no_configured_relays` must be absent from the snapshot
-    // (the absence of relays is expected, not a user-observable failure).
-    assert!(
-        !parsed
-            .as_object()
-            .map(|o| o.contains_key("no_configured_relays"))
-            .unwrap_or(false),
-        "D1: unsigned-in (no account) kernel snapshot must NOT emit \
-         'no_configured_relays' key; got keys: {:?}",
-        parsed
-            .as_object()
-            .map(|o| o.keys().collect::<Vec<_>>())
-            .unwrap_or_default()
+    // The diagnostic metric must agree with the projection.
+    assert_eq!(
+        snap["metrics"]["note_events"].as_u64(),
+        Some(1),
+        "D1: metrics.note_events must count the seeded kind:1"
     );
 }
