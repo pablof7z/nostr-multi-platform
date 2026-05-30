@@ -113,6 +113,11 @@ impl Kernel {
             // button toggles enabled/disabled without a separate profile
             // lookup. Rust decides zapability.
             author_lnurl: profile.and_then(|p| p.lnurl.clone()),
+            // Author display name baked into the snapshot item so the renderer
+            // has it without depending on the `claimed_profiles` claim
+            // lifecycle. Empty string → `None` at this projection boundary
+            // (aim.md §2), mirroring `mention_profiles_from_items`.
+            author_display_name: profile.map(|p| p.display.clone()).filter(|d| !d.is_empty()),
             kind: event.kind,
             content: truncate(&event.content, 1_200),
             content_preview: if is_repost && event.content.trim().is_empty() {

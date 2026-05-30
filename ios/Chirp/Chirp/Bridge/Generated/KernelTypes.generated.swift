@@ -160,6 +160,7 @@ public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
 // MARK: - TimelineItem
 // Source: nmp_core::kernel::types::TimelineItem
 public struct TimelineItem: Decodable, Equatable, Identifiable, Hashable, Sendable {
+    public let authorDisplayName: String?
     public let authorLnurl: String?
     public let authorPictureUrl: String?
     public let authorPubkey: String

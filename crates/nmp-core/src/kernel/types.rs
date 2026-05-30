@@ -120,6 +120,12 @@ pub(crate) struct TimelineItem {
     /// shell zap button doesn't need to cross-reference a separate profile
     /// lookup — thin-shell rule, Rust decides zapability.
     pub(super) author_lnurl: Option<String>,
+    /// Author display name from kind:0, if the kernel has it cached.
+    /// `None` when no kind:0 has arrived yet — the presentation layer
+    /// formats `author_pubkey` as a short hex abbreviation in that case.
+    /// Baked directly into the timeline item so the renderer has the name
+    /// without a separate profile-claim lifecycle.
+    pub(super) author_display_name: Option<String>,
     /// Nostr event kind (e.g. 1 = note, 6 = repost, 7 = reaction). Carried so
     /// the shell can render kind-conditional UI (badges, navigation targets)
     /// without re-parsing the raw event JSON in `content`. D1 / thin-shell:

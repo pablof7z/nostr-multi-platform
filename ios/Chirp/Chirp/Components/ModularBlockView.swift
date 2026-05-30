@@ -305,6 +305,11 @@ struct ModularBlockView: View {
         // neutral kind:1 defaults; synthetic-from-card rows are not
         // surfaced through the repost rendering path.
         TimelineItem(
+            // Inherit the snapshot-baked display name from the backing item
+            // when present; fall back to the card's own kind:0 name. `nil`
+            // when neither has a name yet — the row formats the pubkey as
+            // short hex.
+            authorDisplayName: item?.authorDisplayName ?? card.authorDisplayName,
             // Inherit lnurl from the cached TimelineItem when present so a
             // synthetic-from-card row still exposes the zap affordance.
             // `nil` for cards without a backing item is correct — the row

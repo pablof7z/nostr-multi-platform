@@ -42,6 +42,7 @@ struct NoteRowView: View {
     /// hex. Kept as computed properties so the view body stays readable.
     private var authorDisplayLabel: String {
         model.profile(forPubkey: item.authorPubkey)?.display
+            ?? item.authorDisplayName                         // ← baked into snapshot, claim-independent
             ?? eventCards[item.id]?.authorDisplayName
             ?? mentionProfiles[item.authorPubkey]?.display
             ?? item.authorPubkey.shortHex
@@ -49,6 +50,7 @@ struct NoteRowView: View {
 
     private var authorAvatarInitials: String {
         let name = model.profile(forPubkey: item.authorPubkey)?.display
+            ?? item.authorDisplayName                         // ← baked into snapshot, claim-independent
             ?? eventCards[item.id]?.authorDisplayName
         return (name ?? item.authorPubkey).displayInitials
     }
