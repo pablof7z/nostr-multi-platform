@@ -1,6 +1,5 @@
 //! Gallery application state and live-kernel layout.
 
-use std::cell::RefCell;
 use std::io::Read as _;
 use std::sync::{Arc, Mutex};
 
@@ -14,7 +13,7 @@ use nmp_content::embed_projection::EmbedKindProjection;
 use nmp_gallery_tui::content_tree_wire::{WireNode, WireUri};
 use nmp_gallery_tui::data::{GalleryData, LiveProfileMap};
 use nmp_gallery_tui::embed_host::EmbedHostState;
-use nmp_gallery_tui::gallery::{component_at, ComponentSpec, REGISTRY_SECTIONS};
+use nmp_gallery_tui::gallery::{component_at, component_index, ComponentSpec, REGISTRY_SECTIONS};
 use nmp_gallery_tui::live::primary_pubkey;
 
 use crate::bridge::GalleryBridge;
@@ -77,8 +76,12 @@ pub struct GalleryApp {
     avatar_pending: Arc<Mutex<Option<Vec<u8>>>>,
     avatar_handle: Option<ImageHandle>,
     // Snapshot receiver for the iced subscription. Taken from bridge in new()
-    // and held here so subscription() can initialize the subscription stream.
-    snapshot_rx: RefCell<Option<mpsc::UnboundedReceiver<Value>>>,
+    // and held in a shared slot. `subscription()` is called by iced after every
+    // update and must return a *stable* recipe (same hash, every call) or iced
+    // diffs the subscription set, sees the recipe vanish, and tears the stream
+    // down — which froze the UI after the first ~7 snapshots. The recipe shares
+    // this Arc and takes the receiver exactly once inside `stream()`.
+    snapshot_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Value>>>>,
 }
 
 impl GalleryApp {
@@ -86,17 +89,25 @@ impl GalleryApp {
     pub fn new() -> Self {
         let mut bridge = GalleryBridge::start();
         let snapshot_rx = bridge.take_snapshot_receiver();
+        // Deterministic initial selection for screenshot capture: if
+        // NMP_GALLERY_COMPONENT names a known component slug, start on it;
+        // otherwise fall back to the first component (index 0). This mirrors
+        // the iOS gallery's "direct component" entry pattern.
+        let selected = std::env::var("NMP_GALLERY_COMPONENT")
+            .ok()
+            .map(|slug| component_index(&slug))
+            .unwrap_or(0);
         Self {
             bridge,
             data: GalleryData::live_initial(primary_pubkey()),
             profiles: LiveProfileMap::new(),
             embed_host: EmbedHostState::new(),
-            selected: 0,
+            selected,
             last_rev: 0,
             avatar_url_fetching: None,
             avatar_pending: Arc::new(Mutex::new(None)),
             avatar_handle: None,
-            snapshot_rx: RefCell::new(snapshot_rx),
+            snapshot_rx: Arc::new(Mutex::new(snapshot_rx)),
         }
     }
 }
@@ -113,7 +124,7 @@ pub enum Message {
 
 /// Custom subscription recipe: drives iced redraws from the kernel's push
 /// channel without any timer poll (D8 — no polling).
-struct SnapshotRecipe(std::sync::Mutex<Option<mpsc::UnboundedReceiver<Value>>>);
+struct SnapshotRecipe(Arc<Mutex<Option<mpsc::UnboundedReceiver<Value>>>>);
 
 impl iced::advanced::subscription::Recipe for SnapshotRecipe {
     type Output = Message;
@@ -127,12 +138,17 @@ impl iced::advanced::subscription::Recipe for SnapshotRecipe {
         self: Box<Self>,
         _input: iced::advanced::subscription::EventStream,
     ) -> iced::futures::stream::BoxStream<'static, Message> {
+        // iced builds the stream exactly once per subscription identity (the
+        // stable hash above). Take the receiver from the shared slot here, so
+        // the running stream owns it for its lifetime. Subsequent recipe
+        // constructions (from re-evaluating `subscription()` after each update)
+        // share the same Arc but never reach `stream()` again.
         let rx = self
             .0
             .lock()
             .expect("snapshot mutex uncontested")
             .take()
-            .expect("receiver present exactly once");
+            .expect("receiver present exactly once for the stream's lifetime");
         Box::pin(iced::futures::stream::unfold(rx, |mut rx| async move {
             rx.recv().await.map(|v| (Message::Snapshot(v), rx))
         }))
@@ -140,13 +156,12 @@ impl iced::advanced::subscription::Recipe for SnapshotRecipe {
 }
 
 pub fn subscription(app: &GalleryApp) -> Subscription<Message> {
-    if let Some(rx) = app.snapshot_rx.borrow_mut().take() {
-        iced::advanced::subscription::from_recipe(SnapshotRecipe(
-            std::sync::Mutex::new(Some(rx)),
-        ))
-    } else {
-        Subscription::none()
-    }
+    // Always return the same recipe (same hash). iced re-evaluates this after
+    // every update and diffs the returned set against the running one by hash;
+    // returning `Subscription::none()` on later calls would make iced believe
+    // the subscription was removed and tear down the snapshot stream. The
+    // recipe shares `snapshot_rx` and takes the receiver once inside `stream()`.
+    iced::advanced::subscription::from_recipe(SnapshotRecipe(Arc::clone(&app.snapshot_rx)))
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
