@@ -31,10 +31,12 @@
 //! * **NIP-46 bunker accounts** — `RemoteSignerForSeal` adapts the
 //!   active `RemoteSignerHandle`; `gift_wrap_with_signer` spawns a
 //!   per-invocation driver thread so the actor itself never blocks on
-//!   bunker RPCs (the actor waits below via
-//!   `op.wait(GIFT_WRAP_TOTAL_TIMEOUT)`; the 12s budget covers both the
-//!   `nip44_encrypt` + `sign_seal` round-trips plus in-process wrap
-//!   assembly).
+//!   bunker RPCs. Per ADR-0040 Site 1, `run()` does NOT call
+//!   `op.wait` on the actor thread: it materialises both gift-wrap ops,
+//!   spawns one off-actor worker that blocks on
+//!   `op.wait(GIFT_WRAP_TOTAL_TIMEOUT)` (12s budget covering the
+//!   `nip44_encrypt` + `sign_seal` round-trips plus wrap assembly), and
+//!   re-enters via `ActorCommand::PublishSignedEvent` per envelope.
 //!
 //! `None` from `signer_for_seal()` means either no active account OR a
 //! remote signer that reported a malformed pubkey; both surface a D6

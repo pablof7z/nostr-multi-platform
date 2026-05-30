@@ -608,7 +608,7 @@ fn run_returns_immediately_with_pending_signer_actor_does_not_block() {
 /// *stop-on-failure* path by making the first envelope fail. We use
 /// `RecordActionFailure` arrival on the channel as the signal.
 #[test]
-fn gift_wrap_timeout_posts_d6_toast_and_failure_via_worker() {
+fn gift_wrap_signer_failure_posts_d6_toast_and_failure_via_worker() {
     // Use a signer delay longer than GIFT_WRAP_TOTAL_TIMEOUT to trigger
     // the timeout path. GIFT_WRAP_TOTAL_TIMEOUT is 12s; use 13s here.
     // To avoid actually waiting 12s in CI, we use a separate approach:
