@@ -85,12 +85,16 @@ public struct DefaultShortNoteRenderer: KindRenderer {
         registry: NostrKindRegistry
     ) -> AnyView {
         guard case .shortNote(let note) = projection else { return AnyView(EmptyView()) }
-        let author = note.authorDisplayName ?? shortHex(note.authorPubkey)
         return AnyView(
             VStack(alignment: .leading, spacing: 4) {
-                Text("note · \(author)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text("note ·")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    // Self-claiming byline: the name component owns claiming the
+                    // author's kind:0 — the kernel never fetches it.
+                    NostrProfileName(pubkey: note.authorPubkey, font: .caption, color: .secondary)
+                }
                 Text(note.content)
                     .font(.callout)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -133,14 +137,18 @@ public struct DefaultArticleRenderer: KindRenderer {
         registry: NostrKindRegistry
     ) -> AnyView {
         guard case .article(let a) = projection else { return AnyView(EmptyView()) }
-        let author = a.authorDisplayName ?? shortHex(a.authorPubkey)
         let title = a.title ?? "article"
         let summary = a.summary ?? ""
         return AnyView(
             VStack(alignment: .leading, spacing: 4) {
-                Text("\(title) · \(author)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    // Title is article metadata — static is correct here.
+                    Text("\(title) ·")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    // Self-claiming byline for the author.
+                    NostrProfileName(pubkey: a.authorPubkey, font: .caption, color: .secondary)
+                }
                 Text(summary)
                     .font(.callout)
                     .frame(maxWidth: .infinity, alignment: .leading)
