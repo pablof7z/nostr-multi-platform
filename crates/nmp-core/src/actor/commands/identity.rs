@@ -922,6 +922,16 @@ pub(crate) fn create_account(
             content: kind0_content,
             created_at: kernel.now_secs(),
         };
+        // V-54 (closed, non-bug) / ADR-0040 site-3 correction: `create_account`
+        // activates a fresh LOCAL key before this sign, so `sign_active` takes
+        // the synchronous local branch and never `.wait()`s a remote signer —
+        // no actor stall. Enforce that invariant so a future edit can't silently
+        // reintroduce an onboarding freeze (V-106 tracks removing the blocking
+        // primitive entirely).
+        debug_assert!(
+            identity.active_remote().is_none(),
+            "cold-start kind:0 sign must run with a local key active (else blocks the actor)"
+        );
         if let Ok(signed) = sign_active(identity, &unsigned_meta) {
             // Cold-start routing (same chicken-and-egg as kind:10002 below).
             // A brand-new account has no kind:10002 on file, so the NIP-65
@@ -960,6 +970,11 @@ pub(crate) fn create_account(
             content: String::new(),
             created_at: kernel.now_secs(),
         };
+        // Local-key invariant (see kind:0 site above) — synchronous sign, no stall.
+        debug_assert!(
+            identity.active_remote().is_none(),
+            "cold-start kind:10002 sign must run with a local key active (else blocks the actor)"
+        );
         if let Ok(signed) = sign_active(identity, &unsigned_relay) {
             kernel.prepopulate_author_relay_list(
                 signed.unsigned.pubkey.clone(),
@@ -1115,6 +1130,14 @@ fn publish_initial_follows(
         content: String::new(),
         created_at: kernel.now_secs(),
     };
+    // Local-key invariant: `publish_initial_follows` is only called from
+    // `create_account` (after a fresh local key is activated), so this sign is
+    // synchronous and never stalls the actor. See the kind:0 site for the full
+    // rationale; V-106 tracks removing the blocking `sign_active` primitive.
+    debug_assert!(
+        identity.active_remote().is_none(),
+        "cold-start kind:3 sign must run with a local key active (else blocks the actor)"
+    );
     match sign_active(identity, &unsigned) {
         Ok(signed) => {
             let target_relays = cold_start_publish_targets(kernel, relay_rows);
