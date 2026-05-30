@@ -129,11 +129,11 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
    plus explicit allowlists for sanctioned adapter crates.
 
-### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 1 DONE, Stage 2-3 OPEN]
+### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 1+2-thread DONE, Stage 2-author+Stage 3 OPEN]
 
 **Verified 2026-05-28:** `nmp-core` and `nmp-planner` still contain social-client
 subscription defaults that belong in NIP/app modules. The four sites and their
-status (Stage 1 landed 2026-05-29):
+status (Stage 1 landed 2026-05-29, Stage 2 thread-half landed 2026-05-30):
 
 - ✅ **DONE** `crates/nmp-planner/src/interest.rs` — `InterestShape::timeline_for`
   no longer injects `[1, 6]`; it now takes `kinds: BTreeSet<u32>` and carries the
@@ -146,10 +146,18 @@ status (Stage 1 landed 2026-05-29):
   kind-independent (the trace URL result is discarded, and `is_discovery_kind`
   covers only `{0, 3, 10000–19999}` so content kinds never alter the lane), so the
   removal is behavior-preserving.
-- ⏳ **OPEN (Stage 2)** `crates/nmp-core/src/kernel/requests/profile.rs:~532-550`
+- ✅ **DONE (Stage 2 thread-half)** `crates/nmp-core/src/kernel/requests/thread.rs` —
+  `ActorCommand::OpenThread` now carries `kinds: BTreeSet<u32>`; `open_thread`
+  stores them in `ThreadViewState::reply_kinds` before the `can_send` branch so the
+  deferred-relay path also reads the stored set. The `{1, 6}` literal has moved to
+  `nmp-ffi/src/timeline.rs` (`nmp_app_open_thread`), mirroring the
+  `nmp_app_open_timeline` precedent. Three kernel tests prove externalization (T1:
+  behavior preserved, T2: arbitrary kinds `{30023}`, T3: deferred path reads stored
+  kinds). ABI-safe — C signature unchanged.
+- ⏳ **OPEN (Stage 2 author-half)** `crates/nmp-core/src/kernel/requests/profile.rs:~532-550`
   still hardcodes selected-author note/repost requests as `{"kinds":[1,6], ...}`.
-- ⏳ **OPEN (Stage 2)** `crates/nmp-core/src/kernel/requests/thread.rs:~217-223`
-  still hardcodes recursive thread reply requests as `{"kinds":[1,6], ...}`.
+  Deferred until the iOS peer agent lands `ActorCommand::OpenAuthor { kinds }` +
+  `NmpCore.h` + `KernelBridge.swift` churn.
 
 **Why this is a violation:** `{1, 6}` is a social/NIP-01 timeline policy, not
 substrate policy. `nmp-core` and `nmp-planner` may carry caller-supplied `kinds`
@@ -404,19 +412,19 @@ added by the same 2026-05-29 workflow (root-cause fix for the recurrence).
 but no production projection exists. kind:30023 appears in `crates/nmp-core/src/tags.rs`
 only as a constant — no decoder, no projection, no action module.
 
-- **NIP-51 mute lists** — v1-A safety-relevant. A user has no way to suppress
-  harassment from within an app built on NMP. The `BlockListView` in Chirp is absent
-  from the iOS shell (`grep -r "BlockListView" ios/Chirp/` returns nothing).
-  Prerequisite: only a `KernelEventObserver` projection + kind:10000/10001 decoder.
-  Effort: ~1 day.
+- **NIP-51 mute lists (kind:10000)** — DONE (2026-05-30). `crates/nmp-nip51/` ships
+  `MuteListProjection` (a `KernelEventObserver` + `SuppressionLookup` impl). The substrate
+  seam `SuppressionLookup` in `nmp-core` lets `ModularTimelineProjection` apply suppression
+  without a `nmp-nip01 → nmp-nip51` sibling dep. Public `p`/`e` tags only (no NIP-44
+  private-mute decryption — that is post-v1). kind:10001 not implemented (post-v1).
+  **Follow-up (tracked here):** `nmp-wot` independently parses kind:10000 `p` tags in
+  `WotGraph::ingest_mute_list` for trust-scoring. Consolidating both onto `nmp-nip51`'s
+  decode (making `nmp-wot` depend on `nmp-nip51`) is a clean-up step, not v1 scope.
 - **NIP-23 long-form articles** — post-v1. kind:30023 constant already in `tags.rs`.
   Need: decoder + `KernelEventObserver` projection. Effort: ~2 days.
 - **NIP-94 / NIP-96 file metadata + media servers** — post-v1. Ships in every modern
   client for HEIC vs JPEG, dimensions, MIME, SHA-256. Need: `imeta` tag parser + action
   for upload. Effort: ~2 days per NIP.
-
-**Recommended action:** promote NIP-51 mute list to v1-A backlog as its own item;
-add one-line §5 rows for NIP-23 / NIP-94 / NIP-96.
 
 ---
 
@@ -731,13 +739,15 @@ exists, do not claim full zeroization for local-key accounts.
 
 ---
 
-### V-60 · LMDB `gc_step` never evicts — LRU eviction not implemented [MEDIUM · resource management]
+### V-60 · LMDB `gc_step` never evicts — LRU eviction not implemented [MEDIUM · resource management] — **DONE 2026-05-30**
 
-**Verified:** `crates/nmp-store/src/lmdb/gc.rs:8-10` — module comment: "LRU eviction is not implemented in this milestone — `Mem` doesn't have one either; `gc_step` reports `lru_evicted = 0`. Future work tracked under M4 GC tuning."
+**Fixed:** `GcBudget` gains `max_total_events: usize` (ceiling; `usize::MAX` = disabled).  Both `mem/gc.rs` and `lmdb/gc.rs` implement LRU eviction in `gc_step` Phase 2: events are sorted ascending by access-sequence counter (strictly monotonic, no ties), un-pinned candidates are evicted oldest-first until the store is at or under the ceiling, and pinned (claimed) events are always skipped.  Access is stamped on insert and on `get_by_id` hits.
 
-**Impact:** a long-running session that ingests a high-throughput feed will grow the LMDB store without bound. The GC step runs on each tick but evicts nothing; no byte or event-count budget is enforced.
+**D7 fix:** `gc_step` now takes `now_secs: u64` (kernel-clock-supplied); `SystemTime::now()` calls removed from both gc files.  All call sites updated to pass an explicit timestamp.
 
-**Correct fix:** implement an LRU policy in `gc_step` — track last-access time per event, evict the least-recently-read events when the store exceeds a configurable byte or event-count ceiling. The `mem` store needs the same policy for test consistency. Prerequisite: `EventStore` clock injection (V-59) so eviction timestamps are kernel-clock-sourced.
+**Index consistency:** evicted events are removed from all secondary indexes symmetrically — `provenance`, `relay_index` (Mem), `lru_access` (LMDB) — matching the pattern established by V-52.  No tombstone is written for LRU-evicted events (they remain valid and may be re-fetched).
+
+**Tests:** `crates/nmp-testing/tests/store_lru_eviction.rs` — 7 tests covering basic eviction, ceiling enforcement, LRU order (recently-read survive), pinned-event safety, relay-index consistency, D7 clock determinism, and no-op below ceiling.  All pass on both backends.
 
 ---
 
@@ -1113,21 +1123,32 @@ The D1 / offline-first contract (`docs/product-spec/offline-first.md` §1–§6)
 the first rendered frame must not depend on relay I/O or relay connectivity.
 Seven candidate sites were filed; HEAD-verified status below.
 
+**Kernel half DONE (PR fix/v87-kernel-d1-startup, 2026-05-30):**
+Items #601 and #602 are resolved in `crates/nmp-core/src/actor/`. Tests added
+in `actor/v87_d1_startup_tests.rs` (3 tests: pre-command frame, zero-relay
+startup, end-to-end no-deadlock). Existing D8 retention tests updated.
+
 1. **#600 — ALREADY FIXED AT HEAD. Close the issue.**
    `crates/nmp-core/src/actor/dispatch.rs:443-451` — the `Start` arm now calls
    `emit_now` (`:444`) **before** `spawn_missing_relays` (`:445`), with the
    explicit comment "first snapshot must reach the shell before any relay TCP
    connection is dialed, so emit_now precedes spawn_missing_relays". The order
    the issue asked for is already in place. No live violation; mark #600 resolved.
-2. `crates/nmp-core/src/actor/mod.rs:1176` [#601] — the actor blocks on
-   `command_rx.recv()` (`let first_command = match command_rx.recv()`) before
-   constructing the Kernel. No snapshot can emit until the host sends a command;
-   a host that waits for the first snapshot before sending `Start` deadlocks.
-   **Confirmed live.**
-3. `crates/nmp-core/src/actor/relay_mgmt.rs:178-188` [#602] — `maybe_send_startup`
-   (`:178`) early-returns unless `all_relays_connected(connected_relays)` (`:188`,
-   helper at `:51`) is true. One tardy lane (e.g. Indexer) delays Content-lane
-   startup REQs indefinitely. **Confirmed live.**
+2. **#601 — FIXED.** `crates/nmp-core/src/actor/mod.rs` — actor now emits a
+   pre-flight snapshot (empty, `running=false`) from a temporary bare kernel
+   BEFORE the blocking `command_rx.recv()`. A host waiting for the first frame
+   before sending `Start` no longer deadlocks. The real kernel is still built
+   post-`recv()` with the correct LMDB storage path; the pre-flight frame is
+   discarded by the host as `running=false`. See
+   `actor/v87_d1_startup_tests.rs::v87_601_first_snapshot_arrives_before_start_command`.
+3. **#602 — FIXED.** `crates/nmp-core/src/actor/relay_mgmt.rs` —
+   `maybe_send_startup` no longer gates on `all_relays_connected`. Bootstrap
+   interests (`startup_requests()`) and deferred view requests
+   (`pending_view_requests()`) are registered immediately when `running=true`,
+   independent of relay connectivity. The planner compiles interests into wire
+   REQs on the next `drain_lifecycle_tick` and the pool delivers them as
+   relays connect — no pre-condition at the actor level. See
+   `actor/v87_d1_startup_tests.rs::v87_602_start_with_zero_relays_emits_running_snapshot`.
 4. **#603 — CITATION STALE. Re-scope before fixing.** The filed citation
    `apps/nmp-gallery/tui/src/live.rs:161-195` (`bootstrap()` chaining six
    `recv_timeout` loops) does **not** exist at HEAD: `live.rs` is 217 lines, has
@@ -1137,26 +1158,27 @@ Seven candidate sites were filed; HEAD-verified status below.
    with a HEAD-accurate citation, or close #603.
 5. `ios/Chirp/Chirp/Features/HomeFeedView.swift:101` [#604] — empty
    `blocks`/`items` renders `ChirpPlaceholder(…)` until the first kernel tick;
-   the shell cannot distinguish "no events" from "not yet ticked". **Confirmed
-   live** (placeholder branch present; copy now differs from the originally-filed
-   string — see V-99).
+   the shell cannot distinguish "no events" from "not yet ticked". **DEFERRED
+   (iOS/shell leg — live peer agent mid-refactor in iOS profile/byline zone).**
 6. **#605 — CITATION STALE.** `ios/Chirp/Chirp/Features/ThreadScreen.swift` (202
    lines) does **not** contain the string "Fetching notes from the relay network"
    anywhere in the iOS tree, and the `threadView == nil` hard-gate at `:30-64` is
    not present as filed. Re-audit `ThreadScreen.swift` for the current loading
    gate and re-file with a HEAD-accurate `file:line`, or close #605. (See V-99 —
-   the user-facing-copy half of this issue is also stale.)
+   the user-facing-copy half of this issue is also stale.) **DEFERRED (iOS/shell
+   leg).**
 7. `crates/nmp-core/src/kernel/types.rs:184` [#606] — `ProfileCard.has_profile:
    bool` is consumed as a render gate at
    `ios/Chirp/Chirp/Features/ProfileView.swift:142,168` (`profile?.hasProfile ==
    true`). It trains callers to block fields on relay data. **Confirmed live**
    (the iOS gate is real; the originally-filed gallery `live.rs:419` cite is
    stale — `live.rs` is only 217 lines — so the gallery half needs re-citing).
+   **DEFERRED (iOS/shell leg).**
 
-**Required fix:** Items 2–3 require kernel/actor changes to emit the first
-snapshot before any network I/O or relay-connectivity gate. Items 5, 7 require
-shell changes: render immediately with placeholders, never gate on relay state.
-Item 1 is done (close #600). Items 4, 6 need re-citation against HEAD or closure.
+**Status:** Items #601 and #602 (kernel half) done at HEAD. Items #604, #605,
+#606 (iOS/shell legs) deferred — live peer agent in the iOS profile/byline zone;
+collision risk. Item #603 needs re-citation or closure. Item #600 close-issue
+only.
 
 ### V-88 · View payload `state` string invites render-gating [MEDIUM · P2/D1 · issue #607]
 
@@ -1212,8 +1234,8 @@ re-entry** for one-shot off-actor I/O — the dm `op.wait` path reuses the *exis
 **serialized capability worker thread** (dedicated thread draining a queue via blocking
 `recv` — never a poll) for ordered native capability I/O, re-entering the actor once via
 a typed `ActorCommand`. (C) is the only genuinely new piece: per-op spawn is wrong
-(account-switch forget/persist would race). **Needs an ADR to ratify the capability-worker
-seam before implementation.** Full design in the workflow output.
+(account-switch forget/persist would race). **ADR-0040 drafted (Proposed 2026-05-30,
+`docs/decisions/0040-capability-worker-seam.md`), pending ratification.**
 
 Two D8 violations (no blocking on the actor thread):
 

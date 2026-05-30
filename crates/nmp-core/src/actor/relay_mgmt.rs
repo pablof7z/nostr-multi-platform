@@ -45,9 +45,10 @@ use std::collections::{HashMap, HashSet};
 use super::{RelayConnectionKind, RelayControl};
 
 /// True when at least one URL on **every** lane has reported `Connected`.
-/// Used as the startup-send gate so the first burst of REQs has somewhere to
-/// land. Per-lane (`RelayRole`) granularity matches the diagnostic surface;
-/// M11 will sharpen this to per-URL once the FFI projection lands.
+/// Used as a diagnostic helper; no longer used as a startup-send gate
+/// (decoupled by V-87 #602 — startup interests are registered immediately on
+/// `running=true`; relay lanes that connect later pick up the compiled REQs
+/// via the planner's reconnect-replay path).
 pub(super) fn all_relays_connected(connected_relays: &HashSet<RelayRole>) -> bool {
     RelayRole::all()
         .into_iter()
@@ -174,18 +175,43 @@ pub(super) fn ensure_relay_worker_with_kind(
     true
 }
 
+/// Register startup interests and flush pending view requests once the actor
+/// is running — regardless of relay connectivity.
+///
+/// V-87 #602 — D1 / offline-first §3: startup must not wait for relays.
+///
+/// **Previous behaviour (violation):** `all_relays_connected` gated the entire
+/// function.  One tardy lane (e.g. Indexer) delayed `startup_requests()` (the
+/// bootstrap interest registration) indefinitely, meaning the planner never
+/// received its compile triggers and sent no REQs even on connected lanes.
+///
+/// **New behaviour:** the relay-connectivity check is removed.
+/// `startup_requests()` registers bootstrap interests via the planner
+/// immediately — it returns `Vec::new()` (no direct wire send); the planner
+/// compiles those interests into wire REQs on the next `drain_lifecycle_tick`
+/// and routes them to whatever relays are open at that point (or holds them
+/// until a relay connects, via `reconnect_replay`).  `pending_view_requests()`
+/// likewise drains the deferred-outbound queue; `send_all_outbound` spawns pool
+/// workers on demand, so frames queue in the worker's send buffer until the
+/// socket is live — no connectivity pre-condition needed at the actor level.
+///
+/// The `startup_sent` flag is still used as a one-shot gate so this function
+/// fires exactly once per `Start` / `Reset` cycle regardless of how many relay
+/// `Opened` events arrive.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn maybe_send_startup(
     running: bool,
     startup_sent: &mut bool,
-    connected_relays: &HashSet<RelayRole>,
+    // `connected_relays` is retained in the signature for call-site
+    // compatibility; it is no longer used as a gate here (V-87 #602).
+    _connected_relays: &HashSet<RelayRole>,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
     pool: &Pool,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
 ) -> bool {
-    if !running || *startup_sent || !all_relays_connected(connected_relays) {
+    if !running || *startup_sent {
         return false;
     }
 

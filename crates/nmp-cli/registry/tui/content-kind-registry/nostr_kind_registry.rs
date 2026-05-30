@@ -7,13 +7,15 @@ use std::sync::Arc;
 
 use nmp_content::embed_projection::EmbedKindProjection;
 use nmp_content::wire::{ContentTreeWire, WireNode};
+use nmp_core::display::short_npub;
 
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Widget, Wrap};
 
-use super::kind_renderer::{KindRenderer, KindRendererRef};
+use super::kind_renderer::{author_byline, KindRenderer, KindRendererRef};
+use super::super::nostr_mention_chip::NostrMentionProfileHost;
 
 /// The registry consulted by `EmbeddedEvent` (and by `NostrContentView`).
 pub struct NostrKindRegistry {
@@ -103,6 +105,8 @@ impl KindRenderer for DefaultShortNoteRenderer {
         projection: &EmbedKindProjection,
         _ctx: &nmp_content::context::RenderContext,
         _registry: &NostrKindRegistry,
+        host: Option<&dyn NostrMentionProfileHost>,
+        consumer_id: Option<&str>,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
     ) {
@@ -113,10 +117,10 @@ impl KindRenderer for DefaultShortNoteRenderer {
             return;
         }
 
-        let author = note
-            .author_display_name
-            .clone()
-            .unwrap_or_else(|| short_id(&note.author_pubkey));
+        // Component-owned kind:0: this byline claims the author's profile and
+        // reads the live-resolved name, instead of painting the static
+        // `author_display_name` projection field (mirrors iOS PR #833).
+        let author = author_byline(host, consumer_id, &note.author_pubkey);
         let body = tree_text(&note.content_tree);
         let rel_time = format_relative_time(note.created_at);
 
@@ -181,6 +185,8 @@ impl KindRenderer for DefaultArticleRenderer {
         projection: &EmbedKindProjection,
         _ctx: &nmp_content::context::RenderContext,
         _registry: &NostrKindRegistry,
+        host: Option<&dyn NostrMentionProfileHost>,
+        consumer_id: Option<&str>,
         area: Rect,
         buf: &mut ratatui::buffer::Buffer,
     ) {
@@ -191,10 +197,8 @@ impl KindRenderer for DefaultArticleRenderer {
             return;
         }
 
-        let author = article
-            .author_display_name
-            .as_deref()
-            .unwrap_or_else(|| &article.author_pubkey[..8.min(article.author_pubkey.len())]);
+        // Component-owned kind:0: self-claiming author byline (iOS PR #833).
+        let author = author_byline(host, consumer_id, &article.author_pubkey);
         let title = article.title.as_deref().unwrap_or("article");
         let summary = article
             .summary
@@ -232,7 +236,9 @@ impl KindRenderer for DefaultArticleRenderer {
         let title_str = truncate_chars(title, content.width as usize);
         Paragraph::new(Line::from(Span::styled(
             title_str,
-            Style::default().fg(Color::Rgb(241, 245, 249)).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Rgb(241, 245, 249))
+                .add_modifier(Modifier::BOLD),
         )))
         .render(rows[0], buf);
 
@@ -240,7 +246,7 @@ impl KindRenderer for DefaultArticleRenderer {
         let meta = format!(" \u{00B7} {} \u{00B7} {} min read", short_date, reading_min);
         Paragraph::new(Line::from(vec![
             Span::styled("\u{25CF} ", Style::default().fg(Color::Rgb(220, 38, 38))),
-            Span::styled(author.to_string(), Style::default().fg(Color::Rgb(203, 213, 225))),
+            Span::styled(author, Style::default().fg(Color::Rgb(203, 213, 225))),
             Span::styled(meta, Style::default().fg(Color::Rgb(100, 116, 139))),
         ]))
         .render(rows[1], buf);
@@ -269,16 +275,16 @@ impl KindRenderer for DefaultHighlightRenderer {
         projection: &EmbedKindProjection,
         _ctx: &nmp_content::context::RenderContext,
         _registry: &NostrKindRegistry,
+        host: Option<&dyn NostrMentionProfileHost>,
+        consumer_id: Option<&str>,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
     ) {
         let EmbedKindProjection::Highlight(highlight) = projection else {
             return;
         };
-        let author = highlight
-            .author_display_name
-            .clone()
-            .unwrap_or_else(|| short_id(&highlight.author_pubkey));
+        // Component-owned kind:0: self-claiming author byline (iOS PR #833).
+        let author = author_byline(host, consumer_id, &highlight.author_pubkey);
         render_two_line(
             &format!("highlight · {author}"),
             &highlight.highlighted_text,
@@ -307,16 +313,21 @@ impl KindRenderer for DefaultProfileRenderer {
         projection: &EmbedKindProjection,
         _ctx: &nmp_content::context::RenderContext,
         _registry: &NostrKindRegistry,
+        _host: Option<&dyn NostrMentionProfileHost>,
+        _consumer_id: Option<&str>,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
     ) {
         let EmbedKindProjection::Profile(profile) = projection else {
             return;
         };
+        // The kind:0 is itself the displayed entity here, so its own
+        // `display_name` is legitimate profile data — not a separate author
+        // claim. Fall back to a Rust-formatted `npub_short`, never raw hex.
         let label = profile
             .display_name
             .clone()
-            .unwrap_or_else(|| short_id(&profile.pubkey));
+            .unwrap_or_else(|| short_npub(&profile.pubkey));
         let about = profile.about.clone().unwrap_or_default();
         render_two_line("profile", &format!("{label} — {about}"), area, buf);
     }
@@ -340,22 +351,27 @@ impl KindRenderer for DefaultUnknownRenderer {
         projection: &EmbedKindProjection,
         _ctx: &nmp_content::context::RenderContext,
         _registry: &NostrKindRegistry,
+        host: Option<&dyn NostrMentionProfileHost>,
+        consumer_id: Option<&str>,
         area: ratatui::layout::Rect,
         buf: &mut ratatui::buffer::Buffer,
     ) {
         let EmbedKindProjection::Unknown(unknown) = projection else {
             return;
         };
-        let author = unknown
-            .author_display_name
-            .clone()
-            .unwrap_or_else(|| short_id(&unknown.author_pubkey));
+        // Component-owned kind:0: self-claiming author byline (iOS PR #833).
+        let author = author_byline(host, consumer_id, &unknown.author_pubkey);
         let body = if unknown.content.is_empty() {
             tree_text(&unknown.content_tree)
         } else {
             unknown.content.clone()
         };
-        render_two_line(&format!("kind:{} · {author}", unknown.kind), &body, area, buf);
+        render_two_line(
+            &format!("kind:{} · {author}", unknown.kind),
+            &body,
+            area,
+            buf,
+        );
     }
 
     fn preferred_height(&self, projection: &EmbedKindProjection, width: u16) -> u16 {
@@ -410,14 +426,35 @@ fn format_short_date(unix_secs: u64) -> String {
     let mut y = 1970u32;
     let mut d = days as u32;
     loop {
-        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
-        if d < days_in_year { break; }
+        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) {
+            366
+        } else {
+            365
+        };
+        if d < days_in_year {
+            break;
+        }
         d -= days_in_year;
         y += 1;
     }
     let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
-    let month_days = [31u32, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    let month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    let month_days = [
+        31u32,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let month_names = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     let mut month = 0usize;
     while month < 12 && d >= month_days[month] {
         d -= month_days[month];
@@ -433,7 +470,12 @@ fn estimate_reading_time(title: &str, summary: &str) -> u32 {
     ((estimated_words as f32 / 200.0).ceil() as u32).max(1)
 }
 
-fn render_two_line(header: &str, body: &str, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+fn render_two_line(
+    header: &str,
+    body: &str,
+    area: ratatui::layout::Rect,
+    buf: &mut ratatui::buffer::Buffer,
+) {
     let lines = vec![
         Line::from(Span::styled(
             header.to_string(),
@@ -546,6 +588,8 @@ mod tests {
             _projection: &EmbedKindProjection,
             _ctx: &nmp_content::RenderContext,
             _registry: &NostrKindRegistry,
+            _host: Option<&dyn NostrMentionProfileHost>,
+            _consumer_id: Option<&str>,
             _area: Rect,
             _buf: &mut Buffer,
         ) {
@@ -595,5 +639,188 @@ mod tests {
             tags: Vec::new(),
             alt_text: None,
         })
+    }
+
+    // --- Component-owned author byline (iOS PR #833 mirror) ----------------
+
+    use std::cell::RefCell;
+
+    use nmp_content::ShortNoteProjection;
+
+    use super::super::kind_renderer::author_byline;
+    use super::super::super::content_render_data::ContentProfileRenderData;
+    use super::super::super::nostr_mention_chip::NostrMentionProfileHost;
+
+    const SHOWCASE_PUBKEY: &str =
+        "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
+
+    /// Fake host that records claims and returns a known live-resolved name —
+    /// the TUI analogue of `mention_label_claims_and_reads_host_projection`.
+    struct FakeAuthorHost {
+        display: Option<String>,
+        claimed: RefCell<Vec<(String, String)>>,
+    }
+
+    impl NostrMentionProfileHost for FakeAuthorHost {
+        fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+            self.claimed
+                .borrow_mut()
+                .push((pubkey.to_string(), consumer_id.to_string()));
+        }
+
+        fn profile_for_pubkey(&self, pubkey: &str) -> Option<ContentProfileRenderData> {
+            Some(ContentProfileRenderData {
+                pubkey: pubkey.to_string(),
+                display_name: self.display.clone(),
+                npub: None,
+                picture_url: None,
+            })
+        }
+    }
+
+    fn buffer_text(buf: &Buffer) -> String {
+        let mut out = String::new();
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                if let Some(cell) = buf.cell((x, y)) {
+                    out.push_str(cell.symbol());
+                }
+            }
+            out.push('\n');
+        }
+        out
+    }
+
+    #[test]
+    fn author_byline_claims_and_reads_live_name() {
+        let host = FakeAuthorHost {
+            display: Some("pablof7z".to_string()),
+            claimed: RefCell::new(Vec::new()),
+        };
+
+        let byline = author_byline(Some(&host), Some("content-kind-registry"), SHOWCASE_PUBKEY);
+
+        assert_eq!(byline, "pablof7z");
+        assert_eq!(
+            host.claimed.borrow().as_slice(),
+            [(
+                SHOWCASE_PUBKEY.to_string(),
+                "content-kind-registry".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn author_byline_falls_back_to_npub_short_not_hex() {
+        // Host wired but profile unresolved: must render the Rust-formatted
+        // npub_short, never raw hex and never an 8-char hex prefix.
+        let host = FakeAuthorHost {
+            display: None,
+            claimed: RefCell::new(Vec::new()),
+        };
+
+        let byline = author_byline(Some(&host), Some("content-kind-registry"), SHOWCASE_PUBKEY);
+
+        let expected = short_npub(SHOWCASE_PUBKEY);
+        assert_eq!(byline, expected);
+        assert!(byline.starts_with("npub1"), "{byline}");
+        assert!(
+            !byline.starts_with(&SHOWCASE_PUBKEY[..8]),
+            "byline must not be a hex prefix: {byline}"
+        );
+        // The claim still fires — the displaying component owns it.
+        assert_eq!(host.claimed.borrow().len(), 1);
+    }
+
+    #[test]
+    fn author_byline_without_host_uses_npub_short() {
+        // Preview-only callers (no host) still get a Rust-formatted npub_short,
+        // never the static `author_display_name` and never hex.
+        let byline = author_byline(None, None, SHOWCASE_PUBKEY);
+        assert_eq!(byline, short_npub(SHOWCASE_PUBKEY));
+    }
+
+    #[test]
+    fn short_note_renderer_paints_live_resolved_byline() {
+        let host = FakeAuthorHost {
+            display: Some("pablof7z".to_string()),
+            claimed: RefCell::new(Vec::new()),
+        };
+        let projection = EmbedKindProjection::ShortNote(ShortNoteProjection {
+            id: "b".repeat(64),
+            author_pubkey: SHOWCASE_PUBKEY.to_string(),
+            // Even when the kernel still emits a different static name, the
+            // byline must come from the live-resolved claim, not this field.
+            author_display_name: Some("STATIC-SHOULD-NOT-SHOW".to_string()),
+            author_picture_url: None,
+            created_at: 0,
+            content_tree: ContentTreeWire::default(),
+            media_urls: Vec::new(),
+        });
+
+        let area = Rect::new(0, 0, 40, 6);
+        let mut buf = Buffer::empty(area);
+        let registry = NostrKindRegistry::make_default();
+        let ctx = nmp_content::RenderContext::new();
+        registry.resolve(&projection).render(
+            &projection,
+            &ctx,
+            &registry,
+            Some(&host),
+            Some("content-kind-registry"),
+            area,
+            &mut buf,
+        );
+
+        let text = buffer_text(&buf);
+        assert!(text.contains("pablof7z"), "{text}");
+        assert!(!text.contains("STATIC-SHOULD-NOT-SHOW"), "{text}");
+        assert_eq!(host.claimed.borrow().len(), 1);
+    }
+
+    #[test]
+    fn embedded_event_forwards_author_host_to_renderer() {
+        // Reachability: the wired path render.rs → NostrContentView →
+        // render_embedded_event → EmbeddedEvent::author_host → KindRenderer.
+        // Proves the host actually reaches the byline renderer through the
+        // EmbeddedEvent widget, not only the helper in isolation.
+        use nmp_content::embed_projection::{EmbeddedEventEnvelope, RenderContextWire};
+        use nmp_content::RenderContext;
+        use ratatui::widgets::Widget;
+
+        use super::super::EmbeddedEvent;
+
+        let host = FakeAuthorHost {
+            display: Some("pablof7z".to_string()),
+            claimed: RefCell::new(Vec::new()),
+        };
+        let envelope = EmbeddedEventEnvelope {
+            uri: "nostr:nevent1example".to_string(),
+            primary_id: "b".repeat(64),
+            render_context: RenderContextWire::from(&RenderContext::new()),
+            projection: EmbedKindProjection::ShortNote(ShortNoteProjection {
+                id: "b".repeat(64),
+                author_pubkey: SHOWCASE_PUBKEY.to_string(),
+                author_display_name: Some("STATIC-SHOULD-NOT-SHOW".to_string()),
+                author_picture_url: None,
+                created_at: 0,
+                content_tree: ContentTreeWire::default(),
+                media_urls: Vec::new(),
+            }),
+            collapsed: false,
+            collapse_reason: None,
+        };
+
+        let area = Rect::new(0, 0, 48, 8);
+        let mut buf = Buffer::empty(area);
+        let registry = NostrKindRegistry::make_default();
+        EmbeddedEvent::new(&envelope, &registry)
+            .author_host(Some(&host), Some("content-kind-registry"))
+            .render(area, &mut buf);
+
+        let text = buffer_text(&buf);
+        assert!(text.contains("pablof7z"), "{text}");
+        assert!(!text.contains("STATIC-SHOULD-NOT-SHOW"), "{text}");
+        assert_eq!(host.claimed.borrow().len(), 1);
     }
 }

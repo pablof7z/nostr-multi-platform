@@ -4,12 +4,15 @@
 //! shells also need the per-event render metadata in the same pushed snapshot,
 //! so this projection owns the generic card cache beside the view state.
 
-use std::{collections::BTreeMap, sync::Mutex, time::Instant};
+use std::{collections::BTreeMap, sync::{Arc, Mutex}, time::Instant};
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode, WireNode, WireNostrUriKind};
-use nmp_core::substrate::{BoundedMessageMap, KernelEvent, ViewContext, MAX_PROJECTION_MESSAGES};
+use nmp_core::substrate::{
+    BoundedMessageMap, KernelEvent, SuppressionLookup, ViewContext, MAX_PROJECTION_MESSAGES,
+    empty_suppression_lookup,
+};
 use nmp_core::KernelEventObserver;
-use nmp_feed::FeedCard;
+use nmp_feed::{FeedBlock, FeedCard};
 use nmp_nip18::try_from_kernel_event as try_from_repost_event;
 use nmp_threading::TimelineBlock;
 use serde::{Deserialize, Serialize};
@@ -442,6 +445,10 @@ impl FeedCard for TimelineEventCard {
 
 pub struct ModularTimelineProjection {
     inner: Mutex<Inner>,
+    /// Substrate-generic suppression lookup — `Arc<dyn SuppressionLookup>`.
+    /// At composition time the host wires in `nmp-nip51`'s `MuteListProjection`.
+    /// Defaults to `EmptySuppressionLookup` (suppress nothing) when not wired.
+    suppression: Arc<dyn SuppressionLookup>,
 }
 
 struct Inner {
@@ -465,7 +472,25 @@ impl ModularTimelineProjection {
                 profiles: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
                 relations: NoteRelationIndex::default(),
             }),
+            suppression: empty_suppression_lookup(),
         }
+    }
+
+    /// Wire a suppression lookup (e.g. `nmp-nip51`'s `MuteListProjection`).
+    ///
+    /// Called once at composition time before the projection is registered
+    /// as a `KernelEventObserver`. Replaces the default `EmptySuppressionLookup`
+    /// (suppress nothing) with the provided backend.
+    ///
+    /// # Design
+    ///
+    /// The `SuppressionLookup` trait lives in `nmp-core` substrate so this
+    /// crate (`nmp-nip01`, Layer 4) can hold an `Arc<dyn SuppressionLookup>`
+    /// without creating a `nmp-nip01 → nmp-nip51` sibling dep. The concrete
+    /// implementation (`MuteListProjection`) is injected at composition time
+    /// by the app crate (Layer 5+) that depends on both.
+    pub fn set_suppression(&mut self, lookup: Arc<dyn SuppressionLookup>) {
+        self.suppression = lookup;
     }
 
     #[must_use]
@@ -474,9 +499,17 @@ impl ModularTimelineProjection {
             return ModularTimelineSnapshot::empty();
         };
         let blocks = sorted_projection_blocks(&inner);
+        let suppressed_blocks = suppress_blocks(&blocks, &inner.cards, &*self.suppression);
+        let cards: Vec<TimelineEventCard> = inner
+            .cards
+            .values()
+            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey)
+                && !self.suppression.is_suppressed_event(&c.id))
+            .cloned()
+            .collect();
         ModularTimelineSnapshot {
-            blocks,
-            cards: inner.cards.values().cloned().collect(),
+            blocks: suppressed_blocks,
+            cards,
             page: None,
             metrics: None,
         }
@@ -489,8 +522,16 @@ impl ModularTimelineProjection {
             return ModularTimelineSnapshot::empty();
         };
         let blocks = sorted_projection_blocks(&inner);
-        let (page_blocks, page) = inner.window.snapshot_blocks(&blocks, &inner.cards);
+        let visible_blocks = suppress_blocks(&blocks, &inner.cards, &*self.suppression);
+        let (page_blocks, page) = inner.window.snapshot_blocks(&visible_blocks, &inner.cards);
         let cards = nmp_feed::cards_for_blocks(&page_blocks, &inner.cards);
+        // Post-filter the page cards so suppressed entries don't surface even
+        // when they were already in the window's state.
+        let cards: Vec<TimelineEventCard> = cards
+            .into_iter()
+            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey)
+                && !self.suppression.is_suppressed_event(&c.id))
+            .collect();
         ModularTimelineSnapshot {
             blocks: page_blocks,
             cards,
@@ -509,8 +550,9 @@ impl ModularTimelineProjection {
             return false;
         };
         let blocks = sorted_projection_blocks(&inner);
+        let visible_blocks = suppress_blocks(&blocks, &inner.cards, &*self.suppression);
         let mut window = std::mem::take(&mut inner.window);
-        let changed = window.load_older(&blocks, &inner.cards);
+        let changed = window.load_older(&visible_blocks, &inner.cards);
         inner.window = window;
         changed
     }
@@ -522,8 +564,14 @@ impl ModularTimelineProjection {
             return ModularTimelineSnapshot::empty();
         };
         let blocks = sorted_projection_blocks(&inner);
-        let (page_blocks, page) = nmp_feed::page_for_request(&blocks, &inner.cards, &request);
+        let visible_blocks = suppress_blocks(&blocks, &inner.cards, &*self.suppression);
+        let (page_blocks, page) = nmp_feed::page_for_request(&visible_blocks, &inner.cards, &request);
         let cards = nmp_feed::cards_for_blocks(&page_blocks, &inner.cards);
+        let cards: Vec<TimelineEventCard> = cards
+            .into_iter()
+            .filter(|c| !self.suppression.is_suppressed_author(&c.author_pubkey)
+                && !self.suppression.is_suppressed_event(&c.id))
+            .collect();
         ModularTimelineSnapshot {
             blocks: page_blocks,
             cards,
@@ -550,6 +598,17 @@ impl nmp_feed::FeedController for ModularTimelineProjection {
 
 impl KernelEventObserver for ModularTimelineProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
+        // Ingest-time suppression gate: skip inserting render cards for events
+        // authored by a muted pubkey or with a muted event id. This prevents
+        // accumulating dead cards in the bounded card cache. The snapshot-time
+        // filter below handles mutes applied AFTER the event was already
+        // ingested (e.g. user mutes someone mid-session).
+        if self.suppression.is_suppressed_author(&event.author)
+            || self.suppression.is_suppressed_event(&event.id)
+        {
+            return;
+        }
+
         let Ok(mut inner) = self.inner.lock() else {
             return;
         };
@@ -670,6 +729,44 @@ fn sorted_projection_blocks(inner: &Inner) -> Vec<TimelineBlock> {
     let ctx = ViewContext::default();
     let payload: ModularTimelinePayload = Nip10ModularTimelineView::snapshot(&ctx, &inner.state);
     nmp_feed::sorted_blocks(payload.blocks, &inner.cards)
+}
+
+/// Filter `blocks` by removing any block whose root (first) event id belongs
+/// to a suppressed author or is itself a suppressed event id.
+///
+/// Consulting the cards map is the only way to resolve event id → author
+/// without a second lookup structure; the cards map is always up to date.
+/// Blocks whose root event id is not in the cards map are passed through
+/// (fail-open, consistent with the suppression trait contract).
+///
+/// This is the **snapshot-time** suppression gate. It handles events that
+/// arrived before a mute was applied — the ingest-time gate in
+/// `on_kernel_event` handles new arrivals after a mute.
+fn suppress_blocks(
+    blocks: &[TimelineBlock],
+    cards: &BoundedMessageMap<String, TimelineEventCard>,
+    suppression: &dyn SuppressionLookup,
+) -> Vec<TimelineBlock> {
+    blocks
+        .iter()
+        .filter(|block| {
+            // Each block's first event id is the root/OP note.
+            let Some(root_id) = block.feed_event_ids().into_iter().next() else {
+                // Block has no event ids — pass through (defensive).
+                return true;
+            };
+            if suppression.is_suppressed_event(&root_id) {
+                return false;
+            }
+            if let Some(card) = cards.get(&root_id) {
+                if suppression.is_suppressed_author(&card.author_pubkey) {
+                    return false;
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]

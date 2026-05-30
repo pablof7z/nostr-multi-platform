@@ -137,7 +137,12 @@ impl NostrContentView<'_> {
         let Some(envelope) = self.envelope_for(uri) else {
             return false;
         };
-        let widget = EmbeddedEvent::new(envelope, registry);
+        // Component-owned kind:0 (iOS #833): thread the content view's own
+        // presentation-owned profile host into the embed so the byline
+        // renderer claims the author's profile and reads the live-resolved
+        // name, instead of the static `author_display_name` projection field.
+        let widget =
+            EmbeddedEvent::new(envelope, registry).author_host(self.profile_host, self.consumer_id);
         let height = widget.preferred_height(area.width);
         let rect = take_area(area, cursor, height);
         if rect.is_empty() {

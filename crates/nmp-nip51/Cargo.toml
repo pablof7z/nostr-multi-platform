@@ -1,0 +1,24 @@
+[package]
+name = "nmp-nip51"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-51 mute-list (kind:10000) adapter — thin substrate crate that decodes the active account's kind:10000 public `p`/`e` tags into a `SuppressionLookup` the timeline projection consults to suppress muted authors and events. Public mute tags only (no NIP-44 private-mute content decryption — that requires the signer and is out of v1 scope). The crate name reflects the originating NIP; the substrate seam it exposes (`SuppressionLookup`) carries no NIP-51 nouns."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+# `nmp-core` supplies `KernelEventObserver` (the ingest seam) and
+# `SuppressionLookup` (the substrate-generic trait the timeline projection
+# reads). No NIP nouns enter nmp-core through this crate.
+nmp-core = { path = "../nmp-core" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# Integration test: wire MuteListProjection into ModularTimelineProjection
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-threading = { path = "../nmp-threading" }

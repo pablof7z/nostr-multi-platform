@@ -72,10 +72,14 @@ for_each_backend!(gc_step_runs_without_error, |h: &mut StoreHarness| {
 
     let report = h
         .store
-        .gc_step(GcBudget {
-            max_events_per_step: 50,
-            max_duration_ms: 500,
-        })
+        .gc_step(
+            GcBudget {
+                max_events_per_step: 50,
+                max_duration_ms: 500,
+                max_total_events: usize::MAX,
+            },
+            1_700_000_000, // now_secs — far in the future, no events expire
+        )
         .unwrap();
 
     // No events should be reaped (none are expired).

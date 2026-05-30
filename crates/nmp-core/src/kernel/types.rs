@@ -621,6 +621,14 @@ pub(super) struct ThreadViewState {
     pub(super) pending_reply_targets: BTreeSet<String>,
     pub(super) requested_reply_targets: HashSet<String>,
     pub(super) replies_inflight: bool,
+    /// Host-supplied reply kinds for the thread-replies REQ filter.
+    ///
+    /// Stored here (not threaded as a parameter) so the deferred-relay path —
+    /// where `open_thread` queued the request at `can_send=false` and
+    /// `prepare_thread_requests` fires later on a relay-ready tick — sees the
+    /// correct kinds even though no `kinds` are in scope at that call site.
+    /// Mirrors how `follow_feed_kinds` is stored for `drain_lifecycle_tick`.
+    pub(super) reply_kinds: BTreeSet<u32>,
 }
 
 /// Diagnostic hashtag-firehose tracking: interest, sequence, and event counter.

@@ -28,6 +28,29 @@ fn nevent_uri(event_id: &str) -> String {
     format!("nostr:{bech}")
 }
 
+/// Simulate a relay's EOSE-no-match for a claim sub the way the production
+/// EOSE arm (`kernel/ingest/mod.rs`) does: `complete_unknown_oneshot` (token
+/// teardown) followed by `record_claim_expansion_eose_no_match` (per-relay
+/// in-flight slot removal). A single relay's EOSE does NOT release the claim —
+/// only the controller's terminal-miss does (driven by `poll` below).
+fn eose_no_match(kernel: &mut Kernel, sub_id: &str, relay_url: &str) {
+    kernel.complete_unknown_oneshot(sub_id);
+    kernel.record_claim_expansion_eose_no_match(sub_id, relay_url);
+}
+
+/// Advance the claim controller past `PHASE_1_BUDGET_MS` (1500 ms) but under
+/// the per-claim TOTAL budget (8000 ms). For a `claim_and_wire` claim — which
+/// has an empty candidate-hint set — this drives
+/// `Phase1 budget elapsed → advance_to_phase2 → to_pick == 0 →
+/// terminate(Exhausted)`, exercising the `Exhausted` arm of the
+/// `terminate_claim` terminal-miss gate that releases the `event_claims` row +
+/// fires the release ring. (The `Budget` arm is covered separately by
+/// `budget_terminal_miss_clears_claim_and_pushes_to_release_ring`.)
+fn poll_to_terminal_miss(kernel: &mut Kernel) {
+    let later = std::time::Instant::now() + std::time::Duration::from_millis(1_600);
+    let _ = kernel.poll_claim_expansion(later);
+}
+
 /// Drive a claim through to the wired state, then return the planner-assigned
 /// `sub_id` so the test can simulate EOSE for it. Mirrors the production
 /// claim_event → planner-frame bridge wiring.
@@ -54,13 +77,21 @@ fn claim_and_wire(kernel: &mut Kernel, id: &str, relay_url: &str) -> String {
     sub_id
 }
 
-/// EOSE-without-match on a claim sub clears the claim state AND pushes the
+/// Claim-expansion terminal-miss (every relay EOSE'd without the event, then
+/// the controller exhausts the claim) clears the claim state AND pushes the
 /// primary_id into the `event_claim_released` ring (the public projection).
+///
+/// Release is now controller-driven (`terminate_claim` on
+/// `ClaimTermination::Exhausted`), NOT per-EOSE — a single relay's
+/// EOSE-no-match must NOT release the claim, because a sibling relay sharing
+/// the sub_id may still deliver the matching EVENT (the embed-loading-forever
+/// race this fix closes).
 #[test]
-fn eose_no_match_clears_claim_and_pushes_to_release_ring() {
+fn terminal_miss_clears_claim_and_pushes_to_release_ring() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let id = hex64("f1");
-    let sub_id = claim_and_wire(&mut kernel, &id, "wss://relay.example");
+    let relay = "wss://relay.example";
+    let sub_id = claim_and_wire(&mut kernel, &id, relay);
 
     // Precondition: the claim is requested and tracked.
     assert!(kernel.event_claim_is_requested_for_test(&id));
@@ -70,17 +101,31 @@ fn eose_no_match_clears_claim_and_pushes_to_release_ring() {
         "release ring starts empty"
     );
 
-    // Simulate the EOSE-no-match (the event never arrived).
-    kernel.complete_unknown_oneshot(&sub_id);
+    // A single relay's EOSE-no-match removes its in-flight slot but must NOT
+    // release the claim — a sibling relay's EVENT could still arrive.
+    eose_no_match(&mut kernel, &sub_id, relay);
+    assert_eq!(
+        kernel.event_claims_len_for_test(&id),
+        1,
+        "a single relay's EOSE must NOT release the claim (race guard)"
+    );
+    assert!(
+        kernel.event_claim_released().is_empty(),
+        "release ring stays empty until the claim genuinely exhausts"
+    );
+
+    // The controller now observes no in-flight attempts and no candidate
+    // relays → terminates the claim as Exhausted → releases.
+    poll_to_terminal_miss(&mut kernel);
 
     assert!(
         !kernel.event_claim_is_requested_for_test(&id),
-        "EOSE-no-match must clear event_claim_requested so a re-claim re-fetches"
+        "terminal-miss must clear event_claim_requested so a re-claim re-fetches"
     );
     assert_eq!(
         kernel.event_claims_len_for_test(&id),
         0,
-        "EOSE-no-match must clear the event_claims refcount entry"
+        "terminal-miss must clear the event_claims refcount entry"
     );
     assert_eq!(
         kernel.event_claim_released(),
@@ -89,9 +134,10 @@ fn eose_no_match_clears_claim_and_pushes_to_release_ring() {
     );
 }
 
-/// A registered observer is notified with the released primary_id.
+/// A registered observer is notified with the released primary_id when the
+/// claim genuinely exhausts (controller terminal-miss).
 #[test]
-fn eose_no_match_notifies_registered_observer() {
+fn terminal_miss_notifies_registered_observer() {
     struct Recorder {
         count: AtomicUsize,
         ids: Mutex<Vec<String>>,
@@ -114,13 +160,20 @@ fn eose_no_match_notifies_registered_observer() {
     );
 
     let id = hex64("f2");
-    let sub_id = claim_and_wire(&mut kernel, &id, "wss://relay.example");
-    kernel.complete_unknown_oneshot(&sub_id);
+    let relay = "wss://relay.example";
+    let sub_id = claim_and_wire(&mut kernel, &id, relay);
+    eose_no_match(&mut kernel, &sub_id, relay);
+    assert_eq!(
+        recorder.count.load(Ordering::SeqCst),
+        0,
+        "a single relay's EOSE must NOT fire the release observer (race guard)"
+    );
+    poll_to_terminal_miss(&mut kernel);
 
     assert_eq!(
         recorder.count.load(Ordering::SeqCst),
         1,
-        "observer must fire exactly once on EOSE-no-match"
+        "observer must fire exactly once when the claim exhausts"
     );
     assert_eq!(
         *recorder.ids.lock().unwrap(),
@@ -169,4 +222,35 @@ fn release_ring_is_bounded() {
     );
     // Sanity: the production cap is the projection constant.
     assert_eq!(MAX_PROJECTION_MESSAGES, 10_000);
+}
+
+/// The OTHER terminal-miss reason — `ClaimTermination::Budget` (the total
+/// per-claim budget elapsed before any relay delivered the event, e.g. a slow
+/// relay that never EOSEs) — must ALSO release the claim and push the release
+/// ring. This guards the second arm of the `Exhausted | Budget` gate in
+/// `terminate_claim`, which the exhaustion tests alone do not exercise.
+#[test]
+fn budget_terminal_miss_clears_claim_and_pushes_to_release_ring() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let id = hex64("f3");
+    let _sub_id = claim_and_wire(&mut kernel, &id, "wss://relay.example");
+
+    assert_eq!(kernel.event_claims_len_for_test(&id), 1);
+    assert!(kernel.event_claim_released().is_empty());
+
+    // No EOSE, no EVENT — just let the total budget elapse. The controller
+    // terminates the claim as Budget on the next poll.
+    let later = std::time::Instant::now() + std::time::Duration::from_millis(60_000);
+    let _ = kernel.poll_claim_expansion(later);
+
+    assert_eq!(
+        kernel.event_claims_len_for_test(&id),
+        0,
+        "Budget terminal-miss must clear the event_claims refcount entry"
+    );
+    assert_eq!(
+        kernel.event_claim_released(),
+        vec![id],
+        "Budget terminal-miss must push the released primary_id into the ring"
+    );
 }

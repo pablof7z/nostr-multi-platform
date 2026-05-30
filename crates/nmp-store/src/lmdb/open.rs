@@ -4,6 +4,7 @@
 //! The entry-point is `open_impl` — called by `LmdbEventStore::open`.
 
 use std::path::Path;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use heed::types::Bytes;
@@ -17,14 +18,14 @@ use crate::StoreError;
 /// Open or create an LMDB store at `path`.
 ///
 /// Shared-env design: `Lmdb::with_env` opens the upstream 11 sub-dbs on the
-/// provided `Env`; we create 9 additional NMP sub-dbs on the same transaction
+/// provided `Env`; we create 10 additional NMP sub-dbs on the same transaction
 /// so all writes are atomic.
 pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     // 32 GB on 64-bit; the upstream default. The fork's `with_env` wraps the
-    // 11 internal sub-dbs; we reserve 9 additional for NMP-side data.
+    // 11 internal sub-dbs; we reserve 10 additional for NMP-side data.
     const MAP_SIZE: usize = 1024 * 1024 * 1024 * 32;
     const MAX_READERS: u32 = 126;
-    const NMP_ADDITIONAL_DBS: u32 = 9; // W2: +1 for relay-author-scores-v1
+    const NMP_ADDITIONAL_DBS: u32 = 10; // +1 for nmp-lru-access (V-60)
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -55,6 +56,28 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     let domain_data = open("nmp-domain-data", &mut txn)?;
     // W2 — relay-author-scores sub-db.
     let relay_author_scores = open(relay_scores::SUB_DB_NAME, &mut txn)?;
+    // V-60 — LRU access index: event_id(32) → seq(8 BE).
+    let lru_access = open("nmp-lru-access", &mut txn)?;
+
+    // Initialise the in-memory seq counter from the max persisted value so
+    // a crash-restart never reuses sequence numbers.
+    let lru_seq_init: u64 = {
+        let mut max_seq: u64 = 0;
+        for entry in lru_access
+            .iter(&txn)
+            .map_err(|e| StoreError::Io(format!("lru iter: {e}")))?
+        {
+            let (_, v) = entry.map_err(|e| StoreError::Io(format!("lru entry: {e}")))?;
+            if v.len() >= 8 {
+                let seq = u64::from_be_bytes(v[..8].try_into().unwrap());
+                if seq > max_seq {
+                    max_seq = seq;
+                }
+            }
+        }
+        max_seq
+    };
+
     txn.commit()
         .map_err(|e| StoreError::Io(format!("commit init: {e}")))?;
 
@@ -72,6 +95,8 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
             domain_versions,
             domain_data,
             relay_author_scores,
+            lru_access,
+            lru_seq: AtomicU64::new(lru_seq_init),
         }),
     })
 }

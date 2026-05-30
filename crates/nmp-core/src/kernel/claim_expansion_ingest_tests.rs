@@ -437,6 +437,131 @@ mod production_ingest_tests {
         );
     }
 
+    // ── T-P7: REGRESSION — claimed kind:1 surfaces in the projection even when
+    //          a sibling relay EOSE'd-without-match BEFORE the EVENT arrived ──
+
+    /// REGRESSION (embed-loading-forever race). A claim's REQ fans out to
+    /// MULTIPLE relays sharing one `sub_id` (B4 shape-shared subs). Pre-fix,
+    /// `complete_unknown_oneshot` released the claim (`event_claims.remove`) on
+    /// the FIRST relay's EOSE-no-match. The slowest relay then delivered the
+    /// matching EVENT — it was stored in `self.events`, but the claim row was
+    /// already gone, so the `claimed_events` projection (which walks
+    /// `event_claims.keys()`) never surfaced it: the embed rendered "loading"
+    /// forever.
+    ///
+    /// This drives the EXACT production ordering through `handle_text`:
+    ///   relay_a EOSE-no-match  →  relay_b EVENT  →  assert projection present.
+    ///
+    /// Distinct from `event_claim_tests::claimed_events_projection_emits_dto_keyed_by_primary_id`,
+    /// which ingests via the `inject_note` bypass and never exercises the
+    /// EOSE-no-match teardown that precedes the EVENT — so it cannot catch this
+    /// race.
+    ///
+    /// The author is deliberately NOT in `timeline_authors`; the claim-allow
+    /// clause in `should_store_event` (`claim_expansion_match_author`) is the
+    /// only reason the EVENT stores at all.
+    #[test]
+    fn claimed_kind1_surfaces_when_event_arrives_after_sibling_eose_no_match() {
+        use super::super::test_support;
+        use crate::nip19::{encode_nevent, NeventData};
+        use crate::subs::WireFrame;
+
+        test_support::clear_claim_expansion_subs();
+
+        let relay_a = "wss://sibling-eose.relay"; // EOSEs first, has nothing
+        let relay_b = "wss://has-event.relay"; // delivers the EVENT, slower
+        let shared_sub_id = "sub-shared-race-0001";
+
+        let keys = ::nostr::Keys::generate();
+        let event = signed_note(
+            &keys,
+            "kind:1 note resolved after sibling EOSE",
+            1_700_000_000,
+        );
+        let author_hex = event.pubkey.clone();
+        let primary_id = event.id.clone();
+
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+        // Claim the event through the production `claim_event` primitive: this
+        // both refcounts `event_claims[primary_id]` (the key the projection
+        // walks) AND registers the `PendingClaim` controller state. The URI
+        // carries the author TLV so the claim sub seeds
+        // `claim_expansion_match_author` — the `should_store_event` clause that
+        // lets the matching EVENT store even though the author is NOT in
+        // `timeline_authors`.
+        let bech = encode_nevent(&NeventData {
+            event_id: primary_id.clone(),
+            relays: vec![relay_a.to_string(), relay_b.to_string()],
+            author: Some(author_hex.clone()),
+            kind: Some(1),
+        })
+        .expect("encode_nevent");
+        let _ = kernel.claim_event(format!("nostr:{bech}"), "view-0".to_string(), true);
+
+        let interest_id = kernel
+            .test_claim_interest_id(&primary_id)
+            .expect("claim_event must register a pending claim with an interest_id");
+
+        // Both relays share the SAME sub_id (same filter shape → same hash).
+        let frames = vec![
+            WireFrame::Req {
+                relay_url: relay_a.to_string(),
+                sub_id: shared_sub_id.to_string(),
+                filter_json: r#"{"ids":["test"],"limit":1}"#.to_string(),
+                interest_id: interest_id.clone(),
+                lifecycle: crate::planner::InterestLifecycle::OneShot,
+            },
+            WireFrame::Req {
+                relay_url: relay_b.to_string(),
+                sub_id: shared_sub_id.to_string(),
+                filter_json: r#"{"ids":["test"],"limit":1}"#.to_string(),
+                interest_id,
+                lifecycle: crate::planner::InterestLifecycle::OneShot,
+            },
+        ];
+        kernel.register_wire_frames_for_test(&frames);
+
+        // Pre-arrival: the claim row exists but the event has not arrived, so
+        // the projection must not surface it yet.
+        let snap = kernel.make_update_value_for_test(true);
+        assert!(
+            snap["projections"]["claimed_events"][&primary_id].is_null(),
+            "claim row exists but the event has not arrived yet"
+        );
+
+        // RACE TRIGGER: relay_a EOSEs WITHOUT the event, through the production
+        // EOSE ingest path. This must NOT release the claim — relay_b's EVENT
+        // is still in flight.
+        kernel.handle_text(RelayRole::Indexer, relay_a, &eose_frame(shared_sub_id));
+        assert_eq!(
+            kernel.event_claims_len_for_test(&primary_id),
+            1,
+            "a single relay's EOSE-no-match must NOT release the claim (race guard)"
+        );
+
+        // The matching EVENT now arrives from the slower relay_b, through the
+        // production EVENT ingest path.
+        kernel.handle_text(
+            RelayRole::Indexer,
+            relay_b,
+            &event_frame(shared_sub_id, &event),
+        );
+
+        // The claimed kind:1 event MUST now surface in the projection.
+        let snap = kernel.make_update_value_for_test(true);
+        let entry = &snap["projections"]["claimed_events"][&primary_id];
+        assert!(
+            entry.is_object(),
+            "claimed kind:1 event must surface in claimed_events even when it \
+             arrives after a sibling relay's EOSE-no-match — got {entry:?}"
+        );
+        assert_eq!(entry["primary_id"], primary_id);
+        assert_eq!(entry["kind"], 1);
+
+        test_support::clear_claim_expansion_subs();
+    }
+
     // ── Helper: event_id for setup_kernel_with_wired_claim ──────────────────
     // (The inner setup function uses a keys-generated event; this just provides
     // a placeholder for the T-P2 phase assertion that doesn't need the actual id.)
