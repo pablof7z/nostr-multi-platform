@@ -1400,10 +1400,12 @@ with events, (2) boots the kernel with no relay URLs configured, (3) asserts
 
 **RESOLVED (2026-05-30):** All 6 tests implemented and passing in PR
 `test/v104-e2e-full-pipeline`. `#[ignore]` removed from all six.
-`negentropy_skips_redundant_req` (the load-bearing D2 regression) exercises the
-`PlanCoverageHook` seam directly — install a hook that drops the compiled plan,
-assert zero REQs; de-activate hook, assert REQ appears. All 6/6 live tests pass:
-`cargo test -p nmp-testing --test e2e_full_pipeline` + doctrine_lint_smoke green.
+`negentropy_skips_redundant_req` exercises the shipping T129 watermark→`since`
+rewrite path (`SubscriptionLifecycle::set_watermark_fn`): warm store (watermark=1700)
+→ REQ filter carries `"since":1701`; cold store (watermark=None) → no `since` field.
+This is the real coverage narrowing mechanism that shipped after nmp-nip77 deletion.
+All 6/6 live tests pass: `cargo test -p nmp-testing --test e2e_full_pipeline` +
+doctrine_lint_smoke green.
 
 ### V-105 · Test infra: `wait_for_snapshot_predicate` uses untyped substring scanning [LOW · test hygiene · issue #630]
 

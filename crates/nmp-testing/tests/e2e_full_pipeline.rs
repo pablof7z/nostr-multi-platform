@@ -362,33 +362,54 @@ fn publish_roundtrip_via_outbox() {
 // Test 4 — negentropy_skips_redundant_req
 // ---------------------------------------------------------------------------
 //
-// Scenario:
-//   1. Build a SubscriptionLifecycle.
-//   2. Install a PlanCoverageHook that drops the compiled plan entirely
-//      (simulating full coverage: negentropy confirmed all events are already
-//      present locally).
-//   3. Compile: assert zero REQ frames are emitted (plan was dropped by hook).
-//   4. A second compile with the hook de-activated emits the REQ — confirms
-//      the hook is the suppressor, not a stale plan.
+// Scenario — watermark `since`-rewrite (T129 / the surviving coverage gate):
+//   1. Build a SubscriptionLifecycle with a WatermarkFn that reports the
+//      local store has events up to ts=1700 for alice's kind:1.
+//   2. Open a tailing interest for alice (no explicit `since`).
+//   3. Compile: assert the emitted REQ carries `"since":1701`
+//      (watermark + 1 — the relay is told to skip events already on disk).
+//   4. No WatermarkFn installed (cold start / empty store): assert no `since`
+//      in the filter (relay sends everything).
 //
-// D2 doctrine: "negentropy reconciliation before REQ subscriptions".  The
-// PlanCoverageHook seam (subs/coverage_hook_tests.rs §2) is the exact
-// mechanism designed for this: the hook runs after compile() but before
-// plan_diff(), so it can drop sub-shapes for already-covered (relay, filter)
-// pairs.  This test drives the seam in the canonical "fully covered" scenario.
+// Design note: `nmp-nip77` (NIP-77 negentropy full-sync) was deleted (no
+// shipping callers); the surviving mechanism that "skips redundant fetches"
+// is the T129 watermark-to-`since` rewrite in `SubscriptionLifecycle`.  This
+// rewrite is the shipping D2-adjacent coverage gate: instead of suppressing
+// the REQ entirely, it narrows it so the relay sends only NEW events.  The
+// rewrite is driven by a `WatermarkFn` installed at kernel construction time
+// (production: `EventStore::query_visit` newest-created_at lookup; tests:
+// any `Arc<dyn Fn(&InterestShape) -> Option<u64>>`).
+//
+// D2 doctrine note: a complete negentropy-driven REQ suppression path would
+// require a shipping coverage hook (`PlanCoverageHook`) that derives its
+// decision from real store state.  The production kernel currently does NOT
+// install such a hook (see `TODO(D2)` in `subs/mod.rs`).  The correct `#[ignore]`
+// for that missing piece lives in `coverage_hook_tests.rs::d2_coverage_hook_slot_round_trips`.
+// This test pins the working, shipping coverage narrowing mechanism instead.
 #[test]
 fn negentropy_skips_redundant_req() {
     use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
         InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{SubscriptionLifecycle, WireFrame};
     use std::collections::BTreeSet;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
     fn pubkey(seed: &str) -> String {
         format!("{seed:0>64}").chars().take(64).collect()
     }
+    fn req_filters(frames: &[WireFrame]) -> Vec<String> {
+        frames
+            .iter()
+            .filter_map(|f| {
+                if let WireFrame::Req { filter_json, .. } = f {
+                    Some(filter_json.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 
-    let mut lc = SubscriptionLifecycle::new();
     let mut mailboxes = InMemoryMailboxCache::new();
     mailboxes.put(
         pubkey("alice"),
@@ -399,7 +420,7 @@ fn negentropy_skips_redundant_req() {
         },
     );
 
-    lc.registry_mut().push(LogicalInterest {
+    let alice_interest = LogicalInterest {
         id: InterestId(1),
         scope: InterestScope::Global,
         shape: InterestShape {
@@ -410,43 +431,49 @@ fn negentropy_skips_redundant_req() {
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
         is_indexer_discovery: false,
-    });
+    };
 
-    // Install a coverage hook that fully drops the compiled plan (D2 seam).
-    // This models the production negentropy gate: "we already have everything —
-    // no REQ needed for this relay/filter pair."
-    let hook_active = Arc::new(Mutex::new(true));
-    let hook_active_for_hook = Arc::clone(&hook_active);
-    lc.set_coverage_hook(Arc::new(move |plan| {
-        if *hook_active_for_hook.lock().unwrap() {
-            plan.per_relay.clear();
-        }
-    }));
-
-    // Compile with the hook active: the plan is cleared, so zero REQs.
-    let frames_covered = lc.recompile_and_diff(&mailboxes).expect("compile (covered)");
-    let req_count_covered = frames_covered
-        .iter()
-        .filter(|f| matches!(f, WireFrame::Req { .. }))
-        .count();
-    assert_eq!(
-        req_count_covered, 0,
-        "negentropy-covered compile must emit zero REQs (PlanCoverageHook drops plan); \
-         got {req_count_covered}"
-    );
-
-    // De-activate the hook and recompile. This time the plan flows through
-    // and the relay must receive a REQ — proving the hook was the suppressor.
-    *hook_active.lock().unwrap() = false;
-    let frames_uncovered = lc.recompile_and_diff(&mailboxes).expect("compile (uncovered)");
-    let req_count_uncovered = frames_uncovered
-        .iter()
-        .filter(|f| matches!(f, WireFrame::Req { .. }))
-        .count();
+    // ── Case 1: WatermarkFn reports local store has events up to ts=1700 ────
+    // The relay REQ must carry `"since":1701` — skipping already-cached events.
+    let mut lc_warm = SubscriptionLifecycle::new();
+    lc_warm.set_watermark_fn(Arc::new(|_shape| Some(1700)));
+    lc_warm.registry_mut().push(alice_interest.clone());
+    let frames_warm = lc_warm
+        .recompile_and_diff(&mailboxes)
+        .expect("warm compile");
+    let filters_warm = req_filters(&frames_warm);
     assert!(
-        req_count_uncovered >= 1,
-        "without coverage gate the relay must receive at least one REQ; got {req_count_uncovered}"
+        !filters_warm.is_empty(),
+        "warm-store compile must still emit a REQ (narrowed, not suppressed)"
     );
+    for filter in &filters_warm {
+        assert!(
+            filter.contains("\"since\":1701"),
+            "REQ filter must carry since=watermark+1 to skip already-cached events; \
+             got filter: {filter}"
+        );
+    }
+
+    // ── Case 2: No WatermarkFn / cold start → relay sends everything ─────────
+    // Without a watermark the REQ must have NO `since` field (full fetch).
+    let mut lc_cold = SubscriptionLifecycle::new();
+    lc_cold.set_watermark_fn(Arc::new(|_shape| None));
+    lc_cold.registry_mut().push(alice_interest);
+    let frames_cold = lc_cold
+        .recompile_and_diff(&mailboxes)
+        .expect("cold compile");
+    let filters_cold = req_filters(&frames_cold);
+    assert!(
+        !filters_cold.is_empty(),
+        "cold-start compile must emit a REQ"
+    );
+    for filter in &filters_cold {
+        assert!(
+            !filter.contains("\"since\""),
+            "cold-start REQ must have no since field (relay sends everything); \
+             got filter: {filter}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -620,10 +647,22 @@ fn monotonic_rev_under_concurrent_dispatch() {
         }
     }
 
-    // Must have received at least one snapshot.
+    // Must have observed at least 2 snapshots so the windows(2) check is
+    // meaningful (a single snapshot cannot demonstrate monotonic progression).
     assert!(
-        !revs.is_empty(),
-        "actor must emit at least one snapshot during the concurrent-dispatch burst"
+        revs.len() >= 2,
+        "actor must emit at least 2 snapshots during the 20-command burst \
+         so the monotonic check is non-vacuous; got {} snapshots",
+        revs.len()
+    );
+
+    // The final rev must strictly exceed the first — confirms the actor
+    // actually processed commands and bumped the revision counter.
+    assert!(
+        revs.last() > revs.first(),
+        "rev must advance over the burst: first={:?}, last={:?}",
+        revs.first(),
+        revs.last()
     );
 
     // Every successive snapshot's rev must be >= the previous (monotonic).
