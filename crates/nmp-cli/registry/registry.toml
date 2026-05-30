@@ -283,6 +283,16 @@ role = "source"
 source = "compose/content-view/NostrContentGrouping.kt"
 target = "Components/NostrContent/NostrContentGrouping.kt"
 role = "source"
+[[components]]
+id = "compose/content-kind-30023"
+version = "0.1.0"
+target = "compose"
+description = "Long-form article (NIP-23, kind:30023) embed renderer — hero image, title, summary, author byline."
+dependencies = ["compose/content-core"]
+[[components.files]]
+source = "compose/content-kind-30023/NostrArticleCard.kt"
+target = "Components/NostrContent/NostrArticleCard.kt"
+role = "source"
 # -----------------------------------------------------------------------------
 # Ratatui content widgets. These consume the Rust-owned ContentTreeWire
 # projection and stay render-only: host apps own navigation, image protocol
