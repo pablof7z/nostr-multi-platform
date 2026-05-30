@@ -15,15 +15,39 @@ use nmp_content::embed_projection::EmbeddedEventEnvelope;
 
 use super::embed_chrome_container::EmbedChromeContainer;
 use super::NostrKindRegistry;
+use super::super::nostr_mention_chip::NostrMentionProfileHost;
 
 pub struct EmbeddedEvent<'a> {
     pub envelope: &'a EmbeddedEventEnvelope,
     pub registry: &'a NostrKindRegistry,
+    /// Presentation-owned profile host the byline renderer claims through
+    /// (component-owned kind:0, iOS #833). Threaded from the content view's
+    /// own `profile_host`; `None` for preview-only callers, which fall back to
+    /// `npub_short`. The chosen kind renderer issues the claim itself.
+    author_host: Option<&'a dyn NostrMentionProfileHost>,
+    consumer_id: Option<&'a str>,
 }
 
 impl<'a> EmbeddedEvent<'a> {
     pub fn new(envelope: &'a EmbeddedEventEnvelope, registry: &'a NostrKindRegistry) -> Self {
-        Self { envelope, registry }
+        Self {
+            envelope,
+            registry,
+            author_host: None,
+            consumer_id: None,
+        }
+    }
+
+    /// Wire the presentation-owned profile host + consumer id so the byline
+    /// renderer can claim the author's kind:0 and read the live-resolved name.
+    pub fn author_host(
+        mut self,
+        host: Option<&'a dyn NostrMentionProfileHost>,
+        consumer_id: Option<&'a str>,
+    ) -> Self {
+        self.author_host = host;
+        self.consumer_id = consumer_id;
+        self
     }
 
     pub fn preferred_height(&self, width: u16) -> u16 {
@@ -70,6 +94,14 @@ impl Widget for EmbeddedEvent<'_> {
         // for any recursive rendering the kind renderer may do.
         let ctx: nmp_content::context::RenderContext = (&self.envelope.render_context).into();
 
-        renderer.render(&self.envelope.projection, &ctx, self.registry, inner, buf);
+        renderer.render(
+            &self.envelope.projection,
+            &ctx,
+            self.registry,
+            self.author_host,
+            self.consumer_id,
+            inner,
+            buf,
+        );
     }
 }
