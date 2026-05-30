@@ -575,14 +575,17 @@ pub(crate) fn fetch_bolt11_for_zap(
     if let Some(c) = comment {
         builder = builder.comment(c);
     }
-    let pubkey_hex = keys.public_key().to_hex();
-    let created_at = SystemTime::now()
+    let mut unsigned = builder
+        .build()
+        .map_err(|e| format!("build kind:9734: {e}"))?;
+    // D7 — this standalone path owns the wall clock directly (no actor context).
+    // Re-stamp `created_at` the same way `FetchLnurlInvoiceCommand::run` does
+    // for the actor path. `pubkey` is re-derived from `keys` inside
+    // `sign_zap_request` via `EventBuilder::sign_with_keys`.
+    unsigned.created_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let unsigned = builder
-        .build(pubkey_hex, created_at)
-        .map_err(|e| format!("build kind:9734: {e}"))?;
     let signed_json = sign_zap_request(keys, &unsigned)?;
     fetch_lnurl_invoice_blocking(lnurl_or_address, amount_msats, &signed_json)
 }
