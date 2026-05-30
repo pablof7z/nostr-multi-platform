@@ -1,11 +1,12 @@
-export type Platform = "swiftui" | "compose" | "tui" | "web";
+export type Platform = "swiftui" | "compose" | "tui" | "desktop" | "web";
 
-export const PLATFORM_ORDER: Platform[] = ["swiftui", "compose", "tui", "web"];
+export const PLATFORM_ORDER: Platform[] = ["swiftui", "compose", "tui", "desktop", "web"];
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
   swiftui: "SwiftUI",
   compose: "Compose",
   tui: "TUI",
+  desktop: "Desktop",
   web: "Web",
 };
 
