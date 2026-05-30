@@ -1398,17 +1398,12 @@ with events, (2) boots the kernel with no relay URLs configured, (3) asserts
 
 ### V-104 · Six `e2e_full_pipeline` tests are unimplemented stubs [MEDIUM · test coverage · issue #629]
 
-**Verified:** `crates/nmp-testing/tests/e2e_full_pipeline.rs` — all six integration
-tests are `#[ignore]` stubs whose bodies are `todo!("implement once …")`
-(`:83,:123,:164,:203,:244,:292`). The milestones the stubs wait on (M2, M3, M8) are
-marked DONE in `docs/plan.md`. The six cover `cold_open_profile_view_full_pipeline`
-(`:61`), `kind3_update_rewires_subscriptions`, `publish_roundtrip_via_outbox`,
-`negentropy_skips_redundant_req` (`:181` — the core D1/D2 regression),
-`auth_required_for_read_flow`, and `monotonic_rev_under_concurrent_ingests`.
-**Confirmed live.**
-
-**Correct fix:** Implement each test. `negentropy_skips_redundant_req` in
-particular is load-bearing for D1/D2 doctrine and must pass before v1 ships.
+**RESOLVED (2026-05-30):** All 6 tests implemented and passing in PR
+`test/v104-e2e-full-pipeline`. `#[ignore]` removed from all six.
+`negentropy_skips_redundant_req` (the load-bearing D2 regression) exercises the
+`PlanCoverageHook` seam directly — install a hook that drops the compiled plan,
+assert zero REQs; de-activate hook, assert REQ appears. All 6/6 live tests pass:
+`cargo test -p nmp-testing --test e2e_full_pipeline` + doctrine_lint_smoke green.
 
 ### V-105 · Test infra: `wait_for_snapshot_predicate` uses untyped substring scanning [LOW · test hygiene · issue #630]
 

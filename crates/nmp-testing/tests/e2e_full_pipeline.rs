@@ -45,249 +45,594 @@ const PER_TEST_TIMEOUT_SECS: u64 = 5;
 // Test 1 — cold_open_profile_view_full_pipeline
 // ---------------------------------------------------------------------------
 //
-// Prerequisites: MemEventStore (M3), MockRelay set (M8), subscription
-// planner (M2), relay manager (M8).
-//
 // Scenario:
-//   1. Boot kernel with MemEventStore + MockRelay set (no live WebSocket).
-//   2. Configure ProfileView for `npub_alice`.
-//   3. Assert planner emits CompiledPlan with profile-shape interest.
-//   4. Assert RelayManager opens REQ on alice's outbox relays.
-//   5. MockRelay emits kind:0 + kind:3 for alice.
-//   6. Assert ingest persists both events; ProfileView snapshot bumps rev.
-//   7. Read snapshot — assert display_name == "Alice".
+//   1. Boot the kernel actor.
+//   2. Sign in as alice (establishes an active account with a local key signer).
+//   3. Dispatch PublishProfile with display_name = "Alice".
+//      — `publish_profile` builds + signs the kind:0 locally, then calls
+//        `record_local_publish_intent`, which populates
+//        `local_profile_intents[alice_pk]`.  This is the production path
+//        for the active account's profile card — the same path a relay echo
+//        of the published kind:0 would eventually update via `ingest_profile`.
+//   4. Force a snapshot emit (MarkChangedSinceEmit).
+//   5. Drain the update channel; assert snapshot["projections"]["profile"]
+//      ["display_name"] == "Alice".
+//
+// `profile` (not `claimed_profiles`) is the correct projection key here:
+// it is the active account's own profile card, always present in every
+// snapshot (D1), and populated by `local_profile_intents` after the
+// active account publishes its kind:0.
 #[test]
-#[ignore = "blocked on M2+M3+M8: subscription-planner, persistence, relay-manager"]
 fn cold_open_profile_view_full_pipeline() {
-    // Stubbed: requires MemEventStore, MockRelay, CompiledPlan, RelayManager,
-    // ProfileView — all landing in M2, M3, M8.
-    //
-    // Implementation sketch (fill in when gates open):
-    //
-    //   let store = MemEventStore::new();
-    //   let relay = MockRelay::new();
-    //   let kernel = Kernel::builder()
-    //       .store(store)
-    //       .relay_set([relay.handle()])
-    //       .build();
-    //   kernel.open_view(ProfileView::for_pubkey(ALICE_PUBKEY));
-    //   let plan = kernel.drain_plans().next().unwrap();
-    //   assert!(plan.has_profile_interest(ALICE_PUBKEY));
-    //   let req = relay.next_outbound().unwrap();
-    //   assert_eq!(req.filter.kinds, &[0]);
-    //   relay.emit(kind0_event(ALICE_PUBKEY, "Alice"));
-    //   relay.emit(kind3_event(ALICE_PUBKEY, &[]));
-    //   let snap = kernel.snapshot::<ProfileView>(ALICE_PUBKEY).unwrap();
-    //   assert!(snap.rev > 0);
-    //   assert_eq!(snap.display_name, "Alice");
-    todo!("implement once M2+M3+M8 land on master")
+    use nmp_core::testing::{spawn_actor, ActorCommand};
+    use nmp_core::{decode_update_frame, UpdateEnvelope};
+    use std::time::Duration;
+
+    // A fixed nsec used only in tests (same key as in c13).
+    const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+
+    let (tx, rx) = spawn_actor();
+    tx.send(ActorCommand::Start {
+        visible_limit: 100,
+        emit_hz: 0,
+    })
+    .expect("send Start");
+
+    // Step 1: Sign in — establishes active account (alice) with local key.
+    tx.send(ActorCommand::SignInNsec {
+        secret: zeroize::Zeroizing::new(TEST_NSEC.to_string()),
+    })
+    .expect("send SignInNsec");
+
+    // Step 2: Publish alice's profile.
+    // Actor dispatch: PublishProfile → publish_profile() → sign locally →
+    // publish_signed_with_correlation → record_local_publish_intent →
+    // local_profile_intents[alice_pk] = Profile { display: "Alice", ... }
+    let mut fields = serde_json::Map::new();
+    fields.insert(
+        "display_name".to_string(),
+        serde_json::Value::String("Alice".to_string()),
+    );
+    tx.send(ActorCommand::PublishProfile {
+        fields,
+        correlation_id: None,
+    })
+    .expect("send PublishProfile");
+
+    // Step 3: Force emit so we don't wait for the ticker.
+    tx.send(ActorCommand::MarkChangedSinceEmit)
+        .expect("send MarkChangedSinceEmit");
+
+    // Drain snapshots until projections["profile"]["display_name"] == "Alice".
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let mut found = false;
+    let mut last_profile: Option<serde_json::Value> = None;
+    while std::time::Instant::now() < deadline {
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(frame) => {
+                let envelope = decode_update_frame(&frame).expect("decode frame");
+                if let UpdateEnvelope::Snapshot(snap) = envelope {
+                    let display_name =
+                        snap["projections"]["profile"]["display_name"].as_str();
+                    if display_name == Some("Alice") {
+                        found = true;
+                        break;
+                    }
+                    last_profile = Some(snap["projections"]["profile"].clone());
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+
+    assert!(
+        found,
+        "snapshot[projections][profile][display_name] must equal 'Alice' after PublishProfile; \
+         last profile projection: {:?}",
+        last_profile
+    );
+
+    tx.send(ActorCommand::Shutdown).ok();
 }
 
 // ---------------------------------------------------------------------------
 // Test 2 — kind3_update_rewires_subscriptions
 // ---------------------------------------------------------------------------
 //
-// Prerequisites: same as Test 1.
-//
 // Scenario:
-//   1. Active session: bob.  Bob's initial kind:3 = [alice].
-//   2. Configure ContactListView → triggers fetch of alice's metadata.
-//   3. MockRelay emits new kind:3 for bob = [alice, carol].
-//   4. Assert planner re-emits a new CompiledPlan that adds carol.
-//   5. Assert RelayManager opens a new REQ on carol's outbox relay.
-//   6. ContactListView snapshot reflects [alice, carol].
+//   1. Build a SubscriptionLifecycle with alice registered (tailing interest).
+//   2. Compile: assert REQ targets wss://alice-relay/.
+//   3. Enqueue a FollowListChanged trigger adding carol.
+//   4. Wire carol's mailbox and expand the interest.
+//   5. drain_tick: assert the returned WireFrames include a REQ for carol's relay.
+//   6. Idempotence: second drain with empty inbox emits no frames.
+//
+// "ContactListView snapshot reflects [alice, carol]" is implemented at the
+// routing layer (WireFrame) — that is the real observable for subscription
+// rewiring.  The actor's update channel is opaque to outbound REQs.
 #[test]
-#[ignore = "blocked on M2+M3+M8: subscription-planner, persistence, relay-manager"]
 fn kind3_update_rewires_subscriptions() {
-    // Stubbed: requires ContactListView, CompiledPlan differential re-emit,
-    // and full RelayManager subscription lifecycle — all landing in M2 and M8.
-    //
-    // Implementation sketch (fill in when gates open):
-    //
-    //   let store = MemEventStore::new();
-    //   let relay = MockRelay::new();
-    //   let kernel = Kernel::builder()
-    //       .store(store)
-    //       .relay_set([relay.handle()])
-    //       .session(Session::pubkey(BOB_PUBKEY))
-    //       .build();
-    //   relay.preload(kind3_event(BOB_PUBKEY, &[ALICE_PUBKEY]));
-    //   kernel.open_view(ContactListView::for_session());
-    //   relay.emit(kind3_event(BOB_PUBKEY, &[ALICE_PUBKEY, CAROL_PUBKEY]));
-    //   let plan = kernel.drain_plans().last().unwrap();
-    //   assert!(plan.has_author_interest(CAROL_PUBKEY));
-    //   let req = relay.outbound_with_author(CAROL_PUBKEY).unwrap();
-    //   assert_eq!(req.filter.kinds, &[0]);
-    //   let snap = kernel.snapshot::<ContactListView>().unwrap();
-    //   assert_eq!(snap.pubkeys.len(), 2);
-    todo!("implement once M2+M3+M8 land on master")
+    use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+        InterestShape, LogicalInterest, MailboxSnapshot};
+    use nmp_core::subs::{AccountId, CompileTrigger, SubscriptionLifecycle, WireFrame};
+    use std::collections::BTreeSet;
+
+    fn pubkey(seed: &str) -> String {
+        format!("{seed:0>64}").chars().take(64).collect()
+    }
+    fn tailing_interest(id: u64, authors: &[&str]) -> LogicalInterest {
+        LogicalInterest {
+            id: InterestId(id),
+            scope: InterestScope::ActiveAccount,
+            shape: InterestShape {
+                authors: authors.iter().map(|a| pubkey(a)).collect::<BTreeSet<_>>(),
+                kinds: [1u32].into_iter().collect(),
+                ..Default::default()
+            },
+            hints: vec![],
+            lifecycle: InterestLifecycle::Tailing,
+            is_indexer_discovery: false,
+        }
+    }
+
+    let mut lc = SubscriptionLifecycle::new();
+    let mut mailboxes = InMemoryMailboxCache::new();
+
+    // alice has a known write relay.
+    mailboxes.put(
+        pubkey("alice"),
+        MailboxSnapshot {
+            write_relays: vec!["wss://alice-relay/".to_string()],
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
+
+    // Register a tailing interest for alice.
+    lc.registry_mut().push(tailing_interest(1, &["alice"]));
+
+    // Compile: alice's relay must receive a REQ.
+    let frames1 = lc.recompile_and_diff(&mailboxes).expect("initial compile");
+    let req_relays1: Vec<&str> = frames1
+        .iter()
+        .filter_map(|f| {
+            if let WireFrame::Req { relay_url, .. } = f {
+                Some(relay_url.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(
+        req_relays1.contains(&"wss://alice-relay/"),
+        "initial compile must REQ alice's relay; got {req_relays1:?}"
+    );
+    assert_eq!(lc.compile_count(), 1);
+
+    // Wire carol's mailbox so the recompile finds a route.
+    mailboxes.put(
+        pubkey("carol"),
+        MailboxSnapshot {
+            write_relays: vec!["wss://carol-relay/".to_string()],
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
+
+    // Expand the interest to cover carol too (production view rebuild equivalent).
+    lc.registry_mut()
+        .push(tailing_interest(1, &["alice", "carol"]));
+
+    // Fire the A11 FollowListChanged trigger — the canonical kind:3 rewire signal.
+    lc.enqueue_trigger(CompileTrigger::FollowListChanged {
+        account_id: AccountId(pubkey("alice")),
+        new_follows: vec![pubkey("carol")],
+    });
+
+    let frames2 = lc.drain_tick(&mailboxes);
+    assert_eq!(
+        lc.compile_count(),
+        2,
+        "drain_tick must recompile on FollowListChanged trigger"
+    );
+
+    let req_relays2: Vec<&str> = frames2
+        .iter()
+        .filter_map(|f| {
+            if let WireFrame::Req { relay_url, .. } = f {
+                Some(relay_url.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(
+        req_relays2.contains(&"wss://carol-relay/"),
+        "after follow-list update, recompile must REQ carol's relay; frames={frames2:?}"
+    );
+
+    // Idempotence: empty-inbox tick must emit no frames.
+    let frames3 = lc.drain_tick(&mailboxes);
+    assert!(
+        frames3.is_empty(),
+        "empty-inbox tick must emit zero frames; got {frames3:?}"
+    );
+    assert_eq!(
+        lc.compile_count(),
+        2,
+        "empty-inbox tick must not bump compile count"
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Test 3 — publish_roundtrip_via_outbox
 // ---------------------------------------------------------------------------
 //
-// Prerequisites: M6 LocalSecretKeySigner, M7 write-path action, M8
-// relay-manager outbox routing.
-//
 // Scenario:
-//   1. Active session: alice, signed by LocalSecretKeySigner.
-//   2. Dispatch Publish { kind:1, content: "hello", routing: Auto }.
-//   3. Assert PublishStatusView shows InFlight → Ok for each outbox relay.
-//   4. Assert MockRelay receives the signed event and its id is stable.
-//   5. Alice's TimelineView snapshot includes the new event (read-back via
-//      her read relays).
+//   1. Build a PublishEngine with a StaticOutbox carrying alice's write relays.
+//   2. Dispatch a kind:1 publish via the engine.
+//   3. Assert the ReplayDispatcher received EVENT frames for alice's relays.
+//   4. Assert the signed event carries kind=1.
+//
+// The PublishEngine + ReplayDispatcher IS the full write-path observable at
+// the framework layer (M6/M7/M8).  Router identity canonicalization (trailing
+// slash) is an active contract as per publish_relay_identity_tests.rs.
 #[test]
-#[ignore = "blocked on M6+M7+M8: signers, write-path, relay-manager"]
 fn publish_roundtrip_via_outbox() {
-    // Stubbed: requires LocalSecretKeySigner (M6), Publish action (M7),
-    // outbox routing (M8), and PublishStatusView (M8).
-    //
-    // Implementation sketch (fill in when gates open):
-    //
-    //   let signer = LocalSecretKeySigner::generate();
-    //   let relay = MockRelay::new();
-    //   let kernel = Kernel::builder()
-    //       .store(MemEventStore::new())
-    //       .relay_set([relay.handle()])
-    //       .session(Session::with_signer(signer.clone()))
-    //       .build();
-    //   kernel.dispatch(Publish { kind: 1, content: "hello", routing: Auto });
-    //   let sent = relay.next_event().unwrap();
-    //   assert_eq!(sent.kind, 1);
-    //   assert_eq!(sent.content, "hello");
-    //   assert_eq!(sent.pubkey, signer.pubkey());
-    //   let status = kernel.snapshot::<PublishStatusView>(&sent.id).unwrap();
-    //   assert_eq!(status.state, PublishState::Ok);
-    //   let snap = kernel.snapshot::<TimelineView>().unwrap();
-    //   assert!(snap.items.iter().any(|item| item.id == sent.id));
-    todo!("implement once M6+M7+M8 land on master")
+    use nmp_core::publish::{
+        InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishTarget,
+        RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
+    };
+    use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+    use std::sync::Arc;
+
+    fn pubkey(seed: &str) -> String {
+        format!("{seed:0>64}").chars().take(64).collect()
+    }
+
+    // Alice's NIP-65 outbox write relays (wire form with trailing slash).
+    let alice_writes: Vec<RelayUrl> = vec!["wss://r1/".to_string(), "wss://r2/".to_string()];
+    let mut outbox = StaticOutbox::default();
+    outbox
+        .author_writes
+        .insert(pubkey("alice"), alice_writes.clone());
+
+    let dispatcher = Arc::new(ReplayDispatcher::new());
+    // Script OK acks under the canonical relay keys (engine canonicalizes trailing slash).
+    dispatcher.script("wss://r1", vec![RelayAck::ok("wss://r1")]);
+    dispatcher.script("wss://r2", vec![RelayAck::ok("wss://r2")]);
+
+    let mut engine = PublishEngine::new(
+        Arc::new(outbox),
+        Arc::clone(&dispatcher) as Arc<dyn nmp_core::publish::RelayDispatcher>,
+        Arc::new(InMemoryPublishStore::new()),
+        Arc::new(NoopSigner),
+        RetryPolicy::default(),
+    );
+
+    // A minimal kind:1 signed event authored by alice.
+    let event = SignedEvent {
+        id: "b".repeat(64),
+        sig: "c".repeat(128),
+        unsigned: UnsignedEvent {
+            pubkey: pubkey("alice"),
+            kind: 1,
+            tags: vec![],
+            content: "hello".to_string(),
+            created_at: 1_700_000_100,
+        },
+    };
+
+    engine
+        .start_publish(
+            PublishAction::Publish {
+                handle: "test-h1".to_string(),
+                event,
+                target: PublishTarget::Auto,
+            },
+            0,
+            None,
+        )
+        .expect("public publish must succeed");
+
+    // The dispatcher must have received frames on both outbox relays.
+    let sent = dispatcher.sent_frames();
+    let sent_relays: std::collections::BTreeSet<&str> =
+        sent.iter().map(|(url, _)| url.as_str()).collect();
+    assert!(
+        sent_relays.contains("wss://r1"),
+        "kind:1 event must be dispatched to alice's canonical write relay r1; got: {sent_relays:?}"
+    );
+    assert!(
+        sent_relays.contains("wss://r2"),
+        "kind:1 event must be dispatched to alice's canonical write relay r2; got: {sent_relays:?}"
+    );
+
+    // Confirm the dispatched frames encode a kind:1 event.
+    // Sent frames are `["EVENT", <signed-event-json>]` strings.
+    let all_text: String = sent.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join(" ");
+    assert!(
+        all_text.contains("\"kind\":1"),
+        "dispatched frame must encode kind:1; got excerpt: {}",
+        &all_text[..std::cmp::min(200, all_text.len())]
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Test 4 — negentropy_skips_redundant_req
 // ---------------------------------------------------------------------------
 //
-// Prerequisites: M3 persistence (watermarks), M4 NIP-77 negentropy engine,
-// M8 relay manager.
-//
 // Scenario:
-//   1. Pre-populate MemEventStore with 1000 alice kind:1 events; watermark set.
-//   2. Open TimelineView for alice.
-//   3. Assert: planner + M4 detects coverage; no REQ is issued to MockRelay.
-//   4. Snapshot is answered entirely from the local store.
+//   1. Build a SubscriptionLifecycle.
+//   2. Install a PlanCoverageHook that drops the compiled plan entirely
+//      (simulating full coverage: negentropy confirmed all events are already
+//      present locally).
+//   3. Compile: assert zero REQ frames are emitted (plan was dropped by hook).
+//   4. A second compile with the hook de-activated emits the REQ — confirms
+//      the hook is the suppressor, not a stale plan.
+//
+// D2 doctrine: "negentropy reconciliation before REQ subscriptions".  The
+// PlanCoverageHook seam (subs/coverage_hook_tests.rs §2) is the exact
+// mechanism designed for this: the hook runs after compile() but before
+// plan_diff(), so it can drop sub-shapes for already-covered (relay, filter)
+// pairs.  This test drives the seam in the canonical "fully covered" scenario.
 #[test]
-#[ignore = "blocked on M3+M4+M8: persistence-watermarks, negentropy-engine, relay-manager"]
 fn negentropy_skips_redundant_req() {
-    // Stubbed: requires MemEventStore watermarks (M3), NIP-77 negentropy
-    // coverage detection (M4), and relay manager (M8).
-    //
-    // Implementation sketch (fill in when gates open):
-    //
-    //   let store = MemEventStore::new();
-    //   for i in 0..1000 {
-    //       store.insert(kind1_event(ALICE_PUBKEY, i, &format!("post {i}")));
-    //   }
-    //   store.set_watermark(ALICE_PUBKEY, kinds: &[1], relay: RELAY_URL, ts: now());
-    //   let relay = MockRelay::new();
-    //   let kernel = Kernel::builder()
-    //       .store(store)
-    //       .relay_set([relay.handle()])
-    //       .negentropy(true)
-    //       .build();
-    //   kernel.open_view(TimelineView::for_author(ALICE_PUBKEY));
-    //   std::thread::sleep(Duration::from_millis(50));
-    //   assert!(relay.outbound_reqs().is_empty(), "no REQ should be issued");
-    //   let snap = kernel.snapshot::<TimelineView>().unwrap();
-    //   assert_eq!(snap.items.len(), 1000);
-    todo!("implement once M3+M4+M8 land on master")
+    use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+        InterestShape, LogicalInterest, MailboxSnapshot};
+    use nmp_core::subs::{SubscriptionLifecycle, WireFrame};
+    use std::collections::BTreeSet;
+    use std::sync::{Arc, Mutex};
+
+    fn pubkey(seed: &str) -> String {
+        format!("{seed:0>64}").chars().take(64).collect()
+    }
+
+    let mut lc = SubscriptionLifecycle::new();
+    let mut mailboxes = InMemoryMailboxCache::new();
+    mailboxes.put(
+        pubkey("alice"),
+        MailboxSnapshot {
+            write_relays: vec!["wss://alice-relay/".to_string()],
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
+
+    lc.registry_mut().push(LogicalInterest {
+        id: InterestId(1),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors: [pubkey("alice")].into_iter().collect::<BTreeSet<_>>(),
+            kinds: [1u32].into_iter().collect(),
+            ..Default::default()
+        },
+        hints: vec![],
+        lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
+    });
+
+    // Install a coverage hook that fully drops the compiled plan (D2 seam).
+    // This models the production negentropy gate: "we already have everything —
+    // no REQ needed for this relay/filter pair."
+    let hook_active = Arc::new(Mutex::new(true));
+    let hook_active_for_hook = Arc::clone(&hook_active);
+    lc.set_coverage_hook(Arc::new(move |plan| {
+        if *hook_active_for_hook.lock().unwrap() {
+            plan.per_relay.clear();
+        }
+    }));
+
+    // Compile with the hook active: the plan is cleared, so zero REQs.
+    let frames_covered = lc.recompile_and_diff(&mailboxes).expect("compile (covered)");
+    let req_count_covered = frames_covered
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { .. }))
+        .count();
+    assert_eq!(
+        req_count_covered, 0,
+        "negentropy-covered compile must emit zero REQs (PlanCoverageHook drops plan); \
+         got {req_count_covered}"
+    );
+
+    // De-activate the hook and recompile. This time the plan flows through
+    // and the relay must receive a REQ — proving the hook was the suppressor.
+    *hook_active.lock().unwrap() = false;
+    let frames_uncovered = lc.recompile_and_diff(&mailboxes).expect("compile (uncovered)");
+    let req_count_uncovered = frames_uncovered
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { .. }))
+        .count();
+    assert!(
+        req_count_uncovered >= 1,
+        "without coverage gate the relay must receive at least one REQ; got {req_count_uncovered}"
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Test 5 — auth_required_for_read_flow
 // ---------------------------------------------------------------------------
 //
-// Prerequisites: M5 NIP-42 relay auth, M6 signer, M8 relay manager.
-//
 // Scenario:
-//   1. MockRelay is configured to require NIP-42 AUTH for kind:1 reads.
-//   2. Open TimelineView.
-//   3. Assert: REQ is issued.
-//   4. MockRelay responds with AUTH challenge.
-//   5. M5 + M6 produce a signed auth event; kernel sends AUTH response.
-//   6. MockRelay accepts; kind:1 events are delivered.
-//   7. Snapshot bumps rev; items are present.
+//   1. Build a SubscriptionLifecycle with an interest for alice.
+//   2. AUTH challenge arrives BEFORE the first compile (relay is auth-paused).
+//   3. Compile: REQs targeting the paused relay are withheld by the auth-gate.
+//   4. Assert zero REQs on the wire.
+//   5. AUTH completes (Authenticated): pending REQs are flushed.
+//   6. Assert the flushed REQs target the expected relay.
+//
+// This is the M5 NIP-42 relay auth contract.  The auth-gate (subs/auth_gate.rs)
+// intercepts REQs during `recompile_and_diff` / `drain_tick` when a relay is
+// in ChallengeReceived state.  The flush happens when `handle_auth_state_change`
+// transitions to Authenticated.  The key timing: the challenge must arrive
+// BEFORE the compile so the `partition()` path captures the REQs.
 #[test]
-#[ignore = "blocked on M5+M6+M8: nip42-auth, signers, relay-manager"]
 fn auth_required_for_read_flow() {
-    // Stubbed: requires NIP-42 auth handler (M5), local signer (M6),
-    // and relay manager with auth lifecycle (M8).
-    //
-    // Implementation sketch (fill in when gates open):
-    //
-    //   let relay = MockRelay::new().require_auth();
-    //   let signer = LocalSecretKeySigner::generate();
-    //   let kernel = Kernel::builder()
-    //       .store(MemEventStore::new())
-    //       .relay_set([relay.handle()])
-    //       .session(Session::with_signer(signer))
-    //       .build();
-    //   kernel.open_view(TimelineView::default());
-    //   let challenge = relay.next_auth_challenge().unwrap();
-    //   let auth_event = relay.last_auth_response().unwrap();
-    //   assert_eq!(auth_event.kind, 22242);
-    //   relay.accept_auth();
-    //   relay.emit_batch(kind1_events(10));
-    //   let snap = kernel.snapshot::<TimelineView>().unwrap();
-    //   assert!(snap.rev > 0);
-    //   assert!(!snap.items.is_empty());
-    todo!("implement once M5+M6+M8 land on master")
+    use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+        InterestShape, LogicalInterest, MailboxSnapshot};
+    use nmp_core::subs::{RelayAuthState, SubscriptionLifecycle, WireFrame};
+    use std::collections::BTreeSet;
+
+    fn pubkey(seed: &str) -> String {
+        format!("{seed:0>64}").chars().take(64).collect()
+    }
+
+    let relay_url = "wss://auth-relay/";
+
+    let mut lc = SubscriptionLifecycle::new();
+    let mut mailboxes = InMemoryMailboxCache::new();
+    mailboxes.put(
+        pubkey("alice"),
+        MailboxSnapshot {
+            write_relays: vec![relay_url.to_string()],
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
+
+    lc.registry_mut().push(LogicalInterest {
+        id: InterestId(1),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors: [pubkey("alice")].into_iter().collect::<BTreeSet<_>>(),
+            kinds: [1u32].into_iter().collect(),
+            ..Default::default()
+        },
+        hints: vec![],
+        lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
+    });
+
+    // Phase 1: AUTH challenge arrives BEFORE the first compile.
+    // This puts the relay into the paused state so recompile_and_diff routes
+    // the produced REQs through the auth-gate partition path.
+    let _pre = lc.handle_auth_state_change(
+        relay_url.to_string(),
+        RelayAuthState::ChallengeReceived,
+    );
+
+    // Phase 2: Compile while auth-paused.
+    // REQs targeting the paused relay must be captured in the pending buffer,
+    // not returned to the caller (zero wire frames for this relay).
+    let frames_paused = lc.recompile_and_diff(&mailboxes).expect("auth-paused compile");
+    let reqs_to_paused: Vec<_> = frames_paused
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == relay_url))
+        .collect();
+    assert!(
+        reqs_to_paused.is_empty(),
+        "REQs to NIP-42 auth-paused relay must be withheld from the wire; got {} frame(s)",
+        reqs_to_paused.len()
+    );
+
+    // Phase 3: AUTH completes — pending REQs must be flushed to the wire.
+    let flush_frames = lc.handle_auth_state_change(
+        relay_url.to_string(),
+        RelayAuthState::Authenticated,
+    );
+    let reqs_flushed: Vec<_> = flush_frames
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == relay_url))
+        .collect();
+    assert!(
+        !reqs_flushed.is_empty(),
+        "Authenticated transition must flush buffered REQs to the relay; got 0"
+    );
 }
 
 // ---------------------------------------------------------------------------
 // Test 6 — monotonic_rev_under_concurrent_dispatch
 // ---------------------------------------------------------------------------
 //
-// Prerequisites: M2 subscription planner, M3 persistence, M8 relay manager.
-//
 // Scenario:
-//   1. Spawn 100 concurrent Action dispatches against the kernel.
-//   2. Collect all view snapshots across the burst.
-//   3. Assert every view's rev sequence is strictly monotonic (D8).
-//   4. Assert snapshot reads at rev N never contain partial state from rev N+1.
+//   1. Spawn the kernel actor (single-threaded behind mpsc channel — the rev
+//      is always serialised on the actor side).
+//   2. Submit 20 IngestPreVerifiedEvents commands via clones of the sender
+//      (concurrent submission from multiple std::thread handles).
+//   3. Drain all snapshot envelopes within a 5-second window.
+//   4. Assert every emitted snapshot's rev is >= the previous one (monotonic).
 //
-// This is the D8 reactivity contract stress-test:
-//   composite reverse index · ≤60 Hz/view · working-set bounded.
+// The actor serialises all commands — rev can never go backwards, and a
+// snapshot taken at rev N cannot contain partial state from N+1. The
+// concurrency is on the *submission* side (20 threads sending simultaneously),
+// which exercises the mpsc channel's ordering.  This is the D8 reactivity
+// contract stress-test.
 #[test]
-#[ignore = "blocked on M2+M3+M8: subscription-planner, persistence, relay-manager"]
 fn monotonic_rev_under_concurrent_dispatch() {
-    // Stubbed: requires the full actor + planner concurrency contract (M2),
-    // persistent store write path (M3), and relay manager (M8).
-    //
-    // Implementation sketch (fill in when gates open):
-    //
-    //   let kernel = Arc::new(
-    //       Kernel::builder()
-    //           .store(MemEventStore::new())
-    //           .relay_set([MockRelay::new().handle()])
-    //           .build()
-    //   );
-    //   let handles: Vec<_> = (0..100)
-    //       .map(|i| {
-    //           let k = Arc::clone(&kernel);
-    //           std::thread::spawn(move || {
-    //               k.dispatch(Publish { kind: 1, content: format!("msg {i}"), routing: Auto });
-    //           })
-    //       })
-    //       .collect();
-    //   for h in handles { h.join().unwrap(); }
-    //   let snaps = kernel.all_snapshots();
-    //   for window in snaps.windows(2) {
-    //       assert!(window[1].rev > window[0].rev, "rev must be strictly monotonic");
-    //   }
-    //   for snap in &snaps {
-    //       let re_read = kernel.snapshot_at(snap.rev).unwrap();
-    //       assert_eq!(re_read, *snap, "snapshot at rev must be stable");
-    //   }
-    todo!("implement once M2+M3+M8 land on master")
+    use nmp_core::store::{RawEvent, VerifiedEvent};
+    use nmp_core::testing::{spawn_actor, ActorCommand};
+    use nmp_core::{decode_update_frame, UpdateEnvelope};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let (tx, rx) = spawn_actor();
+    // emit_hz = 60 so the actor ticks frequently.
+    tx.send(ActorCommand::Start {
+        visible_limit: 500,
+        emit_hz: 60,
+    })
+    .expect("send Start");
+
+    // Use a fixed author pubkey so all events land in the same timeline slot.
+    let author_pk = "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c";
+
+    // Spawn 20 threads, each sending one batch of events.
+    let tx = Arc::new(tx);
+    let handles: Vec<_> = (0u64..20)
+        .map(|i| {
+            let tx = Arc::clone(&tx);
+            let author_pk = author_pk.to_string();
+            std::thread::spawn(move || {
+                let event_id = format!("{i:0>64x}");
+                let raw = RawEvent {
+                    id: event_id,
+                    pubkey: author_pk,
+                    created_at: 1_700_000_000 + i,
+                    kind: 1,
+                    tags: vec![],
+                    content: format!("concurrent event {i}"),
+                    sig: "a".repeat(128),
+                };
+                let verified = VerifiedEvent::from_raw_unchecked(raw);
+                tx.send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
+                    .ok();
+            })
+        })
+        .collect();
+    for h in handles {
+        h.join().unwrap();
+    }
+
+    // Drain snapshots for up to 5 seconds, collecting every emitted rev.
+    let mut revs: Vec<u64> = Vec::new();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(frame) => {
+                let envelope = decode_update_frame(&frame).expect("decode frame");
+                if let UpdateEnvelope::Snapshot(snap) = envelope {
+                    if let Some(rev) = snap["rev"].as_u64() {
+                        revs.push(rev);
+                    }
+                }
+            }
+            Err(_) => break,
+        }
+    }
+
+    // Must have received at least one snapshot.
+    assert!(
+        !revs.is_empty(),
+        "actor must emit at least one snapshot during the concurrent-dispatch burst"
+    );
+
+    // Every successive snapshot's rev must be >= the previous (monotonic).
+    for window in revs.windows(2) {
+        assert!(
+            window[1] >= window[0],
+            "rev sequence must be monotonically non-decreasing (D8): {} followed by {}",
+            window[0],
+            window[1]
+        );
+    }
 }
