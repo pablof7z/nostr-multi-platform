@@ -536,30 +536,6 @@ concern and must not surface on the view payload as a render gate.
 always emit whatever local data is available; move lifecycle state to a
 debug/diagnostics-only channel.
 
-### V-90 · Actor thread blocking during remote-signer operations [HIGH · D8 violation · issues #612 #613]
-
-**ADR-0040 ratified (Accepted 2026-05-31, `docs/decisions/0040-capability-worker-seam.md`).** Off-actor
-architecture — two real in-actor blocking sites: (A) **worker-thread re-entry**
-for one-shot off-actor I/O (Site 1, DM `op.wait`, **shipped** via
-`fix/v90-site1-dm-offactor`); (B) a **serialized capability worker thread**
-(dedicated thread draining a queue via blocking `recv` — never a poll) for
-ordered native capability I/O (Site 2, pending PR). *(Site 3 / V-54 cold-start
-signs were originally bundled here but were found to be a misdiagnosis and
-withdrawn — `create_account` runs with a local key active, so its signs never
-reach `.wait()`; see ADR-0040's corrected site-3 note. V-54 deleted.)*
-
-Remaining D8 violation — **Site 2** (Site 1 shipped):
-
-1. `crates/nmp-ffi/src/capability.rs:56` (`nmp_app_dispatch_capability`), invoked
-   in-actor via `self.dispatch_capability(&req)` at
-   `crates/nmp-ffi/src/lib.rs:1524,1541` [#613] — the registered platform
-   capability callback runs synchronously on the actor thread; iOS Keychain
-   blocks hundreds of ms. Needs serialized capability-worker thread
-   (ADR-0040 §3). Per-op spawn rejected (account-switch forget/persist
-   would race).
-
-**Correct fix:** Serialized capability-worker thread as specified
-in ADR-0040 §3; `ActorCommand::CapabilityResultReady` re-entry with account-id check.
 
 ### V-106 · Actor thread retains a *callable* blocking-sign primitive [LOW · D8-hardening]
 

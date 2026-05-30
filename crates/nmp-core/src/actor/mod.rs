@@ -24,6 +24,8 @@ mod commands;
 // `ActionModule::execute` impl can still name `ActorCommand` without the
 // `native` feature.
 #[cfg(feature = "native")]
+mod capability_worker;
+#[cfg(feature = "native")]
 mod dispatch;
 #[cfg(feature = "native")]
 mod fairness;
@@ -53,6 +55,8 @@ mod session_persistence;
 mod session_persistence_tests;
 #[cfg(all(test, feature = "native"))]
 mod tests;
+#[cfg(all(test, feature = "native"))]
+mod v90_capability_worker_tests;
 #[cfg(all(test, feature = "native"))]
 mod v87_d1_startup_tests;
 #[cfg(feature = "native")]
@@ -172,6 +176,8 @@ pub use commands::ConformanceHarness;
 // `--no-default-features` is set. `ActorCommand` (the enum below) and the
 // observer types remain always-compiled — only the loop that *consumes*
 // them is gated.
+#[cfg(feature = "native")]
+use capability_worker::{spawn_capability_worker, CapabilityWorkSender};
 #[cfg(feature = "native")]
 use dispatch::{dispatch_command, handle_relay_event, ActorContext};
 #[cfg(feature = "native")]
@@ -762,6 +768,31 @@ pub enum ActorCommand {
         /// into the handler for inclusion in the result envelope and into
         /// the `action_stages` terminal verdict.
         correlation_id: String,
+    },
+    /// ADR-0040 §3 — re-entry command from the serialized capability-worker
+    /// thread (V-90 Site 2). The worker runs `dispatch_capability` off the
+    /// actor thread and posts this command with the result; the actor applies
+    /// it inside a normal tick (D4 single-writer invariant).
+    ///
+    /// The `account_id` field carries the originating account so the dispatch
+    /// arm can verify the account still exists before applying — a result for
+    /// a since-removed account is dropped with a D6 trace (never
+    /// cross-applied to the now-active account). The drop is benign for
+    /// writes (persist/forget): a secret that was never stored or is being
+    /// cleaned up leaves no observable damage. The handler emits an error
+    /// toast only when a write *failed* for a still-present account.
+    #[cfg(feature = "native")]
+    CapabilityResultReady {
+        /// Originating account id (the `account_id` field from the keyring
+        /// request). Used solely for the removed-account guard — the handler
+        /// never writes any identity state; writing is the actor's job. D6:
+        /// an account that has since been removed means the write was
+        /// pre-empted by a switch/remove; the result is silently dropped.
+        account_id: String,
+        /// `CapabilityEnvelope` JSON returned by the native handler. The
+        /// dispatch arm decodes it and emits an error toast when `status`
+        /// is not `"ok"` and the account is still present.
+        result_json: String,
     },
     /// Register a `LogicalInterest` into the subscription registry and trigger
     /// a recompile. Idempotent: same `InterestId` replaces the previous entry.
@@ -1551,6 +1582,14 @@ pub fn run_actor_with_observers(
     let mut queued_publish_outbound = Vec::new();
     let mut first_command = Some(first_command);
 
+    // ADR-0040 §3 — spawn the serialized capability-worker thread (V-90 Site 2).
+    // The worker owns the Receiver; the actor holds `capability_work_tx` and
+    // hands borrows of it to `ActorContext` on each dispatch. Dropping
+    // `capability_work_tx` on actor teardown closes the channel and the worker
+    // exits its blocking `recv` loop cleanly (D8).
+    let capability_work_tx =
+        spawn_capability_worker(Arc::clone(&capability_callback), command_tx_self.clone());
+
     loop {
         // ── Priority lane: commands ──────────────────────────────────────
         // Drain a bounded burst of pending commands before touching relay
@@ -1622,6 +1661,7 @@ pub fn run_actor_with_observers(
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,
                         command_tx_self: &command_tx_self,
+                        capability_work_tx: &capability_work_tx,
                         coverage_hook_slot: &coverage_hook,
                         req_frame_interceptor_slot: &req_frame_interceptor,
                         host_op_handler: &host_op_handler,

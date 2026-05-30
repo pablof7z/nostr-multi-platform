@@ -55,6 +55,7 @@ fn pool_frame_to_relay_frame(frame: PoolFrame) -> RelayFrame {
 }
 use crate::subs::PlanCoverageHook;
 
+use super::capability_worker::CapabilityWorkSender;
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
 use super::pending_sign::PendingSign;
 use super::relay_mgmt::{
@@ -234,6 +235,17 @@ pub(super) struct ActorContext<'a> {
     /// A disconnected sender (post-Shutdown) is a benign send-failure on
     /// the worker side; the worker swallows it as a no-op (D6).
     pub(super) command_tx_self: &'a Sender<crate::actor::ActorCommand>,
+    /// ADR-0040 §3 — sender half of the serialized capability-worker queue
+    /// (V-90 Site 2). Identity-mutation dispatch arms enqueue a
+    /// [`super::capability_worker::CapabilityWorkItem`] here instead of
+    /// calling `dispatch_capability` inline; the single dedicated worker
+    /// thread runs the synchronous native callback off the actor thread
+    /// and re-enters via `ActorCommand::CapabilityResultReady`.
+    ///
+    /// D8 — the actor only *sends* to this channel; it never `recv`s.
+    /// A disconnected channel (post-teardown) is a benign send-failure
+    /// (D6 — the write is already irrelevant at that point).
+    pub(super) capability_work_tx: &'a CapabilityWorkSender,
     /// D2 — coverage-gate hook slot. Read by the `Reset` arm to re-install
     /// the hook on the rebuilt kernel (mirrors initial install in
     /// `run_actor_with_observers`).
@@ -432,10 +444,14 @@ pub(super) fn dispatch_command(
             ctx.kernel.set_visible_limit(visible_limit);
             commands::ensure_default_onboarding_relays(ctx.kernel);
             ctx.kernel.start();
+            // ADR-0040 §3: restore_active_session stays synchronous (cold-start
+            // read chain; see session_persistence.rs module doc). The tail
+            // writes (persist_current_active_session) are enqueued off-actor.
             let mut outbound = session_persistence::restore_active_session(
                 ctx.identity,
                 ctx.kernel,
                 ctx.capability_callback,
+                ctx.capability_work_tx,
                 ctx.relays_ready,
             );
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
@@ -531,9 +547,10 @@ pub(super) fn dispatch_command(
             let outbound =
                 commands::sign_in_nsec(ctx.identity, ctx.kernel, secret.as_str(), ctx.relays_ready);
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
-            session_persistence::persist_current_active_session(
+            // ADR-0040 §3 — enqueue the Keychain write off-actor (D8).
+            session_persistence::enqueue_persist_current_active_session(
                 ctx.identity,
-                ctx.capability_callback,
+                ctx.capability_work_tx,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -557,9 +574,10 @@ pub(super) fn dispatch_command(
                 mls,
             );
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
-            session_persistence::persist_current_active_session(
+            // ADR-0040 §3 — enqueue the Keychain write off-actor (D8).
+            session_persistence::enqueue_persist_current_active_session(
                 ctx.identity,
-                ctx.capability_callback,
+                ctx.capability_work_tx,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -568,9 +586,10 @@ pub(super) fn dispatch_command(
             let outbound =
                 commands::switch_active(ctx.identity, ctx.kernel, &identity_id, ctx.relays_ready);
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
-            session_persistence::persist_current_active_session(
+            // ADR-0040 §3 — enqueue the Keychain write off-actor (D8).
+            session_persistence::enqueue_persist_current_active_session(
                 ctx.identity,
-                ctx.capability_callback,
+                ctx.capability_work_tx,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -578,10 +597,14 @@ pub(super) fn dispatch_command(
         ActorCommand::RemoveAccount { identity_id } => {
             let outbound = commands::remove_account(ctx.identity, ctx.kernel, &identity_id);
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
-            session_persistence::forget_account(&identity_id, ctx.capability_callback);
-            session_persistence::persist_current_active_session(
+            // ADR-0040 §3 — enqueue the Keychain forget + active-pointer
+            // persist off-actor (D8). FIFO ordering ensures forget(acct-X)
+            // executes before any subsequent persist for the new active
+            // account — the single worker drains in enqueue order.
+            session_persistence::enqueue_forget_account(&identity_id, ctx.capability_work_tx);
+            session_persistence::enqueue_persist_current_active_session(
                 ctx.identity,
-                ctx.capability_callback,
+                ctx.capability_work_tx,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -591,17 +614,18 @@ pub(super) fn dispatch_command(
             let remote_payload_json = handle.persistence_payload_json();
             let outbound =
                 commands::add_remote_signer(ctx.identity, ctx.kernel, handle, ctx.relays_ready);
+            // ADR-0040 §3 — enqueue all Keychain writes off-actor (D8).
             if let Some(payload_json) = remote_payload_json {
-                session_persistence::persist_remote_signer_payload(
+                session_persistence::enqueue_persist_remote_signer_payload(
                     &remote_identity_id,
                     &payload_json,
-                    ctx.capability_callback,
+                    ctx.capability_work_tx,
                 );
             }
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
-            session_persistence::persist_current_active_session(
+            session_persistence::enqueue_persist_current_active_session(
                 ctx.identity,
-                ctx.capability_callback,
+                ctx.capability_work_tx,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -1086,6 +1110,65 @@ pub(super) fn dispatch_command(
                 ctx.kernel.record_action_failure(correlation_id, reason);
             }
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
+        #[cfg(feature = "native")]
+        ActorCommand::CapabilityResultReady {
+            account_id,
+            result_json,
+        } => {
+            // ADR-0040 §3 — re-entry from the serialized capability-worker.
+            //
+            // The worker ran `dispatch_capability` off the actor thread and
+            // posted this command. We apply the result here, inside a normal
+            // actor tick (D4 — actor sole writer).
+            //
+            // Account-switch safety: if the account was removed or switched
+            // away between enqueue and now, drop the result with a D6 trace
+            // (never cross-apply to the now-active account). This is the
+            // architectural guarantee that makes the single FIFO worker
+            // correct: forget(A) followed by a switch cannot misapply a
+            // stale persist(A) result to account B.
+            if !ctx.identity.contains_account(&account_id) {
+                // D6 — removed-account result is data (a trace), not an error.
+                // No toast: the account was deliberately removed; the user
+                // doesn't need to know the Keychain write was pre-empted.
+                tracing::trace!(
+                    "CapabilityResultReady: dropped result for removed account {account_id}"
+                );
+                return Some(Vec::new());
+            }
+            // Decode the outer CapabilityEnvelope and check the inner
+            // KeyringResult status. An error result surfaces a D6 toast so
+            // the user sees "keychain write failed" rather than a silent
+            // secret-not-persisted bug. Success results are no-ops (the
+            // write is already done on the Keychain).
+            let decoded =
+                serde_json::from_str::<crate::substrate::CapabilityEnvelope>(&result_json)
+                    .ok()
+                    .map(|env| crate::substrate::KeyringIdentityWiring::decode_result(&env));
+            if let Some(result) = decoded {
+                use crate::substrate::KeyringStatus;
+                match result.status {
+                    KeyringStatus::Ok => {
+                        // Write succeeded — no observable actor-state change needed.
+                    }
+                    KeyringStatus::NotFound | KeyringStatus::Error => {
+                        // D6 — surface as a toast so the user can see the
+                        // Keychain write failed (session may not persist).
+                        ctx.kernel.set_last_error_toast(Some(format!(
+                            "keyring write failed for account {account_id}: {:?}",
+                            result.status
+                        )));
+                        maybe_emit_after_dispatch(
+                            ctx.kernel,
+                            *ctx.running,
+                            ctx.update_tx,
+                            ctx.last_emit,
+                        );
+                    }
+                }
+            }
             Some(Vec::new())
         }
         ActorCommand::Stop => {
