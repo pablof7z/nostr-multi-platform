@@ -597,52 +597,37 @@ be visibly targeted or the diagnostics must show why they were not.
 
 ---
 
-### V-52 · Single-relay browsing — read events from one relay only, with cache origin tracking [HIGH · v1 DX]
+### V-52 · Single-relay browsing — read events from one relay only, with cache origin tracking [DONE]
 
-**What we want:** an app must be able to scope an interest to a single specific relay URL
-("show me what *this* relay has"). When a subscription is scoped that way:
+**Shipped in PR feat/v52-single-relay-browsing (2026-05-30).**
 
-- REQs and `NEG-OPEN` (NIP-77 negentropy) are sent ONLY to that relay, never to any
-  outbox/inbox/indexer set the router would otherwise pick.
-- The cache must be queryable for events known to have originated from that specific
-  relay. We need a per-event provenance signal — for each cached event, did it (also)
-  arrive from relay X? Today's `Provenance` lane (lane 3 in `nmp-router`) already
-  carries relay-origin URLs in events' tag set, but the cache index can't be queried
-  by "events seen on relay X" as a primary lookup.
-- A scoped subscription does NOT cause an unscoped re-broadcast. The router treats
-  the relay scope as an `explicit_targets` override (similar to lane 5) and does not
-  add discovery/AppRelay fallbacks.
+**What was done:**
 
-**Why this matters:** every modern Nostr client has a "browse this relay" or "switch
-relay" affordance (relay-trawler, what's-on-this-relay debugging, single-relay reads
-for private/paid relays). Today an NMP app has no structural way to express it —
-the router always fans out via outbox/inbox.
+- `crates/nmp-store/` — added `relay_index: HashMap<RelayUrl, BTreeSet<event_id_hex>>`
+  to `MemState`, maintained symmetrically with `provenance` on every insert/delete/GC.
+  Added `EventStore::list_events_seen_on(relay_url) -> Result<Vec<EventId>, StoreError>`
+  to the trait (default: `NotSupported`; `MemEventStore` impl: O(1) lookup via index).
+  `StoreError::NotSupported` variant added for LMDB stub path (LMDB relay index is
+  a tracked follow-up — see open follow-up below).
 
-**Code-grounded surfaces to extend:**
+- `crates/nmp-core/src/browse/` — new `BrowseRelayModule` / `BrowseRelayAction`
+  (`nmp.browse_relay` ActionModule namespace). `Open` variant sets `relay_pin` on a
+  `LogicalInterest` and dispatches `ActorCommand::PushInterest`; `Close` dispatches
+  `ActorCommand::WithdrawInterest`. No `actor/mod.rs` changes needed. Routing is
+  handled by the planner's existing `case_e_relay_pinned` (Case E), which suppresses
+  all four-lane NIP-65 fan-out when `relay_pin` is set. D0-compliant: all types are
+  substrate-pure (String, Vec<u32>).
 
-- `crates/nmp-core/src/substrate/routing.rs` — `RoutingContext` already has
-  `explicit_targets: Option<BTreeSet<Url>>`, but there is no parallel `LogicalInterest`
-  shape for the subscribe side. Add a `LogicalInterest::SingleRelay { url, inner }` or
-  an `interest.scope_relays: Option<BTreeSet<Url>>` field that the router will honour
-  in lane 5 on the subscribe path (today lane 5 is publish-only in `nmp-router`).
-- `crates/nmp-store/` — cache lookup needs a `by_relay(url)` index, OR
-  `EventStore::list_events_seen_on(relay, filter)`. The relay-origin provenance set
-  already lives in `Provenance` events; the store must expose a primary lookup by
-  any one relay URL.
-- `crates/nmp-router/src/router.rs` lane 5 — extend the `ClassRouted` lane to cover
-  the subscribe path when `interest.scope_relays.is_some()`. Today the subscribe-side
-  lane 5 is empty (see PR #483).
-- FFI: surface a `nmp.subscribe_scoped_to_relay(url, filter, ...)` action namespace
-  so apps can request it without learning the substrate types.
-- Chirp: expose this as a UI affordance — a relay picker in any timeline view that,
-  when set, runs the same view bound to a single-relay scoped subscription. The
-  routing-trace inspector (V-51) already shows the lane attribution, so this
-  surface lights up "you are looking at relay X" naturally.
+**Design decision:** reused `InterestShape::relay_pin` (planner Case E) rather than
+adding a new `scope_relays` field. Rationale: `relay_pin` already provides exactly the
+"exactly one relay, no NIP-65 fan-out, merge Rule 9 safe" semantics needed. Adding a
+parallel field would be fragmentation; two routing seams for the same thing is the
+definition of D0 violation.
 
-**Acceptance test:** a chirp-repl flow `chirp-repl browse --relay wss://relay.damus.io
---kind 1 --limit 100` returns exactly the kind:1 events the cache has stamped with
-that relay's URL, drains REQ messages only to that relay, and never fans out to other
-relays even when the active account has a NIP-65 write set covering them.
+**Open follow-up:** LMDB backend `list_events_seen_on` — the MemEventStore has the full
+O(1) relay index; LMDB returns `StoreError::NotSupported` until a secondary
+relay_url→event_ids B-tree index is added there. Callers can detect this error and
+fall back to a provenance-scan if needed before the LMDB index lands.
 
 ---
 

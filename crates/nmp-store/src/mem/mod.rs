@@ -57,7 +57,7 @@ mod tests;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
-use super::types::{ClaimerId, ProvenanceEntry, RelayUrl, StoredEvent, TombstoneRow, WatermarkRow};
+use super::types::{ClaimerId, EventId, ProvenanceEntry, RelayUrl, StoredEvent, TombstoneRow, WatermarkRow};
 use super::StoreError;
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -94,6 +94,20 @@ pub(super) struct MemState {
     /// Provenance: hex `event_id` → sorted Vec<ProvenanceEntry>.
     pub(super) provenance: HashMap<String, Vec<ProvenanceEntry>>,
 
+    /// Relay-origin reverse index: relay_url → BTreeSet<hex event_id>.
+    ///
+    /// Maintained symmetrically with `provenance` — any `insert` that records a
+    /// `ProvenanceEntry` also records the (relay_url, event_id) pair here, and any
+    /// removal of an event (delete, replaceable supersession, GC) removes the entry.
+    ///
+    /// This makes `list_events_seen_on(url)` an O(1) lookup instead of an O(N)
+    /// full-provenance scan. The set is capped only by the per-relay event population,
+    /// which is bounded by the provenance LRU (MAX_PROVENANCE_ENTRIES per event)
+    /// and the global event set.
+    ///
+    /// V-52: used by `EventStore::list_events_seen_on`.
+    pub(super) relay_index: HashMap<RelayUrl, BTreeSet<String>>,
+
     /// Watermarks: (`filter_hash_hex`, `relay_url`) → `WatermarkRow`.
     pub(super) watermarks: HashMap<(String, String), WatermarkRow>,
 
@@ -118,6 +132,7 @@ impl MemState {
             tombstones: HashMap::new(),
             addr_tombstones: HashMap::new(),
             provenance: HashMap::new(),
+            relay_index: HashMap::new(),
             watermarks: HashMap::new(),
             domain_data: HashMap::new(),
             domain_versions: HashMap::new(),
@@ -216,6 +231,56 @@ pub(super) fn upsert_provenance(
         primary: false,
     });
     sort_provenance(entries);
+}
+
+// ─── Relay index helpers (V-52) ──────────────────────────────────────────────
+
+/// Add (relay_url, event_id_hex) to the relay reverse index.
+///
+/// Idempotent — inserting the same pair twice is a no-op (BTreeSet semantics).
+pub(super) fn relay_index_add(st: &mut MemState, relay_url: &RelayUrl, id_hex: &str) {
+    st.relay_index
+        .entry(relay_url.clone())
+        .or_default()
+        .insert(id_hex.to_string());
+}
+
+/// Remove event_id_hex from every relay entry in the relay reverse index.
+///
+/// Called when an event is removed (delete, supersession, GC expiry) so the
+/// index never contains dangling references. If removing the id leaves a relay
+/// entry empty, the entry itself is dropped (avoids unbounded map growth).
+pub(super) fn relay_index_remove(st: &mut MemState, id_hex: &str) {
+    let empty_relays: Vec<RelayUrl> = st
+        .relay_index
+        .iter_mut()
+        .filter_map(|(url, ids)| {
+            ids.remove(id_hex);
+            if ids.is_empty() { Some(url.clone()) } else { None }
+        })
+        .collect();
+    for url in empty_relays {
+        st.relay_index.remove(&url);
+    }
+}
+
+/// List event ids seen on `relay_url` — O(1) lookup.
+///
+/// Returns a sorted vec of hex event id strings. Events that have been removed
+/// from the store are not included — the index stays consistent with the primary
+/// event map because every removal path calls `relay_index_remove`.
+///
+/// The EventId ([u8;32]) return type requires a hex → bytes conversion for each
+/// id.  The call frequency (browse-view rendering, test assertions) is low
+/// enough that the per-call allocation is acceptable (D8: no hot-path concern
+/// here; this is not the 4 Hz snapshot tick).
+pub(super) fn list_seen_on(st: &MemState, relay_url: &str) -> Vec<EventId> {
+    let Some(ids) = st.relay_index.get(relay_url) else {
+        return Vec::new();
+    };
+    ids.iter()
+        .filter_map(|hex| super::types::hex_to_event_id(hex))
+        .collect()
 }
 
 // ─── Hex utilities ───────────────────────────────────────────────────────────

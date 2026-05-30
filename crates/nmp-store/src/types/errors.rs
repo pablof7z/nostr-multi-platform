@@ -58,6 +58,11 @@ pub enum StoreError {
         requested: usize,
         ceiling: usize,
     },
+    /// The operation is not implemented by this backend.
+    ///
+    /// V-52: `list_events_seen_on` returns this for the LMDB backend until a
+    /// secondary relay-url index is implemented there (tracked in BACKLOG.md).
+    NotSupported(String),
 }
 
 impl std::fmt::Display for StoreError {
@@ -73,6 +78,7 @@ impl std::fmt::Display for StoreError {
             Self::UnknownNamespace(s) => write!(f, "unknown namespace: {s}"),
             Self::OverPinned { claimer, requested, ceiling } =>
                 write!(f, "claim ceiling exceeded: claimer={claimer:?} requested={requested} ceiling={ceiling}"),
+            Self::NotSupported(s) => write!(f, "operation not supported by this backend: {s}"),
         }
     }
 }

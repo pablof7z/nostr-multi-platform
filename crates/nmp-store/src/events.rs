@@ -285,6 +285,23 @@ pub trait EventStore: Send + Sync {
     /// Provenance sidecar for an event.
     fn provenance_for(&self, id: &EventId) -> Result<Vec<ProvenanceEntry>, StoreError>;
 
+    /// V-52 — Return the ids of events whose provenance includes `relay_url`.
+    ///
+    /// The `MemEventStore` backend maintains a secondary `relay_index` map
+    /// (relay_url → event_ids) that makes this an O(1) lookup. The LMDB backend
+    /// does not yet maintain this index and returns `Err(StoreError::NotSupported)`
+    /// as a tracked follow-up (V-52 LMDB index — see docs/BACKLOG.md).
+    ///
+    /// Callers that need fallback behaviour for LMDB should inspect the error
+    /// variant and degrade gracefully (e.g. fall back to a provenance scan,
+    /// which is correct but O(N × MAX_PROVENANCE_ENTRIES)).
+    fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError> {
+        let _ = relay_url;
+        Err(StoreError::NotSupported(
+            "list_events_seen_on not implemented for this backend".to_string(),
+        ))
+    }
+
     // ─── Writes ──────────────────────────────────────────────────────────────
 
     /// The single insert path.

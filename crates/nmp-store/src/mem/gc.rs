@@ -7,7 +7,8 @@
 //!   - `StoreError::OverPinned` on breach (D8).
 
 use super::{
-    bytes_to_hex, MemEventStore, DEFAULT_VIEW_CEILING, MAX_PINNED_TOTAL, TOMBSTONE_MAX_AGE_SECS,
+    bytes_to_hex, relay_index_remove, MemEventStore, DEFAULT_VIEW_CEILING, MAX_PINNED_TOTAL,
+    TOMBSTONE_MAX_AGE_SECS,
 };
 use crate::types::{ClaimerId, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
@@ -107,6 +108,7 @@ pub(super) fn gc_step(store: &MemEventStore, budget: GcBudget) -> Result<GcRepor
     for id_hex in &expired_ids {
         if let Some(ev) = st.events.remove(id_hex) {
             st.provenance.remove(id_hex);
+            relay_index_remove(&mut *st, id_hex);
             st.tombstones.insert(
                 id_hex.clone(),
                 TombstoneRow {
