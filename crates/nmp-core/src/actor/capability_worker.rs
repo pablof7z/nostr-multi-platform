@@ -116,10 +116,15 @@ fn run_worker(
             Err(_) => return, // sender dropped — actor teardown
         };
 
-        // Enforce the per-item deadline. If the Keychain prompt is still
-        // open past this point we consider the op abandoned and emit an
-        // error result so the caller (the actor's CapabilityResultReady
-        // arm) can surface a D6 toast rather than silently wedging.
+        // Queue-age deadline (NOT a mid-call timeout). If this item aged past
+        // its deadline while waiting in the queue — e.g. the worker was stalled
+        // on a prior item — we drop it as stale and emit an error envelope so
+        // the actor's CapabilityResultReady arm surfaces a D6 toast instead of
+        // dispatching an out-of-date request. This does NOT interrupt a callback
+        // that hangs mid-call: a synchronous C callback cannot be cancelled
+        // without a separate watchdog thread, and the Keychain class we dispatch
+        // (kSecAttrAccessibleWhenUnlockedThisDeviceOnly, no LAContext) has no
+        // user-confirmable prompt that could hang.
         let timed_out = item.deadline < std::time::Instant::now();
         let result_json = if timed_out {
             // Synthesize an error envelope so the actor arm can toast.
