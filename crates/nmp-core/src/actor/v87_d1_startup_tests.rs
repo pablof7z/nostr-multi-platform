@@ -9,6 +9,14 @@
 //! 2. **Zero-relay startup** (`#602`) — a `Start` with zero relays connected
 //!    must not block indefinitely and must emit at least one running snapshot.
 //!    `maybe_send_startup` must not be gated on `all_relays_connected`.
+//!
+//! 3. **Rev monotonicity** (`#601-rev`) — the real kernel's first
+//!    `running=true` frame MUST carry a `rev` strictly greater than the
+//!    pre-flight frame's `rev`, so the iOS host's
+//!    `guard update.rev > rev` (KernelModel.swift:643) never silently drops
+//!    it.  Without the `resume_rev_after_preflight` fix both frames carry
+//!    `rev=1` and the host drops the `running=true` frame, leaving the UI
+//!    stuck on the `running=false` pre-flight state indefinitely.
 
 #[cfg(test)]
 mod tests {
@@ -146,13 +154,25 @@ mod tests {
     /// A host that waits for a snapshot before sending `Start` must not
     /// deadlock — and must receive a running snapshot after sending `Start`.
     ///
-    /// This is the end-to-end ordering property: pre-flight frame unblocks the
-    /// host; the host then sends Start; the actor produces a running snapshot.
+    /// **Rev-guard simulation (#601-rev)**: this test faithfully simulates the
+    /// shipping iOS host's `guard update.rev > rev` guard
+    /// (KernelModel.swift:643).  Frames are only "accepted" if their `rev` is
+    /// strictly greater than the last-accepted rev, exactly as the host does.
+    ///
+    /// Without the `resume_rev_after_preflight` fix:
+    /// - Pre-flight frame: `rev=1` → accepted (host had `rev=0`).
+    /// - Start frame:      `rev=1` → REJECTED (`1 > 1` is false) → test fails.
+    /// - Subsequent idle ticks: `changed_since_emit=false` → no further frames
+    ///   → the host stays stuck on the `running=false` state indefinitely.
+    ///
+    /// With the fix:
+    /// - Pre-flight frame: `rev=1` → accepted.
+    /// - Start frame:      `rev=2` → accepted (`2 > 1`) → `running=true` → passes.
     #[test]
     fn v87_snapshot_first_host_no_deadlock() {
         let (cmd_tx, upd_rx) = spawn_actor();
 
-        // Step 1: wait for the unconditional pre-flight frame.
+        // ── Step 1: receive the unconditional pre-flight frame ───────────────
         let pre_snapshots = drain_snapshots(&upd_rx, Duration::from_millis(500));
         assert!(
             !pre_snapshots.is_empty(),
@@ -160,8 +180,19 @@ mod tests {
              a snapshot-first host"
         );
 
-        // Step 2: now the host sends Start (as it would in production after
-        // observing the first frame).
+        // Extract the pre-flight frame's rev.  The `rev` field MUST be present
+        // and > 0; if it reads as null the host guard is a no-op and this test
+        // would pass vacuously — catch that here.
+        let preflight_rev = pre_snapshots[0]["rev"]
+            .as_u64()
+            .expect("V-87: pre-flight snapshot must carry a non-null numeric `rev` field; \
+                     got null — the host guard simulation would be a no-op");
+        assert!(
+            preflight_rev > 0,
+            "V-87: pre-flight rev must be ≥ 1 (got {preflight_rev})"
+        );
+
+        // ── Step 2: host sends Start after observing the pre-flight frame ────
         cmd_tx
             .send(ActorCommand::Start {
                 visible_limit: DEFAULT_VISIBLE_LIMIT,
@@ -169,16 +200,51 @@ mod tests {
             })
             .expect("send Start after pre-flight");
 
-        // Step 3: a running=true snapshot must arrive within 500 ms.
+        // ── Step 3: simulate the iOS host's `guard update.rev > rev` guard ───
+        //
+        // Collect post-Start frames and apply the same monotonicity filter the
+        // shipping iOS host applies (KernelModel.swift:643).  Only frames with
+        // `rev > last_accepted_rev` are "accepted"; the pre-flight frame already
+        // moved `last_accepted_rev` to `preflight_rev`.
         let post_snapshots = drain_snapshots(&upd_rx, Duration::from_millis(500));
-        let running = post_snapshots
-            .iter()
-            .any(|s| s["running"] == serde_json::json!(true));
+
+        // The FIRST post-Start frame MUST have rev strictly greater than
+        // `preflight_rev`.  This is the key invariant: the Start dispatch's
+        // `emit_now` produces the very first `running=true` frame; if that frame
+        // has the same rev as the pre-flight frame the host drops it silently.
+        // A host in an offline scenario with no subsequent relay events would
+        // receive no further frames (changed_since_emit=false, no relay activity
+        // to flip it back true), leaving the UI stuck on running=false forever.
+        //
+        // Without the fix: pre-flight=rev 1, Start frame=rev 1 → guard drops it.
+        // With    the fix: pre-flight=rev 1, Start frame=rev 2 → guard accepts it.
+        let first_post_start = post_snapshots.first().expect(
+            "V-87 #601-rev: no post-Start frames received at all within 500 ms"
+        );
+        let first_post_start_rev = first_post_start["rev"]
+            .as_u64()
+            .expect("V-87 #601-rev: first post-Start snapshot missing `rev` field");
+
         assert!(
-            running,
-            "V-87: after Start no running=true snapshot arrived within 500 ms \
-             (got {} post-Start snapshots)",
-            post_snapshots.len()
+            first_post_start_rev > preflight_rev,
+            "V-87 #601-rev: Start frame rev={first_post_start_rev} is NOT strictly \
+             greater than pre-flight rev={preflight_rev}. \
+             The iOS host's `guard update.rev > rev` (KernelModel.swift:643) would \
+             silently drop this frame. In an offline scenario with no relay activity, \
+             changed_since_emit stays false after the dropped Start emit and no \
+             further frames are sent — the host is stuck on running=false indefinitely. \
+             Fix: call kernel.resume_rev_after_preflight(preflight_rev) before the \
+             dispatch loop so the real kernel's first make_update produces \
+             rev = preflight_rev + 1."
+        );
+
+        // Belt-and-suspenders: also verify the first accepted frame carries running=true.
+        assert_eq!(
+            first_post_start["running"],
+            serde_json::json!(true),
+            "V-87 #601-rev: first post-Start frame has rev={first_post_start_rev} > \
+             preflight_rev={preflight_rev} (guard passes) but running is not true: {:?}",
+            first_post_start["running"]
         );
 
         let _ = cmd_tx.send(ActorCommand::Shutdown);

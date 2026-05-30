@@ -1205,9 +1205,19 @@ pub fn run_actor_with_observers(
     // (it is initialised after kernel construction below); we pass the
     // channel sender directly without updating `last_emit` — that field is
     // re-initialised below anyway.
+    // #601 rev-collision fix: capture the pre-flight kernel's rev after its
+    // single `make_update(false)` call.  The real kernel is initialised at
+    // rev=0; we will advance it to `preflight_rev` below (before its own
+    // first `make_update`), so the real kernel's first frame carries
+    // `preflight_rev + 1`.  The iOS host's `guard update.rev > rev` guard
+    // only accepts strictly increasing revs, so this guarantees the
+    // `running=true` Start frame is never silently dropped even when a
+    // snapshot-first host has already consumed the pre-flight frame (rev=1).
+    let preflight_rev: u64;
     {
         let mut pre_kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let _ = update_tx.send(pre_kernel.make_update(false));
+        preflight_rev = pre_kernel.current_rev();
     }
     // Wait for the first command before constructing the real kernel.
     // `nmp_app_new` starts this actor thread immediately, while the host sets
@@ -1241,6 +1251,12 @@ pub fn run_actor_with_observers(
     // command replaces the kernel; we re-bind there so the counter stays
     // visible (the underlying `Arc<AtomicU64>` survives Reset).
     kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
+    // #601 rev-collision fix: advance the real kernel's rev counter to
+    // `preflight_rev` so its first `make_update` emits `preflight_rev + 1`.
+    // This must happen AFTER kernel construction and BEFORE the dispatch loop
+    // replays `first_command` — the construction order (real kernel built
+    // post-recv()) is unaffected. The storage-path race fix is preserved.
+    kernel.resume_rev_after_preflight(preflight_rev);
     // V-51 phase 4 — publish the kernel's routing-trace projection clone
     // into the shared slot so `NmpApp::routing_trace` can read it. The
     // kernel default is `EmptyOutboxRouter` (substrate-honest debt B), so

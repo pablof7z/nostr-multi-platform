@@ -1865,6 +1865,35 @@ impl Kernel {
         self.dispatch_drops = Some(handle);
     }
 
+    /// Advance the kernel's `rev` counter so that its first `make_update` call
+    /// yields a rev **strictly greater** than the supplied `floor`.
+    ///
+    /// This is used exclusively by the actor startup path when a pre-flight
+    /// snapshot has already been emitted from a temporary kernel: by setting
+    /// the real kernel's `rev` to `floor` before its first `make_update`, the
+    /// first emitted frame carries `rev = floor + 1`, which passes the iOS
+    /// host's `guard update.rev > rev` monotonicity check regardless of what
+    /// the pre-flight frame's rev was.
+    ///
+    /// `floor` must equal the pre-flight kernel's `rev` after its single
+    /// `make_update(false)` call (= 1 today; generalises if the pre-flight
+    /// path ever emits more frames).  Setting `rev` here is safe because the
+    /// real kernel has not yet called `make_update` — `rev` is still 0.
+    /// Returns the current revision counter (the `rev` that was stamped on
+    /// the most recently emitted `make_update` frame).
+    ///
+    /// Used by the actor startup path to capture the pre-flight kernel's rev
+    /// so that the real kernel can be advanced past it via
+    /// [`Self::resume_rev_after_preflight`], guaranteeing strict monotonicity
+    /// across the pre-flight → Start frame sequence.
+    pub(crate) fn current_rev(&self) -> u64 {
+        self.rev
+    }
+
+    pub(crate) fn resume_rev_after_preflight(&mut self, floor: u64) {
+        self.rev = floor;
+    }
+
     /// T114b — extract the FFI-channel drop-counter handle before a `Reset`
     /// replaces the kernel. The dispatch drops counter is process-lifetime
     /// (shared with the FFI forwarder thread) so the Reset path moves it
