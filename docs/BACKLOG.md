@@ -74,17 +74,37 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    kind `10050`, or `Marmot`; the kind:1059 D10 guard now refers to "the
    author's public-relay outbox" in substrate-neutral terms.
 
-   **Next step (Stage 2).** Migrate the remaining private duplicates in
-   `nmp-nip59` (`KIND_GIFT_WRAP`), `nmp-nip17` (`KIND_DM_RELAY_LIST` +
-   `KIND_CHAT_MESSAGE`), `nmp-nip29`, `nmp-nip57`, `nmp-marmot`,
-   `nmp-router::publish_relay_list::KIND_RELAY_LIST`, and `nmp-wot` to
-   re-export from `nmp_core::kinds` once the dependency edges are confirmed
-   compatible with the boundary spec. Out of scope for the current slice.
+   **Stage 2 — nmp-router DONE (2026-05-30).** `nmp-router` no longer holds
+   any hand-rolled `10002` / `KIND_RELAY_LIST` production literals:
+   `publish_relay_list.rs`, `ingest.rs`, and `nip65_resolver.rs` all import
+   `nmp_core::kinds::KIND_RELAY_LIST`. The existing `nmp-core` dependency edge
+   in `nmp-router/Cargo.toml` covers this without adding any new edge.
+   Test assertions in `publish_relay_list_tests.rs` intentionally retain the
+   literal (asserting against an imported constant is tautological).
 
-   **Files still needing migration (2026-05-29 audit):** `nmp-nip59`
-   `KIND_GIFT_WRAP`; `nmp-nip17` `KIND_DM_RELAY_LIST` + `KIND_CHAT_MESSAGE`;
-   `nmp-nip57` `KIND_ZAP_REQUEST` + `KIND_ZAP_RECEIPT`; `nmp-marmot`
-   `KIND_GIFT_WRAP`; `nmp-router` `KIND_RELAY_LIST`. Note: `nmp-nip29`'s
+   **Stage 2 — nmp-nip59 BLOCKED (owner decision required).** The boundary
+   spec (`docs/architecture/crate-boundaries.md` §2 Layer 4) places
+   `nmp-nip59`'s dependency as `nmp-proto` only, and explicitly reserves
+   `nmp-core → nmp-nip59` as the blessed direction (the kernel may consume the
+   wrap primitive without owning DM semantics). `nmp-core/Cargo.toml` already
+   depends on `nmp-nip59`, so adding `nmp-nip59 → nmp-core` would create a
+   **compile-time cycle**. The spec also contradicts itself: `kinds.rs`'s doc
+   comment names `nmp-nip59::kinds::KIND_GIFT_WRAP` as a duplicate that
+   "should import from here instead" — but that direction is structurally
+   illegal. Resolution options for the owner:
+   (a) Keep `nmp-nip59::kinds::KIND_GIFT_WRAP = 1059` as the source of truth
+       and have `nmp-core::kinds` re-export from `nmp-nip59` (reverses the
+       current import direction in `kinds.rs` doc comment).
+   (b) Accept that `nmp-nip59::kinds` keeps its own copy (1059 is a fixed
+       NIP-59 wire constant; divergence risk is very low) and strike the
+       "should import from here" claim from `kinds.rs`.
+   (c) Move `KIND_GIFT_WRAP` to Layer 0 (`nmp-proto` or a new `nmp-nip59-types`
+       crate) that both `nmp-nip59` and `nmp-core` can depend on.
+
+   **Files still needing migration (2026-05-30 audit):** `nmp-nip59`
+   `KIND_GIFT_WRAP` (blocked — see above); `nmp-nip17` `KIND_DM_RELAY_LIST` +
+   `KIND_CHAT_MESSAGE`; `nmp-nip57` `KIND_ZAP_REQUEST` + `KIND_ZAP_RECEIPT`;
+   `nmp-marmot` `KIND_GIFT_WRAP` (same cycle as nmp-nip59). Note: `nmp-nip29`'s
    `KIND_CHAT_MESSAGE` (value `9`) is a different kind from `nmp-nip17`'s
    `KIND_CHAT_MESSAGE` (value `14`) and should stay crate-local — it is not a
    duplicate of the canonical registry constant.
