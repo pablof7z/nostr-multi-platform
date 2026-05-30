@@ -15,7 +15,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Widget, Wrap};
 
 use super::kind_renderer::{author_byline, KindRenderer, KindRendererRef};
-use crate::nostr_mention_chip::NostrMentionProfileHost;
+use super::super::nostr_mention_chip::NostrMentionProfileHost;
 
 /// The registry consulted by `EmbeddedEvent` (and by `NostrContentView`).
 pub struct NostrKindRegistry {
@@ -648,8 +648,8 @@ mod tests {
     use nmp_content::ShortNoteProjection;
 
     use super::super::kind_renderer::author_byline;
-    use crate::content_render_data::ContentProfileRenderData;
-    use crate::nostr_mention_chip::NostrMentionProfileHost;
+    use super::super::super::content_render_data::ContentProfileRenderData;
+    use super::super::super::nostr_mention_chip::NostrMentionProfileHost;
 
     const SHOWCASE_PUBKEY: &str =
         "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
