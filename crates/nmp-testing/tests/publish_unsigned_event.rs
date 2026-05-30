@@ -103,19 +103,25 @@ fn unsigned_event_serde_round_trips_for_action_payload() {
 // the `dispatch_action` JSON-decode path emits the same `ShowToast` when a
 // host hands it malformed action JSON.
 
-/// Drain the update channel until either a snapshot containing
-/// `last_error_toast` with the given substring appears or the deadline passes.
+/// Drain `upd_rx` until either a snapshot containing `last_error_toast` with
+/// the given expected string appears, or the deadline passes.
+///
+/// V-105: uses typed JSON field navigation via `snapshot_last_error_toast`
+/// instead of `snapshot.to_string().contains(expected)`.
 fn find_toast_in_updates(rx: &std::sync::mpsc::Receiver<Vec<u8>>, expected: &str) -> bool {
+    use nmp_core::testing::snapshot_last_error_toast;
+
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     while std::time::Instant::now() < deadline {
         match rx.recv_timeout(Duration::from_millis(200)) {
             Ok(frame) => {
-                // Actor update frames are FlatBuffers envelopes. Decode only
-                // snapshot payloads, then keep the loose string probe so this
-                // test does not lock the full snapshot schema.
                 if let Ok(snapshot) = decode_snapshot_payload(&frame) {
-                    if snapshot.to_string().contains(expected) {
-                        return true;
+                    // Typed field access: read `last_error_toast` as a string
+                    // rather than scanning the raw JSON bytes for a substring.
+                    if let Some(toast) = snapshot_last_error_toast(&snapshot) {
+                        if toast.contains(expected) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -136,18 +142,32 @@ fn show_toast_command_surfaces_message_in_snapshot() {
     // `kernel.set_last_error_toast`, which appears in the next snapshot
     // emission as `last_error_toast`. This test pins that primitive
     // end-to-end via `spawn_actor`.
-    let (tx, rx) = nmp_core::testing::spawn_actor();
+    //
+    // V-105: the post-`Start` blind drain loop is replaced with a typed
+    // `Barrier` wait so the test deterministically waits for the actor to
+    // finish processing `Start` before sending `ShowToast`. This eliminates
+    // the race between the drain window and the actor's `emit_now` call.
+    use nmp_core::testing::{spawn_actor, wait_barrier};
+
+    let (tx, rx) = spawn_actor();
     tx.send(ActorCommand::Start {
         visible_limit: 64,
         emit_hz: 60,
     })
     .unwrap();
-    // Drain all initial snapshots (relay connections generate several).
-    // Use a short window — just enough to ensure the Start completes.
-    let drain_deadline = std::time::Instant::now() + Duration::from_millis(300);
-    while std::time::Instant::now() < drain_deadline {
-        let _ = rx.recv_timeout(Duration::from_millis(50));
-    }
+
+    // V-105: send a Barrier immediately after `Start` and wait for the ack.
+    // When `wait_barrier` returns `true` the actor has dispatched `Start`
+    // (including its `emit_now` call), so all initial snapshots have been
+    // pushed onto `upd_rx`. Draining is no longer necessary — the Barrier
+    // guarantees ordering without a timed window.
+    assert!(
+        wait_barrier(&tx, Duration::from_secs(5)),
+        "Barrier ack must arrive within 5s — actor must be alive and processing"
+    );
+    // Drain any buffered initial snapshots (relay connections generate several)
+    // using a short non-blocking pass rather than a timed window.
+    while rx.try_recv().is_ok() {}
 
     tx.send(ActorCommand::ShowToast {
         message: "Failed to decode action payload".to_string(),

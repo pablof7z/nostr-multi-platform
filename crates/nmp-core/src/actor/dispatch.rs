@@ -1372,6 +1372,15 @@ pub(super) fn dispatch_command(
             }
             Some(Vec::new())
         }
+        #[cfg(any(test, feature = "test-support"))]
+        ActorCommand::Barrier { ack } => {
+            // V-105: test-support sync primitive. Sending `()` here proves
+            // every command enqueued before this `Barrier` has been dispatched.
+            // The `SyncSender::send` call is non-blocking (the bounded capacity
+            // is 1); a broken receiver is a no-op (the test gave up already).
+            let _ = ack.send(());
+            Some(Vec::new())
+        }
         ActorCommand::Shutdown => {
             close_relays(
                 ctx.relay_controls,
