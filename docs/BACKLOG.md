@@ -1233,29 +1233,13 @@ degradation) but a distinct startup-latency issue. **Confirmed live.**
 emitted; open LMDB asynchronously or on a background task that resolves before the
 first publish command needs it.
 
-### V-94 · 10+ must-call-before-`nmp_app_start` constraints have no type enforcement [MEDIUM · P3 · issue #618]
+### V-94 · `nmp_app_start` ordering — C-ABI runtime guard for non-Rust hosts [MEDIUM · P3 · issue #618]
 
-**DESIGN PRODUCED (2026-05-29, ADR-pending).** `NmpAppBuilder` typestate in
-`nmp-app-template`, unified with **F-08** (one construct, not two): config-phase host
-implementing `AppHost`, terminal `start(self, RunConfig)` consumes the builder so no
-setter is reachable post-start. Rust composition roots get compile-time ordering; the
-stringly-typed C-ABI boundary can only get a runtime `KernelDiagnostic::MissingSetup`.
-Open decision = ABI churn (consume-and-return-new-handle vs in-place started-flag).
-Needs ADR.
+Rust composition root is now compile-time-enforced (`NmpAppBuilder<S>` typestate,
+`crates/nmp-app-template/src/builder.rs`; design: `docs/design/v94-app-config-ordering.md`).
 
-
-**Verified:** multiple `crates/nmp-ffi/src/lib.rs` setup symbols must be wired
-before `nmp_app_start` for correct behavior, but ordering is documented in prose
-only — `nmp_app_set_storage_path` (slot doc `lib.rs:345`; omission permanently
-loses storage), `set_coverage_hook` (`lib.rs:1160`; a late call is silently
-ignored), `nmp_app_set_update_callback` (`lib.rs:207`), and the REQ-frame setters.
-No compile-time or runtime check prevents calling `Start` before these are wired.
-**Confirmed live.**
-
-**Correct fix:** Introduce a builder/configuration type (`NmpAppConfig`) that must
-be fully constructed before `nmp_app_start` can be called. At minimum, add a
-runtime assertion that emits a `KernelDiagnostic::MissingSetup` before the first
-tick.
+**Open:** Swift/Kotlin hosts driving raw C-ABI symbols get no compile guarantee —
+add a runtime `KernelDiagnostic::LateWiring` (design doc §3.2).
 
 ### V-95 · WalletRuntime initialization order not type-enforced — OnceLock error risk [MEDIUM · P2/P3 · issue #619]
 
