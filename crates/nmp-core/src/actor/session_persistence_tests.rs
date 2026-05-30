@@ -1,8 +1,10 @@
 use super::commands::{self, IdentityRuntime};
 use super::session_persistence::{
-    persist_active_pointer, persist_current_active_session, persist_remote_signer_payload,
-    restore_active_session,
+    enqueue_persist_active_pointer, enqueue_persist_current_active_session,
+    enqueue_persist_remote_signer_payload, restore_active_session,
 };
+use crate::actor::capability_worker::spawn_capability_worker;
+use crate::actor::ActorCommand;
 use crate::bunker_hook::BunkerHookRequest;
 use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
 use crate::kernel::Kernel;
@@ -10,7 +12,9 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
@@ -92,19 +96,55 @@ fn fresh() -> (IdentityRuntime, Kernel) {
     )
 }
 
+/// Helper: spawn a capability worker and drain exactly `count` results.
+///
+/// The enqueue functions are async (fire-and-forget); in tests we need
+/// the writes to complete before the synchronous restore reads. This
+/// helper blocks until `count` `CapabilityResultReady` commands arrive
+/// on the actor command channel, confirming every enqueued write has
+/// been executed by the worker.
+fn drain_worker_results(
+    cmd_rx: &Receiver<ActorCommand>,
+    count: usize,
+) {
+    for _ in 0..count {
+        cmd_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("CapabilityResultReady not received in time");
+    }
+}
+
 #[test]
 fn restores_imported_nsec_without_swift_cache() {
     let _g = SERIAL.lock().unwrap();
     *STORE.lock().unwrap() = Some(HashMap::new());
     let slot = registered_slot();
+    let (cmd_tx, cmd_rx): (Sender<ActorCommand>, Receiver<ActorCommand>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), cmd_tx);
 
     let (mut identity, mut kernel) = fresh();
     commands::sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
     let expected = identity.active_pubkey().unwrap();
-    persist_current_active_session(&identity, &slot);
+
+    // persist_current_active_session (local account) enqueues 3 writes:
+    // local_nsec, active_id, active_kind.
+    enqueue_persist_current_active_session(&identity, &work_tx);
+    drain_worker_results(&cmd_rx, 3);
 
     let (mut restored_identity, mut restored_kernel) = fresh();
-    restore_active_session(&mut restored_identity, &mut restored_kernel, &slot, false);
+    // restore_active_session is synchronous (cold-start read chain).
+    let (restore_work_tx, _restore_cmd_rx) = {
+        let (tx, rx) = channel::<ActorCommand>();
+        let wtx = spawn_capability_worker(Arc::clone(&slot), tx);
+        (wtx, rx)
+    };
+    restore_active_session(
+        &mut restored_identity,
+        &mut restored_kernel,
+        &slot,
+        &restore_work_tx,
+        false,
+    );
 
     assert_eq!(restored_identity.active_pubkey(), Some(expected.clone()));
     let (accounts, active) = restored_kernel.account_snapshot();
@@ -117,6 +157,8 @@ fn persists_generated_account_for_next_launch() {
     let _g = SERIAL.lock().unwrap();
     *STORE.lock().unwrap() = Some(HashMap::new());
     let slot = registered_slot();
+    let (cmd_tx, cmd_rx): (Sender<ActorCommand>, Receiver<ActorCommand>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), cmd_tx);
 
     let (mut identity, mut kernel) = fresh();
     commands::create_account(
@@ -128,10 +170,24 @@ fn persists_generated_account_for_next_launch() {
         false,
     );
     let expected = identity.active_pubkey().unwrap();
-    persist_current_active_session(&identity, &slot);
+
+    // persist_current_active_session (local account) enqueues 3 writes.
+    enqueue_persist_current_active_session(&identity, &work_tx);
+    drain_worker_results(&cmd_rx, 3);
 
     let (mut restored_identity, mut restored_kernel) = fresh();
-    restore_active_session(&mut restored_identity, &mut restored_kernel, &slot, false);
+    let (restore_work_tx, _restore_cmd_rx) = {
+        let (tx, rx) = channel::<ActorCommand>();
+        let wtx = spawn_capability_worker(Arc::clone(&slot), tx);
+        (wtx, rx)
+    };
+    restore_active_session(
+        &mut restored_identity,
+        &mut restored_kernel,
+        &slot,
+        &restore_work_tx,
+        false,
+    );
 
     assert_eq!(restored_identity.active_pubkey(), Some(expected.clone()));
     assert_eq!(restored_kernel.account_snapshot().1, Some(&expected));
@@ -142,6 +198,9 @@ fn restores_nip46_from_persisted_remote_payload() {
     let _g = SERIAL.lock().unwrap();
     *STORE.lock().unwrap() = Some(HashMap::new());
     let slot = registered_slot();
+    let (cmd_tx, cmd_rx): (Sender<ActorCommand>, Receiver<ActorCommand>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), cmd_tx);
+
     let identity_id = "701eb015134aed0cb6582a86b9527f2db0241ca36a64bfd63ddbde59002c7c05";
     let payload_json = format!(
         r#"{{"kind":"nip46","body":{{"local_secret_hex":"{}","remote_pubkey_hex":"{}","relays":["wss://relay.example"],"secret":"testsecret","permissions":null,"cached_remote_user_pubkey_hex":"{}"}}}}"#,
@@ -150,8 +209,11 @@ fn restores_nip46_from_persisted_remote_payload() {
         identity_id
     );
 
-    persist_remote_signer_payload(identity_id, &payload_json, &slot);
-    persist_active_pointer(&slot, identity_id, "nip46");
+    // Enqueue remote-payload persist (1 write) and active-pointer (2 writes).
+    enqueue_persist_remote_signer_payload(identity_id, &payload_json, &work_tx);
+    enqueue_persist_active_pointer(&work_tx, identity_id, "nip46");
+    drain_worker_results(&cmd_rx, 3);
+
     let calls: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     let calls_clone = Arc::clone(&calls);
     crate::bunker_hook::register_bunker_hook(Arc::new(move |request| {
@@ -159,7 +221,18 @@ fn restores_nip46_from_persisted_remote_payload() {
     }));
 
     let (mut identity, mut kernel) = fresh();
-    let _outbound = restore_active_session(&mut identity, &mut kernel, &slot, false);
+    let (restore_work_tx, _restore_cmd_rx) = {
+        let (tx, rx) = channel::<ActorCommand>();
+        let wtx = spawn_capability_worker(Arc::clone(&slot), tx);
+        (wtx, rx)
+    };
+    let _outbound = restore_active_session(
+        &mut identity,
+        &mut kernel,
+        &slot,
+        &restore_work_tx,
+        false,
+    );
 
     assert_eq!(
         calls.lock().unwrap().as_slice(),

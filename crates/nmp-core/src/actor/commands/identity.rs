@@ -557,6 +557,16 @@ impl IdentityRuntime {
         self.active.clone()
     }
 
+    /// Returns `true` when `account_id` is registered in either the local-key
+    /// or remote-signer map. Used by the `CapabilityResultReady` dispatch arm
+    /// to confirm a since-queued write result still targets a live account —
+    /// a result for a removed account is dropped (D6 trace) rather than
+    /// cross-applied to whatever account is now active.
+    pub(crate) fn contains_account(&self, account_id: &str) -> bool {
+        self.keys.contains_key(account_id)
+            || self.remote_signers.contains_key(account_id)
+    }
+
     /// Bech32-encode the active account's secret key (`nsec1…`). Returns
     /// `None` for remote signers (no local key) and when no account is active.
     pub(crate) fn active_nsec_bech32(&self) -> Option<String> {

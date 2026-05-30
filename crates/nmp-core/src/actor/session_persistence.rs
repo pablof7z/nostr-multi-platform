@@ -3,6 +3,29 @@
 //! Rust owns the policy: when a signer becomes active, persist enough material
 //! through the keyring capability to restore it on the next launch. Native code
 //! only executes the keychain request.
+//!
+//! ## ADR-0040 §3 — V-90 Site 2: write path moves off the actor thread
+//!
+//! The write functions (`persist_*`, `forget_*`) previously called
+//! `dispatch_capability` synchronously on the actor thread, blocking it for
+//! hundreds of ms on every account sign-in / switch / remove (iOS Keychain
+//! hit). They now enqueue a [`super::capability_worker::CapabilityWorkItem`]
+//! to the serialized capability worker and return immediately. The worker runs
+//! `dispatch_capability` off-actor and re-enters via
+//! `ActorCommand::CapabilityResultReady`; the dispatch arm applies the result
+//! (error → toast, absent account → D6 trace + drop).
+//!
+//! ## What stays synchronous
+//!
+//! `restore_active_session` (and its read sub-functions) remain synchronous.
+//! This is the cold-start recall chain (`Start` arm only): each recall drives
+//! the next step as a sequential continuation. Converting it to fire-and-forget
+//! would require a multi-tick state machine the ADR never designed for this
+//! path. Cold-start runs at most once per process, is below the liveness
+//! threshold (ADR-0040: "hundreds of ms — short of the liveness threshold"),
+//! and is not among the per-switch hitches GH #613 targets. The `Start` arm
+//! also calls `persist_current_active_session` after restore — that call now
+//! goes through the enqueue path, so the tail-write is also off-actor.
 
 use crate::capability_socket::{dispatch_capability, CapabilityCallbackSlot};
 use crate::kernel::Kernel;
@@ -11,6 +34,7 @@ use crate::substrate::{
     CapabilityEnvelope, KeyringIdentityWiring, KeyringResult, KeyringStatus, MALFORMED_RESULT,
 };
 
+use super::capability_worker::{make_work_item, CapabilityWorkSender};
 use super::commands::{self, IdentityRuntime};
 
 const ACTIVE_ACCOUNT_ID: &str = "nmp.identity.active.id";
@@ -18,10 +42,18 @@ const ACTIVE_SIGNER_KIND_ID: &str = "nmp.identity.active.kind";
 const LOCAL_SECRET_PREFIX: &str = "nmp.identity.local_nsec.";
 const REMOTE_SIGNER_PAYLOAD_PREFIX: &str = "nmp.identity.remote_payload.";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Read path (synchronous — cold-start only, `Start` arm)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Restore the previously-persisted session on cold start (called from the
+/// actor's `Start` arm). **Synchronous** — reads drive sign-in continuations
+/// that cannot be deferred. See the module-level rationale.
 pub(super) fn restore_active_session(
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
     capability_callback: &CapabilityCallbackSlot,
+    capability_work_tx: &CapabilityWorkSender,
     relays_ready: bool,
 ) -> Vec<OutboundMessage> {
     if identity.active_pubkey().is_some() {
@@ -50,7 +82,7 @@ pub(super) fn restore_active_session(
         ..
     } = active_id
     else {
-        forget_active_pointer(capability_callback);
+        enqueue_forget_active_pointer(capability_work_tx, ACTIVE_ACCOUNT_ID);
         return Vec::new();
     };
 
@@ -59,14 +91,21 @@ pub(super) fn restore_active_session(
             identity,
             kernel,
             capability_callback,
+            capability_work_tx,
             relays_ready,
             &identity_id,
         );
     }
     if kind == "nip46" {
-        return restore_remote_bunker(identity, kernel, capability_callback, &identity_id);
+        return restore_remote_bunker(
+            identity,
+            kernel,
+            capability_callback,
+            capability_work_tx,
+            &identity_id,
+        );
     }
-    forget_active_pointer(capability_callback);
+    enqueue_forget_active_pointer(capability_work_tx, ACTIVE_ACCOUNT_ID);
     Vec::new()
 }
 
@@ -74,6 +113,7 @@ fn restore_local(
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
     capability_callback: &CapabilityCallbackSlot,
+    capability_work_tx: &CapabilityWorkSender,
     relays_ready: bool,
     identity_id: &str,
 ) -> Vec<OutboundMessage> {
@@ -90,16 +130,16 @@ fn restore_local(
         ..
     } = secret
     else {
-        forget_active_pointer(capability_callback);
+        enqueue_forget_active_pointer(capability_work_tx, identity_id);
         return Vec::new();
     };
 
     let outbound = commands::sign_in_nsec(identity, kernel, &secret, relays_ready);
     if identity.active_pubkey().as_deref() == Some(identity_id) {
-        persist_current_active_session(identity, capability_callback);
+        enqueue_persist_current_active_session(identity, capability_work_tx);
     } else {
-        forget_account(identity_id, capability_callback);
-        forget_active_pointer(capability_callback);
+        enqueue_forget_account(identity_id, capability_work_tx);
+        enqueue_forget_active_pointer(capability_work_tx, identity_id);
     }
     outbound
 }
@@ -108,6 +148,7 @@ fn restore_remote_bunker(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     capability_callback: &CapabilityCallbackSlot,
+    capability_work_tx: &CapabilityWorkSender,
     identity_id: &str,
 ) -> Vec<OutboundMessage> {
     let payload = run_keyring(
@@ -123,55 +164,70 @@ fn restore_remote_bunker(
         ..
     } = payload
     else {
-        forget_active_pointer(capability_callback);
+        enqueue_forget_active_pointer(capability_work_tx, identity_id);
         return Vec::new();
     };
     commands::restore_bunker_session(identity, kernel, &payload);
     Vec::new()
 }
 
-pub(super) fn persist_current_active_session(
+// ─────────────────────────────────────────────────────────────────────────────
+// Write path (async — enqueue to capability worker, D8)
+//
+// All functions below build their `CapabilityRequest` on the actor thread
+// (reading actor-owned `IdentityRuntime` / plain string data) and enqueue
+// the pre-serialized item to the worker. They return immediately; the worker
+// runs `dispatch_capability` off-actor and re-enters via
+// `ActorCommand::CapabilityResultReady`. The actor's dispatch arm applies
+// error results (toast) and drops results for removed accounts (D6 trace).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Persist the current active session through the capability worker.
+/// Reads identity state on-actor, serializes the request, and enqueues.
+pub(super) fn enqueue_persist_current_active_session(
     identity: &IdentityRuntime,
-    capability_callback: &CapabilityCallbackSlot,
+    capability_work_tx: &CapabilityWorkSender,
 ) {
     let Some(identity_id) = identity.active_pubkey() else {
-        forget_active_pointer(capability_callback);
+        enqueue_forget_active_pointer(capability_work_tx, ACTIVE_ACCOUNT_ID);
         return;
     };
     match identity.active_signer_kind() {
-        Some("local") => persist_active_local(identity, capability_callback, &identity_id),
-        Some("nip46") => persist_active_pointer(capability_callback, &identity_id, "nip46"),
-        _ => forget_active_pointer(capability_callback),
+        Some("local") => enqueue_persist_active_local(identity, capability_work_tx, &identity_id),
+        Some("nip46") => enqueue_persist_active_pointer(capability_work_tx, &identity_id, "nip46"),
+        _ => enqueue_forget_active_pointer(capability_work_tx, ACTIVE_ACCOUNT_ID),
     }
 }
 
-fn persist_active_local(
+fn enqueue_persist_active_local(
     identity: &IdentityRuntime,
-    capability_callback: &CapabilityCallbackSlot,
+    capability_work_tx: &CapabilityWorkSender,
     identity_id: &str,
 ) {
     let Some(secret) = identity.active_nsec_bech32() else {
-        forget_active_pointer(capability_callback);
+        enqueue_forget_active_pointer(capability_work_tx, ACTIVE_ACCOUNT_ID);
         return;
     };
-    let _ = run_keyring(
-        capability_callback,
+    enqueue_write(
+        capability_work_tx,
+        identity_id,
         KeyringIdentityWiring::persist_secret(
             "identity.persist.local_nsec",
             local_secret_account_id(identity_id),
             secret,
         ),
     );
-    persist_active_pointer(capability_callback, identity_id, "local");
+    enqueue_persist_active_pointer(capability_work_tx, identity_id, "local");
 }
 
-pub(super) fn persist_remote_signer_payload(
+pub(super) fn enqueue_persist_remote_signer_payload(
     identity_id: &str,
     payload_json: &str,
-    capability_callback: &CapabilityCallbackSlot,
+    capability_work_tx: &CapabilityWorkSender,
 ) {
-    let _ = run_keyring(
-        capability_callback,
+    enqueue_write(
+        capability_work_tx,
+        identity_id,
         KeyringIdentityWiring::persist_secret(
             "identity.persist.remote_payload",
             remote_signer_payload_account_id(identity_id),
@@ -180,21 +236,23 @@ pub(super) fn persist_remote_signer_payload(
     );
 }
 
-pub(super) fn persist_active_pointer(
-    capability_callback: &CapabilityCallbackSlot,
+pub(super) fn enqueue_persist_active_pointer(
+    capability_work_tx: &CapabilityWorkSender,
     identity_id: &str,
     signer_kind: &str,
 ) {
-    let _ = run_keyring(
-        capability_callback,
+    enqueue_write(
+        capability_work_tx,
+        identity_id,
         KeyringIdentityWiring::persist_secret(
             "identity.persist.active_id",
             ACTIVE_ACCOUNT_ID,
             identity_id,
         ),
     );
-    let _ = run_keyring(
-        capability_callback,
+    enqueue_write(
+        capability_work_tx,
+        identity_id,
         KeyringIdentityWiring::persist_secret(
             "identity.persist.active_kind",
             ACTIVE_SIGNER_KIND_ID,
@@ -203,16 +261,21 @@ pub(super) fn persist_active_pointer(
     );
 }
 
-pub(super) fn forget_account(identity_id: &str, capability_callback: &CapabilityCallbackSlot) {
-    let _ = run_keyring(
-        capability_callback,
+pub(super) fn enqueue_forget_account(
+    identity_id: &str,
+    capability_work_tx: &CapabilityWorkSender,
+) {
+    enqueue_write(
+        capability_work_tx,
+        identity_id,
         KeyringIdentityWiring::forget_secret(
             "identity.forget.local_nsec",
             local_secret_account_id(identity_id),
         ),
     );
-    let _ = run_keyring(
-        capability_callback,
+    enqueue_write(
+        capability_work_tx,
+        identity_id,
         KeyringIdentityWiring::forget_secret(
             "identity.forget.remote_payload",
             remote_signer_payload_account_id(identity_id),
@@ -220,16 +283,40 @@ pub(super) fn forget_account(identity_id: &str, capability_callback: &Capability
     );
 }
 
-fn forget_active_pointer(capability_callback: &CapabilityCallbackSlot) {
-    let _ = run_keyring(
-        capability_callback,
+fn enqueue_forget_active_pointer(
+    capability_work_tx: &CapabilityWorkSender,
+    account_id: &str,
+) {
+    enqueue_write(
+        capability_work_tx,
+        account_id,
         KeyringIdentityWiring::forget_secret("identity.forget.active_id", ACTIVE_ACCOUNT_ID),
     );
-    let _ = run_keyring(
-        capability_callback,
+    enqueue_write(
+        capability_work_tx,
+        account_id,
         KeyringIdentityWiring::forget_secret("identity.forget.active_kind", ACTIVE_SIGNER_KIND_ID),
     );
 }
+
+/// Enqueue a single capability write item to the worker. Called on the actor
+/// thread only; never blocks. A send failure (disconnected channel) is
+/// silently dropped — the channel only disconnects on actor teardown, at
+/// which point writes are irrelevant (D6).
+fn enqueue_write(
+    capability_work_tx: &CapabilityWorkSender,
+    account_id: &str,
+    request: crate::substrate::CapabilityRequest,
+) {
+    if let Some(item) = make_work_item(account_id, &request) {
+        // D6 — silently drop on disconnected channel (actor teardown).
+        let _ = capability_work_tx.send(item);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Read helpers (synchronous — only used by the restore path)
+// ─────────────────────────────────────────────────────────────────────────────
 
 fn run_keyring(
     capability_callback: &CapabilityCallbackSlot,
