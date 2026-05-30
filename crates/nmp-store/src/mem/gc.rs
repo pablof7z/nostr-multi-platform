@@ -5,10 +5,18 @@
 //!   - global pinned ceiling: `MAX_PINNED_TOTAL` (20000 events).
 //!   - `BTreeSet` idempotency per T25: re-claiming a known id is a no-op.
 //!   - `StoreError::OverPinned` on breach (D8).
+//!
+//! V-60: LRU eviction — when the store exceeds `budget.max_total_events`,
+//! `gc_step` evicts the least-recently-accessed (by `access_seq`) events that
+//! are not currently pinned (claimed), until the store is at or under the
+//! ceiling.  No tombstone is created for LRU-evicted events (they are still
+//! valid; the caller may re-fetch them from a relay).
+
+use std::collections::BTreeSet;
 
 use super::{
-    bytes_to_hex, relay_index_remove, MemEventStore, DEFAULT_VIEW_CEILING, MAX_PINNED_TOTAL,
-    TOMBSTONE_MAX_AGE_SECS,
+    access_remove, bytes_to_hex, relay_index_remove, MemEventStore, DEFAULT_VIEW_CEILING,
+    MAX_PINNED_TOTAL, TOMBSTONE_MAX_AGE_SECS,
 };
 use crate::types::{ClaimerId, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
@@ -28,7 +36,6 @@ pub(super) fn claim(
     claimer: ClaimerId,
     ids: &[EventId],
 ) -> Result<(), StoreError> {
-    use std::collections::BTreeSet;
     let mut st = store.lock()?;
     let ceiling = *st
         .claim_budgets
@@ -56,7 +63,8 @@ pub(super) fn claim(
 
     // Global pinned ceiling uses UNION of all claim sets, not SUM, to avoid
     // double-counting ids pinned by multiple claimers (D8 / gc.md §2).
-    let current_global: BTreeSet<&str> = st.claims.values().flatten().map(String::as_str).collect();
+    let current_global: BTreeSet<&str> =
+        st.claims.values().flatten().map(String::as_str).collect();
     let global_new = new_ids
         .iter()
         .filter(|hex| !current_global.contains(hex.as_str()))
@@ -85,18 +93,25 @@ pub(super) fn release(store: &MemEventStore, claimer: ClaimerId) -> Result<(), S
     Ok(())
 }
 
-pub(super) fn gc_step(store: &MemEventStore, budget: GcBudget) -> Result<GcReport, StoreError> {
+/// One bounded GC pass.
+///
+/// `now_secs` is the kernel clock as Unix seconds (D7 — caller-supplied, never
+/// read from `SystemTime::now()` here).
+///
+/// Three phases, in order:
+/// 1. Reap NIP-40 expired events (up to `budget.max_events_per_step`).
+/// 2. LRU-evict un-pinned events when store size exceeds `budget.max_total_events`.
+/// 3. Purge tombstone rows older than `TOMBSTONE_MAX_AGE_SECS`.
+pub(super) fn gc_step(
+    store: &MemEventStore,
+    budget: GcBudget,
+    now_secs: u64,
+) -> Result<GcReport, StoreError> {
     let start = std::time::Instant::now();
     let mut st = store.lock()?;
     let mut report = GcReport::default();
 
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
-    let now_secs = now_ms / 1000;
-
-    // Reap NIP-40 expired events.
+    // ── Phase 1: Reap NIP-40 expired events ──────────────────────────────────
     let expired_ids: Vec<String> = st
         .events
         .iter()
@@ -109,6 +124,7 @@ pub(super) fn gc_step(store: &MemEventStore, budget: GcBudget) -> Result<GcRepor
         if let Some(ev) = st.events.remove(id_hex) {
             st.provenance.remove(id_hex);
             relay_index_remove(&mut *st, id_hex);
+            access_remove(&mut *st, id_hex);
             st.tombstones.insert(
                 id_hex.clone(),
                 TombstoneRow {
@@ -124,11 +140,53 @@ pub(super) fn gc_step(store: &MemEventStore, budget: GcBudget) -> Result<GcRepor
             report.expired_reaped += 1;
         }
         if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
-            break;
+            return finish(start, report);
         }
     }
 
-    // Purge tombstones older than TOMBSTONE_MAX_AGE_SECS.
+    // ── Phase 2: LRU eviction ─────────────────────────────────────────────────
+    //
+    // If the store is over the event-count ceiling, evict the un-pinned events
+    // with the LOWEST access sequence numbers (oldest reads) until we are at or
+    // under the ceiling or we exhaust the per-step budget.
+    //
+    // Pinned events (union of all `claims` sets) are never evicted — that would
+    // violate the `claim`/`release` contract.
+    //
+    // No tombstone is created for LRU-evicted events: they are still valid Nostr
+    // events; tombstoning them would permanently block legitimate re-insertion.
+    if st.events.len() > budget.max_total_events {
+        // Build the pinned set once.
+        let pinned: BTreeSet<&str> =
+            st.claims.values().flatten().map(String::as_str).collect();
+
+        // Collect eviction candidates sorted ascending by access_seq (oldest first).
+        // Only include events that exist in both maps and are not pinned.
+        let mut candidates: Vec<(u64, String)> = st
+            .access_index
+            .iter()
+            .filter(|(hex, _)| !pinned.contains(hex.as_str()))
+            .map(|(hex, &seq)| (seq, hex.clone()))
+            .collect();
+        candidates.sort_unstable_by_key(|(seq, _)| *seq);
+
+        let overage = st.events.len().saturating_sub(budget.max_total_events);
+        let to_evict = overage.min(budget.max_events_per_step);
+
+        for (_, id_hex) in candidates.into_iter().take(to_evict) {
+            if st.events.remove(&id_hex).is_some() {
+                st.provenance.remove(&id_hex);
+                relay_index_remove(&mut *st, &id_hex);
+                access_remove(&mut *st, &id_hex);
+                report.lru_evicted += 1;
+            }
+            if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
+                return finish(start, report);
+            }
+        }
+    }
+
+    // ── Phase 3: Purge old tombstones ─────────────────────────────────────────
     let stale_tombstones: Vec<String> = st
         .tombstones
         .iter()
@@ -140,6 +198,11 @@ pub(super) fn gc_step(store: &MemEventStore, budget: GcBudget) -> Result<GcRepor
         st.tombstones.remove(&k);
     }
 
+    finish(start, report)
+}
+
+#[inline]
+fn finish(start: std::time::Instant, mut report: GcReport) -> Result<GcReport, StoreError> {
     report.duration_ms = start.elapsed().as_millis() as u32;
     Ok(report)
 }

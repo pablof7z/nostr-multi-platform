@@ -167,8 +167,8 @@ impl EventStore for LmdbEventStore {
         Ok(())
     }
 
-    fn gc_step(&self, budget: GcBudget) -> Result<GcReport, StoreError> {
-        gc::gc_step(&self.inner, budget)
+    fn gc_step(&self, budget: GcBudget, now_secs: u64) -> Result<GcReport, StoreError> {
+        gc::gc_step(&self.inner, budget, now_secs)
     }
 
     fn domain_open(&self, namespace: &'static str) -> Result<DomainHandle, StoreError> {

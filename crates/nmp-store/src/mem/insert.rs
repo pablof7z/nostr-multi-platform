@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::{bytes_to_hex, relay_index_add, relay_index_remove, upsert_provenance, MemEventStore, MemState};
+use super::{access_remove, access_stamp, bytes_to_hex, relay_index_add, relay_index_remove, upsert_provenance, MemEventStore, MemState};
 use crate::types::{
     DeleteFilter, InsertOutcome, RawEvent, RejectReason, RelayUrl, StoredEvent, TombstoneOrigin,
     TombstoneRow,
@@ -178,6 +178,7 @@ pub(super) fn delete_by_filter(
         st.events.remove(&id);
         st.provenance.remove(&id);
         relay_index_remove(&mut *st, &id);
+        access_remove(&mut *st, &id);
     }
     Ok(count)
 }
@@ -247,6 +248,7 @@ fn handle_supersession(
             st.events.remove(existing_hex);
             st.provenance.remove(existing_hex);
             relay_index_remove(st, existing_hex);
+            access_remove(st, existing_hex);
             let new_id = id_bytes;
             st.events.insert(
                 id_hex.clone(),
@@ -255,6 +257,7 @@ fn handle_supersession(
                     received_at_ms,
                 },
             );
+            access_stamp(st, &id_hex);
             let p = st.provenance.entry(id_hex.clone()).or_default();
             upsert_provenance(p, source.clone(), received_at_ms);
             relay_index_add(st, source, &id_hex);
@@ -278,6 +281,7 @@ fn handle_supersession(
                 received_at_ms,
             },
         );
+        access_stamp(st, &id_hex);
         let sources_after = {
             let p = st.provenance.entry(id_hex.clone()).or_default();
             upsert_provenance(p, source.clone(), received_at_ms);
@@ -320,6 +324,7 @@ fn handle_normal_insert(
             received_at_ms,
         },
     );
+    access_stamp(st, &id_hex);
     let sources_after = {
         let p = st.provenance.entry(id_hex.clone()).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);
@@ -354,6 +359,7 @@ fn handle_kind5_insert(
             st.events.remove(&target_hex);
             st.provenance.remove(&target_hex);
             relay_index_remove(st, &target_hex);
+            access_remove(st, &target_hex);
             merge_tombstone(
                 &mut st.tombstones,
                 target_hex,
@@ -406,6 +412,7 @@ fn handle_kind5_insert(
             if let Some(existing) = st.events.remove(&target_hex) {
                 st.provenance.remove(&target_hex);
                 relay_index_remove(st, &target_hex);
+                access_remove(st, &target_hex);
                 // existing.raw is stored (verified) — id_bytes() is guaranteed Some.
                 let target_id = existing
                     .raw
@@ -435,6 +442,7 @@ fn handle_kind5_insert(
             received_at_ms,
         },
     );
+    access_stamp(st, &kind5_id_hex);
     let sources_after = {
         let p = st.provenance.entry(kind5_id_hex.clone()).or_default();
         upsert_provenance(p, source.clone(), received_at_ms);

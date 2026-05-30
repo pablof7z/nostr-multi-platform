@@ -20,7 +20,7 @@
 
 use std::ops::ControlFlow;
 
-use super::{bytes_to_hex, MemEventStore};
+use super::{access_stamp, bytes_to_hex, MemEventStore};
 use crate::events::EventIter;
 use crate::types::{
     Coverage, DumpFormat, DumpStats, EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent,
@@ -35,8 +35,13 @@ pub(super) fn get_by_id(
     id: &EventId,
 ) -> Result<Option<StoredEvent>, StoreError> {
     let hex = bytes_to_hex(id);
-    let st = store.lock()?;
-    Ok(st.events.get(&hex).cloned())
+    let mut st = store.lock()?;
+    let result = st.events.get(&hex).cloned();
+    // Bump LRU access counter on every hit so gc_step can identify least-recently-read.
+    if result.is_some() {
+        access_stamp(&mut st, &hex);
+    }
+    Ok(result)
 }
 
 pub(super) fn scan_by_author_kind<'a>(

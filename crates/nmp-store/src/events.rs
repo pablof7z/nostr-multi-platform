@@ -387,7 +387,10 @@ pub trait EventStore: Send + Sync {
     fn hot_set_hint(&self, ids: &[EventId]) -> Result<(), StoreError>;
 
     /// One bounded GC pass — reap expired, trim LRU, purge old tombstones.
-    fn gc_step(&self, budget: GcBudget) -> Result<GcReport, StoreError>;
+    ///
+    /// `now_secs` is the current kernel clock as Unix seconds (D7 — the store
+    /// does not read the clock directly; the caller threads it in).
+    fn gc_step(&self, budget: GcBudget, now_secs: u64) -> Result<GcReport, StoreError>;
 
     // ─── Domain rows ─────────────────────────────────────────────────────────
 

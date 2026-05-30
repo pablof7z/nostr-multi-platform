@@ -75,10 +75,14 @@ for_each_backend!(gc_step_reaps_expired_events, |h: &mut StoreHarness| {
 
     let report = h
         .store
-        .gc_step(GcBudget {
-            max_events_per_step: 100,
-            max_duration_ms: 1000,
-        })
+        .gc_step(
+            GcBudget {
+                max_events_per_step: 100,
+                max_duration_ms: 1000,
+                max_total_events: usize::MAX,
+            },
+            1_700_000_000, // now_secs — far past expiration=2
+        )
         .unwrap();
     assert!(
         report.expired_reaped >= 1,
@@ -132,10 +136,14 @@ for_each_backend!(
 
         // Reap.
         h.store
-            .gc_step(GcBudget {
-                max_events_per_step: 100,
-                max_duration_ms: 1000,
-            })
+            .gc_step(
+                GcBudget {
+                    max_events_per_step: 100,
+                    max_duration_ms: 1000,
+                    max_total_events: usize::MAX,
+                },
+                1_700_000_000, // now_secs — far past expiration=2
+            )
             .unwrap();
 
         // Reinsert (received_at in the past too, so not ExpiredOnArrival but Tombstoned).

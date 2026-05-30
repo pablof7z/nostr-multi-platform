@@ -123,6 +123,21 @@ pub(super) struct MemState {
     /// Current claims: claimer → `BTreeSet` of hex event ids.
     /// `BTreeSet` gives idempotency per T25 — re-claiming a known id is a no-op.
     pub(super) claims: HashMap<ClaimerId, BTreeSet<String>>,
+
+    // ─── LRU access tracking (V-60) ──────────────────────────────────────────
+
+    /// Monotonically-increasing counter.  Incremented by one on every insert
+    /// and every point-read (get_by_id).  Using a counter rather than wall-clock
+    /// ms avoids a D7 surface on the read path while still producing a strict
+    /// total order for LRU eviction (no ties possible).
+    pub(super) access_seq: u64,
+
+    /// LRU access index: hex event_id → last-access sequence number.
+    ///
+    /// Set to `access_seq` on insert and bumped on every `get_by_id` that
+    /// returns `Some`.  Removed symmetrically whenever an event is evicted or
+    /// deleted from the primary map.
+    pub(super) access_index: HashMap<String, u64>,
 }
 
 impl MemState {
@@ -138,6 +153,8 @@ impl MemState {
             domain_versions: HashMap::new(),
             claim_budgets: HashMap::new(),
             claims: HashMap::new(),
+            access_seq: 0,
+            access_index: HashMap::new(),
         }
     }
 
@@ -281,6 +298,21 @@ pub(super) fn list_seen_on(st: &MemState, relay_url: &str) -> Vec<EventId> {
     ids.iter()
         .filter_map(|hex| super::types::hex_to_event_id(hex))
         .collect()
+}
+
+// ─── LRU access helpers (V-60) ───────────────────────────────────────────────
+
+/// Record an access on `id_hex`.  Increments `access_seq` and stores the new
+/// value in `access_index`.  Call on insert and on every `get_by_id` hit.
+pub(super) fn access_stamp(st: &mut MemState, id_hex: &str) {
+    st.access_seq += 1;
+    st.access_index.insert(id_hex.to_string(), st.access_seq);
+}
+
+/// Remove LRU tracking entry for `id_hex`.
+/// Call whenever an event is removed from the primary `events` map.
+pub(super) fn access_remove(st: &mut MemState, id_hex: &str) {
+    st.access_index.remove(id_hex);
 }
 
 // ─── Hex utilities ───────────────────────────────────────────────────────────

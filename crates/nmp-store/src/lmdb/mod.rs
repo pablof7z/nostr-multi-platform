@@ -79,6 +79,8 @@ pub(crate) use inner::Inner;
 
 #[cfg(feature = "lmdb-backend")]
 mod inner {
+    use std::sync::atomic::AtomicU64;
+
     use heed::types::Bytes;
     use heed::{Database, Env};
     use nmp_nostr_lmdb::Lmdb;
@@ -113,6 +115,23 @@ mod inner {
         /// `[u32 successes BE][u32 failures BE][u64 last_used_unix_s BE][u64 reserved BE]`.
         /// See `relay_scores.rs` for the encode/decode layer and §8.9/§8.10 of the impl plan.
         pub(crate) relay_author_scores: Database<Bytes, Bytes>,
+        /// V-60 LRU access index: event_id (32 bytes) → seq (8 bytes BE).
+        ///
+        /// Stamped on insert and on every `get_by_id` hit.  Used by `gc_step`
+        /// to identify the least-recently-accessed un-pinned events for eviction.
+        ///
+        /// Design trade-off: stamping on read converts a read-txn into a write-txn
+        /// on `get_by_id`.  We accept this cost only for point-reads (not bulk
+        /// scans) to bound write-amplification.  The alternative (wall-clock in
+        /// a read-txn) would reintroduce a D7 violation; using a persisted
+        /// monotonic counter is the only D7-safe option for LMDB.
+        pub(crate) lru_access: Database<Bytes, Bytes>,
+        /// Monotonic sequence counter for LRU ordering.  Initialised from
+        /// `max(lru_access values) + 1` on open so a crash-restart doesn't
+        /// reuse seqs that are already in the db.  `Relaxed` ordering is fine —
+        /// each store op holds the `heed::RwTxn` lock so there is no concurrent
+        /// writer.
+        pub(crate) lru_seq: AtomicU64,
     }
 
     impl std::fmt::Debug for Inner {
@@ -282,7 +301,7 @@ impl EventStore for LmdbEventStore {
     fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> {
         Ok(())
     }
-    fn gc_step(&self, _budget: GcBudget) -> Result<GcReport, StoreError> {
+    fn gc_step(&self, _budget: GcBudget, _now_secs: u64) -> Result<GcReport, StoreError> {
         Err(Self::not_enabled())
     }
     fn domain_open(&self, _namespace: &'static str) -> Result<DomainHandle, StoreError> {
