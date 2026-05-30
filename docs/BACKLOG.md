@@ -1128,21 +1128,32 @@ The D1 / offline-first contract (`docs/product-spec/offline-first.md` §1–§6)
 the first rendered frame must not depend on relay I/O or relay connectivity.
 Seven candidate sites were filed; HEAD-verified status below.
 
+**Kernel half DONE (PR fix/v87-kernel-d1-startup, 2026-05-30):**
+Items #601 and #602 are resolved in `crates/nmp-core/src/actor/`. Tests added
+in `actor/v87_d1_startup_tests.rs` (3 tests: pre-command frame, zero-relay
+startup, end-to-end no-deadlock). Existing D8 retention tests updated.
+
 1. **#600 — ALREADY FIXED AT HEAD. Close the issue.**
    `crates/nmp-core/src/actor/dispatch.rs:443-451` — the `Start` arm now calls
    `emit_now` (`:444`) **before** `spawn_missing_relays` (`:445`), with the
    explicit comment "first snapshot must reach the shell before any relay TCP
    connection is dialed, so emit_now precedes spawn_missing_relays". The order
    the issue asked for is already in place. No live violation; mark #600 resolved.
-2. `crates/nmp-core/src/actor/mod.rs:1176` [#601] — the actor blocks on
-   `command_rx.recv()` (`let first_command = match command_rx.recv()`) before
-   constructing the Kernel. No snapshot can emit until the host sends a command;
-   a host that waits for the first snapshot before sending `Start` deadlocks.
-   **Confirmed live.**
-3. `crates/nmp-core/src/actor/relay_mgmt.rs:178-188` [#602] — `maybe_send_startup`
-   (`:178`) early-returns unless `all_relays_connected(connected_relays)` (`:188`,
-   helper at `:51`) is true. One tardy lane (e.g. Indexer) delays Content-lane
-   startup REQs indefinitely. **Confirmed live.**
+2. **#601 — FIXED.** `crates/nmp-core/src/actor/mod.rs` — actor now emits a
+   pre-flight snapshot (empty, `running=false`) from a temporary bare kernel
+   BEFORE the blocking `command_rx.recv()`. A host waiting for the first frame
+   before sending `Start` no longer deadlocks. The real kernel is still built
+   post-`recv()` with the correct LMDB storage path; the pre-flight frame is
+   discarded by the host as `running=false`. See
+   `actor/v87_d1_startup_tests.rs::v87_601_first_snapshot_arrives_before_start_command`.
+3. **#602 — FIXED.** `crates/nmp-core/src/actor/relay_mgmt.rs` —
+   `maybe_send_startup` no longer gates on `all_relays_connected`. Bootstrap
+   interests (`startup_requests()`) and deferred view requests
+   (`pending_view_requests()`) are registered immediately when `running=true`,
+   independent of relay connectivity. The planner compiles interests into wire
+   REQs on the next `drain_lifecycle_tick` and the pool delivers them as
+   relays connect — no pre-condition at the actor level. See
+   `actor/v87_d1_startup_tests.rs::v87_602_start_with_zero_relays_emits_running_snapshot`.
 4. **#603 — CITATION STALE. Re-scope before fixing.** The filed citation
    `apps/nmp-gallery/tui/src/live.rs:161-195` (`bootstrap()` chaining six
    `recv_timeout` loops) does **not** exist at HEAD: `live.rs` is 217 lines, has
@@ -1152,26 +1163,27 @@ Seven candidate sites were filed; HEAD-verified status below.
    with a HEAD-accurate citation, or close #603.
 5. `ios/Chirp/Chirp/Features/HomeFeedView.swift:101` [#604] — empty
    `blocks`/`items` renders `ChirpPlaceholder(…)` until the first kernel tick;
-   the shell cannot distinguish "no events" from "not yet ticked". **Confirmed
-   live** (placeholder branch present; copy now differs from the originally-filed
-   string — see V-99).
+   the shell cannot distinguish "no events" from "not yet ticked". **DEFERRED
+   (iOS/shell leg — live peer agent mid-refactor in iOS profile/byline zone).**
 6. **#605 — CITATION STALE.** `ios/Chirp/Chirp/Features/ThreadScreen.swift` (202
    lines) does **not** contain the string "Fetching notes from the relay network"
    anywhere in the iOS tree, and the `threadView == nil` hard-gate at `:30-64` is
    not present as filed. Re-audit `ThreadScreen.swift` for the current loading
    gate and re-file with a HEAD-accurate `file:line`, or close #605. (See V-99 —
-   the user-facing-copy half of this issue is also stale.)
+   the user-facing-copy half of this issue is also stale.) **DEFERRED (iOS/shell
+   leg).**
 7. `crates/nmp-core/src/kernel/types.rs:184` [#606] — `ProfileCard.has_profile:
    bool` is consumed as a render gate at
    `ios/Chirp/Chirp/Features/ProfileView.swift:142,168` (`profile?.hasProfile ==
    true`). It trains callers to block fields on relay data. **Confirmed live**
    (the iOS gate is real; the originally-filed gallery `live.rs:419` cite is
    stale — `live.rs` is only 217 lines — so the gallery half needs re-citing).
+   **DEFERRED (iOS/shell leg).**
 
-**Required fix:** Items 2–3 require kernel/actor changes to emit the first
-snapshot before any network I/O or relay-connectivity gate. Items 5, 7 require
-shell changes: render immediately with placeholders, never gate on relay state.
-Item 1 is done (close #600). Items 4, 6 need re-citation against HEAD or closure.
+**Status:** Items #601 and #602 (kernel half) done at HEAD. Items #604, #605,
+#606 (iOS/shell legs) deferred — live peer agent in the iOS profile/byline zone;
+collision risk. Item #603 needs re-citation or closure. Item #600 close-issue
+only.
 
 ### V-88 · View payload `state` string invites render-gating [MEDIUM · P2/D1 · issue #607]
 

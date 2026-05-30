@@ -51,6 +51,8 @@ mod session_persistence;
 mod session_persistence_tests;
 #[cfg(all(test, feature = "native"))]
 mod tests;
+#[cfg(all(test, feature = "native"))]
+mod v87_d1_startup_tests;
 #[cfg(feature = "native")]
 mod tick;
 
@@ -1183,12 +1185,36 @@ pub fn run_actor_with_observers(
     // the FFI surface and diagnostic snapshot don't change.
     let dispatch_drops = Arc::new(AtomicU64::new(0));
 
-    // Wait for the first command before constructing the kernel. `nmp_app_new`
-    // starts this actor thread immediately, while the host sets the LMDB path
-    // through `nmp_app_set_storage_path` right after creating the handle and
-    // before `Start`. Blocking here removes that init-order race without
-    // polling; the first command is replayed through the normal dispatch path
-    // below after the kernel has been built with the latest path.
+    // D1 / offline-first §3 — emit one empty-but-valid snapshot BEFORE the
+    // host has sent any command. A host that waits for the first snapshot
+    // before sending `Start` must not deadlock (offline-first.md §3: "the
+    // first snapshot is unconditional … even if the working set is empty").
+    //
+    // We cannot construct the real kernel yet — the LMDB storage path is
+    // resolved only after the first command arrives (the init-order comment
+    // below explains why). A temporary bare kernel with default settings is
+    // constructed here solely to produce a well-formed `running=false`
+    // snapshot and then dropped.  This frame unblocks any host that observes
+    // the update channel before sending its first command; the real kernel
+    // (with the correct storage path) is still built below, after `recv()`.
+    //
+    // tick.rs `emit_now` is intentionally used here rather than an inline
+    // `encode_snapshot_value` so the frame travels the same code path as
+    // every other snapshot (FlatBuffers envelope, `SNAPSHOT_SCHEMA_VERSION`,
+    // `running=false` field).  The `last_emit` instant is not available yet
+    // (it is initialised after kernel construction below); we pass the
+    // channel sender directly without updating `last_emit` — that field is
+    // re-initialised below anyway.
+    {
+        let mut pre_kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let _ = update_tx.send(pre_kernel.make_update(false));
+    }
+    // Wait for the first command before constructing the real kernel.
+    // `nmp_app_new` starts this actor thread immediately, while the host sets
+    // the LMDB path through `nmp_app_set_storage_path` right after creating
+    // the handle and before `Start`. Blocking here removes that init-order
+    // race without polling; the first command is replayed through the normal
+    // dispatch path below after the kernel has been built with the latest path.
     let first_command = match command_rx.recv() {
         Ok(ActorCommand::Shutdown) | Err(_) => return,
         Ok(command) => command,
