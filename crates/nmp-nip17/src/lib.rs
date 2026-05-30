@@ -48,6 +48,7 @@
 //!
 //! <https://github.com/nostr-protocol/nips/blob/master/17.md>
 
+use nmp_core::kinds::KIND_CHAT_MESSAGE;
 use nmp_core::substrate::{AppHost, UnsignedEvent};
 
 pub mod action;
@@ -70,9 +71,6 @@ pub use inbox::{
     DmInboxProjection, DmInboxSnapshot, DmMessage,
 };
 pub use kind10050_parser::Kind10050Parser;
-
-/// NIP-17 kind: a "chat message" rumor.
-const KIND_CHAT_MESSAGE: u32 = 14;
 
 /// Caller intent for a single outgoing NIP-17 direct message.
 ///

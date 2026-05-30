@@ -13,6 +13,10 @@
 
 use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use nmp_core::stable_hash::stable_hash64;
+// KIND_GIFT_WRAP = 1059 from the canonical Layer-0 registry (via nmp-nip59
+// which re-exports from nmp-kinds). Eliminates the duplicate local definition
+// that caused the V-57 P2 duplication audit finding.
+pub use nmp_nip59::KIND_GIFT_WRAP;
 
 /// Marmot KeyPackage event kind (NIP-33 addressable). CURRENT spec.
 pub const KIND_KEY_PACKAGE: u32 = 30443;
@@ -20,8 +24,6 @@ pub const KIND_KEY_PACKAGE: u32 = 30443;
 pub const KIND_KEY_PACKAGE_LEGACY: u32 = 443;
 /// Marmot group message / commit / proposal (MLS + MIP-03 outer layer).
 pub const KIND_GROUP_MESSAGE: u32 = 445;
-/// NIP-59 gift-wrap kind (carries the kind:444 Welcome rumor).
-pub const KIND_GIFT_WRAP: u32 = 1059;
 
 /// Stable, deterministic `InterestId` for a pubkey's gift-wrap inbox
 /// subscription. Same hash pattern as `follow_feed_interest_id` in the

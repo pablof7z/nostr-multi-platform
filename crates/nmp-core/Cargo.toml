@@ -100,6 +100,11 @@ flatbuffers = { workspace = true }
 # transitively-resolved `indexmap 2.14` already in the lockfile (no new
 # dependency tree branch).
 indexmap = "2.14"
+# Zero-dependency Layer-0 kind-integer registry. `nmp-core::kinds` re-exports
+# from here so every existing `nmp_core::kinds::KIND_*` call site is unchanged,
+# while NIP crates (e.g. nmp-nip59) can also depend on nmp-kinds without
+# creating the nmp-nip59 → nmp-core compile cycle.
+nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
 # NIP-59 gift-wrap free functions (`gift_wrap` / `unwrap_gift_wrap`). Consumed
 # by the `ActorCommand::SendGiftWrappedDm` arm to seal+wrap NIP-17 DM rumors on

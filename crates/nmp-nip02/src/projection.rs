@@ -45,11 +45,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
+use nmp_core::kinds::KIND_CONTACT_LIST;
 use nmp_core::KernelEventObserver;
 use serde::Serialize;
-
-/// NIP-02 contact list kind.
-const KIND_CONTACT_LIST: u32 = 3;
 
 /// One entry in the active account's follow list — raw hex pubkey only.
 ///

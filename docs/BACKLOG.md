@@ -55,59 +55,37 @@ findings below are ordered by architectural risk. When a slice gets a dedicated 
 or a fixing PR, remove or strike that bullet here instead of creating a parallel plan.
 
 **Priority order:**
-2. **P2 — centralise Nostr kind constants in `nmp-core`.** _Direction changed
-   2026-05-27._ The original framing treated `nmp-core` naming `1059` / `10002`
-   as a D0 leak; the owner reframed this on 2026-05-27 — integer kind numbers
-   are wire-protocol data, not app/protocol *nouns*, and centralising the
-   integers in one place removes the duplication risk without growing the
-   kernel's semantic surface.
+2. ~~**P2 — centralise Nostr kind constants.**~~ **DONE — 2026-05-30 (V-57 P2 gift-wrap cycle closed).**
 
-   **Stage 1 — DONE.** `crates/nmp-core/src/kinds.rs` is the new canonical
-   workspace registry for the kind integers `nmp-core` actively names
-   (`KIND_PROFILE_METADATA`, `KIND_SHORT_TEXT_NOTE`, `KIND_CONTACT_LIST`,
-   `KIND_REACTION`, `KIND_CHAT_MESSAGE`, `KIND_GIFT_WRAP`, `KIND_RELAY_LIST`).
-   `actor/commands/{publish,relays}.rs`, `actor/commands/identity.rs`,
-   `kernel/{discovery,publish_outbox,requests/profile}.rs`, and
-   `subs/recompile.rs` all use the constants from this module — no production
-   `nmp-core` code path holds a hand-rolled `1059` / `10002` literal any
-   more. The doc-prose and log strings in `publish.rs` no longer name `NIP-17`,
-   kind `10050`, or `Marmot`; the kind:1059 D10 guard now refers to "the
-   author's public-relay outbox" in substrate-neutral terms.
+   **Stage 1 — DONE.** `crates/nmp-core/src/kinds.rs` established the canonical
+   workspace registry; no production `nmp-core` code path holds a hand-rolled
+   `1059` / `10002` literal.
 
-   **Stage 2 — nmp-router DONE (2026-05-30).** `nmp-router` no longer holds
-   any hand-rolled `10002` / `KIND_RELAY_LIST` production literals:
-   `publish_relay_list.rs`, `ingest.rs`, and `nip65_resolver.rs` all import
-   `nmp_core::kinds::KIND_RELAY_LIST`. The existing `nmp-core` dependency edge
-   in `nmp-router/Cargo.toml` covers this without adding any new edge.
-   Test assertions in `publish_relay_list_tests.rs` intentionally retain the
-   literal (asserting against an imported constant is tautological).
+   **Stage 2 — nmp-router DONE (2026-05-30).** `nmp-router` imports
+   `nmp_core::kinds::KIND_RELAY_LIST`; no hand-rolled `10002` literals in
+   production code.
 
-   **Stage 2 — nmp-nip59 BLOCKED (owner decision required).** The boundary
-   spec (`docs/architecture/crate-boundaries.md` §2 Layer 4) places
-   `nmp-nip59`'s dependency as `nmp-proto` only, and explicitly reserves
-   `nmp-core → nmp-nip59` as the blessed direction (the kernel may consume the
-   wrap primitive without owning DM semantics). `nmp-core/Cargo.toml` already
-   depends on `nmp-nip59`, so adding `nmp-nip59 → nmp-core` would create a
-   **compile-time cycle**. The spec also contradicts itself: `kinds.rs`'s doc
-   comment names `nmp-nip59::kinds::KIND_GIFT_WRAP` as a duplicate that
-   "should import from here instead" — but that direction is structurally
-   illegal. Resolution options for the owner:
-   (a) Keep `nmp-nip59::kinds::KIND_GIFT_WRAP = 1059` as the source of truth
-       and have `nmp-core::kinds` re-export from `nmp-nip59` (reverses the
-       current import direction in `kinds.rs` doc comment).
-   (b) Accept that `nmp-nip59::kinds` keeps its own copy (1059 is a fixed
-       NIP-59 wire constant; divergence risk is very low) and strike the
-       "should import from here" claim from `kinds.rs`.
-   (c) Move `KIND_GIFT_WRAP` to Layer 0 (`nmp-proto` or a new `nmp-nip59-types`
-       crate) that both `nmp-nip59` and `nmp-core` can depend on.
+   **Stage 2 — nmp-nip59 / gift-wrap DONE (2026-05-30).** Owner decision:
+   option (c) — create `crates/nmp-kinds/`, a zero-dependency Layer-0 crate
+   (same pattern as `nmp-nip42-types`) holding the seven canonical integer
+   constants. `nmp-core::kinds` is now `pub use nmp_kinds::*` (all existing
+   `nmp_core::kinds::KIND_*` call sites unchanged). `nmp-nip59::kinds` is now
+   `pub use nmp_kinds::KIND_GIFT_WRAP` (no cycle: `nmp-kinds` has zero workspace
+   deps). `nmp-marmot` and `nmp-nip17` duplicate `KIND_GIFT_WRAP` / `KIND_CHAT_MESSAGE`
+   also eliminated. `nmp-nip02` and `nmp-wot` `KIND_CONTACT_LIST`/`KIND_RELAY_LIST`
+   duplicates eliminated. `cargo build --workspace` succeeds; 42/42 doctrine lint
+   smoke tests pass.
 
-   **Files still needing migration (2026-05-30 audit):** `nmp-nip59`
-   `KIND_GIFT_WRAP` (blocked — see above); `nmp-nip17` `KIND_DM_RELAY_LIST` +
-   `KIND_CHAT_MESSAGE`; `nmp-nip57` `KIND_ZAP_REQUEST` + `KIND_ZAP_RECEIPT`;
-   `nmp-marmot` `KIND_GIFT_WRAP` (same cycle as nmp-nip59). Note: `nmp-nip29`'s
-   `KIND_CHAT_MESSAGE` (value `9`) is a different kind from `nmp-nip17`'s
-   `KIND_CHAT_MESSAGE` (value `14`) and should stay crate-local — it is not a
-   duplicate of the canonical registry constant.
+   **Deferred (non-blocking, post-v1):** `nmp-nip57` `KIND_ZAP_REQUEST`/`KIND_ZAP_RECEIPT`
+   and `nmp-nip17` `KIND_DM_RELAY_LIST` are NIP-specific integers not yet in the
+   registry; `nmp-nip51` `KIND_MUTE_LIST` and `nmp-router` `KIND_BLOCKED_RELAYS` likewise.
+   Add those constants to `nmp-kinds` and migrate callers when the respective NIP crates
+   are refactored. `nmp-nip29`'s `KIND_CHAT_MESSAGE = 9` stays crate-local (different
+   semantics from the registry `KIND_CHAT_MESSAGE = 14`).
+
+   **Future:** if `nmp-proto` (Layer-0 planned crate) lands, it can re-export or
+   absorb `nmp-kinds` — that migration is orthogonal. `nmp-kinds` is the permanent
+   Layer-0 home until then.
 3. **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
    ~~`apps/chirp/chirp-tui/src/commands.rs:169-234` resolves lightning addresses in the
    TUI~~: **FIXED** — now routes through `runtime.zap()`. ~~`apps/chirp/chirp-tui/src/runtime_commands.rs:249-269`

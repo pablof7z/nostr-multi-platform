@@ -4,14 +4,19 @@ use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
 
-/// NIP-01 profile metadata.
-pub const KIND_PROFILE: u32 = 0;
-/// NIP-02 contact list.
-pub const KIND_CONTACT_LIST: u32 = 3;
+// Kind constants sourced from the canonical registry in nmp-core::kinds
+// (which re-exports from nmp-kinds, the zero-dep Layer-0 crate — V-57 P2).
+// Public re-exports preserve downstream visibility for crate-internal users
+// (score.rs, runtime.rs, lib.rs) that previously saw these as pub const here.
+// KIND_MUTE_LIST (10000) is not yet in the registry; defer to a follow-up.
+/// NIP-01 profile metadata (canonical source: nmp-kinds::KIND_PROFILE_METADATA).
+pub const KIND_PROFILE: u32 = nmp_core::kinds::KIND_PROFILE_METADATA;
+/// NIP-02 contact list (canonical source: nmp-kinds::KIND_CONTACT_LIST).
+pub use nmp_core::kinds::KIND_CONTACT_LIST;
 /// NIP-51 mute list.
 pub const KIND_MUTE_LIST: u32 = 10_000;
-/// NIP-65 relay list.
-pub const KIND_RELAY_LIST: u32 = 10_002;
+/// NIP-65 relay list (canonical source: nmp-kinds::KIND_RELAY_LIST).
+pub use nmp_core::kinds::KIND_RELAY_LIST;
 
 /// Replaceable kinds fetched for followed authors during WOT bootstrap.
 pub const WOT_BOOTSTRAP_KINDS: [u32; 4] = [
