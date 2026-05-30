@@ -1,0 +1,18 @@
+{
+  "name": "desktop-user-nip05",
+  "type": "registry:ui",
+  "title": "User Nip05 (desktop)",
+  "description": "iced NIP-05 verified identity badge that renders only when an identifier is present.",
+  "dependencies": [],
+  "registryDependencies": [
+    "desktop-user-core"
+  ],
+  "files": [
+    {
+      "path": "registry/desktop/user-nip05/user_nip05.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_user/user_nip05.rs",
+      "content": "use iced::widget::{row, text};\nuse iced::{Color, Element};\nuse super::profile_wire::ProfileWire;\n\nconst GREEN: Color = Color::from_rgb(\n    110.0 / 255.0,\n    231.0 / 255.0,\n    183.0 / 255.0,\n);\n\n/// NIP-05 verified domain badge.\n///\n/// Returns `None` when the profile has no NIP-05 identifier.\npub struct Nip05Badge {\n    nip05: String,\n}\n\nimpl Nip05Badge {\n    /// Create a badge from a profile, or `None` if no NIP-05 is present.\n    #[must_use]\n    pub fn from_profile(profile: &ProfileWire) -> Option<Self> {\n        let nip05 = profile\n            .nip05\n            .as_deref()\n            .map(str::trim)\n            .filter(|s| !s.is_empty())?;\n        Some(Self {\n            nip05: nip05.to_string(),\n        })\n    }\n\n    /// Render the badge as an iced [`Element`].\n    ///\n    /// A leading `_@` (the NIP-05 \"root\" identifier convention) is elided so\n    /// `_@f7z.io` renders as the bare domain `f7z.io`; a normal\n    /// `name@domain` identifier renders verbatim.\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        let nip05 = self\n            .nip05\n            .strip_prefix(\"_@\")\n            .map_or(self.nip05.clone(), str::to_string);\n        row![\n            text(\"✓\").size(13).style(|_theme| iced::widget::text::Style {\n                color: Some(GREEN),\n            }),\n            text(nip05).size(13).style(|_theme| iced::widget::text::Style {\n                color: Some(GREEN),\n            }),\n        ]\n        .spacing(2)\n        .into()\n    }\n}\n"
+    }
+  ]
+}

@@ -888,6 +888,127 @@
           "content": "use ratatui::{\n    buffer::Buffer,\n    layout::{Constraint, Layout, Rect},\n    style::{Color, Style},\n    text::Line,\n    widgets::{Block, Borders, Paragraph, Widget},\n};\nuse ratatui_image::protocol::Protocol;\n\nuse super::{\n    nostr_avatar::NostrAvatar, nostr_nip05_badge::NostrNip05Badge,\n    nostr_profile_name::NostrProfileName, profile_wire::ProfileWire,\n};\n\n/// Compact author header: avatar, display name, and optional NIP-05 badge.\npub struct NostrUserCard<'a> {\n    profile: &'a ProfileWire,\n    avatar_image: Option<&'a Protocol>,\n    style: Style,\n}\n\nimpl<'a> NostrUserCard<'a> {\n    pub fn new(profile: &'a ProfileWire) -> Self {\n        Self {\n            profile,\n            avatar_image: None,\n            style: Style::default().fg(Color::White).bg(Color::Rgb(12, 16, 28)),\n        }\n    }\n\n    pub fn avatar_image(mut self, image: Option<&'a Protocol>) -> Self {\n        self.avatar_image = image;\n        self\n    }\n\n    pub fn style(mut self, style: Style) -> Self {\n        self.style = style;\n        self\n    }\n}\n\nimpl Widget for NostrUserCard<'_> {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        let block = Block::default()\n            .borders(Borders::ALL)\n            .border_style(Style::default().fg(Color::Rgb(30, 41, 59)))\n            .style(self.style);\n        let inner = block.inner(area);\n        block.render(area, buf);\n        if inner.is_empty() {\n            return;\n        }\n\n        let chunks = Layout::horizontal([Constraint::Length(14), Constraint::Min(0)]).split(inner);\n        NostrAvatar::new(self.profile)\n            .image(self.avatar_image)\n            .render(chunks[0], buf);\n\n        let text_area = inset(chunks[1], 1, 0);\n        let name = NostrProfileName::new(self.profile).line();\n        let badge = NostrNip05Badge::from_profile(self.profile)\n            .map(|badge| badge.line())\n            .unwrap_or_else(|| Line::from(\"\"));\n\n        Paragraph::new(vec![name, badge])\n            .style(self.style)\n            .render(text_area, buf);\n    }\n}\n\nfn inset(area: Rect, x: u16, y: u16) -> Rect {\n    Rect {\n        x: area.x.saturating_add(x),\n        y: area.y.saturating_add(y),\n        width: area.width.saturating_sub(x),\n        height: area.height.saturating_sub(y),\n    }\n}\n"
         }
       ]
+    },
+    {
+      "name": "desktop-user-core",
+      "type": "registry:ui",
+      "title": "User Core (desktop)",
+      "description": "Shared iced ProfileWire mirror for Rust-owned user profile projections.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [
+        {
+          "path": "registry/desktop/user-core/profile_wire.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/profile_wire.rs",
+          "content": "/// Wire type for a Nostr user profile, decoded from the Rust-owned profile\n/// projection before it reaches the Ratatui view layer.\n///\n/// `npub` and `npub_short` are already Rust-formatted. TUI code should render\n/// them as provided rather than reformatting keys locally.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct ProfileWire {\n    pub pubkey: String,\n    pub display_name: Option<String>,\n    pub about: Option<String>,\n    pub picture_url: Option<String>,\n    pub nip05: Option<String>,\n    pub npub: String,\n    pub npub_short: String,\n}\n\nimpl ProfileWire {\n    pub fn display(&self) -> &str {\n        non_empty(self.display_name.as_deref()).unwrap_or(self.npub_short.as_str())\n    }\n\n    pub fn nip05(&self) -> Option<&str> {\n        non_empty(self.nip05.as_deref())\n    }\n\n    pub fn picture_url(&self) -> Option<&str> {\n        non_empty(self.picture_url.as_deref())\n    }\n\n    pub fn initials(&self) -> String {\n        let label = self.display();\n        let mut letters = label\n            .split_whitespace()\n            .filter_map(|part| part.chars().next())\n            .filter(|ch| ch.is_alphanumeric())\n            .take(2)\n            .collect::<String>();\n        if letters.is_empty() {\n            letters = self.npub_short.chars().take(2).collect();\n        }\n        letters.to_uppercase()\n    }\n}\n\nfn non_empty(value: Option<&str>) -> Option<&str> {\n    value.map(str::trim).filter(|value| !value.is_empty())\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "desktop-user-avatar",
+      "type": "registry:ui",
+      "title": "User Avatar (desktop)",
+      "description": "Self-contained iced avatar widget with deterministic pubkey tint and optional image Handle.",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [
+        {
+          "path": "registry/desktop/user-avatar/user_avatar.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/user_avatar.rs",
+          "content": "use iced::widget::container;\nuse iced::widget::image::Handle;\nuse iced::ContentFit;\nuse iced::{Border, Color, Element, Length};\n\n/// Circular avatar widget with deterministic pubkey-derived tint.\n///\n/// When `picture_bytes` are supplied the image is rendered as a circle (via\n/// container clip + border-radius). Otherwise renders a tinted circle with\n/// initials, identical to the TUI surface.\npub struct UserAvatar {\n    pubkey_hex: String,\n    display_name: Option<String>,\n    picture_handle: Option<Handle>,\n    size: f32,\n}\n\nimpl UserAvatar {\n    #[must_use]\n    pub fn new(pubkey_hex: &str) -> Self {\n        Self {\n            pubkey_hex: pubkey_hex.to_string(),\n            display_name: None,\n            picture_handle: None,\n            size: 36.0,\n        }\n    }\n\n    #[must_use]\n    pub fn display_name(mut self, name: Option<&str>) -> Self {\n        self.display_name = name.map(String::from);\n        self\n    }\n\n    /// Supply a pre-built image Handle (created once in update(), never in\n    /// view()). When present, renders the actual profile picture clipped to a\n    /// circle. Passing a Handle with a stable ID prevents per-frame GPU\n    /// re-uploads and the flickering that would cause.\n    #[must_use]\n    pub fn picture_handle(mut self, handle: Handle) -> Self {\n        self.picture_handle = Some(handle);\n        self\n    }\n\n    #[must_use]\n    pub fn size(mut self, size: f32) -> Self {\n        self.size = size;\n        self\n    }\n\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        let size = self.size;\n\n        if let Some(handle) = self.picture_handle {\n            // Render actual profile picture clipped to a circle.\n            container(\n                iced::widget::image(handle)\n                    .width(Length::Fixed(size))\n                    .height(Length::Fixed(size))\n                    .content_fit(ContentFit::Cover),\n            )\n            .width(Length::Fixed(size))\n            .height(Length::Fixed(size))\n            .clip(true)\n            .style(move |_| container::Style {\n                border: Border {\n                    radius: (size / 2.0).into(),\n                    color: Color::TRANSPARENT,\n                    width: 0.0,\n                },\n                ..Default::default()\n            })\n            .into()\n        } else {\n            // Deterministic tinted circle with initials.\n            let color = hex_color(&nmp_core::display::avatar_color_hex(&self.pubkey_hex));\n            let initials = if let Some(ref name) = self.display_name {\n                nmp_core::display::display_name_initials(name)\n            } else {\n                let npub = nmp_core::display::to_npub(&self.pubkey_hex);\n                nmp_core::display::avatar_initials(&npub)\n            };\n\n            container(\n                iced::widget::text(initials)\n                    .size(size * 0.4)\n                    .align_x(iced::alignment::Horizontal::Center)\n                    .align_y(iced::alignment::Vertical::Center),\n            )\n            .width(Length::Fixed(size))\n            .height(Length::Fixed(size))\n            .align_x(iced::alignment::Horizontal::Center)\n            .align_y(iced::alignment::Vertical::Center)\n            .style(move |_| container::Style {\n                background: Some(iced::Background::Color(color)),\n                border: Border {\n                    radius: (size / 2.0).into(),\n                    ..Default::default()\n                },\n                ..Default::default()\n            })\n            .into()\n        }\n    }\n}\n\nfn hex_color(hex: &str) -> iced::Color {\n    let h = hex.trim_start_matches('#');\n    if h.len() == 6 {\n        if let (Ok(r), Ok(g), Ok(b)) = (\n            u8::from_str_radix(&h[0..2], 16),\n            u8::from_str_radix(&h[2..4], 16),\n            u8::from_str_radix(&h[4..6], 16),\n        ) {\n            return iced::Color::from_rgb8(r, g, b);\n        }\n    }\n    iced::Color::from_rgb8(120, 120, 120)\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn avatar_renders_with_display_name_initials() {\n        let avatar = UserAvatar::new(&nmp_gallery_tui::live::primary_pubkey())\n            .display_name(Some(\"pablof7z\"))\n            .size(48.0);\n        assert_eq!(avatar.display_name, Some(\"pablof7z\".to_string()));\n        assert_eq!(avatar.size, 48.0);\n        let _ = avatar.into_element::<()>();\n    }\n\n    #[test]\n    fn avatar_falls_back_to_npub_initials_when_no_name() {\n        let avatar = UserAvatar::new(&nmp_gallery_tui::live::primary_pubkey());\n        assert!(avatar.display_name.is_none());\n        assert_eq!(avatar.size, 36.0);\n        let _ = avatar.into_element::<()>();\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "desktop-user-name",
+      "type": "registry:ui",
+      "title": "User Name (desktop)",
+      "description": "Inline iced profile display-name text with Rust-formatted npub fallback.",
+      "dependencies": [],
+      "registryDependencies": [
+        "desktop-user-core"
+      ],
+      "files": [
+        {
+          "path": "registry/desktop/user-name/user_name.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/user_name.rs",
+          "content": "use iced::widget::text;\nuse iced::{Color, Element};\nuse super::profile_wire::ProfileWire;\n\n/// Display name with npub fallback.\n///\n/// Clones display data at construction so the element lifetime is `'static`.\npub struct UserName {\n    display_name: Option<String>,\n    npub_short: String,\n}\n\nimpl UserName {\n    #[must_use]\n    pub fn from_profile(profile: &ProfileWire) -> Self {\n        Self {\n            display_name: profile.display_name.clone(),\n            npub_short: profile.npub_short.clone(),\n        }\n    }\n\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        let has_name = self\n            .display_name\n            .as_deref()\n            .map(|s| !s.trim().is_empty())\n            .unwrap_or(false);\n\n        if has_name {\n            let name = self.display_name.unwrap_or_default();\n            text(name)\n                .size(16)\n                .font(iced::Font {\n                    weight: iced::font::Weight::Bold,\n                    ..iced::Font::default()\n                })\n                .into()\n        } else {\n            const MUTED: Color = Color::from_rgb(0.6, 0.6, 0.6);\n            text(self.npub_short)\n                .size(16)\n                .style(move |_theme| iced::widget::text::Style {\n                    color: Some(MUTED),\n                })\n                .into()\n        }\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "desktop-user-nip05",
+      "type": "registry:ui",
+      "title": "User Nip05 (desktop)",
+      "description": "iced NIP-05 verified identity badge that renders only when an identifier is present.",
+      "dependencies": [],
+      "registryDependencies": [
+        "desktop-user-core"
+      ],
+      "files": [
+        {
+          "path": "registry/desktop/user-nip05/user_nip05.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/user_nip05.rs",
+          "content": "use iced::widget::{row, text};\nuse iced::{Color, Element};\nuse super::profile_wire::ProfileWire;\n\nconst GREEN: Color = Color::from_rgb(\n    110.0 / 255.0,\n    231.0 / 255.0,\n    183.0 / 255.0,\n);\n\n/// NIP-05 verified domain badge.\n///\n/// Returns `None` when the profile has no NIP-05 identifier.\npub struct Nip05Badge {\n    nip05: String,\n}\n\nimpl Nip05Badge {\n    /// Create a badge from a profile, or `None` if no NIP-05 is present.\n    #[must_use]\n    pub fn from_profile(profile: &ProfileWire) -> Option<Self> {\n        let nip05 = profile\n            .nip05\n            .as_deref()\n            .map(str::trim)\n            .filter(|s| !s.is_empty())?;\n        Some(Self {\n            nip05: nip05.to_string(),\n        })\n    }\n\n    /// Render the badge as an iced [`Element`].\n    ///\n    /// A leading `_@` (the NIP-05 \"root\" identifier convention) is elided so\n    /// `_@f7z.io` renders as the bare domain `f7z.io`; a normal\n    /// `name@domain` identifier renders verbatim.\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        let nip05 = self\n            .nip05\n            .strip_prefix(\"_@\")\n            .map_or(self.nip05.clone(), str::to_string);\n        row![\n            text(\"✓\").size(13).style(|_theme| iced::widget::text::Style {\n                color: Some(GREEN),\n            }),\n            text(nip05).size(13).style(|_theme| iced::widget::text::Style {\n                color: Some(GREEN),\n            }),\n        ]\n        .spacing(2)\n        .into()\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "desktop-user-npub",
+      "type": "registry:ui",
+      "title": "User Npub (desktop)",
+      "description": "Display-only iced npub chip for Rust-truncated bech32 identity strings.",
+      "dependencies": [],
+      "registryDependencies": [
+        "desktop-user-core"
+      ],
+      "files": [
+        {
+          "path": "registry/desktop/user-npub/user_npub.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/user_npub.rs",
+          "content": "use iced::widget::{container, text};\nuse iced::{Background, Border, Color, Element, Font, Length, Padding};\nuse super::profile_wire::ProfileWire;\n\nconst BG: Color = Color::from_rgb(30.0 / 255.0, 41.0 / 255.0, 59.0 / 255.0);\nconst FG: Color = Color::from_rgb(148.0 / 255.0, 163.0 / 255.0, 184.0 / 255.0);\n\n/// Truncated npub in a monospace chip.\npub struct NpubChip {\n    npub_short: String,\n}\n\nimpl NpubChip {\n    /// Create an npub chip from a profile.\n    #[must_use]\n    pub fn from_profile(profile: &ProfileWire) -> Self {\n        Self {\n            npub_short: profile.npub_short.clone(),\n        }\n    }\n\n    /// Render the chip as an iced [`Element`].\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        let npub_short = self.npub_short;\n        container(\n            text(npub_short)\n                .font(Font::MONOSPACE)\n                .size(12)\n                .style(|_theme| iced::widget::text::Style {\n                    color: Some(FG),\n                }),\n        )\n        .padding(Padding::from(6))\n        .style(|_theme| container::Style {\n            background: Some(Background::Color(BG)),\n            border: Border {\n                radius: 4.0.into(),\n                ..Default::default()\n            },\n            ..Default::default()\n        })\n        .width(Length::Shrink)\n        .into()\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "desktop-user-card",
+      "type": "registry:ui",
+      "title": "User Card (desktop)",
+      "description": "Compact iced author card composed from the avatar widget, profile name, and optional NIP-05 badge.",
+      "dependencies": [],
+      "registryDependencies": [
+        "desktop-user-core",
+        "desktop-user-avatar"
+      ],
+      "files": [
+        {
+          "path": "registry/desktop/user-card/user_card.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_user/user_card.rs",
+          "content": "use iced::widget::image::Handle as ImageHandle;\nuse iced::widget::{column, row, text};\nuse iced::{Alignment, Color, Element};\nuse super::profile_wire::ProfileWire;\n\nuse super::user_avatar::UserAvatar;\n\nconst GREEN: Color = Color::from_rgb(110.0 / 255.0, 231.0 / 255.0, 183.0 / 255.0);\n\n/// Avatar + name + optional NIP-05 row.\n///\n/// Clones display data at construction so the element lifetime is `'static`.\npub struct UserCard {\n    pubkey: String,\n    display_name: Option<String>,\n    npub_short: String,\n    nip05: Option<String>,\n    avatar_handle: Option<ImageHandle>,\n}\n\nimpl UserCard {\n    #[must_use]\n    pub fn from_profile(profile: &ProfileWire) -> Self {\n        Self {\n            pubkey: profile.pubkey.clone(),\n            display_name: profile.display_name.clone(),\n            npub_short: profile.npub_short.clone(),\n            nip05: profile.nip05.clone(),\n            avatar_handle: None,\n        }\n    }\n\n    /// Forward the pre-built image handle so the embedded `UserAvatar`\n    /// renders the real profile picture instead of the initials fallback.\n    #[must_use]\n    pub fn avatar_handle(mut self, handle: ImageHandle) -> Self {\n        self.avatar_handle = Some(handle);\n        self\n    }\n\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        let mut av = UserAvatar::new(&self.pubkey)\n            .display_name(self.display_name.as_deref())\n            .size(40.0);\n        if let Some(handle) = self.avatar_handle {\n            av = av.picture_handle(handle);\n        }\n        let avatar = av.into_element();\n\n        let has_name = self\n            .display_name\n            .as_deref()\n            .map(|s| !s.trim().is_empty())\n            .unwrap_or(false);\n\n        let name_text: Element<'static, Message> = if has_name {\n            text(self.display_name.unwrap_or_default())\n                .size(14)\n                .font(iced::Font {\n                    weight: iced::font::Weight::Bold,\n                    ..iced::Font::default()\n                })\n                .into()\n        } else {\n            text(self.npub_short).size(14).into()\n        };\n\n        let mut label_col = column![name_text].spacing(2);\n\n        if let Some(nip05) = self\n            .nip05\n            .as_deref()\n            .map(str::trim)\n            .filter(|s| !s.is_empty())\n            // Elide the NIP-05 \"_@\" root prefix so `_@f7z.io` shows as `f7z.io`,\n            // matching the standalone Nip05Badge and the iOS/Android badge.\n            .map(|s| s.strip_prefix(\"_@\").unwrap_or(s).to_string())\n        {\n            let nip05_row = row![\n                text(\"✓\")\n                    .size(12)\n                    .style(|_theme| iced::widget::text::Style { color: Some(GREEN) }),\n                text(nip05)\n                    .size(12)\n                    .style(|_theme| iced::widget::text::Style { color: Some(GREEN) }),\n            ]\n            .spacing(2);\n            label_col = label_col.push(nip05_row);\n        }\n\n        row![avatar, label_col]\n            .spacing(10)\n            .align_y(Alignment::Center)\n            .into()\n    }\n}\n"
+        }
+      ]
+    },
+    {
+      "name": "desktop-embed-article",
+      "type": "registry:ui",
+      "title": "Embed Article (desktop)",
+      "description": "iced kind:30023 long-form article card — title, byline, and summary (no hero image yet).",
+      "dependencies": [],
+      "registryDependencies": [],
+      "files": [
+        {
+          "path": "registry/desktop/embed-article/embed_article.rs",
+          "type": "registry:ui",
+          "target": "src/components/nostr_content/embed_article.rs",
+          "content": "use iced::widget::{column, container, row, text};\nuse iced::{Border, Color, Element, Length};\n\nuse nmp_content::embed_projection::ArticleProjection;\n\nconst MUTED: Color = Color { r: 0.580, g: 0.639, b: 0.722, a: 1.0 };\nconst FAINT_BG: Color = Color { r: 0.071, g: 0.098, b: 0.141, a: 1.0 };\nconst BORDER_COLOR: Color = Color { r: 0.278, g: 0.333, b: 0.404, a: 1.0 };\n\n/// Iced article embed card for kind:30023.\n///\n/// Shows title, author · date · N min read byline, and summary. No image\n/// loading for now — hero image is a follow-on.\n///\n/// Component-owned claiming (mirrors iOS #833): the byline renders from an\n/// `author_name` the *displaying* renderer resolved from a profile it claimed\n/// (presentation-owned claiming), NOT from the projection's static\n/// `author_display_name` field. The render path in `gallery.rs` claims the\n/// article author's kind:0 and resolves it through `LiveProfileMap` before\n/// constructing this card. The kernel still emits `author_display_name` for\n/// now, but this component no longer depends on it for display.\npub struct ArticleCard<'a> {\n    article: &'a ArticleProjection,\n    /// Presentation-resolved author label: the displaying renderer's\n    /// `ProfileWire::display()` (real display name, or npub_short fallback).\n    author_name: String,\n}\n\nimpl<'a> ArticleCard<'a> {\n    /// Build a card from the article projection plus the author label the\n    /// displaying renderer resolved from its own profile claim.\n    #[must_use]\n    pub fn new(article: &'a ArticleProjection, author_name: impl Into<String>) -> Self {\n        Self {\n            article,\n            author_name: author_name.into(),\n        }\n    }\n\n    pub fn into_element<Message: 'static>(self) -> Element<'a, Message> {\n        let a = self.article;\n\n        let title = a.title.as_deref().unwrap_or(\"Untitled article\");\n        let author = self.author_name;\n        let date = format_short_date(a.created_at);\n\n        let summary_src = a.summary.as_deref().unwrap_or_default();\n        let snippet: String = summary_src.chars().take(300).collect();\n\n        let title_row = text(title)\n            .size(15)\n            .font(iced::Font {\n                weight: iced::font::Weight::Bold,\n                ..iced::Font::default()\n            })\n            .style(|_| iced::widget::text::Style {\n                color: Some(Color::from_rgb8(241, 245, 249)),\n            });\n\n        let byline = row![\n            text(\"●\").size(9).style(|_| iced::widget::text::Style {\n                color: Some(Color::from_rgb8(220, 38, 38)),\n            }),\n            text(author).size(11).style(|_| iced::widget::text::Style {\n                color: Some(MUTED),\n            }),\n            text(format!(\"· {date}\"))\n                .size(11)\n                .style(|_| iced::widget::text::Style {\n                    color: Some(Color { r: 0.392, g: 0.455, b: 0.545, a: 1.0 }),\n                }),\n        ]\n        .spacing(4);\n\n        let summary_text = text(snippet).size(12).style(|_| iced::widget::text::Style {\n            color: Some(MUTED),\n        });\n\n        let inner = column![title_row, byline, summary_text].spacing(6);\n\n        container(inner)\n            .width(Length::Fill)\n            .padding(12)\n            .style(|_| container::Style {\n                background: Some(iced::Background::Color(FAINT_BG)),\n                border: Border {\n                    color: BORDER_COLOR,\n                    width: 1.0,\n                    radius: 6.0.into(),\n                },\n                ..Default::default()\n            })\n            .into()\n    }\n}\n\nfn format_short_date(unix_secs: u64) -> String {\n    // Simple ISO-like date without heavy dependencies.\n    let days = unix_secs / 86400;\n    let mut y = 1970u32;\n    let mut d = days as u32;\n    loop {\n        let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);\n        let days_in_year = if leap { 366 } else { 365 };\n        if d < days_in_year {\n            break;\n        }\n        d -= days_in_year;\n        y += 1;\n    }\n    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);\n    let month_days = [31u32, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];\n    let month_names = [\"Jan\", \"Feb\", \"Mar\", \"Apr\", \"May\", \"Jun\", \"Jul\", \"Aug\", \"Sep\", \"Oct\", \"Nov\", \"Dec\"];\n    let mut month = 0usize;\n    while month < 12 && d >= month_days[month] {\n        d -= month_days[month];\n        month += 1;\n    }\n    format!(\"{} {} {}\", month_names[month.min(11)], d + 1, y)\n}\n"
+        }
+      ]
     }
   ]
 }

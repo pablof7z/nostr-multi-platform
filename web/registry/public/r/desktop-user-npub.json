@@ -1,0 +1,18 @@
+{
+  "name": "desktop-user-npub",
+  "type": "registry:ui",
+  "title": "User Npub (desktop)",
+  "description": "Display-only iced npub chip for Rust-truncated bech32 identity strings.",
+  "dependencies": [],
+  "registryDependencies": [
+    "desktop-user-core"
+  ],
+  "files": [
+    {
+      "path": "registry/desktop/user-npub/user_npub.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_user/user_npub.rs",
+      "content": "use iced::widget::{container, text};\nuse iced::{Background, Border, Color, Element, Font, Length, Padding};\nuse super::profile_wire::ProfileWire;\n\nconst BG: Color = Color::from_rgb(30.0 / 255.0, 41.0 / 255.0, 59.0 / 255.0);\nconst FG: Color = Color::from_rgb(148.0 / 255.0, 163.0 / 255.0, 184.0 / 255.0);\n\n/// Truncated npub in a monospace chip.\npub struct NpubChip {\n    npub_short: String,\n}\n\nimpl NpubChip {\n    /// Create an npub chip from a profile.\n    #[must_use]\n    pub fn from_profile(profile: &ProfileWire) -> Self {\n        Self {\n            npub_short: profile.npub_short.clone(),\n        }\n    }\n\n    /// Render the chip as an iced [`Element`].\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        let npub_short = self.npub_short;\n        container(\n            text(npub_short)\n                .font(Font::MONOSPACE)\n                .size(12)\n                .style(|_theme| iced::widget::text::Style {\n                    color: Some(FG),\n                }),\n        )\n        .padding(Padding::from(6))\n        .style(|_theme| container::Style {\n            background: Some(Background::Color(BG)),\n            border: Border {\n                radius: 4.0.into(),\n                ..Default::default()\n            },\n            ..Default::default()\n        })\n        .width(Length::Shrink)\n        .into()\n    }\n}\n"
+    }
+  ]
+}
