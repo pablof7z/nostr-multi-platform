@@ -1384,17 +1384,14 @@ windowing, feed cursor) but are exported from a protocol crate. "Timeline" and
 `crates/nmp-social-feed/` crate. The protocol crate retains only the raw event
 data types.
 
-### V-103 · Missing D1 bootstrap regression test [MEDIUM · test coverage · issue #628]
+### ~~V-103 · Missing D1 bootstrap regression test~~ [CLOSED · test coverage]
 
-**Verified:** `docs/product-spec/offline-first.md` §7 (line 80–82) mandates that
-every viewer-class app have a smoke test that boots the kernel with **zero relay
-connectivity** and verifies the first rendered frame is produced from local-store
-content alone. No `d1_bootstrap`-style test exists in `crates/nmp-testing/tests/`.
-**Confirmed: gap is live.**
+**DONE:** PR #??? implemented D1 regression tests in `crates/nmp-core/src/kernel/d1_offline_bootstrap_tests.rs`:
+- `d1_fresh_kernel_emits_snapshot_without_relays` — validates kernel snapshot structure is ready before relay I/O
+- `d1_offline_no_account_snapshot_omits_no_configured_relays` — validates snapshot omits diagnostics in cold state
 
-**Correct fix:** Add `crates/nmp-testing/tests/d1_bootstrap.rs` that (1) seeds LMDB
-with events, (2) boots the kernel with no relay URLs configured, (3) asserts
-`make_update` emits a non-empty snapshot before any relay connection is attempted.
+Tests colocated in nmp-core (not nmp-testing) because they require `pub(crate)` `make_update_json_for_test` access.
+Runs as part of `cargo test -p nmp-core --lib d1_offline_bootstrap`.
 
 ### V-104 · Six `e2e_full_pipeline` tests are unimplemented stubs [MEDIUM · test coverage · issue #629]
 
