@@ -129,11 +129,11 @@ or a fixing PR, remove or strike that bullet here instead of creating a parallel
    lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
    plus explicit allowlists for sanctioned adapter crates.
 
-### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 1 DONE, Stage 2-3 OPEN]
+### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 1+2-thread DONE, Stage 2-author+Stage 3 OPEN]
 
 **Verified 2026-05-28:** `nmp-core` and `nmp-planner` still contain social-client
 subscription defaults that belong in NIP/app modules. The four sites and their
-status (Stage 1 landed 2026-05-29):
+status (Stage 1 landed 2026-05-29, Stage 2 thread-half landed 2026-05-30):
 
 - ✅ **DONE** `crates/nmp-planner/src/interest.rs` — `InterestShape::timeline_for`
   no longer injects `[1, 6]`; it now takes `kinds: BTreeSet<u32>` and carries the
@@ -146,10 +146,18 @@ status (Stage 1 landed 2026-05-29):
   kind-independent (the trace URL result is discarded, and `is_discovery_kind`
   covers only `{0, 3, 10000–19999}` so content kinds never alter the lane), so the
   removal is behavior-preserving.
-- ⏳ **OPEN (Stage 2)** `crates/nmp-core/src/kernel/requests/profile.rs:~532-550`
+- ✅ **DONE (Stage 2 thread-half)** `crates/nmp-core/src/kernel/requests/thread.rs` —
+  `ActorCommand::OpenThread` now carries `kinds: BTreeSet<u32>`; `open_thread`
+  stores them in `ThreadViewState::reply_kinds` before the `can_send` branch so the
+  deferred-relay path also reads the stored set. The `{1, 6}` literal has moved to
+  `nmp-ffi/src/timeline.rs` (`nmp_app_open_thread`), mirroring the
+  `nmp_app_open_timeline` precedent. Three kernel tests prove externalization (T1:
+  behavior preserved, T2: arbitrary kinds `{30023}`, T3: deferred path reads stored
+  kinds). ABI-safe — C signature unchanged.
+- ⏳ **OPEN (Stage 2 author-half)** `crates/nmp-core/src/kernel/requests/profile.rs:~532-550`
   still hardcodes selected-author note/repost requests as `{"kinds":[1,6], ...}`.
-- ⏳ **OPEN (Stage 2)** `crates/nmp-core/src/kernel/requests/thread.rs:~217-223`
-  still hardcodes recursive thread reply requests as `{"kinds":[1,6], ...}`.
+  Deferred until the iOS peer agent lands `ActorCommand::OpenAuthor { kinds }` +
+  `NmpCore.h` + `KernelBridge.swift` churn.
 
 **Why this is a violation:** `{1, 6}` is a social/NIP-01 timeline policy, not
 substrate policy. `nmp-core` and `nmp-planner` may carry caller-supplied `kinds`

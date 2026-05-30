@@ -27,6 +27,15 @@ pub extern "C" fn nmp_app_open_author(app: *mut NmpApp, pubkey: *const c_char) {
     app.send_cmd(ActorCommand::OpenAuthor { pubkey });
 }
 
+/// C ABI symbol kept stable (Swift / Kotlin / TUI call it). Internally it
+/// sends `ActorCommand::OpenThread` with the Chirp-specific social kinds
+/// {1, 6} — the host-declared kind set that `nmp-core` no longer hardcodes
+/// (D0-clean, V-68 Stage 2). A future typed-FFI surface (V-48) can let the
+/// host pass its own kinds; today this is the Chirp-specific declaration site.
+///
+/// D0-precedent: mirrors `nmp_app_open_timeline` in `identity.rs`, which
+/// already carries `BTreeSet::from([1u32, 6u32])` with the same rationale.
+/// Typed-FFI migration is deferred pending the iOS leg (V-68 author-half).
 #[no_mangle]
 pub extern "C" fn nmp_app_open_thread(app: *mut NmpApp, event_id: *const c_char) {
     let Some(app) = app_ref(app) else {
@@ -39,7 +48,13 @@ pub extern "C" fn nmp_app_open_thread(app: *mut NmpApp, event_id: *const c_char)
         return;
     }
 
-    app.send_cmd(ActorCommand::OpenThread { event_id });
+    app.send_cmd(ActorCommand::OpenThread {
+        event_id,
+        // Chirp's social reply kinds. The substrate carries these as opaque
+        // filter data; nmp-core is kind-agnostic (D0). See `nmp_app_open_timeline`
+        // in identity.rs for the identical pattern on the follow-feed path.
+        kinds: std::collections::BTreeSet::from([1u32, 6u32]),
+    });
 }
 
 #[no_mangle]

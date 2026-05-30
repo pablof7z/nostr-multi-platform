@@ -25,6 +25,7 @@ use super::super::{
     ViewInterest,
 };
 use crate::stable_hash::stable_hash64;
+use std::collections::BTreeSet;
 
 /// Deterministic 8-char tag over `relay_url` for thread hydration sub-ids.
 ///
@@ -57,7 +58,12 @@ mod tests {
 }
 
 impl Kernel {
-    pub(crate) fn open_thread(&mut self, event_id: String, can_send: bool) -> Vec<OutboundMessage> {
+    pub(crate) fn open_thread(
+        &mut self,
+        event_id: String,
+        kinds: BTreeSet<u32>,
+        can_send: bool,
+    ) -> Vec<OutboundMessage> {
         match self.thread_view.selected_thread.as_mut() {
             Some(interest) if interest.key == event_id => {
                 interest.refcount = interest.refcount.saturating_add(1);
@@ -73,6 +79,11 @@ impl Kernel {
                 self.thread_view.requested_reply_targets.clear();
             }
         }
+        // Store kinds BEFORE the `can_send` branch so the deferred-relay path
+        // (where `request_pending=true` is drained later by `drain_lifecycle_tick`
+        // → `prepare_thread_requests`) sees the correct kinds even though no
+        // `kinds` value is in scope at that deferred call site.
+        self.thread_view.reply_kinds = kinds;
         self.thread_view.request_pending = true;
         self.changed_since_emit = true;
         self.log(format!("open thread view {}", short_hex(&event_id)));
@@ -211,6 +222,12 @@ impl Kernel {
             // usually carry the thread context rather than fanning to
             // every participant. Unknown-author ids fall back to the
             // bootstrap discovery seed via the router's lane 7.
+            //
+            // V-68 Stage 2: `kinds` is read from stored state (`reply_kinds`)
+            // rather than a hardcoded literal so the kernel is kind-agnostic.
+            // Extract before the mutable `partition_ids_via_router` / `req_for_relay`
+            // calls to satisfy the borrow checker.
+            let reply_kinds: Vec<u32> = self.thread_view.reply_kinds.iter().copied().collect();
             let partition = self.partition_ids_via_router(&ids);
             let seq = self.thread_view.seq;
             for (relay_url, served_ids) in partition {
@@ -220,7 +237,7 @@ impl Kernel {
                     relay_url,
                     &sub_id,
                     "thread recursive replies (NIP-65 outbox)",
-                    json!({"kinds":[1,6],"#e":served_ids,"limit":200}),
+                    json!({"kinds":reply_kinds,"#e":served_ids,"limit":200}),
                 ));
             }
         }

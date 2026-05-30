@@ -264,6 +264,13 @@ pub enum ActorCommand {
     },
     OpenThread {
         event_id: String,
+        /// Host-declared Nostr kinds to include in the thread-replies REQ filter.
+        ///
+        /// `nmp-core` carries these as opaque filter data only — no social-kind
+        /// knowledge lives in the substrate. The host (nmp-ffi or an ActionModule)
+        /// supplies the value; mirrors the `kinds` field on
+        /// `OpenContactListSubscription` (D0-clean precedent).
+        kinds: std::collections::BTreeSet<u32>,
     },
     OpenFirehoseTag {
         tag: String,

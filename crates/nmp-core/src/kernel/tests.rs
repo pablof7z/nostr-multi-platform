@@ -129,7 +129,8 @@ fn open_thread_emits_context_and_reply_reqs() {
         },
     );
 
-    let requests = kernel.open_thread(focused_id.to_string(), true);
+    let requests =
+        kernel.open_thread(focused_id.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), true);
 
     // T121: thread hydration now partitions ids by the original-event
     // author's NIP-65 write relays. The focused event's author has no
@@ -236,8 +237,8 @@ fn close_thread_refcounts_and_closes_view_subscriptions() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let focused_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-    let _ = kernel.open_thread(focused_id.to_string(), true);
-    let _ = kernel.open_thread(focused_id.to_string(), true);
+    let _ = kernel.open_thread(focused_id.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), true);
+    let _ = kernel.open_thread(focused_id.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), true);
 
     // Precondition: opening the thread seeded live wire-subs (thread-ids- /
     // thread-replies- REQ frames). Without this the eviction check is vacuous.
@@ -295,6 +296,138 @@ fn close_thread_refcounts_and_closes_view_subscriptions() {
         kernel.wire_subs_len_for_test(),
         0,
         "final close_thread must evict all thread wire_subs rows"
+    );
+}
+
+// ── V-68 Stage 2: externalize thread-reply kinds to host ─────────────────────
+//
+// Three tests prove the externalization:
+//   1. Default behavior preserved  — {1, 6} still appears in the REQ filter.
+//   2. Kernel is kind-agnostic     — {30023} (long-form) works instead of {1,6}.
+//   3. Deferred-relay path correct — kinds stored before `can_send` branch;
+//      the deferred drain reads them from state (not a dropped parameter).
+
+/// V-68-T1: `open_thread` with kinds {1,6} produces a thread-replies REQ
+/// carrying `"kinds":[1,6]`. Verifies behavior is preserved after the
+/// externalization.
+#[test]
+fn v68_thread_reply_req_carries_host_supplied_kinds_1_6() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let event_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    let requests = kernel.open_thread(
+        event_id.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        true,
+    );
+
+    let reply_reqs: Vec<&OutboundMessage> = requests
+        .iter()
+        .filter(|r| r.text.contains("\"thread-replies-"))
+        .collect();
+    assert!(
+        !reply_reqs.is_empty(),
+        "V-68-T1: open_thread must emit at least one thread-replies REQ"
+    );
+    for req in &reply_reqs {
+        assert!(
+            req.text.contains("\"kinds\":[1,6]"),
+            "V-68-T1: thread-replies REQ must carry kinds [1,6]; got {}",
+            req.text
+        );
+        assert!(
+            req.text.contains("\"#e\""),
+            "V-68-T1: thread-replies REQ must carry #e filter; got {}",
+            req.text
+        );
+    }
+}
+
+/// V-68-T2: `open_thread` with kinds {30023} (long-form) produces a
+/// thread-replies REQ carrying `"kinds":[30023]`. Proves the kernel is
+/// kind-agnostic — the `{1,6}` literal is truly externalized, not
+/// disguised behind a hidden default.
+#[test]
+fn v68_thread_reply_req_carries_arbitrary_host_kinds() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let event_id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    let requests = kernel.open_thread(
+        event_id.to_string(),
+        std::collections::BTreeSet::from([30023u32]),
+        true,
+    );
+
+    let reply_reqs: Vec<&OutboundMessage> = requests
+        .iter()
+        .filter(|r| r.text.contains("\"thread-replies-"))
+        .collect();
+    assert!(
+        !reply_reqs.is_empty(),
+        "V-68-T2: open_thread must emit at least one thread-replies REQ for kinds [30023]"
+    );
+    for req in &reply_reqs {
+        let text = &req.text;
+        assert!(
+            text.contains("\"kinds\":[30023]"),
+            "V-68-T2: thread-replies REQ must carry kinds [30023]; got {text}"
+        );
+        assert!(
+            !text.contains("[1,6]"),
+            "V-68-T2: thread-replies REQ must NOT contain hardcoded [1,6]; got {text}"
+        );
+    }
+}
+
+/// V-68-T3: deferred-relay path stores kinds.
+///
+/// When `can_send=false` the request is queued (`request_pending=true`,
+/// no REQ emitted). Firing `prepare_thread_requests()` on a later tick
+/// (the relay-ready drain) must still produce a thread-replies REQ carrying
+/// the stored kinds — proving they survive in `reply_kinds`, not as a
+/// dropped function parameter.
+#[test]
+fn v68_deferred_relay_path_reads_stored_kinds() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let event_id = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+    // Step 1: open with can_send=false — no REQs emitted yet.
+    let immediate = kernel.open_thread(
+        event_id.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        false,
+    );
+    assert!(
+        immediate.is_empty(),
+        "V-68-T3: can_send=false must emit no REQs immediately; got {immediate:?}"
+    );
+    assert!(
+        kernel.thread_view.request_pending,
+        "V-68-T3: request_pending must be true after deferred open"
+    );
+
+    // Step 2: relay becomes available — drain via `prepare_thread_requests`,
+    // the same path `drain_lifecycle_tick` uses when `request_pending=true`.
+    let deferred = kernel.prepare_thread_requests();
+
+    let reply_reqs: Vec<&OutboundMessage> = deferred
+        .iter()
+        .filter(|r| r.text.contains("\"thread-replies-"))
+        .collect();
+    assert!(
+        !reply_reqs.is_empty(),
+        "V-68-T3: deferred drain must emit at least one thread-replies REQ; got {deferred:?}"
+    );
+    for req in &reply_reqs {
+        assert!(
+            req.text.contains("\"kinds\":[1,6]"),
+            "V-68-T3: deferred thread-replies REQ must carry stored kinds [1,6]; got {}",
+            req.text
+        );
+    }
+    assert!(
+        !kernel.thread_view.request_pending,
+        "V-68-T3: request_pending must be false after drain"
     );
 }
 

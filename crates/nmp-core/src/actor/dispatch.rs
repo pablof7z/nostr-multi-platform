@@ -477,8 +477,8 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::OpenThread { event_id } => {
-            let outbound = ctx.kernel.open_thread(event_id, ctx.relays_ready);
+        ActorCommand::OpenThread { event_id, kinds } => {
+            let outbound = ctx.kernel.open_thread(event_id, kinds, ctx.relays_ready);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
