@@ -192,6 +192,8 @@ mod v66_no_configured_relays_tests;
 #[cfg(test)]
 mod v67_store_open_failure_tests;
 #[cfg(test)]
+mod d1_offline_bootstrap_tests;
+#[cfg(test)]
 mod test_router;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
