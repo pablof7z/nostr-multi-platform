@@ -51,6 +51,59 @@ pub use types::{
 // Re-export error types from types (defined there to avoid circular imports).
 pub use types::{StoreError, VerifyError};
 
+// F-TTL — re-export replaceable freshness types from nmp-nostr-lmdb.
+// Only available when lmdb-backend is enabled (the module owns the LMDB types).
+#[cfg(feature = "lmdb-backend")]
+pub use nmp_nostr_lmdb::{
+    is_parameterized_replaceable, is_replaceable, ReplaceableKey,
+};
+
+// F-TTL — stub implementations for non-lmdb builds (tests, wasm).
+// These allow the code to compile but the kernel will never use them
+// (reverify queue and freshness store operations are no-ops in MemEventStore).
+#[cfg(not(feature = "lmdb-backend"))]
+pub mod replaceable_stubs {
+    use std::collections::HashMap;
+
+    /// Stub ReplaceableKey for non-LMDB builds.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub enum ReplaceableKey {
+        /// Regular replaceable event: identified by kind and author pubkey.
+        Regular { kind: u32, pubkey: [u8; 32] },
+        /// Parameterized replaceable event: identified by kind, author pubkey, and d-tag.
+        Parameterized {
+            kind: u32,
+            pubkey: [u8; 32],
+            d_tag: String,
+        },
+    }
+
+    impl ReplaceableKey {
+        /// Get the kind for this key.
+        pub fn kind(&self) -> u32 {
+            match self {
+                Self::Regular { kind, .. } | Self::Parameterized { kind, .. } => *kind,
+            }
+        }
+    }
+
+    /// Check if a kind is parameterized replaceable (NIP-01).
+    pub fn is_parameterized_replaceable(kind: u32) -> bool {
+        (kind >= 20000 && kind < 30000) || (kind >= 30000 && kind < 40000)
+    }
+
+    /// Check if a kind is replaceable (NIP-01).
+    pub fn is_replaceable(kind: u32) -> bool {
+        kind < 20000 || (kind >= 30000 && kind < 40000)
+    }
+
+    /// Stub cache type.
+    pub type ReplaceableCache = HashMap<ReplaceableKey, u64>;
+}
+
+#[cfg(not(feature = "lmdb-backend"))]
+pub use replaceable_stubs::{is_parameterized_replaceable, is_replaceable, ReplaceableKey};
+
 use std::path::PathBuf;
 
 /// Storage backend selector.
