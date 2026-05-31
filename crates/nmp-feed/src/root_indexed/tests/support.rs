@@ -217,6 +217,7 @@ impl Harness {
             event_gate,
             event_lookup,
             claim_sink,
+            None,  // backfill_sink - not used in unit tests
             profile_detector,
             card_builder,
             "nmp.feed.home",

@@ -75,9 +75,31 @@ pub struct FeedWindowMetrics {
     pub make_window_us: u64,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FeedWindowState {
     pub(crate) oldest_visible: Option<FeedCursor>,
+    /// Maximum number of events to keep visible (windowed to newest). Newer
+    /// events stay on disk (BoundedMessageMap enforces D8). Default: 500.
+    pub(crate) max_window_size: usize,
+}
+
+impl Default for FeedWindowState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FeedWindowState {
+    /// Construct with the default memory-bound window size (500 events).
+    /// Per D8: the sliding window keeps in-memory projection bounded even as
+    /// the feed grows. Older events stay on disk in the BoundedMessageMap.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            oldest_visible: None,
+            max_window_size: MAX_FEED_WINDOW_LIMIT,  // 500 events
+        }
+    }
 }
 
 pub trait FeedBlock: Clone {
@@ -110,4 +132,24 @@ impl<C: FeedCard> FeedCardStore<C> for BoundedMessageMap<String, C> {
 
 const fn default_feed_window_limit() -> usize {
     DEFAULT_FEED_WINDOW_LIMIT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn memory_window_bounded_to_500() {
+        let state = FeedWindowState::new();
+        assert_eq!(state.max_window_size, MAX_FEED_WINDOW_LIMIT);
+        assert_eq!(state.max_window_size, 500);
+    }
+
+    #[test]
+    fn window_state_default_is_new() {
+        let default = FeedWindowState::default();
+        let new = FeedWindowState::new();
+        assert_eq!(default.max_window_size, new.max_window_size);
+        assert_eq!(default.oldest_visible, new.oldest_visible);
+    }
 }
