@@ -1,7 +1,7 @@
 ---
 title: Android KernelBridge & Snapshot Envelope
 slug: android-kernel-bridge
-summary: "The kernel snapshot envelope format is {\\\\\\\\\\\\\\\\\\\\\\\\\"t\\\\\\\\\\\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\\\\\\\\\\\"snapshot\\\\\\\\\\\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\\\\\\\\\\\"v\\\\\\\\\\\\\\\\\\\\\\\\\":{...}} JSON, and the Kotlin model must unwrap this envelope before decoding the inner KernelUpdate da"
+summary: "The kernel snapshot envelope format is {\\\\\\\\\\\\\\\\\\\\\\\\\\"t\\\\\\\\\\\\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\\\\\\\\\\\\"snapshot\\\\\\\\\\\\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\\\\\\\\\\\\"v\\\\\\\\\\\\\\\\\\\\\\\\\\":{...}} JSON, and the Kotlin model must unwrap this envelope before decoding the inner KernelUpdate da"
 tags:
   - capture
 volatility: warm

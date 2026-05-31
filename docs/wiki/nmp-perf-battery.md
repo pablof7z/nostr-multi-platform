@@ -14,7 +14,9 @@ confidence: high
 created: 2026-05-31
 updated: 2026-05-31
 verified: 2026-05-31
-compiled-from: workflow:nmp-perf-battery-v1
+compiled-from: "workflow:nmp-perf-battery-v1"
+sources:
+  - session:c9ae5a7c-0f5e-44ec-94d6-d9b5e31d8991
 ---
 
 # NMP Performance Test Battery
@@ -22,6 +24,10 @@ compiled-from: workflow:nmp-perf-battery-v1
 Prove NMP's performance *claims* to adopters. Chirp iOS is the harness; every metric here must generalize to **any app built on NMP**, not just Chirp.
 
 ## Critical reframing (read first)
+
+The NMP performance battery must be designed by an Opus agent, implemented by Haiku agents, and reviewed by Sonnet agents, with all work done in git worktrees and proven fixes PR'd and merged to master.
+
+Chirp iOS serves as the testing ground for optimizing NMP framework performance, not as the optimization target itself. Every metric here must generalize to **any app built on NMP**, not just Chirp.
 
 The 98% idle false-wake in `docs/perf/reactivity-bench/2026-05-17-run-001.md` measured a **proposed** per-view reactivity engine that lives only in `crates/nmp-testing/bin/reactivity-bench`. It is **not the live path.**
 
@@ -31,6 +37,7 @@ Under a live-but-quiet feed, `poll_claim_expansion` and claim churn legitimately
 
 The "D8 composite reverse index" the bench described **is shipped** — in the **planner** (`nmp-planner/src/interest.rs`), deduplicating N interests → M≤N wire REQs. That is coalescing at the REQ level. The unshipped piece is the per-view dispatch engine (D1), which is gated before it lands.
 
+<!-- citations: [^c9ae5-24] -->
 ## Battery — 14 metrics, ordered by priority
 
 | # | ID | Layer | Target | Current state |
@@ -50,6 +57,11 @@ The "D8 composite reverse index" the bench described **is shipped** — in the *
 | 13 | **P8-scroll-fps** | ios | ≥58fps; hitch < 5ms/s with concurrent 4Hz snapshots | no baseline set |
 | 14 | **N9-nav-transition-frames** | ios | 0 dropped frames on push/pop | no baseline set |
 
+The 14-metric NMP performance battery is documented in `docs/wiki/nmp-perf-battery.md`.
+
+**S2 snapshot scaling**: `estimated_store_bytes` must be O(1), memoized via `Cell<Option<usize>>` invalidated at all store-mutation sites, with at most 1.6× cost increase at 100k events (target ≤4×).
+
+<!-- citations: [^c9ae5-25] -->
 ## Priority rationale
 
 **C3** is #1: every NMP app on iOS suffers this. Any state mutation anywhere causes every visible row to re-evaluate its SwiftUI body. Row-level equatable identity diffing is the canonical fix for snapshot-driven UIs and has zero Rust-side risk.

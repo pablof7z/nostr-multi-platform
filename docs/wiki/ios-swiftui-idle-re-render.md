@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-30
-updated: 2026-05-30
+updated: 2026-05-31
 verified: 2026-05-30
 compiled-from: conversation
 sources:
@@ -35,6 +35,10 @@ Layer 2 requires migrating `KernelModel` from `ObservableObject`/`@Published` to
 
 ## Codegen: Shared Render Identity
 
-TimelineItem+RenderIdentity.swift is currently Chirp-specific and lives in ios/Chirp/Chirp/Bridge/. Another app built on NMP would need to manually copy the `rendersIdentically` pattern to get the row-level benefit. The codegen for KernelTypes.generated.swift must emit a `rendersIdentically(other:)` method (or a field-complete correct generated `==`) so any app using `ForEach` over snapshot rows gets the short-circuit for free. Combining codegen-emitted `rendersIdentically` with the Layer 2 KernelModel `@Observable` migration means any app on NMP gets zero idle re-renders without writing optimization code themselves. [^c9ae5-5]
+TimelineItem+RenderIdentity.swift is currently Chirp-specific and lives in ios/Chirp/Chirp/Bridge/. Another app built on NMP would need to manually copy the `rendersIdentically` pattern to get the row-level benefit. The C3 idle re-render fix must be moved from the Chirp app shell into the NMP framework codegen so that all NMP apps benefit automatically without hand-rolling the pattern. (Previously: the fix lived in the Chirp app shell.) The codegen for `KernelTypes.generated.swift` must emit either a complete field-by-field `Equatable` conformance or a `rendersIdentically(other:)` method so any app using `ForEach` over snapshot rows gets idle re-render short-circuiting for free. The scaffolded app's `ForEach` over snapshot rows must automatically use `.equatable()` so SwiftUI never re-evaluates a body when the synthesized `==` returns true. Combining codegen-emitted render identity with the Layer 2 KernelModel `@Observable` migration means any app on NMP gets zero idle re-renders without writing optimization code themselves.
+
+After merging the codegen fix, the C3 fix must be demonstrably present in the scaffold output via a codegen test or Swift unit test proving generated types diff correctly. [^c9ae5-22]
+
+<!-- citations: [^c9ae5-5] [^c9ae5-21] -->
 ## See Also
 
