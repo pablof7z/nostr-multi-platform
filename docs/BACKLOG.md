@@ -149,20 +149,6 @@ from the 2026-05-29 audit:*
 
 **Deadline:** before v1-A.
 
-### V-107 · Complete Marmot pull-symbol retirement — Swift migration + deletion [MEDIUM · migration window]
-
-The two `nmp.marmot.*` push projections + the Rust-consumer migration shipped (ADR-0039
-Accepted; the pull symbols are `#[deprecated]` but still exported because Swift calls them).
-**Remaining open work (Swift session required):**
-1. Migrate `MarmotBridge.swift` off `nmp_marmot_snapshot` / `nmp_marmot_group_messages`
-   to read `projections["nmp.marmot.snapshot"]` and `projections["nmp.marmot.messages"][gid]`
-   from the pushed SnapshotFrame `apply()` callback.
-2. Once Swift migration lands: delete `nmp_marmot_snapshot`, `nmp_marmot_group_messages`,
-   `nmp_marmot_string_free` (the companion deallocator), their `#[no_mangle]`/`extern "C"`
-   declarations, and the `nmp-app-chirp` `#[allow(deprecated)]` re-export block.
-
----
-
 ### V-42 · NIP-23 / NIP-94 / NIP-96 absent from crates and untracked [post-v1]
 
 **NIP-51 mute lists landed (2026-05-30).** `crates/nmp-nip51/` ships `MuteListProjection`.

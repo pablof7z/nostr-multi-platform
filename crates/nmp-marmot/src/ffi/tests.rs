@@ -42,15 +42,15 @@ fn in_memory(keys: Keys) -> MarmotService {
 
 #[test]
 fn null_pointer_paths_are_silent() {
+    // V-107 / ADR-0039: `nmp_marmot_snapshot`, `nmp_marmot_group_messages`,
+    // and `nmp_marmot_string_free` were deleted. Their null-pointer D6 cases
+    // were verified against the still-exported lifecycle symbols below.
     assert!(nmp_marmot_register(
         std::ptr::null_mut(),
         std::ptr::null(),
         std::ptr::null()
     )
     .is_null());
-    assert!(nmp_marmot_snapshot(std::ptr::null_mut()).is_null());
-    assert!(nmp_marmot_group_messages(std::ptr::null_mut(), std::ptr::null()).is_null());
-    nmp_marmot_string_free(std::ptr::null_mut());
     nmp_marmot_unregister(std::ptr::null_mut());
 }
 

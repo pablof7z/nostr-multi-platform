@@ -43,10 +43,11 @@ import XCTest
 ///
 /// ## Known gap
 ///
-/// None — all 7 registered Rust projections (`nmp.nip29.group_chat`,
+/// None — all 9 registered Rust projections (`nmp.nip29.group_chat`,
 /// `nmp.nip29.discovered_groups`, `nmp.nip17.dm_inbox`, `nmp.follow_list`,
-/// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`, `claimed_profiles`) have
-/// Swift decoders covered by this conformance test as of this file.
+/// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`, `claimed_profiles`,
+/// `nmp.marmot.snapshot`, `nmp.marmot.messages`) have Swift decoders
+/// covered by this conformance test as of this file (V-107 / ADR-0039).
 final class SnapshotProjectionsConformanceTests: XCTestCase {
 
     /// The exact decoder configuration `KernelHandle.decode` uses for the
@@ -101,6 +102,40 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
               "about": "",
               "has_profile": false
             }
+          },
+          "nmp.marmot.snapshot": {
+            "groups": [
+              {
+                "id_hex": "aabbccdd",
+                "name": "Test Group",
+                "display_name": "Test Group",
+                "initials": "TG",
+                "members": ["pk1", "pk2"],
+                "member_count": 2,
+                "unread_count": 3,
+                "last_msg_at": 1700000000
+              }
+            ],
+            "pending_welcomes": [],
+            "key_package": {
+              "published": false,
+              "stale": false,
+              "subtitle": "",
+              "action_label": ""
+            },
+            "cached_kp_pubkeys": [],
+            "is_registered": false
+          },
+          "nmp.marmot.messages": {
+            "aabbccdd": [
+              {
+                "id": "msg1",
+                "sender_pubkey_hex": "deadbeef",
+                "content": "hello from the projection",
+                "created_at": 1700000001,
+                "epoch": 7
+              }
+            ]
           }
         }
         """
@@ -132,6 +167,37 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNotNil(
             projections.claimedProfiles,
             "SnapshotProjections.claimedProfiles decoded nil — check CodingKeys.claimedProfiles raw value matches \"claimedProfiles\" (post-convertFromSnakeCase of \"claimed_profiles\")")
+        // V-107 / ADR-0039: Marmot push projections.
+        XCTAssertNotNil(
+            projections.marmotSnapshot,
+            "SnapshotProjections.marmotSnapshot decoded nil — check CodingKeys.marmotSnapshot raw value matches \"nmp.marmot.snapshot\" (no underscore, no transform needed)")
+        XCTAssertNotNil(
+            projections.marmotMessages,
+            "SnapshotProjections.marmotMessages decoded nil — check CodingKeys.marmotMessages raw value matches \"nmp.marmot.messages\" (no underscore, no transform needed)")
+
+        // V-107 deletion-safety: prove the POPULATED marmot rows decode field-by-field
+        // through .convertFromSnakeCase. An empty-map decode succeeds trivially and
+        // would NOT catch a snake_case→camelCase CodingKey drift (the keyNotFound class
+        // that silently blanks rows). These assertions are the runtime proof that the
+        // pull-symbol fallback was safe to delete.
+        let group = projections.marmotSnapshot?.groups.first
+        XCTAssertEqual(group?.idHex, "aabbccdd",
+            "MarmotGroup.idHex must decode from Rust \"id_hex\" via convertFromSnakeCase")
+        XCTAssertEqual(group?.memberCount, 2,
+            "MarmotGroup.memberCount must decode from Rust \"member_count\"")
+        XCTAssertEqual(group?.unreadCount, 3,
+            "MarmotGroup.unreadCount must decode from Rust \"unread_count\"")
+        XCTAssertEqual(group?.lastMsgAt, 1_700_000_000,
+            "MarmotGroup.lastMsgAt must decode from Rust \"last_msg_at\"")
+
+        let msg = projections.marmotMessages?["aabbccdd"]?.first
+        XCTAssertEqual(msg?.senderPubkeyHex, "deadbeef",
+            "MarmotMessage.senderPubkeyHex must decode from Rust \"sender_pubkey_hex\"")
+        XCTAssertEqual(msg?.content, "hello from the projection")
+        XCTAssertEqual(msg?.createdAt, 1_700_000_001,
+            "MarmotMessage.createdAt must decode from Rust \"created_at\"")
+        XCTAssertEqual(msg?.epoch, 7,
+            "MarmotMessage.epoch must decode from Rust \"epoch\"")
     }
 
     /// Sanity check: all seven projection fields default to nil when the
@@ -149,5 +215,8 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNil(projections.zaps)
         XCTAssertNil(projections.dmRelayList)
         XCTAssertNil(projections.claimedProfiles)
+        // V-107 / ADR-0039: Marmot push projections also nil on empty map.
+        XCTAssertNil(projections.marmotSnapshot)
+        XCTAssertNil(projections.marmotMessages)
     }
 }

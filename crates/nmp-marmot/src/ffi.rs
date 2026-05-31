@@ -1,23 +1,24 @@
 //! Marmot (MLS-over-Nostr) per-app FFI surface.
 //!
-//! Five `extern "C"` symbols Swift links against — they mirror the
-//! lifetime / free / D6 conventions of the Chirp timeline symbols
-//! (`nmp_app_chirp_register` / `_snapshot` / `_snapshot_free` /
-//! `_unregister`):
+//! Three `extern "C"` symbols Swift links against:
 //!
 //! - [`nmp_marmot_register`] — build a [`MarmotService`]
 //!   (signer seam: secret key hex/nsec passed directly; DB at
 //!   `<app_support>/marmot-mls-state.sqlite`), register the lossy
 //!   `KernelEvent` metadata observer AND the raw signed-event inbound
-//!   tap (kinds `[444, 445, 1059]`), return an opaque `*mut MarmotHandle`.
-//! - [`nmp_marmot_snapshot`] — JSON snapshot
-//!   (`groups` / `pending_welcomes` / `key_package`).
-//! - [`nmp_marmot_group_messages`] — newest-N decrypted messages
-//!   for one group (hex id), JSON array.
-//! - [`nmp_marmot_string_free`] — companion deallocator.
+//!   tap (kinds `[444, 445, 1059]`), AND register the two push projections
+//!   (`nmp.marmot.snapshot` / `nmp.marmot.messages`) onto the snapshot seam.
+//!   Returns an opaque `*mut MarmotHandle`.
+//! - [`nmp_marmot_register_active`] — same as above but reads the key from
+//!   the kernel actor's active local-key slot (no nsec exposed to Swift).
 //! - [`nmp_marmot_unregister`] — drop both kernel
 //!   registrations (lossy observer + raw tap) + free the handle.
 //!   Idempotent.
+//!
+//! The former pull symbols `nmp_marmot_snapshot`, `nmp_marmot_group_messages`,
+//! and `nmp_marmot_string_free` were deleted in V-107 (ADR-0039). Swift now
+//! reads Marmot state reactively from the pushed `nmp.marmot.snapshot` /
+//! `nmp.marmot.messages` SnapshotFrame projections instead.
 //!
 //! ## Mutating ops — `nmp_app_dispatch_action` + Rust-native accessor
 //!
@@ -86,7 +87,7 @@
 //! registrations (the lossy `KernelEvent` metadata observer AND the raw
 //! tap; distinct slots / ids). This was the last open seam.
 
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{c_char, CStr};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -102,7 +103,8 @@ use crate::projection::handler::MarmotMlsOpHandler;
 use crate::projection::state::MarmotProjection;
 use crate::projection::tap::MarmotIngestTap;
 
-/// Default page size for [`nmp_marmot_group_messages`].
+/// Page size used by the `nmp.marmot.messages` push projection and
+/// [`MarmotHandle::messages_rust`].
 const DEFAULT_MESSAGE_PAGE: usize = 200;
 
 /// Keyring coordinates for the production encrypted SQLite DB. Stable
@@ -184,9 +186,8 @@ impl MarmotHandle {
     /// the push projection emits under `"nmp.marmot.snapshot"` on the
     /// SnapshotFrame, without any C-ABI round-trip.
     ///
-    /// Prefer this over the deprecated [`nmp_marmot_snapshot`] C-ABI symbol in
-    /// Rust code. Swift consumers read from the pushed SnapshotFrame projection
-    /// key instead.
+    /// Rust callers use this directly. Swift consumers read from the pushed
+    /// SnapshotFrame projection key (`projections["nmp.marmot.snapshot"]`).
     #[must_use]
     pub fn snapshot_rust(&self) -> crate::projection::payload::MarmotSnapshot {
         self.projection.snapshot(now_secs())
@@ -200,9 +201,8 @@ impl MarmotHandle {
     /// Returns an empty `Vec` on any soft failure (unknown group, poisoned
     /// mutex — D6 non-panicking degradation).
     ///
-    /// Prefer this over the deprecated [`nmp_marmot_group_messages`] C-ABI
-    /// symbol in Rust code. Swift consumers read from the pushed SnapshotFrame
-    /// projection key instead.
+    /// Rust callers use this directly. Swift consumers read from the pushed
+    /// SnapshotFrame projection key (`projections["nmp.marmot.messages"]`).
     #[must_use]
     pub fn messages_rust(
         &self,
@@ -377,9 +377,10 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     let projection_slot: MarmotProjectionSlot =
         Arc::new(Mutex::new(Some(Arc::clone(&projection))));
 
-    // **`nmp.marmot.snapshot`** — replaces the pull-symbol
-    // `nmp_marmot_snapshot`: group list / membership / key-package / pending
-    // welcomes. Cheap: one lock + MDK SQLite reads, no re-decrypt.
+    // **`nmp.marmot.snapshot`** (V-107 / ADR-0039): group list / membership /
+    // key-package / pending welcomes. The former pull-symbol `nmp_marmot_snapshot`
+    // was deleted; Swift reads from this push projection on every SnapshotFrame.
+    // Cheap: one lock + MDK SQLite reads, no re-decrypt.
     {
         let snap_slot = Arc::clone(&projection_slot);
         app_ref.register_snapshot_projection("nmp.marmot.snapshot", move || {
@@ -393,8 +394,9 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
         });
     }
 
-    // **`nmp.marmot.messages`** — replaces the parameterized pull-symbol
-    // `nmp_marmot_group_messages(group_id_hex)`. Projects a JSON object keyed
+    // **`nmp.marmot.messages`** (V-107 / ADR-0039): the former parameterized
+    // pull-symbol `nmp_marmot_group_messages(group_id_hex)` was deleted; Swift
+    // now reads from this push projection. Projects a JSON object keyed
     // by `group_id_hex` → newest-N `MarmotMessageRow` array for every joined
     // group. Logic lives in `MarmotProjection::messages_all_groups_json` (not
     // inlined here) so it can be exercised by tests independently of the
@@ -530,94 +532,6 @@ pub extern "C" fn nmp_marmot_register_active(
     handle
 }
 
-/// JSON snapshot. Null handle / serialize failure → null (D6). Caller owns
-/// the returned pointer until [`nmp_marmot_string_free`].
-///
-/// # Deprecation
-///
-/// Prefer the push projection `"nmp.marmot.snapshot"` (registered in
-/// [`register_with_keys`] via [`nmp_ffi::NmpApp::register_snapshot_projection`],
-/// ADR-0039). The push projection rides the SnapshotFrame edge-triggered on
-/// `changed_since_emit` — no polling needed (D8).
-///
-/// This symbol is retained ONLY because `MarmotBridge.swift` still calls the
-/// C-ABI export. It will be removed once that Swift consumer migrates to the
-/// pushed frame (`projections["nmp.marmot.snapshot"]` in `apply()`).
-///
-/// Rust callers: use [`MarmotHandle::snapshot_rust`] instead.
-#[deprecated(
-    note = "use the `nmp.marmot.snapshot` push projection (ADR-0039); \
-            this pull symbol will be removed once MarmotBridge.swift migrates"
-)]
-#[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_marmot_snapshot(handle: *mut MarmotHandle) -> *mut c_char {
-    let Some(handle) = (unsafe { handle.as_ref() }) else {
-        return std::ptr::null_mut();
-    };
-    let snap = handle.projection.snapshot(now_secs());
-    to_c_json(&snap)
-}
-
-/// Newest-N decrypted messages for the group whose MLS id is
-/// `group_id_hex`. JSON array; `[]` on any soft failure (unknown group,
-/// poisoned mutex, parse error). Null handle / serialize failure → null.
-///
-/// # Deprecation
-///
-/// Prefer the push projection `"nmp.marmot.messages"` (registered in
-/// [`register_with_keys`] via [`nmp_ffi::NmpApp::register_snapshot_projection`],
-/// ADR-0039). The push projection emits a JSON object keyed by `group_id_hex`
-/// → newest-N message rows, riding the SnapshotFrame edge-triggered.
-///
-/// This symbol is retained ONLY because `MarmotBridge.swift` still calls the
-/// C-ABI export. It will be removed once that Swift consumer migrates to the
-/// pushed frame (`projections["nmp.marmot.messages"][group_id_hex]` in `apply()`).
-///
-/// Rust callers: use [`MarmotHandle::messages_rust`] instead.
-#[deprecated(
-    note = "use the `nmp.marmot.messages` push projection (ADR-0039); \
-            this pull symbol will be removed once MarmotBridge.swift migrates"
-)]
-#[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_marmot_group_messages(
-    handle: *mut MarmotHandle,
-    group_id_hex: *const c_char,
-) -> *mut c_char {
-    let Some(handle) = (unsafe { handle.as_ref() }) else {
-        return std::ptr::null_mut();
-    };
-    let Some(gid_hex) = c_str_opt(group_id_hex) else {
-        return to_c_string("[]");
-    };
-    let rows = handle
-        .projection
-        .with_inner(|h| {
-            crate::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE)
-        })
-        .unwrap_or_default();
-    match serde_json::to_string(&rows) {
-        Ok(s) => to_c_string(&s),
-        Err(_) => std::ptr::null_mut(),
-    }
-}
-
-/// Free a string previously returned by snapshot / group_messages /
-/// dispatch. Null is a silent no-op.
-#[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_marmot_string_free(ptr: *mut c_char) {
-    if ptr.is_null() {
-        return;
-    }
-    // SAFETY: caller guarantees `ptr` came from `CString::into_raw` in one
-    // of our string-returning symbols and has not been freed.
-    unsafe {
-        let _ = CString::from_raw(ptr);
-    }
-}
-
 /// Drop the observer registration and free the handle. Idempotent: null is
 /// a silent no-op. The handle MUST NOT be used after this call.
 #[no_mangle]
@@ -666,20 +580,6 @@ pub(crate) fn c_str_opt(ptr: *const c_char) -> Option<String> {
         .to_str()
         .ok()
         .map(|s| s.to_owned())
-}
-
-fn to_c_string(s: &str) -> *mut c_char {
-    match CString::new(s) {
-        Ok(c) => c.into_raw(),
-        Err(_) => std::ptr::null_mut(),
-    }
-}
-
-fn to_c_json<T: serde::Serialize>(v: &T) -> *mut c_char {
-    match serde_json::to_string(v) {
-        Ok(s) => to_c_string(&s),
-        Err(_) => std::ptr::null_mut(),
-    }
 }
 
 #[cfg(test)]

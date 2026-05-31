@@ -693,7 +693,16 @@ final class KernelModel: ObservableObject, NostrProfileHost {
             _ = kernel.registerActiveMarmotIfAvailable()
             marmotRegistrationRequested = false
         }
-        marmot.apply(snapshot: kernel.marmotSnapshot(), isRegistered: kernel.isMarmotRegistered)
+        // V-107 / ADR-0039: Marmot state now comes from push projections
+        // (`nmp.marmot.snapshot` / `nmp.marmot.messages`) on the SnapshotFrame —
+        // no more pull calls to `nmp_marmot_snapshot` / `nmp_marmot_group_messages`.
+        // `isMarmotRegistered` still reads the handle slot (unchanged — it is NOT
+        // a deleted symbol; it just checks whether the handle is non-nil).
+        marmot.apply(
+            snapshot: update.projections?.marmotSnapshot,
+            messages: update.projections?.marmotMessages,
+            isRegistered: kernel.isMarmotRegistered
+        )
         // NIP-29 + NIP-17 stores — pushed every tick so their lazy init fires
         // on the first snapshot (registering the read projections in the
         // process). Rust owns the DM inbox interest lifecycle.

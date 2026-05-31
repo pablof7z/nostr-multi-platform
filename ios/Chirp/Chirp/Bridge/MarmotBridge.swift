@@ -14,8 +14,9 @@ import os.log
 // Conventions matched verbatim from the modular-timeline bridge:
 //   • C symbols declared in `Bridge/NmpCore.h` (the project's bridging
 //     header — same place `nmp_app_chirp_*` live).
-//   • `String(cString:)` decode + free EVERY returned pointer via
-//     `nmp_marmot_string_free`.
+//   • Group/message state is read from the pushed `nmp.marmot.snapshot` /
+//     `nmp.marmot.messages` projections in the snapshot `apply()` path
+//     (V-107 / ADR-0039) — the old `nmp_marmot_*` pull symbols are gone.
 //   • D6 resilience: any nil pointer / decode failure → empty state, never
 //     a crash or throw across the bridge.
 //
@@ -66,6 +67,15 @@ private let mbLog = Logger(subsystem: "io.f7z.chirp", category: "MarmotBridge")
 
 // ── Decoded snapshot DTOs (verbatim FFI schema) ──────────────────────────
 
+/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
+/// (inherited by every nested type through the FlatBuffer decoder) maps
+/// `"id_hex"` → `idHex`, `"display_name"` → `displayName`,
+/// `"member_count"` → `memberCount`, `"last_msg_at"` → `lastMsgAt`,
+/// `"unread_count"` → `unreadCount` automatically.
+/// An explicit enum with snake_case rawValues would CONFLICT with the
+/// FlatBuffer decoder, which has already applied `convertFromSnakeCase`
+/// before any `CodingKey` lookup (identical pattern to `GroupChatMessage`
+/// and `DiscoveredGroup` — see their comments in `KernelBridge.swift`).
 struct MarmotGroup: Decodable, Identifiable, Equatable {
     let idHex: String
     let name: String
@@ -88,19 +98,12 @@ struct MarmotGroup: Decodable, Identifiable, Equatable {
     let lastMsgAt: UInt64?
 
     var id: String { idHex }
-
-    enum CodingKeys: String, CodingKey {
-        case idHex = "id_hex"
-        case name
-        case displayName = "display_name"
-        case initials
-        case members
-        case memberCount = "member_count"
-        case unreadCount = "unread_count"
-        case lastMsgAt = "last_msg_at"
-    }
 }
 
+/// No explicit `CodingKeys`: `.convertFromSnakeCase` maps `"id_hex"` →
+/// `idHex`, `"group_name"` → `groupName`, `"display_name"` → `displayName`,
+/// `"inviter_npub"` → `inviterNpub` automatically (same pattern as
+/// `MarmotGroup` above).
 struct MarmotPendingWelcome: Decodable, Identifiable, Equatable {
     let idHex: String
     let groupName: String
@@ -112,15 +115,12 @@ struct MarmotPendingWelcome: Decodable, Identifiable, Equatable {
     let inviterNpub: String
 
     var id: String { idHex }
-
-    enum CodingKeys: String, CodingKey {
-        case idHex = "id_hex"
-        case groupName = "group_name"
-        case displayName = "display_name"
-        case inviterNpub = "inviter_npub"
-    }
 }
 
+/// No explicit `CodingKeys`: `.convertFromSnakeCase` maps `"d_tag"` → `dTag`,
+/// `"age_secs"` → `ageSecs`, `"age_display"` → `ageDisplay`,
+/// `"action_label"` → `actionLabel` automatically (same pattern as
+/// `MarmotGroup` above).
 struct MarmotKeyPackage: Decodable, Equatable {
     let published: Bool
     let dTag: String?
@@ -138,16 +138,6 @@ struct MarmotKeyPackage: Decodable, Equatable {
     /// the shell.
     let actionLabel: String
 
-    enum CodingKeys: String, CodingKey {
-        case published
-        case dTag = "d_tag"
-        case ageSecs = "age_secs"
-        case stale
-        case ageDisplay = "age_display"
-        case subtitle
-        case actionLabel = "action_label"
-    }
-
     static let empty = MarmotKeyPackage(
         published: false,
         dTag: nil,
@@ -159,6 +149,12 @@ struct MarmotKeyPackage: Decodable, Equatable {
     )
 }
 
+/// No explicit `CodingKeys`: `.convertFromSnakeCase` maps
+/// `"pending_welcomes"` → `pendingWelcomes`, `"key_package"` → `keyPackage`,
+/// `"cached_kp_pubkeys"` → `cachedKpPubkeys`,
+/// `"invites_chip_label"` → `invitesChipLabel`,
+/// `"is_registered"` → `isRegistered` automatically (same pattern as
+/// `MarmotGroup` above).
 struct MarmotSnapshot: Decodable, Equatable {
     let groups: [MarmotGroup]
     let pendingWelcomes: [MarmotPendingWelcome]
@@ -173,15 +169,6 @@ struct MarmotSnapshot: Decodable, Equatable {
     /// verbatim — both branches of the registration policy are now Rust-owned.
     let isRegistered: Bool
 
-    enum CodingKeys: String, CodingKey {
-        case groups
-        case pendingWelcomes = "pending_welcomes"
-        case keyPackage = "key_package"
-        case cachedKpPubkeys = "cached_kp_pubkeys"
-        case invitesChipLabel = "invites_chip_label"
-        case isRegistered = "is_registered"
-    }
-
     static let empty = MarmotSnapshot(
         groups: [],
         pendingWelcomes: [],
@@ -192,6 +179,9 @@ struct MarmotSnapshot: Decodable, Equatable {
     )
 }
 
+/// No explicit `CodingKeys`: `.convertFromSnakeCase` maps
+/// `"sender_pubkey_hex"` → `senderPubkeyHex` and `"created_at"` → `createdAt`
+/// automatically (same pattern as `MarmotGroup` above).
 struct MarmotMessage: Decodable, Identifiable, Equatable {
     let id: String
     /// Author Nostr pubkey, hex (64 chars). Presentation layer formats
@@ -202,14 +192,6 @@ struct MarmotMessage: Decodable, Identifiable, Equatable {
     /// layer formats via `relativeTimeFromUnixSeconds` (ADR-0032).
     let createdAt: UInt64
     let epoch: UInt64?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case senderPubkeyHex = "sender_pubkey_hex"
-        case content
-        case createdAt = "created_at"
-        case epoch
-    }
 }
 
 /// Result envelope every Marmot dispatch wrapper returns.
@@ -352,39 +334,6 @@ extension KernelHandle {
         }
     }
 
-    /// Decode the current Marmot snapshot. `.empty` on any failure (D6).
-    func marmotSnapshot() -> MarmotSnapshot {
-        guard let handle = marmotHandle else { return .empty }
-        guard let ptr = nmp_marmot_snapshot(handle) else { return .empty }
-        defer { nmp_marmot_string_free(ptr) }
-        let payload = String(cString: ptr)
-        guard let data = payload.data(using: .utf8) else { return .empty }
-        do {
-            return try JSONDecoder().decode(MarmotSnapshot.self, from: data)
-        } catch {
-            mbLog.error("marmotSnapshot decode failed: \(error.localizedDescription)")
-            return .empty
-        }
-    }
-
-    /// Newest-200 decrypted messages for `groupIDHex`. `[]` on any failure.
-    func marmotGroupMessages(groupIDHex: String) -> [MarmotMessage] {
-        guard let handle = marmotHandle else { return [] }
-        let ptr: UnsafeMutablePointer<CChar>? = groupIDHex.withCString {
-            nmp_marmot_group_messages(handle, $0)
-        }
-        guard let ptr else { return [] }
-        defer { nmp_marmot_string_free(ptr) }
-        let payload = String(cString: ptr)
-        guard let data = payload.data(using: .utf8) else { return [] }
-        do {
-            return try JSONDecoder().decode([MarmotMessage].self, from: data)
-        } catch {
-            mbLog.error("marmotGroupMessages decode failed: \(error.localizedDescription)")
-            return []
-        }
-    }
-
     // ADR-0025 PR 2 — `marmotDispatch(actionJSON:)` deleted. Every Marmot op
     // now routes through `KernelHandle.dispatchRawAction(namespace:bodyJson:)`
     // with namespace `"nmp.marmot"`. See `MarmotStore.dispatchAsync` /
@@ -398,6 +347,12 @@ extension KernelHandle {
 final class MarmotStore: ObservableObject {
     @Published private(set) var snapshot: MarmotSnapshot = .empty
     @Published private(set) var isRegistered = false
+
+    /// All-group messages map from the `"nmp.marmot.messages"` push projection
+    /// (`projections["nmp.marmot.messages"]` on the SnapshotFrame, V-107).
+    /// Keyed by group_id_hex → newest-N `MarmotMessage` array. Updated on
+    /// every `apply(snapshot:messages:isRegistered:)` call (D8: no polling).
+    @Published private(set) var allMessages: [String: [MarmotMessage]] = [:]
 
     private unowned let kernel: KernelHandle
 
@@ -423,21 +378,39 @@ final class MarmotStore: ObservableObject {
         groupsByID[idHex] ?? fallback
     }
 
-    func apply(snapshot next: MarmotSnapshot, isRegistered registered: Bool) {
+    /// Apply a push-projection tick. Both snapshot and messages come from
+    /// the kernel's `projections["nmp.marmot.snapshot"]` /
+    /// `projections["nmp.marmot.messages"]` frame keys (V-107 / ADR-0039).
+    /// `nil` arguments mean the kernel has not yet registered the projection
+    /// (e.g. signed-out, first tick before Marmot registered) — fall back to
+    /// `.empty` / `[:]` without overwriting existing state with a nil.
+    func apply(
+        snapshot next: MarmotSnapshot?,
+        messages nextMessages: [String: [MarmotMessage]]?,
+        isRegistered registered: Bool
+    ) {
         isRegistered = registered
-        if next != snapshot {
-            snapshot = next
+        let effective = next ?? .empty
+        if effective != snapshot {
+            snapshot = effective
             // Rebuild the id-keyed lookup on each apply. O(n) once per
             // snapshot tick beats `.first(where:)` per render.
             var byID: [String: MarmotGroup] = [:]
-            byID.reserveCapacity(next.groups.count)
-            for g in next.groups { byID[g.idHex] = g }
+            byID.reserveCapacity(effective.groups.count)
+            for g in effective.groups { byID[g.idHex] = g }
             groupsByID = byID
+        }
+        let effectiveMessages = nextMessages ?? [:]
+        if effectiveMessages != allMessages {
+            allMessages = effectiveMessages
         }
     }
 
+    /// Newest-N decrypted messages for `groupIDHex`, read from the push
+    /// projection stored in `allMessages` (V-107). `[]` when the group is
+    /// unknown or the projection has not arrived yet (D6 / D8 — no poll).
     func messages(groupIDHex: String) -> [MarmotMessage] {
-        kernel.marmotGroupMessages(groupIDHex: groupIDHex)
+        allMessages[groupIDHex] ?? []
     }
 
     // ── Dispatch op wrappers ──────────────────────────────────────────────
