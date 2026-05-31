@@ -129,6 +129,32 @@ an ADR (`docs/design/framework-magic/intro.md` §4). To add C14:
   (`test-scaffolding.md` §1); renaming it or its tests breaks the meta-test and
   needs an ADR.
 
+## Replaceable event freshness (F-TTL)
+
+The kernel automatically tracks when replaceable events (kind:0 profiles, kind:10002 mailboxes, parameterized replaceables) should be re-verified based on kind-specific TTLs. This avoids apps manually implementing profile-refresh polls or stale-data checks.
+
+**What the app gets for free:**
+
+- Profile data automatically re-fetched after kind-specific timeout (default: 1h for kind:0, 6h for kind:10002)
+- No polling loop needed in app code; framework wakes up only when a view claims the event
+- Forced refresh via UI available through `nmp_app_refresh_replaceable(app, kind, pubkey, d_tag_or_null)` FFI symbol
+- Per-event freshness tracking in persistent LMDB sub-db (`replaceable_freshness`), survives app restarts
+
+**API surface:**
+
+- **Rust (kernel-internal):** `Kernel::claim_replaceable(kind, pubkey, d_tag?)` — auto-refresh if TTL expired
+- **FFI (app-facing):** `nmp_app_refresh_replaceable(app, kind, pubkey, d_tag_or_null)` — force-refresh by zeroing the TTL timer
+- **Customization:** `NmpAppBuilder::with_replaceable_ttl_config(ReplaceableTtlConfig { per_kind, default })`
+
+**App should never write:**
+
+- Manual TTL timers for profile data
+- Polling loops like `refreshProfileEvery(1h)`
+- Stale-check logic before rendering profile fields
+- Custom re-verify logic after claim failures
+
+Treat F-TTL as the framework's commitment to keep replaceable data fresh — the app calls `claim_replaceable` or the equivalent FFI symbol and trusts the kernel's TTL schedule.
+
 See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md) ·
 [08 — EventStore + insert invariants + GC](08-eventstore.md) ·
 [10 — Outbox routing (NIP-65)](10-outbox-routing.md) ·

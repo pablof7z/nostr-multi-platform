@@ -126,7 +126,21 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 
 ---
 
-## 7. NIP-47 Wallet Connect (`ffi/wallet.rs`)
+## 6a. Replaceable event freshness (F-TTL) (`ffi/freshness.rs`)
+
+Lazy TTL re-verification for replaceable Nostr events (kind:0 profiles, kind:10002 mailboxes, parameterized replaceables). The kernel automatically tracks when each replaceable should be re-fetched based on kind-specific TTLs. Force-refresh via UI using `nmp_app_refresh_replaceable`.
+
+| Symbol | Signature | Behavior | Callers | D6 | D7 |
+|---|---|---|---|---|---|
+| `nmp_app_refresh_replaceable` | `(app, kind: uint32_t, pubkey: *const c_char, d_tag_or_null: *const c_char)` | Force-refresh a replaceable event by zeroing its `check_again_after` timestamp, triggering an immediate re-verification REQ. `d_tag_or_null` is omitted (NULL) for regular replaceables (kind 0, 3, 10000–19999) and supplied for parameterized replaceables (kind 30000–39999). Validates hex pubkey. | Chirp (UI "refresh profile" button; explicit user action) | non-hex pubkey / invalid kind → early return | n/a |
+
+**Note:** `nmp_app_claim_profile(app, pubkey, consumer_id)` is now a thin wrapper that calls `nmp_app_refresh_replaceable(app, 0, pubkey, NULL)` plus the existing refcount logic. TTL management is transparent: the framework automatically re-verifies after kind-specific timeouts (default: kind:0 = 1h, kind:10002 = 6h).
+
+See also: `docs/design/replaceable-freshness.md` (F-TTL design + lifecycle).
+
+---
+
+## 8. NIP-47 Wallet Connect (`ffi/wallet.rs`)
 
 All fire-and-forget. Outcomes surface via snapshot `wallet_status` and
 `last_error_toast` fields.
@@ -139,14 +153,14 @@ All fire-and-forget. Outcomes surface via snapshot `wallet_status` and
 
 ---
 
-## 8. Cancellation (`nmp-signer-broker/src/ffi.rs`)
+## 9. Cancellation (`nmp-signer-broker/src/ffi.rs`)
 
 `nmp_app_cancel_bunker_handshake` — documented in section 2 (Signer broker).
 No `_drop` or `_cancel` symbols exist outside the broker crate.
 
 ---
 
-## 9. Diagnostics
+## 10. Diagnostics
 
 No dedicated diagnostic FFI symbols exist. Telemetry for the diagnostics screen
 rides on the standard update-callback JSON: the snapshot includes relay
