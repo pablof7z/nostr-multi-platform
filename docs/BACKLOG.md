@@ -712,6 +712,36 @@ CI-gated so this class of rot is caught at the PR boundary rather than latently.
 
 ---
 
+### V-109 · Android does not build or expose Marmot/MLS [MEDIUM · platform gap]
+
+**Verified blockers (three distinct layers):**
+
+**(a) Build:** `android/app/build.gradle.kts` passes `cargoNdk` only `build --release`
+with no `--features marmot` flag. The marmot feature is never compiled into the Android
+native library.
+
+**(b) Cargo:** `nmp-android-ffi/Cargo.toml` pulls `nmp-app-chirp` with
+`default-features = false`, which explicitly excludes the `marmot` feature. Even if
+cargoNdk were amended, the Rust build would not include Marmot code.
+
+**(c) UI/FFI surface:** Zero Marmot/MLS/NIP-29 UI or FFI in `android/app/src/` — no
+Groups tab, no key-package or welcome screens, no MLS-related FFI calls. The iOS
+`justfile` passes `--features marmot` to every build target; Android never does.
+
+**Contrast with iOS:** iOS wires the marmot feature explicitly (`--features marmot` in
+the justfile), links `libnmp_app_chirp.a` which includes `nmp_marmot_*` symbols, and
+ships a Groups tab backed by that FFI surface. Android has no equivalent path.
+
+**Correct fix:** (1) Add `--features marmot` to the `cargoNdk` invocation in
+`android/app/build.gradle.kts`. (2) Enable `marmot` in `nmp-android-ffi/Cargo.toml`
+(or pass it through cargoNdk flags). (3) Build the Android Groups UI: key-package
+publish, pending-welcome accept, group message send/receive — mirroring the iOS
+`GroupsView` / `MarmotViewModel` surface. The Rust MLS runtime is already proven
+correct (in-process round-trip verified 2026-05-31 via `NMP_MARMOT_MOCK_KEYRING=1`);
+the gap is entirely in the Android build wiring and UI layer.
+
+---
+
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
 
