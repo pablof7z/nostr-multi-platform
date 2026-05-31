@@ -568,36 +568,6 @@ CI-gated so this class of rot is caught at the PR boundary rather than latently.
 
 ---
 
-### V-109 · Android does not build or expose Marmot/MLS [MEDIUM · platform gap]
-
-**Verified blockers (three distinct layers):**
-
-**(a) Build:** `android/app/build.gradle.kts` passes `cargoNdk` only `build --release`
-with no `--features marmot` flag. The marmot feature is never compiled into the Android
-native library.
-
-**(b) Cargo:** `nmp-android-ffi/Cargo.toml` pulls `nmp-app-chirp` with
-`default-features = false`, which explicitly excludes the `marmot` feature. Even if
-cargoNdk were amended, the Rust build would not include Marmot code.
-
-**(c) UI/FFI surface:** Zero Marmot/MLS/NIP-29 UI or FFI in `android/app/src/` — no
-Groups tab, no key-package or welcome screens, no MLS-related FFI calls. The iOS
-`justfile` passes `--features marmot` to every build target; Android never does.
-
-**Contrast with iOS:** iOS wires the marmot feature explicitly (`--features marmot` in
-the justfile), links `libnmp_app_chirp.a` which includes `nmp_marmot_*` symbols, and
-ships a Groups tab backed by that FFI surface. Android has no equivalent path.
-
-**Correct fix:** (1) Add `--features marmot` to the `cargoNdk` invocation in
-`android/app/build.gradle.kts`. (2) Enable `marmot` in `nmp-android-ffi/Cargo.toml`
-(or pass it through cargoNdk flags). (3) Build the Android Groups UI: key-package
-publish, pending-welcome accept, group message send/receive — mirroring the iOS
-`GroupsView` / `MarmotViewModel` surface. The Rust MLS runtime is already proven
-correct (in-process round-trip verified 2026-05-31 via `NMP_MARMOT_MOCK_KEYRING=1`);
-the gap is entirely in the Android build wiring and UI layer.
-
----
-
 ### V-110 · `KernelAction::OpenView` silently no-ops — general view-lifecycle seam unwired [MEDIUM]
 
 **Provenance:** Identified while fixing V-110's first known consumer (the Marmot key-package
@@ -1285,3 +1255,4 @@ Recorded so Opus reviews do not re-flag these as violations.
 | V-86 · Flatbuffers pin-check Android coverage | PR #781; `ci/check-flatbuffers-version-pins.sh` covers full `android/app/src/main/java/nmp/` tree. Verified at HEAD. |
 | V-92 · Relay backoff reset after healthy session | Commit 5da5942c; `RELAY_BACKOFF_RESET_AFTER_SECS` reset at line ~426 in `nmp-network/src/relay_worker/mod.rs`. Verified at HEAD. |
 | V-96 · NIP-57 bolt11 consolidation | Already `pub(crate)` at HEAD: `fetch_lnurl_invoice_blocking` (`:419`) + `fetch_bolt11_for_zap` (`:559`) in `nmp-nip57/src/lnurl/mod.rs`; no external callers confirmed. Close GH #620. |
+| V-109 · Android Marmot build + Groups tab | 2026-05-31 (branch `v-109-android-marmot`): all three blockers closed. (a) `android/app/build.gradle.kts` cargoNdk passes `--features marmot`; (b) `nmp-android-ffi` gained a forwarding `marmot` feature → `nmp-app-chirp/marmot`; (c) `nativeMarmotRegisterActive`/`nativeMarmotUnregister` JNI shim (`crates/nmp-android-ffi/src/marmot.rs`) reaches `nmp_marmot_register_active`/`_unregister` via Rust paths for cdylib symbol retention, and a Compose Groups tab (`GroupsScreen.kt` + `GroupChatScreen.kt`) lists groups / creates / sends / accepts welcomes / publishes key package off the `nmp.marmot.snapshot` + `nmp.marmot.messages` push projections, all writes routed through `dispatch_action("nmp.marmot", …)`. Skeleton merge bar per the V-109 brief; remaining iOS parity (invite-into-existing-group, join-by-link, member management, profile/relative-time display) is incremental Android work, not a platform gap. |
