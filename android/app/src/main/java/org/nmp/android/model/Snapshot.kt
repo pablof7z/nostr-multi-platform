@@ -47,6 +47,13 @@ data class SnapshotProjections(
     // merged in the presentation layer.
     @SerialName("resolved_profiles") val resolvedProfiles: Map<String, ProfileCard> = emptyMap(),
     @SerialName("author_view") val authorView: AuthorViewPayload? = null,
+    // Marmot (MLS-over-Nostr) push projections (V-107 / ADR-0039), present only
+    // when a Marmot MLS identity is registered. `nmp.marmot.snapshot` carries
+    // the group list / welcomes / key-package; `nmp.marmot.messages` is keyed
+    // by group_id_hex → newest-N decrypted messages. Both keys contain dots but
+    // no underscores, so convertFromSnakeCase leaves them unchanged.
+    @SerialName("nmp.marmot.snapshot") val marmotSnapshot: MarmotSnapshot? = null,
+    @SerialName("nmp.marmot.messages") val marmotMessages: Map<String, List<MarmotMessage>> = emptyMap(),
 )
 
 /**

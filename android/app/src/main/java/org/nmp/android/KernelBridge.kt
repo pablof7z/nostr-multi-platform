@@ -140,6 +140,39 @@ class KernelBridge {
     }
 
     /**
+     * Register a Marmot (MLS-over-Nostr) projection against the active local
+     * account. Direct mirror of iOS
+     * `KernelHandle.registerActiveMarmotIfAvailable()`.
+     *
+     * The secret never crosses the JNI seam — `nmp_marmot_register_active`
+     * reads the actor-owned local key from the slot the kernel writes after
+     * every identity mutation. [dbDir] is the host app-support directory; the
+     * MLS SQLite state lives at `<dbDir>/marmot-mls-state.sqlite`.
+     *
+     * Returns `true` once a handle is held; `false` when no local signing key
+     * is active (signed out, or a bunker/NIP-46 account with no local key).
+     * Idempotent — re-registers cleanly (account switch), so callers may invoke
+     * it whenever the active account changes.
+     *
+     * Once registered the kernel pushes `nmp.marmot.snapshot` /
+     * `nmp.marmot.messages` projections on every snapshot tick (V-107 /
+     * ADR-0039); group write ops route through [dispatchAction] with the
+     * `"nmp.marmot"` namespace — there is no per-op native symbol.
+     */
+    fun marmotRegisterActive(dbDir: String): Boolean =
+        if (handle != 0L) nativeMarmotRegisterActive(handle, dbDir) else false
+
+    /**
+     * Drop the Marmot observer registration if one exists (sign-out path).
+     * Idempotent — safe to call when nothing is registered. [free] performs
+     * this implicitly before reclaiming the kernel, so a normal teardown does
+     * not need an explicit call.
+     */
+    fun marmotUnregister() {
+        if (handle != 0L) nativeMarmotUnregister(handle)
+    }
+
+    /**
      * Expose the raw Android JNI Session pointer (`jlong`) to same-process
      * Android bridge extensions. Returns 0 if the bridge was freed. Callers
      * must not store this value beyond the lifetime of this bridge.
@@ -169,5 +202,7 @@ class KernelBridge {
     private external fun nativeSignInNsec(handle: Long, secret: String)
     private external fun nativeSwitchAccount(handle: Long, pubkey: String)
     private external fun nativeRemoveAccount(handle: Long, pubkey: String)
+    private external fun nativeMarmotRegisterActive(handle: Long, dbDir: String): Boolean
+    private external fun nativeMarmotUnregister(handle: Long)
     private external fun nativeFree(handle: Long)
 }

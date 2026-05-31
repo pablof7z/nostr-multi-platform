@@ -231,6 +231,65 @@ class KernelModel : ViewModel() {
         bridge.dispatchAction("nmp.nip17.send", """{"recipient_pubkey":"$recipientPubkey","content":"${escapeJson(content)}"}""")
 
     // -------------------------------------------------------------------------
+    // Marmot (MLS-over-Nostr encrypted groups)
+    // -------------------------------------------------------------------------
+    //
+    // Android peer of iOS `MarmotStore` (Bridge/MarmotBridge.swift). State is
+    // read reactively from the `nmp.marmot.snapshot` / `nmp.marmot.messages`
+    // push projections on `state` (V-107 / ADR-0039) — never polled. Write ops
+    // route through the generic `dispatch_action("nmp.marmot", …)` seam; the
+    // refreshed snapshot arrives on the next kernel tick.
+
+    /** Account this `KernelModel` last registered a Marmot identity for. */
+    private var marmotRegisteredAccount: String? = null
+
+    /**
+     * Register a Marmot MLS identity against the active local account, idempotent
+     * per account. [dbDir] is the host app-support directory (e.g.
+     * `context.filesDir.path`). No-op when there is no active account yet, or
+     * when already registered for the current account. Mirrors the iOS shell
+     * calling `registerActiveMarmotIfAvailable()` once an account is live.
+     */
+    fun registerMarmotIfNeeded(dbDir: String) {
+        val account = state.value.activeAccount
+        if (account.isEmpty() || account == marmotRegisteredAccount) return
+        if (bridge.marmotRegisterActive(dbDir)) {
+            marmotRegisteredAccount = account
+        }
+    }
+
+    /**
+     * Create a new MLS group. [inviteeText] is the raw text the user typed;
+     * Rust tokenises (whitespace / comma / semicolon / newline) and validates
+     * each entry — no parsing in Kotlin. Fire-and-forget: the new group appears
+     * on the next snapshot tick.
+     */
+    fun createGroup(name: String, description: String, inviteeText: String) =
+        bridge.dispatchAction(
+            "nmp.marmot",
+            """{"op":"create_group","name":"${escapeJson(name)}","description":"${escapeJson(description)}","invitee_text":"${escapeJson(inviteeText)}","signed_key_package_events_json":[]}""",
+        )
+
+    /** Send an application message in an existing MLS group. */
+    fun sendGroupMessage(groupIdHex: String, text: String) =
+        bridge.dispatchAction(
+            "nmp.marmot",
+            """{"op":"send","group_id_hex":"$groupIdHex","text":"${escapeJson(text)}"}""",
+        )
+
+    /** Publish (or rotate) the local MLS key package. */
+    fun publishKeyPackage() =
+        bridge.dispatchAction("nmp.marmot", """{"op":"publish_key_package"}""")
+
+    /** Accept a pending MLS group invite (kind:444 Welcome). */
+    fun acceptWelcome(welcomeIdHex: String) =
+        bridge.dispatchAction("nmp.marmot", """{"op":"accept_welcome","welcome_id_hex":"$welcomeIdHex"}""")
+
+    /** Decline a pending MLS group invite. */
+    fun declineWelcome(welcomeIdHex: String) =
+        bridge.dispatchAction("nmp.marmot", """{"op":"decline_welcome","welcome_id_hex":"$welcomeIdHex"}""")
+
+    // -------------------------------------------------------------------------
     // Wallet (NIP-47 / NWC)
     // -------------------------------------------------------------------------
 
