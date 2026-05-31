@@ -166,6 +166,7 @@ impl PaginationController {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn test_dedup_same_boundary() {
@@ -233,5 +234,67 @@ mod tests {
                 .and_then(|s| s.interest_id.clone()),
             Some(interest_id)
         );
+    }
+
+    #[test]
+    fn test_coverage_gating_suppresses_req_when_watermark_complete() {
+        use crate::planner::InterestShape;
+
+        let mut controller = PaginationController::new();
+
+        // Mock watermark function that returns a fixed timestamp >= until.
+        let watermark_fn: crate::subs::WatermarkFn = Arc::new(|_: &InterestShape| {
+            Some(1000)  // Watermark at 1000 (relay fully synced to this point)
+        });
+
+        // Request backfill for oldest_ts = 1000. The until will be 999, and
+        // the watermark is at 1000, so it's >= until. No REQ should be issued.
+        let shape = controller.request_backfill(
+            "home-feed",
+            1000,
+            vec!["author-1".to_string()],
+            vec![1],
+            Some(&watermark_fn),
+        );
+
+        // Request should be suppressed (None returned).
+        assert!(shape.is_none());
+
+        // Verify the backfill was recorded as coverage-complete.
+        let state = controller.backfills.get("home-feed");
+        assert!(state.is_some());
+        assert!(state.unwrap().coverage_complete);
+        assert!(state.unwrap().eose_seen);
+    }
+
+    #[test]
+    fn test_coverage_gating_allows_req_when_watermark_incomplete() {
+        use crate::planner::InterestShape;
+
+        let mut controller = PaginationController::new();
+
+        // Mock watermark function that returns a timestamp < until.
+        let watermark_fn: crate::subs::WatermarkFn = Arc::new(|_: &InterestShape| {
+            Some(998)  // Watermark at 998 (relay not synced to 999)
+        });
+
+        // Request backfill for oldest_ts = 1000. The until will be 999, and
+        // the watermark is 998, so watermark < until. REQ should be issued.
+        let shape = controller.request_backfill(
+            "home-feed",
+            1000,
+            vec!["author-1".to_string()],
+            vec![1],
+            Some(&watermark_fn),
+        );
+
+        // Request should be allowed (Some returned).
+        assert!(shape.is_some());
+        assert_eq!(shape.unwrap().until, Some(999));
+
+        // Verify the backfill was recorded but not coverage-complete.
+        let state = controller.backfills.get("home-feed");
+        assert!(state.is_some());
+        assert!(!state.unwrap().coverage_complete);
     }
 }
