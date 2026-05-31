@@ -323,7 +323,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     SnapshotProjectionEntry {
         json_key: "settings_hub",
         swift_field: "settingsHub",
-        swift_type: "SettingsHubSummary",
+        swift_type: "[String: Int]",
     },
     // V-107 / ADR-0039: Marmot (MLS-over-Nostr) push projections. Both are
     // host-registered in `nmp_marmot::ffi::register_with_keys` on every
