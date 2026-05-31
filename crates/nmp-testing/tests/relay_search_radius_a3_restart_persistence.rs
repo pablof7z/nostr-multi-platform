@@ -138,6 +138,7 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
     tx1.send(ActorCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
+        initial_relays: Vec::new(),
     })
     .expect("A3 S1: Start send");
 
@@ -209,6 +210,7 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
     tx2.send(ActorCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
+        initial_relays: Vec::new(),
     })
     .expect("A3 S2: Start send");
 

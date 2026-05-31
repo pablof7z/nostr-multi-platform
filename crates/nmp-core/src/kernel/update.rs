@@ -171,7 +171,7 @@ impl Kernel {
             // (`skip_serializing_if`) to keep the snapshot size unchanged for
             // healthy (no-failure) sessions.
             store_open_failure: self.store_open_failure.clone(),
-            // V-66 (D3): when an account is active but relay_edit_rows is empty
+            // V-66 (D3): when an account is active but configured_relays is empty
             // every outbound socket connects to the hardcoded FALLBACK relays.
             // The fallback keeps the app functional, but must no longer be
             // silent — the host needs to know it is running on unconfigured
@@ -180,7 +180,7 @@ impl Kernel {
             // (`skip_serializing_if`) in all other states so healthy sessions
             // produce byte-identical snapshots to pre-V-66 builds.
             no_configured_relays: if self.active_account.is_some()
-                && self.relay_edit_rows.is_empty()
+                && self.configured_relays.is_empty()
             {
                 Some(true)
             } else {
@@ -192,7 +192,7 @@ impl Kernel {
             // `"bunker_handshake"`) collected in `projections` below.
             //
             // D0: the publish / relay-settings cluster (`publish_queue`,
-            // `publish_outbox`, `relay_edit_rows`, `relay_role_options`) is
+            // `publish_outbox`, `configured_relays`, `relay_role_options`) is
             // likewise app-shaped relay/publish state and is no longer a typed
             // field set — `snapshot_projections_with_publish_cluster` inserts
             // them into the same `projections` map under built-in keys.

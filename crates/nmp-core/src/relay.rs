@@ -36,34 +36,22 @@ pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
 /// pool or the kernel's `wire_subs` / `persistent_subs` maps.
 pub type RelayUrl = String;
 
-/// Fallback relay URLs used when no host-configured relays are available.
-/// Compiled in unconditionally so cold-start sign-ins have discovery relays.
+/// Fallback relay URLs retained ONLY for the test/test-support surface.
+///
+/// Production no longer hardcodes any relay: the app declares its initial
+/// relay set through `NmpAppBuilder::with_relay(s)` (or seeds it pre-start via
+/// `nmp_app_add_relay`), and that config is carried into the kernel through
+/// `ActorCommand::Start { initial_relays, .. }`. When nothing is configured the
+/// kernel returns an empty relay set and surfaces the `no_configured_relays`
+/// diagnostic — it never silently dials an unconsented relay (V-66).
+///
+/// These constants live behind `#[cfg(any(test, feature = "test-support"))]`
+/// so test fixtures still have well-known seed URLs without re-admitting a
+/// production hardcoded default.
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) const FALLBACK_INDEXER_RELAY: &str = "wss://purplepag.es";
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) const FALLBACK_CONTENT_RELAY: &str = "wss://relay.primal.net";
-
-/// Substrate-level relay bootstrap entry: a relay URL paired with its role
-/// string (e.g. `"both,indexer"`, `"indexer"`).
-pub(crate) struct BootstrapRelayEntry {
-    pub url: &'static str,
-    pub role: &'static str,
-}
-
-const RELAY_BOOTSTRAP_DEFAULTS: &[BootstrapRelayEntry] = &[
-    BootstrapRelayEntry {
-        url: FALLBACK_CONTENT_RELAY,
-        role: "both,indexer",
-    },
-    BootstrapRelayEntry {
-        url: FALLBACK_INDEXER_RELAY,
-        role: "indexer",
-    },
-];
-
-/// Substrate-level default relay bootstrap set used when a host passes no
-/// relay configuration during account creation or cold-start sign-in.
-pub(crate) fn default_relay_bootstrap() -> &'static [BootstrapRelayEntry] {
-    RELAY_BOOTSTRAP_DEFAULTS
-}
 
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =

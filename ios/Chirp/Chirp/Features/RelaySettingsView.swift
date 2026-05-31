@@ -22,7 +22,7 @@ struct RelaySettingsView: View {
 
     var body: some View {
         List {
-            if model.relayEditRows.isEmpty {
+            if model.configuredRelays.isEmpty {
                 Section {
                     ChirpPlaceholder(
                         systemImage: "antenna.radiowaves.left.and.right",
@@ -35,7 +35,7 @@ struct RelaySettingsView: View {
                 }
             } else {
                 Section {
-                    ForEach(model.relayEditRows) { relay in
+                    ForEach(model.configuredRelays) { relay in
                         RelayConfigRow(relay: relay, relayRoleOptions: model.relayRoleOptions)
                             .contentShape(Rectangle())
                             .onTapGesture { openEdit(relay) }
@@ -156,13 +156,13 @@ struct RelaySettingsView: View {
 
     private func publishButton(label: String, systemImage: String) -> some View {
         Button {
-            let result = model.publishDmRelayList(relays: model.relayEditRows.map(\.url))
+            let result = model.publishDmRelayList(relays: model.configuredRelays.map(\.url))
             // Also publish NIP-65 kind:10002 (general relay list) so other
             // Nostr clients can discover this user's read/write relays via
             // NIP-65 relay discovery. Rust registers and owns
             // `nmp.nip65.publish_relay_list`, including the indexer-role
             // policy for rows that cannot be represented in kind:10002.
-            model.publishRelayList(relays: model.relayEditRows)
+            model.publishRelayList(relays: model.configuredRelays)
             // PR-A: only stash a correlation id on accept — a synchronous
             // dispatch rejection has already routed through `track()` into
             // `lastDispatchError` (the global toast slot). Clearing
@@ -178,7 +178,7 @@ struct RelaySettingsView: View {
         } label: {
             Label(label, systemImage: systemImage)
         }
-        .disabled(model.relayEditRows.isEmpty)
+        .disabled(model.configuredRelays.isEmpty)
     }
 
     private func openAdd() {
@@ -188,7 +188,7 @@ struct RelaySettingsView: View {
         showSheet = true
     }
 
-    private func openEdit(_ relay: RelayEditRow) {
+    private func openEdit(_ relay: AppRelay) {
         sheetURL = relay.url
         sheetRole = relay.role
         isEditing = true
@@ -209,7 +209,7 @@ struct RelaySettingsView: View {
 }
 
 private struct RelayConfigRow: View {
-    let relay: RelayEditRow
+    let relay: AppRelay
     let relayRoleOptions: [RelayRoleOption]
 
     private var roleOption: RelayRoleOption? {

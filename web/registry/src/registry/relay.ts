@@ -20,7 +20,7 @@ export const relayComponents: Component[] = [
         version: "0.2.0",
         dependencies: ["render-identity"],
         longDescription:
-          "`NostrRelayList` renders the `projections.relay_edit_rows` array as a list of relay URLs with semantic role badges and animated connection status dots. Connection dots pulse on `.connecting` state. Pass `relayStatuses` to fold live connection state from the top-level `relay_statuses` snapshot field.",
+          "`NostrRelayList` renders the `projections.configured_relays` array as a list of relay URLs with semantic role badges and animated connection status dots. Connection dots pulse on `.connecting` state. Pass `relayStatuses` to fold live connection state from the top-level `relay_statuses` snapshot field.",
         files: [
           { source: "swiftui/relay-list/NostrRelayList.swift", target: "Components/NostrRelays/NostrRelayList.swift", role: "source", content: nostrRelayListSwift },
           { source: "swiftui/relay-list/Examples/NostrRelayListPreview.swift", target: "Components/NostrRelays/Examples/NostrRelayListPreview.swift", role: "example", content: nostrRelayListPreviewSwift },

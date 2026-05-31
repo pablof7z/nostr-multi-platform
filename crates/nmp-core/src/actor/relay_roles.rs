@@ -1,4 +1,4 @@
-//! Relay role parsing for `RelayEditRow.role`.
+//! Relay role parsing for `AppRelay.role`.
 
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
 #[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
@@ -27,7 +27,11 @@ pub struct Nip65Role {
 
 impl Nip65Role {
     /// Default role when adding a relay: read + write, no indexer.
-    pub const BOTH: Self = Self { read: true, write: true, indexer: false };
+    pub const BOTH: Self = Self {
+        read: true,
+        write: true,
+        indexer: false,
+    };
 
     /// Parse a raw, possibly-composite role string into typed flags.
     /// Empty string defaults to `BOTH`. Returns `None` for unrecognised tokens.
@@ -41,7 +45,10 @@ impl Nip65Role {
             match token.as_str() {
                 "read" => read = true,
                 "write" => write = true,
-                "both" => { read = true; write = true; }
+                "both" => {
+                    read = true;
+                    write = true;
+                }
                 "indexer" => indexer = true,
                 _ => return None,
             }
@@ -53,7 +60,11 @@ impl Nip65Role {
         if !read && !write && !indexer {
             return None;
         }
-        Some(Self { read, write, indexer })
+        Some(Self {
+            read,
+            write,
+            indexer,
+        })
     }
 
     /// True when this role includes the named lane ("read" | "write" | "indexer").
@@ -148,7 +159,7 @@ pub fn has_role(role: &str, needle: &str) -> bool {
     Nip65Role::parse(role).is_some_and(|r| r.has(needle))
 }
 
-/// Normalize a relay role string into the stored `RelayEditRow.role` form.
+/// Normalize a relay role string into the stored `AppRelay.role` form.
 #[must_use]
 pub(crate) fn canonical_relay_role(role: &str) -> Option<String> {
     Nip65Role::parse(role).and_then(|r| r.to_canonical_string())
@@ -247,5 +258,4 @@ mod tests {
         assert_eq!(options[0].label, "Both + Index");
         assert_eq!(options[0].tint, "accent");
     }
-
 }

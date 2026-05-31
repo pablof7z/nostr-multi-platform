@@ -25,8 +25,8 @@ mod tests {
     use std::time::Duration;
 
     use crate::actor::{run_actor, ActorCommand};
-    use crate::update_envelope::{decode_update_frame, UpdateEnvelope};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
+    use crate::update_envelope::{decode_update_frame, UpdateEnvelope};
 
     // ─── helper ─────────────────────────────────────────────────────────────
 
@@ -126,6 +126,7 @@ mod tests {
             .send(ActorCommand::Start {
                 visible_limit: DEFAULT_VISIBLE_LIMIT,
                 emit_hz: 30,
+                initial_relays: Vec::new(),
             })
             .expect("send Start");
 
@@ -183,10 +184,10 @@ mod tests {
         // Extract the pre-flight frame's rev.  The `rev` field MUST be present
         // and > 0; if it reads as null the host guard is a no-op and this test
         // would pass vacuously — catch that here.
-        let preflight_rev = pre_snapshots[0]["rev"]
-            .as_u64()
-            .expect("V-87: pre-flight snapshot must carry a non-null numeric `rev` field; \
-                     got null — the host guard simulation would be a no-op");
+        let preflight_rev = pre_snapshots[0]["rev"].as_u64().expect(
+            "V-87: pre-flight snapshot must carry a non-null numeric `rev` field; \
+                     got null — the host guard simulation would be a no-op",
+        );
         assert!(
             preflight_rev > 0,
             "V-87: pre-flight rev must be ≥ 1 (got {preflight_rev})"
@@ -197,6 +198,7 @@ mod tests {
             .send(ActorCommand::Start {
                 visible_limit: DEFAULT_VISIBLE_LIMIT,
                 emit_hz: 30,
+                initial_relays: Vec::new(),
             })
             .expect("send Start after pre-flight");
 
@@ -218,9 +220,9 @@ mod tests {
         //
         // Without the fix: pre-flight=rev 1, Start frame=rev 1 → guard drops it.
         // With    the fix: pre-flight=rev 1, Start frame=rev 2 → guard accepts it.
-        let first_post_start = post_snapshots.first().expect(
-            "V-87 #601-rev: no post-Start frames received at all within 500 ms"
-        );
+        let first_post_start = post_snapshots
+            .first()
+            .expect("V-87 #601-rev: no post-Start frames received at all within 500 ms");
         let first_post_start_rev = first_post_start["rev"]
             .as_u64()
             .expect("V-87 #601-rev: first post-Start snapshot missing `rev` field");

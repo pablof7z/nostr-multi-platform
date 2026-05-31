@@ -117,6 +117,7 @@ fn a1_cold_claim_gigi_article_delivers_event_rx() {
     tx.send(ActorCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
+        initial_relays: Vec::new(),
     })
     .expect("A1: actor Start send");
 

@@ -169,7 +169,7 @@ pub struct SubscriptionLifecycle {
     /// PD-033-C — cold-start bootstrap content relays.
     ///
     /// Populated by the kernel from `bootstrap_urls_for_role(RelayRole::Content)`
-    /// (`crates/nmp-core/src/kernel/identity_state.rs::set_relay_edit_rows`)
+    /// (`crates/nmp-core/src/kernel/identity_state.rs::set_configured_relays`)
     /// — the same well-known seed the actor opens its first content socket on,
     /// INCLUDING the `FALLBACK_CONTENT_RELAY` cold-start default when no row is
     /// configured yet. This is intentionally distinct from `app_relays` (which
@@ -187,7 +187,7 @@ pub struct SubscriptionLifecycle {
     /// PD-033-C — cold-start bootstrap indexer relays.
     ///
     /// Populated by the kernel from `bootstrap_urls_for_role(RelayRole::Indexer)`
-    /// (`crates/nmp-core/src/kernel/identity_state.rs::set_relay_edit_rows`)
+    /// (`crates/nmp-core/src/kernel/identity_state.rs::set_configured_relays`)
     /// — the WITH-FALLBACK form, including `FALLBACK_INDEXER_RELAY` when no
     /// indexer row is configured yet. This is intentionally distinct from
     /// [`Self::indexer_relays`], which is a RAW filter on the editable
@@ -205,7 +205,7 @@ pub struct SubscriptionLifecycle {
     ///
     /// Defaults to empty so existing tests and pre-PD-033-C call sites see no
     /// behavioural change (the `unroutable` arm continues to fire). Production
-    /// (`identity_state::set_relay_edit_rows`) always sets it.
+    /// (`identity_state::set_configured_relays`) always sets it.
     bootstrap_indexer_relays: Vec<RelayUrl>,
     /// The plan currently believed-to-be-live on the wire.
     current_plan: Option<CompiledPlan>,

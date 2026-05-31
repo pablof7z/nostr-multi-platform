@@ -54,7 +54,7 @@
 //!   `app_relays = bootstrap_urls_for_role(Indexer)` only.
 //!
 //! Selecting the right seed at the call site is a kernel-level concern
-//! (the kernel owns `relay_edit_rows`); routing the seeded interest is a
+//! (the kernel owns `configured_relays`); routing the seeded interest is a
 //! router concern (lane 7 fires when lane 1 returned nothing). The seam
 //! between them is the `app_relays` slot — exactly the shape the
 //! substrate trait already exposes.

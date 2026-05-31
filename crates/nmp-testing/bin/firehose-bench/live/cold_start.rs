@@ -27,6 +27,7 @@ pub(crate) fn cold_start() -> Scenario {
     let _ = tx.send(ActorCommand::Start {
         visible_limit: 200,
         emit_hz: 4,
+        initial_relays: Vec::new(),
     });
 
     let connected = wait_connected(&rx);

@@ -153,6 +153,7 @@ fn show_toast_command_surfaces_message_in_snapshot() {
     tx.send(ActorCommand::Start {
         visible_limit: 64,
         emit_hz: 60,
+        initial_relays: Vec::new(),
     })
     .unwrap();
 

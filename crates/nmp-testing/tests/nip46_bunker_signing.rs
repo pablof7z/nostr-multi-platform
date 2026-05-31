@@ -176,6 +176,7 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
         .send(ActorCommand::Start {
             visible_limit: 50,
             emit_hz: 30,
+            initial_relays: Vec::new(),
         })
         .expect("send Start");
 

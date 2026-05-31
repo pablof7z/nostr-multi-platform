@@ -238,7 +238,7 @@ mod tests {
     /// V-04 Stage 2: install the planner-extension bootstrap relay lanes so
     /// the planner has somewhere to land the `OneShot + Global` bootstrap
     /// interests. Production wires these from `bootstrap_urls_for_role` in
-    /// `identity_state::set_user_configured_relay_edit_rows`; bare
+    /// `identity_state::set_configured_relays`; bare
     /// `Kernel::new` tests must install them directly, matching
     /// `discovery_tests::install_bootstrap_relays`.
     ///

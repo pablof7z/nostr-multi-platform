@@ -137,8 +137,11 @@ fn open_thread_emits_context_and_reply_reqs() {
         },
     );
 
-    let requests =
-        kernel.open_thread(focused_id.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), true);
+    let requests = kernel.open_thread(
+        focused_id.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        true,
+    );
 
     // T121: thread hydration now partitions ids by the original-event
     // author's NIP-65 write relays. The focused event's author has no
@@ -250,11 +253,21 @@ fn close_thread_refcounts_and_closes_view_subscriptions() {
     // Symmetric counterpart to `close_author_refcounts_and_closes_view_subscriptions`.
     // Audits the FFI lifecycle leak the strategic review raised against
     // `close_thread`: an open/close cycle MUST leave zero wire_subs residue.
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Uses `new_for_test` (which seeds the cold-start relay set) so the thread
+    // REQs resolve a relay target — production no longer hardcodes a fallback.
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let focused_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-    let _ = kernel.open_thread(focused_id.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), true);
-    let _ = kernel.open_thread(focused_id.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), true);
+    let _ = kernel.open_thread(
+        focused_id.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        true,
+    );
+    let _ = kernel.open_thread(
+        focused_id.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        true,
+    );
 
     // Precondition: opening the thread seeded live wire-subs (thread-ids- /
     // thread-replies- REQ frames). Without this the eviction check is vacuous.

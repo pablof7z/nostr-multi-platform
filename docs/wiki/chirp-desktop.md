@@ -32,7 +32,7 @@ chirp-desktop boots through the same FFI seam as iOS and the TUI. It boots via t
 <!-- citations: [^d1ce3-2] [^d366b-2] -->
 ## Projections
 
-chirp-desktop has access to all Chirp projections including `nmp.feed.home`, `thread_view`, `author_view`, and `relay_edit_rows`. [^d1ce3-3]
+chirp-desktop has access to all Chirp projections including `nmp.feed.home`, `thread_view`, `author_view`, and `configured_relays`. [^d1ce3-3]
 
 ## Actions
 

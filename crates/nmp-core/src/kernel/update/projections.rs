@@ -5,7 +5,7 @@ impl Kernel {
     /// projection closure plus the kernel-owned built-in projections (the
     /// publish / relay-settings cluster, the identity pair, and the views cluster).
     ///
-    /// D0: `publish_queue`, `publish_outbox`, `relay_edit_rows`, and
+    /// D0: `publish_queue`, `publish_outbox`, `configured_relays`, and
     /// `relay_role_options` are app-shaped relay/publish state; `accounts` /
     /// `active_account` are identity output; and the views cluster (`profile`,
     /// `timeline`, `author_view`, `thread_view`, `inserted`, `updated`,
@@ -24,7 +24,7 @@ impl Kernel {
     /// projection key `"timeline"`.
     ///
     /// Built-in keys win on collision: a host that registers `"publish_queue"`,
-    /// `"publish_outbox"`, `"relay_edit_rows"`, `"relay_role_options"`,
+    /// `"publish_outbox"`, `"configured_relays"`, `"relay_role_options"`,
     /// `"settings_hub"`, `"accounts"`, `"active_account"`, or `"profile"` is
     /// overwritten so the kernel-owned value stays authoritative.
     ///
@@ -60,8 +60,8 @@ impl Kernel {
             serde_json::to_value(self.outbox_summary_snapshot()).unwrap_or(serde_json::Value::Null),
         );
         projections.insert(
-            "relay_edit_rows".to_string(),
-            serde_json::to_value(self.relay_edit_rows_snapshot())
+            "configured_relays".to_string(),
+            serde_json::to_value(self.configured_relays_snapshot())
                 .unwrap_or(serde_json::Value::Null),
         );
         projections.insert(
@@ -73,7 +73,7 @@ impl Kernel {
         // pluralization string (aim.md §6/AP1 forbids the shell from owning that).
         projections.insert(
             "settings_hub".to_string(),
-            serde_json::json!({ "relay_count": self.relay_edit_rows_snapshot().len() }),
+            serde_json::json!({ "relay_count": self.configured_relays_snapshot().len() }),
         );
         // Direction review #29: drain EVERY terminal that settled since the
         // last emit into the `action_results` array. The host can clear a

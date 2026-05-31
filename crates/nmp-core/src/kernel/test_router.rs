@@ -304,6 +304,25 @@ impl Kernel {
             Arc::new(TestOutboxRouter::new()),
             kernel.mailbox_cache_arc(),
         );
+        // Seed the well-known test relays explicitly. Production no longer
+        // hardcodes a relay fallback (the app declares its relay set through
+        // `NmpAppBuilder` / `ActorCommand::Start { initial_relays }`); the
+        // routing-seam tests still need a deterministic cold-start relay set,
+        // so the test constructor seeds it the same way an app would — via the
+        // public `set_configured_relays` reducer — rather than relying on an
+        // implicit kernel default. Content lane = `both` (read+write), indexer
+        // lane = `indexer`; matches the prior `bootstrap_urls_for_role`
+        // fallback so the routing assertions keep their expected frame counts.
+        kernel.set_configured_relays(vec![
+            crate::kernel::AppRelay::new(
+                crate::relay::FALLBACK_CONTENT_RELAY.to_string(),
+                "both".to_string(),
+            ),
+            crate::kernel::AppRelay::new(
+                crate::relay::FALLBACK_INDEXER_RELAY.to_string(),
+                "indexer".to_string(),
+            ),
+        ]);
         kernel
     }
 }

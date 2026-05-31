@@ -264,6 +264,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     tx.send(ActorCommand::Start {
         visible_limit: 100,
         emit_hz: 0,
+        initial_relays: Vec::new(),
     })
     .expect("send Start");
 

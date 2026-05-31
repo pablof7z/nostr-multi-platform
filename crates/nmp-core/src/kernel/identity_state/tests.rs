@@ -1,7 +1,7 @@
 use super::*;
 
-fn row(url: &str, role: &str) -> RelayEditRow {
-    RelayEditRow::new(url.to_string(), role.to_string())
+fn row(url: &str, role: &str) -> AppRelay {
+    AppRelay::new(url.to_string(), role.to_string())
 }
 
 #[test]

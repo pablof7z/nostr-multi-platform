@@ -105,6 +105,7 @@ use nmp_router::{
 
 pub mod builder;
 pub mod op_feed_defaults;
+pub(crate) mod relay_config;
 pub mod runtimes;
 pub mod topic_articles;
 

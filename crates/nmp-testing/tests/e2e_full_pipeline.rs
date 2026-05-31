@@ -75,6 +75,11 @@ fn cold_open_profile_view_full_pipeline() {
     tx.send(ActorCommand::Start {
         visible_limit: 100,
         emit_hz: 0,
+        // A test relay so the publish engine has a target for PublishProfile.
+        // Without at least one configured relay the engine's Auto resolver finds
+        // nothing, returns Err, and record_local_publish_intent is never called —
+        // leaving the profile projection in the "Waiting for kind:0" placeholder.
+        initial_relays: vec![("wss://relay.test".to_string(), "both".to_string())],
     })
     .expect("send Start");
 
@@ -597,6 +602,7 @@ fn monotonic_rev_under_concurrent_dispatch() {
     tx.send(ActorCommand::Start {
         visible_limit: 500,
         emit_hz: 60,
+        initial_relays: Vec::new(),
     })
     .expect("send Start");
 

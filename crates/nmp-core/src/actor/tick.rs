@@ -150,6 +150,7 @@ mod tests {
             .send(ActorCommand::Start {
                 visible_limit: 50,
                 emit_hz: 30,
+                initial_relays: Vec::new(),
             })
             .unwrap();
         cmd_tx
@@ -299,6 +300,7 @@ mod tests {
             .send(ActorCommand::Start {
                 visible_limit: 50,
                 emit_hz: 30,
+                initial_relays: Vec::new(),
             })
             .unwrap();
 

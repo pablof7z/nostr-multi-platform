@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Wire types
 
-/// One row of the kernel's `projections.relay_edit_rows` array.
+/// One row of the kernel's `projections.configured_relays` array.
 ///
 /// The kernel emits only `url` and `role` (canonical string). Role label
 /// and tint are looked up from the `relay_role_options` projection by the
@@ -79,7 +79,7 @@ public struct RelayRoleOption: Codable, Identifiable, Equatable {
 /// connection-status dots and role badges.
 ///
 /// Mirrors NDK's svelte `RelayList`. Data comes straight from the NMP
-/// snapshot: rows from `projections.relay_edit_rows`, role options from
+/// snapshot: rows from `projections.configured_relays`, role options from
 /// `projections.relay_role_options`, and connection statuses folded from
 /// the top-level `relay_statuses` field keyed by relay URL.
 public struct NostrRelayList: View {

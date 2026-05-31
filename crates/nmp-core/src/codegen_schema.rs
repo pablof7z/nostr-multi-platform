@@ -38,7 +38,7 @@
 //! 3. `LogicalInterestStatus` — logical-subscription row.
 //! 4. `WireSubscriptionStatus` — wire-subscription row.
 //! 5. `AccountSummary` — Accounts screen row.
-//! 6. `RelayEditRow` — Relays settings row.
+//! 6. `AppRelay` — Relays settings row.
 //! 7. `RelayRoleOption` — relay-role picker option.
 //! 8. `TimelineItem` — timeline/thread row (V6 Stage 3 partial — F-05).
 //!    Last pure flat-record holdout in `KernelBridge.swift`; the remaining
@@ -64,8 +64,8 @@ use serde_json::Value;
 // `schema_value::<T>()` invocations.
 use crate::actor::RelayRoleOption;
 use crate::kernel::{
-    AccountSummary, LogicalInterestStatusForCodegen as LogicalInterestStatus,
-    MetricsForCodegen as Metrics, RelayEditRow, RelayStatusForCodegen as RelayStatus,
+    AccountSummary, AppRelay, LogicalInterestStatusForCodegen as LogicalInterestStatus,
+    MetricsForCodegen as Metrics, RelayStatusForCodegen as RelayStatus,
     TimelineItemForCodegen as TimelineItem,
     WireSubscriptionStatusForCodegen as WireSubscriptionStatus,
 };
@@ -182,12 +182,12 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             schema: schema_value::<AccountSummary>(),
         },
         TypeEntry {
-            rust_path: "nmp_core::kernel::identity_state::RelayEditRow",
-            swift_name: "RelayEditRow",
+            rust_path: "nmp_core::kernel::identity_state::AppRelay",
+            swift_name: "AppRelay",
             id_field: Some("url"),
             conformances: &["Decodable", "Equatable", "Sendable"],
             render_identity_fields: &[],
-            schema: schema_value::<RelayEditRow>(),
+            schema: schema_value::<AppRelay>(),
         },
         TypeEntry {
             rust_path: "nmp_core::actor::relay_roles::RelayRoleOption",
@@ -227,9 +227,18 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             id_field: Some("id"),
             conformances: &["Decodable", "Equatable", "Hashable", "Sendable"],
             render_identity_fields: &[
-                "id", "author_pubkey", "author_display_name", "author_picture_url",
-                "author_lnurl", "content", "content_preview", "created_at",
-                "is_repost", "kind", "nav_target_id", "repost_inner_content",
+                "id",
+                "author_pubkey",
+                "author_display_name",
+                "author_picture_url",
+                "author_lnurl",
+                "content",
+                "content_preview",
+                "created_at",
+                "is_repost",
+                "kind",
+                "nav_target_id",
+                "repost_inner_content",
                 "relay_count",
             ],
             schema: schema_value::<TimelineItem>(),
@@ -272,7 +281,7 @@ mod tests {
                 "LogicalInterestStatus",
                 "WireSubscriptionStatus",
                 "AccountSummary",
-                "RelayEditRow",
+                "AppRelay",
                 "RelayRoleOption",
                 "TimelineItem",
             ],

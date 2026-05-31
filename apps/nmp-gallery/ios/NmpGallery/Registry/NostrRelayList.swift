@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Wire types
 
-/// One row of the kernel's `projections.relay_edit_rows` array.
+/// One row of the kernel's `projections.configured_relays` array.
 ///
 /// The kernel emits only `url` and `role` (canonical token: `both`,
 /// `read`, `write`, `indexer`, `both,indexer`, …). Display label and
@@ -50,7 +50,7 @@ public struct NostrRelayConnectionStatus: Codable, Equatable {
 /// connection-status dots and role badges.
 ///
 /// Mirrors NDK's svelte `RelayList`. Data comes straight from the NMP
-/// snapshot: rows from `projections.relay_edit_rows`, connection
+/// snapshot: rows from `projections.configured_relays`, connection
 /// statuses folded from the top-level `relay_statuses` field keyed by
 /// relay URL.
 public struct NostrRelayList: View {

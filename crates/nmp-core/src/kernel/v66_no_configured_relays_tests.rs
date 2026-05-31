@@ -1,5 +1,5 @@
 //! V-66 regression tests — `no_configured_relays` must be projected through the
-//! KernelUpdate JSON envelope when a user is signed in but `relay_edit_rows` is
+//! KernelUpdate JSON envelope when a user is signed in but `configured_relays` is
 //! empty (i.e. the kernel is routing through the hardcoded FALLBACK relays).
 //!
 //! The failure mode being fixed: when an account is active and no relay rows are
@@ -26,11 +26,11 @@
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
-/// When an account is active but `relay_edit_rows` is empty, the kernel is
+/// When an account is active but `configured_relays` is empty, the kernel is
 /// silently using fallback relays. The `no_configured_relays: true` field must
 /// appear in the KernelUpdate snapshot so the host can surface a diagnostic.
 ///
-/// Pre-fix: `make_update` never checked `active_account`/`relay_edit_rows` →
+/// Pre-fix: `make_update` never checked `active_account`/`configured_relays` →
 /// the key was absent → host could not observe the silent fallback → FAILS.
 /// Post-fix: `make_update` emits `no_configured_relays: true` → PASSES.
 #[test]
@@ -41,7 +41,7 @@ fn v66_signed_in_empty_rows_emits_no_configured_relays() {
     kernel.set_active_account_for_test(
         "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52",
     );
-    // relay_edit_rows starts as Vec::new() — the condition is already true.
+    // configured_relays starts as Vec::new() — the condition is already true.
 
     let snapshot_json = kernel.make_update_json_for_test(true);
     let parsed: serde_json::Value =
@@ -54,7 +54,7 @@ fn v66_signed_in_empty_rows_emits_no_configured_relays() {
     assert_eq!(
         field,
         Some(true),
-        "V-66 (D3): when an account is active and relay_edit_rows is empty the \
+        "V-66 (D3): when an account is active and configured_relays is empty the \
          kernel must emit `no_configured_relays: true` in the KernelUpdate \
          snapshot so the host can surface the fallback-relay diagnostic; \
          got: {:?}",
@@ -69,7 +69,7 @@ fn v66_signed_in_empty_rows_emits_no_configured_relays() {
 #[test]
 fn v66_no_account_field_is_absent_from_snapshot() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Do NOT set an active account — relay_edit_rows is empty by default,
+    // Do NOT set an active account — configured_relays is empty by default,
     // but the diagnostic should only fire when an account is present.
 
     let snapshot_json = kernel.make_update_json_for_test(true);
@@ -100,7 +100,7 @@ fn v66_signed_in_with_rows_field_is_absent() {
     );
 
     // Install at least one relay row (content/read role).
-    kernel.set_relay_edit_rows(vec![RelayEditRow::new(
+    kernel.set_configured_relays(vec![AppRelay::new(
         "wss://relay.example.com".to_string(),
         "read".to_string(),
     )]);

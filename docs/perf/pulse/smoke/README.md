@@ -75,7 +75,7 @@ action; not fixable from `ios/NmpPulse/**`.*
 **G2 — `nmp_app_add_relay` does not open a wire socket; default relays are
 not AUTH-required.**
 `crates/nmp-core/src/actor/commands/relays.rs::add_relay` only mutates the
-`relay_edit_rows` projection. The wire layer
+`configured_relays` projection. The wire layer
 (`crates/nmp-core/src/actor/relay_mgmt.rs`) iterates the fixed
 `RelayRole::all()` pair — `wss://relay.primal.net` + `wss://purplepag.es` —
 neither AUTH-required. So adding `wss://nostr.wine` from the Accounts screen

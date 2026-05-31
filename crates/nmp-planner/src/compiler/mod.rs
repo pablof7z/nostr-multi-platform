@@ -110,7 +110,7 @@ pub struct SubscriptionCompiler<'a> {
     /// included.
     ///
     /// Empty in tests and pre-PD-033-C call sites; production
-    /// (`identity_state::set_relay_edit_rows`) always sets it.
+    /// (`identity_state::set_configured_relays`) always sets it.
     bootstrap_indexer_relays: &'a [RelayUrl],
 }
 

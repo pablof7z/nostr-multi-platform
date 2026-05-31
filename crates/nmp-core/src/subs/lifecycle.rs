@@ -176,7 +176,7 @@ impl SubscriptionLifecycle {
     /// (no-fallback) indexer probe / Case D cold-start fallback paths.
     ///
     /// Empty by default so existing call sites see no behavioural change. The
-    /// kernel always sets this in `identity_state::set_relay_edit_rows`.
+    /// kernel always sets this in `identity_state::set_configured_relays`.
     pub fn set_bootstrap_indexer_relays(&mut self, relays: Vec<RelayUrl>) {
         self.bootstrap_indexer_relays = relays;
     }

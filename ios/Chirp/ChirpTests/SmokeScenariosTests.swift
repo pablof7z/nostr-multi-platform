@@ -38,7 +38,7 @@ import XCTest
 ///    proven over a real socket).
 ///  - **`nmp_app_add_relay` does not open a wire socket.**
 ///    `crates/nmp-core/src/actor/commands/relays.rs::add_relay` only mutates
-///    the `relay_edit_rows` projection; the wire layer iterates the fixed
+///    the `configured_relays` projection; the wire layer iterates the fixed
 ///    `RelayRole::all()` pair, neither AUTH-required. Scenario 4 asserts the
 ///    reachable subset (AUTH state machine wired, default relays report
 ///    `not_required`, no false challenge). Full NIP-42 transition coverage

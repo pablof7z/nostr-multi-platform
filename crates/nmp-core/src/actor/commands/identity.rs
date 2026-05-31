@@ -15,8 +15,8 @@ use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use serde::{Deserialize, Serialize};
 
 use crate::actor::{canonical_relay_role, has_role};
-use crate::kernel::{AccountSummary, Kernel, RelayEditRow};
-use crate::relay::{canonical_relay_url, default_relay_bootstrap, OutboundMessage};
+use crate::kernel::{AccountSummary, AppRelay, Kernel};
+use crate::relay::{canonical_relay_url, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
 use crate::util::sort_dedup;
@@ -563,8 +563,7 @@ impl IdentityRuntime {
     /// a result for a removed account is dropped (D6 trace) rather than
     /// cross-applied to whatever account is now active.
     pub(crate) fn contains_account(&self, account_id: &str) -> bool {
-        self.keys.contains_key(account_id)
-            || self.remote_signers.contains_key(account_id)
+        self.keys.contains_key(account_id) || self.remote_signers.contains_key(account_id)
     }
 
     /// Bech32-encode the active account's secret key (`nsec1…`). Returns
@@ -908,8 +907,15 @@ pub(crate) fn create_account(
     let id = identity.add(Keys::generate());
     identity.active = Some(id.clone());
     sync_kernel(identity, kernel);
+    // Only overwrite `configured_relays` when the caller declared relays during
+    // onboarding. When `relays` is empty we keep whatever was seeded at Start
+    // (`ActorCommand::Start { initial_relays }`) or via pre-start
+    // `nmp_app_add_relay` — clobbering it with an empty vec would strip the
+    // app's declared relay set.
     let relay_rows = relay_rows_from_create_account(relays);
-    kernel.set_relay_edit_rows(relay_rows.clone());
+    if !relays.is_empty() {
+        kernel.set_configured_relays(relay_rows.clone());
+    }
 
     // Pre-populate seed_contacts so the follow-feed can be set up immediately
     // without waiting for the published kind:3 to round-trip from relays.
@@ -1034,12 +1040,6 @@ pub(crate) fn create_account(
     outbound
 }
 
-pub(crate) fn ensure_default_onboarding_relays(kernel: &mut Kernel) {
-    if kernel.relay_edit_rows_snapshot().is_empty() {
-        kernel.set_relay_edit_rows(relay_rows_from_create_account(&[]));
-    }
-}
-
 /// Resolve the explicit relay set every *initial* event a brand-new account
 /// emits — kind:0 (profile metadata), kind:3 (contacts) and kind:10002 (relay
 /// list) — is published to on account creation (cold-start).
@@ -1063,7 +1063,7 @@ pub(crate) fn ensure_default_onboarding_relays(kernel: &mut Kernel) {
 /// their profile / contacts / relay list later publishes through
 /// `publish_signed` (`Auto`), which routes to their already-declared write
 /// relays — that path is unaffected.
-fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[RelayEditRow]) -> Vec<String> {
+fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[AppRelay]) -> Vec<String> {
     let mut targets: Vec<String> = relay_rows
         .iter()
         .map(|row| row.url.clone())
@@ -1073,16 +1073,13 @@ fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[RelayEditRow]) -> V
     targets
 }
 
-fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditRow> {
-    let source = if relays.is_empty() {
-        default_relay_bootstrap()
-            .iter()
-            .map(|entry| (entry.url.to_string(), entry.role.to_string()))
-            .collect::<Vec<_>>()
-    } else {
-        relays.to_vec()
-    };
-    source
+/// Canonicalize the onboarding-declared `(url, role)` pairs into `AppRelay`
+/// rows. Returns an empty vec for empty input — there is NO hardcoded default
+/// fallback anymore: when the caller declares no relays, the kernel keeps the
+/// relay set seeded at `ActorCommand::Start` (or via pre-start
+/// `nmp_app_add_relay`). The app, not `nmp-core`, owns the default relay list.
+fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<AppRelay> {
+    relays
         .iter()
         .filter_map(|(url, role)| {
             let url = canonical_relay_url(url)?;
@@ -1092,12 +1089,12 @@ fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditR
                 role
             };
             let role = canonical_relay_role(raw_role).unwrap_or_else(|| "both".to_string());
-            Some(RelayEditRow::new(url, role))
+            Some(AppRelay::new(url, role))
         })
         .collect()
 }
 
-fn nip65_tags_from_relay_rows(rows: &[RelayEditRow]) -> Vec<Vec<String>> {
+fn nip65_tags_from_relay_rows(rows: &[AppRelay]) -> Vec<Vec<String>> {
     rows.iter()
         .filter_map(|row| {
             let read = has_role(&row.role, "read");
@@ -1129,7 +1126,7 @@ fn nip65_tags_from_relay_rows(rows: &[RelayEditRow]) -> Vec<Vec<String>> {
 fn publish_initial_follows(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
-    relay_rows: &[RelayEditRow],
+    relay_rows: &[AppRelay],
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
         return Vec::new();

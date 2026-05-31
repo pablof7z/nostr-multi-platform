@@ -441,7 +441,7 @@ under-scoped this; three load-bearing changes are needed):
   tests exercise the bridge via the `drain_and_register` test helper.
 - Bootstrap relays: the planner-extension PR #365 lanes (`bootstrap_content_relays`
   + `bootstrap_indexer_relays`) are wired in production by
-  `identity_state::set_user_configured_relay_edit_rows`. Tests that call
+  `identity_state::set_configured_relays`. Tests that call
   `Kernel::new(...)` and need the cold-start route must install them
   manually via `kernel.lifecycle_mut().set_bootstrap_*_relays(...)`.
 

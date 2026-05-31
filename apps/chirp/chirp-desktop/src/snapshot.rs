@@ -42,7 +42,7 @@ pub struct Snapshot {
     pub accounts: Vec<AccountSummary>,
 
     /// Host-registered and built-in projections (thread_view, author_view,
-    /// nmp.feed.home, relay_edit_rows, action_lifecycle, mention_profiles, …).
+    /// nmp.feed.home, configured_relays, action_lifecycle, mention_profiles, …).
     #[serde(default)]
     pub projections: HashMap<String, serde_json::Value>,
 }
@@ -50,7 +50,9 @@ pub struct Snapshot {
 impl Snapshot {
     /// Pull a typed projection out of the host-extensible map.
     pub fn projection<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-        self.projections.get(key).and_then(|v| serde_json::from_value(v.clone()).ok())
+        self.projections
+            .get(key)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 }
 
@@ -242,9 +244,9 @@ pub struct LifecycleEntry {
     pub terminal: bool,
 }
 
-/// `relay_edit_rows` projection payload.
+/// `configured_relays` projection payload.
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct RelayEditRow {
+pub struct AppRelay {
     #[serde(default)]
     pub url: String,
     #[serde(default)]
