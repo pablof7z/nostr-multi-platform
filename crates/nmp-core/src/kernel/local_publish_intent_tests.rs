@@ -43,7 +43,7 @@ fn local_kind3_publish_updates_profile_action_from_contacts_projection() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(author.clone());
     kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
-    kernel.open_author(FOLLOWED.to_string(), false);
+    kernel.open_author(FOLLOWED.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     // D0: the author view is no longer a typed `KernelSnapshot.author_view`
     // field — it is a built-in entry in the `projections` map under the key

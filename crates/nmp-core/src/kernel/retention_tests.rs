@@ -367,7 +367,7 @@ fn view_close_evicts_wire_subs_to_zero() {
     for cycle in 0..100u32 {
         let pk = deterministic_pubkey(cycle);
         // open_author with can_send=true populates wire_subs via author_requests().
-        let opens = kernel.open_author(pk.clone(), true);
+        let opens = kernel.open_author(pk.clone(), std::collections::BTreeSet::from([1u32, 6u32]), true);
         assert!(
             !opens.is_empty(),
             "cycle {cycle}: open_author must emit REQ frames"

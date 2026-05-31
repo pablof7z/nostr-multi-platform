@@ -857,7 +857,12 @@ pub(super) fn retarget_timeline(
     relays_ready: bool,
 ) -> Vec<OutboundMessage> {
     match identity.active_pubkey() {
-        Some(pk) => kernel.open_author(pk, relays_ready),
+        // Reuse the kernel's already-stored follow-feed kinds as the author-note
+        // kind set for this retarget. At sign-in time these may be empty (host
+        // hasn't called open_timeline yet); the FFI shim's subsequent
+        // `nmp_app_open_author` call will overwrite with the correct declared set.
+        // D0: no social-kind literal lives in nmp-core.
+        Some(pk) => kernel.open_author(pk, kernel.follow_feed_kinds.clone(), relays_ready),
         None => Vec::new(),
     }
 }

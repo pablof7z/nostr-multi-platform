@@ -601,12 +601,23 @@ pub(super) struct ViewInterest {
 // protocol-neutral kernel — into named locatable units, making the D0 boundary
 // explicit. Pure mechanical grouping: no behaviour of their own.
 
-/// Author-view tracking: selected author, request-pending flag, sequence count.
+/// Author-view tracking: selected author, request-pending flag, sequence count,
+/// and host-supplied note kinds for the author-notes REQ filter.
 #[derive(Default)]
 pub(super) struct AuthorViewState {
     pub(super) selected_author: Option<ViewInterest>,
     pub(super) request_pending: bool,
     pub(super) seq: u64,
+    /// Host-supplied Nostr kinds to include in the author-notes REQ filter.
+    ///
+    /// Stored here (not threaded as a parameter) so the deferred-relay path —
+    /// where `open_author` queued the request at `can_send=false` and
+    /// `author_requests` fires later on a relay-ready tick via
+    /// `pending_view_requests` — sees the correct kinds even though no `kinds`
+    /// value is in scope at that deferred call site.
+    ///
+    /// Mirrors `ThreadViewState::reply_kinds` (V-68 Stage 2 thread-half).
+    pub(super) note_kinds: std::collections::BTreeSet<u32>,
 }
 
 /// Thread-view tracking: selected thread, hydration queues, and inflight flags.

@@ -271,7 +271,7 @@ fn d5_view_dependent_keys_absent_when_no_view_open() {
 
     // Phase 3: open an author view → author_view must appear.
     kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(FOLLOW_A.to_string(), false);
+    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
     let snap = snapshot(&mut kernel);
     assert!(
         !snap["projections"]["author_view"].is_null(),
@@ -670,7 +670,7 @@ fn outbox_summary_projects_sending_counters_and_strings() {
 fn author_view_projects_edit_action_for_active_profile() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(ACCOUNT.to_string(), false);
+    kernel.open_author(ACCOUNT.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snap = snapshot(&mut kernel);
     let action = &snap["projections"]["author_view"]["primary_action"];
@@ -683,7 +683,7 @@ fn author_view_projects_edit_action_for_active_profile() {
 fn author_view_projects_follow_action_for_non_active_profile() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(FOLLOW_A.to_string(), false);
+    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snap = snapshot(&mut kernel);
     let action = &snap["projections"]["author_view"]["primary_action"];
@@ -697,7 +697,7 @@ fn author_view_projects_unfollow_when_active_contacts_include_author() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
     kernel.prepopulate_seed_contacts(ACCOUNT.to_string(), vec![FOLLOW_A.to_string()]);
-    kernel.open_author(FOLLOW_A.to_string(), false);
+    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snap = snapshot(&mut kernel);
     let action = &snap["projections"]["author_view"]["primary_action"];
@@ -714,7 +714,7 @@ fn author_view_projects_unfollow_when_active_contacts_include_author() {
 fn profile_action_follow_carries_nmp_follow_dispatch_spec() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(FOLLOW_A.to_string(), false);
+    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snap = snapshot(&mut kernel);
     let action = &snap["projections"]["author_view"]["primary_action"];
@@ -738,7 +738,7 @@ fn profile_action_unfollow_carries_nmp_unfollow_dispatch_spec() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
     kernel.prepopulate_seed_contacts(ACCOUNT.to_string(), vec![FOLLOW_A.to_string()]);
-    kernel.open_author(FOLLOW_A.to_string(), false);
+    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snap = snapshot(&mut kernel);
     let action = &snap["projections"]["author_view"]["primary_action"];
@@ -760,7 +760,7 @@ fn profile_action_unfollow_carries_nmp_unfollow_dispatch_spec() {
 fn profile_action_edit_profile_has_no_dispatch_spec() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(ACCOUNT.to_string(), false);
+    kernel.open_author(ACCOUNT.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snap = snapshot(&mut kernel);
     let action = &snap["projections"]["author_view"]["primary_action"];
@@ -779,7 +779,7 @@ fn profile_action_edit_profile_has_no_dispatch_spec() {
 fn author_view_carries_note_count_display_string() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(ACCOUNT.to_string(), false);
+    kernel.open_author(ACCOUNT.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snap = snapshot(&mut kernel);
     let av = &snap["projections"]["author_view"];
@@ -822,7 +822,7 @@ fn mention_profiles_projection_carries_each_author_in_author_view() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
     ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "hello world");
-    kernel.open_author(ACCOUNT.to_string(), false);
+    kernel.open_author(ACCOUNT.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snap = snapshot(&mut kernel);
     let mp = &snap["projections"]["mention_profiles"];

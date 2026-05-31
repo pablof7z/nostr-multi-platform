@@ -12,6 +12,17 @@ use nmp_core::ActorCommand;
 use nmp_core::__ffi_internal::{is_hex_id, is_hex_pubkey};
 use std::ffi::c_char;
 
+/// C ABI symbol kept stable (Swift / Kotlin / TUI call it). Internally it
+/// sends `ActorCommand::OpenAuthor` with the Chirp-specific social kinds
+/// {1, 6} — the host-declared kind set that `nmp-core` no longer hardcodes
+/// (D0-clean, V-68 Stage 2 author-half). A future typed-FFI surface (V-48)
+/// can let the host pass its own kinds; today this is the Chirp-specific
+/// declaration site.
+///
+/// D0-precedent: mirrors `nmp_app_open_thread` (below) and
+/// `nmp_app_open_timeline` in `identity.rs`, both of which already carry
+/// `BTreeSet::from([1u32, 6u32])` with the same rationale. The C signature
+/// is UNCHANGED — no `NmpCore.h` / `KernelBridge.swift` churn required.
 #[no_mangle]
 pub extern "C" fn nmp_app_open_author(app: *mut NmpApp, pubkey: *const c_char) {
     let Some(app) = app_ref(app) else {
@@ -24,7 +35,14 @@ pub extern "C" fn nmp_app_open_author(app: *mut NmpApp, pubkey: *const c_char) {
         return;
     }
 
-    app.send_cmd(ActorCommand::OpenAuthor { pubkey });
+    app.send_cmd(ActorCommand::OpenAuthor {
+        pubkey,
+        // Chirp's social author-note kinds. The substrate carries these as
+        // opaque filter data; nmp-core is kind-agnostic (D0). See
+        // `nmp_app_open_thread` and `nmp_app_open_timeline` in identity.rs
+        // for the identical pattern on the thread-reply and follow-feed paths.
+        kinds: std::collections::BTreeSet::from([1u32, 6u32]),
+    });
 }
 
 /// C ABI symbol kept stable (Swift / Kotlin / TUI call it). Internally it

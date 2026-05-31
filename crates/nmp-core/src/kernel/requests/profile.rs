@@ -81,7 +81,12 @@ mod tests {
 }
 
 impl Kernel {
-    pub(crate) fn open_author(&mut self, pubkey: String, can_send: bool) -> Vec<OutboundMessage> {
+    pub(crate) fn open_author(
+        &mut self,
+        pubkey: String,
+        kinds: std::collections::BTreeSet<u32>,
+        can_send: bool,
+    ) -> Vec<OutboundMessage> {
         match self.author_view.selected_author.as_mut() {
             Some(interest) if interest.key == pubkey => {
                 interest.refcount = interest.refcount.saturating_add(1);
@@ -93,6 +98,12 @@ impl Kernel {
                 });
             }
         }
+        // Store kinds BEFORE the `can_send` branch so the deferred-relay path
+        // (where `request_pending=true` is drained later by
+        // `pending_view_requests` → `author_requests`) sees the correct kinds
+        // even though no `kinds` value is in scope at that deferred call site.
+        // Mirrors the identical pattern in `open_thread` / `ThreadViewState::reply_kinds`.
+        self.author_view.note_kinds = kinds;
         self.author_view.request_pending = true;
         self.changed_since_emit = true;
         self.log(format!("open author view {}", short_hex(&pubkey)));
@@ -529,10 +540,19 @@ impl Kernel {
             ));
         }
 
-        // kind:1/6 author notes — outbox-direction (T105 publish lane).
+        // Author notes — outbox-direction (T105 publish lane).
         // Router lane 1 returns the author's resolved write set for warm
         // authors; lane 7 fallback fires with the full discovery seed
         // for cold-start.
+        //
+        // V-68 Stage 2 (author-half): `note_kinds` is read from stored state
+        // rather than a hardcoded literal so the kernel is kind-agnostic (D0).
+        // The host (nmp-ffi shim) declares the kind set; nmp-core carries it as
+        // opaque filter data. Extract before the mutable
+        // `route_outbox_subscription_relays` / `req_for_relay` calls to satisfy
+        // the borrow checker — mirrors the identical pattern in
+        // `maybe_open_thread_hydration` (thread-half precedent).
+        let note_kinds: Vec<u32> = self.author_view.note_kinds.iter().copied().collect();
         let notes_urls = self.route_outbox_subscription_relays(
             stable_hash64(("author-notes", pubkey.as_str(), seq)),
             pubkey.as_str(),
@@ -546,7 +566,7 @@ impl Kernel {
                 relay_url,
                 &format!("author-notes-{seq}-{tag}"),
                 &format!("selected author notes {}", short_hex(&pubkey)),
-                json!({"kinds":[1,6],"authors":[pubkey.clone()],"limit":100}),
+                json!({"kinds":note_kinds,"authors":[pubkey.clone()],"limit":100}),
             ));
         }
         requests.append(&mut self.maybe_open_thread_hydration());
