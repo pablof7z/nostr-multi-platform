@@ -118,6 +118,11 @@ pub struct Lmdb {
     deleted_coordinates: Database<Bytes, U64<NativeEndian>>, // Coordinate, UNIX timestamp
     /// Database metadata (version, etc)
     metadata: Database<Bytes, U64<NativeEndian>>, // Key, Value
+    /// F-TTL replaceable freshness: kind[4B BE]||pubkey[32B]||d_tag_utf8[var] → check_again_after_unix_ms[8B BE]
+    replaceable_freshness: Database<Bytes, Bytes>,
+    /// In-memory cache of replaceable freshness (populated on open, read from cache, written to LMDB).
+    /// Protected by Mutex because Lmdb is Clone and may be used from multiple threads.
+    replaceable_freshness_cache: Arc<std::sync::Mutex<crate::ReplaceableCache>>,
     /// Monotonic counter: ci_index entries whose event row was missing (V-69).
     /// Shared across all clones via Arc so any query path updates the same counter.
     anomaly_orphan_index_entries: Arc<AtomicU64>,
@@ -152,7 +157,7 @@ impl Lmdb {
     /// to open additional sub-dbs on it — use this then call
     /// [`Lmdb::with_env`].
     ///
-    /// `additional_dbs` reserves sub-db slots beyond the 11 this crate uses
+    /// `additional_dbs` reserves sub-db slots beyond the 12 this crate uses
     /// internally, so NMP can open watermark / claim / provenance / domain
     /// sub-dbs without exhausting `max_dbs`.
     pub fn open_env<P: AsRef<Path>>(
@@ -164,7 +169,7 @@ impl Lmdb {
         let env: Env = unsafe {
             EnvOpenOptions::new()
                 .flags(EnvFlags::NO_TLS)
-                .max_dbs(11 + additional_dbs)
+                .max_dbs(12 + additional_dbs)
                 .max_readers(max_readers)
                 .map_size(map_size)
                 .open(path)?
@@ -172,7 +177,7 @@ impl Lmdb {
         Ok(env)
     }
 
-    /// NMP fork: open this crate's 11 databases on a caller-supplied env and
+    /// NMP fork: open this crate's 12 databases on a caller-supplied env and
     /// (optionally) run migrations. Used by both `Lmdb::new` (path path) and
     /// `Lmdb::with_env` (env-injection path).
     fn open_databases_on_env(env: Env, run_migrations: bool) -> Result<Self, Error> {
@@ -234,9 +239,31 @@ impl Lmdb {
             .types::<Bytes, U64<NativeEndian>>()
             .name("metadata")
             .create(&mut txn)?;
+        let replaceable_freshness = env
+            .database_options()
+            .types::<Bytes, Bytes>()
+            .name("replaceable-freshness")
+            .create(&mut txn)?;
 
         // Commit changes
         txn.commit()?;
+
+        // Hot-load replaceable freshness cache from LMDB
+        let mut cache = crate::ReplaceableCache::new();
+        let rtxn = env.read_txn()?;
+        for result in replaceable_freshness.iter(&rtxn)? {
+            let (key_bytes, ts_bytes) = result?;
+            // We need the kind to deserialize; extract it from the key.
+            if key_bytes.len() >= 4 {
+                let kind = u32::from_be_bytes(key_bytes[..4].try_into().unwrap());
+                if let Ok(k) = crate::ReplaceableKey::from_lmdb_key(key_bytes, kind) {
+                    if let Ok(ts) = crate::decode_timestamp(ts_bytes) {
+                        cache.insert(k, ts);
+                    }
+                }
+            }
+        }
+        rtxn.commit()?;
 
         let lmdb = Self {
             env,
@@ -251,6 +278,8 @@ impl Lmdb {
             deleted_ids,
             deleted_coordinates,
             metadata,
+            replaceable_freshness,
+            replaceable_freshness_cache: Arc::new(std::sync::Mutex::new(cache)),
             anomaly_orphan_index_entries: Arc::new(AtomicU64::new(0)),
             anomaly_unresolvable_events: Arc::new(AtomicU64::new(0)),
         };
@@ -285,6 +314,42 @@ impl Lmdb {
     #[must_use]
     pub fn env(&self) -> &Env {
         &self.env
+    }
+
+    /// F-TTL: Get the next-check timestamp (unix milliseconds) for a replaceable event.
+    ///
+    /// Returns the `check_again_after` timestamp from the in-memory cache. If not found,
+    /// returns `None` — the event has never been freshed-checked.
+    #[must_use]
+    pub fn get_check_again_after(&self, key: &crate::ReplaceableKey) -> Option<u64> {
+        self.replaceable_freshness_cache
+            .lock()
+            .ok()
+            .and_then(|cache| cache.get(key).copied())
+    }
+
+    /// F-TTL: Update the next-check timestamp for a replaceable event.
+    ///
+    /// Writes to both the in-memory cache and the LMDB sub-db atomically within
+    /// the provided transaction. The caller is responsible for ensuring this
+    /// transaction is committed.
+    pub fn set_check_again_after(
+        &self,
+        key: crate::ReplaceableKey,
+        ts_ms: u64,
+        txn: &mut RwTxn,
+    ) -> Result<(), Error> {
+        // Write to LMDB
+        let lmdb_key = key.to_lmdb_key();
+        let lmdb_value = crate::encode_timestamp(ts_ms);
+        self.replaceable_freshness.put(txn, &lmdb_key, &lmdb_value)?;
+
+        // Update in-memory cache (best-effort; ignore lock errors)
+        if let Ok(mut cache) = self.replaceable_freshness_cache.lock() {
+            cache.insert(key, ts_ms);
+        }
+
+        Ok(())
     }
 
     /// NMP fork (V-69): snapshot of store-anomaly counters.
