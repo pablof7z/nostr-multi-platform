@@ -204,15 +204,22 @@ pub struct KeyPackageLookupPayload {
     pub found: bool,
 }
 
-/// One-shot view that registers a kind:30443/443 relay subscription for
-/// `owner_pubkey`. Opening this view (via `OpenView { namespace:
-/// "marmot.key_package_lookup", key: pubkey }`) causes the kernel planner to
-/// fetch the author's KeyPackage events from their NIP-65 write relays.
+/// Declares the kind:30443/443 relay-subscription shape for fetching a peer's
+/// KeyPackage from their NIP-65 write relays.
 ///
-/// The actual signed-event caching is handled by the app's `RawEventObserver`
-/// tap (which receives the full signed event including `sig`) calling
-/// `MarmotService::cache_key_package`. This view exists solely to trigger the
-/// subscription — it is a subscription stub, not a data store.
+/// ORPHANED (2026-05-31): this view was meant to be opened via
+/// `OpenView { namespace: "marmot.key_package_lookup", key: pubkey }`, but the
+/// `KernelAction::OpenView` reducer arm is an unwired stub that opens no
+/// subscription (it silently echoes `ViewOpened`). The key-package fetch now
+/// runs directly via `interest::key_package_lookup_interest` +
+/// `app.push_interest(...)` (the same pattern as the welcome/group-message
+/// legs), so this type has no live caller. It is retained as the canonical
+/// declaration of the lookup interest shape pending V-110 (wire `OpenView` to
+/// compile a view's dependencies, or remove the unused View machinery).
+///
+/// Signed-event caching is handled by the app's `RawEventObserver` tap (which
+/// receives the full signed event including `sig`) calling
+/// `MarmotService::cache_key_package`.
 pub struct KeyPackageLookupView;
 
 impl KeyPackageLookupView {

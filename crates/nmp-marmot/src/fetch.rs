@@ -2,8 +2,6 @@
 
 use std::ffi::c_char;
 
-use nmp_core::{ActorCommand, KernelAction};
-
 use crate::ffi::{c_str_opt, MarmotHandle};
 
 #[no_mangle]
@@ -25,14 +23,10 @@ pub extern "C" fn nmp_marmot_fetch_key_packages(
         return;
     };
     let app_ref = unsafe { &*handle.app };
-    let sender = app_ref.actor_sender();
     for pk_str in pubkeys {
         let Ok(pk) = nostr::PublicKey::parse(&pk_str) else {
             continue;
         };
-        let _ = sender.send(ActorCommand::Kernel(KernelAction::OpenView {
-            namespace: crate::view::KeyPackageLookupView::NAMESPACE.to_string(),
-            key: pk.to_hex(),
-        }));
+        app_ref.push_interest(crate::interest::key_package_lookup_interest(&pk.to_hex()));
     }
 }
