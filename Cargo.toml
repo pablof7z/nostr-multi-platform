@@ -55,7 +55,7 @@ resolver = "2"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/pablof7z/nostr-multi-platform"
-version = "0.1.0"
+version = "0.2.0"
 
 # Shared third-party dependency versions. Declare the *version* and the
 # default-features posture here only; each member crate adds its own
