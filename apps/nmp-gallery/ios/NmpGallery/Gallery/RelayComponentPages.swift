@@ -8,12 +8,7 @@ struct RelayListPage: View {
 
     private var relayRows: [NostrRelayEditRow] {
         GALLERY_SHOWCASE.relays.map { relay in
-            NostrRelayEditRow(
-                url: relay.url,
-                role: relay.role,
-                roleLabel: roleLabel(relay.role),
-                roleTint: roleTint(relay.role)
-            )
+            NostrRelayEditRow(url: relay.url, role: relay.role)
         }
     }
 
@@ -54,26 +49,4 @@ struct RelayListPage: View {
         }
     }
 
-    private func roleLabel(_ role: String) -> String {
-        if role.contains("both") && role.contains("indexer") {
-            return "Both + Indexer"
-        }
-        if role.contains("indexer") {
-            return "Indexer"
-        }
-        if role.contains("both") {
-            return "Both"
-        }
-        return role.capitalized
-    }
-
-    private func roleTint(_ role: String) -> String {
-        if role.contains("both") {
-            return "success"
-        }
-        if role.contains("indexer") {
-            return "info"
-        }
-        return "accent"
-    }
 }
