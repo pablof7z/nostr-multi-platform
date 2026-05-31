@@ -58,10 +58,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
             }
             "--nmp-path" => {
                 index += 1;
-                let path = args
+                let raw = args
                     .get(index)
                     .map(PathBuf::from)
                     .ok_or_else(|| "--nmp-path requires a directory".to_string())?;
+                let path = fs::canonicalize(&raw).map_err(|e| {
+                    format!("cannot resolve --nmp-path {}: {e}", raw.display())
+                })?;
                 if nmp_dependency.replace(NmpDependency::Path(path)).is_some() {
                     return Err("pass only one of --nmp-version or --nmp-path".to_string());
                 }
