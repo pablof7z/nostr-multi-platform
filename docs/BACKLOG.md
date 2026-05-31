@@ -598,37 +598,6 @@ the gap is entirely in the Android build wiring and UI layer.
 
 ---
 
-### V-110 · `KernelAction::OpenView` silently no-ops — general view-lifecycle seam unwired [MEDIUM]
-
-**Provenance:** Identified while fixing V-110's first known consumer (the Marmot key-package
-fetch mis-wire, fixed in `fix/marmot-keypackage-fetch-miswire`).
-
-**What is wrong:** The `OpenView` reducer arm in `crates/nmp-core/src/kernel_action.rs:51` echoes
-`KernelUpdate::ViewOpened { namespace, key }` without compiling the named view's declared
-`dependencies()` into any registry interests. No relay subscription is opened. The arm is
-annotated as a placeholder ("Lifecycle / view variants have no resolver yet") but fails
-**silently** — callers receive the expected `ViewOpened` update and have no signal that
-nothing happened on the wire.
-
-**Known consumers and impact:**
-- `crates/nmp-marmot/src/projection/state.rs` — `request_key_package_fetch` (Marmot leg A): **FIXED** in this PR by bypassing `OpenView` and routing through `push_interest(key_package_lookup_interest(pk))`, consistent with legs B/C.
-- `crates/nmp-marmot/src/fetch.rs` — `nmp_marmot_fetch_key_packages` C-ABI: **FIXED** in the same PR.
-- `crates/nmp-core/src/actor/tick.rs:156` — UI view opens from tick dispatch.
-- `crates/nmp-core/src/wasm/dispatch_routing.rs:94` — WASM dispatch path.
-
-**Correct fix (separate PR):** Either (a) wire `OpenView` to look up the named view's
-`dependencies()` in the view registry and compile them into kernel interests (the full
-view-lifecycle story — generalises `OpenUri`'s pattern), or (b) as a minimum safety net,
-**make the stub FAIL-LOUD**: `trace!`/`warn!` with a stable message such as
-`"OpenView({namespace}, {key}) has no resolver — interest not compiled"` so the next
-mis-wiring surfaces immediately instead of vanishing. Option (b) alone is a one-line change
-that eliminates the silent-drop hazard without building the full resolver.
-
-**Do NOT fix in the same PR as the marmot re-wire** — `OpenView` may be load-bearing for
-other consumers in the iOS tick path. Treat as a follow-on MEDIUM item.
-
----
-
 Work currently on a branch lives in [`WIP.md`](../WIP.md). Agents must check that file
 before picking up Section 4 work to avoid duplicating an in-progress task.
 

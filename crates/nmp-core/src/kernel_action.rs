@@ -43,13 +43,27 @@ pub(crate) fn dispatch_kernel_action(kernel: &mut Kernel, action: KernelAction) 
     match action {
         KernelAction::OpenUri { uri } => open_uri(kernel, uri),
 
-        // Lifecycle / view variants have no resolver yet — echo the
-        // trivially-correct update so the seam is uniform. Real arms land as
-        // their handlers are wired (one `match` arm each, no future-proofing).
+        // Lifecycle / view variants have no resolver yet — warn loudly so
+        // callers detect the unwired seam (V-110). Real arms land as their
+        // handlers are wired (one `match` arm each, no future-proofing).
         KernelAction::Start => KernelUpdate::Started { rev: 0 },
         KernelAction::Stop => KernelUpdate::Stopped { rev: 0 },
-        KernelAction::OpenView { namespace, key } => KernelUpdate::ViewOpened { namespace, key },
-        KernelAction::CloseView { namespace, key } => KernelUpdate::ViewClosed { namespace, key },
+        KernelAction::OpenView { namespace, key } => {
+            tracing::warn!(
+                namespace = %namespace,
+                key = %key,
+                "OpenView has no resolver — interest not compiled; relay subscription was NOT opened"
+            );
+            KernelUpdate::ViewOpened { namespace, key }
+        }
+        KernelAction::CloseView { namespace, key } => {
+            tracing::warn!(
+                namespace = %namespace,
+                key = %key,
+                "CloseView has no resolver — view-lifecycle seam unwired"
+            );
+            KernelUpdate::ViewClosed { namespace, key }
+        }
         KernelAction::RunDiagnostics => KernelUpdate::Diagnostics {
             summary: String::new(),
         },
