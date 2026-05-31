@@ -87,7 +87,7 @@
 //! tap; distinct slots / ids). This was the last open seam.
 
 use std::ffi::{c_char, CStr, CString};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use nmp_core::{KernelEventObserverId, RawEventObserver, RawEventObserverId};
@@ -110,11 +110,31 @@ const DEFAULT_MESSAGE_PAGE: usize = 200;
 const KEYRING_SERVICE_ID: &str = "nmp.chirp.marmot";
 const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 
+/// Clearable slot for the two Marmot push-projection closures (ADR-0039).
+///
+/// The closures registered via `register_snapshot_projection` capture this slot
+/// and read from it on every tick. When `nmp_marmot_unregister` tears down the
+/// handle, it clears the slot to `None` so the closures emit empty objects for
+/// the snapshot frame while the next `register_with_keys` (account switch) has
+/// not yet replaced them. A new `register_with_keys` installs a fresh `Arc` into
+/// this slot AND replaces the closures by key — both legs handle the switch.
+///
+/// The slot is `Send + Sync` because it is an `Arc<Mutex<_>>`. The closure
+/// captures it by `Arc::clone`, runs on the actor thread, and reads under a lock.
+pub type MarmotProjectionSlot = Arc<Mutex<Option<Arc<MarmotProjection>>>>;
+
 /// Opaque handle returned by [`nmp_marmot_register`]. Boxed so the
 /// address is stable; Swift holds the raw pointer until
 /// [`nmp_marmot_unregister`].
 pub struct MarmotHandle {
     projection: Arc<MarmotProjection>,
+    /// Shared slot the push-projection closures read from (ADR-0039, V-107).
+    /// Cleared in `nmp_marmot_unregister` so the closures emit empty objects
+    /// until the next account registers. On account switch the new
+    /// `register_with_keys` both replaces the closures by key AND updates the
+    /// slot — the replace-by-key path alone already suffices for the re-register
+    /// case; the slot clear handles sign-out-without-re-register.
+    projection_slot: MarmotProjectionSlot,
     /// Lossy `KernelEvent` observer (key-package metadata tracker — see
     /// `MarmotProjection::on_kernel_event`). Distinct slot / id from the
     /// raw tap below; both are torn down in `unregister`.
@@ -340,59 +360,54 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // kind:445/1059 handled by the raw ingest tap), so new messages / welcomes
     // surface in the next pushed frame edge-triggered.
     //
-    // `register_snapshot_projection` is lock-and-push; calling it here
-    // (post-construction, before `nmp_app_start`) is the documented pattern.
-    // A second `register_with_keys` (account switch) replaces the prior closure
-    // under the same key (the registry `register` method is replace-by-key).
+    // **Lifecycle / account-switch correctness (D1, no stale data):**
+    // Closures capture a `MarmotProjectionSlot` (`Arc<Mutex<Option<…>>>`)
+    // rather than a bare `Arc<MarmotProjection>`. The slot mirrors the wallet
+    // projection pattern (`wallet_runtime.rs:146`):
+    // - On sign-out (`nmp_marmot_unregister`): the slot is cleared to `None`,
+    //   so the closures emit empty objects until a new account registers.
+    // - On account switch (a new `register_with_keys` call): the closures are
+    //   replaced by key (the registry is HashMap::insert / last-writer-wins)
+    //   AND the slot is updated to the new account's projection. Both legs
+    //   handle the switch independently.
     //
+    // `register_snapshot_projection` is lock-and-push; calling it here
+    // (post-construction, before or after `nmp_app_start`) is the documented
+    // safe pattern (the slot is `Arc<Mutex<_>>`).
+    let projection_slot: MarmotProjectionSlot =
+        Arc::new(Mutex::new(Some(Arc::clone(&projection))));
+
     // **`nmp.marmot.snapshot`** — replaces the pull-symbol
     // `nmp_marmot_snapshot`: group list / membership / key-package / pending
     // welcomes. Cheap: one lock + MDK SQLite reads, no re-decrypt.
     {
-        let snap_projection = Arc::clone(&projection);
+        let snap_slot = Arc::clone(&projection_slot);
         app_ref.register_snapshot_projection("nmp.marmot.snapshot", move || {
-            serde_json::to_value(snap_projection.snapshot(now_secs()))
-                .unwrap_or(serde_json::Value::Null)
+            let guard = snap_slot.lock().ok();
+            let proj = guard.as_ref().and_then(|g| g.as_ref());
+            match proj {
+                Some(p) => serde_json::to_value(p.snapshot(now_secs()))
+                    .unwrap_or(serde_json::Value::Null),
+                None => serde_json::Value::Object(serde_json::Map::new()),
+            }
         });
     }
 
     // **`nmp.marmot.messages`** — replaces the parameterized pull-symbol
     // `nmp_marmot_group_messages(group_id_hex)`. Projects a JSON object keyed
     // by `group_id_hex` → newest-N `MarmotMessageRow` array for every joined
-    // group. Cheap: one lock + MDK SQLite reads per group, all already-
-    // decrypted (no re-decrypt; `service().get_messages(&gid)` reads the
-    // MDK SQLite message store directly). Bounded newest-N per group (see
-    // `DEFAULT_MESSAGE_PAGE`). Rationale for the all-groups object shape: the
-    // host view reads per-group tails from `projections["nmp.marmot.messages"][gid]`
-    // without needing a "current active group" round-trip (D1: view-state stays
-    // out of the kernel), and a new message in one group does not re-emit the
-    // entire group list (clean edge-triggering vs `nmp.marmot.snapshot`).
+    // group. Logic lives in `MarmotProjection::messages_all_groups_json` (not
+    // inlined here) so it can be exercised by tests independently of the
+    // closure. Cheap: one lock + MDK SQLite reads, no re-decrypt per tick.
     {
-        let msgs_projection = Arc::clone(&projection);
+        let msgs_slot = Arc::clone(&projection_slot);
         app_ref.register_snapshot_projection("nmp.marmot.messages", move || {
-            msgs_projection
-                .with_inner(|h| {
-                    // Iterate every joined group and build the keyed map.
-                    let group_ids: Vec<String> = h
-                        .service()
-                        .get_groups()
-                        .map(|gs| {
-                            gs.into_iter()
-                                .map(|g| crate::projection::state::hex_encode(g.mls_group_id.as_slice()))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let mut map = serde_json::Map::with_capacity(group_ids.len());
-                    for gid_hex in group_ids {
-                        let rows = crate::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE);
-                        map.insert(
-                            gid_hex,
-                            serde_json::to_value(rows).unwrap_or(serde_json::Value::Array(vec![])),
-                        );
-                    }
-                    serde_json::Value::Object(map)
-                })
-                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
+            let guard = msgs_slot.lock().ok();
+            let proj = guard.as_ref().and_then(|g| g.as_ref());
+            match proj {
+                Some(p) => p.messages_all_groups_json(DEFAULT_MESSAGE_PAGE),
+                None => serde_json::Value::Object(serde_json::Map::new()),
+            }
         });
     }
     let observer_id = app_ref
@@ -437,6 +452,7 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
 
     Box::into_raw(Box::new(MarmotHandle {
         projection,
+        projection_slot,
         observer_id,
         raw_observer_id,
         app,
@@ -613,6 +629,15 @@ pub extern "C" fn nmp_marmot_unregister(handle: *mut MarmotHandle) {
     // SAFETY: caller guarantees `handle` came from
     // `nmp_marmot_register` and has not already been freed.
     let boxed = unsafe { Box::from_raw(handle) };
+
+    // V-107 / ADR-0039: clear the projection slot so the push-projection
+    // closures (`nmp.marmot.snapshot` / `nmp.marmot.messages`) emit empty
+    // objects for subsequent snapshot frames rather than stale data from
+    // the signed-out account. A D6 no-op if the mutex is poisoned.
+    if let Ok(mut slot) = boxed.projection_slot.lock() {
+        *slot = None;
+    }
+
     if !boxed.app.is_null() {
         // SAFETY: same `app` validity rule as register.
         let app_ref = unsafe { &*boxed.app };
