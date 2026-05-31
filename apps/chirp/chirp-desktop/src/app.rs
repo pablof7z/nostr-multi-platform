@@ -15,8 +15,8 @@ use egui::{
 use crate::bridge::AppRuntime;
 use crate::render::{effective_content, hex_color, note_body};
 use crate::snapshot::{
-    AuthorViewPayload, RelayEditRow, Snapshot, ThreadViewPayload,
-    TimelineItem, ActionStageRow, DmConversationSnapshot,
+    ActionStageRow, AppRelay, AuthorViewPayload, DmConversationSnapshot, Snapshot,
+    ThreadViewPayload, TimelineItem,
 };
 use nmp_chirp_config;
 
@@ -86,8 +86,7 @@ impl DesktopApp {
         let egui_ctx = cc.egui_ctx.clone();
         std::thread::spawn(move || {
             for event in rx {
-                let Ok((value, typed)) =
-                    nmp_core::decode_snapshot_with_typed(&event.payload)
+                let Ok((value, typed)) = nmp_core::decode_snapshot_with_typed(&event.payload)
                 else {
                     continue;
                 };
@@ -102,7 +101,8 @@ impl DesktopApp {
                 if let Some(v) = snap.projection::<crate::snapshot::ProfileCard>("profile") {
                     snap.profile = v;
                 }
-                if let Some(v) = snap.projection::<Vec<crate::snapshot::AccountSummary>>("accounts") {
+                if let Some(v) = snap.projection::<Vec<crate::snapshot::AccountSummary>>("accounts")
+                {
                     snap.accounts = v;
                 }
                 if let Some(v) = snap.projection::<Vec<crate::snapshot::TimelineItem>>("timeline") {
@@ -184,17 +184,13 @@ impl DesktopApp {
                     } else {
                         Color32::from_rgb(248, 113, 113)
                     };
-                    ui.label(
-                        RichText::new(format!("{} {}", r.role, r.connection)).color(color),
-                    )
-                    .on_hover_text(&r.relay_url);
+                    ui.label(RichText::new(format!("{} {}", r.role, r.connection)).color(color))
+                        .on_hover_text(&r.relay_url);
                     ui.separator();
                 }
                 ui.label(format!(
                     "{} notes · {} rx · {} visible",
-                    snap.metrics.note_events,
-                    snap.metrics.events_rx,
-                    snap.metrics.visible_items
+                    snap.metrics.note_events, snap.metrics.events_rx, snap.metrics.visible_items
                 ));
             });
             ui.add_space(4.0);
@@ -202,106 +198,102 @@ impl DesktopApp {
     }
 
     fn sidebar(&mut self, ctx: &egui::Context, snap: &Snapshot) {
-        SidePanel::left("sidebar").resizable(false).width_range(140.0..=180.0).show(ctx, |ui| {
-            ui.add_space(8.0);
-            ui.vertical_centered(|ui| {
-                ui.label(RichText::new("Chirp").size(18.0).strong());
-            });
-            ui.add_space(12.0);
+        SidePanel::left("sidebar")
+            .resizable(false)
+            .width_range(140.0..=180.0)
+            .show(ctx, |ui| {
+                ui.add_space(8.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(RichText::new("Chirp").size(18.0).strong());
+                });
+                ui.add_space(12.0);
 
-            let current_tab = self.tab.clone();
+                let current_tab = self.tab.clone();
 
-            if ui
-                .selectable_label(matches!(current_tab, AppTab::Home), "🏠  Home")
-                .clicked()
-            {
-                self.tab = AppTab::Home;
-                self.bridge.open_timeline();
-            }
-            if ui
-                .selectable_label(
-                    matches!(
-                        current_tab,
-                        AppTab::Author(_)
-                    ),
-                    "👤  Profile",
-                )
-                .clicked()
-            {
-                if let Some(ref pk) = snap.active_account {
-                    self.tab = AppTab::Author(pk.clone());
-                    self.bridge.open_author(pk);
+                if ui
+                    .selectable_label(matches!(current_tab, AppTab::Home), "🏠  Home")
+                    .clicked()
+                {
+                    self.tab = AppTab::Home;
+                    self.bridge.open_timeline();
                 }
-            }
-            if ui
-                .selectable_label(matches!(current_tab, AppTab::Dms), "💬  DMs")
-                .clicked()
-            {
-                self.tab = AppTab::Dms;
-            }
-            if ui
-                .selectable_label(matches!(current_tab, AppTab::Settings), "⚙️  Settings")
-                .clicked()
-            {
-                self.tab = AppTab::Settings;
-            }
-            if ui
-                .selectable_label(matches!(current_tab, AppTab::Diagnostics), "📊  Diagnostics")
-                .clicked()
-            {
-                self.tab = AppTab::Diagnostics;
-            }
-            if ui
-                .selectable_label(matches!(current_tab, AppTab::Outbox), "📤  Outbox")
-                .clicked()
-            {
-                self.tab = AppTab::Outbox;
-            }
+                if ui
+                    .selectable_label(matches!(current_tab, AppTab::Author(_)), "👤  Profile")
+                    .clicked()
+                {
+                    if let Some(ref pk) = snap.active_account {
+                        self.tab = AppTab::Author(pk.clone());
+                        self.bridge.open_author(pk);
+                    }
+                }
+                if ui
+                    .selectable_label(matches!(current_tab, AppTab::Dms), "💬  DMs")
+                    .clicked()
+                {
+                    self.tab = AppTab::Dms;
+                }
+                if ui
+                    .selectable_label(matches!(current_tab, AppTab::Settings), "⚙️  Settings")
+                    .clicked()
+                {
+                    self.tab = AppTab::Settings;
+                }
+                if ui
+                    .selectable_label(
+                        matches!(current_tab, AppTab::Diagnostics),
+                        "📊  Diagnostics",
+                    )
+                    .clicked()
+                {
+                    self.tab = AppTab::Diagnostics;
+                }
+                if ui
+                    .selectable_label(matches!(current_tab, AppTab::Outbox), "📤  Outbox")
+                    .clicked()
+                {
+                    self.tab = AppTab::Outbox;
+                }
 
-            ui.add_space(12.0);
-            ui.separator();
-            ui.add_space(8.0);
+                ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
 
-            // Active account mini-card
-            if let Some(ref pk) = snap.active_account {
-                let name = snap
-                    .profile
-                    .display_name
-                    .as_deref()
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or_else(|| &snap.profile.npub);
-                ui.label(RichText::new(name).strong().small());
-                ui.label(
-                    RichText::new(nmp_core::display::short_npub(pk)).small().weak(),
-                );
-            } else {
-                ui.label(RichText::new("No account").small().weak());
-            }
-        });
+                // Active account mini-card
+                if let Some(ref pk) = snap.active_account {
+                    let name = snap
+                        .profile
+                        .display_name
+                        .as_deref()
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| &snap.profile.npub);
+                    ui.label(RichText::new(name).strong().small());
+                    ui.label(
+                        RichText::new(nmp_core::display::short_npub(pk))
+                            .small()
+                            .weak(),
+                    );
+                } else {
+                    ui.label(RichText::new("No account").small().weak());
+                }
+            });
     }
 
-    fn content(
-        &mut self,
-        ctx: &egui::Context,
-        snap: &Snapshot,
-    ) {
+    fn content(&mut self, ctx: &egui::Context, snap: &Snapshot) {
         let tab = self.tab.clone();
-        CentralPanel::default().show(ctx, |ui| {
-            match tab {
-                AppTab::Home => self.timeline(ui, snap),
-                AppTab::Thread(ref event_id) => {
-                    let payload: Option<ThreadViewPayload> = snap.projection("thread_view");
-                    self.thread_view(ui, snap, event_id, payload);
-                }
-                AppTab::Author(ref pubkey) => {
-                    let payload: Option<AuthorViewPayload> = snap.projection("author_view");
-                    self.author_view(ui, snap, pubkey, payload);
-                }
-                AppTab::Dms => self.dm_panel(ui, snap),
-                AppTab::Settings => self.settings_view(ui, snap),
-                AppTab::Diagnostics => self.diagnostics_panel(ui, snap),
-                AppTab::Outbox => self.outbox_panel(ui, snap),
+        CentralPanel::default().show(ctx, |ui| match tab {
+            AppTab::Home => self.timeline(ui, snap),
+            AppTab::Thread(ref event_id) => {
+                let payload: Option<ThreadViewPayload> = snap.projection("thread_view");
+                self.thread_view(ui, snap, event_id, payload);
             }
+            AppTab::Author(ref pubkey) => {
+                let payload: Option<AuthorViewPayload> = snap.projection("author_view");
+                self.author_view(ui, snap, pubkey, payload);
+            }
+            AppTab::Dms => self.dm_panel(ui, snap),
+            AppTab::Settings => self.settings_view(ui, snap),
+            AppTab::Diagnostics => self.diagnostics_panel(ui, snap),
+            AppTab::Outbox => self.outbox_panel(ui, snap),
         });
     }
 
@@ -331,7 +323,10 @@ impl DesktopApp {
             ui.horizontal(|ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let can_send = signed_in && !self.compose.trim().is_empty();
-                    if ui.add_enabled(can_send, egui::Button::new("Publish")).clicked() {
+                    if ui
+                        .add_enabled(can_send, egui::Button::new("Publish"))
+                        .clicked()
+                    {
                         let _ = self.bridge.publish_note(self.compose.trim(), None);
                         self.compose.clear();
                     }
@@ -360,19 +355,12 @@ impl DesktopApp {
 // ---------------------------------------------------------------------------
 
 impl DesktopApp {
-    fn timeline(&mut self, ui: &mut Ui, snap: &Snapshot,
-    ) {
+    fn timeline(&mut self, ui: &mut Ui, snap: &Snapshot) {
         if snap.items.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(40.0);
-                ui.label(
-                    RichText::new("Connecting to relays…")
-                        .size(15.0)
-                        .weak(),
-                );
-                ui.label(
-                    RichText::new("Live timeline will appear here.").weak(),
-                );
+                ui.label(RichText::new("Connecting to relays…").size(15.0).weak());
+                ui.label(RichText::new("Live timeline will appear here.").weak());
             });
             return;
         }
@@ -415,12 +403,14 @@ impl DesktopApp {
         );
         ui.add_space(4.0);
 
-        ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            for item in &thread.items {
-                note_card(ui, item, &mut self.tab, &self.bridge);
-                ui.add_space(4.0);
-            }
-        });
+        ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for item in &thread.items {
+                    note_card(ui, item, &mut self.tab, &self.bridge);
+                    ui.add_space(4.0);
+                }
+            });
     }
 
     fn author_view(
@@ -445,9 +435,7 @@ impl DesktopApp {
         };
 
         // Profile header
-        let initials = nmp_core::display::avatar_initials(
-            &nmp_core::display::to_npub(pubkey),
-        );
+        let initials = nmp_core::display::avatar_initials(&nmp_core::display::to_npub(pubkey));
         let color = nmp_core::display::avatar_color_hex(pubkey);
         ui.horizontal(|ui| {
             avatar(ui, &initials, &color);
@@ -461,10 +449,16 @@ impl DesktopApp {
                     .unwrap_or("(no name)");
                 ui.label(RichText::new(name).size(16.0).strong());
                 ui.label(
-                    RichText::new(nmp_core::display::short_npub(pubkey)).small().weak(),
+                    RichText::new(nmp_core::display::short_npub(pubkey))
+                        .small()
+                        .weak(),
                 );
                 if !author.profile.nip05.is_empty() {
-                    ui.label(RichText::new(&author.profile.nip05).small().color(Color32::from_rgb(96, 165, 250)));
+                    ui.label(
+                        RichText::new(&author.profile.nip05)
+                            .small()
+                            .color(Color32::from_rgb(96, 165, 250)),
+                    );
                 }
             });
         });
@@ -475,7 +469,9 @@ impl DesktopApp {
             if let Some(dispatch) = &action.dispatch {
                 let label = &action.label;
                 if ui.button(label).clicked() {
-                    let _ = self.bridge.dispatch_action(&dispatch.namespace, &dispatch.body_json);
+                    let _ = self
+                        .bridge
+                        .dispatch_action(&dispatch.namespace, &dispatch.body_json);
                 }
             }
         }
@@ -484,18 +480,17 @@ impl DesktopApp {
         ui.label(RichText::new(format!("{} notes", author.note_count_display)).strong());
         ui.add_space(4.0);
 
-        ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            for item in &author.items {
-                note_card(ui, item, &mut self.tab, &self.bridge);
-                ui.add_space(4.0);
-            }
-        });
+        ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for item in &author.items {
+                    note_card(ui, item, &mut self.tab, &self.bridge);
+                    ui.add_space(4.0);
+                }
+            });
     }
 
-    fn settings_view(&mut self,
-        ui: &mut Ui,
-        snap: &Snapshot,
-    ) {
+    fn settings_view(&mut self, ui: &mut Ui, snap: &Snapshot) {
         ui.heading("Settings");
         ui.separator();
 
@@ -538,7 +533,6 @@ impl DesktopApp {
                 }
             });
         }
-
 
         // Bunker login section
         if snap.active_account.is_none() {
@@ -642,7 +636,7 @@ impl DesktopApp {
         });
         if ui.button("Disconnect Wallet").clicked() {
             match self.bridge.wallet_disconnect() {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => eprintln!("wallet disconnect error: {e}"),
             }
         }
@@ -652,7 +646,7 @@ impl DesktopApp {
 
         // Relays section
         ui.label(RichText::new("Relays").strong());
-        let rows: Vec<RelayEditRow> = snap.projection("relay_edit_rows").unwrap_or_default();
+        let rows: Vec<AppRelay> = snap.projection("configured_relays").unwrap_or_default();
         egui::Grid::new("relay_grid")
             .num_columns(4)
             .spacing([12.0, 4.0])
@@ -691,16 +685,8 @@ impl DesktopApp {
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut self.new_relay_role, "both".to_string(), "both");
                     ui.selectable_value(&mut self.new_relay_role, "read".to_string(), "read");
-                    ui.selectable_value(
-                        &mut self.new_relay_role,
-                        "write".to_string(),
-                        "write",
-                    );
-                    ui.selectable_value(
-                        &mut self.new_relay_role,
-                        "indexer".to_string(),
-                        "indexer",
-                    );
+                    ui.selectable_value(&mut self.new_relay_role, "write".to_string(), "write");
+                    ui.selectable_value(&mut self.new_relay_role, "indexer".to_string(), "indexer");
                 });
             if ui.button("Add relay").clicked() && !self.new_relay_url.trim().is_empty() {
                 self.bridge
@@ -723,16 +709,22 @@ impl DesktopApp {
                     || r.connection.eq_ignore_ascii_case("ready")
             })
             .count();
-        ui.label(RichText::new(format!(
-            "Relays: {}/{} connected",
-            connected_count,
-            snap.relay_statuses.len()
-        ))
-        .strong());
+        ui.label(
+            RichText::new(format!(
+                "Relays: {}/{} connected",
+                connected_count,
+                snap.relay_statuses.len()
+            ))
+            .strong(),
+        );
         ui.add_space(8.0);
 
         // Relay list with status
-        ui.label(RichText::new("Relay Status").strong().color(Color32::from_rgb(96, 165, 250)));
+        ui.label(
+            RichText::new("Relay Status")
+                .strong()
+                .color(Color32::from_rgb(96, 165, 250)),
+        );
         ui.add_space(4.0);
 
         ScrollArea::vertical()
@@ -783,9 +775,7 @@ impl DesktopApp {
                             } else {
                                 Color32::from_rgb(249, 115, 22)
                             };
-                            ui.label(
-                                RichText::new(&relay.connection).color(status_color),
-                            );
+                            ui.label(RichText::new(&relay.connection).color(status_color));
 
                             // Event count
                             ui.label(RichText::new(relay.events_rx.to_string()).weak().small());
@@ -800,7 +790,11 @@ impl DesktopApp {
         ui.add_space(8.0);
 
         // Metrics summary
-        ui.label(RichText::new("Snapshot Metrics").strong().color(Color32::from_rgb(96, 165, 250)));
+        ui.label(
+            RichText::new("Snapshot Metrics")
+                .strong()
+                .color(Color32::from_rgb(96, 165, 250)),
+        );
         ui.add_space(4.0);
 
         ui.horizontal(|ui| {
@@ -819,16 +813,13 @@ impl DesktopApp {
         ui.heading("Publish Outbox");
         ui.separator();
 
-        let action_stages: Vec<ActionStageRow> = snap.projection("action_stages").unwrap_or_default();
+        let action_stages: Vec<ActionStageRow> =
+            snap.projection("action_stages").unwrap_or_default();
 
         if action_stages.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(40.0);
-                ui.label(
-                    RichText::new("No pending publishes")
-                        .size(15.0)
-                        .weak(),
-                );
+                ui.label(RichText::new("No pending publishes").size(15.0).weak());
             });
             return;
         }
@@ -898,31 +889,24 @@ impl DesktopApp {
             None => {
                 ui.vertical_centered(|ui| {
                     ui.add_space(40.0);
-                    ui.label(
-                        RichText::new("No direct messages")
-                            .size(15.0)
-                            .weak(),
-                    );
+                    ui.label(RichText::new("No direct messages").size(15.0).weak());
                 });
             }
             Some(dm_data) => {
                 if dm_data.conversations.is_empty() {
                     ui.vertical_centered(|ui| {
                         ui.add_space(40.0);
-                        ui.label(
-                            RichText::new("No conversations yet")
-                                .size(15.0)
-                                .weak(),
-                        );
+                        ui.label(RichText::new("No conversations yet").size(15.0).weak());
                     });
                 } else {
                     ui.columns(2, |cols| {
                         // Left pane: conversation list
-                        ScrollArea::vertical()
-                            .auto_shrink([false, false])
-                            .show(&mut cols[0], |ui| {
+                        ScrollArea::vertical().auto_shrink([false, false]).show(
+                            &mut cols[0],
+                            |ui| {
                                 for conv in &dm_data.conversations {
-                                    let is_selected = self.selected_dm_pubkey.as_ref() == Some(&conv.peer_pubkey);
+                                    let is_selected =
+                                        self.selected_dm_pubkey.as_ref() == Some(&conv.peer_pubkey);
                                     if ui
                                         .selectable_label(is_selected, &conv.peer_display)
                                         .clicked()
@@ -931,7 +915,8 @@ impl DesktopApp {
                                     }
                                     ui.separator();
                                 }
-                            });
+                            },
+                        );
 
                         // Right pane: selected conversation
                         if let Some(ref selected_pubkey) = self.selected_dm_pubkey {
@@ -945,14 +930,17 @@ impl DesktopApp {
                                     ui.separator();
 
                                     // Messages
-                                    ScrollArea::vertical()
-                                        .auto_shrink([false, false])
-                                        .show(ui, |ui| {
+                                    ScrollArea::vertical().auto_shrink([false, false]).show(
+                                        ui,
+                                        |ui| {
                                             for msg in &conv.messages {
                                                 let (author_label, color) = if msg.outgoing {
                                                     ("You", Color32::from_rgb(96, 165, 250))
                                                 } else {
-                                                    (&conv.peer_display[..], Color32::from_rgb(148, 163, 184))
+                                                    (
+                                                        &conv.peer_display[..],
+                                                        Color32::from_rgb(148, 163, 184),
+                                                    )
                                                 };
                                                 ui.label(
                                                     RichText::new(author_label)
@@ -963,7 +951,8 @@ impl DesktopApp {
                                                 ui.label(&msg.content);
                                                 ui.separator();
                                             }
-                                        });
+                                        },
+                                    );
 
                                     // Compose box
                                     ui.add_space(8.0);
@@ -981,10 +970,9 @@ impl DesktopApp {
                                             .add_enabled(can_send, egui::Button::new("Send"))
                                             .clicked()
                                         {
-                                            let _ = self.bridge.send_dm(
-                                                selected_pubkey,
-                                                self.dm_compose.trim(),
-                                            );
+                                            let _ = self
+                                                .bridge
+                                                .send_dm(selected_pubkey, self.dm_compose.trim());
                                             self.dm_compose.clear();
                                         }
                                     });
@@ -993,11 +981,7 @@ impl DesktopApp {
                         } else {
                             cols[1].vertical_centered(|ui| {
                                 ui.add_space(40.0);
-                                ui.label(
-                                    RichText::new("Select a conversation")
-                                        .size(14.0)
-                                        .weak(),
-                                );
+                                ui.label(RichText::new("Select a conversation").size(14.0).weak());
                             });
                         }
                     });
@@ -1006,12 +990,14 @@ impl DesktopApp {
         }
     }
 
-
     fn status_color(connection: &str) -> (char, Color32) {
         let lower = connection.to_ascii_lowercase();
         if lower.contains("connected") || lower == "ready" || lower == "open" {
             ('●', Color32::from_rgb(74, 222, 128))
-        } else if lower.contains("disconnected") || lower.contains("down") || lower.contains("failed") {
+        } else if lower.contains("disconnected")
+            || lower.contains("down")
+            || lower.contains("failed")
+        {
             ('○', Color32::from_rgb(248, 113, 113))
         } else {
             ('◌', Color32::from_rgb(249, 115, 22))
@@ -1023,16 +1009,10 @@ impl DesktopApp {
 // Note card widget
 // ---------------------------------------------------------------------------
 
-fn note_card(
-    ui: &mut Ui,
-    item: &TimelineItem,
-    tab: &mut AppTab,
-    bridge: &AppRuntime,
-) {
+fn note_card(ui: &mut Ui, item: &TimelineItem, tab: &mut AppTab, bridge: &AppRuntime) {
     let author_display = nmp_core::display::short_npub(&item.author_pubkey);
-    let initials = nmp_core::display::avatar_initials(
-        &nmp_core::display::to_npub(&item.author_pubkey),
-    );
+    let initials =
+        nmp_core::display::avatar_initials(&nmp_core::display::to_npub(&item.author_pubkey));
     let color = nmp_core::display::avatar_color_hex(&item.author_pubkey);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1049,10 +1029,7 @@ fn note_card(
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         // Clickable author name
-                        if ui
-                            .button(RichText::new(&author_display).strong())
-                            .clicked()
-                        {
+                        if ui.button(RichText::new(&author_display).strong()).clicked() {
                             *tab = AppTab::Author(item.author_pubkey.clone());
                             bridge.open_author(&item.author_pubkey);
                         }

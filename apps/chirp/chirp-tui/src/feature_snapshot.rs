@@ -10,7 +10,7 @@ pub struct FeatureSnapshot {
     pub outbox_summary: SummaryLine,
     /// Settled publish history from `projections.publish_queue`.
     pub history: Vec<PublishHistoryLine>,
-    pub relay_edit_rows: Vec<RelayEditLine>,
+    pub configured_relays: Vec<RelayEditLine>,
     pub wallet: WalletLine,
     pub dm_conversations: Vec<DmConversationLine>,
     pub group_messages: Vec<MessageLine>,
@@ -54,7 +54,7 @@ impl FeatureSnapshot {
             outbox: outbox_from(projections),
             outbox_summary: summary_from(projections.get("outbox_summary")),
             history: publish_history_from(projections),
-            relay_edit_rows: relay_edit_rows_from(projections),
+            configured_relays: configured_relays_from(projections),
             wallet: wallet_from(projections.get("wallet")),
             dm_conversations: dm_from(projections),
             group_messages: messages_from(projection(projections, "nmp.nip29.group_chat")),
@@ -71,7 +71,7 @@ impl FeatureSnapshot {
         self.accounts.is_empty()
             && self.outbox.is_empty()
             && self.history.is_empty()
-            && self.relay_edit_rows.is_empty()
+            && self.configured_relays.is_empty()
             && self.wallet.status.is_empty()
             && self.dm_conversations.is_empty()
             && self.group_messages.is_empty()
@@ -296,10 +296,10 @@ fn relay_lines_from(row: &Value) -> Vec<OutboxRelayLine> {
         .collect()
 }
 
-fn relay_edit_rows_from(projections: &Value) -> Vec<RelayEditLine> {
+fn configured_relays_from(projections: &Value) -> Vec<RelayEditLine> {
     projections
-        .get("relay_edit_rows")
-        .or_else(|| projections.get("relayEditRows"))
+        .get("configured_relays")
+        .or_else(|| projections.get("configuredRelays"))
         .and_then(Value::as_array)
         .into_iter()
         .flatten()

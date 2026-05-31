@@ -41,7 +41,7 @@ export type FeatureSnapshot = {
   activeAccount: string;
   outbox: OutboxLine[];
   outboxSummary: SummaryLine;
-  relayEditRows: RelayEditLine[];
+  configuredRelays: RelayEditLine[];
   relayDiagnostics: RelayDiagnosticLine[];
   wallet: WalletLine;
   dmConversations: DmConversationLine[];
@@ -71,7 +71,7 @@ export function featureSnapshotFromEnvelope(envelope: unknown): FeatureSnapshot 
     activeAccount: str(source.active_account),
     outbox: array(source.publish_outbox ?? source.publishOutbox).map(outboxFrom),
     outboxSummary: summaryFrom(source.outbox_summary ?? source.outboxSummary),
-    relayEditRows: array(source.relay_edit_rows ?? source.relayEditRows).map(relayEditFrom),
+    configuredRelays: array(source.configured_relays ?? source.configuredRelays).map(relayEditFrom),
     relayDiagnostics: array(source.relay_diagnostics ?? source.relayDiagnostics).map(relayDiagnosticFrom),
     wallet: walletFrom(source.wallet),
     dmConversations: dmFrom(source),

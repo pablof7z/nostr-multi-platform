@@ -153,8 +153,8 @@ fn append_relay_row(
     let cfg = configured.map_or_else(String::new, |role| format!(" · configured {role}"));
     // Append zero-count classification when the relay is connected but has
     // received no session EVENTs (V-51 Phase 3 acceptance criterion 1).
-    let zero_annotation = zero_count_label(relay)
-        .map_or_else(String::new, |label| format!(" · {label}"));
+    let zero_annotation =
+        zero_count_label(relay).map_or_else(String::new, |label| format!(" · {label}"));
     let status = format!(
         "    {} · {}/{} subs{}{}",
         empty_dash(&relay.connection_label),
@@ -218,7 +218,10 @@ fn relay_detail_lines(state: &AppState, relay: &RelayRow, pane_width: usize) -> 
     }
     // V-51 Phase 3: indexer relay discovery-kind targeting.
     if relay.role_label.eq_ignore_ascii_case("indexer") {
-        lines.push(label_line("discovery", &indexer_discovery_kinds_label(relay)));
+        lines.push(label_line(
+            "discovery",
+            &indexer_discovery_kinds_label(relay),
+        ));
     }
     lines.push(label_line(
         "traffic",
@@ -421,7 +424,7 @@ fn why_text(state: &AppState, relay: &RelayRow) -> String {
 fn configured_role(state: &AppState, relay: &RelayRow) -> Option<String> {
     state
         .features
-        .relay_edit_rows
+        .configured_relays
         .iter()
         .find(|row| {
             short_relay_url(&row.url).eq_ignore_ascii_case(&relay.short_url)
@@ -634,8 +637,14 @@ mod tests {
         };
         let label = indexer_discovery_kinds_label(&relay);
         // Should list all three discovery kinds found across the active subs.
-        assert!(label.contains("profile (0)"), "expected profile in '{label}'");
-        assert!(label.contains("follows (3)"), "expected follows in '{label}'");
+        assert!(
+            label.contains("profile (0)"),
+            "expected profile in '{label}'"
+        );
+        assert!(
+            label.contains("follows (3)"),
+            "expected follows in '{label}'"
+        );
         assert!(
             label.contains("relay-list (10002)"),
             "expected relay-list in '{label}'"

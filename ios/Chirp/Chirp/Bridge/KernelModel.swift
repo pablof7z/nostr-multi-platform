@@ -110,7 +110,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     var publishQueue: [PublishQueueEntry] { snapshot?.publishQueue ?? [] }
     var publishOutbox: [PublishOutboxItem] { snapshot?.publishOutbox ?? [] }
     var outboxSummary: OutboxSummary { snapshot?.outboxSummary ?? .empty }
-    var relayEditRows: [RelayEditRow] { snapshot?.relayEditRows ?? [] }
+    var configuredRelays: [AppRelay] { snapshot?.configuredRelays ?? [] }
     var relayRoleOptions: [RelayRoleOption] { snapshot?.relayRoleOptions ?? [] }
     var settingsHub: SettingsHubSummary { snapshot?.settingsHub ?? .empty }
     var threadView: ThreadView? { snapshot?.threadView }
@@ -196,7 +196,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// D7/B1: This hardcoded relay is intentional — it's a fixed demo group
     /// identifier for the first-consumer proof, not a bootstrap relay. The
     /// kernel's actual relay defaults flow through the snapshot
-    /// (`relayStatuses`, `relayEditRows`) populated by nmp-core.
+    /// (`relayStatuses`, `configuredRelays`) populated by nmp-core.
     static let demoGroupId = GroupId(
         hostRelayUrl: "wss://relay.groups.nip29.com",
         localId: "chirp-demo")
@@ -294,6 +294,14 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         guard !startedKernel else { return }
         startedKernel = true
         capabilities.start()
+        // Seed Chirp's default relays before start. nmp-core no longer carries
+        // a hardcoded relay fallback — the app owns its default relay set. These
+        // pre-start `addRelay` calls populate `configured_relays` so the kernel
+        // has discovery/content relays on a fresh install; the actor dedups
+        // them against any session-restored relay list, so re-seeding existing
+        // rows is a no-op. (Mirrors the Rust `NmpAppBuilder` default-relay path.)
+        kernel.addRelay(url: "wss://r.f7z.io", role: "both")
+        kernel.addRelay(url: "wss://purplepag.es", role: "indexer")
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         // Cold-launch Marmot fallback. The kernel actor owns identity
         // restoration through its `nmp.identity.local_nsec.<pubkey>` slot (see
@@ -617,7 +625,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         track(kernel.publishDmRelayList(relays: relays))
     }
     @discardableResult
-    func publishRelayList(relays: [RelayEditRow]) -> DispatchResult {
+    func publishRelayList(relays: [AppRelay]) -> DispatchResult {
         track(kernel.publishRelayList(relays: relays))
     }
     func openTimeline() { kernel.openTimeline() }

@@ -475,11 +475,11 @@ final class KernelHandle {
 
     /// `nmp.nip65.publish_relay_list` — dispatches a kind:10002 NIP-65
     /// relay-list metadata event. Swift forwards the kernel-authored
-    /// `RelayEditRow` role string verbatim; Rust normalizes composite roles
+    /// `AppRelay` role string verbatim; Rust normalizes composite roles
     /// like `"both,indexer"` and skips indexer-only rows when building the
     /// kind:10002 tags.
     @discardableResult
-    func publishRelayList(relays: [RelayEditRow]) -> DispatchResult {
+    func publishRelayList(relays: [AppRelay]) -> DispatchResult {
         return dispatchAction(
             namespace: "nmp.nip65.publish_relay_list",
             body: ["relays": relays.map { ["url": $0.url, "role": $0.role] }])
@@ -770,7 +770,7 @@ struct KernelUpdate: Decodable {
     // kernel's host-extensible `projections` map: a built-in `"wallet"`
     // projection and a built-in `"bunker_handshake"` projection. The publish /
     // relay-settings cluster (`publish_queue`, `publish_outbox`,
-    // `relay_edit_rows`, `relay_role_options`) is likewise app-shaped
+    // `configured_relays`, `relay_role_options`) is likewise app-shaped
     // relay/publish state and lives in the same map under built-in keys.
     // Optional so an older kernel that elides the map still decodes (D1).
     let projections: SnapshotProjections?
@@ -802,9 +802,9 @@ struct KernelUpdate: Decodable {
     /// so `NotificationsView` reads `update.outboxSummary` directly.
     var outboxSummary: OutboxSummary? { projections?.outboxSummary }
 
-    /// Relay-edit rows projection — `projections["relay_edit_rows"]`. Computed
-    /// so call sites keep reading `update.relayEditRows` unchanged.
-    var relayEditRows: [RelayEditRow]? { projections?.relayEditRows }
+    /// Relay-edit rows projection — `projections["configured_relays"]`. Computed
+    /// so call sites keep reading `update.configuredRelays` unchanged.
+    var configuredRelays: [AppRelay]? { projections?.configuredRelays }
 
     /// Relay-role picker options — `projections["relay_role_options"]`. Rust owns
     /// the canonical value list plus display labels/tint tokens.
@@ -1739,13 +1739,13 @@ struct OutboxSummary: Decodable, Equatable {
     )
 }
 
-// `RelayEditRow` and `RelayRoleOption` moved to
+// `AppRelay` and `RelayRoleOption` moved to
 // `Generated/KernelTypes.generated.swift` (V6 Stage 1, plan §6b). Rust
-// source: `nmp-core/src/kernel/identity_state.rs::RelayEditRow` /
+// source: `nmp-core/src/kernel/identity_state.rs::AppRelay` /
 // `nmp-core/src/actor/relay_roles.rs::RelayRoleOption`. The previous
-// `RelayEditRow` carried a custom memberwise `init(url:role:roleLabel:roleTint:)`
+// `AppRelay` carried a custom memberwise `init(url:role:roleLabel:roleTint:)`
 // with defaulted last two args; no caller in the iOS shell constructed
-// `RelayEditRow` directly (only decoded from snapshots and read fields),
+// `AppRelay` directly (only decoded from snapshots and read fields),
 // so removing the init is safe — the generated type's synthesised
 // memberwise init is unused.
 

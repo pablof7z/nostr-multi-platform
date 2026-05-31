@@ -96,7 +96,7 @@ fn home_tab_handles_narrow_terminal_without_panicking() {
 fn settings_tab_renders_all_relay_inventory_and_raw_filters() {
     let mut state = state_with_account();
     state.set_tab(FeatureTab::Settings);
-    state.features.relay_edit_rows.push(RelayEditLine {
+    state.features.configured_relays.push(RelayEditLine {
         url: "wss://relay.example".to_string(),
         role: "both,indexer".to_string(),
     });
