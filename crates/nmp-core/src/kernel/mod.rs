@@ -90,6 +90,8 @@ mod outbox_tests;
 mod pre_kind3_buffer_tests;
 #[cfg(test)]
 mod profile_claim_tests;
+#[cfg(test)]
+mod proactive_profile_fetch_tests;
 mod provenance;
 #[cfg(test)]
 mod provenance_wire_tests;

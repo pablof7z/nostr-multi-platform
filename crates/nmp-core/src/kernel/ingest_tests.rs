@@ -614,67 +614,12 @@ fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
     }
 }
 
-#[test]
-fn ingest_timeline_event_queues_missing_author_profile_request() {
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
-    let keys = ::nostr::Keys::generate();
-    let note = signed_note(&keys, "profile me", 1_700_000_000);
-    let author = note.pubkey.clone();
-    kernel.timeline_authors.insert(author.clone());
-
-    kernel.ingest_timeline_event(
-        RelayRole::Content,
-        "wss://content.example",
-        "follow-feed-default",
-        note,
-    );
-
-    let requests = kernel.pending_profile_claim_requests();
-    let joined = requests
-        .iter()
-        .map(|request| request.text.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    assert!(
-        joined.contains("\"kinds\":[0]"),
-        "rendered note author should trigger a kind:0 profile request: {joined}"
-    );
-    assert!(
-        joined.contains(&author),
-        "profile request should target the note author: {joined}"
-    );
-}
-
-#[test]
-fn ingest_timeline_event_skips_author_profile_when_cached() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let keys = ::nostr::Keys::generate();
-    let note = signed_note(&keys, "already profiled", 1_700_000_000);
-    let author = note.pubkey.clone();
-    kernel.timeline_authors.insert(author.clone());
-    kernel.ingest_profile(NostrEvent {
-        id: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_string(),
-        pubkey: author,
-        created_at: 1_700_000_000,
-        kind: 0,
-        tags: vec![],
-        content: r#"{"name":"Cached"}"#.to_string(),
-        sig: String::new(),
-    });
-
-    kernel.ingest_timeline_event(
-        RelayRole::Content,
-        "wss://content.example",
-        "follow-feed-default",
-        note,
-    );
-
-    assert!(
-        kernel.pending_profile_claim_requests().is_empty(),
-        "cached author profiles should not be requested again"
-    );
-}
+// F-CR-00: `ingest_timeline_event_queues_missing_author_profile_request` and
+// `ingest_timeline_event_skips_author_profile_when_cached` were deleted when
+// the proactive kind:0 fetch at timeline.rs:172 was removed. The replacement
+// invariants live in `proactive_profile_fetch_tests.rs`:
+//   - `kind1_ingest_does_not_queue_profile_fetch` (no proactive fetch)
+//   - `claim_profile_after_ingest_queues_fetch` (claim path works)
 
 /// A signed kind:1 from an author present in `timeline_authors` passes the
 /// timeline gate: it is persisted to the `events` read-cache AND appended to

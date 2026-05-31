@@ -658,10 +658,11 @@ pub(super) struct DiagnosticFirehoseState {
 
 /// Profile-fetch request tracking: the in-flight / queued sets plus the
 /// monotonic REQ-id sequence. Grouped because the three fields are always
-/// mutated together by the `requests/profile.rs` claim/note-author request paths
+/// mutated together by the `requests/profile.rs` claim request paths
 /// (`claim_profile`, `pending_profile_claim_requests`, `profile_claim_request`,
-/// `request_profile_for_rendered_note`, `author_requests`) and read together
-/// by the `status.rs` profile diagnostics.
+/// `author_requests`) and read together by the `status.rs` profile diagnostics.
+/// F-CR-00: `request_profile_for_rendered_note` (proactive ingest-time fetch)
+/// was removed; kind:0 is now fetched only on component `claim_profile`.
 #[derive(Default)]
 pub(super) struct ProfileRequestState {
     /// Pubkeys whose kind:0 has been REQ'd (inflight or completed). A pubkey in
