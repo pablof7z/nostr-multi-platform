@@ -107,7 +107,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{ActorCommand, KernelAction, KernelEventObserver};
+use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 use nostr::{Event, JsonUtil, PublicKey, RelayUrl};
 
@@ -466,18 +466,10 @@ impl<'a> InnerHandle<'a> {
         let Some(app) = self.app() else {
             return 0;
         };
-        let sender = app.actor_sender();
         let mut sent = 0;
         for pk in pubkeys {
-            if sender
-                .send(ActorCommand::Kernel(KernelAction::OpenView {
-                    namespace: crate::view::KeyPackageLookupView::NAMESPACE.to_string(),
-                    key: pk.to_hex(),
-                }))
-                .is_ok()
-            {
-                sent += 1;
-            }
+            app.push_interest(crate::interest::key_package_lookup_interest(&pk.to_hex()));
+            sent += 1;
         }
         sent
     }

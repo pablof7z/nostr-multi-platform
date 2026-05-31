@@ -20,3 +20,11 @@ nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
 nostr = { version = "0.44", default-features = false, features = ["std"] }
 serde_json = "1.0"
+
+# Regression test — KP fetch via real relay subscription (fix/marmot-keypackage-fetch-miswire).
+# Requires `nak` binary (NAK_BIN env var or /Users/pablofernandez/go/bin/nak or PATH).
+# Run: NMP_MARMOT_MOCK_KEYRING=1 cargo test -p chirp-repl \
+#        --test marmot_key_package_relay_fetch -- --ignored --nocapture
+[[test]]
+name = "marmot_key_package_relay_fetch"
+path = "tests/marmot_key_package_relay_fetch.rs"
