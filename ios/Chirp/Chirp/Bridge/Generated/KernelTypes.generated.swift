@@ -135,9 +135,9 @@ public struct AccountSummary: Decodable, Equatable, Identifiable, Sendable {
     public let status: String
 }
 
-// MARK: - RelayEditRow
-// Source: nmp_core::kernel::identity_state::RelayEditRow
-public struct RelayEditRow: Decodable, Equatable, Identifiable, Sendable {
+// MARK: - AppRelay
+// Source: nmp_core::kernel::identity_state::AppRelay
+public struct AppRelay: Decodable, Equatable, Identifiable, Sendable {
     public let role: String
     public let url: String
 
@@ -206,7 +206,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let publishQueue: [PublishQueueEntry]?
     let publishOutbox: [PublishOutboxItem]?
     let outboxSummary: OutboxSummary?
-    let relayEditRows: [RelayEditRow]?
+    let configuredRelays: [AppRelay]?
     let relayRoleOptions: [RelayRoleOption]?
     let accounts: [AccountSummary]?
     let activeAccount: String?
@@ -243,7 +243,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case publishQueue
         case publishOutbox
         case outboxSummary
-        case relayEditRows
+        case configuredRelays
         case relayRoleOptions
         case accounts
         case activeAccount
