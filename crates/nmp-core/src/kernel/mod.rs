@@ -1035,10 +1035,13 @@ pub struct Kernel {
     /// Set by `set_relay_score_store` after construction. D4: the kernel
     /// holds `Box` (not `Arc`) because it is the sole logical writer.
     relay_score_store: Option<Box<dyn crate::substrate::RelayAuthorScoreStore>>,
-    /// F-TTL — replaceable event freshness configuration. Specifies per-kind TTLs
+    /// F-TTL — replaceable event freshness policy. Configures per-kind TTLs
     /// for how long replaceable identities (kind, pubkey, d_tag?) remain "fresh"
-    /// before re-verification REQs are needed. Defaults to kind:0 = 1h,
-    /// kind:10002 = 6h, others = 6h. Can be overridden via `set_replaceable_ttl`.
+    /// before a re-verification REQ is needed. The LMDB sub-db `replaceable_freshness`
+    /// stores `check_again_after` timestamps; this config determines the delta
+    /// added to `now` to produce the next check_again_after value. Defaults to
+    /// kind:0 = 1h, kind:10002 = 6h, others = 6h. Can be overridden via
+    /// `set_replaceable_ttl()`.
     replaceable_ttl: replaceable_ttl::ReplaceableTtlConfig,
     /// V-67: set when a persistent storage path was supplied but the LMDB
     /// store failed to open. `None` in the healthy case AND when no path was
