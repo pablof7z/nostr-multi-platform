@@ -71,66 +71,6 @@ next refactored:
   lint covering upward edges such as `nmp-router -> nmp-ffi` and `nmp-signer-broker -> nmp-core`,
   plus explicit allowlists for sanctioned adapter crates.
 
-### V-68 · Core/planner still carry kind:1/6 social subscription policy [HIGH · D0 violation · Stage 2-author+Stage 3 OPEN]
-
-**Stages 1 and Stage 2 thread-half landed (2026-05-29/30).** `nmp-planner/src/interest.rs`,
-`nmp-core/src/kernel/ingest/mod.rs`, and `nmp-core/src/kernel/requests/thread.rs` no longer
-carry the `{1, 6}` literal. Remaining open sites:
-
-- ⏳ **OPEN (Stage 2 author-half)** `crates/nmp-core/src/kernel/requests/profile.rs:~532-550`
-  still hardcodes selected-author note/repost requests as `{"kinds":[1,6], ...}`.
-  Deferred until the iOS peer agent lands `ActorCommand::OpenAuthor { kinds }` +
-  `NmpCore.h` + `KernelBridge.swift` churn.
-
-**Why this is a violation:** `{1, 6}` is a social/NIP-01 timeline policy, not
-substrate policy. `nmp-core` and `nmp-planner` may carry caller-supplied `kinds`
-as filter data, but they must not choose app defaults. Defaults like "follow-list
-timeline means kind:1 + kind:6" belong in `nmp-nip01`, `nmp-nip02`,
-`nmp-app-template`, or an app crate such as Chirp.
-
-**Stage 2 (author-view + thread-reply) — the remaining production behavior.**
-These two sites carry live behavior and CANNOT reuse the follow-feed's
-host-declared `Kernel::follow_feed_kinds`: `nmp_app_open_author`
-(`ProfileView.swift`) and `nmp_app_open_thread` fire **independently** of
-`nmp_app_open_timeline`/`OpenContactListSubscription`, so a deep-link can open an
-author/thread before the home feed ever declared its kinds — borrowing
-`follow_feed_kinds` would request zero kinds and silently break profile/thread
-views. The correct seam is **per-call kinds**, extending the existing
-`OpenContactListSubscription { kinds }` pattern: add `kinds: BTreeSet<u32>` to
-`ActorCommand::OpenAuthor` and `ActorCommand::OpenThread`, thread them through
-`Kernel::open_author` / `open_thread` → `author_requests` / thread reply builder,
-and have the FFI symbols (`nmp_app_open_author` / `nmp_app_open_thread`) accept the
-kind set from the host. Because kinds arrive *with* the call there is no ordering
-problem — the Swift `ProfileView`/thread call site declares them exactly as
-`nmp_app_open_timeline` declares `{1, 6}` today. Cost is FFI + `NmpCore.h` +
-`KernelBridge.swift` churn (iOS blast radius), which is why it is staged.
-
-  *Rejected alternative:* a single app-level `content_kinds` field set once at app
-  init would avoid the ABI churn, but only if an init hook is guaranteed to run
-  before any view opens, and it must be a **separate** field from
-  `follow_feed_kinds` (overloading conflates "no declared kinds" with "follow-feed
-  inactive"). Per-call kinds is the safe default; pursue the field only if that
-  init guarantee is proven cheap.
-
-**Stage 3 (finalizer):** once Stage 2 lands and no `[1, 6]` literal remains in
-`nmp-core`/`nmp-planner` production code, add a doctrine-lint rule banning hardcoded
-social content-kind sets (`[1, 6]` / `[1u32, 6u32]`) in those crates' non-test
-source so the door stays closed. Do NOT add the lint before Stage 2 — `profile.rs`
-and `thread.rs` still carry the literal and would fail the build.
-
-**Required fix (general):** move the remaining social subscription constructors and
-trace inputs out of `nmp-core`/generic planner APIs. Keep the existing
-`ActorCommand::OpenContactListSubscription { kinds }` direction: hosts or NIP
-modules declare the kind set, and the substrate registers/executes those kinds as
-data. Tests covering follow-feed behavior must use arbitrary host-declared kinds,
-not `{1, 6}`, unless the test is explicitly scoped to a NIP-01/NIP-18 module.
-
-**Note (out of scope, separate cleanup):** `crates/nmp-core/src/kernel/ingest/event.rs`
-and `ingest/eose.rs` are orphan files (not declared as modules in `ingest/mod.rs`,
-so not compiled). `event.rs` contains a stale duplicate of `on_mailbox_changed`
-still carrying `&[1, 6]`; it is dead code and was left untouched to keep this PR
-scoped. A follow-up should delete the orphan files.
-
 ### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
 
 **Verified:** `crates/nmp-core/src/actor/commands/identity.rs:700` —
@@ -421,17 +361,6 @@ secret material in freed memory.
 a zeroizable key type or mutable erasure hook, then delete the partial-mitigation
 comment and prove all in-memory secret copies wipe on drop. Until upstream support
 exists, do not claim full zeroization for local-key accounts.
-
-### V-106 · iOS Chirp hardcoded 21,000 msat (21 sat) zap default — production UX hazard [MEDIUM · v1-A Chirp UX]
-
-**Verified:** `ios/Chirp/Chirp/Bridge/KernelModel.swift:446` — `func zap(...) { amountMsats: UInt64 = 21_000, ... }` with a doc-comment at `:433-434` stating "defaults to 21,000 msats (21 sats) until an amount picker lands." Every zap dispatch from the iOS shell that doesn't explicitly pass an amount sends 21 sats.
-
-**Impact:** users expecting a richer zap amount (e.g. 1,000 / 5,000 / 21,000 sats) send 21 sats because no picker exists. The default is in production iOS, not behind a feature flag, and the doc-comment promises a picker that has not landed. This is a user-facing UX defect, not framework debt.
-
-**Correct fix:** ship the amount picker (sheet with 21 / 100 / 500 / 1k / 5k / 21k presets + custom field) and remove the function default. The Rust side (`nmp_nip57::zap`) already accepts `amount_msats`; the gap is purely Swift UI. Until the picker ships, the default should be an explicit `nil` that forces the host to surface a sheet rather than silently dispatching 21 sats.
-
----
-
 
 ### V-73 · `register.rs` falls back to empty `Pubkey` on null/invalid viewer_pubkey — anonymous register with no host signal [LOW · silent identity bug]
 

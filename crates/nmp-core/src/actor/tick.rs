@@ -226,7 +226,10 @@ mod tests {
                 })
                 .unwrap();
             cmd_tx
-                .send(ActorCommand::OpenAuthor { pubkey: pk.clone() })
+                .send(ActorCommand::OpenAuthor {
+                    pubkey: pk.clone(),
+                    kinds: std::collections::BTreeSet::from([1u32, 6u32]),
+                })
                 .unwrap();
             cmd_tx
                 .send(ActorCommand::CloseAuthor { pubkey: pk.clone() })

@@ -271,6 +271,17 @@ pub enum ActorCommand {
     },
     OpenAuthor {
         pubkey: String,
+        /// Host-declared Nostr kinds to include in the author-notes REQ filter.
+        ///
+        /// `nmp-core` carries these as opaque filter data only — no social-kind
+        /// knowledge lives in the substrate. The host (nmp-ffi or an ActionModule)
+        /// supplies the value; mirrors the identical `kinds` field on `OpenThread`
+        /// and `OpenContactListSubscription` (D0-clean precedents).
+        ///
+        /// V-68 Stage 2 (author-half): the C-ABI symbol `nmp_app_open_author` is
+        /// UNCHANGED — the shim (`nmp-ffi`) injects `{1, 6}` Rust-side exactly as
+        /// `nmp_app_open_thread` already does for the thread-reply path.
+        kinds: std::collections::BTreeSet<u32>,
     },
     OpenThread {
         event_id: String,

@@ -243,7 +243,7 @@ fn author_view_is_only_if_absent_claimed_wins() {
     inject_note(&mut kernel, &keys, "author's own note");
     // Claim it (highest precedence) and open its author view (second).
     let _ = kernel.claim_profile(pk.clone(), "view-0".to_string(), true);
-    let _ = kernel.open_author(pk.clone(), false);
+    let _ = kernel.open_author(pk.clone(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snapshot = kernel.make_update_value_for_test(true);
 
@@ -296,7 +296,7 @@ fn author_view_profile_fills_gap_when_unclaimed_and_unmentioned() {
         "author@nip05.example",
     );
     // Open the author view but do NOT claim — tier 1 stays empty for `pk`.
-    let _ = kernel.open_author(pk.clone(), false);
+    let _ = kernel.open_author(pk.clone(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snapshot = kernel.make_update_value_for_test(true);
 

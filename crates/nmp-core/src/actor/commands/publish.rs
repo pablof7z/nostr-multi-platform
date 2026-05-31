@@ -804,12 +804,19 @@ pub(crate) fn open_contact_list_sub(
             // interests so drain_lifecycle_tick emits REQ frames for the follow
             // set on the next idle tick. `set_follow_feed_kinds` already calls
             // `register_follow_feed_for_active_account` internally.
+            // D0: clone kinds before moving into set_follow_feed_kinds so we
+            // can reuse the same host-declared set for the author-note filter.
+            let author_kinds = kinds.clone();
             kernel.set_follow_feed_kinds(kinds);
 
             // M1 path: keep profile open (open_author) during the T140 transition
             // window. Step C will evaluate whether open_author is still needed
             // post-M2 or can be removed.
-            kernel.open_author(pk, relays_ready)
+            //
+            // D0: reuse the host-declared `kinds` the caller already supplied
+            // (the follow-feed kind set) for the author-note filter — the host
+            // wants the same content kinds for both paths at this call site.
+            kernel.open_author(pk, author_kinds, relays_ready)
         }
         None => toast_no_account(kernel, "open timeline", None),
     }

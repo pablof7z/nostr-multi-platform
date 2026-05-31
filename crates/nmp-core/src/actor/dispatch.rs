@@ -488,8 +488,8 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::OpenAuthor { pubkey } => {
-            let outbound = ctx.kernel.open_author(pubkey, ctx.relays_ready);
+        ActorCommand::OpenAuthor { pubkey, kinds } => {
+            let outbound = ctx.kernel.open_author(pubkey, kinds, ctx.relays_ready);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }

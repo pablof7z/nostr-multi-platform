@@ -505,6 +505,7 @@ fn nip42_kernel_view_open_reqs_routed_through_auth_gate() {
     // profile REQs to the Indexer).
     let outbound = kernel.open_author(
         "1234567812345678123456781234567812345678123456781234567812345678".to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
         true,
     );
     let post_partition = kernel.partition_auth_paused(outbound);

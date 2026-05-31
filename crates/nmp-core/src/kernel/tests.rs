@@ -7,7 +7,11 @@ use crate::store::InsertOutcome;
 fn open_author_emits_profile_and_note_reqs() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
 
-    let requests = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
+    let requests = kernel.open_author(
+        FIATJAF_PUBKEY.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        true,
+    );
 
     // T105 + V-50: cold-start (no cached kind:10002 for FIATJAF). With the
     // router's lane 6 (Indexer always-on for discovery kinds) wired,
@@ -18,7 +22,7 @@ fn open_author_emits_profile_and_note_reqs() {
     // BOOTSTRAP_DISCOVERY_RELAYS seed. Net frames:
     //   * author-relays (kind:10002) → 1 seed (indexer) × 1 = 1
     //   * author-profile (kind:0)    → 1 seed (indexer) × 1 = 1
-    //   * author-notes (kind:1,6)    → 2 seeds × 1 = 2
+    //   * author-notes (kinds host-supplied) → 2 seeds × 1 = 2
     // = 4 total (was 6 pre-V-50; the kind:0/kind:10002 leak onto the
     // content seed was already a known concern — see BootstrapSeed::
     // IndexerOnly module docs in mailboxes.rs).
@@ -80,7 +84,11 @@ fn open_author_with_cached_nip65_routes_notes_to_resolved_write_relays() {
         vec![],
     );
 
-    let requests = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
+    let requests = kernel.open_author(
+        FIATJAF_PUBKEY.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        true,
+    );
     let notes: Vec<_> = requests
         .iter()
         .filter(|r| r.text.contains("\"kinds\":[1,6]"))
@@ -182,8 +190,16 @@ fn open_thread_emits_context_and_reply_reqs() {
 #[test]
 fn close_author_refcounts_and_closes_view_subscriptions() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
-    let _ = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
-    let _ = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
+    let _ = kernel.open_author(
+        FIATJAF_PUBKEY.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        true,
+    );
+    let _ = kernel.open_author(
+        FIATJAF_PUBKEY.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        true,
+    );
 
     // Precondition: opening the author actually seeded live wire-subs.
     // Without this the eviction assertion below would be vacuous.
@@ -428,6 +444,176 @@ fn v68_deferred_relay_path_reads_stored_kinds() {
     assert!(
         !kernel.thread_view.request_pending,
         "V-68-T3: request_pending must be false after drain"
+    );
+}
+
+// ── V-68 Stage 2 author-half: externalize author-note kinds to host ──────────
+//
+// Three tests mirror the thread-half above (T1/T2/T3):
+//   A1. Default behavior preserved — {1, 6} still appears in the REQ filter.
+//   A2. Kernel is kind-agnostic    — {30023} (long-form) works instead of {1,6}.
+//   A3. Deferred-relay path correct — kinds stored before `can_send` branch;
+//       the deferred drain reads them from state (not a dropped parameter).
+//
+// The sentinel-kind tests (A2/A3 with {30023}) are the load-bearing proof
+// that the literal `[1, 6]` is gone from nmp-core and the value flows from
+// the command through the stored `note_kinds` field. A test using {1,6}
+// would still pass even if the code re-hardcoded [1,6] downstream.
+
+/// V-68-A1: `open_author` with kinds {1,6} produces an author-notes REQ
+/// carrying `"kinds":[1,6]`. Verifies behavior is preserved after the
+/// externalization.
+#[test]
+fn v68_author_note_req_carries_host_supplied_kinds_1_6() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+
+    let requests = kernel.open_author(
+        FIATJAF_PUBKEY.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        true,
+    );
+
+    let notes: Vec<_> = requests
+        .iter()
+        .filter(|r| r.text.contains("\"author-notes-"))
+        .collect();
+    assert!(
+        !notes.is_empty(),
+        "V-68-A1: open_author must emit at least one author-notes REQ; got {requests:?}"
+    );
+    for req in &notes {
+        assert!(
+            req.text.contains("\"kinds\":[1,6]"),
+            "V-68-A1: author-notes REQ must carry host-supplied kinds [1,6]; got {}",
+            req.text
+        );
+    }
+}
+
+/// V-68-A2: sentinel-kind test — `open_author` with kinds {30023} (long-form)
+/// produces an author-notes REQ carrying `"kinds":[30023]`.
+///
+/// This is the discriminating proof that `[1, 6]` is NOT hardcoded in nmp-core.
+/// The test would FAIL if any code path still emits a literal `[1, 6]`, because
+/// the sentinel kind is different enough that a hardcoded fallback would
+/// produce the wrong filter.
+#[test]
+fn v68_author_note_req_carries_sentinel_kind_not_hardcoded() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+
+    let requests = kernel.open_author(
+        FIATJAF_PUBKEY.to_string(),
+        // Long-form kind — deliberately NOT {1, 6} to prove kind-agnosticism.
+        std::collections::BTreeSet::from([30023u32]),
+        true,
+    );
+
+    let notes: Vec<_> = requests
+        .iter()
+        .filter(|r| r.text.contains("\"author-notes-"))
+        .collect();
+    assert!(
+        !notes.is_empty(),
+        "V-68-A2: open_author must emit at least one author-notes REQ; got {requests:?}"
+    );
+    for req in &notes {
+        assert!(
+            req.text.contains("\"kinds\":[30023]"),
+            "V-68-A2: author-notes REQ must carry sentinel kind 30023 (not hardcoded [1,6]); got {}",
+            req.text
+        );
+        assert!(
+            !req.text.contains("\"kinds\":[1,6]"),
+            "V-68-A2: author-notes REQ MUST NOT contain hardcoded [1,6]; got {}",
+            req.text
+        );
+    }
+}
+
+/// V-68-A4: empty author-note kinds emit NO author-notes REQ (no malformed
+/// `"kinds":[]` filter on the wire). Guards the `retarget_timeline` path where
+/// `follow_feed_kinds` can be empty before the host opens the timeline.
+#[test]
+fn v68_author_empty_kinds_emits_no_notes_req() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+
+    let requests = kernel.open_author(
+        FIATJAF_PUBKEY.to_string(),
+        std::collections::BTreeSet::new(),
+        true,
+    );
+
+    let notes: Vec<_> = requests
+        .iter()
+        .filter(|r| r.text.contains("\"author-notes-"))
+        .collect();
+    assert!(
+        notes.is_empty(),
+        "V-68-A4: empty note_kinds must emit NO author-notes REQ (no \"kinds\":[] on the wire); got {notes:?}"
+    );
+    for req in &requests {
+        assert!(
+            !req.text.contains("\"kinds\":[]"),
+            "V-68-A4: no REQ may carry an empty kinds filter; got {}",
+            req.text
+        );
+    }
+}
+
+/// V-68-A3: deferred-relay path stores author-note kinds.
+///
+/// When `can_send=false` the request is queued (`request_pending=true`,
+/// no REQ emitted). Firing `author_requests()` on a later tick (the
+/// relay-ready drain via `pending_view_requests`) must still produce an
+/// author-notes REQ carrying the stored sentinel kinds — proving they
+/// survive in `note_kinds`, not as a dropped function parameter.
+#[test]
+fn v68_author_deferred_relay_path_reads_stored_kinds() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+
+    // Step 1: open with can_send=false — no REQs emitted yet.
+    let immediate = kernel.open_author(
+        FIATJAF_PUBKEY.to_string(),
+        // Sentinel kind to prove the value is stored/read, not hardcoded.
+        std::collections::BTreeSet::from([30023u32]),
+        false,
+    );
+    assert!(
+        immediate.is_empty(),
+        "V-68-A3: can_send=false must emit no REQs immediately; got {immediate:?}"
+    );
+    assert!(
+        kernel.author_view.request_pending,
+        "V-68-A3: request_pending must be true after deferred open"
+    );
+
+    // Step 2: relay becomes available — drain via `author_requests`,
+    // the same path `pending_view_requests` uses when `request_pending=true`.
+    let deferred = kernel.author_requests();
+
+    let note_reqs: Vec<&OutboundMessage> = deferred
+        .iter()
+        .filter(|r| r.text.contains("\"author-notes-"))
+        .collect();
+    assert!(
+        !note_reqs.is_empty(),
+        "V-68-A3: deferred drain must emit at least one author-notes REQ; got {deferred:?}"
+    );
+    for req in &note_reqs {
+        assert!(
+            req.text.contains("\"kinds\":[30023]"),
+            "V-68-A3: deferred author-notes REQ must carry stored sentinel kind 30023; got {}",
+            req.text
+        );
+        assert!(
+            !req.text.contains("\"kinds\":[1,6]"),
+            "V-68-A3: deferred author-notes REQ MUST NOT contain hardcoded [1,6]; got {}",
+            req.text
+        );
+    }
+    assert!(
+        !kernel.author_view.request_pending,
+        "V-68-A3: request_pending must be false after drain"
     );
 }
 
