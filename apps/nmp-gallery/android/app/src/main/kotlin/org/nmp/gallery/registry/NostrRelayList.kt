@@ -22,8 +22,6 @@ import androidx.compose.ui.unit.dp
 data class NostrRelayEditRow(
     val url: String,
     val role: String,
-    val roleLabel: String,
-    val roleTint: String,
 )
 
 @Composable
@@ -70,7 +68,7 @@ private fun RelayRow(relay: NostrRelayEditRow, status: String?) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        RoleBadge(label = relay.roleLabel, tint = relay.roleTint)
+        RoleBadge(label = roleLabel(relay.role), tint = roleTint(relay.role))
     }
 }
 
@@ -101,4 +99,17 @@ private fun statusColor(status: String?): Color = when (status) {
     "connecting" -> Color(0xFFF59E0B)
     "error" -> Color(0xFFEF4444)
     else -> Color(0xFF6B7280)
+}
+
+private fun roleLabel(role: String): String = when {
+    "both" in role && "indexer" in role -> "Both + Indexer"
+    "indexer" in role -> "Indexer"
+    "both" in role -> "Both"
+    else -> role.replaceFirstChar { it.uppercaseChar() }
+}
+
+private fun roleTint(role: String): String = when {
+    "both" in role -> "success"
+    "indexer" in role -> "info"
+    else -> "accent"
 }
