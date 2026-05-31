@@ -12,6 +12,9 @@ description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailb
 # `UnsignedEvent` / `ActionModule` types the absorbed
 # `nmp.nip65.publish_relay_list` action module depends on.
 nmp-core = { path = "../nmp-core" }
+# Layer-0 kind-constant registry — re-exports KIND_BLOCKED_RELAYS
+# so this crate no longer duplicates that value (V-57).
+nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
 tracing = "0.1"
 

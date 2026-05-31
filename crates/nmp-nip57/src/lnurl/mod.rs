@@ -78,6 +78,7 @@ use nmp_core::substrate::{
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
 };
 use nmp_core::ActorCommand;
+use nmp_kinds::KIND_ZAP_RECEIPT;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
 pub use pay::{looks_like_bolt11, lnurl_to_well_known_url, url_encode_query, url_to_bech32_lnurl};
@@ -368,12 +369,6 @@ pub(crate) fn inject_lnurl_tag(lnurl_or_address: &str, unsigned: &mut UnsignedEv
     };
     unsigned.tags.push(vec!["lnurl".to_string(), bech32_lnurl]);
 }
-
-/// NIP-57 kind:9735 zap receipt — the kind the LN provider mints after
-/// the invoice settles. We use it as the synthetic publish-direction
-/// kind when asking the router "where would the recipient publish a
-/// receipt under their own authorship?" (== their NIP-65 write set).
-const KIND_ZAP_RECEIPT: u32 = 9735;
 
 fn has_filled_relays_row(tags: &[Vec<String>]) -> bool {
     tags.iter()

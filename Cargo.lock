@@ -4677,6 +4677,7 @@ name = "nmp-nip17"
 version = "0.2.0"
 dependencies = [
  "nmp-core",
+ "nmp-kinds",
  "nmp-nip59",
  "nmp-signer-iface",
  "nostr",
@@ -4740,6 +4741,7 @@ name = "nmp-nip51"
 version = "0.2.0"
 dependencies = [
  "nmp-core",
+ "nmp-kinds",
  "nmp-nip01",
  "nmp-threading",
  "serde",
@@ -4753,6 +4755,7 @@ dependencies = [
  "bech32",
  "nmp-core",
  "nmp-ffi",
+ "nmp-kinds",
  "nmp-nip47",
  "nostr",
  "serde",
@@ -4841,6 +4844,7 @@ name = "nmp-router"
 version = "0.2.0"
 dependencies = [
  "nmp-core",
+ "nmp-kinds",
  "serde",
  "serde_json",
  "tracing",

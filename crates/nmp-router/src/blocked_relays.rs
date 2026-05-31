@@ -52,9 +52,7 @@ use std::sync::RwLock;
 
 use nmp_core::store::VerifiedEvent;
 use nmp_core::substrate::{BlockedRelayLookup, BlockedRelaySet, IngestParser};
-
-/// NIP-51 § kind:10006 (blocked relays list) kind number.
-const KIND_BLOCKED_RELAYS: u32 = 10_006;
+use nmp_kinds::KIND_BLOCKED_RELAYS;
 
 // ─── InMemoryBlockedRelayCache ──────────────────────────────────────────────
 

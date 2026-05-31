@@ -68,10 +68,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
+use nmp_kinds::KIND_MUTE_LIST;
 use serde::Serialize;
-
-/// NIP-51 public mute list kind.
-const KIND_MUTE_LIST: u32 = 10000;
 
 /// Snapshot shape — the full mute list for diagnostic / export purposes.
 #[derive(Clone, Debug, Default, Serialize)]
