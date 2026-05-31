@@ -73,10 +73,10 @@ next refactored:
 
 ### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
 
-**Verified:** `crates/nmp-core/src/actor/commands/identity.rs:700` —
-`sync_kernel_auth_signer` clears the auth signer when a remote NIP-46 signer is active
-(`kernel.clear_auth_signer()`). The broker's ephemeral key cannot sign NIP-42 challenges
-as the user's pubkey.
+**Verified:** `crates/nmp-core/src/actor/commands/identity.rs:835` —
+`sync_kernel` (formerly `sync_kernel_auth_signer`, since merged) clears the auth signer
+when a remote NIP-46 signer is active (`kernel.clear_auth_signer()`). The broker's
+ephemeral key cannot sign NIP-42 challenges as the user's pubkey.
 
 **Impact:** users authenticating via bunker (NIP-46) cannot sign NIP-42 AUTH challenges
 with their own pubkey. They can still connect to and read from relays that accept
@@ -91,16 +91,16 @@ one-shot channel. This is non-trivial broker work.
 - Stage 1 ✅ DONE: When active signer is remote and `clear_auth_signer` runs, toast
   "Relays requiring NIP-42 authentication are not supported with bunker accounts yet."
   Only fires on the transition from having auth capability to losing it (not on every
-  `sync_kernel_auth_signer` call). See `identity.rs:703-717`.
+  `sync_kernel` call). See `identity.rs:828-834`.
 - Stage 2: Broker side — expose `sign_auth_challenge(challenge, relay_url)` RPC.
-- Stage 3: `sync_kernel_auth_signer` — for remote signers, install a
+- Stage 3: `sync_kernel` — for remote signers, install a
   `AuthSignerFn`-compatible closure that drives the broker RPC synchronously.
 
 **Deadline:** Stages 2-3 are post-v1.
 
 ### V-08 · DM inbox silent failure for bunker accounts [MEDIUM · staged fix required]
 
-**Verified:** `crates/nmp-nip17/src/inbox.rs:205` — `DmInboxProjection::snapshot()` returns
+**Verified:** `crates/nmp-nip17/src/inbox.rs:222` — `DmInboxProjection::snapshot()` returns
 `DmInboxSnapshot::empty()` when `local_keys` is `None` (i.e. the active account uses a
 remote NIP-46 signer). A host cannot distinguish "no signer yet" from "remote signer
 that cannot unseal gift-wraps."
@@ -125,13 +125,21 @@ exist" — both are wrong. Silent degradation with no user-visible signal.
 ### V-12 · Production files above 500-LOC ceiling [MEDIUM · ongoing test extraction]
 
 *Production splits needed (no test section to extract; post-v1). LOC refreshed
-from the 2026-05-29 audit:*
-- `crates/nmp-core/src/kernel/mod.rs` — 2358 LOC (grew significantly)
-- `crates/nmp-core/src/actor/dispatch.rs` — 1967 LOC
-- `crates/nmp-core/src/actor/mod.rs` — 1852 LOC
-- `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs` — 1495 LOC
-- `crates/nmp-core/src/actor/commands/identity.rs` — ~1223 LOC production
-- `crates/nmp-core/src/actor/commands/publish.rs` — 816 LOC (no test section)
+2026-05-31:*
+- `crates/nmp-core/src/kernel/mod.rs` — 2510 LOC
+- `crates/nmp-ffi/src/lib.rs` — 2330 LOC (largest hand-authored file; was untracked here)
+- `crates/nmp-core/src/actor/dispatch.rs` — 2081 LOC
+- `crates/nmp-core/src/actor/mod.rs` — 2056 LOC
+- `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs` — 1666 LOC
+- `crates/nmp-core/src/actor/commands/identity.rs` — 1383 LOC
+- `crates/nmp-nip47/src/runtime.rs` — 1241 LOC (was untracked here)
+- `apps/chirp/chirp-desktop/src/app.rs` — 1130 LOC (was untracked here)
+- `crates/nmp-core/src/kernel/types.rs` — 1003 LOC (was untracked here)
+- `crates/nmp-core/src/actor/commands/publish.rs` — 823 LOC (no test section)
+
+Note: the `file-size-gate` CI job checks only files changed in a PR, so these
+legacy files are not retroactively enforced — they trip the gate only when next
+edited. ~40 further hand-authored files sit in the 500–1000 LOC band.
 
 *Removed from this list:*
 - `crates/nmp-core/src/ffi/mod.rs` — no longer exists; migrated to `nmp-ffi`.
@@ -179,11 +187,15 @@ total; the full kernel link far exceeds that.
 `unwrap_gift_wrap(envelope_json: &str, local_nsec: &str) -> Result<String, String>`.
 No actor, no storage, no relay code. Target: ~2 MB static lib.
 
-### V-49 · F-05 codegen coverage is ~20% (9/45 structs as of 2026-05-29 audit) — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
+### V-49 · F-05 codegen coverage is ~17% — "v1 QUALITY" label is misleading [MEDIUM · clarity fix]
 
-**Evidence (code-grounded):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
-— 258 LOC, 8 generated structs. `ios/Chirp/Chirp/Bridge/KernelBridge.swift` — 1,895 LOC,
-~40 handwritten `Decodable` structs. Coverage: 8/48 ≈ 17%. The remaining 40 are exactly
+**Evidence (code-grounded, 2026-05-31):** `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
+— 262 LOC, 8 flat-record structs + 1 `SnapshotProjections` wrapper (9 generated types).
+`ios/Chirp/Chirp/Bridge/KernelBridge.swift` — 1,900 LOC, ~36 handwritten `Decodable` structs
+(plus ~8 more in `TimelineBlock.swift`). Coverage: 9 generated / ~52 total ≈ 17%. (The
+four other `Generated/*.swift` files — ContentTree, FeedWindow, NmpUpdate, OpFeedSnapshot,
+TimelineSnapshot — are FlatBuffers `flatc` output, a separate pipeline, not the
+`nmp-codegen` Swift emitter.) The remaining ~43 are exactly
 the types that change most often (snapshot payload, multi-state enums, projection clusters)
 and benefit most from codegen. They're all blocked on tagged-enum support + `legacy_default`
 override + per-field Swift-type overrides — each a separate architectural step.
@@ -304,7 +316,7 @@ exists, do not claim full zeroization for local-key accounts.
 
 ### V-73 · `register.rs` falls back to empty `Pubkey` on null/invalid viewer_pubkey — anonymous register with no host signal [LOW · silent identity bug]
 
-**Verified:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs:114` — null or malformed `viewer_pubkey` is replaced with `Pubkey::default()` (32 zero bytes) and the register call proceeds. No error is returned to Swift.
+**Verified:** `apps/chirp/nmp-app-chirp/src/ffi/register.rs:112` — null or malformed `viewer_pubkey` is replaced with `Pubkey::default()` (an empty `String`; `Pubkey` is a `String` alias) and the register call proceeds. No error is returned to Swift.
 
 **Impact:** the iOS host believes it registered a logged-in user; the Rust side proceeds with the all-zeros pubkey as the active viewer. Personal-timeline projections, NIP-65 outbox resolution, and DM inbox filtering all run against the zero-pubkey "anonymous" identity. The user appears to be logged in to themselves but is treated as the canonical empty account by every Rust subsystem.
 
@@ -314,24 +326,24 @@ exists, do not claim full zeroization for local-key accounts.
 
 ### V-76 · `web/chirp` silently falls back to `InProcessNmpClient` on Worker construction failure [LOW · web production degradation]
 
-**Verified:** `web/chirp/src/nmp/client.ts:43-47` — Worker construction failure is caught and the client downgrades to `InProcessNmpClient`, which runs nmp-wasm on the main thread. No console warning, no telemetry, no UI signal.
+**Verified:** `web/chirp/src/nmp/client.ts:39-47` — Worker construction failure is caught and the client downgrades to `InProcessNmpClient`, which wraps a `DegradedRuntime("browser_bridge_unavailable", …)`: it does **not** run nmp-wasm at all (on the main thread or anywhere), but returns `capability_failure` for every action and sets `status: { degraded: "browser_bridge_unavailable" }` on the snapshot. The `catch` arm itself is silent (no `console.warn`, no diagnostic field).
 
-**Impact:** a user on a browser that fails to construct the Worker (CSP misconfiguration, Safari Lockdown Mode, restricted enterprise environment) sees a Chirp web app that "works" but blocks the main thread on every kernel tick. Performance is silently degraded; the diagnostic surface is empty.
+**Impact:** a user on a browser that fails to construct the Worker (CSP misconfiguration, Safari Lockdown Mode, restricted enterprise environment) gets a non-functional app — every action fails. The degraded status does surface in the `RuntimePanel` developer sidebar, but there is no user-facing banner and no warning at construction time.
 
-**Correct fix:** the catch arm must `console.warn` with the Worker error and set a `nmp.client.runtime = "in_process_fallback"` field on the diagnostic snapshot so the host can render an unobtrusive "performance-degraded mode" banner. Production builds may additionally choose to refuse the fallback and surface an error to the user.
+**Correct fix:** the catch arm must `console.warn` with the Worker error and set a `nmp.client.runtime = "in_process_fallback"` field on the diagnostic snapshot so the host can render an unobtrusive "degraded mode" banner. Production builds may additionally choose to refuse the fallback and surface an error to the user.
 
 ---
 
 ### V-78 · NIP-57 zap signing requires local keys — bunker (NIP-46) accounts cannot zap [MEDIUM · bunker feature gap]
 
-**Verified:** `crates/nmp-nip57/src/lnurl/mod.rs:195-211` — `ZapAction::execute` short-circuits with a toast (`"zap requires a local-keys account; bunker signing for kind:9734 is not yet implemented (ADR-0026 Phase 2 follow-up)"`) when `ctx.active_local_keys()` returns `None`. This is the same ADR-0026 Phase 1 cutline as V-08 (DM unwrap) and V-06 (NIP-42 AUTH), but a separate code path — the broker has no `sign_zap_request(kind:22242→9734)` RPC and the actor thread has no sync-compatible adapter for it.
+**Verified:** `crates/nmp-nip57/src/lnurl/mod.rs:199-211` — the zap executor (`Executor::run`; `ZapAction` itself lives in `crates/nmp-nip57/src/action.rs`) short-circuits with a toast (`"zap requires a local-keys account; bunker signing for kind:9734 is not yet implemented (ADR-0026 Phase 2 follow-up)"`) when `ctx.active_local_keys()` returns `None`. This is the same ADR-0026 Phase 1 cutline as V-08 (DM unwrap) and V-06 (NIP-42 AUTH), but a separate code path — the broker has no `sign_zap_request(kind:22242→9734)` RPC and the actor thread has no sync-compatible adapter for it.
 
 **Impact:** users authenticated via bunker can read zaps (kind:9735 receipts decode without keys) but cannot send a zap. The failure is non-silent (toast fires) so this is not a silent-fail violation, but it is a v1-A feature gap that is currently invisible from the BACKLOG. V-08 covers DMs and V-06 covers AUTH; zaps were missing as a tracked sibling.
 
 **Staged fix plan:**
 - Stage 1: surface the bunker-zap gap in onboarding / zap UI before the user attempts a zap (currently they only learn at zap time via toast).
 - Stage 2: broker side — expose `sign_zap_request(unsigned_kind_9734)` RPC. Companion to V-06 Stage 2 (the broker is the same target; both bunker-sign paths land in the same RPC table).
-- Stage 3: `ZapAction::execute` — when `active_local_keys()` is `None`, drive the broker RPC synchronously through the same one-shot channel pattern as V-06.
+- Stage 3: the zap executor (`lnurl/mod.rs` `Executor::run`) — when `active_local_keys()` is `None`, drive the broker RPC synchronously through the same one-shot channel pattern as V-06.
 
 **Deadline:** Stages 2-3 are post-v1. Either this is fixed or v1 copy drops "send zaps" as a v1 capability for bunker accounts.
 
@@ -537,34 +549,21 @@ windowing, feed cursor) but are exported from a protocol crate. "Timeline" and
 `crates/nmp-social-feed/` crate. The protocol crate retains only the raw event
 data types.
 
-### V-108 · `ChirpTests/NoteContentRenderingTests.swift` references removed `noteContentGroups`/old `.inline` API — whole ChirpTests target fails to compile [MEDIUM · test rot · ChirpTests not CI-gated]
+### V-108 · `ChirpTests` is not CI-gated — Swift unit-test rot goes undetected [LOW · CI coverage gap]
 
-**Verified:** `ios/Chirp/ChirpTests/NoteContentRenderingTests.swift` calls
-`noteContentGroups(tree)` (`:36`) and asserts against `ContentGroup.inline([1,2,3])`
-plus an `embedDepth:` argument (`:75`). None of those symbols exist in the app
-target anymore: commit `98dcd313` ("refactor(ios/chirp): align Swift consumers
-with ADR-0032 raw-data doctrine") renamed the function to `nostrContentGroups`
-(`Chirp/Components/NostrContent/NostrContentGrouping.swift:36`) and changed the
-enum to `NostrContentGroup.inline(level:children:)` (`:10`). The stale test was
-never updated, so the **entire `ChirpTests` target fails to compile** with
-`Cannot find 'noteContentGroups' in scope` / `Type 'Equatable' has no member
-'inline'` / `Extra argument 'embedDepth' in call`.
+**Context:** the original V-108 (a target-wide compile failure in
+`ChirpTests/NoteContentRenderingTests.swift` from stale `noteContentGroups` / `.inline`
+API) was fixed in PR #880 (commit `7149fe5`, 2026-05-31): the test now calls
+`nostrContentGroups` with the `NostrContentGroup.inline(level:children:)` shape and the
+target compiles.
 
-**Why it survived:** `ChirpTests` is **not gated in CI** — no `.github/workflows/*`
-invokes `xcodebuild`/`-scheme Chirp`/`ChirpTests` (the iOS smoke suite runs only
-under `NMP_SMOKE=1`, and `SmokeScenariosTests` self-`XCTSkip`s otherwise). The
-break has been latent since `98dcd313`.
+**Surviving gap:** `ChirpTests` is **not gated in CI** — no `.github/workflows/*`
+invokes `xcodebuild`/`-scheme Chirp`/`ChirpTests` (the iOS smoke suite runs only under
+`NMP_SMOKE=1`, and `SmokeScenariosTests` self-`XCTSkip`s otherwise). The earlier breakage
+was latent for that reason; the same class of rot can recur silently.
 
-**Impact:** any agent running the Chirp Swift unit suite hits a target-wide compile
-failure and cannot run *any* ChirpTests class (e.g. the new
-`ProfileNameFallbackTests`) without first neutralizing this file locally.
-
-**Correct fix:** re-derive the assertions under the new `nostrContentGroups` /
-`NostrContentGroup.inline(level:children:)` semantics (group count + `level`
-values changed; do NOT mechanically swap names — the old `groups.count == 2` /
-`.inline([1,2,3])` expectations encode the pre-98dcd313 grouping and would be a
-compiling-but-wrong test). Separately, decide whether `ChirpTests` should be
-CI-gated so this class of rot is caught at the PR boundary rather than latently.
+**Correct fix:** add a CI job that compiles and runs `ChirpTests` (at least on macOS
+runners) so Swift unit-test rot is caught at the PR boundary rather than latently.
 
 ---
 
@@ -618,45 +617,26 @@ projection (no D5 shell parsing), handshake-gated sign-in (via the existing
 read off the pushed frame. None of V-37's three affordances need to be built (see
 ADR-0039 §3). The **podcast-player** is the live candidate — to be built on the push
 seam (deleting its current bespoke `nmp_app_podcast_snapshot` pull symbol + 500 ms
-poll). History of the deletion-closure retained below.
+poll).
 
-
-**Original closure (PR #377 — merged 2026-05-23):** `apps/notes/` is a minimal NIP-01 note
-client, 299 LOC Swift, 25 LOC Rust, zero new C-ABI protocol symbols. Closed as "confirmed."
-
-**Re-opened (Opus direction review #13 — 2026-05-24):** Code-grounded inspection of the
-artifact found it does NOT use the framework's defining properties:
-
-- `NotesBridge.swift:74` calls `nmp_app_register_raw_event_observer` with a kind:1 filter
-  only — this is a raw event *tap* (every ingested kind:1 fans out regardless of author).
-  D3 outbox routing is bypassed entirely; `KindFilter` (`raw_event_observer.rs:92`) has no
-  author dimension.
-- `NoteModel.swift:14` parses the NIP-01 event JSON in Swift (`JSONSerialization →
-  [String: Any]`). The first anti-pattern (D5: never parse protocol data in the shell).
-- `NotesBridge.swift:84` orders the timeline in Swift (insertion-order keyed off arrival,
-  not `created_at`). The kernel owns no timeline view for this app.
-- `TimelineView.swift:30, 36–38` formats timestamps + shortens pubkeys in Swift.
-- `NotesBridge.swift:36–37` sets `isSignedIn = true` synchronously with no handshake-
-  success gate.
-
-**Resolution (user decision 2026-05-28):** `apps/notes/` deleted, along with the
-superseded read-only spike `apps/longform/`. The framework thesis remains **unproven**
-for stateful non-social apps — the substrate does not yet expose the three affordances
-required (`NmpSnapshotProjector` context pointer, generic `nmp_app_get_snapshot` pull
-path, `LogicalInterest::FollowSetKind1` or equivalent). PD-033-A is closed with the
-explicit acknowledgement that the framework is not yet expressive enough to host an
-honest second app. The thesis may be revisited when V-37 (snapshot output seam for
-non-Chirp apps) and V-45 (`LogicalInterest` follow-set variant) land.
+**Status:** the thesis is **unblocked but not yet demonstrated** — no second app has
+been built against the push seam. The earlier read-only/notes spikes (`apps/notes/`,
+`apps/longform/`) were deleted on 2026-05-28; ADR-0039 (2026-05-29) then established that
+the push projection seam already satisfies the second-app properties, so no new substrate
+affordances are required. The open work is to build the podcast player (or another
+stateful non-social app) on the seam and confirm the thesis holds. See ADR-0039 for the
+durable rationale.
 
 ### PD-039 · Bespoke FFI deprecation calendar (D11 expansion) — DECISION MADE 2026-05-23
 
-**Decision settled (this PR):** the bespoke `nmp_app_*` C-ABI surface in
-`crates/nmp-core/src/ffi/` is sorted into four categories. The calendar fixes
+**Decision settled (this PR):** the bespoke `nmp_app_*` C-ABI surface (since extracted
+to `crates/nmp-ffi/src/`) is sorted into four categories. The calendar fixes
 which symbols are migration debt vs. permanent by doctrine, the migration
 cadence, and the doctrine reviewers apply to new additions. Companion to v1
 exit criterion #7 in [`docs/plan.md`](plan.md#v1-exit--what-has-to-be-true-to-ship).
 
-**Inventory on 2026-05-23 (HEAD `4fd656dd`, 48 symbols total):** 1 canonical
+**Inventory on 2026-05-23 (HEAD `4fd656dd`, 48 symbols total; 54 today — the +6 net
+additions need re-classification):** 1 canonical
 (`nmp_app_dispatch_action`); 1 already a thin shim over `dispatch_action`
 (`nmp_app_wallet_pay_invoice`); 26 structural permanent under Theme A
 (lifecycle / callbacks / capability sockets / observer + projection
@@ -844,9 +824,11 @@ NWC `pay_invoice` fires → kind:9735 receipt ingested and reflected in `nmp.nip
 
 ### F-05 · nmp-codegen Swift Decodables pilot [V1 QUALITY]
 
-`crates/nmp-codegen` (1,212 LOC) has a working `generate_modules` CLI. `KernelBridge.swift`
-was 1,988 LOC of handwritten counterpart types — a maintenance surface that diverges on every
-snapshot field change.
+`crates/nmp-codegen` has a working `generate_modules` CLI plus a Swift `Decodable` emitter.
+`KernelBridge.swift` is 1,900 LOC, of which the `Decodable` block (~36 hand-written types)
+is the codegen target — a maintenance surface that diverges on every snapshot field change.
+The top ~740 LOC (the `KernelHandle` C-ABI/dispatch/lifecycle glue) is permanent and is not a
+codegen target.
 
 **Remaining Stage 3 work (all blocked on emitter extensions):**
 
@@ -866,7 +848,7 @@ snapshot field change.
 
 These are each their own architectural step and merit separate PRs.
 
-**Coverage note (V-49):** 8 generated structs / ~48 total Decodables = ~17% coverage.
+**Coverage note (V-49):** 9 generated types / ~52 total Decodables ≈ 17% coverage.
 The "v1 QUALITY" label applies to Stage 1+2+3-partial; Stage 3 remainder (tagged enums,
 legacy_default, full sweep) is effectively post-v1. Consider renaming to "F-05a (DONE) /
 F-05b (post-v1)" so the v1 claim is scoped accurately.
