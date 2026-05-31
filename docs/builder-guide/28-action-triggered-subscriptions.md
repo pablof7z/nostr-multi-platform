@@ -1,0 +1,396 @@
+# 28 — Action-triggered subscriptions
+
+> **Status: SHIPS** · Audience: both · Read after
+> [05a — Substrate traits](05a-substrate-traits.md) and
+> [07 — Subscription planner](07-subscription-planner.md).
+
+This chapter closes the gap that sent the podcast-player app to
+`dispatch_capability("nostr_relay", …)` and a Swift `URLSessionWebSocketTask`.
+The problem was not a missing API. The problem was a missing recipe.
+
+## The gap and why it matters
+
+`ActionModule::execute` dispatches `ActorCommand`s. The kernel opens Nostr
+subscriptions in response to `LogicalInterest`s pushed into the
+`InterestRegistry`. Those two facts look disconnected, but **`execute` can
+dispatch `ActorCommand::EnsureInterest` directly** — the seam already exists.
+What did not exist was a documented, idiomatic path for the pattern
+"user taps something → kernel starts fetching matching events → events appear
+in a projection the shell reads."
+
+The canonical live reference is
+`crates/nmp-nip01/src/visible_relations.rs` (reaction/reply relations on a
+note card). The illustrative non-kind-1 example is
+`crates/nmp-app-template/src/topic_articles.rs` (NIP-23 long-form articles
+by topic). Both are fully operational; this chapter explains the pattern they
+share.
+
+## The three moving parts
+
+Every action-triggered subscription wires three things together at **init
+time** — before any action is dispatched, before `nmp_app_start`:
+
+```
+register_event_observer   ←── fires for every ingested event on the actor thread
+register_snapshot_projection ←── reads the observer's state on every tick
+register_action           ←── dispatches EnsureInterest / DropInterestOwner
+```
+
+The action opens (or closes) the subscription. The observer catches arriving
+events and populates an `Arc<Mutex<AppState>>`. The projection reads that
+state and emits a JSON slice the shell sees on the next pushed frame. Nothing
+is polling. Nothing is in the shell.
+
+## The action module: Claim/Release
+
+The action has two variants — claim (open) and release (close) — tagged in one
+enum under one namespace. They live in the same module because both must derive
+the same `SubIdentity` from the same inputs: a derivation mismatch (drop the
+wrong owner) causes a subscription to leak forever.
+
+```rust
+// crates/nmp-app-template/src/topic_articles.rs
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case", tag = "op")]
+pub enum TopicArticlesAction {
+    Claim   { topic: String, consumer_id: String },
+    Release { topic: String, consumer_id: String },
+}
+
+impl ActionModule for TopicArticlesModule {
+    const NAMESPACE: &'static str = "nmp.app.topic_articles";
+    type Action = TopicArticlesAction;
+
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        match action {
+            TopicArticlesAction::Claim { ref topic, ref consumer_id } => {
+                send(ActorCommand::EnsureInterest {
+                    identity: topic_articles_identity(topic, consumer_id),
+                    interest: topic_articles_interest(topic),
+                });
+            }
+            TopicArticlesAction::Release { ref topic, ref consumer_id } => {
+                send(ActorCommand::DropInterestOwner(
+                    topic_articles_identity(topic, consumer_id),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+```
+
+Shell dispatch JSON:
+
+```json
+{"namespace":"nmp.app.topic_articles","action":{"op":"claim","topic":"bitcoin","consumer_id":"discover-view"}}
+{"namespace":"nmp.app.topic_articles","action":{"op":"release","topic":"bitcoin","consumer_id":"discover-view"}}
+```
+
+## The SubIdentity triple
+
+`ActorCommand::EnsureInterest` and `DropInterestOwner` both take a
+`SubIdentity` (`crates/nmp-core/src/subs/sub_key.rs:127`). The triple is:
+
+- **`SubOwnerKey`** — who holds the refcount. One per view instance / call
+  site. Multiple owners may attach to the same slot; the registry keeps one REQ
+  alive while any owner is attached and GCs the slot when the last drops
+  (`registry.rs:103`).
+
+- **`SubKey`** — what slot. Derived from the subscription's logical identity
+  (kind + filter discriminant). All owners of the same data share one `SubKey`
+  → one REQ on the wire.
+
+- **`SubScope`** — account context. `Global` for content not tied to a
+  specific account; `Account(pubkey)` for inbox-style subscriptions scoped to
+  one identity.
+
+Derive both with namespaced hashes so keys from different modules never
+collide:
+
+```rust
+// crates/nmp-app-template/src/topic_articles.rs
+pub fn topic_articles_identity(topic: &str, consumer_id: &str) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new((TOPIC_ARTICLES_NAMESPACE, "owner", topic, consumer_id)),
+        SubKey::builder(TOPIC_ARTICLES_NAMESPACE).with(topic).finish(),
+        SubScope::Global,
+    )
+}
+```
+
+The pattern: `SubOwnerKey` folds in `consumer_id` (owner-unique);
+`SubKey` folds in only the content discriminant (owner-shared).
+`visible_note_relations_identity` in `nmp-nip01/src/visible_relations.rs:113`
+is the production reference.
+
+## Building the LogicalInterest
+
+Use `ViewDependencies::into_logical_interest`
+(`crates/nmp-core/src/substrate/view.rs:67`) — it maps your declared kinds,
+authors, tag-refs, and limit onto the planner's `InterestShape`:
+
+```rust
+// crates/nmp-app-template/src/topic_articles.rs
+pub fn topic_articles_interest(topic: &str) -> LogicalInterest {
+    let mut interest = ViewDependencies {
+        kinds: vec![KIND_LONG_FORM_ARTICLE],           // kind:30023
+        tag_refs: vec![("t".to_string(), topic.to_string())],
+        limit: Some(TOPIC_ARTICLES_LIMIT),
+        ..Default::default()
+    }
+    .into_logical_interest(
+        topic_articles_interest_id(topic),
+        InterestScope::Global,
+        InterestLifecycle::Tailing,
+    );
+    interest.is_indexer_discovery = true;  // route bootstrap through search indexer
+    interest
+}
+```
+
+**`InterestLifecycle::Tailing`** keeps the subscription open; events stream
+in live. **`InterestLifecycle::OneShot`** closes the subscription after the
+first EOSE — use for one-time lookups. The registry GCs a OneShot slot
+automatically; you do not need to dispatch Release.
+
+**`is_indexer_discovery: true`** tells the planner to route the initial
+bootstrap through the configured search indexer. Use it for sparse content
+kinds (long-form articles, classifieds, wiki pages) where general-purpose
+relays hold little. Leave it `false` for inbox-style subscriptions tied to
+known pubkeys.
+
+## Stable interest IDs
+
+`InterestId` is the registry's slot key at the planner level. Hash the module
+namespace plus the content discriminant — never use a random UUID:
+
+```rust
+pub fn topic_articles_interest_id(topic: &str) -> InterestId {
+    InterestId(stable_hash64((TOPIC_ARTICLES_NAMESPACE, topic)))
+}
+```
+
+Same inputs → same hash → same slot across restarts. Idempotent re-claims
+attach a new owner to the existing slot without opening a second REQ.
+
+## Ensure vs set: the silent footgun
+
+`ActorCommand::EnsureInterest` calls `InterestRegistry::ensure_sub`
+(`registry.rs:68`) — **register-if-absent**. If a slot with the same
+`(scope, key)` already exists, the call attaches the new owner but **leaves
+the existing filter unchanged**. It returns `false` and triggers no recompile.
+
+This means: if you use a static content key like `"active"` and the user
+changes the query, the second `EnsureInterest` silently discards the new
+filter. The old query stays on the wire.
+
+**Correct pattern for a query that changes:** use the query itself as the
+content discriminant. Different queries → different `SubKey`s → different slots.
+On query change, dispatch `EnsureInterest` for the new query and `Release`
+for the old one:
+
+```swift
+// Shell (Swift) — user changes discover query from "bitcoin" to "lightning"
+nmpAppDispatchAction(app, ns, #"{"op":"release","topic":"bitcoin","consumer_id":"discover-view"}"#)
+nmpAppDispatchAction(app, ns, #"{"op":"claim","topic":"lightning","consumer_id":"discover-view"}"#)
+```
+
+A `SetInterest` command that calls `set_sub` (`registry.rs:86` — replaces the
+filter in place) does not currently exist as an `ActorCommand` variant. If you
+need in-place filter mutation, that is a gap to raise — do not work around it
+by reusing a static key with `EnsureInterest`.
+
+## The event observer — populating the read model
+
+Register a `KernelEventObserver` at init time. It fires on every ingested event
+(already running before any action is dispatched), so once the subscription is
+open and matching events arrive, they flow through immediately:
+
+```rust
+// In your app's registration function, called before nmp_app_start:
+let state = Arc::new(Mutex::new(DiscoveryState::default()));
+
+let state_obs = state.clone();
+app.register_event_observer(Arc::new(ArticleObserver { state: state_obs }));
+
+// Observer impl — cheap, must not panic (D6):
+impl KernelEventObserver for ArticleObserver {
+    fn on_kernel_event(&self, event: &KernelEvent) {
+        if event.kind == KIND_LONG_FORM_ARTICLE {
+            if let Ok(mut s) = self.state.lock() {
+                s.ingest(event);
+            }
+        }
+    }
+}
+```
+
+The observer fires synchronously on the actor thread. Keep it fast:
+no I/O, no blocking, no panics. All observers see all events regardless of
+which subscription caused the delivery — filter by `event.kind`, author,
+tags, or whatever the read model needs. This is cheaper than per-subscription
+fan-out routing and keeps the pipeline O(registered observers).
+
+## The snapshot projection — delivering to the shell
+
+Register a closure that reads from the same `Arc<Mutex<AppState>>` and emits
+JSON. The closure runs on every snapshot tick after any ingest:
+
+```rust
+let state_snap = state.clone();
+app.register_snapshot_projection("myapp.discover_results", move || {
+    state_snap
+        .lock()
+        .map(|s| serde_json::to_value(&*s).unwrap_or_default())
+        .unwrap_or_default()
+});
+```
+
+The shell reads `projections["myapp.discover_results"]` off the pushed
+`SnapshotFrame` in its `apply()` callback. No polling. Edge-triggered by the
+actor's `changed_since_emit` flag whenever an event lands. See
+[06 — Reactivity contract](06-reactivity-contract.md) and
+[ADR-0039](../decisions/0039-push-projection-seam-canonical.md).
+
+## Registration order
+
+```rust
+// App init (before nmp_app_start):
+let state = Arc::new(Mutex::new(DiscoveryState::default()));
+
+// 1. Observer always first — must be live before any event arrives.
+app.register_event_observer(Arc::new(ArticleObserver { state: state.clone() }));
+
+// 2. Projection — reads the observer's state.
+app.register_snapshot_projection("myapp.discover_results", {
+    let s = state.clone();
+    move || serde_json::to_value(&*s.lock().unwrap()).unwrap_or_default()
+});
+
+// 3. Action module — the shell can now dispatch Claim/Release.
+app.register_action::<TopicArticlesModule>();
+
+// 4. (optional) Call register_defaults if you want the standard NIP stack.
+nmp_app_template::register_defaults(&mut app);
+```
+
+The observer registration does not need to happen before the action
+registration — both are consulted only when the actor processes a command or
+an event, which is after `nmp_app_start`. The constraint is simply that all
+registrations run before `nmp_app_start`.
+
+## Multi-owner refcounting in practice
+
+Two views may independently claim the same topic. The registry keeps one slot
+and one REQ:
+
+```
+View A: Claim { topic: "bitcoin", consumer_id: "feed-column" }
+  → SubOwnerKey = hash(NAMESPACE, "owner", "bitcoin", "feed-column")
+  → SubKey      = hash(NAMESPACE, "bitcoin")
+  → registry: slot (Global, key) created, owners = { "feed-column" }
+
+View B: Claim { topic: "bitcoin", consumer_id: "sidebar" }
+  → SubOwnerKey = hash(NAMESPACE, "owner", "bitcoin", "sidebar")
+  → SubKey      = hash(NAMESPACE, "bitcoin")          ← same slot
+  → registry: owners = { "feed-column", "sidebar" }, one REQ
+
+View A closes: Release { topic: "bitcoin", consumer_id: "feed-column" }
+  → drop_owner("feed-column")
+  → owners = { "sidebar" }  → slot survives, REQ stays open
+
+View B closes: Release { topic: "bitcoin", consumer_id: "sidebar" }
+  → drop_owner("sidebar")
+  → owners = {}  → slot GC'd, CLOSE sent to relay
+```
+
+This is the `ensure_sub` / `drop_owner` contract in
+`crates/nmp-core/src/subs/registry.rs:68-120`.
+
+## `is_async_completing` for this pattern
+
+Subscription-opening actions are **synchronously completing** —
+`is_async_completing()` defaults to `false` and that default is correct here.
+`execute()` enqueues `EnsureInterest` and returns `Ok`. The host spinner clears
+immediately. The ongoing event flow is entirely separate from the action's
+completion signal.
+
+`is_async_completing() = true` applies only when the kernel must wait for a
+specific terminal event before it can declare success (e.g. a NWC payment
+confirmation). For a tailing subscription that streams events indefinitely,
+there is no terminal — do not set the flag. See
+[05a](05a-substrate-traits.md) §ActionModule for the full stage machinery.
+
+## What NOT to do — the `dispatch_capability` trap
+
+```swift
+// BAD: relay logic in the shell (D0 / D4 violation)
+let result = nmpAppDispatchCapability(app, #"""
+    {"namespace":"nostr_relay","correlation_id":"…","request_json":…}
+"""#)
+// This backs the kernel into being a passthrough;
+// the shell is now deciding relay connections.
+```
+
+`dispatch_capability` (`crates/nmp-core/src/capability_socket.rs:33`) is for
+facts the *device* provides that the kernel cannot compute: Keychain access,
+push tokens, audio session state, file paths. It is not an escape hatch for
+Nostr relay operations. The kernel owns all relay connections, always. The
+pattern in this chapter is the correct path.
+
+If you find yourself reaching for `dispatch_capability` with a relay-flavoured
+namespace, stop and ask: "Can I open the subscription from an `ActionModule`
+and read the results from a projection?" The answer is almost certainly yes.
+
+## Anti-patterns
+
+| Pattern | Problem | Correct form |
+|---|---|---|
+| `EnsureInterest` with a static key (`"active"`) for a mutable query | New filter silently discarded; old query stays on wire (`ensure_sub` is register-if-absent) | Use the query as the content discriminant; dispatch Release for old query before Claim for new |
+| Claim and Release in separate action modules | Identity derivation can diverge; wrong owner dropped → sub leaks | Keep Claim/Release as tagged variants of one enum under one namespace |
+| `dispatch_capability("nostr_relay", …)` | Relay logic enters the shell; kernel becomes a passthrough (D0, D4) | Action module → `EnsureInterest` → observer → projection |
+| Calling `push_interest` / `EnsureInterest` outside of `ActionModule::execute` or a runtime controller | Bypasses the action stage machinery; no correlation ID; no host visibility | Route through an `ActionModule` or an account-switch runtime controller (see `runtimes.rs`) |
+| Observer that blocks or panics | Stalls the actor thread; may corrupt snapshot cadence | Keep observer body O(1), lock briefly, never panic (D6) |
+| Polling the projection from the shell instead of reading off the pushed frame | D8 violation (polling); data is already pushed — read it from `apply()` | Register a push projection; read `projections[key]` in the push callback |
+| Setting `is_async_completing = true` for a subscription-only action | Host spinner waits for a terminal that never arrives | Leave `is_async_completing` at default `false`; the action is done when `EnsureInterest` is enqueued |
+
+## Decision tree — which lifecycle?
+
+```
+The subscription should close when…
+│
+├─ …the first EOSE arrives (one-time lookup, e.g. "fetch Alice's relay list")
+│   → InterestLifecycle::OneShot
+│   → No Release needed; the registry GCs the slot automatically.
+│
+└─ …the user navigates away / explicitly cancels
+    → InterestLifecycle::Tailing
+    → Dispatch Release when the view closes.
+    → The shell owns the Release trigger; Rust owns the subscription.
+```
+
+## Checklist
+
+- [ ] Claim and Release derive the same `SubIdentity` from the same inputs.
+- [ ] `SubOwnerKey` includes `consumer_id`; `SubKey` does not.
+- [ ] The content discriminant in `SubKey` matches the filter in `LogicalInterest`.
+- [ ] `InterestId` is a stable hash of (namespace, discriminant) — not a UUID.
+- [ ] `is_async_completing()` is `false` (default) for subscription-only actions.
+- [ ] The event observer is registered at init time, not inside `execute`.
+- [ ] The observer is cheap, locks briefly, never panics.
+- [ ] The snapshot projection reads from the same `Arc<Mutex<…>>` as the observer.
+- [ ] Tailing subscriptions have a Release path the shell calls on view close.
+- [ ] No relay logic, WebSocket code, or `dispatch_capability("nostr_relay", …)` is in the shell.
+
+See also: [05a — Substrate traits](05a-substrate-traits.md) ·
+[06 — Reactivity contract](06-reactivity-contract.md) ·
+[07 — Subscription planner](07-subscription-planner.md) ·
+[16 — Capabilities](16-capabilities.md) ·
+[20 — Adding a protocol module](20-new-protocol-module.md) ·
+`crates/nmp-nip01/src/visible_relations.rs` (production reference) ·
+`crates/nmp-app-template/src/topic_articles.rs` (illustrative example)
