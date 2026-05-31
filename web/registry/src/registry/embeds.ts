@@ -6,10 +6,16 @@ import type { Component } from "./types";
 import swiftuiArticleEmbedSwift from "../vendor/swiftui/content-kind-30023/ArticleEmbed.swift?raw";
 import swiftuiHighlightEmbedSwift from "../vendor/swiftui/content-kind-9802/HighlightEmbed.swift?raw";
 
+// Embeds & Kinds — Compose (Android)
+import composeArticleCardKotlin from "../vendor/compose/content-kind-30023/NostrArticleCard.kt?raw";
+
 // Embeds & Kinds — Ratatui
 // The article and highlight embeds are rendered by the default renderers that ship
 // inline in the kind registry, identical to the content-kind-* TUI components.
 import tuiKindRegistryRust from "../vendor/tui/content-kind-registry/nostr_kind_registry.rs?raw";
+
+// Embeds & Kinds — Desktop (iced)
+import desktopArticleCardRust from "../vendor/desktop/content-kind-30023/embed_article.rs?raw";
 
 export const embedComponents: Component[] = [
   {
@@ -34,6 +40,22 @@ export const embedComponents: Component[] = [
           "Bind a tap callback by wrapping the returned `AnyView` with `.onTapGesture` at the call site; the renderer itself is purely declarative.",
         ],
       },
+      compose: {
+        status: "stable",
+        installId: "compose/content-kind-30023",
+        version: "0.1.0",
+        dependencies: ["content-core"],
+        longDescription:
+          "`NostrArticleCard` is the Compose NIP-23 card — a 16:9 Coil hero, the `title` headline, an optional `summary`, and an author byline (avatar + display name + `article \u00b7 kind:30023`). `NostrContentView`'s `EventRefBlock` dispatches kind:30023 event refs to it via an `articleCardProvider`, so the article renders inline within the surrounding note text.",
+        files: [
+          { source: "compose/content-kind-30023/NostrArticleCard.kt", target: "Components/NostrContent/NostrArticleCard.kt", role: "source", content: composeArticleCardKotlin },
+        ],
+        screenshots: ["embed-article-kotlin-preview.png"],
+        customization: [
+          "Swap the Coil `SubcomposeAsyncImage` hero loader for your app's image pipeline; the layout is unchanged.",
+          "Register the typed card by passing `articleCardProvider` to `NostrContentView`; other kinds fall back to the quote card.",
+        ],
+      },
       tui: {
         status: "stable",
         installId: "tui/content-kind-30023",
@@ -48,6 +70,22 @@ export const embedComponents: Component[] = [
         customization: [
           "Replace `DefaultArticleRenderer` by registering your own `KindRenderer` for `ArticleProjection` — the default lives inline in `nostr_kind_registry.rs` for easy copy-paste editing.",
           "Author byline pulls `author_display_name` straight from `ArticleProjection`; the Rust kernel resolves kind:0 enrichment before the snapshot reaches the TUI.",
+        ],
+      },
+      desktop: {
+        status: "stable",
+        installId: "desktop/content-kind-30023",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`ArticleCard::new(&ArticleProjection, author_name)` is the iced kind:30023 card. It renders the article title (bold), a byline (red dot + presentation-resolved author label + short date), and a summary snippet (first 300 chars), wrapped in a rounded bordered container. The byline uses an author label the displaying renderer resolved from a profile it claimed (component-owned claiming, mirroring iOS #833), not the projection's static `author_display_name`. Note: this card does NOT load the hero image yet — the `image` tag is rendered on iOS/Compose but the iced surface only shows title + byline + summary, with hero loading documented as a follow-on in `embed_article.rs`.",
+        files: [
+          { source: "desktop/content-kind-30023/embed_article.rs", target: "src/components/nostr_content/embed_article.rs", role: "source", content: desktopArticleCardRust },
+        ],
+        screenshots: ["embed-article-desktop-preview.png"],
+        customization: [
+          "The author label is passed in by the caller (`ArticleCard::new(article, author_name)`), so the host owns profile claiming and resolution; the card stays purely declarative.",
+          "Hero image loading is a documented follow-on — add an `iced::widget::image` row above the title once the host decodes the article `image` tag into a `Handle`.",
         ],
       },
     },
@@ -69,6 +107,17 @@ export const embedComponents: Component[] = [
         screenshots: ["embed-profile-ios-gallery-preview.png", "tui-embed-profile-preview.png"],
         customization: [],
       },
+      compose: {
+        status: "stable",
+        installId: "compose/content-mention-chip",
+        version: "0.1.0",
+        dependencies: ["content-core"],
+        longDescription:
+          "Android renders the inline npub mention through `NostrContentView` — the kind:0 profile resolves to an avatar + display-name chip from the kernel profile projection (the same path the user-* components use). No embed claim is required for `npub:` URIs.",
+        files: [],
+        screenshots: ["embed-profile-kotlin-preview.png"],
+        customization: [],
+      },
     },
   },
   {
@@ -86,6 +135,17 @@ export const embedComponents: Component[] = [
           "Kind:1 short text note embed — claims the referenced `nevent` and renders the resolved note inline through the kind registry.",
         files: [],
         screenshots: ["embed-note-ios-gallery-preview.png", "tui-embed-note-preview.png"],
+        customization: [],
+      },
+      compose: {
+        status: "stable",
+        installId: "compose/content-view",
+        version: "0.1.0",
+        dependencies: ["content-core"],
+        longDescription:
+          "Android claims the referenced `nevent` and renders the resolved kind:1 note inline through `NostrContentView` — author + content paint between the surrounding prose, with a formatted relative timestamp.",
+        files: [],
+        screenshots: ["embed-note-kotlin-preview.png"],
         customization: [],
       },
     },
@@ -111,6 +171,17 @@ export const embedComponents: Component[] = [
           "Tweak the accent colour by editing the literal `Color.yellow.opacity(0.7)` — it merges cleanly on `nmp update component`.",
           "Extend `sourceFooter` to render rich previews when an `e` tag's referenced note has already been claimed.",
         ],
+      },
+      compose: {
+        status: "stable",
+        installId: "compose/content-view",
+        version: "0.1.0",
+        dependencies: ["content-core"],
+        longDescription:
+          "Android resolves the kind:9802 highlight and renders it inline via `NostrContentView`'s generic quote card (pull-quote text + author + relative time). A typed Compose highlight renderer (matching the SwiftUI/TUI `HighlightEmbed`) is not built yet — `EventRefBlock` only dispatches kind:30023 to a typed card today.",
+        files: [],
+        screenshots: ["embed-highlight-kotlin-preview.png"],
+        customization: [],
       },
       tui: {
         status: "stable",

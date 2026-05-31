@@ -1,6 +1,6 @@
 use iced::widget::{row, text};
 use iced::{Color, Element};
-use nmp_gallery_tui::profile_wire::ProfileWire;
+use super::profile_wire::ProfileWire;
 
 const GREEN: Color = Color::from_rgb(
     110.0 / 255.0,

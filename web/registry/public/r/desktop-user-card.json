@@ -1,0 +1,19 @@
+{
+  "name": "desktop-user-card",
+  "type": "registry:ui",
+  "title": "User Card (desktop)",
+  "description": "Compact iced author card composed from the avatar widget, profile name, and optional NIP-05 badge.",
+  "dependencies": [],
+  "registryDependencies": [
+    "desktop-user-core",
+    "desktop-user-avatar"
+  ],
+  "files": [
+    {
+      "path": "registry/desktop/user-card/user_card.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_user/user_card.rs",
+      "content": "use iced::widget::image::Handle as ImageHandle;\nuse iced::widget::{column, row, text};\nuse iced::{Alignment, Color, Element};\nuse super::profile_wire::ProfileWire;\n\nuse super::user_avatar::UserAvatar;\n\nconst GREEN: Color = Color::from_rgb(110.0 / 255.0, 231.0 / 255.0, 183.0 / 255.0);\n\n/// Avatar + name + optional NIP-05 row.\n///\n/// Clones display data at construction so the element lifetime is `'static`.\npub struct UserCard {\n    pubkey: String,\n    display_name: Option<String>,\n    npub_short: String,\n    nip05: Option<String>,\n    avatar_handle: Option<ImageHandle>,\n}\n\nimpl UserCard {\n    #[must_use]\n    pub fn from_profile(profile: &ProfileWire) -> Self {\n        Self {\n            pubkey: profile.pubkey.clone(),\n            display_name: profile.display_name.clone(),\n            npub_short: profile.npub_short.clone(),\n            nip05: profile.nip05.clone(),\n            avatar_handle: None,\n        }\n    }\n\n    /// Forward the pre-built image handle so the embedded `UserAvatar`\n    /// renders the real profile picture instead of the initials fallback.\n    #[must_use]\n    pub fn avatar_handle(mut self, handle: ImageHandle) -> Self {\n        self.avatar_handle = Some(handle);\n        self\n    }\n\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        let mut av = UserAvatar::new(&self.pubkey)\n            .display_name(self.display_name.as_deref())\n            .size(40.0);\n        if let Some(handle) = self.avatar_handle {\n            av = av.picture_handle(handle);\n        }\n        let avatar = av.into_element();\n\n        let has_name = self\n            .display_name\n            .as_deref()\n            .map(|s| !s.trim().is_empty())\n            .unwrap_or(false);\n\n        let name_text: Element<'static, Message> = if has_name {\n            text(self.display_name.unwrap_or_default())\n                .size(14)\n                .font(iced::Font {\n                    weight: iced::font::Weight::Bold,\n                    ..iced::Font::default()\n                })\n                .into()\n        } else {\n            text(self.npub_short).size(14).into()\n        };\n\n        let mut label_col = column![name_text].spacing(2);\n\n        if let Some(nip05) = self\n            .nip05\n            .as_deref()\n            .map(str::trim)\n            .filter(|s| !s.is_empty())\n            // Elide the NIP-05 \"_@\" root prefix so `_@f7z.io` shows as `f7z.io`,\n            // matching the standalone Nip05Badge and the iOS/Android badge.\n            .map(|s| s.strip_prefix(\"_@\").unwrap_or(s).to_string())\n        {\n            let nip05_row = row![\n                text(\"✓\")\n                    .size(12)\n                    .style(|_theme| iced::widget::text::Style { color: Some(GREEN) }),\n                text(nip05)\n                    .size(12)\n                    .style(|_theme| iced::widget::text::Style { color: Some(GREEN) }),\n            ]\n            .spacing(2);\n            label_col = label_col.push(nip05_row);\n        }\n\n        row![avatar, label_col]\n            .spacing(10)\n            .align_y(Alignment::Center)\n            .into()\n    }\n}\n"
+    }
+  ]
+}

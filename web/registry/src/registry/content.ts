@@ -45,6 +45,7 @@ import swiftuiNostrKindRegistrySwift from "../vendor/swiftui/content-kind-regist
 import swiftuiEmbeddedEventSwift from "../vendor/swiftui/content-kind-registry/EmbeddedEvent.swift?raw";
 import swiftuiArticleEmbedSwift from "../vendor/swiftui/content-kind-30023/ArticleEmbed.swift?raw";
 import composeArticleCardKotlin from "../vendor/compose/content-kind-30023/NostrArticleCard.kt?raw";
+import desktopArticleCardRust from "../vendor/desktop/content-kind-30023/embed_article.rs?raw";
 import swiftuiHighlightEmbedSwift from "../vendor/swiftui/content-kind-9802/HighlightEmbed.swift?raw";
 
 export const contentComponents: Component[] = [
@@ -311,6 +312,21 @@ export const contentComponents: Component[] = [
         customization: [
           "Replace `DefaultArticleRenderer` by registering your own `KindRenderer` for `ArticleProjection` — the default lives inline in `nostr_kind_registry.rs` for easy copy-paste editing.",
           "Author byline pulls `author_display_name` straight from `ArticleProjection`; the Rust kernel resolves kind:0 enrichment before the snapshot reaches the TUI.",
+        ],
+      },
+      desktop: {
+        status: "stable",
+        installId: "desktop/content-kind-30023",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "iced `ArticleCard::new(&ArticleProjection, author_name)` renders the kind:30023 article inline: title (bold), a byline (red dot + host-resolved author label + short date), and a summary snippet, in a rounded bordered container. The author label is resolved by the displaying renderer (component-owned claiming), not the projection's static field. NOTE: the iced surface does NOT load the hero image yet — title + byline + summary only; hero loading is a documented follow-on in `embed_article.rs`.",
+        files: [
+          { source: "desktop/content-kind-30023/embed_article.rs", target: "src/components/nostr_content/embed_article.rs", role: "source", content: desktopArticleCardRust },
+        ],
+        screenshots: ["embed-article-desktop-preview.png"],
+        customization: [
+          "Hero image loading is a documented follow-on — add an `iced::widget::image` row above the title once the host decodes the article `image` tag into a `Handle`.",
         ],
       },
     },

@@ -26,6 +26,14 @@ import nostrNip05BadgeRust from "../vendor/tui/user-nip05/nostr_nip05_badge.rs?r
 import nostrNpubChipRust from "../vendor/tui/user-npub/nostr_npub_chip.rs?raw";
 import nostrUserCardRust from "../vendor/tui/user-card/nostr_user_card.rs?raw";
 
+// User profile — Desktop (iced)
+import profileWireDesktopRust from "../vendor/desktop/user-core/profile_wire.rs?raw";
+import userAvatarDesktopRust from "../vendor/desktop/user-avatar/user_avatar.rs?raw";
+import userNameDesktopRust from "../vendor/desktop/user-name/user_name.rs?raw";
+import userNip05DesktopRust from "../vendor/desktop/user-nip05/user_nip05.rs?raw";
+import userNpubDesktopRust from "../vendor/desktop/user-npub/user_npub.rs?raw";
+import userCardDesktopRust from "../vendor/desktop/user-card/user_card.rs?raw";
+
 export const userComponents: Component[] = [
   {
     slug: "user-core",
@@ -46,6 +54,21 @@ export const userComponents: Component[] = [
         screenshots: [],
         customization: [
           "Keep this type aligned with the kernel projection and use it as the input to the display widgets.",
+        ],
+      },
+      desktop: {
+        status: "stable",
+        installId: "desktop/user-core",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`ProfileWire` is the Rust-side projection mirror used by the iced desktop user widgets. It carries display-ready profile fields (display name, nip05, npub_short) from the kernel; host apps build their iced views from this type rather than reformatting keys in widget code.",
+        files: [
+          { source: "desktop/user-core/profile_wire.rs", target: "src/components/nostr_user/profile_wire.rs", role: "source", content: profileWireDesktopRust },
+        ],
+        screenshots: [],
+        customization: [
+          "Keep this type aligned with the kernel projection and use it as the input to the iced display widgets.",
         ],
       },
     },
@@ -109,6 +132,22 @@ export const userComponents: Component[] = [
           "The widget is render-only; host apps own image fetching, terminal protocol selection, and navigation.",
         ],
       },
+      desktop: {
+        status: "stable",
+        installId: "desktop/user-avatar",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`UserAvatar::new(pubkey_hex)` is a self-contained iced widget that renders a circular avatar. With a pre-built `iced::widget::image::Handle` it clips the real profile picture to a circle; without one it falls back to a deterministic pubkey-derived tint plus initials, using `nmp_core::display` for the color and initials so the fallback matches every other surface. The host builds the `Handle` once in `update()` (never in `view()`) to avoid per-frame GPU re-uploads — so this widget takes no `ProfileWire` and has no dependencies.",
+        files: [
+          { source: "desktop/user-avatar/user_avatar.rs", target: "src/components/nostr_user/user_avatar.rs", role: "source", content: userAvatarDesktopRust },
+        ],
+        screenshots: ["user-avatar-desktop-preview.png"],
+        customization: [
+          "Tune the default `size` (36px) per call site via `.size(48.0)`; the circle radius tracks it automatically.",
+          "The deterministic tint and initials come from `nmp_core::display` — host apps own image decoding and supply the `Handle`, keeping the widget render-only.",
+        ],
+      },
     },
   },
   {
@@ -154,6 +193,22 @@ export const userComponents: Component[] = [
         screenshots: ["tui-user-name-preview.png"],
         customization: [
           "Pass a Ratatui `Style` with `.style(...)`; the fallback label still comes from `ProfileWire::display()`.",
+        ],
+      },
+      desktop: {
+        status: "stable",
+        installId: "desktop/user-name",
+        version: "0.1.0",
+        dependencies: ["user-core"],
+        longDescription:
+          "`UserName::from_profile(&ProfileWire)` renders the display name as bold iced `text`, falling back to the muted Rust-truncated `npub_short` when no name is present. It clones the display fields at construction so the returned `Element` is `'static` and can be returned from `view()` without lifetime juggling.",
+        files: [
+          { source: "desktop/user-name/user_name.rs", target: "src/components/nostr_user/user_name.rs", role: "source", content: userNameDesktopRust },
+        ],
+        screenshots: ["user-name-desktop-preview.png"],
+        customization: [
+          "Adjust the `.size(16)` and bold `Weight` in `user_name.rs` to match your typographic scale.",
+          "The npub fallback uses the kernel-formatted `ProfileWire::npub_short` — never reformat keys in iced code.",
         ],
       },
     },
@@ -208,6 +263,22 @@ export const userComponents: Component[] = [
           "`_@domain` identifiers (root-domain NIP-05) automatically render as just `domain` — no extra handling needed.",
         ],
       },
+      desktop: {
+        status: "stable",
+        installId: "desktop/user-nip05",
+        version: "0.1.0",
+        dependencies: ["user-core"],
+        longDescription:
+          "`Nip05Badge::from_profile(&ProfileWire)` is a failable constructor returning `None` when the projection carries no NIP-05 identifier, so callers gate the row in one line. When present it renders a green checkmark plus the identifier as an iced `row`. A leading `_@` (the NIP-05 root-domain convention) is elided, so `_@f7z.io` shows as the bare domain `f7z.io`.",
+        files: [
+          { source: "desktop/user-nip05/user_nip05.rs", target: "src/components/nostr_user/user_nip05.rs", role: "source", content: userNip05DesktopRust },
+        ],
+        screenshots: ["user-nip05-desktop-preview.png"],
+        customization: [
+          "`Nip05Badge::from_profile` returns `None` for missing identifiers — match on it to skip the row cleanly.",
+          "`_@domain` root-domain identifiers automatically render as just `domain`; swap the `GREEN` constant for your brand verification color.",
+        ],
+      },
     },
   },
   {
@@ -254,6 +325,22 @@ export const userComponents: Component[] = [
         screenshots: ["tui-user-npub-preview.png"],
         customization: [
           "Clipboard writes are host capabilities; bind your copy key to `profile.npub` outside the widget.",
+        ],
+      },
+      desktop: {
+        status: "stable",
+        installId: "desktop/user-npub",
+        version: "0.1.0",
+        dependencies: ["user-core"],
+        longDescription:
+          "`NpubChip::from_profile(&ProfileWire)` renders the Rust-truncated `npub_short` in a monospace iced chip — a rounded container with a slate background and muted foreground. Display-only: clipboard writes are a host capability, bound to the full `ProfileWire::npub` outside the widget.",
+        files: [
+          { source: "desktop/user-npub/user_npub.rs", target: "src/components/nostr_user/user_npub.rs", role: "source", content: userNpubDesktopRust },
+        ],
+        screenshots: ["user-npub-desktop-preview.png"],
+        customization: [
+          "Tune the `BG`/`FG` constants and chip padding/radius in `user_npub.rs` to match your theme.",
+          "`npub_short` comes from the kernel projection — never format keys in iced; wire copy-to-clipboard to `ProfileWire::npub` at the call site.",
         ],
       },
     },
@@ -309,6 +396,22 @@ export const userComponents: Component[] = [
         screenshots: ["tui-user-card-preview.png"],
         customization: [
           "Adjust the outer `Block` style in `nostr_user_card.rs` for dense feeds, modal headers, or focused rows.",
+        ],
+      },
+      desktop: {
+        status: "stable",
+        installId: "desktop/user-card",
+        version: "0.1.0",
+        dependencies: ["user-core", "user-avatar"],
+        longDescription:
+          "`UserCard::from_profile(&ProfileWire)` composes the iced `UserAvatar` widget with a bold display name (or muted npub fallback) and an optional NIP-05 row into a single avatar + label `row`. It clones the display fields for a `'static` element and accepts an optional avatar image `Handle` forwarded to the embedded avatar. The NIP-05 `_@` root prefix is elided to match the standalone badge.",
+        files: [
+          { source: "desktop/user-card/user_card.rs", target: "src/components/nostr_user/user_card.rs", role: "source", content: userCardDesktopRust },
+        ],
+        screenshots: ["user-card-desktop-preview.png"],
+        customization: [
+          "Pass a pre-built image `Handle` via `.avatar_handle(handle)` so the embedded avatar shows the real picture instead of initials.",
+          "Adjust the avatar `.size(40.0)` and row spacing in `user_card.rs` for dense list rows versus profile headers.",
         ],
       },
     },

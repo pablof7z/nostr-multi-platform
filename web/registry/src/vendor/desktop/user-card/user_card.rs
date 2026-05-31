@@ -1,7 +1,7 @@
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::{column, row, text};
 use iced::{Alignment, Color, Element};
-use nmp_gallery_tui::profile_wire::ProfileWire;
+use super::profile_wire::ProfileWire;
 
 use super::user_avatar::UserAvatar;
 

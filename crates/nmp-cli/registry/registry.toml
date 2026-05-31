@@ -555,3 +555,82 @@ dependencies = [
 source = "tui/user-card/nostr_user_card.rs"
 target = "src/components/nostr_user/nostr_user_card.rs"
 role = "source"
+
+# -----------------------------------------------------------------------------
+# Desktop (iced) user components.
+# Mirror the TUI surface: `desktop/user-core` owns the shared `ProfileWire`
+# mirror; the display widgets depend on it. `desktop/user-avatar` is
+# self-contained (deterministic tint + image Handle, no ProfileWire). Host apps
+# own image decoding (`iced::widget::image::Handle`), clipboard writes, and
+# navigation.
+# -----------------------------------------------------------------------------
+[[components]]
+id = "desktop/user-core"
+version = "0.1.0"
+target = "desktop"
+description = "Shared iced ProfileWire mirror for Rust-owned user profile projections."
+[[components.files]]
+source = "desktop/user-core/profile_wire.rs"
+target = "src/components/nostr_user/profile_wire.rs"
+role = "source"
+[[components]]
+id = "desktop/user-avatar"
+version = "0.1.0"
+target = "desktop"
+description = "Self-contained iced avatar widget with deterministic pubkey tint and optional image Handle."
+[[components.files]]
+source = "desktop/user-avatar/user_avatar.rs"
+target = "src/components/nostr_user/user_avatar.rs"
+role = "source"
+[[components]]
+id = "desktop/user-name"
+version = "0.1.0"
+target = "desktop"
+description = "Inline iced profile display-name text with Rust-formatted npub fallback."
+dependencies = ["desktop/user-core"]
+[[components.files]]
+source = "desktop/user-name/user_name.rs"
+target = "src/components/nostr_user/user_name.rs"
+role = "source"
+[[components]]
+id = "desktop/user-nip05"
+version = "0.1.0"
+target = "desktop"
+description = "iced NIP-05 verified identity badge that renders only when an identifier is present."
+dependencies = ["desktop/user-core"]
+[[components.files]]
+source = "desktop/user-nip05/user_nip05.rs"
+target = "src/components/nostr_user/user_nip05.rs"
+role = "source"
+[[components]]
+id = "desktop/user-npub"
+version = "0.1.0"
+target = "desktop"
+description = "Display-only iced npub chip for Rust-truncated bech32 identity strings."
+dependencies = ["desktop/user-core"]
+[[components.files]]
+source = "desktop/user-npub/user_npub.rs"
+target = "src/components/nostr_user/user_npub.rs"
+role = "source"
+[[components]]
+id = "desktop/user-card"
+version = "0.1.0"
+target = "desktop"
+description = "Compact iced author card composed from the avatar widget, profile name, and optional NIP-05 badge."
+dependencies = [
+    "desktop/user-core",
+    "desktop/user-avatar",
+]
+[[components.files]]
+source = "desktop/user-card/user_card.rs"
+target = "src/components/nostr_user/user_card.rs"
+role = "source"
+[[components]]
+id = "desktop/content-kind-30023"
+version = "0.1.0"
+target = "desktop"
+description = "iced kind:30023 long-form article card — title, byline, and summary (no hero image yet)."
+[[components.files]]
+source = "desktop/content-kind-30023/embed_article.rs"
+target = "src/components/nostr_content/embed_article.rs"
+role = "source"

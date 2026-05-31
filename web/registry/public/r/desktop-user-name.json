@@ -1,0 +1,18 @@
+{
+  "name": "desktop-user-name",
+  "type": "registry:ui",
+  "title": "User Name (desktop)",
+  "description": "Inline iced profile display-name text with Rust-formatted npub fallback.",
+  "dependencies": [],
+  "registryDependencies": [
+    "desktop-user-core"
+  ],
+  "files": [
+    {
+      "path": "registry/desktop/user-name/user_name.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_user/user_name.rs",
+      "content": "use iced::widget::text;\nuse iced::{Color, Element};\nuse super::profile_wire::ProfileWire;\n\n/// Display name with npub fallback.\n///\n/// Clones display data at construction so the element lifetime is `'static`.\npub struct UserName {\n    display_name: Option<String>,\n    npub_short: String,\n}\n\nimpl UserName {\n    #[must_use]\n    pub fn from_profile(profile: &ProfileWire) -> Self {\n        Self {\n            display_name: profile.display_name.clone(),\n            npub_short: profile.npub_short.clone(),\n        }\n    }\n\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        let has_name = self\n            .display_name\n            .as_deref()\n            .map(|s| !s.trim().is_empty())\n            .unwrap_or(false);\n\n        if has_name {\n            let name = self.display_name.unwrap_or_default();\n            text(name)\n                .size(16)\n                .font(iced::Font {\n                    weight: iced::font::Weight::Bold,\n                    ..iced::Font::default()\n                })\n                .into()\n        } else {\n            const MUTED: Color = Color::from_rgb(0.6, 0.6, 0.6);\n            text(self.npub_short)\n                .size(16)\n                .style(move |_theme| iced::widget::text::Style {\n                    color: Some(MUTED),\n                })\n                .into()\n        }\n    }\n}\n"
+    }
+  ]
+}
