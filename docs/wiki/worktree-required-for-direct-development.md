@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -33,4 +33,5 @@ The correct sequence is: create worktree on a descriptive branch, perform all ch
 ## See Also
 - [[agent-push-to-master-violation|Sub-Agents in Worktrees Must Push to Branch and Open a PR — Never Push to Master]] — related guide
 - [[disk-pressure-kills-agent-fleet|Accumulated Worktrees Cause Disk Exhaustion — Prune After Every Merge]] — related guide
+- [[main-checkout-violation-recovery|Main Checkout Violation — Recovery When Agent Works in Wrong Tree]] — related guide
 

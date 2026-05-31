@@ -11,7 +11,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -197,4 +197,6 @@ A variant of duplicate detection occurs when a PR still appears in `gh pr list` 
 - [[loop-command|/loop — Recurring and Self-Paced Prompt Scheduling]] — related guide
 - [[loop-command|/loop — Recurring and Self-Paced Prompt Scheduling]] — related guide
 - [[chirp-ios-kernel-types-generated|Chirp iOS KernelTypes.generated.swift — Dev-Time Generation, Lives in Git]] — related guide
+- [[backlog-prioritization-workflow|Backlog Prioritization — Opus-Led Ranking, Sonnet Review Gate, Parallel Dispatch]] — related guide
+- [[sonnet-review-gate-workflow|Sonnet Review Gate — Mandatory PR Review Before Merge]] — related guide
 

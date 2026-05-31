@@ -11,7 +11,7 @@ tags:
 volatility: cold
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -59,4 +59,5 @@ Multiple bespoke pull-snapshot symbols exist across the codebase: `nmp_app_galle
 - [[component-owned-reactivity-architecture|Component-Owned Reactivity Architecture]] — related guide
 - [[architectural-compliance-verification-gate|Architectural Compliance Verification Gate — Verify Before Implementing]] — related guide
 - [[account-operations-c-abi-symbols|Account Operations Must Use Bespoke C-ABI Symbols — Not dispatch_action]] — related guide
+- [[resolved-profiles-kernel-projection|resolved_profiles — Kernel-Level Profile Merge Projection]] — related guide
 

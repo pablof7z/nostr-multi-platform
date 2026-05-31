@@ -10,7 +10,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -60,3 +60,4 @@ When bulk-importing GH issues as backlog entries (e.g., V-87–V-105), 5 of 31 i
 - [[pd-decisions-can-be-stale-in-backlog|pd decisions can be stale in backlog]] — related guide
 - [[stale-wip-entries-common|stale wip entries common]] — related guide
 - [[gallery-vs-production-app-distinction|Gallery App Implementations Do Not Satisfy Production Backlog Items]] — related guide
+- [[backlog-prioritization-workflow|Backlog Prioritization — Opus-Led Ranking, Sonnet Review Gate, Parallel Dispatch]] — related guide

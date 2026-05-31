@@ -9,11 +9,12 @@ tags:
 volatility: hot
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-28
 verified: 2026-05-29
 compiled-from: conversation
 sources:
   - session:d1ce3b4a-2a79-40f5-ba0e-fe608f5c7884
+  - session:95a6801d-65a6-481c-985b-4bbe2dbe32c4
 ---
 
 # Chirp Desktop App Location (nmp-desktop Deleted)
@@ -24,9 +25,10 @@ sources:
 
 - **Canonical path:** `apps/chirp/chirp-desktop/`
 - **Deleted path:** `crates/nmp-desktop` — do **not** recreate this directory or any crate at this path.
-- The old `nmp-desktop` was a generic egui shell with no Chirp-specific FFI wiring; it is fully superseded.
+- The old `nmp-desktop` was a generic egui shell with no Chirp-specific FFI wiring; it is fully superseded. The current desktop app is built from the `chirp-desktop` crate using egui/eframe.
 - When searching for desktop entry points, IDE indexing, or Cargo workspace members, always resolve to `apps/chirp/chirp-desktop/`.
 - If a build or dependency error references `nmp-desktop`, treat it as a stale artifact (e.g., leftover `Cargo.lock` entry or workspace member line) and remove the reference rather than restoring the crate.
 
+<!-- citations: [^95a68-1] -->
 ## See Also
 - [[chirp-ffi-boot-and-callback-lifetime|Chirp FFI Boot Sequence & Callback Object Lifetimes]] — related guide

@@ -12,7 +12,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -51,4 +51,5 @@ Android's nativeCreateLocalAccount calls nmp_app_create_new_account directly —
 - [[multi-agent-integration-workflow|Multi-Agent Integration Workflow — Fan-Out with Integration Branch]] — related guide
 - [[cross-platform-qa-code-review-workflow|Cross-Platform QA and Code-Review Fan-Out — Build, Run, Review, Synthesize]] — related guide
 - [[account-operations-c-abi-symbols|Account Operations Must Use Bespoke C-ABI Symbols — Not dispatch_action]] — related guide
+- [[chirp-ios-repost-nip18|Chirp iOS Repost (NIP-18) — Implementation and Wiring]] — related guide
 

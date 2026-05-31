@@ -10,12 +10,13 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
   - session:6a951af3-7b08-4d8d-adfd-361609270d50
   - session:38935d82-0cbf-4e85-98d3-a0f056fd450c
+  - session:54ae9075-be27-4b86-b69a-6955d9e79c3c
 ---
 
 # Component-Owned Reactivity Architecture
@@ -36,10 +37,9 @@ The DataContract field in ComponentSpec (e.g., Profile { pubkey_ref: 'showcase.p
 
 ## Claim/Release Lifecycle
 
-Components claim data when they mount (appear) and release it when they unmount (disappear). On iOS this is implemented via .task / .onDisappear calling claimProfile/releaseProfile. On Android this uses DisposableEffect for the claim/release lifecycle. The kernel tracks which pubkeys and events are currently claimed by any mounted component and only fetches data for active claims. No component means no claim means no fetch. [^6a951-49]
+Components own their reactivity internally via claim/release of facts through Rust projections. Individual screens do not manually call claim_profile, release_profile, claim_event, or equivalent lifecycle APIs just because they placed a component on screen; the shell wires one registry host adapter and components own their lifecycle internally. On iOS, views use .task to open Rust projections and .onDisappear to close them as the primary lifecycle pattern. The kernel tracks which pubkeys and events are currently claimed by any mounted component and only fetches data for active claims. No component means no claim means no fetch. The embed system in Chirp iOS (PR #795) implements this lifecycle for events: EmbeddedEvent calls claimEvent when it appears and releaseEvent when it disappears. EmbedHost reads claimedEvents from the kernel-pushed SnapshotProjections. The kernel fetches embedded events (kind:1, kind:30023, kind:9802) only when they are claimed by a mounted component, never proactively. The claim/release C FFI symbols (nmp_app_claim_event / nmp_app_release_event) were already present in NmpCore.h before the Swift implementation.
 
-
-The embed system in Chirp iOS (PR #795) implements this lifecycle for events: EmbeddedEvent calls claimEvent when it appears and releaseEvent when it disappears. EmbedHost reads claimedEvents from the kernel-pushed SnapshotProjections. The kernel fetches embedded events (kind:1, kind:30023, kind:9802) only when they are claimed by a mounted component, never proactively. The claim/release C FFI symbols (nmp_app_claim_event / nmp_app_release_event) were already present in NmpCore.h before the Swift implementation. [^38935-30]
+<!-- citations: [^6a951-49] [^38935-30] [^54ae9-4] -->
 ## Why Pre-Warming Is Forbidden
 
 Pre-warming (fetching data before a component signals its requirement) violates two project doctrines: (1) it breaks component-owned reactivity by moving the fetch decision to the shell, and (2) it wastes network and compute resources fetching data that may never be displayed. The gallery shell is a showcase — it demonstrates components behaving correctly. If the shell pre-warms data, it demonstrates the shell's behavior, not the component's. [^6a951-50]
@@ -53,4 +53,7 @@ Desktop nmp-gallery has a specific pre-warming violation at gallery.rs:167-173: 
 - [[opus-architect-workflow|Opus Architect Workflow — Plan, Validate, Execute, Audit]] — related guide
 - [[chirp-ios-embed-system-implementation|Chirp iOS Embed System — Implementation and Architecture]] — related guide
 - [[architectural-compliance-verification-gate|Architectural Compliance Verification Gate — Verify Before Implementing]] — related guide
+- [[resolved-profiles-kernel-projection|resolved_profiles — Kernel-Level Profile Merge Projection]] — related guide
+- [[self-claiming-nmp-components|Self-Claiming NMP Components — Components Own Their Data Claims, Apps Compose Them]] — related guide
+- [[profile-flicker-warm-reclaim-gap|Profile Name Flicker — Warm-Reclaim Lifecycle Gap]] — related guide
 

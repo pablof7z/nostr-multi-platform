@@ -11,7 +11,7 @@ tags:
 volatility: cold
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -70,4 +70,5 @@ Desktop has a remaining post-V80 rendering gap: the app reads snap.items which i
 - [[xcodegen-project-regeneration|XcodeGen Project Regeneration — Never Hand-Edit project.pbxproj]] — related guide
 - [[chirp-cross-platform-parity-plan|Chirp Cross-Platform Parity — Plan, Root Causes, and Ordered Work]] — related guide
 - [[desktop-kernel-snapshot-projection-backfill|Desktop KernelSnapshot Projection Backfill — Fields Are in projections, Not Top-Level]] — related guide
+- [[claim-expansion-terminate-claim-invariant|Claim Expansion — terminate_claim Is the Sole Phase::Terminal Transition Point]] — related guide
 

@@ -11,12 +11,13 @@ tags:
 volatility: cold
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
   - session:752b523f-231e-4fca-ab86-748c35b5dd74
   - session:9a2c7cd8-95ab-4291-bbc8-6f38c5941c0a
+  - session:9b9db91a-b324-4c11-aacf-421d9aab2819
 ---
 
 # Reactive Profile Mentions — LiveProfileMap Architecture
@@ -37,8 +38,9 @@ The canonical implementation lives in `apps/nmp-gallery/src/data.rs` (lines 138�
 - **`mention_profiles`** — timeline-row author profiles (top-level authors only, not inline mention pubkeys)
 - **`author_view.profile`** — full profile card
 
-The `resolve()` method (line 180) returns the kind:0 display name if available, and falls back to the truncated npub (line 184) when no kind:0 has arrived. The fallback is explicit and intentional — it is an honest representation of the unknown state, not an error. [^752b5-2]
+The `resolve()` method (line 180) returns the kind:0 display name if available, and falls back to the truncated npub (line 184) when no kind:0 has arrived. The fallback is explicit and intentional — it is an honest representation of the unknown state, not an error. Profile resolution for mention profiles goes through `LiveProfileMap` at render time, not embedded upfront into render data. The `content_example` function takes only pubkeys (or URIs) for mention profiles, not `LiveProfile` structs with pre-resolved names.
 
+<!-- citations: [^752b5-2] [^9b9db-1] -->
 ## Shell-Boundary Wiring
 
 The profile host is wired once at the shell boundary via `profile_host_from_context` → `NostrMentionProfileHost` trait (present in `nostr_mention_chip.rs`). The `NostrMentionProfileHost` trait is the abstraction layer that mention chips use to query display names; the `LiveProfileMap` is its implementation in the gallery shell. Shells must not duplicate profile resolution logic — they implement the trait once and pass it through. [^752b5-3]
@@ -56,4 +58,5 @@ An earlier branch (`fix/reactive-profile-mentions`, base commit 344d7aa7) implem
 - [[chirp-ios-nmp-gallery-component-adoption|Chirp iOS NMP Gallery Component Adoption — Gap Audit and Implementation Plan]] — related guide
 - [[chirp-ios-avatar-profile-lifecycle|Chirp iOS Avatar and Profile Lifecycle — NostrProfileHost Gap]] — related guide
 - [[component-owned-reactivity-architecture|Component-Owned Reactivity Architecture]] — related guide
+- [[resolved-profiles-kernel-projection|resolved_profiles — Kernel-Level Profile Merge Projection]] — related guide
 

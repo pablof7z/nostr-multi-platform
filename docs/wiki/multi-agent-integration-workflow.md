@@ -11,7 +11,7 @@ tags:
 volatility: hot
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -99,4 +99,6 @@ Batch 3 scaled to 15 parallel agents (Android 8, Desktop 3, Architecture 4). Res
 - [[nmp-gallery-cross-platform-consolidation|NMP Gallery Cross-Platform Consolidation — Registry-Driven Component Catalog]] — related guide
 - [[opus-architect-workflow|Opus Architect Workflow — Plan, Validate, Execute, Audit]] — related guide
 - [[cross-platform-qa-code-review-workflow|Cross-Platform QA and Code-Review Fan-Out — Build, Run, Review, Synthesize]] — related guide
+- [[backlog-prioritization-workflow|Backlog Prioritization — Opus-Led Ranking, Sonnet Review Gate, Parallel Dispatch]] — related guide
+- [[collision-handling-two-agents-one-branch|Agent Collision Handling — Two Agents Targeting One Branch]] — related guide
 

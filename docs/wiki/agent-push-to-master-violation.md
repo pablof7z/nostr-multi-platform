@@ -11,7 +11,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -64,3 +64,4 @@ A second class of violation was also observed: a worktree agent switched the mai
 - [[loop-command|/loop — Recurring and Self-Paced Prompt Scheduling]] — related guide
 - [[pr-review-land-loop-workflow|PR Review-and-Land Loop — Automated Merge Workflow]] — related guide
 - [[worktree-required-for-direct-development|Direct Development Must Use Git Worktrees — Never the Main Checkout]] — related guide
+- [[main-checkout-violation-recovery|Main Checkout Violation — Recovery When Agent Works in Wrong Tree]] — related guide

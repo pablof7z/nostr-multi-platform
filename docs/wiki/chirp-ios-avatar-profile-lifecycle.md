@@ -11,12 +11,13 @@ tags:
 volatility: hot
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
   - session:9a2c7cd8-95ab-4291-bbc8-6f38c5941c0a
   - session:38935d82-0cbf-4e85-98d3-a0f056fd450c
+  - session:6e8af009-f065-464a-98f1-3ec1ee4ed933
 ---
 
 # Chirp iOS Avatar and Profile Lifecycle — NostrProfileHost Gap
@@ -47,8 +48,13 @@ To wire NostrProfileHost: (1) Make `KernelModel` conform to `NostrProfileHost`, 
 ChirpAvatar — Current State
 
 The name display bug manifests in two specific locations: `NoteRowView.authorDisplayLabel` (line 42) hardcodes `item.authorPubkey.shortHex`, and `ModularBlockView.moduleRow` (line 141) hardcodes `pubkey.shortHex`. Both ignore the `mentionProfiles` dictionary that is passed to cover all home-timeline authors (V-31). The `MentionProfile` struct already carries a `display` field for this lookup. In contrast, `ModularBlockView`'s `displayName()` function for module rows correctly uses `card.authorDisplayName` from `ChirpEventCard` — so the modular block path already works and the standalone note row path is the one broken. [^9a2c7-42]
+
+## Avatar Image Rendering (Rust/iced)
+
+UserAvatar renders the actual profile picture clipped to a circle when the kind:0 picture_url bytes are available, fetched via a background thread to avoid UI freezes. The avatar image Handle is created once inside update() when fetch bytes arrive and stored persistently, so iced reuses the same handle ID every frame instead of re-uploading the texture. UserCard uses UserAvatar internally and receives the avatar image Handle via an avatar_handle builder method threaded from GalleryApp. [^6e8af-1]
 ## See Also
 - [[chirp-ios-nmp-gallery-component-adoption|Chirp iOS NMP Gallery Component Adoption — Gap Audit and Implementation Plan]] — related guide
 - [[reactive-profile-mentions-architecture|Reactive Profile Mentions — LiveProfileMap Architecture]] — related guide
 - [[red-ci-merges-to-master|Red CI Merges to Master — Pattern and Prevention]] — related guide
+- [[profile-flicker-warm-reclaim-gap|Profile Name Flicker — Warm-Reclaim Lifecycle Gap]] — related guide
 

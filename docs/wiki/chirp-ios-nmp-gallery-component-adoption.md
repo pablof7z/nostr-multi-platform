@@ -11,7 +11,7 @@ tags:
 volatility: hot
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -105,4 +105,5 @@ There is a disparity in how author names are accessed: `ChirpEventCard` has an `
 - [[chirp-ios-kernel-types-generated|Chirp iOS KernelTypes.generated.swift — Dev-Time Generation, Lives in Git]] — related guide
 - [[chirp-ios-embed-system-implementation|Chirp iOS Embed System — Implementation and Architecture]] — related guide
 - [[architectural-compliance-verification-gate|Architectural Compliance Verification Gate — Verify Before Implementing]] — related guide
+- [[resolved-profiles-kernel-projection|resolved_profiles — Kernel-Level Profile Merge Projection]] — related guide
 

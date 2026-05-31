@@ -11,7 +11,7 @@ tags:
 volatility: hot
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
@@ -52,4 +52,5 @@ Prioritized for team-wide awareness. The podcast-player incident proves this is 
 - [[podcast-player-polling-incident|Podcast-Player Polling Incident — Second-App ADR-0025 Anti-Pattern]] — related guide
 - [[half-landed-migration-is-not-done|A Migration Is Not Done Until the New Path Is Live — Dead-Code Decoders Are Incomplete Migrations]] — related guide
 - [[nmp-gallery-cross-platform-consolidation|NMP Gallery Cross-Platform Consolidation — Registry-Driven Component Catalog]] — related guide
+- [[resolved-profiles-kernel-projection|resolved_profiles — Kernel-Level Profile Merge Projection]] — related guide
 

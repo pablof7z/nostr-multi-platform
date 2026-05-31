@@ -12,12 +12,16 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
   - session:6a951af3-7b08-4d8d-adfd-361609270d50
   - session:f3d8d762-5bb9-4db7-b127-667085e512bf
+  - session:54ae9075-be27-4b86-b69a-6955d9e79c3c
+  - session:d366b3c7-f7a7-49d5-9961-625037c7deb6
+  - session:95a6801d-65a6-481c-985b-4bbe2dbe32c4
+  - session:6e8af009-f065-464a-98f1-3ec1ee4ed933
 ---
 
 # NMP Gallery Cross-Platform Consolidation — Registry-Driven Component Catalog
@@ -26,20 +30,25 @@ sources:
 
 ## Current Gap: Catalog Drift
 
-The gallery's component catalog is defined separately on each platform, and they have already diverged. TUI has 3 sections (User, Content, Embeds & Kinds) with 15 components. Desktop re-exports TUI's list, creating an undesirable desktop-to-TUI crate coupling. iOS has 4 sections, including a relay/relay-list section absent everywhere else, and its label/description strings differ. Android has only 2 sections (User, Content) — missing embeds, relay, and relay-list entirely. [^6a951-1]
+The gallery's component catalog is defined separately on each platform, and they have already diverged. TUI has 3 sections (User, Content, Embeds & Kinds) with 15 components. Desktop re-exports TUI's list, creating an undesirable desktop-to-TUI crate coupling. iOS has 4 sections, including a relay/relay-list section absent everywhere else, and its label/description strings differ. Android has only 2 sections (User, Content) — missing embeds, relay, and relay-list entirely.
 
+Android's gap is deeper than just missing sections. Android still builds display models from raw ClaimedEventWire plus Kotlin tag parsing, which violates ADR-0034. Full embed parity on Android requires the Compose EmbedKindProjection, NostrKindRegistry, and EmbeddedEvent stack (backlog item F-CR-02). Adding registry sections without that infrastructure is fake parity — the components would be listed but not renderable.
 
-Android's gap is deeper than just missing sections. Android still builds display models from raw ClaimedEventWire plus Kotlin tag parsing, which violates ADR-0034. Full embed parity on Android requires the Compose EmbedKindProjection, NostrKindRegistry, and EmbeddedEvent stack (backlog item F-CR-02). Adding registry sections without that infrastructure is fake parity — the components would be listed but not renderable. [^6a951-18]
+Feature parity requirement: ALL platforms must render every component in the registry, including relay-list. There are no placeholder-only components. TUI, desktop, and Android all implement relay-list rendering. After consolidation, all platforms start from the same solid baseline so new components can be added to all platforms simultaneously with a single registry.json edit. Android embed parity explicitly requires the Compose EmbedKindProjection, NostrKindRegistry, and EmbeddedEvent stack (backlog item F-CR-02) as a prerequisite — just adding registry sections without that infrastructure is fake parity.
 
-Feature parity requirement: ALL platforms must render every component in the registry, including relay-list. There are no placeholder-only components. TUI, desktop, and Android all implement relay-list rendering. After consolidation, all platforms start from the same solid baseline so new components can be added to all platforms simultaneously with a single registry.json edit. Android embed parity explicitly requires the Compose EmbedKindProjection, NostrKindRegistry, and EmbeddedEvent stack (backlog item F-CR-02) as a prerequisite — just adding registry sections without that infrastructure is fake parity. [^6a951-41]
+The original architectural goal of this consolidation effort is to move business logic into shared Rust, with components that own their own reactivity. PR #787 achieved surface-level catalog parity but did not address the core architecture: identifying where per-platform business logic still lives, defining what "component owns reactivity" means in the nmp-gallery framework, and migrating that logic into shared Rust crates. An Opus agent audit was launched post-PR-merge to read the actual code and answer: where does per-platform business logic still exist, what does "component owns reactivity" look like in this framework, and what are the highest-value tasks that advance the real goal.
 
-The original architectural goal of this consolidation effort is to move business logic into shared Rust, with components that own their own reactivity. PR #787 achieved surface-level catalog parity but did not address the core architecture: identifying where per-platform business logic still lives, defining what "component owns reactivity" means in the nmp-gallery framework, and migrating that logic into shared Rust crates. An Opus agent audit was launched post-PR-merge to read the actual code and answer: where does per-platform business logic still exist, what does "component owns reactivity" look like in this framework, and what are the highest-value tasks that advance the real goal. [^6a951-45]
+The Opus agent plan identified three categories of architectural violations: (1) Catalog drift — the component catalog is defined four separate times (tui/src/gallery.rs, RegistrySection.swift, RegistrySection.kt, and desktop borrowing from TUI) with iOS having a relay section others lack and Android missing the entire embed section. (2) Triplicated profile-merge business logic — the merge of claimed_profiles → author_view → mention_profiles is implemented three times in Rust/Swift/Kotlin with divergent precedence, which is business logic in native shells (the sharpest doctrine violation). (3) Polling violations — desktop uses iced::time::every(250ms) and Android uses a nextUpdate(250ms) timeout-loop, both violating D8, while iOS already uses push callbacks correctly.
 
-The Opus agent plan identified three categories of architectural violations: (1) Catalog drift — the component catalog is defined four separate times (tui/src/gallery.rs, RegistrySection.swift, RegistrySection.kt, and desktop borrowing from TUI) with iOS having a relay section others lack and Android missing the entire embed section. (2) Triplicated profile-merge business logic — the merge of claimed_profiles → author_view → mention_profiles is implemented three times in Rust/Swift/Kotlin with divergent precedence, which is business logic in native shells (the sharpest doctrine violation). (3) Polling violations — desktop uses iced::time::every(250ms) and Android uses a nextUpdate(250ms) timeout-loop, both violating D8, while iOS already uses push callbacks correctly. [^6a951-51]
+After PR #787, the remaining architectural work is: (1) Migrate all four platforms to read from registry.json at runtime (replacing hardcoded REGISTRY_SECTIONS arrays), achieving the goal of one JSON edit propagating to all platforms. (2) Implement the gallery_profiles Rust projection (Step 7) to collapse the triplicated profile-merge logic in Swift/Kotlin/Rust into a single Rust projection. (3) Identify and eliminate remaining per-platform business logic beyond profile merging — the Opus agent audit (in progress) will enumerate all remaining doctrine violations. (4) Define the exact contract for component-owned reactivity in the gallery framework, so every component declares its data requirements and owns its fetch lifecycle identically across platforms.
 
-After PR #787, the remaining architectural work is: (1) Migrate all four platforms to read from registry.json at runtime (replacing hardcoded REGISTRY_SECTIONS arrays), achieving the goal of one JSON edit propagating to all platforms. (2) Implement the gallery_profiles Rust projection (Step 7) to collapse the triplicated profile-merge logic in Swift/Kotlin/Rust into a single Rust projection. (3) Identify and eliminate remaining per-platform business logic beyond profile merging — the Opus agent audit (in progress) will enumerate all remaining doctrine violations. (4) Define the exact contract for component-owned reactivity in the gallery framework, so every component declares its data requirements and owns its fetch lifecycle identically across platforms. [^6a951-54]
+The overarching goal of nmp-gallery consolidation is to make nmp-gallery a living proof that the NMP framework thesis holds: any Nostr component, once its business logic is written in Rust, renders correctly on every platform without that logic being reimplemented. The Rust kernel owns all data — fetching, merging, precedence, reactivity. Platforms contribute exactly one thing: pixels. Adding a component means writing its data logic once in nmp-app-gallery, then writing four thin render functions. It does not mean writing four separate profile-merge loops, four separate subscription managers, or four separate catalog arrays. When a Nostr component mounts, it declares its data need to the kernel and receives a push-driven, already-shaped result. It does not ask the app shell to pre-warm anything. It does not re-implement precedence rules. It just renders what the kernel hands it. The gallery is consistent not because four files are kept in sync — it is consistent because there is only one place where the logic lives.
 
-The overarching goal of nmp-gallery consolidation is to make nmp-gallery a living proof that the NMP framework thesis holds: any Nostr component, once its business logic is written in Rust, renders correctly on every platform without that logic being reimplemented. The Rust kernel owns all data — fetching, merging, precedence, reactivity. Platforms contribute exactly one thing: pixels. Adding a component means writing its data logic once in nmp-app-gallery, then writing four thin render functions. It does not mean writing four separate profile-merge loops, four separate subscription managers, or four separate catalog arrays. When a Nostr component mounts, it declares its data need to the kernel and receives a push-driven, already-shaped result. It does not ask the app shell to pre-warm anything. It does not re-implement precedence rules. It just renders what the kernel hands it. The gallery is consistent not because four files are kept in sync — it is consistent because there is only one place where the logic lives. [^6a951-1]
+Desktop's UserAvatar currently produces Element<static, Message> instead of painting into an egui Ui. nmp-gallery-desktop is an egui/eframe component gallery app, and the render path needs correction to produce the correct egui Ui output type.
+
+The nmp-gallery-desktop sidebar lists all 15 components from REGISTRY_SECTIONS with section headers and active-row highlighting. [^6e8af-2]
+
+<!-- citations: [^6a951-1] [^6a951-18] [^6a951-41] [^6a951-45] [^6a951-51] [^6a951-54] [^d366b-5] [^95a68-2] -->
 ## Current Gap: Triplicated Profile-Merge Business Logic
 
 The merge of claimed_profiles → author_view → mention_profiles is implemented three separate times in Rust, Swift, and Kotlin — with different precedence in each. Rust applies mention before author_view; Swift and Kotlin do the opposite. This is business logic living in native shells, which is the sharpest doctrine violation. The fix is a single canonical merge precedence (claimed → author_view → mention_profiles-if-absent) implemented once in Rust and exposed as a host-side projection registered via the existing register_snapshot_projection seam. [^6a951-2]
@@ -78,6 +87,8 @@ Codex identified four deficiencies in the original schema that must be addressed
 The current registry.json (as shipped in PR #787) is a v1 skeleton without the full schema enhancements Codex identified. Four known deficiencies remain to be addressed in a follow-up: (1) Profile DataContract needs the full Rust-formatted bech32 npub via a references table — npub abbreviation stays in shells per platform choice, but the full npub must come from Rust; (2) ContentTree DataContract must capture actual ContentTreeWire templates (note/mention combos) currently hardcoded in each platform's pages; (3) RelayList DataContract needs relay status input fields — iOS currently invents connecting/connected labels in the page itself, and that logic cannot live in the registry schema without proper inputs; (4) A single label field breaks across platforms (iOS uses NostrMinimalContentView, TUI uses NostrMinimalContent) — the schema needs per-platform renderKey entries instead of a single label. [^6a951-40]
 
 The registry.json shipped in PR #787 is a v1 skeleton with four known schema deficiencies identified by Codex: (1) Profile DataContract is missing the full Rust-formatted bech32 npub — it only has pubkey_ref, but shells need the full npub (not hex) for display; npub abbreviation stays in shells per platform choice, but the full npub string must come from Rust via a references table. (2) ContentTree DataContract does not capture the actual ContentTreeWire templates (note/mention combos) currently hardcoded in each platform's pages — the registry cannot drive content rendering without knowing the template structure. (3) RelayList DataContract has no relay status input fields — iOS currently invents connecting/connected labels in the page itself, which is business logic in the shell that the registry schema must accommodate with proper input fields. (4) A single label field breaks across platforms because native type names differ: iOS uses NostrMinimalContentView, TUI uses NostrMinimalContent, and desktop uses different names. The schema needs per-platform renderKey entries instead of a single label. [^6a951-61]
+
+The component registry product API is reference-first — components are identified and wired by passing pubkey, nevent, naddr, and similar references, not by opaque handles or platform-specific identifiers. This ensures the DataContract wiring in each shell can be uniform: the shell reads a reference from the registry and passes it directly into the component's claim or render call. [^54ae9-9]
 ## Registry: C-ABI and JNI Surface
 
 The registry is exposed over C-ABI via nmp_app_gallery_registry_json() returning *const c_char, and over JNI via Java_org_nmp_gallery_bridge_KernelBridge_nativeRegistryJson. This mirrors the existing showcase.rs pattern exactly. [^6a951-6]
@@ -144,6 +155,18 @@ Files created in PR #787: apps/nmp-gallery/registry.json (4 sections, 16 compone
 Overview
 
 nmp-gallery Android must achieve feature parity with ALL components loading and rendering correctly — every profile loads, every image loads, everything is properly hooked up to use NMP Android components as expected. The QA phase deploys a Haiku agent with full ADB/emulator access to build both Chirp Android and nmp-gallery Android, launch an emulator, install APKs, screenshot every tab, and check adb logs for errors. Feature parity is not just catalog parity; it means every component renders with real data end-to-end. [^f3d8d-47]
+
+## Registry: Host Adapter Contract
+
+Each app provides exactly one shell-level registry host adapter that bridges the compile-time-embedded registry.json to native UI types (SwiftUI views, Compose composables, TUI render functions). The adapter is the single point where registry data crosses from Rust into platform render dispatch — no other file may parse or duplicate the catalog. [^54ae9-10]
+
+## Component Delivery: nmp add component
+
+nmp add component installs app-owned native UI source (SwiftUI/Compose/TUI) that can be freely edited. Updates are interactive merges against a recorded baseline — never silent overwrites. The developer retains full control of the local copy; the tooling only proposes diffs. [^54ae9-11]
+
+## M16 Completion Criteria
+
+M16 is complete when there is a manifest format, add/update with lock file, offline local registry, iOS + Android kits, fixture tests, and at least one real app (Chirp) consuming copied components instead of private renderers. This is the concrete ship criterion — partial implementations without Chirp consuming real copied components do not close the milestone. [^54ae9-12]
 ## See Also
 - [[chirp-ios-nmp-gallery-component-adoption|Chirp iOS NMP Gallery Component Adoption — Gap Audit and Implementation Plan]] — related guide
 - [[reactive-profile-mentions-architecture|Reactive Profile Mentions — LiveProfileMap Architecture]] — related guide
@@ -157,3 +180,7 @@ nmp-gallery Android must achieve feature parity with ALL components loading and 
 - [[v-107-bespoke-snapshot-consumer-migration|V-107 — Live Bespoke Snapshot Consumer Migration to Canonical Seam]] — related guide
 - [[cross-platform-qa-code-review-workflow|Cross-Platform QA and Code-Review Fan-Out — Build, Run, Review, Synthesize]] — related guide
 - [[architectural-compliance-verification-gate|Architectural Compliance Verification Gate — Verify Before Implementing]] — related guide
+- [[nmpui-website|nmpui.f7z.io — Component Showcase Website]] — related guide
+- [[resolved-profiles-kernel-projection|resolved_profiles — Kernel-Level Profile Merge Projection]] — related guide
+- [[self-claiming-nmp-components|Self-Claiming NMP Components — Components Own Their Data Claims, Apps Compose Them]] — related guide
+- [[nmp-gallery-verification-matrix|NMP Gallery Verification Matrix — 64-Cell Cross-Platform Quality Gate]] — related guide

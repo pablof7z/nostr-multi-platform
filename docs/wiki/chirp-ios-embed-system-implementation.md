@@ -12,11 +12,12 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-29
 compiled-from: conversation
 sources:
   - session:38935d82-0cbf-4e85-98d3-a0f056fd450c
+  - session:54ae9075-be27-4b86-b69a-6955d9e79c3c
 ---
 
 # Chirp iOS Embed System — Implementation and Architecture
@@ -35,8 +36,9 @@ The embed system was initially characterized as blocked on Rust FlatBuffers code
 The initial assessment that the embed system was "blocked on Rust" was incorrect and was subsequently retracted. Before claiming a feature is blocked on upstream changes, verify that the C FFI symbols exist in NmpCore.h and that the kernel already emits the relevant projection data. In this case, nmp_app_claim_event / nmp_app_release_event were already present in NmpCore.h, the kernel already emitted claimed_events in the snapshot, and KernelTypes.generated.swift had precedent for manual field additions — no Rust change was needed. The "blocked" claim was investigated and disproven when the user challenged it. [^38935-33]
 ## Architecture Compliance
 
-The embed plan was verified against all project doctrines before implementation: D8 (no polling) — consumes kernel-pushed snapshots reactively, claim/release are edge-triggered signals; ADR-0025 (no bespoke pull symbols) — uses the existing projection registry seam, mints zero new FFI symbols; One-way principle — one mechanism for projections, the plan uses it; ADR-0037 (typed transport) — reads typed Swift structs from SnapshotProjections, not raw JSON; Component-owned reactivity — components signal their own data requirements via claim/release, kernel never pre-fetches. [^38935-17]
+The embed plan was verified against all project doctrines before implementation: D8 (no polling) — consumes kernel-pushed snapshots reactively, claim/release are edge-triggered signals; ADR-0025 (no bespoke pull symbols) — uses the existing projection registry seam, mints zero new FFI symbols; One-way principle — one mechanism for projections, the plan uses it; ADR-0037 (typed transport) — reads typed Swift structs from SnapshotProjections, not raw JSON; Component-owned reactivity — components signal their own data requirements via claim/release, kernel never pre-fetches. NostrKindRegistry (SwiftUI and TUI) is pre-populated with defaults via makeDefault()/make_default() and allows host apps to swap slots for custom renderers; the SwiftUI version is an ObservableObject so subtree views react to registry changes. [^38935-17]
 
+<!-- citations: [^38935-17] [^54ae9-2] -->
 ## Implementation Phases
 
 The implementation was organized into 5 phases with 12 agents total. Phase 1 (Foundation, 3 parallel): EmbedKindProjection.swift (projection data types), ClaimedEventDto added to SnapshotProjections (typed FlatBuffers decoding), KernelBridge claim/release + EventClaimSinkProtocol definition. Phase 2 (Bridge + Registry, 3 parallel): EmbedHost.swift (reads claimedEvents from pushed snapshot, resolves envelopes), NostrKindRegistry.swift (kind → renderer dispatch table), EmbedChromeContainer.swift (depth-graded chrome view). Phase 3 (Views, 2 parallel): EmbeddedEvent.swift (claim/release lifecycle view), ArticleEmbed.swift + HighlightEmbed.swift (rich renderers). Phase 4 (Wire, 2 parallel): NostrContentView.swift (embed dispatch path), KernelModel.swift (drives EmbedHost, conforms to EventClaimSink). Phase 5 (Ship): ChirpApp.swift env injection + xcodegen + PR. [^38935-18]
@@ -58,4 +60,7 @@ Chirp iOS uses XcodeGen; project.pbxproj is generated from project.yml. Whenever
 - [[chirp-ios-kernel-types-generated|Chirp iOS KernelTypes.generated.swift — Dev-Time Generation, Lives in Git]] — related guide
 - [[component-owned-reactivity-architecture|Component-Owned Reactivity Architecture]] — related guide
 - [[architectural-compliance-verification-gate|Architectural Compliance Verification Gate — Verify Before Implementing]] — related guide
+- [[chirp-ios-repost-nip18|Chirp iOS Repost (NIP-18) — Implementation and Wiring]] — related guide
+- [[flatbuffers-codingkey-rawvalue-camelcase|FlatBuffers CodingKey rawValues Must Be camelCase — convertFromSnakeCase Mismatch]] — related guide
+- [[claim-expansion-terminate-claim-invariant|Claim Expansion — terminate_claim Is the Sole Phase::Terminal Transition Point]] — related guide
 

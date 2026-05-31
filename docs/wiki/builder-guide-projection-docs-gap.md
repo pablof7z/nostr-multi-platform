@@ -10,11 +10,12 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-29
-updated: 2026-05-29
+updated: 2026-05-28
 verified: 2026-05-29
 compiled-from: conversation
 sources:
   - session:d0690875-a693-48ef-ac6f-31a92f5699cc
+  - session:54ae9075-be27-4b86-b69a-6955d9e79c3c
 ---
 
 # Builder-Guide Documentation Gap — register_snapshot_projection Never Taught
@@ -31,8 +32,9 @@ Without positive guidance, every downstream app copies the nearest existing exam
 
 ## Required Fix
 
-The builder-guide must include a positive 'How to add a projection' section in the FFI chapter (chapter 15) that demonstrates: registering a projection via `nmp_app_register_snapshot_projection`, reading it from the pushed `SnapshotFrame::projections` map in the shell's `apply()` callback, and the guarantee that registered projections ride every tick's reactive push frame. This section must come before any example that shows bespoke pull symbols. [^d0690-42]
+The builder-guide must include a positive 'How to add a projection' section in the FFI chapter (chapter 15) that demonstrates: registering a projection via `nmp_app_register_snapshot_projection`, reading it from the pushed `SnapshotFrame::projections` map in the shell's `apply()` callback, and the guarantee that registered projections ride every tick's reactive push frame. This section must come before any example that shows bespoke pull symbols. The section must also explain that the SnapshotRegistry lets host apps register projection closures that run inside every actor tick, injecting custom JSON keys (e.g. `market.listings`, `todo.items`) without modifying the sealed social wire schema, and that these closures must be cheap and non-blocking (D8); panics are caught and swallowed so a bad host projection cannot kill the kernel.
 
+<!-- citations: [^d0690-42] [^54ae9-1] -->
 ## See Also
 - [[adr-0025-bespoke-ffi-anti-pattern|ADR-0025 — Bespoke FFI Pull Symbols Are an Anti-Pattern; Use register_snapshot_projection]] — related guide
 - [[podcast-player-polling-incident|Podcast-Player Polling Incident — Second-App ADR-0025 Anti-Pattern]] — related guide
