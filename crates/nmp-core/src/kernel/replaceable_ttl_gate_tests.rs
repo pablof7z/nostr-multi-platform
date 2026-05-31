@@ -94,3 +94,116 @@ fn addressable_claim_uses_parameterized_key() {
         "two distinct d-tags on an addressable kind are two distinct identities",
     );
 }
+
+// ─── Blocker 3: ingest hook + EOSE handler stamp check_again_after ──────────
+
+use super::nostr::NostrEvent;
+
+/// Serialize a freshly-signed `nostr::Event` into the wire-shaped JSON that
+/// `handle_event` deserializes (mirrors the `signed_note` fixture pattern, but
+/// for arbitrary kinds/tags via `EventBuilder::new`).
+fn signed_value(builder: ::nostr::EventBuilder, keys: &::nostr::Keys) -> serde_json::Value {
+    let event = builder
+        .sign_with_keys(keys)
+        .expect("sign_with_keys cannot fail with a generated keypair");
+    serde_json::to_value(&event).expect("nostr::Event serializes to wire JSON")
+}
+
+#[test]
+fn ingesting_kind0_stamps_check_again_after_with_ttl() {
+    const NOW_MS: u64 = 1_700_000_000_000;
+    let mut k = kernel_at(NOW_MS);
+
+    let keys = ::nostr::Keys::generate();
+    let pubkey = crate::kernel::hex_to_pubkey_bytes(&keys.public_key().to_hex())
+        .expect("public key is 64-char hex");
+
+    let value = signed_value(::nostr::EventBuilder::metadata(&::nostr::Metadata::new()), &keys);
+    k.handle_event(RelayRole::Content, "wss://r.example/", "diag-firehose-stress", &value);
+
+    // Default TTL for kind:0 is 1 hour (3_600_000 ms).
+    let key = crate::store::ReplaceableKey::Regular { kind: 0, pubkey };
+    assert_eq!(
+        k.event_store_handle().get_check_again_after(&key),
+        Some(NOW_MS + 3_600_000),
+        "ingesting a kind:0 must stamp check_again_after = now + per-kind TTL",
+    );
+}
+
+#[test]
+fn ingesting_addressable_stamps_parameterized_key_with_d_tag() {
+    const NOW_MS: u64 = 1_700_000_500_000;
+    let mut k = kernel_at(NOW_MS);
+
+    let keys = ::nostr::Keys::generate();
+    let pubkey = crate::kernel::hex_to_pubkey_bytes(&keys.public_key().to_hex())
+        .expect("public key is 64-char hex");
+
+    let d_tag = "my-article";
+    let builder = ::nostr::EventBuilder::new(::nostr::Kind::from(30023u16), "body")
+        .tags([::nostr::Tag::parse(["d", d_tag]).expect("valid d tag")]);
+    let value = signed_value(builder, &keys);
+    k.handle_event(RelayRole::Content, "wss://r.example/", "diag-firehose-stress", &value);
+
+    // The stamp must land on the PARAMETERIZED key carrying the d-tag — this is
+    // the unique tag-extraction logic in the ingest hook. The default TTL
+    // (6 hours) applies to kind:30023.
+    let key = crate::store::ReplaceableKey::Parameterized {
+        kind: 30023,
+        pubkey,
+        d_tag: d_tag.to_string(),
+    };
+    assert_eq!(
+        k.event_store_handle().get_check_again_after(&key),
+        Some(NOW_MS + 6 * 3_600_000),
+        "ingesting an addressable event must stamp the d-tag-keyed identity",
+    );
+
+    // A different d-tag is a distinct identity and must NOT be stamped.
+    let other = crate::store::ReplaceableKey::Parameterized {
+        kind: 30023,
+        pubkey,
+        d_tag: "other".to_string(),
+    };
+    assert_eq!(
+        k.event_store_handle().get_check_again_after(&other),
+        None,
+        "a different d-tag must be an independent (unstamped) identity",
+    );
+}
+
+#[test]
+fn eose_on_reverify_sub_stamps_tracked_keys_with_ttl() {
+    const NOW_MS: u64 = 1_700_001_000_000;
+    let mut k = kernel_at(NOW_MS);
+
+    let pubkey = [9u8; 32];
+    let key = crate::store::ReplaceableKey::Regular { kind: 0, pubkey };
+    let sub_id = "reverify-0-0909090909090909-";
+
+    // Seed the sub_id → key mapping the drain would record (the drain itself
+    // needs configured outbox relays to emit a REQ; this isolates the EOSE
+    // re-stamp arm from relay routing). Pre-stamp the in-flight guard value so
+    // we can prove EOSE OVERWRITES it with the real per-kind TTL.
+    k.event_store_handle()
+        .set_check_again_after(key.clone(), NOW_MS + super::INFLIGHT_GUARD_MS);
+    k.seed_reverify_sub_for_test(sub_id, vec![key.clone()]);
+
+    // Drive the REAL EOSE path (`handle_text` with a genuine `["EOSE", sub_id]`
+    // frame) — not a duplicated handler — so this exercises the wired code.
+    let frame = serde_json::json!(["EOSE", sub_id]).to_string();
+    let _ = k.handle_text(RelayRole::Indexer, "wss://r.example/", &frame);
+
+    // After EOSE the identity is confirmed fresh: check_again_after =
+    // now + per-kind TTL (1h for kind:0), replacing the larger in-flight guard.
+    assert_eq!(
+        k.event_store_handle().get_check_again_after(&key),
+        Some(NOW_MS + 3_600_000),
+        "EOSE on a reverify sub must re-stamp the tracked key with the per-kind TTL",
+    );
+    // And the sub is cleared from in-flight tracking.
+    assert!(
+        k.reverify_sub_ids_for_test().is_empty(),
+        "EOSE must remove the reverify sub from in-flight tracking",
+    );
+}

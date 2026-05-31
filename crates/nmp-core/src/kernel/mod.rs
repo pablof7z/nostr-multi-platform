@@ -1518,6 +1518,28 @@ impl Kernel {
         self.pending_reverify.len()
     }
 
+    /// Sub-ids currently tracked for reverify EOSE handling.
+    /// Test-only window into `reverify_subs` (introspection, not logic).
+    #[cfg(test)]
+    pub(crate) fn reverify_sub_ids_for_test(&self) -> Vec<String> {
+        self.reverify_subs.keys().cloned().collect()
+    }
+
+    /// Seed a reverify sub_id → key mapping directly.
+    ///
+    /// Test-only: the production registration happens in `drain_pending_reverify`,
+    /// but that path requires configured outbox relays to emit a REQ. This
+    /// seam lets the EOSE re-stamp arm be tested in isolation from relay
+    /// routing — it writes the same `reverify_subs` entry the drain would.
+    #[cfg(test)]
+    pub(crate) fn seed_reverify_sub_for_test(
+        &mut self,
+        sub_id: &str,
+        keys: Vec<crate::store::ReplaceableKey>,
+    ) {
+        self.reverify_subs.insert(sub_id.to_string(), keys);
+    }
+
     /// Borrow the kernel's `EventStore` handle.
     ///
     /// Returned as a cloned `Arc<dyn EventStore>` (the kernel uses `Arc` so
