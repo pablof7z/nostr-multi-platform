@@ -106,6 +106,7 @@ use nmp_router::{
 pub mod builder;
 pub mod op_feed_defaults;
 pub mod runtimes;
+pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, RunConfig, StorageSet, Unstarted};
 pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
