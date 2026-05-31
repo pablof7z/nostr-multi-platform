@@ -85,9 +85,10 @@ pub fn is_parameterized_replaceable(kind: u32) -> bool {
     (kind >= 20000 && kind < 30000) || (kind >= 30000 && kind < 40000)
 }
 
-/// Return whether a kind is (regular or parameterized) replaceable (NIP-01).
+/// Return whether a kind is replaceable (NIP-01).
+/// This includes both regular (0-19999) and parameterized (20000-39999) replaceable kinds.
 pub fn is_replaceable(kind: u32) -> bool {
-    (kind < 10000) || (kind >= 10000 && kind < 20000) || is_parameterized_replaceable(kind)
+    (kind < 20000) || (kind >= 30000 && kind < 40000)
 }
 
 /// In-memory cache for replaceable freshness timestamps.
