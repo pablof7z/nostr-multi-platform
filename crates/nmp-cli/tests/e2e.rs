@@ -147,6 +147,13 @@ fn full_registry_workflow() {
         sha256_hex_of(&fs::read_to_string(&example).unwrap()),
         "example lock sha must match on-disk content"
     );
+    assert_eq!(
+        render_identity_sha_install,
+        sha256_hex_of(&fs::read_to_string(
+            &app.join("Components/SwiftUI/RenderIdentifiable.swift")
+        ).unwrap()),
+        "render-identity lock sha must match on-disk content"
+    );
 
     // --- local edit to NostrMinimalContentView.swift ------------------------
     // Note the sha BEFORE we edit so we can later assert the lock still

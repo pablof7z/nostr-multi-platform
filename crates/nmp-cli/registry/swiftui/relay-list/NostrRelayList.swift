@@ -68,6 +68,17 @@ public struct NostrRelayConnectionStatus: Codable, Equatable {
 
 // MARK: - Component
 
+/// Row model for the relay list ForEach, bundling relay + connection status
+/// so that EquatableRow sees the full render state when connection status changes.
+private struct RelayListRowModel: RenderIdentifiable {
+    let relay: NostrRelayEditRow
+    let connection: String?
+
+    func rendersIdentically(_ other: Self) -> Bool {
+        relay.rendersIdentically(other.relay) && connection == other.connection
+    }
+}
+
 /// Relay list component — shows a user's configured relays with
 /// connection-status dots and role badges.
 ///
@@ -104,11 +115,11 @@ public struct NostrRelayList: View {
         } else {
             VStack(spacing: 0) {
                 ForEach(relays) { relay in
-                    EquatableRow(model: relay) { model in
+                    EquatableRow(model: RelayListRowModel(relay: relay, connection: connectionStatus[relay.url])) { m in
                         RelayRow(
-                            relay: model,
-                            connection: connectionStatus[model.url],
-                            onTap: onRelayTap.map { handler in { handler(model) } }
+                            relay: m.relay,
+                            connection: m.connection,
+                            onTap: onRelayTap.map { handler in { handler(m.relay) } }
                         )
                     }
                     .equatable()
