@@ -159,7 +159,7 @@ public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
 
 // MARK: - TimelineItem
 // Source: nmp_core::kernel::types::TimelineItem
-public struct TimelineItem: Decodable, Equatable, Identifiable, Hashable, Sendable {
+public struct TimelineItem: Decodable, Equatable, RenderIdentifiable, Identifiable, Hashable, Sendable {
     public let authorDisplayName: String?
     public let authorLnurl: String?
     public let authorPictureUrl: String?
@@ -173,6 +173,22 @@ public struct TimelineItem: Decodable, Equatable, Identifiable, Hashable, Sendab
     public let navTargetId: String
     public let relayCount: UInt32
     public let repostInnerContent: String
+
+    public func rendersIdentically(_ other: Self) -> Bool {
+        self.id == other.id
+            && self.authorPubkey == other.authorPubkey
+            && self.authorDisplayName == other.authorDisplayName
+            && self.authorPictureUrl == other.authorPictureUrl
+            && self.authorLnurl == other.authorLnurl
+            && self.content == other.content
+            && self.contentPreview == other.contentPreview
+            && self.createdAt == other.createdAt
+            && self.isRepost == other.isRepost
+            && self.kind == other.kind
+            && self.navTargetId == other.navTargetId
+            && self.repostInnerContent == other.repostInnerContent
+            && self.relayCount == other.relayCount
+    }
 }
 
 // MARK: - SnapshotProjections
