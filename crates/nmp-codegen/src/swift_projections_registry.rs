@@ -325,6 +325,31 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         swift_field: "settingsHub",
         swift_type: "SettingsHubSummary",
     },
+    // V-107 / ADR-0039: Marmot (MLS-over-Nostr) push projections. Both are
+    // host-registered in `nmp_marmot::ffi::register_with_keys` on every
+    // Marmot sign-in; the projection slot emits empty objects on sign-out
+    // (D1 forward-compat: `nil` on a kernel build that predates registration
+    // OR an empty `{}` when the slot is None — both decode safely because all
+    // fields are optional).
+    //
+    // `nmp.marmot.snapshot` has no `_` segment, so post-convertFromSnakeCase
+    // the key is identical: `"nmp.marmot.snapshot"`. The CodingKeys case
+    // still needs an explicit raw value because it is a dotted key that the
+    // synthesised decoder (which would pick the property name) cannot match
+    // (the generated CodingKeys enum covers ALL cases, not just dotted ones).
+    SnapshotProjectionEntry {
+        json_key: "nmp.marmot.snapshot",
+        swift_field: "marmotSnapshot",
+        swift_type: "MarmotSnapshot",
+    },
+    // `nmp.marmot.messages` projects a JSON object keyed by `group_id_hex`
+    // → newest-N `MarmotMessageRow` array (all groups in one map).
+    // Post-convertFromSnakeCase the key is `"nmp.marmot.messages"` (no `_`).
+    SnapshotProjectionEntry {
+        json_key: "nmp.marmot.messages",
+        swift_field: "marmotMessages",
+        swift_type: "[String: [MarmotMessage]]",
+    },
 ];
 
 #[cfg(test)]
@@ -336,15 +361,15 @@ mod tests {
     /// silent.
     #[test]
     fn registry_size_is_locked() {
-        // 33 entries: the original 32 plus the `claimed_events` projection
-        // (ADR-0034 / F-CR-06 NMP embed system). Bump this (and add a new
-        // SnapshotProjectionEntry above) when a new projection is wired.
+        // 35 entries: 33 prior + 2 Marmot push projections (V-107 / ADR-0039):
+        // `nmp.marmot.snapshot` and `nmp.marmot.messages`. Bump this (and add
+        // a new SnapshotProjectionEntry above) when a new projection is wired.
         // `bunker_connection_state` (V-14 step b) is intentionally absent —
         // the follow-up iOS PR adds it alongside the Swift Decodable stub and
         // the KernelTypes.generated.swift regen to avoid a codegen-drift CI failure.
         assert_eq!(
             SNAPSHOT_PROJECTIONS.len(),
-            33,
+            35,
             "registry size changed — regenerate KernelTypes.generated.swift and update this test"
         );
     }
@@ -395,8 +420,9 @@ mod tests {
             .map(|e| e.json_key)
             .filter(|k| k.contains('.'))
             .collect();
-        // The conformance test names six dotted keys. Hard-code them here
-        // so a drift on either side fails this test loudly.
+        // The conformance test names eight dotted keys (six prior + 2 Marmot
+        // push projections added in V-107). Hard-code them here so a drift on
+        // either side fails this test loudly.
         let expected = [
             "nmp.nip29.group_chat",
             "nmp.nip29.discovered_groups",
@@ -404,6 +430,8 @@ mod tests {
             "nmp.follow_list",
             "nmp.nip57.zaps",
             "nmp.nip17.dm_relay_list",
+            "nmp.marmot.snapshot",
+            "nmp.marmot.messages",
         ];
         for key in expected {
             assert!(

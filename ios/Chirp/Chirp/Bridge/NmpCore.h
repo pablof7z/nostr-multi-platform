@@ -440,34 +440,21 @@ void nmp_app_chirp_register_follow_list(void *app, const char *active_pubkey_or_
 
 // ── Marmot (MLS encrypted groups) per-app FFI ────────────────────────────
 //
-// Six symbols exported from the same `libnmp_app_chirp.a` archive (the
-// Chirp-specific composition point — D0 forbids `nmp-core -> nmp-marmot`).
-// They mirror the lifetime / free / D6 conventions of the modular-timeline
-// symbols above.
+// V-107 / ADR-0039: the former pull symbols `nmp_marmot_snapshot`,
+// `nmp_marmot_group_messages`, and `nmp_marmot_string_free` were deleted.
+// Swift now reads Marmot state reactively from the push projections
+// `projections["nmp.marmot.snapshot"]` and `projections["nmp.marmot.messages"]`
+// on every SnapshotFrame — no per-tick pull needed (D8: no polling).
 //
-// Flow:
-// 1. `nmp_marmot_register(app, secret_key_hex, db_dir)` once the
-//    local identity secret is known. `secret_key_hex` is hex OR `nsec…`;
-//    the encrypted MLS SQLite DB is created at
-//    `<db_dir>/marmot-mls-state.sqlite`. Returns an opaque handle, or NULL
-//    on any failure (D6).
-// 2. `nmp_marmot_snapshot(handle)` each render tick → JSON
-//    `{ groups, pending_welcomes, key_package }`.
-// 3. `nmp_marmot_group_messages(handle, group_id_hex)` → newest
-//    200 decrypted messages for one group (JSON array).
-// 4. Mutating ops: `nmp_app_dispatch_action("nmp.marmot", action_json)`
-//    (registered as the `nmp.marmot` ActionModule via
-//    `MarmotActionModule` + `MlsOpHandler`). Returns a `correlation_id`
-//    synchronously; the terminal verdict surfaces through
-//    `projections["action_stages"]` on a subsequent snapshot tick.
-//    The legacy bespoke `nmp_marmot_dispatch` C-ABI symbol was deleted
-//    in ADR-0025 PR 3 (2026-05-23) — the ADR-0025 exception is now
-//    fully retired.
-// 5. Free EVERY returned string via `nmp_marmot_string_free`.
-// 6. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
-//
-// Fire-and-forget: every entry point degrades silently on null pointers,
-// poisoned mutexes, or (de)serialization failure (D6).
+// Remaining lifecycle symbols:
+// 1. `nmp_marmot_register(app, secret_key_hex, db_dir)` once the local
+//    identity secret is known. Registers the Marmot observer AND the two
+//    push projections. Returns an opaque handle, or NULL on any failure (D6).
+// 2. `nmp_marmot_register_active(app, db_dir)` — same, but reads the key
+//    from the actor's active local-key slot (no nsec exposed to Swift).
+// 3. Mutating ops: `nmp_app_dispatch_action("nmp.marmot", action_json)`.
+//    Results arrive through the next push snapshot frame.
+// 4. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
 void *nmp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir);
 /// Register using the actor-owned key — Swift never sees the nsec. Reads
 /// the active local key from the slot the actor writes after identity
@@ -484,9 +471,6 @@ void *nmp_app_chirp_identity_sign_in_nsec(void *app, const char *secret, const c
 /// Rust-owned removal policy: forget Chirp's persisted local secret and
 /// remove the identity through the kernel actor.
 void nmp_app_chirp_identity_remove_account(void *app, const char *identity_id);
-char *nmp_marmot_snapshot(void *handle);
-char *nmp_marmot_group_messages(void *handle, const char *group_id_hex);
-void nmp_marmot_string_free(char *ptr);
 void nmp_marmot_unregister(void *handle);
 
 /// Trigger the kernel to fetch KeyPackage events (kind:30443/443) for the named

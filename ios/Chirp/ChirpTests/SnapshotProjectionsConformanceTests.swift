@@ -43,10 +43,11 @@ import XCTest
 ///
 /// ## Known gap
 ///
-/// None — all 7 registered Rust projections (`nmp.nip29.group_chat`,
+/// None — all 9 registered Rust projections (`nmp.nip29.group_chat`,
 /// `nmp.nip29.discovered_groups`, `nmp.nip17.dm_inbox`, `nmp.follow_list`,
-/// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`, `claimed_profiles`) have
-/// Swift decoders covered by this conformance test as of this file.
+/// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`, `claimed_profiles`,
+/// `nmp.marmot.snapshot`, `nmp.marmot.messages`) have Swift decoders
+/// covered by this conformance test as of this file (V-107 / ADR-0039).
 final class SnapshotProjectionsConformanceTests: XCTestCase {
 
     /// The exact decoder configuration `KernelHandle.decode` uses for the
@@ -101,7 +102,20 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
               "about": "",
               "has_profile": false
             }
-          }
+          },
+          "nmp.marmot.snapshot": {
+            "groups": [],
+            "pending_welcomes": [],
+            "key_package": {
+              "published": false,
+              "stale": false,
+              "subtitle": "",
+              "action_label": ""
+            },
+            "cached_kp_pubkeys": [],
+            "is_registered": false
+          },
+          "nmp.marmot.messages": {}
         }
         """
         let projections = try snapshotDecoder().decode(
@@ -132,6 +146,13 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNotNil(
             projections.claimedProfiles,
             "SnapshotProjections.claimedProfiles decoded nil — check CodingKeys.claimedProfiles raw value matches \"claimedProfiles\" (post-convertFromSnakeCase of \"claimed_profiles\")")
+        // V-107 / ADR-0039: Marmot push projections.
+        XCTAssertNotNil(
+            projections.marmotSnapshot,
+            "SnapshotProjections.marmotSnapshot decoded nil — check CodingKeys.marmotSnapshot raw value matches \"nmp.marmot.snapshot\" (no underscore, no transform needed)")
+        XCTAssertNotNil(
+            projections.marmotMessages,
+            "SnapshotProjections.marmotMessages decoded nil — check CodingKeys.marmotMessages raw value matches \"nmp.marmot.messages\" (no underscore, no transform needed)")
     }
 
     /// Sanity check: all seven projection fields default to nil when the
@@ -149,5 +170,8 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNil(projections.zaps)
         XCTAssertNil(projections.dmRelayList)
         XCTAssertNil(projections.claimedProfiles)
+        // V-107 / ADR-0039: Marmot push projections also nil on empty map.
+        XCTAssertNil(projections.marmotSnapshot)
+        XCTAssertNil(projections.marmotMessages)
     }
 }
