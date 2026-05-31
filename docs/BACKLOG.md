@@ -333,11 +333,9 @@ Per-kind routing shipped as `nmp-router` (2026-05-29). Two open residuals with u
 FFI snapshot surface, validation harness, and kernel observability cut-over are all
 in place.
 
-**Phase 3 (Chirp inspector UI)** — `chirp-tui` leg complete (zero-count relay
-classification + indexer discovery-kind targeting rendered in relay settings,
-tested). iOS and web legs still open: a `RoutingInspectorView` long-press
-target on `ChirpEventCard` / publish-status row + a debug toolbar toggle on
-the wasm host remain unverifiable without Xcode / wasm environment.
+**Phase 3 (Chirp inspector UI)** — iOS and web legs open: a `RoutingInspectorView`
+long-press target on `ChirpEventCard` / publish-status row + a debug toolbar
+toggle on the wasm host, both unverifiable without Xcode / wasm environment.
 
 ---
 

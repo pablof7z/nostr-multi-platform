@@ -396,15 +396,7 @@ pub(crate) fn indexer_discovery_kinds_label(relay: &RelayRow) -> String {
     } else {
         found
             .into_iter()
-            .map(|k| {
-                if k >= *DISCOVERY_LIST_RANGE.start() && k <= *DISCOVERY_LIST_RANGE.end()
-                    && !DISCOVERY_KINDS.contains(&k)
-                {
-                    format!("{} ({})", discovery_kind_label(k), k)
-                } else {
-                    format!("{} ({})", discovery_kind_label(k), k)
-                }
-            })
+            .map(|k| format!("{} ({})", discovery_kind_label(k), k))
             .collect::<Vec<_>>()
             .join(", ")
     }
