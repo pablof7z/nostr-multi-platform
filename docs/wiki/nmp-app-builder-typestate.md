@@ -1,31 +1,26 @@
 ---
-title: NmpAppBuilder Typestate — Compile-Time Pre-Start Ordering
+title: NmpAppBuilder Typestate & Compile-Time Pre-Start Ordering
 slug: nmp-app-builder-typestate
-summary: `NmpAppBuilder` must use a typestate pattern with states `Unstarted` and `StorageSet`
+summary: "The NmpAppBuilder typestate enforces compile-time pre-start ordering: an Unstarted builder must call `.storage_path()` or `.in_memory()` to transition to Storag"
 tags:
   - capture
 volatility: warm
 confidence: medium
-created: 2026-05-30
-updated: 2026-05-30
-verified: 2026-05-30
+created: 2026-05-29
+updated: 2026-05-29
+verified: 2026-05-29
 compiled-from: conversation
 sources:
   - session:4edd41f1-8318-4a4b-98d8-de01ae35f81b
-  - session:4eb4e0e2-a9b3-4347-a92b-a073af7adfc0
 ---
 
-# NmpAppBuilder Typestate — Compile-Time Pre-Start Ordering
+# NmpAppBuilder Typestate & Compile-Time Pre-Start Ordering
 
-## Typestate Pattern
+## Typestate Flow
 
-`NmpAppBuilder` must use a typestate pattern with states `Unstarted` and `StorageSet`. The `start()` method only exists on `StorageSet` and consumes the builder, enforcing compile-time pre-start ordering constraints. [^4edd4-228]
+The NmpAppBuilder typestate enforces compile-time pre-start ordering: an Unstarted builder must call `.storage_path()` or `.in_memory()` to transition to StorageSet. The `start()` method only exists on StorageSet and consumes the builder. [^4edd4-16]
 
 
-NmpAppBuilder must use a typestate pattern with states Unstarted and StorageSet. The start() method only exists on StorageSet and consumes the builder, enforcing compile-time pre-start ordering constraints. Read-only apps use an empty Action enum rather than leaving implementers to deduce it from compiler errors. [^4eb4e-2]
-
-## Kernel Bootstrap
-
-The builder guide must include a Rust-native kernel bootstrap section (~30 lines in §19) showing how to start the NMP kernel from a Rust binary. [^4eb4e-3]
+The `mem::forget` pointer transfer in NmpAppBuilder is memory-safe: the Copy pointer is extracted before forget, Drop fires exactly once, and panic-safety holds. [^4edd4-17]
 ## See Also
 

@@ -1,7 +1,7 @@
 ---
-title: PublishUnsignedEvent — Kind-Agnostic Kernel Publishing Entrypoint
+title: PublishUnsignedEvent Actor Command
 slug: publish-unsigned-event
-summary: "NMP provides ActorCommand::PublishUnsignedEvent(UnsignedEvent) as a kind-agnostic kernel entrypoint that signs with the active identity and routes via NIP-65 ou"
+summary: The `PublishUnsignedEvent` actor command accepts a generic `UnsignedEvent`, signs it with the active identity (ignoring `unsigned.pubkey` to prevent author forg
 tags:
   - capture
 volatility: warm
@@ -12,26 +12,28 @@ verified: 2026-05-18
 compiled-from: conversation
 sources:
   - session:590ca0cd-3665-42f5-96ab-3ea035a79d67
-  - session:09da8d90-44d5-4038-834b-5393adb0d2b9
+  - session:d27a4f61-511b-4086-845d-335493f9b464
   - session:fe79b2c4-3f04-4fc9-8dde-08f19a3190b4
-  - session:1c093fa5-0f0e-4dee-bf38-99781e763f13
+  - session:47203d35-d7c9-4c12-bc47-a40773d7acc2
 ---
 
-# PublishUnsignedEvent — Kind-Agnostic Kernel Publishing Entrypoint
+# PublishUnsignedEvent Actor Command
 
-## PublishUnsignedEvent
+## Overview
 
-NMP provides ActorCommand::PublishUnsignedEvent(UnsignedEvent) as a kind-agnostic kernel entrypoint that signs with the active identity and routes via NIP-65 outbox resolver, with FFI entrypoint nmp_app_publish_unsigned_event(app, json_ptr). PublishUnsignedEvent ignores unsigned.pubkey and derives the pubkey from the active identity keys at sign time, preventing author forgery. NoopSigner is wired as the publish engine signer; only pre-signed events can flow through signing paths. PublishUnsignedEvent is intended as a pragmatic stepping stone that will deprecate gracefully once per-kind ActionModule extraction lands, with typed AppAction dispatches replacing it kind-by-kind. PR-F must address both `nmp_app_publish_signed_event` and `nmp_app_publish_unsigned_event` to close the one-door gap.
+The `PublishUnsignedEvent` actor command accepts a generic `UnsignedEvent`, signs it with the active identity (ignoring `unsigned.pubkey` to prevent author forgery), and routes it via the NIP-65 outbox resolver. It is kind-agnostic and D0-clean. Apps create events (e.g., a NIP-23 article) by using the per-kind builder to produce an `UnsignedEvent`, then dispatching `ActorCommand::PublishUnsignedEvent(unsigned)` to sign and publish it. [^590ca-10]
 
-Direct WebSocket publish (fetch::send_event) is used alongside kernel fire-and-forget publish for key packages, because the kernel's fire-and-forget silently drops events in the simulator. [^fe79b-13]
 
-Marmot's dependency on `nmp_app_publish_signed_event_to` is resolved by migrating it to an internal kernel API (`Kernel::publish_signed_explicit(event, relays)`), eliminating the FFI-across-crates pattern.
+## Architecture and Evolution
 
-A defensive guard inside `publish_signed_event` makes NIP-17 kind:1059 outbox leaks structurally impossible, regardless of caller.
+Refactoring `publish.rs` to consume the new protocol-crate builders inverts D0 (the kernel cannot depend on protocol crates). The doctrine-correct path is extracting publish handlers out into per-crate `ActionModule` impls (Phase 1 per kind-wrappers.md §8). `PublishUnsignedEvent` serves as a stepping stone that can be deprecated kind-by-kind as ActionModule extraction lands. Action modules emit unsigned event shapes via a PublishPlan carrier; the actor's signer-bridge signs, and modules never hold keys. [^590ca-11]
 
-<!-- citations: [^fe79b-13] [^590ca-10] [^09da8-7] [^1c093-23] -->
+<!-- citations: [^590ca-11] [^d27a4-15] -->
+
+## FFI
+
+The `nmp_app_publish_signed_event` FFI publishes pre-signed events verbatim without re-signing. Publish-handle FFI operations (`publish_signed_event*`, `retry_publish`, `cancel_publish`) reside in `ffi/publish.rs`, not `ffi/identity.rs`. The publish_key_package operation uses dual-path publishing: the kernel fire-and-forget path plus a direct WebSocket send_event path via fetch.rs.
+
+<!-- citations: [^590ca-229] [^590ca-253] [^d27a4-16] [^fe79b-13] [^47203-7] -->
 ## See Also
 
-ActorCommand::PushInterest(LogicalInterest) allows protocol crates to register relay subscriptions without touching Swift code.
-
-<!-- citations: [^fe79b-14] -->

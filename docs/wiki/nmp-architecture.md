@@ -1,0 +1,45 @@
+---
+title: NMP Architecture & Kernel Design
+slug: nmp-architecture
+summary: The NMP project is a Rust multiplatform Nostr framework with one Rust kernel (nmp-core) and thin platform shells
+tags:
+  - capture
+volatility: warm
+confidence: medium
+created: 2026-05-18
+updated: 2026-05-30
+verified: 2026-05-18
+compiled-from: conversation
+sources:
+  - session:7f0f0c78-d1aa-49db-b659-c9cf49827117
+  - session:582fca30-be51-4861-bb16-3788610c6fb7
+  - session:575288b2-1197-44d2-ba9b-d72e8d74f9a6
+  - session:d27a4f61-511b-4086-845d-335493f9b464
+  - session:fc128f85-af57-41cd-8c5b-a71d15450e17
+  - session:cc7dc68a-1fcd-49fe-98be-198f17b6d59e
+  - session:d5c1c624-3c9d-4fa7-a910-84bd59c75724
+  - session:fd8095ba-6ff1-4552-9ee1-5b6e79f1bb53
+  - session:12b3f443-3c2d-4e47-976a-7f4ceab75343
+  - session:e8cb5967-4f11-488d-a27f-960e4c53f064
+  - session:c0765978-d977-4400-8274-96df7682b126
+  - session:1670fcb8-f275-498c-975b-8bd912331ded
+  - session:53838558-81bd-433d-a46d-d117ecebb361
+  - session:200932fb-5a92-44e0-8d42-2184d2e69094
+  - session:f26050da-6d8a-4128-9179-4088a9df94b9
+  - session:56db993b-6de7-49f9-82b1-a9416cef3294
+  - session:42908d3a-983a-40e5-a8b0-917a990310e6
+  - session:d0690875-a693-48ef-ac6f-31a92f5699cc
+  - session:c3f757f1-6292-4e52-b520-5bb52e7de2bf
+---
+
+# NMP Architecture & Kernel Design
+
+## Architecture Overview
+
+The NMP project is a Rust multiplatform framework (v1-B target), not an iOS-only app; the architecture prioritizes cross-platform viability over single-platform shortcuts. It has one Rust kernel (nmp-core) and thin platform shells. The nmp-core kernel is a pure synchronous KernelReducer with no async runtime dependency, because the host owns the event loop — embedding tokio would create two-loop conflicts across iOS (GCD), Android (Looper), and browser (JS event loop). The architecture follows type-system enforced invariants, an Elm-style actor architecture, and zero business logic in the kernel. Native platform shells must contain no logic — native renders and Rust decides all behavior. All relay connections, subscriptions, event fetching, and publishing happen inside the Rust kernel via nmp_app_* FFI calls; the Chirp iOS app uses a thin C-ABI shell that delegates to NMP crates, requiring the runtime to be embeddable without an async executor assumption. The update transport from the Rust kernel to host shells uses canonical FlatBuffers frames with an nmp.transport.UpdateFrame schema and NMPU file id, supporting Snapshot and Panic variants. The NmpGallery app has iOS (SwiftUI) and Android (Kotlin/Compose) versions under apps/nmp-gallery/{ios,android}/, with TUI and Web versions planned for the future; both iOS and Android NmpGallery apps use the NMP kernel (nmp-ffi, nmp-app-template) for relay connectivity rather than custom WebSocket code. (Previously: the architecture was described only in terms of the Chirp iOS app shell.) The D0 kernel boundary doctrine requires nmp-core to have zero MLS types and zero mdk-core/openmls imports. NIP-44 and NIP-59 primitives are sourced from the rust-nostr crate (nostr::nip44, nostr::nip59), never reimplemented from scratch; any scratch-crypto implementations of NIP-44 v2 are reverted because they violate the rust-nostr-not-scratch-crypto principle. The nmp-core kernel decides what to fetch, from which relay, and handles routing; the Swift app never constructs or sends Nostr REQs itself. Rust owns sorting, paging, card de-duplication, and the quote-card inclusion rule for the modular timeline, while shells only request a window and trigger load-more. Outbox calculation must not live in nmp-core — it must be extractable so competing outbox algorithms can be substituted in the future. nmp-ffi alone uses EmptyOutboxRouter; nmp-app-template::register_defaults installs GenericOutboxRouter and InMemoryMailboxCache so claim_profile can issue REQs. Before writing more code, the core crate boundaries and supporting crate responsibilities must be architected per SRP; no implementation until the architecture document is finalized. NMP must not present multiple ways to do the same thing (the no-dual-seam preset). Dependencies flow strictly upward in the crate graph — no sibling cross-dependencies within a layer, and nmp-core cannot import nmp-feed because nmp-feed depends on nmp-core (which would create a circular dependency). The 12-step crate-boundary architecture migration moves protocol-specific code into nmp-nipXX crates that depend on nmp-core, never the reverse. Consequential changes — such as adding new crates, altering the threading model, or introducing typestate builders — must be architecturally designed first rather than auto-implemented. The kernel tick path must call SubscriptionLifecycle::drain_tick() to process CompileTrigger::FollowListChanged events. NmpKernel::new must install the M4 NIP-77 PlanCoverageHook (crates/nmp-core/src/subs/mod.rs:59) to enforce D2 at runtime. The nostrconnect:// URI is generated by the Rust nmp-signer-broker via nmp_app_nostrconnect_uri FFI, which creates a fresh secp256k1 keypair and returns a properly formatted nostrconnect://<pubkey>?relay=<encoded>&secret=<hex>&name=Chirp&perms=... string. Heap-allocated C strings returned from the broker FFI (nostrconnect URI) are freed via nmp_broker_free_string with null-safe cleanup. A C-level capability callback (nmpCapabilityCallback) routes JSON CapabilityRequests from Rust through KeychainCapability.handleJSON and returns a strdup-allocated envelope string that Rust can free. KernelHandle.registerCapabilityHandler stores a strong reference to ChirpCapabilities and registers the callback via nmp_app_set_capability_callback; KernelHandle deinit unregisters the capability callback before releasing the strong reference to avoid a dangling-pointer window. The NMP Rust kernel must contain zero hardcoded relays or pubkeys in production code; such constants are only permitted behind #[cfg(test)] gates. All relays, including the indexer relay, must be provided by the app side rather than hardcoded in the kernel. The nmp_core::kinds module is the single canonical home for all Nostr kind constants across the workspace; protocol crates import from there rather than defining their own. NIP crates must not depend on each other for trivial helpers; nmp-core::display serves as the shared substrate crate that all NIP crates already depend on. The nmp-core substrate must own zero NIP knowledge after all migrations — all NIP-specific logic moves to dedicated NIP crates. V-38 through V-41 are D0 violations where NIP-specific code (NWC wallet, DM send handler, kind:10050 ingest, zap LNURL handler) lives in nmp-core despite dedicated NIP crates existing — all deferred to post-v1 pending the open-ActorCommand seam. V-68 (kind:1/6 hardcoded in nmp-core and nmp-planner) is the last major D0 leak and must be removed for nmp-core to be a clean substrate. (Previously: the architecture was described only in terms of the Chirp iOS app shell.)
+
+The NmpApp builder exposes three real extension seams: register_action, register_snapshot_projection, and register_event_observer. The ActionModule trait signature must show the execute() dispatch method, not the removed reduce() step-machine pattern. [^c3f75-9]
+
+<!-- citations: [^7f0f0-12] [^582fc-19] [^57528-12] [^d27a4-6] [^fc128-2] [^cc7dc-5] [^d5c1c-1] [^fd809-3] [^12b3f-6] [^e8cb5-2] [^c0765-3] [^1670f-5] [^53838-5] [^20093-1] [^f2605-7] [^56db9-5] [^42908-12] [^d0690-2] -->
+## See Also
+
