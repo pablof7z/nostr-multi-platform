@@ -138,6 +138,7 @@ impl Kernel {
             relay_count: 0,
         };
         self.events.insert(primary_id.to_string(), stored);
+        self.cached_estimated_store_bytes.set(None);
     }
 
     /// Add a relay to a claim's attempted set. Test seam for §8.1 relay_failed tests.

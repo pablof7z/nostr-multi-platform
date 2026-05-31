@@ -202,6 +202,7 @@ impl Kernel {
             self.metric_note_events = self.metric_note_events.saturating_add(1);
         }
         self.events.insert(event.id.clone(), cached);
+        self.cached_estimated_store_bytes.set(None);
         self.notify_event_observers(&kernel_event);
         if sub_id.starts_with("diag-firehose-") {
             self.diagnostic_firehose.events = self.diagnostic_firehose.events.saturating_add(1);

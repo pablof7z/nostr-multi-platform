@@ -379,7 +379,10 @@ impl Kernel {
         relays
     }
 
-    pub(super) fn estimated_store_bytes(&self) -> usize {
+    /// Compute estimated store bytes by scanning all events, profiles, and seed
+    /// contacts. This is the O(store) function; use `estimated_store_bytes()`
+    /// (the public getter) for the cached version.
+    fn compute_estimated_store_bytes(&self) -> usize {
         let event_bytes: usize = self
             .events
             .values()
@@ -404,6 +407,19 @@ impl Kernel {
             })
             .sum();
         event_bytes + profile_bytes + self.seed_contacts.values().map(Vec::len).sum::<usize>() * 64
+    }
+
+    /// Get estimated store bytes, using a cached value if available.
+    /// The cache is invalidated (set to None) at every store-mutation site
+    /// (events, profiles, seed_contacts inserts). Subsequent calls to this
+    /// function recompute the value once and cache it until the next mutation.
+    pub(super) fn estimated_store_bytes(&self) -> usize {
+        if let Some(v) = self.cached_estimated_store_bytes.get() {
+            return v;
+        }
+        let v = self.compute_estimated_store_bytes();
+        self.cached_estimated_store_bytes.set(Some(v));
+        v
     }
 
     pub(super) fn elapsed_ms(&self, instant: Option<Instant>) -> Option<u128> {

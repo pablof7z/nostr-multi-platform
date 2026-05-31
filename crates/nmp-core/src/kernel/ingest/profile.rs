@@ -18,6 +18,7 @@ impl Kernel {
 
         if should_replace {
             self.profiles.insert(event.pubkey, candidate);
+            self.cached_estimated_store_bytes.set(None);
         }
     }
 }

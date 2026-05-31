@@ -527,6 +527,13 @@ pub struct Kernel {
     metric_duplicate_events: u64,
     /// Tracks `events.len()` — incremented on insert, decremented on eviction.
     metric_stored_events: u64,
+    /// Cached `estimated_store_bytes` value. Memoized on first call after
+    /// cache invalidation (set to `None`) at every store-mutation site. The
+    /// cache is correct (bit-identical to a fresh full-scan) because
+    /// invalidation happens after EVERY insert (events, profiles, seed_contacts).
+    /// Cell<Option<usize>> allows `estimated_store_bytes()` to take `&self` and
+    /// memoize without &mut. See `status.rs` for the getter logic.
+    cached_estimated_store_bytes: std::cell::Cell<Option<usize>>,
     timeline: VecDeque<String>,
     /// Author-view tracking (D0 app-domain state). See [`AuthorViewState`].
     author_view: AuthorViewState,
@@ -1676,6 +1683,7 @@ impl Kernel {
             metric_note_events: 0,
             metric_duplicate_events: 0,
             metric_stored_events: 0,
+            cached_estimated_store_bytes: std::cell::Cell::new(None),
             timeline: VecDeque::new(),
             author_view: AuthorViewState::default(),
             thread_view: ThreadViewState::default(),
@@ -2269,6 +2277,7 @@ impl Kernel {
     /// without waiting for the kind:3 event to round-trip from relays.
     pub(crate) fn prepopulate_seed_contacts(&mut self, pubkey: String, follows: Vec<String>) {
         self.seed_contacts.insert(pubkey, follows);
+        self.cached_estimated_store_bytes.set(None);
     }
 
     /// Pre-populate the local NIP-65 mailbox cache from an event this kernel just
