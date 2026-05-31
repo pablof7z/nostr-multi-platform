@@ -216,7 +216,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let resolvedProfiles: [String: ProfileCard]?
     let claimedProfiles: [String: ProfileCard]?
     let claimedEvents: [String: ClaimedEventDto]?
-    let settingsHub: SettingsHubSummary?
+    let settingsHub: [String: Int]?
     let marmotSnapshot: MarmotSnapshot?
     let marmotMessages: [String: [MarmotMessage]]?
 

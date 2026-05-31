@@ -945,10 +945,12 @@ struct KernelUpdate: Decodable {
     var relayDiagnostics: RelayDiagnosticsSnapshot? { projections?.relayDiagnostics }
 
     /// Settings-hub view payload — `projections["settings_hub"]`. Carries
-    /// pre-formatted subtitles (currently just the relays count) the iOS
-    /// Settings screen renders verbatim. `nil` only on a kernel older than
-    /// this projection.
-    var settingsHub: SettingsHubSummary? { projections?.settingsHub }
+    /// the raw relay count the iOS Settings screen uses to format its
+    /// subtitle locally (ADR-0041: kernel now emits `{"relay_count": N}`).
+    var settingsHub: SettingsHubSummary? {
+        guard let dict = projections?.settingsHub else { return nil }
+        return SettingsHubSummary(relayCount: dict["relay_count"] ?? 0)
+    }
 }
 
 // `SnapshotProjections` is generated — see
