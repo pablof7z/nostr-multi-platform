@@ -39,6 +39,7 @@
 pub(crate) mod auth_gate;
 pub(crate) mod inbox;
 pub(crate) mod oneshot;
+pub(crate) mod pagination;
 pub(crate) mod pool;
 pub(crate) mod registry;
 pub(crate) mod sub_key;
@@ -68,6 +69,7 @@ use crate::planner::{CompiledPlan, InterestShape, RelayUrl};
 
 pub use inbox::TriggerInbox;
 pub use oneshot::{OneshotApi, OneshotToken};
+pub use pagination::PaginationController;
 pub use pool::{ConnectionPool, InMemoryPool, PoolSendOutcome};
 pub use registry::InterestRegistry;
 pub use sub_key::{SubIdentity, SubKey, SubKeyBuilder, SubOwnerKey, SubScope};
@@ -153,6 +155,7 @@ const MAILBOX_PROBE_BATCH: usize = 500;
 pub struct SubscriptionLifecycle {
     registry: InterestRegistry,
     inbox: TriggerInbox,
+    pagination: PaginationController,
     indexer_relays: Vec<RelayUrl>,
     /// Operator-configured app relays (T134).
     ///

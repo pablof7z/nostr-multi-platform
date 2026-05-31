@@ -62,6 +62,30 @@ pub type EventLookup = Arc<dyn Fn(&EventId) -> Option<KernelEvent> + Send + Sync
 /// these into host hydration calls; the engine stays free of the action system.
 pub type ClaimSink = Arc<dyn Fn(ClaimRequest) + Send + Sync>;
 
+/// Request to backfill older events from relays when the user scrolls past
+/// locally-cached events. Emitted by [`RootIndexedFeed::load_older`] when all
+/// cached roots are visible and the client requests older events (D7: engine
+/// asks, wiring decides). The wiring layer routes this to the kernel's
+/// `PaginationController`, which deduplicates and gates against coverage before
+/// registering a bounded `until`-interest with the planner.
+#[derive(Clone, Debug)]
+pub struct BackfillRequest {
+    /// Oldest locally-cached event (the lower boundary for the backfill).
+    /// The kernel will issue `until = oldest.created_at - 1` (NIP-01 inclusive boundary).
+    pub oldest: FeedCursor,
+    /// Unique ID for this feed (e.g., "home-feed", "profile-0x123...").
+    /// Used by the wiring to route back to the correct pagination controller.
+    pub feed_key: String,
+    /// Unique consumer ID (stamped by the feed engine at construction).
+    /// Used for refcounting and dedup in the planner.
+    pub consumer_id: String,
+}
+
+/// Sink the engine pushes [`BackfillRequest`]s through. The wiring layer turns
+/// these into kernel `ActorCommand::BackfillFeed` dispatches. Optional; if not
+/// installed, `load_older()` is a no-op (backwards pagination disabled).
+pub type BackfillSink = Arc<dyn Fn(BackfillRequest) + Send + Sync>;
+
 /// Detect a profile event and extract `(author_pubkey, profile)`; `None` for
 /// non-profile events. Lets the engine fan profiles out without naming a kind.
 pub type ProfileDetector<A> =
@@ -101,6 +125,7 @@ struct Capabilities<R, A: AttributionPayload, C> {
     event_gate: EventGate,
     event_lookup: EventLookup,
     claim_sink: ClaimSink,
+    backfill_sink: Option<BackfillSink>,
     profile_detector: ProfileDetector<A>,
     card_builder: CardBuilder<C>,
     consumer_id: String,
@@ -168,6 +193,9 @@ where
     /// * `event_lookup` — read-cache lookup, needed for repost L-2/L-5 rebuild.
     /// * `claim_sink` — receives every [`ClaimRequest`]; the wiring layer turns
     ///   these into host hydration calls.
+    /// * `backfill_sink` — receives every [`BackfillRequest`] when the user
+    ///   scrolls past locally-cached events (optional; if not set, backwards
+    ///   pagination is disabled).
     /// * `profile_detector` — extracts `(author, profile)` from a profile
     ///   event, `None` otherwise.
     /// * `card_builder` — `(root_event, Option<target_event>) -> C`.
@@ -179,6 +207,7 @@ where
         event_gate: EventGate,
         event_lookup: EventLookup,
         claim_sink: ClaimSink,
+        backfill_sink: Option<BackfillSink>,
         profile_detector: ProfileDetector<A>,
         card_builder: CardBuilder<C>,
         consumer_id: impl Into<String>,
@@ -190,6 +219,7 @@ where
                 event_gate,
                 event_lookup,
                 claim_sink,
+                backfill_sink,
                 profile_detector,
                 card_builder,
                 consumer_id: consumer_id.into(),
@@ -354,11 +384,40 @@ where
     }
 
     fn load_older(&self) -> bool {
-        // Window growth is driven by the snapshot request limit; the engine
-        // holds all roots bounded by D5, so "load older" widens the request
-        // limit at the call site. There is no separate paging cursor to
-        // advance in the engine itself.
-        false
+        // If no backfill sink is installed, pagination is disabled (local-only).
+        let Some(sink) = &self.caps.backfill_sink else {
+            return false;
+        };
+
+        let Ok(st) = self.state.lock() else { return false };
+
+        // Find the oldest root.
+        let oldest = st
+            .roots
+            .iter()
+            .min_by_key(|(_, slot)| slot.created_at)
+            .map(|(id, slot)| (id.clone(), slot.created_at));
+
+        let Some((oldest_id, oldest_created_at)) = oldest else {
+            // No roots cached yet.
+            return false;
+        };
+
+        drop(st);  // Release lock before emitting.
+
+        // Emit a backfill request for the oldest cached event. The kernel's
+        // PaginationController handles dedup (same feed + boundary = coalesce),
+        // so repeated load_older() calls at the same boundary naturally merge.
+        (sink)(BackfillRequest {
+            oldest: FeedCursor {
+                created_at: oldest_created_at,
+                id: oldest_id,
+            },
+            feed_key: self.caps.consumer_id.clone(),
+            consumer_id: self.caps.consumer_id.clone(),
+        });
+
+        false  // No local change, backfill is in-flight.
     }
 }
 

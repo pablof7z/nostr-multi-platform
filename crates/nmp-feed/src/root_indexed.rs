@@ -25,6 +25,6 @@ pub use attribution::AttributionPayload;
 pub use card::{RootCard, RootFeedSnapshot};
 pub use claim::ClaimRequest;
 pub use engine::{
-    CardBuilder, ClaimSink, EventGate, EventLookup, FollowPredicate, ProfileDetector,
-    RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
+    BackfillRequest, BackfillSink, CardBuilder, ClaimSink, EventGate, EventLookup, FollowPredicate,
+    ProfileDetector, RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
 };

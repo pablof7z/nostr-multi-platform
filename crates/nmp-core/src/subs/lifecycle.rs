@@ -37,6 +37,7 @@ impl SubscriptionLifecycle {
         Self {
             registry: InterestRegistry::new(),
             inbox: TriggerInbox::new(),
+            pagination: super::pagination::PaginationController::new(),
             indexer_relays: {
                 #[cfg(test)]
                 {
@@ -308,5 +309,12 @@ impl SubscriptionLifecycle {
     #[cfg(test)]
     pub(crate) fn set_planner_error_for_test(&mut self, error: impl Into<String>) {
         self.last_planner_error = Some(error.into());
+    }
+
+    /// Mutable access to the pagination controller (kernel-side backwards
+    /// timeline backfill management). Used by the actor to route feed
+    /// `BackfillRequest`s from the engine.
+    pub fn pagination_mut(&mut self) -> &mut super::pagination::PaginationController {
+        &mut self.pagination
     }
 }
