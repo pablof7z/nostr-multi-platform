@@ -25,6 +25,73 @@ use serde_json::Value;
 
 use crate::protocol::ActionDispatch;
 
+/// Decoded claim/release operation extracted from an `ActionDispatch` whose
+/// `action_type` is in the `nmp.kernel.claim_*` / `nmp.kernel.release_*`
+/// namespace.
+///
+/// Claims are NOT `KernelAction`s — they are a separate concern (claim
+/// registry vs. interest registry). `kernel_action_from_dispatch` returns
+/// `None` for claim action types; this function handles them instead.
+///
+/// D6 — total: a missing or non-string payload field returns `None`; the
+/// caller treats `None` as "not a claim dispatch" and falls through to the
+/// write-path-unavailable path. No panic.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum ClaimDispatch {
+    ClaimProfile {
+        pubkey: String,
+        consumer_id: String,
+    },
+    ReleaseProfile {
+        pubkey: String,
+        consumer_id: String,
+    },
+    ClaimEvent {
+        uri: String,
+        consumer_id: String,
+    },
+    ReleaseEvent {
+        uri: String,
+        consumer_id: String,
+    },
+}
+
+/// Parse an `ActionDispatch` as a claim/release operation. Returns `None`
+/// if the `action_type` is not a claim namespace or a required payload field
+/// is absent / non-string (D6: malformed → `None`, never a panic).
+pub(crate) fn claim_dispatch_from_action(action: &ActionDispatch) -> Option<ClaimDispatch> {
+    match action.action_type.as_str() {
+        "nmp.kernel.claim_profile" => {
+            let pubkey = str_field(&action.payload, "pubkey")?;
+            let consumer_id = str_field(&action.payload, "consumer_id")?;
+            Some(ClaimDispatch::ClaimProfile { pubkey, consumer_id })
+        }
+        "nmp.kernel.release_profile" => {
+            let pubkey = str_field(&action.payload, "pubkey")?;
+            let consumer_id = str_field(&action.payload, "consumer_id")?;
+            Some(ClaimDispatch::ReleaseProfile { pubkey, consumer_id })
+        }
+        "nmp.kernel.claim_event" => {
+            let uri = str_field(&action.payload, "uri")?;
+            let consumer_id = str_field(&action.payload, "consumer_id")?;
+            Some(ClaimDispatch::ClaimEvent { uri, consumer_id })
+        }
+        "nmp.kernel.release_event" => {
+            let uri = str_field(&action.payload, "uri")?;
+            let consumer_id = str_field(&action.payload, "consumer_id")?;
+            Some(ClaimDispatch::ReleaseEvent { uri, consumer_id })
+        }
+        _ => None,
+    }
+}
+
+/// Extract a string-valued field from a JSON payload. Returns `None` when
+/// the payload is not a JSON object, the key is absent, or the value is not
+/// a string — all defensively treated as "not a valid claim payload" (D6).
+fn str_field(payload: &Value, key: &str) -> Option<String> {
+    payload.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
 /// Single-source reason string for app-level writes that cannot complete on
 /// the **synchronous** wasm runtime path. Distinguishes the two honest
 /// failure modes the synchronous `handle()` arm can surface:
@@ -111,6 +178,104 @@ pub(crate) fn kernel_action_from_dispatch(action: &ActionDispatch) -> Option<Ker
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claim_dispatch_from_action_routes_claim_profile() {
+        let action = ActionDispatch {
+            action_type: "nmp.kernel.claim_profile".to_string(),
+            payload: serde_json::json!({"pubkey": "abc123", "consumer_id": "chirp-web-author-1"}),
+            correlation_id: "x".to_string(),
+        };
+        assert_eq!(
+            claim_dispatch_from_action(&action),
+            Some(ClaimDispatch::ClaimProfile {
+                pubkey: "abc123".to_string(),
+                consumer_id: "chirp-web-author-1".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn claim_dispatch_from_action_routes_release_profile() {
+        let action = ActionDispatch {
+            action_type: "nmp.kernel.release_profile".to_string(),
+            payload: serde_json::json!({"pubkey": "abc123", "consumer_id": "chirp-web-author-1"}),
+            correlation_id: "x".to_string(),
+        };
+        assert_eq!(
+            claim_dispatch_from_action(&action),
+            Some(ClaimDispatch::ReleaseProfile {
+                pubkey: "abc123".to_string(),
+                consumer_id: "chirp-web-author-1".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn claim_dispatch_from_action_routes_claim_event() {
+        let uri = "nostr:note1abc".to_string();
+        let action = ActionDispatch {
+            action_type: "nmp.kernel.claim_event".to_string(),
+            payload: serde_json::json!({"uri": uri, "consumer_id": "chirp-web-embed-1"}),
+            correlation_id: "x".to_string(),
+        };
+        assert_eq!(
+            claim_dispatch_from_action(&action),
+            Some(ClaimDispatch::ClaimEvent {
+                uri,
+                consumer_id: "chirp-web-embed-1".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn claim_dispatch_from_action_routes_release_event() {
+        let uri = "nostr:note1abc".to_string();
+        let action = ActionDispatch {
+            action_type: "nmp.kernel.release_event".to_string(),
+            payload: serde_json::json!({"uri": uri, "consumer_id": "chirp-web-embed-1"}),
+            correlation_id: "x".to_string(),
+        };
+        assert_eq!(
+            claim_dispatch_from_action(&action),
+            Some(ClaimDispatch::ReleaseEvent {
+                uri,
+                consumer_id: "chirp-web-embed-1".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn claim_dispatch_from_action_returns_none_for_non_claim_type() {
+        let action = ActionDispatch {
+            action_type: "nmp.publish".to_string(),
+            payload: serde_json::json!({}),
+            correlation_id: "x".to_string(),
+        };
+        assert!(claim_dispatch_from_action(&action).is_none());
+    }
+
+    #[test]
+    fn claim_dispatch_from_action_returns_none_for_missing_field() {
+        // Missing consumer_id — defensive parse returns None (D6).
+        let action = ActionDispatch {
+            action_type: "nmp.kernel.claim_profile".to_string(),
+            payload: serde_json::json!({"pubkey": "abc123"}),
+            correlation_id: "x".to_string(),
+        };
+        assert!(claim_dispatch_from_action(&action).is_none());
+    }
+
+    #[test]
+    fn claim_dispatch_from_action_returns_none_for_null_payload() {
+        // Payload is null (not a JSON object) — must not panic (D6).
+        let action = ActionDispatch {
+            action_type: "nmp.kernel.claim_profile".to_string(),
+            payload: serde_json::Value::Null,
+            correlation_id: "x".to_string(),
+        };
+        assert!(claim_dispatch_from_action(&action).is_none());
+    }
 
     #[test]
     fn write_path_unavailable_reason_distinguishes_signer_states() {
