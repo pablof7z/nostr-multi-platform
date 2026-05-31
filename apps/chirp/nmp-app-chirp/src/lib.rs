@@ -91,6 +91,11 @@ pub use ffi::{
 #[cfg(feature = "marmot")]
 pub use nmp_marmot::fetch::nmp_marmot_fetch_key_packages;
 #[cfg(feature = "marmot")]
+// `nmp_marmot_snapshot` and `nmp_marmot_group_messages` are deprecated (ADR-0039,
+// V-107). They are re-exported here for the C-ABI surface Swift links against
+// (`MarmotBridge.swift`) during the migration window. Rust callers should use
+// `MarmotHandle::snapshot_rust` / `MarmotHandle::messages_rust` instead.
+#[allow(deprecated)]
 pub use nmp_marmot::ffi::{
     nmp_marmot_group_messages, nmp_marmot_register, nmp_marmot_register_active,
     nmp_marmot_snapshot, nmp_marmot_string_free, nmp_marmot_unregister, MarmotHandle,

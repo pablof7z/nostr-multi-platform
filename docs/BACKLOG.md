@@ -149,63 +149,17 @@ from the 2026-05-29 audit:*
 
 **Deadline:** before v1-A.
 
-### V-107 · Migrate gallery + marmot consumers off bespoke pull-snapshot symbols onto the canonical projection seam [HIGH · PRIORITIZED FOR AWARENESS]
+### V-107 · Complete Marmot pull-symbol retirement — Swift migration + deletion [MEDIUM · migration window]
 
-**RATIFICATION LANDED — ADR-0039 (2026-05-29):** the push-vs-pull decision this
-item was gated on is now made — ADR-0039 mandates the push seam and **rescinds the
-ADR-0025 Step-12 read-leg sanction** that kept the Marmot pull symbols alive. Gallery
-chain already removed (PR #791); `nmp_app_chirp_snapshot` already gone (PR #733/#766).
-**Now unblocked:** migrate the live Marmot read-leg (`nmp_marmot_snapshot`,
-`nmp_marmot_group_messages`) per the recipe below, then delete the symbols.
-
-**Surfaced 2026-05-29 (podcast-player polling incident).** A downstream app
-(`/Users/pablofernandez/Work/podcast-player`) independently reinvented the
-`nmp_app_*_snapshot` *pull* accessor + 500 ms `Task.sleep` poll loop — a D8
-violation — because the canonical reactive seam is **undocumented in the
-builder-guide** and the nearest in-repo examples are bespoke pull symbols. This
-is the same anti-pattern recurring (ADR-0025 / ADR-0037 deprecation target), and
-it will keep recurring in every new app until the live in-repo consumers are
-migrated and the positive pattern is taught.
-
-**The bespoke pull-snapshot cluster (this repo) — refined by the 2026-05-29
-`snapshot-projection-cleanup` workflow (8-agent fan-out):**
-- `nmp_marmot_snapshot` (`crates/nmp-marmot/src/ffi.rs:422`; header `NmpCore.h:487`)
-  and `nmp_marmot_group_messages` (`ffi.rs:435`; `NmpCore.h:488`) — **genuinely
-  live** (real callers: chirp-repl, chirp-tui, `MarmotBridge.swift`, `nmp-app-chirp`
-  re-export). **These are the real migrate-first work.**
-- `nmp_app_gallery_snapshot` (+`_free`) — **NOT a live consumer**: the Kotlin
-  `gallerySnapshot()` and Swift `gallerySnapshotJSON()` wrappers are defined but
-  have **zero call sites**; the symbol returns only `{schema, alive, projections:{}}`
-  (liveness already covered by `nmp_app_is_alive` + the push frame). It is **dead
-  code** → removed in **PR #791** (no migration needed).
-- `nmp_app_chirp_snapshot` — **already deleted** from master (PR #733/#766,
-  commit `242802d7`), before this workflow. No action; mentioned only to close the
-  lead.
-
-**The work tracked here (NOT auto-dispatched):** migrate the two live **Marmot**
-read-leg consumers onto the canonical seam — `register_snapshot_projection` →
-`KernelSnapshot::projections` → pushed FlatBuffers `SnapshotFrame` read from
-`projections[key]` in the host `apply()` — then **remove** the bespoke pull
-symbols. `nmp_marmot_group_messages` is parameterized by `group_id_hex`, so its
-migration carries the one real design choice (fold per-group message tails into
-`nmp.marmot.snapshot` keyed by group id, vs. project active-group tails); resolve
-in the ADR amendment. Drive each to completion; no half-landed state. These are
-real shell changes, gated on orchestrator review, not run by an autonomous agent.
-The ADR-0025 Step-12 sanction that keeps the Marmot read leg alive cites the
-**now-deleted** Chirp pull precedent — so that sanction must be re-decided here too.
-
-**Prerequisite — satisfied by ADR-0039 (2026-05-29):** ADR-0039 resolved the
-push-vs-pull architectural question, mandating the push seam
-(`register_snapshot_projection`). The earlier "blocked on V-37" framing is
-obsolete — ADR-0039 confirmed the push seam already satisfies what V-37's
-affordances were meant to provide.
-
-**Related tracking (do not duplicate):** PD-039 (bespoke `nmp_app_*` symbol
-retirement calendar; gallery/marmot pulls fall under it), PD-041 (Marmot
-formally in the v1 support matrix), V-87 item 4 (stale
-`apps/nmp-gallery/tui/src/live.rs:161-195` citation — re-audit before touching
-gallery). Positive builder-guide guidance for the seam is being added by the
-same 2026-05-29 workflow (root-cause fix for the recurrence).
+The two `nmp.marmot.*` push projections + the Rust-consumer migration shipped (ADR-0039
+Accepted; the pull symbols are `#[deprecated]` but still exported because Swift calls them).
+**Remaining open work (Swift session required):**
+1. Migrate `MarmotBridge.swift` off `nmp_marmot_snapshot` / `nmp_marmot_group_messages`
+   to read `projections["nmp.marmot.snapshot"]` and `projections["nmp.marmot.messages"][gid]`
+   from the pushed SnapshotFrame `apply()` callback.
+2. Once Swift migration lands: delete `nmp_marmot_snapshot`, `nmp_marmot_group_messages`,
+   `nmp_marmot_string_free` (the companion deallocator), their `#[no_mangle]`/`extern "C"`
+   declarations, and the `nmp-app-chirp` `#[allow(deprecated)]` re-export block.
 
 ---
 

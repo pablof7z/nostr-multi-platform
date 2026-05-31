@@ -7,8 +7,7 @@ use nmp_app_chirp::ffi::{
 };
 use nmp_app_chirp::{
     nmp_app_cancel_bunker_handshake, nmp_app_chirp_identity_sign_in_nsec, nmp_app_nostrconnect_uri,
-    nmp_broker_free_string, nmp_marmot_register_active, nmp_marmot_snapshot,
-    nmp_marmot_string_free, nmp_marmot_unregister,
+    nmp_broker_free_string, nmp_marmot_register_active, nmp_marmot_unregister,
 };
 use nmp_ffi::{
     nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_firehose_tag,
@@ -314,8 +313,16 @@ impl AppRuntime {
 
     pub fn marmot_snapshot_text(&self) -> Result<String> {
         self.marmot_register_active()?;
-        let ptr = nmp_marmot_snapshot(self.marmot.get());
-        take_marmot_string(ptr, "marmot snapshot")
+        // V-107 / ADR-0039: use the Rust-native accessor on the MarmotHandle
+        // instead of the deprecated C-ABI pull symbol `nmp_marmot_snapshot`.
+        // Same data path as the push projection `"nmp.marmot.snapshot"` on the
+        // SnapshotFrame.
+        //
+        // SAFETY: `self.marmot.get()` is non-null (guaranteed by
+        // `marmot_register_active()` returning Ok above).
+        let handle = unsafe { &*self.marmot.get() };
+        serde_json::to_string(&handle.snapshot_rust())
+            .map_err(|e| format!("marmot snapshot serialize: {e}"))
     }
 
     fn unregister_marmot(&self) {
@@ -335,17 +342,6 @@ fn marmot_db_dir() -> String {
         })
         .to_string_lossy()
         .into_owned()
-}
-
-fn take_marmot_string(ptr: *mut std::ffi::c_char, label: &str) -> Result<String> {
-    if ptr.is_null() {
-        return Err(format!("{label} returned null"));
-    }
-    let text = unsafe { CStr::from_ptr(ptr) }
-        .to_string_lossy()
-        .into_owned();
-    nmp_marmot_string_free(ptr);
-    Ok(text)
 }
 
 fn take_broker_string(ptr: *mut std::ffi::c_char, label: &str) -> Result<String> {

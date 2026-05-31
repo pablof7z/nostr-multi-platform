@@ -4,8 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use nmp_app_chirp::{
     nmp_app_chirp_identity_sign_in_nsec, nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_marmot_group_messages, nmp_marmot_register_active, nmp_marmot_snapshot,
-    nmp_marmot_string_free, nmp_marmot_unregister, ChirpHandle, MarmotHandle,
+    nmp_marmot_register_active, nmp_marmot_unregister, ChirpHandle, MarmotHandle,
 };
 use std::sync::Arc;
 
@@ -120,8 +119,18 @@ impl AppRuntime {
         if self.marmot.is_null() {
             return Err("Marmot is not initialized; run mls-init first".to_string());
         }
-        let ptr = nmp_marmot_snapshot(self.marmot);
-        self.take_marmot_json(ptr, "marmot snapshot")
+        // V-107 / ADR-0039: use the Rust-native accessor on the MarmotHandle
+        // instead of the deprecated C-ABI pull symbol `nmp_marmot_snapshot`.
+        // This reads from the same `MarmotProjection` the push projection
+        // (`"nmp.marmot.snapshot"` on the SnapshotFrame) reads from — same data,
+        // no C-ABI or extra allocation.
+        //
+        // SAFETY: `self.marmot` is non-null (checked above); the handle was boxed
+        // by `nmp_marmot_register*` and remains valid until `nmp_marmot_unregister`
+        // in `Drop`.
+        let handle = unsafe { &*self.marmot };
+        serde_json::to_value(handle.snapshot_rust())
+            .map_err(|e| format!("marmot snapshot serialize: {e}"))
     }
 
     pub fn marmot_dispatch(&self, action: Value) -> Result<Value> {
@@ -159,10 +168,15 @@ impl AppRuntime {
         if self.marmot.is_null() {
             return Err("Marmot is not initialized; run mls-init first".to_string());
         }
-        let group_id =
-            CString::new(group_id_hex).map_err(|_| "group id contains NUL byte".to_string())?;
-        let ptr = nmp_marmot_group_messages(self.marmot, group_id.as_ptr());
-        self.take_marmot_json(ptr, "marmot group messages")
+        // V-107 / ADR-0039: use the Rust-native accessor on the MarmotHandle
+        // instead of the deprecated C-ABI pull symbol `nmp_marmot_group_messages`.
+        // Same data path as the push projection `"nmp.marmot.messages"` on the
+        // SnapshotFrame.
+        //
+        // SAFETY: `self.marmot` is non-null (checked above).
+        let handle = unsafe { &*self.marmot };
+        serde_json::to_value(handle.messages_rust(group_id_hex))
+            .map_err(|e| format!("marmot group messages serialize: {e}"))
     }
 
     pub fn open_timeline(&self) {
@@ -266,17 +280,6 @@ impl AppRuntime {
         Ok(f(&c))
     }
 
-    #[allow(clippy::unused_self)]
-    fn take_marmot_json(&self, ptr: *mut std::ffi::c_char, label: &str) -> Result<Value> {
-        if ptr.is_null() {
-            return Err(format!("{label} returned null"));
-        }
-        let text = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-        nmp_marmot_string_free(ptr);
-        serde_json::from_str(&text).map_err(|e| format!("{label} returned invalid JSON: {e}"))
-    }
 }
 
 impl Default for AppRuntime {

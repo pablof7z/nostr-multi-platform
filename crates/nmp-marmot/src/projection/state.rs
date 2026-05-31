@@ -241,6 +241,44 @@ impl MarmotProjection {
         Some(f(&mut h))
     }
 
+    /// Build the all-groups messages map for the `"nmp.marmot.messages"` push
+    /// projection (ADR-0039, V-107 Rust leg).
+    ///
+    /// Returns a `serde_json::Value::Object` keyed by `group_id_hex` →
+    /// newest-N [`crate::projection::payload::MarmotMessageRow`] JSON array for
+    /// every joined group. Bounded by `page` rows per group (typically
+    /// `DEFAULT_MESSAGE_PAGE` = 200).
+    ///
+    /// Reads from the MDK SQLite message store directly — already-decrypted rows,
+    /// no re-decrypt per tick. D8 compliant: cheap, non-blocking.
+    /// D6: poisoned mutex → empty JSON object.
+    #[must_use]
+    pub fn messages_all_groups_json(&self, page: usize) -> serde_json::Value {
+        self.with_inner(|h| {
+            let group_ids: Vec<String> = h
+                .service()
+                .get_groups()
+                .map(|gs| {
+                    gs.into_iter()
+                        .map(|g| hex_encode(g.mls_group_id.as_slice()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mut map = serde_json::Map::with_capacity(group_ids.len());
+            for gid_hex in group_ids {
+                let rows =
+                    crate::projection::ops::group_messages(h, &gid_hex, page);
+                map.insert(
+                    gid_hex,
+                    serde_json::to_value(rows)
+                        .unwrap_or(serde_json::Value::Array(vec![])),
+                );
+            }
+            serde_json::Value::Object(map)
+        })
+        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
+    }
+
     /// Build the JSON snapshot. D6 — poisoned mutex → empty snapshot.
     #[must_use]
     pub fn snapshot(&self, now_secs: u64) -> MarmotSnapshot {
