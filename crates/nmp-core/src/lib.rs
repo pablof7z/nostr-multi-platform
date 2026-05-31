@@ -145,9 +145,7 @@ pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 // Step 11 final — `NmpApp` opaque handle + the `nmp_app_*` symbol family
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.
-pub use kernel::{
-    read_eligible_relay_urls, Kernel, RelayEditRow, RelayEditRowList, RelayEditRowsSlot,
-};
+pub use kernel::{read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel};
 // W2 — relay-author-score types. Re-exported so nmp-testing integration tests
 // and downstream crates (W4, W5) can access `ClaimOutcome`, `RelayAuthorScore`,
 // and `RelayAuthorScoreMap` without reaching into the private `kernel` module.
@@ -265,13 +263,13 @@ pub use actor::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserv
 pub mod __ffi_internal {
     pub use crate::actor::{
         has_role, new_bunker_connection_state_slot, new_bunker_handshake_slot,
-        new_event_observer_slot, new_lifecycle_observer_slot,
-        new_raw_event_observer_slot, nostrconnect_relay_url, register_c_observer,
-        register_c_raw_observer, register_rust_observer, register_rust_raw_observer,
-        run_actor_with_observers, unregister_observer, unregister_raw_observer,
-        KernelEventObserverRegistration, KernelEventObserverSlot, LifecycleObserverFn,
-        LifecycleObserverRegistration, LifecycleObserverSlot, RawEventObserverRegistration,
-        RawEventObserverSlot, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND,
+        new_event_observer_slot, new_lifecycle_observer_slot, new_raw_event_observer_slot,
+        nostrconnect_relay_url, register_c_observer, register_c_raw_observer,
+        register_rust_observer, register_rust_raw_observer, run_actor_with_observers,
+        unregister_observer, unregister_raw_observer, KernelEventObserverRegistration,
+        KernelEventObserverSlot, LifecycleObserverFn, LifecycleObserverRegistration,
+        LifecycleObserverSlot, RawEventObserverRegistration, RawEventObserverSlot,
+        LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND,
     };
     // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to
     // `nmp-nip47`. The host (per-app crate) constructs the slot itself and
@@ -282,7 +280,7 @@ pub mod __ffi_internal {
         CapabilityCallback, CapabilityCallbackRegistration, CapabilityCallbackSlot,
     };
     pub use crate::kernel::{
-        default_registry, is_hex_id, is_hex_pubkey, new_relay_edit_rows_slot,
+        default_registry, is_hex_id, is_hex_pubkey, new_app_relay_slot,
         new_snapshot_projection_slot, routing_trace, ActionRegistry, LifecyclePhase,
         SnapshotProjectionSlot,
     };
@@ -380,7 +378,7 @@ pub mod testing {
                 crate::substrate::new_relay_text_interceptor_slot(),
                 crate::actor::new_bunker_handshake_slot(),
                 crate::actor::new_bunker_connection_state_slot(),
-                crate::kernel::new_relay_edit_rows_slot(),
+                crate::kernel::new_app_relay_slot(),
                 Arc::new(Mutex::new(None)),
                 Arc::new(Mutex::new(None)),
                 crate::capability_socket::new_capability_callback_slot(),
@@ -470,10 +468,7 @@ pub mod testing {
     /// the ack fires only once the actor has dispatched every command that
     /// preceded the barrier on the channel, so when `wait_barrier` returns
     /// `true` the actor's state reflects all prior commands.
-    pub fn wait_barrier(
-        tx: &mpsc::Sender<ActorCommand>,
-        timeout: std::time::Duration,
-    ) -> bool {
+    pub fn wait_barrier(tx: &mpsc::Sender<ActorCommand>, timeout: std::time::Duration) -> bool {
         let (ack_tx, ack_rx) = mpsc::sync_channel(1);
         if tx.send(ActorCommand::Barrier { ack: ack_tx }).is_err() {
             return false;

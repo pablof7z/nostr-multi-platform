@@ -41,7 +41,20 @@ fn connection_tone_classifies_states() {
 #[test]
 fn snapshot_emits_one_row_per_known_relay() {
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
-    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Seed the app's relay set explicitly — production no longer hardcodes a
+    // fallback, so the diagnostics snapshot draws its Content/Indexer rows from
+    // the configured set the app declares.
+    kernel.set_configured_relays(vec![
+        crate::kernel::AppRelay::new(
+            crate::relay::FALLBACK_CONTENT_RELAY.to_string(),
+            "both".to_string(),
+        ),
+        crate::kernel::AppRelay::new(
+            crate::relay::FALLBACK_INDEXER_RELAY.to_string(),
+            "indexer".to_string(),
+        ),
+    ]);
     let snap = kernel.relay_diagnostics_snapshot();
     // Bootstrap roles (Content + Indexer) are always present.
     let roles: Vec<_> = snap.relays.iter().map(|r| r.role_label.as_str()).collect();

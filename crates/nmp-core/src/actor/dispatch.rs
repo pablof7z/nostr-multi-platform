@@ -110,7 +110,7 @@ fn update_local_key_slots(
 /// # Why
 ///
 /// Before this hook, the actor's `AddRelay` / `RemoveRelay` arms mutated
-/// the local `RelayEditRow` projection and dialed / dropped sockets, but
+/// the local `AppRelay` projection and dialed / dropped sockets, but
 /// never re-published the user's NIP-65 outbox. The asymmetric leak:
 /// removing a defunct relay never told other clients to stop fanning out
 /// to it; adding a new relay never told contacts to read/write there. The
@@ -134,7 +134,7 @@ fn update_local_key_slots(
 ///    took *before* the local mutation; equality means "no semantic change".
 /// 3. **No NIP-65-eligible rows.** A projection containing only pure-indexer
 ///    rows (or one that becomes empty after the edit) cannot produce a
-///    kind:10002 with `r` tags. `build_relay_list_event_from_edit_rows`
+///    kind:10002 with `r` tags. `build_relay_list_event`
 ///    returns `None` in that case, and the function bails before any
 ///    publish — an empty kind:10002 is the destructive "clear my NIP-65
 ///    metadata" signal in `ingest_relay_list`, and we must never emit
@@ -155,7 +155,7 @@ fn update_local_key_slots(
 fn maybe_publish_relay_list_after_edit(
     identity: &commands::IdentityRuntime,
     kernel: &mut Kernel,
-    projection_before: &[crate::kernel::RelayEditRow],
+    projection_before: &[crate::kernel::AppRelay],
     pending_signs: &mut Vec<super::pending_sign::PendingSign>,
 ) -> Vec<OutboundMessage> {
     // Guard 1: must have an active signer.
@@ -163,12 +163,12 @@ fn maybe_publish_relay_list_after_edit(
         return Vec::new();
     }
     // Guard 2: skip on no-op projection change.
-    let projection_after = kernel.relay_edit_rows_snapshot();
+    let projection_after = kernel.configured_relays_snapshot();
     if projection_after == projection_before {
         return Vec::new();
     }
     // Guard 3: skip when the projection has no NIP-65 expression.
-    let Some(unsigned) = commands::build_relay_list_event_from_edit_rows(projection_after) else {
+    let Some(unsigned) = commands::build_relay_list_event(projection_after) else {
         return Vec::new();
     };
     commands::publish_unsigned_event(identity, kernel, unsigned, None, pending_signs)
@@ -437,12 +437,31 @@ pub(super) fn dispatch_command(
         ActorCommand::Start {
             visible_limit,
             emit_hz: hz,
+            initial_relays,
         } => {
             *ctx.running = true;
             *ctx.emit_hz = hz;
             *ctx.startup_sent = false;
             ctx.kernel.set_visible_limit(visible_limit);
-            commands::ensure_default_onboarding_relays(ctx.kernel);
+            // Seed the app-declared initial relay configuration into
+            // `configured_relays` before the session restore runs. There is no
+            // hardcoded default: an app with no declared relays (and no pre-start
+            // `add_relay`) starts with an empty set and the kernel surfaces the
+            // `no_configured_relays` diagnostic (V-66) rather than silently
+            // dialing an unconsented relay.
+            if !initial_relays.is_empty() {
+                let rows: Vec<crate::kernel::AppRelay> = initial_relays
+                    .iter()
+                    .filter_map(|(url, role)| {
+                        let url = crate::relay::canonical_relay_url(url)?;
+                        let role = crate::actor::canonical_relay_role(role)?;
+                        Some(crate::kernel::AppRelay::new(url, role))
+                    })
+                    .collect();
+                if !rows.is_empty() {
+                    ctx.kernel.set_configured_relays(rows);
+                }
+            }
             ctx.kernel.start();
             // ADR-0040 §3: restore_active_session stays synchronous (cold-start
             // read chain; see session_persistence.rs module doc). The tail
@@ -909,7 +928,7 @@ pub(super) fn dispatch_command(
             // T158: add_relay now returns Some(canonical_url) on success so we
             // can dial a real socket immediately. User-added relays use
             // RelayRole::Content as the diagnostic lane (inbox/outbox bucket);
-            // the NIP-65 read/write distinction lives in RelayEditRow, not in
+            // the NIP-65 read/write distinction lives in AppRelay, not in
             // the transport pool key (T105). ensure_relay_worker is idempotent —
             // a role-edit for an already-connected URL is a harmless no-op.
             //
@@ -918,7 +937,7 @@ pub(super) fn dispatch_command(
             // pure no-op (re-adding the same URL with the same role). Without
             // this every harmless re-add re-published kind:10002 and burned a
             // relay write.
-            let projection_before = ctx.kernel.relay_edit_rows_snapshot().to_vec();
+            let projection_before = ctx.kernel.configured_relays_snapshot().to_vec();
             let mut outbound = Vec::new();
             if let Some(canonical_url) = commands::add_relay(ctx.kernel, &url, &role) {
                 ensure_relay_worker(
@@ -944,7 +963,7 @@ pub(super) fn dispatch_command(
             // T162 + T-relay-url-normalize: both shutdown_relay_worker and
             // commands::remove_relay canonicalize the URL internally (lowercase
             // scheme+host, strip empty-path trailing slash) so that the pool key
-            // and RelayEditRow.url always agree regardless of how the FFI caller
+            // and AppRelay.url always agree regardless of how the FFI caller
             // spelled the URL. Shutdown the worker first so the socket is closed
             // before the projection row is removed. Idempotent: if no worker exists
             // for the URL, shutdown_relay_worker returns false and the projection
@@ -953,7 +972,7 @@ pub(super) fn dispatch_command(
             // T-nip65-auto-publish: same compare-and-skip as `AddRelay` above.
             // Removing a URL that was never present is a no-op and must NOT
             // re-publish kind:10002.
-            let projection_before = ctx.kernel.relay_edit_rows_snapshot().to_vec();
+            let projection_before = ctx.kernel.configured_relays_snapshot().to_vec();
             shutdown_relay_worker(ctx.relay_controls, ctx.slot_to_url, ctx.pool, &url);
             commands::remove_relay(ctx.kernel, &url);
             let outbound = maybe_publish_relay_list_after_edit(
@@ -1226,7 +1245,7 @@ pub(super) fn dispatch_command(
             // reason: the `Arc<Mutex<…>>` is shared with the FFI surface
             // and per-app crates; replacing it would silently return stale
             // rows to the host-app dispatch layer.
-            let relay_edit_rows_handle = ctx.kernel.take_relay_edit_rows_handle_for_reset();
+            let configured_relays_handle = ctx.kernel.take_app_relay_slot_for_reset();
             // NOTE: the FFI-supplied LMDB `storage_path` (from
             // `nmp_app_set_storage_path`) is NOT re-threaded here — `Reset`
             // rebuilds the kernel with the in-memory store unless the
@@ -1272,8 +1291,8 @@ pub(super) fn dispatch_command(
             if let Some(handle) = snapshot_projection_handle {
                 ctx.kernel.set_snapshot_projection_handle(handle);
             }
-            if let Some(handle) = relay_edit_rows_handle {
-                ctx.kernel.set_relay_edit_rows_handle(handle);
+            if let Some(handle) = configured_relays_handle {
+                ctx.kernel.set_app_relay_slot(handle);
             }
             // V-40 — re-bind the substrate `EventIngestDispatcher` slot
             // and the `DmInboxRelayLookup` handle on the rebuilt kernel.
@@ -1876,7 +1895,10 @@ mod nip65_auto_publish_tests {
 
     fn fresh_identity() -> IdentityRuntime {
         use crate::actor::new_bunker_connection_state_slot;
-        IdentityRuntime::new(new_bunker_handshake_slot(), new_bunker_connection_state_slot())
+        IdentityRuntime::new(
+            new_bunker_handshake_slot(),
+            new_bunker_connection_state_slot(),
+        )
     }
 
     fn signed_in_identity(kernel: &mut Kernel) -> IdentityRuntime {
@@ -1925,7 +1947,7 @@ mod nip65_auto_publish_tests {
 
         // Capture the projection BEFORE the mutation, as the dispatch arm
         // does, then mutate and call the helper directly.
-        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        let before = kernel.configured_relays_snapshot().to_vec();
         let added = add_relay(&mut kernel, "wss://relay.example", "both");
         assert!(added.is_some(), "add_relay must accept a valid wss:// URL");
 
@@ -1947,7 +1969,7 @@ mod nip65_auto_publish_tests {
         let mut identity = fresh_identity();
         let mut pending = Vec::new();
 
-        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        let before = kernel.configured_relays_snapshot().to_vec();
         add_relay(&mut kernel, "wss://relay.example", "both");
 
         let outbound =
@@ -1978,7 +2000,7 @@ mod nip65_auto_publish_tests {
         add_relay(&mut kernel, "wss://relay.example", "both");
 
         // Second add — identical role, no projection change.
-        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        let before = kernel.configured_relays_snapshot().to_vec();
         add_relay(&mut kernel, "wss://relay.example", "both");
 
         let outbound =
@@ -2004,7 +2026,7 @@ mod nip65_auto_publish_tests {
         // would also trip and we couldn't distinguish guard-2 from guard-3).
         add_relay(&mut kernel, "wss://relay.example", "both");
 
-        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        let before = kernel.configured_relays_snapshot().to_vec();
         remove_relay(&mut kernel, "wss://other.example");
 
         let outbound =
@@ -2034,7 +2056,7 @@ mod nip65_auto_publish_tests {
         add_relay(&mut kernel, "wss://keep.example", "both");
         add_relay(&mut kernel, "wss://drop.example", "both");
 
-        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        let before = kernel.configured_relays_snapshot().to_vec();
         remove_relay(&mut kernel, "wss://drop.example");
 
         let outbound =
@@ -2061,10 +2083,10 @@ mod nip65_auto_publish_tests {
 
         add_relay(&mut kernel, "wss://only.example", "both");
 
-        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        let before = kernel.configured_relays_snapshot().to_vec();
         remove_relay(&mut kernel, "wss://only.example");
         assert!(
-            kernel.relay_edit_rows_snapshot().is_empty(),
+            kernel.configured_relays_snapshot().is_empty(),
             "test precondition: projection must be empty after removing the only row"
         );
 

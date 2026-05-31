@@ -17,8 +17,8 @@ use crate::slots::{
 use crate::store::EventStore;
 use crate::subs::PlanCoverageHook;
 use crate::{
-    ActorCommand, KernelEventObserver, KernelEventObserverId, KindFilter, RawEventObserver,
-    RawEventObserverId, RelayEditRowsSlot,
+    ActorCommand, AppRelaySlot, KernelEventObserver, KernelEventObserverId, KindFilter,
+    RawEventObserver, RawEventObserverId,
 };
 
 use super::{
@@ -101,7 +101,7 @@ pub trait AppHost: ActionRegistrar {
     fn swap_dm_inbox_observer(&self, new: Option<RawEventObserverId>)
         -> Option<RawEventObserverId>;
 
-    fn relay_edit_rows_handle(&self) -> RelayEditRowsSlot;
+    fn configured_relays_handle(&self) -> AppRelaySlot;
 
     /// Register the host-supplied fallback relay URL for client-initiated
     /// NIP-46 `nostrconnect://` handshakes.

@@ -95,7 +95,7 @@
 //! `ActiveFollowSet::new` needs the kernel's [`ActiveAccountSlot`]. `NmpApp`
 //! does not expose one: the kernel constructs its `active_account_handle`
 //! internally (`crates/nmp-core/src/kernel/mod.rs:1406`) and never threads a
-//! clone back to `NmpApp` (unlike `relay_edit_rows`, which `NmpApp` owns and
+//! clone back to `NmpApp` (unlike `configured_relays`, which `NmpApp` owns and
 //! injects). Adding an `NmpApp::active_account_handle()` accessor would require
 //! threading the slot through `run_actor_with_observers` and binding it onto
 //! the kernel — an `nmp-core`/actor change beyond rung 6's scope. So the slot
@@ -283,25 +283,20 @@ pub fn register_op_feed_defaults(
     // window materializations per 4 Hz tick). Not load-bearing for correctness;
     // a shared per-tick snapshot cache is a tracked follow-up.
     let engine_for_typed = Arc::clone(&engine);
-    app.register_typed_snapshot_projection(
-        nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY,
-        move || {
-            // ADR-0038 open-Q1 default: the typed sidecar mirrors the default
-            // window (matches the diagnostics-handle path); viewport-aware
-            // typed emit is a follow-up tied to the staged-removal close.
-            let snapshot = engine_for_typed.snapshot(&nmp_feed::FeedRequest::default());
-            Some(nmp_core::TypedProjectionData {
-                key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
-                schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-                schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
-                file_identifier: String::from_utf8_lossy(
-                    nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER,
-                )
+    app.register_typed_snapshot_projection(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, move || {
+        // ADR-0038 open-Q1 default: the typed sidecar mirrors the default
+        // window (matches the diagnostics-handle path); viewport-aware
+        // typed emit is a follow-up tied to the staged-removal close.
+        let snapshot = engine_for_typed.snapshot(&nmp_feed::FeedRequest::default());
+        Some(nmp_core::TypedProjectionData {
+            key: nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY.to_string(),
+            schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+            schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
                 .into_owned(),
-                payload: nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot),
-            })
-        },
-    );
+            payload: nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot),
+        })
+    });
 
     // ── 6. Account-switch reset (NOT on kind:3 updates) ──────────────────
     //

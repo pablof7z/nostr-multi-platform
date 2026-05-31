@@ -109,7 +109,7 @@ impl Kernel {
             .flat_map(|role| self.bootstrap_urls_for_role(role))
             .any(|url| CanonicalRelayUrl::parse_or_raw(&url) == *relay_url)
             || self
-                .relay_edit_rows
+                .configured_relays
                 .iter()
                 .any(|row| CanonicalRelayUrl::parse_or_raw(&row.url) == *relay_url)
     }

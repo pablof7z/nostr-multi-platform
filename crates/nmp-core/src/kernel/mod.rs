@@ -89,9 +89,9 @@ mod outbox_tests;
 #[cfg(test)]
 mod pre_kind3_buffer_tests;
 #[cfg(test)]
-mod profile_claim_tests;
-#[cfg(test)]
 mod proactive_profile_fetch_tests;
+#[cfg(test)]
+mod profile_claim_tests;
 mod provenance;
 #[cfg(test)]
 mod provenance_wire_tests;
@@ -135,7 +135,7 @@ pub mod routing_trace;
 // (`RoutingSource` et al. stay free of `serde::Serialize`).
 pub mod routing_trace_dto;
 // Typed slot wrappers for relay-shaped actor-owned caches. The bare
-// `Arc<Mutex<Vec<String>>>` / `Arc<Mutex<Vec<RelayEditRow>>>` slots from the
+// `Arc<Mutex<Vec<String>>>` / `Arc<Mutex<Vec<AppRelay>>>` slots from the
 // publish resolver and `NmpApp` move behind named types here so D14 can flag
 // future regressions on the field shape.
 mod relay_frame;
@@ -170,6 +170,8 @@ mod retention_tests;
 // seam. `pub(crate)` so the crate-private `ffi` module can reach the registry
 // + slot helpers for the C-ABI registration entry point.
 #[cfg(test)]
+mod d1_offline_bootstrap_tests;
+#[cfg(test)]
 mod dm_inbox_routing_tests;
 #[cfg(test)]
 mod perf_tests;
@@ -190,12 +192,6 @@ mod t170_relay_scoped_keying_tests;
 #[cfg(test)]
 mod t171_planner_error_projection_tests;
 #[cfg(test)]
-mod v66_no_configured_relays_tests;
-#[cfg(test)]
-mod v67_store_open_failure_tests;
-#[cfg(test)]
-mod d1_offline_bootstrap_tests;
-#[cfg(test)]
 mod test_router;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
@@ -207,6 +203,10 @@ mod timeline_order_tests;
 mod timeline_perf_tests;
 mod types;
 mod update;
+#[cfg(test)]
+mod v66_no_configured_relays_tests;
+#[cfg(test)]
+mod v67_store_open_failure_tests;
 pub(crate) mod wire_log;
 #[cfg(test)]
 mod wire_log_callsite_tests;
@@ -301,9 +301,7 @@ use clock::{Clock, SystemClock};
 // `nmp_app_dispatch_action` entry point).
 #[cfg(feature = "native")]
 pub use action_registry::{default_registry, ActionRegistry};
-pub(crate) use identity_state::{
-    AccountSummary, PublishQueueEntry, RelayAckOutcome,
-};
+pub(crate) use identity_state::{AccountSummary, PublishQueueEntry, RelayAckOutcome};
 // Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
 // re-export them into the public crate surface — `nmp-router::Nip65OutboxResolver`
 // (spec §271) constructs slots through these. Direct consumers in nmp-core
@@ -342,7 +340,7 @@ pub(crate) use types::RelayStatus as RelayStatusForCodegen;
 // this re-export, and the `as ForCodegen` rename sidesteps a collision with
 // the plain `use types::{... TimelineItem ...}` at the bottom of the imports
 // block in this file.
-pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
+pub use identity_state::{read_eligible_relay_urls, AppRelay};
 #[cfg(feature = "codegen-schema")]
 pub(crate) use types::TimelineItem as TimelineItemForCodegen;
 #[cfg(feature = "codegen-schema")]
@@ -358,15 +356,15 @@ pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen
 #[cfg(feature = "native")]
 pub use snapshot_registry::new_snapshot_projection_slot;
 pub use snapshot_registry::SnapshotProjectionSlot;
-// Typed slot wrappers + constructors. `RelayEditRowsSlot` /
-// `RelayEditRowList` are re-exported below at `pub use` because per-app
+// Typed slot wrappers + constructors. `AppRelaySlot` /
+// `AppRelayList` are re-exported below at `pub use` because per-app
 // crates (e.g. `nmp-app-chirp`) consume the slot via
-// `NmpApp::relay_edit_rows_handle()` and iterate via `guard.as_slice()`;
+// `NmpApp::configured_relays_handle()` and iterate via `guard.as_slice()`;
 // without the public re-export Chirp could not name the returned slot type.
 // `RelayUrls` and the URL-slot aliases stay kernel-internal: no external
 // caller names them directly (the resolver constructs slots via the
 // `new_*_slot()` helpers and reads through `as_slice()`).
-pub use relay_projection::{RelayEditRowList, RelayEditRowsSlot};
+pub use relay_projection::{AppRelayList, AppRelaySlot};
 // Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
 // surface them — `nmp-router::Nip65OutboxResolver` (spec §271) constructs
 // resolver slots with handles shared by the kernel actor's reducer. Direct
@@ -374,12 +372,12 @@ pub use relay_projection::{RelayEditRowList, RelayEditRowsSlot};
 pub use relay_projection::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
-// `new_relay_edit_rows_slot` is reached by `nmp-ffi` through
-// `nmp_core::__ffi_internal::new_relay_edit_rows_slot` (called once from
+// `new_app_relay_slot` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::new_app_relay_slot` (called once from
 // `nmp_app_new` to construct the slot the actor and the per-app crate
 // share).
 #[cfg(feature = "native")]
-pub use relay_projection::new_relay_edit_rows_slot;
+pub use relay_projection::new_app_relay_slot;
 // `LifecyclePhase` is reached by `nmp-ffi` through
 // `nmp_core::__ffi_internal::LifecyclePhase` (the C-ABI lifecycle
 // background / foreground entry points construct it before sending the
@@ -395,9 +393,9 @@ use crate::substrate::EmptyMailboxCache;
 #[cfg(any(test, feature = "test-support"))]
 use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
-    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup,
-    BoundedMessageMap, DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache,
-    OutboxRouter, ParsedRelayList, MAX_PROJECTION_MESSAGES,
+    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup, BoundedMessageMap,
+    DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
+    ParsedRelayList, MAX_PROJECTION_MESSAGES,
 };
 use crate::util::sort_dedup;
 use relay_transport::RelayTransportMap;
@@ -748,8 +746,7 @@ pub struct Kernel {
     /// `event_claim_released` push. Rust-only for now (no FFI consumer yet);
     /// the C-ABI channel can be added later mirroring
     /// `actor/commands/raw_event_observer.rs` when an FFI consumer appears.
-    event_claim_released_observers:
-        Vec<Arc<dyn event_claim_released::EventClaimReleasedObserver>>,
+    event_claim_released_observers: Vec<Arc<dyn event_claim_released::EventClaimReleasedObserver>>,
     /// Cold-start parking queue for `claim_event` calls that arrived
     /// before any relay socket reached the warm `can_send` state.
     ///
@@ -905,7 +902,7 @@ pub struct Kernel {
     /// `set_last_error_toast` so a newer uncategorized toast never leaves a
     /// stale category shadowing it.
     last_error_category: Option<String>,
-    relay_edit_rows: Vec<RelayEditRow>,
+    configured_relays: Vec<AppRelay>,
     // D0: NIP-47 NWC is an app noun. Wallet state is no longer a kernel field
     // — the actor's wallet runtime owns it and the `projections["wallet"]`
     // snapshot projection surfaces it. The kernel holds no NWC state.
@@ -1001,15 +998,15 @@ pub struct Kernel {
     snapshot_projections: Option<SnapshotProjectionSlot>,
     /// Shared handle to the relay-edit rows so the FFI layer can read the
     /// current user-configured write relays without
-    /// importing kernel internals. Synced by `set_relay_edit_rows` in
+    /// importing kernel internals. Synced by `set_configured_relays` in
     /// `identity_state.rs`.
     ///
-    /// Slot type is [`RelayEditRowsSlot`] (`Arc<Mutex<RelayEditRowList>>`);
+    /// Slot type is [`AppRelaySlot`] (`Arc<Mutex<AppRelayList>>`);
     /// D14 forbids bare `Arc<Mutex<Vec<…>>>` fields on `Kernel` and the
     /// typed wrapper makes the slot's purpose visible at the declaration site.
-    relay_edit_rows_handle: Option<RelayEditRowsSlot>,
-    /// Shared list of indexer relay URLs, kept in sync with `relay_edit_rows`
-    /// by `set_relay_edit_rows`. The `Nip65OutboxResolver` holds a clone of
+    configured_relays_handle: Option<AppRelaySlot>,
+    /// Shared list of indexer relay URLs, kept in sync with `configured_relays`
+    /// by `set_configured_relays`. The `Nip65OutboxResolver` holds a clone of
     /// this Arc and reads it on every discovery-kind publish.
     ///
     /// Typed slot ([`IndexerRelaysSlot`]) so the bare-`Vec` shape
@@ -1748,7 +1745,7 @@ impl Kernel {
             publish_queue: Vec::new(),
             last_error_toast: None,
             last_error_category: None,
-            relay_edit_rows: Vec::new(),
+            configured_relays: Vec::new(),
             action_stages: action_stages::ActionStageTracker::new(),
             action_lifecycle: action_lifecycle::ActionLifecycleTracker::new(),
             publish_engine,
@@ -1762,7 +1759,7 @@ impl Kernel {
             event_observers: None,
             raw_event_observers: None,
             snapshot_projections: None,
-            relay_edit_rows_handle: None,
+            configured_relays_handle: None,
             indexer_relays_handle,
             local_write_relays_handle,
             active_account_handle,
@@ -1821,10 +1818,17 @@ impl Kernel {
             .unwrap_or(0)
     }
 
-    /// Resolve the configured bootstrap URLs for a given `RelayRole` from the
-    /// app-provided `relay_edit_rows`.  When no relays are configured for the
-    /// requested role, falls back to the well-known defaults so that cold-start
-    /// sign-ins always have discovery relays available in production.
+    /// Resolve the configured relay URLs for a given `RelayRole` from the
+    /// app-provided `configured_relays`.
+    ///
+    /// Returns an **empty** vec when no relay is configured for the requested
+    /// role. Production no longer falls back to a hardcoded default: the app is
+    /// responsible for declaring its initial relay set (via
+    /// `NmpAppBuilder::with_relay(s)` or pre-start `nmp_app_add_relay`), which
+    /// is carried into the kernel through `ActorCommand::Start { initial_relays }`.
+    /// An empty result is surfaced to the host through the
+    /// `no_configured_relays` diagnostic (V-66) — the kernel never silently
+    /// dials an unconsented relay.
     pub(crate) fn bootstrap_urls_for_role(&self, role: RelayRole) -> Vec<String> {
         let matches = |row_role: &str| match role {
             RelayRole::Content => {
@@ -1834,28 +1838,15 @@ impl Kernel {
             RelayRole::Indexer => crate::actor::has_role(row_role, "indexer"),
             RelayRole::Wallet => false,
         };
-        let mut urls: Vec<String> = self
-            .relay_edit_rows
+        self.configured_relays
             .iter()
             .filter(|r| matches(&r.role))
             .map(|r| r.url.clone())
-            .collect();
-        if urls.is_empty() {
-            urls = match role {
-                RelayRole::Content => {
-                    vec![crate::relay::FALLBACK_CONTENT_RELAY.to_string()]
-                }
-                RelayRole::Indexer => {
-                    vec![crate::relay::FALLBACK_INDEXER_RELAY.to_string()]
-                }
-                RelayRole::Wallet => Vec::new(),
-            };
-        }
-        urls
+            .collect()
     }
 
     /// The cold-start discovery seed as an owned `Vec`.  Reads from the
-    /// app-provided `relay_edit_rows`; returns an empty vec when nothing is
+    /// app-provided `configured_relays`; returns an empty vec when nothing is
     /// configured yet.
     pub(crate) fn bootstrap_discovery_relays(&self) -> Vec<String> {
         let mut urls: Vec<String> = self
@@ -2086,28 +2077,28 @@ impl Kernel {
     /// Bind the shared relay-edit rows slot so the FFI layer can read
     /// relay-edit rows without reaching into kernel internals.
     ///
-    /// The slot is a typed [`RelayEditRowsSlot`] (`Arc<Mutex<RelayEditRowList>>`).
-    pub(crate) fn set_relay_edit_rows_handle(&mut self, handle: RelayEditRowsSlot) {
-        self.relay_edit_rows_handle = Some(handle);
+    /// The slot is a typed [`AppRelaySlot`] (`Arc<Mutex<AppRelayList>>`).
+    pub(crate) fn set_app_relay_slot(&mut self, handle: AppRelaySlot) {
+        self.configured_relays_handle = Some(handle);
     }
 
     /// Extract the relay-edit rows handle before a `Reset` replaces the
     /// kernel. The underlying `Arc` is process-lifetime and must survive
     /// across kernel reinstantiation.
-    pub(crate) fn take_relay_edit_rows_handle_for_reset(&mut self) -> Option<RelayEditRowsSlot> {
-        self.relay_edit_rows_handle.take()
+    pub(crate) fn take_app_relay_slot_for_reset(&mut self) -> Option<AppRelaySlot> {
+        self.configured_relays_handle.take()
     }
 
-    /// Test-only seam — clear the kernel's `relay_edit_rows` so the empty
+    /// Test-only seam — clear the kernel's `configured_relays` so the empty
     /// bootstrap state can be exercised end-to-end.
     ///
     /// `bootstrap_urls_for_role` has a `#[cfg(test)]` fallback that seeds a
-    /// default Content/Indexer relay when `relay_edit_rows` is empty (see
+    /// default Content/Indexer relay when `configured_relays` is empty (see
     /// `kernel/mod.rs::bootstrap_urls_for_role`'s `#[cfg(test)] if urls.is_empty()`
     /// block). That fallback exists so the vast majority of unit tests don't
     /// need to hand-roll a relay seed for every fresh kernel. The D10
     /// defensive-guard test wants the OPPOSITE — a kernel whose
-    /// `relay_edit_rows` is empty AND whose `bootstrap_urls_for_role`
+    /// `configured_relays` is empty AND whose `bootstrap_urls_for_role`
     /// returns empty, so the dispatch path that lands a kind:1059 envelope
     /// in `publish_signed_event` with `relays: vec![]` cannot accidentally
     /// pass the guard via the cfg(test) backstop.
@@ -2115,9 +2106,9 @@ impl Kernel {
     /// `pub(crate)` is sufficient — no FFI / cross-crate caller; the
     /// `commands` tests reach it through the kernel's internal API.
     #[cfg(test)]
-    pub(crate) fn clear_relay_edit_rows_for_test(&mut self) {
-        self.relay_edit_rows.clear();
-        if let Some(handle) = self.relay_edit_rows_handle.as_ref() {
+    pub(crate) fn clear_configured_relays_for_test(&mut self) {
+        self.configured_relays.clear();
+        if let Some(handle) = self.configured_relays_handle.as_ref() {
             if let Ok(mut guard) = handle.lock() {
                 guard.replace(Vec::new());
             }

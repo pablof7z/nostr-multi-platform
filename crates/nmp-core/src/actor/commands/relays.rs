@@ -9,7 +9,7 @@
 //! worker in that case.
 //!
 //! Role semantics: the user-facing NIP-65 role string (`"read"` | `"write"`
-//! | `"both"`) is stored in the `RelayEditRow` projection. For the transport
+//! | `"both"`) is stored in the `AppRelay` projection. For the transport
 //! pool, user-added relays are bucketed under `RelayRole::Content` — the
 //! diagnostic lane that groups inbox/outbox user-content sockets. The
 //! NIP-65 read/write split is handled by the outbox resolver, not by the
@@ -18,11 +18,11 @@
 //! harmless no-op.
 //!
 //! T-relay-url-normalize: both `add_relay` and `remove_relay` route through
-//! `canonical_relay_url` so the `RelayEditRow.url` field and the pool key in
+//! `canonical_relay_url` so the `AppRelay.url` field and the pool key in
 //! `relay_controls` always agree, regardless of the case/trailing-slash form
 //! the caller supplies.
 
-use crate::kernel::{Kernel, RelayEditRow};
+use crate::kernel::{AppRelay, Kernel};
 use crate::kinds::KIND_RELAY_LIST;
 use crate::relay::canonical_relay_url;
 use crate::substrate::UnsignedEvent;
@@ -37,7 +37,7 @@ fn normalize_role(role: &str) -> Option<String> {
     crate::actor::canonical_relay_role(role)
 }
 
-/// Build the NIP-65 third-element marker — if any — for a `RelayEditRow.role`
+/// Build the NIP-65 third-element marker — if any — for a `AppRelay.role`
 /// string.
 ///
 /// * `Some(None)`              — emit `["r", url]` (the "both" / default case).
@@ -73,7 +73,7 @@ fn nip65_marker_for_role(role: &str) -> Option<Option<&'static str>> {
 }
 
 /// Build a NIP-65 kind:10002 **unsigned** event from the current
-/// `RelayEditRow` projection — the active account's intended outbox/inbox
+/// `AppRelay` projection — the active account's intended outbox/inbox
 /// set.
 ///
 /// Used by the `AddRelay` / `RemoveRelay` dispatch arms to re-publish the
@@ -83,7 +83,7 @@ fn nip65_marker_for_role(role: &str) -> Option<Option<&'static str>> {
 /// Row → tag mapping is the [`nip65_marker_for_role`] table. Pure-indexer
 /// rows are dropped (NIP-65 has no indexer concept); the indexer suffix on
 /// composite roles is also dropped. URLs are NOT re-canonicalised here —
-/// `RelayEditRow.url` is already the canonical form (every `add_relay`
+/// `AppRelay.url` is already the canonical form (every `add_relay`
 /// caller routes through `canonical_relay_url`).
 ///
 /// The returned event:
@@ -99,9 +99,7 @@ fn nip65_marker_for_role(role: &str) -> Option<Option<&'static str>> {
 /// the cache for the user. Concretely the caller (`AddRelay` / `RemoveRelay`
 /// arms) skips the publish-piggyback step in that branch — the local
 /// projection mutation still stands.
-pub(crate) fn build_relay_list_event_from_edit_rows(
-    rows: &[RelayEditRow],
-) -> Option<UnsignedEvent> {
+pub(crate) fn build_relay_list_event(rows: &[AppRelay]) -> Option<UnsignedEvent> {
     let mut tags: Vec<Vec<String>> = Vec::with_capacity(rows.len());
     let mut seen = std::collections::HashSet::new();
     for row in rows {
@@ -141,7 +139,7 @@ pub(crate) fn build_relay_list_event_from_edit_rows(
 ///
 /// Canonicalization (T-relay-url-normalize): the URL is passed through
 /// [`canonical_relay_url`] — lowercase scheme+host, empty-path trailing slash
-/// stripped. The stored `RelayEditRow.url` is always the canonical form so
+/// stripped. The stored `AppRelay.url` is always the canonical form so
 /// it matches the pool key `ensure_relay_worker` / `shutdown_relay_worker` use.
 ///
 /// Returns `Some(canonical_url)` on success, `None` on any validation error
@@ -159,13 +157,13 @@ pub(crate) fn add_relay(kernel: &mut Kernel, url: &str, role: &str) -> Option<St
         ));
         return None;
     };
-    let mut rows = kernel.relay_edit_rows_snapshot().to_vec();
+    let mut rows = kernel.configured_relays_snapshot().to_vec();
     if let Some(existing) = rows.iter_mut().find(|r| r.url == canonical) {
-        *existing = RelayEditRow::new(existing.url.clone(), role);
+        *existing = AppRelay::new(existing.url.clone(), role);
     } else {
-        rows.push(RelayEditRow::new(canonical.clone(), role));
+        rows.push(AppRelay::new(canonical.clone(), role));
     }
-    kernel.set_relay_edit_rows(rows);
+    kernel.set_configured_relays(rows);
     kernel.set_last_error_toast(None);
     Some(canonical)
 }
@@ -177,11 +175,11 @@ pub(crate) fn remove_relay(kernel: &mut Kernel, url: &str) {
         Some(u) => u,
         None => url.trim().to_string(), // best-effort for non-ws URLs (no-op in practice)
     };
-    let mut rows = kernel.relay_edit_rows_snapshot().to_vec();
+    let mut rows = kernel.configured_relays_snapshot().to_vec();
     let before = rows.len();
     rows.retain(|r| r.url != canonical);
     if rows.len() != before {
-        kernel.set_relay_edit_rows(rows);
+        kernel.set_configured_relays(rows);
     }
 }
 
@@ -266,7 +264,7 @@ mod tests {
         let result = add_relay(&mut kernel, "wss://relay.example", "read");
         assert_eq!(result, Some("wss://relay.example".to_string()));
 
-        let rows = kernel.relay_edit_rows_snapshot();
+        let rows = kernel.configured_relays_snapshot();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].url, "wss://relay.example");
         assert_eq!(rows[0].role, "read");
@@ -280,7 +278,7 @@ mod tests {
         // `http://` is not a ws/wss scheme — canonicalization fails.
         let result = add_relay(&mut kernel, "http://relay.example", "read");
         assert_eq!(result, None);
-        assert!(kernel.relay_edit_rows_snapshot().is_empty());
+        assert!(kernel.configured_relays_snapshot().is_empty());
         assert!(kernel.last_error_toast_snapshot().is_some());
     }
 
@@ -290,7 +288,7 @@ mod tests {
         let result = add_relay(&mut kernel, "wss://relay.example", "bogus-role");
         assert_eq!(result, None);
         // No row is added when the role is rejected.
-        assert!(kernel.relay_edit_rows_snapshot().is_empty());
+        assert!(kernel.configured_relays_snapshot().is_empty());
         assert!(kernel.last_error_toast_snapshot().is_some());
     }
 
@@ -302,7 +300,7 @@ mod tests {
         // row instead of pushing a second one.
         add_relay(&mut kernel, "wss://relay.example", "write");
 
-        let rows = kernel.relay_edit_rows_snapshot();
+        let rows = kernel.configured_relays_snapshot();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].role, "write");
     }
@@ -314,7 +312,7 @@ mod tests {
         let result = add_relay(&mut kernel, "WSS://Relay.Example/", "read");
         assert_eq!(result, Some("wss://relay.example".to_string()));
 
-        let rows = kernel.relay_edit_rows_snapshot();
+        let rows = kernel.configured_relays_snapshot();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].url, "wss://relay.example");
     }
@@ -323,10 +321,10 @@ mod tests {
     fn t_add_then_remove_relay() {
         let mut kernel = fresh_kernel();
         add_relay(&mut kernel, "wss://relay.example", "read");
-        assert_eq!(kernel.relay_edit_rows_snapshot().len(), 1);
+        assert_eq!(kernel.configured_relays_snapshot().len(), 1);
 
         remove_relay(&mut kernel, "wss://relay.example");
-        assert!(kernel.relay_edit_rows_snapshot().is_empty());
+        assert!(kernel.configured_relays_snapshot().is_empty());
     }
 
     #[test]
@@ -336,7 +334,7 @@ mod tests {
         // form (trailing slash + mixed case) — canonicalization must still match.
         add_relay(&mut kernel, "wss://relay.example", "read");
         remove_relay(&mut kernel, "WSS://Relay.Example/");
-        assert!(kernel.relay_edit_rows_snapshot().is_empty());
+        assert!(kernel.configured_relays_snapshot().is_empty());
     }
 
     #[test]
@@ -346,33 +344,33 @@ mod tests {
         // Removing a URL that was never added leaves existing rows untouched.
         remove_relay(&mut kernel, "wss://other.example");
 
-        let rows = kernel.relay_edit_rows_snapshot();
+        let rows = kernel.configured_relays_snapshot();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].url, "wss://relay.example");
     }
 
-    // --- build_relay_list_event_from_edit_rows ----------------------------
+    // --- build_relay_list_event ----------------------------
     //
     // These tests pin the wire-shape contract for the AddRelay/RemoveRelay
-    // auto-trigger path. They cover the four `RelayEditRow.role` shapes
+    // auto-trigger path. They cover the four `AppRelay.role` shapes
     // that show up in production projections plus the empty/indexer-only
     // degenerate cases.
 
-    fn row(url: &str, role: &str) -> RelayEditRow {
-        RelayEditRow::new(url.to_string(), role.to_string())
+    fn row(url: &str, role: &str) -> AppRelay {
+        AppRelay::new(url.to_string(), role.to_string())
     }
 
     #[test]
     fn t_build_relay_list_event_kind_is_10002() {
         let rows = [row("wss://relay.example", "both")];
-        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let event = build_relay_list_event(&rows).expect("non-empty rows");
         assert_eq!(event.kind, 10002);
     }
 
     #[test]
     fn t_build_relay_list_event_uses_d7_created_at_sentinel() {
         let rows = [row("wss://relay.example", "both")];
-        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let event = build_relay_list_event(&rows).expect("non-empty rows");
         assert_eq!(
             event.created_at, 0,
             "D7: created_at is the 0 sentinel — the actor re-stamps it"
@@ -382,7 +380,7 @@ mod tests {
     #[test]
     fn t_build_relay_list_event_leaves_pubkey_empty() {
         let rows = [row("wss://relay.example", "both")];
-        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let event = build_relay_list_event(&rows).expect("non-empty rows");
         assert!(
             event.pubkey.is_empty(),
             "pubkey is filled by the actor from the active signer at sign time"
@@ -394,7 +392,7 @@ mod tests {
         // NIP-65: `["r", url]` (no third element) is the canonical
         // read+write shape.
         let rows = [row("wss://relay.example", "both")];
-        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let event = build_relay_list_event(&rows).expect("non-empty rows");
         assert_eq!(
             event.tags,
             vec![vec!["r".to_string(), "wss://relay.example".to_string()]]
@@ -404,7 +402,7 @@ mod tests {
     #[test]
     fn t_build_relay_list_event_read_emits_read_marker() {
         let rows = [row("wss://relay.example", "read")];
-        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let event = build_relay_list_event(&rows).expect("non-empty rows");
         assert_eq!(
             event.tags,
             vec![vec![
@@ -418,7 +416,7 @@ mod tests {
     #[test]
     fn t_build_relay_list_event_write_emits_write_marker() {
         let rows = [row("wss://relay.example", "write")];
-        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let event = build_relay_list_event(&rows).expect("non-empty rows");
         assert_eq!(
             event.tags,
             vec![vec![
@@ -437,7 +435,7 @@ mod tests {
             row("wss://indexer.example", "indexer"),
             row("wss://relay.example", "both"),
         ];
-        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let event = build_relay_list_event(&rows).expect("non-empty rows");
         assert_eq!(event.tags.len(), 1);
         assert_eq!(event.tags[0][1], "wss://relay.example");
     }
@@ -447,7 +445,7 @@ mod tests {
         // `both,indexer` rolls up to NIP-65 "both" (no marker). The indexer
         // half is NMP-internal and has no NIP-65 expression.
         let rows = [row("wss://relay.example", "both,indexer")];
-        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let event = build_relay_list_event(&rows).expect("non-empty rows");
         assert_eq!(
             event.tags,
             vec![vec!["r".to_string(), "wss://relay.example".to_string()]]
@@ -461,7 +459,7 @@ mod tests {
             row("wss://a.example", "read"),
             row("wss://c.example", "write"),
         ];
-        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let event = build_relay_list_event(&rows).expect("non-empty rows");
         let urls: Vec<&String> = event.tags.iter().map(|t| &t[1]).collect();
         assert_eq!(
             urls,
@@ -471,7 +469,7 @@ mod tests {
 
     #[test]
     fn t_build_relay_list_event_returns_none_for_empty_rows() {
-        let event = build_relay_list_event_from_edit_rows(&[]);
+        let event = build_relay_list_event(&[]);
         assert!(
             event.is_none(),
             "an empty projection MUST NOT produce a kind:10002 — that would \
@@ -485,7 +483,7 @@ mod tests {
         // signal `None` so the caller skips the publish piggyback and does
         // NOT emit a destructive empty kind:10002.
         let rows = [row("wss://indexer.example", "indexer")];
-        let event = build_relay_list_event_from_edit_rows(&rows);
+        let event = build_relay_list_event(&rows);
         assert!(
             event.is_none(),
             "an indexer-only projection has no NIP-65 expression — must \

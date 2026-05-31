@@ -302,13 +302,13 @@ mod tests {
     fn flags_bare_arc_mutex_vec_field_on_nmp_app() {
         // Same shape as the `Kernel` case but on the FFI handle struct.
         let hits = check(
-            "    relay_edit_rows: Arc<Mutex<Vec<RelayEditRow>>>,",
+            "    configured_relays: Arc<Mutex<Vec<AppRelay>>>,",
             false,
             Some("NmpApp"),
         );
         assert_eq!(hits.len(), 1);
         assert!(hits[0].1.contains("NmpApp"));
-        assert!(hits[0].1.contains("relay_edit_rows"));
+        assert!(hits[0].1.contains("configured_relays"));
     }
 
     #[test]
@@ -400,12 +400,12 @@ mod tests {
         // `Arc<Mutex<Vec<` substring still appears on the line, so the rule
         // catches it.
         let hits = check(
-            "    relay_edit_rows_handle: Option<Arc<Mutex<Vec<RelayEditRow>>>>,",
+            "    configured_relays_handle: Option<Arc<Mutex<Vec<AppRelay>>>>,",
             false,
             Some("Kernel"),
         );
         assert_eq!(hits.len(), 1, "Option<Arc<Mutex<Vec<…>>>> must fire");
-        assert!(hits[0].1.contains("relay_edit_rows_handle"));
+        assert!(hits[0].1.contains("configured_relays_handle"));
     }
 
     #[test]

@@ -34,7 +34,7 @@ use crate::substrate::ReqFrameContext;
 /// before both the role lookup and the `OutboundMessage` stamp so the whole
 /// actor-layer path agrees on a single key:
 ///   - `role_for_relay_url` does an exact `row.url == url` compare; a raw
-///     non-canonical URL would miss the matching `relay_edit_rows` entry and
+///     non-canonical URL would miss the matching `configured_relays` entry and
 ///     silently fall through to `RelayRole::Content`, mis-charging an indexer
 ///     relay to the Content diagnostic lane.
 ///   - `register_planner_wire_frames` already canonicalizes its own bookkeeping

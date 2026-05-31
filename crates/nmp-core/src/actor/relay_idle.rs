@@ -342,7 +342,7 @@ mod tests {
             url,
             RelayConnectionKind::Temporary,
         );
-        kernel.set_relay_edit_rows(vec![crate::kernel::RelayEditRow::new(
+        kernel.set_configured_relays(vec![crate::kernel::AppRelay::new(
             key.to_string(),
             "both".to_string(),
         )]);

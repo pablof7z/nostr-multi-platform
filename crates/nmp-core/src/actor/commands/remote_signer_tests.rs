@@ -515,16 +515,15 @@ fn snapshot_carries_bunker_handshake_value() {
 
 #[test]
 fn bunker_connection_state_projection_reflects_transitions() {
-    use crate::actor::commands::{bunker_connection_state_changed, new_bunker_connection_state_slot};
+    use crate::actor::commands::{
+        bunker_connection_state_changed, new_bunker_connection_state_slot,
+    };
     use crate::actor::new_bunker_handshake_slot;
 
     // Wire up a connection-state slot + identity runtime, register the
     // `"bunker_connection_state"` projection closure, bind it onto a kernel.
     let conn_state_slot = new_bunker_connection_state_slot();
-    let id = IdentityRuntime::new(
-        new_bunker_handshake_slot(),
-        Arc::clone(&conn_state_slot),
-    );
+    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&conn_state_slot));
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let projections = crate::kernel::new_snapshot_projection_slot();
     {
@@ -620,14 +619,13 @@ fn bunker_connection_state_slot_reflects_direct_write() {
     // Drive `bunker_connection_state_changed` (the pub command handler) directly
     // to prove the slot writer pre-computes flags correctly without going
     // through the actor loop. Uses the test-accessor to read back the slot.
-    use crate::actor::commands::{bunker_connection_state_changed, new_bunker_connection_state_slot};
+    use crate::actor::commands::{
+        bunker_connection_state_changed, new_bunker_connection_state_slot,
+    };
     use crate::actor::new_bunker_handshake_slot;
 
     let conn_state_slot = new_bunker_connection_state_slot();
-    let id = IdentityRuntime::new(
-        new_bunker_handshake_slot(),
-        Arc::clone(&conn_state_slot),
-    );
+    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&conn_state_slot));
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Idle: slot is None.
@@ -640,7 +638,9 @@ fn bunker_connection_state_slot_reflects_direct_write() {
         "reconnecting".to_string(),
         Some("timeout".to_string()),
     );
-    let dto = id.bunker_connection_state_for_test().expect("slot must be Some after reconnecting");
+    let dto = id
+        .bunker_connection_state_for_test()
+        .expect("slot must be Some after reconnecting");
     assert_eq!(dto.state, "reconnecting");
     assert!(dto.is_reconnecting);
     assert!(!dto.is_connected);
@@ -649,7 +649,9 @@ fn bunker_connection_state_slot_reflects_direct_write() {
 
     // Overwrite with "connected".
     bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
-    let dto = id.bunker_connection_state_for_test().expect("slot must be Some after connected");
+    let dto = id
+        .bunker_connection_state_for_test()
+        .expect("slot must be Some after connected");
     assert!(dto.is_connected);
     assert!(!dto.is_reconnecting);
     assert!(!dto.is_failed);
@@ -662,7 +664,9 @@ fn bunker_connection_state_slot_reflects_direct_write() {
         "failed".to_string(),
         Some("403 Forbidden".to_string()),
     );
-    let dto = id.bunker_connection_state_for_test().expect("slot must be Some after failed");
+    let dto = id
+        .bunker_connection_state_for_test()
+        .expect("slot must be Some after failed");
     assert!(dto.is_failed);
     assert!(!dto.is_connected);
     assert!(!dto.is_reconnecting);
@@ -736,7 +740,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             // V-14 step b: throwaway connection-state slot.
             crate::actor::new_bunker_connection_state_slot(),
             // Typed slot constructor.
-            crate::kernel::new_relay_edit_rows_slot(),
+            crate::kernel::new_app_relay_slot(),
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(None)),
             new_capability_callback_slot(),
@@ -789,6 +793,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
         .send(ActorCommand::Start {
             visible_limit: 50,
             emit_hz: 30,
+            initial_relays: Vec::new(),
         })
         .unwrap();
 
@@ -854,6 +859,7 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
         .send(ActorCommand::Start {
             visible_limit: 50,
             emit_hz: 30,
+            initial_relays: Vec::new(),
         })
         .unwrap();
 

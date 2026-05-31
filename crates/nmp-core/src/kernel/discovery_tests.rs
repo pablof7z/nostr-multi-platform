@@ -38,7 +38,7 @@ fn tag(parts: &[&str]) -> Vec<String> {
 /// Configure the lifecycle's planner-extension bootstrap relay lanes (PD-033-C
 /// PR #365) so the planner has somewhere to land kernel-driven discovery
 /// oneshots. Production wires these from `bootstrap_urls_for_role` in
-/// `identity_state::set_user_configured_relay_edit_rows`; tests that construct
+/// `identity_state::set_configured_relays`; tests that construct
 /// a bare `Kernel::new` install them directly.
 ///
 /// Also clears the `cfg(test)` default `wss://purplepag.es` indexer relay so
@@ -567,10 +567,9 @@ fn v56_known_profile_not_re_added() {
     let npub = encode_npub(pk).expect("encode_npub must succeed");
 
     // Pre-seed the profiles projection so the pubkey is "known".
-    kernel.profiles.insert(
-        pk.to_string(),
-        super::types::Profile::default(),
-    );
+    kernel
+        .profiles
+        .insert(pk.to_string(), super::types::Profile::default());
 
     let content = format!("Say hello to nostr:{npub}");
     kernel.collect_content_mention_pubkeys(&content);

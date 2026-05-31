@@ -65,9 +65,9 @@ The `NostrLoginBlock` component detects local signers via `UIApplication.shared.
 
 ## NostrRelayList
 
-The `NostrRelayList` component renders `projections.relay_edit_rows` with connection status dots (green=connected, orange=connecting with pulse animation, red=error, gray=unknown), role badges, and wss://-stripped URLs in monospaced font. [^45258-18]
+The `NostrRelayList` component renders `projections.configured_relays` with connection status dots (green=connected, orange=connecting with pulse animation, red=error, gray=unknown), role badges, and wss://-stripped URLs in monospaced font. [^45258-18]
 
-The `role_tint` field in `RelayEditRow` is a semantic token (`accent`/`info`/`success`/`neutral`) mapped to SwiftUI colors first (accent→.accentColor, info→.blue, success→.green, neutral→.secondary), with hex color fallback for forward-compatibility. [^45258-19]
+The `role_tint` field in `AppRelay` is a semantic token (`accent`/`info`/`success`/`neutral`) mapped to SwiftUI colors first (accent→.accentColor, info→.blue, success→.green, neutral→.secondary), with hex color fallback for forward-compatibility. [^45258-19]
 
 ## Author Picture and ADR-0032
 

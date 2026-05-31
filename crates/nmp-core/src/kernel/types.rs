@@ -835,7 +835,7 @@ pub(super) struct KernelSnapshot {
     // host-registered projection closures.
     //
     // D0: the publish/relay-settings cluster (`publish_queue`,
-    // `publish_outbox`, `relay_edit_rows`, `relay_role_options`) is app-shaped
+    // `publish_outbox`, `configured_relays`, `relay_role_options`) is app-shaped
     // relay/publish state — NOT a protocol-neutral kernel primitive. There are
     // NO typed fields for them. They are surfaced through the host-extensible
     // `projections` map below under their built-in keys: a shell reads
@@ -866,14 +866,14 @@ pub(super) struct KernelSnapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) store_open_failure: Option<String>,
     /// V-66 (D3) — set to `true` when the kernel has an active account but
-    /// `relay_edit_rows` is empty, meaning every outbound connection falls
+    /// `configured_relays` is empty, meaning every outbound connection falls
     /// back to `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` without
     /// user consent. The fallback still operates so the app stays functional,
     /// but the host MUST surface this diagnostic (e.g. a banner: "No relays
     /// configured — using defaults") so the user knows their publish target.
     ///
     /// Absent from the wire (`skip_serializing_if`) when the condition is not
-    /// active: a kernel with no active account, or one whose `relay_edit_rows`
+    /// active: a kernel with no active account, or one whose `configured_relays`
     /// is non-empty, emits no field — wire stays byte-for-byte identical to
     /// pre-V-66 snapshots in the healthy case.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -895,7 +895,7 @@ pub(super) struct KernelSnapshot {
     ///
     /// `make_update` also inserts the kernel-owned built-in projections after
     /// running the host closures: `"publish_queue"`, `"publish_outbox"`,
-    /// `"relay_edit_rows"`, and `"relay_role_options"` — the publish /
+    /// `"configured_relays"`, and `"relay_role_options"` — the publish /
     /// relay-settings cluster (D0: relay/publish state is an app noun, not a
     /// typed `KernelSnapshot` field); `"accounts"` /
     /// `"active_account"` — the identity pair; and `"profile"`, `"timeline"`,

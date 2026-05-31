@@ -158,6 +158,7 @@ fn a5_mid_claim_stub_relay_drop_records_failure_delta() {
     tx.send(ActorCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
+        initial_relays: Vec::new(),
     })
     .expect("A5: Start send");
 

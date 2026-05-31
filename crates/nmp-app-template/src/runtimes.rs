@@ -40,9 +40,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::AppHost;
-use nmp_core::{
-    read_eligible_relay_urls, ActorCommand, RawEventObserver, RelayEditRowsSlot,
-};
+use nmp_core::{read_eligible_relay_urls, ActorCommand, AppRelaySlot, RawEventObserver};
 use nmp_nip17::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
     DmRuntimeEffect, DmRuntimeState,
@@ -70,12 +68,14 @@ pub fn register_dm_runtime(app: &impl AppHost) {
     register_inbox_projection(app);
 
     let controller = Arc::new(DmRuntimeController {
-        relay_rows: app.relay_edit_rows_handle(),
+        relay_slot: app.configured_relays_handle(),
         local_keys: app.active_local_keys(),
         tx: app.actor_sender(),
         state: Mutex::new(DmRuntimeState::default()),
     });
-    app.register_snapshot_projection("nmp.nip17.dm_relay_list", move || controller.snapshot_json());
+    app.register_snapshot_projection("nmp.nip17.dm_relay_list", move || {
+        controller.snapshot_json()
+    });
 }
 
 fn register_inbox_projection(app: &impl AppHost) {
@@ -94,7 +94,7 @@ fn register_inbox_projection(app: &impl AppHost) {
 }
 
 struct DmRuntimeController {
-    relay_rows: RelayEditRowsSlot,
+    relay_slot: AppRelaySlot,
     local_keys: Arc<Mutex<Option<nostr::Keys>>>,
     tx: Sender<ActorCommand>,
     state: Mutex<DmRuntimeState>,
@@ -105,7 +105,10 @@ impl DmRuntimeController {
         let active_pubkey = self.active_pubkey();
         let read_relay_urls = self.read_relay_urls();
         {
-            let mut state = self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut state = self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             for effect in state.reconcile(active_pubkey.as_deref(), &read_relay_urls) {
                 self.apply(effect);
             }
@@ -125,7 +128,7 @@ impl DmRuntimeController {
     }
 
     fn read_relay_urls(&self) -> Vec<String> {
-        self.relay_rows
+        self.relay_slot
             .lock()
             .map(|rows| read_eligible_relay_urls(rows.as_slice()))
             .unwrap_or_default()
@@ -214,9 +217,9 @@ impl ZapReceiptsRuntimeController {
             (Some(now), Some(prev)) if now == prev => {}
             // Sign-in (or first-ever push).
             (Some(now), None) => {
-                let _ = self.tx.send(ActorCommand::PushInterest(
-                    self_zap_receipts_interest(now),
-                ));
+                let _ = self
+                    .tx
+                    .send(ActorCommand::PushInterest(self_zap_receipts_interest(now)));
                 *last = Some(now.to_string());
             }
             // Account switch: withdraw old (by pubkey-invariant id), push new.
@@ -224,9 +227,9 @@ impl ZapReceiptsRuntimeController {
                 let _ = self.tx.send(ActorCommand::WithdrawInterest(
                     self_zap_receipts_interest_id(),
                 ));
-                let _ = self.tx.send(ActorCommand::PushInterest(
-                    self_zap_receipts_interest(now),
-                ));
+                let _ = self
+                    .tx
+                    .send(ActorCommand::PushInterest(self_zap_receipts_interest(now)));
                 *last = Some(now.to_string());
             }
             // Logout: withdraw standing interest, clear slot.

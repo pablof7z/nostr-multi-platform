@@ -103,6 +103,7 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
     tx.send(ActorCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
+        initial_relays: Vec::new(),
     })
     .expect("A6: Start send");
 

@@ -9,7 +9,7 @@
 
 ## Context
 
-`RelayEditRow` in `nmp-core::kernel::identity_state` stored two display strings:
+`AppRelay` in `nmp-core::kernel::identity_state` stored two display strings:
 - `role_label: String` — e.g., `"Both + Index"`, `"Read"`, `"Write"`
 - `role_tint: String` — e.g., `"accent"`, `"info"`, `"success"`
 
@@ -22,7 +22,7 @@ ADR-0032 explicitly deferred the relay-settings cluster as a known follow-up. Th
 
 ## Decision
 
-1. **Strip `role_label` and `role_tint` from `RelayEditRow`.**
+1. **Strip `role_label` and `role_tint` from `AppRelay`.**
    The kernel struct now holds only `url: String` and `role: String` (canonical form).
 
 2. **Delete `relay_role_label` and `relay_role_tint` free functions.**
@@ -43,7 +43,7 @@ ADR-0032 explicitly deferred the relay-settings cluster as a known follow-up. Th
 - Kernel state is minimal: no presentation strings embedded in business-logic structs.
 - The `relay_role_options` projection becomes the single source of truth for role display metadata.
 - Each platform shell (Swift, Kotlin, TUI, TypeScript) looks up label/tint via `relay_role_options` join or a local mapping (TUI, which ADR-0032 explicitly permits).
-- Wire output: `relay_edit_rows` items shrink from 4 fields to 2; `settings_hub` payload changes shape.
+- Wire output: `configured_relays` items shrink from 4 fields to 2; `settings_hub` payload changes shape.
 
 ## Migration
 

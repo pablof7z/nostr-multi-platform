@@ -143,9 +143,9 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     },
     // Relay-edit settings cluster — pre-rolled rows + role pick options.
     SnapshotProjectionEntry {
-        json_key: "relay_edit_rows",
-        swift_field: "relayEditRows",
-        swift_type: "[RelayEditRow]",
+        json_key: "configured_relays",
+        swift_field: "configuredRelays",
+        swift_type: "[AppRelay]",
     },
     SnapshotProjectionEntry {
         json_key: "relay_role_options",

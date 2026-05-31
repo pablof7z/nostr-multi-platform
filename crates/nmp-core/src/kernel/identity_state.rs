@@ -163,12 +163,12 @@ pub(crate) struct RelayAckOutcome {
 /// per-role `RelayHealth` for the relays Pulse drives.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
-pub struct RelayEditRow {
+pub struct AppRelay {
     pub(crate) url: String,
     pub(crate) role: String,
 }
 
-impl RelayEditRow {
+impl AppRelay {
     pub(crate) fn new(url: String, role: String) -> Self {
         let role = crate::actor::canonical_relay_role(&role).unwrap_or(role);
         Self { url, role }
@@ -199,9 +199,9 @@ impl RelayEditRow {
 ///
 /// This is the canonical relay-role filter for any Rust host/app module that
 /// needs the user's configured inbox/read relay set. Keeping it here avoids
-/// platform shells re-parsing `RelayEditRow.role` tokens.
+/// platform shells re-parsing `AppRelay.role` tokens.
 #[must_use]
-pub fn read_eligible_relay_urls(rows: &[RelayEditRow]) -> Vec<String> {
+pub fn read_eligible_relay_urls(rows: &[AppRelay]) -> Vec<String> {
     rows.iter()
         .filter(|r| crate::actor::has_role(&r.role, "read"))
         .map(|r| r.url.clone())
@@ -331,16 +331,16 @@ impl super::Kernel {
     /// Replace the editable relay projection (D4: actor is sole writer).
     /// Also syncs the shared handles so FFI-side reads
     /// and planner/publish routing see the latest rows.
-    pub(crate) fn set_relay_edit_rows(&mut self, rows: Vec<RelayEditRow>) {
-        let changed = self.relay_edit_rows != rows;
+    pub(crate) fn set_configured_relays(&mut self, rows: Vec<AppRelay>) {
+        let changed = self.configured_relays != rows;
         if changed {
-            self.relay_edit_rows = rows.clone();
+            self.configured_relays = rows.clone();
             self.changed_since_emit = true;
         }
-        if let Some(handle) = self.relay_edit_rows_handle.as_ref() {
+        if let Some(handle) = self.configured_relays_handle.as_ref() {
             if let Ok(mut guard) = handle.lock() {
                 // Typed slot — `.replace()` is the sole-writer
-                // affordance defined on `RelayEditRowList`.
+                // affordance defined on `AppRelayList`.
                 guard.replace(rows.clone());
             }
         }
@@ -422,8 +422,8 @@ impl super::Kernel {
         self.last_error_category.as_ref()
     }
 
-    pub(crate) fn relay_edit_rows_snapshot(&self) -> &[RelayEditRow] {
-        &self.relay_edit_rows
+    pub(crate) fn configured_relays_snapshot(&self) -> &[AppRelay] {
+        &self.configured_relays
     }
 }
 

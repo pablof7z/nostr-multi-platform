@@ -88,7 +88,7 @@ Source: `/Users/pablofernandez/Work/nostr-multi-platform/ios/Chirp/Chirp/Bridge/
 | 32 | `PublishOutboxItem` (KernelBridge.swift:1711) | `PublishOutboxItem` (`nmp-core/src/kernel/types.rs:325`) | `pub(super)` | |
 | 33 | `PublishOutboxRelay` (KernelBridge.swift:1743) | `PublishOutboxRelay` (`nmp-core/src/kernel/types.rs:357`) | `pub(super)` | |
 | 34 | `OutboxSummary` (KernelBridge.swift:1765) | `OutboxSummarySnapshot` (`nmp-core/src/kernel/types.rs:382`) | `pub(super)` | |
-| 35 | `RelayEditRow` (KernelBridge.swift:1789) | `RelayEditRow` (`nmp-core/src/kernel/identity_state.rs:116`) | `pub` | |
+| 35 | `AppRelay` (KernelBridge.swift:1789) | `AppRelay` (`nmp-core/src/kernel/identity_state.rs:116`) | `pub` | |
 | 36 | `RelayRoleOption` (KernelBridge.swift:1809) | `relay_role_options()` in `nmp-core/src/actor/relay_roles.rs` | `pub` | |
 | 37 | `WalletStatusData` (KernelBridge.swift:1819) | `WalletStatus` (`nmp-core/src/actor/commands/wallet.rs:79`) | `pub(crate)` | |
 | 38 | `ProfileCard` (KernelBridge.swift:1834) | `ProfileCard` (`nmp-core/src/kernel/types.rs:141`) | `pub(super)` | |
@@ -487,7 +487,7 @@ not the first PR. The migration is staged because:
    - `RelayStatus` (nested optionals + denied bool — proves optional
      coverage)
    - `LogicalInterestStatus`, `WireSubscriptionStatus`, `AccountSummary`,
-     `RelayEditRow`, `RelayRoleOption` (5 more leaf types — proves
+     `AppRelay`, `RelayRoleOption` (5 more leaf types — proves
      `Identifiable` + `id_field` registry config)
 3. Add `src/bin/dump_projection_schemas.rs` to `nmp-core` (writes
    `target/nmp-codegen/projection-schemas.json`).
@@ -511,7 +511,7 @@ hardest sub-problem is deferred to Stage 2 where it belongs.
 
 1. Extend the registry function to enumerate the eight kernel-owned dotted
    keys (`wallet`, `bunker_handshake`, `nip46_onboarding`, `publish_queue`,
-   `publish_outbox`, `outbox_summary`, `relay_edit_rows`,
+   `publish_outbox`, `outbox_summary`, `configured_relays`,
    `relay_role_options`, `accounts`, `active_account`, `action_results`,
    `action_stages`, `last_action_result`, `profile`, `timeline`,
    `author_view`, `thread_view`, `inserted`, `updated`, `removed`,

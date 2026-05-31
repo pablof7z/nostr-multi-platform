@@ -13,11 +13,11 @@
 mod active_account_handle_tests;
 // V-83 — `NmpApp::event_by_id()` synchronous event-read tests (real event
 // ingest driven through the actor thread; publish-back slot survives Reset).
+mod action;
+mod capability;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
-mod action;
-mod capability;
 mod event_observer;
 mod feed;
 mod identity;
@@ -152,14 +152,14 @@ pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wall
 // constructors, registration helpers, default constants); everything
 // already on the public surface comes through `nmp_core::*` directly.
 use nmp_core::__ffi_internal::{
-    default_registry, dispatch_capability, has_role, new_bunker_connection_state_slot,
-    new_bunker_handshake_slot, new_capability_callback_slot, new_event_observer_slot,
-    new_lifecycle_observer_slot, new_raw_event_observer_slot, new_relay_edit_rows_slot,
+    default_registry, dispatch_capability, has_role, new_app_relay_slot,
+    new_bunker_connection_state_slot, new_bunker_handshake_slot, new_capability_callback_slot,
+    new_event_observer_slot, new_lifecycle_observer_slot, new_raw_event_observer_slot,
     new_snapshot_projection_slot, nostrconnect_relay_url, register_rust_observer,
     register_rust_raw_observer, run_actor_with_observers, unregister_observer,
-    unregister_raw_observer, ActionRegistry, CapabilityCallbackSlot,
-    KernelEventObserverSlot, LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot,
-    DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT,
+    unregister_raw_observer, ActionRegistry, CapabilityCallbackSlot, KernelEventObserverSlot,
+    LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
+    DEFAULT_VISIBLE_LIMIT,
 };
 // V-38: the `new_wallet_status_slot` re-export moved to `nmp-nip47`; the
 // host (per-app crate) constructs the slot and registers it via
@@ -278,11 +278,21 @@ pub struct NmpApp {
     /// onto the kernel so external Rust callers (e.g. per-app crates) can read
     /// the user's current relay list without crossing FFI.
     ///
-    /// The slot is a typed [`nmp_core::RelayEditRowsSlot`]
-    /// (`Arc<Mutex<RelayEditRowList>>`) — D14 forbids new bare
+    /// The slot is a typed [`nmp_core::AppRelaySlot`]
+    /// (`Arc<Mutex<AppRelayList>>`) — D14 forbids new bare
     /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp` and the typed wrapper makes
     /// the slot's purpose visible at the declaration site.
-    relay_edit_rows: nmp_core::RelayEditRowsSlot,
+    configured_relays: nmp_core::AppRelaySlot,
+    /// Pre-start initial relay configuration. Set by `NmpAppBuilder::start()`
+    /// (Rust path) or by calling `set_initial_relays_for_start` before
+    /// `nmp_app_start`. The `nmp_app_start` function reads this slot and carries
+    /// it in `ActorCommand::Start { initial_relays }`.
+    ///
+    /// D14: `Arc<Mutex<Vec<(String, String)>>>` is NOT the banned
+    /// `Arc<Mutex<Vec<RowType>>>` projection shape — it is a one-shot pre-start
+    /// staging slot consumed once by `nmp_app_start`, never shared with the
+    /// actor thread as a live projection.
+    initial_relays_for_start: Mutex<Vec<(String, String)>>,
     /// V-65 — host-supplied bootstrap relay URL for client-initiated NIP-46
     /// `nostrconnect://` handshakes when the user has no configured write relay.
     ///
@@ -684,8 +694,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // relay list without crossing FFI.
     //
     // Typed slot constructor — see `kernel/relay_projection.rs`.
-    let relay_edit_rows: nmp_core::RelayEditRowsSlot = new_relay_edit_rows_slot();
-    let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
+    let configured_relays: nmp_core::AppRelaySlot = new_app_relay_slot();
+    let actor_configured_relays = Arc::clone(&configured_relays);
     // V-65 — host-supplied bootstrap relay for client-initiated NIP-46
     // `nostrconnect://` handshakes. Default `None`; the composition root
     // (e.g. `nmp_app_template::register_defaults`) writes a sane default via
@@ -811,9 +821,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // default until an app crate wires `nmp_router::InMemoryBlockedRelayCache`
     // through `set_blocked_relay_lookup`.
     let blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>> =
-        Arc::new(Mutex::new(
-            nmp_core::substrate::empty_blocked_relay_lookup(),
-        ));
+        Arc::new(Mutex::new(nmp_core::substrate::empty_blocked_relay_lookup()));
     let actor_blocked_relays = Arc::clone(&blocked_relays_slot);
     // Per-app override for the bootstrap Tailing self-kinds list.
     // `None` → kernel uses its built-in default.
@@ -867,7 +875,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // V-14 step b: bunker relay-layer connection-state slot.
                 // The broker callback → actor command → slot write keeps D4.
                 actor_bunker_connection_state,
-                actor_relay_edit_rows,
+                actor_configured_relays,
                 actor_mls_local_nsec,
                 actor_active_local_keys,
                 actor_capability_callback,
@@ -973,7 +981,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         raw_event_observers,
         nip17_dm_inbox_observer_id,
         singleton_event_observer_id,
-        relay_edit_rows,
+        configured_relays,
+        initial_relays_for_start: Mutex::new(Vec::new()),
         nostrconnect_bootstrap_relay,
         mls_local_nsec,
         active_local_keys,
@@ -1858,30 +1867,55 @@ impl NmpApp {
     /// Clone of the live relay-edit row slot.
     ///
     /// Per-app Rust controllers use this to derive protocol-specific relay
-    /// projections without asking platform shells to parse `RelayEditRow.role`.
+    /// projections without asking platform shells to parse `AppRelay.role`.
     /// The actor is the sole writer; callers should take quick snapshots only.
     ///
-    /// The slot type is [`nmp_core::RelayEditRowsSlot`] — a
-    /// newtype `Arc<Mutex<RelayEditRowList>>`. Readers iterate via
+    /// The slot type is [`nmp_core::AppRelaySlot`] — a
+    /// newtype `Arc<Mutex<AppRelayList>>`. Readers iterate via
     /// `guard.as_slice()` so they never touch the inner `Vec` directly. D14
     /// (`crates/nmp-testing/bin/doctrine-lint/rules/d14.rs`) forbids new bare
     /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp`; the typed alias makes the
     /// slot's purpose visible at every call site.
     #[must_use]
-    pub fn relay_edit_rows_handle(&self) -> nmp_core::RelayEditRowsSlot {
-        Arc::clone(&self.relay_edit_rows)
+    pub fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
+        Arc::clone(&self.configured_relays)
+    }
+
+    /// Store the initial relay configuration to be passed to
+    /// `ActorCommand::Start { initial_relays }`.
+    ///
+    /// Must be called before `nmp_app_start`. Used by `NmpAppBuilder::start()`
+    /// (the Rust composition path); C-ABI callers can seed relays before start
+    /// via `nmp_app_add_relay` instead. The app — not `nmp-core` — owns its
+    /// default relay list: there is no hardcoded fallback.
+    pub fn set_initial_relays_for_start(&self, relays: Vec<(String, String)>) {
+        if let Ok(mut guard) = self.initial_relays_for_start.lock() {
+            *guard = relays;
+        }
+    }
+
+    /// The configured LMDB storage path, if one was set via
+    /// `nmp_app_set_storage_path` (e.g. through `NmpAppBuilder::storage_path`).
+    ///
+    /// Returns `None` for the in-memory store (no path set). `NmpAppBuilder`
+    /// reads this to decide where the relay-config JSON sidecar lives: `Some`
+    /// → persist/load the sidecar in that directory; `None` → in-memory, use
+    /// the declared defaults without touching disk.
+    #[must_use]
+    pub fn storage_path_for_start(&self) -> Option<String> {
+        self.storage_path.lock().ok().and_then(|g| g.clone())
     }
 
     /// Return the user's current write-relay URLs, read from the shared kernel relay-edit
     /// projection. Empty when the user has not configured any write relays.
     /// Used by per-app crates so relay resolution stays Rust-owned (D0).
     ///
-    /// The underlying slot is a typed `RelayEditRowList`; the
+    /// The underlying slot is a typed `AppRelayList`; the
     /// reader iterates via `as_slice()` so it never touches the inner `Vec`
     /// directly.
     #[must_use]
     pub fn write_relay_urls(&self) -> Vec<String> {
-        let Ok(guard) = self.relay_edit_rows.lock() else {
+        let Ok(guard) = self.configured_relays.lock() else {
             return Vec::new();
         };
         guard
@@ -1982,7 +2016,7 @@ impl NmpApp {
     #[must_use]
     pub fn nostrconnect_relay_url(&self) -> Option<String> {
         // 1. Try the user's configured write relay.
-        if let Ok(guard) = self.relay_edit_rows.lock() {
+        if let Ok(guard) = self.configured_relays.lock() {
             if let Some(url) =
                 nostrconnect_relay_url(guard.as_slice().iter().map(|row| (row.url(), row.role())))
             {
@@ -2128,8 +2162,8 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::swap_dm_inbox_observer(self, new)
     }
 
-    fn relay_edit_rows_handle(&self) -> nmp_core::RelayEditRowsSlot {
-        NmpApp::relay_edit_rows_handle(self)
+    fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
+        NmpApp::configured_relays_handle(self)
     }
 
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {
@@ -2221,9 +2255,20 @@ pub extern "C" fn nmp_app_start(
         return;
     };
 
+    // Read the pre-start initial relay configuration set by
+    // `NmpAppBuilder::start()` (Rust path) or `set_initial_relays_for_start`.
+    // Carried into `ActorCommand::Start` so the actor seeds `configured_relays`
+    // before the session restore runs.
+    let initial_relays = app
+        .initial_relays_for_start
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default();
+
     app.send_cmd(ActorCommand::Start {
         visible_limit: clamp_visible(visible_limit),
         emit_hz: clamp_emit_hz(emit_hz),
+        initial_relays,
     });
 }
 

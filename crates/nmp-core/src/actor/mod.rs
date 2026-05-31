@@ -55,12 +55,12 @@ mod session_persistence;
 mod session_persistence_tests;
 #[cfg(all(test, feature = "native"))]
 mod tests;
-#[cfg(all(test, feature = "native"))]
-mod v90_capability_worker_tests;
-#[cfg(all(test, feature = "native"))]
-mod v87_d1_startup_tests;
 #[cfg(feature = "native")]
 mod tick;
+#[cfg(all(test, feature = "native"))]
+mod v87_d1_startup_tests;
+#[cfg(all(test, feature = "native"))]
+mod v90_capability_worker_tests;
 
 // V-01 Phase 1c: capability callback and identity runtime are native actor runtime only.
 #[cfg(feature = "native")]
@@ -239,9 +239,7 @@ use std::time::{Duration, Instant};
 // rows by role when computing the write-relay slice for the per-app crate's
 // MLS / NIP-17 publish path).
 pub use relay_roles::has_role;
-pub(crate) use relay_roles::{
-    canonical_relay_role, relay_role_options,
-};
+pub(crate) use relay_roles::{canonical_relay_role, relay_role_options};
 // V6 Stage 1 — Swift codegen pilot. `RelayRoleOption` is `pub(crate)` in
 // `relay_roles`; re-exported here so `crate::codegen_schema` can hand it
 // to `schemars::schema_for!` from the schema-dump binary. The type stays
@@ -264,6 +262,10 @@ pub enum ActorCommand {
     Start {
         visible_limit: usize,
         emit_hz: u32,
+        /// App-declared initial relay configuration. Seeded into `configured_relays`
+        /// before the session restore runs. Empty for C-ABI callers that seed via
+        /// pre-start `add_relay` calls instead.
+        initial_relays: Vec<(String, String)>,
     },
     Configure {
         visible_limit: usize,
@@ -936,7 +938,7 @@ pub fn run_actor(
         new_bunker_connection_state_slot(),
         // Typed slot constructor; the backwards-compatible entry
         // point has no FFI surface to read the slot, so it's a throwaway.
-        crate::kernel::new_relay_edit_rows_slot(),
+        crate::kernel::new_app_relay_slot(),
         Arc::new(Mutex::new(None)),
         // Active-account local-keys slot — private throwaway: this
         // backwards-compatible entry point has no FFI surface for a
@@ -1037,7 +1039,7 @@ pub fn run_actor_with_lifecycle_observer(
         // V-14 step b: throwaway connection-state slot (no FFI surface here).
         new_bunker_connection_state_slot(),
         // Typed slot constructor; private throwaway here.
-        crate::kernel::new_relay_edit_rows_slot(),
+        crate::kernel::new_app_relay_slot(),
         Arc::new(Mutex::new(None)),
         // Active-account local-keys slot — private throwaway: no FFI
         // surface here for a non-substrate reader to consume it.
@@ -1135,10 +1137,10 @@ pub fn run_actor_with_observers(
     // `"bunker_connection_state"` snapshot-projection closure; this one is
     // handed to `IdentityRuntime` (sole writer, D4).
     bunker_connection_state: BunkerConnectionStateSlot,
-    // Typed slot ([`crate::kernel::RelayEditRowsSlot`]) so the actor
+    // Typed slot ([`crate::kernel::AppRelaySlot`]) so the actor
     // parameter type signals the slot's purpose; D14 forbids new bare
     // `Arc<Mutex<Vec<…>>>` parameters here.
-    relay_edit_rows: crate::kernel::RelayEditRowsSlot,
+    configured_relays: crate::kernel::AppRelaySlot,
     mls_local_nsec: MlsLocalNsecSlot,
     // Substrate-generic active-account local-keys slot. Shared `Arc` with
     // the `NmpApp`: per-app crates read it through
@@ -1553,7 +1555,7 @@ pub fn run_actor_with_observers(
     // (e.g. a per-app dispatch crate) can read the user's current
     // relay list without crossing FFI. Survives `Reset` the same way as
     // the other shared handles.
-    kernel.set_relay_edit_rows_handle(Arc::clone(&relay_edit_rows));
+    kernel.set_app_relay_slot(Arc::clone(&configured_relays));
     // D4: the identity runtime is the sole writer of the shared
     // bunker-handshake slot. The built-in `"bunker_handshake"` snapshot
     // projection registered above reads the same `Arc<Mutex<…>>` clone on

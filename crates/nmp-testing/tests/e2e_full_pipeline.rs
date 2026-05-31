@@ -75,6 +75,7 @@ fn cold_open_profile_view_full_pipeline() {
     tx.send(ActorCommand::Start {
         visible_limit: 100,
         emit_hz: 0,
+        initial_relays: Vec::new(),
     })
     .expect("send Start");
 
@@ -597,6 +598,7 @@ fn monotonic_rev_under_concurrent_dispatch() {
     tx.send(ActorCommand::Start {
         visible_limit: 500,
         emit_hz: 60,
+        initial_relays: Vec::new(),
     })
     .expect("send Start");
 

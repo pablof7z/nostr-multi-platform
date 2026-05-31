@@ -90,7 +90,7 @@ fn multiple_projections_each_get_their_namespace() {
 /// the kernel-owned built-in projections — and no host namespace.
 ///
 /// D0: `make_update` always inserts the publish / relay-settings cluster
-/// (`publish_queue` / `publish_outbox` / `relay_edit_rows` /
+/// (`publish_queue` / `publish_outbox` / `configured_relays` /
 /// `relay_role_options`), the identity pair (`accounts` / `active_account`),
 /// and the views cluster — all kernel-owned domain state,
 /// not host registrations — so the map is never empty and `skip_serializing_if`
@@ -128,6 +128,8 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // generic claimed-profile projection: pubkey -> ProfileCard for
             // profile references a component has called `claim_profile` on.
             "claimed_profiles",
+            // app-declared relay configuration (formerly `relay_edit_rows`).
+            "configured_relays",
             // derived view: per-author mention payloads scoped to the
             // open author-view items (aim.md §4.2). Always present (D1).
             "mention_profiles",
@@ -140,7 +142,6 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             "publish_queue",
             // diagnostics roll-up (aim.md §4.5 / §6 anti-pattern #1 cleanup)
             "relay_diagnostics",
-            "relay_edit_rows",
             "relay_role_options",
             // pre-merged profile map: pubkey -> ProfileCard, merged once in
             // Rust from claimed_profiles > author_view.profile > mention_profiles

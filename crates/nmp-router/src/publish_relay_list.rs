@@ -15,7 +15,7 @@
 //! read/write?".
 //!
 //! But the actor's local `AddRelay` / `RemoveRelay` arms only mutate the
-//! `RelayEditRow` projection and dial / drop sockets — they never publish
+//! `AppRelay` projection and dial / drop sockets — they never publish
 //! a new kind:10002 that reflects the change. The result is asymmetric:
 //!
 //! * a user removes a defunct relay → no kind:10002 update → other clients
@@ -27,7 +27,7 @@
 //! own AddRelay/RemoveRelay arms, via a sibling in-tree helper) publishes
 //! a kind:10002 reflecting the user's intended relay set. The kernel then
 //! ingests its own publish exactly as any other client's, keeping the
-//! NIP-65 cache for the active account in sync with the `RelayEditRow`
+//! NIP-65 cache for the active account in sync with the `AppRelay`
 //! projection without a special case.
 //!
 //! # Tag shape — NIP-65
@@ -224,7 +224,7 @@ pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
 ///
 /// `relays` is the user's full NIP-65 relay set. The host is the source of
 /// truth here: it reads the user's configured relays from its own UI state
-/// (typically the same `RelayEditRow` projection the kernel exposes) and
+/// (typically the same `AppRelay` projection the kernel exposes) and
 /// hands them in. Keeping the action stateless (no kernel reads in the
 /// executor) is consistent with the rest of the action surface — the
 /// executor closure receives only the JSON, the correlation id, and a send
@@ -232,7 +232,7 @@ pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
 ///
 /// The auto-trigger path from `actor::dispatch::AddRelay` / `RemoveRelay`
 /// is sibling to this action, NOT a caller of it: the actor reads its own
-/// `RelayEditRow` projection and calls `build_relay_list_event` directly,
+/// `AppRelay` projection and calls `build_relay_list_event` directly,
 /// because `ActionContext` does not carry kernel state and `execute`'s
 /// signature is `(action, correlation_id, send)`. Both paths converge on
 /// the same on-wire kind:10002 shape via the shared builder above.

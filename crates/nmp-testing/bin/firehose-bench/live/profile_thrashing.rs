@@ -36,6 +36,7 @@ pub(crate) fn profile_thrashing() -> Scenario {
     let _ = tx.send(ActorCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
+        initial_relays: Vec::new(),
     });
 
     let connected = wait_connected(&rx);

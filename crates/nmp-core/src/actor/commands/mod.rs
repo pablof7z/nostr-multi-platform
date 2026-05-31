@@ -104,8 +104,8 @@ mod tests;
 #[cfg(feature = "native")]
 pub(super) use identity::{
     add_remote_signer, bunker_connection_state_changed, bunker_handshake_progress, create_account,
-    ensure_default_onboarding_relays, remove_account, restore_bunker_session, sign_in_bunker,
-    sign_in_nsec, switch_active, IdentityRuntime,
+    remove_account, restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active,
+    IdentityRuntime,
 };
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot + its
 // constructor are re-exported (crate-wide) so the `ffi` module can build the
@@ -222,7 +222,7 @@ pub use raw_event_observer::{
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub use conformance_support::ConformanceHarness;
 #[cfg(feature = "native")]
-pub(super) use relays::{add_relay, build_relay_list_event_from_edit_rows, remove_relay};
+pub(super) use relays::{add_relay, build_relay_list_event, remove_relay};
 // V-38: wallet runtime + status slot moved to `crates/nmp-nip47`.
 // `nmp-core` no longer has a `wallet` feature, a `wallet::` submodule, or
 // any `WalletRuntime` / `WalletStatus` / `WalletStatusSlot` re-export.

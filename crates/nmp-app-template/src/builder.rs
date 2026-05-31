@@ -70,6 +70,18 @@ use std::sync::Arc;
 use nmp_core::substrate::{ActionRegistrar, AppHost};
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start, NmpApp};
 
+use crate::relay_config;
+
+/// The app-template's built-in default relay configuration.
+///
+/// Used when the caller declares no relays via `with_relay`/`with_relays` and
+/// no persisted sidecar exists. This is the composition-root home for the
+/// default relay set — `nmp-core` no longer carries any hardcoded fallback.
+const DEFAULT_APP_RELAYS: &[(&str, &str)] = &[
+    ("wss://relay.primal.net", "both,indexer"),
+    ("wss://purplepag.es", "indexer"),
+];
+
 // ── Type-state markers ───────────────────────────────────────────────────────
 
 /// Builder state: no storage decision made yet.
@@ -162,6 +174,11 @@ pub struct NmpAppBuilder<S> {
     /// Owned pointer. INVARIANT: non-null while the builder exists; freed
     /// either by `start()` (released to the runtime) or by `Drop`.
     app: *mut NmpApp,
+    /// App-declared relay overrides. `None` ⇒ use [`DEFAULT_APP_RELAYS`];
+    /// `Some(v)` ⇒ the caller declared these via `with_relay`/`with_relays`.
+    /// Resolved into the kernel's `configured_relays` (via the JSON sidecar)
+    /// at `start()`.
+    user_relays: Option<Vec<(String, String)>>,
     _state: PhantomData<S>,
 }
 
@@ -185,8 +202,44 @@ impl NmpAppBuilder<Unstarted> {
         assert!(!app.is_null(), "nmp_app_new() returned null");
         Self {
             app,
+            user_relays: None,
             _state: PhantomData,
         }
+    }
+}
+
+// ── Relay declaration (both states) ─────────────────────────────────────────
+
+impl<S> NmpAppBuilder<S> {
+    /// Declare a relay the app wants to start with. Multiple calls accumulate.
+    ///
+    /// The first call clears the built-in [`DEFAULT_APP_RELAYS`] (so declaring
+    /// any relay replaces the defaults entirely); subsequent calls append.
+    ///
+    /// `role` is a relay-role string (`"read"`, `"write"`, `"both"`,
+    /// `"indexer"`, or a composite like `"both,indexer"`). It is canonicalized
+    /// by the kernel when the row is seeded.
+    #[must_use]
+    pub fn with_relay(mut self, url: impl Into<String>, role: impl Into<String>) -> Self {
+        self.user_relays
+            .get_or_insert_with(Vec::new)
+            .push((url.into(), role.into()));
+        self
+    }
+
+    /// Declare several relays at once. Equivalent to calling [`Self::with_relay`]
+    /// for each `(url, role)` pair. The first declaration (here or via
+    /// `with_relay`) clears the built-in defaults.
+    #[must_use]
+    pub fn with_relays(
+        mut self,
+        relays: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Self {
+        let list = self.user_relays.get_or_insert_with(Vec::new);
+        for (url, role) in relays {
+            list.push((url.into(), role.into()));
+        }
+        self
     }
 }
 
@@ -221,16 +274,19 @@ impl NmpAppBuilder<Unstarted> {
         // nul-terminated `CString` and call through to the C-ABI setter —
         // the same code path the host (iOS/Android) takes.
         set_storage_path_via_cabi(self.app, &path_string);
-        // Transfer pointer ownership to the new builder WITHOUT running our
-        // own Drop: `*mut NmpApp` is `Copy`, so writing `self.app` would
-        // copy the pointer and then Drop on `self` would double-free it.
-        // `mem::forget` suppresses the builder's destructor so `NmpApp::drop`
-        // does not run here (the pointer was copied out above; ownership
-        // transfers to the returned builder).
+        // Transfer ownership to the new builder WITHOUT running our own Drop.
+        // `*mut NmpApp` is `Copy`, but `user_relays` (a `Vec`) is not — a plain
+        // field move would hit E0509 ("cannot move out of type which implements
+        // Drop"). `ptr::read` byte-copies the non-Copy field out, then
+        // `mem::forget(self)` suppresses the destructor so neither the
+        // `NmpApp` is freed nor `user_relays` is double-dropped. Ownership of
+        // both transfers to the returned builder.
         let app = self.app;
+        let user_relays = unsafe { std::ptr::read(&self.user_relays) };
         std::mem::forget(self);
         NmpAppBuilder {
             app,
+            user_relays,
             _state: PhantomData,
         }
     }
@@ -251,12 +307,15 @@ impl NmpAppBuilder<Unstarted> {
         // `EventStore` — same behaviour as before, but now the caller has
         // explicitly opted in.
         //
-        // Transfer pointer ownership WITHOUT running Drop (same pattern as
-        // `storage_path` and `start` — see `storage_path` for the rationale).
+        // Transfer ownership WITHOUT running Drop (same pattern as
+        // `storage_path` and `start` — see `storage_path` for the rationale,
+        // including why `user_relays` needs `ptr::read`).
         let app = self.app;
+        let user_relays = unsafe { std::ptr::read(&self.user_relays) };
         std::mem::forget(self);
         NmpAppBuilder {
             app,
+            user_relays,
             _state: PhantomData,
         }
     }
@@ -283,9 +342,51 @@ impl NmpAppBuilder<StorageSet> {
     /// responsible for eventual `nmp_app_free(ptr)`.
     pub fn start(self, config: RunConfig) -> *mut NmpApp {
         let app = self.app;
+        // Move the non-Copy `user_relays` out before forgetting `self` (same
+        // E0509 rationale as the storage transitions).
+        let user_relays = unsafe { std::ptr::read(&self.user_relays) };
         // Prevent `Drop` from double-freeing: consume `self` without running
         // the drop glue. The caller takes ownership of `app`.
         std::mem::forget(self);
+
+        // Resolve the app's declared default relay set: caller-declared relays
+        // if any, else the built-in `DEFAULT_APP_RELAYS`.
+        let relay_defaults: Vec<(String, String)> = user_relays.unwrap_or_else(|| {
+            DEFAULT_APP_RELAYS
+                .iter()
+                .map(|(u, r)| (u.to_string(), r.to_string()))
+                .collect()
+        });
+
+        // Decide the initial relay set:
+        //   * Persistent store → load the JSON sidecar from the storage dir; on
+        //     first run (no sidecar) persist the declared defaults, then use
+        //     them. Subsequent runs reload the user's edited list.
+        //   * In-memory store → no disk I/O; use the declared defaults directly.
+        //
+        // SAFETY: `app` is non-null (builder invariant) and not yet started, so
+        // a shared borrow to read the storage path is sound.
+        let initial_relays: Vec<(String, String)> = match unsafe { &*app }.storage_path_for_start()
+        {
+            Some(path) if !path.trim().is_empty() => {
+                let dir = std::path::Path::new(&path);
+                match relay_config::load(dir) {
+                    Some(loaded) => loaded,
+                    None => {
+                        relay_config::save(dir, &relay_defaults);
+                        relay_defaults
+                    }
+                }
+            }
+            // No storage path (in-memory) — use defaults, no sidecar.
+            _ => relay_defaults,
+        };
+
+        // Stage the initial relays BEFORE start so `nmp_app_start` carries them
+        // in `ActorCommand::Start { initial_relays }`. MUST precede the start.
+        // SAFETY: `app` non-null; not yet started.
+        unsafe { &*app }.set_initial_relays_for_start(initial_relays);
+
         // SAFETY: `app` is non-null (builder invariant).
         nmp_app_start(app, 0, config.visible_limit, config.emit_hz);
         app
@@ -349,10 +450,7 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.register_ingest_parser(kind, parser);
     }
 
-    fn set_dm_inbox_relay_lookup(
-        &self,
-        lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
-    ) {
+    fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_dm_inbox_relay_lookup(lookup);
     }
@@ -454,9 +552,9 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.swap_dm_inbox_observer(new)
     }
 
-    fn relay_edit_rows_handle(&self) -> nmp_core::RelayEditRowsSlot {
+    fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
         let app: &NmpApp = unsafe { &*self.app };
-        app.relay_edit_rows_handle()
+        app.configured_relays_handle()
     }
 
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {

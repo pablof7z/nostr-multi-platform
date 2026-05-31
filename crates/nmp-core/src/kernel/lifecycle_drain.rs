@@ -14,7 +14,7 @@
 //!   non-actor (no-idle-loop) wasm path can hand frames straight to
 //!   the transport.
 //! - [`Kernel::role_for_relay_url`] — `RelayRole` lookup against the
-//!   [`crate::kernel::RelayEditRow`] projection. Diagnostic lane label,
+//!   [`crate::kernel::AppRelay`] projection. Diagnostic lane label,
 //!   not a routing input.
 
 use nmp_planner::selection::relay_score_lookup::RelayAuthorScoreLookup;
@@ -132,7 +132,7 @@ impl Kernel {
     /// for the content lane today (M2 scope).
     ///
     /// T105 / T-relay-url-normalize: the `url` argument is canonicalized
-    /// before it is compared against `RelayEditRow.url`. `add_relay`
+    /// before it is compared against `AppRelay.url`. `add_relay`
     /// always stores the canonical form (lowercase scheme+host,
     /// empty-path trailing slash stripped), so a raw, user-typed or
     /// non-canonical caller input — e.g. a kind:10002 NIP-65 write
@@ -151,10 +151,10 @@ impl Kernel {
     pub(crate) fn role_for_relay_url(&self, url: &str) -> Option<crate::relay::RelayRole> {
         use crate::relay::RelayRole;
         // Canonicalize so a raw/non-canonical input matches the canonical
-        // `RelayEditRow.url` keys. Fall back to the raw string for inputs that
+        // `AppRelay.url` keys. Fall back to the raw string for inputs that
         // do not parse as ws/wss (no edit row will match those anyway).
         let lookup = crate::relay::canonical_relay_url(url).unwrap_or_else(|| url.to_string());
-        for row in &self.relay_edit_rows {
+        for row in &self.configured_relays {
             if row.url == lookup {
                 if crate::actor::has_role(&row.role, "indexer") {
                     return Some(RelayRole::Indexer);

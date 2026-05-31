@@ -21,7 +21,7 @@ sources:
 
 ## Relay Settings View
 
-Relay settings is presented as its own dedicated view accessed from the Settings hub. The view has a + button to add new relays. The relay list row displays a separate colored badge for each assigned role capability. The Settings > Relays pane uses a three-tier fallback: `state.features.relay_edit_rows` (primary), `state.relays` from diagnostics (fallback), and `relay_lines(state)` (final fallback). The Settings > Relays panel must use the real connection state from relay diagnostics (looked up by URL) when rendering relay status dots, not the role label string.
+Relay settings is presented as its own dedicated view accessed from the Settings hub. The view has a + button to add new relays. The relay list row displays a separate colored badge for each assigned role capability. The Settings > Relays pane uses a three-tier fallback: `state.features.configured_relays` (primary), `state.relays` from diagnostics (fallback), and `relay_lines(state)` (final fallback). The Settings > Relays panel must use the real connection state from relay diagnostics (looked up by URL) when rendering relay status dots, not the role label string.
 
 <!-- citations: [^87fd4-1] [^6e4c3-7] [^fbebb-2] -->
 ## Relay Roles

@@ -104,6 +104,7 @@ fn a2_warm_path_second_claim_uses_scored_relay() {
     tx.send(ActorCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
+        initial_relays: Vec::new(),
     })
     .expect("A2: actor Start send");
 

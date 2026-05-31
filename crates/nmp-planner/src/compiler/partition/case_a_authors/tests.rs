@@ -285,7 +285,7 @@ fn pd033c_case_a_oneshot_global_no_nip65_routes_to_bootstrap_indexer() {
 fn pd033c_case_a_cold_start_uses_bootstrap_indexer_not_raw_indexer() {
     let cache = InMemoryMailboxCache::new();
     // The cold-start case: NO operator-configured indexer rows. Raw
-    // `indexer_relays` is empty (the kernel's `set_relay_edit_rows` filter
+    // `indexer_relays` is empty (the kernel's `set_configured_relays` filter
     // returned nothing); `bootstrap_indexer_relays` carries the fallback.
     let bootstrap_indexer = vec!["wss://purplepag.es".to_string()];
     let compiler = SubscriptionCompiler::with_relays_and_bootstrap(

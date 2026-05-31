@@ -125,18 +125,43 @@ fn create_account_generates_fresh_active_key() {
 }
 
 #[test]
-fn create_account_empty_relays_uses_rust_owned_onboarding_defaults() {
+fn create_account_empty_relays_keeps_preconfigured_relays() {
+    // New contract: `nmp-core` no longer owns a hardcoded onboarding default.
+    // The app declares its relay set (via `NmpAppBuilder` /
+    // `ActorCommand::Start { initial_relays }`); `create_account` only
+    // overwrites `configured_relays` when the caller declares relays. With an
+    // empty `relays` arg the kernel's pre-existing relay set is preserved.
+    let (mut id, mut kernel) = fresh();
+
+    // Pre-seed relays the way Start (or pre-start `add_relay`) would.
+    kernel.set_configured_relays(vec![crate::kernel::AppRelay::new(
+        "wss://preseed.test".to_string(),
+        "both".to_string(),
+    )]);
+
+    let profile = std::collections::HashMap::new();
+    let relays: Vec<(String, String)> = vec![];
+    create_account(&mut id, &mut kernel, false, &profile, &relays, false);
+
+    // The pre-seeded relay set survives — empty onboarding relays do NOT clobber it.
+    let rows = kernel.configured_relays_snapshot();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].url, "wss://preseed.test");
+}
+
+#[test]
+fn create_account_empty_relays_leaves_unseeded_kernel_empty() {
+    // And when nothing was pre-seeded, an empty onboarding relay list leaves
+    // `configured_relays` empty — there is NO implicit `nmp-core` fallback.
     let (mut id, mut kernel) = fresh();
     let profile = std::collections::HashMap::new();
     let relays: Vec<(String, String)> = vec![];
     create_account(&mut id, &mut kernel, false, &profile, &relays, false);
 
-    let rows = kernel.relay_edit_rows_snapshot();
-    assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0].url, "wss://relay.primal.net");
-    assert_eq!(rows[0].role, "both,indexer");
-    assert_eq!(rows[1].url, "wss://purplepag.es");
-    assert_eq!(rows[1].role, "indexer");
+    assert!(
+        kernel.configured_relays_snapshot().is_empty(),
+        "empty onboarding relays + unseeded kernel ⇒ no relays (no hardcoded default)"
+    );
 }
 
 #[test]
@@ -146,7 +171,7 @@ fn create_account_launch_override_relay_gets_rust_owned_default_role() {
     let relays = vec![("wss://maestro.test/".to_string(), String::new())];
     create_account(&mut id, &mut kernel, false, &profile, &relays, false);
 
-    let rows = kernel.relay_edit_rows_snapshot();
+    let rows = kernel.configured_relays_snapshot();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].url, "wss://maestro.test");
     assert_eq!(rows[0].role, "both,indexer");
@@ -181,7 +206,7 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
         "create_account must return the cold-start kind:3 EVENT frame for actor dispatch"
     );
 
-    let rows = kernel.relay_edit_rows_snapshot();
+    let rows = kernel.configured_relays_snapshot();
     assert_eq!(rows.len(), 3);
     assert_eq!(rows[0].url, "wss://signup-write.test");
     assert_eq!(rows[0].role, "write");
@@ -896,10 +921,10 @@ fn signed_kind_1059_raw(id: &IdentityRuntime) -> crate::store::RawEvent {
 fn publish_signed_event_refuses_kind_1059_with_empty_relays() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    // Belt-and-suspenders: even with the kernel's `relay_edit_rows` truly
+    // Belt-and-suspenders: even with the kernel's `configured_relays` truly
     // empty (no cfg(test) fallback Content relay), the guard must still
     // refuse — proving the refusal happens upstream of the outbox resolver.
-    kernel.clear_relay_edit_rows_for_test();
+    kernel.clear_configured_relays_for_test();
     let raw = signed_kind_1059_raw(&id);
 
     let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
@@ -930,7 +955,7 @@ fn publish_signed_event_refuses_kind_1059_with_empty_relays() {
 fn publish_signed_event_refuses_kind_1059_with_empty_vec_relays() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    kernel.clear_relay_edit_rows_for_test();
+    kernel.clear_configured_relays_for_test();
     let raw = signed_kind_1059_raw(&id);
 
     // Exact shape `actor::dispatch::PublishSignedEvent` calls with when the
@@ -985,7 +1010,7 @@ fn publish_signed_event_does_not_refuse_other_kinds_with_empty_relays() {
 fn publish_signed_event_kind_1059_guard_records_action_failure_for_correlation() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    kernel.clear_relay_edit_rows_for_test();
+    kernel.clear_configured_relays_for_test();
     let raw = signed_kind_1059_raw(&id);
 
     let outbound = publish_signed_event(
@@ -1721,11 +1746,11 @@ fn add_and_remove_relay_edits_projection() {
     assert_eq!(result, Some("wss://relay.damus.io".to_string()));
     let result2 = add_relay(&mut kernel, "wss://nos.lol", "write");
     assert_eq!(result2, Some("wss://nos.lol".to_string()));
-    assert_eq!(kernel.relay_edit_rows_snapshot().len(), 2);
+    assert_eq!(kernel.configured_relays_snapshot().len(), 2);
     // Invalid URL scheme — returns None and sets a toast.
     let bad = add_relay(&mut kernel, "http://bad", "read");
     assert_eq!(bad, None);
-    assert_eq!(kernel.relay_edit_rows_snapshot().len(), 2);
+    assert_eq!(kernel.configured_relays_snapshot().len(), 2);
     assert!(kernel
         .last_error_toast_snapshot()
         .is_some_and(|t| t.contains("invalid relay URL")));
@@ -1733,9 +1758,9 @@ fn add_and_remove_relay_edits_projection() {
     let bad_role = add_relay(&mut kernel, "wss://nos.lol", "superwrite");
     assert_eq!(bad_role, None);
     remove_relay(&mut kernel, "wss://nos.lol");
-    assert_eq!(kernel.relay_edit_rows_snapshot().len(), 1);
+    assert_eq!(kernel.configured_relays_snapshot().len(), 1);
     assert_eq!(
-        kernel.relay_edit_rows_snapshot()[0].url,
+        kernel.configured_relays_snapshot()[0].url,
         "wss://relay.damus.io"
     );
 }
@@ -1838,7 +1863,7 @@ fn snapshot_json_carries_new_projections() {
     assert!(json.contains("\"active_account\""));
     assert!(json.contains("\"last_error_toast\""));
     // D0: the publish cluster (`publish_queue`, `publish_outbox`,
-    // `relay_edit_rows`) is no longer a set of typed `KernelSnapshot` fields —
+    // `configured_relays`) is no longer a set of typed `KernelSnapshot` fields —
     // all three are kernel-owned built-in entries in the host-extensible
     // `projections` map. They are always present (kernel-owned data, no host
     // registration step), unlike the host-registered `"bunker_handshake"`
@@ -1851,7 +1876,7 @@ fn snapshot_json_carries_new_projections() {
     assert!(projections.get("publish_queue").is_some());
     assert!(projections.get("publish_outbox").is_some());
     assert!(projections.get("outbox_summary").is_some());
-    assert!(projections.get("relay_edit_rows").is_some());
+    assert!(projections.get("configured_relays").is_some());
     let role_options = projections["relay_role_options"]
         .as_array()
         .expect("relay_role_options must be a projection array");
@@ -1860,10 +1885,13 @@ fn snapshot_json_carries_new_projections() {
     assert_eq!(role_options[0]["tint"].as_str(), Some("accent"));
     assert_eq!(role_options[1]["value"].as_str(), Some("both"));
     assert_eq!(role_options[1]["is_default"].as_bool(), Some(true));
-    let relay_rows = projections["relay_edit_rows"]
+    let relay_rows = projections["configured_relays"]
         .as_array()
-        .expect("relay_edit_rows must be a projection array");
-    assert!(!relay_rows.is_empty(), "relay_edit_rows projection must have entries");
+        .expect("configured_relays must be a projection array");
+    assert!(
+        !relay_rows.is_empty(),
+        "configured_relays projection must have entries"
+    );
     // D0: the views cluster (`profile`, `timeline`, `author_view`,
     // `thread_view`, `inserted`, `updated`, `removed`) is no longer a typed
     // `KernelSnapshot` field set — all are kernel-owned built-in entries in the
@@ -2159,16 +2187,16 @@ fn add_relay_canonicalizes_url() {
         Some("wss://relay.damus.io".to_string()),
         "T-normalize-cmd-1: add_relay must return canonical URL (lowercase scheme+host, no empty-path slash)"
     );
-    let rows = kernel.relay_edit_rows_snapshot();
+    let rows = kernel.configured_relays_snapshot();
     assert_eq!(rows.len(), 1, "exactly one row added");
     assert_eq!(
         rows[0].url, "wss://relay.damus.io",
-        "RelayEditRow must store the canonical URL"
+        "AppRelay must store the canonical URL"
     );
 }
 
 /// T-normalize-cmd-2: adding the same relay via two URL-equivalent forms must
-/// dedup to a single `RelayEditRow` (not two rows).
+/// dedup to a single `AppRelay` (not two rows).
 #[test]
 fn add_relay_case_slash_variants_dedup_to_one_row() {
     let (_id, mut kernel) = fresh();
@@ -2176,11 +2204,11 @@ fn add_relay_case_slash_variants_dedup_to_one_row() {
     let r2 = add_relay(&mut kernel, "wss://r.ex", "read");
     assert!(r1.is_some(), "first add must succeed");
     assert!(r2.is_some(), "second add must succeed (role update)");
-    let rows = kernel.relay_edit_rows_snapshot();
+    let rows = kernel.configured_relays_snapshot();
     assert_eq!(
         rows.len(),
         1,
-        "T-normalize-cmd-2: URL-equivalent adds must dedup to one RelayEditRow, got {:?}",
+        "T-normalize-cmd-2: URL-equivalent adds must dedup to one AppRelay, got {:?}",
         rows
     );
     assert_eq!(rows[0].url, "wss://r.ex");
@@ -2194,14 +2222,14 @@ fn remove_relay_canonical_matches_add_form() {
     let (_id, mut kernel) = fresh();
     add_relay(&mut kernel, "wss://r.ex", "both");
     assert_eq!(
-        kernel.relay_edit_rows_snapshot().len(),
+        kernel.configured_relays_snapshot().len(),
         1,
         "row must exist after add"
     );
     // Remove with trailing slash (different bytes, same canonical form).
     remove_relay(&mut kernel, "wss://r.ex/");
     assert_eq!(
-        kernel.relay_edit_rows_snapshot().len(),
+        kernel.configured_relays_snapshot().len(),
         0,
         "T-normalize-cmd-3: remove_relay with trailing-slash variant must remove the row"
     );
