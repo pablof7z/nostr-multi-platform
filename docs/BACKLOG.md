@@ -863,6 +863,42 @@ The test also gates that cold-start `active_local_keys` seed path works without 
 **Acceptance test:** fresh account → receive a gift-wrapped kind:1059 from a second account →
 message appears in the `nmp.nip17.dm_inbox` snapshot projection.
 
+### F-03 · Backwards pagination per-app composition root wiring [V1 · platform integration]
+
+**Status:** Kernel infrastructure complete (ADR-XXXX, Phases 1–5 merged). Per-app wiring deferred.
+
+**What shipped (merged):**
+- `PaginationController` in nmp-core (dedup, coverage gating, applesauce G4 fix for NIP-01 inclusive until)
+- `BackfillRequest`/`BackfillSink` in nmp-feed (generic closure-based D7 pattern)
+- `ActorCommand::BackfillFeed` dispatch in kernel
+- `build_actor_backfill_sink()` builder function (not yet installed in composition roots)
+- Full test coverage (2,307 tests, 100% pass; pagination boundary verified)
+- Chirp-TUI integration (load_older wired via `load_older_timeline_if_needed()`)
+
+**Remaining per-platform work:**
+Each of {Chirp-iOS, nmp-app-android, chirp-web, chirp-tui-extension} needs:
+
+1. **Composition root wiring** — instantiate and pass `BackfillSink` to `RootIndexedFeed::new()`:
+   ```rust
+   let backfill_sink = Some(Arc::new(build_actor_backfill_sink(app_ptr.clone())));
+   let feed = RootIndexedFeed::new(..., backfill_sink, ...);
+   ```
+   Reference: `nmp-app-chirp/src/wiring.rs` (already wired for TUI).
+
+2. **Extract feed context (authors, kinds)** — pass correct values to `ActorCommand::BackfillFeed`:
+   - Home feed → all followed authors (from `ActiveFollowSet`)
+   - Profile feed → single author pubkey
+   - Search results → dynamic based on query scope
+   - (Currently hardcoded `vec![]`; add author extraction at wiring time)
+
+3. **UI affordance** — expose `load_older()` to user:
+   - Button / "load more" UX (iOS, Android, web)
+   - Already wired: TUI scroll-to-end behavior
+
+**Effort estimate:** ~1 day per platform (mostly copy-paste from TUI wiring + platform-specific author extraction).
+
+**Acceptance test:** User scrolls home feed to 500+ events → triggers backfill → new older events appear → no duplicates at boundary.
+
 ### F-04 · Zap E2E round-trip verification [V1 BLOCKER]
 
 `ZapAction` is implemented and registered. `ZapsAggregateProjection` is registered. The full
