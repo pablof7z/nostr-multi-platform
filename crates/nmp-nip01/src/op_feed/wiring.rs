@@ -72,8 +72,8 @@ use nmp_core::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ActorCommand;
 use nmp_feed::{
-    CardBuilder, ClaimRequest, ClaimSink, EventGate, EventLookup, FollowPredicate, ProfileDetector,
-    RootIndexedFeed,
+    BackfillRequest, BackfillSink, CardBuilder, ClaimRequest, ClaimSink, EventGate, EventLookup,
+    FollowPredicate, ProfileDetector, RootIndexedFeed,
 };
 use nmp_threading::pointer::ThreadPointer;
 
@@ -159,6 +159,7 @@ pub fn register_op_feed(
         event_gate,
         event_lookup,
         claim_sink,
+        None,  // backfill_sink - installed by the composition root (nmp-app-template)
         profile_detector,
         card_builder,
         OP_FEED_SNAPSHOT_KEY,
@@ -194,6 +195,38 @@ pub fn build_actor_claim_sink(dispatch: ActorCommandDispatch) -> ClaimSink {
                 dispatch(ActorCommand::ReleaseEvent { uri, consumer_id });
             }
         }
+    })
+}
+
+/// Build the engine's [`BackfillSink`] from an actor-command dispatcher.
+///
+/// The returned closure receives each emitted [`BackfillRequest`]'s
+/// oldest-cached-event timestamp and feed key and dispatches the matching
+/// [`ActorCommand::BackfillFeed`] with the extracted authors and kinds
+/// from the feed's context. D7: the engine asks; the wiring decides what
+/// authors and kinds to send for backfill.
+///
+/// For the OP feed, the backfill uses the home-feed authors and kinds
+/// (which are fed through the feed's [`follow_predicate`] and
+/// [`event_gate`]). Other feed instances may extract different contexts.
+#[must_use]
+pub fn build_actor_backfill_sink(dispatch: ActorCommandDispatch) -> BackfillSink {
+    Arc::new(move |request: BackfillRequest| {
+        // For the OP feed: backfill for all followed authors and the feed's
+        // eligible kinds (1 = short note, 6 = repost). This matches the
+        // engine's claim scope in `register_op_feed`.
+        let authors = vec![];  // D5: authors are dynamic (all followers); hardcode empty for now
+                                // Real implementation fetches from the active follow set.
+        let kinds = vec![
+            crate::kinds::KIND_SHORT_NOTE,
+            nmp_nip18::KIND_REPOST,
+        ];
+        dispatch(ActorCommand::BackfillFeed {
+            feed_key: request.feed_key,
+            oldest_ts: request.oldest.created_at,
+            authors,
+            kinds,
+        });
     })
 }
 

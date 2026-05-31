@@ -12,9 +12,9 @@ mod window;
 
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
 pub use root_indexed::{
-    AttributionPayload, CardBuilder, ClaimRequest, ClaimSink, EventGate, EventLookup,
-    FollowPredicate, ProfileDetector, RootCard, RootFeedSnapshot, RootIndexedFeed,
-    MAX_ATTRIBUTION_PER_ROOT,
+    AttributionPayload, BackfillRequest, BackfillSink, CardBuilder, ClaimRequest, ClaimSink,
+    EventGate, EventLookup, FollowPredicate, ProfileDetector, RootCard, RootFeedSnapshot,
+    RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
 };
 pub use typed_wire::{
     decode_feed_window, encode_feed_window, FeedWindowWire, FEED_WINDOW_FILE_IDENTIFIER,

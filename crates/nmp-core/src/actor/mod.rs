@@ -613,6 +613,22 @@ pub enum ActorCommand {
     CloseThread {
         event_id: String,
     },
+    /// Request backwards pagination on a feed. Emitted by the feed engine's
+    /// `load_older()` when the user scrolls past all locally-cached events.
+    /// The wiring layer (nmp-nip01) routes this to the kernel's
+    /// `PaginationController`, which deduplicates, gates against coverage,
+    /// and registers a bounded `until`-interest with the planner.
+    ///
+    /// D7: the engine asks; the wiring decides how to translate the request
+    /// into kernel parameters. The `feed_key` uniquely identifies the feed;
+    /// `oldest_ts` is the timestamp of the oldest cached event (boundary for
+    /// the backwards REQ); `authors` and `kinds` come from the feed's view context.
+    BackfillFeed {
+        feed_key: String,
+        oldest_ts: u64,
+        authors: Vec<String>,
+        kinds: Vec<u32>,
+    },
     // V-38: the three `Wallet{Connect,Disconnect,PayInvoice}` variants moved
     // out. Wallet connect / disconnect / pay_invoice now route through
     // `ActorCommand::Protocol(Box<dyn ProtocolCommand>)` with concrete

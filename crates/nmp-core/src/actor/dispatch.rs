@@ -541,6 +541,55 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        ActorCommand::BackfillFeed {
+            feed_key,
+            oldest_ts,
+            authors,
+            kinds,
+        } => {
+            // Call the pagination controller to check coverage and build an interest.
+            // Pass None for watermark_fn; Phase 4 will wire it in via kernel.
+            if let Some(shape) = ctx.kernel.lifecycle_mut().pagination_mut().request_backfill(
+                &feed_key,
+                oldest_ts,
+                authors,
+                kinds,
+                None,
+            ) {
+                // Register as a bounded OneShot interest. Dedup key is
+                // (feed_key, "backfill") via ensure_sub.
+                let owner = crate::subs::SubOwnerKey::new(&feed_key);
+                let key = crate::subs::SubKey::new("backfill");
+                let identity = crate::subs::SubIdentity::new(
+                    owner,
+                    key,
+                    crate::subs::SubScope::Global,
+                );
+                let logical_interest = crate::planner::LogicalInterest {
+                    id: crate::planner::InterestId(0),  // Sentinel; planner assigns real ID
+                    scope: crate::planner::InterestScope::Global,
+                    shape,
+                    hints: Vec::new(),
+                    lifecycle: crate::planner::InterestLifecycle::OneShot,
+                    is_indexer_discovery: false,
+                };
+                let _ = ctx.kernel
+                    .lifecycle_mut()
+                    .registry_mut()
+                    .ensure_sub(identity, logical_interest);
+
+                // Enqueue a recompile to emit the new interest's REQs.
+                // ViewOpened with empty interest_ids since we don't track the ID yet.
+                ctx.kernel.lifecycle_mut().enqueue_trigger(
+                    crate::subs::CompileTrigger::ViewOpened {
+                        interest_ids: Vec::new(),
+                    },
+                );
+            }
+            ctx.kernel.mark_changed_since_emit();
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::SignInNsec { secret } => {
             // `secret` is `Zeroizing<String>`; pass the borrowed `&str` and let
             // the wrapper wipe the plaintext when it drops at end of scope.

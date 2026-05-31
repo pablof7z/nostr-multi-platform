@@ -223,14 +223,14 @@ mod tests {
         );
 
         let interest_id = InterestId(123);
-        controller.record_interest_id("home-feed", interest_id);
+        controller.record_interest_id("home-feed", interest_id.clone());
 
         // Verify the state is updated.
         assert_eq!(
             controller
                 .backfills
                 .get("home-feed")
-                .and_then(|s| s.interest_id),
+                .and_then(|s| s.interest_id.clone()),
             Some(interest_id)
         );
     }
