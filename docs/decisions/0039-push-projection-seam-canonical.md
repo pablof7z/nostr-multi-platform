@@ -1,6 +1,6 @@
 # ADR-0039 — The push projection seam is canonical; reject generic pull accessors
 
-- **Status:** Proposed (2026-05-29)
+- **Status:** Accepted (2026-05-31)
 - **Relates to:** ADR-0025 (Marmot bespoke FFI cluster — the pull anti-pattern this
   ADR finishes retiring), ADR-0037 (typed FlatBuffers sidecar — a hot-path
   optimization *layered on* this seam, not an app-facing alternative to it),
@@ -99,3 +99,58 @@ projection path for non-Chirp apps is **false**.
   doctrines; it is what let the podcast-player incident happen. Rejected.
 - **Build the generic pull path as V-37 (b) specified.** Institutionalizes polling at
   the FFI boundary. Rejected.
+
+---
+
+## Amendment — Marmot messages projection design (2026-05-31)
+
+**Context:** V-107 Rust leg (PR feat/v107-marmot-push-projections) implements Decision 4
+above for the two live Marmot pull symbols. One design question required explicit resolution:
+`nmp_marmot_group_messages(group_id_hex)` is *parameterized* — the pull symbol takes a
+`group_id_hex` argument. The push seam takes no arguments. Two shapes were considered for the
+`"nmp.marmot.messages"` projection:
+
+1. **All-groups keyed object (chosen).** A single `"nmp.marmot.messages"` projection that
+   emits a JSON object `{ group_id_hex: MarmotMessageRow[] }` for every joined group. The
+   host reads `projections["nmp.marmot.messages"][group_id_hex]`.
+
+2. **Active-group-only.** Project only the "currently active" group's messages, requiring
+   the kernel to know which group the user is viewing (view-state leak into the kernel).
+
+**Decision: option 1 (all-groups keyed object).**
+
+Rationale:
+- **D1 / no view-state in kernel.** An "active group" concept would require a round-trip
+  to set kernel state from the host — a one-way-data-flow violation. The keyed object
+  keeps all view-state decisions on the host side.
+- **Clean edge-triggering.** `"nmp.marmot.snapshot"` emits the group list / membership /
+  key-package status; `"nmp.marmot.messages"` emits per-group message tails. A new message
+  in one group updates `"nmp.marmot.messages"` without re-emitting the whole group list,
+  and the host can diff at the group level.
+- **Cheap reads.** `service().get_messages(&gid)` reads from the MDK SQLite message store
+  directly — already-decrypted rows, no re-decrypt on each tick. Bounded newest-N per group
+  (200 rows, `DEFAULT_MESSAGE_PAGE`). The single lock covers all groups in one iteration.
+- **No STOP condition.** The task spec called for stopping and escalating if per-group
+  messages required re-decryption on each tick. Confirmed it does not: MDK stores decrypted
+  messages in SQLite; `get_messages` is a plain read, not a decrypt call.
+
+**Edge-trigger confirmation:** The kernel sets `changed_since_emit = true` in
+`kernel/ingest/mod.rs` (wildcard arm, line ~507) for every accepted inbound event,
+including kind:445 (group message) and kind:1059 (gift-wrap welcome) handled by the
+`MarmotIngestTap` raw-event observer. The push projection closures run on the very next
+snapshot tick after that ingest — reactive, not polled (D8 satisfied).
+
+**Registration:** Both projections are registered in `nmp-marmot/src/ffi.rs:register_with_keys`
+via `NmpApp::register_snapshot_projection`. The registry is replace-by-key, so a second
+`register_with_keys` call (account switch) replaces the prior closures without accumulation.
+
+**Rust consumers:** `chirp-repl/src/app.rs` and `chirp-tui/src/runtime_commands.rs` were
+migrated off the deprecated C-ABI pull symbols onto `MarmotHandle::snapshot_rust()` and
+`MarmotHandle::messages_rust()` — Rust-native accessors on the same `MarmotProjection`,
+same data path as the push projections, no C-ABI round-trip.
+
+**Deprecated, not deleted:** `nmp_marmot_snapshot` and `nmp_marmot_group_messages` carry
+`#[deprecated]` but remain exported. `MarmotBridge.swift` still calls the C-ABI symbols;
+they will be removed in a later Xcode session once that Swift consumer migrates to reading
+`projections["nmp.marmot.snapshot"]` / `projections["nmp.marmot.messages"][gid]` off
+the pushed SnapshotFrame `apply()` callback.

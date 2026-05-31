@@ -159,6 +159,42 @@ unsafe impl Send for MarmotHandle {}
 unsafe impl Sync for MarmotHandle {}
 
 impl MarmotHandle {
+    /// Rust-native snapshot accessor for in-process callers (REPL / TUI /
+    /// integration tests). Returns the same [`crate::projection::payload::MarmotSnapshot`]
+    /// the push projection emits under `"nmp.marmot.snapshot"` on the
+    /// SnapshotFrame, without any C-ABI round-trip.
+    ///
+    /// Prefer this over the deprecated [`nmp_marmot_snapshot`] C-ABI symbol in
+    /// Rust code. Swift consumers read from the pushed SnapshotFrame projection
+    /// key instead.
+    #[must_use]
+    pub fn snapshot_rust(&self) -> crate::projection::payload::MarmotSnapshot {
+        self.projection.snapshot(now_secs())
+    }
+
+    /// Rust-native messages accessor for in-process callers (REPL / TUI /
+    /// integration tests). Returns the newest-N decrypted messages for
+    /// `group_id_hex`, using the same [`crate::projection::ops::group_messages`]
+    /// path the push projection (`"nmp.marmot.messages"`) uses.
+    ///
+    /// Returns an empty `Vec` on any soft failure (unknown group, poisoned
+    /// mutex — D6 non-panicking degradation).
+    ///
+    /// Prefer this over the deprecated [`nmp_marmot_group_messages`] C-ABI
+    /// symbol in Rust code. Swift consumers read from the pushed SnapshotFrame
+    /// projection key instead.
+    #[must_use]
+    pub fn messages_rust(
+        &self,
+        group_id_hex: &str,
+    ) -> Vec<crate::projection::payload::MarmotMessageRow> {
+        self.projection
+            .with_inner(|h| {
+                crate::projection::ops::group_messages(h, group_id_hex, DEFAULT_MESSAGE_PAGE)
+            })
+            .unwrap_or_default()
+    }
+
     /// Rust-native dispatch entry point for in-process callers (REPL / TUI /
     /// integration tests) that need the SYNCHRONOUS rich per-op envelope —
     /// `events` for `publish_key_package`, `welcome_rumors` /
@@ -296,6 +332,69 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // the user to resolve the Keychain issue.
     let projection = Arc::new(MarmotProjection::new(service, use_mock));
     projection.set_app(app);
+
+    // V-107 / ADR-0039: register the two Marmot push projections onto the
+    // canonical snapshot seam. Both ride the SnapshotFrame on every tick
+    // that `changed_since_emit` is set — no polling (D8). The kernel marks
+    // `changed_since_emit` on every accepted inbound relay event (including
+    // kind:445/1059 handled by the raw ingest tap), so new messages / welcomes
+    // surface in the next pushed frame edge-triggered.
+    //
+    // `register_snapshot_projection` is lock-and-push; calling it here
+    // (post-construction, before `nmp_app_start`) is the documented pattern.
+    // A second `register_with_keys` (account switch) replaces the prior closure
+    // under the same key (the registry `register` method is replace-by-key).
+    //
+    // **`nmp.marmot.snapshot`** — replaces the pull-symbol
+    // `nmp_marmot_snapshot`: group list / membership / key-package / pending
+    // welcomes. Cheap: one lock + MDK SQLite reads, no re-decrypt.
+    {
+        let snap_projection = Arc::clone(&projection);
+        app_ref.register_snapshot_projection("nmp.marmot.snapshot", move || {
+            serde_json::to_value(snap_projection.snapshot(now_secs()))
+                .unwrap_or(serde_json::Value::Null)
+        });
+    }
+
+    // **`nmp.marmot.messages`** — replaces the parameterized pull-symbol
+    // `nmp_marmot_group_messages(group_id_hex)`. Projects a JSON object keyed
+    // by `group_id_hex` → newest-N `MarmotMessageRow` array for every joined
+    // group. Cheap: one lock + MDK SQLite reads per group, all already-
+    // decrypted (no re-decrypt; `service().get_messages(&gid)` reads the
+    // MDK SQLite message store directly). Bounded newest-N per group (see
+    // `DEFAULT_MESSAGE_PAGE`). Rationale for the all-groups object shape: the
+    // host view reads per-group tails from `projections["nmp.marmot.messages"][gid]`
+    // without needing a "current active group" round-trip (D1: view-state stays
+    // out of the kernel), and a new message in one group does not re-emit the
+    // entire group list (clean edge-triggering vs `nmp.marmot.snapshot`).
+    {
+        let msgs_projection = Arc::clone(&projection);
+        app_ref.register_snapshot_projection("nmp.marmot.messages", move || {
+            msgs_projection
+                .with_inner(|h| {
+                    // Iterate every joined group and build the keyed map.
+                    let group_ids: Vec<String> = h
+                        .service()
+                        .get_groups()
+                        .map(|gs| {
+                            gs.into_iter()
+                                .map(|g| crate::projection::state::hex_encode(g.mls_group_id.as_slice()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let mut map = serde_json::Map::with_capacity(group_ids.len());
+                    for gid_hex in group_ids {
+                        let rows = crate::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE);
+                        map.insert(
+                            gid_hex,
+                            serde_json::to_value(rows).unwrap_or(serde_json::Value::Array(vec![])),
+                        );
+                    }
+                    serde_json::Value::Object(map)
+                })
+                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
+        });
+    }
     let observer_id = app_ref
         .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
     if observer_id.0 == 0 {
@@ -417,6 +516,23 @@ pub extern "C" fn nmp_marmot_register_active(
 
 /// JSON snapshot. Null handle / serialize failure → null (D6). Caller owns
 /// the returned pointer until [`nmp_marmot_string_free`].
+///
+/// # Deprecation
+///
+/// Prefer the push projection `"nmp.marmot.snapshot"` (registered in
+/// [`register_with_keys`] via [`nmp_ffi::NmpApp::register_snapshot_projection`],
+/// ADR-0039). The push projection rides the SnapshotFrame edge-triggered on
+/// `changed_since_emit` — no polling needed (D8).
+///
+/// This symbol is retained ONLY because `MarmotBridge.swift` still calls the
+/// C-ABI export. It will be removed once that Swift consumer migrates to the
+/// pushed frame (`projections["nmp.marmot.snapshot"]` in `apply()`).
+///
+/// Rust callers: use [`MarmotHandle::snapshot_rust`] instead.
+#[deprecated(
+    note = "use the `nmp.marmot.snapshot` push projection (ADR-0039); \
+            this pull symbol will be removed once MarmotBridge.swift migrates"
+)]
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_marmot_snapshot(handle: *mut MarmotHandle) -> *mut c_char {
@@ -430,6 +546,23 @@ pub extern "C" fn nmp_marmot_snapshot(handle: *mut MarmotHandle) -> *mut c_char 
 /// Newest-N decrypted messages for the group whose MLS id is
 /// `group_id_hex`. JSON array; `[]` on any soft failure (unknown group,
 /// poisoned mutex, parse error). Null handle / serialize failure → null.
+///
+/// # Deprecation
+///
+/// Prefer the push projection `"nmp.marmot.messages"` (registered in
+/// [`register_with_keys`] via [`nmp_ffi::NmpApp::register_snapshot_projection`],
+/// ADR-0039). The push projection emits a JSON object keyed by `group_id_hex`
+/// → newest-N message rows, riding the SnapshotFrame edge-triggered.
+///
+/// This symbol is retained ONLY because `MarmotBridge.swift` still calls the
+/// C-ABI export. It will be removed once that Swift consumer migrates to the
+/// pushed frame (`projections["nmp.marmot.messages"][group_id_hex]` in `apply()`).
+///
+/// Rust callers: use [`MarmotHandle::messages_rust`] instead.
+#[deprecated(
+    note = "use the `nmp.marmot.messages` push projection (ADR-0039); \
+            this pull symbol will be removed once MarmotBridge.swift migrates"
+)]
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_marmot_group_messages(
