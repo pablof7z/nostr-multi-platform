@@ -626,11 +626,11 @@ source = "desktop/user-card/user_card.rs"
 target = "src/components/nostr_user/user_card.rs"
 role = "source"
 [[components]]
-id = "desktop/embed-article"
+id = "desktop/content-kind-30023"
 version = "0.1.0"
 target = "desktop"
 description = "iced kind:30023 long-form article card — title, byline, and summary (no hero image yet)."
 [[components.files]]
-source = "desktop/embed-article/embed_article.rs"
+source = "desktop/content-kind-30023/embed_article.rs"
 target = "src/components/nostr_content/embed_article.rs"
 role = "source"

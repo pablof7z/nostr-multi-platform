@@ -15,7 +15,7 @@ import composeArticleCardKotlin from "../vendor/compose/content-kind-30023/Nostr
 import tuiKindRegistryRust from "../vendor/tui/content-kind-registry/nostr_kind_registry.rs?raw";
 
 // Embeds & Kinds — Desktop (iced)
-import desktopArticleCardRust from "../vendor/desktop/embed-article/embed_article.rs?raw";
+import desktopArticleCardRust from "../vendor/desktop/content-kind-30023/embed_article.rs?raw";
 
 export const embedComponents: Component[] = [
   {
@@ -74,13 +74,13 @@ export const embedComponents: Component[] = [
       },
       desktop: {
         status: "stable",
-        installId: "desktop/embed-article",
+        installId: "desktop/content-kind-30023",
         version: "0.1.0",
         dependencies: [],
         longDescription:
           "`ArticleCard::new(&ArticleProjection, author_name)` is the iced kind:30023 card. It renders the article title (bold), a byline (red dot + presentation-resolved author label + short date), and a summary snippet (first 300 chars), wrapped in a rounded bordered container. The byline uses an author label the displaying renderer resolved from a profile it claimed (component-owned claiming, mirroring iOS #833), not the projection's static `author_display_name`. Note: this card does NOT load the hero image yet — the `image` tag is rendered on iOS/Compose but the iced surface only shows title + byline + summary, with hero loading documented as a follow-on in `embed_article.rs`.",
         files: [
-          { source: "desktop/embed-article/embed_article.rs", target: "src/components/nostr_content/embed_article.rs", role: "source", content: desktopArticleCardRust },
+          { source: "desktop/content-kind-30023/embed_article.rs", target: "src/components/nostr_content/embed_article.rs", role: "source", content: desktopArticleCardRust },
         ],
         screenshots: ["embed-article-desktop-preview.png"],
         customization: [
