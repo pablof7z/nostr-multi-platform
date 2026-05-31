@@ -121,11 +121,9 @@ iOS `TypedHomeFeedDecoder` gracefully falls back to JSON when a typed sidecar is
 The merge conflict resolution for PR #747 drops the old typed sidecar block in `register.rs` (since it references a removed `projection`) and keeps both the new doc comment and the `#[deprecated]` attribute in `snapshot.rs`.
 
 <!-- citations: [^12b3f-17] [^1c093-24] [^222-226] [^355-360] [^54ae9-22] [^055ef-2] [^055ef-3] [^47203-6] [^86221-8] [^53838-8] [^42908-21] [^a0964-2] [^d0690-6] [^c3f75-12] [^c9ae5-7] -->
-## Notes App Framework Gaps
+## Second-App Framework Thesis (PD-033-A)
 
-The `apps/notes/` app bypasses every defining framework property — raw kind filter instead of `LogicalInterest`, Swift-side timeline ordering, Swift `JSONSerialization` of event data, and synchronous `isSignedIn` flip with no handshake gate. [^12b3f-18]
-
-PD-033-A (Notes framework thesis) requires a binary user decision: rewrite Notes with proper framework seams (LogicalInterest, kernel-owned timeline projection, handshake gate) or delete it with written acknowledgement that the substrate is not yet expressive enough. (Previously: PD-033-A (second-app proof of the framework thesis) is buildable today with zero new affordances because the existing push seam already satisfies every property the deleted Notes app required.) [^12b3f-19]
+PD-033-A (the second-app proof of the framework thesis) is buildable today with zero new affordances: the existing push projection seam already provides kernel-owned projections, handshake-gated sign-in, and D3 outbox routing read off the pushed frame. The thesis is unblocked but not yet demonstrated — no second app has been built against the seam. The podcast player is the live candidate. See ADR-0039. [^12b3f-19]
 
 NIP-29 group discovery/join UI requires an `nmp.nip29.discover` action and projection. [^1c093-25]
 
