@@ -302,7 +302,7 @@ use clock::{Clock, SystemClock};
 #[cfg(feature = "native")]
 pub use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
-    AccountSummary, PublishQueueEntry, RelayAckOutcome, SettingsHubSummary,
+    AccountSummary, PublishQueueEntry, RelayAckOutcome,
 };
 // Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
 // re-export them into the public crate surface — `nmp-router::Nip65OutboxResolver`

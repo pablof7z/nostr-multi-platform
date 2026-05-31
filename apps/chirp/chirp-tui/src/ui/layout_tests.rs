@@ -98,7 +98,7 @@ fn settings_tab_renders_all_relay_inventory_and_raw_filters() {
     state.set_tab(FeatureTab::Settings);
     state.features.relay_edit_rows.push(RelayEditLine {
         url: "wss://relay.example".to_string(),
-        role_label: "both,indexer".to_string(),
+        role: "both,indexer".to_string(),
     });
     state.relays.push(RelayRow {
         relay_url: "wss://relay.example".to_string(),
@@ -125,7 +125,7 @@ fn settings_tab_renders_all_relay_inventory_and_raw_filters() {
 
     assert!(rendered.contains("All Relays 1"));
     assert!(rendered.contains("relay.example"));
-    assert!(rendered.contains("both,indexer"));
+    assert!(rendered.contains("Both + Index"));
     assert!(rendered.contains("raw"));
     assert!(rendered.contains("\"kinds\""));
 }

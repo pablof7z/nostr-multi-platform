@@ -26,8 +26,6 @@ private fun RelayListPage(showcase: GalleryShowcaseReferences) {
         NostrRelayEditRow(
             url = relay.url,
             role = relay.role,
-            roleLabel = roleLabel(relay.role),
-            roleTint = roleTint(relay.role),
         )
     }
     val statusesByRelay = showcase.relays.mapIndexed { index, relay ->
@@ -42,17 +40,4 @@ private fun RelayListPage(showcase: GalleryShowcaseReferences) {
         )
         NostrRelayList(relays = relayRows, connectionStatus = statusesByRelay)
     }
-}
-
-private fun roleLabel(role: String): String = when {
-    "both" in role && "indexer" in role -> "Both + Indexer"
-    "indexer" in role -> "Indexer"
-    "both" in role -> "Both"
-    else -> role.replaceFirstChar { it.uppercaseChar() }
-}
-
-private fun roleTint(role: String): String = when {
-    "both" in role -> "success"
-    "indexer" in role -> "info"
-    else -> "accent"
 }

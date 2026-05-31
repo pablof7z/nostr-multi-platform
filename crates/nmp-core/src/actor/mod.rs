@@ -240,7 +240,7 @@ use std::time::{Duration, Instant};
 // MLS / NIP-17 publish path).
 pub use relay_roles::has_role;
 pub(crate) use relay_roles::{
-    canonical_relay_role, relay_role_label, relay_role_options, relay_role_tint,
+    canonical_relay_role, relay_role_options,
 };
 // V6 Stage 1 — Swift codegen pilot. `RelayRoleOption` is `pub(crate)` in
 // `relay_roles`; re-exported here so `crate::codegen_schema` can hand it
@@ -253,7 +253,7 @@ pub(crate) use relay_roles::RelayRoleOption;
 // `nostrconnect_relay_url` is consumed by `nmp-ffi` (native only) through
 // `nmp_core::__ffi_internal::nostrconnect_relay_url`.
 #[cfg(feature = "native")]
-pub use relay_roles::nostrconnect_relay_url;
+pub use relay_roles::{nostrconnect_relay_url, Nip65Role};
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
