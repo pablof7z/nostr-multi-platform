@@ -146,6 +146,11 @@ mod relay_projection;
 pub mod relay_score;
 #[cfg(test)]
 mod relay_score_tests;
+// F-TTL — replaceable event freshness policy. Configures per-kind TTLs for
+// how long replaceable identities (kind, pubkey, d_tag?) remain "fresh" before
+// a re-verification REQ is needed. The LMDB sub-db `replaceable_freshness`
+// stores `check_again_after` timestamps; this config determines the delta.
+pub mod replaceable_ttl;
 // W2 — flush dirty score cells to the injected `RelayAuthorScoreStore`.
 // Called on actor idle; no-op when the map is clean or no store is set.
 mod raw_event_observer;
@@ -1031,6 +1036,14 @@ pub struct Kernel {
     /// Set by `set_relay_score_store` after construction. D4: the kernel
     /// holds `Box` (not `Arc`) because it is the sole logical writer.
     relay_score_store: Option<Box<dyn crate::substrate::RelayAuthorScoreStore>>,
+    /// F-TTL — replaceable event freshness policy. Configures per-kind TTLs
+    /// for how long replaceable identities (kind, pubkey, d_tag?) remain "fresh"
+    /// before a re-verification REQ is needed. The LMDB sub-db `replaceable_freshness`
+    /// stores `check_again_after` timestamps; this config determines the delta
+    /// added to `now` to produce the next check_again_after value. Defaults to
+    /// kind:0 = 1h, kind:10002 = 6h, others = 6h. Can be overridden via
+    /// `set_replaceable_ttl()`.
+    replaceable_ttl: replaceable_ttl::ReplaceableTtlConfig,
     /// V-67: set when a persistent storage path was supplied but the LMDB
     /// store failed to open. `None` in the healthy case AND when no path was
     /// given (in-memory is the legitimate default for tests/CI — not a
@@ -1404,6 +1417,33 @@ impl Kernel {
         self.relay_score_map.is_dirty()
     }
 
+    /// Set the TTL (time-to-live) policy for replaceable events (F-TTL).
+    ///
+    /// Configures how long replaceable identities (kind, pubkey, optional d_tag)
+    /// remain "fresh" before a re-verification REQ is dispatched. Defaults to
+    /// kind:0 = 1 hour, kind:10002 = 6 hours, all others = 6 hours.
+    ///
+    /// Can be called at any time; affects all subsequent TTL lookups via
+    /// `ttl_for_kind()`.
+    ///
+    /// D4: `&mut self` — the kernel is the sole writer of this configuration.
+    pub fn set_replaceable_ttl(&mut self, config: replaceable_ttl::ReplaceableTtlConfig) {
+        self.replaceable_ttl = config;
+    }
+
+    /// Look up the TTL for a given replaceable event kind.
+    ///
+    /// Returns the kind-specific TTL if configured, otherwise the default TTL.
+    /// Used by the F-TTL ingest path and pending_reverify queue to determine
+    /// `check_again_after` values.
+    ///
+    /// D8: no clock — the kernel never calls this; callers pass millisecond
+    /// timestamps (now + ttl_for_kind = check_again_after).
+    #[must_use]
+    pub(crate) fn ttl_for_kind(&self, kind: u32) -> std::time::Duration {
+        self.replaceable_ttl.ttl_for_kind(kind)
+    }
+
     /// Borrow the kernel's `EventStore` handle.
     ///
     /// Returned as a cloned `Arc<dyn EventStore>` (the kernel uses `Arc` so
@@ -1766,6 +1806,7 @@ impl Kernel {
             active_account_handle,
             relay_score_map: relay_score::RelayAuthorScoreMap::new(),
             relay_score_store: None,
+            replaceable_ttl: replaceable_ttl::ReplaceableTtlConfig::default(),
             store_open_failure,
             _not_send: PhantomData,
         };
