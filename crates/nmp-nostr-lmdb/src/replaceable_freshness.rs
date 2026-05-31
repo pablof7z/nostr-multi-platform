@@ -33,6 +33,14 @@ pub enum ReplaceableKey {
 }
 
 impl ReplaceableKey {
+    /// The Nostr kind this key identifies (regardless of variant).
+    #[must_use]
+    pub fn kind(&self) -> u32 {
+        match self {
+            Self::Regular { kind, .. } | Self::Parameterized { kind, .. } => *kind,
+        }
+    }
+
     /// Serialize to LMDB key bytes: kind[4B BE] || pubkey[32B] || d_tag_utf8[variable]
     pub fn to_lmdb_key(&self) -> Vec<u8> {
         let mut key = Vec::with_capacity(36 + 64); // 4 + 32 + max utf8 estimate
@@ -68,9 +76,9 @@ impl ReplaceableKey {
         pubkey.copy_from_slice(&key_bytes[4..36]);
 
         if is_parameterized_replaceable(kind) {
-            if key_bytes.len() <= 36 {
-                return Err("parameterized replaceable must have d_tag".to_string());
-            }
+            // An empty d-tag is a valid NIP-01 addressable identity (the default
+            // `d` value), encoded as exactly 36 bytes (kind + pubkey, no tail).
+            // Only a key SHORTER than 36 bytes is malformed (caught above).
             let d_tag = String::from_utf8(key_bytes[36..].to_vec())
                 .map_err(|e| format!("d_tag not valid utf8: {e}"))?;
             Ok(Self::Parameterized { kind, pubkey, d_tag })
@@ -80,15 +88,31 @@ impl ReplaceableKey {
     }
 }
 
-/// Return whether a kind is parameterized replaceable (NIP-01).
+/// Return whether a kind is *addressable* (a.k.a. parameterized replaceable, NIP-01).
+///
+/// Delegates to [`nostr::Kind::is_addressable`] — the single source of truth for
+/// NIP-01 kind classification. Addressable kinds are the `30000..=39999` range;
+/// they are keyed by `(pubkey, kind, d-tag)`.
+///
+/// Note: the historical name "parameterized replaceable" is retained for the
+/// public symbol so existing F-TTL call sites keep compiling, but the semantics
+/// are exactly `nostr`'s `is_addressable` — it does NOT include the ephemeral
+/// `20000..=29999` range (the prior hand-rolled implementation wrongly did).
 pub fn is_parameterized_replaceable(kind: u32) -> bool {
-    (kind >= 20000 && kind < 30000) || (kind >= 30000 && kind < 40000)
+    nostr::Kind::from(kind as u16).is_addressable()
 }
 
-/// Return whether a kind is replaceable (NIP-01).
-/// This includes both regular (0-19999) and parameterized (20000-39999) replaceable kinds.
+/// Return whether a kind is *regular replaceable* (NIP-01).
+///
+/// Delegates to [`nostr::Kind::is_replaceable`] — the single source of truth.
+/// Regular replaceable kinds are `0` (metadata), `3` (contacts), `41` (channel
+/// metadata) and the `10000..=19999` range; they are keyed by `(pubkey, kind)`.
+///
+/// This is the strict NIP-01 meaning and does NOT include addressable kinds —
+/// callers that want "replaceable in the broad sense" must test
+/// `is_replaceable(k) || is_parameterized_replaceable(k)`.
 pub fn is_replaceable(kind: u32) -> bool {
-    (kind < 20000) || (kind >= 30000 && kind < 40000)
+    nostr::Kind::from(kind as u16).is_replaceable()
 }
 
 /// In-memory cache for replaceable freshness timestamps.
@@ -102,10 +126,11 @@ pub fn encode_timestamp(ts_ms: u64) -> Vec<u8> {
 
 /// Decode check_again_after timestamp from bytes.
 pub fn decode_timestamp(bytes: &[u8]) -> Result<u64, String> {
-    if bytes.len() < 8 {
-        return Err(format!("timestamp bytes too short: {} < 8", bytes.len()));
-    }
-    Ok(u64::from_be_bytes(bytes[..8].try_into().unwrap()))
+    let arr: [u8; 8] = bytes
+        .get(..8)
+        .and_then(|b| b.try_into().ok())
+        .ok_or_else(|| format!("timestamp bytes too short: {} < 8", bytes.len()))?;
+    Ok(u64::from_be_bytes(arr))
 }
 
 #[cfg(test)]
@@ -149,33 +174,49 @@ mod tests {
 
     #[test]
     fn test_is_replaceable() {
-        // Regular replaceable
+        // Regular replaceable per NIP-01 (nostr::Kind::is_replaceable):
+        // kind:0 (metadata), kind:3 (contacts), kind:41 (channel metadata),
+        // and the 10000..=19999 range.
         assert!(is_replaceable(0));
-        assert!(is_replaceable(9999));
+        assert!(is_replaceable(3));
+        assert!(is_replaceable(41));
         assert!(is_replaceable(10000));
         assert!(is_replaceable(19999));
 
-        // Not replaceable
+        // Regular events (1, 2) and the 4..=9999 range are NOT replaceable —
+        // the prior hand-rolled `kind < 20000` impl wrongly classified these.
+        assert!(!is_replaceable(1));
+        assert!(!is_replaceable(2));
+        assert!(!is_replaceable(9999));
+
+        // Ephemeral (20000..=29999) is NOT replaceable.
         assert!(!is_replaceable(20000));
         assert!(!is_replaceable(29999));
 
-        // Parameterized replaceable
-        assert!(is_replaceable(30023));
-        assert!(is_replaceable(30000));
-        assert!(is_replaceable(39999));
+        // Addressable (30000..=39999) is NOT "replaceable" in the strict
+        // NIP-01 sense — it is a separate class (is_parameterized_replaceable).
+        assert!(!is_replaceable(30000));
+        assert!(!is_replaceable(30023));
+        assert!(!is_replaceable(39999));
 
-        // Not replaceable
         assert!(!is_replaceable(40000));
     }
 
     #[test]
     fn test_is_parameterized_replaceable() {
-        assert!(is_parameterized_replaceable(20000));
-        assert!(is_parameterized_replaceable(29999));
+        // Parameterized replaceable == addressable (30000..=39999).
         assert!(is_parameterized_replaceable(30000));
+        assert!(is_parameterized_replaceable(30023));
         assert!(is_parameterized_replaceable(39999));
 
+        // Ephemeral (20000..=29999) is NOT addressable — the prior
+        // hand-rolled impl wrongly included this range.
+        assert!(!is_parameterized_replaceable(20000));
+        assert!(!is_parameterized_replaceable(29999));
+
+        // Regular/regular-replaceable kinds are not addressable.
         assert!(!is_parameterized_replaceable(0));
+        assert!(!is_parameterized_replaceable(3));
         assert!(!is_parameterized_replaceable(10000));
         assert!(!is_parameterized_replaceable(40000));
     }

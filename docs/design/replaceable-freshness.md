@@ -98,8 +98,8 @@ Complies with all D-series constraints:
 ## Implementation notes
 
 - **No polling:** the `pending_reverify` queue drains only during `pending_view_requests` ticks (event-driven)
-- **LMDB atomic writes:** `check_again_after` write and event insert are in the same `RwTxn`
-- **Sub-db shared environment:** `replaceable_freshness` lives in the same `lmdb::Environment` as the event store for transaction atomicity (ADR-0011)
+- **Freshness writes go through the `EventStore` trait** (`get_check_again_after` / `set_check_again_after`, `&self` interior-mutability — the kernel holds `Arc<dyn EventStore>`). The LMDB override opens its own write transaction, commits, and updates the in-memory cache **only after** the commit succeeds (no cache/DB divergence on abort). `MemEventStore` mirrors the same contract over an in-memory map, so the kernel's TTL gate behaves identically on both backends. (The freshness stamp is therefore a separate committed transaction from the event insert, not batched into the insert's `RwTxn` — the unavoidable cost of the clean trait boundary.)
+- **Sub-db shared environment:** `replaceable_freshness` lives in the same `lmdb::Environment` as the event store (ADR-0011)
 - **Bounded in-flight:** `pending_reverify` is a `VecDeque<ReplaceableKey>` with no artificial ceiling; natural load-shedding via interest-dropping at EOSE (planner closes subs when views close)
 
 ## FFI ABI stability
@@ -109,7 +109,10 @@ Complies with all D-series constraints:
 - `nmp_app_claim_profile` (existing) → now routes through `claim_replaceable(0, pubkey, None)`
 - `nmp_app_refresh_replaceable` (new) → force-refresh by zeroing `check_again_after`
 
-No breaking changes to existing symbols; `NmpCore.h` updated.
+No breaking changes to existing symbols; `NmpCore.h` updated. Per the
+[FFI Surface Freeze Gate](../wiki/ffi-surface-freeze-gate.md), this net-new
+C-ABI symbol is gated by an ADR: see
+[ADR-0041 — F-TTL FFI surface](../decisions/0041-f-ttl-ffi-surface.md).
 
 ## Testing
 

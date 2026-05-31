@@ -253,12 +253,16 @@ impl Lmdb {
         let rtxn = env.read_txn()?;
         for result in replaceable_freshness.iter(&rtxn)? {
             let (key_bytes, ts_bytes) = result?;
-            // We need the kind to deserialize; extract it from the key.
-            if key_bytes.len() >= 4 {
-                let kind = u32::from_be_bytes(key_bytes[..4].try_into().unwrap());
-                if let Ok(k) = crate::ReplaceableKey::from_lmdb_key(key_bytes, kind) {
-                    if let Ok(ts) = crate::decode_timestamp(ts_bytes) {
-                        cache.insert(k, ts);
+            // We need the kind to deserialize; extract it from the key prefix.
+            // A row whose key is shorter than 4 bytes is corrupt — skip it
+            // rather than panic (no `unwrap` on the hot-load production path).
+            if let Some(kind_bytes) = key_bytes.get(..4) {
+                if let Ok(kind_arr) = <[u8; 4]>::try_from(kind_bytes) {
+                    let kind = u32::from_be_bytes(kind_arr);
+                    if let Ok(k) = crate::ReplaceableKey::from_lmdb_key(key_bytes, kind) {
+                        if let Ok(ts) = crate::decode_timestamp(ts_bytes) {
+                            cache.insert(k, ts);
+                        }
                     }
                 }
             }
@@ -328,25 +332,49 @@ impl Lmdb {
             .and_then(|cache| cache.get(key).copied())
     }
 
-    /// F-TTL: Update the next-check timestamp for a replaceable event.
+    /// F-TTL: Write the next-check timestamp into the LMDB sub-db *within the
+    /// caller-provided transaction only*.
     ///
-    /// Writes to both the in-memory cache and the LMDB sub-db atomically within
-    /// the provided transaction. The caller is responsible for ensuring this
-    /// transaction is committed.
+    /// This does **not** touch the in-memory cache: a transaction that is later
+    /// aborted must not leave the cache claiming a timestamp the durable store
+    /// never recorded (cache/DB divergence). Callers that own the transaction
+    /// lifecycle and want the cache updated must do so themselves *after* a
+    /// successful `commit()` — or simply use
+    /// [`set_check_again_after_committed`](Self::set_check_again_after_committed),
+    /// which opens, commits, and updates the cache atomically.
     pub fn set_check_again_after(
         &self,
-        key: crate::ReplaceableKey,
+        key: &crate::ReplaceableKey,
         ts_ms: u64,
         txn: &mut RwTxn,
     ) -> Result<(), Error> {
-        // Write to LMDB
         let lmdb_key = key.to_lmdb_key();
         let lmdb_value = crate::encode_timestamp(ts_ms);
-        self.replaceable_freshness
-            .put(txn, &lmdb_key, &lmdb_value)
-            .map_err(|e| Error::Io(std::io::Error::other(e)))?;
+        self.replaceable_freshness.put(txn, &lmdb_key, &lmdb_value)?;
+        Ok(())
+    }
 
-        // Update in-memory cache (best-effort; ignore lock errors)
+    /// F-TTL: Durably stamp the next-check timestamp for a replaceable identity.
+    ///
+    /// Opens its own write transaction, writes the LMDB row, commits, and only
+    /// then updates the in-memory cache. The cache is updated *after* the commit
+    /// succeeds so an aborted/failed transaction can never leave the cache and
+    /// the durable store disagreeing.
+    ///
+    /// This is the entry point used by the `EventStore` trait override, which
+    /// cannot thread a `RwTxn` across the `Arc<dyn EventStore>` boundary.
+    pub fn set_check_again_after_committed(
+        &self,
+        key: crate::ReplaceableKey,
+        ts_ms: u64,
+    ) -> Result<(), Error> {
+        let mut txn = self.write_txn()?;
+        self.set_check_again_after(&key, ts_ms, &mut txn)?;
+        txn.commit()?;
+
+        // Commit succeeded — now it is safe to reflect the value in the cache.
+        // A poisoned lock degrades to "cache miss next read" (a re-verify),
+        // which is correct-but-eager, never wrong.
         if let Ok(mut cache) = self.replaceable_freshness_cache.lock() {
             cache.insert(key, ts_ms);
         }

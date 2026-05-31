@@ -167,6 +167,8 @@ mod relay_score_record;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
+#[cfg(test)]
+mod replaceable_ttl_gate_tests;
 mod reply;
 mod requests;
 #[cfg(test)]
@@ -1465,18 +1467,27 @@ impl Kernel {
     /// has expired.
     ///
     /// Called when a view component claims a replaceable identity (kind, pubkey, d_tag?).
-    /// For now, this enqueues all claims; LMDB backend will implement check_again_after
-    /// storage and time-gating separately. This is the T-C stubs path — full F-TTL
-    /// time-gating is implemented when the store gains F-TTL methods.
     ///
-    /// Idempotent: only enqueues once per unique key until the REQ completes (EOSE).
-    /// Duplicate calls for the same key (before the first REQ finishes) are no-ops.
+    /// TTL-gated (F-TTL): a claim only enqueues a re-verification REQ when the
+    /// cached identity's `check_again_after` has elapsed. A fresh identity (one
+    /// whose TTL has not yet expired) is a no-op — this is what stops the
+    /// kernel from spamming a REQ on every claim. Identities the store has
+    /// never stamped (`None` → treated as `0`) are always due, so a cold cache
+    /// re-verifies eagerly.
+    ///
+    /// On enqueue we stamp `check_again_after = now + INFLIGHT_GUARD_MS` so that
+    /// repeated claims for the same identity while a REQ is in flight (before
+    /// its EOSE lands and re-stamps with the real per-kind TTL) do not re-enqueue.
+    ///
+    /// D9 clock seam: `now_ms()` reads the injected `Clock`.
     pub(crate) fn claim_replaceable(
         &mut self,
         kind: u32,
         pubkey: [u8; 32],
         d_tag: Option<String>,
     ) {
+        // `is_parameterized_replaceable` is the NIP-01 addressable predicate
+        // (30000..=39999) — only those identities carry a `d`-tag.
         let key = if crate::store::is_parameterized_replaceable(kind) {
             crate::store::ReplaceableKey::Parameterized {
                 kind,
@@ -1487,10 +1498,24 @@ impl Kernel {
             crate::store::ReplaceableKey::Regular { kind, pubkey }
         };
 
-        // Only enqueue if we're not already in-flight for this key.
-        if !self.pending_reverify.contains(&key) {
-            self.pending_reverify.push_back(key);
+        let now = self.now_ms();
+        let check_at = self.store.get_check_again_after(&key).unwrap_or(0);
+
+        // Gate: still fresh, or already in flight → nothing to do.
+        if now > check_at && !self.pending_reverify.contains(&key) {
+            self.pending_reverify.push_back(key.clone());
+            // In-flight guard: prevent re-enqueue until EOSE re-stamps with the
+            // real per-kind TTL (or the guard window elapses on a lost EOSE).
+            self.store
+                .set_check_again_after(key, now + INFLIGHT_GUARD_MS);
         }
+    }
+
+    /// Number of replaceable identities currently queued for re-verification.
+    /// Test-only window into the F-TTL gate (`claim_replaceable`).
+    #[cfg(test)]
+    pub(crate) fn pending_reverify_len(&self) -> usize {
+        self.pending_reverify.len()
     }
 
     /// Borrow the kernel's `EventStore` handle.

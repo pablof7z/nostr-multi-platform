@@ -207,10 +207,24 @@ impl Kernel {
                 }
                 self.record_claim_expansion_eose_no_match(sub_id, relay_url);
 
-                // F-TTL — handle EOSE for in-flight reverification REQs (T-C stub).
-                // On EOSE, remove the tracked keys so future claims re-trigger REQs.
-                // Full timestamp updates are deferred to the drain_pending_reverify path (T-D).
-                let _ = self.reverify_subs.remove(sub_id);
+                // F-TTL — handle EOSE for in-flight re-verification REQs.
+                //
+                // On EOSE the relay has delivered everything it has for the
+                // reverify filter, so the cached replaceable identity is now
+                // confirmed fresh: stamp each tracked key's `check_again_after`
+                // forward by its per-kind TTL. This both clears the in-flight
+                // tracking and gates the next claim (claim_replaceable will see
+                // a future timestamp and skip the REQ until the TTL elapses).
+                //
+                // D9 clock seam: `now_ms()` reads the injected `Clock`.
+                if let Some(keys) = self.reverify_subs.remove(sub_id) {
+                    let now = self.now_ms();
+                    for key in keys {
+                        let ttl_ms =
+                            self.replaceable_ttl.ttl_for_kind(key.kind()).as_millis() as u64;
+                        self.store.set_check_again_after(key, now + ttl_ms);
+                    }
+                }
 
                 if !keep_live {
                     // T105: CLOSE must travel back to the same socket the REQ
@@ -588,15 +602,46 @@ impl Kernel {
                     }
                 }
 
-                // F-TTL — general replaceable event freshness hook (will be completed in T-D).
-                // Detects replaceable kinds and extracts d_tag for parameterized events.
-                // Full timestamp updates to LMDB are deferred to pending_reverify drain.
-                if crate::store::is_replaceable(event.kind) || crate::store::is_parameterized_replaceable(event.kind) {
-                    let _d_tag = if crate::store::is_parameterized_replaceable(event.kind) {
-                        event.tags.iter().find(|t| t.first().map(|s| s == "d").unwrap_or(false))
-                            .and_then(|t| t.get(1)).cloned().unwrap_or_default()
-                    } else { String::new() };
-                    // Future: enqueue for TTL update in pending_reverify drain (T-D)
+                // F-TTL — replaceable/addressable event freshness hook.
+                //
+                // When a canonical (regular) replaceable or addressable event is
+                // ingested, stamp its `check_again_after` so the kernel's TTL gate
+                // (claim_replaceable) knows it is fresh and does not immediately
+                // re-REQ it. Addressable events are keyed by their `d`-tag.
+                //
+                // D9 clock seam: `now_ms()` reads the injected `Clock`, never
+                // `SystemTime::now()` directly — so this is deterministic under
+                // replay/FixedClock.
+                let is_regular = crate::store::is_replaceable(event.kind);
+                let is_addressable = crate::store::is_parameterized_replaceable(event.kind);
+                if is_regular || is_addressable {
+                    if let Some(pubkey_bytes) =
+                        crate::kernel::hex_to_pubkey_bytes(&event.pubkey)
+                    {
+                        let key = if is_addressable {
+                            let d_tag = event
+                                .tags
+                                .iter()
+                                .find(|t| t.first().map(|s| s == "d").unwrap_or(false))
+                                .and_then(|t| t.get(1))
+                                .cloned()
+                                .unwrap_or_default();
+                            crate::store::ReplaceableKey::Parameterized {
+                                kind: event.kind,
+                                pubkey: pubkey_bytes,
+                                d_tag,
+                            }
+                        } else {
+                            crate::store::ReplaceableKey::Regular {
+                                kind: event.kind,
+                                pubkey: pubkey_bytes,
+                            }
+                        };
+                        let ttl_ms =
+                            self.replaceable_ttl.ttl_for_kind(event.kind).as_millis() as u64;
+                        self.store
+                            .set_check_again_after(key, self.now_ms() + ttl_ms);
+                    }
                 }
 
                 Some(outcome)

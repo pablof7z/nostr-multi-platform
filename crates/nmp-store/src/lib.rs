@@ -87,14 +87,22 @@ pub mod replaceable_stubs {
         }
     }
 
-    /// Check if a kind is parameterized replaceable (NIP-01).
+    /// Check if a kind is parameterized replaceable / addressable (NIP-01).
+    ///
+    /// Delegates to [`nostr::Kind::is_addressable`] — the single source of
+    /// truth — so the non-LMDB build classifies kinds identically to the
+    /// LMDB build. Addressable is the `30000..=39999` range only.
     pub fn is_parameterized_replaceable(kind: u32) -> bool {
-        (kind >= 20000 && kind < 30000) || (kind >= 30000 && kind < 40000)
+        nostr::Kind::from(kind as u16).is_addressable()
     }
 
-    /// Check if a kind is replaceable (NIP-01).
+    /// Check if a kind is regular replaceable (NIP-01).
+    ///
+    /// Delegates to [`nostr::Kind::is_replaceable`]. Regular replaceable is
+    /// kinds `0`, `3`, `41` and the `10000..=19999` range — NOT the broad
+    /// `kind < 20000` the prior hand-rolled stub used.
     pub fn is_replaceable(kind: u32) -> bool {
-        kind < 20000 || (kind >= 30000 && kind < 40000)
+        nostr::Kind::from(kind as u16).is_replaceable()
     }
 
     /// Stub cache type.
