@@ -44,11 +44,8 @@
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, UnsignedEvent};
 use nmp_core::{canonical_relay_url, ActorCommand};
+use nmp_kinds::KIND_DM_RELAY_LIST;
 use serde::{Deserialize, Serialize};
-
-/// NIP-17 § 2 kind: the DM-relay list — the relays a user wants to receive
-/// gift-wrapped DMs at.
-const KIND_DM_RELAY_LIST: u32 = 10050;
 
 /// Build a NIP-17 kind:10050 DM-relay-list **unsigned** event from an explicit
 /// list of relay URLs.

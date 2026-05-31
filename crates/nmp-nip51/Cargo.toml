@@ -14,6 +14,9 @@ crate-type = ["rlib"]
 # `SuppressionLookup` (the substrate-generic trait the timeline projection
 # reads). No NIP nouns enter nmp-core through this crate.
 nmp-core = { path = "../nmp-core" }
+# Layer-0 kind-constant registry — re-exports KIND_MUTE_LIST
+# so this crate no longer duplicates that value (V-57).
+nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

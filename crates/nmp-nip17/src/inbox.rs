@@ -67,12 +67,10 @@ use nmp_core::planner::{
 };
 use nmp_core::substrate::{BoundedMessageMap, ViewDependencies, MAX_PROJECTION_MESSAGES};
 use nmp_core::{KindFilter, RawEventObserver};
+use nmp_kinds::KIND_CHAT_MESSAGE;
 use nmp_nip59::KIND_GIFT_WRAP;
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
-
-/// NIP-17 kind:14 chat-message rumor — the only inner kind this inbox keeps.
-const KIND_CHAT_MESSAGE: u16 = 14;
 
 /// One decrypted NIP-17 direct message, ready for a chat row.
 ///
@@ -325,7 +323,7 @@ impl DmInboxProjection {
 
         // Only kind:14 chat-message rumors belong in the DM inbox. Rumors
         // of any other kind that happen to unwrap are discarded here.
-        if gift.rumor.kind.as_u16() != KIND_CHAT_MESSAGE {
+        if gift.rumor.kind.as_u16() != KIND_CHAT_MESSAGE as u16 {
             return false;
         }
 

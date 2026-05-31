@@ -45,19 +45,20 @@ explicit coordination.
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
 
-### V-57 · Remaining kind-constant duplicates to migrate to nmp-kinds [LOW · cleanup]
+### V-57 · Remaining kind-constant duplicates to migrate to nmp-kinds [LOW · residual]
 
-Kind-constant centralisation is partially done (`nmp-kinds` Layer-0 crate exists; seven
-constants migrated; `nmp-core::kinds` and `nmp-nip59::kinds` are now re-exports). The
-following duplicates are still crate-local and must be migrated when each NIP crate is
-next refactored:
+Kind-constant centralisation is complete for all actionable items. Migrated in
+PR `claude/fix-v57-kind-constants` (2026-05-31):
+- `nmp-nip57` — `KIND_ZAP_REQUEST` / `KIND_ZAP_RECEIPT` → `nmp-kinds` re-exports
+- `nmp-nip17` — `KIND_DM_RELAY_LIST` → `nmp-kinds` re-export
+- `nmp-nip17/src/inbox.rs` — `KIND_CHAT_MESSAGE` (u16 local const) → `nmp_kinds::KIND_CHAT_MESSAGE as u16` (migrated cleanly with explicit cast)
+- `nmp-nip51` — `KIND_MUTE_LIST` → `nmp-kinds` re-export
+- `nmp-router` — `KIND_BLOCKED_RELAYS` → `nmp-kinds` re-export
 
-- `nmp-nip57` — `KIND_ZAP_REQUEST` / `KIND_ZAP_RECEIPT`
-- `nmp-nip17` — `KIND_DM_RELAY_LIST`
-- `nmp-nip51` — `KIND_MUTE_LIST`
-- `nmp-router` — `KIND_BLOCKED_RELAYS`
-- `nmp-nip17/src/inbox.rs:75` — `KIND_CHAT_MESSAGE` (u16, used against `rumor.kind.as_u16()`; needs cast, separate change)
-- `nmp-nip29` — `KIND_CHAT_MESSAGE = 9` (distinct semantic from registry `= 14`; stays crate-local unless semantics are unified)
+**Deliberately deferred (not actionable):**
+
+- `nmp-nip29` — `KIND_CHAT_MESSAGE = 9` — distinct semantic from the registry
+  value `= 14`; stays crate-local unless NIP-29 / NIP-17 semantics are unified.
 
 **Open items from the 2026-05-26 audit that remain:**
 

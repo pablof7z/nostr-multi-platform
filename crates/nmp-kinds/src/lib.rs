@@ -71,3 +71,31 @@ pub const KIND_GIFT_WRAP: u32 = 1059;
 /// of truth the outbox resolver reads when routing a publish through
 /// `PublishTarget::Auto`.
 pub const KIND_RELAY_LIST: u32 = 10002;
+
+// ─── NIP-57 — lightning zaps ──────────────────────────────────────────────
+
+/// NIP-57 zap request (kind:9734). Built by the client and embedded in the
+/// LNURL-pay flow; the LN provider reads it to mint the zap receipt.
+pub const KIND_ZAP_REQUEST: u32 = 9734;
+
+/// NIP-57 zap receipt (kind:9735). Minted by the LN provider after the
+/// invoice settles. Decode-only — clients never construct kind:9735 directly.
+pub const KIND_ZAP_RECEIPT: u32 = 9735;
+
+// ─── NIP-17 — DM relay list ───────────────────────────────────────────────
+
+/// NIP-17 § 2 DM-relay list (kind:10050). The relays a user wants to
+/// receive gift-wrapped DMs at. Each tag is `["relay", <wss-url>]`.
+pub const KIND_DM_RELAY_LIST: u32 = 10050;
+
+// ─── NIP-51 — curated lists ───────────────────────────────────────────────
+
+/// NIP-51 public mute list (kind:10000). The active account's hard-muted
+/// pubkeys (`p` tags) and event ids (`e` tags).
+pub const KIND_MUTE_LIST: u32 = 10000;
+
+// ─── NIP-51 § kind:10006 — blocked relays ────────────────────────────────
+
+/// NIP-51 blocked relays list (kind:10006). The relays a user explicitly
+/// refuses to publish to or receive events from. Tag shape: `["relay", <wss-url>]`.
+pub const KIND_BLOCKED_RELAYS: u32 = 10_006;
