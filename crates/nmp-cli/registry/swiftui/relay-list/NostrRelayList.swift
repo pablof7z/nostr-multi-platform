@@ -4,40 +4,22 @@ import SwiftUI
 
 /// One row of the kernel's `projections.relay_edit_rows` array.
 ///
-/// `roleLabel` and `roleTint` are pre-formatted by the kernel
-/// (`crates/nmp-core/src/actor/relay_roles.rs`) — do not reformat them
-/// in Swift (aim.md §6.9 / display separation rule).
-///
-/// `roleTint` is a semantic token (`accent` | `info` | `success` |
-/// `neutral`) emitted by `RELAY_ROLE_METADATA`. A 6-char hex string is
-/// also accepted to stay forward-compatible if the kernel ever emits
-/// custom palette colours; see `NostrRelayList.tintColor(for:)`.
+/// The kernel emits only `url` and `role` (canonical token: `both`,
+/// `read`, `write`, `indexer`, `both,indexer`, …). Display label and
+/// tint are derived locally from `NostrRelayList.roleLabel(for:)` /
+/// `NostrRelayList.roleTint(for:)` (ADR-0032 / ADR-0041).
 public struct NostrRelayEditRow: Codable, Identifiable, Equatable, RenderIdentifiable {
     public var id: String { url }
     public let url: String
     public let role: String
-    public let roleLabel: String
-    public let roleTint: String
 
-    public init(url: String, role: String, roleLabel: String, roleTint: String) {
+    public init(url: String, role: String) {
         self.url = url
         self.role = role
-        self.roleLabel = roleLabel
-        self.roleTint = roleTint
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case url
-        case role
-        case roleLabel = "role_label"
-        case roleTint = "role_tint"
     }
 
     public func rendersIdentically(_ other: Self) -> Bool {
-        self.url == other.url
-            && self.role == other.role
-            && self.roleLabel == other.roleLabel
-            && self.roleTint == other.roleTint
+        self.url == other.url && self.role == other.role
     }
 }
 
@@ -130,6 +112,30 @@ public struct NostrRelayList: View {
 
     // MARK: Internals
 
+    /// Human-readable label for a canonical NIP-65 role token.
+    static func roleLabel(for role: String) -> String {
+        switch role {
+        case "both": return "Both"
+        case "read": return "Read"
+        case "write": return "Write"
+        case "indexer": return "Index"
+        case "both,indexer": return "Both + Index"
+        case "read,indexer": return "Read + Index"
+        case "write,indexer": return "Write + Index"
+        default: return role.isEmpty ? "Both" : role
+        }
+    }
+
+    /// Semantic tint token for a canonical NIP-65 role.
+    static func roleTint(for role: String) -> String {
+        switch role {
+        case "read": return "info"
+        case "write": return "success"
+        case "indexer": return "neutral"
+        default: return "accent"
+        }
+    }
+
     /// Resolve a relay-role tint token (or fallback hex) into a `Color`.
     ///
     /// The kernel currently emits semantic tokens (`accent`, `info`,
@@ -169,8 +175,8 @@ private struct RelayRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             RoleBadge(
-                label: relay.roleLabel,
-                tint: NostrRelayList.tintColor(for: relay.roleTint)
+                label: NostrRelayList.roleLabel(for: relay.role),
+                tint: NostrRelayList.tintColor(for: NostrRelayList.roleTint(for: relay.role))
             )
         }
         .padding(.vertical, 8)
@@ -178,7 +184,7 @@ private struct RelayRow: View {
         .contentShape(Rectangle())
         .onTapGesture { onTap?() }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(displayUrl), \(relay.roleLabel), \(accessibilityStatus)")
+        .accessibilityLabel("\(displayUrl), \(NostrRelayList.roleLabel(for: relay.role)), \(accessibilityStatus)")
         .accessibilityAddTraits(onTap != nil ? .isButton : [])
     }
 
