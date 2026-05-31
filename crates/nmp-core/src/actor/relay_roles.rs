@@ -9,6 +9,82 @@ pub(crate) struct RelayRoleOption {
     pub(crate) is_default: bool,
 }
 
+/// The user-facing NIP-65 + indexer role of a configured relay.
+///
+/// Modeled as three independent capability flags: the canonical role set is
+/// combinatorial (`both,indexer`, `read,indexer`, …). Maps 1:1 onto the
+/// legacy composite token strings; `to_canonical_string` round-trips through
+/// `canonical_relay_role`.
+///
+/// Distinct from `nmp_network::RelayRole` (transport-lane discriminator:
+/// Content | Indexer | Wallet) — see ADR-0021.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Nip65Role {
+    pub read: bool,
+    pub write: bool,
+    pub indexer: bool,
+}
+
+impl Nip65Role {
+    /// Default role when adding a relay: read + write, no indexer.
+    pub const BOTH: Self = Self { read: true, write: true, indexer: false };
+
+    /// Parse a raw, possibly-composite role string into typed flags.
+    /// Empty string defaults to `BOTH`. Returns `None` for unrecognised tokens.
+    pub fn parse(raw: &str) -> Option<Self> {
+        let mut read = false;
+        let mut write = false;
+        let mut indexer = false;
+        let mut saw_token = false;
+        for token in role_tokens(raw) {
+            saw_token = true;
+            match token.as_str() {
+                "read" => read = true,
+                "write" => write = true,
+                "both" => { read = true; write = true; }
+                "indexer" => indexer = true,
+                _ => return None,
+            }
+        }
+        if !saw_token {
+            read = true;
+            write = true;
+        }
+        if !read && !write && !indexer {
+            return None;
+        }
+        Some(Self { read, write, indexer })
+    }
+
+    /// True when this role includes the named lane ("read" | "write" | "indexer").
+    /// "both" satisfies both "read" and "write" queries.
+    pub fn has(&self, lane: &str) -> bool {
+        match lane.trim().to_ascii_lowercase().as_str() {
+            "read" => self.read,
+            "write" => self.write,
+            "indexer" => self.indexer,
+            "both" => self.read && self.write,
+            _ => false,
+        }
+    }
+
+    /// Serialize to the canonical wire string.
+    /// Returns `None` when no flag is set.
+    pub fn to_canonical_string(self) -> Option<String> {
+        let mut parts = Vec::new();
+        match (self.read, self.write) {
+            (true, true) => parts.push("both"),
+            (true, false) => parts.push("read"),
+            (false, true) => parts.push("write"),
+            (false, false) => {}
+        }
+        if self.indexer {
+            parts.push("indexer");
+        }
+        (!parts.is_empty()).then(|| parts.join(","))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct RelayRoleMetadata {
     value: &'static str,
@@ -63,63 +139,19 @@ pub(crate) fn relay_role_options() -> Vec<RelayRoleOption> {
         .collect()
 }
 
-pub(crate) fn relay_role_label(role: &str) -> String {
-    role_metadata(role).map_or(role, |m| m.label).to_string()
-}
-
-pub(crate) fn relay_role_tint(role: &str) -> String {
-    role_metadata(role).map_or("accent", |m| m.tint).to_string()
-}
-
 /// True when `role` semantically includes `needle`.
 ///
 /// `both` means read+write only; it does not imply indexer. Composite role
 /// strings such as `both,indexer` are tokenized on commas, plus signs, and
 /// whitespace.
 pub fn has_role(role: &str, needle: &str) -> bool {
-    let n = needle.trim().to_ascii_lowercase();
-    role_tokens(role)
-        .any(|token| token == n || (token == "both" && matches!(n.as_str(), "read" | "write")))
+    Nip65Role::parse(role).is_some_and(|r| r.has(needle))
 }
 
 /// Normalize a relay role string into the stored `RelayEditRow.role` form.
 #[must_use]
 pub(crate) fn canonical_relay_role(role: &str) -> Option<String> {
-    let mut read = false;
-    let mut write = false;
-    let mut indexer = false;
-    let mut saw_token = false;
-
-    for token in role_tokens(role) {
-        saw_token = true;
-        match token.as_str() {
-            "read" => read = true,
-            "write" => write = true,
-            "both" => {
-                read = true;
-                write = true;
-            }
-            "indexer" => indexer = true,
-            _ => return None,
-        }
-    }
-
-    if !saw_token {
-        read = true;
-        write = true;
-    }
-
-    let mut parts = Vec::new();
-    match (read, write) {
-        (true, true) => parts.push("both"),
-        (true, false) => parts.push("read"),
-        (false, true) => parts.push("write"),
-        (false, false) => {}
-    }
-    if indexer {
-        parts.push("indexer");
-    }
-    (!parts.is_empty()).then(|| parts.join(","))
+    Nip65Role::parse(role).and_then(|r| r.to_canonical_string())
 }
 
 fn role_tokens(role: &str) -> impl Iterator<Item = String> + '_ {
@@ -216,11 +248,4 @@ mod tests {
         assert_eq!(options[0].tint, "accent");
     }
 
-    #[test]
-    fn role_display_metadata_uses_canonical_roles() {
-        assert_eq!(relay_role_label("write read indexer"), "Both + Index");
-        assert_eq!(relay_role_tint("READ"), "info");
-        assert_eq!(relay_role_tint("write"), "success");
-        assert_eq!(relay_role_label("indexer"), "Index");
-    }
 }
