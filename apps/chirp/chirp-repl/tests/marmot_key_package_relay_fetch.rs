@@ -84,14 +84,18 @@ fn free_port() -> u16 {
 }
 
 /// Path to the `nak` binary. Checks `NAK_BIN` env var first, then
-/// `/Users/pablofernandez/go/bin/nak`, then `nak` on PATH.
+/// `$GOPATH/bin/nak` (or `$HOME/go/bin/nak`), then `nak` on PATH.
 fn nak_bin() -> String {
     if let Ok(v) = std::env::var("NAK_BIN") {
         return v;
     }
-    let gopath_nak = "/Users/pablofernandez/go/bin/nak".to_string();
-    if std::path::Path::new(&gopath_nak).exists() {
-        return gopath_nak;
+    let gobin = std::env::var("GOPATH")
+        .map(|gp| format!("{gp}/bin/nak"))
+        .or_else(|_| std::env::var("HOME").map(|h| format!("{h}/go/bin/nak")));
+    if let Ok(path) = gobin {
+        if std::path::Path::new(&path).exists() {
+            return path;
+        }
     }
     "nak".to_string()
 }
