@@ -33,9 +33,18 @@ final class NoteContentRenderingTests: XCTestCase {
             mode: nil
         )
 
-        let groups = noteContentGroups(tree)
+        // nostrContentGroups promotes inline eventRef children out of the
+        // paragraph into a top-level .eventRef group. The paragraph becomes
+        // .inline(level: .paragraph, children: [1, 2, 3, sentinel]).
+        let groups = nostrContentGroups(tree)
         XCTAssertEqual(groups.count, 2)
-        XCTAssertEqual(groups.first, .inline([1, 2, 3]))
+        if case .inline(let level, let children) = groups.first {
+            XCTAssertEqual(level, .paragraph)
+            // children: text(1), mention(2), text(3), plus trailing sentinel
+            XCTAssertEqual(children.prefix(3), [1, 2, 3])
+        } else {
+            XCTFail("expected .inline as first group, got \(String(describing: groups.first))")
+        }
         if case .eventRef(let uri) = groups.last {
             XCTAssertEqual(uri.primaryId, eventID)
         } else {
@@ -63,16 +72,13 @@ final class NoteContentRenderingTests: XCTestCase {
                         roots: [0],
                         mode: nil
                     ),
-                    // ADR-0032: raw protocol data only — the presentation
-                    // layer derives the avatar tile, abbreviated pubkey, and
-                    // relative-time stamp from the surrounding fields.
+                    relationCounts: nil,
                     authorDisplayName: "pablof7z",
                     authorPictureUrl: "identicon:\(pubkey.prefix(16))",
                     contentPreview: "embedded note body"
                 ),
             ],
-            timelineItems: [:],
-            embedDepth: 0
+            timelineItems: [:]
         )
         XCTAssertEqual(context.mentionLabel(for: pubkey), "pablof7z")
 

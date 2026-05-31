@@ -226,7 +226,8 @@ private struct TimelineListView: View, Equatable {
     nonisolated static func == (lhs: TimelineListView, rhs: TimelineListView) -> Bool {
         lhs.roots == rhs.roots
             && lhs.nextCursor == rhs.nextCursor
-            && lhs.items == rhs.items
+            && lhs.items.count == rhs.items.count
+            && zip(lhs.items, rhs.items).allSatisfy { $0.rendersIdentically(to: $1) }
             && lhs.mentionProfiles == rhs.mentionProfiles
     }
 
