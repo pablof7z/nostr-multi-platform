@@ -35,7 +35,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **`NMP_MARMOT_MOCK_KEYRING` environment variable** (#872): set to `1` (or `true`,
   `yes`, `on`) to route MLS key storage through an in-memory mock instead of the
-  OS keychain. Enables headless CI testing of Marmot (NIP-29 group) flows.
+  OS keychain. Enables headless CI testing of Marmot (MLS-over-Nostr encrypted
+  group) flows.
 
 - **V-51 relay classification** (#876, chirp-tui): zero-count relay classification
   and indexer discovery-kind targeting in the TUI relay tab.
@@ -190,7 +191,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`nmp_marmot_snapshot` / `nmp_marmot_group_messages`** (pull-model Marmot
   symbols): these C-ABI pull symbols remain functional. Per ADR-0039 the Marmot
   projection layer is being migrated to the push-projection seam (same as every
-  other kernel projection). New apps building on NIP-29 group support should
+  other kernel projection). New apps building on Marmot (MLS) group support should
   prefer the push path; the pull symbols will be removed in a future minor release.
 
 ---
