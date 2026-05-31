@@ -10,12 +10,12 @@ import XCTest
 /// ≤4Hz. On a quiet feed, the snapshot may have updated KernelMetrics
 /// (bytesRx, timing) with no new events and no visible field changes.
 /// `TimelineListView.==` (HomeFeedView.swift) delegates item comparison entirely
-/// to `TimelineItem.rendersIdentically(to:)`, so correctness of the guard
+/// to `TimelineItem.rendersIdentically(_:)`, so correctness of the guard
 /// reduces to correctness of that pure function.
 ///
 /// ## The fix
 ///
-/// `rendersIdentically(to:)` compares all visible rendered fields including
+/// `rendersIdentically(_:)` compares all visible rendered fields including
 /// `relayCount` (rendered by `NoteRowView.relayChip` as `Text("\(item.relayCount)")`).
 /// Previously `relayCount` was excluded, causing the relay chip to show a stale
 /// count when relay count incremented on idle ticks.
