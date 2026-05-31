@@ -10,12 +10,12 @@ import XCTest
 /// ≤4Hz. On a quiet feed, the snapshot may have updated KernelMetrics
 /// (bytesRx, timing) with no new events and no visible field changes.
 /// `TimelineListView.==` (HomeFeedView.swift) delegates item comparison entirely
-/// to `TimelineItem.rendersIdentically(to:)`, so correctness of the guard
+/// to `TimelineItem.rendersIdentically(_:)`, so correctness of the guard
 /// reduces to correctness of that pure function.
 ///
 /// ## The fix
 ///
-/// `rendersIdentically(to:)` compares all visible rendered fields including
+/// `rendersIdentically(_:)` compares all visible rendered fields including
 /// `relayCount` (rendered by `NoteRowView.relayChip` as `Text("\(item.relayCount)")`).
 /// Previously `relayCount` was excluded, causing the relay chip to show a stale
 /// count when relay count incremented on idle ticks.
@@ -71,7 +71,7 @@ final class IdleReRenderTests: XCTestCase {
     func test_rendersIdentically_trueWhenAllFieldsMatch() {
         let a = makeItem()
         let b = makeItem()
-        XCTAssertTrue(a.rendersIdentically(to: b),
+        XCTAssertTrue(a.rendersIdentically(b),
             "Items with identical visible fields should render identically")
     }
 
@@ -82,7 +82,7 @@ final class IdleReRenderTests: XCTestCase {
     func test_rendersIdentically_falseWhenRelayCountDiffers() {
         let a = makeItem(relayCount: 1)
         let b = makeItem(relayCount: 3)
-        XCTAssertFalse(a.rendersIdentically(to: b),
+        XCTAssertFalse(a.rendersIdentically(b),
             "Items differing in relayCount should NOT render identically — relayChip displays the count")
     }
 
@@ -90,7 +90,7 @@ final class IdleReRenderTests: XCTestCase {
     func test_rendersIdentically_falseWhenContentDiffers() {
         let a = makeItem(content: "Hello, world!", contentPreview: "Hello, world!")
         let b = makeItem(content: "Goodbye, world!", contentPreview: "Goodbye, world!")
-        XCTAssertFalse(a.rendersIdentically(to: b),
+        XCTAssertFalse(a.rendersIdentically(b),
             "Items differing in content should NOT render identically")
     }
 
@@ -98,7 +98,7 @@ final class IdleReRenderTests: XCTestCase {
     func test_rendersIdentically_falseWhenAuthorDisplayNameDiffers() {
         let a = makeItem(authorDisplayName: "Alice")
         let b = makeItem(authorDisplayName: "Bob")
-        XCTAssertFalse(a.rendersIdentically(to: b),
+        XCTAssertFalse(a.rendersIdentically(b),
             "Items differing in authorDisplayName should NOT render identically")
     }
 
@@ -106,7 +106,7 @@ final class IdleReRenderTests: XCTestCase {
     func test_rendersIdentically_falseWhenAuthorPictureUrlDiffers() {
         let a = makeItem(authorPictureUrl: "https://example.com/alice.jpg")
         let b = makeItem(authorPictureUrl: "https://example.com/alice-v2.jpg")
-        XCTAssertFalse(a.rendersIdentically(to: b),
+        XCTAssertFalse(a.rendersIdentically(b),
             "Items differing in authorPictureUrl should NOT render identically")
     }
 
@@ -114,7 +114,7 @@ final class IdleReRenderTests: XCTestCase {
     func test_rendersIdentically_falseWhenCreatedAtDiffers() {
         let a = makeItem(createdAt: 1_000_000)
         let b = makeItem(createdAt: 2_000_000)
-        XCTAssertFalse(a.rendersIdentically(to: b),
+        XCTAssertFalse(a.rendersIdentically(b),
             "Items differing in createdAt should NOT render identically")
     }
 }
