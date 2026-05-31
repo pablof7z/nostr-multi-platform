@@ -48,14 +48,16 @@ by importance — out-of-order reading will leave you missing prerequisites.
 01 what NMP is ──▶ 02 mental model (kernel + extension seams) ──▶ 05 traits + seams
                           │
                           ▼
-   25 migrate from NDK/Applesauce   17 iOS shell ──▶ 19 walkthrough
+   25 migrate from NDK/Applesauce   17 iOS shell ──▶ 19a/19b walkthrough
                           │                                 │
-                          ▼                                 ▼
-        21 framework-magic contract            26 FAQ / troubleshooting
+                          ▼                                 ├──▶ 19c Rust shell
+        21 framework-magic contract                         ▼
+                                               26 FAQ / troubleshooting
 ```
 
-Start at **01 → 02 → 05**, then jump to **19** (build a microblog
-end-to-end). **25** is the fast on-ramp if you already think in NDK or
+Start at **01 → 02 → 05**, then jump to **19a/19b** (build a microblog
+end-to-end). **19c** covers Rust-native shell bootstrapping (TUI, CLI,
+headless tools). **25** is the fast on-ramp if you already think in NDK or
 Applesauce terms. **21** tells you exactly what you get for free (so you do
 not re-implement it). **26** when something breaks.
 
@@ -90,7 +92,8 @@ file every doc/code gap you find into **27**.
                 │       ├─▶ 16
                 │       └─▶ 20
                 ├─▶ 10 (07,11)   13 (07,08)   14 (07,12,13)
-                ├─▶ 15 ─▶ 19
+                ├─▶ 15 ─▶ 19a ─▶ 19b ─┬─▶ 19c (Rust shell)
+                │                    └─▶ 26
                 └─▶ 21 ─▶ 25 ─▶ 26
 23 glossary · 24 reference cards — random-access; bookmark, do not read linearly.
 27 discrepancies — the orchestrator queue; consult, do not "fix in section."
