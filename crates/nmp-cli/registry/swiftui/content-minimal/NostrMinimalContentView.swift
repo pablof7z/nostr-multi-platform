@@ -1,6 +1,6 @@
 import SwiftUI
 
-public struct NostrContentRun: Identifiable, Equatable {
+public struct NostrContentRun: Identifiable, Equatable, RenderIdentifiable {
     public enum Kind: Equatable {
         case text
         case mention(pubkey: String)
@@ -17,6 +17,12 @@ public struct NostrContentRun: Identifiable, Equatable {
         self.label = label
         self.kind = kind
     }
+
+    public func rendersIdentically(_ other: Self) -> Bool {
+        self.id == other.id
+            && self.label == other.label
+            && self.kind == other.kind
+    }
 }
 
 public struct NostrMinimalContentView: View {
@@ -30,7 +36,10 @@ public struct NostrMinimalContentView: View {
     public var body: some View {
         FlowLayout(spacing: 4) {
             ForEach(runs) { run in
-                runView(run)
+                EquatableRow(model: run) { model in
+                    runView(model)
+                }
+                .equatable()
             }
         }
     }

@@ -325,7 +325,7 @@ describe("shared Chirp web semantics", () => {
         projections: {
           accounts: [{ id: "alice", display_name: "Alice", npub: "npub1alice", is_active: true }],
           active_account: "alice",
-          relay_edit_rows: [{ url: "wss://relay.example", role_label: "both" }],
+          relay_edit_rows: [{ url: "wss://relay.example", role: "both" }],
           relay_diagnostics: [{ url: "wss://relay.example", role: "both,indexer", status: "configured" }],
           wallet: { status: "ready", balance_msats: 21000 },
           "nmp.nip17.dm_inbox": {

@@ -16,6 +16,11 @@ import org.nmp.android.model.DmInboxSnapshot
 import org.nmp.android.model.DmMessage
 import org.nmp.android.model.KernelMetricsLite
 import org.nmp.android.model.KernelUpdate
+import org.nmp.android.model.MarmotGroup
+import org.nmp.android.model.MarmotKeyPackage
+import org.nmp.android.model.MarmotMessage
+import org.nmp.android.model.MarmotPendingWelcome
+import org.nmp.android.model.MarmotSnapshot
 import org.nmp.android.model.ProfileCard
 import org.nmp.android.model.RelayStatus
 import org.nmp.android.model.SnapshotProjections
@@ -214,6 +219,83 @@ object KernelUpdateFrameDecoder {
             // "wallet" → no underscores → key stays "wallet"
             walletStatus = m["wallet"]?.let { decodeWalletStatusString(it) },
             walletBalance = m["wallet"]?.let { decodeWalletBalanceString(it) },
+            // Marmot push projections (V-107 / ADR-0039). The keys
+            // "nmp.marmot.snapshot" / "nmp.marmot.messages" carry dots but no
+            // underscores, so convertFromSnakeCase leaves them unchanged.
+            marmotSnapshot = m["nmp.marmot.snapshot"]?.let { decodeMarmotSnapshot(it) },
+            marmotMessages = m["nmp.marmot.messages"]
+                ?.mapOf { groupMessages -> groupMessages.listOf { decodeMarmotMessage(it) } }
+                ?: emptyMap(),
+        )
+    }
+
+    private fun decodeMarmotSnapshot(v: Value): MarmotSnapshot? {
+        // The kernel emits an empty object `{}` when no Marmot identity is
+        // registered (the projection slot is None). An empty map has no keys,
+        // so every field falls through to its default — a benign empty snapshot.
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return MarmotSnapshot(
+            groups = m["groups"]?.listOf { decodeMarmotGroup(it) } ?: emptyList(),
+            pendingWelcomes = m["pendingWelcomes"]?.listOf { decodeMarmotPendingWelcome(it) } ?: emptyList(),
+            keyPackage = m["keyPackage"]?.let { decodeMarmotKeyPackage(it) } ?: MarmotKeyPackage(),
+            cachedKpPubkeys = m["cachedKpPubkeys"]?.listOf { it.stringOrNull() } ?: emptyList(),
+            invitesChipLabel = m["invitesChipLabel"]?.stringOrNull(),
+            isRegistered = m["isRegistered"]?.boolOr(false) ?: false,
+            orphanedCommitCount = m["orphanedCommitCount"]?.intOr(0) ?: 0,
+            keyringUnavailable = m["keyringUnavailable"]?.boolOr(false) ?: false,
+        )
+    }
+
+    private fun decodeMarmotGroup(v: Value): MarmotGroup? {
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return MarmotGroup(
+            idHex = m["idHex"]?.stringOr("") ?: "",
+            name = m["name"]?.stringOr("") ?: "",
+            displayName = m["displayName"]?.stringOr("") ?: "",
+            initials = m["initials"]?.stringOr("") ?: "",
+            members = m["members"]?.listOf { it.stringOrNull() } ?: emptyList(),
+            memberCount = m["memberCount"]?.intOr(0) ?: 0,
+            unreadCount = m["unreadCount"]?.let { if (it.kind == ValueKind.Null) null else it.intOr(0) },
+            lastMsgAt = m["lastMsgAt"]?.let { if (it.kind == ValueKind.Null) null else it.longOr(0L) },
+        )
+    }
+
+    private fun decodeMarmotPendingWelcome(v: Value): MarmotPendingWelcome? {
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return MarmotPendingWelcome(
+            idHex = m["idHex"]?.stringOr("") ?: "",
+            groupName = m["groupName"]?.stringOr("") ?: "",
+            displayName = m["displayName"]?.stringOr("") ?: "",
+            inviterNpub = m["inviterNpub"]?.stringOr("") ?: "",
+        )
+    }
+
+    private fun decodeMarmotKeyPackage(v: Value): MarmotKeyPackage? {
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return MarmotKeyPackage(
+            published = m["published"]?.boolOr(false) ?: false,
+            dTag = m["dTag"]?.stringOrNull(),
+            ageSecs = m["ageSecs"]?.let { if (it.kind == ValueKind.Null) null else it.longOr(0L) },
+            stale = m["stale"]?.boolOr(false) ?: false,
+            ageDisplay = m["ageDisplay"]?.stringOrNull(),
+            subtitle = m["subtitle"]?.stringOr("") ?: "",
+            actionLabel = m["actionLabel"]?.stringOr("") ?: "",
+        )
+    }
+
+    private fun decodeMarmotMessage(v: Value): MarmotMessage? {
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return MarmotMessage(
+            id = m["id"]?.stringOr("") ?: "",
+            senderPubkeyHex = m["senderPubkeyHex"]?.stringOr("") ?: "",
+            content = m["content"]?.stringOr("") ?: "",
+            createdAt = m["createdAt"]?.longOr(0L) ?: 0L,
+            epoch = m["epoch"]?.let { if (it.kind == ValueKind.Null) null else it.longOr(0L) },
         )
     }
 

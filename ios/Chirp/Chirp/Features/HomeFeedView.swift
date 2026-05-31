@@ -227,7 +227,7 @@ private struct TimelineListView: View, Equatable {
         lhs.roots == rhs.roots
             && lhs.nextCursor == rhs.nextCursor
             && lhs.items.count == rhs.items.count
-            && zip(lhs.items, rhs.items).allSatisfy { $0.rendersIdentically(to: $1) }
+            && zip(lhs.items, rhs.items).allSatisfy { $0.rendersIdentically($1) }
             && lhs.mentionProfiles == rhs.mentionProfiles
     }
 

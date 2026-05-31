@@ -63,12 +63,17 @@ val cargoNdk by tasks.registering(Exec::class) {
     workingDir = rootProject.projectDir.parentFile // repo root
     val cargo = "${System.getProperty("user.home")}/.cargo/bin/cargo"
     val bin = if (OperatingSystem.current().isWindows) "$cargo.exe" else cargo
+    // `--features marmot` mirrors the iOS `justfile` targets, which pass
+    // `--features marmot` to every Chirp build so the shell links the
+    // `nmp_marmot_*` MLS-over-Nostr symbols. The flag forwards through the
+    // `nmp-android-ffi` `marmot` feature to `nmp-app-chirp/marmot`; without it
+    // the Android .so ships without Marmot, exactly as it did pre-V-109.
     commandLine(
         bin, "ndk",
         "--manifest-path", "crates/nmp-android-ffi/Cargo.toml",
         "-t", "arm64-v8a", "-t", "x86_64",
         "-o", "android/app/src/main/jniLibs",
-        "build", "--release",
+        "build", "--release", "--features", "marmot",
     )
 }
 

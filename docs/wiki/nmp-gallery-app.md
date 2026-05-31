@@ -38,7 +38,7 @@ The nmp-gallery app, its static library, and its TUI are retained as the showcas
 <!-- citations: [^f8eb6-2] [^9de49-7] [^f5503-4] [^95a68-2] [^6e8af-5] -->
 ## Closed Decisions
 
-PD-033-A is closed with the explicit acknowledgement that the framework is not yet expressive enough to host an honest second app. [^f8eb6-3]
+PD-033-A is re-opened as buildable (2026-05-29, ADR-0039): the push projection seam already satisfies the second-app properties, so no new affordances are required. The thesis is unblocked but not yet demonstrated; the podcast player is the live candidate. [^f8eb6-3]
 ## See Also
 
 An iOS NmpUserPreview app exists and is used for Nmp component preview screenshots. Its source is ephemeral and not tracked in the repository, meaning it will be lost on system restart.

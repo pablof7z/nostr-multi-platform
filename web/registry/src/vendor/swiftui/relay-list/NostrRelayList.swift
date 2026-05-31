@@ -4,33 +4,22 @@ import SwiftUI
 
 /// One row of the kernel's `projections.relay_edit_rows` array.
 ///
-/// `roleLabel` and `roleTint` are pre-formatted by the kernel
-/// (`crates/nmp-core/src/actor/relay_roles.rs`) — do not reformat them
-/// in Swift (aim.md §6.9 / display separation rule).
-///
-/// `roleTint` is a semantic token (`accent` | `info` | `success` |
-/// `neutral`) emitted by `RELAY_ROLE_METADATA`. A 6-char hex string is
-/// also accepted to stay forward-compatible if the kernel ever emits
-/// custom palette colours; see `NostrRelayList.tintColor(for:)`.
+/// The kernel emits only `url` and `role` (canonical string). Role label
+/// and tint are looked up from the `relay_role_options` projection by the
+/// component that displays this row.
 public struct NostrRelayEditRow: Codable, Identifiable, Equatable {
     public var id: String { url }
     public let url: String
     public let role: String
-    public let roleLabel: String
-    public let roleTint: String
 
-    public init(url: String, role: String, roleLabel: String, roleTint: String) {
+    public init(url: String, role: String) {
         self.url = url
         self.role = role
-        self.roleLabel = roleLabel
-        self.roleTint = roleTint
     }
 
     private enum CodingKeys: String, CodingKey {
         case url
         case role
-        case roleLabel = "role_label"
-        case roleTint = "role_tint"
     }
 }
 
@@ -61,15 +50,41 @@ public struct NostrRelayConnectionStatus: Codable, Equatable {
 
 // MARK: - Component
 
+/// Role option metadata — one entry from `projections.relay_role_options`.
+/// Used internally by `NostrRelayList` to look up role label and tint.
+public struct RelayRoleOption: Codable, Identifiable, Equatable {
+    public let value: String
+    public let label: String
+    public let tint: String
+    public let isDefault: Bool
+
+    public var id: String { value }
+
+    public init(value: String, label: String, tint: String, isDefault: Bool) {
+        self.value = value
+        self.label = label
+        self.tint = tint
+        self.isDefault = isDefault
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case value
+        case label
+        case tint
+        case isDefault = "is_default"
+    }
+}
+
 /// Relay list component — shows a user's configured relays with
 /// connection-status dots and role badges.
 ///
 /// Mirrors NDK's svelte `RelayList`. Data comes straight from the NMP
-/// snapshot: rows from `projections.relay_edit_rows`, connection
-/// statuses folded from the top-level `relay_statuses` field keyed by
-/// relay URL.
+/// snapshot: rows from `projections.relay_edit_rows`, role options from
+/// `projections.relay_role_options`, and connection statuses folded from
+/// the top-level `relay_statuses` field keyed by relay URL.
 public struct NostrRelayList: View {
     public let relays: [NostrRelayEditRow]
+    public let relayRoleOptions: [RelayRoleOption]
     /// Keyed by relay URL — caller merges from `relay_statuses` (typically
     /// `Dictionary(uniqueKeysWithValues: snapshot.relayStatuses.map { ($0.relayUrl, $0.connection) })`).
     public var connectionStatus: [String: String]
@@ -77,10 +92,12 @@ public struct NostrRelayList: View {
 
     public init(
         relays: [NostrRelayEditRow],
+        relayRoleOptions: [RelayRoleOption],
         connectionStatus: [String: String] = [:],
         onRelayTap: ((NostrRelayEditRow) -> Void)? = nil
     ) {
         self.relays = relays
+        self.relayRoleOptions = relayRoleOptions
         self.connectionStatus = connectionStatus
         self.onRelayTap = onRelayTap
     }
@@ -99,6 +116,7 @@ public struct NostrRelayList: View {
                 ForEach(relays) { relay in
                     RelayRow(
                         relay: relay,
+                        relayRoleOptions: relayRoleOptions,
                         connection: connectionStatus[relay.url],
                         onTap: onRelayTap.map { handler in { handler(relay) } }
                     )
@@ -134,8 +152,21 @@ public struct NostrRelayList: View {
 
 private struct RelayRow: View {
     let relay: NostrRelayEditRow
+    let relayRoleOptions: [RelayRoleOption]
     let connection: String?
     let onTap: (() -> Void)?
+
+    private var roleOption: RelayRoleOption? {
+        relayRoleOptions.first { $0.value == relay.role }
+    }
+
+    private var roleLabel: String {
+        roleOption?.label ?? relay.role
+    }
+
+    private var roleTint: String {
+        roleOption?.tint ?? "accent"
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -148,8 +179,8 @@ private struct RelayRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             RoleBadge(
-                label: relay.roleLabel,
-                tint: NostrRelayList.tintColor(for: relay.roleTint)
+                label: roleLabel,
+                tint: NostrRelayList.tintColor(for: roleTint)
             )
         }
         .padding(.vertical, 8)
@@ -157,7 +188,7 @@ private struct RelayRow: View {
         .contentShape(Rectangle())
         .onTapGesture { onTap?() }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(displayUrl), \(relay.roleLabel), \(accessibilityStatus)")
+        .accessibilityLabel("\(displayUrl), \(roleLabel), \(accessibilityStatus)")
         .accessibilityAddTraits(onTap != nil ? .isButton : [])
     }
 

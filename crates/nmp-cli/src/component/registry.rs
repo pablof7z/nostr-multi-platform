@@ -14,6 +14,10 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../registry/swiftui/content-core/ContentTreeWire.swift"),
     ),
     (
+        "swiftui/render-identity/RenderIdentifiable.swift",
+        include_str!("../../registry/swiftui/render-identity/RenderIdentifiable.swift"),
+    ),
+    (
         "swiftui/content-minimal/NostrMinimalContentView.swift",
         include_str!("../../registry/swiftui/content-minimal/NostrMinimalContentView.swift"),
     ),
@@ -50,6 +54,14 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
     (
         "swiftui/login-block/NostrLoginBlock.swift",
         include_str!("../../registry/swiftui/login-block/NostrLoginBlock.swift"),
+    ),
+    (
+        "swiftui/relay-list/NostrRelayList.swift",
+        include_str!("../../registry/swiftui/relay-list/NostrRelayList.swift"),
+    ),
+    (
+        "swiftui/relay-list/Examples/NostrRelayListPreview.swift",
+        include_str!("../../registry/swiftui/relay-list/Examples/NostrRelayListPreview.swift"),
     ),
     // Compose (M16-C4)
     (

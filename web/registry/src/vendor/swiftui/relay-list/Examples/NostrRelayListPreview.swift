@@ -6,22 +6,21 @@ struct NostrRelayListPreview: View {
             relays: [
                 NostrRelayEditRow(
                     url: "wss://relay.damus.io",
-                    role: "both",
-                    roleLabel: "Both",
-                    roleTint: "accent"
+                    role: "both"
                 ),
                 NostrRelayEditRow(
                     url: "wss://nos.lol",
-                    role: "read",
-                    roleLabel: "Read",
-                    roleTint: "info"
+                    role: "read"
                 ),
                 NostrRelayEditRow(
                     url: "wss://relay.snort.social",
-                    role: "write",
-                    roleLabel: "Write",
-                    roleTint: "success"
+                    role: "write"
                 ),
+            ],
+            relayRoleOptions: [
+                RelayRoleOption(value: "both", label: "Both", tint: "accent", isDefault: true),
+                RelayRoleOption(value: "read", label: "Read", tint: "info", isDefault: false),
+                RelayRoleOption(value: "write", label: "Write", tint: "success", isDefault: false),
             ],
             connectionStatus: [
                 "wss://relay.damus.io": "connected",
@@ -39,6 +38,9 @@ struct NostrRelayListPreview: View {
 }
 
 #Preview("Relay list — empty state") {
-    NostrRelayList(relays: [])
-        .padding()
+    NostrRelayList(
+        relays: [],
+        relayRoleOptions: []
+    )
+    .padding()
 }

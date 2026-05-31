@@ -1,0 +1,16 @@
+{
+  "name": "swiftui-render-identity",
+  "type": "registry:ui",
+  "title": "Render Identity (SwiftUI)",
+  "description": "RenderIdentifiable protocol and EquatableRow helper for SwiftUI row equatability optimization.",
+  "dependencies": [],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/swiftui/render-identity/RenderIdentifiable.swift",
+      "type": "registry:ui",
+      "target": "Components/SwiftUI/RenderIdentifiable.swift",
+      "content": "import SwiftUI\n\n/// A value type whose render-relevant fields can be compared cheaply so\n/// SwiftUI `.equatable()` row wrappers skip body re-evaluation at idle.\npublic protocol RenderIdentifiable {\n    func rendersIdentically(_ other: Self) -> Bool\n}\n\nstruct EquatableRow<Model: RenderIdentifiable, Content: View>: View, Equatable {\n    let model: Model\n    @ViewBuilder let content: (Model) -> Content\n    var body: some View { content(model) }\n    static func == (lhs: Self, rhs: Self) -> Bool {\n        lhs.model.rendersIdentically(rhs.model)\n    }\n}\n"
+    }
+  ]
+}

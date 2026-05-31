@@ -15,6 +15,9 @@ description = "NIP-17 private direct messages — kind:14 chat-message rumor bui
 # `nmp.nip17.send` action implements, plus the app-neutral `AppHost`
 # registration seam.
 nmp-core = { path = "../nmp-core" }
+# Layer-0 kind-constant registry — re-exports KIND_DM_RELAY_LIST
+# so this crate no longer duplicates that value (V-57).
+nmp-kinds = { path = "../nmp-kinds" }
 # `nmp-nip59` owns the gift-wrap primitives — the inbox calls
 # `unwrap_gift_wrap` to unseal an incoming kind:1059 envelope.
 nmp-nip59 = { path = "../nmp-nip59" }

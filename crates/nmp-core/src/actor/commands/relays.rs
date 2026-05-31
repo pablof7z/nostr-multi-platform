@@ -270,8 +270,6 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].url, "wss://relay.example");
         assert_eq!(rows[0].role, "read");
-        assert_eq!(rows[0].role_label, "Read");
-        assert_eq!(rows[0].role_tint, "info");
         // Success clears any prior error toast.
         assert_eq!(kernel.last_error_toast_snapshot(), None);
     }
@@ -307,8 +305,6 @@ mod tests {
         let rows = kernel.relay_edit_rows_snapshot();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].role, "write");
-        assert_eq!(rows[0].role_label, "Write");
-        assert_eq!(rows[0].role_tint, "success");
     }
 
     #[test]

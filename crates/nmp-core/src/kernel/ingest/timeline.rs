@@ -169,7 +169,20 @@ impl Kernel {
         // `collect_content_mention_pubkeys` short-circuits before any alloc on
         // the common (no-mention) path.
         self.collect_content_mention_pubkeys(&event.content);
-        self.request_profile_for_rendered_note(&event.pubkey);
+        // F-CR-00 capstone: proactive kind:0 fetch removed. The kernel now
+        // fetches kind:0 ONLY in response to component claims
+        // (`claim_profile` / `claim_event`). Every author-displaying
+        // component on all platforms self-claims on mount:
+        //   iOS:     ChirpAvatar `.task(id: pubkey)` → claimProfile
+        //   Android: RememberProfileClaim (DisposableEffect)
+        //   TUI:     claim_visible_author_profile diff
+        //   Web:     Post.onMount → claimProfileCommand (#885)
+        //   Gallery: claim_profile at render time
+        // The `author_display_name` fallback baked into each TimelineItem
+        // snapshot is populated from the profile cache as soon as a
+        // previously-claimed kind:0 arrives — no blank-out on first render.
+        // The `claimed_events` / `resolved_profiles` enrichment reads
+        // `self.profiles` which the claim path populates unchanged.
 
         let cached = StoredEvent {
             id: event.id.clone(),
