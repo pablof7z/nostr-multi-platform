@@ -14,8 +14,9 @@ import os.log
 // Conventions matched verbatim from the modular-timeline bridge:
 //   • C symbols declared in `Bridge/NmpCore.h` (the project's bridging
 //     header — same place `nmp_app_chirp_*` live).
-//   • `String(cString:)` decode + free EVERY returned pointer via
-//     `nmp_marmot_string_free`.
+//   • Group/message state is read from the pushed `nmp.marmot.snapshot` /
+//     `nmp.marmot.messages` projections in the snapshot `apply()` path
+//     (V-107 / ADR-0039) — the old `nmp_marmot_*` pull symbols are gone.
 //   • D6 resilience: any nil pointer / decode failure → empty state, never
 //     a crash or throw across the bridge.
 //
