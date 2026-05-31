@@ -553,21 +553,28 @@ impl Kernel {
         // the borrow checker — mirrors the identical pattern in
         // `maybe_open_thread_hydration` (thread-half precedent).
         let note_kinds: Vec<u32> = self.author_view.note_kinds.iter().copied().collect();
-        let notes_urls = self.route_outbox_subscription_relays(
-            stable_hash64(("author-notes", pubkey.as_str(), seq)),
-            pubkey.as_str(),
-            1,
-            BootstrapSeed::Discovery,
-        );
-        for relay_url in notes_urls {
-            let tag = relay_tag(&relay_url);
-            requests.push(self.req_for_relay(
-                RelayRole::Content,
-                relay_url,
-                &format!("author-notes-{seq}-{tag}"),
-                &format!("selected author notes {}", short_hex(&pubkey)),
-                json!({"kinds":note_kinds,"authors":[pubkey.clone()],"limit":100}),
-            ));
+        // No kinds declared (e.g. `retarget_timeline` fires before the host has
+        // called `nmp_app_open_timeline`/`open_author`, so `follow_feed_kinds`
+        // is still empty) → emit no author-notes REQ rather than a malformed
+        // `"kinds":[]` filter on the wire. A later `open_author` with a real
+        // kind set re-issues correctly.
+        if !note_kinds.is_empty() {
+            let notes_urls = self.route_outbox_subscription_relays(
+                stable_hash64(("author-notes", pubkey.as_str(), seq)),
+                pubkey.as_str(),
+                1,
+                BootstrapSeed::Discovery,
+            );
+            for relay_url in notes_urls {
+                let tag = relay_tag(&relay_url);
+                requests.push(self.req_for_relay(
+                    RelayRole::Content,
+                    relay_url,
+                    &format!("author-notes-{seq}-{tag}"),
+                    &format!("selected author notes {}", short_hex(&pubkey)),
+                    json!({"kinds":note_kinds,"authors":[pubkey.clone()],"limit":100}),
+                ));
+            }
         }
         requests.append(&mut self.maybe_open_thread_hydration());
         requests

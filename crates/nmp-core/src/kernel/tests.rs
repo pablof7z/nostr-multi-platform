@@ -530,6 +530,36 @@ fn v68_author_note_req_carries_sentinel_kind_not_hardcoded() {
     }
 }
 
+/// V-68-A4: empty author-note kinds emit NO author-notes REQ (no malformed
+/// `"kinds":[]` filter on the wire). Guards the `retarget_timeline` path where
+/// `follow_feed_kinds` can be empty before the host opens the timeline.
+#[test]
+fn v68_author_empty_kinds_emits_no_notes_req() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+
+    let requests = kernel.open_author(
+        FIATJAF_PUBKEY.to_string(),
+        std::collections::BTreeSet::new(),
+        true,
+    );
+
+    let notes: Vec<_> = requests
+        .iter()
+        .filter(|r| r.text.contains("\"author-notes-"))
+        .collect();
+    assert!(
+        notes.is_empty(),
+        "V-68-A4: empty note_kinds must emit NO author-notes REQ (no \"kinds\":[] on the wire); got {notes:?}"
+    );
+    for req in &requests {
+        assert!(
+            !req.text.contains("\"kinds\":[]"),
+            "V-68-A4: no REQ may carry an empty kinds filter; got {}",
+            req.text
+        );
+    }
+}
+
 /// V-68-A3: deferred-relay path stores author-note kinds.
 ///
 /// When `can_send=false` the request is queued (`request_pending=true`,
