@@ -1363,3 +1363,142 @@ fn workspace_is_d8_no_polling_clean() {
         stdout, stderr
     );
 }
+
+// --- D17 (social-timeline kind policy regression guard) ---------------------
+
+#[test]
+fn d17_positive_fixture_fires() {
+    // Stage pos.rs in isolation so neg.rs cannot pollute the assertion.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d17_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d17/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D17 is path-scoped to `crates/nmp-core/src/` — the staged fixture
+    // under `target/` falls outside that scope, so `--d17-extra-scope` opts
+    // it in (mirrors `--d14-extra-scope`).
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d17-extra-scope",
+        "doctrine_lint_d17_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d17 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D17]"),
+        "d17 positive must emit >=1 D17 finding; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("V-68"),
+        "d17 finding message must reference V-68; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn d17_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d17_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d17/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d17-extra-scope",
+        "doctrine_lint_d17_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d17 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D17]"),
+        "d17 negative must produce zero D17 findings; stdout:\n{}",
+        stdout
+    );
+}
+
+/// D17 must NOT fire on a test-only file (e.g. `tests.rs`) even when the
+/// file path is in the nmp-core scope and the literal appears on a
+/// non-comment line. This pins the `d6::file_is_test_only` exemption.
+#[test]
+fn d17_negative_test_only_file_exempt() {
+    let workspace = workspace_root();
+    let tmp = workspace
+        .join("target")
+        .join("doctrine_lint_d17_test_only_exempt");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    // Write a file named `tests.rs` (triggers `file_is_test_only`) whose
+    // body contains the banned shape on a non-comment line.
+    std::fs::write(
+        tmp.join("tests.rs"),
+        "fn check_kinds() {\n    \
+         assert!(req.contains(\"\\\"kinds\\\":[1,6]\"));\n}\n",
+    )
+    .expect("write tests.rs fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d17-extra-scope",
+        "doctrine_lint_d17_test_only_exempt",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d17 must not fire on tests.rs; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D17]"),
+        "d17 must not emit a finding for a tests.rs file; stdout:\n{}",
+        stdout
+    );
+}
+
+/// D17 is nmp-core-scoped: a file outside `crates/nmp-core/src/` (and not
+/// opted in via `--d17-extra-scope`) must never trigger even if it contains
+/// the banned shape.
+#[test]
+fn d17_does_not_fire_outside_nmp_core() {
+    let workspace = workspace_root();
+    let tmp = workspace
+        .join("target")
+        .join("doctrine_lint_d17_out_of_scope");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    std::fs::write(
+        tmp.join("lib.rs"),
+        "pub fn filter() -> &'static str {\n    \
+         r#\"{\\\"kinds\\\":[1,6]}\"#\n}\n",
+    )
+    .expect("write lib.rs fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // NOTE: no --d17-extra-scope — the rule must self-gate away.
+    let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
+    assert_eq!(
+        code, 0,
+        "d17 out-of-scope must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D17]"),
+        "d17 must not fire on out-of-scope paths; stdout:\n{}",
+        stdout
+    );
+}
