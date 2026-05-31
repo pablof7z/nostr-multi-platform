@@ -101,21 +101,26 @@ fn full_registry_workflow() {
     let registries = helpers::read_lock_field(&lock, "registry");
     assert_eq!(
         registries.len(),
-        2,
-        "expected two `registry = ...` entries (one per component), got: {registries:?}\n{lock}"
+        3,
+        "expected three `registry = ...` entries (one per component), got: {registries:?}\n{lock}"
     );
     assert!(
         registries.iter().all(|r| r == "nmp-local"),
         "every component must be pinned to the builtin registry id: got {registries:?}"
     );
 
-    // Every installed file (3 of them) must have a source_sha256 that
+    // Every installed file (4 of them) must have a source_sha256 that
     // matches the on-disk content.
     let renderer_sha_install = lock_sha_for_path(
         &lock,
         "Components/NostrContent/NostrContentRenderer.swift",
     )
     .expect("renderer must be in the lock");
+    let render_identity_sha_install = lock_sha_for_path(
+        &lock,
+        "Components/SwiftUI/RenderIdentifiable.swift",
+    )
+    .expect("render-identity must be in the lock");
     let minimal_sha_install = lock_sha_for_path(
         &lock,
         "Components/NostrContent/NostrMinimalContentView.swift",

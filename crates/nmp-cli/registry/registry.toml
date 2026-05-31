@@ -14,11 +14,20 @@ source = "swiftui/content-core/ContentTreeWire.swift"
 target = "Components/NostrContent/ContentTreeWire.swift"
 role = "source"
 [[components]]
-id = "swiftui/content-minimal"
+id = "swiftui/render-identity"
 version = "0.1.0"
 target = "swiftui"
+description = "RenderIdentifiable protocol and EquatableRow helper for SwiftUI row equatability optimization."
+[[components.files]]
+source = "swiftui/render-identity/RenderIdentifiable.swift"
+target = "Components/SwiftUI/RenderIdentifiable.swift"
+role = "source"
+[[components]]
+id = "swiftui/content-minimal"
+version = "0.2.0"
+target = "swiftui"
 description = "Minimal SwiftUI Nostr content renderer with inline text, mentions, links, and hashtags."
-dependencies = ["swiftui/content-core"]
+dependencies = ["swiftui/content-core", "swiftui/render-identity"]
 [[components.files]]
 source = "swiftui/content-minimal/NostrMinimalContentView.swift"
 target = "Components/NostrContent/NostrMinimalContentView.swift"
@@ -139,9 +148,10 @@ target = "Components/Auth/NostrLoginBlock.swift"
 role = "source"
 [[components]]
 id = "swiftui/relay-list"
-version = "0.1.0"
+version = "0.2.0"
 target = "swiftui"
 description = "Relay list component showing relay URLs with role badges and connection status dots."
+dependencies = ["swiftui/render-identity"]
 [[components.files]]
 source = "swiftui/relay-list/NostrRelayList.swift"
 target = "Components/NostrRelays/NostrRelayList.swift"

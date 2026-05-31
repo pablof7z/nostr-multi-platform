@@ -12,7 +12,7 @@ import SwiftUI
 /// `neutral`) emitted by `RELAY_ROLE_METADATA`. A 6-char hex string is
 /// also accepted to stay forward-compatible if the kernel ever emits
 /// custom palette colours; see `NostrRelayList.tintColor(for:)`.
-public struct NostrRelayEditRow: Codable, Identifiable, Equatable {
+public struct NostrRelayEditRow: Codable, Identifiable, Equatable, RenderIdentifiable {
     public var id: String { url }
     public let url: String
     public let role: String
@@ -31,6 +31,13 @@ public struct NostrRelayEditRow: Codable, Identifiable, Equatable {
         case role
         case roleLabel = "role_label"
         case roleTint = "role_tint"
+    }
+
+    public func rendersIdentically(_ other: Self) -> Bool {
+        self.url == other.url
+            && self.role == other.role
+            && self.roleLabel == other.roleLabel
+            && self.roleTint == other.roleTint
     }
 }
 
@@ -97,11 +104,14 @@ public struct NostrRelayList: View {
         } else {
             VStack(spacing: 0) {
                 ForEach(relays) { relay in
-                    RelayRow(
-                        relay: relay,
-                        connection: connectionStatus[relay.url],
-                        onTap: onRelayTap.map { handler in { handler(relay) } }
-                    )
+                    EquatableRow(model: relay) { model in
+                        RelayRow(
+                            relay: model,
+                            connection: connectionStatus[model.url],
+                            onTap: onRelayTap.map { handler in { handler(model) } }
+                        )
+                    }
+                    .equatable()
                 }
             }
         }
