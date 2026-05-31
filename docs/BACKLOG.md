@@ -854,6 +854,33 @@ The "v1 QUALITY" label applies to Stage 1+2+3-partial; Stage 3 remainder (tagged
 legacy_default, full sweep) is effectively post-v1. Consider renaming to "F-05a (DONE) /
 F-05b (post-v1)" so the v1 claim is scoped accurately.
 
+### F-06 · Honest cross-platform claim — wasm runs `KernelReducer`, not the `NmpApp` actor [V1 BLOCKER]
+
+Filed per `docs/plan.md` v1 exit criterion #6, which has long required a BACKLOG entry but
+never had one.
+
+**Problem:** the wasm/web path does not run the same actor as native. `crates/nmp-wasm/src/runtime.rs`
+drives `nmp_core::KernelReducer` directly (the `ActorCommand`/`NmpApp` actor loop is
+`feature = "native"`-gated and absent on `wasm32`). The web app is real and functional —
+`WasmRuntime` owns a `BrowserRelayDriver` pool, a NIP-07 signer slot, the publish path, and
+binary FlatBuffers snapshot push, all inside a real Web Worker (`web/chirp/src/nmp/worker.ts`)
+— but it is a *different runtime* from native, so "one core, four platforms" is not literally
+true today.
+
+**Exit criterion #6 (verbatim):** *"Either wasm runs a real `NmpApp` actor on a Web Worker,
+or 'cross-platform' is rewritten as 'iOS + macOS + Android' in `aim.md` and product copy."*
+
+**Decision required (one of):**
+1. Make the `NmpApp` actor loop compile and run on `wasm32` inside the Worker (the actor
+   thread → cooperative task; `flume` channel preserved), so all four platforms share one
+   runtime; **or**
+2. Accept `WasmRuntime`/`KernelReducer` as the canonical web runtime and rewrite the
+   "cross-platform" framing in `aim.md` and product copy to match (web is a first-class but
+   architecturally distinct shell).
+
+Until one arm lands, the "single Rust core consumed identically by four platforms" claim in
+`aim.md §1` overstates the web path.
+
 ### F-08 · App-owned component registry + content rendering kits [V1 DX]
 
 Promoted from the post-v1 bucket by user direction on 2026-05-25. This is the
