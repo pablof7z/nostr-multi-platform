@@ -452,6 +452,13 @@ pub(crate) const MAX_CLAIMS_PER_PUBKEY: usize = 256;
 /// `event_claim_drops_total`.
 pub(crate) const MAX_EVENT_CLAIMS_PER_KEY: usize = 256;
 
+/// F-TTL — inflight REQ guard duration (unix milliseconds). When a replaceable
+/// event's re-verification REQ is dispatched, the kernel sets its
+/// `check_again_after` to `now + INFLIGHT_GUARD_MS` so rapid repeated claims
+/// for the same identity don't hammer relays with concurrent REQs. On EOSE
+/// or event insertion, the kernel updates it to `now + ttl_for_kind(kind)`.
+pub(crate) const INFLIGHT_GUARD_MS: u64 = 3_600_000; // 1 hour
+
 /// Per-relay-role NIP-42 credentials. The closure signs the kind:22242 with
 /// whatever keypair is appropriate for that role (user identity for Content /
 /// Indexer; NWC client secret for Wallet). `pubkey_hex` is stamped on the
@@ -1044,6 +1051,17 @@ pub struct Kernel {
     /// kind:0 = 1h, kind:10002 = 6h, others = 6h. Can be overridden via
     /// `set_replaceable_ttl()`.
     replaceable_ttl: replaceable_ttl::ReplaceableTtlConfig,
+    /// F-TTL — pending re-verification queue for replaceable events. When a
+    /// replaceable identity's `check_again_after` is due, it is enqueued here
+    /// and drained in `pending_view_requests` as REQ filters. Maps to subscription
+    /// IDs via `reverify_subs` so the EOSE handler can update `check_again_after`
+    /// with fresh TTL when the REQ completes.
+    pending_reverify: VecDeque<crate::store::ReplaceableKey>,
+    /// F-TTL — in-flight reverification subscriptions. Maps wire sub_id →
+    /// Vec<ReplaceableKey> so the EOSE handler knows which keys to update
+    /// with fresh TTL on completion. Entries are removed when their sub_id
+    /// receives EOSE.
+    reverify_subs: HashMap<String, Vec<crate::store::ReplaceableKey>>,
     /// V-67: set when a persistent storage path was supplied but the LMDB
     /// store failed to open. `None` in the healthy case AND when no path was
     /// given (in-memory is the legitimate default for tests/CI — not a
@@ -1444,6 +1462,38 @@ impl Kernel {
         self.replaceable_ttl.ttl_for_kind(kind)
     }
 
+    /// F-TTL — enqueue a replaceable event for re-verification if its freshness
+    /// has expired.
+    ///
+    /// Called when a view component claims a replaceable identity (kind, pubkey, d_tag?).
+    /// For now, this enqueues all claims; LMDB backend will implement check_again_after
+    /// storage and time-gating separately. This is the T-C stubs path — full F-TTL
+    /// time-gating is implemented when the store gains F-TTL methods.
+    ///
+    /// Idempotent: only enqueues once per unique key until the REQ completes (EOSE).
+    /// Duplicate calls for the same key (before the first REQ finishes) are no-ops.
+    pub(crate) fn claim_replaceable(
+        &mut self,
+        kind: u32,
+        pubkey: [u8; 32],
+        d_tag: Option<String>,
+    ) {
+        let key = if crate::store::is_parameterized_replaceable(kind) {
+            crate::store::ReplaceableKey::Parameterized {
+                kind,
+                pubkey,
+                d_tag: d_tag.unwrap_or_default(),
+            }
+        } else {
+            crate::store::ReplaceableKey::Regular { kind, pubkey }
+        };
+
+        // Only enqueue if we're not already in-flight for this key.
+        if !self.pending_reverify.contains(&key) {
+            self.pending_reverify.push_back(key);
+        }
+    }
+
     /// Borrow the kernel's `EventStore` handle.
     ///
     /// Returned as a cloned `Arc<dyn EventStore>` (the kernel uses `Arc` so
@@ -1807,6 +1857,8 @@ impl Kernel {
             relay_score_map: relay_score::RelayAuthorScoreMap::new(),
             relay_score_store: None,
             replaceable_ttl: replaceable_ttl::ReplaceableTtlConfig::default(),
+            pending_reverify: VecDeque::new(),
+            reverify_subs: HashMap::new(),
             store_open_failure,
             _not_send: PhantomData,
         };

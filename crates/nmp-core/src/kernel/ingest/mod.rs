@@ -206,6 +206,12 @@ impl Kernel {
                     self.complete_unknown_oneshot(sub_id);
                 }
                 self.record_claim_expansion_eose_no_match(sub_id, relay_url);
+
+                // F-TTL — handle EOSE for in-flight reverification REQs (stub T-C).
+                // On EOSE, remove the tracked keys so future claims re-trigger REQs.
+                // Future: update check_again_after timestamps with fresh TTL.
+                let _ = self.reverify_subs.remove(sub_id);
+
                 if !keep_live {
                     // T105: CLOSE must travel back to the same socket the REQ
                     // went out on — the transport pool is URL-keyed, so a
@@ -581,6 +587,16 @@ impl Kernel {
                         d.dispatch(&verified_for_dispatch);
                     }
                 }
+
+                // F-TTL — general replaceable event freshness hook (stub T-C). Fires on
+                // Inserted, Replaced, AND Duplicate for any replaceable kind.
+                // In T-C, this is a placeholder; full freshness timestamp updates
+                // are implemented when the store gains F-TTL methods (LMDB backend).
+                // This stub ensures the ingest path is prepared for future T-D/T-E.
+                let _is_replaceable = crate::store::is_replaceable(event.kind);
+                let _is_parameterized = crate::store::is_parameterized_replaceable(event.kind);
+                // Future: store.set_check_again_after(key, ts_ms, &mut txn)
+
                 Some(outcome)
             }
             Err(e) => {

@@ -81,6 +81,11 @@ impl Kernel {
         requests.extend(self.pending_profile_claim_requests());
         requests.extend(self.pending_event_claim_requests());
         requests.extend(self.maybe_open_thread_hydration());
+        // F-TTL — drain pending re-verification REQs for replaceable events
+        // whose freshness has expired. Each key becomes a REQ filter; the sub_id
+        // is mapped to the key set so the EOSE handler can update check_again_after
+        // with a fresh TTL when the REQ completes.
+        requests.extend(self.drain_pending_reverify());
         // T82: turn referenced-but-missing ids collected during ingest into
         // oneshot fetches (idempotent — no-op when the set is empty).
         requests.extend(self.drain_unknown_oneshots());
@@ -340,5 +345,99 @@ impl Kernel {
             }
         }
         self.changed_since_emit = true;
+    }
+
+    /// F-TTL — drain the pending replaceable re-verification queue and issue
+    /// REQs via the outbox router.
+    ///
+    /// Each queued key becomes a filter: regular replaceable keys filter by
+    /// (kind, author); parameterized keys add a `#d` tag filter. The returned
+    /// sub_ids are mapped to the key set in `reverify_subs` so the EOSE handler
+    /// can update their `check_again_after` timestamps with fresh TTL.
+    pub(crate) fn drain_pending_reverify(&mut self) -> Vec<OutboundMessage> {
+        let mut requests = Vec::new();
+
+        while let Some(key) = self.pending_reverify.pop_front() {
+            // Build the reverify filter from the key.
+            let (kind, pubkey, d_tag_opt) = match &key {
+                crate::store::ReplaceableKey::Regular { kind, pubkey } => {
+                    (*kind, *pubkey, None)
+                }
+                crate::store::ReplaceableKey::Parameterized {
+                    kind,
+                    pubkey,
+                    d_tag,
+                } => (*kind, *pubkey, Some(d_tag.clone())),
+            };
+
+            // Convert pubkey bytes to hex string.
+            let mut pubkey_hex = String::with_capacity(64);
+            for byte in pubkey.iter() {
+                pubkey_hex.push_str(&format!("{:02x}", byte));
+            }
+
+            // Route the filter via the outbox router to get relay URLs.
+            let relay_urls = self.route_outbox_subscription_relays(
+                crate::stable_hash::stable_hash64((
+                    "reverify",
+                    kind,
+                    &pubkey_hex,
+                    d_tag_opt.as_deref().unwrap_or(""),
+                )),
+                &pubkey_hex,
+                kind,
+                super::mailboxes::BootstrapSeed::Discovery,
+            );
+
+            // For each relay, issue a REQ and track the sub_id.
+            for relay_url in relay_urls {
+                // Build the filter for this key.
+                let filter_value = if let Some(d_tag) = &d_tag_opt {
+                    // Parameterized replaceable: add d-tag constraint.
+                    // NIP-01 filter: {"kinds":[k],"authors":[pk],"#d":["d_tag"],"limit":1}
+                    json!({
+                        "kinds": [kind],
+                        "authors": [pubkey_hex],
+                        "#d": [d_tag],
+                        "limit": 1
+                    })
+                } else {
+                    // Regular replaceable: just kind + author.
+                    // NIP-01 filter: {"kinds":[k],"authors":[pk],"limit":1}
+                    json!({
+                        "kinds": [kind],
+                        "authors": [pubkey_hex],
+                        "limit": 1
+                    })
+                };
+
+                // Generate a stable sub_id from the key components.
+                let d_tag_suffix = d_tag_opt.as_deref().unwrap_or("");
+                let d_tag_short = &d_tag_suffix[..d_tag_suffix.len().min(8)];
+                let sub_id = format!(
+                    "reverify-{}-{}-{}",
+                    kind,
+                    &pubkey_hex[..pubkey_hex.len().min(16)],
+                    d_tag_short
+                );
+
+                // Issue the REQ.
+                requests.push(self.req_for_relay(
+                    RelayRole::Indexer,
+                    relay_url.clone(),
+                    &sub_id,
+                    "reverify replaceable",
+                    filter_value,
+                ));
+
+                // Map the sub_id to the key so the EOSE handler can find it.
+                self.reverify_subs
+                    .entry(sub_id)
+                    .or_insert_with(Vec::new)
+                    .push(key.clone());
+            }
+        }
+
+        requests
     }
 }
