@@ -994,14 +994,22 @@ extension MentionProfile {
 }
 
 /// Settings-hub view projection — `projections["settings_hub"]`. The kernel
-/// pre-formats every subtitle the Settings screen renders so the iOS shell
-/// never owns the §6/AP1 pluralization / formatting copy. Decoded under
-/// `.convertFromSnakeCase`, so the Rust `relays_subtitle` JSON key matches
-/// the synthesized `relaysSubtitle` property name directly.
+/// now emits `relay_count` as an integer; the iOS shell computes the
+/// pluralized subtitle locally. Decoded under `.convertFromSnakeCase`, so the
+/// Rust `relay_count` JSON key matches the synthesized `relayCount` property
+/// name directly.
 struct SettingsHubSummary: Decodable, Equatable {
-    let relaysSubtitle: String
+    let relayCount: Int
 
-    static let empty = SettingsHubSummary(relaysSubtitle: "")
+    var relaysSubtitle: String {
+        switch relayCount {
+        case 0: return "No relays configured"
+        case 1: return "1 relay"
+        default: return "\(relayCount) relays"
+        }
+    }
+
+    static let empty = SettingsHubSummary(relayCount: 0)
 }
 
 // ─── NIP-29 group-chat read model ─────────────────────────────────────────
