@@ -440,7 +440,7 @@ saga framing is untouched (the lnurl worker already realizes it).
 delete V-54, add `debug_assert!(active_remote().is_none())` at the 3 sites.
 `create_account` is local-key-only, so its signs never reach `.wait()` — there
 was no freeze to fix. The genuine "actor retains a callable blocking-sign
-primitive" hardening is filed separately as V-106.
+primitive" hardening is filed separately as V-111.
 
 **PR 3 — Site 2 (capability-worker seam), the ratified new piece.**
 - `crates/nmp-core/src/actor/mod.rs`: add
