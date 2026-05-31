@@ -20,9 +20,8 @@ export default function ComponentPage() {
   const component = createMemo(() => findComponent(params.id));
 
   return (
-    <Show when={component()} fallback={<NotFound />}>
-      {(c) => {
-        const cmp = c();
+    <Show when={component()} fallback={<NotFound />} keyed>
+      {(cmp) => {
 
         const defaultPlatform: Platform =
           PLATFORM_ORDER.find((p) => cmp.platforms[p]?.status === "stable") ?? "swiftui";
