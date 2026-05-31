@@ -139,8 +139,6 @@ public struct AccountSummary: Decodable, Equatable, Identifiable, Sendable {
 // Source: nmp_core::kernel::identity_state::RelayEditRow
 public struct RelayEditRow: Decodable, Equatable, Identifiable, Sendable {
     public let role: String
-    public let roleLabel: String
-    public let roleTint: String
     public let url: String
 
     public var id: String { url }
