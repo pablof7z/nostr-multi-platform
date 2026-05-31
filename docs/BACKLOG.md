@@ -960,35 +960,20 @@ open item not already in Section 2. F-CR-01 and F-CR-06 landed (PR #588). The ne
 F-CR-02, because Android must join `ContentTreeWire` before the Compose registry
 can replace the old embed card.
 
-#### F-CR-00 · Reference-driven reactive component contract [HIGH · all platforms]
+#### F-CR-00 · Reference-driven reactive component contract [FOLLOW-ON ONLY]
 
-Before expanding more user/content/embed components, make the registry contract
-match the product promise in `docs/plan/m16-component-registry.md`: app screens
-pass references; components own platform lifecycle; Rust owns truth and policy.
+The capstone was shipped (this PR): removed the proactive kind:0 fetch at
+`timeline.rs:172` (`request_profile_for_rendered_note`). The kernel now fetches
+kind:0 ONLY in response to component claims. All platforms self-claim: iOS
+ChirpAvatar `.task(id:)`, Android `RememberProfileClaim`, TUI
+`claim_visible_author_profile`, web `Post.onMount` (#885), gallery
+`claim_profile` at render time.
 
-- Define the host adapter each platform exposes to copied source components:
-  profile claim/release, embedded-event claim/release, projection observation,
-  and redraw/update delivery.
-- Update user-profile components so the primary API is reference-first
-  (`pubkey` / `npub` / `nprofile`) with hydrated projection inputs retained only
-  for previews, tests, and already-resolved composition.
-- Update embedded-event/content components so lifecycle lives in the component
-  or shared registry host, not in each feed/thread screen.
-- Update recipes and web registry copy that currently teach per-screen maps or
-  manual hydration as the normal path.
-
-**Acceptance:** a clean SwiftUI, Compose, or TUI screen can render an avatar or
-embedded event by passing a reference and local styling/callbacks only. No
-feature screen directly calls claim/release for that reference; those lifecycle
-calls are owned by the installed component or the one-time registry host adapter.
-Registry demos/previews use one canonical set of real relay-backed references
-from `apps/nmp-gallery/showcase-references.json` across SwiftUI, Compose, TUI,
-and desktop; visible hydrated profile/content/media values come from Rust-owned
-projections or neutral fallback from the exact reference, never invented fixture
-identities or event payloads.
-
-**Dependencies:** source-of-truth update in product spec and M16 plan. **Scope:**
-medium-large.
+**Remaining follow-on (separate task):** strip `author_display_name` enrichment
+from the `claimed_events` snapshot projection (currently baked in as a
+convenience shortcut). This is NOT blocking — the enrichment is harmless — but
+is the display-separation cleanup to complete the "backend sends raw pubkeys only"
+doctrine. Do not conflate with the proactive-fetch removal.
 
 #### F-CR-02 · Android gallery → `ContentTreeWire` migration [PREREQUISITE · Android]
 

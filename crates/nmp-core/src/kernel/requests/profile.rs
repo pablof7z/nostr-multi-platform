@@ -226,19 +226,6 @@ impl Kernel {
         Vec::new()
     }
 
-    pub(in crate::kernel) fn request_profile_for_rendered_note(&mut self, pubkey: &str) {
-        if self.profiles.contains_key(pubkey)
-            || self.profile_requests.requested.contains(pubkey)
-            || self.profile_requests.pending.contains(pubkey)
-        {
-            return;
-        }
-
-        self.profile_requests.pending.insert(pubkey.to_string());
-        self.changed_since_emit = true;
-        self.log(format!("queue note author profile {}", short_hex(pubkey)));
-    }
-
     /// Re-queue `pubkey` for kind:0 re-fetch after its NIP-65 mailbox just
     /// changed.
     ///
