@@ -151,15 +151,8 @@ from the 2026-05-29 audit:*
 
 ### V-107 · Complete Marmot pull-symbol retirement — Swift migration + deletion [MEDIUM · migration window]
 
-**Rust leg DONE (2026-05-31, PR feat/v107-marmot-push-projections):**
-- `nmp.marmot.snapshot` and `nmp.marmot.messages` push projections registered in
-  `nmp-marmot/src/ffi.rs:register_with_keys` via the canonical push seam (ADR-0039).
-- `chirp-repl` and `chirp-tui` migrated to `MarmotHandle::snapshot_rust()` /
-  `MarmotHandle::messages_rust()` — no C-ABI pull symbols used in Rust code.
-- `nmp_marmot_snapshot` and `nmp_marmot_group_messages` marked `#[deprecated]` (ADR-0039
-  amendment); C symbols still exported for `MarmotBridge.swift`.
-- ADR-0039 flipped to Accepted; amendment records the all-groups keyed-object design.
-
+The two `nmp.marmot.*` push projections + the Rust-consumer migration shipped (ADR-0039
+Accepted; the pull symbols are `#[deprecated]` but still exported because Swift calls them).
 **Remaining open work (Swift session required):**
 1. Migrate `MarmotBridge.swift` off `nmp_marmot_snapshot` / `nmp_marmot_group_messages`
    to read `projections["nmp.marmot.snapshot"]` and `projections["nmp.marmot.messages"][gid]`
