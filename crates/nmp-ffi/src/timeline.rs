@@ -155,6 +155,42 @@ pub extern "C" fn nmp_app_release_profile(
     });
 }
 
+/// F-TTL — force immediate re-verification of a replaceable event's freshness.
+/// Enqueues the event for re-verification so the next drain cycle issues a fresh REQ.
+/// `kind` is the NIP-01 kind (0–9999, 10000–19999, 20000–29999, 30000–39999).
+/// `pubkey` is the author's hex-encoded public key (64 hex chars or the call is ignored).
+/// `d_tag` is the d-tag string for parameterized kinds; NULL for regular kinds.
+/// FFI-clean (D6): null/invalid pubkey is a silent no-op, never a panic.
+#[no_mangle]
+pub extern "C" fn nmp_app_refresh_replaceable(
+    app: *mut NmpApp,
+    kind: u32,
+    pubkey: *const c_char,
+    d_tag: *const c_char,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(pubkey_str) = c_string_argument(pubkey) else {
+        return;
+    };
+    if !is_hex_pubkey(&pubkey_str) {
+        return;
+    }
+    // d_tag may be NULL for regular kinds; convert to Option<String>
+    let d_tag_opt = if d_tag.is_null() {
+        None
+    } else {
+        c_string_argument(d_tag)
+    };
+
+    app.send_cmd(ActorCommand::RefreshReplaceable {
+        kind,
+        pubkey: pubkey_str,
+        d_tag: d_tag_opt,
+    });
+}
+
 /// Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted
 /// per `consumer_id`; the kernel fetches the event over the OneshotApi
 /// (single-writer interest registration — D4) when not yet in the store,

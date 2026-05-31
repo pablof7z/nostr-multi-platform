@@ -287,6 +287,22 @@ impl KernelReducer {
         self.kernel.partition_auth_paused(outbound)
     }
 
+    /// F-TTL — force immediate re-verification of a replaceable event's freshness.
+    /// Enqueues the key for re-verification so the next drain cycle issues a fresh REQ.
+    /// Returns any immediately-sendable outbound frames (typically empty).
+    pub fn refresh_replaceable(
+        &mut self,
+        kind: u32,
+        pubkey: [u8; 32],
+        d_tag: Option<String>,
+    ) -> Vec<OutboundMessage> {
+        // Enqueue for immediate re-verification.
+        // The kernel will issue a fresh REQ on the next drain_pending_reverify cycle.
+        self.kernel.claim_replaceable(kind, pubkey, d_tag);
+        // Return any outbound (there should be none for pure freshness refresh).
+        Vec::new()
+    }
+
     /// Refcount a consumer's interest in the event identified by `uri`
     /// (a `nostr:nevent1…` / `nostr:note1…` / `nostr:naddr1…` URI). On the
     /// cold-claim transition registers a `OneShot + Global` lifecycle interest

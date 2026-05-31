@@ -593,6 +593,16 @@ pub enum ActorCommand {
         pubkey: String,
         consumer_id: String,
     },
+    /// F-TTL — force immediate re-verification of a replaceable event's freshness.
+    /// Enqueues the key for re-verification so the next drain cycle issues a fresh REQ.
+    /// `kind` is the NIP-01 kind (0–9999, 10000–19999, 20000–29999, 30000–39999).
+    /// `pubkey` is the author's hex-encoded public key (must be valid hex or the command is ignored).
+    /// `d_tag` is the d-tag string for parameterized kinds (20000–29999, 30000–39999); ignored for regular kinds.
+    RefreshReplaceable {
+        kind: u32,
+        pubkey: String,
+        d_tag: Option<String>,
+    },
     /// Refcounted event claim — drives the generic `claim_event` kernel
     /// primitive (F-CR-06 / ADR-0034). `uri` is a `nostr:` URI
     /// (nevent/note/naddr); profile URIs are rejected (use `ClaimProfile`).

@@ -207,9 +207,9 @@ impl Kernel {
                 }
                 self.record_claim_expansion_eose_no_match(sub_id, relay_url);
 
-                // F-TTL — handle EOSE for in-flight reverification REQs (stub T-C).
+                // F-TTL — handle EOSE for in-flight reverification REQs (T-C stub).
                 // On EOSE, remove the tracked keys so future claims re-trigger REQs.
-                // Future: update check_again_after timestamps with fresh TTL.
+                // Full timestamp updates are deferred to the drain_pending_reverify path (T-D).
                 let _ = self.reverify_subs.remove(sub_id);
 
                 if !keep_live {
@@ -588,14 +588,16 @@ impl Kernel {
                     }
                 }
 
-                // F-TTL — general replaceable event freshness hook (stub T-C). Fires on
-                // Inserted, Replaced, AND Duplicate for any replaceable kind.
-                // In T-C, this is a placeholder; full freshness timestamp updates
-                // are implemented when the store gains F-TTL methods (LMDB backend).
-                // This stub ensures the ingest path is prepared for future T-D/T-E.
-                let _is_replaceable = crate::store::is_replaceable(event.kind);
-                let _is_parameterized = crate::store::is_parameterized_replaceable(event.kind);
-                // Future: store.set_check_again_after(key, ts_ms, &mut txn)
+                // F-TTL — general replaceable event freshness hook (will be completed in T-D).
+                // Detects replaceable kinds and extracts d_tag for parameterized events.
+                // Full timestamp updates to LMDB are deferred to pending_reverify drain.
+                if crate::store::is_replaceable(event.kind) || crate::store::is_parameterized_replaceable(event.kind) {
+                    let _d_tag = if crate::store::is_parameterized_replaceable(event.kind) {
+                        event.tags.iter().find(|t| t.first().map(|s| s == "d").unwrap_or(false))
+                            .and_then(|t| t.get(1)).cloned().unwrap_or_default()
+                    } else { String::new() };
+                    // Future: enqueue for TTL update in pending_reverify drain (T-D)
+                }
 
                 Some(outcome)
             }

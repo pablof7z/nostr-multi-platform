@@ -102,7 +102,7 @@ pub mod replaceable_stubs {
 }
 
 #[cfg(not(feature = "lmdb-backend"))]
-pub use replaceable_stubs::{is_parameterized_replaceable, is_replaceable, ReplaceableKey};
+pub use replaceable_stubs::{is_parameterized_replaceable, is_replaceable, ReplaceableKey, ReplaceableCache};
 
 use std::path::PathBuf;
 
