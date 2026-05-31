@@ -16,7 +16,11 @@ export function RuntimePanel(props: {
         <div class="card-heading"><Settings size={19} /><h2>Connection</h2></div>
         <StatusLine icon={<Signal size={17} />} label="Runtime" value={labelRuntimeStatus(props.snapshot.status)} />
         <StatusLine icon={<Database size={17} />} label="Database" value={runtimeConnection.databaseName} />
-        <StatusLine icon={<HardDrive size={17} />} label="Protocol" value={`worker v${protocolVersion}`} />
+        <StatusLine
+          icon={<HardDrive size={17} />}
+          label="Bridge"
+          value={props.snapshot.clientRuntime === "in_process_fallback" ? "in-process fallback" : `worker v${protocolVersion}`}
+        />
         <button type="button" onClick={props.onStart} disabled={props.starting}>
           {props.starting ? <RefreshCw size={18} /> : <CheckCircle2 size={18} />}
           {props.starting ? "Starting" : "Start worker"}
