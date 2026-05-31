@@ -1,6 +1,14 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
 import { MessageSquare, Repeat2, Reply, Send, Star, UserRound } from "lucide-solid";
-import { followCommand, openProfileCommand, openThreadCommand, reactCommand, type RuntimeCommand } from "../nmp/actions";
+import {
+  claimProfileCommand,
+  followCommand,
+  openProfileCommand,
+  openThreadCommand,
+  reactCommand,
+  releaseProfileCommand,
+  type RuntimeCommand,
+} from "../nmp/actions";
 import { displayAuthor, shortKey, type TimelineItem } from "../nmp/snapshot";
 
 export function HomePanel(props: {
@@ -54,6 +62,7 @@ export function HomePanel(props: {
               onFollow={() => props.onCommand(followCommand(item.authorPubkey ?? item.pubkey ?? "", true))}
               onProfile={() => props.onCommand(openProfileCommand(item.authorPubkey ?? item.pubkey ?? ""))}
               onThread={() => props.onCommand(openThreadCommand(item.id))}
+              onCommand={props.onCommand}
             />
           )}
         </For>
@@ -78,7 +87,32 @@ function Post(props: {
   onFollow: () => void;
   onProfile: () => void;
   onThread: () => void;
+  onCommand: (command: RuntimeCommand) => Promise<void>;
 }) {
+  // F-CR-00 — component-owned profile claim.
+  //
+  // On mount dispatch a claim for the author pubkey so the kernel fetches
+  // the kind:0 profile. On unmount release the claim so the kernel stops
+  // tracking interest and can garbage-collect the subscription once all
+  // consumers release. `consumer_id` is stable per card instance — keyed on
+  // the event id so two cards for the same author from different events each
+  // carry their own refcount entry (matching iOS `chirp-avatar.<uuid>` /
+  // Android `note-author-<eventId>` naming conventions).
+  //
+  // Guard against empty pubkeys (rare but the kernel rejects them silently;
+  // no point dispatching a claim we know will be a no-op).
+  const authorPubkey = props.item.authorPubkey ?? props.item.pubkey ?? "";
+  const consumerId = `chirp-web-author-${props.item.id}`;
+
+  if (authorPubkey) {
+    onMount(() => {
+      void props.onCommand(claimProfileCommand(authorPubkey, consumerId));
+    });
+    onCleanup(() => {
+      void props.onCommand(releaseProfileCommand(authorPubkey, consumerId));
+    });
+  }
+
   const author = () => displayAuthor(props.item);
   return (
     <article class="post">

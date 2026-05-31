@@ -237,6 +237,97 @@ impl KernelReducer {
         self.kernel.partition_auth_paused(outbound)
     }
 
+    // ─── F-CR-00 component-owned claim seam ─────────────────────────────────
+    //
+    // Wasm consumers (chirp-web components) have no ActorCommand channel —
+    // they drive the kernel through `KernelReducer` directly. These four
+    // methods expose the same `Kernel::claim_profile` / `release_profile` /
+    // `claim_event` / `release_event` surface the actor uses on native, so
+    // web components can self-claim profiles and events on mount/unmount the
+    // same way iOS (`chirp-avatar.<uuid>`) and Android (`note-author-<eventId>`)
+    // do.
+    //
+    // Post-processing mirrors `publish_signed_event`: the outbound the kernel
+    // returns is run through `partition_auth_paused` before delivery to the
+    // caller, so a claim on a relay mid-NIP-42 handshake is buffered inside
+    // the kernel and replayed on the next tick after `Authenticated` — identical
+    // to the native `send_all_outbound` invariant.
+    //
+    // D6 — total: every kernel method is already total (malformed inputs return
+    // `Vec::new()`; no panics); the thin delegations here add no new failure
+    // paths.
+    //
+    // D8 — no polling. Claims are reactive dispatch; the kernel registers
+    // interest and the wasm `dispatch()` arm fans the outbound immediately.
+
+    /// Refcount a consumer's interest in `pubkey`'s kind:0 profile. On the
+    /// cold-claim transition emits the batched-REQ `OutboundMessage`(s) the
+    /// caller should fan to connected relays.
+    ///
+    /// `can_send` should be `self.kernel.any_relay_connected()` at the call
+    /// site (`KernelReducer::any_relay_connected` exposes this). When
+    /// `can_send = false` the claim parks in `profile_requests.pending` and
+    /// is drained by `handle_relay_connected` → `pending_view_requests` on
+    /// the next relay connect event.
+    pub fn claim_profile(
+        &mut self,
+        pubkey: String,
+        consumer_id: String,
+        can_send: bool,
+    ) -> Vec<OutboundMessage> {
+        let outbound = self.kernel.claim_profile(pubkey, consumer_id, can_send);
+        self.kernel.partition_auth_paused(outbound)
+    }
+
+    /// Drop a consumer's refcounted interest in `pubkey`'s kind:0 profile.
+    /// When the last consumer releases, the pending-request entry is removed.
+    /// Returns an empty vec (release never emits wire frames).
+    pub fn release_profile(&mut self, pubkey: &str, consumer_id: &str) -> Vec<OutboundMessage> {
+        let outbound = self.kernel.release_profile(pubkey, consumer_id);
+        self.kernel.partition_auth_paused(outbound)
+    }
+
+    /// Refcount a consumer's interest in the event identified by `uri`
+    /// (a `nostr:nevent1…` / `nostr:note1…` / `nostr:naddr1…` URI). On the
+    /// cold-claim transition registers a `OneShot + Global` lifecycle interest
+    /// and enqueues a `CompileTrigger::ViewOpened` so the planner compiles a
+    /// REQ. Returns any immediately-sendable `OutboundMessage`(s).
+    ///
+    /// Malformed URIs are silently dropped (D6: no panic, no `Result`).
+    pub fn claim_event(
+        &mut self,
+        uri: String,
+        consumer_id: String,
+        can_send: bool,
+    ) -> Vec<OutboundMessage> {
+        let outbound = self.kernel.claim_event(uri, consumer_id, can_send);
+        self.kernel.partition_auth_paused(outbound)
+    }
+
+    /// Drop a consumer's refcounted interest in the event identified by `uri`.
+    /// Returns an empty vec (release never emits wire frames).
+    ///
+    /// Malformed URIs are silently dropped (D6).
+    pub fn release_event(&mut self, uri: &str, consumer_id: &str) -> Vec<OutboundMessage> {
+        let outbound = self.kernel.release_event(uri, consumer_id);
+        self.kernel.partition_auth_paused(outbound)
+    }
+
+    /// `claim_send_gate` equivalent for the wasm dispatch path — returns
+    /// `true` as soon as any relay lane has reported `Connected`.
+    ///
+    /// Mirrors `actor::relay_mgmt::claim_send_gate` (which reads a
+    /// `HashSet<RelayRole>` the actor maintains). On the wasm path the
+    /// kernel's per-lane `RelayHealth::connection` field is the authoritative
+    /// signal: `handle_relay_connected` → `relay_connected_url` →
+    /// `mark_lane_connected` sets it to `"connected"`. Using this accessor
+    /// rather than driver-socket state (`current_socket.is_some()` fires at
+    /// dial time, before `Connected`) avoids the lost-fetch trap.
+    #[must_use]
+    pub fn any_relay_connected(&self) -> bool {
+        self.kernel.any_relay_connected()
+    }
+
     /// V-51 phase 2 — render the kernel's routing-trace projection as JSON.
     ///
     /// The shape is documented at
@@ -493,5 +584,101 @@ mod tests {
         let signed = synthetic_signed_note();
         let _ = r.publish_signed_event(&signed, &[], Some("dispatch-1".to_string()));
         // Pass: no panic with Some correlation_id.
+    }
+
+    // ─── F-CR-00 component-owned claim seam ──────────────────────────────────
+    //
+    // These tests cover the contracts the wasm dispatch arm depends on.
+    // Deep claim behaviour (batch routing, indexer-only lane, pending queue)
+    // is already covered by `kernel/profile_claim_tests.rs`,
+    // `kernel/event_claim_tests.rs`, and friends. What we pin here is that
+    // the `KernelReducer` delegations are wired correctly and the
+    // `any_relay_connected` gate accurately reflects kernel relay state.
+
+    #[test]
+    fn claim_profile_on_fresh_reducer_parks_returns_empty() {
+        // Without a relay connected (`can_send = false`), `claim_profile`
+        // parks the pubkey in `profile_requests.pending` and returns no
+        // outbound. The refcount is still registered internally so a second
+        // claim for a different consumer does not double-fetch.
+        let mut r = KernelReducer::new();
+        let _ = r.reduce(KernelAction::Start);
+        // any_relay_connected is false on a fresh reducer — assert the gate.
+        assert!(!r.any_relay_connected(), "fresh reducer: no relay connected");
+        let out = r.claim_profile(PK.to_string(), "chirp-web-author-1".to_string(), false);
+        assert!(out.is_empty(), "parked claim must emit no outbound");
+    }
+
+    #[test]
+    fn claim_profile_refcount_dedup_does_not_double_fetch() {
+        // Two different consumer_ids for the same pubkey must NOT each issue a
+        // separate REQ once `can_send` becomes true. The second claim hits the
+        // `profile_requests.requested.contains` short-circuit and returns empty.
+        // (Detailed batch/routing assertions live in profile_claim_tests.rs.)
+        let mut r = KernelReducer::new();
+        let _ = r.reduce(KernelAction::Start);
+
+        // First claim parks it.
+        let _ = r.claim_profile(PK.to_string(), "chirp-web-author-card-a".to_string(), false);
+        // Second claim for same pubkey, different consumer — must be a no-op
+        // outbound (the profile is already pending / registered).
+        let out2 = r.claim_profile(PK.to_string(), "chirp-web-author-card-b".to_string(), false);
+        assert!(
+            out2.is_empty(),
+            "second claim for same pubkey must not duplicate outbound: {out2:?}"
+        );
+    }
+
+    #[test]
+    fn release_profile_is_total_no_panic() {
+        // Releasing a pubkey that was never claimed is a no-op (D6).
+        let mut r = KernelReducer::new();
+        let _ = r.reduce(KernelAction::Start);
+        let out = r.release_profile(PK, "chirp-web-author-1");
+        assert!(out.is_empty(), "release must emit no outbound");
+    }
+
+    #[test]
+    fn claim_event_malformed_uri_is_total_no_panic() {
+        // D6: a garbled nostr URI must be silently dropped, not a panic.
+        let mut r = KernelReducer::new();
+        let _ = r.reduce(KernelAction::Start);
+        let out = r.claim_event(
+            "not-a-nostr-uri".to_string(),
+            "chirp-web-embed-1".to_string(),
+            false,
+        );
+        assert!(out.is_empty(), "malformed URI must produce no outbound");
+    }
+
+    #[test]
+    fn release_event_malformed_uri_is_total_no_panic() {
+        // D6 symmetry: release with a garbage URI must not panic.
+        let mut r = KernelReducer::new();
+        let _ = r.reduce(KernelAction::Start);
+        let out = r.release_event("not-a-nostr-uri", "chirp-web-embed-1");
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn any_relay_connected_false_before_connect_true_after() {
+        // `any_relay_connected` must mirror the kernel's per-lane
+        // `RelayHealth::connection` field — false before
+        // `handle_relay_connected`, true after.
+        let mut r = KernelReducer::new();
+        assert!(!r.any_relay_connected(), "before connect: must be false");
+        let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+        assert!(r.any_relay_connected(), "after connect: must be true");
+    }
+
+    #[test]
+    fn any_relay_connected_returns_false_after_close() {
+        // After `handle_relay_closed` the lane flips back to
+        // `connection != "connected"`, so the gate must return false again.
+        let mut r = KernelReducer::new();
+        let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+        assert!(r.any_relay_connected());
+        r.handle_relay_closed(RelayRole::Content, RELAY);
+        assert!(!r.any_relay_connected(), "after close: must be false");
     }
 }

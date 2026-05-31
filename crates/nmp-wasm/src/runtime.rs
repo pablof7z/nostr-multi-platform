@@ -63,7 +63,8 @@ use crate::relay_pool;
 use nmp_network::browser_driver::BrowserRelayDriver;
 
 use crate::dispatch_routing::{
-    browser_driver_missing_reason, kernel_action_from_dispatch, write_path_unavailable_reason,
+    browser_driver_missing_reason, claim_dispatch_from_action, kernel_action_from_dispatch,
+    write_path_unavailable_reason, ClaimDispatch,
 };
 use crate::protocol::{
     ActionDispatch, AppAction, CapabilityFailure, RuntimeStatus, SetSigner, StartConfig,
@@ -363,6 +364,61 @@ impl WasmRuntime {
     }
 
     fn dispatch(&mut self, action: ActionDispatch) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
+        // ── F-CR-00 claim arm ─────────────────────────────────────────────────
+        //
+        // Claim/release operations are NOT `KernelAction`s — they live on the
+        // `KernelReducer` surface directly. Check for them BEFORE the
+        // `kernel_action_from_dispatch` arm so they do not fall through to the
+        // write-path-unavailable path.
+        //
+        // `can_send` mirrors the native `claim_send_gate` semantics: true when
+        // any relay lane has reported `Connected` to `handle_relay_connected`.
+        // Using `KernelReducer::any_relay_connected` rather than driver socket
+        // state avoids the lost-fetch trap (driver `current_socket.is_some()`
+        // fires at dial time, before the kernel learns of `Connected`; the REQ
+        // would be emitted then dropped with no re-queue — see `claim_send_gate`
+        // comment in `actor/relay_mgmt.rs`).
+        //
+        // The returned `Vec<OutboundMessage>` is already `partition_auth_paused`
+        // inside the `KernelReducer` methods; we fan it out here rather than
+        // in the kernel so the wasm relay-driver pool sees it. Release calls
+        // always return empty vecs and the fan-out becomes a no-op.
+        //
+        // Synchronous — claims need no async signer Promise path.
+        if let Some(claim) = claim_dispatch_from_action(&action) {
+            let can_send = self.reducer.borrow().any_relay_connected();
+            let outbound = {
+                let mut r = self.reducer.borrow_mut();
+                match claim {
+                    ClaimDispatch::ClaimProfile { pubkey, consumer_id } => {
+                        r.claim_profile(pubkey, consumer_id, can_send)
+                    }
+                    ClaimDispatch::ReleaseProfile { pubkey, consumer_id } => {
+                        r.release_profile(&pubkey, &consumer_id)
+                    }
+                    ClaimDispatch::ClaimEvent { uri, consumer_id } => {
+                        r.claim_event(uri, consumer_id, can_send)
+                    }
+                    ClaimDispatch::ReleaseEvent { uri, consumer_id } => {
+                        r.release_event(&uri, &consumer_id)
+                    }
+                }
+            };
+            // Fan the outbound REQ frames to live relay drivers (wasm32 only).
+            // On native targets `fan_out_outbound` is a no-op shim.
+            #[cfg(target_arch = "wasm32")]
+            crate::publish_path::fan_out_outbound(&self.relays, &outbound);
+            #[cfg(not(target_arch = "wasm32"))]
+            let _ = outbound;
+            return Ok(vec![
+                WorkerEvent::ActionAccepted {
+                    action_type: action.action_type,
+                    correlation_id: action.correlation_id,
+                },
+                self.snapshot_event(),
+            ]);
+        }
+
         // Generic `ActionDispatch` covers everything `AppAction` does plus the
         // kernel-namespaced actions (`nmp.open_uri`, `nmp.kernel.diagnostics`,
         // ...) the bible specifies. The kernel-namespaced ones map directly to

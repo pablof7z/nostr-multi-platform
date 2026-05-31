@@ -99,6 +99,36 @@ export function walletCommand(action: string, payload: Record<string, unknown> =
   return command(`nmp.wallet.${action}`, payload);
 }
 
+// ── F-CR-00 component-owned claim seam ──────────────────────────────────────
+//
+// Web components call these on mount / unmount to register / release their
+// interest in a profile or event. The kernel fetches kind:0 on the first
+// claim and reference-counts subsequent claims so a second component watching
+// the same pubkey doesn't double-fetch.
+//
+// `consumerId` must be STABLE per component instance — e.g.
+// `"chirp-web-author-${item.id}"`. Mirror iOS (`chirp-avatar.<uuid>`) and
+// Android (`note-author-<eventId>`) naming conventions.
+//
+// Route via the existing `WorkerRequest::Dispatch` path (`dispatchCommand`
+// on the NmpClient).
+
+export function claimProfileCommand(pubkey: string, consumerId: string): RuntimeCommand {
+  return command("nmp.kernel.claim_profile", { pubkey, consumer_id: consumerId });
+}
+
+export function releaseProfileCommand(pubkey: string, consumerId: string): RuntimeCommand {
+  return command("nmp.kernel.release_profile", { pubkey, consumer_id: consumerId });
+}
+
+export function claimEventCommand(uri: string, consumerId: string): RuntimeCommand {
+  return command("nmp.kernel.claim_event", { uri, consumer_id: consumerId });
+}
+
+export function releaseEventCommand(uri: string, consumerId: string): RuntimeCommand {
+  return command("nmp.kernel.release_event", { uri, consumer_id: consumerId });
+}
+
 function command(actionType: string, payload: unknown): RuntimeCommand {
   return { actionType, payload };
 }
