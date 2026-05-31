@@ -258,6 +258,7 @@ impl Kernel {
         }
 
         self.seed_contacts.insert(event.pubkey, follows);
+        self.cached_estimated_store_bytes.set(None);
     }
 
     /// T140 — Re-register M2 follow-feed interests from the current
