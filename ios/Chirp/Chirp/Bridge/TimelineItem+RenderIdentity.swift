@@ -13,22 +13,21 @@ import Foundation
 // and triggered row body re-renders even though the rendered fields were
 // unchanged.
 //
-// This extension provides a render-relevant equality check that excludes
-// `relayCount` and other non-visible fields, allowing TimelineListView.== to
-// short-circuit on relay-count-only ticks.
+// This extension provides a render-relevant equality check that includes all
+// visible fields — including `relayCount` which is displayed in the relay chip —
+// allowing TimelineListView.== to short-circuit only when no visible field changed.
 // ─────────────────────────────────────────────────────────────────────────
 
 extension TimelineItem {
-    /// Fields the home-feed row actually renders. Excludes `relayCount`,
-    /// which transitions 1→>1 on duplicate-relay delivery (kernel/mod.rs:525)
-    /// with no visible change — comparing it caused C3 idle re-renders.
+    /// Fields the home-feed row actually renders. Includes `relayCount` because
+    /// NoteRowView.relayChip renders `Text("\(item.relayCount)")` whenever
+    /// `item.relayCount > 0` — a count change is a visible rendered difference.
     ///
     /// Two TimelineItems are render-identical IFF their visible fields match:
     /// the event identity (id, authorPubkey), display fields (authorDisplayName,
-    /// authorPictureUrl, authorLnurl), content (content, contentPreview), and
-    /// structural fields (createdAt, isRepost, kind, navTargetId, repostInnerContent).
-    /// RelationCount transitions (loading→known) are render-significant and
-    /// comparisons use the stored field, not relayCount.
+    /// authorPictureUrl, authorLnurl), content (content, contentPreview),
+    /// structural fields (createdAt, isRepost, kind, navTargetId, repostInnerContent),
+    /// and relayCount (rendered in the relay chip).
     func rendersIdentically(to other: TimelineItem) -> Bool {
         id == other.id
             && authorPubkey == other.authorPubkey
@@ -42,5 +41,6 @@ extension TimelineItem {
             && kind == other.kind
             && navTargetId == other.navTargetId
             && repostInnerContent == other.repostInnerContent
+            && relayCount == other.relayCount
     }
 }

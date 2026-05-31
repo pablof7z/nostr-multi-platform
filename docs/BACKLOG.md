@@ -781,6 +781,34 @@ adjacent hygiene items (header drift in `NmpCore.h`; signer-broker /
 nmp-app-chirp symbols outside this calendar's scope) live in
 [`docs/architecture-audit/ffi-deprecation-calendar.md`](architecture-audit/ffi-deprecation-calendar.md).
 
+### PD-042 · C3 fix: IdleReRenderTests Test 2 restructured — DECIDED 2026-05-31
+
+**Context (PR #880 code-review fix):** The original PR's Test 2 constructed
+`TimelineListView` instances directly, but `TimelineListView` is declared
+`private` in `HomeFeedView.swift` — unreachable from `@testable import Chirp`.
+The constructor calls also used wrong signatures (`NoteRelationCounts(likeCount:…)`
+does not exist; `ChirpEventCard` has no memberwise init). The tests never
+compiled at this commit. `NoteContentRenderingTests.swift` has the same pre-
+existing breakage (separate issue, not introduced here).
+
+**Decision:** Path (b) — test the pure function.
+`TimelineListView.==` (HomeFeedView.swift:226–232) is a thin
+`zip(…).allSatisfy { rendersIdentically }` wrapper. Testing `rendersIdentically`
+directly is complete verification of the guard. The non-compiling `TimelineListView`
+test bodies were removed; `rendersIdentically` negative controls for `relayCount`,
+`content`, `authorDisplayName`, `authorPictureUrl`, and `createdAt` were added.
+
+**Alternative not taken:** make `TimelineListView` `internal` + rewrite
+constructors. Rejected because exposing a SwiftUI View struct for testability
+is worse than testing the underlying pure function it delegates to.
+
+**Pre-existing breakage:** `NoteContentRenderingTests.swift` also fails to
+compile (wrong `noteContentGroups` signature, wrong `NoteRenderContext` init).
+`ChirpTests` is not wired into CI (confirmed: no `xcodebuild test` step in
+`.github/workflows/`). Fix is out of scope for this PR but should be tracked.
+
+---
+
 ### PD-041 · Marmot/NWC scope reconciliation — RESOLVED 2026-05-29
 
 **Decision (2026-05-29):** Marmot/MLS (`nmp-marmot`, `nmp-nip29`, `nmp-nip59`)

@@ -2,293 +2,119 @@ import XCTest
 @testable import Chirp
 
 /// C3 Performance Fix — Unit coverage for row-level Equatable diffing to
-/// prevent re-renders on relay-count-only ticks.
+/// prevent re-renders when no visible field changed.
 ///
 /// ## The defect
 ///
 /// The home feed applies a binary FlatBuffers snapshot from the Rust kernel at
-/// ≤4Hz. On a quiet feed, the snapshot contains no new events but may have
-/// updated TimelineItem.relayCount (1→>1 when the same event arrives from
-/// another relay) and KernelMetrics (bytesRx, timing). The Equatable guard on
-/// `TimelineListView` compared full `items` arrays, so a relayCount-only change
-/// with no visible row difference caused the row body to re-evaluate and
-/// re-render unnecessarily (~4/sec even on idle feeds).
+/// ≤4Hz. On a quiet feed, the snapshot may have updated KernelMetrics
+/// (bytesRx, timing) with no new events and no visible field changes.
+/// `TimelineListView.==` (HomeFeedView.swift) delegates item comparison entirely
+/// to `TimelineItem.rendersIdentically(to:)`, so correctness of the guard
+/// reduces to correctness of that pure function.
 ///
-/// ## The fix — two layers
+/// ## The fix
 ///
-/// LAYER 1 — make the existing EquatableView short-circuit on relay-count-only
-/// ticks. TimelineItem.relayCount churns on duplicate-relay delivery with no
-/// visible change in the rendered row. A new `rendersIdentically(to:)` method
-/// compares only the visible fields (id, authorPubkey, content, timestamps, etc.)
-/// and excludes relayCount. TimelineListView.== uses this to skip re-renders
-/// when only relayCount changed.
+/// `rendersIdentically(to:)` compares all visible rendered fields including
+/// `relayCount` (rendered by `NoteRowView.relayChip` as `Text("\(item.relayCount)")`).
+/// Previously `relayCount` was excluded, causing the relay chip to show a stale
+/// count when relay count incremented on idle ticks.
 ///
-/// LAYER 2 — eliminate the coarse objectWillChange storm (Phase B, separate PR).
-/// Migrate KernelModel from ObservableObject to @Observable and split the single
-/// `snapshot` slot into per-concern stored slots with if-changed guards. This
-/// prevents metrics-only ticks from invalidating every view that reads @Published,
-/// making idle invalidations truly 0 up the tree.
+/// ## Test scope
 ///
-/// These tests lock the Layer 1 behavior — the pure-value row diffing that is
-/// the core of the C3 fix.
+/// `TimelineListView` is declared `private` in HomeFeedView.swift and cannot
+/// be constructed directly from the test target.  Since `TimelineListView.==`
+/// is a thin zip-allSatisfy wrapper over `rendersIdentically`, testing the
+/// pure function is the complete verification of the guard's correctness.
+/// A decision note is logged in docs/perf/pending-user-decisions.md.
 @MainActor
 final class IdleReRenderTests: XCTestCase {
 
-    // MARK: - TEST 1: Row-level render identity excludes relayCount
+    // MARK: - Helpers
 
-    /// TimelineItem.rendersIdentically(to:) must return true when comparing
-    /// two items that differ only in `relayCount`.
-    func test_rendersIdentically_ignoresRelayCountChurn() {
-        // Construct two timeline items with identical visible fields but
-        // different relayCount values (the common quiet-feed case: same event
-        // delivered from a second relay).
-        let itemV1 = TimelineItem(
-            authorDisplayName: "Alice",
-            authorLnurl: "lnurl1234567890",
-            authorPictureUrl: "https://example.com/alice.jpg",
-            authorPubkey: "abc123def456abc123def456abc123def456abc123def456abc123def456ab",
-            content: "Hello, world!",
-            contentPreview: "Hello, world!",
-            createdAt: 1234567890,
-            id: "event1",
-            isRepost: false,
-            kind: 1,
-            navTargetId: "event1",
-            relayCount: 1,
-            repostInnerContent: ""
-        )
-
-        let itemV2 = TimelineItem(
-            authorDisplayName: "Alice",
-            authorLnurl: "lnurl1234567890",
-            authorPictureUrl: "https://example.com/alice.jpg",
-            authorPubkey: "abc123def456abc123def456abc123def456abc123def456abc123def456ab",
-            content: "Hello, world!",
-            contentPreview: "Hello, world!",
-            createdAt: 1234567890,
-            id: "event1",
-            isRepost: false,
-            kind: 1,
-            navTargetId: "event1",
-            relayCount: 3, // Changed — duplicate relay delivery
-            repostInnerContent: ""
-        )
-
-        // Verify that rendersIdentically returns true despite relayCount difference.
-        XCTAssertTrue(
-            itemV1.rendersIdentically(to: itemV2),
-            "Items differing only in relayCount should render identically"
+    /// Returns a baseline `TimelineItem` with all fields populated.
+    private func makeItem(
+        id: String = "event1",
+        authorPubkey: String = "abc123def456abc123def456abc123def456abc123def456abc123def456ab12",
+        authorDisplayName: String? = "Alice",
+        authorPictureUrl: String? = "https://example.com/alice.jpg",
+        authorLnurl: String? = "lnurl1234567890",
+        content: String = "Hello, world!",
+        contentPreview: String = "Hello, world!",
+        createdAt: UInt64 = 1_234_567_890,
+        isRepost: Bool = false,
+        kind: UInt32 = 1,
+        navTargetId: String = "event1",
+        relayCount: UInt32 = 1,
+        repostInnerContent: String = ""
+    ) -> TimelineItem {
+        TimelineItem(
+            authorDisplayName: authorDisplayName,
+            authorLnurl: authorLnurl,
+            authorPictureUrl: authorPictureUrl,
+            authorPubkey: authorPubkey,
+            content: content,
+            contentPreview: contentPreview,
+            createdAt: createdAt,
+            id: id,
+            isRepost: isRepost,
+            kind: kind,
+            navTargetId: navTargetId,
+            relayCount: relayCount,
+            repostInnerContent: repostInnerContent
         )
     }
 
-    /// Negative control: rendersIdentically must return false when a visible
-    /// field differs (e.g., content), even if relayCount is the same.
-    func test_rendersIdentically_detecdsContentChanges() {
-        let itemV1 = TimelineItem(
-            authorDisplayName: "Alice",
-            authorLnurl: "lnurl1234567890",
-            authorPictureUrl: "https://example.com/alice.jpg",
-            authorPubkey: "abc123def456abc123def456abc123def456abc123def456abc123def456ab",
-            content: "Hello, world!",
-            contentPreview: "Hello, world!",
-            createdAt: 1234567890,
-            id: "event1",
-            isRepost: false,
-            kind: 1,
-            navTargetId: "event1",
-            relayCount: 1,
-            repostInnerContent: ""
-        )
+    // MARK: - TEST 1: rendersIdentically positive controls
 
-        let itemV2 = TimelineItem(
-            authorDisplayName: "Alice",
-            authorLnurl: "lnurl1234567890",
-            authorPictureUrl: "https://example.com/alice.jpg",
-            authorPubkey: "abc123def456abc123def456abc123def456abc123def456abc123def456ab",
-            content: "Goodbye, world!", // Changed — visible field
-            contentPreview: "Goodbye, world!",
-            createdAt: 1234567890,
-            id: "event1",
-            isRepost: false,
-            kind: 1,
-            navTargetId: "event1",
-            relayCount: 1, // Unchanged
-            repostInnerContent: ""
-        )
-
-        // Verify that rendersIdentically returns false when content differs.
-        XCTAssertFalse(
-            itemV1.rendersIdentically(to: itemV2),
-            "Items differing in content should NOT render identically"
-        )
+    /// Two items with all visible fields identical must render identically.
+    func test_rendersIdentically_trueWhenAllFieldsMatch() {
+        let a = makeItem()
+        let b = makeItem()
+        XCTAssertTrue(a.rendersIdentically(to: b),
+            "Items with identical visible fields should render identically")
     }
 
-    // MARK: - TEST 2: TimelineListView.== uses render identity for items comparison
+    // MARK: - TEST 1 negative controls: each visible field drives a re-render
 
-    /// TimelineListView.== must short-circuit when items differ only in
-    /// relayCount, returning true so the row body does not re-evaluate.
-    func test_timelineListViewEquatable_ignoresRelayCountOnly() {
-        let item1 = TimelineItem(
-            authorDisplayName: "Bob",
-            authorLnurl: "lnurl9999999999",
-            authorPictureUrl: "https://example.com/bob.jpg",
-            authorPubkey: "feed123def456feed123def456feed123def456feed123def456feed123def456",
-            content: "Testing row diffing",
-            contentPreview: "Testing row diffing",
-            createdAt: 9999999999,
-            id: "testEvent1",
-            isRepost: false,
-            kind: 1,
-            navTargetId: "testEvent1",
-            relayCount: 1,
-            repostInnerContent: ""
-        )
-
-        let item2 = TimelineItem(
-            authorDisplayName: "Bob",
-            authorLnurl: "lnurl9999999999",
-            authorPictureUrl: "https://example.com/bob.jpg",
-            authorPubkey: "feed123def456feed123def456feed123def456feed123def456feed123def456",
-            content: "Testing row diffing",
-            contentPreview: "Testing row diffing",
-            createdAt: 9999999999,
-            id: "testEvent1",
-            isRepost: false,
-            kind: 1,
-            navTargetId: "testEvent1",
-            relayCount: 5, // Changed only
-            repostInnerContent: ""
-        )
-
-        let root = ChirpRootCard(
-            card: ChirpEventCard(
-                id: "testEvent1",
-                authorDisplayName: "Bob",
-                authorPictureUrl: "https://example.com/bob.jpg",
-                authorPubkey: "feed123def456feed123def456feed123def456feed123def456feed123def456",
-                content: "Testing row diffing",
-                contentPreview: "Testing row diffing",
-                createdAt: 9999999999,
-                isRepost: false,
-                kind: 1,
-                navTargetId: "testEvent1",
-                authorLnurl: "lnurl9999999999",
-                repostInnerContent: "",
-                relationCounts: NoteRelationCounts(
-                    likeCount: 0,
-                    replyCount: 0,
-                    repostCount: 0,
-                    zapCount: 0
-                )
-            ),
-            attribution: []
-        )
-
-        // Construct two identical TimelineListView instances, differing only in
-        // the items array (which itself differs only in relayCount).
-        let view1 = TimelineListView(
-            roots: [root],
-            nextCursor: nil,
-            items: [item1],
-            mentionProfiles: [:],
-            onRefresh: {},
-            onLike: { _ in },
-            onRepost: { _, _ in },
-            onZap: { _, _, _ in },
-            onLoadMore: { _ in }
-        )
-
-        let view2 = TimelineListView(
-            roots: [root],
-            nextCursor: nil,
-            items: [item2], // Only relayCount differs
-            mentionProfiles: [:],
-            onRefresh: {},
-            onLike: { _ in },
-            onRepost: { _, _ in },
-            onZap: { _, _, _ in },
-            onLoadMore: { _ in }
-        )
-
-        // Verify that the two views compare equal despite the relayCount churn.
-        XCTAssertEqual(
-            view1,
-            view2,
-            "TimelineListView instances should be equal when items differ only in relayCount"
-        )
+    /// `relayCount` is rendered by `NoteRowView.relayChip` — a count change
+    /// must cause a re-render.
+    func test_rendersIdentically_falseWhenRelayCountDiffers() {
+        let a = makeItem(relayCount: 1)
+        let b = makeItem(relayCount: 3)
+        XCTAssertFalse(a.rendersIdentically(to: b),
+            "Items differing in relayCount should NOT render identically — relayChip displays the count")
     }
 
-    /// Negative control: TimelineListView.== must return false when roots,
-    /// nextCursor, or mentionProfiles differ, or when items differ in a visible
-    /// field (not just relayCount).
-    func test_timelineListViewEquatable_detectsVisibleChanges() {
-        let root1 = ChirpRootCard(
-            card: ChirpEventCard(
-                id: "event1",
-                authorDisplayName: "Charlie",
-                authorPictureUrl: "https://example.com/charlie.jpg",
-                authorPubkey: "charlie123def456charlie123def456charlie123def456charlie123def456abc",
-                content: "First event",
-                contentPreview: "First event",
-                createdAt: 5555555555,
-                isRepost: false,
-                kind: 1,
-                navTargetId: "event1",
-                authorLnurl: "lnurl1111111111",
-                repostInnerContent: "",
-                relationCounts: NoteRelationCounts(likeCount: 0, replyCount: 0, repostCount: 0, zapCount: 0)
-            ),
-            attribution: []
-        )
+    /// `content` is the primary note body — a change must cause a re-render.
+    func test_rendersIdentically_falseWhenContentDiffers() {
+        let a = makeItem(content: "Hello, world!", contentPreview: "Hello, world!")
+        let b = makeItem(content: "Goodbye, world!", contentPreview: "Goodbye, world!")
+        XCTAssertFalse(a.rendersIdentically(to: b),
+            "Items differing in content should NOT render identically")
+    }
 
-        let root2 = ChirpRootCard(
-            card: ChirpEventCard(
-                id: "event2", // Different card
-                authorDisplayName: "Diana",
-                authorPictureUrl: "https://example.com/diana.jpg",
-                authorPubkey: "diana123def456diana123def456diana123def456diana123def456abc12345",
-                content: "Second event",
-                contentPreview: "Second event",
-                createdAt: 6666666666,
-                isRepost: false,
-                kind: 1,
-                navTargetId: "event2",
-                authorLnurl: "lnurl2222222222",
-                repostInnerContent: "",
-                relationCounts: NoteRelationCounts(likeCount: 5, replyCount: 0, repostCount: 0, zapCount: 0)
-            ),
-            attribution: []
-        )
+    /// `authorDisplayName` is shown in the row header — a change must cause a re-render.
+    func test_rendersIdentically_falseWhenAuthorDisplayNameDiffers() {
+        let a = makeItem(authorDisplayName: "Alice")
+        let b = makeItem(authorDisplayName: "Bob")
+        XCTAssertFalse(a.rendersIdentically(to: b),
+            "Items differing in authorDisplayName should NOT render identically")
+    }
 
-        let view1 = TimelineListView(
-            roots: [root1],
-            nextCursor: nil,
-            items: [],
-            mentionProfiles: [:],
-            onRefresh: {},
-            onLike: { _ in },
-            onRepost: { _, _ in },
-            onZap: { _, _, _ in },
-            onLoadMore: { _ in }
-        )
+    /// `authorPictureUrl` drives the avatar — a change must cause a re-render.
+    func test_rendersIdentically_falseWhenAuthorPictureUrlDiffers() {
+        let a = makeItem(authorPictureUrl: "https://example.com/alice.jpg")
+        let b = makeItem(authorPictureUrl: "https://example.com/alice-v2.jpg")
+        XCTAssertFalse(a.rendersIdentically(to: b),
+            "Items differing in authorPictureUrl should NOT render identically")
+    }
 
-        let view2 = TimelineListView(
-            roots: [root2], // Different roots
-            nextCursor: nil,
-            items: [],
-            mentionProfiles: [:],
-            onRefresh: {},
-            onLike: { _ in },
-            onRepost: { _, _ in },
-            onZap: { _, _, _ in },
-            onLoadMore: { _ in }
-        )
-
-        // Verify that the two views do NOT compare equal.
-        XCTAssertNotEqual(
-            view1,
-            view2,
-            "TimelineListView instances should NOT be equal when roots differ"
-        )
+    /// `createdAt` drives the relative timestamp display — a change must cause a re-render.
+    func test_rendersIdentically_falseWhenCreatedAtDiffers() {
+        let a = makeItem(createdAt: 1_000_000)
+        let b = makeItem(createdAt: 2_000_000)
+        XCTAssertFalse(a.rendersIdentically(to: b),
+            "Items differing in createdAt should NOT render identically")
     }
 }
