@@ -137,7 +137,7 @@ pub struct HistoryRelayLine {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RelayEditLine {
     pub url: String,
-    pub role_label: String,
+    pub role: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -305,7 +305,7 @@ fn relay_edit_rows_from(projections: &Value) -> Vec<RelayEditLine> {
         .flatten()
         .map(|row| RelayEditLine {
             url: string_field(row, "url"),
-            role_label: first_nonempty(row, &["role_label", "roleLabel", "role"]),
+            role: string_field(row, "role"),
         })
         .collect()
 }
@@ -456,11 +456,27 @@ fn summary_from(value: Option<&Value>) -> SummaryLine {
     })
 }
 
+fn relay_count_subtitle(count: u64) -> String {
+    match count {
+        0 => "No relays configured".to_string(),
+        1 => "1 relay".to_string(),
+        n => format!("{n} relays"),
+    }
+}
+
 fn settings_hub_from(value: Option<&Value>) -> SummaryLine {
-    value.map_or_else(SummaryLine::default, |v| SummaryLine {
+    let subtitle = value
+        .and_then(|v| {
+            v.get("relay_count")
+                .or_else(|| v.get("relayCount"))
+                .and_then(Value::as_u64)
+        })
+        .map(relay_count_subtitle)
+        .unwrap_or_default();
+    SummaryLine {
         title: "Settings".to_string(),
-        subtitle: first_nonempty(v, &["relays_subtitle", "relaysSubtitle"]),
-    })
+        subtitle,
+    }
 }
 
 fn projection<'a>(projections: &'a Value, key: &str) -> Option<&'a Value> {

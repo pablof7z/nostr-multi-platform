@@ -27,7 +27,7 @@ export type ChirpEventCard = {
 export type ChirpTimelineSnapshot = { blocks: unknown[]; cards: ChirpEventCard[] };
 export type AccountLine = { id: string; display: string; npub: string; signer: string; active: boolean };
 export type OutboxLine = { handle: string; title: string; statusLabel: string; preview: string; canRetry: boolean };
-export type RelayEditLine = { url: string; roleLabel: string };
+export type RelayEditLine = { url: string; role: string };
 export type RelayDiagnosticLine = { url: string; role: string; status: string };
 export type WalletLine = { status: string; relayUrl: string; walletNpub: string; balanceMsats?: number };
 export type SummaryLine = { title: string; subtitle: string };
@@ -141,7 +141,7 @@ function outboxFrom(value: unknown): OutboxLine {
 
 function relayEditFrom(value: unknown): RelayEditLine {
   const row = objectRecord(value) ?? {};
-  return { url: str(row.url), roleLabel: first(row, "role_label", "roleLabel", "role") };
+  return { url: str(row.url), role: str(row.role) };
 }
 
 function relayDiagnosticFrom(value: unknown): RelayDiagnosticLine {
@@ -270,7 +270,13 @@ function summaryFrom(value: unknown): SummaryLine {
 
 function settingsHubFrom(value: unknown): SummaryLine {
   const row = objectRecord(value) ?? {};
-  return { title: "Settings", subtitle: first(row, "relays_subtitle", "relaysSubtitle") };
+  const count = typeof row.relay_count === "number" ? row.relay_count :
+                typeof row.relayCount === "number" ? row.relayCount : undefined;
+  const subtitle = count === undefined ? "" :
+                   count === 0 ? "No relays configured" :
+                   count === 1 ? "1 relay" :
+                   `${count} relays`;
+  return { title: "Settings", subtitle };
 }
 
 function projection(value: Record<string, unknown>, key: string): unknown {
