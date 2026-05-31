@@ -12,6 +12,12 @@ import { decodeUpdateFrameBytes, SNAPSHOT_SCHEMA_VERSION, UpdateFrameDecodeError
 
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
+  /** Identifies which runtime path is active.
+   *  "worker"              — Web Worker launched; nmp-wasm will load inside it.
+   *  "in_process_fallback" — Worker construction failed or Worker API is absent;
+   *                          the client wraps a DegradedRuntime that returns
+   *                          capability_failure for every action. */
+  clientRuntime: "worker" | "in_process_fallback";
   events: WorkerEvent[];
   latestUpdate?: unknown;
   latestUpdateBytes?: Uint8Array;
@@ -38,11 +44,20 @@ export type NmpClient = {
 
 export function createNmpClient(): NmpClient {
   if (typeof Worker === "undefined") {
+    console.warn(
+      "[nmp] Web Worker API is unavailable (SSR, CSP, or browser restriction). " +
+        "Falling back to in-process degraded runtime — every action will return capability_failure.",
+    );
     return new InProcessNmpClient();
   }
   try {
     return new WorkerNmpClient();
-  } catch {
+  } catch (err) {
+    console.warn(
+      "[nmp] Worker construction failed — falling back to in-process degraded runtime. " +
+        "Every action will return capability_failure. Worker error:",
+      err,
+    );
     return new InProcessNmpClient();
   }
 }
@@ -54,9 +69,12 @@ abstract class BaseClient implements NmpClient {
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
+  constructor(private readonly clientRuntime: RuntimeSnapshot["clientRuntime"]) {}
+
   snapshot(): RuntimeSnapshot {
     return {
       status: this.status,
+      clientRuntime: this.clientRuntime,
       events: [...this.events],
       latestUpdate: this.latestUpdate,
       latestUpdateBytes: this.latestUpdateBytes,
@@ -134,7 +152,7 @@ class WorkerNmpClient extends BaseClient {
   private resolveHello?: () => void;
 
   constructor() {
-    super();
+    super("worker");
     this.helloReady = new Promise((resolve) => {
       this.resolveHello = resolve;
     });
@@ -214,7 +232,7 @@ class InProcessNmpClient extends BaseClient {
   );
 
   constructor() {
-    super();
+    super("in_process_fallback");
     this.send({
       type: "hello",
       app_id: runtimeConnection.appId,

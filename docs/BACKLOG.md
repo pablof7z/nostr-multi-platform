@@ -325,16 +325,6 @@ exists, do not claim full zeroization for local-key accounts.
 
 ---
 
-### V-76 · `web/chirp` silently falls back to `InProcessNmpClient` on Worker construction failure [LOW · web production degradation]
-
-**Verified:** `web/chirp/src/nmp/client.ts:39-47` — Worker construction failure is caught and the client downgrades to `InProcessNmpClient`, which wraps a `DegradedRuntime("browser_bridge_unavailable", …)`: it does **not** run nmp-wasm at all (on the main thread or anywhere), but returns `capability_failure` for every action and sets `status: { degraded: "browser_bridge_unavailable" }` on the snapshot. The `catch` arm itself is silent (no `console.warn`, no diagnostic field).
-
-**Impact:** a user on a browser that fails to construct the Worker (CSP misconfiguration, Safari Lockdown Mode, restricted enterprise environment) gets a non-functional app — every action fails. The degraded status does surface in the `RuntimePanel` developer sidebar, but there is no user-facing banner and no warning at construction time.
-
-**Correct fix:** the catch arm must `console.warn` with the Worker error and set a `nmp.client.runtime = "in_process_fallback"` field on the diagnostic snapshot so the host can render an unobtrusive "degraded mode" banner. Production builds may additionally choose to refuse the fallback and surface an error to the user.
-
----
-
 ### V-78 · NIP-57 zap signing requires local keys — bunker (NIP-46) accounts cannot zap [MEDIUM · bunker feature gap]
 
 **Verified:** `crates/nmp-nip57/src/lnurl/mod.rs:199-211` — the zap executor (`Executor::run`; `ZapAction` itself lives in `crates/nmp-nip57/src/action.rs`) short-circuits with a toast (`"zap requires a local-keys account; bunker signing for kind:9734 is not yet implemented (ADR-0026 Phase 2 follow-up)"`) when `ctx.active_local_keys()` returns `None`. This is the same ADR-0026 Phase 1 cutline as V-08 (DM unwrap) and V-06 (NIP-42 AUTH), but a separate code path — the broker has no `sign_zap_request(kind:22242→9734)` RPC and the actor thread has no sync-compatible adapter for it.
