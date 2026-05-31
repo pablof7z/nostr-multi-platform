@@ -537,7 +537,7 @@ always emit whatever local data is available; move lifecycle state to a
 debug/diagnostics-only channel.
 
 
-### V-106 · Actor thread retains a *callable* blocking-sign primitive [LOW · D8-hardening]
+### V-111 · Actor thread retains a *callable* blocking-sign primitive [LOW · D8-hardening]
 
 **Verified:** the blocking `sign_active` (`crates/nmp-core/src/actor/commands/identity.rs:693`,
 does `.wait(REMOTE_SIGN_TIMEOUT)` when `active_remote()` is `Some`) still has 3
