@@ -90,6 +90,8 @@ mod outbox_tests;
 mod pre_kind3_buffer_tests;
 #[cfg(test)]
 mod profile_claim_tests;
+#[cfg(test)]
+mod proactive_profile_fetch_tests;
 mod provenance;
 #[cfg(test)]
 mod provenance_wire_tests;
@@ -300,7 +302,7 @@ use clock::{Clock, SystemClock};
 #[cfg(feature = "native")]
 pub use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
-    AccountSummary, PublishQueueEntry, RelayAckOutcome, SettingsHubSummary,
+    AccountSummary, PublishQueueEntry, RelayAckOutcome,
 };
 // Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
 // re-export them into the public crate surface — `nmp-router::Nip65OutboxResolver`

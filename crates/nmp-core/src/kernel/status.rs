@@ -336,6 +336,31 @@ impl Kernel {
         self.relays.entry(role).or_default()
     }
 
+    /// `claim_send_gate` equivalent for the wasm `KernelReducer` path —
+    /// returns `true` as soon as **any** relay lane has reported `Connected`.
+    ///
+    /// Mirrors `actor::relay_mgmt::claim_send_gate` (which reads a
+    /// `HashSet<RelayRole>` maintained by the actor loop). On the wasm path
+    /// the actor never runs; instead `KernelReducer::handle_relay_connected`
+    /// calls `relay_connected_url` → `mark_lane_connected`, which sets
+    /// `relay.connection = "connected"`. So the authoritative signal is the
+    /// kernel's own per-lane `RelayHealth::connection` field — read-only,
+    /// no driver pointers, no out-of-crate imports.
+    ///
+    /// The wasm claim dispatch (`dispatch_routing::claim_dispatch_from_action`)
+    /// uses this to compute `can_send`, matching the native `.any()` semantics
+    /// exactly: park-on-false keeps the claim in `profile_requests.pending` /
+    /// `pending_event_claims` so `handle_relay_connected` drains it on the
+    /// next connect; emit-on-true fans the REQ immediately. Biasing to `false`
+    /// rather than guessing "open" (driver `current_socket.is_some()` fires at
+    /// dial time, before the kernel learns of `Connected`) avoids the
+    /// lost-fetch trap where the outbound REQ is dropped with no re-queue.
+    pub(crate) fn any_relay_connected(&self) -> bool {
+        self.relays
+            .values()
+            .any(|health| health.connection == "connected")
+    }
+
     pub(super) fn total_counters(&self) -> Counters {
         let mut total = Counters::default();
         for relay in self.relays.values() {

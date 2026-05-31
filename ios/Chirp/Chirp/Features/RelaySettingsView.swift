@@ -36,7 +36,7 @@ struct RelaySettingsView: View {
             } else {
                 Section {
                     ForEach(model.relayEditRows) { relay in
-                        RelayConfigRow(relay: relay)
+                        RelayConfigRow(relay: relay, relayRoleOptions: model.relayRoleOptions)
                             .contentShape(Rectangle())
                             .onTapGesture { openEdit(relay) }
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
@@ -210,6 +210,19 @@ struct RelaySettingsView: View {
 
 private struct RelayConfigRow: View {
     let relay: RelayEditRow
+    let relayRoleOptions: [RelayRoleOption]
+
+    private var roleOption: RelayRoleOption? {
+        relayRoleOptions.first { $0.value == relay.role }
+    }
+
+    private var roleLabel: String {
+        roleOption?.label ?? relay.role
+    }
+
+    private var roleTint: String {
+        roleOption?.tint ?? "accent"
+    }
 
     var body: some View {
         HStack(spacing: ChirpSpace.m) {
@@ -227,7 +240,7 @@ private struct RelayConfigRow: View {
 
             Spacer()
 
-            Text(relay.roleLabel)
+            Text(roleLabel)
                 .font(.system(.caption2, design: .rounded).weight(.semibold))
                 .foregroundStyle(roleColor)
                 .padding(.horizontal, ChirpSpace.s)
@@ -238,7 +251,7 @@ private struct RelayConfigRow: View {
     }
 
     private var roleColor: Color {
-        relayRoleTint(relay.roleTint)
+        relayRoleTint(roleTint)
     }
 }
 

@@ -115,14 +115,14 @@ export const contentComponents: Component[] = [
   {
     slug: "content-minimal",
     routeId: "content-minimal",
-    version: "0.1.0",
+    version: "0.2.0",
     description: "Minimal Nostr content renderer with inline text, mentions, links, and hashtags.",
     platforms: {
       swiftui: {
         status: "stable",
         installId: "swiftui/content-minimal",
-        version: "0.1.0",
-        dependencies: ["content-core"],
+        version: "0.2.0",
+        dependencies: ["content-core", "render-identity"],
         longDescription:
           "A flow-layout view that walks an array of `NostrContentRun` values and renders text, mentions, hashtags, and links inline. The simplest component that gets you a working timeline cell.",
         files: [

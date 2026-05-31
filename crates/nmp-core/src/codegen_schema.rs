@@ -94,6 +94,10 @@ pub struct TypeEntry {
     /// joins these into the struct's `:`-clause; `Identifiable` is added
     /// automatically when `id_field` is `Some`.
     pub conformances: &'static [&'static str],
+    /// Host-rendered fields for this row type, in stable declared order.
+    /// Empty = not a row type (no `rendersIdentically` emitted). These are
+    /// Rust snake_case names; the emitter camelCases them.
+    pub render_identity_fields: &'static [&'static str],
     /// The `schemars`-generated JSON Schema for the type. Carries field
     /// shape, optionality, snake_case names, etc.
     pub schema: Value,
@@ -140,6 +144,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             swift_name: "KernelMetrics",
             id_field: None,
             conformances: &["Decodable", "Equatable", "Sendable"],
+            render_identity_fields: &[],
             schema: schema_value::<Metrics>(),
         },
         TypeEntry {
@@ -149,6 +154,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             // existing `var id: String { relayUrl }` pattern.
             id_field: Some("relayUrl"),
             conformances: &["Decodable", "Equatable", "Sendable"],
+            render_identity_fields: &[],
             schema: schema_value::<RelayStatus>(),
         },
         TypeEntry {
@@ -156,6 +162,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             swift_name: "LogicalInterestStatus",
             id_field: Some("key"),
             conformances: &["Decodable", "Equatable", "Sendable"],
+            render_identity_fields: &[],
             schema: schema_value::<LogicalInterestStatus>(),
         },
         TypeEntry {
@@ -163,6 +170,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             swift_name: "WireSubscriptionStatus",
             id_field: Some("wireId"),
             conformances: &["Decodable", "Equatable", "Sendable"],
+            render_identity_fields: &[],
             schema: schema_value::<WireSubscriptionStatus>(),
         },
         TypeEntry {
@@ -170,6 +178,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             swift_name: "AccountSummary",
             id_field: Some("id"),
             conformances: &["Decodable", "Equatable", "Sendable"],
+            render_identity_fields: &[],
             schema: schema_value::<AccountSummary>(),
         },
         TypeEntry {
@@ -177,6 +186,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             swift_name: "RelayEditRow",
             id_field: Some("url"),
             conformances: &["Decodable", "Equatable", "Sendable"],
+            render_identity_fields: &[],
             schema: schema_value::<RelayEditRow>(),
         },
         TypeEntry {
@@ -184,6 +194,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             swift_name: "RelayRoleOption",
             id_field: Some("value"),
             conformances: &["Decodable", "Equatable", "Sendable"],
+            render_identity_fields: &[],
             schema: schema_value::<RelayRoleOption>(),
         },
         TypeEntry {
@@ -215,6 +226,12 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             swift_name: "TimelineItem",
             id_field: Some("id"),
             conformances: &["Decodable", "Equatable", "Hashable", "Sendable"],
+            render_identity_fields: &[
+                "id", "author_pubkey", "author_display_name", "author_picture_url",
+                "author_lnurl", "content", "content_preview", "created_at",
+                "is_repost", "kind", "nav_target_id", "repost_inner_content",
+                "relay_count",
+            ],
             schema: schema_value::<TimelineItem>(),
         },
     ];

@@ -1,4 +1,4 @@
-use super::super::{ClaimedEventDto, Kernel, ProfileCard, SettingsHubSummary, TimelineItem};
+use super::super::{ClaimedEventDto, Kernel, ProfileCard, TimelineItem};
 
 impl Kernel {
     /// Collect the snapshot `projections` map: every host-registered
@@ -69,17 +69,11 @@ impl Kernel {
             serde_json::to_value(crate::actor::relay_role_options())
                 .unwrap_or(serde_json::Value::Null),
         );
-        // Settings-hub view projection. Currently a single pre-formatted
-        // relays subtitle ("N relays" / "1 relay" / "No relays configured")
-        // — aim.md §6/AP1 forbids the iOS shell from owning that
-        // pluralization. Built locally next to `relay_edit_rows` so the two
-        // can never drift out of sync. A serialization failure degrades to
-        // `null` so the key is omitted, mirroring the publish-cluster pattern.
-        let settings_hub =
-            SettingsHubSummary::from_relay_edit_rows(self.relay_edit_rows_snapshot());
+        // Settings-hub view projection. Raw relay count — the host formats any
+        // pluralization string (aim.md §6/AP1 forbids the shell from owning that).
         projections.insert(
             "settings_hub".to_string(),
-            serde_json::to_value(&settings_hub).unwrap_or(serde_json::Value::Null),
+            serde_json::json!({ "relay_count": self.relay_edit_rows_snapshot().len() }),
         );
         // Direction review #29: drain EVERY terminal that settled since the
         // last emit into the `action_results` array. The host can clear a

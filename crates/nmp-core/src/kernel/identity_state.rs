@@ -166,21 +166,12 @@ pub(crate) struct RelayAckOutcome {
 pub struct RelayEditRow {
     pub(crate) url: String,
     pub(crate) role: String,
-    pub(crate) role_label: String,
-    pub(crate) role_tint: String,
 }
 
 impl RelayEditRow {
     pub(crate) fn new(url: String, role: String) -> Self {
         let role = crate::actor::canonical_relay_role(&role).unwrap_or(role);
-        let role_label = crate::actor::relay_role_label(&role);
-        let role_tint = crate::actor::relay_role_tint(&role);
-        Self {
-            url,
-            role,
-            role_label,
-            role_tint,
-        }
+        Self { url, role }
     }
 
     /// Borrow the relay URL string.
@@ -215,30 +206,6 @@ pub fn read_eligible_relay_urls(rows: &[RelayEditRow]) -> Vec<String> {
         .filter(|r| crate::actor::has_role(&r.role, "read"))
         .map(|r| r.url.clone())
         .collect()
-}
-
-/// Pre-formatted subtitle strings for the iOS Settings hub. Folds the
-/// pluralization and zero-row branches into a single string so the shell
-/// never duplicates the §6/AP1 "N relay(s) configured" / "No relays
-/// configured" formatting.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-pub(crate) struct SettingsHubSummary {
-    /// Subtitle shown under the "Relays" entry in the Settings hub.
-    pub(crate) relays_subtitle: String,
-}
-
-impl SettingsHubSummary {
-    /// Build the subtitle from the live relay-edit projection row count.
-    /// Kept here (vs an iOS-side helper) so platforms share the same copy.
-    pub(crate) fn from_relay_edit_rows(rows: &[RelayEditRow]) -> Self {
-        let count = rows.len();
-        let relays_subtitle = match count {
-            0 => "No relays configured".to_string(),
-            1 => "1 relay".to_string(),
-            n => format!("{n} relays"),
-        };
-        Self { relays_subtitle }
-    }
 }
 
 // D0: NIP-46 remote signing is an app noun, not a kernel primitive. The

@@ -41,6 +41,8 @@ struct TypeEntry {
     #[serde(default)]
     id_field: Option<String>,
     conformances: Vec<String>,
+    #[serde(default)]
+    render_identity_fields: Vec<String>,
     schema: TypeSchema,
 }
 
@@ -341,6 +343,9 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
     if entry.id_field.is_some() {
         conformances.insert("Identifiable".to_string());
     }
+    if !entry.render_identity_fields.is_empty() {
+        conformances.insert("RenderIdentifiable".to_string());
+    }
     // The ordered emit list. Anything not in this array is silently dropped
     // from the conformance clause — entries here act as the allowlist AND
     // the emit order. `Sendable` is appended last because Apple convention
@@ -360,7 +365,7 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
     // `static let`) hard-fails under strict concurrency. The fix is at
     // the source: every generated struct opts in to Sendable explicitly.
     let conformances: Vec<&str> =
-        ["Decodable", "Equatable", "Identifiable", "Hashable", "Sendable"]
+        ["Decodable", "Equatable", "RenderIdentifiable", "Identifiable", "Hashable", "Sendable"]
             .into_iter()
             .filter(|c| conformances.contains(*c))
             .collect();
@@ -406,6 +411,24 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
                 "    public var id: String {{ {id_field} }}\n"
             ));
         }
+    }
+
+    if !entry.render_identity_fields.is_empty() {
+        let comparisons: Vec<String> = entry
+            .render_identity_fields
+            .iter()
+            .map(|f| {
+                let c = snake_to_camel(f);
+                format!("self.{c} == other.{c}")
+            })
+            .collect();
+        out.push('\n');
+        out.push_str("    public func rendersIdentically(_ other: Self) -> Bool {\n");
+        out.push_str(&format!(
+            "        {}\n",
+            comparisons.join("\n            && ")
+        ));
+        out.push_str("    }\n");
     }
 
     // No explicit CodingKeys. `KernelBridge.decode()` configures

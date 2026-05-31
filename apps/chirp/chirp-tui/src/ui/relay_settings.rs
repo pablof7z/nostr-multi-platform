@@ -427,7 +427,20 @@ fn configured_role(state: &AppState, relay: &RelayRow) -> Option<String> {
             short_relay_url(&row.url).eq_ignore_ascii_case(&relay.short_url)
                 || row.url.eq_ignore_ascii_case(&relay.relay_url)
         })
-        .map(|row| row.role_label.clone())
+        .map(|row| relay_role_display_label(&row.role))
+}
+
+fn relay_role_display_label(role: &str) -> String {
+    match role {
+        "both" => "Both".to_string(),
+        "read" => "Read".to_string(),
+        "write" => "Write".to_string(),
+        "indexer" => "Index".to_string(),
+        "both,indexer" => "Both + Index".to_string(),
+        "read,indexer" => "Read + Index".to_string(),
+        "write,indexer" => "Write + Index".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn label_line(label: &str, value: &str) -> Line<'static> {

@@ -217,8 +217,8 @@ mod tests {
         // Same sole-writer semantics as `RelayUrls::replace`, but holding
         // typed `RelayEditRow` records instead of bare URL strings.
         // `RelayEditRow` is built via `::new(url, role)` — the constructor
-        // canonicalizes the role and derives `role_label` / `role_tint`,
-        // so the test never names those derived fields directly.
+        // canonicalizes the role string only; no display fields are derived
+        // (ADR-0041: presentation strings were removed from kernel state).
         let mut rows = RelayEditRowList::new();
         rows.replace(vec![RelayEditRow::new(
             "wss://r.example".to_string(),
