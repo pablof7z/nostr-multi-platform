@@ -664,7 +664,7 @@ impl DesktopApp {
                 ui.end_row();
                 for r in &rows {
                     ui.label(&r.url);
-                    ui.label(RichText::new(&r.role_label).color(hex_color(&r.role_tint)));
+                    ui.label(RichText::new(relay_role_label(&r.role)));
                     let status = snap
                         .relay_statuses
                         .iter()
@@ -1113,6 +1113,20 @@ fn note_card(
                 });
             });
         });
+}
+
+fn relay_role_label(role: &str) -> &str {
+    match role {
+        "both" => "Both",
+        "read" => "Read",
+        "write" => "Write",
+        "indexer" => "Index",
+        "both,indexer" => "Both + Index",
+        "read,indexer" => "Read + Index",
+        "write,indexer" => "Write + Index",
+        other if other.is_empty() => "Both",
+        other => other,
+    }
 }
 
 fn avatar(ui: &mut Ui, initials: &str, color_hex: &str) {

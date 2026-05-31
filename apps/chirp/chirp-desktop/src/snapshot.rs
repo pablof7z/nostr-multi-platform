@@ -249,10 +249,6 @@ pub struct RelayEditRow {
     pub url: String,
     #[serde(default)]
     pub role: String,
-    #[serde(default)]
-    pub role_label: String,
-    #[serde(default)]
-    pub role_tint: String,
 }
 
 /// `nmp.feed.home` modular timeline projection (simplified).
