@@ -42,7 +42,11 @@ export function createNmpClient(): NmpClient {
   }
   try {
     return new WorkerNmpClient();
-  } catch {
+  } catch (workerError) {
+    console.warn(
+      "[nmp] Worker construction failed — falling back to in-process runtime (degraded performance):",
+      workerError,
+    );
     return new InProcessNmpClient();
   }
 }

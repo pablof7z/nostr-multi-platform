@@ -83,6 +83,7 @@ nmp-nip29 = { path = "../../../crates/nmp-nip29" }
 # projection (per-target zap-count aggregate read for the timeline). The
 # `nmp.nip57.zap` action module + kind:9734 builder + LNURL fetcher are
 # wired by `nmp-app-template::register_defaults` (transitively).
+nmp-nip51 = { path = "../../../crates/nmp-nip51" }
 nmp-nip57 = { path = "../../../crates/nmp-nip57" }
 # V-38: NIP-47 NWC wallet stack moved out of `nmp-core`. Optional + gated
 # behind the `wallet` feature so the default-off build excludes it.

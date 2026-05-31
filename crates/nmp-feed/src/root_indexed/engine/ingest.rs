@@ -88,6 +88,7 @@ where
             RootSlot {
                 card,
                 created_at,
+                author_pubkey: event.author.clone(),
                 supersedes_target,
                 wrapper_event_id,
             },
@@ -109,6 +110,7 @@ where
             RootSlot {
                 card,
                 created_at: wrapper.created_at,
+                author_pubkey: wrapper.author.clone(),
                 supersedes_target: Some(target.clone()),
                 wrapper_event_id: Some(wrapper.id.clone()),
             },

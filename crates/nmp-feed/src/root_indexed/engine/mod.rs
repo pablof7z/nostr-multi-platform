@@ -33,7 +33,10 @@ use std::sync::{
 };
 
 use nmp_core::planner::RelayHint;
-use nmp_core::substrate::{BoundedMessageMap, EventId, KernelEvent, MAX_PROJECTION_MESSAGES};
+use nmp_core::substrate::{
+    empty_suppression_lookup, BoundedMessageMap, EventId, KernelEvent, MAX_PROJECTION_MESSAGES,
+    SuppressionLookup,
+};
 use nmp_threading::{pointer::ThreadPointer, ParentResolver};
 
 use crate::root_indexed::attribution::AttributionPayload;
@@ -80,6 +83,9 @@ pub type CardBuilder<C> = Box<dyn Fn(&KernelEvent, Option<&KernelEvent>) -> C + 
 struct RootSlot<C> {
     card: C,
     created_at: u64,
+    /// Hex pubkey of the event's author. Used by the suppression filter in
+    /// `snapshot()` to hide muted authors without storing a pubkey on the card.
+    author_pubkey: String,
     /// When this root is a repost-style wrapper, the id it supersedes. Used to
     /// hydrate the card while preserving repost provenance once the wrapped
     /// target arrives (L-5).
@@ -148,6 +154,11 @@ where
 {
     caps: Capabilities<R, A, C>,
     state: Mutex<EngineState<A, C>>,
+    /// Mute-list (or other suppression) backend. Consulted in `snapshot()` to
+    /// filter out roots whose author is on the active account's suppression set.
+    /// Defaults to [`EmptySuppressionLookup`] (pass-through) so the engine works
+    /// correctly before any mute-list projection is wired in.
+    suppression: Mutex<Arc<dyn SuppressionLookup>>,
     /// Diagnostic counter of release signals seen. Per V-81 these do NOT evict
     /// pending attributions; the counter exists so a consumer (and the V-81
     /// test) can observe "release seen, pending intact".
@@ -195,7 +206,19 @@ where
                 consumer_id: consumer_id.into(),
             },
             state: Mutex::new(EngineState::new()),
+            suppression: Mutex::new(empty_suppression_lookup()),
             released_signals_seen: AtomicU64::new(0),
+        }
+    }
+
+    /// Swap in a live suppression backend (e.g. a `MuteListProjection`).
+    ///
+    /// Called once at composition time after the mute-list observer is
+    /// registered. The new lookup takes effect on the next `snapshot()` call.
+    /// Fails silently on a poisoned mutex (D6).
+    pub fn set_suppression(&self, lookup: Arc<dyn SuppressionLookup>) {
+        if let Ok(mut guard) = self.suppression.lock() {
+            *guard = lookup;
         }
     }
 
@@ -281,10 +304,21 @@ where
                 metrics: None,
             };
         };
-        // Order roots newest-first by (created_at, id).
+        // Snapshot the suppression lookup once before iterating — avoids
+        // re-locking per card. Fail-open: if the mutex is poisoned, fall back
+        // to the empty lookup (suppress nothing) per D6.
+        let suppression = self
+            .suppression
+            .lock()
+            .map(|g| Arc::clone(&*g))
+            .unwrap_or_else(|_| empty_suppression_lookup());
+
+        // Order roots newest-first by (created_at, id), skipping any root
+        // whose author is on the active account's suppression set.
         let mut ordered: Vec<(u64, EventId)> = st
             .roots
             .iter()
+            .filter(|(_, slot)| !suppression.is_suppressed_author(&slot.author_pubkey))
             .map(|(id, slot)| (slot.created_at, id.clone()))
             .collect();
         ordered.sort_by(|(lt, lid), (rt, rid)| rt.cmp(lt).then_with(|| rid.cmp(lid)));

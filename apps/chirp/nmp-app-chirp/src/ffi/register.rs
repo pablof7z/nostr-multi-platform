@@ -133,6 +133,31 @@ pub extern "C" fn nmp_app_chirp_register(
     let defaults =
         nmp_app_template::register_op_feed_defaults(app_ref, viewer, app_ref.active_account_handle());
 
+    // Wire the NIP-51 mute-list suppression into the OP feed engine.
+    //
+    // `MuteListProjection` accumulates the active account's kind:10000 public
+    // mute list via `KernelEventObserver` and exposes a `SuppressionLookup`
+    // the engine consults on every `snapshot()` call so muted authors are
+    // absent from the home feed. The WOT bootstrap interest already includes
+    // kind:10000 (`WOT_BOOTSTRAP_KINDS` in `nmp-wot`), so no extra interest
+    // push is needed — events arrive through the standing subscription.
+    //
+    // D6 — if observer registration fails (poisoned slot), skip both the
+    // `set_suppression` call and the snapshot projection: the engine keeps its
+    // `EmptySuppressionLookup` default (pass-through) and the feed degrades
+    // gracefully with no muting applied rather than failing to start.
+    let mute = Arc::new(nmp_nip51::MuteListProjection::new(
+        app_ref.active_account_handle(),
+    ));
+    let mute_observer_id =
+        app_ref.register_event_observer(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
+    if mute_observer_id.0 != 0 {
+        defaults
+            .engine
+            .set_suppression(Arc::clone(&mute) as Arc<dyn nmp_core::substrate::SuppressionLookup>);
+        app_ref.register_snapshot_projection("nmp.mute_list", move || mute.snapshot_json());
+    }
+
     // ACCOUNT-SWITCH WIRING — partially deferred (documented in the PR).
     //
     // The kind:3-driven path is fully covered: on account switch the kernel

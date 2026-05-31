@@ -4420,6 +4420,7 @@ dependencies = [
  "nmp-nip18",
  "nmp-nip29",
  "nmp-nip47",
+ "nmp-nip51",
  "nmp-nip57",
  "nmp-nip59",
  "nmp-threading",
