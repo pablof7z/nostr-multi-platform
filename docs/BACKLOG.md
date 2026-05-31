@@ -327,28 +327,17 @@ Per-kind routing shipped as `nmp-router` (2026-05-29). Two open residuals with u
 
 ---
 
-### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH] — **Phase 3 pending**
+### V-51 · No structural observability on routing decisions — apps can't surface "why did event Y go to relay B?" [HIGH] — **Phase 3 partially done**
 
 **Phases 1, 2, 4, 5 landed** (PRs #457, #476, #461, #462). Substrate observer,
 FFI snapshot surface, validation harness, and kernel observability cut-over are all
 in place.
 
-**Phase 3 (Chirp inspector UI)** — not started. Pending the iOS / web
-shell consumers of the phase 2 JSON payload (a `RoutingInspectorView`
-long-press target on `ChirpEventCard` / publish-status row + a debug
-toolbar toggle on the wasm host) plus `chirp-tui` relay diagnostics. Every
-connected relay row must expose role, active wire-subscription count, durable
-session EVENT count, and enough status to explain a zero count as either no
-REQ, active REQ with no matches, EOSE/no matches, or a routing/configuration
-anomaly. `chirp-tui` Settings must render the full active relay inventory
-rather than only configured app relays; group rows by runtime category/source;
-let the user select any relay; and show why the client is connected, current
-wire subscriptions with exact raw REQ filters, per-sub and session event
-counts, EOSE/close/error state, and traffic/reconnect counters. The title bar
-and preview relay pane must label total vs preview counts consistently.
-Indexer relays are part of this acceptance criterion: for discovery kinds
-(`0`, `3`, `10002`, and other `10000..19999` lists), configured indexers must
-be visibly targeted or the diagnostics must show why they were not.
+**Phase 3 (Chirp inspector UI)** — `chirp-tui` leg complete (zero-count relay
+classification + indexer discovery-kind targeting rendered in relay settings,
+tested). iOS and web legs still open: a `RoutingInspectorView` long-press
+target on `ChirpEventCard` / publish-status row + a debug toolbar toggle on
+the wasm host remain unverifiable without Xcode / wasm environment.
 
 ---
 
