@@ -3,7 +3,7 @@
 //! The host-driven counterpart to `nmp_nip17::active_giftwrap_inbox_interest`
 //! for zap receipts (kind:9735) addressed to the active account. A host shell
 //! wires this through a runtime controller (see
-//! `apps/chirp/nmp-app-chirp/src/zap_receipts_runtime.rs` for the canonical
+//! `apps/chirp/crates/nmp-app-chirp/src/zap_receipts_runtime.rs` for the canonical
 //! reference) so the kernel learns nothing about NIP-57 — it just routes a
 //! generic `LogicalInterest` exactly the way it routes a NIP-17 gift-wrap
 //! inbox interest.

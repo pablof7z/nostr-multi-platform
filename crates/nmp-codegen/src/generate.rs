@@ -387,7 +387,7 @@ mod tests {
             version: "0.2.0".to_string(),
         };
 
-        let out = cargo_toml(&manifest, None, Path::new("apps/fixture/nmp-app-fixture"));
+        let out = cargo_toml(&manifest, None, Path::new("apps/fixture/crates/nmp-app-fixture"));
 
         assert!(out.contains("nmp-core = \"0.2.0\""));
         assert!(out.contains("nmp-ffi = \"0.2.0\""));

@@ -1,4 +1,4 @@
-//! Zero-diff CI gate proving `apps/fixture/nmp-app-fixture` is a **generated**
+//! Zero-diff CI gate proving `apps/fixture/crates/nmp-app-fixture` is a **generated**
 //! consumer of `nmp-codegen`.
 //!
 //! Opus review #49 flagged this crate as having zero generated consumers: both
@@ -9,7 +9,7 @@
 //! ## What this test enforces
 //!
 //! Given `apps/fixture/nmp.toml`, regenerating every file in
-//! `apps/fixture/nmp-app-fixture/` (`Cargo.toml`, `src/{action,capability,
+//! `apps/fixture/crates/nmp-app-fixture/` (`Cargo.toml`, `src/{action,capability,
 //! domain,envelope,ffi,lib,update,view_spec}.rs`) produces **byte-identical**
 //! contents to what is committed. Any drift — generator change, hand edit to
 //! the generated tree — fails CI on this single assertion.
@@ -37,7 +37,7 @@ use std::path::PathBuf;
 /// ```text
 /// cargo run -p nmp-codegen -- gen modules \
 ///     --manifest apps/fixture/nmp.toml \
-///     --out apps/fixture/nmp-app-fixture
+///     --out apps/fixture/crates/nmp-app-fixture
 /// ```
 /// and commit the result.
 #[test]
@@ -49,11 +49,11 @@ fn committed_fixture_matches_generator_output() {
 
     assert!(
         check,
-        "apps/fixture/nmp-app-fixture has drifted from the codegen output.\n\
+        "apps/fixture/crates/nmp-app-fixture has drifted from the codegen output.\n\
          Regenerate with:\n\
              cargo run -p nmp-codegen -- gen modules \\\n\
                  --manifest apps/fixture/nmp.toml \\\n\
-                 --out apps/fixture/nmp-app-fixture\n\
+                 --out apps/fixture/crates/nmp-app-fixture\n\
          and commit the result."
     );
 }
@@ -70,6 +70,6 @@ fn fixture_paths() -> (PathBuf, PathBuf) {
         .expect("CARGO_MANIFEST_DIR must have a grandparent (the workspace root)")
         .to_path_buf();
     let manifest = workspace_root.join("apps/fixture/nmp.toml");
-    let out = workspace_root.join("apps/fixture/nmp-app-fixture");
+    let out = workspace_root.join("apps/fixture/crates/nmp-app-fixture");
     (manifest, out)
 }

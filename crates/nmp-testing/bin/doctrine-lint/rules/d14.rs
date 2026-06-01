@@ -484,7 +484,7 @@ mod tests {
             "crates/nmp-nip29/src/lib.rs"
         )));
         assert!(!file_in_scope(&PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
         )));
         // nmp-testing's doctrine-lint fixtures legitimately reference the
         // banned pattern as text — they must be exempt.

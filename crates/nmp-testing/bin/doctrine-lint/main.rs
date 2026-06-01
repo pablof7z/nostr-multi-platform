@@ -946,7 +946,7 @@ fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, Stri
 
     // ── apps/<app>/<crate>/src/ ───────────────────────────────────────────────
     // App-layer Rust crates live one level deeper than `crates/` (the extra
-    // nesting is the app name, e.g. `apps/chirp/nmp-app-chirp/src`). Walk two
+    // nesting is the app name, e.g. `apps/chirp/crates/nmp-app-chirp/src`). Walk two
     // levels: app-directory → crate-directory → src.
     let apps_dir = workspace_root.join("apps");
     if apps_dir.is_dir() {

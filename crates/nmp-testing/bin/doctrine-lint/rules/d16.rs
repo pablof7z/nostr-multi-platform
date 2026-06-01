@@ -18,7 +18,7 @@
 //!
 //! ## Scope
 //!
-//! **Rust only — `apps/chirp/` tree** (`apps/chirp/nmp-app-chirp/src/`).
+//! **Rust only — `apps/chirp/` tree** (`apps/chirp/crates/nmp-app-chirp/src/`).
 //! The matching Swift side (`apps/chirp/ios/`) is covered by the existing
 //! `GroupChatDecodeTests.swift` round-trip tests and the typed
 //! `SnapshotProjections.CodingKeys` enum — a Swift scanner is out of scope
@@ -149,7 +149,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn chirp_path() -> PathBuf {
-        PathBuf::from("apps/chirp/nmp-app-chirp/src/ffi.rs")
+        PathBuf::from("apps/chirp/crates/nmp-app-chirp/src/ffi.rs")
     }
 
     #[test]
@@ -212,10 +212,10 @@ mod tests {
     #[test]
     fn file_in_scope_includes_chirp_app() {
         assert!(file_in_scope(&PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
         )));
         assert!(file_in_scope(&PathBuf::from(
-            "/abs/path/apps/chirp/nmp-app-chirp/src/dm_runtime.rs"
+            "/abs/path/apps/chirp/crates/nmp-app-chirp/src/dm_runtime.rs"
         )));
     }
 

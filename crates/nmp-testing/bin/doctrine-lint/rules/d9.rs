@@ -40,8 +40,14 @@ pub const ID: &str = "D9";
 /// would otherwise be false positives.
 pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
-    // Only the workspace `crates/` tree is scoped — app-layer crates under
-    // `apps/<app>/` legitimately use app-local vocabulary.
+    // App-layer crates under `apps/<app>/` legitimately use app-local
+    // vocabulary. Since F-00 they live at `apps/<app>/crates/nmp-app-*`, so
+    // the `/crates/nmp-` substring alone no longer distinguishes protocol
+    // crates from app crates — exclude anything under an `apps/` tree first.
+    if s.contains("apps/") {
+        return false;
+    }
+    // Only the workspace-root `crates/` tree is scoped.
     let in_crates = s.contains("/crates/nmp-") || s.starts_with("crates/nmp-");
     if !in_crates {
         return false;
@@ -255,10 +261,10 @@ mod tests {
     #[test]
     fn file_in_scope_excludes_apps() {
         assert!(!file_in_scope(&PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
         )));
         assert!(!file_in_scope(&PathBuf::from(
-            "/abs/path/apps/chirp/nmp-app-chirp/src/lib.rs"
+            "/abs/path/apps/chirp/crates/nmp-app-chirp/src/lib.rs"
         )));
     }
 

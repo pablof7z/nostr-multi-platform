@@ -222,7 +222,7 @@ impl Kernel {
         };
         // Pre-serialize the action body so the shell sends the same bytes
         // the executor validates: `{"pubkey":"<hex>"}` per
-        // `apps/chirp/nmp-app-chirp/src/ffi.rs` (NS_FOLLOW / NS_UNFOLLOW).
+        // `apps/chirp/crates/nmp-app-chirp/src/ffi.rs` (NS_FOLLOW / NS_UNFOLLOW).
         let body_json = serde_json::json!({ "pubkey": pubkey }).to_string();
         Some(ProfileAction {
             kind,

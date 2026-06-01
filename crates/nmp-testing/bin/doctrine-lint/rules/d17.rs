@@ -290,7 +290,7 @@ mod tests {
             "crates/nmp-nip17/src/lib.rs"
         )));
         assert!(!file_in_scope(&std::path::PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
         )));
         assert!(!file_in_scope(&std::path::PathBuf::from(
             "crates/nmp-marmot/src/projection/mod.rs"

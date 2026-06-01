@@ -341,7 +341,7 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // `nmp_app_new`. No other reference aliases `app` at this point — the
     // `&*app` borrow on the next line is taken only after this exclusive
     // borrow is dropped. Mirrors the `register_chirp_actions(unsafe { &mut
-    // *app })` pattern in `apps/chirp/nmp-app-chirp/src/ffi/register.rs`.
+    // *app })` pattern in `apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs`.
     unsafe { &mut *app }.register_action::<MarmotActionModule>();
 
     // SAFETY: caller guarantees `app` is non-null and valid.

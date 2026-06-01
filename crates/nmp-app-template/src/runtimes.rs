@@ -31,7 +31,7 @@
 //!   than leaking one per pubkey.
 //! * Degrade silently on lock poisoning or actor-channel disconnect (D6).
 //!
-//! Originally lived in `apps/chirp/nmp-app-chirp/src/dm_runtime.rs` +
+//! Originally lived in `apps/chirp/crates/nmp-app-chirp/src/dm_runtime.rs` +
 //! `zap_receipts_runtime.rs` (115 + 167 LOC). Lifted here so any
 //! NMP-based app gets canonical DM + zap subscription behaviour through
 //! one `register_defaults` call.

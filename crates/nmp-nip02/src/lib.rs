@@ -30,7 +30,7 @@
 //! # Why this exists
 //!
 //! Before this crate, the `Follow` / `Unfollow` / `React` `ActionModule`s
-//! lived in `apps/chirp/nmp-app-chirp/src/ffi/actions.rs` (as
+//! lived in `apps/chirp/crates/nmp-app-chirp/src/ffi/actions.rs` (as
 //! `ChirpFollowModule` / `ChirpUnfollowModule` / `ChirpReactModule`). That
 //! placement made the wiring app-local even though the verbs themselves are
 //! generic Nostr protocol primitives — Opus direction review #10 flagged

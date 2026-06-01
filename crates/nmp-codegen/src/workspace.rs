@@ -87,13 +87,20 @@ impl WorkspaceLayout {
         let members = parse_workspace_members(&body)?;
         let mut members_by_name = BTreeMap::new();
         for member in members {
-            let member_dir = root.join(&member);
-            let member_manifest = member_dir.join("Cargo.toml");
-            let Ok(member_body) = fs::read_to_string(&member_manifest) else {
-                continue;
-            };
-            if let Some(name) = parse_package_name(&member_body) {
-                members_by_name.insert(name, PathBuf::from(&member));
+            // Workspace members may be glob patterns (`apps/chirp/crates/*`).
+            // Expand a trailing `/*` by enumerating the parent's immediate
+            // subdirectories; literal members pass through unchanged. Cargo's
+            // glob support is broader, but `/*` is the only form this repo
+            // uses and the only one the layout resolver needs to honor.
+            for member_relative in expand_member_glob(root, &member) {
+                let member_dir = root.join(&member_relative);
+                let member_manifest = member_dir.join("Cargo.toml");
+                let Ok(member_body) = fs::read_to_string(&member_manifest) else {
+                    continue;
+                };
+                if let Some(name) = parse_package_name(&member_body) {
+                    members_by_name.insert(name, member_relative);
+                }
             }
         }
         Some(Self {
@@ -124,6 +131,35 @@ impl WorkspaceLayout {
         // Normalise to forward slashes for Cargo.toml portability.
         Some(path.to_string_lossy().replace('\\', "/"))
     }
+}
+
+/// Expand a single workspace-`members` entry into the concrete member
+/// directories it refers to. A trailing `/*` (the only glob form this repo
+/// uses) is expanded by listing the immediate subdirectories of its parent
+/// that contain a `Cargo.toml`; any other entry is returned verbatim. Results
+/// are workspace-relative paths (the same shape as a literal member entry).
+fn expand_member_glob(root: &Path, member: &str) -> Vec<PathBuf> {
+    let Some(parent) = member.strip_suffix("/*") else {
+        return vec![PathBuf::from(member)];
+    };
+    let parent_dir = root.join(parent);
+    let Ok(entries) = fs::read_dir(&parent_dir) else {
+        return Vec::new();
+    };
+    let mut expanded = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        if !entry.path().join("Cargo.toml").is_file() {
+            continue;
+        }
+        let Some(name) = entry.file_name().to_str().map(ToOwned::to_owned) else {
+            continue;
+        };
+        expanded.push(PathBuf::from(parent).join(name));
+    }
+    expanded
 }
 
 /// Best-effort: try `fs::canonicalize`, fall back to the lexical path. The
@@ -316,6 +352,56 @@ name = "baz-pkg"
     }
 
     #[test]
+    fn expands_trailing_glob_members_into_concrete_crates() {
+        // The repo declares per-app crate sets with `apps/<app>/crates/*`
+        // globs. Discovery must enumerate the glob's subdirectories so each
+        // real crate is path-resolvable — otherwise the generator falls back
+        // to the wrong `../../../crates/<name>` template.
+        let root = temp_root("glob-members");
+        write(
+            &root.join("Cargo.toml"),
+            r#"[workspace]
+members = ["apps/fixture/crates/*", "crates/nmp-core"]
+"#,
+        );
+        write(
+            &root.join("apps/fixture/crates/nmp-app-fixture/Cargo.toml"),
+            r#"[package]
+name = "nmp-app-fixture"
+"#,
+        );
+        write(
+            &root.join("apps/fixture/crates/fixture-todo-core/Cargo.toml"),
+            r#"[package]
+name = "fixture-todo-core"
+"#,
+        );
+        // A non-crate directory under the glob parent must be ignored.
+        fs::create_dir_all(root.join("apps/fixture/crates/not-a-crate")).unwrap();
+        write(
+            &root.join("crates/nmp-core/Cargo.toml"),
+            r#"[package]
+name = "nmp-core"
+"#,
+        );
+
+        let layout = WorkspaceLayout::discover(&root).expect("workspace found");
+        assert_eq!(
+            layout.members_by_name.get("nmp-app-fixture"),
+            Some(&PathBuf::from("apps/fixture/crates/nmp-app-fixture"))
+        );
+        assert_eq!(
+            layout.members_by_name.get("fixture-todo-core"),
+            Some(&PathBuf::from("apps/fixture/crates/fixture-todo-core"))
+        );
+        assert_eq!(
+            layout.members_by_name.get("nmp-core"),
+            Some(&PathBuf::from("crates/nmp-core"))
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn returns_none_when_no_workspace_on_ancestor_chain() {
         // A plain directory with no Cargo.toml at any depth must yield
         // `None` — the `crate::generate` fallback then keeps the legacy
@@ -329,18 +415,21 @@ name = "baz-pkg"
 
     #[test]
     fn relative_from_computes_dotdot_path_per_output_depth() {
-        // Output at `apps/fixture/nmp-app-fixture/` (3 deep) → target
-        // `apps/fixture/fixture-todo-core` ⇒ `../../../apps/fixture/fixture-todo-core`
-        // and a target under `crates/` ⇒ `../../../crates/nmp-core`.
+        // Output at `apps/fixture/crates/nmp-app-fixture/` (4 deep) → target
+        // `apps/fixture/crates/fixture-todo-core` ⇒ `../fixture-todo-core` is
+        // the lexical sibling, but the resolver builds every path via the
+        // workspace root, so it emits `../../../../apps/fixture/crates/fixture-todo-core`
+        // (4 `..` to root, then the member's workspace-relative dir); a target
+        // under `crates/` ⇒ `../../../../crates/nmp-core`.
         let root = temp_root("relative-from");
         write(
             &root.join("Cargo.toml"),
             r#"[workspace]
-members = ["apps/fixture/fixture-todo-core", "crates/nmp-core"]
+members = ["apps/fixture/crates/fixture-todo-core", "crates/nmp-core"]
 "#,
         );
         write(
-            &root.join("apps/fixture/fixture-todo-core/Cargo.toml"),
+            &root.join("apps/fixture/crates/fixture-todo-core/Cargo.toml"),
             r#"[package]
 name = "fixture-todo-core"
 "#,
@@ -353,16 +442,16 @@ name = "nmp-core"
         );
         // Touch the output dir tree so canonicalisation succeeds on the
         // ancestors.
-        let out_dir = root.join("apps/fixture/nmp-app-fixture");
+        let out_dir = root.join("apps/fixture/crates/nmp-app-fixture");
         fs::create_dir_all(&out_dir).unwrap();
         let layout = WorkspaceLayout::discover(&root).expect("workspace found");
         assert_eq!(
             layout.relative_from(&out_dir, "fixture-todo-core").as_deref(),
-            Some("../../../apps/fixture/fixture-todo-core"),
+            Some("../../../../apps/fixture/crates/fixture-todo-core"),
         );
         assert_eq!(
             layout.relative_from(&out_dir, "nmp-core").as_deref(),
-            Some("../../../crates/nmp-core"),
+            Some("../../../../crates/nmp-core"),
         );
         fs::remove_dir_all(root).unwrap();
     }

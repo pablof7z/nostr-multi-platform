@@ -159,10 +159,10 @@ mod tests {
     fn exempts_apps_path() {
         // Per the existing rule: apps/<app>/ legitimately uses domain nouns.
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "/abs/path/apps/chirp/nmp-app-chirp/src/lib.rs"
+            "/abs/path/apps/chirp/crates/nmp-app-chirp/src/lib.rs"
         )));
     }
 
@@ -193,7 +193,7 @@ mod tests {
         // the codegen path-template hardcode was lifted (the PR following
         // #472). Same exemption clause (`/apps/`) covers it now.
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "apps/fixture/fixture-todo-core/src/lib.rs"
+            "apps/fixture/crates/fixture-todo-core/src/lib.rs"
         )));
     }
 
