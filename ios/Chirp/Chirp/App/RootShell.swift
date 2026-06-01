@@ -93,7 +93,19 @@ struct RootShell: View {
 
     @ViewBuilder
     private var toast: some View {
-        if let msg = model.lastErrorToast {
+        if let msg = model.lastSuccessToast {
+            Text(msg)
+                .font(ChirpFont.callout)
+                .foregroundStyle(ChirpColor.positive)
+                .padding(.horizontal, ChirpSpace.l).padding(.vertical, ChirpSpace.m)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.top, 8)
+                .onTapGesture { model.clearSuccessToast() }
+                .task {
+                    try? await Task.sleep(for: .seconds(3))
+                    model.clearSuccessToast()
+                }
+        } else if let msg = model.lastErrorToast {
             Text(msg)
                 .font(ChirpFont.callout)
                 .foregroundStyle(.primary)
