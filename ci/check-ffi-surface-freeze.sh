@@ -89,7 +89,7 @@ SCAN_PATHS=(
     'crates/nmp-ffi/src/'
     'crates/nmp-core/src/ffi/'
     'crates/nmp-signer-broker/src/'
-    'apps/chirp/nmp-app-chirp/src/'
+    'apps/chirp/crates/nmp-app-chirp/src/'
     'crates/nmp-marmot/src/'
     'apps/marmot/nmp-app-marmot/src/'
     ':(exclude)crates/nmp-core/src/ffi/testing.rs'
@@ -150,7 +150,7 @@ if [[ -n "${UNJUSTIFIED}" ]]; then
     echo "becomes a permanent ABI promise once it ships to the App Store." >&2
     echo "" >&2
     echo "To add a new app verb:" >&2
-    echo "  1. Register an ActionModule in apps/chirp/nmp-app-chirp/src/ffi.rs" >&2
+    echo "  1. Register an ActionModule in apps/chirp/crates/nmp-app-chirp/src/ffi.rs" >&2
     echo "  2. Implement ActionModule::execute in the appropriate nmp-nip* crate" >&2
     echo "  3. Call dispatch_action(\"nmp.X.Y\", ...) from Swift" >&2
     echo "" >&2

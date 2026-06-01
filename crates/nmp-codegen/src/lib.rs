@@ -13,7 +13,7 @@ mod workspace;
 pub mod swift;
 // V6 Stage 2 — dotted-projection-key registry for `SnapshotProjections` +
 // `CodingKeys`. Hand-transcribed from the existing Swift declaration in
-// `ios/Chirp/Chirp/Bridge/KernelBridge.swift`; the renderer in `swift.rs`
+// `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`; the renderer in `swift.rs`
 // appends `SnapshotProjections` to the generated file using this slice.
 // Lives in `nmp-codegen` (D0-exempt) so the registry can name dotted host
 // keys like `"nmp.nip29.group_chat"` without tripping doctrine-lint on

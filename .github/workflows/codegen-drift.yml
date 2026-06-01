@@ -3,7 +3,7 @@ name: codegen-drift
 # V6 Stage 1 — Swift `Decodable` emitter drift gate. The Rust projection
 # types in `nmp-core` (plus the seven NIP-crate projection types in
 # Stage 2/3) are the single source of truth for the Swift `Decodable`
-# mirrors at `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`.
+# mirrors at `apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift`.
 # This workflow runs the emitter in `--check` mode and fails any PR whose
 # generated Swift differs from a fresh run.
 #

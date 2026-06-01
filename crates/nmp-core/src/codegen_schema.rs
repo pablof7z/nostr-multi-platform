@@ -199,7 +199,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
         },
         TypeEntry {
             // V6 Stage 3 partial (F-05). The Swift hand-written struct in
-            // `ios/Chirp/Chirp/Bridge/KernelBridge.swift` carries
+            // `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift` carries
             // `Identifiable`, `Equatable`, and `Hashable` plus a custom
             // `init(from:)` with three `decodeIfPresent ?? default`
             // fallbacks (`isRepost`, `navTargetId`, `repostInnerContent`).
@@ -216,7 +216,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             //
             // `Sendable` is the load-bearing addition for this type
             // specifically: `NoteRenderContext` (in
-            // `ios/Chirp/Chirp/Components/NoteEntityViews.swift`) holds
+            // `apps/chirp/ios/Chirp/Components/NoteEntityViews.swift`) holds
             // `[String: TimelineItem]` and exposes a `static let empty`,
             // which strict-concurrency rejects on a non-Sendable value
             // type. Without explicit `Sendable` on `TimelineItem` the

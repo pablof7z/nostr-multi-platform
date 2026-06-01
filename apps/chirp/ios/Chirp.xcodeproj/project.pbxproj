@@ -547,7 +547,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "BRANCH=$(git -C \"$SRCROOT/../..\" rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"unknown\")\nCOMMIT=$(git -C \"$SRCROOT/../..\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nBUILD_TIME=$(date -u +\"%Y-%m-%d %H:%M UTC\")\nOUT=\"$SRCROOT/Chirp/App/BuildInfo.generated.swift\"\n{\n  echo \"// Auto-generated at build time — do not edit\"\n  echo \"enum BuildInfo {\"\n  echo \"    static let branch = \\\"$BRANCH\\\"\"\n  echo \"    static let commit = \\\"$COMMIT\\\"\"\n  echo \"    static let buildTime = \\\"$BUILD_TIME\\\"\"\n  echo \"}\"\n} > \"$OUT\"\n";
+			shellScript = "BRANCH=$(git -C \"$SRCROOT/../../..\" rev-parse --abbrev-ref HEAD 2>/dev/null || echo \"unknown\")\nCOMMIT=$(git -C \"$SRCROOT/../../..\" rev-parse --short HEAD 2>/dev/null || echo \"unknown\")\nBUILD_TIME=$(date -u +\"%Y-%m-%d %H:%M UTC\")\nOUT=\"$SRCROOT/Chirp/App/BuildInfo.generated.swift\"\n{\n  echo \"// Auto-generated at build time — do not edit\"\n  echo \"enum BuildInfo {\"\n  echo \"    static let branch = \\\"$BRANCH\\\"\"\n  echo \"    static let commit = \\\"$COMMIT\\\"\"\n  echo \"    static let buildTime = \\\"$BUILD_TIME\\\"\"\n  echo \"}\"\n} > \"$OUT\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -691,12 +691,12 @@
 					"@executable_path/Frameworks",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
+					"$(SRCROOT)/../../../target/aarch64-apple-ios/debug",
+					"$(SRCROOT)/../../../target/aarch64-apple-ios/release",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
+					"$(SRCROOT)/../../../target/aarch64-apple-ios-sim/debug",
+					"$(SRCROOT)/../../../target/aarch64-apple-ios-sim/release",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp";
 				PRODUCT_BUNDLE_IDENTIFIER = io.f7z.chirp;
@@ -883,12 +883,12 @@
 					"@executable_path/Frameworks",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
+					"$(SRCROOT)/../../../target/aarch64-apple-ios/debug",
+					"$(SRCROOT)/../../../target/aarch64-apple-ios/release",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
+					"$(SRCROOT)/../../../target/aarch64-apple-ios-sim/debug",
+					"$(SRCROOT)/../../../target/aarch64-apple-ios-sim/release",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp";
 				PRODUCT_BUNDLE_IDENTIFIER = io.f7z.chirp;

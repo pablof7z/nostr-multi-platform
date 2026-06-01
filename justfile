@@ -4,10 +4,10 @@ rust-test:
     cargo test --workspace
 
 gen-modules:
-    cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/nmp-app-fixture
+    cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/crates/nmp-app-fixture
 
 gen-modules-check:
-    cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/nmp-app-fixture --check
+    cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/crates/nmp-app-fixture --check
 
 rust-ios-sim:
     # Keep the standalone core archive fresh for shells that link nmp-core
@@ -18,13 +18,13 @@ rust-ios-sim:
     cargo build -p nmp-app-chirp --features marmot --target aarch64-apple-ios-sim
 
 gen-ios:
-    xcodegen generate --spec ios/Chirp/project.yml
+    xcodegen generate --spec apps/chirp/ios/project.yml
 
 build-ios: rust-ios-sim gen-ios
-    xcodebuild -project ios/Chirp/Chirp.xcodeproj -scheme Chirp -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath ios/DerivedData build
+    xcodebuild -project apps/chirp/ios/Chirp.xcodeproj -scheme Chirp -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath apps/chirp/ios/DerivedData build
 
 run-ios: build-ios
-    xcrun simctl install booted ios/DerivedData/Build/Products/Debug-iphonesimulator/Chirp.app
+    xcrun simctl install booted apps/chirp/ios/DerivedData/Build/Products/Debug-iphonesimulator/Chirp.app
     xcrun simctl launch booted com.example.Chirp
 
 # === FFI hardening (M10.5 phase 1) ===

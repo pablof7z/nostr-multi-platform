@@ -19,7 +19,7 @@
 //! ## Scope
 //!
 //! **Rust only — `apps/chirp/` tree** (`apps/chirp/nmp-app-chirp/src/`).
-//! The matching Swift side (`ios/Chirp/`) is covered by the existing
+//! The matching Swift side (`apps/chirp/ios/`) is covered by the existing
 //! `GroupChatDecodeTests.swift` round-trip tests and the typed
 //! `SnapshotProjections.CodingKeys` enum — a Swift scanner is out of scope
 //! for doctrine-lint (Rust binary, no Swift AST). Protocol crates under
@@ -63,7 +63,7 @@ const WHITELISTED_PATH_SUFFIXES: &[&str] = &["nmp-nip29/src/interest.rs", "nmp-n
 /// fixture + negative-example strings) are out of scope.
 ///
 /// The doctrine-lint binary scans Rust files only; Swift coverage is handled
-/// by the `GroupChatDecodeTests.swift` round-trip tests in `ios/Chirp/`.
+/// by the `GroupChatDecodeTests.swift` round-trip tests in `apps/chirp/ios/`.
 pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     // Only the apps/chirp/ tree.

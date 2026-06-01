@@ -10,7 +10,7 @@ called product-ready, unless the feature has a documented platform exception.
 The old Twitter-like timeline is only the social baseline; Chirp's goal is a
 complete client that demonstrates the whole framework.
 
-See [`../docs/plan/chirp-showcase.md`](../docs/plan/chirp-showcase.md).
+See [`../../../docs/plan/chirp-showcase.md`](../../../docs/plan/chirp-showcase.md).
 
 ### Absorbed apps
 

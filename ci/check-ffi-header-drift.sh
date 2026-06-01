@@ -2,7 +2,7 @@
 #
 # check-ffi-header-drift.sh — CI gate for C-header / Rust-FFI drift.
 #
-# `ios/Chirp/Chirp/Bridge/NmpCore.h` is hand-maintained and MUST stay in sync
+# `apps/chirp/ios/Chirp/Bridge/NmpCore.h` is hand-maintained and MUST stay in sync
 # with every `#[no_mangle] pub extern "C" fn nmp_app_*` symbol that ships in the
 # static archives the Chirp shell links. This script extracts both symbol sets
 # and fails (exit 1) on any mismatch in either direction.
@@ -12,7 +12,7 @@
 #
 #   1. crates/nmp-ffi/src/                -> shared C-ABI symbols, including
 #      the NIP-46 broker adapter
-#   2. apps/chirp/nmp-app-chirp/src/ffi/ (split from ffi.rs in V-09) +
+#   2. apps/chirp/crates/nmp-app-chirp/src/ffi/ (split from ffi.rs in V-09) +
 #      crates/nmp-marmot/src/ffi.rs +
 #      crates/nmp-marmot/src/fetch.rs -> libnmp_app_chirp.a
 #      (originally relocated from nmp-app-chirp into nmp-marmot in PR #348;
@@ -72,9 +72,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-HEADER="${REPO_ROOT}/ios/Chirp/Chirp/Bridge/NmpCore.h"
+HEADER="${REPO_ROOT}/apps/chirp/ios/Chirp/Bridge/NmpCore.h"
 UPDATE_CALLBACK_HEADERS=(
-    "${REPO_ROOT}/ios/Chirp/Chirp/Bridge/NmpCore.h"
+    "${REPO_ROOT}/apps/chirp/ios/Chirp/Bridge/NmpCore.h"
     "${REPO_ROOT}/apps/nmp-gallery/ios/NmpGallery/Bridge/NmpGallery.h"
 )
 
@@ -93,13 +93,13 @@ FFI_FILE_ROOTS=(
     # it has no file-level #![cfg(test)] and would pass is_test_only_file() as
     # non-test, but it defines zero #[no_mangle] symbols (it's a caller-only
     # test file, same posture as marmot/ffi/tests.rs).
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/mod.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/actions.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/handle.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/helpers.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/identity.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/register.rs"
-    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs"
+    "${REPO_ROOT}/apps/chirp/crates/nmp-app-chirp/src/ffi/mod.rs"
+    "${REPO_ROOT}/apps/chirp/crates/nmp-app-chirp/src/ffi/actions.rs"
+    "${REPO_ROOT}/apps/chirp/crates/nmp-app-chirp/src/ffi/handle.rs"
+    "${REPO_ROOT}/apps/chirp/crates/nmp-app-chirp/src/ffi/helpers.rs"
+    "${REPO_ROOT}/apps/chirp/crates/nmp-app-chirp/src/ffi/identity.rs"
+    "${REPO_ROOT}/apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs"
+    "${REPO_ROOT}/apps/chirp/crates/nmp-app-chirp/src/ffi/snapshot.rs"
     # Marmot C-ABI lives in nmp-marmot (originally relocated from
     # nmp-app-chirp in PR #348; the crate itself returned from apps/marmot/
     # to crates/nmp-marmot/ in step 12, 2026-05-25). Symbols still land in

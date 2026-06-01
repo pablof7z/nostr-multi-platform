@@ -2,7 +2,7 @@
 node_modules/
 dist/
 WIP.md
-/ios/DerivedData/
+/apps/chirp/ios/DerivedData/
 /ios/NmpStress/DerivedData/
 /ios/NmpStress/NmpStress.xcodeproj/
 /ios/NmpPulse/NmpPulse.xcodeproj/
@@ -13,11 +13,11 @@ WIP.md
 .claire/
 
 # Chirp Xcode build output
-ios/Chirp/build/
-ios/Chirp/Chirp/App/BuildInfo.generated.swift
-ios/Chirp/DerivedData-maestro/
-ios/Chirp/Chirp.xcodeproj/xcuserdata/
-ios/Chirp/Chirp.xcodeproj/project.xcworkspace/xcuserdata/
+apps/chirp/ios/build/
+apps/chirp/ios/Chirp/App/BuildInfo.generated.swift
+apps/chirp/ios/DerivedData-maestro/
+apps/chirp/ios/Chirp.xcodeproj/xcuserdata/
+apps/chirp/ios/Chirp.xcodeproj/project.xcworkspace/xcuserdata/
 
 # NmpPodcast Xcode build output (T156)
 ios/NmpPodcast/build/

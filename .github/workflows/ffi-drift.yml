@@ -1,6 +1,6 @@
 name: ffi-drift
 
-# Catches C-header / Rust-FFI drift: `ios/Chirp/Chirp/Bridge/NmpCore.h` must
+# Catches C-header / Rust-FFI drift: `apps/chirp/ios/Chirp/Bridge/NmpCore.h` must
 # stay in sync with every `nmp_app_*` symbol exported from the three Rust FFI
 # archives the Chirp shell links. The gate is a pure grep + awk + diff over the
 # checked-out tree — no Rust toolchain, no compilation, runs in <5s.

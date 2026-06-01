@@ -88,7 +88,7 @@ fn run_gen_modules(args: Vec<String>) -> Result<(), String> {
 /// `crates/nmp-core/src/bin/dump_projection_schemas.rs`).
 ///
 /// `--out` defaults to
-/// `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift` —
+/// `apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift` —
 /// matches plan §5b and the xcodegen-swept `Chirp/` source root, so
 /// dropping the file in this location picks it up on the next project
 /// regeneration without a pbxproj edit (xcodegen `sources: - path: Chirp`).
@@ -97,7 +97,7 @@ fn run_gen_modules(args: Vec<String>) -> Result<(), String> {
 /// The CI gate at `.github/workflows/codegen-drift.yml` uses this mode.
 fn run_gen_swift(args: Vec<String>) -> Result<(), String> {
     let mut schemas_path = PathBuf::from("-");
-    let mut out = PathBuf::from("ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift");
+    let mut out = PathBuf::from("apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift");
     let mut check = false;
     let mut index = 0;
     while index < args.len() {

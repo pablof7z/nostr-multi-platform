@@ -2,7 +2,7 @@
 //!
 //! This module owns the single source of truth that replaces the hand-written
 //! `SnapshotProjections` struct + `CodingKeys` enum at the bottom of
-//! `ios/Chirp/Chirp/Bridge/KernelBridge.swift`. The renderer in
+//! `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`. The renderer in
 //! [`crate::swift`] reads this slice and emits the equivalent Swift.
 //!
 //! ## Why the registry lives in `nmp-codegen`, not `nmp-core`
@@ -54,7 +54,7 @@
 /// One entry in the dotted-projection-key registry.
 ///
 /// The hand-written `SnapshotProjections` declaration in
-/// `ios/Chirp/Chirp/Bridge/KernelBridge.swift` is the byte-for-byte target
+/// `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift` is the byte-for-byte target
 /// the renderer must reproduce. Every field on that struct corresponds to
 /// exactly one entry here, in declaration order.
 pub struct SnapshotProjectionEntry {
@@ -298,7 +298,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     // by iterating `profile_claims` and calling `profile_card_for`; missing
     // kind:0 data still emits a placeholder card (D1 honest fallback).
     // Consumed by `KernelModel.profile(forPubkey:)` for the NostrProfileHost
-    // conformance (`ios/Chirp/Chirp/Bridge/KernelModel.swift`).
+    // conformance (`apps/chirp/ios/Chirp/Bridge/KernelModel.swift`).
     SnapshotProjectionEntry {
         json_key: "claimed_profiles",
         swift_field: "claimedProfiles",
@@ -312,7 +312,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     // from the kernel's claimed-event set (see
     // `crates/nmp-core/src/kernel/types.rs::ClaimedEventDto`). The Swift
     // value type `ClaimedEventDto` is hand-declared (Stage-3 value types are
-    // not schema-reflected) in `ios/Chirp/Chirp/Bridge/EmbedHost.swift`, its
+    // not schema-reflected) in `apps/chirp/ios/Chirp/Bridge/EmbedHost.swift`, its
     // sole consumer. Drives `EmbedHost.update(from:)` for the NMP embed
     // system.
     SnapshotProjectionEntry {
