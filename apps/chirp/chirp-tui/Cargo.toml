@@ -14,8 +14,8 @@ name = "chirp-tui"
 path = "src/main.rs"
 
 [dependencies]
-nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
-nmp-chirp-config = { path = "../nmp-chirp-config" }
+nmp-app-chirp = { path = "../crates/nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
+nmp-chirp-config = { path = "../crates/nmp-chirp-config" }
 nmp-content = { path = "../../../crates/nmp-content" }
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 # ADR-0038: typed FlatBuffers sidecar decode for the `nmp.feed.home`

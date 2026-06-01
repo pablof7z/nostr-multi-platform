@@ -1,11 +1,10 @@
 [workspace]
 members = [
-    "apps/chirp/nmp-app-chirp",
-    "apps/fixture/nmp-app-fixture",
-    "apps/fixture/fixture-todo-core",
+    "apps/chirp/crates/*",
+    "apps/fixture/crates/*",
     "apps/chirp/chirp-tui",
     "apps/chirp/chirp-repl",
-    "apps/chirp/nmp-chirp-config",
+    "apps/nmp-gallery/crates/*",
     "apps/nmp-gallery/tui",
     "apps/nmp-gallery/desktop",
     "crates/nmp-cli",
@@ -28,7 +27,6 @@ members = [
     "crates/nmp-nip51",
     "crates/nmp-nip57",
     "crates/nmp-nip59",
-    "apps/nmp-gallery/nmp-app-gallery",
     "crates/nmp-nip77",
     "crates/nmp-wot",
     "crates/nmp-app-template",

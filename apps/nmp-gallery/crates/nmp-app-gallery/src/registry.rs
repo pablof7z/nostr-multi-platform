@@ -10,8 +10,8 @@ use std::{ffi::c_char, sync::OnceLock};
 
 use serde::Deserialize;
 
-const RAW_JSON: &str = include_str!("../../registry.json");
-const RAW_JSON_C: &str = concat!(include_str!("../../registry.json"), "\0");
+const RAW_JSON: &str = include_str!("../../../registry.json");
+const RAW_JSON_C: &str = concat!(include_str!("../../../registry.json"), "\0");
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct GalleryRegistry {

@@ -10,8 +10,8 @@ use std::{ffi::c_char, sync::OnceLock};
 
 use serde::Deserialize;
 
-const RAW_JSON: &str = include_str!("../../showcase-references.json");
-const RAW_JSON_C: &str = concat!(include_str!("../../showcase-references.json"), "\0");
+const RAW_JSON: &str = include_str!("../../../showcase-references.json");
+const RAW_JSON_C: &str = concat!(include_str!("../../../showcase-references.json"), "\0");
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct GalleryShowcaseReferences {
@@ -146,7 +146,8 @@ mod tests {
 
         let gallery_root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .expect("nmp-app-gallery lives under apps/nmp-gallery");
+            .and_then(Path::parent)
+            .expect("nmp-app-gallery lives under apps/nmp-gallery/crates");
         let source_file = gallery_root.join("showcase-references.json");
         let mut offenders = Vec::new();
         visit_source_files(gallery_root, &source_file, &needles, &mut offenders)

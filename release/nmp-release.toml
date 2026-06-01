@@ -176,12 +176,12 @@ reason = "standalone Android/JNI workspace; versioned from the same tag but not 
 
 [[private_packages]]
 name = "nmp-app-chirp"
-path = "apps/chirp/nmp-app-chirp"
+path = "apps/chirp/crates/nmp-app-chirp"
 reason = "app composition crate"
 
 [[private_packages]]
 name = "nmp-chirp-config"
-path = "apps/chirp/nmp-chirp-config"
+path = "apps/chirp/crates/nmp-chirp-config"
 reason = "Chirp-specific configuration crate"
 
 [[private_packages]]
@@ -196,17 +196,17 @@ reason = "Chirp developer REPL application"
 
 [[private_packages]]
 name = "nmp-app-fixture"
-path = "apps/fixture/nmp-app-fixture"
+path = "apps/fixture/crates/nmp-app-fixture"
 reason = "fixture app composition crate"
 
 [[private_packages]]
 name = "fixture-todo-core"
-path = "apps/fixture/fixture-todo-core"
+path = "apps/fixture/crates/fixture-todo-core"
 reason = "fixture app domain crate"
 
 [[private_packages]]
 name = "nmp-app-gallery"
-path = "apps/nmp-gallery/nmp-app-gallery"
+path = "apps/nmp-gallery/crates/nmp-app-gallery"
 reason = "gallery app composition crate"
 
 [[private_packages]]
