@@ -23,5 +23,3 @@ sources:
 NIP crates register kind-specific ingest parsers via `EventIngestDispatcher` at composition time — the kernel never pattern-matches NIP kinds directly. Per D0 doctrine, the nmp-core substrate has zero NIP knowledge; no NIP-specific nouns may appear in the substrate API. The `RootIndexedFeed` engine accepts a caller-supplied `EventGate` predicate that filters events at the ingest entry point before any state is touched. For example, the `nmp-nip01` `register_op_feed` wiring supplies an `EventGate` that accepts only kind:0, kind:1, and kind:6 events into the `RootIndexedFeed`. Kind:0 events pass the gate because `profile_detector` would short-circuit them anyway, and blocking them would break the `profile_refresh_updates_buffered_attribution` test path. Kind:3 (contact list) and kind:10002 (relay list) events echoed back by relays after account creation are blocked from becoming phantom root cards in the NOFS feed.
 
 <!-- citations: [^1670f-7] [^f2605-9] [^855be-4] -->
-## See Also
-

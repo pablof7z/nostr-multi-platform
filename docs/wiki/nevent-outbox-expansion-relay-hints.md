@@ -18,9 +18,7 @@ sources:
 
 ## Outbox Expansion for nevent Claims
 
-For event-id (nevent) claims, outbox expansion cannot be used unless the bech32 includes the pubkey; the relay hint is followed first. [^6a951-10]
+For event-id (nevent) claims, outbox expansion cannot be used unless the bech32 includes the pubkey; the relay hint is followed first. <!-- [^6a951-10] -->
 
 
-The time-shift trap must be avoided: when verifying a relay serves an event, the check must occur at the same instant as the claim, not at a different time when relay state may have changed. [^6a951-11]
-## See Also
-
+The time-shift trap must be avoided: when verifying a relay serves an event, the check must occur at the same instant as the claim, not at a different time when relay state may have changed. <!-- [^6a951-11] -->

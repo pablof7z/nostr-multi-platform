@@ -22,5 +22,3 @@ sources:
 The nmp-nip22 crate provides CommentRecord with CommentPointer variants (Event, Address, External) for both root (uppercase tags) and parent (lowercase). Builder entrypoints include Comment::on_event, Comment::on_address, and Comment::on_external, with .reply_to_comment(...) for nesting. CommentPointer aliases nmp-threading::ThreadPointer with byte-identical serde.
 
 <!-- citations: [^590ca-6] [^423f3-10] -->
-## See Also
-

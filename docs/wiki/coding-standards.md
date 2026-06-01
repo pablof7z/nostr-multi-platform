@@ -23,5 +23,3 @@ sources:
 Files must not exceed 300/500 LOC (soft/hard cap), and PRs must not introduce new hard-cap file-size violations. Files must contain no TODO/unimplemented in non-test code, and must never fabricate results—unreachable/absent behavior against the public relay set must be reported loudly as a finding.
 
 <!-- citations: [^ad1d5-8] [^9f5b5-1] [^423f3-4] -->
-## See Also
-

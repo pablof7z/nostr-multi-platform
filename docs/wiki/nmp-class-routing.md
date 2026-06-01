@@ -33,18 +33,16 @@ The OutboxResolver trait gains two methods for class routing: class_relays_perso
 <!-- citations: [^41858-2] [^50510-2] -->
 ## Wiki Relay Lifecycle
 
-Per-author kind:10102 wiki relay fetches are lazy, cached, and evicted: fetched the first time a Wiki interest names an author, kept alive while any class-routed interest references them, and dropped when the last one ends. [^41858-3]
+Per-author kind:10102 wiki relay fetches are lazy, cached, and evicted: fetched the first time a Wiki interest names an author, kept alive while any class-routed interest references them, and dropped when the last one ends. <!-- [^41858-3] -->
 
 ## Blocked-Relay Filter
 
-The planner applies the blocked-relay filter (kind:10006) as a post-processing pass that subtracts blocked relays from the final target list; blocking is non-bypassable. If the blocked-relay filter subtracts every relay from a plan, the planner fails loud with PlannerError::AllRelaysBlocked rather than silently emitting an empty plan. [^41858-4]
+The planner applies the blocked-relay filter (kind:10006) as a post-processing pass that subtracts blocked relays from the final target list; blocking is non-bypassable. If the blocked-relay filter subtracts every relay from a plan, the planner fails loud with PlannerError::AllRelaysBlocked rather than silently emitting an empty plan. <!-- [^41858-4] -->
 
 ## NIP-51 List Mapping and Decryption
 
-The NIP-51 fact-stream struct includes search (kind:10007), blocked (kind:10006), wiki (kind:10102), drafts as Option (kind:10013, nip44-encrypted), and dm fields. Draft relays are sourced from NIP-51 kind:10013, which is a nip44-encrypted list. Wiki relays are sourced from NIP-51 kind:10102 (Good wiki relays). EventClass::Draft maps to both kind 31234 (NIP-37 parent draft) and kind 1234 (NIP-37 checkpoint). NIP-44 self-decryption is a load-bearing kernel dependency for class routing because kind:10013 is the first NIP-51 list that requires the active signer to be decrypted. The drafts field in the NIP-51 fact-stream is Option<Vec<_>> to distinguish 'encrypted-but-undecryptable' (signer not ready) from 'decrypted-but-empty'. A draft being written without a signer being ready is a nonsensical scenario; the boot-ordering concern about missing signers at draft time is dropped. [^41858-5]
+The NIP-51 fact-stream struct includes search (kind:10007), blocked (kind:10006), wiki (kind:10102), drafts as Option (kind:10013, nip44-encrypted), and dm fields. Draft relays are sourced from NIP-51 kind:10013, which is a nip44-encrypted list. Wiki relays are sourced from NIP-51 kind:10102 (Good wiki relays). EventClass::Draft maps to both kind 31234 (NIP-37 parent draft) and kind 1234 (NIP-37 checkpoint). NIP-44 self-decryption is a load-bearing kernel dependency for class routing because kind:10013 is the first NIP-51 list that requires the active signer to be decrypted. The drafts field in the NIP-51 fact-stream is Option<Vec<_>> to distinguish 'encrypted-but-undecryptable' (signer not ready) from 'decrypted-but-empty'. A draft being written without a signer being ready is a nonsensical scenario; the boot-ordering concern about missing signers at draft time is dropped. <!-- [^41858-5] -->
 
 ## GroupMessage Exclusion
 
-EventClass::GroupMessage is kept for diagnostics but never participates in class_relays routing, as NIP-29 events route via relay_pin. [^41858-6]
-## See Also
-
+EventClass::GroupMessage is kept for diagnostics but never participates in class_relays routing, as NIP-29 events route via relay_pin. <!-- [^41858-6] -->

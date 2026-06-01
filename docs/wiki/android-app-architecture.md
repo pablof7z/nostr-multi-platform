@@ -32,24 +32,22 @@ The Android app mirrors the iOS NmpPulse architecture with a KernelBridge (JNI �
 <!-- citations: [^ad1d5-2] [^e2d58-2] [^f3d8d-1] -->
 ## Native Build
 
-Native libraries are built for arm64-v8a + x86_64 via `cargo ndk`. A Gradle module is wired to build the Android app. [^ad1d5-3]
+Native libraries are built for arm64-v8a + x86_64 via `cargo ndk`. A Gradle module is wired to build the Android app. <!-- [^ad1d5-3] -->
 
 ## Doctrine Compliance
 
-Doctrine D0–D8 (from docs/product-spec/overview-and-dx.md §1.5) must be honored: no business logic or cached state in Kotlin, no errors thrown across FFI (envelope/JSON only), and best-effort rendering (no spinner gates). [^ad1d5-4]
+Doctrine D0–D8 (from docs/product-spec/overview-and-dx.md §1.5) must be honored: no business logic or cached state in Kotlin, no errors thrown across FFI (envelope/JSON only), and best-effort rendering (no spinner gates). <!-- [^ad1d5-4] -->
 
 ## Verification and Launch
 
-The app must launch in an Android emulator, or exact emulator/SDK steps must be documented if the toolchain is absent, without faking a green result. The final deliverable requires android/ to build, the app to launch showing a live timeline through the kernel, and screenshots to be saved to docs/perf/android/. [^ad1d5-5]
+The app must launch in an Android emulator, or exact emulator/SDK steps must be documented if the toolchain is absent, without faking a green result. The final deliverable requires android/ to build, the app to launch showing a live timeline through the kernel, and screenshots to be saved to docs/perf/android/. <!-- [^ad1d5-5] -->
 
 ## Commit Convention
 
-Commit messages use the prefix `feat(android):`. [^ad1d5-6]
+Commit messages use the prefix `feat(android):`. <!-- [^ad1d5-6] -->
 
 ## UI Stack
 
 The Android app uses Jetpack Compose with Material 3, Navigation Compose for typed navigation, Coil for async image loading, and kotlinx-serialization for JSON decoding. The login screen provides a Sign In button for nsec key entry and a Create Account button that generates a fresh keypair via nmp_app_create_new_account. MainActivity uses 6-tab navigation (Timeline / DMs / Relays / Account / Wallet / Diagnostics) with a NavHost supporting routes for profile/{pubkey}, thread/{eventId}, accounts, and diagnostics deep links. Required screens include SignInScreen, DmScreen, RelayScreen, ProfileScreen, and WalletScreen. SignInScreen must use the shared KernelBridge instance — creating its own KernelBridge produces a dead unstarted handle that prevents sign-in. DmScreen must call claimProfile and DmConversationListScreen must accept a model parameter so peer names load. The ComposeSheet component uses a ModalBottomSheet with a 280-character limit and reply support. PullToRefreshBox is not available in Material3 1.2.1 and must be replaced with a plain Box and LazyColumn. Author name must fall back through the profile merge chain; the model default in RootCardRow must not be nullable.
 
 <!-- citations: [^e2d58-3] [^f3d8d-2] -->
-## See Also
-

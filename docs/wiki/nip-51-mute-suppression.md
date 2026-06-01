@@ -18,7 +18,4 @@ sources:
 
 ## Mute Suppression Design
 
-V-42 NIP-51 mute suppression uses a read-time owner gate (like FollowListProjection) rather than a composition-root hook, so production is fixed unconditionally without needing wiring. Between accounts, the prior account's mutes must not stay active; the cross-account mute leak is closed by the read-time owner gate. [^4edd4-15]
-
-## See Also
-
+V-42 NIP-51 mute suppression uses a read-time owner gate (like FollowListProjection) rather than a composition-root hook, so production is fixed unconditionally without needing wiring. Between accounts, the prior account's mutes must not stay active; the cross-account mute leak is closed by the read-time owner gate. <!-- [^4edd4-15] -->

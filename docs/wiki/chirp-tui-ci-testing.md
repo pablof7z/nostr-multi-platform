@@ -18,9 +18,7 @@ sources:
 
 ## E2E Test Tooling Split
 
-VHS is used only for non-image E2E test flows; QuickTime + iTerm2 is used for image-heavy demos since VHS (headless ttyd) cannot render iTerm2/Kitty protocol images. [^4f377-12]
+VHS is used only for non-image E2E test flows; QuickTime + iTerm2 is used for image-heavy demos since VHS (headless ttyd) cannot render iTerm2/Kitty protocol images. <!-- [^4f377-12] -->
 
 
-The CI testing stack uses TestBackend + insta snapshots + expectrl for PTY-driven E2E tests. [^4f377-13]
-## See Also
-
+The CI testing stack uses TestBackend + insta snapshots + expectrl for PTY-driven E2E tests. <!-- [^4f377-13] -->

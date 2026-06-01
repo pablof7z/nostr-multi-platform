@@ -18,11 +18,9 @@ sources:
 
 ## Snapshot Projection Decoding
 
-Android `decodeProjections()` must extract `dm_inbox` and `wallet_status` from snapshot projections so DM and Wallet screens are not permanently empty. [^f3d8d-3]
+Android `decodeProjections()` must extract `dm_inbox` and `wallet_status` from snapshot projections so DM and Wallet screens are not permanently empty. <!-- [^f3d8d-3] -->
 
 
-Android `Snapshot.kt` must include `claimedProfiles`, `mentionProfiles`, and `authorView` fields so `ProfileScreen` shows real data instead of hardcoded placeholder text. [^f3d8d-4]
+Android `Snapshot.kt` must include `claimedProfiles`, `mentionProfiles`, and `authorView` fields so `ProfileScreen` shows real data instead of hardcoded placeholder text. <!-- [^f3d8d-4] -->
 
-Android `DmScreen` must call `claimProfile` and `DmConversationListScreen` must accept a `model` parameter so peer names load correctly. [^f3d8d-5]
-## See Also
-
+Android `DmScreen` must call `claimProfile` and `DmConversationListScreen` must accept a `model` parameter so peer names load correctly. <!-- [^f3d8d-5] -->

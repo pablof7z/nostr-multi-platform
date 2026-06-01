@@ -18,7 +18,4 @@ sources:
 
 ## Fade-In Behavior
 
-ChirpAvatar fades in profile pictures on load across every screen using a FadingImage private helper with @State opacity and a 0.2s easeInOut animation. [^19e07-2]
-
-## See Also
-
+ChirpAvatar fades in profile pictures on load across every screen using a FadingImage private helper with @State opacity and a 0.2s easeInOut animation. <!-- [^19e07-2] -->

@@ -10,6 +10,7 @@ WIP.md
 .claude/
 .codex-review*/
 .codex-worktrees/
+.claire/
 
 # Chirp Xcode build output
 ios/Chirp/build/

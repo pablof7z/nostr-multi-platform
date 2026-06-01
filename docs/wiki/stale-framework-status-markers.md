@@ -18,7 +18,4 @@ sources:
 
 ## Stale Framework Status Markers
 
-The framework-magic.md index table contains stale [PENDING M_n] status markers that slipped past the structural-only meta-test. All 14 contract tests are actually active and un-ignored, so the [PENDING] markers in the index table are outdated and should be updated to reflect the true passing status. [^7f0f0-14]
-
-## See Also
-
+The framework-magic.md index table contains stale [PENDING M_n] status markers that slipped past the structural-only meta-test. All 14 contract tests are actually active and un-ignored, so the [PENDING] markers in the index table are outdated and should be updated to reflect the true passing status. <!-- [^7f0f0-14] -->

@@ -18,7 +18,4 @@ sources:
 
 ## Fallback Behavior
 
-When the dedicated Worker fails, the Web runtime silently falls back to InProcessNmpClient. [^cd2b6-23]
-
-## See Also
-
+When the dedicated Worker fails, the Web runtime silently falls back to InProcessNmpClient. <!-- [^cd2b6-23] -->

@@ -27,16 +27,14 @@ M10.5 (FFI hardening / iOS empirical proof) is a hard gate that must be cleared 
 <!-- citations: [^7f0f0-9] [^e50d1-2] [^57528-5] -->
 ## FFI Surface Specification
 
-docs/ffi-surface.md must enumerate every exported C symbol in crates/nmp-core/src/ffi.rs, every boundary-crossing type, every capability trait, and the ownership/lifetime invariant of each, cross-checked against the RMP bible and ADR-0010. [^e50d1-3]
+docs/ffi-surface.md must enumerate every exported C symbol in crates/nmp-core/src/ffi.rs, every boundary-crossing type, every capability trait, and the ownership/lifetime invariant of each, cross-checked against the RMP bible and ADR-0010. <!-- [^e50d1-3] -->
 
 ## FFI Stress Harness
 
-The ffi-stress simulator run captures per-scenario p50/p95/p99 marshal time, allocation counts, dropped-message counts, and the gate pass/fail. The ffi-stress harness includes a `retained_heap_after_drain_bytes ≤ 1 MiB` regression gate. [^e50d1-4]
+The ffi-stress simulator run captures per-scenario p50/p95/p99 marshal time, allocation counts, dropped-message counts, and the gate pass/fail. The ffi-stress harness includes a `retained_heap_after_drain_bytes ≤ 1 MiB` regression gate. <!-- [^e50d1-4] -->
 
 ## Empirical Proof and Doctrine Signoff
 
 The S1 mount-unmount cycle failure (463,207 cycles < 540,000 threshold) is caused by a macOS host-timer sleep artifact, not a kernel leak. The leak-freedom proof relies on structural evidence (S1 net-heap-slope of 0 B/s over 463,207 mount/unmount cycles with 0 unmatched refcounts) because xcrun xctrace did not produce a parseable Instruments trace in this environment. The doctrine signoff passes D0–D7, logs an exception for D8 (working-set bounded fails via the S2 RSS overrun), and defers D7 capability-socket re-review. Re-verification of ffi/capability.rs against D1/D5 is needed because it landed on master after the pin time, introducing a Rust-allocates-caller-frees ownership contract on free_string. All production FFI code is D6-compliant — `unwrap()`/`expect()` calls exist only inside `#[cfg(test)]` blocks; production paths use `unwrap_or_default()`, `unwrap_or_else()`, `lock().ok()`, or `let Ok(...) = ... else { return; }` patterns. The `capability_socket` module uses the exemplary `lock().ok().and_then(|guard| *guard)` pattern for D6-safe mutex access, handling poisoned mutexes gracefully. All `unsafe` blocks are confined to FFI call sites — no `unsafe` exists outside the canonical FFI boundary. The 65 panics identified in nmp-core do not require blanket auditing; D6 already governs production paths, and the real gap is that host-supplied closures must be `catch_unwind`-wrapped. D15 lint requires that closures from `Box<dyn Fn>` be `catch_unwind`-wrapped at the call site, including `ActionRegistry::deliver_result`, `event_observer.rs`, and `raw_event_observer.rs`. The actor command drain intentionally must NOT be `catch_unwind`-wrapped; internally-generated commands should panic-loud. TODOs to close include: `subs/mod.rs:93` (`coverage_hook` never installed), `identity.rs:391` (NIP-46 not behind `AuthSignerFn`), `inbox.rs:167` (bunker error disambiguation), and `marmot/interest.rs:83,112` (missing `limit` field).
 
 <!-- citations: [^e50d1-5] [^12b3f-4] [^1c093-6] -->
-## See Also
-

@@ -18,7 +18,4 @@ sources:
 
 ## Avatar Rendering and Display
 
-UserAvatar renders the actual profile picture from picture_url once kind:0 data arrives from relays, falling back to an initials circle on first load. Avatar image bytes are fetched in a background thread so the UI never freezes. The avatar image Handle is created once when fetch bytes arrive and stored, then reused every render frame to prevent iced from re-uploading the texture each frame. UserCard internally uses UserAvatar and receives the avatar image handle via an avatar_handle builder, with GalleryApp threading the handle through. [^6e8af-4]
-
-## See Also
-
+UserAvatar renders the actual profile picture from picture_url once kind:0 data arrives from relays, falling back to an initials circle on first load. Avatar image bytes are fetched in a background thread so the UI never freezes. The avatar image Handle is created once when fetch bytes arrive and stored, then reused every render frame to prevent iced from re-uploading the texture each frame. UserCard internally uses UserAvatar and receives the avatar image handle via an avatar_handle builder, with GalleryApp threading the handle through. <!-- [^6e8af-4] -->

@@ -31,7 +31,7 @@ Each builder guide section file must not exceed 300 lines of code, splitting int
 <!-- citations: [^7f0f0-4] [^c3f75-2] -->
 ## Citation Integrity
 
-Writer agents must verify every cited `path:line` by reading the file at the current master tip. If a citation is wrong or has drifted, the writer must fix it in place within its section file and add a row to section 27's discrepancy register. [^7f0f0-5]
+Writer agents must verify every cited `path:line` by reading the file at the current master tip. If a citation is wrong or has drifted, the writer must fix it in place within its section file and add a row to section 27's discrepancy register. <!-- [^7f0f0-5] -->
 
 ## Prose Quality and Honesty
 
@@ -45,22 +45,20 @@ Section 27 (discrepancy register) must be written last, after all other sections
 <!-- citations: [^7f0f0-7] [^c3f75-7] -->
 ## Git Workflow
 
-Writer agents self-push their files via `git fetch origin master && git rebase origin/master && git push origin HEAD:master`, retrying once on non-fast-forward, and never force-pushing. [^7f0f0-8]
+Writer agents self-push their files via `git fetch origin master && git rebase origin/master && git push origin HEAD:master`, retrying once on non-fast-forward, and never force-pushing. <!-- [^7f0f0-8] -->
 
 ## How to Add a Projection
 
-Builder guide documentation must include a positive 'How to add a projection' section teaching the `register_snapshot_projection` seam, replacing the current gap that causes builders to copy the bespoke pull-symbol anti-pattern. [^d0690-1]
+Builder guide documentation must include a positive 'How to add a projection' section teaching the `register_snapshot_projection` seam, replacing the current gap that causes builders to copy the bespoke pull-symbol anti-pattern. <!-- [^d0690-1] -->
 
 ## Codegen Section Requirements
 
-The codegen section (§15) must document 9 generated files including envelope.rs, not 7. The codegen section (§15) must describe FfiApp as a live entry-point, not a stub. [^c3f75-4]
+The codegen section (§15) must document 9 generated files including envelope.rs, not 7. The codegen section (§15) must describe FfiApp as a live entry-point, not a stub. <!-- [^c3f75-4] -->
 
 ## Glossary Requirements
 
-The glossary (§23) must mark ViewModule, ModuleRegistry, DomainModule, and IdentityModule as [removed] and must include entries for KernelEventObserver, ActionModule, and snapshot projection. [^c3f75-5]
+The glossary (§23) must mark ViewModule, ModuleRegistry, DomainModule, and IdentityModule as [removed] and must include entries for KernelEventObserver, ActionModule, and snapshot projection. <!-- [^c3f75-5] -->
 
 ## Reference Card Requirements
 
-Section §24 reference cards must display the correct trait table reflecting the current NmpApp seams rather than removed types like ViewModule. [^c3f75-6]
-## See Also
-
+Section §24 reference cards must display the correct trait table reflecting the current NmpApp seams rather than removed types like ViewModule. <!-- [^c3f75-6] -->

@@ -42,12 +42,12 @@ The `nmp-core` crate owns the canonical FlatBuffers update-frame schema under `c
 
 Generated FlatBuffers bindings for Rust, Swift, Kotlin, and TS are committed to the repository tree so that `flatc` is not required at build time. FlatBuffers runtime version pins are intentionally asymmetric across platforms: Rust and Swift use 25.12.19, Web/TypeScript uses 25.9.23, and Android/Kotlin uses 25.2.10. CI enforces FlatBuffers runtime version pins for each platform to fail before mismatched generated bindings reach CI builds. WASM update bytes are delivered as Uint8Array directly through the snapshot callback, and WorkerEvent::UpdateBytes is never JSON-stringified across the worker boundary.
 
-NMP v0.2.0 is a non-breaking release: the C-ABI (NmpCore.h) and FlatBuffers schemas are byte-identical to v0.1.0; apps upgrade by re-pinning to 0.2.0 and picking up fixes. Release changelogs are derived from interface diffs (C-ABI, FlatBuffers schemas), not fuzzy commit summaries, so app upgrade instructions are mechanically true. [^4edd4-19]
+NMP v0.2.0 is a non-breaking release: the C-ABI (NmpCore.h) and FlatBuffers schemas are byte-identical to v0.1.0; apps upgrade by re-pinning to 0.2.0 and picking up fixes. Release changelogs are derived from interface diffs (C-ABI, FlatBuffers schemas), not fuzzy commit summaries, so app upgrade instructions are mechanically true. <!-- [^4edd4-19] -->
 
 <!-- citations: [^20093-6] [^20093-7] [^54fc9-2] [^e4861-5] -->
 ## Supervisor and Panic Safety
 
-The supervisor closure clones `update_tx_panic` before spawning to ensure panic frames still reach the listener after the actor's own sender is dropped. [^20093-8]
+The supervisor closure clones `update_tx_panic` before spawning to ensure panic frames still reach the listener after the actor's own sender is dropped. <!-- [^20093-8] -->
 
 ## Serialization and Performance
 
@@ -59,5 +59,3 @@ The FlatBuffers transport serializes `KernelSnapshot` to `serde_json::Value` the
 The kernel tracks update-frame encoding/decoding degradations via a monotonic `update_frame_degradations_total` counter for its lifetime. When update snapshot serialization fails, the kernel increments `update_frame_degradations_total` and emits a distinct 'transport degraded' frame kind (rather than a confusing partial snapshot), allowing the host to clear projection state. The degraded fallback contains the schema version, rev, tick, metrics, and error indicators. The FlatBuffers `decode_value` function returns a `Result` type that errors on non-finite float values, missing string, list, and map values, and unknown value kinds instead of degrading them to null. `decode_update_frame` propagates errors from `decode_value` rather than unwrapping them. `UpdateFrameDecodeError` includes an `InvalidValue` variant for invalid FlatBuffer value decoding errors. The Web FlatBuffers decoder throws typed errors on malformed input, returns BigInt for 64-bit integers outside Number.MAX_SAFE_INTEGER, and rejects NaN/Inf. The Android FlatBuffers decoder throws UpdateFrameDecodeException on malformed input, uses JsonUnquotedLiteral to preserve full u64 precision instead of clamping to Long.MAX_VALUE, and rejects NaN/Inf. The Swift FlatBuffer snake-case key converter preserves leading and trailing underscores while only removing underscores between words, matching the Rust convention and preventing private-looking fields from aliasing public names. Snapshot decode errors cascade: a decode failure in any projection (e.g. `ChirpTimelineSnapshot`) propagates through `SnapshotProjections` and `KernelUpdate`, dropping the entire snapshot and preventing `activeAccount` from updating. KernelBridge's decodeFlatBuffer catch block logs the specific missing key name and coding path for DecodingError.keyNotFound and typeMismatch.
 
 <!-- citations: [^54fc9-5] [^20093-12] [^54fc9-4] [^37e35-4] [^e4861-6] [^485a5-5] -->
-## See Also
-

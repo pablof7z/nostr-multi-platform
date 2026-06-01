@@ -21,12 +21,12 @@ sources:
 
 ## Canonical Location
 
-All display helper primitives (`to_npub`, `short_npub`, `short_hex`, `display_name_initials`, `avatar_color_hex`, `format_ago_secs`) live exclusively in `nmp-core::display` as the canonical cross-surface source of truth. Per D6 doctrine, display separation is mandatory: backend projections must emit raw data, and `display::` helpers are banned from kernel, projection, and FFI code. [^12b3f-8]
+All display helper primitives (`to_npub`, `short_npub`, `short_hex`, `display_name_initials`, `avatar_color_hex`, `format_ago_secs`) live exclusively in `nmp-core::display` as the canonical cross-surface source of truth. Per D6 doctrine, display separation is mandatory: backend projections must emit raw data, and `display::` helpers are banned from kernel, projection, and FFI code. <!-- [^12b3f-8] -->
 
 <!-- citations: [^12b3f-8] [^f2605-8] -->
 ## Avatar Color
 
-The djb2 canonical color algorithm produces avatar colors as `format!("{:06X}", hash & 0x00FF_FFFF)` over the last 6 bytes of the pubkey hex string, with no `#` prefix and 6 uppercase hex characters. [^12b3f-9]
+The djb2 canonical color algorithm produces avatar colors as `format!("{:06X}", hash & 0x00FF_FFFF)` over the last 6 bytes of the pubkey hex string, with no `#` prefix and 6 uppercase hex characters. <!-- [^12b3f-9] -->
 
 ## short_npub
 
@@ -35,18 +35,16 @@ The djb2 canonical color algorithm produces avatar colors as `format!("{:06X}", 
 <!-- citations: [^12b3f-10] [^53838-6] -->
 ## short_hex
 
-`short_hex` is the canonical hex abbreviation function for technical IDs (event IDs, secondary identifier slots), producing `8…8` format with Unicode ellipsis and a `<16` threshold (abbreviates at 16+ chars). The local `short_hex` function in `kernel/nostr.rs` (6..6 format, threshold 12, ASCII `..` separator) is intentionally kept separate from the canonical `short_hex` because it serves internal subscription status labels with a different contract. [^12b3f-11]
+`short_hex` is the canonical hex abbreviation function for technical IDs (event IDs, secondary identifier slots), producing `8…8` format with Unicode ellipsis and a `<16` threshold (abbreviates at 16+ chars). The local `short_hex` function in `kernel/nostr.rs` (6..6 format, threshold 12, ASCII `..` separator) is intentionally kept separate from the canonical `short_hex` because it serves internal subscription status labels with a different contract. <!-- [^12b3f-11] -->
 
 ## display_name_initials
 
-`display_name_initials` produces word-based initials (first character of each whitespace-split word, up to 2 words) — this is the canonical algorithm used across all surfaces for avatar initials derived from display names. [^12b3f-12]
+`display_name_initials` produces word-based initials (first character of each whitespace-split word, up to 2 words) — this is the canonical algorithm used across all surfaces for avatar initials derived from display names. <!-- [^12b3f-12] -->
 
 ## Abbreviation Thresholds
 
-The `abbreviate` helper in `display.rs` uses a `≤17` threshold (preserves 17-char strings unchanged), while `short_hex` uses `<16` (abbreviates at 16+ chars) — the two cannot share the same threshold. [^12b3f-13]
+The `abbreviate` helper in `display.rs` uses a `≤17` threshold (preserves 17-char strings unchanged), while `short_hex` uses `<16` (abbreviates at 16+ chars) — the two cannot share the same threshold. <!-- [^12b3f-13] -->
 
 ## DM Conversation Display
 
-DM conversation rows display the peer's name from their NIP-01 profile, falling back to short npub form, never raw hex. DM conversation avatars use profile pictures or name initials, never first hex characters. [^eb342-9]
-## See Also
-
+DM conversation rows display the peer's name from their NIP-01 profile, falling back to short npub form, never raw hex. DM conversation avatars use profile pictures or name initials, never first hex characters. <!-- [^eb342-9] -->

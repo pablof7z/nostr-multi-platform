@@ -25,7 +25,7 @@ sources:
 
 ## Cross-Platform Kind-Dispatch Rendering
 
-Event embedding across platforms uses a single rendering engine that dispatches by kind, so embedded events render with the same kind-specific renderer as top-level events. Each Nostr kind has its own renderer, and the kind-to-renderer dispatch works both for top-level events and for events embedded inside other events. The kind dispatch registry must support easily expanding to hundreds or thousands of kind renderers (e.g., classified events, zap receipts, mute lists, NIP-29 group metadata). [^15725-1]
+Event embedding across platforms uses a single rendering engine that dispatches by kind, so embedded events render with the same kind-specific renderer as top-level events. Each Nostr kind has its own renderer, and the kind-to-renderer dispatch works both for top-level events and for events embedded inside other events. The kind dispatch registry must support easily expanding to hundreds or thousands of kind renderers (e.g., classified events, zap receipts, mute lists, NIP-29 group metadata). <!-- [^15725-1] -->
 
 
 ## Embed Shell vs. Content Rendering
@@ -39,7 +39,7 @@ ContentView renders embedded events inline at the exact EventRef position within
 <!-- citations: [^9de49-5] [^15725-2] [^fa300-1] [^6a951-4] [^38935-3] -->
 ## Kind-Dispatch Registry and Wire Format
 
-The kind dispatch registry maps EmbedProjectionVariant to widget, not raw kind numbers to widget, so that Rust decides which variant (which kind maps to what data shape) and native code decides which widget renders that variant. Rust owns the EmbedKindProjection enum, ContentTreeWire is the single wire format, and nmp-content::RenderContext is the single recursion guard. The TUI and SwiftUI Content Kind Registries provide runtime dispatch of EmbedKindProjection variants to platform-appropriate renderers, pre-populated with defaults and allowing host apps to swap slots. [^15725-3]
+The kind dispatch registry maps EmbedProjectionVariant to widget, not raw kind numbers to widget, so that Rust decides which variant (which kind maps to what data shape) and native code decides which widget renders that variant. Rust owns the EmbedKindProjection enum, ContentTreeWire is the single wire format, and nmp-content::RenderContext is the single recursion guard. The TUI and SwiftUI Content Kind Registries provide runtime dispatch of EmbedKindProjection variants to platform-appropriate renderers, pre-populated with defaults and allowing host apps to swap slots. <!-- [^15725-3] -->
 
 <!-- citations: [^15725-3] [^54ae9-3] -->
 ## Platform-Specific Registry Implementations
@@ -54,5 +54,3 @@ The Unknown variant in EmbedKindProjection is the extensibility primitive allowi
 The Embed Claim Registry provides refcounted claim/release for embedded Nostr events, deduplicating in-memory state when multiple UI components render the same nevent1/naddr1. Phase 1 performs dedupe and refcount only without opening/closing upstream subscriptions; Phase 2 will wire claims to drive subscription open/close with grace-period teardown. The EventClaimSink trait bridges renderer claim/release to the FFI surface (nmp_app_claim_event / nmp_app_release_event), with each platform host supplying its own implementation. Embedded article/note/highlight showcases wire up the real EventClaimSink pipeline where event refs in content trees are claimed every tick, EmbedHostState decodes the kernel's claimed_events projection, and resolved items render as proper cards instead of placeholders. The detail pane renders content-* components via synthetic GalleryData tree snippets and embed-* as placeholders.
 
 <!-- citations: [^15725-5] [^54ae9-4] [^6e8af-1] -->
-## See Also
-

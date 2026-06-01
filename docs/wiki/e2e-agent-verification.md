@@ -18,7 +18,4 @@ sources:
 
 ## E2E Agent Verification
 
-E2E verification must be driven by agents using repl, CLI, or Xcode MCP — not manual human testing. [^1670f-3]
-
-## See Also
-
+E2E verification must be driven by agents using repl, CLI, or Xcode MCP — not manual human testing. <!-- [^1670f-3] -->

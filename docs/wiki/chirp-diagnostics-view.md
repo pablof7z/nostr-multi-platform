@@ -48,21 +48,19 @@ Phase 2 (FFI/wasm snapshot surface for routing trace) is complete. Phase 3 (Chir
 <!-- citations: [^582fc-5] [^582fc-6] [^982ef-1] [^5d893-1] [^86221-3] [^fbebb-1] [^594b7-2] [^42252-1] [^19e07-4] [^93c59-2] [^855be-3] -->
 ## Wire Subscription Status
 
-WireSubscriptionStatus includes wireId, relayUrl, filterSummary, state, logicalConsumerCount, openedAtMs, lastEventAtMs, eoseAtMs, closeReason, and eventsRx fields. WireSubscriptionStatus.eventsRx is declared as UInt64? (optional) in Swift for backwards compatibility with older kernels that do not emit the field. Each wire subscription tracks an events_rx counter that increments by one for every EVENT frame received on that subscription ID. [^582fc-7]
+WireSubscriptionStatus includes wireId, relayUrl, filterSummary, state, logicalConsumerCount, openedAtMs, lastEventAtMs, eoseAtMs, closeReason, and eventsRx fields. WireSubscriptionStatus.eventsRx is declared as UInt64? (optional) in Swift for backwards compatibility with older kernels that do not emit the field. Each wire subscription tracks an events_rx counter that increments by one for every EVENT frame received on that subscription ID. <!-- [^582fc-7] -->
 
-wire_subscriptions() projects sub.relay_url (the actual resolved outbox URL) instead of sub.role.url() (the bootstrap URL). [^42252-3]
+wire_subscriptions() projects sub.relay_url (the actual resolved outbox URL) instead of sub.role.url() (the bootstrap URL). <!-- [^42252-3] -->
 
 <!-- citations: [^582fc-7] [^42252-2] -->
 ## Logical Interest Status
 
-LogicalInterestStatus includes key, state, refcount, relayUrls, cacheCoverage, and warmingUntilMs fields. [^582fc-8]
+LogicalInterestStatus includes key, state, refcount, relayUrls, cacheCoverage, and warmingUntilMs fields. <!-- [^582fc-8] -->
 
 ## Wire Subscription Detail View
 
-The wire subscription detail view displays the wire ID, state, relay URL, logical consumer count, opened-at time, EOSE time, last event time, full untruncated filter summary, and close reason. The close reason section is only shown when a close reason is present. Timestamps with a value of 0 are treated as not yet recorded and display a placeholder instead of computing a relative date from Unix epoch. [^982ef-2]
+The wire subscription detail view displays the wire ID, state, relay URL, logical consumer count, opened-at time, EOSE time, last event time, full untruncated filter summary, and close reason. The close reason section is only shown when a close reason is present. Timestamps with a value of 0 are treated as not yet recorded and display a placeholder instead of computing a relative date from Unix epoch. <!-- [^982ef-2] -->
 
 ## Relay Settings View
 
-RelaySettingsView must use native Form with Section headers, standard Toggle, and standard Button instead of GlassCard, ChirpPrimaryButton, capsule badges, Color.purple, and custom row backgrounds. [^5d893-2]
-## See Also
-
+RelaySettingsView must use native Form with Section headers, standard Toggle, and standard Button instead of GlassCard, ChirpPrimaryButton, capsule badges, Color.purple, and custom row backgrounds. <!-- [^5d893-2] -->

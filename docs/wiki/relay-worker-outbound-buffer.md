@@ -18,11 +18,9 @@ sources:
 
 ## Per-Relay Outbound Buffer
 
-Outbound frames are not drained from a shared queue by relays; the actor thread pushes each `OutboundMessage` directly into a per-relay-worker mpsc channel, and each worker buffers frames in a `pending: VecDeque<String>` if the socket is still connecting. [^7e56b-4]
+Outbound frames are not drained from a shared queue by relays; the actor thread pushes each `OutboundMessage` directly into a per-relay-worker mpsc channel, and each worker buffers frames in a `pending: VecDeque<String>` if the socket is still connecting. <!-- [^7e56b-4] -->
 
 
-Each relay URL gets its own `relay_worker` OS thread with exponential backoff reconnect (3s→300s cap with jitter), and pending frames are preserved in the worker's buffer during the reconnect loop. [^7e56b-5]
+Each relay URL gets its own `relay_worker` OS thread with exponential backoff reconnect (3s→300s cap with jitter), and pending frames are preserved in the worker's buffer during the reconnect loop. <!-- [^7e56b-5] -->
 
-REQ frames and event/profile claims are not crash-safe; they are replayed from `current_plan` on reconnect and parked in memory until relays connect, but lost if the process is killed. [^7e56b-6]
-## See Also
-
+REQ frames and event/profile claims are not crash-safe; they are replayed from `current_plan` on reconnect and parked in memory until relays connect, but lost if the process is killed. <!-- [^7e56b-6] -->

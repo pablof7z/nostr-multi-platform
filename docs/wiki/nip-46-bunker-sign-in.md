@@ -18,7 +18,4 @@ sources:
 
 ## NIP-46 Bunker Sign-In
 
-NIP-46 bunker is a first-class v1 sign-in capability, making V-14 (BunkerConnectionState projection) and V-78 in-scope for v1. nak bunker is the designated live remote signer for testing off-actor NIP-46 paths. [^4edd4-14]
-
-## See Also
-
+NIP-46 bunker is a first-class v1 sign-in capability, making V-14 (BunkerConnectionState projection) and V-78 in-scope for v1. nak bunker is the designated live remote signer for testing off-actor NIP-46 paths. <!-- [^4edd4-14] -->

@@ -25,6 +25,4 @@ When instructed to use codex, the `codex exec` command is used with a simple pro
 
 ## Execution Duration
 
-Codex exec runs typically take 20 minutes and must be allowed to finish without being killed. [^f2605-4]
-## See Also
-
+Codex exec runs typically take 20 minutes and must be allowed to finish without being killed. <!-- [^f2605-4] -->

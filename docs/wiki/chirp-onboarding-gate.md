@@ -27,18 +27,16 @@ Chirp's onboarding gate uses model.hasActiveAccount (derived from activeAccount 
 <!-- citations: [^582fc-13] [^f22be-1] [^19e07-10] [^93c59-6] [^485a5-2] -->
 ## NIP-46 Signer Discovery
 
-Chirp's onboarding detects installed NIP-46 signer apps on the phone using UIApplication.shared.canOpenURL with LSApplicationQueriesSchemes entries for nostrsigner, primal, and nostrconnect. The nostrsigner:// URL scheme is labeled 'Nostr Signer' (not 'Amber') since multiple NIP-46 apps register that scheme. [^582fc-14]
+Chirp's onboarding detects installed NIP-46 signer apps on the phone using UIApplication.shared.canOpenURL with LSApplicationQueriesSchemes entries for nostrsigner, primal, and nostrconnect. The nostrsigner:// URL scheme is labeled 'Nostr Signer' (not 'Amber') since multiple NIP-46 apps register that scheme. <!-- [^582fc-14] -->
 
 ## Deep-Link Callback Handling
 
-Chirp registers chirp:// as a deep-link callback scheme and handles incoming chirp://nip46?bunker_uri=... callbacks by routing the bunker_uri to model.signInBunker. [^582fc-15]
+Chirp registers chirp:// as a deep-link callback scheme and handles incoming chirp://nip46?bunker_uri=... callbacks by routing the bunker_uri to model.signInBunker. <!-- [^582fc-15] -->
 
 ## Onboarding NIP-46 UI
 
-Chirp's onboarding always displays a NIP-46 section in welcome mode with a collapsible QR code for the nostrconnect:// URI, an 'Open in [App]' button when a signer is detected, and a persistent bunker:// paste field. [^582fc-16]
+Chirp's onboarding always displays a NIP-46 section in welcome mode with a collapsible QR code for the nostrconnect:// URI, an 'Open in [App]' button when a signer is detected, and a persistent bunker:// paste field. <!-- [^582fc-16] -->
 
 ## Local Signer Discovery Gap
 
-Local signer discovery with wallet auto-linking (the Olas/Primal pattern using nostrnwc://) is a gap not designed in the framework docs and is specced as Chirp milestone CX3 with a new LinkDiscoveryCapability requiring an ADR. [^582fc-17]
-## See Also
-
+Local signer discovery with wallet auto-linking (the Olas/Primal pattern using nostrnwc://) is a gap not designed in the framework docs and is specced as Chirp milestone CX3 with a new LinkDiscoveryCapability requiring an ADR. <!-- [^582fc-17] -->

@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-22
-updated: 2026-05-29
+updated: 2026-06-01
 verified: 2026-05-22
 compiled-from: conversation
 sources:
@@ -17,6 +17,7 @@ sources:
   - session:cd2b6122-2b7c-43fc-941b-c51e79ffc691
   - session:9a2c7cd8-95ab-4291-bbc8-6f38c5941c0a
   - session:4edd41f1-8318-4a4b-98d8-de01ae35f81b
+  - session:bbd5fe79-cd71-4de0-ba9f-f3684520a03f
 ---
 
 # Consolidated Backlog Document (docs/BACKLOG.md)
@@ -28,15 +29,15 @@ A single consolidated backlog document at docs/BACKLOG.md is the canonical viola
 <!-- citations: [^95d02-1] [^9fc44-1] [^f2605-2] [^cd2b6-3] [^4edd4-2] -->
 ## Section 1 — Active Violations
 
-Section 1 of BACKLOG.md lists Active Violations: V-01 (nmp-wasm stub, critical), V-02 (nmp-marmot misplaced), V-03 (wallet_status D0 violation, user-gated), V-04 (two subscription systems coexisting, user-gated). NIP-17 namespace violations (nmp.dm.* → nmp.nip17.*) and D0 violations (chirp.follow/unfollow → nmp.follow/nmp.unfollow) are already fixed on current master HEAD and are not listed as active violations. All violation claims in BACKLOG.md are code-verified against current master HEAD with file:line citations. [^95d02-2]
+Section 1 of BACKLOG.md lists Active Violations: V-01 (nmp-wasm stub, critical), V-02 (nmp-marmot misplaced), V-03 (wallet_status D0 violation, user-gated), V-04 (two subscription systems coexisting, user-gated). NIP-17 namespace violations (nmp.dm.* → nmp.nip17.*) and D0 violations (chirp.follow/unfollow → nmp.follow/nmp.unfollow) are already fixed on current master HEAD and are not listed as active violations. All violation claims in BACKLOG.md are code-verified against current master HEAD with file:line citations. <!-- [^95d02-2] -->
 
 ## Section 2 — In Flight
 
-Section 2 of BACKLOG.md lists In Flight work: 3 real open branches verified by git log, plus a note that WIP.md's 4 entries have zero commits ahead of master (merged or abandoned). [^95d02-3]
+Section 2 of BACKLOG.md lists In Flight work: 3 real open branches verified by git log, plus a note that WIP.md's 4 entries have zero commits ahead of master (merged or abandoned). <!-- [^95d02-3] -->
 
 ## Section 3 — Pending User Decisions
 
-Section 3 of BACKLOG.md lists Pending User Decisions: PD-033-A/B/C and PD-37 requiring human choice. [^95d02-4]
+Section 3 of BACKLOG.md lists Pending User Decisions: PD-033-A/B/C and PD-37 requiring human choice. <!-- [^95d02-4] -->
 
 ## Section 4 — Feature Backlog
 
@@ -45,15 +46,13 @@ Section 4 of BACKLOG.md lists Feature Backlog items F-01 through F-07 ordered by
 <!-- citations: [^95d02-5] [^9fc44-2] [^9a2c7-1] -->
 ## Section 5 — Post-V1 Deferrals
 
-Section 5 of BACKLOG.md contains a Post-V1 explicit deferral table. Deferred items include: Nutzap support (NIP-60/61) with no nmp-nip60/61 crates existing on master; Android parity with iOS Chirp, blocked on UniFFI (M14) to avoid hand-maintaining two FFI surfaces; a Nostr-aware UI component registry (NDK svelte/registry-style curated primitives), blocked on stable snapshot projection contracts and a target-platform decision; Chirp TUI unfinished interactions (repost/group-discover/DM-open/add-relay); nmp-content Phase-2 claim dependency channel; wasm32 test infrastructure; and web/registry CodeBlock placeholder.
+Section 5 of BACKLOG.md contains a Post-V1 explicit deferral table. WASM-related items are post-V1 scope and belong in Section 5 rather than the active backlog. A separate backlog-v2.md file must not be created; Section 5 serves as the single-source-of-truth post-v1 bucket. Deferred items include: Nutzap support (NIP-60/61) with no nmp-nip60/61 crates existing on master; Android parity with iOS Chirp, blocked on UniFFI (M14) to avoid hand-maintaining two FFI surfaces; a Nostr-aware UI component registry (NDK svelte/registry-style curated primitives), blocked on stable snapshot projection contracts and a target-platform decision; Chirp TUI unfinished interactions (repost/group-discover/DM-open/add-relay); nmp-content Phase-2 claim dependency channel; wasm32 test infrastructure; and web/registry CodeBlock placeholder.
 
-<!-- citations: [^95d02-6] [^9fc44-3] [^cd2b6-2] -->
+<!-- citations: [^95d02-6] [^9fc44-3] [^cd2b6-2] [^bbd5f-1] -->
 ## Appendix — Verified-Fixed Items
 
-BACKLOG.md includes an Appendix of verified-fixed items to prevent Opus reviews from re-flagging them. [^95d02-7]
+BACKLOG.md includes an Appendix of verified-fixed items to prevent Opus reviews from re-flagging them. <!-- [^95d02-7] -->
 
 ## Superseded Documents
 
-docs/perf/pending-user-decisions.md is superseded by BACKLOG.md Section 3 and has a deprecation banner redirecting to it. docs/arch-review-queue.md is superseded by BACKLOG.md Sections 1 and 4 and has a deprecation banner redirecting to them. WIP.md is superseded by BACKLOG.md Section 2 and has a deprecation banner marking prior entries as merged or abandoned. [^95d02-8]
-## See Also
-
+docs/perf/pending-user-decisions.md is superseded by BACKLOG.md Section 3 and has a deprecation banner redirecting to it. docs/arch-review-queue.md is superseded by BACKLOG.md Sections 1 and 4 and has a deprecation banner redirecting to them. WIP.md is superseded by BACKLOG.md Section 2 and has a deprecation banner marking prior entries as merged or abandoned. <!-- [^95d02-8] -->

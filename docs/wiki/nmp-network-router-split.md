@@ -23,5 +23,3 @@ sources:
 Relay transport and routing are two separate crates: `nmp-network` (Layer 1, sockets + pool lifecycle + reconnection) and `nmp-router` (Layer 2, relay selection algorithm + MailboxCache, including per-kind routing). V-50 (relay routing) is resolved; per-kind routing shipped as the `nmp-router` crate. The `v58_set_backoff_hint_does_not_break_reconnect` test in `nmp-network` is a known flaky relay-reconnect timing test; lone CI failures on it are re-run rather than treated as regressions.
 
 <!-- citations: [^1670f-10] [^d0690-4] [^4edd4-24] -->
-## See Also
-

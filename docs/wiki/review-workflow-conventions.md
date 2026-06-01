@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-18
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-18
 compiled-from: conversation
 sources:
@@ -19,23 +19,22 @@ sources:
   - session:752b523f-231e-4fca-ab86-748c35b5dd74
   - session:44c6cebb-bea4-4ca7-b836-0337e090a2a5
   - session:1d30779f-b6ee-44ad-a1f1-bdc17f26ebdd
+  - session:baec5921-6cfd-49df-9ee1-a2b6a81898f8
 ---
 
 # Review Workflow & Diff Conventions
 
 ## Review Format
 
-Future merge reviews use a chunked-diff approach (per-file summaries or per-commit reviews) instead of full diffs to stay under codex's effective budget. 10 parallel Sonnet agents are used for codebase review, with 1 Opus agent consolidating their reports.
+Future merge reviews use a chunked-diff approach (per-file summaries or per-commit reviews) instead of full diffs to stay under codex's effective budget. After each Haiku commit, a Sonnet agent reviews that specific commit's diff. After all implementation commits, a single Opus agent reviews the full branch diff, cross-checks the test plan, and issues a SHIP / SHIP_WITH_FIXES / HOLD verdict before opening the PR. 10 parallel Sonnet agents are used for codebase review, with 1 Opus agent consolidating their reports.
 
 All work follows the PR → `codex exec` review → fix → merge to master workflow. Codex is called again for assessment only after all previously suggested fixes have been landed on master.
 
 Each completed PR must be immediately merged to master with origin/master and master kept in sync, followed by a codex review of the diff. Pre-existing CI failures on master from unrelated commits do not block merging a PR that passes its own diff.
 
-<!-- citations: [^423f3-19] [^1c093-33] [^57528-17] [^c8c29-5] [^f2605-13] -->
+<!-- citations: [^423f3-19] [^1c093-33] [^57528-17] [^c8c29-5] [^f2605-13] [^baec5-5] -->
 ## Status Reporting
 
 Status reports must be derived from actual source code rather than markdown status files. Code reviews must never be committed to the repository; review prose must be discarded after findings are recorded to BACKLOG.md or other durable docs. Committing raw conversation transcript dumps is disallowed by the repo's no-committed-reviews discipline. Codex output (if saved) goes to docs/perf/codex-reviews/ (the existing canonical location), not a new directory. Dated historical review snapshots must not be rewritten when cleaning up stale references, to preserve the repo's single-source/temporal discipline.
 
 <!-- citations: [^57528-18] [^f2605-14] [^752b5-8] [^44c6c-4] [^1d307-5] -->
-## See Also
-

@@ -18,7 +18,4 @@ sources:
 
 ## Emulator Display Mode
 
-The Android emulator runs with a visible GUI window rather than headless when launched for user testing. [^855be-2]
-
-## See Also
-
+The Android emulator runs with a visible GUI window rather than headless when launched for user testing. <!-- [^855be-2] -->

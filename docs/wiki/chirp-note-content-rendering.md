@@ -23,28 +23,28 @@ sources:
 
 ## Architecture
 
-Chirp's NoteRowView, ThreadNoteRow, and ProfileNoteRow use NoteContentView (a Swift-side tokenizer and renderer) instead of rendering raw item.content Text. NoteContentView tokenizes content via regex on nostr:, https://, and #tag patterns. [^ec51a-1]
+Chirp's NoteRowView, ThreadNoteRow, and ProfileNoteRow use NoteContentView (a Swift-side tokenizer and renderer) instead of rendering raw item.content Text. NoteContentView tokenizes content via regex on nostr:, https://, and #tag patterns. <!-- [^ec51a-1] -->
 
 
 
-TimelineRow.content stores the full, untruncated note content rather than a preview. [^b48d8-1]
+TimelineRow.content stores the full, untruncated note content rather than a preview. <!-- [^b48d8-1] -->
 
-The timeline list view truncates note content to the terminal width at render time. The detail/reply view word-wraps the full note content using wrap_body. [^b48d8-2]
+The timeline list view truncates note content to the terminal width at render time. The detail/reply view word-wraps the full note content using wrap_body. <!-- [^b48d8-2] -->
 
-The content_preview function is removed from the codebase. [^b48d8-3]
+The content_preview function is removed from the codebase. <!-- [^b48d8-3] -->
 
-Chirp must add NostrMinimalContentView from the gallery as a compact flow-layout renderer for previews and search surfaces. [^9a2c7-9]
+Chirp must add NostrMinimalContentView from the gallery as a compact flow-layout renderer for previews and search surfaces. <!-- [^9a2c7-9] -->
 ## Inline Content Concatenation
 
-Consecutive inline segments (text, hashtag, url, emoji, invoice, mention) are grouped and collapsed into a single Text view via concatenation so that hashtags flow inline with surrounding text. Hashtags render as bold #tag text in accent color within the concatenated inline run. Unresolved emojis render as :shortcode: text inline within the concatenated Text run. [^ec51a-2]
+Consecutive inline segments (text, hashtag, url, emoji, invoice, mention) are grouped and collapsed into a single Text view via concatenation so that hashtags flow inline with surrounding text. Hashtags render as bold #tag text in accent color within the concatenated inline run. Unresolved emojis render as :shortcode: text inline within the concatenated Text run. <!-- [^ec51a-2] -->
 
 ## Emoji Rendering
 
-Resolved emojis (with a URL) render as 20×20pt AsyncImage slots using FlowLayout, breaking out of the Text concatenation run. [^ec51a-3]
+Resolved emojis (with a URL) render as 20×20pt AsyncImage slots using FlowLayout, breaking out of the Text concatenation run. <!-- [^ec51a-3] -->
 
 ## FlowLayout
 
-FlowLayout is a reusable Layout implementation used for runs containing resolved emoji images. [^ec51a-4]
+FlowLayout is a reusable Layout implementation used for runs containing resolved emoji images. <!-- [^ec51a-4] -->
 
 ## Image Rendering
 
@@ -65,10 +65,8 @@ chirp-tui's RenderIntentTracker must extract pubkeys from tokenized content ment
 <!-- citations: [^86221-4] [^ec51a-7] [^5d893-10] [^9a2c7-7] -->
 ## Like Button Animation
 
-Tapping the like button in NoteActionsRow applies a spring scale animation with response 0.25 and dampingFraction 0.4. ProfileNoteRow and ThreadNoteRow include the same spring like animation and haptic feedback as the main feed's NoteActionsRow. [^19e07-8]
+Tapping the like button in NoteActionsRow applies a spring scale animation with response 0.25 and dampingFraction 0.4. ProfileNoteRow and ThreadNoteRow include the same spring like animation and haptic feedback as the main feed's NoteActionsRow. <!-- [^19e07-8] -->
 
 ## Quoted Event Cards
 
-Quoted/embedded event placeholder cards are tappable and navigate to the thread view instead of being dead UI. [^19e07-9]
-## See Also
-
+Quoted/embedded event placeholder cards are tappable and navigate to the thread view instead of being dead UI. <!-- [^19e07-9] -->

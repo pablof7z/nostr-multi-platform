@@ -18,7 +18,4 @@ sources:
 
 ## Misdiagnosis Status
 
-Site 3 is a misdiagnosis. ADR-0040's references to Site 3 have been corrected to mark it as such, and the ADR's Decision §2 has been annotated to reflect the withdrawal. [^4edd4-32]
-
-## See Also
-
+Site 3 is a misdiagnosis. ADR-0040's references to Site 3 have been corrected to mark it as such, and the ADR's Decision §2 has been annotated to reflect the withdrawal. <!-- [^4edd4-32] -->

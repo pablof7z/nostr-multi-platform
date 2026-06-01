@@ -18,7 +18,4 @@ sources:
 
 ## Status Line
 
-No status line configuration or script is present in the Claude settings. [^c88e4-1]
-
-## See Also
-
+No status line configuration or script is present in the Claude settings. <!-- [^c88e4-1] -->

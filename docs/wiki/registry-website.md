@@ -24,15 +24,15 @@ sources:
 
 ## Tech Stack and Routing
 
-The registry website uses Solid.js + Vite with `@solidjs/router`. The 'compose-' prefix is eliminated from all component slugs and routes; components live at unified routes like `/components/user-avatar`. [^45258-30]
+The registry website uses Solid.js + Vite with `@solidjs/router`. The 'compose-' prefix is eliminated from all component slugs and routes; components live at unified routes like `/components/user-avatar`. <!-- [^45258-30] -->
 
-The website's `registry.ts` imports Swift and Kotlin source files directly via Vite `?raw` querystring imports, inlined at build time, requiring `server.fs.allow: ["../.."]` in `vite.config.ts`. [^45258-31]
+The website's `registry.ts` imports Swift and Kotlin source files directly via Vite `?raw` querystring imports, inlined at build time, requiring `server.fs.allow: ["../.."]` in `vite.config.ts`. <!-- [^45258-31] -->
 
-The registry data model organizes components by section (Content, User) with per-component entries containing a platforms map, not by separate platform groups. [^45258-149-154] [^53838-10]
+The registry data model organizes components by section (Content, User) with per-component entries containing a platforms map, not by separate platform groups. <!-- [^45258-149-154] --> <!-- [^53838-10] -->
 
-ProfileWire is bundled with NostrAvatar under the 'user-avatar' component; 'user-core' does not exist as a registry entry. [^45258-183-207] [^53838-11]
+ProfileWire is bundled with NostrAvatar under the 'user-avatar' component; 'user-core' does not exist as a registry entry. <!-- [^45258-183-207] --> <!-- [^53838-11] -->
 
-The Web Registry is a static TypeScript manifest for the public registry docs site that mirrors the CLI `registry.toml` to prevent drift. [^68-71]
+The Web Registry is a static TypeScript manifest for the public registry docs site that mirrors the CLI `registry.toml` to prevent drift. <!-- [^68-71] -->
 
 When `web/registry` TypeScript components are added, corresponding entries must also be added to `registry.toml` and `cargo run -p nmp-cli --bin nmp -- export jsrepo` must be re-run to regenerate the JSON export.
 
@@ -44,12 +44,10 @@ The registry website deploys to nmpui.f7z.io using Vercel with prebuilt local de
 <!-- citations: [^45258-1170-1171] [^45258-1299-1300] [^45258-32] [^45258-1602-1606] [^53838-14] [^5a40f-1] [^3de5a-1] [^f2fd4-2] -->
 ## Platform Switcher
 
-Each component page has a platform switcher bar (Swift / Kotlin / TUI / Web) that swaps the install command, screenshot, code tabs, dependencies, and customization text when toggled. The platform label for Jetpack Compose components is 'Kotlin', not 'Compose'. TUI and Web platform tabs show a 'soon' badge and are disabled. [^45258-25-25] [^45258-149-154] [^45258-173-174] [^45258-50-50] [^53838-12]
+Each component page has a platform switcher bar (Swift / Kotlin / TUI / Web) that swaps the install command, screenshot, code tabs, dependencies, and customization text when toggled. The platform label for Jetpack Compose components is 'Kotlin', not 'Compose'. TUI and Web platform tabs show a 'soon' badge and are disabled. <!-- [^45258-25-25] --> <!-- [^45258-149-154] --> <!-- [^45258-173-174] --> <!-- [^45258-50-50] --> <!-- [^53838-12] -->
 
 ## Data Rendering
 
-Registry component pages never show loading spinners; they render best-effort data immediately (e.g. identicon + truncated npub for profiles) and update reactively when kind:0 data arrives from the kernel. [^45258-1239-1249]
+Registry component pages never show loading spinners; they render best-effort data immediately (e.g. identicon + truncated npub for profiles) and update reactively when kind:0 data arrives from the kernel. <!-- [^45258-1239-1249] -->
 
-NIP-05 identifiers with '_@' prefix (e.g. '_@f7z.io') render without the '_@' prefix (e.g. 'f7z.io') in both Swift and Kotlin badge components. [^45258-531-546] [^53838-13]
-## See Also
-
+NIP-05 identifiers with '_@' prefix (e.g. '_@f7z.io') render without the '_@' prefix (e.g. 'f7z.io') in both Swift and Kotlin badge components. <!-- [^45258-531-546] --> <!-- [^53838-13] -->

@@ -18,7 +18,4 @@ sources:
 
 ## Safe JSON Element Access
 
-When accessing JSON elements in `GalleryModel.kt`, use `as? JsonObject` safe casts instead of the `.jsonObject` property. This prevents crashes when encountering `JsonNull` values, which would otherwise throw an exception during an unsafe cast. [^c8c29-3]
-
-## See Also
-
+When accessing JSON elements in `GalleryModel.kt`, use `as? JsonObject` safe casts instead of the `.jsonObject` property. This prevents crashes when encountering `JsonNull` values, which would otherwise throw an exception during an unsafe cast. <!-- [^c8c29-3] -->

@@ -18,7 +18,4 @@ sources:
 
 ## PR Sequence Starting Point
 
-PR-D (tests-first floor) is the unambiguous starting point for the PR sequence. [^1c093-32]
-
-## See Also
-
+PR-D (tests-first floor) is the unambiguous starting point for the PR sequence. <!-- [^1c093-32] -->

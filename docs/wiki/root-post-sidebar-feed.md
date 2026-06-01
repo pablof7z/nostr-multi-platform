@@ -18,9 +18,7 @@ sources:
 
 ## Root Post Sidebar Feed
 
-Root posts are displayed in the left sidebar, including posts from non-followed users that have responses from a followed user. Replies must not appear in the left sidebar root-post feed after the app has been running. [^ff452-1]
+Root posts are displayed in the left sidebar, including posts from non-followed users that have responses from a followed user. Replies must not appear in the left sidebar root-post feed after the app has been running. <!-- [^ff452-1] -->
 
 
-TimelineRow::from_snapshot must not promote cards to depth=0 when the blocks key exists but its IDs do not match any card. TimelineRow::from_snapshot must return an empty Vec when the blocks key is absent from the snapshot, with no fallback to all cards. Tests must use realistic snapshots containing a blocks key rather than relying on a cards-only fallback. [^ff452-2]
-## See Also
-
+TimelineRow::from_snapshot must not promote cards to depth=0 when the blocks key exists but its IDs do not match any card. TimelineRow::from_snapshot must return an empty Vec when the blocks key is absent from the snapshot, with no fallback to all cards. Tests must use realistic snapshots containing a blocks key rather than relying on a cards-only fallback. <!-- [^ff452-2] -->

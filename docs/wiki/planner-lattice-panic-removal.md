@@ -18,7 +18,4 @@ sources:
 
 ## Panic Removal in planner/lattice/mod.rs
 
-Seven `panic!("expected Merged")` calls in `planner/lattice/mod.rs` (lines 227, 251, 272, 337, 371, 388, 433) violate D6 and must be replaced with Result returns that are mapped to `last_error_toast`. [^57528-16]
-
-## See Also
-
+Seven `panic!("expected Merged")` calls in `planner/lattice/mod.rs` (lines 227, 251, 272, 337, 371, 388, 433) violate D6 and must be replaced with Result returns that are mapped to `last_error_toast`. <!-- [^57528-16] -->

@@ -22,5 +22,3 @@ sources:
 The Vite preview server must serve from the rebuilt dist directory that includes screenshot PNG files from public/screenshots/. All registry screenshots must be full-screen iPhone simulator captures (e.g. 1206×2622), not cropped component previews. Screenshot files are named using the pattern {slug}-{platform}-preview.png (e.g. user-avatar-swift-preview.png).
 
 <!-- citations: [^12316-5] [^53838-15] -->
-## See Also
-

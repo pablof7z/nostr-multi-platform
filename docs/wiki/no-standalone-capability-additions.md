@@ -18,7 +18,4 @@ sources:
 
 ## Rule
 
-HttpCapability must not be added without its consumer in the same PR. [^1c093-31]
-
-## See Also
-
+HttpCapability must not be added without its consumer in the same PR. <!-- [^1c093-31] -->

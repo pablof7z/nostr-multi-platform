@@ -18,11 +18,9 @@ sources:
 
 ## Screenshot Naming Convention
 
-Web registry user component entries must include Android/Compose screenshots named with the `<component>-kotlin-preview.png` convention. [^c8c29-6]
+Web registry user component entries must include Android/Compose screenshots named with the `<component>-kotlin-preview.png` convention. <!-- [^c8c29-6] -->
 
 
 ## Screenshot PR Process
 
-The user component screenshot PR must be merged as soon as possible after creation. [^c8c29-7]
-## See Also
-
+The user component screenshot PR must be merged as soon as possible after creation. <!-- [^c8c29-7] -->

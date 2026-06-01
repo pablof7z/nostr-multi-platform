@@ -27,5 +27,3 @@ The nsec input field is a plain SecureField with no automatic clipboard-reading 
 The bunker:// input field has no automatic clipboard-reading Paste button, allowing users to paste manually via long-press → Paste. The clipboard paste affordance block has been removed from OnboardingView+NIP46.swift.
 
 <!-- citations: [^ae308-2] [^5d893-12] -->
-## See Also
-

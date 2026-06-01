@@ -19,9 +19,7 @@ sources:
 
 ## Parity with iOS
 
-The Android showcase app must be an exact match of the iOS showcase app. It renders all 31 scenarios from the shared content-gallery-bundle.json fixture. [^29d2c-10]
+The Android showcase app must be an exact match of the iOS showcase app. It renders all 31 scenarios from the shared content-gallery-bundle.json fixture. <!-- [^29d2c-10] -->
 
 
-The Android emulator is launched without the -no-window flag so it displays a visible window. [^63dfc-4]
-## See Also
-
+The Android emulator is launched without the -no-window flag so it displays a visible window. <!-- [^63dfc-4] -->

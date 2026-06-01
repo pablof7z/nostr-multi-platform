@@ -22,5 +22,3 @@ sources:
 The `nmp-reactions` crate combines NIP-25 (kind 7) and NIP-18 (kind 6/16) under a `SocialRecord` tagged enum with `ReactionsDomain`, `ReactionSummaryView`, and `RepostsView`. Reaction writes bypass the crate's builder, occurring directly at publish.rs:114-119.
 
 <!-- citations: [^590ca-8] [^57528-15] -->
-## See Also
-

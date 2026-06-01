@@ -22,5 +22,3 @@ sources:
 Feature flags must not be added to defer decisions. When facing a tradeoff, name it explicitly and pick a side rather than hiding behind a flag. There are zero exceptions to clean architecture — all exceptions are eliminated completely by finishing the work properly, not by feature-gating or deleting incomplete features. There is zero tolerance on hacks — no temporary hacks, no fragmentation, no debt; everything by the book.
 
 <!-- citations: [^1c093-30] [^1670f-17] -->
-## See Also
-

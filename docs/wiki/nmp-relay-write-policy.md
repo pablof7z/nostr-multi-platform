@@ -23,5 +23,3 @@ sources:
 r.f7z.io does not allow writing by anyone; relay.primal.net is the correct public relay for writes. nmp-desktop connects to wss://relay.primal.net to stream live notes. Kind:10006 (blocked relay list) is enforced in outbox routing to prevent WebSocket connections to blocked (malicious) relays. BlockedRelayLookup substrate trait and InMemoryBlockedRelaysCache populate BlockedRelaySet in all four build_routing_context() call sites in mailboxes.rs instead of creating empty sets.
 
 <!-- citations: [^fe79b-12] [^64f3e-5] [^d366b-4] -->
-## See Also
-

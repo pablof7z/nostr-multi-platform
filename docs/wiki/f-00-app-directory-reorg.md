@@ -22,5 +22,3 @@ sources:
 F-00 (app-directory reorg to apps/<app>/{ios,android,desktop,tui,web}) is deferred until no other agents have active work, because sweeping file moves or deletions across docs/ must be avoided while peer agents have live work on the master branch to prevent merge conflicts.
 
 <!-- citations: [^4edd4-7] [^1d307-2] -->
-## See Also
-

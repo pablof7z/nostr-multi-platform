@@ -19,9 +19,7 @@ sources:
 
 ## Terminology Restrictions
 
-All NIP numbers, "gift-wrapped", and "MLS" references must be removed from user-facing copy. [^eb342-7]
+All NIP numbers, "gift-wrapped", and "MLS" references must be removed from user-facing copy. <!-- [^eb342-7] -->
 
 
-All NIP numbers, "gift-wrapped", and "MLS" references must be removed from user-facing copy. [^eb342-7] The NIP-05 badge display convention elides the '_@' root local-part and shows the domain only (e.g. 'f7z.io' not '_@f7z.io'). [^6a951-2]
-## See Also
-
+All NIP numbers, "gift-wrapped", and "MLS" references must be removed from user-facing copy. <!-- [^eb342-7] --> The NIP-05 badge display convention elides the '_@' root local-part and shows the domain only (e.g. 'f7z.io' not '_@f7z.io'). <!-- [^6a951-2] -->

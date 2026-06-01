@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-18
-updated: 2026-05-29
+updated: 2026-05-31
 verified: 2026-05-18
 compiled-from: conversation
 sources:
@@ -21,6 +21,7 @@ sources:
   - session:42908d3a-983a-40e5-a8b0-917a990310e6
   - session:d0690875-a693-48ef-ac6f-31a92f5699cc
   - session:4edd41f1-8318-4a4b-98d8-de01ae35f81b
+  - session:34d8cff3-a7d4-4b49-a912-d2f465f53a29
 ---
 
 # NMP Marmot: MLS-over-Nostr Encrypted Groups
@@ -32,10 +33,10 @@ Marmot is MLS-over-Nostr, not NIP-29 (relay-based groups); the v0.2.0 changelog 
 Marmot coexists with NIP-17 rather than replacing it.
 Marmot is classified as a non-NIP protocol module in the subsystem matrix rather than included in the NIP table.
 nmp-app-chirp has a direct mdk-core dependency as a conscious FFI typed-translation-layer deviation from marmot-mls.md's literal 'sole importer' wording, but no MLS type crosses the C-ABI.
-Android Chirp has no MLS/Marmot support: the build.gradle.kts never passes --features marmot, nmp-android-ffi uses default-features=false, and zero Marmot UI/FFI exists.
+Android Chirp has no MLS/Marmot support: the build.gradle.kts never passes --features marmot, nmp-android-ffi uses default-features=false, and zero Marmot UI/FFI exists. Wiring the marmot feature (V-109) requires `--features marmot` in cargoNdk and `default-features=false` in android-ffi to enable.
 The Groups tab presents both NIP-29 (unencrypted, relay-managed) and MLS (Marmot, encrypted) sections, with the NIP-29 section always present regardless of MLS state.
 
-<!-- citations: [^d27a4-10] [^7b4ae-3] [^1cc37-1] [^1cc37-2] [^1cc37-3] [^d27a4-9] [^42908-15] [^4edd4-23] -->
+<!-- citations: [^d27a4-10] [^7b4ae-3] [^1cc37-1] [^1cc37-2] [^1cc37-3] [^d27a4-9] [^42908-15] [^4edd4-23] [^34d8c-2] -->
 ## Storage
 
 MLS ratchet state uses mdk-sqlite-storage alongside NMP's LMDB. This is permissible since MLS epoch state is not Nostr event data.
@@ -46,9 +47,11 @@ The `marmot_db_dir()` function returns a stable platform-appropriate data path (
 The `credential_store.rs` cfg blocks include `target_os = "macos"` so that macOS uses the real Apple Keychain for Marmot SQLite encryption instead of a mock store.
 A stable marmot data directory must be paired with the real OS keyring store initialization; using a stable path without the native keyring causes Marmot DB decryption failures on subsequent launches.
 Headless/CI MLS testing on macOS is blocked because AppleStore::new() succeeds without entitlements, causing credential_store::initialize() to pick the real Keychain and short-circuit before the mock store, with no override available.
-The NMP_MARMOT_MOCK_KEYRING opt-in escape hatch forces the in-memory mock store, enabling headless MLS testing; it is off by default and cannot activate in shipped apps.
+The NMP_MARMOT_MOCK_KEYRING=1 opt-in escape hatch forces the in-memory mock store, enabling headless MLS testing; it is off by default and cannot activate in shipped apps.
 
-<!-- citations: [^1cc37-4] [^d27a4-11] [^d27a4-12] [^cd2b6-13] [^f8543-4] [^42908-16] [^4edd4-21] -->
+A true three-client MLS cross-client round-trip interop test is blocked until Android wires the marmot feature. <!-- [^34d8c-4] -->
+
+<!-- citations: [^1cc37-4] [^d27a4-11] [^d27a4-12] [^cd2b6-13] [^f8543-4] [^42908-16] [^4edd4-21] [^34d8c-3] -->
 ## Routing
 
 Marmot uses the RelayPinned routing lane from M11.5 (ADR-0012) with no new compiler changes needed. The `nmp_marmot_snapshot` and `nmp_marmot_group_messages` symbols are live consumers that must be migrated to the push projection seam before their removal.
@@ -64,8 +67,6 @@ Marmot's `publish_to` is currently a load-bearing internal consumer of `nmp_app_
 Marmot Welcome messages use NIP-59 gift-wrap. The milestone either follows post-v1 M9 or ships a standalone nmp-nip59 as Step 0.
 Welcome delivery approximates to group relays rather than the recipient's NIP-65 inbox relays; proper inbox routing requires a future NIP-65 inbox resolver.
 
-MarmotService caches Welcome IDs that failed processing and short-circuits retries to prevent repeated failed ingestion attempts. [^fe79b-11]
+MarmotService caches Welcome IDs that failed processing and short-circuits retries to prevent repeated failed ingestion attempts. <!-- [^fe79b-11] -->
 
 <!-- citations: [^1cc37-6] [^d27a4-14] -->
-## See Also
-

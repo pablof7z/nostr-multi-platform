@@ -24,11 +24,11 @@ sources:
 
 ## Serialization of String Tuples
 
-Swift `[(String, String)]` tuples cannot be passed directly to NSJSONSerialization; they must be converted to `[[String]]` before serialization. [^fe79b-14]
+Swift `[(String, String)]` tuples cannot be passed directly to NSJSONSerialization; they must be converted to `[[String]]` before serialization. <!-- [^fe79b-14] -->
 
 
 
-The borrowed byte pointer provided to the C-ABI update callback is valid only for the callback's duration, requiring Swift to copy the bytes via `Data(bytes:count:)` before decoding. [^20093-13]
+The borrowed byte pointer provided to the C-ABI update callback is valid only for the callback's duration, requiring Swift to copy the bytes via `Data(bytes:count:)` before decoding. <!-- [^20093-13] -->
 ## Field-Name Mapping
 
 The `.convertFromSnakeCase` decoder on the snapshot decoder in `KernelBridge.swift:536` automatically maps snake_case Rust fields to camelCase Swift fields. Because `convertFromSnakeCase` in `KernelBridge.decode()` transforms keys before matching, Stage-1 generated Swift types must NOT have explicit CodingKeys — snake_case rawValues in CodingKeys cause double-transform failures. Additionally, the Swift snake-case conversion preserves leading and trailing underscores while removing underscores between words, matching the Rust serde rename rules and preventing private-field aliasing.
@@ -40,14 +40,12 @@ In contrast, `JSONDecoder`-decoded structs (e.g., MarmotBridge, Capabilities) mu
 <!-- citations: [^12b3f-22] [^1670f-18] [^20093-14] [^37e35-6] [^485a5-7] -->
 ## CI Round-Trip Testing
 
-CI must include a Swift decoder round-trip test that decodes a captured `KernelEvent::Update` JSON through the exact `KernelBridge` decoder config. The codegen-drift check alone does not catch decode regressions. [^1670f-19]
+CI must include a Swift decoder round-trip test that decodes a captured `KernelEvent::Update` JSON through the exact `KernelBridge` decoder config. The codegen-drift check alone does not catch decode regressions. <!-- [^1670f-19] -->
 
 ## FlatBuffers Decode Failure
 
-When a non-optional Swift struct field is absent from FlatBuffers data, `FlatBufferKeyedContainer.decoder(forKey:)` throws `DecodingError.keyNotFound`, causing the entire parent decode to fail and the snapshot to be silently dropped. [^485a5-8]
+When a non-optional Swift struct field is absent from FlatBuffers data, `FlatBufferKeyedContainer.decoder(forKey:)` throws `DecodingError.keyNotFound`, causing the entire parent decode to fail and the snapshot to be silently dropped. <!-- [^485a5-8] -->
 
 ## Symbol Migration & Deletion
 
-Pull symbols with live Swift callers must not be deleted until the Swift consumer is migrated; instead they are deprecated during the Rust transition and deleted only after Swift reads the push projection. [^4edd4-31]
-## See Also
-
+Pull symbols with live Swift callers must not be deleted until the Swift consumer is migrated; instead they are deprecated during the Rust transition and deleted only after Swift reads the push projection. <!-- [^4edd4-31] -->

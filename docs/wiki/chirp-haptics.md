@@ -18,7 +18,4 @@ sources:
 
 ## Haptic Feedback
 
-Chat send actions in GroupChatView, DmConversationView, and MarmotGroupChatView trigger a light haptic on send. Note publish in ComposeView triggers a success haptic; follow triggers a medium haptic; unfollow triggers a light haptic. The haptic system across Chirp uses consistent weights: soft for like, light for chat send and unfollow, medium for follow, success for publish. [^19e07-6]
-
-## See Also
-
+Chat send actions in GroupChatView, DmConversationView, and MarmotGroupChatView trigger a light haptic on send. Note publish in ComposeView triggers a success haptic; follow triggers a medium haptic; unfollow triggers a light haptic. The haptic system across Chirp uses consistent weights: soft for like, light for chat send and unfollow, medium for follow, success for publish. <!-- [^19e07-6] -->

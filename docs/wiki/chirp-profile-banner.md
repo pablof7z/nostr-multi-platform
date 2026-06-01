@@ -18,7 +18,4 @@ sources:
 
 ## Profile Banner
 
-The profile banner in ProfileView uses a LinearGradient derived from the user's avatar color instead of a flat gray Rectangle. [^19e07-11]
-
-## See Also
-
+The profile banner in ProfileView uses a LinearGradient derived from the user's avatar color instead of a flat gray Rectangle. <!-- [^19e07-11] -->
