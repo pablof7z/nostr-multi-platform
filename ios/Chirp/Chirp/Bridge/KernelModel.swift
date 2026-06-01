@@ -61,6 +61,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// Snapshot-derived AND user-clearable, so we cannot fold this into the
     /// `snapshot` accessor — the clear gesture has nowhere else to land.
     @Published private(set) var lastErrorToast: String?
+    /// Success toast — set by Swift (not the Rust snapshot) when an async
+    /// action settles with `Accepted`. Cleared by the overlay's `.task` TTL,
+    /// same lifecycle as `lastErrorToast`.
+    @Published private(set) var lastSuccessToast: String?
     /// Synchronous dispatch-error toast slot, distinct from the
     /// snapshot-driven `lastErrorToast`. Carries the human-readable reason
     /// returned by `dispatch_action` when it rejects a request synchronously
@@ -549,7 +553,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// (NIP-65) write/both relays via `kernel.author_write_relays`. The
     /// shell never decides where the LN provider should publish the
     /// kind:9735 receipt.
-    @discardableResult
     func zap(
         targetEventID: String,
         authorPubkey: String,
@@ -630,6 +633,8 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
     func openTimeline() { kernel.openTimeline() }
     func clearErrorToast() { lastErrorToast = nil }
+    func showSuccessToast(_ message: String) { lastSuccessToast = message }
+    func clearSuccessToast() { lastSuccessToast = nil }
 
     // ── NIP-47 wallet commands ────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // ─────────────────────────────────────────────────────────────────────────
 // HomeFeedView — Home timeline root for Chirp.
@@ -44,6 +45,11 @@ struct HomeFeedView: View {
     /// (the kernel still owns relay selection + LNURL — the sheet only picks
     /// the msats amount + optional comment).
     @State private var pendingZap: PendingZap?
+    /// Correlation id of the most recent zap dispatch, set when the
+    /// `ZapAmountSheet` fires. Observed via `model.actionLifecycle` to
+    /// surface success feedback (haptic + toast) once the NWC kind:23195
+    /// response closes the action with `Accepted`.
+    @State private var pendingZapCid: String?
 
     var body: some View {
         ZStack {
@@ -72,13 +78,27 @@ struct HomeFeedView: View {
         // time; it supplies only the chosen msats amount + optional comment.
         .sheet(item: $pendingZap) { target in
             ZapAmountSheet { amountMsats, comment in
-                model.zap(
+                let result = model.zap(
                     targetEventID: target.eventID,
                     authorPubkey: target.authorPubkey,
                     lnurl: target.lnurl,
                     amountMsats: amountMsats,
                     comment: comment
                 )
+                pendingZapCid = result.correlationId
+            }
+        }
+        // Observe the action lifecycle to give feedback when the NWC payment
+        // settles. Error paths (no wallet, LNURL failure, bunker account)
+        // already surface via `lastErrorToast` from Rust's `ShowToast`
+        // command — we only need to handle the `Accepted` leg here.
+        .onChange(of: model.actionLifecycle) {
+            guard let cid = pendingZapCid,
+                  let terminal = model.recentTerminal(correlationId: cid) else { return }
+            pendingZapCid = nil
+            if case .accepted = terminal.stage {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                model.showSuccessToast("⚡ Zapped!")
             }
         }
     }
