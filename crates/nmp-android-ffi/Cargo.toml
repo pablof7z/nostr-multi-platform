@@ -17,7 +17,7 @@ crate-type = ["cdylib"]
 [features]
 # Marmot (MLS-over-Nostr encrypted groups). Mirrors the iOS posture: `marmot`
 # is opt-in via the build flag — the `cargoNdk` task in
-# `android/app/build.gradle.kts` passes `--features marmot`, it is NOT hardcoded
+# `apps/chirp/android/app/build.gradle.kts` passes `--features marmot`, it is NOT hardcoded
 # on the dependency — so `cargo build -p nmp-android-ffi` (no features) still
 # yields a Marmot-free .so for CI / non-Marmot consumers. Forwards to
 # `nmp-app-chirp/marmot`, which activates `nmp-marmot` + its `ffi` feature and
