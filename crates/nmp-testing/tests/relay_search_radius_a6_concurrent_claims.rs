@@ -126,6 +126,7 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
     tx.send(ActorCommand::ClaimEvent {
         uri: GIGI_NADDR_A.to_string(),
         consumer_id: "a6-claim-a".to_string(),
+        force: false,
     })
     .expect("A6: ClaimEvent A send");
 
@@ -148,6 +149,7 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
     tx.send(ActorCommand::ClaimEvent {
         uri: GIGI_NADDR_B.to_string(),
         consumer_id: "a6-claim-b".to_string(),
+        force: false,
     })
     .expect("A6: ClaimEvent B send");
 

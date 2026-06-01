@@ -127,6 +127,7 @@ fn a2_warm_path_second_claim_uses_scored_relay() {
     tx.send(ActorCommand::ClaimEvent {
         uri: GIGI_NADDR_PRIME.to_string(),
         consumer_id: "a2-prime".to_string(),
+        force: false,
     })
     .expect("A2: prime ClaimEvent send");
 
@@ -145,6 +146,7 @@ fn a2_warm_path_second_claim_uses_scored_relay() {
     tx.send(ActorCommand::ClaimEvent {
         uri: GIGI_NADDR_SECOND.to_string(),
         consumer_id: "a2-second".to_string(),
+        force: false,
     })
     .expect("A2: second ClaimEvent send");
 

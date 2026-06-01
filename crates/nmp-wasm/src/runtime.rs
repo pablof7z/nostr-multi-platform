@@ -391,13 +391,17 @@ impl WasmRuntime {
                 let mut r = self.reducer.borrow_mut();
                 match claim {
                     ClaimDispatch::ClaimProfile { pubkey, consumer_id } => {
-                        r.claim_profile(pubkey, consumer_id, can_send)
+                        // F-TTL — web components self-claim on mount; these are
+                        // background/`.onAppear`-equivalent claims, so `force =
+                        // false` (the lazy, TTL-gated path). User-navigation
+                        // force-refresh is a native-Swift-app feature.
+                        r.claim_profile(pubkey, consumer_id, can_send, false)
                     }
                     ClaimDispatch::ReleaseProfile { pubkey, consumer_id } => {
                         r.release_profile(&pubkey, &consumer_id)
                     }
                     ClaimDispatch::ClaimEvent { uri, consumer_id } => {
-                        r.claim_event(uri, consumer_id, can_send)
+                        r.claim_event(uri, consumer_id, can_send, false)
                     }
                     ClaimDispatch::ReleaseEvent { uri, consumer_id } => {
                         r.release_event(&uri, &consumer_id)

@@ -96,10 +96,13 @@ final class GalleryKernelHandle {
 
     // ── Profile claim / release ──────────────────────────────────────────
 
-    func claimProfile(pubkey: String, consumerID: String) {
+    /// F-TTL — `force` controls the lazy re-verification gate for the cached
+    /// kind:0 profile. Pass `true` only on explicit user navigation /
+    /// pull-to-refresh; default `false` for background / `.onAppear` claims.
+    func claimProfile(pubkey: String, consumerID: String, force: Bool = false) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_claim_profile(raw, pkPtr, cidPtr)
+                nmp_app_claim_profile(raw, pkPtr, cidPtr, force ? 1 : 0)
             }
         }
     }
@@ -122,10 +125,14 @@ final class GalleryKernelHandle {
     ///
     /// Fire-and-forget at the FFI boundary (D6 — silent no-op on null/empty
     /// arguments; the actor owns all error handling).
-    func claimEvent(uri: String, consumerID: String) {
+    /// F-TTL — `force` controls the lazy re-verification gate; it only affects
+    /// `naddr` (addressable / replaceable) URIs and is a silent no-op for
+    /// immutable `nevent`/`note` URIs. Pass `true` only on explicit user
+    /// navigation / pull-to-refresh; default `false` for background claims.
+    func claimEvent(uri: String, consumerID: String, force: Bool = false) {
         uri.withCString { uriPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_claim_event(raw, uriPtr, cidPtr)
+                nmp_app_claim_event(raw, uriPtr, cidPtr, force ? 1 : 0)
             }
         }
     }

@@ -35,12 +35,31 @@ fn fresh_identity_does_not_enqueue() {
     k.event_store_handle()
         .set_check_again_after(key, 2_000_000); // 1s in the future
 
-    k.claim_replaceable(0, PK, None);
+    k.claim_replaceable(0, PK, None, false);
 
     assert_eq!(
         k.pending_reverify_len(),
         0,
         "a still-fresh replaceable identity must NOT enqueue a reverify REQ",
+    );
+}
+
+#[test]
+fn force_enqueues_even_when_fresh() {
+    // F-TTL — a forced claim bypasses the TTL gate: even a still-fresh identity
+    // (check_again_after in the FUTURE) must enqueue a re-verification REQ.
+    // This is the user-navigation / pull-to-refresh path that replaces the
+    // removed `nmp_app_refresh_replaceable` FFI.
+    let mut k = kernel_at(1_000_000);
+    let key = crate::store::ReplaceableKey::Regular { kind: 0, pubkey: PK };
+    k.event_store_handle().set_check_again_after(key, 2_000_000); // 1s in the future
+
+    k.claim_replaceable(0, PK, None, true);
+
+    assert_eq!(
+        k.pending_reverify_len(),
+        1,
+        "force=true must enqueue a reverify REQ even when the identity is fresh",
     );
 }
 
@@ -52,7 +71,7 @@ fn expired_identity_enqueues_once() {
     k.event_store_handle()
         .set_check_again_after(key, 1_000_000); // already elapsed
 
-    k.claim_replaceable(0, PK, None);
+    k.claim_replaceable(0, PK, None, false);
     assert_eq!(
         k.pending_reverify_len(),
         1,
@@ -61,7 +80,7 @@ fn expired_identity_enqueues_once() {
 
     // In-flight guard: a second claim before EOSE must NOT double-enqueue,
     // because the first claim stamped check_again_after = now + INFLIGHT_GUARD_MS.
-    k.claim_replaceable(0, PK, None);
+    k.claim_replaceable(0, PK, None, false);
     assert_eq!(
         k.pending_reverify_len(),
         1,
@@ -73,7 +92,7 @@ fn expired_identity_enqueues_once() {
 fn never_stamped_identity_is_due() {
     // No prior stamp → get_check_again_after returns None → treated as 0 → due.
     let mut k = kernel_at(5_000);
-    k.claim_replaceable(0, PK, None);
+    k.claim_replaceable(0, PK, None, false);
     assert_eq!(
         k.pending_reverify_len(),
         1,
@@ -86,8 +105,8 @@ fn addressable_claim_uses_parameterized_key() {
     // kind 30023 is addressable → the key must carry the d-tag so a distinct
     // d-tag is a distinct identity (independent gating).
     let mut k = kernel_at(10_000);
-    k.claim_replaceable(30023, PK, Some("article-a".into()));
-    k.claim_replaceable(30023, PK, Some("article-b".into()));
+    k.claim_replaceable(30023, PK, Some("article-a".into()), false);
+    k.claim_replaceable(30023, PK, Some("article-b".into()), false);
     assert_eq!(
         k.pending_reverify_len(),
         2,

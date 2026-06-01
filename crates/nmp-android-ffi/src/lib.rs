@@ -261,7 +261,11 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimProfile(
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
         return;
     };
-    nmp_app_claim_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
+    // F-TTL — the Android JNI claim is a background/auto-claim, so force = 0
+    // (the lazy, TTL-gated path). User-navigation force-refresh is a Swift-app
+    // feature; the Android bridge does not expose a `force` parameter (V-109:
+    // Android is largely unwired).
+    nmp_app_claim_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr(), 0);
 }
 
 /// Demand-driven profile fetch release: the UI no longer needs `pubkey`

@@ -73,16 +73,17 @@ When a `claim_replaceable(kind, pubkey, d_tag?)` call finds `now > check_again_a
 ## API surface
 
 **Rust (internal):**
-- `Kernel::claim_replaceable(kind: u32, pubkey: &str, d_tag: Option<&str>) -> Result<...>`
-- `Kernel::check_again_after(kind: u32, pubkey: &str, d_tag: Option<&str>) -> Option<u64>` (test introspection)
+- `Kernel::claim_replaceable(kind: u32, pubkey: [u8; 32], d_tag: Option<String>, force: bool)`
+  - `force == true` treats the stored `check_again_after` as `0` → always enqueues a re-verification
+- `get_check_again_after(&key)` on the `EventStore` handle (test introspection)
 
-**FFI (public, for apps):**
-- `void nmp_app_refresh_replaceable(NmpApp* app, uint32_t kind, const char* pubkey, const char* d_tag_or_null)`
-  - Sets `check_again_after = 0` → forces immediate re-verification
-  - Called from UI when user explicitly requests "refresh profile"
-
-**Thin wrapper:**
-- `nmp_app_claim_profile(...)` is now a thin wrapper over `nmp_app_refresh_replaceable(app, 0, pubkey, NULL)`
+**FFI (public, for apps):** force-refresh is a `force` argument on the existing
+claim functions — there is no standalone refresh symbol.
+- `void nmp_app_claim_profile(NmpApp* app, const char* pubkey, const char* consumer_id, int force)`
+- `void nmp_app_claim_event(NmpApp* app, const char* uri, const char* consumer_id, int force)`
+  - `force != 0` → forces immediate re-verification of the cached replaceable identity
+  - Pass `1` when the user explicitly opens / navigates to the entity or pulls to refresh; pass `0` for background / `.onAppear` claims
+  - For `claim_event`, `force` only affects `naddr` (addressable) URIs; it is a silent no-op for immutable `nevent`/`note` URIs
 
 ## Doctrine
 
@@ -104,15 +105,18 @@ Complies with all D-series constraints:
 
 ## FFI ABI stability
 
-`nmp_app_refresh_replaceable` is a new symbol added to the kernel FFI surface. It completes the `nmp_app_claim_*` family for replaceable events:
+F-TTL adds **no new C-ABI symbol**. Force-refresh is a trailing `force: int`
+argument on the two existing claim functions, so the per-verb surface stays
+frozen:
 
-- `nmp_app_claim_profile` (existing) → now routes through `claim_replaceable(0, pubkey, None)`
-- `nmp_app_refresh_replaceable` (new) → force-refresh by zeroing `check_again_after`
+- `nmp_app_claim_profile(app, pubkey, consumer_id, force)` → cached kind:0 → `claim_replaceable(0, pubkey, None, force)`
+- `nmp_app_claim_event(app, uri, consumer_id, force)` → cached `naddr` → `claim_replaceable(kind, pubkey, Some(d_tag), force)`
 
-No breaking changes to existing symbols; `NmpCore.h` updated. Per the
-[FFI Surface Freeze Gate](../wiki/ffi-surface-freeze-gate.md), this net-new
-C-ABI symbol is gated by an ADR: see
-[ADR-0041 — F-TTL FFI surface](../decisions/0041-f-ttl-ffi-surface.md).
+Modifying a function signature is invisible to the name-based ffi-drift /
+surface-freeze gates; `NmpCore.h` is updated to the 4-arg form. The earlier
+`nmp_app_refresh_replaceable` symbol was removed. See
+[ADR-0041 — F-TTL FFI surface](../decisions/0041-f-ttl-ffi-surface.md) for the
+decision that superseded the standalone-symbol approach.
 
 ## Testing
 

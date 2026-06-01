@@ -274,8 +274,11 @@ impl KernelReducer {
         pubkey: String,
         consumer_id: String,
         can_send: bool,
+        force: bool,
     ) -> Vec<OutboundMessage> {
-        let outbound = self.kernel.claim_profile(pubkey, consumer_id, can_send);
+        let outbound = self
+            .kernel
+            .claim_profile(pubkey, consumer_id, can_send, force);
         self.kernel.partition_auth_paused(outbound)
     }
 
@@ -285,22 +288,6 @@ impl KernelReducer {
     pub fn release_profile(&mut self, pubkey: &str, consumer_id: &str) -> Vec<OutboundMessage> {
         let outbound = self.kernel.release_profile(pubkey, consumer_id);
         self.kernel.partition_auth_paused(outbound)
-    }
-
-    /// F-TTL — force immediate re-verification of a replaceable event's freshness.
-    /// Enqueues the key for re-verification so the next drain cycle issues a fresh REQ.
-    /// Returns any immediately-sendable outbound frames (typically empty).
-    pub fn refresh_replaceable(
-        &mut self,
-        kind: u32,
-        pubkey: [u8; 32],
-        d_tag: Option<String>,
-    ) -> Vec<OutboundMessage> {
-        // Enqueue for immediate re-verification.
-        // The kernel will issue a fresh REQ on the next drain_pending_reverify cycle.
-        self.kernel.claim_replaceable(kind, pubkey, d_tag);
-        // Return any outbound (there should be none for pure freshness refresh).
-        Vec::new()
     }
 
     /// Refcount a consumer's interest in the event identified by `uri`
@@ -315,8 +302,9 @@ impl KernelReducer {
         uri: String,
         consumer_id: String,
         can_send: bool,
+        force: bool,
     ) -> Vec<OutboundMessage> {
-        let outbound = self.kernel.claim_event(uri, consumer_id, can_send);
+        let outbound = self.kernel.claim_event(uri, consumer_id, can_send, force);
         self.kernel.partition_auth_paused(outbound)
     }
 
@@ -621,7 +609,7 @@ mod tests {
         let _ = r.reduce(KernelAction::Start);
         // any_relay_connected is false on a fresh reducer — assert the gate.
         assert!(!r.any_relay_connected(), "fresh reducer: no relay connected");
-        let out = r.claim_profile(PK.to_string(), "chirp-web-author-1".to_string(), false);
+        let out = r.claim_profile(PK.to_string(), "chirp-web-author-1".to_string(), false, false);
         assert!(out.is_empty(), "parked claim must emit no outbound");
     }
 
@@ -635,10 +623,20 @@ mod tests {
         let _ = r.reduce(KernelAction::Start);
 
         // First claim parks it.
-        let _ = r.claim_profile(PK.to_string(), "chirp-web-author-card-a".to_string(), false);
+        let _ = r.claim_profile(
+            PK.to_string(),
+            "chirp-web-author-card-a".to_string(),
+            false,
+            false,
+        );
         // Second claim for same pubkey, different consumer — must be a no-op
         // outbound (the profile is already pending / registered).
-        let out2 = r.claim_profile(PK.to_string(), "chirp-web-author-card-b".to_string(), false);
+        let out2 = r.claim_profile(
+            PK.to_string(),
+            "chirp-web-author-card-b".to_string(),
+            false,
+            false,
+        );
         assert!(
             out2.is_empty(),
             "second claim for same pubkey must not duplicate outbound: {out2:?}"
@@ -662,6 +660,7 @@ mod tests {
         let out = r.claim_event(
             "not-a-nostr-uri".to_string(),
             "chirp-web-embed-1".to_string(),
+            false,
             false,
         );
         assert!(out.is_empty(), "malformed URI must produce no outbound");

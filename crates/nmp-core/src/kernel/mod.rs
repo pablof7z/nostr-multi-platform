@@ -1479,12 +1479,21 @@ impl Kernel {
     /// repeated claims for the same identity while a REQ is in flight (before
     /// its EOSE lands and re-stamps with the real per-kind TTL) do not re-enqueue.
     ///
+    /// `force` bypasses the TTL gate: a forced claim treats the stored
+    /// `check_again_after` as `0` (always due), so it enqueues a re-fetch even
+    /// when the cached identity is still fresh. This is the "user explicitly
+    /// navigated to / pulled-to-refresh this entity" path; the lazy, gated path
+    /// (`force == false`) is what stops the kernel from spamming a REQ on every
+    /// `.onAppear`. (Replaces the deleted `nmp_app_refresh_replaceable` FFI:
+    /// force-refresh is now a `force` argument on the claim functions.)
+    ///
     /// D9 clock seam: `now_ms()` reads the injected `Clock`.
     pub(crate) fn claim_replaceable(
         &mut self,
         kind: u32,
         pubkey: [u8; 32],
         d_tag: Option<String>,
+        force: bool,
     ) {
         // `is_parameterized_replaceable` is the NIP-01 addressable predicate
         // (30000..=39999) — only those identities carry a `d`-tag.
@@ -1499,7 +1508,16 @@ impl Kernel {
         };
 
         let now = self.now_ms();
-        let check_at = self.store.get_check_again_after(&key).unwrap_or(0);
+        // `force` zeroes the freshness stamp for the gate check below, so a
+        // user-initiated refresh always reads as due (`now > 0`) and enqueues
+        // a re-fetch even when the cached identity is still within its TTL.
+        // No redundant store write: the enqueue path overwrites with
+        // `now + INFLIGHT_GUARD_MS` anyway.
+        let check_at = if force {
+            0
+        } else {
+            self.store.get_check_again_after(&key).unwrap_or(0)
+        };
 
         // Gate: still fresh, or already in flight → nothing to do.
         if now > check_at && !self.pending_reverify.contains(&key) {

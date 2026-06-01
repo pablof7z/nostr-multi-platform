@@ -525,10 +525,11 @@ pub(super) fn dispatch_command(
         ActorCommand::ClaimProfile {
             pubkey,
             consumer_id,
+            force,
         } => {
             let outbound = ctx
                 .kernel
-                .claim_profile(pubkey, consumer_id, ctx.relays_ready);
+                .claim_profile(pubkey, consumer_id, ctx.relays_ready, force);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
@@ -540,21 +541,14 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::RefreshReplaceable {
-            kind,
-            pubkey,
-            d_tag,
+        ActorCommand::ClaimEvent {
+            uri,
+            consumer_id,
+            force,
         } => {
-            // Convert hex pubkey to [u8; 32]. If invalid hex, silently ignore (D6).
-            if let Ok(pk) = nostr::PublicKey::from_hex(&pubkey) {
-                let pk_bytes = pk.to_bytes();
-                ctx.kernel.claim_replaceable(kind, pk_bytes, d_tag);
-                maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            }
-            Some(Vec::new())
-        }
-        ActorCommand::ClaimEvent { uri, consumer_id } => {
-            let outbound = ctx.kernel.claim_event(uri, consumer_id, ctx.relays_ready);
+            let outbound = ctx
+                .kernel
+                .claim_event(uri, consumer_id, ctx.relays_ready, force);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }

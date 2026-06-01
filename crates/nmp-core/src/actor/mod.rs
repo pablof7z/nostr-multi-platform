@@ -585,31 +585,29 @@ pub enum ActorCommand {
     OpenContactListSubscription {
         kinds: std::collections::BTreeSet<u32>,
     },
+    /// Refcounted profile (kind:0) claim. `force` (F-TTL) bypasses the TTL
+    /// freshness gate so a user-initiated navigation / pull-to-refresh always
+    /// re-verifies the cached profile; `force == false` is the lazy, gated
+    /// path used by background claims and `.onAppear` list rows.
     ClaimProfile {
         pubkey: String,
         consumer_id: String,
+        force: bool,
     },
     ReleaseProfile {
         pubkey: String,
         consumer_id: String,
     },
-    /// F-TTL — force immediate re-verification of a replaceable event's freshness.
-    /// Enqueues the key for re-verification so the next drain cycle issues a fresh REQ.
-    /// `kind` is the NIP-01 kind (0–9999, 10000–19999, 20000–29999, 30000–39999).
-    /// `pubkey` is the author's hex-encoded public key (must be valid hex or the command is ignored).
-    /// `d_tag` is the d-tag string for parameterized kinds (20000–29999, 30000–39999); ignored for regular kinds.
-    RefreshReplaceable {
-        kind: u32,
-        pubkey: String,
-        d_tag: Option<String>,
-    },
     /// Refcounted event claim — drives the generic `claim_event` kernel
     /// primitive (F-CR-06 / ADR-0034). `uri` is a `nostr:` URI
     /// (nevent/note/naddr); profile URIs are rejected (use `ClaimProfile`).
-    /// Symmetric with `ClaimProfile` in shape and dispatch.
+    /// Symmetric with `ClaimProfile` in shape and dispatch. `force` (F-TTL)
+    /// bypasses the TTL freshness gate for addressable (naddr) coordinates;
+    /// it is a silent no-op for immutable nevent/note URIs.
     ClaimEvent {
         uri: String,
         consumer_id: String,
+        force: bool,
     },
     /// Release a previously claimed event (the same `uri` +
     /// `consumer_id` pair). On the last consumer's release the

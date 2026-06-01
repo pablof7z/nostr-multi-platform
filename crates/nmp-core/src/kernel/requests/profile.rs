@@ -153,6 +153,7 @@ impl Kernel {
         pubkey: String,
         consumer_id: String,
         can_send: bool,
+        force: bool,
     ) -> Vec<OutboundMessage> {
         // T114b — per-pubkey claim consumer-id retention bound. Without this
         // check the BTreeSet grows once per `claim_profile` call (S2 mix:
@@ -184,8 +185,21 @@ impl Kernel {
         }
         self.changed_since_emit = true;
 
-        if self.profiles.contains_key(&pubkey)
-            || self.profile_requests.requested.contains(&pubkey)
+        // F-TTL — a profile is a kind:0 replaceable identity. When the profile
+        // is already cached, no cold fetch goes out; instead the TTL gate
+        // decides whether a lazy re-verification REQ is due (`force == false`),
+        // or unconditionally enqueues one (`force == true`, e.g. the user
+        // opened this author's profile screen or pulled to refresh). Running
+        // this only in the cached branch avoids double-fetching kind:0 on a
+        // cold claim, which already issues its own request below.
+        if self.profiles.contains_key(&pubkey) {
+            if let Ok(pk) = nostr::PublicKey::from_hex(&pubkey) {
+                self.claim_replaceable(0, pk.to_bytes(), None, force);
+            }
+            return Vec::new();
+        }
+
+        if self.profile_requests.requested.contains(&pubkey)
             || self.profile_requests.pending.contains(&pubkey)
         {
             return Vec::new();

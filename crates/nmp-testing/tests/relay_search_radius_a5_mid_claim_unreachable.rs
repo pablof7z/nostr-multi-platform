@@ -182,6 +182,7 @@ fn a5_mid_claim_stub_relay_drop_records_failure_delta() {
     tx.send(ActorCommand::ClaimEvent {
         uri: nevent_uri,
         consumer_id: "a5-test".to_string(),
+        force: false,
     })
     .expect("A5: ClaimEvent send");
 

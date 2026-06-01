@@ -141,6 +141,7 @@ fn a1_cold_claim_gigi_article_delivers_event_rx() {
     tx.send(ActorCommand::ClaimEvent {
         uri: GIGI_NADDR_A1.to_string(),
         consumer_id: "a1-test".to_string(),
+        force: false,
     })
     .expect("A1: ClaimEvent send");
 

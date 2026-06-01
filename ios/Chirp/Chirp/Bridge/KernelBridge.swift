@@ -134,10 +134,14 @@ final class KernelHandle {
         tag.withCString { nmp_app_open_firehose_tag(raw, $0) }
     }
 
-    func claimProfile(pubkey: String, consumerID: String) {
+    /// F-TTL — `force` controls the lazy re-verification gate for the cached
+    /// kind:0 profile. Pass `true` only when the user explicitly opened this
+    /// author's profile screen or pulled to refresh; default `false` is the
+    /// lazy, TTL-gated path for background / `.onAppear` component self-claims.
+    func claimProfile(pubkey: String, consumerID: String, force: Bool = false) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_claim_profile(raw, pkPtr, cidPtr)
+                nmp_app_claim_profile(raw, pkPtr, cidPtr, force ? 1 : 0)
             }
         }
     }
@@ -150,10 +154,15 @@ final class KernelHandle {
         }
     }
 
-    func claimEvent(uri: String, consumerID: String) {
+    /// F-TTL — `force` controls the lazy re-verification gate; it only has an
+    /// effect for `naddr` (addressable / replaceable) URIs and is a silent
+    /// no-op for immutable `nevent`/`note` URIs. Pass `true` only when the
+    /// user explicitly navigated to / opened this article/event or pulled to
+    /// refresh; default `false` is the background path.
+    func claimEvent(uri: String, consumerID: String, force: Bool = false) {
         uri.withCString { uriPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_claim_event(raw, uriPtr, cidPtr)
+                nmp_app_claim_event(raw, uriPtr, cidPtr, force ? 1 : 0)
             }
         }
     }

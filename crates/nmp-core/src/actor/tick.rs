@@ -224,6 +224,7 @@ mod tests {
                 .send(ActorCommand::ClaimProfile {
                     pubkey: pk.clone(),
                     consumer_id: "test-consumer".into(),
+                    force: false,
                 })
                 .unwrap();
             cmd_tx
@@ -276,7 +277,7 @@ mod tests {
         let mut last_emit = Instant::now();
 
         let pk = "0".repeat(64);
-        let _ = kernel.claim_profile(pk, "test-consumer".into(), false);
+        let _ = kernel.claim_profile(pk, "test-consumer".into(), false, false);
         super::maybe_emit_after_dispatch(&mut kernel, true, &upd_tx, &mut last_emit);
 
         let frame = upd_rx

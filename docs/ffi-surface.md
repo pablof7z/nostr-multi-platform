@@ -126,15 +126,18 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 
 ---
 
-## 6a. Replaceable event freshness (F-TTL) (`ffi/freshness.rs`)
+## 6a. Replaceable event freshness (F-TTL)
 
-Lazy TTL re-verification for replaceable Nostr events (kind:0 profiles, kind:10002 mailboxes, parameterized replaceables). The kernel automatically tracks when each replaceable should be re-fetched based on kind-specific TTLs. Force-refresh via UI using `nmp_app_refresh_replaceable`.
+Lazy TTL re-verification for replaceable Nostr events (kind:0 profiles, kind:10002 mailboxes, parameterized replaceables). The kernel automatically tracks when each replaceable should be re-fetched based on kind-specific TTLs. Force-refresh is exposed as a `force` argument on the existing claim functions (see §6) — **not** a standalone symbol.
+
+There is no dedicated F-TTL symbol. The two claim functions carry a trailing `force: int`:
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_refresh_replaceable` | `(app, kind: uint32_t, pubkey: *const c_char, d_tag_or_null: *const c_char)` | Force-refresh a replaceable event by zeroing its `check_again_after` timestamp, triggering an immediate re-verification REQ. `d_tag_or_null` is omitted (NULL) for regular replaceables (kind 0, 3, 10000–19999) and supplied for parameterized replaceables (kind 30000–39999). Validates hex pubkey. | Chirp (UI "refresh profile" button; explicit user action) | non-hex pubkey / invalid kind → early return | n/a |
+| `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int)` | Refcount a kind:0 profile claim. When the profile is cached, run the TTL freshness gate: re-verify only if `check_again_after` has elapsed (`force == 0`), or unconditionally (`force != 0`, e.g. user opened the profile screen / pull-to-refresh). | Chirp (component avatars/names, force=0), force=1 reserved for explicit user navigation | non-hex pubkey → early return | n/a |
+| `nmp_app_claim_event` | `(app, uri: *const c_char, consumer_id: *const c_char, force: int)` | Refcount a `nostr:` URI claim. For cached `naddr` (addressable) identities, run the TTL gate as above; for immutable `nevent`/`note` URIs `force` is a silent no-op (no TTL record). | Chirp embed sink (force=0) | unparseable URI → early return | n/a |
 
-**Note:** `nmp_app_claim_profile(app, pubkey, consumer_id)` is now a thin wrapper that calls `nmp_app_refresh_replaceable(app, 0, pubkey, NULL)` plus the existing refcount logic. TTL management is transparent: the framework automatically re-verifies after kind-specific timeouts (default: kind:0 = 1h, kind:10002 = 6h).
+**Note:** force-refresh replaces the removed `nmp_app_refresh_replaceable` symbol (ADR-0041). `force != 0` is semantically "treat `check_again_after` as 0 for this claim", driving an immediate re-verification REQ. TTL management is otherwise transparent: the framework auto-re-verifies after kind-specific timeouts (default: kind:0 = 1h, kind:10002 = 6h).
 
 See also: `docs/design/replaceable-freshness.md` (F-TTL design + lifecycle).
 

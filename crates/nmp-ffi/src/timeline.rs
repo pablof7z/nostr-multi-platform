@@ -10,7 +10,7 @@
 use super::{app_ref, c_string_argument, NmpApp};
 use nmp_core::ActorCommand;
 use nmp_core::__ffi_internal::{is_hex_id, is_hex_pubkey};
-use std::ffi::c_char;
+use std::ffi::{c_char, c_int};
 
 /// C ABI symbol kept stable (Swift / Kotlin / TUI call it). Internally it
 /// sends `ActorCommand::OpenAuthor` with the Chirp-specific social kinds
@@ -105,11 +105,22 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
     }));
 }
 
+/// Refcount a consumer's interest in `pubkey`'s kind:0 profile.
+///
+/// F-TTL — `force` (`c_int`, treated as `force != 0`) controls the lazy
+/// re-verification gate for the cached profile. Pass `1` when the user
+/// explicitly opened this author's profile screen or pulled to refresh;
+/// pass `0` for background / `.onAppear` list-row claims. `force` is the
+/// replacement for the removed `nmp_app_refresh_replaceable` symbol —
+/// force-refresh is now an argument on the existing claim function, so no
+/// new C-ABI symbol is added (keeps ffi-drift + surface-freeze green).
+/// FFI-clean (D6): null/invalid pubkey is a silent no-op, never a panic.
 #[no_mangle]
 pub extern "C" fn nmp_app_claim_profile(
     app: *mut NmpApp,
     pubkey: *const c_char,
     consumer_id: *const c_char,
+    force: c_int,
 ) {
     let Some(app) = app_ref(app) else {
         return;
@@ -127,6 +138,7 @@ pub extern "C" fn nmp_app_claim_profile(
     app.send_cmd(ActorCommand::ClaimProfile {
         pubkey,
         consumer_id,
+        force: force != 0,
     });
 }
 
@@ -155,42 +167,6 @@ pub extern "C" fn nmp_app_release_profile(
     });
 }
 
-/// F-TTL — force immediate re-verification of a replaceable event's freshness.
-/// Enqueues the event for re-verification so the next drain cycle issues a fresh REQ.
-/// `kind` is the NIP-01 kind (0–9999, 10000–19999, 20000–29999, 30000–39999).
-/// `pubkey` is the author's hex-encoded public key (64 hex chars or the call is ignored).
-/// `d_tag` is the d-tag string for parameterized kinds; NULL for regular kinds.
-/// FFI-clean (D6): null/invalid pubkey is a silent no-op, never a panic.
-#[no_mangle]
-pub extern "C" fn nmp_app_refresh_replaceable(
-    app: *mut NmpApp,
-    kind: u32,
-    pubkey: *const c_char,
-    d_tag: *const c_char,
-) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(pubkey_str) = c_string_argument(pubkey) else {
-        return;
-    };
-    if !is_hex_pubkey(&pubkey_str) {
-        return;
-    }
-    // d_tag may be NULL for regular kinds; convert to Option<String>
-    let d_tag_opt = if d_tag.is_null() {
-        None
-    } else {
-        c_string_argument(d_tag)
-    };
-
-    app.send_cmd(ActorCommand::RefreshReplaceable {
-        kind,
-        pubkey: pubkey_str,
-        d_tag: d_tag_opt,
-    });
-}
-
 /// Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted
 /// per `consumer_id`; the kernel fetches the event over the OneshotApi
 /// (single-writer interest registration — D4) when not yet in the store,
@@ -198,11 +174,20 @@ pub extern "C" fn nmp_app_refresh_replaceable(
 /// `primary_id` (event-id hex for `nevent`/`note`; `"kind:pubkey:d"` for
 /// `naddr`). FFI-clean (D6): a null/invalid argument is a silent no-op,
 /// never a panic. D8: forwards to the actor; no polling, no sync wait.
+///
+/// F-TTL — `force` (`c_int`, treated as `force != 0`) controls the lazy
+/// re-verification gate. It only has an effect for `naddr` (addressable /
+/// replaceable) URIs; for immutable `nevent`/`note` URIs it is a silent
+/// no-op (those events carry no TTL record). Pass `1` when the user
+/// explicitly navigated to / opened this article/event, or pulled to
+/// refresh; pass `0` for background claims. Replaces the removed
+/// `nmp_app_refresh_replaceable` symbol — no new C-ABI symbol is added.
 #[no_mangle]
 pub extern "C" fn nmp_app_claim_event(
     app: *mut NmpApp,
     uri: *const c_char,
     consumer_id: *const c_char,
+    force: c_int,
 ) {
     let Some(app) = app_ref(app) else {
         return;
@@ -214,7 +199,11 @@ pub extern "C" fn nmp_app_claim_event(
         return;
     };
 
-    app.send_cmd(ActorCommand::ClaimEvent { uri, consumer_id });
+    app.send_cmd(ActorCommand::ClaimEvent {
+        uri,
+        consumer_id,
+        force: force != 0,
+    });
 }
 
 /// Release a previously-claimed embedded event (T180 / ADR-0034). Mirrors

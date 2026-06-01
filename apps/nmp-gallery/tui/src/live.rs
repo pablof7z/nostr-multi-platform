@@ -88,7 +88,8 @@ impl LiveKernelSink {
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        nmp_ffi::nmp_app_claim_profile(self.app, pk.as_ptr(), cid.as_ptr());
+        // F-TTL — component-owned profile self-claim on render → force = 0.
+        nmp_ffi::nmp_app_claim_profile(self.app, pk.as_ptr(), cid.as_ptr(), 0);
     }
 
     pub fn release_profile(&self, pubkey: &str, consumer_id: &str) {
@@ -114,7 +115,8 @@ impl EventClaimSink for LiveKernelSink {
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        nmp_ffi::nmp_app_claim_event(self.app, uri_c.as_ptr(), cid.as_ptr());
+        // F-TTL — embed sink claims on render → force = 0 (background path).
+        nmp_ffi::nmp_app_claim_event(self.app, uri_c.as_ptr(), cid.as_ptr(), 0);
     }
 
     fn release(&self, uri: &str, consumer_id: &str) {

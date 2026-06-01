@@ -128,7 +128,7 @@ fn claim_event_for_known_event_id_resolves_without_relay() {
     inject_note(&mut kernel, &id, TEST_AUTHOR_HEX, "hello world");
 
     let uri = nevent_uri(&id, Some(1), Some(TEST_AUTHOR_HEX));
-    let outbound = kernel.claim_event(uri, "view-0".to_string(), true);
+    let outbound = kernel.claim_event(uri, "view-0".to_string(), true, false);
 
     // No outbound frames — wire emission flows through the planner, and in
     // this case the kernel short-circuits before even registering interest.
@@ -171,7 +171,7 @@ fn claim_event_emits_oneshot_request_via_lifecycle_registry() {
     let uri = nevent_uri(&id, Some(1), None);
 
     assert_eq!(kernel.discovery_in_flight(), 0);
-    let outbound = kernel.claim_event(uri.clone(), "view-0".to_string(), true);
+    let outbound = kernel.claim_event(uri.clone(), "view-0".to_string(), true, false);
 
     assert!(
         outbound.is_empty(),
@@ -189,7 +189,7 @@ fn claim_event_emits_oneshot_request_via_lifecycle_registry() {
 
     // Second claim from a different consumer must NOT register a new
     // interest — the `event_claim_requested` set dedupes.
-    let _ = kernel.claim_event(uri, "view-1".to_string(), true);
+    let _ = kernel.claim_event(uri, "view-1".to_string(), true, false);
     assert_eq!(
         kernel.discovery_in_flight(),
         1,
@@ -218,7 +218,7 @@ fn claim_event_naddr_matches_kind_pubkey_dtag_in_store() {
     let uri = naddr_uri(30023, TEST_AUTHOR_HEX, TEST_D_TAG);
     let coord_key = format!("30023:{TEST_AUTHOR_HEX}:{TEST_D_TAG}");
 
-    let _ = kernel.claim_event(uri, "view-0".to_string(), true);
+    let _ = kernel.claim_event(uri, "view-0".to_string(), true, false);
 
     // Already-resolved naddr → no fetch.
     assert_eq!(
@@ -252,8 +252,8 @@ fn release_event_drops_consumer_and_removes_key_on_empty_set() {
 
     let id = hex64("b");
     let uri = nevent_uri(&id, Some(1), None);
-    let _ = kernel.claim_event(uri.clone(), "view-0".to_string(), true);
-    let _ = kernel.claim_event(uri.clone(), "view-1".to_string(), true);
+    let _ = kernel.claim_event(uri.clone(), "view-0".to_string(), true, false);
+    let _ = kernel.claim_event(uri.clone(), "view-1".to_string(), true, false);
     assert_eq!(kernel.event_claims_len_for_test(&id), 2);
     assert!(kernel.event_claim_is_requested_for_test(&id));
 
@@ -284,7 +284,7 @@ fn claim_event_bounded_at_max_event_claims_per_key() {
     let uri = nevent_uri(&id, Some(1), None);
 
     for i in 0..MAX_EVENT_CLAIMS_PER_KEY {
-        let _ = kernel.claim_event(uri.clone(), format!("view-{i}"), true);
+        let _ = kernel.claim_event(uri.clone(), format!("view-{i}"), true, false);
     }
     assert_eq!(
         kernel.event_claims_len_for_test(&id),
@@ -293,7 +293,7 @@ fn claim_event_bounded_at_max_event_claims_per_key() {
     assert_eq!(kernel.event_claim_drops_total_for_test(), 0);
 
     // One past the cap: silently dropped.
-    let _ = kernel.claim_event(uri.clone(), "view-overflow".to_string(), true);
+    let _ = kernel.claim_event(uri.clone(), "view-overflow".to_string(), true, false);
     assert_eq!(
         kernel.event_claims_len_for_test(&id),
         MAX_EVENT_CLAIMS_PER_KEY,
@@ -308,7 +308,7 @@ fn claim_event_bounded_at_max_event_claims_per_key() {
     // An already-present consumer_id is idempotent and does NOT count as
     // a drop.
     let already_present = "view-0".to_string();
-    let _ = kernel.claim_event(uri, already_present, true);
+    let _ = kernel.claim_event(uri, already_present, true, false);
     assert_eq!(
         kernel.event_claim_drops_total_for_test(),
         1,
@@ -335,7 +335,7 @@ fn claimed_events_projection_emits_dto_keyed_by_primary_id() {
 
     // Pre-arrival: the claim registers an interest but the projection has
     // no entry (the event is not yet in the read-cache).
-    let _ = kernel.claim_event(uri, "view-0".to_string(), true);
+    let _ = kernel.claim_event(uri, "view-0".to_string(), true, false);
     let snapshot = kernel.make_update_value_for_test(true);
     let entry = &snapshot["projections"]["claimed_events"][&id];
     assert!(
@@ -370,8 +370,8 @@ fn release_event_cancels_claim_expansion_on_empty_set() {
     let id = hex64("e1");
     let uri = nevent_uri(&id, Some(1), None);
 
-    let _ = kernel.claim_event(uri.clone(), "view-0".to_string(), true);
-    let _ = kernel.claim_event(uri.clone(), "view-1".to_string(), true);
+    let _ = kernel.claim_event(uri.clone(), "view-0".to_string(), true, false);
+    let _ = kernel.claim_event(uri.clone(), "view-1".to_string(), true, false);
     assert_eq!(
         kernel.test_pending_claims_count(),
         1,
@@ -413,7 +413,7 @@ fn claim_event_seeds_initial_interest_hints_from_uri_relays() {
     let id = hex64("e2");
     let uri = nevent_uri_with_relays(&id, &["wss://relay.a.example", "wss://relay.b.example"]);
 
-    let _ = kernel.claim_event(uri, "view-0".to_string(), true);
+    let _ = kernel.claim_event(uri, "view-0".to_string(), true, false);
 
     // Exactly one oneshot interest registered; its hints must mirror the URI
     // relay TLVs verbatim (the W5 §7.3 improvement).
@@ -450,7 +450,7 @@ fn claim_event_without_uri_relays_registers_empty_hints() {
     let id = hex64("e3");
     let uri = nevent_uri(&id, Some(1), None); // no relays in TLV
 
-    let _ = kernel.claim_event(uri, "view-0".to_string(), true);
+    let _ = kernel.claim_event(uri, "view-0".to_string(), true, false);
 
     let active = kernel.lifecycle.registry_mut().iter_active();
     assert_eq!(active.len(), 1, "exactly one oneshot interest registered");
@@ -500,7 +500,7 @@ fn claim_event_parked_with_uri_hint_registers_and_targets_hint_relay() {
 
     // can_send = false: NO bootstrap relay is connected. On master this parks
     // unconditionally; with Fix B the URI hint makes the claim register anyway.
-    let outbound = kernel.claim_event(uri, "view-hint".to_string(), false);
+    let outbound = kernel.claim_event(uri, "view-hint".to_string(), false, false);
     assert!(
         outbound.is_empty(),
         "claim_event returns Vec::new() — wire frames flow through the planner (D4)"
@@ -545,7 +545,7 @@ fn claim_event_parked_without_uri_hint_still_parks() {
     let id = hex64("f2");
     let uri = nevent_uri(&id, Some(1), None); // no relay TLVs
 
-    let _ = kernel.claim_event(uri, "view-no-hint".to_string(), false);
+    let _ = kernel.claim_event(uri, "view-no-hint".to_string(), false, false);
 
     assert!(
         !kernel.event_claim_is_requested_for_test(&id),

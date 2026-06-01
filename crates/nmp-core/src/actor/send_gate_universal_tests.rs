@@ -117,7 +117,7 @@ mod tests {
         let uri = nevent_uri_with_relays(&id, &["wss://relay.publisher.example"]);
 
         // EXACT actor dispatch (mirrors actor/dispatch.rs:509).
-        let outbound = kernel.claim_event(uri, "view-universal".to_string(), relays_ready);
+        let outbound = kernel.claim_event(uri, "view-universal".to_string(), relays_ready, false);
 
         assert!(
             outbound.is_empty(),
@@ -169,7 +169,7 @@ mod tests {
 
         let id = hex64("b2");
         let uri = nevent_uri_with_relays(&id, &["wss://relay.publisher.example"]);
-        let _ = kernel.claim_event(uri, "view-happy".to_string(), relays_ready);
+        let _ = kernel.claim_event(uri, "view-happy".to_string(), relays_ready, false);
 
         assert!(
             kernel.event_claim_is_requested_for_test(&id),
