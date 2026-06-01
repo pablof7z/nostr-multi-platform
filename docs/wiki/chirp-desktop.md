@@ -32,35 +32,32 @@ chirp-desktop boots through the same FFI seam as iOS and the TUI. It boots via t
 <!-- citations: [^d1ce3-2] [^d366b-2] -->
 ## Projections
 
-chirp-desktop has access to all Chirp projections including `nmp.feed.home`, `thread_view`, `author_view`, and `configured_relays`. [^d1ce3-3]
+chirp-desktop has access to all Chirp projections including `nmp.feed.home`, `thread_view`, `author_view`, and `configured_relays`. <!-- [^d1ce3-3] -->
 
 ## Actions
 
-chirp-desktop dispatches actions (publish, react, follow, unfollow) through `nmp_app_dispatch_action`. [^d1ce3-4]
+chirp-desktop dispatches actions (publish, react, follow, unfollow) through `nmp_app_dispatch_action`. <!-- [^d1ce3-4] -->
 
 ## Navigation
 
-The left sidebar contains Home, Profile, and Settings. [^d1ce3-5]
+The left sidebar contains Home, Profile, and Settings. <!-- [^d1ce3-5] -->
 
 ## Home View
 
-The Home view displays a live timeline with note cards, a like button, clickable authors that open their profile, and clickable notes that open their thread. The Compose bar consists of a multiline input and a Publish button, and is only visible on the Home tab. [^d1ce3-6]
+The Home view displays a live timeline with note cards, a like button, clickable authors that open their profile, and clickable notes that open their thread. The Compose bar consists of a multiline input and a Publish button, and is only visible on the Home tab. <!-- [^d1ce3-6] -->
 
 ## Thread View
 
-The Thread view displays the root note and reply chain with Back navigation. [^d1ce3-7]
+The Thread view displays the root note and reply chain with Back navigation. <!-- [^d1ce3-7] -->
 
 ## Author View
 
-The Author view displays a profile card, a follow/unfollow button, a note list, and Back navigation. [^d1ce3-8]
+The Author view displays a profile card, a follow/unfollow button, a note list, and Back navigation. <!-- [^d1ce3-8] -->
 
 ## Settings View
 
-The Settings view allows creating an account, signing in with an nsec, viewing a relay list table, and adding a new relay. [^d1ce3-9]
+The Settings view allows creating an account, signing in with an nsec, viewing a relay list table, and adding a new relay. <!-- [^d1ce3-9] -->
 
 ## Status Bar
 
-The Status bar displays Chirp branding, relay health dots, and metrics. [^d1ce3-10]
-
-## See Also
-
+The Status bar displays Chirp branding, relay health dots, and metrics. <!-- [^d1ce3-10] -->

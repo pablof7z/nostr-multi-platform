@@ -22,5 +22,3 @@ sources:
 Oneshot discovery slots must have a timeout-based eviction mechanism to prevent a misbehaving relay that never sends EOSE from pinning both slots forever and starving all discovery. Eviction cleans every secondary index including relay_index, pinned events provably survive, and write-on-read is safe and bounded to point-reads.
 
 <!-- citations: [^7b4ae-2] [^4edd4-6] -->
-## See Also
-

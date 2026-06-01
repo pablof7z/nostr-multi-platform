@@ -38,5 +38,3 @@ The Chirp app is named 'Chirp' and serves as a reference Nostr implementation ta
 Chirp v1 aligns with the existing NMP ladder milestones M0–M17 without re-sequencing, and adds Chirp-specific milestones CX1–CX5 for features deferred past v1. Migrating iOS and Android Chirp apps from the repo root (ios/, android/) into the apps/chirp/ tree is a priority backlog item. Chirp Android must have iOS feature parity with all 11+ screens: Onboarding, HomeFeed, Profile, Thread, Search, Compose, Notifications, Wallet, Settings, Accounts, and Diagnostics. Chirp ThreadScreen migration and podcast comment surface migration are out of scope for the threading PRs and are designated as M2 follow-ups. No chirp-web features requiring persistence across reloads may be added until IndexedDB lands. V-86 CI coverage is insufficient: the CI glob only checks the gallery app, while the main Android Chirp app has 21 FlatBuffers files that remain completely unchecked.
 
 <!-- citations: [^582fc-4] [^e2d58-5] [^423f3-1] [^594b7-1] [^86] [^42908-3] [^16ca6-2] -->
-## See Also
-

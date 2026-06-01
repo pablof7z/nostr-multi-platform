@@ -18,7 +18,4 @@ sources:
 
 ## License Allowlist Policy
 
-The NCSA (University of Illinois/NCSA Open Source License) is allowed in the deny.toml license allowlist for transitive dev-only dependencies like libfuzzer-sys. When no NCSA-licensed crate remains in the dependency tree, the NCSA allowance entry is removed from deny.toml. [^3a906-4]
-
-## See Also
-
+The NCSA (University of Illinois/NCSA Open Source License) is allowed in the deny.toml license allowlist for transitive dev-only dependencies like libfuzzer-sys. When no NCSA-licensed crate remains in the dependency tree, the NCSA allowance entry is removed from deny.toml. <!-- [^3a906-4] -->

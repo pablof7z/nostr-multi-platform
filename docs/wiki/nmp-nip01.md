@@ -25,5 +25,3 @@ sources:
 The `nmp-nip01` crate provides `NoteRecord`, a `Note::new(...).reply_to(parent).build(...)` builder with NIP-10 marked markers and parent-author-first p-tag dedup. Reply NIP-10 tagging uses the reply marker only, with no root forwarding and no p re-notification. `RepliesView` provides flat direct replies, and `ThreadView` provides parent/child trees with out-of-order arrival buffering. The crate also owns the typed wire for `TimelineEventCard`, `TimelineBlock`, and `ModularTimelineSnapshot`, as well as `ContentRenderData`, and represents `NoteRelationCounts` as an enum. Visible note relations claims are forwarded as JSON actions on namespace `nmp.nip01.visible_note_relations` with an auto-generated `consumer_id` for refcounting into the Rust working set.
 
 <!-- citations: [^590ca-5] [^423f3-9] [^57528-14] [^56db9-10] [^54ae9-20] -->
-## See Also
-

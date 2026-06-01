@@ -24,5 +24,3 @@ sources:
 When `claim_event` fires with `!can_send` (relays not yet connected), the URI and consumer_id are parked in a `pending_event_claims: Vec<(String, String)>` queue on the Kernel. The kernel `claim_send_gate` must gate on `any_relay_connected` (not `all_relays_connected`) so claims with relay hints can proceed even when an unrelated bootstrap relay role is down. Parked claims with URI relay hints must dial those hint relays directly rather than waiting indefinitely for all bootstrap relays. The queue is drained by `pending_event_claim_requests()`, which is called from `pending_view_requests()`, mirroring the existing profile claim pattern. EmbedHost reads `claimedEvents` from the pushed snapshot to resolve envelopes; EventClaimSinkProtocol is defined and KernelModel conforms to it to drive EmbedHost. When a claim is terminated due to early exhaustion in advance_to_phase2, it must be routed through terminate_claim to properly clean up claim_sub_index, rather than setting the phase to Terminal inline.
 
 <!-- citations: [^7e56b-1] [^2073] [^2074] [^16ca6-9] [^6a951-16] [^38935-8] -->
-## See Also
-

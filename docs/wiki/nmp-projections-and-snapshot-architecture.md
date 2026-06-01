@@ -35,55 +35,55 @@ sources:
 
 ## Projection Finalization
 
-For projections using `or_insert_with` + per-kind mutations (like `DiscoveredGroupsProjection`), new display fields must be populated in a finalize pass after all event kinds fold in — not at row-construction time. [^12b3f-15]
+For projections using `or_insert_with` + per-kind mutations (like `DiscoveredGroupsProjection`), new display fields must be populated in a finalize pass after all event kinds fold in — not at row-construction time. <!-- [^12b3f-15] -->
 
-`AccountSummary` and `TimelineItem` in `KernelTypes.generated.swift` are auto-generated; adding new fields requires regenerating via `cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas | cargo run -p nmp-codegen -- gen swift --schemas - --out <path>`. [^12b3f-16]
+`AccountSummary` and `TimelineItem` in `KernelTypes.generated.swift` are auto-generated; adding new fields requires regenerating via `cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas | cargo run -p nmp-codegen -- gen swift --schemas - --out <path>`. <!-- [^12b3f-16] -->
 
 Missing projection fields in generated Swift bindings must be fixed by adding the corresponding `SnapshotProjectionEntry` to the codegen registry, not by deleting the field from the generated struct.
 
-D14 lint flags new `Arc<Mutex<Vec<...>>>` on `NmpApp`/`Kernel`/`Actor*` structs without a paired `SnapshotProjectionSlot`. [^1c093-22]
+D14 lint flags new `Arc<Mutex<Vec<...>>>` on `NmpApp`/`Kernel`/`Actor*` structs without a paired `SnapshotProjectionSlot`. <!-- [^1c093-22] -->
 
-`KernelSnapshot` reserved-projection docs at `kernel/types.rs:654-668` are stale relative to `action_results`, `outbox_summary`, `relay_diagnostics`, and `mention_profiles`. [^1c093-23]
+`KernelSnapshot` reserved-projection docs at `kernel/types.rs:654-668` are stale relative to `action_results`, `outbox_summary`, `relay_diagnostics`, and `mention_profiles`. <!-- [^1c093-23] -->
 
-The `KernelSnapshot` projection must include a `profiles_by_pubkey` map so the Swift UI layer can look up and render kind:0 profiles for any referenced pubkey, not just visible timeline item authors. [^7b4ae-4]
+The `KernelSnapshot` projection must include a `profiles_by_pubkey` map so the Swift UI layer can look up and render kind:0 profiles for any referenced pubkey, not just visible timeline item authors. <!-- [^7b4ae-4] -->
 
-Projection and snapshot structs must carry only raw pubkeys (hex), never pre-formatted display strings like `short_npub`, `avatar_initials`, or `avatar_color_hex`. When a kind:0 event is not known, the display name field must be `Option<String>` (absent), never a pre-formatted fallback like `short_npub`. [^175-176] [^398-400]
+Projection and snapshot structs must carry only raw pubkeys (hex), never pre-formatted display strings like `short_npub`, `avatar_initials`, or `avatar_color_hex`. When a kind:0 event is not known, the display name field must be `Option<String>` (absent), never a pre-formatted fallback like `short_npub`. <!-- [^175-176] --> <!-- [^398-400] -->
 
-`MentionProfilePayload` must include a `pubkey` field so the presentation layer can recompute display attributes from it. [^214-216]
+`MentionProfilePayload` must include a `pubkey` field so the presentation layer can recompute display attributes from it. <!-- [^214-216] -->
 
-`MarmotMessageRow` must include a `sender_pubkey_hex` field because the raw hex pubkey was previously absent (only bech32 `sender_npub` existed). [^255-257]
+`MarmotMessageRow` must include a `sender_pubkey_hex` field because the raw hex pubkey was previously absent (only bech32 `sender_npub` existed). <!-- [^255-257] -->
 
-`WalletStatus` must include a `wallet_pubkey_hex` field because `wallet_npub_short` was the only identifier crossing the wire and the raw hex was not serialized. [^240-241]
+`WalletStatus` must include a `wallet_pubkey_hex` field because `wallet_npub_short` was the only identifier crossing the wire and the raw hex was not serialized. <!-- [^240-241] -->
 
-Timestamps must be sent as Unix integers, not pre-formatted display strings like `created_at_display` or `format_ago_secs`. [^227-228]
+Timestamps must be sent as Unix integers, not pre-formatted display strings like `created_at_display` or `format_ago_secs`. <!-- [^227-228] -->
 
-The `claimed_events` projection carries raw `created_at` as Unix seconds; the presentation layer formats it (e.g. '4d ago') per the display-separation doctrine. [^2513-2513]
+The `claimed_events` projection carries raw `created_at` as Unix seconds; the presentation layer formats it (e.g. '4d ago') per the display-separation doctrine. <!-- [^2513-2513] -->
 
-Numeric fields like `member_count` and `unread_count` must be sent as raw integers, not pre-formatted display strings like `members_display` or `unread_display`. [^227-228]
+Numeric fields like `member_count` and `unread_count` must be sent as raw integers, not pre-formatted display strings like `members_display` or `unread_display`. <!-- [^227-228] -->
 
-Rust display helpers (`short_npub`, `avatar_color_hex`, etc.) are legitimate only in TUI render code, CLI output, and test fixtures — never inside projection builders, snapshot types, or FFI serialization paths. [^232-234]
+Rust display helpers (`short_npub`, `avatar_color_hex`, etc.) are legitimate only in TUI render code, CLI output, and test fixtures — never inside projection builders, snapshot types, or FFI serialization paths. <!-- [^232-234] -->
 
-NMP must not decide how things are rendered; it must provide the raw event id, pubkey, or other protocol data and apps determine how they are rendered. [^391-392] [^86221-9]
+NMP must not decide how things are rendered; it must provide the raw event id, pubkey, or other protocol data and apps determine how they are rendered. <!-- [^391-392] --> <!-- [^86221-9] -->
 
-The typed feed schema must be a parity schema for the existing `ModularTimelineSnapshot` rather than a simplified feed model. (Previously: a parity schema for the existing `ModularTimelineSnapshot`.) PR #747 replaces the `ModularTimelineSnapshot` producer with `RootFeedSnapshot` and removes `register_typed_snapshot_projection` entirely, leaving no typed-FB encoder for the new shape; a typed `RootFeedSnapshot` schema encoder is deferred to a follow-up task. [^56db9-11]
+The typed feed schema must be a parity schema for the existing `ModularTimelineSnapshot` rather than a simplified feed model. (Previously: a parity schema for the existing `ModularTimelineSnapshot`.) PR #747 replaces the `ModularTimelineSnapshot` producer with `RootFeedSnapshot` and removes `register_typed_snapshot_projection` entirely, leaving no typed-FB encoder for the new shape; a typed `RootFeedSnapshot` schema encoder is deferred to a follow-up task. <!-- [^56db9-11] -->
 
-The projection key (e.g., `nmp.feed.home`) and the `schema_id` (e.g., `nmp.nip01.timeline`) are orthogonal design elements: the projection key routes the payload, while the `schema_id` tells hosts how to decode it. [^56db9-12]
+The projection key (e.g., `nmp.feed.home`) and the `schema_id` (e.g., `nmp.nip01.timeline`) are orthogonal design elements: the projection key routes the payload, while the `schema_id` tells hosts how to decode it. <!-- [^56db9-12] -->
 
-`register_typed_snapshot_projection` is exposed on `NmpApp` in `nmp-ffi` to register typed projection closures. [^56db9-13]
+`register_typed_snapshot_projection` is exposed on `NmpApp` in `nmp-ffi` to register typed projection closures. <!-- [^56db9-13] -->
 
-Runtime measurements for typed projections are captured via `typed_encode_us` and `typed_payload_bytes` metrics. [^56db9-14]
+Runtime measurements for typed projections are captured via `typed_encode_us` and `typed_payload_bytes` metrics. <!-- [^56db9-14] -->
 
-Apps can register custom snapshot projections via `nmp_app_register_snapshot_projection`, which must be cheap and non-blocking (doctrine D8) because they execute on the kernel actor thread during each tick. [^47-47]
+Apps can register custom snapshot projections via `nmp_app_register_snapshot_projection`, which must be cheap and non-blocking (doctrine D8) because they execute on the kernel actor thread during each tick. <!-- [^47-47] -->
 
-The Core Snapshot Registry allows host apps to inject custom JSON keys into the kernel snapshot without modifying the sealed social wire schema, executing registered projection closures safely inside every actor tick. [^48-51] [^304-315]
+The Core Snapshot Registry allows host apps to inject custom JSON keys into the kernel snapshot without modifying the sealed social wire schema, executing registered projection closures safely inside every actor tick. <!-- [^48-51] --> <!-- [^304-315] -->
 
-Snapshot projection closures must be cheap and non-blocking (D8), and panics are caught and swallowed so a bad host projection cannot kill the kernel. [^128-131] [^314-314]
+Snapshot projection closures must be cheap and non-blocking (D8), and panics are caught and swallowed so a bad host projection cannot kill the kernel. <!-- [^128-131] --> <!-- [^314-314] -->
 
-nmp-core's `encode_value` sorts all object keys alphabetically when encoding generic snapshot Values into FlatBuffers. [^230-236]
+nmp-core's `encode_value` sorts all object keys alphabetically when encoding generic snapshot Values into FlatBuffers. <!-- [^230-236] -->
 
-The `home_feed` Value in the typed NOFS sidecar path remains in struct-field order (not alphabetically sorted). [^246-247]
+The `home_feed` Value in the typed NOFS sidecar path remains in struct-field order (not alphabetically sorted). <!-- [^246-247] -->
 
-Parity-by-construction between typed and generic encoding paths guarantees only semantic identity, not identical key order. [^254-255]
+Parity-by-construction between typed and generic encoding paths guarantees only semantic identity, not identical key order. <!-- [^254-255] -->
 
 <!-- citations: [^12b3f-15] [^12b3f-16] [^1c093-22] [^1c093-23] [^7b4ae-4] [^175-176] [^398-400] [^214-216] [^255-257] [^240-241] [^227-228] [^2513-2513] [^232-234] [^391-392] [^86221-9] [^56db9-11] [^56db9-12] [^56db9-13] [^56db9-14] [^47-47] [^48-51] [^304-315] [^128-131] [^314-314] [^230-236] [^246-247] [^254-255] [^222-224] [^226-227] [^eb342-10] [^86221-7] [^54ae9-21] [^055ef-1] [^47882-3] [^3a906-5] [^6a951-13] [^d0690-5] -->
 ## Snapshot Broadcast Model
@@ -123,10 +123,8 @@ The merge conflict resolution for PR #747 drops the old typed sidecar block in `
 <!-- citations: [^12b3f-17] [^1c093-24] [^222-226] [^355-360] [^54ae9-22] [^055ef-2] [^055ef-3] [^47203-6] [^86221-8] [^53838-8] [^42908-21] [^a0964-2] [^d0690-6] [^c3f75-12] [^c9ae5-7] -->
 ## Second-App Framework Thesis (PD-033-A)
 
-PD-033-A (the second-app proof of the framework thesis) is buildable today with zero new affordances: the existing push projection seam already provides kernel-owned projections, handshake-gated sign-in, and D3 outbox routing read off the pushed frame. The thesis is unblocked but not yet demonstrated — no second app has been built against the seam. The podcast player is the live candidate. See ADR-0039. [^12b3f-19]
+PD-033-A (the second-app proof of the framework thesis) is buildable today with zero new affordances: the existing push projection seam already provides kernel-owned projections, handshake-gated sign-in, and D3 outbox routing read off the pushed frame. The thesis is unblocked but not yet demonstrated — no second app has been built against the seam. The podcast player is the live candidate. See ADR-0039. <!-- [^12b3f-19] -->
 
-NIP-29 group discovery/join UI requires an `nmp.nip29.discover` action and projection. [^1c093-25]
+NIP-29 group discovery/join UI requires an `nmp.nip29.discover` action and projection. <!-- [^1c093-25] -->
 
 <!-- citations: [^12b3f-18] [^12b3f-19] [^12b3f-20] [^1c093-25] [^d0690-7] -->
-## See Also
-

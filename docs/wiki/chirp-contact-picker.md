@@ -18,7 +18,4 @@ sources:
 
 ## DM Compose Sheet
 
-The DM compose sheet replaces raw hex input with a contact search over the NIP-02 follow graph; raw hex input is only accessible via Settings → Developer. The contact picker is searchable and backed by the follow list from the Rust-side FollowListProjection. [^eb342-1]
-
-## See Also
-
+The DM compose sheet replaces raw hex input with a contact search over the NIP-02 follow graph; raw hex input is only accessible via Settings → Developer. The contact picker is searchable and backed by the follow list from the Rust-side FollowListProjection. <!-- [^eb342-1] -->

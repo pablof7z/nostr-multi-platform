@@ -18,7 +18,4 @@ sources:
 
 ## Auto-Scroll Behavior
 
-DmConversationView auto-scrolls to the newest message on both initial load and when new messages arrive, using ScrollViewReader with a sentinel bottom anchor. MarmotGroupChatView auto-scrolls to the latest message on initial load, matching the DmConversationView behavior. [^19e07-5]
-
-## See Also
-
+DmConversationView auto-scrolls to the newest message on both initial load and when new messages arrive, using ScrollViewReader with a sentinel bottom anchor. MarmotGroupChatView auto-scrolls to the latest message on initial load, matching the DmConversationView behavior. <!-- [^19e07-5] -->

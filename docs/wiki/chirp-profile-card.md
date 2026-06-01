@@ -18,15 +18,13 @@ sources:
 
 ## ProfileCard
 
-ProfileCard includes a has_profile boolean that gates display of the about and nip05 fields, preventing debug placeholder text from appearing as bio. [^19e07-12]
+ProfileCard includes a has_profile boolean that gates display of the about and nip05 fields, preventing debug placeholder text from appearing as bio. <!-- [^19e07-12] -->
 
 
 ## AccountSummary
 
-AccountSummary includes a picture_url field enriched from kind:0 profile data via accounts_enriched(), so the home feed toolbar and compose sheet show the user's real profile picture. [^19e07-13]
+AccountSummary includes a picture_url field enriched from kind:0 profile data via accounts_enriched(), so the home feed toolbar and compose sheet show the user's real profile picture. <!-- [^19e07-13] -->
 
 ## AccountsView
 
-AccountsView displays the user's real profile picture using account.pictureUrl instead of a nil placeholder. [^19e07-14]
-## See Also
-
+AccountsView displays the user's real profile picture using account.pictureUrl instead of a nil placeholder. <!-- [^19e07-14] -->

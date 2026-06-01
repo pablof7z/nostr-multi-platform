@@ -26,5 +26,3 @@ sources:
 LmdbEventStore is a stub with all 25 trait methods returning errors; there is no actual heed or LMDB crate dependency in any Cargo.toml. LMDB's single-writer constraint is acceptable for Nostr event stores because ingestion is bursty but write-bound throughput is not the bottleneck — reads and queries dominate UI rendering. Known implementation gaps in the stub: gc_step never evicts because LRU eviction is not implemented, kernel init surfaces an LMDB open failure as a typed StoreUnavailable diagnostic instead of falling back silently to an in-memory store, and ok()?? / filter_map(res.ok()) silently swallows index-corruption errors producing incomplete query results. Relay browsing reverse-index methods are honestly stubbed with NotSupported rather than using the V-17 Vec::new() silent-empty anti-pattern.
 
 <!-- citations: [^7f0f0-11] [^57528-8] [^c0765-2] [^cd2b6-9] [^42908-9] [^4edd4-12] -->
-## See Also
-

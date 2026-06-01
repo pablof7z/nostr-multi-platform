@@ -27,12 +27,10 @@ The `apps/podcast/` directory contains the Rust/cross-platform crates for podcas
 <!-- citations: [^bf327-1] [^c066a-1] [^16ca6-6] -->
 ## App-First vs Technology-First Structure
 
-In an app-first directory layout, each app (e.g., `apps/podcast/`, `apps/chirp/`) contains its own `rust/`, `ios/`, and `android/` subdirectories rather than grouping all platform code under top-level technology directories. For a multi-platform repo, the app-first layout is objectively cleaner than the technology-first layout because it allows understanding the whole app from a single directory. [^bf327-2]
+In an app-first directory layout, each app (e.g., `apps/podcast/`, `apps/chirp/`) contains its own `rust/`, `ios/`, and `android/` subdirectories rather than grouping all platform code under top-level technology directories. For a multi-platform repo, the app-first layout is objectively cleaner than the technology-first layout because it allows understanding the whole app from a single directory. <!-- [^bf327-2] -->
 
 ## Migration Considerations
 
 Moving `ios/NmpPodcast/` to `apps/podcast/ios/` requires updating absolute/relative paths in Xcode schemes, `project.yml` for XcodeGen, `Info.plist` refs, and Cargo workspace members. The android/podcast artifact is deleted from Cargo.toml and android/settings.gradle.kts. The podcast-app migration pins to nmp-v0.1.0 using `nmp init --nmp-version 0.1.0`.
 
 <!-- citations: [^bf327-3] [^f8eb6-1] [^42908-11] -->
-## See Also
-

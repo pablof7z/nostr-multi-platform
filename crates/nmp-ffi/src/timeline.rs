@@ -235,3 +235,46 @@ pub extern "C" fn nmp_app_close_thread(app: *mut NmpApp, event_id: *const c_char
 
     app.send_cmd(ActorCommand::CloseThread { event_id });
 }
+
+/// F-TTL — request a fresh fetch of a replaceable event. Dispatches an immediate
+/// in-flight REQ against the replaceable identity (kind, pubkey, d_tag?), and queues
+/// a fresh TTL expiry. Intended for host-initiated refresh-on-demand after the user
+/// interacts with a staleness indicator (e.g. "Tap to refresh" on a profile card).
+///
+/// `pubkey` must be a valid hex-encoded 64-character public key; `d_tag` may be null
+/// for non-parameterized replaceable kinds (0, 3, 10000–19999) or a UTF-8 string for
+/// parameterized kinds (20000–29999, 30000–39999). FFI-clean (D6): null/invalid
+/// arguments are silent no-ops, never panics.
+///
+/// This is a fire-and-forget RPC — fresh data arrives asynchronously via the normal
+/// snapshot push mechanism (`snapshot_projections`).
+#[no_mangle]
+pub extern "C" fn nmp_app_refresh_replaceable(
+    app: *mut NmpApp,
+    kind: u32,
+    pubkey: *const c_char,
+    d_tag: *const c_char, // may be null for non-parameterized kinds
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(pubkey) = c_string_argument(pubkey) else {
+        return;
+    };
+    if !is_hex_pubkey(&pubkey) {
+        return;
+    }
+
+    // d_tag is optional; null is valid for non-parameterized kinds
+    let d_tag = if d_tag.is_null() {
+        None
+    } else {
+        c_string_argument(d_tag)
+    };
+
+    app.send_cmd(ActorCommand::RefreshReplaceable {
+        kind,
+        pubkey,
+        d_tag,
+    });
+}

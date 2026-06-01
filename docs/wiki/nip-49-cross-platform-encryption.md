@@ -22,5 +22,3 @@ sources:
 NIP-49 at-rest encryption is currently iOS Keychain only, leaving a gap for Android platforms. On desktop, chirp-tui provides a KeyringCapability backend implemented via the OS secret store (macOS Keychain / Linux Secret Service) using the `keyring` crate.
 
 <!-- citations: [^57528-9] [^f8543-2] -->
-## See Also
-

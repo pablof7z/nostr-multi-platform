@@ -21,7 +21,7 @@ sources:
 
 ## Scope and Territory
 
-Real-relay validation tests are confined to file-disjoint territory: ONLY crates/nmp-testing/tests/real_relay_*.rs, crates/nmp-testing/tests/soak/, and docs/perf/real-relay/. Territory compliance requires every commit's diff to be exclusively within crates/nmp-testing/tests/real_relay_*, crates/nmp-testing/tests/real_relay_common/, crates/nmp-testing/tests/soak/, or docs/perf/real-relay/. New top-level tests/real_relay_*.rs files build via autodiscovery with no Cargo.toml edit required. [^9f5b5-2]
+Real-relay validation tests are confined to file-disjoint territory: ONLY crates/nmp-testing/tests/real_relay_*.rs, crates/nmp-testing/tests/soak/, and docs/perf/real-relay/. Territory compliance requires every commit's diff to be exclusively within crates/nmp-testing/tests/real_relay_*, crates/nmp-testing/tests/real_relay_common/, crates/nmp-testing/tests/soak/, or docs/perf/real-relay/. New top-level tests/real_relay_*.rs files build via autodiscovery with no Cargo.toml edit required. <!-- [^9f5b5-2] -->
 
 
 ## Test Scenarios
@@ -31,19 +31,17 @@ The real-relay validation suite must implement 6 scenarios: (1) connect+subscrib
 <!-- citations: [^9f5b5-3] [^42908-23] [^f3d8d-15] -->
 ## Soak Runner
 
-A soak runner must perform sustained multi-relay subscription for a configurable duration, asserting zero leaked subs, bounded memory, and no panics, and write a single-page report to docs/perf/real-relay/. [^9f5b5-4]
+A soak runner must perform sustained multi-relay subscription for a configurable duration, asserting zero leaked subs, bounded memory, and no panics, and write a single-page report to docs/perf/real-relay/. <!-- [^9f5b5-4] -->
 
 ## Execution Policy
 
-Real-relay network tests are gated with #[ignore] and run explicitly, not in CI. Every agent is bound to the honest-validation contract: unreachable/absent behavior results in a loud SKIP with a written finding in docs/perf/real-relay/, never a fabricated green result. The test `relay_worker::tests::v58_set_backoff_hint_does_not_break_reconnect` is a known timing-race flake; rerun it rather than chase the failure when it fails on a PR that touches zero Rust. [^9f5b5-5] [^42908-24]
+Real-relay network tests are gated with #[ignore] and run explicitly, not in CI. Every agent is bound to the honest-validation contract: unreachable/absent behavior results in a loud SKIP with a written finding in docs/perf/real-relay/, never a fabricated green result. The test `relay_worker::tests::v58_set_backoff_hint_does_not_break_reconnect` is a known timing-race flake; rerun it rather than chase the failure when it fails on a PR that touches zero Rust. <!-- [^9f5b5-5] --> <!-- [^42908-24] -->
 
 <!-- citations: [^9f5b5-5] [^42908-24] [^6a951-17] -->
 ## Reporting and Verdicts
 
-Every scenario writes evidence reports in docs/perf/real-relay/ and the suite verdicts are greppable via the pattern '^verdict:' in that directory. [^9f5b5-6]
+Every scenario writes evidence reports in docs/perf/real-relay/ and the suite verdicts are greppable via the pattern '^verdict:' in that directory. <!-- [^9f5b5-6] -->
 
 ## Commit Convention
 
-Commit messages for real-relay test work must use the prefix test(real-relay):. [^9f5b5-7]
-## See Also
-
+Commit messages for real-relay test work must use the prefix test(real-relay):. <!-- [^9f5b5-7] -->

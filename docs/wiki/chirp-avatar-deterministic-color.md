@@ -23,5 +23,3 @@ sources:
 ChirpAvatar uses a deterministic color derived from the first 6 hex characters of the peer's pubkey instead of a flat gray placeholder. Per-identity colors are derived by djb2-hashing the npub (not the mutable display_name) for stable color assignment. This applies across all row types: DmConversationRow, GroupChatMessageRow, and MarmotMessageRow all use ChirpAvatar with deterministic color instead of flat .quaternary placeholder avatars. ChirpAvatar must call claimProfile(pubkey:) on appear and releaseProfile on disappear so the kernel reactively fetches kind:0 profile data for visible pubkeys.
 
 <!-- citations: [^19e07-1] [^4f377-2] [^9a2c7-2] -->
-## See Also
-

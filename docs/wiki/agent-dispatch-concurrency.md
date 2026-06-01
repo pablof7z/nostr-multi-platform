@@ -22,5 +22,3 @@ sources:
 The concurrent agent dispatch cap is 10. 10 build agents are launched simultaneously to construct the TUI.
 
 <!-- citations: [^47203-2] [^4f377-1] -->
-## See Also
-

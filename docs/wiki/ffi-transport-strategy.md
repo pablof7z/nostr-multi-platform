@@ -26,14 +26,12 @@ V-84 and V-85 are reclassified as HIGH priority v1 items to complete a half-land
 <!-- citations: [^53ffd-1] [^8a8ae-1] [^e4861-1] [^cd331-4] -->
 ## Hot Path Format
 
-FlatBuffers is used for the hot snapshot/projection path across Swift, Kotlin, and WASM consumers, providing zero-copy reads without a per-tick decode pass. FlatBuffers is used as the wire format for WASM snapshots, using a single schema and one set of generated readers across all platforms. Native shells render FlatBuffer data without interpreting or reasoning about its internal structure, enforced via linting. [^8a8ae-2]
+FlatBuffers is used for the hot snapshot/projection path across Swift, Kotlin, and WASM consumers, providing zero-copy reads without a per-tick decode pass. FlatBuffers is used as the wire format for WASM snapshots, using a single schema and one set of generated readers across all platforms. Native shells render FlatBuffer data without interpreting or reasoning about its internal structure, enforced via linting. <!-- [^8a8ae-2] -->
 
 ## Debug and Inspection Format
 
-JSON is retained as the debug and inspection format, kept behind a debug flag and used for ADR-fixture goldens. JSON is retired from the hot path and kept only behind a `--debug-transport=json` flag. [^8a8ae-3]
+JSON is retained as the debug and inspection format, kept behind a debug flag and used for ADR-fixture goldens. JSON is retired from the hot path and kept only behind a `--debug-transport=json` flag. <!-- [^8a8ae-3] -->
 
 ## Tooling and CI
 
-CI must regenerate and diff generated code across four languages to manage the FlatBuffers tooling tax. [^8a8ae-4]
-## See Also
-
+CI must regenerate and diff generated code across four languages to manage the FlatBuffers tooling tax. <!-- [^8a8ae-4] -->

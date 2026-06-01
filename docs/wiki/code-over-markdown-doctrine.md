@@ -22,8 +22,6 @@ sources:
 
 Code takes precedence over markdown documentation in every contradiction. Code edits and build commands must be chained in a single shell call to prevent an auto-formatting linter from reverting changes between the edit and the compilation.
 
-The 80 markdown synthesis notes in docs/wiki/ are tracked in git. docs/wiki/_citations.log is excluded from git tracking via .gitignore because it is a raw conversation-capture log. [^1d307-1]
+The 80 markdown synthesis notes in docs/wiki/ are tracked in git. docs/wiki/_citations.log is excluded from git tracking via .gitignore because it is a raw conversation-capture log. <!-- [^1d307-1] -->
 
 <!-- citations: [^1c093-5] [^161ad-2] -->
-## See Also
-

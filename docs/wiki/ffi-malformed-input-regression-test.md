@@ -22,5 +22,3 @@ sources:
 A regression test must feed malformed input through FFI to verify the replacement of lattice panics with Result returns. V-70 tracks that hex_to_bytes32 returns all-zeros on malformed hex input, creating a silent data corruption path.
 
 <!-- citations: [^57528-6] [^cd2b6-7] -->
-## See Also
-

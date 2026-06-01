@@ -26,30 +26,30 @@ sources:
 
 nmpui.f7z.io hosts the nmp component registry (web/registry), not chirp. Components installed via `nmp add component` are copied source files, not linked packages, and the lock file records upstream SHA-256 hashes so a future `nmp update component` can compute safe diffs against local edits. `nmp add component` installs app-owned native UI source that can be edited freely, with updates performed as interactive merges against a recorded baseline, never silent overwrites. `nmp add component` accepts the flags `--path DIR`, `--registry DIR`, and `--with ROLES`. It rejects path traversal via `safe_relative()`, checks for duplicate installs, and checks for pre-existing target files before writing anything. It checks only the explicit target for duplicate rejection and filters already-installed dependencies silently instead of erroring.
 
-nmpui.f7z.io hosts the nmp component registry (web/registry), not chirp. Components installed via `nmp add component` are copied source files, not linked packages, and the lock file records upstream SHA-256 hashes so a future `nmp update component` can compute safe diffs against local edits. `nmp add component` installs app-owned native UI source that can be edited freely, with updates performed as interactive merges against a recorded baseline, never silent overwrites. `nmp add component` accepts the flags `--path DIR`, `--registry DIR`, and `--with ROLES`. It rejects path traversal via `safe_relative()`, checks for duplicate installs, and checks for pre-existing target files before writing anything. It checks only the explicit target for duplicate rejection and filters already-installed dependencies silently instead of erroring. The first NMP tagged release is nmp-v0.1.0, using tag pattern nmp-v{version}, where tagging triggers the release-readiness workflow (manifest check + package dry-run, not a crates.io publish). [^42908-13]
+nmpui.f7z.io hosts the nmp component registry (web/registry), not chirp. Components installed via `nmp add component` are copied source files, not linked packages, and the lock file records upstream SHA-256 hashes so a future `nmp update component` can compute safe diffs against local edits. `nmp add component` installs app-owned native UI source that can be edited freely, with updates performed as interactive merges against a recorded baseline, never silent overwrites. `nmp add component` accepts the flags `--path DIR`, `--registry DIR`, and `--with ROLES`. It rejects path traversal via `safe_relative()`, checks for duplicate installs, and checks for pre-existing target files before writing anything. It checks only the explicit target for duplicate rejection and filters already-installed dependencies silently instead of erroring. The first NMP tagged release is nmp-v0.1.0, using tag pattern nmp-v{version}, where tagging triggers the release-readiness workflow (manifest check + package dry-run, not a crates.io publish). <!-- [^42908-13] -->
 
 <!-- citations: [^45258-22] [^e7a1d-1] [^e7a1d-2] [^e7a1d-3] [^e7a1d-4] [^f2fd4-1] [^54ae9-14] -->
 ## Component Update
 
-`nmp update component` compares current file content SHA-256 to the locked upstream hash: untouched files update silently, locally edited files print `conflict: <path> — local edits preserved` and are skipped. During `nmp update component`, the component version always advances to the registry revision regardless of conflicts, and per-file `source_sha256` is the divergence signal. A missing on-disk file during `nmp update component` counts as a conflict and is not silently overwritten. [^45258-23]
+`nmp update component` compares current file content SHA-256 to the locked upstream hash: untouched files update silently, locally edited files print `conflict: <path> — local edits preserved` and are skipped. During `nmp update component`, the component version always advances to the registry revision regardless of conflicts, and per-file `source_sha256` is the divergence signal. A missing on-disk file during `nmp update component` counts as a conflict and is not silently overwritten. <!-- [^45258-23] -->
 
 
-Chirp iOS uses copied registry content components that have drifted from the canonical registry versions, confirmed by diff. [^e7a1d-5]
+Chirp iOS uses copied registry content components that have drifted from the canonical registry versions, confirmed by diff. <!-- [^e7a1d-5] -->
 ## Dependency Resolution
 
-The component registry's dependency resolution is a recursive DFS with a `seen` set to prevent revisits, providing implicit cycle safety. [^45258-24]
+The component registry's dependency resolution is a recursive DFS with a `seen` set to prevent revisits, providing implicit cycle safety. <!-- [^45258-24] -->
 
 ## Lock File Format
 
-The lock file `nmp.components.lock` is read with `serde`/`toml` but hand-writes the output (only `Deserialize` derived) for predictable TOML formatting. The `quote()` function in `lock.rs` only escapes `\` and `"`, sufficient for current values but not a full TOML string escaper. The file has a `schema_version` field but no schema version validation on read — it reads whatever TOML is present without checking the version field it writes. [^45258-25]
+The lock file `nmp.components.lock` is read with `serde`/`toml` but hand-writes the output (only `Deserialize` derived) for predictable TOML formatting. The `quote()` function in `lock.rs` only escapes `\` and `"`, sufficient for current values but not a full TOML string escaper. The file has a `schema_version` field but no schema version validation on read — it reads whatever TOML is present without checking the version field it writes. <!-- [^45258-25] -->
 
 ## Builtin Registry
 
-The builtin registry is embedded at compile time via `include_str!` entries in `BUILTIN_FILES` in `registry.rs`, requiring both a `registry.toml` entry and a new `include_str!` line when adding a new registry component. [^45258-26]
+The builtin registry is embedded at compile time via `include_str!` entries in `BUILTIN_FILES` in `registry.rs`, requiring both a `registry.toml` entry and a new `include_str!` line when adding a new registry component. <!-- [^45258-26] -->
 
 ## jsrepo Export
 
-The jsrepo export command `nmp export jsrepo [--output DIR] [--registry DIR]` generates per-component JSON files at `web/registry/public/r/<slug>.json` and a main index at `web/registry/public/registry.json`, with slug conversion like `swiftui/content-core` → `swiftui-content-core`. [^45258-27]
+The jsrepo export command `nmp export jsrepo [--output DIR] [--registry DIR]` generates per-component JSON files at `web/registry/public/r/<slug>.json` and a main index at `web/registry/public/registry.json`, with slug conversion like `swiftui/content-core` → `swiftui-content-core`. <!-- [^45258-27] -->
 
 ## Drift Tests
 
@@ -63,11 +63,11 @@ The 7-step M16 plan steps are: (1) land install+lock baseline, (2) build `nmp up
 <!-- citations: [^45258-29] [^54ae9-16] -->
 ## Identicon Divergence
 
-The registry identicon algorithms diverge across platforms: SwiftUI uses `NostrIdenticonBox` (palette + initials), Compose uses a 6-color palette-based identicon, while the gallery apps use a 5×5 symmetric block canvas algorithm. If the framework requires cross-platform pixel parity, the registry must adopt the 5×5 symmetric block canvas identicon algorithm. [^e7a1d-6]
+The registry identicon algorithms diverge across platforms: SwiftUI uses `NostrIdenticonBox` (palette + initials), Compose uses a 6-color palette-based identicon, while the gallery apps use a 5×5 symmetric block canvas algorithm. If the framework requires cross-platform pixel parity, the registry must adopt the 5×5 symmetric block canvas identicon algorithm. <!-- [^e7a1d-6] -->
 
 ## Platform Adoption Status
 
-Chirp iOS does not use any registry user components, replacing them with custom inline implementations. The iOS `NoteRowView` duplicates the registry `user-card` component functionality via an inline author header composition. The main Android app uses zero registry components, relying entirely on custom monolithic replacements. The Android gallery app has full registry component adoption and better component hygiene than the main Android app; its `Identicon.kt` and `MentionChip.kt` are registry-quality and should be upstreamed to the registry or adopted by the main app. [^e7a1d-7]
+Chirp iOS does not use any registry user components, replacing them with custom inline implementations. The iOS `NoteRowView` duplicates the registry `user-card` component functionality via an inline author header composition. The main Android app uses zero registry components, relying entirely on custom monolithic replacements. The Android gallery app has full registry component adoption and better component hygiene than the main Android app; its `Identicon.kt` and `MentionChip.kt` are registry-quality and should be upstreamed to the registry or adopted by the main app. <!-- [^e7a1d-7] -->
 
 ## Adoption Priorities
 
@@ -76,10 +76,8 @@ The nmp component adoption implementation follows this order: P0 (wire `NostrPro
 <!-- citations: [^e7a1d-8] [^9a2c7-15] -->
 ## Upstream Candidates
 
-The iOS `NoteActionsRow` (reply/repost/like/zap buttons) is a candidate for upstreaming to the registry as a new `content-actions` component. The iOS `NoteRowView` (user-card + content-view + actions) is a candidate for upstreaming to the registry as a new `note-row` component. The Android gallery's `NmpMediaRenderer` seam is a candidate for upstreaming to the registry as a `CompositionLocal`-based media extensibility component. [^e7a1d-9]
+The iOS `NoteActionsRow` (reply/repost/like/zap buttons) is a candidate for upstreaming to the registry as a new `content-actions` component. The iOS `NoteRowView` (user-card + content-view + actions) is a candidate for upstreaming to the registry as a new `note-row` component. The Android gallery's `NmpMediaRenderer` seam is a candidate for upstreaming to the registry as a `CompositionLocal`-based media extensibility component. <!-- [^e7a1d-9] -->
 
 ## Reference-First API & Ownership
 
-The M16 Component Registry product promises a reference-first API (passing `pubkey`, `nevent`, `naddr`), component-owned reactivity via Rust projections, one shell-level registry host adapter per app, and Rust owning truth while native components render snapshots without policy. NMP owns protocol and projection contracts (`ContentTreeWire`, claim/release sinks), while apps own copied source, styling, and a single shell adapter. [^54ae9-15]
-## See Also
-
+The M16 Component Registry product promises a reference-first API (passing `pubkey`, `nevent`, `naddr`), component-owned reactivity via Rust projections, one shell-level registry host adapter per app, and Rust owning truth while native components render snapshots without policy. NMP owns protocol and projection contracts (`ContentTreeWire`, claim/release sinks), while apps own copied source, styling, and a single shell adapter. <!-- [^54ae9-15] -->

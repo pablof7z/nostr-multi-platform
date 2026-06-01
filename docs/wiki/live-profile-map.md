@@ -39,6 +39,4 @@ GalleryData holds primary_pubkey as a String identity, not a pre-baked ProfileWi
 <!-- citations: [^8bd54-3] [^9b9db-1] [^752b5-6] -->
 ## Test Boundaries
 
-render_test_data() is gated behind #[cfg(test)] only and not used in live operation. [^8bd54-4]
-## See Also
-
+render_test_data() is gated behind #[cfg(test)] only and not used in live operation. <!-- [^8bd54-4] -->

@@ -25,5 +25,3 @@ sources:
 Bootstrap relay fallback is promoted from test-only to production to fix sign-in with zero discovery relays. Bootstrap relay URLs fall back to hardcoded constants: `wss://relay.primal.net` for content relays and `wss://purplepag.es` for indexer relays. FALLBACK_CONTENT_RELAY and FALLBACK_INDEXER_RELAY activate silently when relay rows are empty, causing the user to publish to an unconsented relay. The NMP kernel fetches kind:0 and kind:10002 for any claimed pubkey even without a logged-in user, connecting to bootstrap/indexer relays automatically. The hardcoded relay.damus.io URL is moved from nmp-core to a host bootstrap capability slot with a composition-root default in nmp-app-template.
 
 <!-- citations: [^2c4ad-1] [^53838-2] [^6e4c3-1] [^cd2b6-4] [^42908-2] -->
-## See Also
-

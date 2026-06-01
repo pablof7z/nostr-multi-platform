@@ -2,7 +2,7 @@
 
 > Derived cache — do not hand-edit. Rebuilt by proactive-context after each capture.
 
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 
 ## Guides
 
@@ -13,7 +13,7 @@ Last updated: 2026-05-31
 | [agent-dispatch-concurrency](agent-dispatch-concurrency.md) | Agent Dispatch Concurrency Cap | The concurrent agent dispatch cap is 10. | capture | warm | 2026-05-21 |
 | [android-app-architecture](android-app-architecture.md) | Android App Architecture & Build | The Android session creates and edits ONLY the new top-level android/ directory and may add a thin crates/nmp-android-ffi/ shim crate, without touching any othe | capture | warm | 2026-05-18 |
 | [android-emulator-gui-testing](android-emulator-gui-testing.md) | Android Emulator GUI Testing | The Android emulator runs with a visible GUI window rather than headless when launched for user testing. | capture | warm | 2026-05-29 |
-| [android-kernel-bridge](android-kernel-bridge.md) | Android KernelBridge & Snapshot Envelope | The kernel snapshot envelope format is {\\\\\\\\\\\\\\\\\\\\\\\\\\"t\\\\\\\\\\\\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\\\\\\\\\\\\"snapshot\\\\\\\\\\\\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\\\\\\\\\\\\"v\\\\\\\\\\\\\\\\\\\\\\\\\\":{...}} JSON, and the Kotlin model must unwrap this envelope before decoding the inner KernelUpdate da | capture | warm | 2026-05-18 |
+| [android-kernel-bridge](android-kernel-bridge.md) | Android KernelBridge & Snapshot Envelope | The kernel snapshot envelope format is {\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"t\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"snapshot\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"v\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\":{...}} JSON, and the Kotlin model must unwrap this envelope before decoding the inner KernelUpdate da | capture | warm | 2026-05-18 |
 | [android-kotlin-json-safety](android-kotlin-json-safety.md) | Android Kotlin JSON Safety & Null Handling | When accessing JSON elements in `GalleryModel.kt`, use `as? JsonObject` safe casts instead of the `.jsonObject` property | capture | warm | 2026-05-25 |
 | [android-kotlin-serialization](android-kotlin-serialization.md) | Android Kotlin Serialization Conventions | All serde field mappings use @SerialName("snake_case") on fields and camelCase on variant discriminators | capture | warm | 2026-05-18 |
 | [android-nostr-rendering](android-nostr-rendering.md) | Android Nostr Content Rendering | The Android Nostr renderer must have feature parity with the iOS Nostr renderer. | capture | warm | 2026-05-18 |
@@ -106,6 +106,7 @@ Last updated: 2026-05-31
 | [nmp-app-builder-typestate](nmp-app-builder-typestate.md) | NmpAppBuilder Typestate & Compile-Time Pre-Start Ordering | The NmpAppBuilder typestate enforces compile-time pre-start ordering: an Unstarted builder must call `.storage_path()` or `.in_memory()` to transition to Storag | capture | warm | 2026-05-29 |
 | [nmp-app-chirp](nmp-app-chirp.md) | NMP App Chirp Crate | nmp-app-chirp is the per-app Rust crate that composes Nip10ModularTimelineView against the observer, following the ADR-0010 architecture where each app has its | capture | warm | 2026-05-18 |
 | [nmp-app-podcast](nmp-app-podcast.md) | NMP App Podcast Crates & Directory Layout | The `apps/podcast/` directory contains the Rust/cross-platform crates for podcast business logic (nmp-app-podcast, podcast-core, podcast-feeds, podcast-llm, pod | capture | warm | 2026-05-18 |
+| [nmp-app-relay-configuration](nmp-app-relay-configuration.md) | NMP App Relay Configuration | App relays are the kernel's connectivity layer — declared in Rust, persisted locally, and completely separate from the user's NIP-65 relay list. They are never published as kind:10002. | guide | warm | 2026-06-01 |
 | [nmp-architecture](nmp-architecture.md) | NMP Architecture & Kernel Design | The NMP project is a Rust multiplatform Nostr framework with one Rust kernel (nmp-core) and thin platform shells | capture | warm | 2026-05-18 |
 | [nmp-class-routing](nmp-class-routing.md) | NMP Class Routing & Relay Selection | Event routing is kind-driven with an intent override: the kernel ships a built-in EventClass resolver mapping kinds to classes, and apps can override per-publis | capture | warm | 2026-05-18 |
 | [nmp-cli](nmp-cli.md) | NMP CLI Crate & Scaffolding Architecture | The nmp-cli crate and its territory are strictly file-disjoint, modifying only the new crates/nmp-cli/ crate, the additive workspace Cargo.toml member entry, an | capture | warm | 2026-05-18 |

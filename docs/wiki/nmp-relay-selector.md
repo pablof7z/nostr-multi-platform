@@ -25,26 +25,24 @@ The relay selector uses a greedy max-coverage algorithm (applesauce-style) with 
 <!-- citations: [^bbafe-4] [^d4b10-5] [^4edd4-28] -->
 ## Compilation and Application
 
-The SubscriptionCompiler accepts app_relays, indexer, account_read, and cache via a with_relays constructor. The apply_selection function runs greedy max-coverage selection on the compiled plan, takes max_connections and max_per_user parameters, and calls recompute_hash on mutated shapes without touching plan_id. [^bbafe-5]
+The SubscriptionCompiler accepts app_relays, indexer, account_read, and cache via a with_relays constructor. The apply_selection function runs greedy max-coverage selection on the compiled plan, takes max_connections and max_per_user parameters, and calls recompute_hash on mutated shapes without touching plan_id. <!-- [^bbafe-5] -->
 
 ## Production Outbox Flow
 
-The production outbox flow is: compile naive plan, strip dead relays, apply_selection (greedy max-coverage), coverage hook, watermark rewrite, wire-emitter diff. [^bbafe-6]
+The production outbox flow is: compile naive plan, strip dead relays, apply_selection (greedy max-coverage), coverage hook, watermark rewrite, wire-emitter diff. <!-- [^bbafe-6] -->
 
 ## Request Dispatch
 
-REQs are sent to each relay the moment it connects, independently of whether other relays have finished handshaking. [^bbafe-7]
+REQs are sent to each relay the moment it connects, independently of whether other relays have finished handshaking. <!-- [^bbafe-7] -->
 
 ## Dead Relay Tracking
 
-The SubscriptionLifecycle tracks dead relays via a RelayHealthChanged trigger and filters them from the candidate set on recompile. [^bbafe-8]
+The SubscriptionLifecycle tracks dead relays via a RelayHealthChanged trigger and filters them from the candidate set on recompile. <!-- [^bbafe-8] -->
 
 ## Diagnostic Tool (nmp-repl)
 
-The nmp-repl diagnostic tool drives the real SubscriptionLifecycle (not a manual reimplementation), so it exercises implicit discovery, Nip65Arrived round-trip, apply_selection, and dead-relay filtering for real. It shows every relay connection with its status (connecting, connected, failed), every REQ (including implicit ones like mailbox-probe), and terminal states (EOSE, CLOSED with reason, AUTH challenge, NOTICE) as first-class visible events. No hardcoded relay URLs (other than the single default indexer purplepag.es) exist in nmp-repl; dead relays like relay.nostr.band are not hardcoded. [^bbafe-9]
+The nmp-repl diagnostic tool drives the real SubscriptionLifecycle (not a manual reimplementation), so it exercises implicit discovery, Nip65Arrived round-trip, apply_selection, and dead-relay filtering for real. It shows every relay connection with its status (connecting, connected, failed), every REQ (including implicit ones like mailbox-probe), and terminal states (EOSE, CLOSED with reason, AUTH challenge, NOTICE) as first-class visible events. No hardcoded relay URLs (other than the single default indexer purplepag.es) exist in nmp-repl; dead relays like relay.nostr.band are not hardcoded. <!-- [^bbafe-9] -->
 
 ## Mailbox Probe Batch Size
 
-MAILBOX_PROBE_BATCH is 500 authors per discovery REQ, not 50. [^bbafe-10]
-## See Also
-
+MAILBOX_PROBE_BATCH is 500 authors per discovery REQ, not 50. <!-- [^bbafe-10] -->

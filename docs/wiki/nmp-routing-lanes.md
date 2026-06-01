@@ -24,6 +24,4 @@ The planner has seven routing lanes after ADR-0020 and ADR-0021: NIP-65, Hint, P
 <!-- citations: [^41858-16] [^6e4c3-8] -->
 ## RoutingSource vs RelayRole
 
-Worker-level RelayRole is a transport-lane diagnostic bucket, while planner-level RoutingSource is a planning-lane 'why this relay was chosen' tag; they align at v1 but are not identical abstraction levels. [^41858-17]
-## See Also
-
+Worker-level RelayRole is a transport-lane diagnostic bucket, while planner-level RoutingSource is a planning-lane 'why this relay was chosen' tag; they align at v1 but are not identical abstraction levels. <!-- [^41858-17] -->

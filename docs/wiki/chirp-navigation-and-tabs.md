@@ -25,14 +25,12 @@ The bottom tab bar contains five tabs: Home, Chats, Groups, Wallet, and Settings
 <!-- citations: [^cb337-1] [^eb342-5] [^93c59-4] -->
 ## Activity Access
 
-Activity is accessible via a bell toolbar button positioned in the top-right toolbar, left of the compose button. Tapping the bell toolbar button presents NotificationsView in a NavigationStack sheet. [^cb337-2]
+Activity is accessible via a bell toolbar button positioned in the top-right toolbar, left of the compose button. Tapping the bell toolbar button presents NotificationsView in a NavigationStack sheet. <!-- [^cb337-2] -->
 
 ## Chats Tab
 
-The DM tab navigation title is "Chats" rather than "Messages". [^eb342-6]
+The DM tab navigation title is "Chats" rather than "Messages". <!-- [^eb342-6] -->
 
 ## Tab Layouts
 
-All Chats, Groups, Wallet, and Settings tabs have proper 2-pane approach-b layouts with colored cards, status dots, and real navigation, with no :command hint text anywhere. [^93c59-5]
-## See Also
-
+All Chats, Groups, Wallet, and Settings tabs have proper 2-pane approach-b layouts with colored cards, status dots, and real navigation, with no :command hint text anywhere. <!-- [^93c59-5] -->

@@ -22,5 +22,3 @@ sources:
 Groups and DM conversations appear in a single unified list, not grouped by type or encryption status; NIP-29 public groups, Marmot MLS groups, and NIP-17 encrypted DMs are all mixed together. Encryption status and group type are indicated inline in the row: NIP-29 public groups use a # glyph in blue, Marmot MLS groups use an E badge in yellow, and NIP-17 encrypted DMs display an encrypted indicator. (Previously: Encrypted groups display a shield badge inline in the row; public/unencrypted groups display a # glyph.)
 
 <!-- citations: [^eb342-4] [^93c59-3] -->
-## See Also
-

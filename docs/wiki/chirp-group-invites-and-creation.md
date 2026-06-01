@@ -19,13 +19,11 @@ sources:
 
 ## Pending Group Invites
 
-Pending group invites appear as a collapsed chip at the top of the groups list, linking to a dedicated InvitesView. The Groups tab displays a red dot to indicate pending invites. [^eb342-2]
+Pending group invites appear as a collapsed chip at the top of the groups list, linking to a dedicated InvitesView. The Groups tab displays a red dot to indicate pending invites. <!-- [^eb342-2] -->
 
 
 
-PendingGroupChange::drop silently clears unresolved MLS commits, causing group state to diverge from relay-published events. [^cd2b6-5]
+PendingGroupChange::drop silently clears unresolved MLS commits, causing group state to diverge from relay-published events. <!-- [^cd2b6-5] -->
 ## Group Creation
 
-Group creation uses a Private/Public segmented toggle rather than separate creation concepts, defaulting to Private. Public is greyed out with a "Coming soon" label until fully supported. The member selector is a contact picker backed by the NIP-02 follow list, npub paste, and QR scan, instead of a raw npub textarea. [^eb342-3]
-## See Also
-
+Group creation uses a Private/Public segmented toggle rather than separate creation concepts, defaulting to Private. Public is greyed out with a "Coming soon" label until fully supported. The member selector is a contact picker backed by the NIP-02 follow list, npub paste, and QR scan, instead of a raw npub textarea. <!-- [^eb342-3] -->

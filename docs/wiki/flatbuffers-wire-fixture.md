@@ -33,5 +33,3 @@ The typed NOFS FlatBuffers migration for the home feed (ADR-0038) is complete ac
 SnapshotProjections includes a `ClaimedEventDto` and `claimedEvents: [String: ClaimedEventDto]?` field for typed FlatBuffers decoding. The embed architecture complies with ADR-0037 by reading typed Swift structs from SnapshotProjections instead of raw JSON.
 
 <!-- citations: [^54ae9-5] [^cd331-6] [^37e35-3] [^e4861-2] [^56db9-3] [^38935-5] [^4edd4-8] -->
-## See Also
-

@@ -18,7 +18,4 @@ sources:
 
 ## Scroll FPS Performance Gate
 
-Scroll FPS performance gate requires ≥58fps with hitch <5ms/s as measured by XCTOSSignpostMetric.scrollDecelerationMetric. Navigation transitions must have 0 dropped frames on push/pop as measured by .navigationTransitionMetric. [^4edd4-266]
-
-## See Also
-
+Scroll FPS performance gate requires ≥58fps with hitch <5ms/s as measured by XCTOSSignpostMetric.scrollDecelerationMetric. Navigation transitions must have 0 dropped frames on push/pop as measured by .navigationTransitionMetric. <!-- [^4edd4-266] -->

@@ -19,9 +19,7 @@ sources:
 
 ## Mode Transitions
 
-close_palette() only resets mode to Normal when still in Palette mode, preserving InputBar mode set by the Zap action. [^95156-1]
+close_palette() only resets mode to Normal when still in Palette mode, preserving InputBar mode set by the Zap action. <!-- [^95156-1] -->
 
 
-The TUI welcome screen path must render the modal form overlay so that modals (like account creation) are visible when triggered from the welcome screen. [^16ca6-5]
-## See Also
-
+The TUI welcome screen path must render the modal form overlay so that modals (like account creation) are visible when triggered from the welcome screen. <!-- [^16ca6-5] -->

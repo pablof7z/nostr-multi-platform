@@ -18,7 +18,4 @@ sources:
 
 ## Correlation ID Propagation
 
-Chirp iOS threads a correlation_id through React, Follow, and Unfollow actions so that action spinners close correctly. [^2c4ad-2]
-
-## See Also
-
+Chirp iOS threads a correlation_id through React, Follow, and Unfollow actions so that action spinners close correctly. <!-- [^2c4ad-2] -->

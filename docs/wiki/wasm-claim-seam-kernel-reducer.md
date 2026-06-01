@@ -18,7 +18,4 @@ sources:
 
 ## Implementation Path
 
-The WASM claim seam is implemented via the blessed KernelReducer path, not through KernelAction (which serves as the interest registry rather than the refcounted claim registry). [^4edd4-33]
-
-## See Also
-
+The WASM claim seam is implemented via the blessed KernelReducer path, not through KernelAction (which serves as the interest registry rather than the refcounted claim registry). <!-- [^4edd4-33] -->

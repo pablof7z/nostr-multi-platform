@@ -20,8 +20,6 @@ sources:
 
 ## Wire Protocol Correctness
 
-The hand-rolled `filter_json_for` in `subs/wire.rs` must be replaced with `nostr::Filter::as_json()`. The current implementation poses a real correctness risk because it performs no escaping for tag values. A typed-tables follow-up is tracked to resolve the ~1.8× wire size and ~3× encode time hot-path regression caused by the added JSON serialization pass. V-38 has a sub-item tracking the #[ignore] conformance test in `nmp-nip47/tests/nip47_tag_conformance.rs:14-16` that is blocked on `Kernel::new_for_test()` not being publicly exported. [^1670f-16] [^e4861-9] [^v38-125] [^v38-158]
+The hand-rolled `filter_json_for` in `subs/wire.rs` must be replaced with `nostr::Filter::as_json()`. The current implementation poses a real correctness risk because it performs no escaping for tag values. A typed-tables follow-up is tracked to resolve the ~1.8× wire size and ~3× encode time hot-path regression caused by the added JSON serialization pass. V-38 has a sub-item tracking the #[ignore] conformance test in `nmp-nip47/tests/nip47_tag_conformance.rs:14-16` that is blocked on `Kernel::new_for_test()` not being publicly exported. <!-- [^1670f-16] --> <!-- [^e4861-9] --> <!-- [^v38-125] --> <!-- [^v38-158] -->
 
 <!-- citations: [^1670f-16] [^e4861-9] [^cd2b6-19] -->
-## See Also
-

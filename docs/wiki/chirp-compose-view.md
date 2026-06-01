@@ -19,13 +19,11 @@ sources:
 
 ## Compose Progress Ring
 
-The compose screen displays a circular progress ring (ComposeProgressRing) instead of a plain character count number. The ring fills as characters are used, turns orange when 20 or fewer characters remain, and turns red when the character limit is exceeded. [^19e07-3]
+The compose screen displays a circular progress ring (ComposeProgressRing) instead of a plain character count number. The ring fills as characters are used, turns orange when 20 or fewer characters remain, and turns red when the character limit is exceeded. <!-- [^19e07-3] -->
 
 
 ## Compose Modal Overlay
 
-Composing a new tweet or reply in chirp-tui opens a centered modal overlay with a Clear-backed background and ACCENT_CYAN border. [^1ca92-1]
+Composing a new tweet or reply in chirp-tui opens a centered modal overlay with a Clear-backed background and ACCENT_CYAN border. <!-- [^1ca92-1] -->
 
-Pressing Enter in the compose modal publishes the tweet or reply. Pressing Shift+Enter inserts a new line. [^1ca92-2]
-## See Also
-
+Pressing Enter in the compose modal publishes the tweet or reply. Pressing Shift+Enter inserts a new line. <!-- [^1ca92-2] -->

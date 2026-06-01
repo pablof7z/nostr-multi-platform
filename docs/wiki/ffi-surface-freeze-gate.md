@@ -19,8 +19,6 @@ sources:
 
 ## FFI Surface Change Control
 
-Any modification to the frozen C-ABI FFI surface requires an Architecture Decision Record (ADR). For example, V-68 stage 2 (giving OpenAuthor/OpenThread a `kinds` param) necessitates an ADR because it alters the frozen C-ABI FFI surface. The embed architecture complies with ADR-0025 by using the existing projection registry seam and minting zero new FFI symbols. [^42908-5]
+Any modification to the frozen C-ABI FFI surface requires an Architecture Decision Record (ADR). For example, V-68 stage 2 (giving OpenAuthor/OpenThread a `kinds` param) necessitates an ADR because it alters the frozen C-ABI FFI surface. The embed architecture complies with ADR-0025 by using the existing projection registry seam and minting zero new FFI symbols. <!-- [^42908-5] -->
 
 <!-- citations: [^42908-5] [^38935-4] -->
-## See Also
-

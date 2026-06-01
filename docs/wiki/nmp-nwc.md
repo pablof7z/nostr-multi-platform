@@ -35,11 +35,11 @@ The `NwcUri` struct stores `wallet_pubkey_hex`, `client_secret_hex`, `relay_urls
 <!-- citations: [^274d6-3] [^cd2b6-15] [^42908-18] -->
 ## Encryption
 
-NWC uses NIP-04 encryption by default for kind:23194 requests and kind:23195 responses, with NIP-44 as a fallback. NIP-04 encrypted content is detected by the `?iv=` marker in the ciphertext; if absent, NIP-44 decryption is attempted as fallback. [^274d6-4]
+NWC uses NIP-04 encryption by default for kind:23194 requests and kind:23195 responses, with NIP-44 as a fallback. NIP-04 encrypted content is detected by the `?iv=` marker in the ciphertext; if absent, NIP-44 decryption is attempted as fallback. <!-- [^274d6-4] -->
 
 ## Client Identity and Event Kinds
 
-The NWC client secret key is a separate dedicated keypair (not the user's Nostr identity) that signs kind:23194 requests and decrypts kind:23195 responses. Kind 23194 is the NWC client-to-wallet request event kind; kind 23195 is the wallet-to-client response event kind. [^274d6-5]
+The NWC client secret key is a separate dedicated keypair (not the user's Nostr identity) that signs kind:23194 requests and decrypts kind:23195 responses. Kind 23194 is the NWC client-to-wallet request event kind; kind 23195 is the wallet-to-client response event kind. <!-- [^274d6-5] -->
 
 ## NWC Methods
 
@@ -53,7 +53,7 @@ The `RelayRole` enum includes a `Wallet` variant and a `Bunker` variant for the 
 <!-- citations: [^274d6-7] [^50510-5] -->
 ## Per-Role Auth Signers
 
-The kernel supports per-role auth signers via `auth_signers: HashMap<RelayRole, RelayAuthCredentials>`, allowing different relay lanes to authenticate with different keys. The old `bind_auth_signer`/`clear_auth_signer` methods are retained as compatibility wrappers that delegate to the per-role API. The kernel also supports persistent subscriptions via `persistent_subs: HashSet<String>`; EOSE auto-CLOSE skips subscriptions registered as persistent. [^274d6-8]
+The kernel supports per-role auth signers via `auth_signers: HashMap<RelayRole, RelayAuthCredentials>`, allowing different relay lanes to authenticate with different keys. The old `bind_auth_signer`/`clear_auth_signer` methods are retained as compatibility wrappers that delegate to the per-role API. The kernel also supports persistent subscriptions via `persistent_subs: HashSet<String>`; EOSE auto-CLOSE skips subscriptions registered as persistent. <!-- [^274d6-8] -->
 
 ## Wallet Module Lifecycle
 
@@ -62,18 +62,16 @@ The wallet module registers the NWC client keypair as the auth signer for `Relay
 <!-- citations: [^274d6-9] [^cd2b6-16] [^42908-20] -->
 ## WalletRuntime and State
 
-The `WalletRuntime` manages actor-local NWC connection state (connection details, balance, pending requests) and is the sole writer of wallet state; the kernel snapshot is a read-only projection. WalletStatus in the kernel snapshot includes status (`connecting`|`ready`|`error`|`disconnected`), relay_url, wallet_npub, and balance_msats. [^274d6-10]
+The `WalletRuntime` manages actor-local NWC connection state (connection details, balance, pending requests) and is the sole writer of wallet state; the kernel snapshot is a read-only projection. WalletStatus in the kernel snapshot includes status (`connecting`|`ready`|`error`|`disconnected`), relay_url, wallet_npub, and balance_msats. <!-- [^274d6-10] -->
 
 ## Actor Commands
 
-The `ActorCommand` enum includes `WalletConnect { uri: String }`, `WalletDisconnect`, and `WalletPayInvoice { bolt11: String, amount_msats: Option<u64> }` variants. [^274d6-11]
+The `ActorCommand` enum includes `WalletConnect { uri: String }`, `WalletDisconnect`, and `WalletPayInvoice { bolt11: String, amount_msats: Option<u64> }` variants. <!-- [^274d6-11] -->
 
 ## FFI
 
-FFI exposes `nmp_app_wallet_connect(app, uri)`, `nmp_app_wallet_disconnect(app)`, and `nmp_app_wallet_pay_invoice(app, bolt11, amount_msats_json)` as fire-and-forget C functions. [^274d6-12]
+FFI exposes `nmp_app_wallet_connect(app, uri)`, `nmp_app_wallet_disconnect(app)`, and `nmp_app_wallet_pay_invoice(app, bolt11, amount_msats_json)` as fire-and-forget C functions. <!-- [^274d6-12] -->
 
 ## iOS UI Considerations
 
-The WalletView SwiftUI TextEditor disables autocapitalization and autocorrection to prevent iOS from altering the NWC URI. The Connect button in the ConnectWalletSheet enables only when the pasted URI starts with `nostr+walletconnect://` (case-insensitive via `schemeLooksValid()`). [^274d6-13]
-## See Also
-
+The WalletView SwiftUI TextEditor disables autocapitalization and autocorrection to prevent iOS from altering the NWC URI. The Connect button in the ConnectWalletSheet enables only when the pasted URI starts with `nostr+walletconnect://` (case-insensitive via `schemeLooksValid()`). <!-- [^274d6-13] -->

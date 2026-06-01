@@ -18,7 +18,4 @@ sources:
 
 ## Strict Concurrency
 
-File-level `let` constants must be marked `nonisolated(unsafe)` to satisfy Swift 6 strict concurrency requirements. [^45258-33]
-
-## See Also
-
+File-level `let` constants must be marked `nonisolated(unsafe)` to satisfy Swift 6 strict concurrency requirements. <!-- [^45258-33] -->

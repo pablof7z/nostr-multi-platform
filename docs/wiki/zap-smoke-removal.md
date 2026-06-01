@@ -23,5 +23,3 @@ sources:
 The zap-smoke artifact is deleted from the workspace. The release manifest (`release/nmp-release.toml`) must not reference the deleted package `zap-smoke`. The iOS-zap collision (formerly duplicate V-68) is renumbered to V-106 in the backlog.
 
 <!-- citations: [^f8eb6-5] [^f5503-7] [^42908-26] -->
-## See Also
-

@@ -19,9 +19,7 @@ sources:
 
 ## Reactive Relation Accessors
 
-NMP provides reactive relation accessors (replies, reactions, zaps, comments, reposts, thread) so apps do not need to hand-roll subscriptions for common queries like 'give me the likes' or 'generate a reply event'. The `Relations` facade in `nmp-reactions` provides `for_event(id, kind)` returning bundled view specs and builder entrypoints (`reply_to`, `react_to`, `repost`, `zap_request`, `comment_on`) as pure free-function composition with no store reference. [^590ca-9]
+NMP provides reactive relation accessors (replies, reactions, zaps, comments, reposts, thread) so apps do not need to hand-roll subscriptions for common queries like 'give me the likes' or 'generate a reply event'. The `Relations` facade in `nmp-reactions` provides `for_event(id, kind)` returning bundled view specs and builder entrypoints (`reply_to`, `react_to`, `repost`, `zap_request`, `comment_on`) as pure free-function composition with no store reference. <!-- [^590ca-9] -->
 
 
-Lazy sub-stores (MarmotStore, GroupChatStore, DmInboxStore, FollowListStore, DiscoveredGroupsStore) each receive their slice on every tick via `apply(snapshot:)` to keep feature mirrors in sync. [^54ae9-23]
-## See Also
-
+Lazy sub-stores (MarmotStore, GroupChatStore, DmInboxStore, FollowListStore, DiscoveredGroupsStore) each receive their slice on every tick via `apply(snapshot:)` to keep feature mirrors in sync. <!-- [^54ae9-23] -->

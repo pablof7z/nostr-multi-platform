@@ -1,7 +1,7 @@
 ---
 title: Android KernelBridge & Snapshot Envelope
 slug: android-kernel-bridge
-summary: "The kernel snapshot envelope format is {\\\\\\\\\\\\\\\\\\\\\\\\\\"t\\\\\\\\\\\\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\\\\\\\\\\\\"snapshot\\\\\\\\\\\\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\\\\\\\\\\\\"v\\\\\\\\\\\\\\\\\\\\\\\\\\":{...}} JSON, and the Kotlin model must unwrap this envelope before decoding the inner KernelUpdate da"
+summary: "The kernel snapshot envelope format is {\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"t\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\":\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"snapshot\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\",\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"v\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\":{...}} JSON, and the Kotlin model must unwrap this envelope before decoding the inner KernelUpdate da"
 tags:
   - capture
 volatility: warm
@@ -29,14 +29,12 @@ The kernel snapshot envelope format is {"t":"snapshot","v":{...}} JSON, and the 
 <!-- citations: [^86221-1] [^e2d58-4] [^64c4f-1] [^86221-2] [^f3d8d-3] -->
 ## KernelBridge Native Interface
 
-The `nmp-app-gallery` Rust crate must export JNI wrapper symbols, gated behind an `android-ffi` feature, so the Android `KernelBridge.kt` can load the native library. [^c8c29-1]
+The `nmp-app-gallery` Rust crate must export JNI wrapper symbols, gated behind an `android-ffi` feature, so the Android `KernelBridge.kt` can load the native library. <!-- [^c8c29-1] -->
 
 
-The Android Kotlin transport validation files must contain the FLATBUFFERS_25_2_10() runtime guard call. [^37e35-1]
+The Android Kotlin transport validation files must contain the FLATBUFFERS_25_2_10() runtime guard call. <!-- [^37e35-1] -->
 
-The Android NFCT decoder maps the Invoice type to PlaceholderNode to match the existing generic JSON path behavior, avoiding the invention of a new type. [^cd331-1]
+The Android NFCT decoder maps the Invoice type to PlaceholderNode to match the existing generic JSON path behavior, avoiding the invention of a new type. <!-- [^cd331-1] -->
 ## ProfileWire Kotlin Model
 
-The `ProfileWire.kt` `npub` and `npubShort` fields must be optional with default values so the app does not crash when the kernel omits them. [^c8c29-2]
-## See Also
-
+The `ProfileWire.kt` `npub` and `npubShort` fields must be optional with default values so the app does not crash when the kernel omits them. <!-- [^c8c29-2] -->

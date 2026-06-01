@@ -28,7 +28,7 @@ P-tags must be routed through the batched profile claim path rather than the cap
 <!-- citations: [^7b4ae-5] [^19e07-15] [^86221-10] [^d98be-6] [^6e8af-6] [^47882-4] -->
 ## Cold Start Rehydration
 
-On cold start, the kernel must rehydrate `kernel.profiles` from LMDB so that previously resolved profiles are immediately available without re-fetching from the wire. [^7b4ae-6]
+On cold start, the kernel must rehydrate `kernel.profiles` from LMDB so that previously resolved profiles are immediately available without re-fetching from the wire. <!-- [^7b4ae-6] -->
 
 ## Mention and Sender Resolution
 
@@ -40,5 +40,3 @@ NIP-17 DM senders and NIP-29 group chat senders must be rendered using the `ment
 The `Profile` struct must be extended to include `lud16`, `banner`, and `website` fields to prevent future kind:0 surface gaps. The kernel snapshot includes a claimed_profiles projection as a BTreeMap<pubkey_hex, MentionProfilePayload> built from existing profile_claims keys once kind:0 data arrives. EmbedHostState reads claimed_profiles from the snapshot and exposes a profiles() method returning BTreeMap<String, ContentProfileRenderData>.
 
 <!-- citations: [^7b4ae-8] [^d98be-8] -->
-## See Also
-

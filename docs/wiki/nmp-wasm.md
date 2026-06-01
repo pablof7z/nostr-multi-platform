@@ -27,7 +27,7 @@ nmp-wasm is a deliberate stub that simulates wire protocol handling without depe
 <!-- citations: [^ea099-1] [^ea099-2] [^1670f-14] [^0c4f2-1] -->
 ## Degraded Runtime Fallback
 
-The web worker in chirp falls back to DegradedRuntime that rejects everything if the wasm build artifact at /nmp-wasm/nmp_wasm.js is not available. The DegradedMode::BrowserActorDriverMissing protocol variant is the code's own acknowledgment of the wasm capability gap. [^ea099-3]
+The web worker in chirp falls back to DegradedRuntime that rejects everything if the wasm build artifact at /nmp-wasm/nmp_wasm.js is not available. The DegradedMode::BrowserActorDriverMissing protocol variant is the code's own acknowledgment of the wasm capability gap. <!-- [^ea099-3] -->
 
 ## Core Architectural Problem
 
@@ -55,5 +55,3 @@ Two unmerged WASM branches exist: codex/chirp-web-wasm-bridge-lane1 (3 commits c
 The TypeScript layer (worker.ts, wasmBridge.ts, snapshot.ts) is architecturally correct and needs minimal changes — only a new CapabilityRequest event handler.
 
 <!-- citations: [^ea099-6] [^0c4f2-4] -->
-## See Also
-

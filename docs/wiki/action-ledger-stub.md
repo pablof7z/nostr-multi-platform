@@ -18,7 +18,4 @@ sources:
 
 ## Action Ledger Stub
 
-The M6 action ledger is scaffolded as shapes only. It has no ULID, no durable rows, and no restart recovery. [^57528-1]
-
-## See Also
-
+The M6 action ledger is scaffolded as shapes only. It has no ULID, no durable rows, and no restart recovery. <!-- [^57528-1] -->

@@ -36,5 +36,3 @@ ffi-surface.md is stale with 5+ undocumented production symbols and NmpCore.h is
 An FFI surface freeze CI workflow (.github/workflows/ffi-surface-freeze.yml) is staged but not yet merged to prevent C-ABI churn.
 
 <!-- citations: [^7f0f0-15] [^57528-19] [^57528-20] [^590ca-12] [^ad1d5-10] [^2c4ad-14] [^53838-16] [^53ffd-2] [^8a8ae-5] -->
-## See Also
-
