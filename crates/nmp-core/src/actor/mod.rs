@@ -855,18 +855,6 @@ pub enum ActorCommand {
         /// borrow on the channel after the `send` call).
         ack: std::sync::mpsc::SyncSender<()>,
     },
-    /// F-TTL — host-initiated refresh of a replaceable event (kind, pubkey, d_tag?).
-    /// On receipt, the kernel queues the key in `pending_reverify` and immediately
-    /// dispatches fresh REQs against the appropriate relay set. Fresh data arrives
-    /// via the normal snapshot push mechanism.
-    ///
-    /// STUB: remove when T-A/T-B/T-C PRs merge. The kernel dispatch arm and the
-    /// underlying `claim_replaceable` + `check_again_after` machinery are incomplete.
-    RefreshReplaceable {
-        kind: u32,
-        pubkey: String,
-        d_tag: Option<String>, // null for non-parameterized kinds
-    },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
