@@ -344,7 +344,7 @@ impl Lmdb {
         let lmdb_value = crate::encode_timestamp(ts_ms);
         self.replaceable_freshness
             .put(txn, &lmdb_key, &lmdb_value)
-            .map_err(|e| Error::Io(e.to_string()))?;
+            .map_err(|e| Error::Io(std::io::Error::other(e)))?;
 
         // Update in-memory cache (best-effort; ignore lock errors)
         if let Ok(mut cache) = self.replaceable_freshness_cache.lock() {
