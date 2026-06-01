@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-18
-updated: 2026-05-31
+updated: 2026-06-01
 verified: 2026-05-18
 compiled-from: conversation
 sources:
@@ -20,6 +20,7 @@ sources:
   - session:44c6cebb-bea4-4ca7-b836-0337e090a2a5
   - session:1d30779f-b6ee-44ad-a1f1-bdc17f26ebdd
   - session:baec5921-6cfd-49df-9ee1-a2b6a81898f8
+  - session:bbd5fe79-cd71-4de0-ba9f-f3684520a03f
 ---
 
 # Review Workflow & Diff Conventions
@@ -32,7 +33,9 @@ All work follows the PR → `codex exec` review → fix → merge to master work
 
 Each completed PR must be immediately merged to master with origin/master and master kept in sync, followed by a codex review of the diff. Pre-existing CI failures on master from unrelated commits do not block merging a PR that passes its own diff.
 
-<!-- citations: [^423f3-19] [^1c093-33] [^57528-17] [^c8c29-5] [^f2605-13] [^baec5-5] -->
+Uncommitted changes must be organized into logical commits and the working directory rebased before an agent continues work, to prevent large merge conflicts.
+
+<!-- citations: [^423f3-19] [^1c093-33] [^57528-17] [^c8c29-5] [^f2605-13] [^baec5-5] [^bbd5f-4] -->
 ## Status Reporting
 
 Status reports must be derived from actual source code rather than markdown status files. Code reviews must never be committed to the repository; review prose must be discarded after findings are recorded to BACKLOG.md or other durable docs. Committing raw conversation transcript dumps is disallowed by the repo's no-committed-reviews discipline. Codex output (if saved) goes to docs/perf/codex-reviews/ (the existing canonical location), not a new directory. Dated historical review snapshots must not be rewritten when cleaning up stale references, to preserve the repo's single-source/temporal discipline.
