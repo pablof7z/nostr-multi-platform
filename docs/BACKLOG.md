@@ -226,9 +226,9 @@ Per-kind routing shipped as `nmp-router` (2026-05-29). Two open residuals with u
 FFI snapshot surface, validation harness, and kernel observability cut-over are all
 in place.
 
-**Phase 3 (Chirp inspector UI)** — iOS and web legs open: a `RoutingInspectorView`
-long-press target on `ChirpEventCard` / publish-status row + a debug toolbar
-toggle on the wasm host, both unverifiable without Xcode / wasm environment.
+**Phase 3 (Chirp inspector UI)** — iOS leg open: a `RoutingInspectorView`
+long-press target on `ChirpEventCard` / publish-status row, unverifiable without Xcode.
+wasm debug toolbar toggle deferred post-v1.
 
 ---
 
@@ -773,20 +773,6 @@ block v1 work; tackle between feature slices.
 
 ---
 
-### F-01 · Fix V-01 — IndexedDB store [V1 BLOCKER · partial]
-
-All prior stages merged (chirp-web now supports NIP-07 PublishNote end-to-end).
-
-**Remaining scope (still V1 BLOCKER):**
-1. **IndexedDB store.** Port persistence to an IndexedDB-backed `nostr-database` impl.
-   Kernel runs in-memory only and resets on page reload. Requires sync/async model decision
-   (write-behind queue + in-memory cache vs. warm-boot-from-IDB on Start).
-
-secp256k1-sys wasm32 C build remains environmentally gated on
-`CC_wasm32_unknown_unknown=clang` (CI sets this; local builds need homebrew LLVM on macOS).
-
-No `chirp-web` features requiring persistence across reloads may be added until IndexedDB lands.
-
 ### F-02 · DM cold-start receive-side verification [V1 BLOCKER]
 
 Gift-wrap **send** landed; kind:10050 relay-list publish is wired. The **receive** side on a
@@ -844,33 +830,6 @@ These are each their own architectural step and merit separate PRs.
 The "v1 QUALITY" label applies to Stage 1+2+3-partial; Stage 3 remainder (tagged enums,
 legacy_default, full sweep) is effectively post-v1. Consider renaming to "F-05a (DONE) /
 F-05b (post-v1)" so the v1 claim is scoped accurately.
-
-### F-06 · Honest cross-platform claim — wasm runs `KernelReducer`, not the `NmpApp` actor [V1 BLOCKER]
-
-Filed per `docs/plan.md` v1 exit criterion #6, which has long required a BACKLOG entry but
-never had one.
-
-**Problem:** the wasm/web path does not run the same actor as native. `crates/nmp-wasm/src/runtime.rs`
-drives `nmp_core::KernelReducer` directly (the `ActorCommand`/`NmpApp` actor loop is
-`feature = "native"`-gated and absent on `wasm32`). The web app is real and functional —
-`WasmRuntime` owns a `BrowserRelayDriver` pool, a NIP-07 signer slot, the publish path, and
-binary FlatBuffers snapshot push, all inside a real Web Worker (`web/chirp/src/nmp/worker.ts`)
-— but it is a *different runtime* from native, so "one core, four platforms" is not literally
-true today.
-
-**Exit criterion #6 (verbatim):** *"Either wasm runs a real `NmpApp` actor on a Web Worker,
-or 'cross-platform' is rewritten as 'iOS + macOS + Android' in `aim.md` and product copy."*
-
-**Decision required (one of):**
-1. Make the `NmpApp` actor loop compile and run on `wasm32` inside the Worker (the actor
-   thread → cooperative task; `flume` channel preserved), so all four platforms share one
-   runtime; **or**
-2. Accept `WasmRuntime`/`KernelReducer` as the canonical web runtime and rewrite the
-   "cross-platform" framing in `aim.md` and product copy to match (web is a first-class but
-   architecturally distinct shell).
-
-Until one arm lands, the "single Rust core consumed identically by four platforms" claim in
-`aim.md §1` overstates the web path.
 
 ### F-08 · App-owned component registry + content rendering kits [V1 DX]
 
@@ -1049,8 +1008,6 @@ Show the user which relays delivered a given event. The data is already tracked:
 
 4. **chirp-tui** — `?` key or dedicated pane shows relay provenance for the selected event. Already has `DiagnosticsView` precedent.
 
-5. **chirp-web** — tooltip or expandable row section.
-
 **Note:** `relay_count: u32` is already on `TimelineItem` and rendered in iOS (`NoteRowView`). Step 1 is the only Rust change; steps 2–5 are pure presentation work per platform.
 
 ### F-10 · Canonical FlatBuffers runtime update transport [V1 INFRA · in progress]
@@ -1077,8 +1034,7 @@ shims, and explicit test tooling.
 
 **Acceptance:**
 
-- iOS, Android, desktop, and wasm shells consume the same FlatBuffers update
-  schema.
+- iOS, Android, and desktop shells consume the same FlatBuffers update schema. (wasm: post-v1)
 - The stale-`rev` guard, snapshot-default path, and `ViewBatch` delta path are
   preserved across all shells.
 - Legacy JSON update callback code is deleted or isolated behind documented
@@ -1183,6 +1139,8 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | Indexer-republish follow-ups | The default composition installs `nmp_router::IndexerRepublishPolicy` through `nmp-core`'s generic raw-event forwarding seam. Deferred add-ons are runtime toggles, telemetry, and parameterized replaceable support only if product demand appears. |
 | Chirp TUI unfinished interactions | `apps/chirp/chirp-tui/src/input.rs:350,431,433,523` — repost, group-discover, add-relay, add-account, and DM-open are all `// not yet wired (post-v1)` no-ops. Mirror: `ios/Chirp/Chirp/Components/NoteRowView.swift:225` repost is also a no-op. Wire once the corresponding `dispatch_action` namespaces exist. |
 | `nmp-content` Phase-2 claim dependency channel | `crates/nmp-content/src/embed_registry/mod.rs:26` — `// Phase 2: expose the claim-driven dependency channel`. The embed registry currently resolves claims synchronously; the async demand-producer path for late-arriving embedded events is not exposed to callers. |
+| F-01 wasm IndexedDB store | chirp-web runs in-memory only (resets on reload); port persistence to IndexedDB-backed `nostr-database` impl once wasm is in scope. All prior native stages merged. |
+| F-06 wasm cross-platform claim | Either port `NmpApp` actor loop to wasm32 in the Worker, or update `aim.md` + product copy to "iOS + macOS + Android". Decision deferred until wasm is in scope. (`docs/plan.md` exit criterion #6 must be updated to match.) |
 | wasm32 test infrastructure | `crates/nmp-wasm/src/lib.rs:200` — no `wasm-bindgen-test` harness set up. The entire wasm publish path and signer-slot dispatch lack automated coverage. Set up `wasm-pack test --headless` in CI and migrate the `// TODO: wasm32 tests TBD` stubs into real tests. |
 | `web/registry` CodeBlock placeholder | `web/registry/src/components/CodeBlock.tsx:39` renders `"This component is being built — check back soon."` in the web registry UI. Replace with a real syntax-highlighted code block (e.g. `shiki` or `prism`) once the registry UI is active. |
 
