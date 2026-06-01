@@ -121,7 +121,7 @@ fn main() -> std::process::ExitCode {
     let pubkey_c = CString::new(PABLOF7Z_PUBKEY).expect("pubkey has no NUL");
     let consumer_c = CString::new(CONSUMER_ID).expect("consumer has no NUL");
     println!("validate_claim_profile: claiming pubkey {PABLOF7Z_PUBKEY}");
-    nmp_app_claim_profile(app, pubkey_c.as_ptr(), consumer_c.as_ptr());
+    nmp_app_claim_profile(app, pubkey_c.as_ptr(), consumer_c.as_ptr(), 0);
     nmp_app_open_author(app, pubkey_c.as_ptr()); // observation hook
 
     let started = Instant::now();
