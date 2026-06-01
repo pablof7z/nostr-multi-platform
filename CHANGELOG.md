@@ -5,6 +5,79 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.2.1 — 2026-06-01
+
+**Non-breaking C-ABI. One projection-key rename requires shell updates (see below).**
+
+20 commits since 0.2.0 (tagged 2026-05-31).
+
+### Migration required
+
+- **`"relay_edit_rows"` → `"configured_relays"` projection key** (#900): any shell
+  that reads `projections["relay_edit_rows"]` from the kernel snapshot must rename
+  the key to `"configured_relays"`. The corresponding Rust type is renamed
+  `RelayEditRow` → `AppRelay` and the slot alias `RelayEditRowsSlot` → `AppRelaySlot`.
+  All first-party shells (iOS Swift `KernelBridge.swift`, Android Kotlin, web
+  TypeScript `snapshot.ts`, chirp-tui `feature_snapshot.rs`, chirp-desktop) have
+  been updated in this release. Third-party shells reading the old key will receive
+  `null` on 0.2.1 until updated.
+
+### Added
+
+- **App-owned relay configuration** (#900): apps now declare their relay defaults in
+  Rust via `NmpAppBuilder::with_relay(url, role)` and `with_relays(vec![...])`.
+  Defaults persist across restarts via a JSON sidecar file
+  (`{storage_dir}/.nmp-relay-config.json`). Zero hardcoded relay URLs remain in
+  nmp-core; all relay configuration is app-supplied. `ActorCommand::Start` carries
+  `initial_relays: Vec<(String, String)>` populated by the builder.
+
+- **`TopicArticlesModule`** (#898): `nmp-app-template` ships a canonical example
+  of the action → kernel subscription pattern for `kind:30023` topic-filtered
+  articles. Documents the Claim/Release lifecycle and explains the `dispatch_capability`
+  anti-pattern.
+
+- **Marmot/MLS Android** (#888, V-109): MLS group messaging wired into the Android
+  build via the existing C-ABI seam; Android gains a Groups tab backed by the Marmot
+  push projection.
+
+- **Marmot canonical push projection** (#881/#884, V-107): `nmp-marmot` now delivers
+  snapshot and messages through the standard push-projection seam (ADR-0039).
+  `MarmotBridge` reads push projections on iOS; legacy pull symbols are deleted.
+
+- **Web component-owned claim seam** (#885, F-CR-00): `nmp-wasm` and `chirp-web`
+  gain the self-claim pattern for profiles and events — components subscribe and
+  release their own claims without app-level pre-fetch loops.
+
+- **Framework-level render-identity** (#7b6f06f7, C3): generated render-identity
+  eliminates idle re-renders at the framework layer; registry scaffold included.
+
+### Fixed
+
+- **F-CR-00 capstone — proactive kind:0 fetch removed** (#887): the kernel no longer
+  fires a kind:0 fetch when any event is ingested. `NostrAvatar` / `NostrProfileName`
+  components self-claim; the proactive pre-fetch was the last violation of the
+  component-owned claim model.
+
+- **V-110 OpenView/CloseView warnings** (#886): both commands now emit `tracing::warn`
+  and a `clientRuntime` diagnostic when the resolver is absent instead of silently
+  no-oping.
+
+- **V-76 Worker fallback diagnostic** (#895): chirp-web emits a `clientRuntime`
+  diagnostic and `console.warn` on Worker fallback so the degraded code path is
+  observable in production.
+
+- **ADR-0041 presentation strings stripped from kernel** (#890): `role_label` and
+  `role_tint` fields removed from the relay kernel state; chirp-desktop and the
+  nmp-cli scaffold template updated accordingly.
+
+- **V-57 kind-constant consolidation** (#896): remaining kind-constant duplicates
+  across workspace crates migrated to `nmp-kinds`; one declaration per kind.
+
+- **Registry keyed Show** (#883): component page no longer retains stale content
+  when the route changes; `Show` is now keyed on the route parameter.
+
+---
+
 ## nmp-v0.2.0 — 2026-05-31
 
 **Non-breaking: C-ABI is unchanged from 0.1.0. No symbol migration required.**
