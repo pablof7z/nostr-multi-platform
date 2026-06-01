@@ -44,7 +44,7 @@ pub fn file_in_scope(path: &Path) -> bool {
     // vocabulary. Since F-00 they live at `apps/<app>/crates/nmp-app-*`, so
     // the `/crates/nmp-` substring alone no longer distinguishes protocol
     // crates from app crates — exclude anything under an `apps/` tree first.
-    if s.contains("apps/") {
+    if s.contains("/apps/") || s.starts_with("apps/") {
         return false;
     }
     // Only the workspace-root `crates/` tree is scoped.
