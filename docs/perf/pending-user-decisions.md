@@ -21,7 +21,7 @@ Verified by `git show` against `origin/master` (HEAD `0c87365c`): **both source 
 - **6471150e's substantive work is already on master via PR #237** (`66d820b5 [codex] Route NIP-17 inbox through DM relays`). `crates/nmp-nip17/src/inbox.rs:417` already sets `interest.shape.p_tag_routing = PTagRouting::Nip17DmRelays` on `active_giftwrap_inbox_interest`. `crates/nmp-core/src/kernel/nip17_dm_inbox_routing_tests.rs` (79 lines) and `crates/nmp-testing/tests/nip17_dm_inbox_routing.rs` (86 lines) both exist on master. `cargo test -p nmp-nip17 --lib` passes 55/55 on the bare-master checkout.
 - **4ee32000's hash bump is already on master** — `crates/nmp-core/src/subs/oneshot.rs:205` already asserts `SubKey(0x3ed4_bcb5_89bf_8034)`, which is precisely the value 4ee32000 introduced.
 - **The non-active `giftwrap_inbox_interest` was deliberately deleted today by PR #300** (`c613d6ac chore(nip17): delete dead JSON helpers + legacy giftwrap interest`, 2026-05-22 14:31). Commit message states: *"the non-active `giftwrap_inbox_interest` (with its private `giftwrap_interest_id` helper) had zero callers anywhere in the workspace — the dispatch path runs through `ActionModule::execute` and Chirp exclusively pushes `active_giftwrap_inbox_interest`."*
-- Independent grep confirms: on master, `nmp_nip17::giftwrap_inbox_interest` has zero callers. There IS a `nmp_marmot::interest::giftwrap_inbox_interest` (`crates/nmp-marmot/src/interest.rs:60`, called from `apps/chirp/nmp-app-chirp/src/marmot/ffi.rs:235`), but that is a separate function in a different crate and not what the brief is asking to re-add.
+- Independent grep confirms: on master, `nmp_nip17::giftwrap_inbox_interest` has zero callers. There IS a `nmp_marmot::interest::giftwrap_inbox_interest` (`crates/nmp-marmot/src/interest.rs:60`, called from `apps/chirp/crates/nmp-app-chirp/src/marmot/ffi.rs:235`), but that is a separate function in a different crate and not what the brief is asking to re-add.
 - Running `git cherry-pick --no-commit 6471150e` on a fresh `merge/worker1-nip17-dm-inbox` branch off `origin/master` produces only two non-trivial diffs vs master: (a) the dead `giftwrap_inbox_interest` + `giftwrap_interest_id` block in `nmp-nip17/src/inbox.rs` (the conflict the brief described), and (b) a 293-line re-add of `crates/nmp-nip77/src/planner_gate_tests.rs` (the modify/delete case the brief noted). All other auto-merged hunks (`kernel/ingest/dm_relay_list.rs`, `kernel/ingest_tests.rs`, `kernel/mod.rs`, `kernel/outbox.rs`, `planner/...`) produce ZERO net change vs master — they're already there.
 
 Decision: **aborted the cherry-pick, reset the branch to `origin/master` clean, and did NOT open the PR.** Opening it would have produced a "merge PR" whose only effect is to revert PR #300 (an intentional dead-code cleanup landed 6 hours before the brief). This matches MEMORY's "shipped-but-inert features camouflaged by green CI" warning (review #33, #36) — adding a function with zero callers to feed a future host that doesn't exist is exactly the anti-pattern recent reviews keep flagging.
@@ -42,13 +42,13 @@ Verification commands (file:line evidence):
 
 ### PD-034 NEEDS USER ACTION (2026-05-22) — "Register ZapsDomain in Chirp ffi.rs" fix is unimplementable as briefed; deferred
 
-A two-fix brief asked me to land (Fix 1) a Swift trust-failure cleanup on the DM-inbox publish row and (Fix 2) "register `ZapsDomain` in `apps/chirp/nmp-app-chirp/src/ffi.rs` so kind:9735 zap receipts stop being silently dropped." The brief stated `nmp-app-chirp/Cargo.toml` "pulls in `nmp-nip57`" and that `ZapsDomain` simply needed an `app.register_domain::<ZapsDomain>()` call.
+A two-fix brief asked me to land (Fix 1) a Swift trust-failure cleanup on the DM-inbox publish row and (Fix 2) "register `ZapsDomain` in `apps/chirp/crates/nmp-app-chirp/src/ffi.rs` so kind:9735 zap receipts stop being silently dropped." The brief stated `nmp-app-chirp/Cargo.toml` "pulls in `nmp-nip57`" and that `ZapsDomain` simply needed an `app.register_domain::<ZapsDomain>()` call.
 
-**Fix 1 shipped** — `ios/Chirp/Chirp/Features/RelaySettingsView.swift` now drives the "Published ✓" / "Publish failed" / "Publishing…" / button states from `model.terminalActionStage(correlationId:)` instead of flipping a same-tap boolean. Same pattern PR-A/PR-G2 already established for other dispatch verbs (`KernelModel.swift:341-359`).
+**Fix 1 shipped** — `apps/chirp/ios/Chirp/Features/RelaySettingsView.swift` now drives the "Published ✓" / "Publish failed" / "Publishing…" / button states from `model.terminalActionStage(correlationId:)` instead of flipping a same-tap boolean. Same pattern PR-A/PR-G2 already established for other dispatch verbs (`KernelModel.swift:341-359`).
 
 **Fix 2 was NOT done — every premise in the brief is wrong**, verified by direct file reads:
 
-- `apps/chirp/nmp-app-chirp/Cargo.toml` does **not** depend on `nmp-nip57`. Confirmed in both the Cargo manifest and `Cargo.lock` (`nmp-app-chirp` lists `nmp-nip01`, `-nip17`, `-nip29`, `-nip59`, `-marmot`, `-threading`, `-signer-broker`, `-core`, but no `-nip57`).
+- `apps/chirp/crates/nmp-app-chirp/Cargo.toml` does **not** depend on `nmp-nip57`. Confirmed in both the Cargo manifest and `Cargo.lock` (`nmp-app-chirp` lists `nmp-nip01`, `-nip17`, `-nip29`, `-nip59`, `-marmot`, `-threading`, `-signer-broker`, `-core`, but no `-nip57`).
 - `NmpApp` has **no** `register_domain` method. The registration seams on `impl NmpApp` (`crates/nmp-core/src/ffi/mod.rs:630-885`) are `register_action`, `register_snapshot_projection`, `register_action_result_observer`, `register_event_observer`, `register_raw_event_observer` — full stop. `DomainModule` (`crates/nmp-core/src/substrate/domain.rs:1`) is a trait with only `NAMESPACE`, `SCHEMA_VERSION`, `migrations()`, `indexes()` — no runtime registry consumes it. This matches MEMORY review #56 ("`DomainModule` 0 live consumers (delete + 4 tests-only NIP crates)").
 - `decode_and_route` for kind:9735 (`crates/nmp-nip57/src/domain.rs:50`) takes a `DomainHandle` directly. There is no `KernelEventObserver` consumer for kind:9735 anywhere in tree — the only callers of `nmp_nip57::decode_and_route` are `nmp-nip57`'s own tests and `nmp-reactions` (also tests-only).
 
@@ -116,7 +116,7 @@ A polish brief asked for two `nmp-core` fixes: (1) remove an `eprintln!` from `f
 **Fix 2 was NOT done — the brief's rationale is factually wrong**, verified by `grep`:
 
 - The flag is **written** by `nmp_app_create_new_account` (`crates/nmp-core/src/ffi/identity.rs:78`, via `set_pending_mls_autopublish`).
-- It is **read-and-cleared** by a *different* FFI entry point — `nmp_marmot_register_active` (`apps/chirp/nmp-app-chirp/src/marmot/ffi.rs:334`, via `take_pending_mls_autopublish`) — to decide whether to publish the MLS key package right after the Marmot projection registers.
+- It is **read-and-cleared** by a *different* FFI entry point — `nmp_marmot_register_active` (`apps/chirp/crates/nmp-app-chirp/src/marmot/ffi.rs:334`, via `take_pending_mls_autopublish`) — to decide whether to publish the MLS key package right after the Marmot projection registers.
 
 So the `Arc<Mutex<bool>>` is doing genuine work: it carries a one-shot intent **across two separate FFI calls** on the host thread (create-account → later marmot-register). The brief's plan — "store `flag` in a local variable in the actor loop" and "update callers to send `ActorCommand::SetPendingMlsAutopublish`" — breaks this. `take_` is a **synchronous reader**; the actor thread cannot return a value to a future FFI call, so an actor-loop local strands chirp's reader and `nmp_marmot_register_active` would never autopublish. The brief anticipated only Swift/Kotlin follow-up references and missed the live **Rust** caller in chirp.
 
@@ -131,7 +131,7 @@ USER ACTION: choose one — (a) re-spec Fix 2 to also change `nmp_marmot_registe
 After fixing the FFI drift CI script (PD-031, commit `8f22ac94` on `chirp-nmp-thin-shell-policy`), I could not get CI to confirm the green check. Root cause: **PR #11 is `CONFLICTING`/`DIRTY` against master.**
 
 - The `ffi-drift` workflow triggers only on `pull_request` (+ `push` to master). A `pull_request` workflow needs GitHub to compute the PR's merge commit; when the PR conflicts, GitHub cannot, so `ffi-drift` is never scheduled. `file-size-gate`/`doctrine-lint` still run because they trigger on `push` to any branch.
-- Conflicting files (3): `apps/chirp/nmp-app-chirp/src/marmot/ffi.rs`, `apps/chirp/nmp-app-chirp/src/marmot/ffi/tests.rs`, `ios/Chirp/Chirp/Bridge/MarmotBridge.swift`.
+- Conflicting files (3): `apps/chirp/crates/nmp-app-chirp/src/marmot/ffi.rs`, `apps/chirp/crates/nmp-app-chirp/src/marmot/ffi/tests.rs`, `apps/chirp/ios/Chirp/Bridge/MarmotBridge.swift`.
 - Timeline: master advanced ~12 commits after PR #11's base (`7aa3d40d`), including marmot work (`28cf348d` auto-register after createAccount, `2ffe9675` event-driven Welcome delivery). The conflict is NEW — the original `ffi-drift` failure on `5ccdd45d` ran fine via `pull_request` back when the PR was still mergeable.
 
 Decision: I did **not** resolve the conflicts unilaterally. They are semantic — both master and the PR branch actively reworked the same Marmot FFI surface — and resolution is the PR author's call. Resolving could also add/remove `#[no_mangle]` symbols, requiring a separate `NmpCore.h` reconciliation. That is a distinct semantic-merge task outside this brief's scope ("fix the FFI drift check").
@@ -144,11 +144,11 @@ USER ACTION: resolve PR #11's 3-file conflict with master (merge or rebase), or 
 
 ### PD-031 RESOLVED AUTONOMOUSLY (2026-05-20) — PR #11 FFI drift was a CI-script scoping bug, not missing Rust symbols
 
-Task brief said the 4 chirp identity/marmot symbols (`nmp_app_chirp_identity_remove_account`, `_identity_restore`, `_identity_sign_in_nsec`, `nmp_marmot_fetch_key_packages`) "don't exist yet in the Rust FFI source files" and asked me to implement them in `apps/chirp/nmp-app-chirp/src/ffi.rs` + `marmot/ffi.rs`.
+Task brief said the 4 chirp identity/marmot symbols (`nmp_app_chirp_identity_remove_account`, `_identity_restore`, `_identity_sign_in_nsec`, `nmp_marmot_fetch_key_packages`) "don't exist yet in the Rust FFI source files" and asked me to implement them in `apps/chirp/crates/nmp-app-chirp/src/ffi.rs` + `marmot/ffi.rs`.
 
 That premise is stale against the branch. All 4 symbols are **already fully implemented** — with D6 null-checks and graceful degradation — in sibling files the PR author deliberately created:
-- `apps/chirp/nmp-app-chirp/src/marmot/identity.rs` (the 3 identity fns)
-- `apps/chirp/nmp-app-chirp/src/marmot/fetch.rs` (`_marmot_fetch_key_packages`)
+- `apps/chirp/crates/nmp-app-chirp/src/marmot/identity.rs` (the 3 identity fns)
+- `apps/chirp/crates/nmp-app-chirp/src/marmot/fetch.rs` (`_marmot_fetch_key_packages`)
 Both are declared in `marmot/mod.rs` (`pub mod identity; pub mod fetch;`) and re-exported from `lib.rs`. `cargo check -p nmp-app-chirp` compiles clean — they genuinely exist and link into `libnmp_app_chirp.a`.
 
 The real bug: `ci/check-ffi-header-drift.sh` only greps `ffi.rs` + `marmot/ffi.rs`, not the two sibling files — so it reported header-only drift for symbols that DO exist in Rust.
@@ -847,7 +847,7 @@ Per T136 Gate-1 audit (`docs/design/lmdb/env-injection-status.md`, commit `1db4d
 
 `docs/plan/marmot-mls.md` is explicitly scoped post-v1 ("Status: Deferred post-v1. M11.5 explicitly excludes encrypted groups"). North-star memory = "complete v1 with zero debt." User explicitly directed pulling it forward now, with **full Chirp support (Rust FFI + iOS SwiftUI)** — which also exceeds the milestone's stated "does NOT ship Marmot-native app UI" boundary.
 
-**Decision:** Implement now. New crates: `nmp-nip44` (NIP-44 v2), `nmp-nip59` (gift-wrap), `nmp-marmot` (wraps `mdk-core` 0.8.0 + `mdk-sqlite-storage`). Plus `nmp-app-chirp` Marmot module registration + FFI and `ios/Chirp` SwiftUI screens. Executed via parallel agents in git worktrees (wave-structured by dependency chain nip44 → nip59 → marmot → tests/Chirp).
+**Decision:** Implement now. New crates: `nmp-nip44` (NIP-44 v2), `nmp-nip59` (gift-wrap), `nmp-marmot` (wraps `mdk-core` 0.8.0 + `mdk-sqlite-storage`). Plus `nmp-app-chirp` Marmot module registration + FFI and `apps/chirp/ios` SwiftUI screens. Executed via parallel agents in git worktrees (wave-structured by dependency chain nip44 → nip59 → marmot → tests/Chirp).
 
 **Risk noted:** Roadmap deviation; openmls transitive license/advisory graph must pass `deny.toml` before marmot integration proceeds (blocking gate). MDK is 0.8.0 on crates.io; plan referenced 0.7.1+ — 0.7→0.8 deltas to be captured in the MDK API spike.
 
@@ -859,7 +859,7 @@ All 7 Marmot tasks landed on origin/master: `9dbc8261` scaffold → `cdd48d1b` M
 
 **Documented deviation from marmot-mls.md exit-gate literal wording** ("nmp-marmot is the SOLE importer of mdk-core/openmls"):
 1. `nmp-testing` — `mdk-core`/`mdk-sqlite-storage` in **[dev-dependencies]** only (exit-gate integration tests must drive MDK + assert on `MessageProcessingResult`). Test harness, not production. Accepted.
-2. `nmp-app-chirp` — **direct `mdk-core` dep** (non-dev). This is the FFI typed-translation-layer the nmp-marmot crate doctrine explicitly anticipated ("when an actor/FFI consumer lands, it needs a typed translation layer"); no MLS type crosses the C-ABI — `mdk-core` types appear only at input-construction sites bridging C-ABI primitives into `MarmotService` args. Justification embedded in `apps/chirp/nmp-app-chirp/Cargo.toml`. **Conscious architectural decision, defensible, but a real deviation from the literal exit-gate phrasing — flagged for user review.**
+2. `nmp-app-chirp` — **direct `mdk-core` dep** (non-dev). This is the FFI typed-translation-layer the nmp-marmot crate doctrine explicitly anticipated ("when an actor/FFI consumer lands, it needs a typed translation layer"); no MLS type crosses the C-ABI — `mdk-core` types appear only at input-construction sites bridging C-ABI primitives into `MarmotService` args. Justification embedded in `apps/chirp/crates/nmp-app-chirp/Cargo.toml`. **Conscious architectural decision, defensible, but a real deviation from the literal exit-gate phrasing — flagged for user review.**
 
 **Open follow-up seams (not blockers; milestone E2E proof = headless tests, Chirp UI additive):**
 - No kernel `Keys` provider → Chirp FFI `register` takes secret hex (3-arg).

@@ -67,7 +67,7 @@ Total: 12 unit/integration tests, 0 failed
 real 4.35s   EXIT: 0
 ```
 
-### 3. `cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/nmp-app-fixture --check`
+### 3. `cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/crates/nmp-app-fixture --check`
 
 Note: The task spec omitted `--manifest` and `--out` flags. The canonical invocation comes from the justfile `gen-modules-check` recipe. That full form was used.
 

@@ -9,7 +9,7 @@ crate uses them, and how modules compose at `FfiApp::new`.
 
 ## Annotated walkthrough: `fixture-todo-core`
 
-`apps/fixture/fixture-todo-core/src/lib.rs` is ADR-0009 acceptance criterion
+`apps/fixture/crates/fixture-todo-core/src/lib.rs` is ADR-0009 acceptance criterion
 1 made real: a module exercising the extension seams **with zero Nostr
 concepts**. It is the canonical template — read it before writing any module.
 

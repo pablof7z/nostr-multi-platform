@@ -25,7 +25,7 @@ Already shipped:
   D7 actor-liveness probe), which is the precedent for future structural
   additions.
 - [`ci/check-ffi-header-drift.sh`](../../ci/check-ffi-header-drift.sh) catches
-  the inverse — `nmp_app_*` symbols declared in `ios/Chirp/Chirp/Bridge/NmpCore.h`
+  the inverse — `nmp_app_*` symbols declared in `apps/chirp/ios/Chirp/Bridge/NmpCore.h`
   with no Rust counterpart.
 - D11 doctrine-lint
   ([`crates/nmp-testing/bin/doctrine-lint/rules/d11.rs`](../../crates/nmp-testing/bin/doctrine-lint/rules/d11.rs))
@@ -63,7 +63,7 @@ Verified by `grep -rn 'pub extern "C" fn nmp_app_' crates/nmp-core/src/`:
 | **Total** | **48** | |
 
 The `nmp_app_*` surface OUTSIDE `nmp-core`
-(`crates/nmp-signer-broker/src/`: 2 symbols; `apps/chirp/nmp-app-chirp/src/`:
+(`crates/nmp-signer-broker/src/`: 2 symbols; `apps/chirp/crates/nmp-app-chirp/src/`:
 8 symbols) is inside the freeze script's scope but outside this calendar's
 scope: those are app-owned and named, follow the same "no new bespoke
 without ADR" rule, and have no dispatch_action analogue (NIP-46 broker glue
@@ -81,7 +81,7 @@ permanent (26) and canonical/shim (2) stay. Test-only (4) stay gated.
 
 - **Batch 1 — v1-A (pre-ship) deletions: 0 symbols.** Every debt symbol has at
   least one Swift call site on HEAD (verified by
-  `grep -rln nmp_app_* ios/Chirp/`). No orphan debt symbols to delete pre-v1.
+  `grep -rln nmp_app_* apps/chirp/ios/`). No orphan debt symbols to delete pre-v1.
   The `NmpCore.h` drift (declares `nmp_app_react`, `nmp_app_follow`,
   `nmp_app_publish_signed_event`, …, all deleted from Rust between PR-F and
   ADR-0027) is a separate hygiene item — fix via the header-drift gate
@@ -185,7 +185,7 @@ Grouped by file in `crates/nmp-core/src/ffi/`:
 
 ## Adjacent hygiene items (NOT in this calendar's scope)
 
-- **`ios/Chirp/Chirp/Bridge/NmpCore.h` drift.** The hand-edited header still
+- **`apps/chirp/ios/Chirp/Bridge/NmpCore.h` drift.** The hand-edited header still
   declares `nmp_app_react`, `nmp_app_follow`, `nmp_app_unfollow`,
   `nmp_app_publish_signed_event`, `nmp_app_publish_signed_event_to`,
   `nmp_app_publish_unsigned_event`, `nmp_app_register_action_module`,
@@ -196,5 +196,5 @@ Grouped by file in `crates/nmp-core/src/ffi/`:
   `nmp_app_cancel_bunker_handshake` and `nmp_app_nostrconnect_uri`. Both are
   Theme A "system-authored" (NIP-46 broker glue), in the freeze-script scope
   but out of this calendar's scope.
-- **`apps/chirp/nmp-app-chirp/src/ffi/`** declares 8 `nmp_app_chirp_*` symbols
+- **`apps/chirp/crates/nmp-app-chirp/src/ffi/`** declares 8 `nmp_app_chirp_*` symbols
   (app-owned, app-named — out of `nmp-core`).

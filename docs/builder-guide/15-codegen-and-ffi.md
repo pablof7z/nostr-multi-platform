@@ -84,7 +84,7 @@ Add `nmp-nip29` to `[modules].protocol`, re-run codegen, and a
 **without you touching the file**. Variant name = PascalCase of the crate
 (`variant_name`, `lib.rs:33-45`); namespace string = the raw crate name.
 
-> Reference output lives at `apps/fixture/nmp-app-fixture/src/`. Note its
+> Reference output lives at `apps/fixture/crates/nmp-app-fixture/src/`. Note its
 > `action.rs` is **hand-augmented** with a `Nip29PublishPlan` variant + doc
 > comments (it is a build-verification fixture, not byte-identical generator
 > output). Treat `generate.rs` as the source of truth for what codegen emits.
@@ -109,7 +109,7 @@ checked-in output — that is the `nmp gen modules --check` CI gate primitive.
 │ The GENERATED FfiApp (nmp-app-fixture/src/ffi.rs) is the live per-  │
 │ app FFI entry-point: it allocates NmpApp, calls each module's        │
 │ register(), and routes AppAction variants through dispatch_action.   │
-│ ios/Chirp consumes the hand-written raw C FFI in nmp-core directly. │
+│ apps/chirp/ios consumes the hand-written raw C FFI in nmp-core directly. │
 ├─ FlatBuffers runtime transport (IN PROGRESS) ───────────────────────┤
 │ One canonical schema carries `FullState`, `ViewBatch`, and effects   │
 │ from Rust to frontend shells. JSON is allowed only for Nostr relay    │
@@ -165,7 +165,7 @@ Registration lands on the permanent C-ABI seam
 `nmp_app_register_snapshot_projection` (Rust method
 `NmpApp::register_snapshot_projection`, `crates/nmp-ffi/src/lib.rs:1109`; C-ABI
 export `crates/nmp-ffi/src/snapshot.rs:83`; header declaration
-`ios/Chirp/Chirp/Bridge/NmpCore.h:255`). You give it a key and a closure
+`apps/chirp/ios/Chirp/Bridge/NmpCore.h:255`). You give it a key and a closure
 `Fn() -> serde_json::Value`; on every snapshot tick the kernel runs the closure
 and appends the result to `KernelSnapshot.projections` under your key. Keys are
 last-writer-wins; the handful of **kernel-reserved built-in keys**
@@ -192,7 +192,7 @@ app.register_snapshot_projection("nmp.nip29.group_chat", move || {
 ```
 
 The same one-liner is how Chirp wires its NIP-02 follow list
-(`apps/chirp/nmp-app-chirp/src/ffi/register.rs:371`:
+(`apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs:371`:
 `register_snapshot_projection("nmp.follow_list", move || projection.snapshot_json())`)
 and how `nmp-nip57` exposes its zap-count aggregate
 (`crates/nmp-nip57/src/projection.rs:47`, key `nmp.nip57.zaps`). A protocol

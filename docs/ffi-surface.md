@@ -2,7 +2,7 @@
 
 > **Reviewed:** 2026-05-21. Previous revisions were stale in both directions:
 > `capability.rs`, unsigned-event, and URI-opening symbols are now declared in
-> `ios/Chirp/Chirp/Bridge/NmpCore.h`; newer action/projection and Marmot helper
+> `apps/chirp/ios/Chirp/Bridge/NmpCore.h`; newer action/projection and Marmot helper
 > symbols are still being folded into this reference.
 
 The kernel ships a flat `extern "C"` raw C ABI regardless of Rust module layout.
@@ -69,7 +69,7 @@ Swift `KeychainCapability.handleJSON(_:)`) and returns a `CapabilityEnvelope`
 JSON. This is the seam for PD-019 / T96 keychain capability.
 
 These symbols exist in the Rust ABI and are declared in
-`ios/Chirp/Chirp/Bridge/NmpCore.h`. Chirp registers the keychain capability
+`apps/chirp/ios/Chirp/Bridge/NmpCore.h`. Chirp registers the keychain capability
 handler before `start()`.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |

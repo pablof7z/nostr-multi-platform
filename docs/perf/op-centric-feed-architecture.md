@@ -671,17 +671,17 @@ grep against the current tree. Rung 2 patches all of:
 - `crates/nmp-nip01/src/timeline_projection/tests.rs` (lines 76, 90,
   91, 108, 109, 139, 164)
 - `crates/nmp-nip01/src/meta_timeline/tests.rs` (lines 146, 172)
-- `apps/chirp/nmp-app-chirp/tests/end_to_end.rs:130`
+- `apps/chirp/crates/nmp-app-chirp/tests/end_to_end.rs:130`
 - `apps/chirp/chirp-tui/src/timeline.rs:244-265`
 - `apps/chirp/chirp-tui/src/timeline/tests.rs` (Standalone JSON
   fixtures)
-- `ios/Chirp/Chirp/Bridge/TimelineBlock.swift:7-92` (hand-decoder)
-- `ios/Chirp/Chirp/Bridge/ModularTimelineBridge.swift` (pattern matches)
-- `ios/Chirp/Chirp/Features/HomeFeedView.swift` (pattern matches)
-- `ios/Chirp/Chirp/Components/ModularBlockView.swift` (pattern matches)
-- `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`
+- `apps/chirp/ios/Chirp/Bridge/TimelineBlock.swift:7-92` (hand-decoder)
+- `apps/chirp/ios/Chirp/Bridge/ModularTimelineBridge.swift` (pattern matches)
+- `apps/chirp/ios/Chirp/Features/HomeFeedView.swift` (pattern matches)
+- `apps/chirp/ios/Chirp/Components/ModularBlockView.swift` (pattern matches)
+- `apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift`
   (regenerated)
-- Swift fixtures under `ios/Chirp/ChirpTests/**` if present
+- Swift fixtures under `apps/chirp/ios/ChirpTests/**` if present
 - `crates/nmp-codegen/src/swift_projections_registry.rs:199-203` — NO
   change at rung 2 (binding to `ChirpTimelineSnapshot` transitively
   picks up the shape change)
@@ -1016,13 +1016,13 @@ Tests in §3-J cover all five cases.
 | `crates/nmp-nip01/src/timeline_projection/tests.rs` | Update Standalone test fixtures at lines 76, 90, 91, 108, 109, 139, 164. | +15 / -15 |
 | `crates/nmp-nip01/src/meta_timeline/tests.rs` | Update lines 146, 172. | +5 / -5 |
 | `crates/nmp-nip01/src/timeline_projection.rs` | Pattern-match new shape (read-only). | +5 / -3 |
-| `apps/chirp/nmp-app-chirp/tests/end_to_end.rs` | Update line 130. | +3 / -2 |
+| `apps/chirp/crates/nmp-app-chirp/tests/end_to_end.rs` | Update line 130. | +3 / -2 |
 | `apps/chirp/chirp-tui/src/timeline.rs` | Update `ids_from_block` to read object shape. | +20 / -10 |
 | `apps/chirp/chirp-tui/src/timeline/tests.rs` | Update Standalone JSON fixtures. | +25 / -20 |
-| `ios/Chirp/Chirp/Bridge/TimelineBlock.swift` | Rewrite Standalone decode to object form; update enum associated values. | +30 / -10 |
-| `ios/Chirp/Chirp/Bridge/ModularTimelineBridge.swift`, `HomeFeedView.swift`, `ModularBlockView.swift` | Update pattern matches. | +18 / -8 |
-| `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift` | Regenerated. | varies |
-| Swift fixtures under `ios/Chirp/ChirpTests/**` | Update. | varies |
+| `apps/chirp/ios/Chirp/Bridge/TimelineBlock.swift` | Rewrite Standalone decode to object form; update enum associated values. | +30 / -10 |
+| `apps/chirp/ios/Chirp/Bridge/ModularTimelineBridge.swift`, `HomeFeedView.swift`, `ModularBlockView.swift` | Update pattern matches. | +18 / -8 |
+| `apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift` | Regenerated. | varies |
+| Swift fixtures under `apps/chirp/ios/ChirpTests/**` | Update. | varies |
 
 ### Stage 2 — `nmp-feed` generic engine (rung 3)
 
@@ -1066,12 +1066,12 @@ Tests in §3-J cover all five cases.
 
 | File | Change | LOC ± |
 |---|---|---|
-| `apps/chirp/nmp-app-chirp/src/ffi/register.rs` | Replace `ModularTimelineProjection` registration with `nmp_app_template::register_op_feed_defaults(app, viewer)`. Drop ~30 LOC of hand-rolled follow-set wiring. | +5 / -50 |
+| `apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs` | Replace `ModularTimelineProjection` registration with `nmp_app_template::register_op_feed_defaults(app, viewer)`. Drop ~30 LOC of hand-rolled follow-set wiring. | +5 / -50 |
 | `apps/chirp/chirp-tui/src/timeline.rs` | Rewrite `TimelineRow::from_snapshot` for `RootFeedSnapshot`. Delete `ids_from_block`, `event_root_mismatches_top`, `is_partial_chain_head`. Add `thread_attribution: Vec<RowReplyAttribution>` field. | +60 / -100 |
 | `apps/chirp/chirp-tui/src/ui/post_list.rs` | Delete ↳ indicator. Add attribution row (chirp-tui's display policy: render the most recent 1 with "and N others"). Apply L-4 rule. | +50 / -25 |
 | `apps/chirp/chirp-tui/src/timeline/tests.rs` | Delete partial-chain tests; add RootCard mapping tests. | +220 / -160 |
 | `apps/chirp/chirp-tui/src/render_intents.rs`, `media_cache.rs` | Drop `is_partial_chain_head: false`. | -2 |
-| `ios/Chirp/Chirp/Bridge/Generated/*.swift` | Regenerated for `RootFeedSnapshot` + `Nip10ReplyAttribution`. | varies |
+| `apps/chirp/ios/Chirp/Bridge/Generated/*.swift` | Regenerated for `RootFeedSnapshot` + `Nip10ReplyAttribution`. | varies |
 | `crates/nmp-codegen/src/swift_projections_registry.rs` | Bind `nmp.feed.home` to new `OpFeedSnapshot` Swift type. | +6 / -3 |
 | `docs/architecture/crate-boundaries.md` | Row updates for `nmp-feed` and `nmp-nip02`. | +25 |
 | `docs/BACKLOG.md` | Close V-45 (resolved via composition-root expansion). Add V-59 (this work). Add V-60 (mute-list interaction post-v1, per Q5 + §3-K). Add V-61 (NIP-22 instance post-v1, per Q5). | varies |
@@ -1219,7 +1219,7 @@ cleanup), V-64 (`event_provenance` accessor).
 | B2-remainder: `OneshotApi::request` hardcodes `hints: Vec::new()` | **Resolved** | Rung 1 expands `OneshotApi::request` signature to accept initial `hints`. `claim_event` populates them from URI relay TLVs. Verified against `crates/nmp-core/src/subs/oneshot.rs:120` and `crates/nmp-core/src/kernel/requests/event.rs:83-103`. §3-B step 7. |
 | B2-remainder: no engine-observable no-match release signal | **Resolved** | Rung 1 adds `event_claim_released: BoundedRingBuffer<EventId>` projection. EOSE-no-match in `complete_unknown_oneshot` clears `event_claims` + pushes to ring. Engine registers a substrate-grade callback. §3-B step 10. |
 | B2-remainder: store-gate via `claim_expansion_match_author` is wrong description | **Resolved** | §3-B step 8 corrected to `is_discovery_oneshot(sub_id)`. |
-| B3-remainder: missing Rust consumers of `Standalone` | **Resolved** | §5 Stage 1 enumerates every consumer: `nmp-feed/src/types.rs`, `nmp-nip01/src/timeline_projection/tests.rs`, `apps/chirp/nmp-app-chirp/tests/end_to_end.rs`, `nmp-nip01/src/meta_timeline/tests.rs`, `chirp-tui/src/timeline/tests.rs` fixtures, and `grouper.rs` self-uses. Grep-verified. |
+| B3-remainder: missing Rust consumers of `Standalone` | **Resolved** | §5 Stage 1 enumerates every consumer: `nmp-feed/src/types.rs`, `nmp-nip01/src/timeline_projection/tests.rs`, `apps/chirp/crates/nmp-app-chirp/tests/end_to_end.rs`, `nmp-nip01/src/meta_timeline/tests.rs`, `chirp-tui/src/timeline/tests.rs` fixtures, and `grouper.rs` self-uses. Grep-verified. |
 | H2-remainder: `timeline_authors` not LMDB-restored on cold start | **Resolved** | v4 stops claiming LMDB restore. Pre-kind:3 buffer (rung 1) closes the gap by buffering kind:1/6 events that miss the `timeline_authors` gate and replaying them after `sync_follow_feed_interests`. §3-K rewritten. |
 | H2-remainder: `Kernel::active_account_pubkey()` / `KernelAccountChanged` fiction | **Resolved** | `Kernel::active_account_handle()` (`crates/nmp-core/src/kernel/mod.rs:1265-1267`) is the real push seam. Adapter observes the slot. §3-K. |
 | H3-remainder: L-2 / L-5 require event lookup | **Resolved** | Engine gains `event_lookup: Arc<dyn Fn(&EventId) -> Option<KernelEvent> + Send + Sync>` callback. §3-L rewritten with explicit lookup logic for L-2 and L-5. Tests added in §3-J. |

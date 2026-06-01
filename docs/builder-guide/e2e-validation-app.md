@@ -1,7 +1,7 @@
 # E2E Validation App — "Pulse"
 
 **Status:** historical spec. Pulse and Stress were deleted on 2026-05-18 and
-their validation goals were merged into Chirp; use `ios/Chirp` for current iOS
+their validation goals were merged into Chirp; use `apps/chirp/ios` for current iOS
 execution. Companion: [`e2e-validation-build.md`](./e2e-validation-build.md)
 (the historical how).
 

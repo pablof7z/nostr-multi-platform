@@ -78,7 +78,7 @@ The 14-metric NMP performance battery is documented in `docs/wiki/nmp-perf-batte
 | S2 | `estimated_store_bytes_cache_matches_fresh_compute` | same |
 | I7 | `timeline_ingest_perf` | `crates/nmp-core/src/kernel/timeline_perf_tests.rs` |
 | A1 | `warm_reclaim_reemits_profile_next_tick_with_no_req` | PR #821 |
-| A1/A2 | `testProfileName_persistsThroughNavRoundtrip` | `ios/Chirp/ChirpUITests/ChirpUITests.swift` |
+| A1/A2 | `testProfileName_persistsThroughNavRoundtrip` | `apps/chirp/ios/ChirpUITests/ChirpUITests.swift` |
 | P8 | `testScrollPerformance` | same (no baseline set yet) |
 | N9 | `testNavTransitionPerformance` | same (no baseline set yet) |
 

@@ -6,7 +6,7 @@ in progress · Audience: builders
 The kernel is the brain. SwiftUI is a **dumb render of a snapshot the kernel
 hands you**. The platform never owns state, never decides retry policy, never
 gates content on "is it loaded yet?". This section shows the exact bridge that
-ships today in `ios/Chirp` (the active kernel-wired iOS app) and the rules
+ships today in `apps/chirp/ios` (the active kernel-wired iOS app) and the rules
 that keep it doctrine-clean.
 
 ## The bridge — legacy raw C FFI today, FlatBuffers target
@@ -21,7 +21,7 @@ FlatBuffers update schema; JSON is not retained as a runtime fallback.
 
 ### `KernelHandle` — the thin wrapper (annotated)
 
-`ios/Chirp/Chirp/Bridge/KernelBridge.swift`:
+`apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`:
 
 ```swift
 final class KernelHandle {
@@ -135,11 +135,11 @@ alongside the named fields, decode it, and assign it to an `@Published`
 property. Chirp's NIP-02 follow list is the precedent:
 
 ```swift
-// ios/Chirp/Chirp/Bridge/KernelBridge.swift:884 — a computed accessor reads
+// apps/chirp/ios/Chirp/Bridge/KernelBridge.swift:884 — a computed accessor reads
 // the projection off the decoded snapshot by its registered key.
 var followList: FollowListSnapshot? { projections?.followList }   // projections["nmp.follow_list"]
 
-// ios/Chirp/Chirp/Bridge/KernelModel.swift:614 — consumed in apply(), every tick.
+// apps/chirp/ios/Chirp/Bridge/KernelModel.swift:614 — consumed in apply(), every tick.
 private func apply(result: KernelUpdateResult) {
     guard result.update.rev > rev else { return }   // same rev guard — drop reorders
     rev = update.rev
@@ -189,7 +189,7 @@ looking at this now / not anymore".
 ## Per-iOS-app status box
 
 ```
-┌─ ios/Chirp ──────────────────── ACTIVE / kernel-wired ──────────────┐
+┌─ apps/chirp/ios ──────────────────── ACTIVE / kernel-wired ──────────────┐
 │ Production Nostr client and current NMP showcase.                   │
 │ Real actor, real relays, real snapshot loop.                        │
 └─────────────────────────────────────────────────────────────────────┘

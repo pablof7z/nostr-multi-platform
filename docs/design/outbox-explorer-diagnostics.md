@@ -11,7 +11,7 @@ The explorer is a kernel-side **diagnostic projection** that lets a builder
 answer, for any live WebSocket: (a) **why** we connected, (b) **what** REQs
 are running on it, (c) per-socket **metrics**, and (d) **usefulness** — how
 often this relay was the *first source* of a stored event. The named
-consumer for the first read-out is `ios/Chirp/`; the data model has no
+consumer for the first read-out is `apps/chirp/ios/`; the data model has no
 Chirp-specific shape (D0).
 
 ---
@@ -273,7 +273,7 @@ the worker still only knows `(role, url, tx, generation)`.
 
 ## 6 — Chirp UI sketch (read-only spec)
 
-`ios/Chirp/` — out-of-kernel consumer; this section is a target
+`apps/chirp/ios/` — out-of-kernel consumer; this section is a target
 description, **no implementation touches the iOS tree from this doc**.
 
 * **One row per URL** (single-socket invariant §1). Row header:
@@ -312,7 +312,7 @@ chain (F1 → F2 → F3 → F4; F5 in parallel; F6 last as the consumer).
 | F3  | `relay-url-health-state`              | New `Kernel::relay_url_health`; wired from `actor/dispatch.rs::handle_relay_event`       |
 | F4  | `diagnostic-projection-on-snapshot`   | `kernel/status.rs` new `relay_diagnostics()`; `KernelUpdate` opt-in field; T103 envelope |
 | F5  | `relay-control-role-aggregate`        | `actor/mod.rs:130` `RelayControl::role` → `roles: SmallVec<Role>` *or* demoted-to-label  |
-| F6  | `chirp-outbox-explorer-screen`        | `ios/Chirp/` (read-only consumer; out-of-kernel)                                         |
+| F6  | `chirp-outbox-explorer-screen`        | `apps/chirp/ios/` (read-only consumer; out-of-kernel)                                         |
 
 F5 is the coordinator's load-bearing follow-up: the URL is the pool key
 (T105 enforces this), but the per-control `role` is still singular.

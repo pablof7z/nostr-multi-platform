@@ -291,7 +291,7 @@ all live together. A NIP crate cannot leak into Layer 3.
 | `nmp-repl` | Diagnostic REPL for the planner + outbox. | ✅ |
 | `nmp-chirp-config` | Shared Chirp app configuration object. | ⚠️ — belongs in `apps/chirp/` (Chirp-specific), not in `crates/`. Move alongside V-02's nmp-marmot precedent. |
 | `chirp-repl`, `chirp-tui` | Chirp diagnostic shells. | ⚠️ — same — move to `apps/chirp/` per AGENTS.md §What belongs in NMP crates. |
-| `fixture-todo-core` | Per-app fixture state. | ✅ — lives at `apps/fixture/fixture-todo-core/`. |
+| `fixture-todo-core` | Per-app fixture state. | ✅ — lives at `apps/fixture/crates/fixture-todo-core/`. |
 
 ---
 

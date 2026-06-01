@@ -17,7 +17,7 @@ Four layers, strict ownership. Built from the bottom up:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ PLATFORM SHELL          ios/Chirp + Android Chirp/gallery shells       │
+│ PLATFORM SHELL          apps/chirp/ios + Android Chirp/gallery shells       │
 │  owns: rendering, OS handle execution, generated wrappers              │
 │  D5 ► consumes ONE bounded FlatBuffers update frame; no policy nouns   │
 └────────────────────────────────▲───────────────────────────────────────┘
@@ -48,7 +48,7 @@ Four layers, strict ownership. Built from the bottom up:
 
 Representative shipped crates are labelled in their layer above:
 `nmp-core` (kernel), `nmp-nip29` / `nmp-nip42` / `nmp-nip77` / `nmp-signers`
-(protocol modules), `apps/chirp/nmp-app-chirp` + `fixture-todo-core` (app
+(protocol modules), `apps/chirp/crates/nmp-app-chirp` + `fixture-todo-core` (app
 cores). `nmp-codegen` produces the generated FFI crate; Chirp is the active
 product shell.
 
@@ -176,7 +176,7 @@ module crate **must** export these names — codegen reads them by convention
 | `Update` | enum | update variants (at minimum `ActionAccepted`) |
 
 `register()` is the composition root. From the canonical reference
-`apps/fixture/fixture-todo-core/src/lib.rs:122-146`:
+`apps/fixture/crates/fixture-todo-core/src/lib.rs:122-146`:
 
 ```rust
 pub fn register(app: &mut NmpApp) -> TodoStore {
@@ -234,7 +234,7 @@ migration is incomplete (see [15](15-codegen-and-ffi.md) and
 | NIP-77 sync reconciler | `nmp-nip77` | protocol noun |
 | `TodoRecord`, todo store | `fixture-todo-core` | app noun (non-Nostr proof) |
 | App-owned store (`Arc<Mutex<T>>`) | app-core crate | D4: app owns its state |
-| SwiftUI list cell, OS audio handle | `ios/Chirp` / shell | rendering / OS execution |
+| SwiftUI list cell, OS audio handle | `apps/chirp/ios` / shell | rendering / OS execution |
 
 The single test of correctness: a future app module can be added with **zero
 changes to `nmp-core`**.

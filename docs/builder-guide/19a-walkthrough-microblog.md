@@ -17,7 +17,7 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 
 ## The structural model
 
-This walkthrough mirrors `apps/fixture/fixture-todo-core/src/lib.rs` (the
+This walkthrough mirrors `apps/fixture/crates/fixture-todo-core/src/lib.rs` (the
 canonical reference) in structure. Two seams are wired in `register()`:
 `register_action` for the write path and `register_snapshot_projection` for
 the read path. A `KernelEventObserver` feeds raw kind:1 events into an

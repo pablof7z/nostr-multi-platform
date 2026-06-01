@@ -9,7 +9,7 @@
 **Subsystem deliverables.**
 
 - `nmp-codegen` extended to produce UniFFI scaffolding in the generated per-app crate.
-- `apps/chirp/nmp-app-chirp` and `apps/fixture/nmp-app-fixture` as the first real per-app crates.
+- `apps/chirp/crates/nmp-app-chirp` and `apps/fixture/crates/nmp-app-fixture` as the first real per-app crates.
 - `xcframework` build pipeline for each per-app crate.
 - Generated Swift wrappers: `useProfile`, `@Profile`, `useTimeline`, `@Wallet`, etc.
 - Generated FlatBuffers readers/writers for the canonical `AppUpdate` schema used by Swift/Kotlin/TS shells.
