@@ -60,7 +60,9 @@ dependencies {
 // ── cargo-ndk: cross-compile the JNI shim that links the SAME nmp-core kernel
 // the iOS app uses. Output lands directly in jniLibs for both shipped ABIs.
 val cargoNdk by tasks.registering(Exec::class) {
-    workingDir = rootProject.projectDir.parentFile // repo root
+    // Gradle root is apps/chirp/android; the cargo workspace is three levels
+    // up at the repo root (apps/chirp/android -> apps/chirp -> apps -> repo).
+    workingDir = rootProject.projectDir.parentFile.parentFile.parentFile // repo root
     val cargo = "${System.getProperty("user.home")}/.cargo/bin/cargo"
     val bin = if (OperatingSystem.current().isWindows) "$cargo.exe" else cargo
     // `--features marmot` mirrors the iOS `justfile` targets, which pass
@@ -72,7 +74,7 @@ val cargoNdk by tasks.registering(Exec::class) {
         bin, "ndk",
         "--manifest-path", "crates/nmp-android-ffi/Cargo.toml",
         "-t", "arm64-v8a", "-t", "x86_64",
-        "-o", "android/app/src/main/jniLibs",
+        "-o", "apps/chirp/android/app/src/main/jniLibs",
         "build", "--release", "--features", "marmot",
     )
 }

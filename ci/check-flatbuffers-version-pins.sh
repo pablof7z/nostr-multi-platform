@@ -25,7 +25,7 @@ require_line "Cargo.toml" 'flatbuffers = "25.12.19"'
 require_line "apps/chirp/ios/project.yml" "from: 25.12.19"
 require_line "apps/chirp/ios/Chirp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved" '"version" : "25.12.19"'
 require_line "apps/nmp-gallery/android/app/build.gradle.kts" 'implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")'
-require_line "android/app/build.gradle.kts" 'implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")'
+require_line "apps/chirp/android/app/build.gradle.kts" 'implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")'
 require_line "web/chirp/package.json" '"flatbuffers": "^25.9.23"'
 require_line "web/chirp/package-lock.json" '"version": "25.9.23"'
 
@@ -37,6 +37,6 @@ done < <(grep -rl "fun validateVersion" \
 while IFS= read -r file; do
     require_line "${file#"${REPO_ROOT}/"}" "FLATBUFFERS_25_2_10()"
 done < <(grep -rl "fun validateVersion" \
-    "${REPO_ROOT}/android/app/src/main/java/nmp" | sort)
+    "${REPO_ROOT}/apps/chirp/android/app/src/main/java/nmp" | sort)
 
 echo "flatbuffers-version-pins: OK"
