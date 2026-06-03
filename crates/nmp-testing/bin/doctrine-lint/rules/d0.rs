@@ -184,7 +184,7 @@ mod tests {
         // `/apps/` exemption clause covers them; these assertions pin the
         // post-step-11 (`docs/architecture/crate-boundaries.md` §5) locations.
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "apps/chirp/chirp-repl/src/actions.rs"
+            "apps/chirp/nmp-app-chirp/src/actions.rs"
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "apps/chirp/chirp-tui/src/feature_snapshot.rs"
@@ -213,7 +213,7 @@ mod tests {
             "crates/nmp-marmot/tests/round_trip.rs"
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "apps/chirp/chirp-repl/tests/actions_test.rs"
+            "apps/chirp/chirp-tui/tests/actions_test.rs"
         )));
     }
 

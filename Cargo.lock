@@ -982,18 +982,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chirp-repl"
-version = "0.2.1"
-dependencies = [
- "nmp-app-chirp",
- "nmp-chirp-config",
- "nmp-core",
- "nmp-ffi",
- "nostr",
- "serde_json",
-]
-
-[[package]]
 name = "chirp-tui"
 version = "0.2.1"
 dependencies = [

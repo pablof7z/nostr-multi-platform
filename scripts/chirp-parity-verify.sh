@@ -5,7 +5,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "== Rust parity checks =="
 cargo test -p nmp-wasm
-cargo test -p chirp-repl
 cargo test -p nmp-core t140_m2_follow_feed
 cargo test -p nmp-core contacts_fanout
 

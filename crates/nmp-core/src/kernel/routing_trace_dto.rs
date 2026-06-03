@@ -59,9 +59,10 @@
 //!
 //! `kind`-tagged lane objects match the existing pretty-printer's grammar
 //! (`Nip65/Write`, `ClassRouted/Other(explicit)/Explicit`, etc.) — the
-//! routing-trace shell smoke (`scripts/validate-routing.sh`) already pins
-//! that grammar; the JSON serialisation re-uses the same labels so the
-//! Swift / TypeScript decoders agree with the human-readable form.
+//! routing-trace integration test
+//! (`crates/nmp-testing/tests/routing_trace_real_nostr.rs`, `#[ignore]`'d)
+//! already pins that grammar; the JSON serialisation re-uses the same labels
+//! so the Swift / TypeScript decoders agree with the human-readable form.
 //!
 //! `lane_attempts` is the V-75 extension: one entry per lane that ran in
 //! the generic algorithm. Empty array when `explicit_targets_set` is true.
@@ -185,9 +186,10 @@ fn routing_lane_str(lane: RoutingLane) -> &'static str {
 }
 
 /// Render a single [`RoutingSource`] lane as a `{ "kind": "...", ...}` object.
-/// The string discriminants match the grammar in `apps/chirp/chirp-repl/src/render.rs`
-/// so the JSON and the pretty-printer agree (the validation shell script
-/// `scripts/validate-routing.sh` greps the pretty form).
+/// The string discriminants match the lane-attribution grammar pinned by the
+/// routing-trace integration test
+/// (`crates/nmp-testing/tests/routing_trace_real_nostr.rs`) so the JSON and the
+/// human-readable form agree.
 fn lane_to_json(source: &RoutingSource) -> Value {
     match source {
         RoutingSource::Nip65 { direction } => json!({
@@ -360,10 +362,11 @@ mod tests {
     #[test]
     fn all_lane_kinds_serialize_with_stable_discriminator() {
         // Doctrine guard: the seven `RoutingSource` variants each produce
-        // a `kind` discriminant matching the pretty-printer's grammar.
-        // The shell smoke (`scripts/validate-routing.sh`) greps the
-        // pretty form; the JSON form keeps the same labels so the two
-        // surfaces never drift.
+        // a `kind` discriminant matching the lane-attribution grammar.
+        // The routing-trace integration test
+        // (`crates/nmp-testing/tests/routing_trace_real_nostr.rs`) pins that
+        // grammar; the JSON form keeps the same labels so the two surfaces
+        // never drift.
         let cases = vec![
             (
                 Src::Nip65 {

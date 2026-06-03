@@ -4,7 +4,6 @@ members = [
     "apps/fixture/nmp-app-fixture",
     "apps/fixture/fixture-todo-core",
     "apps/chirp/chirp-tui",
-    "apps/chirp/chirp-repl",
     "apps/chirp/nmp-chirp-config",
     "apps/nmp-gallery/tui",
     "apps/nmp-gallery/desktop",

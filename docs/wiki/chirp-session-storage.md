@@ -19,7 +19,7 @@ sources:
 
 ## Session Storage Location
 
-chirp-tui and chirp-desktop store the session key in a simple file on disk rather than in the system keychain. TUI chirp-repl fails at mls-init with errSecMissingEntitlement (-34018) because unsigned binaries cannot access the macOS Keychain. Existing users must perform one re-login after the migration to file-based session storage.
+chirp-tui and chirp-desktop store the session key in a simple file on disk rather than in the system keychain. The TUI fails at mls-init with errSecMissingEntitlement (-34018) because unsigned binaries cannot access the macOS Keychain. Existing users must perform one re-login after the migration to file-based session storage.
 
 <!-- citations: [^d5f3f-1] [^d5f3f-2] [^34d8c-1] -->
 ## Implementation Reference
