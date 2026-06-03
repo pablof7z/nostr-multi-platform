@@ -35,8 +35,6 @@ pub struct Snapshot {
     #[serde(default)]
     pub profile: ProfileCard,
     #[serde(default)]
-    pub items: Vec<TimelineItem>,
-    #[serde(default)]
     pub active_account: Option<String>,
     #[serde(default)]
     pub accounts: Vec<AccountSummary>,
@@ -253,16 +251,70 @@ pub struct AppRelay {
     pub role: String,
 }
 
-/// `nmp.feed.home` modular timeline projection (simplified).
+/// `nmp.feed.home` OP-centric home-feed projection (simplified mirror).
 ///
-/// We mirror only the fields the desktop shell needs; the full type lives in
-/// `nmp-nip01` but is not directly accessible without adding a dependency.
+/// The kernel ships this projection as the typed `OpFeedSnapshot`
+/// (`nmp_feed::RootFeedSnapshot<TimelineEventCard, …>`): a `cards` array whose
+/// every entry is a `RootCard` wrapper — `{ "card": <event card>,
+/// "attribution": [...] }` — not a bare event card. We mirror only the
+/// `card` payload the desktop renders; the `attribution` list (reply
+/// provenance) and paging envelope are ignored. Every field is
+/// `#[serde(default)]` so a forward-compatible kernel never breaks the shell.
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct ModularTimelineSnapshot {
     #[serde(default)]
-    pub blocks: Vec<serde_json::Value>,
+    pub cards: Vec<RootCard>,
+}
+
+/// One entry in the `nmp.feed.home` `cards` array — the `RootCard` wrapper
+/// (`nmp_feed::RootCard`). The desktop only reads the inner render card.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct RootCard {
     #[serde(default)]
-    pub cards: Vec<serde_json::Value>,
+    pub card: TimelineEventCard,
+}
+
+/// Desktop-local mirror of `nmp_nip01::TimelineEventCard` (post-#922 shape).
+///
+/// Raw protocol data only — `author_pubkey` as hex, `created_at` as Unix
+/// seconds, `content` verbatim. The presentation layer resolves the display
+/// name via the snapshot's `resolved_profiles` map (aim.md §2). We keep the
+/// mirror desktop-local (rather than importing the nmp-nip01 type) so the
+/// shell's decode surface stays decoupled from the projection's internal
+/// type. `content_tree` / `relation_counts` are omitted — the desktop renders
+/// plain text. Every field is `#[serde(default)]`.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct TimelineEventCard {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub author_pubkey: String,
+    #[serde(default)]
+    pub kind: u32,
+    #[serde(default)]
+    pub created_at: u64,
+    #[serde(default)]
+    pub content: String,
+    /// Post-#922 cards carry no relay-count field; kept for forward
+    /// compatibility, defaults to 0 (the relay-multiplier badge never shows).
+    #[serde(default)]
+    pub relay_count: u32,
+    /// `Some` when this card surfaced because a NIP-18 repost superseded the
+    /// original note. `author_pubkey` / `content` name the *original* note;
+    /// this names the reposter.
+    #[serde(default)]
+    pub reposted_by: Option<RepostAttribution>,
+}
+
+/// Attribution payload for a repost-surfaced card (mirror of
+/// `nmp_nip01::RepostAttribution`). The reposter's raw hex pubkey and the
+/// original note's publish time.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct RepostAttribution {
+    #[serde(default)]
+    pub author_pubkey: String,
+    #[serde(default)]
+    pub note_created_at: u64,
 }
 
 /// `nmp.nip17.dm_inbox` projection payload.
@@ -303,4 +355,117 @@ pub struct ActionStageRow {
     pub stage: String,
     #[serde(default)]
     pub reason: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `nmp.feed.home` projection (typed `OpFeedSnapshot`) ships its cards
+    /// **wrapped** — each `cards[]` entry is a `RootCard` `{ "card": …,
+    /// "attribution": [...] }`, not a bare event card. This is the exact shape
+    /// `decode_op_feed_snapshot` → `serde_json::to_value` emits in the desktop
+    /// bridge. Regression guard for issue #920: an earlier mirror assumed bare
+    /// cards (`Vec<TimelineEventCard>`), which deserialized every entry to
+    /// all-defaults and left the Home tab blank.
+    #[test]
+    fn home_feed_decodes_wrapped_root_cards() {
+        let json = serde_json::json!({
+            "cards": [
+                {
+                    "card": {
+                        "id": "abc123",
+                        "author_pubkey": "deadbeef",
+                        "kind": 1,
+                        "created_at": 1_700_000_000_u64,
+                        "content": "hello nostr",
+                        "content_tree": { "nodes": [] },
+                        "relation_counts": {}
+                    },
+                    "attribution": []
+                }
+            ],
+            "page": null,
+            "metrics": null
+        });
+
+        let feed: ModularTimelineSnapshot =
+            serde_json::from_value(json).expect("wrapped root cards deserialize");
+
+        assert_eq!(feed.cards.len(), 1, "one root card");
+        let card = &feed.cards[0].card;
+        assert_eq!(card.id, "abc123");
+        assert_eq!(card.author_pubkey, "deadbeef");
+        assert_eq!(card.content, "hello nostr");
+        assert_eq!(card.created_at, 1_700_000_000);
+        assert!(card.reposted_by.is_none(), "ordinary note: no repost");
+    }
+
+    /// A repost-surfaced card carries `reposted_by` with the reposter's raw
+    /// pubkey and the original note's publish time.
+    #[test]
+    fn home_feed_decodes_repost_attribution() {
+        let json = serde_json::json!({
+            "cards": [
+                {
+                    "card": {
+                        "id": "note1",
+                        "author_pubkey": "originalauthor",
+                        "kind": 1,
+                        "created_at": 1_700_000_500_u64,
+                        "content": "the original note",
+                        "reposted_by": {
+                            "author_pubkey": "thereposter",
+                            "note_created_at": 1_700_000_100_u64
+                        }
+                    },
+                    "attribution": []
+                }
+            ]
+        });
+
+        let feed: ModularTimelineSnapshot =
+            serde_json::from_value(json).expect("repost card deserializes");
+        let repost = feed.cards[0]
+            .card
+            .reposted_by
+            .as_ref()
+            .expect("reposted_by present");
+        assert_eq!(repost.author_pubkey, "thereposter");
+        assert_eq!(repost.note_created_at, 1_700_000_100);
+    }
+
+    /// An empty feed (no cards yet — the "connecting" state) deserializes to an
+    /// empty `cards` vec, never an error.
+    #[test]
+    fn empty_home_feed_is_empty_cards() {
+        let json = serde_json::json!({ "cards": [], "page": null, "metrics": null });
+        let feed: ModularTimelineSnapshot =
+            serde_json::from_value(json).expect("empty feed deserializes");
+        assert!(feed.cards.is_empty());
+    }
+
+    /// `resolved_profiles` decodes into the desktop's `ProfileCard` mirror,
+    /// keyed by hex pubkey, so the Home tab can resolve display names.
+    #[test]
+    fn resolved_profiles_decodes_profile_cards() {
+        let json = serde_json::json!({
+            "deadbeef": {
+                "pubkey": "deadbeef",
+                "npub": "npub1deadbeef",
+                "display_name": "Alice",
+                "picture_url": null,
+                "nip05": "",
+                "about": "",
+                "has_profile": true,
+                "lnurl": null
+            }
+        });
+        let map: std::collections::HashMap<String, ProfileCard> =
+            serde_json::from_value(json).expect("resolved_profiles deserializes");
+        assert_eq!(
+            map.get("deadbeef").and_then(|p| p.display_name.as_deref()),
+            Some("Alice")
+        );
+    }
 }

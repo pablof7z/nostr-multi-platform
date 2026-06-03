@@ -12,11 +12,13 @@ use egui::{
     TopBottomPanel, Ui,
 };
 
+use std::collections::HashMap;
+
 use crate::bridge::AppRuntime;
 use crate::render::{effective_content, hex_color, note_body};
 use crate::snapshot::{
-    ActionStageRow, AppRelay, AuthorViewPayload, DmConversationSnapshot, Snapshot,
-    ThreadViewPayload, TimelineItem,
+    ActionStageRow, AppRelay, AuthorViewPayload, DmConversationSnapshot, ModularTimelineSnapshot,
+    ProfileCard, Snapshot, ThreadViewPayload, TimelineEventCard, TimelineItem,
 };
 use nmp_chirp_config;
 
@@ -105,12 +107,6 @@ impl DesktopApp {
                 {
                     snap.accounts = v;
                 }
-                // TODO(#920): wire home feed to nmp.feed.home. The kernel's
-                // `"timeline"` projection key was removed in PR #924; the home
-                // feed now ships solely as the typed `nmp.feed.home` OP-feed
-                // sidecar (extracted into projections below). `snap.items` is no
-                // longer populated, so the Home tab renders its placeholder until
-                // the OP-feed cards are mapped into the render path.
                 // Prefer the typed OP-feed sidecar when present (same as TUI).
                 if let Some(feed) = extract_home_feed_from_typed(&typed) {
                     snap.projections.insert("nmp.feed.home".to_string(), feed);
@@ -359,7 +355,13 @@ impl DesktopApp {
 
 impl DesktopApp {
     fn timeline(&mut self, ui: &mut Ui, snap: &Snapshot) {
-        if snap.items.is_empty() {
+        let feed: ModularTimelineSnapshot =
+            snap.projection("nmp.feed.home").unwrap_or_default();
+        // Pre-merged display-name map keyed by hex pubkey (kernel projection).
+        let profiles: HashMap<String, ProfileCard> =
+            snap.projection("resolved_profiles").unwrap_or_default();
+
+        if feed.cards.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(40.0);
                 ui.label(RichText::new("Connecting to relays…").size(15.0).weak());
@@ -371,8 +373,8 @@ impl DesktopApp {
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for item in &snap.items {
-                    note_card(ui, item, &mut self.tab, &self.bridge);
+                for entry in &feed.cards {
+                    feed_card(ui, &entry.card, &profiles, &mut self.tab, &self.bridge);
                     ui.add_space(6.0);
                 }
             });
@@ -1011,6 +1013,100 @@ impl DesktopApp {
 // ---------------------------------------------------------------------------
 // Note card widget
 // ---------------------------------------------------------------------------
+
+/// Resolve a hex pubkey to a display label via the kernel's pre-merged
+/// `resolved_profiles` map, falling back to a truncated npub when no kind:0
+/// display name has arrived (aim.md §2 — presentation owns the fallback).
+fn display_label(pubkey: &str, profiles: &HashMap<String, ProfileCard>) -> String {
+    profiles
+        .get(pubkey)
+        .and_then(|p| p.display_name.as_deref())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| nmp_core::display::short_npub(pubkey))
+}
+
+/// Render one home-feed root card (`nmp.feed.home` → `TimelineEventCard`).
+///
+/// Display name is resolved from the snapshot's `resolved_profiles` map; the
+/// card itself carries only raw protocol data (hex pubkey, Unix `created_at`,
+/// verbatim `content`).
+fn feed_card(
+    ui: &mut Ui,
+    card: &TimelineEventCard,
+    profiles: &HashMap<String, ProfileCard>,
+    tab: &mut AppTab,
+    bridge: &AppRuntime,
+) {
+    let author_display = display_label(&card.author_pubkey, profiles);
+    let initials =
+        nmp_core::display::avatar_initials(&nmp_core::display::to_npub(&card.author_pubkey));
+    let color = nmp_core::display::avatar_color_hex(&card.author_pubkey);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let created_at_display = nmp_core::display::format_ago_secs(now, card.created_at);
+
+    Frame::group(ui.style())
+        .fill(ui.visuals().faint_bg_color)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                avatar(ui, &initials, &color);
+                ui.add_space(6.0);
+                ui.vertical(|ui| {
+                    // Repost attribution line: "↻ reposted by <name>".
+                    if let Some(repost) = &card.reposted_by {
+                        let reposter = display_label(&repost.author_pubkey, profiles);
+                        ui.label(
+                            RichText::new(format!("↻ reposted by {reposter}"))
+                                .small()
+                                .weak()
+                                .color(Color32::from_rgb(148, 163, 184)),
+                        );
+                    }
+                    ui.horizontal(|ui| {
+                        // Clickable author name → open author view.
+                        if ui.button(RichText::new(&author_display).strong()).clicked() {
+                            *tab = AppTab::Author(card.author_pubkey.clone());
+                            bridge.open_author(&card.author_pubkey);
+                        }
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.label(RichText::new(&created_at_display).weak().small());
+                        });
+                    });
+                    let (text, is_repost) = effective_content(&card.content);
+                    if is_repost {
+                        ui.label(
+                            RichText::new("↩ repost")
+                                .small()
+                                .weak()
+                                .color(Color32::from_rgb(148, 163, 184)),
+                        );
+                    }
+                    if !text.is_empty() {
+                        // Clickable body → open thread on the card's event id.
+                        let response = ui.label(text.as_ref());
+                        if response.clicked() {
+                            *tab = AppTab::Thread(card.id.clone());
+                            bridge.open_thread(&card.id);
+                        }
+                        note_body(ui, text.as_ref());
+                    }
+                    // Like / Zap row.
+                    ui.horizontal(|ui| {
+                        if ui.small_button("❤ Like").clicked() {
+                            let _ = bridge.react(&card.id, "+");
+                        }
+                        if ui.small_button("⚡ Zap").clicked() {
+                            // Default amount: 21 sats = 21,000 msats.
+                            let _ = bridge.zap(&card.author_pubkey, 21_000, &card.id);
+                        }
+                    });
+                });
+            });
+        });
+}
 
 fn note_card(ui: &mut Ui, item: &TimelineItem, tab: &mut AppTab, bridge: &AppRuntime) {
     let author_display = nmp_core::display::short_npub(&item.author_pubkey);
