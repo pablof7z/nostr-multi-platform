@@ -15,9 +15,9 @@ use std::ffi::{c_char, c_int};
 /// C ABI symbol kept stable (Swift / Kotlin / TUI call it). Internally it
 /// sends `ActorCommand::OpenAuthor` with the Chirp-specific social kinds
 /// {1, 6} — the host-declared kind set that `nmp-core` no longer hardcodes
-/// (D0-clean, V-68 Stage 2 author-half). A future typed-FFI surface (V-48)
-/// can let the host pass its own kinds; today this is the Chirp-specific
-/// declaration site.
+/// (D0-clean). V-68 Stage 2 (#911): replace with
+/// `nmp_app_open_interest(filter_json, consumer_id, scope)` once the ADR is
+/// written and merged.
 ///
 /// D0-precedent: mirrors `nmp_app_open_thread` (below) and
 /// `nmp_app_open_timeline` in `identity.rs`, both of which already carry
@@ -48,12 +48,12 @@ pub extern "C" fn nmp_app_open_author(app: *mut NmpApp, pubkey: *const c_char) {
 /// C ABI symbol kept stable (Swift / Kotlin / TUI call it). Internally it
 /// sends `ActorCommand::OpenThread` with the Chirp-specific social kinds
 /// {1, 6} — the host-declared kind set that `nmp-core` no longer hardcodes
-/// (D0-clean, V-68 Stage 2). A future typed-FFI surface (V-48) can let the
-/// host pass its own kinds; today this is the Chirp-specific declaration site.
+/// (D0-clean). V-68 Stage 2 (#911): replace with
+/// `nmp_app_open_interest(filter_json, consumer_id, scope)` once the ADR is
+/// written and merged.
 ///
 /// D0-precedent: mirrors `nmp_app_open_timeline` in `identity.rs`, which
 /// already carries `BTreeSet::from([1u32, 6u32])` with the same rationale.
-/// Typed-FFI migration is deferred pending the iOS leg (V-68 author-half).
 #[no_mangle]
 pub extern "C" fn nmp_app_open_thread(app: *mut NmpApp, event_id: *const c_char) {
     let Some(app) = app_ref(app) else {
