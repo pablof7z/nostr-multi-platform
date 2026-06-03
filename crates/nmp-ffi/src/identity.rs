@@ -85,30 +85,6 @@ pub extern "C" fn nmp_app_sign_event_for_return(
         .into_raw()
 }
 
-/// Register a non-active signer from an nsec bech32 string.
-///
-/// `make_active = 0` registers the signer WITHOUT activating it — the seam for
-/// an agent / secondary key that must sign (e.g. a Blossom upload) without
-/// disturbing the user's active account. `make_active = 1` is identical to
-/// [`nmp_app_signin_nsec`].
-///
-/// D13 — the nsec is wrapped in `Zeroizing` the instant it is copied out of
-/// the C string, exactly like `nmp_app_signin_nsec`; no raw key bytes are
-/// retained past the command dispatch.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_add_signer_nsec(app: *mut NmpApp, nsec: *const c_char, make_active: u8) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(nsec) = c_string_argument(nsec).map(zeroize::Zeroizing::new) else {
-        return;
-    };
-    app.send_cmd(ActorCommand::AddSigner {
-        source: nmp_core::SignerSource::LocalNsec(nsec),
-        make_active: make_active != 0,
-    });
-}
 
 #[no_mangle]
 pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char) {

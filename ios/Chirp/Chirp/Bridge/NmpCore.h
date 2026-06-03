@@ -73,10 +73,6 @@ void nmp_app_close_thread(void *app, const char *event_id);
 // `nmp-app-template` registers from `nmp_app_chirp_register`.
 void nmp_app_signin_nsec(void *app, const char *secret);
 void nmp_app_signin_bunker(void *app, const char *uri);
-// Register an nsec signer without making it active (make_active=0) or as the
-// active account (make_active=1, equivalent to nmp_app_signin_nsec).
-// Use make_active=0 for agent / secondary keys that sign but are not the user.
-void nmp_app_add_signer_nsec(void *app, const char *nsec, uint8_t make_active);
 // Sign an unsigned event with the named account's signer and park the result
 // in the snapshot's signed_events projection.  Returns a correlation_id string
 // that the caller uses to retrieve the signed event JSON.  Free with

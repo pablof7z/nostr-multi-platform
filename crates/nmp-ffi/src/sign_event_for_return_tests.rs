@@ -1,5 +1,5 @@
 //! D13 sign-and-return — end-to-end FFI integration for
-//! `nmp_app_sign_event_for_return` + `nmp_app_add_signer_nsec`.
+//! `nmp_app_sign_event_for_return`.
 //!
 //! These drive a REAL sign-in and a REAL sign-and-return through the actor
 //! thread, then read the signed event back out of the `signed_events` snapshot
@@ -197,7 +197,7 @@ fn sign_event_for_return_without_account_returns_error_verdict() {
 }
 
 #[test]
-fn add_signer_nsec_registers_inactive_signer_usable_by_pubkey() {
+fn sign_by_explicit_pubkey_uses_named_signer() {
     let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_frame_capture();
 
@@ -205,10 +205,10 @@ fn add_signer_nsec_registers_inactive_signer_usable_by_pubkey() {
     super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_frame_callback));
     nmp_app_start(app, 0, 256, 4);
 
-    // Register the key WITHOUT activating it (make_active = 0) — the agent /
-    // secondary-key path. Then sign explicitly by its pubkey.
+    // Sign in with the test nsec (nmp_app_signin_nsec is the one registration
+    // path — no separate "register without activating" FFI is needed).
     let nsec = std::ffi::CString::new(TEST_NSEC).unwrap();
-    super::identity::nmp_app_add_signer_nsec(app, nsec.as_ptr(), 0);
+    super::identity::nmp_app_signin_nsec(app, nsec.as_ptr());
 
     let pubkey = hex_pubkey(TEST_NSEC);
     let draft = r#"{"kind":24242,"content":"Upload image","tags":[["x","abc"]]}"#;
@@ -223,11 +223,11 @@ fn add_signer_nsec_registers_inactive_signer_usable_by_pubkey() {
     super::capability::nmp_app_free_string(cid_ptr);
 
     let entry = wait_for_signed_event(&rx, &correlation_id)
-        .expect("the inactive signer must still sign by pubkey");
+        .expect("signing by explicit pubkey must produce a result");
     assert_eq!(
         entry.get("ok").and_then(serde_json::Value::as_bool),
         Some(true),
-        "a non-active registered signer signs when named by pubkey"
+        "sign_event_for_return must succeed when the named account is registered"
     );
     let signed_json = entry.get("signed_json").and_then(serde_json::Value::as_str).unwrap();
     let event: serde_json::Value = serde_json::from_str(signed_json).unwrap();
