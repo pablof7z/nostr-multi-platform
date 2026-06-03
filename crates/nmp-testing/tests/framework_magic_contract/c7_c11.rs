@@ -165,7 +165,6 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
 #[test]
 fn c11_bunker_url_and_nsec_creation_complete_via_actions() {
     use nmp_signers::{parse_bunker_uri, AccountManager, LocalKeySigner, Signer};
-    use std::time::Duration;
 
     // --- bunker:// URI parse ------------------------------------------------
     let uri = "bunker://\
@@ -204,7 +203,7 @@ fn c11_bunker_url_and_nsec_creation_complete_via_actions() {
     let pubkey_hex = signer.pubkey().to_hex();
     assert_eq!(pubkey_hex.len(), 64, "generated pubkey must be 64-char hex");
 
-    let mut manager = AccountManager::new().with_post_condition_timeout(Duration::from_millis(500));
+    let mut manager = AccountManager::new();
     let id = manager.add(Arc::new(signer)).expect("add must succeed");
     assert_eq!(id, pubkey_hex, "account id must equal pubkey hex");
     assert_eq!(manager.accounts().len(), 1);

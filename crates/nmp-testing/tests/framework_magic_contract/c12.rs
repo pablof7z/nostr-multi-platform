@@ -55,9 +55,8 @@ impl ActiveChangeObserver for EventCapture {
 #[test]
 fn c12_account_switch_rebinds_views_without_imperative_dance() {
     use nmp_core::subs::{AccountId, CompileTrigger};
-    use std::time::Duration;
 
-    let mut manager = AccountManager::new().with_post_condition_timeout(Duration::from_millis(500));
+    let mut manager = AccountManager::new();
 
     let capture = EventCapture::new();
     manager.observe(Arc::clone(&capture) as Arc<dyn ActiveChangeObserver>);

@@ -347,8 +347,7 @@ impl ActiveChangeObserver for RecordingObserver {
 
 #[test]
 fn remove_active_account_clears_state_atomically() {
-    let mut mgr = AccountManager::new()
-        .with_post_condition_timeout(std::time::Duration::from_millis(500));
+    let mut mgr = AccountManager::new();
     let recorder = Arc::new(RecordingObserver::default());
     mgr.observe(recorder.clone());
 
@@ -403,8 +402,7 @@ fn remove_active_account_clears_state_atomically() {
 fn remove_non_active_account_does_not_fire_observer() {
     // Adjacent invariant: removing a NON-active account never fires
     // active-change observers (the active signer didn't change).
-    let mut mgr = AccountManager::new()
-        .with_post_condition_timeout(std::time::Duration::from_millis(500));
+    let mut mgr = AccountManager::new();
     let recorder = Arc::new(RecordingObserver::default());
     mgr.observe(recorder.clone());
 
