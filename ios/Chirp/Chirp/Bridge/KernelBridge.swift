@@ -313,20 +313,32 @@ final class KernelHandle {
     /// Publish a kind:1 note (optionally a reply) through the kernel's
     /// `ActionModule` family. Routes via the single namespace-keyed
     /// `nmp_app_dispatch_action` entry point (`"nmp.publish"` namespace,
-    /// `PublishAction::PublishNote` JSON) — the per-verb `nmp_app_publish_note`
-    /// C symbol has been deleted. PR-A: returns the synchronous dispatch
-    /// result so the caller can drive a spinner keyed on the correlation_id
-    /// (or surface the error envelope to the user). The terminal verdict
-    /// arrives through `projections["action_results"]` on a later snapshot
-    /// tick — match by `correlation_id` to clear the spinner.
+    /// `PublishAction::PublishRaw` JSON, kind:1) — the kind-specific
+    /// `PublishAction::PublishNote` variant was deleted in #916, so the host
+    /// now constructs the kind:1 envelope (and any NIP-10 reply tags) itself.
+    /// PR-A: returns the synchronous dispatch result so the caller can drive a
+    /// spinner keyed on the correlation_id (or surface the error envelope to the
+    /// user). The terminal verdict arrives through
+    /// `projections["action_results"]` on a later snapshot tick — match by
+    /// `correlation_id` to clear the spinner.
+    ///
+    /// Reply tagging: a minimal NIP-10 `["e", <id>, "", "reply"]` marker is
+    /// emitted for replies. Full NIP-10 root forwarding needs the parent event
+    /// from the snapshot (`nmp-nip01`'s `Note::reply_to` is the reference) and
+    /// is a follow-up; the minimal reply marker is correct for now.
     @discardableResult
     func publishNote(content: String, replyToID: String?) -> DispatchResult {
+        var tags: [[String]] = []
+        if let replyToID {
+            tags = [["e", replyToID, "", "reply"]]
+        }
         let inner: [String: Any] = [
+            "kind": 1,
+            "tags": tags,
             "content": content,
-            "reply_to_id": replyToID ?? NSNull(),
             "target": "Auto",
         ]
-        return dispatchAction(namespace: "nmp.publish", body: ["PublishNote": inner])
+        return dispatchAction(namespace: "nmp.publish", body: ["PublishRaw": inner])
     }
 
     /// Publish a kind:6 repost of the given note through `PublishRaw`.
