@@ -466,6 +466,13 @@ pub enum ActorCommand {
         tags: Vec<Vec<String>>,
         content: String,
         target: crate::publish::PublishTarget,
+        /// When `Some(pubkey)`, the actor signs with the account whose pubkey
+        /// matches — looked up across BOTH local keys and remote signers — via
+        /// `sign_with_account_nonblocking`, instead of the active account. This
+        /// is the `PublishAction::PublishRaw` signer selector: it lets an agent
+        /// / per-podcast key publish without ever becoming the active account.
+        /// `None` preserves the legacy behaviour: sign with the active account.
+        signer_pubkey: Option<String>,
         correlation_id: Option<String>,
     },
     /// T66a publish — sign a kind:0 profile metadata event with the active
