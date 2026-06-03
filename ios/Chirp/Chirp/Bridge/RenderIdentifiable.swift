@@ -6,11 +6,11 @@ public protocol RenderIdentifiable {
     func rendersIdentically(_ other: Self) -> Bool
 }
 
-struct EquatableRow<Model: RenderIdentifiable, Content: View>: View, Equatable {
+struct EquatableRow<Model: RenderIdentifiable & Sendable, Content: View>: View, Equatable {
     let model: Model
     @ViewBuilder let content: (Model) -> Content
     var body: some View { content(model) }
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.model.rendersIdentically(rhs.model)
     }
 }

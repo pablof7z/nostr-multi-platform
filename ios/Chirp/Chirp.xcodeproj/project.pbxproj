@@ -83,6 +83,7 @@
 		E082E49B38D53ECF2328D109 /* FeedWindow.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8D6691C36F18AFB0ECF923F /* FeedWindow.generated.swift */; };
 		E439898111D51048950A9505 /* NostrMentionChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94EC16BCFE57ED331BD311DC /* NostrMentionChip.swift */; };
 		E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */; };
+		E92487F0CC342196B1A26C35 /* RenderIdentifiable.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8FF0C439EC436967C743679 /* RenderIdentifiable.swift */; };
 		EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */; };
 		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
 		EEDE116FC91062BBFA1DA249 /* GroupChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22815F76AA03DAE183DBA656 /* GroupChatView.swift */; };
@@ -197,6 +198,7 @@
 		E56C84F9A5DD9E85138EE1B1 /* HighlightEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HighlightEmbed.swift; sourceTree = "<group>"; };
 		E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpApp.swift; sourceTree = "<group>"; };
 		E62A6E7134CA2EED2577DA50 /* ChirpCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpCapabilities.swift; sourceTree = "<group>"; };
+		E8FF0C439EC436967C743679 /* RenderIdentifiable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderIdentifiable.swift; sourceTree = "<group>"; };
 		ED03F335A2A3AA5CE4089C57 /* KernelTypes.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelTypes.generated.swift; sourceTree = "<group>"; };
 		EE8AC3C9D7E8BFDA3A272490 /* NostrContentGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrContentGrouping.swift; sourceTree = "<group>"; };
 		F084A0E109F23A641626E2F9 /* MarmotInviteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotInviteSheet.swift; sourceTree = "<group>"; };
@@ -384,6 +386,7 @@
 				24E2340660A274A48B1B782E /* NostrProfileHost.swift */,
 				5A015A4A241347592C09EC0B /* ProfileWire.swift */,
 				64B43B029A84B84319DD0A7A /* PublicGroupBridge.swift */,
+				E8FF0C439EC436967C743679 /* RenderIdentifiable.swift */,
 				C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */,
 				982CCD1D07590E6CD8AC624B /* TypedHomeFeedDecoder.swift */,
 				2B1691321A67C8F53BD5CDC6 /* Generated */,
@@ -646,6 +649,7 @@
 				9376A1F186AFC42A2D7BCDA4 /* PublicGroupBridge.swift in Sources */,
 				B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */,
 				B6D3716BDDDD6ECC762599C3 /* RelaySettingsView.swift in Sources */,
+				E92487F0CC342196B1A26C35 /* RenderIdentifiable.swift in Sources */,
 				72E6C28DE61F97428F972267 /* RootShell.swift in Sources */,
 				C5A3FCE92DF36AD33D083F83 /* SettingsHubView.swift in Sources */,
 				D08889E779C6991EF8540EAC /* ThreadNoteRow.swift in Sources */,
