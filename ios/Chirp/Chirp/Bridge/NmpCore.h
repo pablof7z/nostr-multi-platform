@@ -27,6 +27,16 @@ void nmp_app_reset(void *app);
 void nmp_app_open_author(void *app, const char *pubkey);
 void nmp_app_open_thread(void *app, const char *event_id);
 void nmp_app_open_firehose_tag(void *app, const char *tag);
+// M2 (ADR-0042) — generic feed-subscription surface that replaces
+// open_author / open_thread / open_firehose_tag. `filter_json` is a verbatim
+// NIP-01 REQ filter (e.g. {"kinds":[1,6],"authors":["<hex>"]}); the app owns
+// the kind set (D0). `consumer_id` refcounts owners across call sites passing
+// the same filter; `scope` is 0 = ActiveAccount (re-route on switch),
+// 1 = Global (account-agnostic, e.g. a hashtag firehose).
+void nmp_app_open_interest(void *app, const char *filter_json,
+                           const char *consumer_id, uint32_t scope);
+void nmp_app_close_interest(void *app, const char *filter_json,
+                            const char *consumer_id, uint32_t scope);
 // F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
 // gate for the cached kind:0 profile. Pass `1` when the user explicitly opened
 // this author's profile screen or pulled to refresh; pass `0` for background /

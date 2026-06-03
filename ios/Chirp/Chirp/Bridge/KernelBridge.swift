@@ -10,6 +10,15 @@ let kbLog = Logger(subsystem: "io.f7z.chirp", category: "KernelBridge")
 /// renamed or retyped fields (see `update.rs` contract comment).
 private let KERNEL_SCHEMA_VERSION: UInt32 = 1
 
+/// M2 (ADR-0042) — account-context scope for `openInterest` / `closeInterest`.
+/// Mirrors the `scope` `uint32_t` argument of `nmp_app_open_interest`.
+enum InterestScope: UInt32 {
+    /// Re-routes on account switch — author / thread feeds bound to "me".
+    case activeAccount = 0
+    /// Account-agnostic — hashtag firehoses and other global feeds.
+    case global = 1
+}
+
 /// Thin C-FFI wrapper around the `nmp_core` static library.
 final class KernelHandle {
     let raw: UnsafeMutableRawPointer
@@ -132,6 +141,31 @@ final class KernelHandle {
 
     func openFirehose(tag: String) {
         tag.withCString { nmp_app_open_firehose_tag(raw, $0) }
+    }
+
+    /// M2 (ADR-0042) — generic feed-subscription open. `filterJSON` is a
+    /// verbatim NIP-01 REQ filter (the app owns the kind set, e.g.
+    /// `{"kinds":[1,6],"authors":["<hex>"]}`); `consumerID` refcounts owners so
+    /// repeated opens of the same filter share one live subscription; `scope`
+    /// is `.activeAccount` (re-route on switch) or `.global` (account-agnostic).
+    /// Generic replacement for `openAuthor` / `openThread` / `openFirehose`.
+    func openInterest(filterJSON: String, consumerID: String, scope: InterestScope) {
+        filterJSON.withCString { filterPtr in
+            consumerID.withCString { consumerPtr in
+                nmp_app_open_interest(raw, filterPtr, consumerPtr, scope.rawValue)
+            }
+        }
+    }
+
+    /// M2 (ADR-0042) — detach one owner from a feed interest opened with
+    /// `openInterest`. The live subscription is dropped on the last owner's
+    /// close. Pass the SAME `filterJSON` / `consumerID` / `scope` the open used.
+    func closeInterest(filterJSON: String, consumerID: String, scope: InterestScope) {
+        filterJSON.withCString { filterPtr in
+            consumerID.withCString { consumerPtr in
+                nmp_app_close_interest(raw, filterPtr, consumerPtr, scope.rawValue)
+            }
+        }
     }
 
     /// F-TTL — `force` controls the lazy re-verification gate for the cached
