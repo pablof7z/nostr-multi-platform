@@ -59,6 +59,7 @@ mod op_feed_generated;
 
 pub mod build;
 pub mod decode;
+pub mod flat_feed;
 pub mod kinds;
 pub mod meta_timeline;
 mod note_relations;
@@ -71,6 +72,9 @@ pub mod visible_relations;
 
 pub use build::{Note, NoteBuildError, NoteBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
+pub use flat_feed::{
+    author_feed_predicate, thread_feed_predicate, FlatFeed, FlatFeedPredicate,
+};
 pub use kinds::KIND_SHORT_NOTE;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,

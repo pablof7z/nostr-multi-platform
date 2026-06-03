@@ -135,6 +135,26 @@ counts/primary-action ← local derivation.
 `should_store_event` generalisation vs. feed-engine-side `EventGate` + a
 store-retain hook). Resolve before the delete-cascade.
 
+**Refinement (2026-06-03, code-grounded):** the "reuse `register_op_feed`"
+decision is only PARTLY applicable. `RootIndexedFeed` (the engine behind
+`nmp.feed.home`) is **roots-only** — its own module doc (`nmp-feed/src/root_indexed.rs:3`):
+"a followed author's replies appear only as *attribution* metadata." A profile
+screen must show ALL of one author's kind:1/6 as TOP-LEVEL rows (replies-to-others
+included), which root-indexing structurally cannot express. So the **author**
+feed needs a NEW flat `FeedController` (InterestShape-parameterised, own key
+`nmp.feed.author.<pk>`), reusing the `FeedRegistry` + `KernelEventObserver`
+seam but NOT the `RootIndexedFeed` engine. The **thread** feed is root-centric
+and MAY fit `RootIndexedFeed` with an injected `event_gate`
+(`kind∈{1,6} && #e==<id>`) + own key — confirm during build. ProfileView also
+reads `.profile`/`.primaryAction`/`.noteCountDisplay` off `author_view`; those
+compose from `claimed_profiles` + local follow-state + feed length respectively.
+This makes the read-path half a multi-component BUILD (flat feed type +
+FlatBuffers schema + codegen + Swift rewrite of two screens), whose GREEN
+checkpoint ("screens still show notes") needs a running iOS build —
+environmentally blocked on the current dev machine (Xcode-26-beta `UIUtilities`
+workaround absent). Sequenced as its own PR; see
+`docs/perf/pending-user-decisions.md` (V-112 entry, 2026-06-03).
+
 **Scope of the delete-cascade (forced once the 5 symbols go):** 5 ActorCommand
 variants + arms; kernel methods `open_author`/`author_requests`/`close_author`/
 `open_firehose_tag`/`firehose_requests`/`open_thread`/`close_thread`/
