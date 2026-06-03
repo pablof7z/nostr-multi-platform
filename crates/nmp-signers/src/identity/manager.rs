@@ -1,15 +1,13 @@
 //! `AccountManager` — multi-account runtime state with synchronous
-//! active-switch + applesauce-style signer post-conditions.
+//! active-switch.
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
-use nmp_core::substrate::UnsignedEvent;
 use nostr::PublicKey;
 use serde::{Deserialize, Serialize};
 
-use crate::signers::{Signer, SignerError};
+use crate::signers::Signer;
 
 /// Identity id is the hex-encoded pubkey of the account (matches NDK + applesauce).
 pub type IdentityId = String;
@@ -19,18 +17,12 @@ pub type IdentityId = String;
 pub enum AccountError {
     /// No account exists with this id.
     NotFound(IdentityId),
-    /// The signer's `sign(test_template)` post-condition failed — refused.
-    SignerMismatch(String),
-    /// The signer's `sign(test_template)` itself errored.
-    SignerError(SignerError),
 }
 
 impl std::fmt::Display for AccountError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NotFound(id) => write!(f, "account not found: {id}"),
-            Self::SignerMismatch(m) => write!(f, "signer mismatch: {m}"),
-            Self::SignerError(e) => write!(f, "signer error: {e}"),
         }
     }
 }
@@ -68,10 +60,6 @@ pub struct AccountManager {
     order: Vec<IdentityId>,
     active: Option<IdentityId>,
     observers: Vec<Arc<dyn ActiveChangeObserver>>,
-    /// Timeout for the per-account add-time signer post-condition.  Default
-    /// 5s — generous because NIP-46 round-trips can be slow on cold
-    /// connections.  Can be lowered for tests via `with_post_condition_timeout`.
-    post_condition_timeout: Duration,
 }
 
 impl std::fmt::Debug for AccountManager {
@@ -92,59 +80,27 @@ impl Default for AccountManager {
 
 impl AccountManager {
     /// Empty manager.
-    #[must_use] 
+    #[must_use]
     pub fn new() -> Self {
         Self {
             accounts: HashMap::new(),
             order: Vec::new(),
             active: None,
             observers: Vec::new(),
-            post_condition_timeout: Duration::from_secs(5),
         }
     }
 
-    /// Override the add-time post-condition timeout (test convenience).
-    #[must_use] 
-    pub fn with_post_condition_timeout(mut self, timeout: Duration) -> Self {
-        self.post_condition_timeout = timeout;
-        self
-    }
-
-    /// Add an account.  Runs the applesauce `SignerMismatchError` post-condition:
-    /// signs a fixed test template and verifies the returned pubkey + computed
-    /// id match.  Refuses the account if the check fails — protects against
-    /// malicious or buggy signers that mutate the event before signing.
+    /// Add an account.  Inserts the signer into the roster.
     ///
     /// **PD-004 (same nsec = same account):** `IdentityId` is permanently
     /// `pubkey_hex`.  Adding a pubkey that is already known is an idempotent
-    /// no-op — it returns the existing id, keeps the originally-installed
-    /// signer, and does NOT re-run the post-condition.  NMP explicitly rejects
-    /// the applesauce "two accounts for one pubkey" model: one pubkey is always
-    /// exactly one account slot (at most a future relay-policy merge — the
-    /// `Signer` trait carries no policy today, so nothing to merge yet).
+    /// no-op — it returns the existing id and keeps the originally-installed
+    /// signer.  NMP explicitly rejects the applesauce "two accounts for one
+    /// pubkey" model: one pubkey is always exactly one account slot (at most a
+    /// future relay-policy merge — the `Signer` trait carries no policy today,
+    /// so nothing to merge yet).
     #[must_use]
     pub fn add(&mut self, signer: Arc<dyn Signer>) -> Result<IdentityId, AccountError> {
-        let pubkey = signer.pubkey();
-        let id = pubkey.to_hex();
-        if self.accounts.contains_key(&id) {
-            return Ok(id);
-        }
-        self.verify_signer(&signer)?;
-        self.accounts.insert(id.clone(), signer);
-        self.order.push(id.clone());
-        Ok(id)
-    }
-
-    /// Add an account WITHOUT the add-time signature post-condition.  Use
-    /// only for restoration paths where the signer cannot perform a sign
-    /// operation eagerly (e.g. NIP-46 with no connected transport).  Callers
-    /// MUST run their own verification before relying on the signer.
-    ///
-    /// **PD-004:** same idempotent one-account-per-pubkey contract as
-    /// [`AccountManager::add`] — a known pubkey returns its existing id and
-    /// keeps the originally-installed signer.
-    #[must_use]
-    pub fn add_unverified(&mut self, signer: Arc<dyn Signer>) -> Result<IdentityId, AccountError> {
         let pubkey = signer.pubkey();
         let id = pubkey.to_hex();
         if self.accounts.contains_key(&id) {
@@ -248,73 +204,9 @@ impl AccountManager {
     }
 
     /// Number of registered observers (test introspection).
-    #[must_use] 
+    #[must_use]
     pub fn observer_count(&self) -> usize {
         self.observers.len()
     }
-
-    #[allow(clippy::similar_names)]
-    fn verify_signer(&self, signer: &Arc<dyn Signer>) -> Result<(), AccountError> {
-        let pubkey = signer.pubkey();
-        let template = UnsignedEvent {
-            pubkey: pubkey.to_hex(),
-            kind: 1,
-            tags: vec![vec!["t".to_string(), "nmp-post-condition".to_string()]],
-            content: "nmp-signers post-condition probe".to_string(),
-            created_at: 0,
-        };
-
-        // ----- Pre-compute the canonical event id (applesauce / synthesis
-        // §1.1 mandatory post-condition).  If the signer mutates ANY field of
-        // the event before signing — content, tags, kind, created_at, even
-        // tag ordering — the id will not match and we refuse the account.
-        let expected_id = compute_event_id(&template).ok_or_else(|| {
-            AccountError::SignerMismatch(
-                "could not pre-compute event id for post-condition probe".to_string(),
-            )
-        })?;
-
-        let signed = signer
-            .sign(template.clone())
-            .wait(self.post_condition_timeout)
-            .map_err(AccountError::SignerError)?;
-
-        // ----- Mandatory post-conditions (synthesis §1.1).
-        if signed.unsigned.pubkey != pubkey.to_hex() {
-            return Err(AccountError::SignerMismatch(format!(
-                "signed pubkey {} != claimed {}",
-                signed.unsigned.pubkey,
-                pubkey.to_hex()
-            )));
-        }
-        if signed.id != expected_id {
-            return Err(AccountError::SignerMismatch(format!(
-                "signer mutated event before signing (id mismatch): expected {expected_id}, got {}",
-                signed.id
-            )));
-        }
-        Ok(())
-    }
-}
-
-/// Pre-compute the canonical Nostr event id for an `UnsignedEvent` template.
-///
-/// Uses `nostr::EventBuilder` to drive the same hashing path the signer would
-/// use.  Returns `None` if any field is malformed in a way that prevents id
-/// computation (invalid pubkey hex, malformed tags) — the caller treats `None`
-/// as a hard refusal.
-fn compute_event_id(template: &UnsignedEvent) -> Option<String> {
-    use nostr::{EventBuilder, Kind, PublicKey, Tag, Timestamp};
-    let pk = PublicKey::from_hex(&template.pubkey).ok()?;
-    let tags: Vec<Tag> = template
-        .tags
-        .iter()
-        .filter_map(|t| Tag::parse(t).ok())
-        .collect();
-    let mut unsigned = EventBuilder::new(Kind::from_u16(u16::try_from(template.kind).unwrap_or(u16::MAX)), &template.content)
-        .tags(tags)
-        .custom_created_at(Timestamp::from(template.created_at))
-        .build(pk);
-    Some(unsigned.id().to_hex())
 }
 

@@ -21,60 +21,6 @@ backends are policy + capability bridges, not substrate. Rationale:
 `nmp-signers` supplies the signer implementations the kernel composes;
 the kernel never imports a secret key, an `nsec`, or a `bunker://` URL.
 
-## `AddSigner` — the one way a signer enters the roster
-
-There is a single primitive for registering a signer:
-
-```rust
-ActorCommand::AddSigner { source: SignerSource, make_active: bool }
-```
-
-`SignerSource` names where the signing material comes from:
-
-```rust
-pub enum SignerSource {
-    LocalNsec(Zeroizing<String>),              // hex or bech32 nsec
-    BunkerUri(String),                          // bunker:// URI (async handshake)
-    RemoteHandle(Box<dyn RemoteSignerHandle>),  // internal: from broker after handshake
-}
-```
-
-The two outer-facing sources are symmetric — both add to the same
-roster through the same command:
-
-- `LocalNsec` constructs a `LocalKeySigner` synchronously; the signer is
-  in the roster the moment the command is processed.
-- `BunkerUri` drives the NIP-46 handshake first (the kernel owns the
-  relays, per **D7**), then upgrades to a `RemoteHandle` once
-  `get_public_key` resolves. The kernel emits handshake progress while
-  the bunker connects; the signer joins the roster on completion.
-- `RemoteHandle` is the internal arm the broker uses to hand a
-  fully-connected remote signer back to the actor after the handshake;
-  apps do not construct it directly.
-
-`make_active` decides what the registration *means*:
-
-| `make_active` | Roster | Active account | kind:0 / kind:10002 | Account switcher |
-|---|---|---|---|---|
-| `true` | added | set active | published (sign-in path) | visible |
-| `false` | added | unchanged | not published | hidden |
-
-`make_active: true` is what every sign-in flow dispatches: it adds the
-signer **and** makes it the active account, rewires kind:3 / kind:10002,
-and shows the account in the switcher. `make_active: false` registers a
-signer that does real signing work but has no UI presence — an
-app-managed agent key (see [app-signer-slot](../wiki/app-signer-slot.md)).
-
-There is no separate "user account" vs. "agent signer" type. The
-distinction is purely the `make_active` flag on the same `AddSigner`
-command against the same roster.
-
-`CreateAccount` is the only command that *originates* an identity:
-it generates a keypair, publishes the kind:0 metadata + kind:10002 relay
-list, and then composes `AddSigner { source: LocalNsec(..),
-make_active: true }`. Everything downstream of the key-generation step is
-the ordinary `make_active: true` path.
-
 ## The `Signer` trait
 
 `crates/nmp-signers/src/signers/traits.rs:110-133` defines a deliberately
@@ -107,7 +53,7 @@ exception. Variants: `NotReady`, `Unsupported`, `Rejected`, `Mismatch`,
 | Kind | Construct | Latency | Security | UX | Capability deps |
 |---|---|---|---|---|---|
 | `LocalKeySigner` | `generate` / `from_nsec` / `from_ncryptsec` / `from_secret_hex` (`signers/local.rs:43-104`) | `SignerOp::Ready` — synchronous, microseconds | Raw key in process; NIP-49-at-rest if constructed from `ncryptsec` (`local.rs:71-83`, `log_n` default 16, never < 14 for real keys) | No prompt; instant | None (pure crypto) |
-| `Nip46Signer` | handshake → `Nip46SignerHandle::complete` (`signers/nip46/mod.rs:133-146`) | `SignerOp::Pending(rx)` — relay round-trip, seconds; default post-condition timeout 5s (`identity/manager.rs:104`) | Key never leaves remote bunker; local ephemeral key only | Remote-approve prompt per op | `Nip46Transport` injected by kernel (D7 — kernel owns relays) |
+| `Nip46Signer` | handshake → `Nip46SignerHandle::complete` (`signers/nip46/mod.rs:133-146`) | `SignerOp::Pending(rx)` — relay round-trip, seconds | Key never leaves remote bunker; local ephemeral key only | Remote-approve prompt per op | `Nip46Transport` injected by kernel (D7 — kernel owns relays) |
 | `Nip07Signer` | `from_cached_pubkey` / `from_payload` (`signers/nip07.rs:53-80`) | Browser `window.nostr.*` on wasm; **non-wasm = `Unsupported`** | Key in extension; pubkey cached so `pubkey()` is sync | Extension dialog per op | wasm target + `feature = "wasm"` (`nip07.rs:83-85`) |
 | Amber NIP-55 (future) | via `CapabilityModule` (`SignerBackend::Custom`) | Android intent round-trip | Key in Amber app | System intent prompt | `ExternalSigner` capability — see [16 — capabilities](16-capabilities.md) |
 
@@ -123,20 +69,14 @@ caches the remote user pubkey after the first handshake
 insertion-ordered `order`, an `active: Option<IdentityId>`, and
 observers.
 
-### Add-time post-condition
+### Add an account
 
-`add()` (`manager.rs:118-128`) is the roster mutation that
-`AddSigner` drives once the source has produced a concrete
-`Arc<dyn Signer>` (immediately for `LocalNsec`, after the handshake for
-`BunkerUri`/`RemoteHandle`). It runs `verify_signer`
-(`manager.rs:236-276`): it pre-computes the canonical event id for a
-fixed kind:1 probe template, calls `signer.sign(probe)`, then refuses
-the account if the returned pubkey ≠ claimed **or** the returned id ≠
-expected. This catches malicious/buggy signers that mutate the event
-before signing.
-`add_unverified()` (`manager.rs:134-143`) is the restore-path escape for
-signers that cannot sign eagerly (NIP-46 with no connected transport) —
-callers **must** run their own verification before relying on it.
+`add()` simply inserts the signer into the roster, keyed by hex pubkey
+(`IdentityId`). It is idempotent per **PD-004**: re-adding a known pubkey
+is a no-op that returns the existing id and keeps the originally-installed
+signer. There is no add-time signature probe — local signers are
+deterministic crypto and NIP-46 bunkers are already authenticated by the
+handshake, so a post-condition sign-and-verify would only add latency.
 
 ### Switch-account: action → state
 
@@ -209,12 +149,6 @@ makes the kernel sync a follow-list / relay-list for a key that has no
 human behind it. App-local agents are `AppLocal`; one-shot signers are
 `Ephemeral`.
 
-For an `AppLocal` agent key the registration is just
-`AddSigner { source, make_active: false }` — that single flag keeps the
-signer off the account switcher, suppresses the kind:0 / kind:10002
-publish, and leaves the active account untouched while the agent can
-still sign. See [app-signer-slot](../wiki/app-signer-slot.md).
-
 ## `parse_bunker_uri` worked example
 
 `crates/nmp-signers/src/bunker/parser.rs:95-174`. Pure function, fuzz
@@ -264,13 +198,10 @@ to upgrade to a fully-connected `Nip46Signer`.
 3. **Signer calls direct from UI.** The signer is driven by the actor
    (D4). UI dispatches an action; it never holds an `Arc<dyn Signer>`
    or calls `sign()` itself.
-4. **Skipping the add-time post-condition.** Using `add_unverified` on
-   a path that *can* sign eagerly, then publishing — an ADR-0015
-   post-condition violation that lets a mutating signer through.
-5. **"Is logged in?" UI guards that withhold cached content.** A
+4. **"Is logged in?" UI guards that withhold cached content.** A
    missing/locked signer must not blank already-cached events (D1).
    Gate *write* actions, never *reads*.
-6. **Re-handshaking NIP-46/NIP-07 on every `pubkey()`.** The pubkey is
+5. **Re-handshaking NIP-46/NIP-07 on every `pubkey()`.** The pubkey is
    cached at construction; `pubkey()` is sync and free. Treating it as
    async is an API misuse.
 

@@ -1,8 +1,7 @@
-//! Integration tests (7) covering the M6 task #43 contract:
+//! Integration tests covering the M6 task #43 contract:
 //!
 //! 1. LocalKeySigner round-trips raw + ncryptsec payloads.
 //! 2. LocalKeySigner sign post-condition (pubkey + id match).
-//! 3. AccountManager rejects malicious mutating signer.
 //! 4. AccountManager: 3 accounts, switch flips signer_active synchronously.
 //! 5. kind:3 rewire observer fires once per (non-noop) flip.
 //! 6. Nip46Signer transport handshake + sign round-trip via stub transport.
@@ -15,14 +14,14 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_core::substrate::UnsignedEvent;
 use nmp_signers::signers::{Nip46Rpc, Nip46Transport};
 use nmp_signers::{
     parse_bunker_uri, AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner,
     Nip46Signer, Nip46SignerHandle, Signer, SignerBackend, SignerError, SignerOp, SignerPayload,
 };
 use nostr::nips::nip19::FromBech32;
-use nostr::{PublicKey, SecretKey};
+use nostr::SecretKey;
 
 const SAMPLE_PK: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
@@ -79,93 +78,9 @@ fn t2_local_signer_sign_post_condition() {
     assert!(!signed.id.is_empty());
 }
 
-/// Malicious signer that swaps `content` before signing.  AccountManager's
-/// post-condition must refuse this.
-#[derive(Debug)]
-struct MutatingSigner {
-    inner: LocalKeySigner,
-}
-
-impl Signer for MutatingSigner {
-    fn backend(&self) -> SignerBackend {
-        SignerBackend::Custom("mutating".to_string())
-    }
-    fn pubkey(&self) -> PublicKey {
-        self.inner.pubkey()
-    }
-    fn sign(&self, unsigned: UnsignedEvent) -> SignerOp<SignedEvent> {
-        let mut tampered = unsigned;
-        tampered.content = format!("HACKED: {}", tampered.content);
-        self.inner.sign(tampered)
-    }
-    fn to_payload(&self) -> SignerPayload {
-        self.inner.to_payload()
-    }
-}
-
-#[test]
-fn t3_account_manager_refuses_mutating_signer() {
-    let mut mgr = AccountManager::new()
-        .with_post_condition_timeout(std::time::Duration::from_millis(500));
-    let inner = LocalKeySigner::generate();
-    let evil = MutatingSigner { inner };
-    let err = mgr.add(Arc::new(evil)).unwrap_err();
-    match err {
-        nmp_signers::AccountError::SignerMismatch(_) => {}
-        other => panic!("expected SignerMismatch, got {other:?}"),
-    }
-    assert!(mgr.accounts().is_empty());
-}
-
-/// Signer that adds an extra tag before signing — caught by the id-precompute
-/// post-condition only (the older content/kind check would miss this).
-#[derive(Debug)]
-struct TagAddingSigner {
-    inner: LocalKeySigner,
-}
-
-impl Signer for TagAddingSigner {
-    fn backend(&self) -> SignerBackend {
-        SignerBackend::Custom("tag-adding".to_string())
-    }
-    fn pubkey(&self) -> PublicKey {
-        self.inner.pubkey()
-    }
-    fn sign(&self, mut unsigned: UnsignedEvent) -> SignerOp<SignedEvent> {
-        unsigned
-            .tags
-            .push(vec!["evil".to_string(), "payload".to_string()]);
-        self.inner.sign(unsigned)
-    }
-    fn to_payload(&self) -> SignerPayload {
-        self.inner.to_payload()
-    }
-}
-
-#[test]
-fn t3b_account_manager_id_precompute_catches_tag_mutation() {
-    let mut mgr = AccountManager::new()
-        .with_post_condition_timeout(std::time::Duration::from_millis(500));
-    let evil = TagAddingSigner {
-        inner: LocalKeySigner::generate(),
-    };
-    let err = mgr.add(Arc::new(evil)).unwrap_err();
-    match err {
-        nmp_signers::AccountError::SignerMismatch(msg) => {
-            assert!(
-                msg.contains("id mismatch"),
-                "error should reference id mismatch (precompute check); got: {msg}"
-            );
-        }
-        other => panic!("expected SignerMismatch(id mismatch), got {other:?}"),
-    }
-    assert!(mgr.accounts().is_empty());
-}
-
 #[test]
 fn t4_three_accounts_switch_flips_signer_active() {
-    let mut mgr = AccountManager::new()
-        .with_post_condition_timeout(std::time::Duration::from_millis(500));
+    let mut mgr = AccountManager::new();
     let mut pubkeys = Vec::new();
     let mut ids = Vec::new();
     for _ in 0..3 {
@@ -214,8 +129,7 @@ impl ActiveChangeObserver for ProbeObserver {
 
 #[test]
 fn t5_kind3_rewire_fires_per_real_switch() {
-    let mut mgr = AccountManager::new()
-        .with_post_condition_timeout(std::time::Duration::from_millis(500));
+    let mut mgr = AccountManager::new();
     let obs = Arc::new(ProbeObserver::default());
     mgr.observe(obs.clone());
 
