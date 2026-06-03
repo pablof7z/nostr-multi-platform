@@ -23,6 +23,11 @@ mod event_by_id_tests;
 #[cfg(test)]
 #[path = "sign_event_for_return_tests.rs"]
 mod sign_event_for_return_tests;
+// M2 (ADR-0042 §5.1, V-112) — register_feed_with_observer / unregister_feed
+// transient-feed teardown-seam tests.
+#[cfg(test)]
+#[path = "interest_feed_tests.rs"]
+mod interest_feed_tests;
 mod event_observer;
 mod feed;
 mod identity;
@@ -1169,14 +1174,22 @@ impl NmpApp {
     /// Tear down a feed registered through [`Self::register_feed_with_observer`].
     ///
     /// Performs all three removals the registration installed, in any
-    /// combination present (each is an independent no-op when absent, so this
-    /// is safe to call on an unknown key — or even the permanent home-feed key,
-    /// which has no tracked observer):
+    /// combination present (each is an independent no-op when its target is
+    /// absent, so an unknown key is harmless):
     ///
     /// 1. the [`nmp_feed::FeedController`] from the feed registry;
     /// 2. the snapshot projection closure (generic + typed) so it stops
     ///    emitting a stale empty subtree on every tick;
     /// 3. the tracked [`KernelEventObserver`], if one was recorded for `key`.
+    ///
+    /// CALLER CONTRACT — call this ONLY for transient keys registered through
+    /// [`Self::register_feed_with_observer`]. It is **destructive on any key**
+    /// that has a live `FeedController` / projection: calling it on the
+    /// permanent home-feed key (`nmp.feed.home`, registered via the plain
+    /// [`Self::register_feed`]) WOULD drop the home feed's controller and
+    /// projection — it is "safe" there only in the sense that it never panics,
+    /// not that it preserves the feed. The home feed has no tracked observer, so
+    /// step 3 is a no-op there, but steps 1–2 are not.
     ///
     /// Returns `true` when any registration was removed. D6 — poisoned locks
     /// degrade to partial teardown (best-effort); the `nmp_app_free` actor

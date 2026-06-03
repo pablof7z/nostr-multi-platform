@@ -1318,10 +1318,32 @@ with a static-`CodingKeys` registry and a CI drift gate (`codegen-drift.yml`) �
 drops any key not in its fixed enum, and MUST NOT be hand-edited. The generic projections
 subtree is a FlatBuffer `nmp_transport_Value` map that `KernelUpdate(from:)` decodes into
 that static struct and then discards; the raw map is not retained for a dynamic
-`feedSnapshot(forKey:)` accessor. Wiring the dynamic read correctly means EITHER (a) a
-codegen extension for dynamic-key projections, OR (b) a hand-written raw-map capture in the
-non-generated `KernelUpdate` decode path (`KernelUpdateFrameDecoder.swift`) — both are real
-work, neither is compilable/runtime-verifiable in this Rust-only env (no Xcode-26
+`feedSnapshot(forKey:)` accessor. There are THREE ways to wire the dynamic read; the
+**third is the easiest and is the recommended path** (a prior draft of this note listed only
+the first two — corrected here):
+- **(a)** a codegen extension for dynamic-key projections (broadest; touches the codegen
+  pipeline + drift gate).
+- **(b)** a hand-written raw-map capture in the non-generated `KernelUpdate` decode path
+  (`KernelUpdateFrameDecoder.swift`) — retain the generic `nmp_transport_Value` projections
+  map and expose a `feedSnapshot(forKey:)` over it.
+- **(c) RECOMMENDED — typed-sidecar, the data is already key-addressable.**
+  `KernelUpdateFrameDecoder` ALREADY retains the typed projection envelopes as
+  `[TypedProjectionEnvelope]`, each carrying a `.key` (`extractTypedProjections`). The home
+  feed already emits a typed NOFS sidecar via `register_typed_snapshot_projection` +
+  `encode_op_feed_snapshot`, and `FlatFeed::snapshot()` returns the SAME `RootFeedSnapshot`
+  type — so a transient feed can emit the identical NOFS sidecar under its own key, and Swift
+  reads it from the already-key-addressable `envelopes` array, sidestepping BOTH the
+  discarded generic map AND the codegen struct. The only Swift blocker: `TypedHomeFeedDecoder`
+  hardcodes `projectionKey = "nmp.feed.home"` (`TypedHomeFeedDecoder.swift:31`, matched at
+  `decode(from:)` line 45 as `$0.key == projectionKey`); generalise it to take a `key`
+  parameter. **Rust prerequisite (do it in the wiring PR, not a follow-up):**
+  `register_feed_with_observer` should ALSO register the typed sidecar (mirror
+  `register_op_feed_defaults` step 5b — `register_typed_snapshot_projection(key, ||
+  encode_op_feed_snapshot(&feed.snapshot(...)))`) so the bytes are present the easy way when
+  Step C lands. (NOT added in this PR — flagged so the follow-up adds it alongside the Swift
+  decoder change, keeping the typed/generic registration symmetric with the home feed.)
+
+None of the three is compilable/runtime-verifiable in this Rust-only env (no Xcode-26
 `UIUtilities` here, per the V-112 iOS-visual deferral). Deferring is SAFE because this PR
 runs NO delete-cascade: `author_view`/`thread_view` stay registered and ProfileView/
 ThreadScreen keep reading them unchanged. The 4 new Chirp symbols ship unit-tested but
@@ -1329,14 +1351,19 @@ runtime-unexercised until Swift flips the call site (a documented build-before-d
 not a finished feature — frame it that way to avoid the "registered-but-inert" trap).
 
 *REMAINING (next session):*
-- **C-Swift.** Pick (a) codegen dynamic-key support or (b) raw-map capture in
-  `KernelUpdateFrameDecoder`; expose `model.feedSnapshot(forKey: "nmp.feed.author.<pk>")
-  -> ChirpTimelineSnapshot?` (the type is identical to `homeFeed`). Then `ProfileView`:
-  `items` ← feed cards, `noteCountDisplay` ← cards count, `profile` ←
-  `claimedProfiles[pk]`, `primaryAction` ← local follow-state; `ThreadScreen`: `items` ←
-  `nmp.feed.thread.<id>`. Swift call sites call the new Chirp open/close symbols on
-  appear/disappear. iOS-sim verify required (handoff's deep-link rootless-thread edge: the
-  `#e` interest pulls replies, not the root — if the root isn't already stored, add an
-  `{"ids":[root]}` interest).
+- **C-Swift.** Prefer path (c): generalise `TypedHomeFeedDecoder` to a `key` param + have
+  `register_feed_with_observer` also register the NOFS typed sidecar; expose
+  `model.feedSnapshot(forKey: "nmp.feed.author.<pk>") -> ChirpTimelineSnapshot?` (the type is
+  identical to `homeFeed`). Then `ProfileView`: `items` ← feed cards, `noteCountDisplay` ←
+  cards count, `profile` ← `claimedProfiles[pk]`, `primaryAction` ← local follow-state;
+  `ThreadScreen`: `items` ← `nmp.feed.thread.<id>`. Swift call sites call the new Chirp
+  open/close symbols on appear/disappear. iOS-sim verify required (handoff's deep-link
+  rootless-thread edge: the `#e` interest pulls replies, not the root — if the root isn't
+  already stored, add an `{"ids":[root]}` interest).
+- **Double-open / single-close asymmetry (handle at Swift wiring time).** The feed
+  registration is last-writer-wins, but the kernel `open_interest` is refcounted. A SwiftUI
+  view that double-fires `onAppear` (open twice) then closes once replaces the feed but
+  leaves the subscription refcount at 1 → a leaked sub. Either dedup opens host-side or
+  ensure one close per open.
 - **D. Delete-cascade** (unchanged from the session-1 plan above) — only after C-Swift
   lands AND #935 + #934/0.2.4 are on master.

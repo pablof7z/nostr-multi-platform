@@ -7,7 +7,7 @@
 //! actually consumes, so the proof drives it and parses the result, mirroring
 //! `t171_planner_error_projection_tests.rs` and `state_projection_tests.rs`.
 
-use super::snapshot_registry::new_snapshot_projection_slot;
+use super::snapshot_registry::{new_snapshot_projection_slot, SnapshotRegistry};
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::update_envelope::TypedProjectionData;
@@ -317,6 +317,49 @@ fn panicking_typed_projection_is_contained_and_others_survive() {
         "the panicking typed projection is dropped, the good one survives"
     );
     assert_eq!(typed[0].key, "good");
+}
+
+/// `SnapshotRegistry::remove(key)` drops the projection from BOTH the generic
+/// and typed maps, leaving sibling keys untouched. This is the teardown half of
+/// the transient-feed seam (M2 author/thread feeds, ADR-0042 §5.1): without it a
+/// closed feed's `register_feed` closure keeps emitting a stale empty subtree on
+/// every tick.
+#[test]
+fn remove_drops_generic_and_typed_for_one_key_only() {
+    let mut registry = SnapshotRegistry::new();
+    // A transient feed registers BOTH a generic and a typed projection under its
+    // key; a sibling (e.g. the home feed) is registered too.
+    registry.register("nmp.feed.author.alice", || serde_json::json!({ "cards": [] }));
+    registry.register_typed("nmp.feed.author.alice", || {
+        Some(typed_entry("nmp.feed.author.alice", &[0xAB]))
+    });
+    registry.register("nmp.feed.home", || serde_json::json!({ "cards": [{ "id": "h" }] }));
+
+    // Removing the transient key reports success and clears it from both maps.
+    assert!(registry.remove("nmp.feed.author.alice"));
+    let generic = registry.run();
+    assert!(
+        !generic.contains_key("nmp.feed.author.alice"),
+        "generic projection must be gone after remove"
+    );
+    assert!(
+        registry
+            .run_typed()
+            .iter()
+            .all(|t| t.key != "nmp.feed.author.alice"),
+        "typed sidecar must be gone after remove"
+    );
+
+    // The sibling (home feed) is untouched.
+    assert!(
+        generic.contains_key("nmp.feed.home"),
+        "removing one key must not disturb siblings"
+    );
+
+    // Idempotent: a second remove of the now-absent key reports `false`.
+    assert!(!registry.remove("nmp.feed.author.alice"));
+    // Removing a never-registered key is a harmless `false`.
+    assert!(!registry.remove("nmp.feed.thread.never"));
 }
 
 /// `run_typed_projections` with no slot bound yields an empty vector — D6: a
