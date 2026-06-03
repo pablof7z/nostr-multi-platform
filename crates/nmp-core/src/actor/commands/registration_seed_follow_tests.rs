@@ -117,6 +117,7 @@ fn create_account_installs_exact_default_followfeed_and_self() {
         &profile,
         &onboarding_relays(),
         false,
+        true,
     );
     let active = identity.active_pubkey().expect("new account pubkey");
 
@@ -152,6 +153,7 @@ fn create_account_followfeed_uses_configured_relay_before_mailboxes_arrive() {
         &profile,
         &onboarding_relays(),
         false,
+        true,
     );
     let active = identity.active_pubkey().expect("new account pubkey");
 
@@ -186,7 +188,7 @@ fn create_account_followfeed_probes_default_follow_mailboxes_via_indexer() {
         "wss://onboard-indexer.relay/".to_string(),
         "both,indexer".to_string(),
     )];
-    create_account(&mut identity, &mut kernel, false, &profile, &relays, false);
+    create_account(&mut identity, &mut kernel, false, &profile, &relays, false, true);
 
     let frames = kernel.drain_lifecycle_tick();
     let reqs = reqs_by_relay(&frames);
@@ -214,6 +216,7 @@ fn create_account_followfeed_discovers_relays_and_keeps_reqs_tailing() {
         &profile,
         &onboarding_relays(),
         false,
+        true,
     );
     let active = identity.active_pubkey().expect("new account pubkey");
 
@@ -285,6 +288,7 @@ fn create_account_prepopulates_self_relay_list_for_inbox_interests() {
         &profile,
         &onboarding_relays(),
         false,
+        true,
     );
     let active = identity.active_pubkey().expect("new account pubkey");
 

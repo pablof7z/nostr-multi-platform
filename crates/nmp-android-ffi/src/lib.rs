@@ -162,7 +162,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
     ) else {
         return;
     };
-    nmp_app_create_new_account(s.app, profile_c.as_ptr(), relays_c.as_ptr(), false);
+    nmp_app_create_new_account(s.app, profile_c.as_ptr(), relays_c.as_ptr(), false, 1);
 }
 
 #[no_mangle]

@@ -142,12 +142,19 @@ pub extern "C" fn nmp_app_signin_bunker(app: *mut NmpApp, uri: *const c_char, ma
     });
 }
 
+/// Create a new account (generate keypair, publish kind:0 + kind:10002).
+///
+/// `make_active = 1`: make the new account active immediately (standard
+/// onboarding flow).
+/// `make_active = 0`: create the account without switching to it — useful for
+/// creating an agent/secondary account alongside an existing active session.
 #[no_mangle]
 pub extern "C" fn nmp_app_create_new_account(
     app: *mut NmpApp,
     profile_json: *const c_char,
     relays_json: *const c_char,
     mls: bool,
+    make_active: u8,
 ) {
     let Some(app) = app_ref(app) else {
         return;
@@ -183,6 +190,7 @@ pub extern "C" fn nmp_app_create_new_account(
         profile,
         relays,
         mls,
+        make_active: make_active != 0,
     });
 }
 

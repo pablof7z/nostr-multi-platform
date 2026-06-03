@@ -407,6 +407,10 @@ pub enum ActorCommand {
         profile: HashMap<String, String>,
         relays: Vec<(String, String)>,
         mls: bool,
+        /// Whether to make the newly created account the active account.
+        /// `true` for the standard onboarding flow; `false` for creating
+        /// an agent/secondary account without disturbing the active session.
+        make_active: bool,
     },
     /// T66a identity — switch the active account (synchronous re-bind +
     /// timeline retarget, mirrors `AccountManager::switch_active` semantics).

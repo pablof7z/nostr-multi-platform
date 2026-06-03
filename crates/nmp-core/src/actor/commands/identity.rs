@@ -998,9 +998,12 @@ pub(crate) fn create_account(
     profile: &HashMap<String, String>,
     relays: &[(String, String)],
     _mls: bool,
+    make_active: bool,
 ) -> Vec<OutboundMessage> {
     let id = identity.add(Keys::generate());
-    identity.active = Some(id.clone());
+    if make_active {
+        identity.active = Some(id.clone());
+    }
     sync_kernel(identity, kernel);
     // Only overwrite `configured_relays` when the caller declared relays during
     // onboarding. When `relays` is empty we keep whatever was seeded at Start

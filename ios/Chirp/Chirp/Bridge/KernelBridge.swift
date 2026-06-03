@@ -318,7 +318,7 @@ final class KernelHandle {
         }
         profileStr.withCString { profilePtr in
             relaysStr.withCString { relaysPtr in
-                nmp_app_create_new_account(raw, profilePtr, relaysPtr, mls)
+                nmp_app_create_new_account(raw, profilePtr, relaysPtr, mls, 1)
             }
         }
         return nil

@@ -82,7 +82,7 @@ void nmp_app_signin_bunker(void *app, const char *uri, uint8_t make_active);
 // nmp_app_free_string.  Pass an empty string for account_pubkey_hex to use
 // the active account.
 char *nmp_app_sign_event_for_return(void *app, const char *account_pubkey_hex, const char *unsigned_json);
-void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls);
+void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls, uint8_t make_active);
 void nmp_app_switch_active(void *app, const char *identity_id);
 void nmp_app_remove_account(void *app, const char *identity_id);
 void nmp_app_add_relay(void *app, const char *url, const char *role);

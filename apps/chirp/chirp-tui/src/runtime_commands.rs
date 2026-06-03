@@ -79,7 +79,7 @@ impl AppRuntime {
             .collect();
         let relays = CString::new(Value::Array(relays_json).to_string())
             .map_err(|_| "relays JSON contains NUL byte".to_string())?;
-        nmp_app_create_new_account(self.app_ptr(), profile.as_ptr(), relays.as_ptr(), mls);
+        nmp_app_create_new_account(self.app_ptr(), profile.as_ptr(), relays.as_ptr(), mls, 1);
         Ok(())
     }
 

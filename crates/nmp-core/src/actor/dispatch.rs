@@ -829,6 +829,7 @@ pub(super) fn dispatch_command(
             profile,
             relays,
             mls,
+            make_active,
         } => {
             let outbound = commands::create_account(
                 ctx.identity,
@@ -837,6 +838,7 @@ pub(super) fn dispatch_command(
                 &profile,
                 &relays,
                 mls,
+                make_active,
             );
             update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             // ADR-0040 §3 — enqueue the Keychain write off-actor (D8).

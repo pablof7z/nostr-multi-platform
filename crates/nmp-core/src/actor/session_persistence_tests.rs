@@ -174,6 +174,7 @@ fn persists_generated_account_for_next_launch() {
         &HashMap::new(),
         &[],
         false,
+        true,
     );
     let expected = identity.active_pubkey().unwrap();
 
