@@ -47,7 +47,7 @@ V-78 tracks that Bunker (NIP-46) accounts cannot zap because kind:9734 requires 
 Bunker async-pending modeling reuses the existing `PendingSign` machinery at `actor/pending_sign.rs`, extended to cover NIP-44 ops. PR-E Phase 2 for bunker DMs must extend `PendingSign` rather than use the OS-thread driver pattern. <!-- [^1c093-28] -->
 
 
-IdentityRuntime.remote_signers uses Arc<dyn> internally while the boundary API remains unchanged so ActorCommand::AddRemoteSigner still takes Box<dyn> and converts on insertion. <!-- [^129] --> <!-- [^156aa-8] -->
+IdentityRuntime.remote_signers uses Arc<dyn> internally while the boundary command `ActorCommand::AddSigner` carries the remote signer through its `SignerSource::RemoteHandle(Box<dyn RemoteSignerHandle>)` arm and converts to Arc<dyn> on insertion. The broker hands the fully-connected handle back to the actor via this arm once the NIP-46 handshake completes. <!-- [^129] --> <!-- [^156aa-8] -->
 ## NIP-46 Timeout Considerations
 
 The 5s timeout for NIP-46 is possibly too aggressive for the encrypt+sign chain, which may require approximately 10s. <!-- [^1c093-29] -->

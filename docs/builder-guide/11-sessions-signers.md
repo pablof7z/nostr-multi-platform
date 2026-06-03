@@ -21,6 +21,60 @@ backends are policy + capability bridges, not substrate. Rationale:
 `nmp-signers` supplies the signer implementations the kernel composes;
 the kernel never imports a secret key, an `nsec`, or a `bunker://` URL.
 
+## `AddSigner` — the one way a signer enters the roster
+
+There is a single primitive for registering a signer:
+
+```rust
+ActorCommand::AddSigner { source: SignerSource, make_active: bool }
+```
+
+`SignerSource` names where the signing material comes from:
+
+```rust
+pub enum SignerSource {
+    LocalNsec(Zeroizing<String>),              // hex or bech32 nsec
+    BunkerUri(String),                          // bunker:// URI (async handshake)
+    RemoteHandle(Box<dyn RemoteSignerHandle>),  // internal: from broker after handshake
+}
+```
+
+The two outer-facing sources are symmetric — both add to the same
+roster through the same command:
+
+- `LocalNsec` constructs a `LocalKeySigner` synchronously; the signer is
+  in the roster the moment the command is processed.
+- `BunkerUri` drives the NIP-46 handshake first (the kernel owns the
+  relays, per **D7**), then upgrades to a `RemoteHandle` once
+  `get_public_key` resolves. The kernel emits handshake progress while
+  the bunker connects; the signer joins the roster on completion.
+- `RemoteHandle` is the internal arm the broker uses to hand a
+  fully-connected remote signer back to the actor after the handshake;
+  apps do not construct it directly.
+
+`make_active` decides what the registration *means*:
+
+| `make_active` | Roster | Active account | kind:0 / kind:10002 | Account switcher |
+|---|---|---|---|---|
+| `true` | added | set active | published (sign-in path) | visible |
+| `false` | added | unchanged | not published | hidden |
+
+`make_active: true` is what every sign-in flow dispatches: it adds the
+signer **and** makes it the active account, rewires kind:3 / kind:10002,
+and shows the account in the switcher. `make_active: false` registers a
+signer that does real signing work but has no UI presence — an
+app-managed agent key (see [app-signer-slot](../wiki/app-signer-slot.md)).
+
+There is no separate "user account" vs. "agent signer" type. The
+distinction is purely the `make_active` flag on the same `AddSigner`
+command against the same roster.
+
+`CreateAccount` is the only command that *originates* an identity:
+it generates a keypair, publishes the kind:0 metadata + kind:10002 relay
+list, and then composes `AddSigner { source: LocalNsec(..),
+make_active: true }`. Everything downstream of the key-generation step is
+the ordinary `make_active: true` path.
+
 ## The `Signer` trait
 
 `crates/nmp-signers/src/signers/traits.rs:110-133` defines a deliberately
@@ -71,7 +125,10 @@ observers.
 
 ### Add-time post-condition
 
-`add()` (`manager.rs:118-128`) runs `verify_signer`
+`add()` (`manager.rs:118-128`) is the roster mutation that
+`AddSigner` drives once the source has produced a concrete
+`Arc<dyn Signer>` (immediately for `LocalNsec`, after the handshake for
+`BunkerUri`/`RemoteHandle`). It runs `verify_signer`
 (`manager.rs:236-276`): it pre-computes the canonical event id for a
 fixed kind:1 probe template, calls `signer.sign(probe)`, then refuses
 the account if the returned pubkey ≠ claimed **or** the returned id ≠
@@ -151,6 +208,12 @@ Anti: never give an app-local automation a `HumanAccount` scope — that
 makes the kernel sync a follow-list / relay-list for a key that has no
 human behind it. App-local agents are `AppLocal`; one-shot signers are
 `Ephemeral`.
+
+For an `AppLocal` agent key the registration is just
+`AddSigner { source, make_active: false }` — that single flag keeps the
+signer off the account switcher, suppresses the kind:0 / kind:10002
+publish, and leaves the active account untouched while the agent can
+still sign. See [app-signer-slot](../wiki/app-signer-slot.md).
 
 ## `parse_bunker_uri` worked example
 
