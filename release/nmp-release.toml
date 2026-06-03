@@ -190,11 +190,6 @@ path = "apps/chirp/chirp-tui"
 reason = "Chirp reference TUI application"
 
 [[private_packages]]
-name = "chirp-repl"
-path = "apps/chirp/chirp-repl"
-reason = "Chirp developer REPL application"
-
-[[private_packages]]
 name = "nmp-app-fixture"
 path = "apps/fixture/nmp-app-fixture"
 reason = "fixture app composition crate"

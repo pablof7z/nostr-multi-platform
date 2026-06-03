@@ -21,8 +21,7 @@ the NMP substrate works equally well as a terminal application as it does on iOS
 
 ### 2.1 Crate location
 
-`apps/chirp/chirp-tui/` — mirrors `apps/chirp/chirp-repl/`. Reuses `AppRuntime` pattern from
-chirp-repl (apps/chirp/chirp-repl/src/app.rs) as a starting point.
+`apps/chirp/chirp-tui/` — Chirp diagnostic shell built on the `AppRuntime` pattern.
 
 ### 2.2 Module layout (≤300 LOC per file per AGENTS.md)
 
@@ -234,7 +233,7 @@ Treat each milestone as an independent PR/agent lane; split M4 into DM and group
 - [ ] TestBackend snapshots: feed row render, thread render, avatar-placeholder state
 
 ### M3 — Compose / react / reply / follow
-**Scope**: Full write experience matching chirp-repl command surface.
+**Scope**: Full write experience (compose / react / reply / follow).
 
 - [ ] `i` opens compose textarea; `Ctrl+Enter` publishes; `Esc` cancels
 - [ ] Pending/published note appears via Rust snapshot within 200ms of `Ctrl+Enter`
