@@ -135,7 +135,7 @@ fn claim_profile_after_ingest_queues_fetch() {
 
     // Now a component claims the author. With can_send=true the kernel must
     // immediately emit a kind:0 REQ to the indexer relay (cold-start path).
-    let msgs = kernel.claim_profile(author.clone(), "test-consumer-id".to_string(), true);
+    let msgs = kernel.claim_profile(author.clone(), "test-consumer-id".to_string(), true, false);
 
     let req_msgs: Vec<&OutboundMessage> = msgs
         .iter()
