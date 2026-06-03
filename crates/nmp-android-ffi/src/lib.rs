@@ -162,7 +162,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
     ) else {
         return;
     };
-    nmp_app_create_new_account(s.app, profile_c.as_ptr(), relays_c.as_ptr(), false);
+    nmp_app_create_new_account(s.app, profile_c.as_ptr(), relays_c.as_ptr(), false, 1);
 }
 
 #[no_mangle]
@@ -459,7 +459,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSignInNsec(
     let Some(secret) = jstring_to_cstring(&mut env, &secret) else {
         return;
     };
-    nmp_app_signin_nsec(s.app, secret.as_ptr());
+    nmp_app_signin_nsec(s.app, secret.as_ptr(), 1);
 }
 
 /// Switch the active account to the given pubkey.

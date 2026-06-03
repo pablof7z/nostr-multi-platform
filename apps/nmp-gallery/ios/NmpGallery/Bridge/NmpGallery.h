@@ -89,7 +89,7 @@ char *nmp_app_dispatch_action(void *app, const char *namespace, const char *acti
 
 // Sign in with a raw nsec / hex secret. Fire-and-forget (D6): outcome arrives
 // through the snapshot's `accounts` / `last_error_toast` fields.
-void nmp_app_signin_nsec(void *app, const char *secret);
+void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
 
 // ── Gallery projection (per-app FFI) ─────────────────────────────────────
 //

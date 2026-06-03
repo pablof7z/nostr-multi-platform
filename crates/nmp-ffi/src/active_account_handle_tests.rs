@@ -132,7 +132,7 @@ fn active_account_handle_reflects_real_sign_in() {
 
     nmp_app_start(app, 0, 256, 4);
     let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
-    super::nmp_app_signin_nsec(app, secret.as_ptr());
+    super::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
 
     let expected = hex_pubkey(TEST_NSEC);
     let observed = wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(expected.as_str()));
@@ -171,7 +171,7 @@ fn active_account_handle_reflects_account_switch() {
 
     // Sign in account A.
     let nsec_a = std::ffi::CString::new(TEST_NSEC).unwrap();
-    super::nmp_app_signin_nsec(app, nsec_a.as_ptr());
+    super::nmp_app_signin_nsec(app, nsec_a.as_ptr(), 1);
     let pk_a = hex_pubkey(TEST_NSEC);
     assert_eq!(
         wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(pk_a.as_str())),
@@ -182,7 +182,7 @@ fn active_account_handle_reflects_account_switch() {
     // signing in a new local key makes it the active account).
     let nsec_b_str = second_nsec();
     let nsec_b = std::ffi::CString::new(nsec_b_str.clone()).unwrap();
-    super::nmp_app_signin_nsec(app, nsec_b.as_ptr());
+    super::nmp_app_signin_nsec(app, nsec_b.as_ptr(), 1);
     let pk_b = hex_pubkey(&nsec_b_str);
     assert_ne!(pk_a, pk_b, "the two test keys must differ");
     assert_eq!(
@@ -213,7 +213,7 @@ fn active_account_handle_survives_reset() {
     // Sign in account A, then Reset (wipes all kernel state, including the
     // active account → slot returns to `None`).
     let nsec_a = std::ffi::CString::new(TEST_NSEC).unwrap();
-    super::nmp_app_signin_nsec(app, nsec_a.as_ptr());
+    super::nmp_app_signin_nsec(app, nsec_a.as_ptr(), 1);
     let pk_a = hex_pubkey(TEST_NSEC);
     assert_eq!(
         wait_for_slot(&rx, &handle, |v| v.as_deref() == Some(pk_a.as_str())),
@@ -236,7 +236,7 @@ fn active_account_handle_survives_reset() {
     // fail this assertion, so it cannot pass trivially on a retained value.
     let nsec_b_str = second_nsec();
     let nsec_b = std::ffi::CString::new(nsec_b_str.clone()).unwrap();
-    super::nmp_app_signin_nsec(app, nsec_b.as_ptr());
+    super::nmp_app_signin_nsec(app, nsec_b.as_ptr(), 1);
     let pk_b = hex_pubkey(&nsec_b_str);
     assert_ne!(pk_a, pk_b, "the two test keys must differ");
     assert_eq!(

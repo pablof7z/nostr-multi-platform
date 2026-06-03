@@ -143,6 +143,7 @@ fn dispatch_capability_result(
     let mut emit_hz = 4u32;
     let mut startup_sent = false;
     let mut pending_signs: Vec<PendingSign> = Vec::new();
+    let mut pending_sign_returns: Vec<super::pending_sign::PendingSignReturn> = Vec::new();
     let coverage_hook = Arc::new(Mutex::new(None::<crate::subs::PlanCoverageHook>));
     let req_frame_interceptor = Arc::new(Mutex::new(None));
     let host_op_handler = Arc::new(Mutex::new(None));
@@ -186,6 +187,7 @@ fn dispatch_capability_result(
         active_local_keys: &active_local_keys,
         capability_callback: slot,
         pending_signs: &mut pending_signs,
+        pending_sign_returns: &mut pending_sign_returns,
         command_tx_self: command_tx,
         capability_work_tx,
         coverage_hook_slot: &coverage_hook,

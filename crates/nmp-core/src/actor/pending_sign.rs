@@ -131,6 +131,50 @@ impl PendingSign {
     }
 }
 
+/// A remote-sign operation parked for sign-and-return (no publish).
+///
+/// Sibling of [`PendingSign`], which always routes the signed event into the
+/// publish engine. `PendingSignReturn` is the seam for
+/// [`crate::actor::ActorCommand::SignEventForReturn`]: the signed event is
+/// resolved by the actor idle loop into the `signed_events` snapshot
+/// projection (keyed by `correlation_id`) and never reaches the publish
+/// engine. The host reads the projection once to retrieve the signed JSON and
+/// attaches it to an out-of-band transport.
+///
+/// Same non-blocking contract as `PendingSign` (D8): a local nsec resolves its
+/// `SignerOp` immediately (so this struct is never parked for it), and a
+/// NIP-46 bunker's `SignerOp::Pending` is `poll()`ed once per idle tick until
+/// the broker responds or `PENDING_SIGN_TIMEOUT` elapses.
+pub(crate) struct PendingSignReturn {
+    /// The in-flight signer op. `poll()`ed once per idle tick.
+    pub op: SignerOp<SignedEvent>,
+    /// The `signed_events` projection key the host is polling on. The signed
+    /// JSON (or the error) lands under this id when the op resolves.
+    pub correlation_id: String,
+    /// Drop-dead time. Past this, the op is abandoned and an error verdict is
+    /// recorded under `correlation_id` so the host's continuation never hangs.
+    pub deadline: Instant,
+}
+
+impl PendingSignReturn {
+    /// Park a sign-and-return op under `correlation_id`, deadlined
+    /// `PENDING_SIGN_TIMEOUT` (5s) into the future — identical budget to
+    /// [`PendingSign::new`].
+    #[must_use]
+    pub fn new(op: SignerOp<SignedEvent>, correlation_id: String) -> Self {
+        Self {
+            op,
+            correlation_id,
+            deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
+        }
+    }
+
+    /// True once the op has overrun `PENDING_SIGN_TIMEOUT`.
+    pub fn timed_out(&self) -> bool {
+        Instant::now() >= self.deadline
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! Unit tests for the parked remote-sign path. These pin the *async*
@@ -255,6 +299,78 @@ mod tests {
         assert!(
             overdue.timed_out(),
             "a PendingSign past its deadline reports timed_out"
+        );
+        drop(tx);
+    }
+
+    // ── PendingSignReturn (D13 sign-and-return) ──────────────────────────
+    // The sign-and-return park mirrors `PendingSign`'s non-blocking poll
+    // contract, minus the publish routing. These tests pin the same
+    // Pending → resolve / reject / disconnect / timeout transitions the
+    // actor idle loop's `pending_sign_returns` drain depends on.
+
+    /// A `Pending` return-op polls to `None` until the broker responds, and a
+    /// freshly created park is within its deadline.
+    #[test]
+    fn return_poll_returns_none_while_pending() {
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let mut ps = PendingSignReturn::new(SignerOp::Pending(rx), "corr-1".to_string());
+        assert!(
+            ps.op.poll().is_none(),
+            "a Pending return-op polls to None before the broker responds"
+        );
+        assert!(!ps.timed_out(), "a fresh PendingSignReturn is within deadline");
+        assert_eq!(ps.correlation_id, "corr-1");
+        drop(tx);
+    }
+
+    /// The signed event is delivered on a later poll once the broker sends it —
+    /// the success branch the idle loop serializes into `signed_events`.
+    #[test]
+    fn return_poll_resolves_with_signed_event_after_send() {
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let mut ps = PendingSignReturn::new(SignerOp::Pending(rx), "corr-2".to_string());
+        assert!(ps.op.poll().is_none(), "no value sent yet");
+        tx.send(Ok(make_signed_event())).unwrap();
+        let signed = ps
+            .op
+            .poll()
+            .expect("poll yields Some after the broker sends")
+            .expect("the result carries the signed event");
+        assert_eq!(signed.unsigned.content, "pending-sign test");
+    }
+
+    /// A broker rejection surfaces as `Some(Err(..))` — the failure branch the
+    /// idle loop records as an error verdict under the correlation id.
+    #[test]
+    fn return_poll_resolves_with_error_after_send() {
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let mut ps = PendingSignReturn::new(SignerOp::Pending(rx), "corr-3".to_string());
+        tx.send(Err(SignerError::Rejected("user said no".to_string())))
+            .unwrap();
+        assert!(
+            matches!(ps.op.poll(), Some(Err(SignerError::Rejected(_)))),
+            "a rejected return-sign polls to Some(Err(Rejected))"
+        );
+    }
+
+    /// A return-op past its deadline reports timed-out — the idle loop abandons
+    /// it and records a `"signing timed out"` verdict so the host never hangs.
+    #[test]
+    fn return_timed_out_tracks_the_deadline() {
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let fresh = PendingSignReturn::new(SignerOp::Pending(rx), "corr-4".to_string());
+        assert!(!fresh.timed_out(), "a fresh PendingSignReturn has not timed out");
+
+        let (_tx2, rx2) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let overdue = PendingSignReturn {
+            op: SignerOp::Pending(rx2),
+            correlation_id: "corr-5".to_string(),
+            deadline: Instant::now() - Duration::from_millis(1),
+        };
+        assert!(
+            overdue.timed_out(),
+            "a PendingSignReturn past its deadline reports timed_out"
         );
         drop(tx);
     }

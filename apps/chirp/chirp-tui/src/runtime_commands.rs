@@ -20,7 +20,7 @@ use crate::Result;
 
 unsafe extern "C" {
     fn nmp_app_remove_account(app: *mut c_void, identity_id: *const std::ffi::c_char);
-    fn nmp_app_signin_bunker(app: *mut c_void, uri: *const std::ffi::c_char);
+    fn nmp_app_signin_bunker(app: *mut c_void, uri: *const std::ffi::c_char, make_active: u8);
     fn nmp_app_switch_active(app: *mut c_void, identity_id: *const std::ffi::c_char);
     fn nmp_app_wallet_connect(app: *mut c_void, uri: *const std::ffi::c_char);
     fn nmp_app_wallet_disconnect(app: *mut c_void);
@@ -34,7 +34,7 @@ unsafe extern "C" {
 impl AppRuntime {
     pub fn sign_in_nsec(&self, nsec: &str) -> Result<()> {
         self.unregister_marmot();
-        self.with_cstr(nsec, |c| nmp_app_signin_nsec(self.app_ptr(), c.as_ptr()))
+        self.with_cstr(nsec, |c| nmp_app_signin_nsec(self.app_ptr(), c.as_ptr(), 1))
     }
 
     pub fn sign_in_nsec_with_marmot(&self, nsec: &str) -> Result<()> {
@@ -54,7 +54,7 @@ impl AppRuntime {
     pub fn sign_in_bunker(&self, uri: &str) -> Result<()> {
         self.unregister_marmot();
         self.with_cstr(uri, |c| unsafe {
-            nmp_app_signin_bunker(self.app_ptr().cast(), c.as_ptr())
+            nmp_app_signin_bunker(self.app_ptr().cast(), c.as_ptr(), 1)
         })
     }
 
@@ -79,7 +79,7 @@ impl AppRuntime {
             .collect();
         let relays = CString::new(Value::Array(relays_json).to_string())
             .map_err(|_| "relays JSON contains NUL byte".to_string())?;
-        nmp_app_create_new_account(self.app_ptr(), profile.as_ptr(), relays.as_ptr(), mls);
+        nmp_app_create_new_account(self.app_ptr(), profile.as_ptr(), relays.as_ptr(), mls, 1);
         Ok(())
     }
 

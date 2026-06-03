@@ -184,6 +184,60 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
+    /// Record the outcome of a `SignEventForReturn` op under `correlation_id`.
+    ///
+    /// `Ok(signed_json)` is the standard flat Nostr event JSON the host
+    /// attaches to an out-of-band transport; `Err(message)` is a sign failure
+    /// (no signer, malformed draft, broker rejection / timeout). Either way the
+    /// host's `signEventForReturn` continuation — keyed on `correlation_id` —
+    /// resolves on the next snapshot tick. Mirrors `record_action_failure` /
+    /// `record_action_success`: the write flips `changed_since_emit` so the
+    /// next emit drains the entry into `projections["signed_events"]`.
+    ///
+    /// Drain-on-emit, not persistent: the host reads each id exactly once.
+    /// `take_signed_events_projection` clears the map every tick it produces a
+    /// value, so a slow consumer that misses the tick will never see the id
+    /// again (the continuation must be registered BEFORE the dispatch — which
+    /// the FFI return-then-suspend ordering guarantees).
+    pub(crate) fn record_signed_event_return(
+        &mut self,
+        correlation_id: &str,
+        result: Result<String, String>,
+    ) {
+        self.signed_events.insert(correlation_id.to_string(), result);
+        self.changed_since_emit = true;
+    }
+
+    /// Drain every `SignEventForReturn` result that landed since the last emit
+    /// into the `signed_events` snapshot projection, returning a
+    /// `correlation_id → { "ok": bool, … }` map. `Null` (→ key omitted) in
+    /// steady state, mirroring `take_action_results_projection`.
+    ///
+    /// Each value is `{ "ok": true, "signed_json": "…" }` on success or
+    /// `{ "ok": false, "error": "…" }` on failure — the exact shape the Swift
+    /// resolver parses. The map is `clear()`ed here (drain-once), so the host
+    /// reads each id exactly once.
+    pub(in super::super) fn take_signed_events_projection(&mut self) -> serde_json::Value {
+        if self.signed_events.is_empty() {
+            return serde_json::Value::Null;
+        }
+        let mut out = serde_json::Map::with_capacity(self.signed_events.len());
+        for (correlation_id, result) in self.signed_events.drain() {
+            let value = match result {
+                Ok(signed_json) => serde_json::json!({
+                    "ok": true,
+                    "signed_json": signed_json,
+                }),
+                Err(error) => serde_json::json!({
+                    "ok": false,
+                    "error": error,
+                }),
+            };
+            out.insert(correlation_id, value);
+        }
+        serde_json::Value::Object(out)
+    }
+
     /// Append a lifecycle stage for `correlation_id` to the
     /// `action_stages` projection. Persists until the host acks via
     /// [`Kernel::ack_action_stage`].

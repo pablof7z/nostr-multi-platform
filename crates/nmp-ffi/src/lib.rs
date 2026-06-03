@@ -18,6 +18,11 @@ mod capability;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
+// D13 sign-and-return — `nmp_app_sign_event_for_return` end-to-end through the
+// actor thread, reading the `signed_events` projection.
+#[cfg(test)]
+#[path = "sign_event_for_return_tests.rs"]
+mod sign_event_for_return_tests;
 mod event_observer;
 mod feed;
 mod identity;

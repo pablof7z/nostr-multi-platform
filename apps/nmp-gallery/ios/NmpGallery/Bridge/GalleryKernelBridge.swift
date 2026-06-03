@@ -178,7 +178,7 @@ final class GalleryKernelHandle {
     // ── Showcase sign-in (phase 2) ───────────────────────────────────────
 
     func signInNsec(_ secret: String) {
-        secret.withCString { nmp_app_signin_nsec(raw, $0) }
+        secret.withCString { nmp_app_signin_nsec(raw, $0, 1) }
     }
 
     // ── Generic action dispatch (phase 2) ────────────────────────────────

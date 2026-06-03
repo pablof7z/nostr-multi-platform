@@ -114,6 +114,11 @@ pub(super) use identity::{
 // V-01 Phase 1c: bunker types consumed only by native FFI / actor runtime.
 #[cfg(feature = "native")]
 pub(crate) use identity::build_nip46_onboarding_dto;
+// D13 sign-and-return: the `SignEventForReturn` dispatch arm (`dispatch.rs`)
+// reuses the same non-blocking sign helpers the publish path uses, calling
+// them as `commands::sign_active_nonblocking` / `commands::sign_with_account_nonblocking`.
+#[cfg(feature = "native")]
+pub(super) use identity::{sign_active_nonblocking, sign_with_account_nonblocking};
 // `new_bunker_handshake_slot` + `BunkerHandshakeSlot` reach `nmp-ffi` through
 // `nmp_core::__ffi_internal::*`. The slot type is `#[doc(hidden)] pub` (the
 // inner `BunkerHandshakeDto` likewise) so `nmp_app_new` can construct an

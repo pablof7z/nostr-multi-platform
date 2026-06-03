@@ -223,6 +223,7 @@ impl ConformanceHarness {
             &profile,
             relays,
             false,
+            true,
         );
     }
 

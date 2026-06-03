@@ -21,6 +21,8 @@ pub(crate) mod action_registry;
 // `Kernel`-attached API itself lives on `impl Kernel` (see `mod.rs` below).
 #[cfg(test)]
 mod action_failure_tests;
+#[cfg(test)]
+mod signed_events_return_tests;
 pub(crate) mod action_lifecycle;
 #[cfg(test)]
 mod action_lifecycle_tests;
@@ -906,6 +908,16 @@ pub struct Kernel {
     /// authoritative `nostr::Keys` map; these are the derived snapshot cache.
     accounts: Vec<AccountSummary>,
     active_account: Option<String>,
+    /// Sign-and-return results parked by the `SignEventForReturn` actor command
+    /// (`PendingSignReturn` resolution), keyed by `correlation_id`. Each entry
+    /// is `Ok(signed_event_json)` — the standard flat Nostr event JSON, ready
+    /// for the host to attach to an out-of-band transport — or `Err(message)`.
+    ///
+    /// Drain-on-emit, mirroring `action_results`: `make_update` surfaces this
+    /// map into `projections["signed_events"]` then `clear()`s it. The host
+    /// reads each id exactly once (its `signEventForReturn` continuation
+    /// resumes on first appearance), so the kernel never retains them.
+    signed_events: HashMap<String, Result<String, String>>,
     publish_queue: Vec<PublishQueueEntry>,
     last_error_toast: Option<String>,
     /// Machine-readable category for `last_error_toast` (typed FFI error
@@ -1894,6 +1906,7 @@ impl Kernel {
             auth_signers: HashMap::new(),
             accounts: Vec::new(),
             active_account: None,
+            signed_events: HashMap::new(),
             publish_queue: Vec::new(),
             last_error_toast: None,
             last_error_category: None,

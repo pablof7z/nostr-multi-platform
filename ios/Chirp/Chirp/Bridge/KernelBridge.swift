@@ -240,7 +240,7 @@ final class KernelHandle {
     // C ABI once the parallel Rust agent lands it; for now this still calls the
     // existing `nmp_app_signin_bunker` symbol (not in the deletion list).
     func signInBunker(_ uri: String) {
-        uri.withCString { nmp_app_signin_bunker(raw, $0) }
+        uri.withCString { nmp_app_signin_bunker(raw, $0, 1) }
     }
 
     /// Cancel an in-flight NIP-46 bunker handshake. Idempotent / safe when
@@ -318,7 +318,7 @@ final class KernelHandle {
         }
         profileStr.withCString { profilePtr in
             relaysStr.withCString { relaysPtr in
-                nmp_app_create_new_account(raw, profilePtr, relaysPtr, mls)
+                nmp_app_create_new_account(raw, profilePtr, relaysPtr, mls, 1)
             }
         }
         return nil
