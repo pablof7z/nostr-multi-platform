@@ -198,6 +198,108 @@ impl InterestShape {
         }
     }
 
+    /// Parse a standard NIP-01 REQ filter JSON object into an [`InterestShape`].
+    ///
+    /// This is the inverse of `nmp_core::subs::wire::filter_json_for` and the
+    /// app-facing entry point for the M2 `open_interest` / `close_interest`
+    /// C-ABI surface (ADR-0042): the host passes a verbatim Nostr filter string
+    /// (e.g. `{"kinds":[1,6],"authors":["<hex>"]}`) and the substrate derives a
+    /// deterministically-hashable shape from it. Two call sites passing the same
+    /// filter — regardless of JSON key ordering or array element ordering — map
+    /// to the same shape (every collection field is a sorted container), which
+    /// gives the registry deterministic `(scope, key)` dedup.
+    ///
+    /// Field mapping (NIP-01 → `InterestShape`):
+    /// - `kinds`   → `kinds`
+    /// - `authors` → `authors`
+    /// - `ids`     → `event_ids`
+    /// - `#<x>`    → `tags` (one entry per single-letter generic-tag key)
+    /// - `since` / `until` / `limit` → the same-named fields
+    ///
+    /// Client-side-only routing fields (`relay_pin`, `p_tag_routing`,
+    /// `addresses`) have no NIP-01 wire representation and are never set by this
+    /// parser; they keep their `Default` values. The `#a` address-coordinate
+    /// tag, if present, is carried through as an opaque `tags["a"]` entry rather
+    /// than decoded into `NaddrCoord` — `open_interest` feeds are plain tailing
+    /// subscriptions, not address-pointer hydration (that path is `claim_event`).
+    ///
+    /// Returns `None` when `json` is not a JSON object (D6 — the FFI shim maps
+    /// `None` to a silent no-op + diagnostic toast, never a panic). Unknown
+    /// top-level keys and malformed field *values* (e.g. a non-array `kinds`)
+    /// are tolerated: the field is skipped, mirroring `filter_json_for`'s
+    /// drop-on-invalid behaviour, so a partially-malformed filter still yields
+    /// the well-formed subset rather than failing the whole subscription.
+    #[must_use]
+    pub fn from_filter_json(json: &str) -> Option<Self> {
+        let value: serde_json::Value = serde_json::from_str(json).ok()?;
+        let obj = value.as_object()?;
+
+        let mut shape = Self::default();
+
+        for (key, val) in obj {
+            match key.as_str() {
+                "kinds" => {
+                    if let Some(arr) = val.as_array() {
+                        for k in arr.iter().filter_map(serde_json::Value::as_u64) {
+                            shape.kinds.insert(k as u32);
+                        }
+                    }
+                }
+                "authors" => {
+                    if let Some(arr) = val.as_array() {
+                        for a in arr.iter().filter_map(serde_json::Value::as_str) {
+                            shape.authors.insert(a.to_string());
+                        }
+                    }
+                }
+                "ids" => {
+                    if let Some(arr) = val.as_array() {
+                        for id in arr.iter().filter_map(serde_json::Value::as_str) {
+                            shape.event_ids.insert(id.to_string());
+                        }
+                    }
+                }
+                "since" => {
+                    if let Some(n) = val.as_u64() {
+                        shape.since = Some(n);
+                    }
+                }
+                "until" => {
+                    if let Some(n) = val.as_u64() {
+                        shape.until = Some(n);
+                    }
+                }
+                "limit" => {
+                    if let Some(n) = val.as_u64() {
+                        shape.limit = Some(n as u32);
+                    }
+                }
+                other => {
+                    // Generic single-letter tag filter: `#e`, `#t`, `#p`, …
+                    // NIP-01 generic tag keys are `#` + a single ASCII letter;
+                    // the stored `TagKey` drops the leading `#` to match the
+                    // `InterestShape::tags` convention (`filter_json_for`
+                    // re-adds it via `custom_tags`).
+                    if let Some(letter) = other.strip_prefix('#') {
+                        let mut chars = letter.chars();
+                        let (Some(_c), None) = (chars.next(), chars.next()) else {
+                            continue;
+                        };
+                        if let Some(arr) = val.as_array() {
+                            let entry = shape.tags.entry(letter.to_string()).or_default();
+                            for v in arr.iter().filter_map(serde_json::Value::as_str) {
+                                entry.insert(v.to_string());
+                            }
+                        }
+                    }
+                    // Any other unknown key is tolerated and skipped.
+                }
+            }
+        }
+
+        Some(shape)
+    }
+
     /// Convenience constructor for a one-shot profile fetch.
     ///
     /// Fetches all indexer-relevant replaceable events for the author:
@@ -505,6 +607,81 @@ mod tests {
         assert!(shape.event_ids.contains(&hex("ee")));
         assert!(shape.addresses.contains(&addr));
         assert_eq!(shape.relay_pin.as_deref(), Some("wss://relay.example.com"));
+    }
+
+    #[test]
+    fn from_filter_json_maps_every_nip01_field() {
+        let json = format!(
+            r##"{{"kinds":[1,6],"authors":["{}"],"ids":["{}"],"#e":["{}"],"#t":["bitcoin","nostr"],"since":100,"until":200,"limit":50}}"##,
+            hex("aa"),
+            hex("bb"),
+            hex("cc"),
+        );
+        let shape = InterestShape::from_filter_json(&json).expect("valid object");
+
+        assert_eq!(shape.kinds, [1u32, 6u32].into_iter().collect());
+        assert_eq!(shape.authors, [hex("aa")].into_iter().collect());
+        assert_eq!(shape.event_ids, [hex("bb")].into_iter().collect());
+        assert_eq!(
+            shape.tags.get("e").map(|s| s.iter().cloned().collect::<Vec<_>>()),
+            Some(vec![hex("cc")])
+        );
+        assert_eq!(
+            shape.tags.get("t").map(|s| s.len()),
+            Some(2)
+        );
+        assert!(shape.tags["t"].contains("bitcoin"));
+        assert!(shape.tags["t"].contains("nostr"));
+        assert_eq!(shape.since, Some(100));
+        assert_eq!(shape.until, Some(200));
+        assert_eq!(shape.limit, Some(50));
+        // Client-side-only fields are never set by the parser.
+        assert!(shape.addresses.is_empty());
+        assert_eq!(shape.relay_pin, None);
+    }
+
+    #[test]
+    fn from_filter_json_is_order_independent_for_dedup() {
+        // The whole point of the InterestShape-hash dedup: two filter strings
+        // that differ only in JSON key order AND array element order must parse
+        // to byte-identical shapes so the registry collapses them to one slot.
+        let a = InterestShape::from_filter_json(
+            r#"{"kinds":[1,6],"authors":["aa","bb"]}"#,
+        )
+        .unwrap();
+        let b = InterestShape::from_filter_json(
+            r#"{"authors":["bb","aa"],"kinds":[6,1]}"#,
+        )
+        .unwrap();
+        assert_eq!(a, b, "key/element ordering must not affect the shape");
+    }
+
+    #[test]
+    fn from_filter_json_rejects_non_object() {
+        assert!(InterestShape::from_filter_json("[]").is_none());
+        assert!(InterestShape::from_filter_json("42").is_none());
+        assert!(InterestShape::from_filter_json("not json").is_none());
+        assert!(InterestShape::from_filter_json("\"a string\"").is_none());
+    }
+
+    #[test]
+    fn from_filter_json_tolerates_malformed_and_unknown_fields() {
+        // Non-array kinds is skipped; unknown top-level key ignored; the valid
+        // subset still lands. Multi-char tag keys (`#foo`) are not NIP-01 and
+        // are dropped.
+        let shape = InterestShape::from_filter_json(
+            r##"{"kinds":"oops","authors":["aa"],"weird":true,"#foo":["x"]}"##,
+        )
+        .expect("still a valid object");
+        assert!(shape.kinds.is_empty());
+        assert_eq!(shape.authors, ["aa".to_string()].into_iter().collect());
+        assert!(shape.tags.is_empty(), "multi-char tag key dropped");
+    }
+
+    #[test]
+    fn from_filter_json_empty_object_is_wildcard_default() {
+        let shape = InterestShape::from_filter_json("{}").unwrap();
+        assert_eq!(shape, InterestShape::default());
     }
 
     #[test]

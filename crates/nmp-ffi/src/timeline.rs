@@ -87,6 +87,88 @@ pub extern "C" fn nmp_app_open_firehose_tag(app: *mut NmpApp, tag: *const c_char
     app.send_cmd(ActorCommand::OpenFirehoseTag { tag });
 }
 
+/// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
+/// interest. The generic replacement for `nmp_app_open_author` /
+/// `nmp_app_open_thread` / `nmp_app_open_firehose_tag`: the app passes a
+/// verbatim NIP-01 REQ filter, so the `{1,6}` kind decisions live in the app
+/// (D0-correct), not in the substrate.
+///
+/// * `filter_json` — standard Nostr REQ filter, e.g.
+///   `{"kinds":[1,6],"authors":["<hex>"]}`. Parsed kernel-side into an
+///   `InterestShape`; the shape hash gives deterministic dedup across call
+///   sites passing the same filter (regardless of JSON key/element ordering).
+/// * `consumer_id` — refcount owner key. Multiple owners sharing the same
+///   filter keep one live subscription until the last `close_interest`.
+/// * `scope` — `0` = ActiveAccount (re-route on account switch),
+///   `1` = Global (account-agnostic, e.g. a hashtag firehose).
+///
+/// FFI-clean (D6): a null argument is a silent no-op; a non-object
+/// `filter_json` surfaces a diagnostic toast (via `ActorCommand::ShowToast`)
+/// rather than a panic. D8: forwards to the actor; no polling, no sync wait.
+#[no_mangle]
+pub extern "C" fn nmp_app_open_interest(
+    app: *mut NmpApp,
+    filter_json: *const c_char,
+    consumer_id: *const c_char,
+    scope: u32,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(filter_json) = c_string_argument(filter_json) else {
+        return;
+    };
+    let Some(consumer_id) = c_string_argument(consumer_id) else {
+        return;
+    };
+    // D6 — reject a malformed filter at the boundary with an observable toast
+    // rather than silently registering nothing. The dispatch arm re-parses and
+    // treats `None` as a no-op, but surfacing the error here gives the host a
+    // visible signal that its filter string was rejected.
+    if nmp_core::planner::InterestShape::from_filter_json(&filter_json).is_none() {
+        app.send_cmd(ActorCommand::ShowToast {
+            message: "open_interest: malformed filter JSON".to_string(),
+        });
+        return;
+    }
+
+    app.send_cmd(ActorCommand::OpenInterest {
+        filter_json,
+        consumer_id,
+        scope,
+    });
+}
+
+/// M2 (ADR-0042) — detach one owner from a feed interest registered via
+/// [`nmp_app_open_interest`]. The live subscription is dropped when the last
+/// owner leaves. The `(filter_json, consumer_id, scope)` triple must match the
+/// open call (the kernel reconstructs the same registry slot from the
+/// `InterestShape` hash). FFI-clean (D6): null/malformed arguments are silent
+/// no-ops (a close of a non-existent slot is harmless).
+#[no_mangle]
+pub extern "C" fn nmp_app_close_interest(
+    app: *mut NmpApp,
+    filter_json: *const c_char,
+    consumer_id: *const c_char,
+    scope: u32,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(filter_json) = c_string_argument(filter_json) else {
+        return;
+    };
+    let Some(consumer_id) = c_string_argument(consumer_id) else {
+        return;
+    };
+
+    app.send_cmd(ActorCommand::CloseInterest {
+        filter_json,
+        consumer_id,
+        scope,
+    });
+}
+
 /// Open whatever a `nostr:` URI (or bare NIP-19 entity) points at (T95/T80).
 /// Routed through the `KernelAction` reducer: success registers the resolved
 /// interest + pushes `ViewOpened`, failure pushes `UriRejected`. FFI-clean

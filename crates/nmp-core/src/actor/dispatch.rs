@@ -429,6 +429,62 @@ impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<
     }
 }
 
+/// M2 (ADR-0042) — build the `(SubIdentity, LogicalInterest)` pair for an
+/// `OpenInterest` / `CloseInterest` command from the raw FFI arguments.
+///
+/// Shared by both arms so an open and its matching close land on the SAME
+/// registry `(scope, key)` slot: the `SubKey` is the hash of the parsed
+/// `InterestShape` (order-independent — see `InterestShape::from_filter_json`),
+/// the `SubOwnerKey` is the hash of `consumer_id`, and the `SubScope` folds
+/// `ActiveAccount` → `Global` (the registry's existing `legacy_scope`
+/// convention — the registry's `SubScope` has no `ActiveAccount` variant, so
+/// the real `InterestScope::ActiveAccount` rides on the `LogicalInterest`
+/// instead, where the compiler reads it to re-route on account switch).
+///
+/// Returns `None` when `filter_json` is not a valid NIP-01 filter object (D6 —
+/// the arm treats it as a silent no-op).
+fn build_open_interest(
+    filter_json: &str,
+    consumer_id: &str,
+    scope: u32,
+) -> Option<(crate::subs::SubIdentity, crate::planner::LogicalInterest)> {
+    use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
+    use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
+
+    let shape = crate::planner::InterestShape::from_filter_json(filter_json)?;
+
+    // `0` = ActiveAccount (re-route on switch), anything else = Global.
+    let interest_scope = if scope == 0 {
+        InterestScope::ActiveAccount
+    } else {
+        InterestScope::Global
+    };
+
+    // Registry key: the SubScope mirrors `InterestRegistry::legacy_scope`
+    // (ActiveAccount shares the Global slot space until per-account isolation
+    // resolves the active pubkey). The real account-context lives on the
+    // LogicalInterest below.
+    let sub_scope = SubScope::Global;
+    // Fold the scope discriminant into the key so an ActiveAccount and a Global
+    // open of the *same* filter never collide on one slot (they route
+    // differently).
+    let key = SubKey::builder("open-interest")
+        .with(&shape)
+        .with(scope)
+        .finish();
+    let identity = SubIdentity::new(SubOwnerKey::new(consumer_id), key, sub_scope);
+
+    let interest = LogicalInterest {
+        scope: interest_scope,
+        shape,
+        // `open_interest` is always a tailing feed subscription (never OneShot).
+        lifecycle: InterestLifecycle::Tailing,
+        ..LogicalInterest::default()
+    };
+
+    Some((identity, interest))
+}
+
 pub(super) fn dispatch_command(
     command: ActorCommand,
     ctx: &mut ActorContext<'_>,
@@ -1472,6 +1528,44 @@ pub(super) fn dispatch_command(
             }
             Some(Vec::new())
         }
+        ActorCommand::OpenInterest {
+            filter_json,
+            consumer_id,
+            scope,
+        } => {
+            // M2 (ADR-0042) — generic feed-subscription front door. Parse the
+            // verbatim NIP-01 filter into an InterestShape, derive the
+            // `(owner, key, scope)` identity from it, and run the same
+            // ensure_sub + CompileTrigger body as the `EnsureInterest` arm.
+            // D6: a malformed filter is a silent no-op (the FFI shim already
+            // surfaced a toast before sending — see `nmp_app_open_interest`).
+            if let Some((identity, interest)) =
+                build_open_interest(&filter_json, &consumer_id, scope)
+            {
+                // ensure_sub + trigger-on-newly-installed live in the kernel
+                // method so the open/close arms cannot drift on the invariant.
+                let _ = ctx.kernel.open_interest_sub(identity, interest);
+            }
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
+        ActorCommand::CloseInterest {
+            filter_json,
+            consumer_id,
+            scope,
+        } => {
+            // M2 (ADR-0042) — detach one owner; drop the live sub on the last
+            // leave. The `(owner, key, scope)` identity is reconstructed from
+            // the SAME filter + consumer + scope the open used, so the
+            // InterestShape hash lands on the same registry slot.
+            if let Some((identity, _interest)) =
+                build_open_interest(&filter_json, &consumer_id, scope)
+            {
+                let _ = ctx.kernel.close_interest_sub(&identity);
+            }
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         #[cfg(any(test, feature = "test-support"))]
         ActorCommand::Barrier { ack } => {
             // V-105: test-support sync primitive. Sending `()` here proves
@@ -1847,6 +1941,185 @@ pub(super) fn handle_relay_event(
         // Diagnostic snapshot; the kernel doesn't act on it (per-URL health
         // is M11). Reserved for future per-URL health-row writes.
         PoolEvent::Health { .. } => {}
+    }
+}
+
+#[cfg(test)]
+mod open_interest_tests {
+    //! M2 (ADR-0042) — unit tests for `build_open_interest`, the shared body of
+    //! the `OpenInterest` / `CloseInterest` dispatch arms: filter parse →
+    //! `InterestShape` → `SubIdentity` + `Tailing` `LogicalInterest`, plus the
+    //! end-to-end open → `ensure_sub` → `CompileTrigger` / close → `drop_owner`
+    //! contract against a real `InterestRegistry`.
+    use super::build_open_interest;
+    use crate::planner::{InterestLifecycle, InterestScope};
+    use crate::subs::InterestRegistry;
+
+    #[test]
+    fn parses_filter_into_tailing_interest_with_scope() {
+        let (identity, interest) =
+            build_open_interest(r#"{"kinds":[1,6],"authors":["aa"]}"#, "author-aa", 0)
+                .expect("valid filter");
+
+        // Lifecycle is always Tailing for a feed subscription.
+        assert_eq!(interest.lifecycle, InterestLifecycle::Tailing);
+        // scope 0 → ActiveAccount (re-route on switch) rides on the interest.
+        assert_eq!(interest.scope, InterestScope::ActiveAccount);
+        // Shape carried the app-supplied kinds verbatim (D0 — no substrate default).
+        assert_eq!(interest.shape.kinds, [1u32, 6u32].into_iter().collect());
+        assert_eq!(interest.shape.authors, ["aa".to_string()].into_iter().collect());
+        // Owner is derived from the consumer_id.
+        let _ = identity;
+    }
+
+    #[test]
+    fn scope_one_maps_to_global() {
+        let (_id, interest) =
+            build_open_interest(r##"{"kinds":[1],"#t":["bitcoin"]}"##, "tag-bitcoin", 1).unwrap();
+        assert_eq!(interest.scope, InterestScope::Global);
+    }
+
+    #[test]
+    fn malformed_filter_is_none() {
+        assert!(build_open_interest("not json", "c", 0).is_none());
+        assert!(build_open_interest("[]", "c", 0).is_none());
+    }
+
+    #[test]
+    fn same_filter_different_json_order_dedups_to_one_slot() {
+        // The dedup contract: two opens of the same filter (different key/element
+        // ordering) under the same consumer collapse to one registry slot.
+        let mut reg = InterestRegistry::new();
+        let (id_a, int_a) =
+            build_open_interest(r#"{"kinds":[1,6],"authors":["aa","bb"]}"#, "c", 0).unwrap();
+        let (id_b, int_b) =
+            build_open_interest(r#"{"authors":["bb","aa"],"kinds":[6,1]}"#, "c", 0).unwrap();
+
+        assert!(reg.ensure_sub(id_a, int_a), "first open installs");
+        assert!(
+            !reg.ensure_sub(id_b, int_b),
+            "same filter+consumer is a no-op install (already present)"
+        );
+        assert_eq!(reg.len(), 1, "deduped to a single slot");
+    }
+
+    #[test]
+    fn distinct_consumers_share_the_slot_and_last_close_drops_it() {
+        // Two consumers, same filter → one live interest, refcount 2. The slot
+        // survives the first close and is dropped on the last.
+        let mut reg = InterestRegistry::new();
+        let filter = r#"{"kinds":[1,6],"authors":["aa"]}"#;
+        let (id1, int1) = build_open_interest(filter, "consumer-1", 0).unwrap();
+        let (id2, int2) = build_open_interest(filter, "consumer-2", 0).unwrap();
+
+        assert!(reg.ensure_sub(id1.clone(), int1), "consumer-1 installs");
+        assert!(!reg.ensure_sub(id2.clone(), int2), "consumer-2 attaches");
+        assert_eq!(reg.len(), 1);
+
+        // First close: slot survives (consumer-2 still attached).
+        let (close1, _) = build_open_interest(filter, "consumer-1", 0).unwrap();
+        assert!(!reg.drop_owner(&close1), "slot survives first close");
+        assert_eq!(reg.len(), 1);
+
+        // Last close: slot dropped.
+        let (close2, _) = build_open_interest(filter, "consumer-2", 0).unwrap();
+        assert!(reg.drop_owner(&close2), "last close drops the slot");
+        assert!(reg.is_empty());
+    }
+
+    #[test]
+    fn active_account_and_global_scope_of_same_filter_are_distinct_slots() {
+        // scope is folded into the SubKey so the same filter under ActiveAccount
+        // (re-routes) and Global (account-agnostic) does not collide — they route
+        // differently and must be distinct registry entries.
+        let mut reg = InterestRegistry::new();
+        let filter = r##"{"kinds":[1],"#t":["bitcoin"]}"##;
+        let (id_active, int_active) = build_open_interest(filter, "c", 0).unwrap();
+        let (id_global, int_global) = build_open_interest(filter, "c", 1).unwrap();
+
+        assert!(reg.ensure_sub(id_active, int_active));
+        assert!(
+            reg.ensure_sub(id_global, int_global),
+            "different scope → newly installed, not a dedup"
+        );
+        assert_eq!(reg.len(), 2);
+    }
+
+    // ── Kernel methods: parse → ensure_sub → CompileTrigger enqueued ──────────
+    // These assert the load-bearing half the registry-only tests above cannot:
+    // that a newly-installed interest enqueues a recompile trigger (no trigger →
+    // the interest never compiles to a REQ on the wire) and that dedups / closes
+    // gate the trigger correctly.
+
+    use crate::kernel::Kernel;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+
+    #[test]
+    fn open_interest_sub_installs_and_enqueues_trigger() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let before = kernel.lifecycle_mut().pending_trigger_count();
+
+        let (identity, interest) =
+            build_open_interest(r#"{"kinds":[1,6],"authors":["aa"]}"#, "author-aa", 0).unwrap();
+        let newly_installed = kernel.open_interest_sub(identity, interest);
+
+        assert!(newly_installed, "first open installs the slot");
+        assert_eq!(
+            kernel.lifecycle_mut().pending_trigger_count(),
+            before + 1,
+            "a newly-installed interest enqueues exactly one recompile trigger"
+        );
+    }
+
+    #[test]
+    fn open_interest_sub_dedup_does_not_re_enqueue() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let filter = r#"{"kinds":[1,6],"authors":["aa"]}"#;
+
+        let (id1, int1) = build_open_interest(filter, "consumer-1", 0).unwrap();
+        assert!(kernel.open_interest_sub(id1, int1));
+        let after_first = kernel.lifecycle_mut().pending_trigger_count();
+
+        // Second owner on the SAME (scope,key) slot: attaches but does NOT
+        // re-install, so no second trigger (idempotent — would otherwise churn
+        // the compiler on every re-mount).
+        let (id2, int2) = build_open_interest(filter, "consumer-2", 0).unwrap();
+        assert!(!kernel.open_interest_sub(id2, int2), "second owner attaches");
+        assert_eq!(
+            kernel.lifecycle_mut().pending_trigger_count(),
+            after_first,
+            "attaching a second owner must not re-enqueue a trigger"
+        );
+    }
+
+    #[test]
+    fn close_interest_sub_enqueues_trigger_only_on_last_owner() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let filter = r#"{"kinds":[1,6],"authors":["aa"]}"#;
+
+        let (id1, int1) = build_open_interest(filter, "consumer-1", 0).unwrap();
+        let (id2, int2) = build_open_interest(filter, "consumer-2", 0).unwrap();
+        kernel.open_interest_sub(id1, int1);
+        kernel.open_interest_sub(id2, int2);
+        let after_opens = kernel.lifecycle_mut().pending_trigger_count();
+
+        // First close: slot survives (consumer-2 still attached) → no trigger.
+        let (close1, _) = build_open_interest(filter, "consumer-1", 0).unwrap();
+        assert!(!kernel.close_interest_sub(&close1), "slot survives");
+        assert_eq!(
+            kernel.lifecycle_mut().pending_trigger_count(),
+            after_opens,
+            "a non-final close does not enqueue a trigger"
+        );
+
+        // Last close: slot dropped → exactly one trigger.
+        let (close2, _) = build_open_interest(filter, "consumer-2", 0).unwrap();
+        assert!(kernel.close_interest_sub(&close2), "last close drops slot");
+        assert_eq!(
+            kernel.lifecycle_mut().pending_trigger_count(),
+            after_opens + 1,
+            "the final close enqueues exactly one recompile trigger"
+        );
     }
 }
 

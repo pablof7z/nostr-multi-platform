@@ -872,6 +872,39 @@ pub enum ActorCommand {
     /// Detach one owner from a logical interest registered through
     /// [`EnsureInterest`](Self::EnsureInterest).
     DropInterestOwner(crate::subs::SubIdentity),
+    /// M2 (ADR-0042) — the generic FFI-facing feed-subscription front door that
+    /// replaced the bespoke `OpenAuthor` / `OpenThread` / `OpenFirehoseTag`
+    /// variants. The host passes a verbatim NIP-01 REQ filter; the dispatch arm
+    /// parses it into an `InterestShape` (`InterestShape::from_filter_json`),
+    /// builds a `SubIdentity` (`owner = consumer_id`, `key = InterestShape`
+    /// hash, scope from the param), and runs the same
+    /// `registry_mut().ensure_sub` + `CompileTrigger` body as
+    /// [`EnsureInterest`](Self::EnsureInterest). Lifecycle is always `Tailing`.
+    ///
+    /// D0: `nmp-core` carries the filter as opaque shape data — the app owns the
+    /// kind set (`{1,6}` etc. now live in Swift, not the substrate). The
+    /// `InterestShape` hash gives deterministic dedup: two call sites passing
+    /// the same filter (regardless of JSON key/element ordering) map to the same
+    /// slot.
+    OpenInterest {
+        /// Verbatim NIP-01 REQ filter JSON, e.g.
+        /// `{"kinds":[1,6],"authors":["<hex>"]}`.
+        filter_json: String,
+        /// Refcount owner key — deduplicates the live subscription across call
+        /// sites that register the same filter.
+        consumer_id: String,
+        /// `0` = `InterestScope::ActiveAccount` (re-route on account switch),
+        /// `1` = `InterestScope::Global` (account-agnostic).
+        scope: u32,
+    },
+    /// M2 (ADR-0042) — detach one owner from an interest registered via
+    /// [`OpenInterest`](Self::OpenInterest). Drops the live subscription when
+    /// the last owner leaves (mirrors [`DropInterestOwner`](Self::DropInterestOwner)).
+    CloseInterest {
+        filter_json: String,
+        consumer_id: String,
+        scope: u32,
+    },
     /// Test-support synchronisation primitive (V-105). When the actor dequeues
     /// this command it sends `()` on the `ack` channel, proving all prior
     /// commands have been dispatched. Tests that need to wait for the actor to

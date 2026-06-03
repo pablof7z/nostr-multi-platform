@@ -45,6 +45,61 @@ explicit coordination.
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
 
+### V-112 · M2 author/thread feed read-path migration (ADR-0042 §5) [HIGH · in-flight, PR1 landed]
+
+**Status (2026-06-03):** The generic `open_interest` / `close_interest`
+mechanism is landed and callable (ADR-0042 §2): parser
+`InterestShape::from_filter_json` (`crates/nmp-planner/src/interest.rs`),
+`ActorCommand::{OpenInterest,CloseInterest}` + dispatch arms
+(`crates/nmp-core/src/actor/{mod,dispatch}.rs`), C-ABI
+`nmp_app_open_interest`/`nmp_app_close_interest`
+(`crates/nmp-ffi/src/timeline.rs`), `NmpCore.h` + `KernelBridge.swift`
+wrappers. Additive, Chirp behaviour unchanged. 11 unit tests green.
+
+**Remaining (the architecture-significant half the task under-counted):**
+deleting `OpenAuthor`/`OpenThread`/`OpenFirehoseTag`/`CloseAuthor`/`CloseThread`
+is **not** read-neutral. Two coupled blockers, both grep-verified:
+
+1. **Store admission.** `Kernel::should_store_event`
+   (`crates/nmp-core/src/kernel/ingest/timeline.rs:234`) admits events only via
+   the bespoke `timeline_authors` / `author_view.selected_author` /
+   `author-notes-`/`thread-ids-`/`thread-replies-`/`diag-firehose-` sub-id
+   clauses. A generic `open_interest` `sub-<hash>` for a non-followed author
+   matches none → the event is never stored. Must generalise admission to
+   "matches an active registered interest" (D8 cost: shape-matching on the hot
+   ingest path — see ADR-0042 §5.1).
+2. **Exposure.** `author_view`/`thread_view` are the **sole** read path for
+   Chirp `ProfileView` (`ios/.../ProfileView.swift:24` —
+   `items { authorView?.items ?? [] }`) / `ThreadScreen`. They are snapshot
+   projections (`kernel/update/projections.rs:175,181`, registered in
+   `crates/nmp-codegen/src/swift_projections_registry.rs:211,216` as
+   `authorView`/`threadView`). Deleting them blanks those screens.
+
+**Decision (ADR-0042 §5.1 — reuse, not reinvent):** author/thread feeds
+register through the EXISTING generic feed seam — `nmp-feed`'s `FeedRegistry`
+(`register(key, Arc<dyn FeedController>)`, ADR-0033) + `nmp-nip01::register_op_feed`
+(ADR-0035/0038, already powering `nmp.feed.home`) — NOT a new bespoke
+`interest_feeds` projection (which would be parallel machinery). App composes
+the rest: profile card ← `claimed_profiles`, thread root ← `claimed_events`,
+counts/primary-action ← local derivation.
+
+**Open sub-decision:** exact admission-gate placement (kernel
+`should_store_event` generalisation vs. feed-engine-side `EventGate` + a
+store-retain hook). Resolve before the delete-cascade.
+
+**Scope of the delete-cascade (forced once the 5 symbols go):** 5 ActorCommand
+variants + arms; kernel methods `open_author`/`author_requests`/`close_author`/
+`open_firehose_tag`/`firehose_requests`/`open_thread`/`close_thread`/
+`prepare_thread_requests`/`maybe_open_thread_hydration`/`enqueue_thread_*`;
+state `author_view`/`thread_view`/`diagnostic_firehose`/`ViewInterest`;
+`pending_view_requests` branches; `close_subscriptions_with_prefixes`; the two
+snapshot projections + payloads + codegen registry entries + projections.rs
+precedence; regen `KernelTypes.generated.swift`; ~10 non-Chirp Rust callers
+(chirp-desktop, chirp-tui, nmp-gallery android/ios/tui, nmp-android-ffi, 3
+ffi-stress binaries); `ffi-surface.md`; the `ci/check-ffi-header-drift.sh` gate.
+The `diagnostic_firehose` verb has ZERO projection/Swift coupling — it is the
+clean mechanical −3 sub-case and can be deleted independently first.
+
 ### V-57 · Remaining kind-constant duplicates to migrate to nmp-kinds [LOW · residual]
 
 Kind-constant centralisation is complete for all actionable items. Migrated in
