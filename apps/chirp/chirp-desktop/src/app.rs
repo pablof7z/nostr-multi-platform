@@ -105,9 +105,12 @@ impl DesktopApp {
                 {
                     snap.accounts = v;
                 }
-                if let Some(v) = snap.projection::<Vec<crate::snapshot::TimelineItem>>("timeline") {
-                    snap.items = v;
-                }
+                // TODO(#920): wire home feed to nmp.feed.home. The kernel's
+                // `"timeline"` projection key was removed in PR #924; the home
+                // feed now ships solely as the typed `nmp.feed.home` OP-feed
+                // sidecar (extracted into projections below). `snap.items` is no
+                // longer populated, so the Home tab renders its placeholder until
+                // the OP-feed cards are mapped into the render path.
                 // Prefer the typed OP-feed sidecar when present (same as TUI).
                 if let Some(feed) = extract_home_feed_from_typed(&typed) {
                     snap.projections.insert("nmp.feed.home".to_string(), feed);
