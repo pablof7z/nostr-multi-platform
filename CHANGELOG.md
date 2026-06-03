@@ -5,7 +5,56 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## nmp-v0.2.2 — 2026-08-04
+## nmp-v0.2.3 — 2026-06-03
+
+**Non-breaking C-ABI. FFI callers using `open_author`/`open_thread`/`open_firehose_tag` or `PublishNote` must migrate (see below).**
+
+20 commits since 0.2.2 (tagged 2026-06-03).
+
+### Fixed
+
+- **NIP-42 auth race on app relays** (#931): when a relay required auth and
+  closed REQs that were sent before the challenge arrived, subscriptions were
+  never re-established after `Authenticated`. `handle_auth_ok` now calls
+  `lifecycle.handle_reconnect(relay_url)` on `Authenticated` to replay the
+  full current plan to the relay, covering both the pre-challenge race and the
+  properly-buffered case. Fixes TENEX Android / `relay.tenex.chat` black-hole.
+
+### Added
+
+- **Generic `nmp_app_open_interest(filter_json, consumer_id, scope)` FFI** (#923,
+  M2 phase 2): replaces the three bespoke `open_author` / `open_thread` /
+  `open_firehose_tag` symbols with a single JSON-filter–driven interest entry
+  point. Apps compose hydration. Old symbols are removed; callers must migrate.
+
+### Removed / Breaking
+
+- **`PublishNote` action removed** (#916–#919): all first-party callers (iOS,
+  Android, Rust) migrated to `PublishRaw { kind: 1, ... }`. Third-party callers
+  using `PublishNote` must switch to `PublishRaw`.
+
+- **`open_author` / `open_thread` / `open_firehose_tag` removed** (#923): replaced
+  by `nmp_app_open_interest`. Callers using the old symbols will not link.
+
+- **`verify_signer` removed** (#907): signer verification now happens at
+  `AddSigner` time. Remove any post-sign-in `verify_signer` calls.
+
+### Changed
+
+- **Signer API unified under `AddSigner`** (#907/#908/#912): `nmp_app_signin_nsec`
+  and the bunker sign-in path converge on a single `AddSigner` actor command.
+  `signer_pubkey` is now the publish-path authority.
+
+- **Timeline/feed projection cleanup** (#922/#924–#929): legacy `TimelineItem`
+  cluster deleted, `TimelineEventCard` stripped of render-decision fields.
+  Shell read paths for `inserted` / `updated` / `removed` projection keys must
+  switch to the `nmp.feed.home` card-list model.
+
+- **chirp-repl app deleted** (#921): internal tooling only; no external impact.
+
+---
+
+## nmp-v0.2.2 — 2026-06-03
 
 **Non-breaking C-ABI. No migration required.**
 
