@@ -115,7 +115,7 @@ pub struct SessionState {
 
 pub struct Account {
     pub pubkey: String,
-    pub display: AccountDisplay,            // pre-formatted name + npub
+    pub display: AccountDisplay,            // raw profile metadata + identifiers
     pub signer_kind: SignerKind,
     pub profile_view_id: ViewId,            // points into ViewSnapshots
     pub contacts_view_id: ViewId,
@@ -161,7 +161,7 @@ The ledger is general, not relay-only. It can represent local optimistic commit,
 
 | View | Inputs | Payload |
 |---|---|---|
-| Profile | `pubkey` | latest kind-0 parsed; pre-formatted display name; verified domain |
+| Profile | `pubkey` | latest kind-0 parsed; raw profile metadata; verified domain |
 | Contacts | `pubkey` | parsed kind-3 follow list, with per-followee metadata |
 | Mailboxes | `pubkey` | parsed kind-10002 |
 | Mutes | `pubkey` | parsed kind-10000 |
@@ -177,18 +177,23 @@ The ledger is general, not relay-only. It can represent local optimistic commit,
 | WoT rank | `pubkey` | trust score + reasoning |
 | Search | `query`, `kinds`, `time_window` | result list |
 
-Each payload type carries **pre-formatted** display strings (timestamps in user locale, npub-shortened forms, sat amounts). No platform-side formatting — the kernel owns that decision.
+Each payload type carries raw protocol facts: hex pubkeys, Unix timestamps,
+counts, and verbatim metadata. Presentation layers own platform display
+formatting such as abbreviated pubkeys, relative-time labels, pluralized
+counts, and locale-sensitive amounts. The kernel owns Nostr policy and view
+membership, not UI string formatting.
 
-**Best-effort field contract (per doctrine D1).** Every display-bearing field in every view payload is **non-optional** and has a defined placeholder when the underlying data is missing:
+**Best-effort field contract (per doctrine D1).** Missing source data is
+represented explicitly rather than replaced by a display fallback:
 
-| Field | Placeholder when missing |
+| Field | Representation when missing |
 |---|---|
-| Display name | Shortened npub: `npub1abc…xyz` |
-| Picture URL | Deterministic identicon URI derived from pubkey |
+| Display name | absent / null; the presentation layer chooses its fallback |
+| Picture URL | absent / null; the presentation layer chooses its fallback |
 | NIP-05 verified domain | empty string (UI conditionally renders a checkmark only when non-empty) |
-| Timestamp string | "just now" |
+| Timestamp | raw Unix timestamp when known, otherwise absent / zero per field contract |
 | Reaction count | 0 |
-| Zap total | 0 sats |
+| Zap total | raw sats/msats count of 0 |
 | Content body (if missing) | empty string (the item still renders; only the body region is blank) |
 
 When the underlying data arrives — kind:0 for an author, kind-9735 zap receipts for a note, the actual decrypted body for a DM — the view payload updates in place, the platform's reactive primitive detects the change, and only the affected cell re-renders. No spinner is ever shown for already-rendered cells.
@@ -209,11 +214,11 @@ pub struct TimelineView {
 pub struct TimelineItem {
     pub id: String,                   // event id hex
     pub author_pubkey: String,
-    pub author_display: String,       // never empty; npub-shortened if no kind:0
-    pub author_picture: String,       // never empty; identicon URI if no kind:0
+    pub author_display_name: Option<String>,
+    pub author_picture_url: Option<String>,
     pub author_nip05_domain: String,  // empty if not verified
     pub content_preview: String,      // pre-truncated for list display
-    pub created_at_display: String,   // pre-formatted, locale-aware
+    pub created_at: u64,              // Unix seconds
     pub reaction_summary: ReactionSummary,
     pub zap_sats_total: u64,
     pub reply_count: u32,
@@ -365,7 +370,7 @@ pub fn decrypt_push(
 pub struct DecryptedPush {
     pub sender_pubkey: String,
     pub sender_display: String,
-    pub body_preview: String,             // pre-formatted, length-capped
+    pub body_preview: String,             // length-capped preview
     pub conversation_id: String,
     pub kind: u32,
 }

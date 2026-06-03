@@ -21,7 +21,9 @@ import org.nmp.android.model.MarmotKeyPackage
 import org.nmp.android.model.MarmotMessage
 import org.nmp.android.model.MarmotPendingWelcome
 import org.nmp.android.model.MarmotSnapshot
+import org.nmp.android.model.ProfileAction
 import org.nmp.android.model.ProfileCard
+import org.nmp.android.model.ProfileDispatchSpec
 import org.nmp.android.model.RelayStatus
 import org.nmp.android.model.SnapshotProjections
 import org.nmp.android.model.TimelineItem
@@ -323,6 +325,28 @@ object KernelUpdateFrameDecoder {
             items = m["items"]?.listOf { decodeTimelineItem(it) } ?: emptyList(),
             noteCount = m["noteCount"]?.intOr(0) ?: 0,
             noteCountDisplay = m["noteCountDisplay"]?.stringOr("") ?: "",
+            primaryAction = m["primaryAction"]?.let { decodeProfileAction(it) },
+        )
+    }
+
+    private fun decodeProfileAction(v: Value): ProfileAction? {
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return ProfileAction(
+            kind = m["kind"]?.stringOr("") ?: "",
+            label = m["label"]?.stringOr("") ?: "",
+            targetPubkey = m["targetPubkey"]?.stringOr("") ?: "",
+            iconName = m["iconName"]?.stringOr("") ?: "",
+            dispatch = m["dispatch"]?.let { decodeProfileDispatchSpec(it) },
+        )
+    }
+
+    private fun decodeProfileDispatchSpec(v: Value): ProfileDispatchSpec? {
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return ProfileDispatchSpec(
+            namespace = m["namespace"]?.stringOr("") ?: "",
+            bodyJson = m["bodyJson"]?.stringOr("") ?: "",
         )
     }
 
@@ -380,7 +404,7 @@ object KernelUpdateFrameDecoder {
     }
 
     /**
-     * Extract the pre-formatted balance display string from the `"wallet"`
+     * Extract the compatibility balance display string from the `"wallet"`
      * projection.
      *
      * `balance_sats_display` → `balanceSatsDisplay` after convertFromSnakeCase.

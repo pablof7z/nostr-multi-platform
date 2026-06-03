@@ -53,7 +53,7 @@ data class MarmotPendingWelcome(
 
 /**
  * KeyPackage publication health. `subtitle` / `ageDisplay` / `actionLabel` are
- * pre-formatted Rust-owned strings the shell renders verbatim (aim.md §6 AP1).
+ * projection-provided product labels that the shell renders verbatim.
  */
 @Serializable
 data class MarmotKeyPackage(

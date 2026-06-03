@@ -1,7 +1,7 @@
 ---
 title: NMP Display Helpers & Cross-Surface Formatting
 slug: nmp-display-helpers
-summary: All display helper primitives (`to_npub`, `short_npub`, `short_hex`, `display_name_initials`, `avatar_color_hex`, `format_ago_secs`) live exclusively in `nmp-co
+summary: Display helper primitives live in `nmp-core::display` for Rust presentation surfaces; kernel projections and FFI payloads emit raw data per ADR-0032.
 tags:
   - capture
 volatility: warm
@@ -21,7 +21,7 @@ sources:
 
 ## Canonical Location
 
-All display helper primitives (`to_npub`, `short_npub`, `short_hex`, `display_name_initials`, `avatar_color_hex`, `format_ago_secs`) live exclusively in `nmp-core::display` as the canonical cross-surface source of truth. Per D6 doctrine, display separation is mandatory: backend projections must emit raw data, and `display::` helpers are banned from kernel, projection, and FFI code. <!-- [^12b3f-8] -->
+All display helper primitives (`to_npub`, `short_npub`, `short_hex`, `display_name_initials`, `avatar_color_hex`, `format_ago_secs`) live in `nmp-core::display` for Rust presentation surfaces such as the TUI, desktop shell, CLI/REPL output, and tests. Per ADR-0032, backend projections must emit raw data, and `display::` helpers are banned from kernel, projection, and FFI serialization code. <!-- [^12b3f-8] -->
 
 <!-- citations: [^12b3f-8] [^f2605-8] -->
 ## Avatar Color
@@ -30,7 +30,7 @@ The djb2 canonical color algorithm produces avatar colors as `format!("{:06X}", 
 
 ## short_npub
 
-`short_npub` is the canonical user-facing pubkey display function, producing bech32-encoded abbreviated pubkeys in the format `npub1<first10>…<last6>` (17 chars total). The `npub` and `npubShort` fields carried in `ProfileWire` must be Rust-formatted; no Swift-side or Kotlin-side reformatting is performed.
+`short_npub` is the Rust presentation helper for bech32-encoded abbreviated pubkeys in the format `npub1<first10>…<last6>` (17 chars total). Snapshot/projection payloads should carry raw pubkeys or full bech32 values; Swift, Kotlin, web, or TUI presentation code formats the compact label at render time.
 
 <!-- citations: [^12b3f-10] [^53838-6] -->
 ## short_hex

@@ -1262,8 +1262,8 @@ struct DmConversation: Decodable, Identifiable, Equatable {
 // ─── NIP-02 follow list read model ───────────────────────────────────────────
 //
 // Mirror of `nmp-app-chirp`'s `FollowListProjection` — the shape it serialises
-// under the snapshot key `"nmp.follow_list"`. All display strings are
-// computed in Rust; Swift renders what it receives (thin-shell rule).
+// under the snapshot key `"nmp.follow_list"`. Follow entries carry raw pubkeys;
+// Swift formats compact labels/avatars from those raw fields (ADR-0032).
 
 /// One entry in the active account's follow list. Only the raw hex
 /// `pubkey` crosses the FFI boundary; the presentation layer formats
@@ -1274,7 +1274,7 @@ struct FollowEntry: Decodable, Identifiable, Equatable {
 }
 
 /// The serialised follow-list snapshot. `follows` is the active account's
-/// NIP-02 kind:3 contact list, each entry pre-formatted for display.
+/// NIP-02 kind:3 contact list; each entry carries the raw followee pubkey.
 struct FollowListSnapshot: Decodable, Equatable {
     let follows: [FollowEntry]
     static let empty = FollowListSnapshot(follows: [])
@@ -1894,9 +1894,8 @@ struct AuthorProfileSnapshot: Decodable, Equatable {
     let profile: ProfileCard
     let items: [TimelineItem]
     let noteCount: Int
-    /// Pre-formatted post-count string the shell binds verbatim
-    /// (e.g. `"5"`). Rust owns the format so the shell never derives display
-    /// state from the items array (aim.md §6.9).
+    /// Compatibility count token from the author projection. New presentation
+    /// code should prefer `noteCount` for localized/pluralized labels.
     let noteCountDisplay: String
     let primaryAction: ProfileAction?
 }

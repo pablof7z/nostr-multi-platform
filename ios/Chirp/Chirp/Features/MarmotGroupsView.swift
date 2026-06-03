@@ -11,10 +11,9 @@ import SwiftUI
 // navigates to InvitesView. Toolbar "+" opens NewGroupSheet.
 //
 // Thin-shell rule: this view is a pure render of `MarmotStore.snapshot`.
-// Every label, count string, plural form, and avatar prefix crosses the
-// FFI pre-formatted in `MarmotSnapshot`'s payload — Swift does no
-// `.filter` / `.sorted` / `.reduce` / `RelativeDateTimeFormatter` /
-// `JSONSerialization` here (chirp/AGENTS.md "canonical bad example").
+// Rust owns group membership/order and action policy; Swift renders the raw
+// counts and projection-provided product labels without filtering, sorting,
+// reducing, or parsing protocol payloads here.
 //
 // D6: any nil / decode failure surfaces as the empty state, never a crash.
 // ─────────────────────────────────────────────────────────────────────────
@@ -139,9 +138,7 @@ struct GroupsView: View {
 
 private struct PublicGroupRow: View {
     let groupId: GroupId
-    /// Rust-computed two-char uppercase avatar-tile label (V-29). The Swift
-    /// derivation `String(groupId.localId.prefix(2)).uppercased()` is
-    /// deliberately deleted — display formatting is Rust-owned (aim.md §2).
+    /// Projection-provided avatar-tile label for the public group row.
     let initials: String
 
     var body: some View {

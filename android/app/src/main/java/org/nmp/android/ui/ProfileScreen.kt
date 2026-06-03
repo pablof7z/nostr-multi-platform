@@ -44,8 +44,8 @@ import org.nmp.android.model.TimelineItem
  * the author's timeline of notes. The profile card and items are both pushed
  * by the kernel snapshot during `openAuthor(pubkey)`.
  *
- * Thin-shell rule (aim.md §6.9): profile metadata (display name, pubkey display
- * format) is authored by Rust; the Compose layer is presentation only.
+ * Thin-shell rule: Rust owns the author projection and action policy; Compose
+ * renders raw projection fields and applies presentation formatting locally.
  */
 @Composable
 fun ProfileScreen(
@@ -54,10 +54,11 @@ fun ProfileScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Claim the profile on appearance; release on disappearance for demand-driven
-    // kind:0 fetching. The kernel batches a kind:0 REQ and re-fetches against the
-    // author's NIP-65 write set once it lands (D4: thin claim/release lifecycle).
+    // Open the author projection and claim kind:0 on appearance; release the
+    // profile claim on disappearance. Author-view teardown is still exposed on
+    // iOS only, so Android returns to the timeline from the explicit Back path.
     DisposableEffect(pubkey) {
+        model.openAuthor(pubkey)
         model.claimProfile(pubkey, "profile_screen")
         onDispose {
             model.releaseProfile(pubkey, "profile_screen")
@@ -66,171 +67,174 @@ fun ProfileScreen(
 
     val snapshot by model.state.collectAsStateWithLifecycle()
 
-    // The kernel publishes the author's timeline via openAuthor(pubkey).
-    // Profile metadata is resolved from snapshot projections (D8: push semantics,
-    // no derived state).
-    val items: List<TimelineItem> = snapshot.items
+    val projections = snapshot.projections
+    val authorView = projections?.authorView?.takeIf { it.pubkey == pubkey }
+    val items: List<TimelineItem> = authorView?.items ?: emptyList()
 
     val itemLookup = items.associateBy { it.id }
 
-    val projections = snapshot.projections
-    // Single lookup from the kernel's pre-merged `resolved_profiles` projection
-    // (PR #812). The kernel already applies canonical precedence
-    // (claimed > author_view > mention), so no per-platform merge chain here.
-    val profileCard: ProfileCard? = projections?.resolvedProfiles?.get(pubkey)
-
-    val shortPubkey = if (pubkey.length >= 16) {
-        "${pubkey.take(8)}…${pubkey.takeLast(8)}"
+    val profileCard: ProfileCard? = authorView
+        ?.profile
+        ?.takeIf { it.pubkey.isEmpty() || it.pubkey == pubkey }
+        ?: projections?.resolvedProfiles?.get(pubkey)
+    val resolvedProfiles = if (profileCard != null) {
+        (projections?.resolvedProfiles ?: emptyMap()) + (pubkey to profileCard)
     } else {
-        pubkey.ifEmpty { "unknown" }
+        projections?.resolvedProfiles ?: emptyMap()
     }
 
-    // Display name: kernel-provided displayName, else shorten the pubkey.
-    // The kernel ships None until a kind:0 arrives — presentation layer owns fallback (aim.md §2).
+    val shortPubkey = abbreviateMiddle(pubkey.ifEmpty { "unknown" }, prefix = 8, suffix = 8)
+    val npubLabel = profileCard
+        ?.npub
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { abbreviateMiddle(it, prefix = 10, suffix = 6) }
+        ?: shortPubkey
+
     val displayName = profileCard?.displayName?.takeIf { it.isNotEmpty() } ?: shortPubkey
     val initials = displayName.take(2).uppercase()
-    val noteCount = items.size
+    val noteCount = authorView?.noteCount ?: items.size
+    val noteCountDisplay = authorView
+        ?.noteCountDisplay
+        ?.takeIf { it.isNotEmpty() }
+        ?: noteCount.toString()
+    val primaryAction = authorView?.primaryAction
+    val actionLabel = primaryAction?.label?.takeIf { it.isNotEmpty() } ?: "Profile action"
+    val dispatchAction = primaryAction
+        ?.dispatch
+        ?.takeIf { it.namespace.isNotEmpty() && it.bodyJson.isNotEmpty() }
 
-    // Provide the kernel's pre-merged resolved_profiles map so NoteRow (and any
-    // embedded notes it renders) resolves author display names without a
-    // per-platform merge chain (PR #812).
     CompositionLocalProvider(
-        LocalResolvedProfiles provides (projections?.resolvedProfiles ?: emptyMap()),
+        LocalResolvedProfiles provides resolvedProfiles,
     ) {
-    Box(modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            // Header: back button + title
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                IconButton(onClick = {
-                    model.openTimeline()
-                    onBack()
-                }) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back to timeline",
-                    )
-                }
-                Text(
-                    "Profile",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.size(40.dp))
-            }
-
-            HorizontalDivider()
-
-            // Profile header section
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            ) {
-                // Avatar with initials — color derived from pubkey (aim.md §4.2:
-                // pubkey-deterministic colors are safe; no external fetch required).
-                Surface(
-                    modifier = Modifier
-                        .size(82.dp)
-                        .clip(CircleShape),
-                    color = MaterialTheme.colorScheme.secondary,
+        Box(modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                // Header: back button + title
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            initials,
-                            color = Color.White,
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold,
+                    IconButton(onClick = {
+                        model.openTimeline()
+                        onBack()
+                    }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back to timeline",
                         )
+                    }
+                    Text(
+                        "Profile",
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.size(40.dp))
+                }
+
+                HorizontalDivider()
+
+                // Profile header section
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .size(82.dp)
+                            .clip(CircleShape),
+                        color = MaterialTheme.colorScheme.secondary,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                initials,
+                                color = Color.White,
+                                style = MaterialTheme.typography.displaySmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.size(16.dp))
+
+                    Text(
+                        displayName,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+
+                    Spacer(Modifier.size(4.dp))
+
+                    Text(
+                        npubLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    if (noteCount > 0) {
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            "$noteCountDisplay ${if (noteCount == 1) "post" else "posts"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    if (dispatchAction != null) {
+                        Spacer(Modifier.size(16.dp))
+                        Button(onClick = {
+                            model.dispatchAction(dispatchAction.namespace, dispatchAction.bodyJson)
+                        }) {
+                            Text(actionLabel)
+                        }
                     }
                 }
 
-                Spacer(Modifier.size(16.dp))
+                HorizontalDivider()
 
-                // Display name (rendered verbatim from snapshot; no derived fallback).
-                Text(
-                    displayName,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-
-                Spacer(Modifier.size(4.dp))
-
-                // Shortened pubkey: `pubkey_short` is Rust-formatted (ADR-0032);
-                // the display is read-only (D8: no mutations in Swift/Kotlin).
-                Text(
-                    shortPubkey,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-
-                if (noteCount > 0) {
-                    Spacer(Modifier.size(8.dp))
-                    Text(
-                        "$noteCount ${if (noteCount == 1) "post" else "posts"}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                Spacer(Modifier.size(16.dp))
-
-                // Follow/Unfollow button: routes through dispatch_action mechanism.
-                // The action label and icon are authored by Rust (ProfileAction);
-                // for now, we render a placeholder "Follow" button pending integration
-                // with the kernel's profile action dispatch.
-                Button(onClick = {
-                    // TODO: Dispatch follow action via model.dispatchAction() once
-                    // kernel provides profile action metadata (ProfileCard.primaryAction).
-                    // See iOS ProfileView.perform(_:) for the pattern.
-                }) {
-                    Text("Follow")
-                }
-            }
-
-            HorizontalDivider()
-
-            // Posts section: lazy-loaded timeline (D8: render verbatim from snapshot).
-            if (items.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "No posts yet",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                LazyColumn(Modifier.fillMaxSize()) {
-                    itemsIndexed(
-                        items,
-                        key = { _, item -> item.id },
-                    ) { index, item ->
-                        NoteRow(
-                            item.id,
-                            itemLookup,
-                            emptyMap(),
-                            model = model,
+                // Posts section: lazy-loaded timeline (D8: render verbatim from snapshot).
+                if (items.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "No posts yet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        // Author display names resolve via LocalResolvedProfiles,
-                        // provided by the enclosing CompositionLocalProvider.
-                        if (index < items.lastIndex) {
-                            HorizontalDivider(Modifier.padding(start = 56.dp))
+                    }
+                } else {
+                    LazyColumn(Modifier.fillMaxSize()) {
+                        itemsIndexed(
+                            items,
+                            key = { _, item -> item.id },
+                        ) { index, item ->
+                            NoteRow(
+                                item.id,
+                                itemLookup,
+                                emptyMap(),
+                                model = model,
+                            )
+                            // Author display names resolve via LocalResolvedProfiles,
+                            // provided by the enclosing CompositionLocalProvider.
+                            if (index < items.lastIndex) {
+                                HorizontalDivider(Modifier.padding(start = 56.dp))
+                            }
                         }
                     }
                 }
             }
         }
     }
-    }
+}
+
+private fun abbreviateMiddle(value: String, prefix: Int, suffix: Int): String {
+    if (value.length <= prefix + suffix + 1) return value
+    return "${value.take(prefix)}…${value.takeLast(suffix)}"
 }

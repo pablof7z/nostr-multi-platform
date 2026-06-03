@@ -7,17 +7,16 @@
 //!
 //! # Why these live in `nmp-core`
 //!
-//! Per aim.md §2 (display formatting is Rust-owned) every UI string a
-//! native shell renders must be computed in Rust before it crosses the FFI.
-//! NIP crates, the kernel, and host-app projection layers all need the
-//! same six primitives — bech32 encoding, npub abbreviation, hex
-//! abbreviation, initials, avatar tint, relative-time bucketing — and they
-//! must agree byte-for-byte so the same author renders with the same tint
-//! across every surface (DMs, NIP-29 group chat, the modular timeline, the
-//! Accounts toolbar, Marmot rows). The kernel is the only place every
-//! consumer already depends on; consolidating here is the single source of
-//! truth that avoids the cross-NIP-crate dep edge a per-crate helper would
-//! force.
+//! ADR-0032 changed the projection contract: kernel snapshots and Layer-4
+//! projection payloads carry raw protocol data, and presentation layers format
+//! that data for display. These helpers remain for Rust presentation surfaces
+//! (TUI, desktop, CLI/REPL, and tests) that need the same pure primitives:
+//! bech32 encoding, npub abbreviation, hex abbreviation, initials, avatar tint,
+//! and relative-time bucketing.
+//!
+//! Do not call these helpers from projection builders, snapshot structs, or
+//! FFI serialization paths. Those paths must emit raw pubkeys, timestamps,
+//! counts, and optional metadata so each host can choose its own presentation.
 //!
 //! V-33 — replaced duplicate helpers previously scattered across
 //! `nmp-nip17`, `nmp-nip02`, `nmp-nip29`, `nmp-nip01`, `nmp-app-marmot`,

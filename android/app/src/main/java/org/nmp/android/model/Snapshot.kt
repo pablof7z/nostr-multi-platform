@@ -94,6 +94,28 @@ data class AuthorViewPayload(
     val items: List<TimelineItem> = emptyList(),
     val noteCount: Int = 0,
     val noteCountDisplay: String = "",
+    val primaryAction: ProfileAction? = null,
+)
+
+/**
+ * Rust-authored profile action descriptor.
+ *
+ * Android renders the label and forwards [dispatch] when present; it does not
+ * branch on [kind] to choose follow/unfollow behavior locally.
+ */
+@Serializable
+data class ProfileAction(
+    val kind: String = "",
+    val label: String = "",
+    val targetPubkey: String = "",
+    val iconName: String = "",
+    val dispatch: ProfileDispatchSpec? = null,
+)
+
+@Serializable
+data class ProfileDispatchSpec(
+    val namespace: String = "",
+    val bodyJson: String = "",
 )
 
 @Serializable

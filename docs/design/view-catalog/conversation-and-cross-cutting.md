@@ -37,10 +37,9 @@ pub struct ConversationView {
 pub struct ConversationMessage {
     pub id: String,
     pub author_pubkey: String,
-    pub author_display: String,           // pre-formatted
+    pub author_display_name: Option<String>,
     pub body: String,                     // plaintext, never crosses unencrypted
     pub created_at_ms: u64,
-    pub created_at_display: String,
     pub attachments: Vec<MediaRef>,
     pub reply_to: Option<String>,
     pub reactions: ReactionSummary,

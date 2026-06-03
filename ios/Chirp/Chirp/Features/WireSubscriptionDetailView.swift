@@ -1,13 +1,10 @@
 import SwiftUI
 
-// Wire-subscription detail screen. THIN SHELL — every display string
-// (relative-time labels, state label + tone, consumer-count prose,
-// compact events_rx) is pre-formatted by the Rust `relay_diagnostics`
-// projection (`RelayDiagnosticsWireSub`). The view renders fields
-// directly.
+// Wire-subscription detail screen. THIN SHELL — Rust owns subscription state,
+// diagnostic categorization, and projection-provided status labels. The view
+// renders those fields directly without deriving protocol semantics.
 //
-// NO `Date(timeIntervalSince1970:)`, NO `switch` on protocol semantics
-// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?").
+// NO `switch` on protocol semantics (aim.md §4.5 / §"Where do views live?").
 
 struct WireSubscriptionDetailView: View {
     let sub: RelayDiagnosticsWireSub

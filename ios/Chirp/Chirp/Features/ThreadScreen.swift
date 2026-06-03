@@ -197,9 +197,8 @@ struct ThreadScreen: View {
 
 private struct ReplyTarget: Identifiable {
     let eventID: String
-    /// Kernel-pre-formatted abbreviation (`TimelineItem.shortId`). Forwarded
-    /// to `ComposeView.replyToShortID` so the reply banner caption is bound
-    /// verbatim — never sliced by Swift (V-28, aim.md §6.9).
+    /// Presentation abbreviation computed from the raw event id at the call
+    /// site and forwarded to `ComposeView.replyToShortID`.
     let shortID: String
     var id: String { eventID }
 }

@@ -111,7 +111,7 @@ CI lanes (GitHub Actions):
 - Bring-your-own actor: the actor pattern is fixed and not configurable.
 - Native business logic escape hatches: the framework does not provide hooks for "I want to do my own thing in Swift" — that is the bug the framework exists to prevent.
 - Theming systems: visual identity is the consumer's job. The starter app ships a minimal neutral theme.
-- Localization: pre-formatted strings in views default to English in v1; localization is a follow-up that lives entirely in Rust.
+- Localization: presentation formatting defaults to English in v1; localization is a follow-up for host presentation layers, while Rust continues to emit raw protocol facts.
 - Push notification routing: we depend on the consumer's APNs/FCM setup; we decrypt + format only.
 
 ---

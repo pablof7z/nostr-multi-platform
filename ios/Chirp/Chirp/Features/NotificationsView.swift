@@ -1,11 +1,10 @@
 import SwiftUI
 
-/// Publish-outbox screen. Thin shell: every string the user sees and the
-/// retry-button enabled flag come pre-formatted from Rust under
-/// `projections["outbox_summary"]` and `projections["publish_outbox"]` —
-/// doctrine §6 anti-pattern #1 / RMP bible commandment #4. The per-row UI
-/// lives in `NotificationsView+OutboxRow.swift` (color/SF-Symbol selection
-/// is presentation only).
+/// Publish-outbox screen. Thin shell: Rust owns publish status, retry policy,
+/// and projection-provided row labels under `projections["outbox_summary"]`
+/// and `projections["publish_outbox"]`. The per-row UI lives in
+/// `NotificationsView+OutboxRow.swift` (color/SF-Symbol selection is
+/// presentation only).
 struct NotificationsView: View {
     @EnvironmentObject private var model: KernelModel
     @Environment(\.dismiss) private var dismiss

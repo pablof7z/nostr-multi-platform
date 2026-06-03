@@ -1,9 +1,9 @@
 # Chirp iOS / TUI Feature Parity
 
 This inventory maps every user-facing Chirp iOS feature to the terminal surface.
-Both shells stay thin: Rust owns protocol state, projections, formatting, and
-action policy; the TUI renders projections and dispatches the same shared FFI or
-`nmp_app_dispatch_action` namespaces used by iOS.
+Both shells stay thin: Rust owns protocol state, projections, and action policy;
+each shell formats raw projection fields for its presentation surface and
+dispatches the same shared FFI or `nmp_app_dispatch_action` namespaces.
 
 | iOS area | iOS feature | TUI surface |
 | --- | --- | --- |

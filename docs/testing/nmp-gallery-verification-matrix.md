@@ -3,7 +3,9 @@
 **Purpose.** This is the gating checklist for the nmp-gallery cross-platform work. Nothing is "DONE" until **every cell** below is verified by *looking at the actually-running app* on each platform and confirming the criteria — not by "it compiles", not by "CI is green", not by "the image probably loaded". A box is checked ONLY after a human/agent has seen the running screen render the content correctly.
 
 **No-hacks rules (apply to every cell):**
-- ❌ Raw hex pubkey or any non-Rust abbreviation shown where a name/npub belongs. Names resolve to the real display name; absent-profile fallback is the **Rust-formatted `npub_short`** only.
+- ❌ Raw hex pubkey shown where a name/npub belongs. Names resolve to the real
+  display name; absent-profile fallback is the platform's compact npub/pubkey
+  presentation, derived from raw projection fields.
 - ❌ "Loading…" / "Fetching…" / "loading embedded event…" as a final state. These are transitional ONLY. A final captured state showing them = FAIL.
 - ❌ Blank/gray placeholder where an image should be. "The image failed to load, probably ok" is **not acceptable** — the image must actually render (avatar photo, article hero, media grid, embed card thumbnail).
 - ❌ Pre-warming / shell-driven fetches. Each component claims its own data (component-owned reactivity). The kernel NEVER fetches kind:0 off an event ingest.

@@ -366,9 +366,9 @@ Registry components promise:
   `claim_event`, `release_event`, or equivalent lifecycle APIs for each rendered
   row.
 - **Rust-owned truth.** Relay choice, fetch policy, cache mutation, replaceable
-  supersession, profile/embed resolution, and formatted display strings stay in
-  Rust. Native components may emit lifecycle intent and render snapshots; they
-  do not implement Nostr policy.
+  supersession, and profile/embed resolution stay in Rust. Native components
+  may emit lifecycle intent, render snapshots, and format raw projection fields
+  for their platform; they do not implement Nostr policy.
 - **Platform-native mechanisms.** SwiftUI may use environment adapters,
   `.task(id:)`, and `onDisappear`; Compose may use `LaunchedEffect`,
   `DisposableEffect`, and collected state; TUI components may use visible-intent
