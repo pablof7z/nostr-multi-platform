@@ -34,6 +34,37 @@ a coarse `PublishStep` (`Planning`/`Dispatching`/`Waiting`/`Done`); the
 fine per-relay timing is the engine's, not the ledger's
 (`action.rs:53-60`, `subsystems.md:155`).
 
+## Choosing the signer — `signer_pubkey`
+
+The publish action arrives with an already-`SignedEvent`, so the choice
+of *which* signer produces the signature happens one step earlier, at the
+sign step the kernel runs before it builds the `PublishAction`. The
+dispatch commands that ask the kernel to sign-then-publish carry an
+optional selector:
+
+```rust
+signer_pubkey: Option<String>
+```
+
+- `None` — sign with the **active account**. This is the default and the
+  common case: the app dispatches a write, the kernel signs with whoever
+  is active, then drives the publish engine.
+- `Some(pubkey)` — sign with the **specific registered signer** whose
+  pubkey matches, regardless of which account is active. This is how an
+  app-managed agent key publishes: register it with
+  `AddSigner { make_active: false }` (see
+  [11 — sessions/signers](11-sessions-signers.md) and
+  [app-signer-slot](../wiki/app-signer-slot.md)), then pass its pubkey
+  here so the kernel signs with it without ever making it the active
+  account.
+
+The kernel resolves the selector against the roster and signs through
+`sign_with_account_nonblocking`; whether that signer's key is local
+(`nsec`) or remote (NIP-46 bunker) is invisible to the caller — the
+async `PendingSign` path handles both. By the time the `PublishAction`
+reaches the engine the event is already signed, so the selector never
+appears on `PublishAction` itself.
+
 ## Read-vs-write API split
 
 | Concern | Mechanism | Surface |
