@@ -2,17 +2,21 @@
 //! that drives every UI update.
 //!
 //! `Kernel::make_update` is the hot path called at up to 4 Hz. It:
-//! 1. Calls `visible_items()` to compute the current timeline item list.
-//! 2. Diffs against `last_emitted_items` to compute `inserted`/`updated`/`removed`.
-//! 3. Assembles `KernelSnapshot` with `Metrics` counters and all projections.
-//! 4. Encodes the snapshot once and hands the binary frame to the caller.
+//! 1. Assembles `KernelSnapshot` with `Metrics` counters and all projections.
+//! 2. Encodes the snapshot once and hands the binary frame to the caller.
+//!
+//! Step 3A (issue #920): the follow-feed projection cluster (`timeline` /
+//! `inserted` / `updated` / `removed`) has been removed from the kernel — the
+//! kernel no longer computes a per-tick `visible_items()` list or diffs it. The
+//! six feed-derived `Metrics` fields are retained at `0` because `KernelMetrics`
+//! is a frozen codegen type; they clear fully when the type's shape migrates.
 //!
 //! Performance invariants (see `make_update_us` / `serialize_us` metrics):
 //! - No store scans on the hot path — all aggregates maintained incrementally.
 //! - Each `run_snapshot_projections()` call is non-blocking (D8: no polling).
 //! - `last_payload_bytes` lags one tick to avoid double-serialization.
 
-use super::{diff_items, ratio, Instant, Kernel, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ};
+use super::{ratio, Instant, Kernel, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ};
 use crate::update_envelope::{encode_snapshot_with_typed, UpdateFrameBytes};
 
 mod helpers;
@@ -57,18 +61,6 @@ impl Kernel {
             self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
         }
 
-        let items = self.visible_items();
-        let (inserted, updated, removed) = diff_items(&self.last_emitted_items, &items);
-        self.last_emitted_items = items.clone();
-
-        // "Profiled" = has a kind:0 picture URL (None signals no kind:0
-        // or no `picture` field in the parsed metadata — aim.md §2,
-        // backend ships raw Option, presentation picks the fallback).
-        let visible_profiled_items = items
-            .iter()
-            .filter(|item| item.author_picture_url.is_some())
-            .count();
-        let visible_placeholder_avatar_items = items.len().saturating_sub(visible_profiled_items);
         let counters = self.total_counters();
         let update = KernelSnapshot {
             rev: self.rev,
@@ -76,13 +68,18 @@ impl Kernel {
             last_tick_ms,
             update_kind: "ViewBatch",
             running,
-            // D0: the views cluster (`profile`, the visible timeline,
-            // `author_view`, `thread_view`, and the `inserted` / `updated` /
-            // `removed` deltas) is no longer a typed field set — all seven are
-            // inserted into `projections` below under their built-in keys by
-            // `snapshot_projections_with_publish_cluster`. The `items`,
-            // `inserted`, `updated`, and `removed` locals stay live: they still
-            // feed the `metrics` counters and the `NMP_PERF` log line.
+            // D0: the views cluster (`profile`, `author_view`, `thread_view`) is
+            // no longer a typed field set — they are inserted into `projections`
+            // below under their built-in keys by
+            // `snapshot_projections_with_publish_cluster`.
+            //
+            // Step 3A (issue #920): the follow-feed cluster (`timeline` /
+            // `inserted` / `updated` / `removed`) has been removed. The kernel no
+            // longer computes a `visible_items()` list or diffs it, so the six
+            // feed-derived metrics below are now constant `0`. They are retained
+            // (not deleted) because `KernelMetrics` is a frozen codegen type —
+            // changing its shape would be a Swift-affecting wire break. They
+            // clear fully when the type's shape migrates in a later step.
             metrics: Metrics {
                 generated_events: counters.events_rx,
                 // Diagnostic counters maintained incrementally at the `events`
@@ -99,15 +96,18 @@ impl Kernel {
                     + self.profiles.len()
                     + self.seed_contacts.len(),
                 tombstones: 0,
-                visible_items: self.last_emitted_items.len(),
-                visible_profiled_items,
-                visible_placeholder_avatar_items,
+                // Step 3A (#920): feed cluster removed — constant `0` until the
+                // frozen `KernelMetrics` shape migrates.
+                visible_items: 0,
+                visible_profiled_items: 0,
+                visible_placeholder_avatar_items: 0,
                 open_views: self.logical_interests().len() as u32,
                 events_since_last_update: self.events_since_last_update,
                 diagnostic_firehose_events: self.diagnostic_firehose.events,
-                inserted_count: inserted.len(),
-                updated_count: updated.len(),
-                removed_count: removed.len(),
+                // Step 3A (#920): feed delta cluster removed — constant `0`.
+                inserted_count: 0,
+                updated_count: 0,
+                removed_count: 0,
                 events_per_second_configured: 0,
                 emit_hz_configured: DEFAULT_EMIT_HZ,
                 update_sequence: self.update_sequence,
@@ -207,14 +207,12 @@ impl Kernel {
             // D8: the host closures run on this actor thread inside the tick;
             // `run_snapshot_projections` documents the non-blocking contract.
             //
-            // D0: the views cluster (`profile`, `timeline`, `author_view`,
-            // `thread_view`, `inserted`, `updated`, `removed`) is folded into
-            // the same map. `items` / `inserted` / `updated` / `removed` are
-            // tick-local bindings, so they are passed in; `profile_card()`,
-            // `author_view()`, and `thread_view()` read `&self` and are called
-            // inside the helper.
-            projections: self
-                .snapshot_projections_with_publish_cluster(&items, &inserted, &updated, &removed),
+            // D0: the views cluster (`profile`, `author_view`, `thread_view`) is
+            // folded into the same map. `profile_card()`, `author_view()`, and
+            // `thread_view()` read `&self` and are called inside the helper.
+            // Step 3A (#920): the follow-feed cluster (`timeline` / `inserted` /
+            // `updated` / `removed`) is no longer produced here.
+            projections: self.snapshot_projections_with_publish_cluster(),
         };
 
         // Encode the snapshot exactly once. The on-wire `payload_bytes`
@@ -263,15 +261,14 @@ impl Kernel {
         // tick's values (one-tick lag, same pattern as `payload_bytes`).
         let this_serialize_us = before_serialize.elapsed().as_micros();
         let this_make_update_us = emit_started.elapsed().as_micros();
-        if batch_events > 0 || !inserted.is_empty() || !updated.is_empty() || !removed.is_empty() {
+        // Step 3A (#920): the feed delta cluster (`inserted` / `updated` /
+        // `removed` / `visible`) was removed, so the perf line is gated on
+        // `batch_events` alone and no longer reports the feed counters.
+        if batch_events > 0 {
             self.log(format!(
-                "NMP_PERF rust_update rev={} batch_events={} inserted={} updated={} removed={} visible={} payload_bytes={} make_update_us={} serialize_us={} event_to_emit_ms={} max_event_to_emit_ms={}",
+                "NMP_PERF rust_update rev={} batch_events={} payload_bytes={} make_update_us={} serialize_us={} event_to_emit_ms={} max_event_to_emit_ms={}",
                 self.rev,
                 batch_events,
-                inserted.len(),
-                updated.len(),
-                removed.len(),
-                self.last_emitted_items.len(),
                 encoded.len(),
                 this_make_update_us,
                 this_serialize_us,

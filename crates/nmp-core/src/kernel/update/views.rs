@@ -67,15 +67,6 @@ impl Kernel {
             .cloned()
     }
 
-    pub(in crate::kernel) fn visible_items(&self) -> Vec<TimelineItem> {
-        self.timeline
-            .iter()
-            .filter_map(|id| self.events.get(id))
-            .take(self.visible_limit)
-            .map(|event| self.timeline_item(event))
-            .collect()
-    }
-
     pub(in crate::kernel) fn timeline_item(&self, event: &StoredEvent) -> TimelineItem {
         let profile = self.profile_for_pubkey(&event.author);
         // aim.md §2: picture URL stays `Option<String>`. No identicon

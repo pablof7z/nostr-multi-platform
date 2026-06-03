@@ -268,24 +268,12 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     })
     .expect("send Start");
 
-    // Sign in so OpenContactListSubscription has an active pubkey to work with.
-    // Without an active account, open_contact_list_sub short-circuits to
-    // toast_no_account and follow_feed_kinds stays empty, which means
-    // projections.timeline is absent (D5 snapshot bounding, PR #770 / V-46).
+    // Sign in so the actor has an active pubkey for the view path.
     tx.send(ActorCommand::AddSigner {
         source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
         make_active: true,
     })
     .expect("send AddSigner");
-
-    // Open the timeline view (kind:1) so follow_feed_kinds is non-empty.
-    // D5: projections.timeline is only emitted when the shell has subscribed
-    // via nmp_app_open_timeline (i.e. follow_feed_kinds is non-empty).
-    // The test event is kind:1, so we declare {1} as the feed kinds.
-    tx.send(ActorCommand::OpenContactListSubscription {
-        kinds: std::collections::BTreeSet::from([1u32]),
-    })
-    .expect("send OpenContactListSubscription");
 
     // Build a kind:1 event with a fixed author pubkey (no kind:0 will arrive).
     // Author is distinct from the signed-in account so no profile auto-arrives.
@@ -303,17 +291,30 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
 
     use nmp_core::store::VerifiedEvent;
     let verified = VerifiedEvent::from_raw_unchecked(raw);
-    // Ingest last: the diag-firehose-stress path pushes directly into
-    // self.timeline regardless of timeline_authors, so follow_feed_kinds
-    // only needs to be set before make_update / snapshot emission.
+    // The diag-firehose-stress path pushes the event directly into self.events
+    // regardless of timeline_authors, so it is visible to author_items().
     tx.send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
         .expect("send IngestPreVerifiedEvents");
 
-    // Drain envelopes until we find a `Snapshot` carrying our event in `items`.
-    // Every frame on the channel is a FlatBuffers update frame per ADR-0001
-    // (T103); decoding through `UpdateEnvelope` here proves the snapshot is
-    // delivered with the canonical discriminator. Non-snapshot frames are
-    // skipped on the typed tag, never by key sniffing.
+    // Issue #920 (Step 3A): the home-feed projection cluster
+    // (`projections.timeline`) was removed from the kernel. The author-view
+    // items projection (`projections.author_view.items`) carries the same
+    // `[TimelineItem]` shape and is still emitted, so this integration proof of
+    // the D1 placeholder contract through the full actor → FFI-envelope →
+    // snapshot path moves its oracle there. Open the author view for the note's
+    // author (D5: view-dependent keys cross the boundary only when the view is
+    // open) so `author_view.items` carries the ingested note.
+    tx.send(ActorCommand::OpenAuthor {
+        pubkey: author_pk.to_string(),
+        kinds: std::collections::BTreeSet::from([1u32]),
+    })
+    .expect("send OpenAuthor");
+
+    // Drain envelopes until we find a `Snapshot` carrying our event in
+    // `author_view.items`. Every frame on the channel is a FlatBuffers update
+    // frame per ADR-0001 (T103); decoding through `UpdateEnvelope` here proves
+    // the snapshot is delivered with the canonical discriminator. Non-snapshot
+    // frames are skipped on the typed tag, never by key sniffing.
     let snapshot = {
         let mut found: Option<serde_json::Value> = None;
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -325,7 +326,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
                             panic!("every channel frame must decode as UpdateEnvelope (ADR-0001 / T103) — got error {e} on frame bytes: {frame:?}")
                         });
                     if let UpdateEnvelope::Snapshot(snapshot) = envelope {
-                        let items = snapshot["projections"]["timeline"].as_array();
+                        let items = snapshot["projections"]["author_view"]["items"].as_array();
                         if let Some(items) = items {
                             if items.iter().any(|item| {
                                 item.get("id").and_then(|id| id.as_str()) == Some(event_id)
@@ -340,16 +341,16 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
             }
         }
         found.expect(
-            "actor must emit a `snapshot` envelope whose `projections.timeline` contains our event within 5 s",
+            "actor must emit a `snapshot` envelope whose `projections.author_view.items` contains our event within 5 s",
         )
     };
 
-    // The snapshot's `projections.timeline` field is the projection of the
-    // kernel's visible timeline — D0: timeline is in the projections map, not
-    // a typed KernelSnapshot field.
-    let items = snapshot["projections"]["timeline"]
+    // The snapshot's `projections.author_view.items` field is the projection of
+    // the kernel's open author view — D0: view payloads are in the projections
+    // map, not typed KernelSnapshot fields.
+    let items = snapshot["projections"]["author_view"]["items"]
         .as_array()
-        .expect("snapshot must have a projections.timeline array (Kernel::make_update contract)");
+        .expect("snapshot must have a projections.author_view.items array (Kernel::make_update contract)");
     let our_item = items
         .iter()
         .find(|item| item["id"].as_str() == Some(event_id))
