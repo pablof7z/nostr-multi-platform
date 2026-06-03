@@ -177,8 +177,8 @@ pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEvent
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
-    follow, open_contact_list_sub, publish_note, publish_profile, publish_signed_event,
-    publish_unsigned_event, publish_unsigned_event_to_relays, react,
+    follow, open_contact_list_sub, publish_profile, publish_signed_event, publish_unsigned_event,
+    publish_unsigned_event_to_relays, react,
 };
 // V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
 // LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`

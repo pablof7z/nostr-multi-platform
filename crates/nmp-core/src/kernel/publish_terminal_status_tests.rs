@@ -670,8 +670,8 @@ fn concurrent_terminals_in_one_tick_keep_all_in_publish_queue() {
 }
 
 #[test]
-fn action_results_reports_dispatch_correlation_id_for_publish_note() {
-    // THE FIX (PublishNote correlation_id round-trip): a `PublishNote`
+fn action_results_reports_dispatch_correlation_id_for_publish_raw() {
+    // THE FIX (PublishRaw correlation_id round-trip): a `PublishRaw`
     // dispatch mints a random correlation_id because the event id is unknown
     // at dispatch time (the actor signs the event). When the publish settles,
     // the `action_results` entry's `correlation_id` MUST report that minted id
@@ -679,7 +679,7 @@ fn action_results_reports_dispatch_correlation_id_for_publish_note() {
     // dispatch return value, can be cleared.
     //
     // This drives `run_publish_engine_at` with an explicit
-    // `correlation_id_override` (the path `commands::publish_note` →
+    // `correlation_id_override` (the path `commands::publish_unsigned_event` →
     // `publish_signed_with_correlation` takes once the actor has signed) and
     // asserts the projection reports the override verbatim.
     let author = "c9".repeat(32);
@@ -715,7 +715,7 @@ fn action_results_reports_dispatch_correlation_id_for_publish_note() {
     assert_eq!(
         result.get("status").and_then(|v| v.as_str()),
         Some("published"),
-        "the all-ack PublishNote settles as `published`"
+        "the all-ack PublishRaw settles as `published`"
     );
     assert_eq!(
         result.get("correlation_id").and_then(|v| v.as_str()),
@@ -725,13 +725,13 @@ fn action_results_reports_dispatch_correlation_id_for_publish_note() {
     assert_ne!(
         result.get("correlation_id").and_then(|v| v.as_str()),
         Some(signed.id.as_str()),
-        "the signed event id must NOT leak as the correlation_id for a PublishNote"
+        "the signed event id must NOT leak as the correlation_id for a PublishRaw"
     );
 }
 
 #[test]
-fn action_results_reports_dispatch_correlation_id_on_publish_note_failure() {
-    // The override must also survive the failure path: a `PublishNote` whose
+fn action_results_reports_dispatch_correlation_id_on_publish_raw_failure() {
+    // The override must also survive the failure path: a `PublishRaw` whose
     // relays all reject still has to report the minted correlation_id so the
     // host clears the spinner and shows the error against the right action.
     let author = "ca".repeat(32);
@@ -757,7 +757,7 @@ fn action_results_reports_dispatch_correlation_id_on_publish_note_failure() {
     assert_eq!(
         result.get("status").and_then(|v| v.as_str()),
         Some("failed"),
-        "an all-reject PublishNote settles as `failed`"
+        "an all-reject PublishRaw settles as `failed`"
     );
     assert_eq!(
         result.get("correlation_id").and_then(|v| v.as_str()),

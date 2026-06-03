@@ -6,9 +6,9 @@
 //! `ActionModule::execute` is a *static* method whose only output is enqueuing
 //! `ActorCommand`s — by design, it has no access to per-app projection state.
 //! `PublishModule`'s executor encodes everything it needs into a typed
-//! `ActorCommand::PublishNote { content, target, ... }` and the actor's
-//! dispatch arm signs+publishes. That works because publish state lives in the
-//! kernel.
+//! `ActorCommand::PublishRawEvent { kind, tags, content, target, ... }` and the
+//! actor's dispatch arm signs+publishes. That works because publish state lives
+//! in the kernel.
 //!
 //! Some app crates own stateful runtime that the kernel cannot name (D0): the
 //! Marmot MLS state (a per-process `MarmotService<MdkSqliteStorage>` holding

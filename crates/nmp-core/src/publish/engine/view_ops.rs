@@ -72,7 +72,7 @@ impl PublishEngine {
         // host clears its spinner instead of waiting on an op that never ran.
         //
         // Report the dispatch correlation_id when one was supplied (the
-        // `PublishNote` path), otherwise the handle — same fallback rule as
+        // `PublishRaw` path), otherwise the handle — same fallback rule as
         // `LastTerminal::from_outcome`.
         self.record_terminal(LastTerminal {
             correlation_id: correlation_id_override.map_or_else(|| handle.clone(), str::to_string),
@@ -95,7 +95,7 @@ impl PublishEngine {
     /// so there is no `PublishHandle` and no `TerminalOutcome`.
     ///
     /// This closes a broken-promise gap: a host that dispatched a
-    /// `PublishNote` / `PublishProfile` through `nmp_app_dispatch_action`
+    /// `PublishRaw` / `PublishProfile` through `nmp_app_dispatch_action`
     /// received a registry-minted `correlation_id` and is waiting to see its
     /// outcome in the `action_results` snapshot projection. When the *sign*
     /// step fails (no active account, a malformed reply id, a local-key sign

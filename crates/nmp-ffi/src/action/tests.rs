@@ -15,16 +15,16 @@ fn with_app(body: impl FnOnce(&NmpApp)) {
 }
 
 /// The verification case from the task: dispatching a publish action
-/// returns a `correlation_id` string. `PublishAction::PublishNote` is used
-/// because it only needs non-empty content — no signed-event fixture —
-/// and still exercises the full registry → adapter → module path.
+/// returns a `correlation_id` string. `PublishAction::PublishRaw` (kind:1) is
+/// used because it needs no signed-event fixture — the actor signs — and
+/// still exercises the full registry → adapter → module path.
 #[test]
-fn dispatch_publish_note_action_returns_correlation_id() {
+fn dispatch_publish_raw_action_returns_correlation_id() {
     with_app(|app| {
         let out = dispatch_action_json(
             Some(app),
             "nmp.publish",
-            r#"{"PublishNote":{"content":"smoke-test","reply_to_id":null,"target":"Auto"}}"#,
+            r#"{"PublishRaw":{"kind":1,"tags":[],"content":"smoke-test","target":"Auto"}}"#,
         );
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let id = parsed
@@ -140,7 +140,7 @@ fn ack_action_stage_well_formed_enqueues_command() {
         // (already dequeued). The minimal post-condition the test
         // can prove is non-crash: the call returned without panicking
         // and the queue is in a consistent state. The
-        // dispatch-publish-note test above exercises the same
+        // dispatch-publish-raw test above exercises the same
         // straddle counter the same way (count via depth, not via
         // actor observation) so we follow that precedent.
         let _ = depth_after;
@@ -215,9 +215,9 @@ fn execute_action_publish_is_ok() {
 }
 
 #[test]
-fn execute_action_publish_note_is_ok_without_actor() {
+fn execute_action_publish_raw_is_ok_without_actor() {
     with_app(|app| {
-        let json = r#"{"PublishNote":{"content":"h3","reply_to_id":null,"target":"Auto"}}"#;
+        let json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"h3","target":"Auto"}}"#;
         assert!(execute_action(app, "nmp.publish", json, "corr-id").is_ok());
     });
 }
@@ -506,7 +506,7 @@ fn dispatch_action_delivers_result_to_observer_with_correlation_id() {
         let out = dispatch_action_json(
             Some(app),
             "nmp.publish",
-            r#"{"PublishNote":{"content":"observer-test","reply_to_id":null,"target":"Auto"}}"#,
+            r#"{"PublishRaw":{"kind":1,"tags":[],"content":"observer-test","target":"Auto"}}"#,
         );
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let returned_id = parsed
@@ -580,7 +580,7 @@ fn c_abi_register_action_result_observer_receives_json() {
         // SAFETY: `nmp_app_new` never returns null.
         Some(unsafe { &*app }),
         "nmp.publish",
-        r#"{"PublishNote":{"content":"c-abi-test","reply_to_id":null,"target":"Auto"}}"#,
+        r#"{"PublishRaw":{"kind":1,"tags":[],"content":"c-abi-test","target":"Auto"}}"#,
     );
     let returned_id: serde_json::Value = serde_json::from_str(&out).unwrap();
     let returned_id = returned_id

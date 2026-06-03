@@ -135,7 +135,7 @@ mod tests {
         assert_eq!(cat_store, ERR_PERMANENT);
 
         let (toast_unsupported, status_unsupported, cat_unsupported) =
-            describe_engine_error(&PublishEngineError::UnsupportedAction("PublishNote"));
+            describe_engine_error(&PublishEngineError::UnsupportedAction("PublishProfile"));
         assert!(toast_unsupported.contains("unsupported action"));
         assert_eq!(status_unsupported, "unsupported_action");
         assert_eq!(cat_unsupported, ERR_PERMANENT);

@@ -426,24 +426,6 @@ pub enum ActorCommand {
         /// Optional human-readable reason (error message on reconnect/failed).
         reason: Option<String>,
     },
-    /// T66a publish — sign a kind:1 (optionally a reply) with the active
-    /// account and emit it to the NIP-65 outbox-resolved write relays (D3).
-    ///
-    /// `correlation_id` is the registry-minted action id when this command
-    /// originates from `nmp_app_dispatch_action` (`PublishAction::PublishNote`).
-    /// The actor signs the event, so its `id` is unknown at dispatch time and
-    /// `preferred_action_id()` could not pre-bind the host's `correlation_id` to
-    /// it. Threading the minted id here makes the publish engine report it in
-    /// `action_results` (instead of the signed event's `id`), so the host
-    /// spinner keyed on the dispatch return value can be cleared. `None` for
-    /// the legacy non-dispatch callers — the engine then falls back to the
-    /// publish handle (== event id), preserving the prior behaviour.
-    PublishNote {
-        content: String,
-        reply_to_id: Option<String>,
-        target: crate::publish::PublishTarget,
-        correlation_id: Option<String>,
-    },
     /// Sign-and-publish an arbitrary event kind for the active account.
     /// The actor fills `pubkey` from the active signer, stamps `created_at`
     /// (D7), signs, and routes through the NIP-65 outbox per `target`.
@@ -466,8 +448,8 @@ pub enum ActorCommand {
     /// `fields` is the flat string map the host supplied; the actor serializes
     /// it into the kind:0 `content`, stamps `created_at` from `kernel.now_secs()`
     /// (the host never hand-rolls the timestamp), and signs. Sibling of
-    /// [`ActorCommand::PublishNote`] — same sign-and-publish path, kind:0 instead
-    /// of kind:1.
+    /// [`ActorCommand::PublishRawEvent`] — same sign-and-publish path, kind:0
+    /// instead of an arbitrary kind.
     ///
     /// `correlation_id` is the registry-minted action id when this command
     /// originates from `nmp_app_dispatch_action` (`PublishAction::PublishProfile`).
@@ -558,7 +540,7 @@ pub enum ActorCommand {
     /// originates from `nmp_app_dispatch_action`'s `PublishAction::Publish`
     /// path. Threading it makes the publish engine report THAT id in
     /// `action_results` (via `correlation_id_override`) — explicit symmetry
-    /// with the `PublishNote` path. `None` for non-dispatch callers
+    /// with the `PublishRaw` path. `None` for non-dispatch callers
     /// (`NmpApp::publish_signed_explicit` — Marmot's MLS / gift-wrap seam,
     /// which replaced the deleted `nmp_app_publish_signed_event*` symbols
     /// with this typed Rust API — and conformance harnesses); the engine
@@ -2027,7 +2009,7 @@ pub fn run_actor_with_observers(
                     None => {
                         if ps.timed_out() {
                             kernel.set_last_error_toast(Some("remote sign timed out".to_string()));
-                            // Broken-promise fix: a dispatched `PublishNote` /
+                            // Broken-promise fix: a dispatched `PublishRaw` /
                             // `PublishProfile` carries the registry-minted
                             // `correlation_id` the host is waiting on. The
                             // broker never responded, so the publish never
@@ -2060,7 +2042,7 @@ pub fn run_actor_with_observers(
                         // group event would silently revert to the outbox.
                         //
                         // Carry the parked `correlation_id_override` too: a
-                        // dispatched `PublishNote` signed by a remote (NIP-46)
+                        // dispatched `PublishRaw` signed by a remote (NIP-46)
                         // broker must settle under the registry-minted id the
                         // host is waiting on, not the freshly signed event's
                         // id. `None` for every other parked publish.

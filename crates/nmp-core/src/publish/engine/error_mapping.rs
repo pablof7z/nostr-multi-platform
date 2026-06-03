@@ -126,9 +126,9 @@ mod tests {
 
     #[test]
     fn unsupported_action_maps_to_recent_failure() {
-        // A `PublishNote` reaching the engine is a wiring bug; D6 requires
+        // A `PublishProfile` reaching the engine is a wiring bug; D6 requires
         // it surface as snapshot-visible state, never a panic.
-        let err = PublishEngineError::UnsupportedAction("PublishNote");
+        let err = PublishEngineError::UnsupportedAction("PublishProfile");
         let failure = engine_error_to_failure(&err, &"p-bad".to_string(), "ev-bad", 7);
         assert_eq!(failure.relay_url, ENGINE_FAILURE_RELAY_URL);
         assert!(
@@ -137,7 +137,7 @@ mod tests {
             failure.reason
         );
         assert!(
-            failure.reason.contains("PublishNote"),
+            failure.reason.contains("PublishProfile"),
             "reason must carry the detail: {}",
             failure.reason
         );

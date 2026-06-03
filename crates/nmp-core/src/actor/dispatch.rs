@@ -671,33 +671,6 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::PublishNote {
-            content,
-            reply_to_id,
-            target,
-            correlation_id,
-        } => {
-            // Record Requested at dequeue time. Downstream arms record
-            // Publishing (engine accept) and Accepted/Failed (terminal).
-            if let Some(ref cid) = correlation_id {
-                ctx.kernel.record_action_stage(
-                    cid,
-                    crate::kernel::action_stages::ActionStage::Requested,
-                    None,
-                );
-            }
-            let outbound = commands::publish_note(
-                ctx.identity,
-                ctx.kernel,
-                &content,
-                reply_to_id.as_deref(),
-                target,
-                correlation_id,
-                ctx.pending_signs,
-            );
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
         ActorCommand::PublishRawEvent {
             kind,
             tags,
@@ -736,7 +709,7 @@ pub(super) fn dispatch_command(
             // `Explicit { relays }` pins to exactly those relays. Both
             // helpers handle local-keys (sync sign) and bunker (parked
             // PendingSign) paths internally — `PublishRaw` inherits the
-            // same identity-kind support as `PublishNote`/`PublishProfile`.
+            // same identity-kind support as `PublishProfile`.
             let outbound = match target {
                 crate::publish::PublishTarget::Auto => commands::publish_unsigned_event(
                     ctx.identity,

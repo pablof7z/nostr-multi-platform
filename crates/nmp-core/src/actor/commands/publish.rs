@@ -1,4 +1,4 @@
-//! Publish handlers — generic unsigned events, kind:1 (note/reply), kind:7
+//! Publish handlers — generic unsigned events, kind:0 (profile), kind:7
 //! (reaction), kind:3 (follow-edit), and timeline (re)open.
 //!
 //! Every handler builds an `UnsignedEvent`, signs it with the active
@@ -307,7 +307,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// originates from `nmp_app_dispatch_action`'s pre-signed `PublishAction::Publish`
 /// path. Threading it makes the publish engine report THAT id in
 /// `action_results` via `correlation_id_override` — explicit symmetry with
-/// `publish_note`. `None` for non-dispatch callers (the kernel-internal
+/// `publish_profile`. `None` for non-dispatch callers (the kernel-internal
 /// `NmpApp::publish_signed_explicit` workspace-internal seam + conformance
 /// harnesses land on this `None` path; the deleted
 /// `nmp_app_publish_signed_event*` C-ABI symbols used to land here too,
@@ -409,8 +409,8 @@ pub(crate) fn publish_signed_event(
         // and the dispatch arm already recorded `ActionStage::Requested`. The
         // refusal here must reach `action_results` under that id so the
         // host's spinner clears with a terminal failure verdict — the same
-        // pattern the per-verb publishers (`publish_note`, `publish_profile`)
-        // apply on their sign-step early-exits. No-op for `None`
+        // pattern the per-verb publishers (`publish_profile`) apply on their
+        // sign-step early-exits. No-op for `None`
         // (non-dispatch callers — `NmpApp::publish_signed_explicit`,
         // conformance harnesses — have nothing waiting on an id).
         if let Some(id) = correlation_id {
@@ -439,123 +439,6 @@ pub(crate) fn publish_signed_event(
     kernel.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
 }
 
-/// Sign and publish a kind:1 note (optionally a NIP-10 reply).
-///
-/// `correlation_id` is the registry-minted action id when this publish
-/// originates from `nmp_app_dispatch_action`'s `PublishAction::PublishNote`
-/// path. The actor signs the event here, so its `id` is unknown to the host
-/// at dispatch time; threading the minted id through makes the publish engine
-/// report it in `action_results` (instead of the signed event's `id`) so
-/// the host spinner keyed on the dispatch return value can be cleared. `None`
-/// for non-dispatch callers (conformance harness, tests) — the engine then
-/// reports the event id, the prior behaviour.
-pub(crate) fn publish_note(
-    identity: &IdentityRuntime,
-    kernel: &mut Kernel,
-    content: &str,
-    reply_to_id: Option<&str>,
-    target: PublishTarget,
-    correlation_id: Option<String>,
-    pending_signs: &mut Vec<PendingSign>,
-) -> Vec<OutboundMessage> {
-    let Some(pubkey) = identity.active_pubkey() else {
-        // Broken-promise fix: `toast_no_account` records `Failed` against the
-        // dispatch correlation_id (no-op for `None` callers).
-        return toast_no_account(kernel, "publish", correlation_id);
-    };
-    if let Err(reason) = validate_publish_target(&target) {
-        return fail_invalid_target(kernel, reason, correlation_id);
-    }
-
-    // T144: a kind:1 reply needs full NIP-10 structure (root forwarding,
-    // parent-author re-notification, dedup) not just a minimal reply marker.
-    // We can't depend on `nmp-nip01` here (it depends on `nmp-core`, so the
-    // edge would cycle), but we *can* use the same `crate::tags` primitives
-    // its `Note::reply_to` builder is composed of — byte-identical output.
-    //
-    // See `docs/perf/pending-user-decisions.md` for the rationale.
-    let mut tags: Vec<Vec<String>> = Vec::new();
-    let mut hydration_kick: Option<String> = None;
-    if let Some(reply) = reply_to_id {
-        // D6: a malformed reply id is a user-visible error, not a silent
-        // degrade. Without this guard the note would still publish — but as a
-        // top-level note instead of a reply — losing the user's intent with no
-        // feedback. Mirrors the explicit id/pubkey validation in `react` and
-        // `follow`: refuse the publish and surface a toast.
-        if !crate::kernel::is_hex_id(reply) {
-            // Broken-promise fix: surface the rejection under the dispatch
-            // correlation_id so the host spinner does not hang.
-            return fail_publish(
-                kernel,
-                "reply: malformed target event id".to_string(),
-                correlation_id,
-            );
-        }
-        if let Some(reply_tags) = kernel.reply_tags_for_parent(reply) {
-            tags = reply_tags
-        } else {
-            // Cold reply — parent not in `kernel.events`. Emit a minimal
-            // reply marker so the event is at least thread-discoverable,
-            // and enqueue a one-shot hydration REQ (T121) so the next
-            // reply on this id can be built with full NIP-10 structure
-            // once the parent lands.
-            tags.push(crate::tags::e_tag(reply, None, Some("reply")));
-            hydration_kick = Some(reply.to_string());
-        }
-    }
-
-    let unsigned = UnsignedEvent {
-        pubkey,
-        kind: 1,
-        tags,
-        content: content.to_string(),
-        created_at: kernel.now_secs(),
-    };
-    // Non-blocking sign: remote (NIP-46) signers return a `Pending` op that is
-    // parked for the actor's idle-tick poll loop instead of blocking here.
-    let mut op = match sign_active_nonblocking(identity, &unsigned) {
-        Ok(op) => op,
-        Err(reason) => {
-            // Broken-promise fix: a dispatched note must report its failure
-            // under the correlation_id the host is waiting on.
-            return fail_publish(kernel, reason, correlation_id);
-        }
-    };
-    let mut outbound = match op.poll() {
-        // Local key resolved on the spot — publish through the engine with the
-        // dispatch correlation_id so the terminal verdict reports it.
-        Some(Ok(signed)) => {
-            kernel.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
-        }
-        Some(Err(e)) => {
-            // Broken-promise fix: a local-key sign error happens on the actor
-            // thread AFTER `dispatch_action` already returned the
-            // correlation_id — `fail_publish` records the terminal failure.
-            return fail_publish(kernel, format!("sign failed: {e}"), correlation_id);
-        }
-        None => {
-            // Remote signer pending — park the op WITH its correlation_id so
-            // the dispatched note still settles under the id the host is
-            // waiting on once the broker turns the sign request around. The
-            // hydration kick (independent of the reply event) still fires
-            // below so the parent can be fetched.
-            pending_signs.push(PendingSign::with_target_and_correlation_id(
-                op,
-                Vec::new(),
-                target,
-                correlation_id,
-            ));
-            Vec::new()
-        }
-    };
-
-    if let Some(id) = hydration_kick {
-        outbound.extend(kernel.kick_thread_hydration(id));
-    }
-
-    outbound
-}
-
 /// Sign and publish a kind:0 profile metadata event for the active account.
 ///
 /// `fields` is the flat string map the host supplied via
@@ -564,7 +447,7 @@ pub(crate) fn publish_note(
 /// hand-rolls the timestamp — D7: the kernel owns the wall clock), signs with
 /// the active account, and routes through the NIP-65 outbox (D3).
 ///
-/// Sibling of [`publish_note`] — same non-blocking sign + `correlation_id`
+/// Sibling of [`react`] — same non-blocking sign + `correlation_id`
 /// threading, kind:0 instead of kind:1. `correlation_id` is the
 /// registry-minted action id; threading it through makes the publish engine
 /// report it in `action_results` so the host spinner keyed on the dispatch

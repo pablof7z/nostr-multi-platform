@@ -85,22 +85,11 @@ pub enum PublishAction {
         event: SignedEvent,
         target: PublishTarget,
     },
-    /// Sign-and-publish a kind:1 note (optionally a reply) with the active
-    /// account. Unlike `Publish`, the event is *not* pre-signed — the actor
-    /// signs it via the active signer. This is the `ActionModule`-native
-    /// replacement for the deleted per-verb `nmp_app_publish_note` FFI symbol;
-    /// the executor routes it to the existing `ActorCommand::PublishNote`
-    /// handler.
-    PublishNote {
-        content: String,
-        reply_to_id: Option<String>,
-        target: PublishTarget,
-    },
     /// Publish a kind:0 profile metadata event for the active account.
     /// `fields` is a flat JSON object with string-valued keys such as
     /// `"name"`, `"about"`, `"picture"` — the actor serializes it into the
     /// kind:0 `content` field, signs with the active signer, and routes
-    /// through the NIP-65 outbox. Like `PublishNote`, the event is
+    /// through the NIP-65 outbox. Like `PublishRaw`, the event is
     /// *not* pre-signed: the actor stamps `created_at` and signs. This is the
     /// `ActionModule`-native path for hosts that need to publish kind:0
     /// metadata events; the one-door rule deleted the prior bespoke
@@ -189,7 +178,7 @@ impl ActionModule for PublishModule {
     /// here means `dispatch_action`'s return and `action_results` in the
     /// snapshot share the same identifier.
     ///
-    /// `PublishNote` and `PublishProfile` return `None` — the event id isn't
+    /// `PublishRaw` and `PublishProfile` return `None` — the event id isn't
     /// known until the actor signs. `Cancel` is not reachable through
     /// `dispatch_action` (`start` rejects it), so it never reaches this
     /// function; it falls into the `_` arm and returns `None`.
@@ -216,17 +205,6 @@ impl ActionModule for PublishModule {
                 if event.id.is_empty() || event.sig.is_empty() {
                     return Err(ActionRejection::Invalid(
                         "publish action requires a signed event with id+sig".to_string(),
-                    ));
-                }
-                validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
-                Ok(())
-            }
-            PublishAction::PublishNote {
-                content, target, ..
-            } => {
-                if content.is_empty() {
-                    return Err(ActionRejection::Invalid(
-                        "publish note requires non-empty content".to_string(),
                     ));
                 }
                 validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
@@ -289,19 +267,6 @@ impl ActionModule for PublishModule {
             PublishAction::Publish { event, target, .. } => {
                 send(ActorCommand::PublishSignedEvent {
                     raw: publish_signed_event_to_raw(event),
-                    target,
-                    correlation_id: Some(correlation_id.to_string()),
-                });
-                Ok(())
-            }
-            PublishAction::PublishNote {
-                content,
-                reply_to_id,
-                target,
-            } => {
-                send(ActorCommand::PublishNote {
-                    content,
-                    reply_to_id,
                     target,
                     correlation_id: Some(correlation_id.to_string()),
                 });

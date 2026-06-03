@@ -121,13 +121,21 @@ impl AppAction {
         match self {
             Self::PublishNote {
                 content,
-                reply_to_id,
+                // NIP-10 reply-tag construction now belongs to the host (issue
+                // #906): the core `PublishAction::PublishNote` variant is gone,
+                // so a kind:1 note dispatches as a generic `PublishRaw`. A reply
+                // would have the host build the NIP-10 tags via
+                // `nmp-nip01::Note::reply_to` and pass them in `tags`; the wasm
+                // publish path already fails closed on `reply_to_id` (see
+                // `publish_path.rs`), so a top-level note carries no tags here.
+                reply_to_id: _,
             } => (
                 "nmp.publish".to_string(),
                 serde_json::json!({
-                    "PublishNote": {
+                    "PublishRaw": {
+                        "kind": 1,
+                        "tags": [],
                         "content": content,
-                        "reply_to_id": reply_to_id,
                         "target": "Auto",
                     }
                 }),

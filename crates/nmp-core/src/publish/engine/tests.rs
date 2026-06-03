@@ -154,7 +154,7 @@ fn engine_take_completed_reports_mixed_accepted_and_failed_split() {
 
 #[test]
 fn correlation_id_override_is_reported_in_pending_terminal_not_the_handle() {
-    // THE FIX: a `PublishNote` dispatch mints a random correlation_id (the
+    // THE FIX: a `PublishRaw` dispatch mints a random correlation_id (the
     // event id is unknown — the actor signs the event). When the publish
     // settles, the drained terminal must report that minted id, NOT the
     // publish handle (== event id). Without the override the host's spinner —

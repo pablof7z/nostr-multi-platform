@@ -41,7 +41,7 @@ impl Kernel {
     }
 
     /// [`Kernel::publish_signed`] with an action `correlation_id` to report in
-    /// `action_results`. The `PublishNote` dispatch path uses this: the
+    /// `action_results`. The `PublishRaw` dispatch path uses this: the
     /// host received a registry-minted `correlation_id` before the actor signed
     /// the event, so the publish engine must report that id (not the signed
     /// event's `id`) for the host spinner to be cleared. Every other publish
@@ -74,7 +74,7 @@ impl Kernel {
     }
 
     /// [`Kernel::publish_signed_to`] with an action `correlation_id` override.
-    /// The remote-signer (NIP-46) `PublishNote` path uses this: a parked sign
+    /// The remote-signer (NIP-46) `PublishRaw` path uses this: a parked sign
     /// op carries the registry-minted `correlation_id`, and when the broker
     /// turns the request around the idle-tick loop publishes through here so
     /// the engine reports the dispatch `correlation_id` rather than the freshly
@@ -92,7 +92,7 @@ impl Kernel {
     /// Record a terminal `"failed"` verdict for a dispatched action whose
     /// publish never reached the engine — the *sign* step failed first.
     ///
-    /// The `nmp_app_dispatch_action` `PublishNote` / `PublishProfile` paths
+    /// The `nmp_app_dispatch_action` `PublishRaw` / `PublishProfile` paths
     /// hand the host a registry-minted `correlation_id` and the host waits to
     /// see its outcome in the `action_results` snapshot projection. Every
     /// other terminal verdict (a queued publish that settles / fails per
@@ -255,13 +255,11 @@ impl Kernel {
     /// Hex pubkey of the author of `event_id_hex`, or `None` if that event is
     /// not in the kernel's read-cache.
     ///
-    /// Reads `self.events` — the same lightweight read-cache
-    /// `reply_tags_for_parent` consults for NIP-10 parent-author re-notification
-    /// — rather than the store directly. Production ingest
-    /// (`ingest/timeline.rs`) populates both in lockstep, so the read-cache is a
-    /// faithful view; the choice keeps reaction-author resolution byte-aligned
-    /// with the reply path and avoids a store round-trip on the publish hot
-    /// path. `None` is a normal result (the event simply hasn't been ingested);
+    /// Reads `self.events` — the lightweight read-cache — rather than the
+    /// store directly. Production ingest (`ingest/timeline.rs`) populates both
+    /// in lockstep, so the read-cache is a faithful view; the choice avoids a
+    /// store round-trip on the publish hot path. `None` is a normal result
+    /// (the event simply hasn't been ingested);
     /// the caller degrades gracefully (D6 — emit the reaction with only the `e`
     /// tag, never panic).
     #[must_use]

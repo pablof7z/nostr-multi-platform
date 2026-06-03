@@ -103,7 +103,10 @@ fn invalid_protocol_is_rejected_before_start() {
 }
 
 #[test]
-fn chirp_action_publish_note_maps_to_kernel_publish_action() {
+fn chirp_action_publish_note_maps_to_kernel_publish_raw_action() {
+    // The WASM worker protocol still exposes a `PublishNote` app-action verb,
+    // but it now lowers to the generic core `PublishRaw` (kind:1) envelope —
+    // the kind:1-specific `PublishAction::PublishNote` was removed in #906.
     let action = AppActionDispatch {
         action: AppAction::PublishNote {
             content: "hello from web".to_string(),
@@ -117,9 +120,10 @@ fn chirp_action_publish_note_maps_to_kernel_publish_action() {
     assert_eq!(
         action.payload,
         json!({
-            "PublishNote": {
+            "PublishRaw": {
+                "kind": 1,
+                "tags": [],
                 "content": "hello from web",
-                "reply_to_id": null,
                 "target": "Auto",
             }
         })
@@ -433,7 +437,7 @@ fn app_namespaced_dispatch_without_signer_returns_signer_not_installed() {
     let events = runtime
         .handle(WorkerRequest::Dispatch(ActionDispatch {
             action_type: "nmp.publish".to_string(),
-            payload: serde_json::json!({"PublishNote": {"content": "hi", "target": "Auto"}}),
+            payload: serde_json::json!({"PublishRaw": {"kind": 1, "tags": [], "content": "hi", "target": "Auto"}}),
             correlation_id: "pub-2".to_string(),
         }))
         .unwrap();

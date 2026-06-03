@@ -35,17 +35,17 @@ fn default_registry_has_publish_module() {
 // themselves from `nmp-nip47`.
 
 #[test]
-fn start_publish_note_action_returns_correlation_id() {
-    // `PublishAction::PublishNote` only needs non-empty content — it
-    // exercises the full registry → adapter → module::start path
-    // without needing a fully-signed event fixture. The actor signs the
-    // note, so `preferred_action_id` returns `None` and the registry
-    // mints a random 32-hex-char `correlation_id`.
+fn start_publish_raw_action_returns_correlation_id() {
+    // `PublishAction::PublishRaw` for a kind:1 note exercises the full
+    // registry → adapter → module::start path without needing a fully-signed
+    // event fixture. The actor signs the event, so `preferred_action_id`
+    // returns `None` and the registry mints a random 32-hex-char
+    // `correlation_id`.
     let registry = default_registry();
-    let action_json = r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
+    let action_json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hello","target":"Auto"}}"#;
     let id = registry
         .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
-        .expect("publish note action should be accepted");
+        .expect("publish raw action should be accepted");
     assert_eq!(id.len(), 32, "correlation id should be 32 hex chars");
     assert!(
         id.chars().all(|c| c.is_ascii_hexdigit()),
@@ -137,41 +137,28 @@ fn malformed_json_is_rejected_as_invalid() {
 fn json_not_matching_action_shape_is_rejected() {
     // Valid JSON, wrong shape for `PublishAction` — serde's externally
     // tagged enum expects `{"<Variant>": {...}}`, so a flat
-    // `{"t":"PublishNote"}` matches no variant and is rejected.
+    // `{"t":"PublishRaw"}` matches no variant and is rejected.
     let registry = default_registry();
     let err = registry
         .start(
             &mut ctx(),
             1_700_000_000_000,
             "nmp.publish",
-            r#"{"t":"PublishNote"}"#,
+            r#"{"t":"PublishRaw"}"#,
         )
         .expect_err("wrong-shape JSON must be rejected");
     assert!(matches!(err, ActionRejection::Invalid(_)));
 }
 
-#[test]
-fn start_publish_note_action_with_content_is_accepted() {
-    // `PublishAction::PublishNote` with non-empty content passes
-    // `PublishModule::start`'s validation gate — the `ActionModule`-native
-    // path replacing the deleted per-verb `nmp_app_publish_note` symbol.
-    let registry = default_registry();
-    let action_json = r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
-    let id = registry
-        .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
-        .expect("publish-note action with content should be accepted");
-    assert_eq!(id.len(), 32);
-}
-
 /// THE FIX: the `nmp.publish` executor threads the registry-minted
-/// `correlation_id` onto `ActorCommand::PublishNote`. The actor signs the
+/// `correlation_id` onto `ActorCommand::PublishRawEvent`. The actor signs the
 /// event, so its id is unknown at dispatch time — without this, the
 /// publish engine would report the event id and the host's spinner (keyed
 /// on the dispatch return value) could never be cleared. This exercises
 /// the real `default_registry()` executor closure end-to-end via
 /// `execute()`, capturing the `ActorCommand` it sends.
 #[test]
-fn publish_note_executor_threads_correlation_id_onto_actor_command() {
+fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
     use crate::actor::ActorCommand;
     use std::cell::RefCell;
 
@@ -179,12 +166,12 @@ fn publish_note_executor_threads_correlation_id_onto_actor_command() {
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
 
     let minted_correlation_id = "fe".repeat(16);
-    let action_json = r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":{"Explicit":{"relays":["wss://relay.example"]}}}}"#;
+    let action_json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hello","target":{"Explicit":{"relays":["wss://relay.example"]}}}}"#;
     registry
         .execute("nmp.publish", action_json, &minted_correlation_id, &|cmd| {
             captured.borrow_mut().push(cmd);
         })
-        .expect("publish-note execution should succeed");
+        .expect("publish-raw execution should succeed");
 
     let cmds = captured.into_inner();
     assert_eq!(
@@ -193,14 +180,15 @@ fn publish_note_executor_threads_correlation_id_onto_actor_command() {
         "executor must emit exactly one ActorCommand; got {cmds:?}"
     );
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishNote {
+        ActorCommand::PublishRawEvent {
+            kind,
             content,
-            reply_to_id,
             target,
             correlation_id,
+            ..
         } => {
+            assert_eq!(kind, 1);
             assert_eq!(content, "hello");
-            assert_eq!(reply_to_id, None);
             assert_eq!(
                 target,
                 crate::publish::PublishTarget::Explicit {
@@ -214,13 +202,13 @@ fn publish_note_executor_threads_correlation_id_onto_actor_command() {
                 "the executor must thread the minted correlation_id onto the command"
             );
         }
-        other => panic!("expected ActorCommand::PublishNote, got {other:?}"),
+        other => panic!("expected ActorCommand::PublishRawEvent, got {other:?}"),
     }
 }
 
 /// The pre-signed `Publish` executor threads the registry-minted
 /// `correlation_id` onto `ActorCommand::PublishSignedEvent` — explicit
-/// symmetry with the `PublishNote` path. The round-trip used to work by
+/// symmetry with the `PublishRaw` path. The round-trip used to work by
 /// coincidence (`preferred_action_id` returns `event.id`, the engine's
 /// `None`-fallback also reports `event.id`); the explicit thread upgrades
 /// that coincidence into a guarantee the publish engine surfaces the
@@ -365,22 +353,6 @@ fn publish_profile_executor_threads_correlation_id_onto_actor_command() {
 }
 
 #[test]
-fn start_publish_note_action_with_empty_content_is_rejected() {
-    // Empty content fails the `PublishModule::start` gate.
-    let registry = default_registry();
-    let action_json = r#"{"PublishNote":{"content":"","reply_to_id":null,"target":"Auto"}}"#;
-    let err = registry
-        .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
-        .expect_err("empty-content publish note must be rejected");
-    match err {
-        ActionRejection::Invalid(msg) => {
-            assert!(msg.contains("non-empty content"), "got: {msg}");
-        }
-        other => panic!("expected Invalid, got {other:?}"),
-    }
-}
-
-#[test]
 fn deliver_result_invokes_registered_observer() {
     use std::sync::{Arc, Mutex};
     // The observer captures every `ActionResult` it receives.
@@ -456,7 +428,7 @@ fn set_result_observer_second_registration_replaces_first() {
 #[test]
 fn correlation_ids_are_unique_across_calls() {
     let registry = default_registry();
-    let action_json = r#"{"PublishNote":{"content":"x","reply_to_id":null,"target":"Auto"}}"#;
+    let action_json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"x","target":"Auto"}}"#;
     let mut seen = std::collections::HashSet::new();
     for _ in 0..256 {
         let id = registry
