@@ -241,9 +241,9 @@ impl Kernel {
             return Vec::new();
         };
         let relay_url = delivering_relay_url.to_string();
-        let flushed = self
+        let _gate_flushed = self
             .lifecycle
-            .handle_auth_state_change(relay_url, new_state.clone());
+            .handle_auth_state_change(relay_url.clone(), new_state.clone());
         let reason = if matches!(new_state, RelayAuthState::Failed) {
             Some(if ok.reason.is_empty() {
                 "relay rejected AUTH".to_string()
@@ -261,12 +261,20 @@ impl Kernel {
             self.purge_deferred_reqs_for(role);
         }
         self.log(format!("AUTH ok from {}: {new_state:?}", role.key()));
-        // Flushed WireFrames flow back to outbound. The kernel's hand-rolled
-        // `req()` is the M1 path, not the lifecycle, so the AuthGate's pending
-        // buffer is empty in the kernel-only execution; the plumbing is in
-        // place so when M11 migrates view modules onto `LogicalInterest` the
-        // path Just Works.
-        wire_frames_to_outbound(flushed, role)
+        if matches!(new_state, RelayAuthState::Authenticated) {
+            // Re-issue all active plan subs for this relay via handle_reconnect.
+            // This covers two cases:
+            //   1. REQs buffered in the AuthGate (sent after challenge arrived):
+            //      superseded by reconnect with current watermarks.
+            //   2. REQs sent *before* the challenge arrived (state=NotRequired),
+            //      which the relay CLOSED with "auth-required:" — those were
+            //      never buffered, so the gate flush above is empty for them.
+            //      handle_reconnect re-issues the full current plan to the relay.
+            let replay = self.lifecycle.handle_reconnect(relay_url);
+            wire_frames_to_outbound(replay, role)
+        } else {
+            wire_frames_to_outbound(_gate_flushed, role)
+        }
     }
 
     /// Reflect the per-relay auth state into the diagnostic
