@@ -131,15 +131,72 @@ impl PendingSign {
     }
 }
 
+/// Boxed continuation invoked with the resolved sign outcome.
+///
+/// Wrapped in a newtype so [`PendingSignReturn`] (and therefore the
+/// `ActorCommand` that carries one before parking) can derive `Debug` despite
+/// holding a `Box<dyn FnOnce(..) + Send>` (which is itself neither `Debug` nor
+/// inspectable). The `Debug` impl prints a fixed placeholder so the enclosing
+/// `ActorCommand`'s derived `Debug` still compiles.
+pub struct SignContinuation(pub Box<dyn FnOnce(Result<SignedEvent, String>) + Send>);
+
+impl SignContinuation {
+    /// Construct from any `FnOnce` matching the sign-outcome shape.
+    #[must_use]
+    pub fn new(f: impl FnOnce(Result<SignedEvent, String>) + Send + 'static) -> Self {
+        Self(Box::new(f))
+    }
+
+    /// Invoke the continuation with the sign outcome, consuming it.
+    pub fn call(self, outcome: Result<SignedEvent, String>) {
+        (self.0)(outcome);
+    }
+}
+
+impl std::fmt::Debug for SignContinuation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SignContinuation(<sign-account continuation>)")
+    }
+}
+
+/// Where a resolved [`PendingSignReturn`] delivers its signed event.
+///
+/// Two terminal sinks share one park/drain path so the idle-loop machinery is
+/// not duplicated:
+///
+/// * [`Self::SignedEventsProjection`] — the original
+///   [`crate::actor::ActorCommand::SignEventForReturn`] behaviour: the signed
+///   JSON (or error) is written to the `signed_events` snapshot projection
+///   keyed by `correlation_id`. The host reads the projection once and
+///   attaches the signed event to an out-of-band transport.
+/// * [`Self::Continuation`] — the generic
+///   [`crate::actor::ActorCommand::SignEventForAccount`] backend-transparent
+///   sign port: the boxed continuation is invoked with the resolved
+///   `SignedEvent` (or an error string). The continuation runs on the actor
+///   thread (inline for a local nsec, from the idle-loop drain for a parked
+///   NIP-46 bunker) and may only enqueue further work (e.g. spawn an HTTP
+///   worker) — never block.
+///
+/// The continuation is held inside an `Option` so the idle-loop drain — which
+/// borrows each parked op as `&mut` via `retain_mut` — can `.take()` it before
+/// calling (an `FnOnce` cannot be invoked through `&mut`).
+pub(crate) enum PendingSignReturnSink {
+    /// Write the signed JSON / error into `signed_events[correlation_id]`.
+    SignedEventsProjection { correlation_id: String },
+    /// Invoke the boxed continuation with the resolved sign outcome.
+    Continuation(Option<SignContinuation>),
+}
+
 /// A remote-sign operation parked for sign-and-return (no publish).
 ///
 /// Sibling of [`PendingSign`], which always routes the signed event into the
-/// publish engine. `PendingSignReturn` is the seam for
-/// [`crate::actor::ActorCommand::SignEventForReturn`]: the signed event is
-/// resolved by the actor idle loop into the `signed_events` snapshot
-/// projection (keyed by `correlation_id`) and never reaches the publish
-/// engine. The host reads the projection once to retrieve the signed JSON and
-/// attaches it to an out-of-band transport.
+/// publish engine. `PendingSignReturn` covers BOTH the
+/// [`crate::actor::ActorCommand::SignEventForReturn`] seam (sink =
+/// [`PendingSignReturnSink::SignedEventsProjection`]) and the generic
+/// [`crate::actor::ActorCommand::SignEventForAccount`] backend-transparent
+/// sign port (sink = [`PendingSignReturnSink::Continuation`]). The signed
+/// event NEVER reaches the publish engine on either path — the sink decides
+/// the terminal.
 ///
 /// Same non-blocking contract as `PendingSign` (D8): a local nsec resolves its
 /// `SignerOp` immediately (so this struct is never parked for it), and a
@@ -148,23 +205,34 @@ impl PendingSign {
 pub(crate) struct PendingSignReturn {
     /// The in-flight signer op. `poll()`ed once per idle tick.
     pub op: SignerOp<SignedEvent>,
-    /// The `signed_events` projection key the host is polling on. The signed
-    /// JSON (or the error) lands under this id when the op resolves.
-    pub correlation_id: String,
-    /// Drop-dead time. Past this, the op is abandoned and an error verdict is
-    /// recorded under `correlation_id` so the host's continuation never hangs.
+    /// Where the resolved (or timed-out / errored) outcome is delivered.
+    pub sink: PendingSignReturnSink,
+    /// Drop-dead time. Past this, the op is abandoned and an error outcome is
+    /// delivered to the sink so the host's continuation never hangs.
     pub deadline: Instant,
 }
 
 impl PendingSignReturn {
-    /// Park a sign-and-return op under `correlation_id`, deadlined
-    /// `PENDING_SIGN_TIMEOUT` (5s) into the future — identical budget to
-    /// [`PendingSign::new`].
+    /// Park a sign-and-return op whose resolved outcome lands in the
+    /// `signed_events` projection under `correlation_id` (the
+    /// `SignEventForReturn` seam). Deadlined `PENDING_SIGN_TIMEOUT` (5s) into
+    /// the future — identical budget to [`PendingSign::new`].
     #[must_use]
     pub fn new(op: SignerOp<SignedEvent>, correlation_id: String) -> Self {
         Self {
             op,
-            correlation_id,
+            sink: PendingSignReturnSink::SignedEventsProjection { correlation_id },
+            deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
+        }
+    }
+
+    /// Park a sign-and-return op whose resolved outcome is handed to a boxed
+    /// continuation (the generic `SignEventForAccount` port). Same 5s budget.
+    #[must_use]
+    pub fn with_continuation(op: SignerOp<SignedEvent>, continuation: SignContinuation) -> Self {
+        Self {
+            op,
+            sink: PendingSignReturnSink::Continuation(Some(continuation)),
             deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
         }
     }
@@ -173,6 +241,58 @@ impl PendingSignReturn {
     pub fn timed_out(&self) -> bool {
         Instant::now() >= self.deadline
     }
+}
+
+/// Resolve one parked [`PendingSignReturn`] against its sink. Called once per
+/// idle tick from the actor loop's `pending_sign_returns` drain (D8 — a single
+/// non-blocking `poll()`, never a wait).
+///
+/// Returns `true` to KEEP the op (still pending, broker has not responded and
+/// the deadline has not elapsed) or `false` once it has resolved / errored /
+/// timed-out so `retain_mut` drops it.
+///
+/// All three outcomes (signed / broker error / timeout) collapse into one
+/// `Result<SignedEvent, String>` so the sink dispatch is identical for BOTH the
+/// `signed_events` projection sink AND the generic continuation port — neither
+/// may silently drop its terminal (D6: a dropped continuation hangs the host
+/// spinner forever). The caller is responsible for emitting a snapshot after a
+/// `false` return.
+pub(crate) fn resolve_pending_sign_return(
+    ps: &mut PendingSignReturn,
+    kernel: &mut crate::kernel::Kernel,
+) -> bool {
+    let outcome: Result<SignedEvent, String> = match ps.op.poll() {
+        None => {
+            if ps.timed_out() {
+                Err("signing timed out".to_string())
+            } else {
+                return true; // Still pending — keep for the next tick.
+            }
+        }
+        Some(Ok(signed)) => Ok(signed),
+        Some(Err(e)) => Err(e.to_string()),
+    };
+
+    match &mut ps.sink {
+        PendingSignReturnSink::SignedEventsProjection { correlation_id } => {
+            // D13 `SignEventForReturn`: write the signed JSON / error into the
+            // `signed_events[correlation_id]` projection.
+            let recorded =
+                outcome.map(|signed| crate::actor::dispatch::signed_event_to_json(&signed));
+            kernel.record_signed_event_return(correlation_id, recorded);
+        }
+        PendingSignReturnSink::Continuation(slot) => {
+            // Generic `SignEventForAccount` port: take the boxed continuation
+            // out of the `&mut` sink (an `FnOnce` cannot be called through
+            // `&mut`) and invoke it with the resolved outcome. The continuation
+            // runs on the actor thread and only enqueues further work (D8). On
+            // `Err` it must itself resolve the host's action terminal.
+            if let Some(continuation) = slot.take() {
+                continuation.call(outcome);
+            }
+        }
+    }
+    false // Done — remove.
 }
 
 #[cfg(test)]
@@ -319,8 +439,18 @@ mod tests {
             ps.op.poll().is_none(),
             "a Pending return-op polls to None before the broker responds"
         );
-        assert!(!ps.timed_out(), "a fresh PendingSignReturn is within deadline");
-        assert_eq!(ps.correlation_id, "corr-1");
+        assert!(
+            !ps.timed_out(),
+            "a fresh PendingSignReturn is within deadline"
+        );
+        assert!(
+            matches!(
+                &ps.sink,
+                PendingSignReturnSink::SignedEventsProjection { correlation_id }
+                    if correlation_id == "corr-1"
+            ),
+            "PendingSignReturn::new must default to the signed_events projection sink"
+        );
         drop(tx);
     }
 
@@ -360,12 +490,17 @@ mod tests {
     fn return_timed_out_tracks_the_deadline() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
         let fresh = PendingSignReturn::new(SignerOp::Pending(rx), "corr-4".to_string());
-        assert!(!fresh.timed_out(), "a fresh PendingSignReturn has not timed out");
+        assert!(
+            !fresh.timed_out(),
+            "a fresh PendingSignReturn has not timed out"
+        );
 
         let (_tx2, rx2) = mpsc::channel::<Result<SignedEvent, SignerError>>();
         let overdue = PendingSignReturn {
             op: SignerOp::Pending(rx2),
-            correlation_id: "corr-5".to_string(),
+            sink: PendingSignReturnSink::SignedEventsProjection {
+                correlation_id: "corr-5".to_string(),
+            },
             deadline: Instant::now() - Duration::from_millis(1),
         };
         assert!(
@@ -373,5 +508,67 @@ mod tests {
             "a PendingSignReturn past its deadline reports timed_out"
         );
         drop(tx);
+    }
+
+    // ── PendingSignReturnSink::Continuation (generic SignEventForAccount) ──
+    // The continuation sink shares the same park/deadline machinery as the
+    // signed_events sink. These pin the `.take()`-then-`call()` invariant the
+    // idle-loop drain relies on (an `FnOnce` cannot be called through `&mut`).
+
+    /// `with_continuation` parks under the `Continuation` sink, and the boxed
+    /// continuation can be `.take()`n out and invoked exactly once with a
+    /// resolved `SignedEvent`.
+    #[test]
+    fn continuation_sink_invokes_with_signed_event() {
+        use std::sync::{Arc, Mutex};
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let captured: Arc<Mutex<Option<Result<SignedEvent, String>>>> = Arc::new(Mutex::new(None));
+        let sink_slot = Arc::clone(&captured);
+        let mut ps = PendingSignReturn::with_continuation(
+            SignerOp::Pending(rx),
+            SignContinuation::new(move |outcome| {
+                *sink_slot.lock().unwrap() = Some(outcome);
+            }),
+        );
+        assert!(ps.op.poll().is_none(), "Pending before the broker responds");
+        tx.send(Ok(make_signed_event())).unwrap();
+        let resolved = ps.op.poll().expect("Some after send").expect("Ok payload");
+
+        // Drain-site invariant: take the continuation out of the &mut sink,
+        // then call it (mirrors the idle-loop `retain_mut` drain).
+        let PendingSignReturnSink::Continuation(slot) = &mut ps.sink else {
+            panic!("expected a Continuation sink");
+        };
+        slot.take()
+            .expect("continuation present until taken")
+            .call(Ok(resolved));
+
+        let got = captured.lock().unwrap().take().expect("continuation ran");
+        let signed = got.expect("Ok outcome");
+        assert_eq!(signed.unsigned.content, "pending-sign test");
+    }
+
+    /// A timeout / broker error must invoke the continuation with `Err(_)` so
+    /// the downstream action terminal still resolves (D6 — no stuck spinner).
+    #[test]
+    fn continuation_sink_invokes_with_error_outcome() {
+        use std::sync::{Arc, Mutex};
+        let (_tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let captured: Arc<Mutex<Option<Result<SignedEvent, String>>>> = Arc::new(Mutex::new(None));
+        let sink_slot = Arc::clone(&captured);
+        let mut ps = PendingSignReturn::with_continuation(
+            SignerOp::Pending(rx),
+            SignContinuation::new(move |outcome| {
+                *sink_slot.lock().unwrap() = Some(outcome);
+            }),
+        );
+        let PendingSignReturnSink::Continuation(slot) = &mut ps.sink else {
+            panic!("expected a Continuation sink");
+        };
+        slot.take()
+            .expect("continuation present")
+            .call(Err("signing timed out".to_string()));
+        let got = captured.lock().unwrap().take().expect("continuation ran");
+        assert_eq!(got.unwrap_err(), "signing timed out");
     }
 }

@@ -734,7 +734,10 @@ pub(crate) fn handle_nwc_text(
             match (&response.error, entry_opt) {
                 (None, Some(entry)) => {
                     if let Some(cid) = entry.correlation_id {
-                        kernel.record_action_success(cid);
+                        // NWC pay-invoice carries no structured result body
+                        // (the preimage lands via the wallet projection, not
+                        // the action_results `result` field).
+                        kernel.record_action_success(cid, None);
                     }
                 }
                 (Some(err), Some(entry)) => {

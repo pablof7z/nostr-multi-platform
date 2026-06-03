@@ -227,16 +227,10 @@ fn build_unsigned_for_return(
 /// `pub(super)` so the idle-loop `pending_sign_returns` drain in `mod.rs`
 /// reuses the exact same flat-event serialization the dispatch arm uses.
 pub(super) fn signed_event_to_json(signed: &crate::substrate::SignedEvent) -> String {
-    serde_json::json!({
-        "id": signed.id,
-        "pubkey": signed.unsigned.pubkey,
-        "created_at": signed.unsigned.created_at,
-        "kind": signed.unsigned.kind,
-        "tags": signed.unsigned.tags,
-        "content": signed.unsigned.content,
-        "sig": signed.sig,
-    })
-    .to_string()
+    // Delegates to the public `SignedEvent::to_nip01_json` so the flat-event
+    // serialization has exactly one definition shared by the dispatch arm, the
+    // idle-loop drain, and protocol-crate workers.
+    signed.to_nip01_json()
 }
 
 /// Borrowed bundle of the actor loop's mutable runtime state.
@@ -780,6 +774,55 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        ActorCommand::SignEventForAccount {
+            unsigned,
+            signer_pubkey,
+            continuation,
+        } => {
+            // ADR-0043 Decision 2 — generic, backend-transparent sign-account
+            // port. Sign with the active account (`signer_pubkey == None`) or a
+            // named roster key, then deliver the resolved `SignedEvent` (or an
+            // error string) to the boxed continuation. Local-vs-bunker is
+            // invisible: both resolve through the same nonblocking sign + park
+            // machinery (D8). The continuation is the sole consumer of the
+            // signed event — `nmp-core` never parses it and learns no protocol
+            // noun (D0). D13: only a `SignedEvent` ever crosses to the
+            // continuation, never raw key bytes.
+            let sign_result = match &signer_pubkey {
+                None => commands::sign_active_nonblocking(ctx.identity, &unsigned),
+                Some(pk) => commands::sign_with_account_nonblocking(ctx.identity, pk, &unsigned),
+            };
+            match sign_result {
+                Err(reason) => {
+                    // No active/named account, or no signer for the pubkey:
+                    // resolve the continuation with the error so the worker's
+                    // failure path runs and the host spinner clears (D6).
+                    continuation.call(Err(reason));
+                }
+                Ok(mut op) => match op.poll() {
+                    Some(Ok(signed)) => {
+                        // Local key — `Ready` resolves on the spot. Invoke the
+                        // continuation inline on the actor thread.
+                        continuation.call(Ok(signed));
+                    }
+                    Some(Err(e)) => {
+                        continuation.call(Err(e.to_string()));
+                    }
+                    None => {
+                        // Remote (NIP-46) signer — `Pending`. Park with the
+                        // continuation sink; the idle-loop drain invokes the
+                        // continuation when the broker turns the request around
+                        // (or on timeout, with an `Err`). `op` was moved out of
+                        // `sign_result`, so reconstruct the park from the
+                        // unconsumed `Pending` op.
+                        ctx.pending_sign_returns
+                            .push(PendingSignReturn::with_continuation(op, continuation));
+                    }
+                },
+            }
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::AddSigner {
             source,
             make_active,
@@ -1229,12 +1272,16 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::RecordActionSuccess { correlation_id } => {
+        ActorCommand::RecordActionSuccess {
+            correlation_id,
+            result_json,
+        } => {
             // Symmetric counterpart to RecordActionFailure: off-thread workers
             // and runtime responders fan success back through the actor
             // channel. Writes `Accepted` to `action_stages` and a terminal
-            // verdict to `action_results`.
-            ctx.kernel.record_action_success(correlation_id);
+            // verdict to `action_results`. `result_json` (ADR-0043 Decision 4)
+            // rides into the `action_results` row's `result` field verbatim.
+            ctx.kernel.record_action_success(correlation_id, result_json);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
@@ -1332,7 +1379,8 @@ pub(super) fn dispatch_command(
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false);
             if ok {
-                ctx.kernel.record_action_success(correlation_id);
+                // Host-op success carries no structured result body (D0).
+                ctx.kernel.record_action_success(correlation_id, None);
             } else {
                 let reason = result
                     .get("error")

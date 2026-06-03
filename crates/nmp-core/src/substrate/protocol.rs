@@ -414,6 +414,35 @@ impl<'a> ProtocolCommandContext<'a> {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| send(cmd)));
     }
 
+    /// ADR-0043 Decision 2 — the generic, backend-transparent sign-account
+    /// port helper. Build an [`ActorCommand::SignEventForAccount`] for
+    /// `unsigned` (signed with the active account when `signer_pubkey` is
+    /// `None`, else the named roster key) carrying `continuation`, and send it
+    /// back into the actor loop.
+    ///
+    /// Local-vs-bunker is invisible to the caller: the actor's dispatch arm
+    /// resolves a local key inline and parks a NIP-46 bunker op; the
+    /// continuation is invoked on the actor thread either way, with the
+    /// resolved [`SignedEvent`] or an error string. The continuation must only
+    /// enqueue further work (e.g. spawn an HTTP worker), never block (D8). It
+    /// never receives raw key bytes (D13).
+    ///
+    /// A worker thread that already holds a [`command_sender_clone`] should use
+    /// [`build_sign_event_for_account`] instead — this method exists for command
+    /// bodies that still hold the `ctx` on the actor thread.
+    pub fn sign_event_for_account(
+        &self,
+        unsigned: crate::substrate::UnsignedEvent,
+        signer_pubkey: Option<String>,
+        continuation: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
+    ) {
+        self.send(build_sign_event_for_account(
+            unsigned,
+            signer_pubkey,
+            continuation,
+        ));
+    }
+
     /// V-38: Reborrow the actor's kernel handle. `None` only in unit tests
     /// that constructed the context without one.
     pub fn kernel_mut(&mut self) -> Option<&mut Kernel> {
@@ -571,6 +600,32 @@ impl<'a> ProtocolCommandContext<'a> {
         }))
         .ok()
         .flatten()
+    }
+}
+
+/// Build an [`ActorCommand::SignEventForAccount`] (ADR-0043 Decision 2) the
+/// generic, backend-transparent sign-account port.
+///
+/// This free function lets a spawned worker thread — which holds only a
+/// [`Sender<ActorCommand>`] (via [`ProtocolCommandContext::command_sender_clone`]),
+/// not the actor-thread `ctx` — construct the command and `send` it itself.
+/// The actor's dispatch arm signs (active account when `signer_pubkey` is
+/// `None`, else the named roster key) and invokes `continuation` with the
+/// resolved [`crate::substrate::SignedEvent`] or an error string — inline for a
+/// local key, from the idle-loop drain for a parked NIP-46 bunker. The caller
+/// cannot tell which.
+///
+/// The continuation runs on the actor thread; it must only enqueue further
+/// work (D8) and never receives raw key bytes (D13).
+pub fn build_sign_event_for_account(
+    unsigned: crate::substrate::UnsignedEvent,
+    signer_pubkey: Option<String>,
+    continuation: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
+) -> ActorCommand {
+    ActorCommand::SignEventForAccount {
+        unsigned,
+        signer_pubkey,
+        continuation: crate::actor::pending_sign::SignContinuation::new(continuation),
     }
 }
 

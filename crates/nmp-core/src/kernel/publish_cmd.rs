@@ -161,7 +161,7 @@ impl Kernel {
     // `ActorCommand::RecordActionSuccess` dispatch arm landed. The NIP-47
     // wallet response handler is the off-band success consumer for pay-invoice
     // flows, including the NIP-57 LNURL → wallet chain.
-    pub fn record_action_success(&mut self, correlation_id: String) {
+    pub fn record_action_success(&mut self, correlation_id: String, result_json: Option<String>) {
         // Mirror `record_action_failure`'s dual write: an `Accepted` stage in
         // the `action_stages` mirror so a host listening only on the stage
         // seam sees the terminal, and the per-tick `action_results` drain so
@@ -172,13 +172,18 @@ impl Kernel {
         // V5 thin-shell: `record_action_stage` mirrors into both the
         // `action_stages` history AND the `action_lifecycle` display
         // projection in one call.
+        //
+        // `result_json` (ADR-0043 Decision 4) is an opaque structured result
+        // body the action attaches to its `action_results` row's `result`
+        // field. The kernel never parses it — it only forwards it (D0: no
+        // protocol noun enters the substrate).
         self.record_action_stage(
             &correlation_id,
             super::action_stages::ActionStage::Accepted,
             None,
         );
         self.publish_engine
-            .record_action_terminal_success(correlation_id);
+            .record_action_terminal_success(correlation_id, result_json);
         // A terminal verdict is always snapshot-worthy: the next emit drains
         // it into `action_results` via `take_action_results_projection`.
         self.changed_since_emit = true;
@@ -204,7 +209,8 @@ impl Kernel {
         correlation_id: &str,
         result: Result<String, String>,
     ) {
-        self.signed_events.insert(correlation_id.to_string(), result);
+        self.signed_events
+            .insert(correlation_id.to_string(), result);
         self.changed_since_emit = true;
     }
 

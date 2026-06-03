@@ -78,6 +78,7 @@ impl PublishEngine {
             correlation_id: correlation_id_override.map_or_else(|| handle.clone(), str::to_string),
             status: "failed",
             error: Some("no relays resolved for publish target".to_string()),
+            result_json: None,
         });
         self.view.bump_rev();
     }
@@ -113,6 +114,7 @@ impl PublishEngine {
             correlation_id,
             status: "failed",
             error: Some(error),
+            result_json: None,
         });
     }
 
@@ -135,19 +137,29 @@ impl PublishEngine {
     /// for the next snapshot drain. No `RecentFailure` row is written (success
     /// paths don't anchor failure rows); the caller is responsible for any
     /// projection-level state (e.g. wallet balance refresh) it needs.
-    // `#[allow(dead_code)]`: the sole live caller today is
-    // `Kernel::record_action_success` (publish_cmd.rs), which is in turn only
-    // invoked by `handle_nwc_text` in the wallet runtime — itself gated behind
-    // the `wallet` Cargo feature. A plain `cargo check -p nmp-core` (default
-    // features) sees no consumer of either method, and the per-crate dead-code
-    // lint fires; the cross-feature truth (every `--features wallet` build
-    // wires both) is invisible to rustc here.
+    ///
+    /// `result_json` (ADR-0043 Decision 4) is an opaque structured result body
+    /// the action attaches to its success terminal — forwarded verbatim into
+    /// the `action_results` row's `result` field. `nmp-core` NEVER parses it.
+    /// `None` for the NWC pay-invoice path; `Some(json)` for a protocol crate
+    /// (e.g. a Blossom blob descriptor) that carries a return payload.
+    // `#[allow(dead_code)]`: the live callers are `Kernel::record_action_success`
+    // (publish_cmd.rs, gated behind the `wallet` feature for NWC) and the
+    // `RecordActionSuccess { result_json }` dispatch arm. A plain
+    // `cargo check -p nmp-core` (default features) may not see a consumer, and
+    // the per-crate dead-code lint can fire; the cross-feature truth is
+    // invisible to rustc here.
     #[allow(dead_code)]
-    pub(crate) fn record_action_terminal_success(&mut self, correlation_id: String) {
+    pub(crate) fn record_action_terminal_success(
+        &mut self,
+        correlation_id: String,
+        result_json: Option<String>,
+    ) {
         self.record_terminal(LastTerminal {
             correlation_id,
             status: "ok",
             error: None,
+            result_json,
         });
     }
 
