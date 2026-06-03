@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.2.4 — 2026-06-03
+
+**Non-breaking C-ABI. Existing callers of `nmp_app_signin_nsec`, `nmp_app_signin_bunker`, and `nmp_app_create_new_account` must add the new `make_active` argument (see below).**
+
+### Added
+
+- **`nmp_app_sign_event_for_return(app, account_pubkey_hex, unsigned_json) → correlation_id`**: sign any unsigned event draft with the named account's signer (local nsec or NIP-46 bunker) and park the result in `projections["signed_events"][correlation_id]` on the next snapshot tick. The host never touches raw key bytes (D13). Works for both local keys (resolves synchronously) and NIP-46 bunkers (parks on the non-blocking `PendingSignReturn` idle loop, resolves within 5s or surfaces an error verdict).
+
+### Changed
+
+- **`nmp_app_signin_nsec(app, secret, make_active: u8)`** — added `make_active` parameter. Pass `1` for the normal sign-in path (was the only behaviour before). Pass `0` to register the signer without activating it — for agent/secondary keys that sign via `nmp_app_sign_event_for_return` without disturbing the active account. **All callers must add `, 1`.**
+
+- **`nmp_app_signin_bunker(app, uri, make_active: u8)`** — same `make_active` treatment as `signin_nsec`. **All callers must add `, 1`.**
+
+- **`nmp_app_create_new_account(app, profile_json, relays_json, mls, make_active: u8)`** — added `make_active` parameter. Pass `1` for the standard onboarding flow; `0` to create an agent/secondary account without switching to it. **All callers must add `, 1`.**
+
+---
+
 ## nmp-v0.2.3 — 2026-06-03
 
 **Non-breaking C-ABI. FFI callers using `open_author`/`open_thread`/`open_firehose_tag` or `PublishNote` must migrate (see below).**
