@@ -1,6 +1,6 @@
 //! Broken-promise fix — `Kernel::record_action_failure` → `action_results`.
 //!
-//! A host that dispatches a `PublishNote` / `PublishProfile` through
+//! A host that dispatches a `PublishRaw` / `PublishProfile` through
 //! `nmp_app_dispatch_action` receives a registry-minted `correlation_id` and
 //! waits to see its outcome in the `action_results` snapshot projection. Every
 //! terminal verdict for a *queued* publish reaches `action_results` via the

@@ -250,7 +250,7 @@ pub(super) fn dispatch_action_json(
             //
             // The minted `correlation_id` is passed into `execute_action` so
             // an executor whose `ActorCommand` settles asynchronously (the
-            // `nmp.publish` `PublishNote` path — the actor signs the event)
+            // `nmp.publish` `PublishRaw` path — the actor signs the event)
             // can thread it onto the command. The publish engine then reports
             // this id in `action_results`, matching the host's spinner
             // key. For pre-signed `Publish` actions the id is redundant
@@ -309,7 +309,7 @@ pub(super) fn dispatch_action_json(
 ///
 /// `correlation_id` is the registry-minted action id the caller will return
 /// to the host. It is forwarded to the executor so an `ActorCommand` whose
-/// terminal verdict must carry this id (the `PublishNote` path) can be built
+/// terminal verdict must carry this id (the `PublishRaw` path) can be built
 /// with it.
 fn execute_action(
     app: &NmpApp,

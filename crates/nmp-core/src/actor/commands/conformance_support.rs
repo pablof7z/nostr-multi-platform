@@ -9,10 +9,10 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use super::identity::{add_signer, create_account, IdentityRuntime};
-use super::publish::{follow, publish_note, publish_unsigned_event, react};
+use super::publish::{follow, publish_unsigned_event, react};
 use crate::actor::SignerSource;
 use crate::kernel::Kernel;
-use crate::publish::{InMemoryPublishStore, PublishStore, PublishTarget};
+use crate::publish::{InMemoryPublishStore, PublishStore};
 use crate::relay::{OutboundMessage, DEFAULT_VISIBLE_LIMIT};
 use crate::substrate::UnsignedEvent;
 
@@ -87,9 +87,9 @@ impl ConformanceHarness {
     }
 
     /// Seed a kind:1 note into the kernel read-cache so a subsequent
-    /// `emit_note`/`emit_reaction` against `id` exercises the warm path
-    /// (`reply_tags_for_parent` / `event_author`) rather than the cold
-    /// fallback. `tags` carries whatever NIP-10 structure the test needs.
+    /// `emit_reaction` against `id` exercises the warm path (`event_author`)
+    /// rather than the cold fallback. `tags` carries whatever NIP-10 structure
+    /// the test needs.
     pub fn seed_note(&mut self, id: &str, author: &str, tags: Vec<Vec<String>>) {
         self.kernel
             .seed_kind1_for_reply_test(id, author, 100, tags, "seeded note");
@@ -111,21 +111,6 @@ impl ConformanceHarness {
             "wss://conformance-seed.test",
             1,
         );
-    }
-
-    /// Drive `publish_note` (kind:1). `reply_to` selects top-level vs reply.
-    /// Returns the emitted `EVENT` JSON object.
-    pub fn emit_note(&mut self, content: &str, reply_to: Option<&str>) -> Value {
-        let outbound = publish_note(
-            &self.identity,
-            &mut self.kernel,
-            content,
-            reply_to,
-            PublishTarget::Auto,
-            None,
-            &mut Vec::new(),
-        );
-        last_event_json(&outbound)
     }
 
     /// Drive `react` (kind:7). Returns the emitted `EVENT` JSON object.

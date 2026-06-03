@@ -21,9 +21,10 @@ fn signed_event() -> SignedEvent {
 
 #[test]
 fn explicit_publish_target_requires_non_empty_relays() {
-    let action = PublishAction::PublishNote {
+    let action = PublishAction::PublishRaw {
+        kind: 1,
+        tags: Vec::new(),
         content: "hello".to_string(),
-        reply_to_id: None,
         target: PublishTarget::Explicit { relays: Vec::new() },
     };
     let err = PublishModule::start(&mut ctx(), action)
@@ -47,9 +48,10 @@ fn explicit_publish_target_rejects_malformed_relay_url() {
 
 #[test]
 fn explicit_publish_target_accepts_valid_relay_url() {
-    let action = PublishAction::PublishNote {
+    let action = PublishAction::PublishRaw {
+        kind: 1,
+        tags: Vec::new(),
         content: "hello".to_string(),
-        reply_to_id: None,
         target: PublishTarget::Explicit {
             relays: vec!["wss://relay.example".to_string()],
         },
@@ -108,7 +110,7 @@ fn publish_raw_accepts_arbitrary_event_kind_with_auto_target() {
 fn publish_raw_propagates_explicit_target_validation_failure() {
     // The kind guard runs first, but past it the existing
     // `validate_publish_target` must still apply — an explicit empty
-    // relay set fails closed exactly as for `PublishNote`.
+    // relay set fails closed exactly as for `Publish`.
     let action = PublishAction::PublishRaw {
         kind: 30023,
         tags: Vec::new(),
@@ -135,31 +137,6 @@ fn run_execute(action: PublishAction) -> Result<Vec<ActorCommand>, String> {
         captured.borrow_mut().push(cmd);
     })?;
     Ok(captured.into_inner())
-}
-
-#[test]
-fn execute_publish_note_emits_publish_note_command() {
-    let action = PublishAction::PublishNote {
-        content: "hello".to_string(),
-        reply_to_id: None,
-        target: PublishTarget::Auto,
-    };
-    let cmds = run_execute(action).expect("execute must succeed");
-    assert_eq!(cmds.len(), 1, "must emit exactly one command");
-    match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishNote {
-            content,
-            reply_to_id,
-            target,
-            correlation_id,
-        } => {
-            assert_eq!(content, "hello");
-            assert_eq!(reply_to_id, None);
-            assert_eq!(target, PublishTarget::Auto);
-            assert_eq!(correlation_id.as_deref(), Some("test-cid"));
-        }
-        other => panic!("expected PublishNote, got {other:?}"),
-    }
 }
 
 #[test]

@@ -29,7 +29,7 @@ pub(crate) struct InFlight {
     pub dirty: bool,
     /// Optional action `correlation_id` to report in `LastTerminal` instead of
     /// the publish `handle` (== event id). Set when the publish originates
-    /// from `nmp_app_dispatch_action`'s `PublishAction::PublishNote` path: the
+    /// from `nmp_app_dispatch_action`'s `PublishAction::PublishRaw` path: the
     /// actor signs the event, so its `id` is not known at dispatch time and
     /// the host received a registry-minted `correlation_id` that differs from
     /// the event id. The terminal sites (`on_ack`, `tick`) report this id so
@@ -90,7 +90,7 @@ impl LastTerminal {
     ///
     /// `correlation_id_override` is the action `correlation_id` the host received
     /// from `nmp_app_dispatch_action` when it differs from the publish handle
-    /// (the `PublishNote` path — the actor signs the event, so the host got a
+    /// (the `PublishRaw` path — the actor signs the event, so the host got a
     /// registry-minted id, not the event id). When `Some`, the returned
     /// `correlation_id` is that override; when `None`, it falls back to the
     /// `handle` (the pre-existing behaviour for every other publish path).

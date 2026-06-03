@@ -48,10 +48,10 @@ pub(crate) struct PendingSign {
     pub target: PublishTarget,
     /// Action `correlation_id` to report in `action_results` once the parked
     /// publish settles, when it differs from the eventual event id. Set on the
-    /// `PublishNote` dispatch path: the host received a registry-minted id
+    /// `PublishRaw` dispatch path: the host received a registry-minted id
     /// before this remote-sign op was parked, and the event id is only known
     /// once the broker returns the signed event. Without carrying it here a
-    /// bunker user's dispatched `PublishNote` would settle under the event id
+    /// bunker user's dispatched `PublishRaw` would settle under the event id
     /// and the host spinner could never be cleared. `None` for every other
     /// parked publish (`react`, `follow`, NIP-29 group actions, …).
     pub correlation_id_override: Option<String>,
@@ -90,7 +90,7 @@ impl PendingSign {
 
     /// Park a sign op (NIP-65 `Auto` routing) that carries an action
     /// `correlation_id` to report once the publish settles. Used by the
-    /// `PublishNote` dispatch path so a bunker user's dispatched note settles
+    /// `PublishRaw` dispatch path so a bunker user's dispatched note settles
     /// under the registry-minted id the host is waiting on, not the event id.
     #[must_use]
     pub fn with_correlation_id(

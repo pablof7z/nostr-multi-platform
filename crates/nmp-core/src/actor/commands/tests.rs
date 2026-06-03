@@ -330,15 +330,14 @@ fn create_account_next_note_routes_via_local_relay_rows_before_relay_echo() {
     let relays = vec![("wss://signup-write.test".to_string(), "write".to_string())];
     create_account(&mut id, &mut kernel, false, &profile, &relays, false);
 
-    let outbound = publish_note(
-        &id,
-        &mut kernel,
-        "first note after signup",
-        None,
-        PublishTarget::Auto,
-        None,
-        &mut Vec::new(),
-    );
+    let unsigned = crate::substrate::UnsignedEvent {
+        pubkey: String::new(), // ignored by signer; filled from active account
+        kind: 1,
+        tags: Vec::new(),
+        content: "first note after signup".to_string(),
+        created_at: 0,
+    };
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert!(
         outbound
             .iter()
@@ -405,49 +404,6 @@ fn remove_active_account_clears_active_slot() {
     let (accounts, active) = kernel.account_snapshot();
     assert!(accounts.is_empty());
     assert!(active.is_none());
-}
-
-#[test]
-fn publish_note_without_account_toasts_and_no_outbound() {
-    let (id, mut kernel) = fresh();
-    let outbound = publish_note(
-        &id,
-        &mut kernel,
-        "hello pulse",
-        None,
-        PublishTarget::Auto,
-        None,
-        &mut Vec::new(),
-    );
-    assert!(outbound.is_empty());
-    assert!(kernel
-        .last_error_toast_snapshot()
-        .is_some_and(|t| t.contains("no active account")));
-}
-
-#[test]
-fn publish_note_signs_and_routes_via_nip65() {
-    // T-publish-resolver-indexer (codex f81f735): resolver is now fail-closed.
-    // A kind:10002 must be seeded for the active account so the engine has
-    // NIP-65 write relays and produces non-empty outbound frames.
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-    let outbound = publish_note(
-        &id,
-        &mut kernel,
-        "hello pulse e2e",
-        None,
-        PublishTarget::Auto,
-        None,
-        &mut Vec::new(),
-    );
-    assert!(!outbound.is_empty());
-    assert!(outbound[0].text.starts_with("[\"EVENT\""));
-    let q = kernel.publish_queue_snapshot();
-    assert_eq!(q.len(), 1);
-    assert_eq!(q[0].kind, 1);
-    assert_eq!(q[0].status, "accepted_locally");
-    assert!(q[0].target_relays >= 1);
 }
 
 #[test]
@@ -1037,7 +993,7 @@ fn publish_signed_event_does_not_refuse_other_kinds_with_empty_relays() {
 /// Broken-promise contract — when the dispatch path supplied a
 /// `correlation_id`, the guard's refusal must reach `action_results` as a
 /// terminal `failed` verdict so the host's spinner clears. This mirrors the
-/// pattern in `publish_note` / `publish_profile` for their sign-step early-
+/// pattern in `publish_profile` for its sign-step early-
 /// exits (see `kernel::action_failure_tests`). Without this, a dispatched
 /// kind:1059 publish with `target: Auto` would hang the host spinner forever.
 #[test]
@@ -1323,6 +1279,36 @@ fn publish_unsigned_event_to_relays_invalid_relay_fails_closed() {
         "expected malformed relay rejection toast, got: {:?}",
         kernel.last_error_toast_snapshot()
     );
+}
+
+/// Pull out the most recent published event JSON the kernel emitted on the
+/// wire so a test can assert on its tag shape.
+fn last_published_event_json(outbound: &[crate::relay::OutboundMessage]) -> serde_json::Value {
+    let frame = outbound
+        .iter()
+        .rev()
+        .find(|m| m.text.starts_with("[\"EVENT\""))
+        .expect("at least one EVENT frame");
+    let parsed: serde_json::Value = serde_json::from_str(&frame.text).expect("EVENT frame is JSON");
+    parsed
+        .as_array()
+        .and_then(|arr| arr.get(1).cloned())
+        .expect("EVENT frame is [\"EVENT\", <event>]")
+}
+
+fn tags_of(event_json: &serde_json::Value) -> Vec<Vec<String>> {
+    event_json["tags"]
+        .as_array()
+        .expect("tags array")
+        .iter()
+        .map(|t| {
+            t.as_array()
+                .expect("tag is array")
+                .iter()
+                .map(|c| c.as_str().expect("tag column is string").to_string())
+                .collect()
+        })
+        .collect()
 }
 
 #[test]
@@ -1893,15 +1879,14 @@ fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
 fn snapshot_json_carries_new_projections() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    publish_note(
-        &id,
-        &mut kernel,
-        "json shape check",
-        None,
-        PublishTarget::Auto,
-        None,
-        &mut Vec::new(),
-    );
+    let unsigned = crate::substrate::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 1,
+        tags: Vec::new(),
+        content: "json shape check".to_string(),
+        created_at: 0,
+    };
+    publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     add_relay(&mut kernel, "wss://relay.damus.io", "both");
     let json = kernel.make_update_json_for_test(true);
     assert!(json.contains("\"accounts\""));
@@ -1986,237 +1971,6 @@ fn snapshot_json_carries_new_projections() {
     // projection registered) therefore does NOT carry the key; the projection
     // path is covered by `snapshot_carries_bunker_handshake_value` in
     // `remote_signer_tests.rs`.
-}
-
-// ── T144 — full NIP-10 reply construction via `nmp_core::tags` primitives ──
-//
-// These tests pin the publish_note behaviour the bug fix introduces. They sit
-// alongside the existing publish_note tests above rather than in nmp-testing
-// because they need to seed `kernel.events` (a `pub(super)` field reachable
-// only via the kernel's `seed_kind1_for_reply_test` test-support helper).
-
-fn signed_pubkey(id: &IdentityRuntime) -> String {
-    id.active_pubkey()
-        .expect("active account must be signed in")
-}
-
-/// Pull out the most recent published event JSON the kernel emitted on the
-/// wire so a test can assert on its tag shape.
-fn last_published_event_json(outbound: &[crate::relay::OutboundMessage]) -> serde_json::Value {
-    let frame = outbound
-        .iter()
-        .rev()
-        .find(|m| m.text.starts_with("[\"EVENT\""))
-        .expect("at least one EVENT frame");
-    let parsed: serde_json::Value = serde_json::from_str(&frame.text).expect("EVENT frame is JSON");
-    parsed
-        .as_array()
-        .and_then(|arr| arr.get(1).cloned())
-        .expect("EVENT frame is [\"EVENT\", <event>]")
-}
-
-fn tags_of(event_json: &serde_json::Value) -> Vec<Vec<String>> {
-    event_json["tags"]
-        .as_array()
-        .expect("tags array")
-        .iter()
-        .map(|t| {
-            t.as_array()
-                .expect("tag is array")
-                .iter()
-                .map(|c| c.as_str().expect("tag column is string").to_string())
-                .collect()
-        })
-        .collect()
-}
-
-const ROOT_A_ID: &str = "11111111111111111111111111111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const REPLY_B_ID: &str = "22222222222222222222222222222222bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const AUTHOR_A: &str = "aaaa000000000000000000000000000000000000000000000000000000000000";
-const AUTHOR_B: &str = "bbbb000000000000000000000000000000000000000000000000000000000000";
-const COLD_PARENT_ID: &str = "33333333333333333333333333333333cccccccccccccccccccccccccccccccc";
-
-#[test]
-fn publish_note_reply_to_mid_thread_forwards_root_and_carries_p_tags() {
-    // Two-level reply: root A, reply B → A, reply C → B.
-    //
-    // Asserts the publish path emits:
-    //   ["e", ROOT_A_ID, "", "root"]   ← root forwarded from B's own root ref
-    //   ["e", REPLY_B_ID, "", "reply"] ← direct parent
-    //   ["p", AUTHOR_B, ...]           ← parent author re-notified (T144 bug)
-    //   ["p", AUTHOR_A, ...]           ← thread participant re-notified
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-
-    // Seed root A (no NIP-10 refs of its own — it IS the root).
-    kernel.seed_kind1_for_reply_test(ROOT_A_ID, AUTHOR_A, 100, vec![], "root note");
-    // Seed mid-thread reply B (marked-form NIP-10 reply to A).
-    kernel.seed_kind1_for_reply_test(
-        REPLY_B_ID,
-        AUTHOR_B,
-        101,
-        vec![
-            vec!["e".into(), ROOT_A_ID.into(), "".into(), "root".into()],
-            vec!["e".into(), ROOT_A_ID.into(), "".into(), "reply".into()],
-            vec!["p".into(), AUTHOR_A.into()],
-        ],
-        "reply to root",
-    );
-
-    let outbound = publish_note(
-        &id,
-        &mut kernel,
-        "nested reply",
-        Some(REPLY_B_ID),
-        PublishTarget::Auto,
-        None,
-        &mut Vec::new(),
-    );
-    let event = last_published_event_json(&outbound);
-    assert_eq!(event["kind"], 1);
-    assert_eq!(event["pubkey"].as_str().unwrap(), signed_pubkey(&id));
-
-    let tags = tags_of(&event);
-    let keys: Vec<&str> = tags
-        .iter()
-        .filter_map(|t| t.first())
-        .map(String::as_str)
-        .collect();
-    assert_eq!(keys, vec!["e", "e", "p", "p"], "tag shape: 2 e + 2 p");
-
-    // Root tag forwards B's `root` (= ROOT_A_ID), with the "root" marker.
-    assert_eq!(tags[0][0], "e");
-    assert_eq!(tags[0][1], ROOT_A_ID);
-    assert_eq!(tags[0][3], "root");
-
-    // Reply tag points at the direct parent (B), "reply" marker.
-    assert_eq!(tags[1][0], "e");
-    assert_eq!(tags[1][1], REPLY_B_ID);
-    assert_eq!(tags[1][3], "reply");
-
-    // P-tags: parent author (B) first, then forwarded thread participant (A).
-    assert_eq!(tags[2][0], "p");
-    assert_eq!(tags[2][1], AUTHOR_B);
-    assert_eq!(tags[3][0], "p");
-    assert_eq!(tags[3][1], AUTHOR_A);
-}
-
-#[test]
-fn publish_note_reply_to_root_promotes_parent_to_root_and_emits_both_markers() {
-    // Direct reply to a thread root: parent has no `root` ref of its own, so
-    // the new reply's root tag promotes the parent. NIP-10 still requires
-    // *both* root + reply markers in the marked form (parent appears as both,
-    // pointing to the same id) — this is the shape `nmp_nip01::Note::reply_to`
-    // emits (see `crates/nmp-nip01/src/build.rs:205` test).
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-
-    kernel.seed_kind1_for_reply_test(ROOT_A_ID, AUTHOR_A, 100, vec![], "root note");
-
-    let outbound = publish_note(
-        &id,
-        &mut kernel,
-        "first reply",
-        Some(ROOT_A_ID),
-        PublishTarget::Auto,
-        None,
-        &mut Vec::new(),
-    );
-    let event = last_published_event_json(&outbound);
-
-    let tags = tags_of(&event);
-    let keys: Vec<&str> = tags
-        .iter()
-        .filter_map(|t| t.first())
-        .map(String::as_str)
-        .collect();
-    assert_eq!(keys, vec!["e", "e", "p"], "tag shape: 2 e + 1 p");
-
-    // Both `e` tags point at the parent (which IS the root).
-    assert_eq!(tags[0][1], ROOT_A_ID);
-    assert_eq!(tags[0][3], "root");
-    assert_eq!(tags[1][1], ROOT_A_ID);
-    assert_eq!(tags[1][3], "reply");
-
-    // Single p tag → parent author (re-notification path T144 unlocks).
-    assert_eq!(tags[2][1], AUTHOR_A);
-}
-
-#[test]
-fn publish_note_reply_to_unknown_parent_falls_back_and_kicks_hydration() {
-    // Cold-reply path: parent isn't in `kernel.events`, so we can't build the
-    // full NIP-10 structure. The kernel emits a minimal `["e", id, "", "reply"]`
-    // so the event is at least thread-discoverable, AND enqueues the parent
-    // id onto the T121 thread-hydration queue so a follow-up REQ surfaces the
-    // parent's real structure.
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-
-    // Sanity: parent must NOT be in cache for this path to fire.
-    assert!(!kernel.is_thread_hydration_requested(COLD_PARENT_ID));
-
-    let outbound = publish_note(
-        &id,
-        &mut kernel,
-        "cold reply",
-        Some(COLD_PARENT_ID),
-        PublishTarget::Auto,
-        None,
-        &mut Vec::new(),
-    );
-    let event = last_published_event_json(&outbound);
-
-    let tags = tags_of(&event);
-    let keys: Vec<&str> = tags
-        .iter()
-        .filter_map(|t| t.first())
-        .map(String::as_str)
-        .collect();
-    assert_eq!(
-        keys,
-        vec!["e"],
-        "cold reply emits exactly one minimal reply marker"
-    );
-    assert_eq!(tags[0][1], COLD_PARENT_ID);
-    assert_eq!(tags[0][3], "reply");
-
-    // Hydration must have been kicked — the id is on the requested set
-    // because `maybe_open_thread_hydration` already partitioned + dispatched.
-    assert!(
-        kernel.is_thread_hydration_requested(COLD_PARENT_ID),
-        "cold-reply must enqueue parent for T121 thread hydration"
-    );
-}
-
-#[test]
-fn publish_note_reply_to_malformed_id_toasts_and_refuses() {
-    // D6: a malformed reply id must NOT silently degrade a reply into a
-    // top-level note. `publish_note` rejects it loudly — no outbound frames,
-    // a user-visible toast — mirroring the explicit validation in `react`
-    // and `follow`.
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-
-    let outbound = publish_note(
-        &id,
-        &mut kernel,
-        "reply with bad parent id",
-        Some("not-a-hex-event-id"),
-        PublishTarget::Auto,
-        None,
-        &mut Vec::new(),
-    );
-
-    assert!(
-        outbound.is_empty(),
-        "malformed reply id must produce no outbound frames"
-    );
-    assert!(
-        kernel
-            .last_error_toast_snapshot()
-            .is_some_and(|t| t.contains("malformed target event id")),
-        "malformed reply id must surface a toast"
-    );
 }
 
 // ── T-relay-url-normalize — add_relay canonicalization ───────────────────────

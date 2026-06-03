@@ -288,12 +288,12 @@ impl Kernel {
 
     /// Seed a fully-formed kind:1 note into the kernel's read-cache (`events`).
     ///
-    /// Used by the T144 publish-reply tests in `actor/commands/tests.rs` to
-    /// stage a parent note so `publish_note(..., Some(parent_id))` exercises
-    /// the warm-reply path (`reply_tags_for_parent`) rather than the
-    /// cold-reply hydration fallback. Bypasses the store entirely — purely a
-    /// read-cache fixture. The `tags` argument can carry whatever NIP-10
-    /// structure the test needs to assert root-forwarding on.
+    /// Used by the reaction / thread tests in `actor/commands/tests.rs` to
+    /// stage a parent note so a subsequent `react(..., target_id)` resolves
+    /// the parent author from the read-cache (`event_author`) rather than the
+    /// uncached fallback. Bypasses the store entirely — purely a read-cache
+    /// fixture. The `tags` argument can carry whatever NIP-10 structure the
+    /// test needs.
     #[allow(dead_code)]
     pub(crate) fn seed_kind1_for_reply_test(
         &mut self,

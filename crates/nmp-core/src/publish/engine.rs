@@ -55,12 +55,12 @@ pub enum PublishEngineError {
     NoTargets,
     Store(PublishStoreError),
     /// The engine was handed a `PublishAction` variant it does not service —
-    /// currently only `PublishAction::PublishNote`, which is signed and
-    /// published by the actor's `ActorCommand::PublishNote` handler, not by
-    /// this engine. The `ActionRegistry` executor routes `PublishNote` to the
-    /// actor directly, so reaching `start_publish` with one is a wiring bug.
-    /// Surfaced as an `Err` (never an `unreachable!`) so D6 holds — the
-    /// invariant violation becomes snapshot-visible state, never a panic.
+    /// the actor-signed variants (`PublishRaw` → `ActorCommand::PublishRawEvent`,
+    /// `PublishProfile` → `ActorCommand::PublishProfile`), which the actor signs
+    /// and publishes, not this engine. The `ActionRegistry` executor routes
+    /// those to the actor directly, so reaching `start_publish` with one is a
+    /// wiring bug. Surfaced as an `Err` (never an `unreachable!`) so D6 holds —
+    /// the invariant violation becomes snapshot-visible state, never a panic.
     UnsupportedAction(&'static str),
 }
 
@@ -156,7 +156,7 @@ impl PublishEngine {
     ///
     /// `correlation_id_override` is the action `correlation_id` to report in
     /// `action_results` when it differs from the publish handle — set for
-    /// the `PublishNote` dispatch path (the actor signs the event, so the host
+    /// the `PublishRaw` dispatch path (the actor signs the event, so the host
     /// received a registry-minted id, not the event id). `None` for every
     /// other caller: the terminal verdict then reports the handle, preserving
     /// the prior behaviour. Only the `Publish` variant carries the override
@@ -175,29 +175,21 @@ impl PublishEngine {
                 target,
             } => self.start_publish_inner(handle, event, target, correlation_id_override, now_ms),
             PublishAction::Cancel { handle } => self.cancel_publish(handle, now_ms),
-            // `PublishNote` is signed-and-published by the actor's
-            // `ActorCommand::PublishNote` handler; the engine only services
-            // pre-signed `Publish` (and `Cancel`). The `ActionRegistry`
-            // executor routes `PublishNote` to `ActorCommand::PublishNote`,
-            // never to this engine. Reaching here is a wiring bug — D6
-            // forbids surfacing it as a panic / `unreachable!`, so it is
-            // returned as an `Err` the caller maps to snapshot-visible state.
-            PublishAction::PublishNote { .. } => Err(PublishEngineError::UnsupportedAction(
-                "PublishNote is published via ActorCommand::PublishNote, not the publish engine",
-            )),
             // `PublishProfile` is signed-and-published by the actor's
-            // `ActorCommand::PublishProfile` handler — same rationale as
-            // `PublishNote`: the engine only services pre-signed `Publish`
-            // (and `Cancel`). Reaching here is a wiring bug returned as an
-            // `Err`, never a panic (D6).
+            // `ActorCommand::PublishProfile` handler; the engine only services
+            // pre-signed `Publish` (and `Cancel`). The `ActionRegistry`
+            // executor routes `PublishProfile` to `ActorCommand::PublishProfile`,
+            // never to this engine. Reaching here is a wiring bug — D6 forbids
+            // surfacing it as a panic / `unreachable!`, so it is returned as an
+            // `Err` the caller maps to snapshot-visible state.
             PublishAction::PublishProfile { .. } => Err(PublishEngineError::UnsupportedAction(
                 "PublishProfile is published via ActorCommand::PublishProfile, not the publish engine",
             )),
             // `PublishRaw` is signed-and-published by the actor's
             // `ActorCommand::PublishRawEvent` handler (which delegates to the
             // existing `publish_unsigned_event{,_to_relays}` helpers) — same
-            // rationale as `PublishNote`/`PublishProfile`. Reaching here is a
-            // wiring bug returned as an `Err`, never a panic (D6).
+            // rationale as `PublishProfile`. Reaching here is a wiring bug
+            // returned as an `Err`, never a panic (D6).
             PublishAction::PublishRaw { .. } => Err(PublishEngineError::UnsupportedAction(
                 "PublishRaw is published via ActorCommand::PublishRawEvent, not the publish engine",
             )),

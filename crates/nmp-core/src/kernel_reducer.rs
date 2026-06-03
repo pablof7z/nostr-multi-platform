@@ -195,7 +195,7 @@ impl KernelReducer {
     /// kernel's publish engine).
     ///
     /// Internally delegates to `Kernel::publish_signed_with_correlation` —
-    /// byte-for-byte the same entrypoint `actor::commands::publish::publish_note`
+    /// byte-for-byte the same entrypoint `actor::commands::publish::publish_unsigned_event`
     /// reaches after `sign_active_nonblocking` resolves on the dispatched
     /// path. The returned `Vec<OutboundMessage>` is the engine's per-(outbox-
     /// relay) `EVENT` frame set, already AUTH-pause-partitioned through
@@ -219,7 +219,7 @@ impl KernelReducer {
     /// Without correlation threading the wasm host receives a publish-engine
     /// terminal keyed on an event id it never saw — defeating partial-success
     /// UX (e.g. "2/3 relays accepted"). Pinning the contract here keeps the
-    /// wasm path byte-for-byte aligned with the native `publish_note` dispatch.
+    /// wasm path byte-for-byte aligned with the native generic publish dispatch.
     ///
     /// Doctrine (D0/D6): the surface is substrate-typed (`SignedEvent`,
     /// `OutboundMessage`); failure is encoded as an empty outbound vec plus a
@@ -575,13 +575,13 @@ mod tests {
         // Without this, the wasm host receives terminals keyed on the
         // event id it never saw (partial-success UX would have no key to
         // correlate on). The contract is byte-identical with the native
-        // `publish_note` dispatched path which uses
+        // generic publish dispatched path which uses
         // `Kernel::publish_signed_to_with_correlation`.
         //
         // We can't directly observe the engine's correlation_id table from
         // here (it's `pub(crate)`); the assertion below pins the surface
         // shape (no panic when correlation_id is `Some(_)`) — the deep
-        // wire-up is exercised by the native `publish_note` tests in
+        // wire-up is exercised by the native publish tests in
         // `actor::commands::tests` and `publish::engine::tests`.
         let mut r = KernelReducer::new();
         let _ = r.reduce(KernelAction::Start);
