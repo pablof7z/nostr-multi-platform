@@ -157,10 +157,15 @@ impl AppRuntime {
     }
 
     pub fn publish_note(&self, content: &str, reply_to: Option<&str>) -> Result<String> {
+        let tags: Vec<Vec<&str>> = match reply_to {
+            Some(reply_id) => vec![vec!["e", reply_id, "", "reply"]],
+            None => vec![],
+        };
         let action = json!({
-            "PublishNote": {
+            "PublishRaw": {
+                "kind": 1,
+                "tags": tags,
                 "content": content,
-                "reply_to_id": reply_to,
                 "target": "Auto"
             }
         })

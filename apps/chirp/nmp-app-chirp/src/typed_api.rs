@@ -198,14 +198,22 @@ impl ChirpClient {
 
 // ── Pure action envelope builders (no app pointer required) ─────────────────
 
-/// Build a PublishNote action envelope.
+/// Build a kind:1 note publish action envelope (`PublishRaw`).
+///
+/// A reply is expressed as a NIP-10 `["e", reply_id, "", "reply"]` tag; a
+/// root note carries no tags. `target` defaults to `Auto` (NIP-65 outbox).
 ///
 /// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
 pub fn publish_note_action(content: &str, reply_to_id: Option<&str>) -> (String, String) {
+    let tags: Vec<Vec<&str>> = match reply_to_id {
+        Some(reply_id) => vec![vec!["e", reply_id, "", "reply"]],
+        None => vec![],
+    };
     let action = json!({
-        "PublishNote": {
+        "PublishRaw": {
+            "kind": 1,
+            "tags": tags,
             "content": content,
-            "reply_to_id": reply_to_id,
             "target": "Auto"
         }
     })

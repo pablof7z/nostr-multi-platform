@@ -25,20 +25,54 @@ fn publish_note_action_has_correct_namespace_and_content() {
     let (ns, json) = publish_note_action("hello world", None);
     assert_eq!(ns, "nmp.publish");
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(v["PublishNote"]["content"], "hello world");
-    // reply_to_id absent → JSON null
-    assert!(v["PublishNote"]["reply_to_id"].is_null());
-    // target is always present
-    assert!(v["PublishNote"]["target"].is_string());
+    // A note is a kind:1 PublishRaw event.
+    assert_eq!(v["PublishRaw"]["kind"], 1);
+    assert_eq!(v["PublishRaw"]["content"], "hello world");
+    // Root note (no reply) carries no tags.
+    assert_eq!(v["PublishRaw"]["tags"], serde_json::json!([]));
+    // target is always present (string-form unit variant "Auto").
+    assert!(v["PublishRaw"]["target"].is_string());
 }
 
 #[test]
-fn publish_note_action_with_reply_has_reply_to_id() {
+fn publish_note_action_with_reply_has_nip10_reply_tag() {
     let (ns, json) = publish_note_action("reply", Some("abc123"));
     assert_eq!(ns, "nmp.publish");
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(v["PublishNote"]["content"], "reply");
-    assert_eq!(v["PublishNote"]["reply_to_id"], "abc123");
+    assert_eq!(v["PublishRaw"]["kind"], 1);
+    assert_eq!(v["PublishRaw"]["content"], "reply");
+    // A reply is a NIP-10 marked `e` tag: ["e", reply_id, "", "reply"].
+    assert_eq!(
+        v["PublishRaw"]["tags"],
+        serde_json::json!([["e", "abc123", "", "reply"]])
+    );
+}
+
+/// Dispatch-correctness guard: the JSON the builder emits must deserialize
+/// into the exact `PublishAction::PublishRaw` variant the kernel accepts.
+/// Shape-only assertions above prove the key names; this proves the envelope
+/// is wire-compatible with the post-#916 kernel action enum.
+#[test]
+fn publish_note_action_deserializes_into_publish_raw_variant() {
+    use nmp_core::publish::{PublishAction, PublishTarget};
+
+    let (_ns, json) = publish_note_action("hello world", Some("abc123"));
+    let action: PublishAction =
+        serde_json::from_str(&json).expect("builder JSON must deserialize into PublishAction");
+    match action {
+        PublishAction::PublishRaw {
+            kind,
+            tags,
+            content,
+            target,
+        } => {
+            assert_eq!(kind, 1);
+            assert_eq!(content, "hello world");
+            assert_eq!(tags, vec![vec!["e", "abc123", "", "reply"]]);
+            assert_eq!(target, PublishTarget::Auto);
+        }
+        other => panic!("expected PublishRaw, got {other:?}"),
+    }
 }
 
 // ---------------------------------------------------------------------------
