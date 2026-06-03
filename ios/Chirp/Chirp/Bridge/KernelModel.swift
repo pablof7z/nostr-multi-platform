@@ -26,7 +26,7 @@ private let reliabilityLog = OSLog(subsystem: "org.nmp.chirp.diag", category: "r
 /// PR-L (KernelModel collapse): every kernel-driven projection lives behind
 /// the single `@Published var snapshot: KernelUpdate?` slot; the computed
 /// accessors below restore the per-field view-facing API (`model.profile`,
-/// `model.items`, …) verbatim. The genuinely-local mutable slots —
+/// `model.modularTimeline`, …) verbatim. The genuinely-local mutable slots —
 /// `lastErrorToast` (clearable by the toast tap), `appMetrics` (timing
 /// accumulator), `lastDispatchError` (synchronous FFI rejection slot,
 /// distinct from the snapshot-driven `lastErrorToast`) — stay individual
@@ -106,7 +106,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     var rev: UInt64 { snapshot?.rev ?? 0 }
     var profile: ProfileCard? { snapshot?.profile }
     var authorView: AuthorProfileSnapshot? { snapshot?.authorView }
-    var items: [TimelineItem] { snapshot?.items ?? [] }
     var metrics: KernelMetrics? { snapshot?.metrics }
     var relayStatuses: [RelayStatus] { snapshot?.relayStatuses ?? [] }
     var accounts: [AccountSummary] { snapshot?.accounts ?? [] }
@@ -775,12 +774,9 @@ final class KernelModel: ObservableObject, NostrProfileHost {
             callbackToAppliedMicros: callbackToAppliedMicros,
             payloadBytes: result.payloadBytes
         )
-        let insertedCount = update.inserted?.count ?? 0
-        let updatedCount = update.updated?.count ?? 0
-        let removedCount = update.removed?.count ?? 0
         let lastEventToEmit = update.metrics.lastEventToEmitMs.map(String.init) ?? "none"
         diagLog.debug(
-            "NMP_PERF swift_apply rev=\(update.rev, privacy: .public) total_events=\(update.metrics.eventsRx, privacy: .public) batch_events=\(update.metrics.eventsSinceLastUpdate, privacy: .public) inserted=\(insertedCount, privacy: .public) updated=\(updatedCount, privacy: .public) removed=\(removedCount, privacy: .public) visible=\(update.metrics.visibleItems, privacy: .public) payload_bytes=\(result.payloadBytes, privacy: .public) rust_event_to_emit_ms=\(lastEventToEmit, privacy: .public) decode_us=\(result.decodeMicros, privacy: .public) callback_to_apply_us=\(callbackToApplyMicros, privacy: .public) apply_us=\(applyMicros, privacy: .public) callback_to_applied_us=\(callbackToAppliedMicros, privacy: .public)"
+            "NMP_PERF swift_apply rev=\(update.rev, privacy: .public) total_events=\(update.metrics.eventsRx, privacy: .public) batch_events=\(update.metrics.eventsSinceLastUpdate, privacy: .public) visible=\(update.metrics.visibleItems, privacy: .public) payload_bytes=\(result.payloadBytes, privacy: .public) rust_event_to_emit_ms=\(lastEventToEmit, privacy: .public) decode_us=\(result.decodeMicros, privacy: .public) callback_to_apply_us=\(callbackToApplyMicros, privacy: .public) apply_us=\(applyMicros, privacy: .public) callback_to_applied_us=\(callbackToAppliedMicros, privacy: .public)"
         )
 
         snapshotCount &+= 1

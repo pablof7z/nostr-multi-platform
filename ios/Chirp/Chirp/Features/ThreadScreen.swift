@@ -21,7 +21,7 @@ struct ThreadScreen: View {
         Dictionary(uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.card.id, $0.card) })
     }
     private var itemLookup: [String: TimelineItem] {
-        Dictionary(uniqueKeysWithValues: (thread?.items ?? model.items).map { ($0.id, $0) })
+        Dictionary(uniqueKeysWithValues: (thread?.items ?? []).map { ($0.id, $0) })
     }
     // V-31 — `mention_profiles` snapshot projection now covers thread-view
     // items (see `update.rs` `mention_profiles` block), so the Swift

@@ -769,14 +769,13 @@ struct KernelUpdate: Decodable {
     let schemaVersion: UInt32
     let updateKind: String?
     let running: Bool
-    // D0: the views cluster (`profile`, the visible timeline, `author_view`,
-    // `thread_view`, and the `inserted` / `updated` / `removed` deltas) is no
-    // longer a typed `KernelSnapshot` field set — all seven are surfaced
-    // through the host-extensible `projections` map under built-in keys. The
-    // stored decode for these fields is removed (a stored property would throw
-    // `keyNotFound` and drop the entire snapshot at `decode`); computed
-    // accessors below keep call sites (`KernelModel`) reading `update.profile`
-    // / `update.items` / `update.authorView` etc. unchanged.
+    // D0: the views cluster (`profile`, `author_view`, `thread_view`, and the
+    // bounded `nmp.feed.home` home feed) is not a typed `KernelSnapshot` field
+    // set — every view is surfaced through the host-extensible `projections`
+    // map under built-in keys. The stored decode for these fields is removed (a
+    // stored property would throw `keyNotFound` and drop the entire snapshot at
+    // `decode`); computed accessors below keep call sites (`KernelModel`)
+    // reading `update.profile` / `update.authorView` etc. unchanged.
     let metrics: KernelMetrics
     // Single-relay backwards compat field alongside the array.
     let relayStatus: RelayStatus?
@@ -876,26 +875,21 @@ struct KernelUpdate: Decodable {
 
     // ── D0 views cluster — projections-backed accessors ───────────────────
     //
-    // The kernel no longer emits typed `profile` / `items` / `author_view` /
-    // `thread_view` / `inserted` / `updated` / `removed` fields; all seven
-    // live in `projections`. These computed accessors keep every call site
-    // (`KernelModel.apply`, the feature views) reading `update.profile`,
-    // `update.items`, etc. exactly as before.
+    // The kernel emits the `profile` / `author_view` / `thread_view` views and
+    // the bounded `nmp.feed.home` home feed through `projections`. The legacy
+    // generic `timeline` / `inserted` / `updated` / `removed` keys were deleted
+    // upstream (nmp-core #924); the home-feed path is `homeFeed`
+    // (`ChirpTimelineSnapshot`). These accessors keep every call site
+    // (`KernelModel.apply`, the feature views) reading `update.profile` etc.
 
     /// Active-account profile card — `projections["profile"]`. Falls back to a
     /// neutral placeholder card if a (legacy) kernel elides the projection, so
     /// the non-optional `KernelModel.profile` consumer never breaks.
     var profile: ProfileCard? { projections?.profile }
 
-    /// Visible timeline — `projections["timeline"]` (the kernel renamed the
-    /// generic `items` key to `timeline`). Non-optional with an empty default
-    /// so the existing `update.items != items` change-detection in
-    /// `KernelModel.apply` — which the modular-timeline refresh depends on —
-    /// keeps working without an `Optional` unwrap. This deliberately differs
-    /// from the identity-cluster optional pattern to preserve that flow.
-    var items: [TimelineItem] { projections?.timeline ?? [] }
-
-    /// Standard bounded home-feed projection from `nmp-feed`.
+    /// Standard bounded home-feed projection from `nmp-feed`
+    /// (`projections["nmp.feed.home"]`). The sole timeline source since the
+    /// generic `timeline` projection was removed (nmp-core #924).
     var homeFeed: ChirpTimelineSnapshot? { projections?.homeFeed }
 
     /// Open author-view payload — `projections["author_view"]`. `nil` when no
@@ -905,15 +899,6 @@ struct KernelUpdate: Decodable {
     /// Open thread-view payload — `projections["thread_view"]`. `nil` when no
     /// thread view is open (kernel emits JSON null).
     var threadView: ThreadView? { projections?.threadView }
-
-    /// Per-tick timeline delta — newly inserted items (`projections["inserted"]`).
-    var inserted: [TimelineItem]? { projections?.inserted }
-
-    /// Per-tick timeline delta — updated items (`projections["updated"]`).
-    var updated: [TimelineItem]? { projections?.updated }
-
-    /// Per-tick timeline delta — removed item ids (`projections["removed"]`).
-    var removed: [String]? { projections?.removed }
 
     /// Pre-merged profile map — `projections["resolved_profiles"]` (PR #812).
     /// Keyed by pubkey, one `ProfileCard` per profile the kernel can resolve,

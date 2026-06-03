@@ -122,7 +122,6 @@ struct HomeFeedView: View {
         TimelineListView(
             roots: model.modularTimeline.cards,
             nextCursor: model.modularTimeline.page?.nextCursor,
-            items: model.items,
             // V-31 — kernel-owned `mention_profiles` projection covers every
             // home-timeline author (and any open author/thread view),
             // replacing the Swift Dictionary derivation `TimelineListView`
@@ -226,7 +225,6 @@ private struct TimelineListView: View, Equatable {
     /// renders as a single standalone row plus an optional attribution line.
     let roots: [ChirpRootCard]
     let nextCursor: TimelineWindowCursor?
-    let items: [TimelineItem]
     /// V-31 — kernel-owned profile map (replaces the Swift
     /// `Dictionary(items.map …)` derivation this view used to build). Bound
     /// from `model.mentionProfiles`, which reads the pre-merged
@@ -246,13 +244,17 @@ private struct TimelineListView: View, Equatable {
     nonisolated static func == (lhs: TimelineListView, rhs: TimelineListView) -> Bool {
         lhs.roots == rhs.roots
             && lhs.nextCursor == rhs.nextCursor
-            && lhs.items.count == rhs.items.count
-            && zip(lhs.items, rhs.items).allSatisfy { $0.rendersIdentically($1) }
             && lhs.mentionProfiles == rhs.mentionProfiles
     }
 
     var body: some View {
-        let itemLookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        // The legacy `timeline` projection was removed (nmp-core #924); the home
+        // feed renders entirely from `roots` (the `nmp.feed.home` modular cards).
+        // `ModularBlockView` builds a synthetic `TimelineItem` from each card
+        // when its lookup misses, so an empty lookup is the steady state here —
+        // populated `TimelineItem` lookups now only flow from the still-live
+        // `thread_view` / `author_view` projections (issue #911).
+        let itemLookup: [String: TimelineItem] = [:]
 
         return List {
             ForEach(Array(roots.enumerated()), id: \.element.id) { index, root in
