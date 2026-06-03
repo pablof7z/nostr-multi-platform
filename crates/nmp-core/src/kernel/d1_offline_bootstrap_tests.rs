@@ -7,12 +7,20 @@
 //! This test exercises the real offline read path:
 //!
 //! 1. Seed the in-memory store with a kind:1 event — NO relays connected.
-//! 2. Open the timeline view (sets `follow_feed_kinds`) so the projection is live.
+//! 2. Open the author view for the seeded author so a content-bearing view
+//!    projection is live.
 //! 3. Call `make_update_json_for_test` and assert the seeded event id AND content
-//!    appear in `projections.timeline`.
+//!    appear in `projections.author_view.items`.
 //!
 //! The test FAILS if the offline store-read/projection path breaks because the
 //! assertion checks concrete seeded content, not just structural JSON presence.
+//!
+//! Issue #920 (Step 3A): the home-feed projection cluster (`projections.timeline`)
+//! was removed from the kernel. The D1 offline-bootstrap PROPERTY is unchanged —
+//! `self.timeline`, `self.events`, `ingest_pre_verified_event`, and
+//! `sort_timeline_deferred` all remain — so this test moved its observation
+//! window off the deleted home feed onto the still-live `author_view` items
+//! projection (a `Vec<TimelineItem>`, same content-bearing shape).
 //!
 //! See `docs/product-spec/offline-first.md` §7 and
 //! `docs/wiki/d1-snapshot-before-relay-io.md`.
@@ -29,29 +37,24 @@ const SEED_AUTHOR: &str =
 const SEED_CONTENT: &str =
     "offline-first proof: this note was stored before any relay connected";
 
-/// D1 assertion: a kernel with locally-stored events emits those events in the
-/// timeline projection BEFORE any relay I/O.
+/// D1 assertion: a kernel with locally-stored events emits those events in a
+/// content-bearing view projection BEFORE any relay I/O.
 ///
 /// The test seeds a kind:1 note into the kernel's in-memory store with ZERO
-/// relay connections, opens the timeline view, and asserts that the seeded
-/// event id and content appear in `projections.timeline`.
+/// relay connections, opens the author view for that author, and asserts that
+/// the seeded event id and content appear in `projections.author_view.items`.
 ///
-/// Falsifiability: if the offline store-read path or the timeline projection
-/// breaks, `projections.timeline` will be empty or missing the seeded entry,
-/// and the `assert_eq!(items.len(), 1)` / id / content assertions will fail.
-/// The tautological structural-presence check (`!projections.is_empty()`) has
-/// been deliberately replaced with content-level assertions that cannot pass
+/// Falsifiability: if the offline store-read path or the author-view projection
+/// breaks, `projections.author_view.items` will be empty or missing the seeded
+/// entry, and the `assert_eq!(items.len(), 1)` / id / content assertions will
+/// fail. The tautological structural-presence check (`!projections.is_empty()`)
+/// has been deliberately replaced with content-level assertions that cannot pass
 /// on a kernel whose store-read path is severed.
 #[test]
 fn d1_offline_store_content_appears_in_snapshot_without_relays() {
     // Construct a kernel — zero relay connections, zero relay URLs configured.
     // `relay_connected()` is intentionally NOT called; this is the offline state.
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    // Open the timeline view so the projection is emitted in the snapshot (D5
-    // bounding rule: view-dependent keys are absent until a view is subscribed).
-    // Mirrors what `ActorCommand::OpenContactListSubscription` does in production.
-    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
 
     // Seed a kind:1 note directly into the kernel's store — bypasses signature
     // verification via `from_raw_unchecked` (test-support only).  The
@@ -74,22 +77,32 @@ fn d1_offline_store_content_appears_in_snapshot_without_relays() {
     );
     kernel.sort_timeline_deferred();
 
+    // Open the author view for the seeded author so a content-bearing view
+    // projection is emitted in the snapshot (D5 bounding rule: view-dependent
+    // keys are absent until a view is subscribed). `author_items` reads the
+    // seeded note straight from the offline store — no relay I/O.
+    kernel.open_author(
+        SEED_AUTHOR.to_string(),
+        std::collections::BTreeSet::from([1u32, 6u32]),
+        false,
+    );
+
     // Emit the snapshot — same call the actor makes on every kernel tick.
     let snapshot_json = kernel.make_update_json_for_test(true);
     let snap: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
 
     // ── D1 content assertion ──────────────────────────────────────────────────
-    // The timeline projection must contain exactly the seeded note.  Any
-    // regression in the offline store-read path (store.insert, events HashMap,
-    // timeline VecDeque, or the projection loop in update/projections.rs) will
-    // produce an empty or absent array and fail here.
-    let items = snap["projections"]["timeline"]
+    // The author-view items projection must contain exactly the seeded note.
+    // Any regression in the offline store-read path (store.insert, events
+    // HashMap, or the author-view projection in update/views.rs) will produce an
+    // empty or absent array and fail here.
+    let items = snap["projections"]["author_view"]["items"]
         .as_array()
         .unwrap_or_else(|| {
             panic!(
-                "D1: projections.timeline must be a JSON array with offline-stored content; \
-                 got snapshot projections keys: {:?}",
+                "D1: projections.author_view.items must be a JSON array with offline-stored \
+                 content; got snapshot projections keys: {:?}",
                 snap["projections"]
                     .as_object()
                     .map(|o| o.keys().collect::<Vec<_>>())
@@ -100,7 +113,7 @@ fn d1_offline_store_content_appears_in_snapshot_without_relays() {
     assert_eq!(
         items.len(),
         1,
-        "D1: exactly one seeded note must appear in the timeline before any relay connects; \
+        "D1: exactly one seeded note must appear in the author view before any relay connects; \
          got {} items",
         items.len()
     );
@@ -108,13 +121,13 @@ fn d1_offline_store_content_appears_in_snapshot_without_relays() {
     assert_eq!(
         items[0]["id"].as_str(),
         Some(SEED_NOTE_ID),
-        "D1: the projected timeline item must carry the seeded event id"
+        "D1: the projected author-view item must carry the seeded event id"
     );
 
     assert_eq!(
         items[0]["content"].as_str(),
         Some(SEED_CONTENT),
-        "D1: the projected timeline item must carry the seeded event content"
+        "D1: the projected author-view item must carry the seeded event content"
     );
 
     // The diagnostic metric must agree with the projection.

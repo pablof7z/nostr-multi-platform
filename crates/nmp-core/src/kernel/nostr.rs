@@ -1,14 +1,14 @@
 //! Pure Nostr-protocol helpers used by the kernel's event processing path.
 //!
 //! Contains event-parsing utilities (`parse_profile`, `parse_relay_list`),
-//! timeline diffing (`diff_items`), display helpers (`short_hex`,
+//! display helpers (`short_hex`,
 //! `avatar_color`, `truncate`, `initials`), and predicate helpers
 //! (`is_hex_pubkey`, `event_references`). All functions are `pub(super)` or
 //! `pub(crate)` — they are internal kernel implementation details, not public
 //! NMP API.
 
 use super::types::AuthorRelayList;
-use super::{BTreeSet, Deserialize, HashMap, HashSet, Profile, StoredEvent, TimelineItem};
+use super::{BTreeSet, Deserialize, HashSet, Profile, StoredEvent};
 // `UNIX_EPOCH`, `Duration`, `DateTime`, `Local`, `SystemTime` are only consumed
 // by `format_timestamp` / `now_hms` below, both `#[cfg(feature = "native")]` —
 // the imports are gated to match so `--no-default-features` (wasm32) compiles.
@@ -99,42 +99,6 @@ pub(super) fn signed_event_to_nostr(event: &SignedEvent) -> NostrEvent {
         content: event.unsigned.content.clone(),
         sig: event.sig.clone(),
     }
-}
-
-pub(super) fn diff_items(
-    previous: &[TimelineItem],
-    current: &[TimelineItem],
-) -> (Vec<TimelineItem>, Vec<TimelineItem>, Vec<String>) {
-    let previous_by_id = previous
-        .iter()
-        .map(|item| (item.id.as_str(), item))
-        .collect::<HashMap<_, _>>();
-    let current_by_id = current
-        .iter()
-        .map(|item| (item.id.as_str(), item))
-        .collect::<HashMap<_, _>>();
-
-    let inserted = current
-        .iter()
-        .filter(|item| !previous_by_id.contains_key(item.id.as_str()))
-        .cloned()
-        .collect::<Vec<_>>();
-    let updated = current
-        .iter()
-        .filter(|item| {
-            previous_by_id
-                .get(item.id.as_str())
-                .is_some_and(|previous| *previous != *item)
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    let removed = previous
-        .iter()
-        .filter(|item| !current_by_id.contains_key(item.id.as_str()))
-        .map(|item| item.id.clone())
-        .collect::<Vec<_>>();
-
-    (inserted, updated, removed)
 }
 
 pub(super) fn ratio(numerator: usize, denominator: usize) -> f64 {

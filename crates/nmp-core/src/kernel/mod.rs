@@ -263,7 +263,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub use relay_frame::RelayFrame;
 
 use nostr::{
-    diff_items, event_references, first_event_ref, parse_profile, parse_relay_list, ratio,
+    event_references, first_event_ref, parse_profile, parse_relay_list, ratio,
     referenced_event_ids, root_event_id, short_hex, truncate, NostrEvent,
 };
 // V-01 Phase 1c follow-up: `format_timestamp` / `now_hms` are
@@ -814,7 +814,6 @@ pub struct Kernel {
     /// lifetime. #170: relay-scoped so a CLOSE for one relay never un-pins a
     /// sibling.
     wire: WireSubscriptionState,
-    last_emitted_items: Vec<TimelineItem>,
     update_sequence: u64,
     /// Serialized length (bytes) of the snapshot emitted on the PREVIOUS
     /// `make_update` tick. The `Metrics::payload_bytes` diagnostic is sourced
@@ -1871,7 +1870,6 @@ impl Kernel {
             timeline_requested: false,
             contacts_deadline: None,
             wire: WireSubscriptionState::default(),
-            last_emitted_items: Vec::new(),
             update_sequence: 0,
             last_payload_bytes: 0,
             last_make_update_us: 0,

@@ -22,10 +22,22 @@
 //!   - Notes (kind:1) are delivered through the REAL ingest path via
 //!     `ingest_timeline_event` with a `diag-firehose-` sub_id, which bypasses the
 //!     `timeline_authors` gate (ingest/timeline.rs:210) so the signed note enters
-//!     `self.timeline` → `visible_items()` → `mention_profiles`. Real Schnorr
-//!     signatures are used (mirrors `clock_injection_tests::signed_note`) so the
-//!     note's author pubkey is controlled: the SAME keypair seeds both the note
-//!     and the kind:0, so the pubkey genuinely appears in `mention_profiles`.
+//!     `self.events`. Real Schnorr signatures are used (mirrors
+//!     `clock_injection_tests::signed_note`) so the note's author pubkey is
+//!     controlled: the SAME keypair seeds both the note and the kind:0, so the
+//!     pubkey genuinely appears in the snapshot.
+//!
+//! Issue #920 (Step 3A) note on seeding `mention_profiles`:
+//!   The home-feed projection (`visible_items()` → home `timeline`) was removed,
+//!   so a bare kind:1 note no longer surfaces its author in `mention_profiles`.
+//!   `mention_profiles` (tier 3) is now seeded ONLY from the open `author_view` /
+//!   `thread_view` items. To put a pubkey in `mention_profiles` WITHOUT also
+//!   contaminating tier 2 (`author_view.profile`), tests below make the pubkey a
+//!   THREAD REPLIER: a reply event authored by `pk` that references the thread
+//!   root enters `thread_view.items` and therefore `mention_profiles`, while
+//!   `author_view` stays closed so tier 2 never fires for `pk`. This keeps the
+//!   `nip05` discriminator faithful (mention's `from_mention` hardcodes
+//!   `nip05=""`; a full `ProfileCard` from tier 1/2 carries the real value).
 
 use super::nostr::NostrEvent;
 use super::*;
@@ -85,12 +97,53 @@ fn ingest_profile_with(
     });
 }
 
-/// Ingest a real signed kind:1 note so its author surfaces in `visible_items()`
-/// → `mention_profiles`. The `diag-firehose-` sub_id bypasses the
-/// `timeline_authors` gate.
+/// Ingest a real signed kind:1 note. The `diag-firehose-` sub_id bypasses the
+/// `timeline_authors` gate so the signed note enters `self.events`.
 fn inject_note(kernel: &mut Kernel, keys: &::nostr::Keys, content: &str) {
     let event = signed_note(keys, content, 1_700_000_000);
     kernel.ingest_timeline_event(RelayRole::Content, RELAY, "diag-firehose-resolved", event);
+}
+
+/// Build a real Schnorr-signed kind:1 reply that references `root_id` via an
+/// NIP-10 `e` tag, so it lands in `thread_items(root_id, _)` and therefore in
+/// `mention_profiles` when the thread view is open.
+fn signed_reply(keys: &::nostr::Keys, content: &str, root_id: &str, ts: u64) -> NostrEvent {
+    use ::nostr::{EventBuilder, Tag, Timestamp};
+    let event = EventBuilder::text_note(content)
+        .tag(Tag::parse(["e", root_id, "", "root"]).expect("valid e-tag"))
+        .custom_created_at(Timestamp::from(ts))
+        .sign_with_keys(keys)
+        .expect("sign_with_keys cannot fail with a generated keypair");
+    NostrEvent {
+        id: event.id.to_hex(),
+        pubkey: event.pubkey.to_hex(),
+        created_at: event.created_at.as_secs(),
+        kind: event.kind.as_u16() as u32,
+        tags: event
+            .tags
+            .iter()
+            .map(|t: &::nostr::Tag| t.as_slice().to_vec())
+            .collect(),
+        content: event.content.clone(),
+        sig: event.sig.to_string(),
+    }
+}
+
+/// Surface `keys`'s pubkey in `mention_profiles` (tier 3) WITHOUT touching tier 2:
+/// ingest a thread root by a throwaway author, ingest a reply authored by `keys`
+/// that references the root, then open the thread. `thread_view.items` then
+/// carries the reply → `mention_profiles` carries `keys`'s pubkey. `author_view`
+/// stays closed, so tier 2 (`author_view.profile`) never fires for this pubkey.
+fn surface_in_mention_profiles_via_thread_reply(kernel: &mut Kernel, keys: &::nostr::Keys) {
+    let root_keys = ::nostr::Keys::generate();
+    let root = signed_note(&root_keys, "thread root", 1_700_000_000);
+    let root_id = root.id.clone();
+    kernel.ingest_timeline_event(RelayRole::Content, RELAY, "diag-firehose-resolved", root);
+
+    let reply = signed_reply(keys, "a reply", &root_id, 1_700_000_001);
+    kernel.ingest_timeline_event(RelayRole::Content, RELAY, "diag-firehose-resolved", reply);
+
+    let _ = kernel.open_thread(root_id, std::collections::BTreeSet::from([1u32, 6u32]), false);
 }
 
 /// 1. Empty case — a fresh kernel with no claims, no open view, and no visible
@@ -132,8 +185,10 @@ fn claimed_profiles_wins_over_mention_profiles() {
         "Claimed User",
         "claimed@nip05.example",
     );
-    // Surface `pk` in mention_profiles via a visible note (real ingest path).
-    inject_note(&mut kernel, &keys, "a note");
+    // Surface `pk` in mention_profiles (tier 3) via a thread reply — NOT a bare
+    // home-feed note (#920 removed that path) and NOT an author_view (which would
+    // also seed tier 2 and destroy the nip05 discriminator below).
+    surface_in_mention_profiles_via_thread_reply(&mut kernel, &keys);
     // Claim the profile so it lands in claimed_profiles.
     let _ = kernel.claim_profile(pk.clone(), "view-0".to_string(), true, false);
 
@@ -160,9 +215,14 @@ fn claimed_profiles_wins_over_mention_profiles() {
 }
 
 /// 3. `mention_profiles` fills gaps — a pubkey that is NOT claimed and is NOT
-/// the author-view subject, but surfaces in a visible note, appears in
+/// the author-view subject, but surfaces as a thread replier, appears in
 /// `resolved_profiles` built via `ProfileCard::from_mention` (empty
 /// `nip05`/`about`, `lnurl: None`).
+///
+/// Issue #920 (Step 3A): the pubkey is surfaced via a thread reply rather than a
+/// bare home-feed note (the home-feed → mention_profiles path was removed). The
+/// thread view — not an author view — is opened, so tier 2 stays empty and the
+/// only source that can fill the entry is tier 3 (`from_mention`).
 #[test]
 fn mention_profiles_fill_gaps() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -176,7 +236,7 @@ fn mention_profiles_fill_gaps() {
         "Mention User",
         "mention@nip05.example",
     );
-    inject_note(&mut kernel, &keys, "mention note");
+    surface_in_mention_profiles_via_thread_reply(&mut kernel, &keys);
 
     let snapshot = kernel.make_update_value_for_test(true);
 
