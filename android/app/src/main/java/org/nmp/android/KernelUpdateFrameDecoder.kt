@@ -206,7 +206,6 @@ object KernelUpdateFrameDecoder {
         return SnapshotProjections(
             activeAccount = m["activeAccount"]?.stringOrNull(),
             accounts = m["accounts"]?.listOf { decodeAccountSummary(it) } ?: emptyList(),
-            timeline = m["timeline"]?.listOf { decodeTimelineItem(it) } ?: emptyList(),
             claimedProfiles = m["claimedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
             mentionProfiles = m["mentionProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
             // Pre-merged profile map (claimed > author_view > mention) shipped by

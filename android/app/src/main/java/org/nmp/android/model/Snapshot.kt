@@ -24,8 +24,13 @@ data class KernelUpdate(
     val lastErrorToast: String? = null,
     val projections: SnapshotProjections? = null,
 ) {
+    // NOTE(#920): the kernel no longer emits a top-level `items` field nor the
+    // `"timeline"` projection key (both removed in PR #924), so `legacyItems`
+    // is now always empty — the home feed ships solely via `modularTimeline`
+    // (the typed `nmp.feed.home` OP-feed). This legacy fallback is retained as
+    // a separate UI-path migration; see follow-up issue.
     val items: List<TimelineItem>
-        get() = projections?.timeline ?: legacyItems
+        get() = legacyItems
 
     val activeAccount: String
         get() = projections?.activeAccount.orEmpty()
@@ -35,7 +40,6 @@ data class KernelUpdate(
 data class SnapshotProjections(
     @SerialName("active_account") val activeAccount: String? = null,
     val accounts: List<AccountSummary> = emptyList(),
-    val timeline: List<TimelineItem> = emptyList(),
     @SerialName("nmp.nip17.dm_inbox") val dmInbox: DmInboxSnapshot? = null,
     @SerialName("wallet_status") val walletStatus: String? = null,
     @SerialName("wallet_balance") val walletBalance: String? = null,
