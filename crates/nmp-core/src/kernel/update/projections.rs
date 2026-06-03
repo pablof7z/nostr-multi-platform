@@ -84,6 +84,16 @@ impl Kernel {
         if !action_results.is_null() {
             projections.insert("action_results".to_string(), action_results);
         }
+        // D13 sign-and-return: drain every `SignEventForReturn` result that
+        // settled since the last emit into the `signed_events` projection,
+        // keyed by `correlation_id`. The host's `signEventForReturn`
+        // continuation resumes the moment its id appears here. Same
+        // `Null -> omit key` + drain-once convention as `action_results`; the
+        // host reads each id exactly once. Absent in steady state.
+        let signed_events = self.take_signed_events_projection();
+        if !signed_events.is_null() {
+            projections.insert("signed_events".to_string(), signed_events);
+        }
         // Snapshot mirror of every in-flight action's lifecycle stages,
         // keyed by `correlation_id`. Unlike `action_results` (drain on emit),
         // `action_stages` is a *copy* — the same correlation_id reappears on

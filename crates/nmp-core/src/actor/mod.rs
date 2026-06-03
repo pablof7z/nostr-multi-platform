@@ -341,6 +341,31 @@ pub enum ActorCommand {
         /// `OpenContactListSubscription` (D0-clean precedent).
         kinds: std::collections::BTreeSet<u32>,
     },
+    /// Sign an unsigned event using the named account's signer and park the
+    /// result in the `signed_events` snapshot projection keyed by
+    /// `correlation_id`. The caller polls the projection to retrieve the
+    /// signed event JSON. Works for both local nsec (resolves immediately) and
+    /// NIP-46 bunker (resolves asynchronously via `PendingSignReturn`).
+    ///
+    /// Unlike every other sign path in the actor, this NEVER publishes — the
+    /// signed event is handed straight back to the host through the projection
+    /// so the host can attach it to an out-of-band transport (e.g. a Blossom
+    /// upload `Authorization: Nostr …` header). This closes the D13 gap where
+    /// a host that needed a signed auth event had to read raw private key bytes
+    /// across the FFI boundary, which is impossible for NIP-46 bunker users.
+    ///
+    /// `unsigned_json` is a JSON object with fields:
+    ///   `{ "kind": u64, "content": str, "tags": [[str, ...], ...], "created_at": u64 }`
+    /// The `created_at` field is advisory — the actor re-stamps it from the
+    /// kernel clock (D7) so the host never owns wall-clock time.
+    ///
+    /// `account_pubkey` is the hex pubkey of the registered signer to use.
+    /// Pass the empty string `""` to use the active account.
+    SignEventForReturn {
+        account_pubkey: String,
+        unsigned_json: String,
+        correlation_id: String,
+    },
     /// Unified sign-in command. Adds a signer to the actor-local identity store
     /// from one of the [`SignerSource`] variants and, when `make_active` is set,
     /// binds it as the active signer + retargets the timeline.
@@ -1664,6 +1689,11 @@ pub fn run_actor_with_observers(
     // idle section below `poll()`s each one per tick and publishes on
     // completion. Lives outside the loop so parked ops survive across ticks.
     let mut pending_signs: Vec<PendingSign> = Vec::new();
+    // Sign-and-return ops (`SignEventForReturn`) whose NIP-46 signer went
+    // `Pending`. Polled on the same idle tick as `pending_signs`, but resolved
+    // into the `signed_events` projection (no publish). Lives outside the loop
+    // so parked ops survive across ticks.
+    let mut pending_sign_returns: Vec<pending_sign::PendingSignReturn> = Vec::new();
     let mut queued_publish_outbound = Vec::new();
     let mut first_command = Some(first_command);
 
@@ -1745,6 +1775,7 @@ pub fn run_actor_with_observers(
                         active_local_keys: &active_local_keys,
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,
+                        pending_sign_returns: &mut pending_sign_returns,
                         command_tx_self: &command_tx_self,
                         capability_work_tx: &capability_work_tx,
                         coverage_hook_slot: &coverage_hook,
@@ -2113,6 +2144,55 @@ pub fn run_actor_with_observers(
                         // Surface the toast immediately rather than waiting
                         // up to one periodic flush tick — matches the
                         // success-path `emit_now` above.
+                        if running {
+                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                        }
+                        false // Done — remove.
+                    }
+                }
+            });
+        }
+        // ── Poll parked sign-and-return ops (D13 SignEventForReturn) ──────
+        // Non-blocking per D8, mirroring the `pending_signs` drain above: each
+        // parked op is `poll()`ed once per tick. A resolved op records its
+        // signed JSON (or error) into the `signed_events` projection keyed by
+        // `correlation_id` — it NEVER publishes. Completed and timed-out ops
+        // are removed; still-pending ones stay. `emit_now` after each record
+        // so the host's continuation resumes immediately rather than waiting
+        // up to one periodic flush tick. Empty `pending_sign_returns` makes
+        // this a single `Vec::retain_mut` over zero items — heap-free.
+        if !pending_sign_returns.is_empty() {
+            pending_sign_returns.retain_mut(|ps| {
+                // Poll first so a result landing on the same tick as the
+                // deadline is not lost to the timeout check.
+                match ps.op.poll() {
+                    None => {
+                        if ps.timed_out() {
+                            kernel.record_signed_event_return(
+                                &ps.correlation_id,
+                                Err("signing timed out".to_string()),
+                            );
+                            if running {
+                                emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                            }
+                            false // Abandon — broker did not respond in time.
+                        } else {
+                            true // Still pending — keep for the next tick.
+                        }
+                    }
+                    Some(Ok(signed)) => {
+                        let json = dispatch::signed_event_to_json(&signed);
+                        kernel.record_signed_event_return(&ps.correlation_id, Ok(json));
+                        if running {
+                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                        }
+                        false // Done — remove.
+                    }
+                    Some(Err(e)) => {
+                        kernel.record_signed_event_return(
+                            &ps.correlation_id,
+                            Err(e.to_string()),
+                        );
                         if running {
                             emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                         }

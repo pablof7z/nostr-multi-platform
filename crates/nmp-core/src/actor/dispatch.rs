@@ -57,7 +57,7 @@ use crate::subs::PlanCoverageHook;
 
 use super::capability_worker::CapabilityWorkSender;
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
-use super::pending_sign::PendingSign;
+use super::pending_sign::{PendingSign, PendingSignReturn};
 use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
     shutdown_relay_worker, spawn_missing_relays,
@@ -174,6 +174,71 @@ fn maybe_publish_relay_list_after_edit(
     commands::publish_unsigned_event(identity, kernel, unsigned, None, None, pending_signs)
 }
 
+/// Parse a host sign-and-return draft into an [`crate::substrate::UnsignedEvent`].
+///
+/// The draft is `{ "kind": u64, "content": str, "tags": [[str, …], …],
+/// "created_at": u64? }` — the shape `nmp_app_sign_event_for_return` accepts.
+/// It carries NO `pubkey` (the host does not know which signer will be used)
+/// and its `created_at` is advisory, so this helper fills both:
+///
+/// * `pubkey` ← the resolved signer's hex pubkey.
+/// * `created_at` ← the kernel clock (`now_secs`, D7) — the host never owns
+///   wall-clock time; any `created_at` in the draft is ignored.
+///
+/// `tags` defaults to empty when absent. `kind` and `content` are required.
+fn build_unsigned_for_return(
+    unsigned_json: &str,
+    signer_pubkey: &str,
+    now_secs: u64,
+) -> Result<crate::substrate::UnsignedEvent, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(unsigned_json).map_err(|e| e.to_string())?;
+    let kind = value
+        .get("kind")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "missing or non-integer `kind`".to_string())?;
+    let kind = u32::try_from(kind).map_err(|_| "`kind` out of u32 range".to_string())?;
+    let content = value
+        .get("content")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "missing or non-string `content`".to_string())?
+        .to_string();
+    let tags: Vec<Vec<String>> = match value.get("tags") {
+        None | Some(serde_json::Value::Null) => Vec::new(),
+        Some(tags_value) => serde_json::from_value(tags_value.clone())
+            .map_err(|e| format!("`tags` must be an array of string arrays: {e}"))?,
+    };
+    Ok(crate::substrate::UnsignedEvent {
+        pubkey: signer_pubkey.to_string(),
+        kind,
+        tags,
+        content,
+        created_at: now_secs,
+    })
+}
+
+/// Serialize a [`crate::substrate::SignedEvent`] into the standard flat Nostr
+/// event JSON: `{ "id", "pubkey", "created_at", "kind", "tags", "content",
+/// "sig" }`. This is the on-wire NIP-01 event object (the inner body of an
+/// `["EVENT", …]` frame), which is what a host base64-encodes for a Blossom
+/// `Authorization: Nostr …` header. NOT the kernel-internal `SignedEvent`
+/// serde shape (which nests under `unsigned`).
+///
+/// `pub(super)` so the idle-loop `pending_sign_returns` drain in `mod.rs`
+/// reuses the exact same flat-event serialization the dispatch arm uses.
+pub(super) fn signed_event_to_json(signed: &crate::substrate::SignedEvent) -> String {
+    serde_json::json!({
+        "id": signed.id,
+        "pubkey": signed.unsigned.pubkey,
+        "created_at": signed.unsigned.created_at,
+        "kind": signed.unsigned.kind,
+        "tags": signed.unsigned.tags,
+        "content": signed.unsigned.content,
+        "sig": signed.sig,
+    })
+    .to_string()
+}
+
 /// Borrowed bundle of the actor loop's mutable runtime state.
 ///
 /// Replaces the 15+ explicit parameters that `dispatch_command` used to take.
@@ -220,6 +285,12 @@ pub(super) struct ActorContext<'a> {
     pub(super) active_local_keys: &'a ActiveLocalKeysSlot,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
     pub(super) pending_signs: &'a mut Vec<PendingSign>,
+    /// Sign-and-return ops (`SignEventForReturn`) whose signer went `Pending`
+    /// (NIP-46 bunker). Parked here and `poll()`ed on the idle loop exactly
+    /// like `pending_signs`, but resolved into the `signed_events` snapshot
+    /// projection instead of the publish engine. Local-key signs resolve
+    /// inline in the dispatch arm and never reach this vec.
+    pub(super) pending_sign_returns: &'a mut Vec<PendingSignReturn>,
     /// Self-feedback `Sender<ActorCommand>` — the actor's own command channel
     /// from the perspective of code running on the actor thread.
     /// `dispatch.rs` arms that spawn background workers (the LNURL-pay
@@ -617,6 +688,97 @@ pub(super) fn dispatch_command(
             let outbound = ctx.kernel.close_thread(&event_id);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
+        }
+        ActorCommand::SignEventForReturn {
+            account_pubkey,
+            unsigned_json,
+            correlation_id,
+        } => {
+            // D13 sign-and-return: sign the host's draft with the named (or
+            // active) account and hand the signed JSON straight back through
+            // the `signed_events` projection — NEVER publish. Closes the gap
+            // where a host needed raw private key bytes to sign a Blossom /
+            // feedback auth event, which is impossible for NIP-46 bunker users.
+            //
+            // The host draft is `{ kind, content, tags, created_at? }` — it
+            // carries no `pubkey` (the host does not know which signer will be
+            // used) and its `created_at` is advisory. Parse the partial draft
+            // and fill `pubkey` from the resolved account + re-stamp
+            // `created_at` from the kernel clock (D7 — the host never owns
+            // wall-clock time).
+            let signer_pubkey = if account_pubkey.is_empty() {
+                ctx.identity.active_pubkey()
+            } else {
+                Some(account_pubkey.clone())
+            };
+            let Some(signer_pubkey) = signer_pubkey else {
+                ctx.kernel.record_signed_event_return(
+                    &correlation_id,
+                    Err("no active account — sign in first".to_string()),
+                );
+                maybe_emit_after_dispatch(
+                    ctx.kernel,
+                    *ctx.running,
+                    ctx.update_tx,
+                    ctx.last_emit,
+                );
+                return Some(Vec::new());
+            };
+            let unsigned = match build_unsigned_for_return(
+                &unsigned_json,
+                &signer_pubkey,
+                ctx.kernel.now_secs(),
+            ) {
+                Ok(unsigned) => unsigned,
+                Err(reason) => {
+                    ctx.kernel.record_signed_event_return(
+                        &correlation_id,
+                        Err(format!("invalid unsigned_json: {reason}")),
+                    );
+                    maybe_emit_after_dispatch(
+                        ctx.kernel,
+                        *ctx.running,
+                        ctx.update_tx,
+                        ctx.last_emit,
+                    );
+                    return Some(Vec::new());
+                }
+            };
+            // Non-blocking sign (D8): a local key resolves on the spot; a
+            // NIP-46 bunker returns `Pending` and is parked below.
+            let sign_result = if account_pubkey.is_empty() {
+                commands::sign_active_nonblocking(ctx.identity, &unsigned)
+            } else {
+                commands::sign_with_account_nonblocking(ctx.identity, &signer_pubkey, &unsigned)
+            };
+            match sign_result {
+                Err(reason) => {
+                    ctx.kernel
+                        .record_signed_event_return(&correlation_id, Err(reason));
+                }
+                Ok(mut op) => match op.poll() {
+                    Some(Ok(signed)) => {
+                        ctx.kernel.record_signed_event_return(
+                            &correlation_id,
+                            Ok(signed_event_to_json(&signed)),
+                        );
+                    }
+                    Some(Err(e)) => {
+                        ctx.kernel
+                            .record_signed_event_return(&correlation_id, Err(e.to_string()));
+                    }
+                    None => {
+                        // Remote (NIP-46) signer parked — resolved by the idle
+                        // loop into the `signed_events` projection. `op` was
+                        // moved out of `sign_result`, so reconstruct the park
+                        // from the (unconsumed) `Pending` op.
+                        ctx.pending_sign_returns
+                            .push(PendingSignReturn::new(op, correlation_id.clone()));
+                    }
+                },
+            }
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
         }
         ActorCommand::AddSigner {
             source,
@@ -2366,6 +2528,99 @@ mod nip65_auto_publish_tests {
             "removing the user's last NIP-65-eligible row MUST NOT \
              publish an empty kind:10002 (that would clear the \
              author_relay_lists cache on ingest — destructive)",
+        );
+    }
+}
+
+#[cfg(test)]
+mod sign_return_tests {
+    //! D13 sign-and-return — unit tests for the two pure helpers the
+    //! `SignEventForReturn` dispatch arm relies on: `build_unsigned_for_return`
+    //! (host draft → `UnsignedEvent`, filling pubkey + clock-stamped
+    //! `created_at`) and `signed_event_to_json` (kernel `SignedEvent` → the flat
+    //! NIP-01 event JSON the host base64-encodes for a Blossom auth header).
+    use super::{build_unsigned_for_return, signed_event_to_json};
+    use crate::substrate::{SignedEvent, UnsignedEvent};
+
+    #[test]
+    fn build_unsigned_fills_pubkey_and_restamps_created_at() {
+        let draft = r#"{"kind":24242,"content":"Upload image","tags":[["t","upload"],["x","deadbeef"]],"created_at":111}"#;
+        let unsigned = build_unsigned_for_return(draft, "signerpub", 999).expect("valid draft");
+        // pubkey comes from the resolved signer, not the draft (the draft has none).
+        assert_eq!(unsigned.pubkey, "signerpub");
+        // created_at is re-stamped from the kernel clock (D7), ignoring the draft's 111.
+        assert_eq!(unsigned.created_at, 999);
+        assert_eq!(unsigned.kind, 24242);
+        assert_eq!(unsigned.content, "Upload image");
+        assert_eq!(
+            unsigned.tags,
+            vec![
+                vec!["t".to_string(), "upload".to_string()],
+                vec!["x".to_string(), "deadbeef".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn build_unsigned_defaults_tags_to_empty_when_absent() {
+        let unsigned =
+            build_unsigned_for_return(r#"{"kind":1,"content":"hi"}"#, "pk", 5).expect("valid");
+        assert!(unsigned.tags.is_empty(), "absent tags default to empty");
+    }
+
+    #[test]
+    fn build_unsigned_rejects_missing_kind() {
+        let err = build_unsigned_for_return(r#"{"content":"x"}"#, "pk", 0)
+            .expect_err("missing kind is rejected");
+        assert!(err.contains("kind"), "error names the missing field: {err}");
+    }
+
+    #[test]
+    fn build_unsigned_rejects_missing_content() {
+        let err = build_unsigned_for_return(r#"{"kind":1}"#, "pk", 0)
+            .expect_err("missing content is rejected");
+        assert!(err.contains("content"), "error names the missing field: {err}");
+    }
+
+    #[test]
+    fn build_unsigned_rejects_malformed_json() {
+        assert!(
+            build_unsigned_for_return("not json", "pk", 0).is_err(),
+            "malformed JSON is rejected (surfaced as an Err verdict, never a panic)"
+        );
+    }
+
+    #[test]
+    fn signed_event_to_json_produces_flat_nip01_shape() {
+        let signed = SignedEvent {
+            id: "aa".repeat(32),
+            sig: "bb".repeat(64),
+            unsigned: UnsignedEvent {
+                pubkey: "cc".repeat(32),
+                kind: 24242,
+                tags: vec![vec!["t".to_string(), "upload".to_string()]],
+                content: "Upload image".to_string(),
+                created_at: 1234,
+            },
+        };
+        let json: serde_json::Value =
+            serde_json::from_str(&signed_event_to_json(&signed)).expect("valid JSON");
+        // Flat NIP-01 shape — NOT nested under `unsigned` (the kernel serde shape).
+        assert_eq!(json.get("id").and_then(|v| v.as_str()), Some(signed.id.as_str()));
+        assert_eq!(
+            json.get("pubkey").and_then(|v| v.as_str()),
+            Some(signed.unsigned.pubkey.as_str())
+        );
+        assert_eq!(json.get("kind").and_then(serde_json::Value::as_u64), Some(24242));
+        assert_eq!(json.get("created_at").and_then(serde_json::Value::as_u64), Some(1234));
+        assert_eq!(json.get("sig").and_then(|v| v.as_str()), Some(signed.sig.as_str()));
+        assert_eq!(
+            json.get("content").and_then(|v| v.as_str()),
+            Some("Upload image")
+        );
+        assert!(
+            json.get("unsigned").is_none(),
+            "the wire shape is flat — no `unsigned` nesting"
         );
     }
 }
