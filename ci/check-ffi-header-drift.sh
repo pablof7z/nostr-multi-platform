@@ -98,6 +98,9 @@ FFI_FILE_ROOTS=(
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/handle.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/helpers.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/identity.rs"
+    # M2 per-open flat author/thread feeds (ADR-0042 §5.1, V-112): the four
+    # nmp_app_chirp_{open,close}_{author,thread}_feed symbols.
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/register.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs"
     # Marmot C-ABI lives in nmp-marmot (originally relocated from

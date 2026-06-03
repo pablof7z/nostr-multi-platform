@@ -35,26 +35,34 @@
 //!   poisoning, or serialization failure.
 
 pub mod ffi;
+pub mod snapshot_types;
 pub mod typed_api;
 #[cfg(feature = "wallet")]
 mod wallet_runtime;
-pub mod snapshot_types;
 
 pub use ffi::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
-pub use typed_api::{
-    ChirpClient, publish_note_action, react_action, follow_action, unfollow_action,
-    send_dm_action, zap_action, create_account_action, sign_in_nsec_action,
-    switch_account_action, remove_account_action, publish_profile_action,
-};
-pub use snapshot_types::{
-    ActionResult, ActionStageRow, InterestRow, ProfileCard, RelayRow, RelayWireSubRow,
-    RuntimeMetrics,
+// M2 (ADR-0042 §5.1, V-112): per-open flat author/thread feeds that replace the
+// `author_view`/`thread_view` projections + the four `open_*`/`close_*` symbols.
+pub use ffi::{
+    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_thread_feed,
+    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_thread_feed,
 };
 pub use nmp_ffi::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
     nmp_signer_broker_init,
 };
-pub use nmp_nip01::{Nip10ReplyAttribution as ChirpReplyAttribution, TimelineEventCard as ChirpEventCard};
+pub use nmp_nip01::{
+    Nip10ReplyAttribution as ChirpReplyAttribution, TimelineEventCard as ChirpEventCard,
+};
+pub use snapshot_types::{
+    ActionResult, ActionStageRow, InterestRow, ProfileCard, RelayRow, RelayWireSubRow,
+    RuntimeMetrics,
+};
+pub use typed_api::{
+    create_account_action, follow_action, publish_note_action, publish_profile_action,
+    react_action, remove_account_action, send_dm_action, sign_in_nsec_action,
+    switch_account_action, unfollow_action, zap_action, ChirpClient,
+};
 
 /// V-80 rung 7 — the home-feed snapshot served under `"nmp.feed.home"`.
 ///

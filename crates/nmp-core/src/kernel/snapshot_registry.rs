@@ -142,6 +142,23 @@ impl SnapshotRegistry {
         out
     }
 
+    /// Drop the projection(s) registered under `key` from BOTH the generic
+    /// and typed registries.
+    ///
+    /// Used by transient feeds (a visited profile / open thread) whose
+    /// snapshot key must not outlive the screen: without this, the
+    /// `register_feed`-installed closure keeps running on every 4 Hz tick and
+    /// emits an empty subtree under a stale key forever (a leak — both wasted
+    /// CPU and a phantom key in every `KernelSnapshot`). Removing from both
+    /// maps keeps the generic/typed key space symmetric (a feed may have
+    /// registered a typed sidecar alongside its generic projection). Returns
+    /// `true` when at least one map held the key. Absent keys are a no-op.
+    pub fn remove(&mut self, key: &str) -> bool {
+        let removed_generic = self.projections.remove(key).is_some();
+        let removed_typed = self.typed_projections.remove(key).is_some();
+        removed_generic || removed_typed
+    }
+
     /// Register a **typed** projection closure under `key` — the
     /// FlatBuffers-sidecar counterpart to [`Self::register`].
     ///
