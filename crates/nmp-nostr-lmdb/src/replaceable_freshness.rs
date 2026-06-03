@@ -18,8 +18,9 @@ use std::collections::HashMap;
 /// Uniquely identifies a replaceable event.
 ///
 /// NIP-01 distinguishes:
-/// - Regular replaceable: kinds 0–9999, 10000–19999 (key = kind + pubkey)
-/// - Parameterized replaceable: kinds 20000–29999, 30000–39999 (key = kind + pubkey + d_tag)
+/// - Regular replaceable: kinds 0, 3, 10000–19999 (key = kind + pubkey)
+/// - Parameterized replaceable: kinds 30000–39999 (key = kind + pubkey + d_tag)
+/// - Ephemeral kinds 20000–29999 are NOT replaceable and are never stored.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ReplaceableKey {
     /// Regular replaceable event: identified by kind and author pubkey.
@@ -80,14 +81,27 @@ impl ReplaceableKey {
     }
 }
 
-/// Return whether a kind is parameterized replaceable (NIP-01).
+/// Return whether a kind is parameterized replaceable (NIP-01): kinds 30000–39999.
 pub fn is_parameterized_replaceable(kind: u32) -> bool {
-    (kind >= 20000 && kind < 30000) || (kind >= 30000 && kind < 40000)
+    (30000..40000).contains(&kind)
+}
+
+/// Return whether a kind is ephemeral (NIP-01): kinds 20000–29999.
+/// Ephemeral events are NOT replaceable and are never stored.
+pub fn is_ephemeral(kind: u32) -> bool {
+    (20000..30000).contains(&kind)
 }
 
 /// Return whether a kind is (regular or parameterized) replaceable (NIP-01).
+///
+/// Regular replaceable covers kinds below 20000 (e.g. 0, 3, 10000–19999);
+/// ephemeral kinds 20000–29999 are explicitly excluded; parameterized
+/// replaceable covers 30000–39999.
 pub fn is_replaceable(kind: u32) -> bool {
-    (kind < 10000) || (kind >= 10000 && kind < 20000) || is_parameterized_replaceable(kind)
+    if is_ephemeral(kind) {
+        return false;
+    }
+    (kind < 20000) || is_parameterized_replaceable(kind)
 }
 
 /// In-memory cache for replaceable freshness timestamps.
@@ -169,13 +183,26 @@ mod tests {
 
     #[test]
     fn test_is_parameterized_replaceable() {
-        assert!(is_parameterized_replaceable(20000));
-        assert!(is_parameterized_replaceable(29999));
+        // Parameterized replaceable: kinds 30000–39999 only.
         assert!(is_parameterized_replaceable(30000));
         assert!(is_parameterized_replaceable(39999));
+
+        // Ephemeral kinds 20000–29999 are NOT parameterized replaceable.
+        assert!(!is_parameterized_replaceable(20000));
+        assert!(!is_parameterized_replaceable(29999));
 
         assert!(!is_parameterized_replaceable(0));
         assert!(!is_parameterized_replaceable(10000));
         assert!(!is_parameterized_replaceable(40000));
+    }
+
+    #[test]
+    fn test_is_ephemeral() {
+        assert!(is_ephemeral(20000));
+        assert!(is_ephemeral(29999));
+
+        assert!(!is_ephemeral(19999));
+        assert!(!is_ephemeral(30000));
+        assert!(!is_ephemeral(0));
     }
 }

@@ -66,8 +66,8 @@ mod replaceable_freshness;
 mod store;
 
 pub use self::replaceable_freshness::{
-    decode_timestamp, encode_timestamp, is_parameterized_replaceable, is_replaceable,
-    ReplaceableCache, ReplaceableKey,
+    decode_timestamp, encode_timestamp, is_ephemeral, is_parameterized_replaceable,
+    is_replaceable, ReplaceableCache, ReplaceableKey,
 };
 use self::store::Store;
 
