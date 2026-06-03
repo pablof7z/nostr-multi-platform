@@ -183,7 +183,14 @@ pub fn build_actor_claim_sink(dispatch: ActorCommandDispatch) -> ClaimSink {
         } => {
             let hint_relays = hints.into_iter().map(|h| h.url).collect::<Vec<_>>();
             if let Some(uri) = pointer_to_uri(&pointer, &hint_relays) {
-                dispatch(ActorCommand::ClaimEvent { uri, consumer_id });
+                // F-TTL — op-feed auto-claims an embedded event when it scrolls
+                // into view: a background claim, so `force = false` (the lazy,
+                // TTL-gated path).
+                dispatch(ActorCommand::ClaimEvent {
+                    uri,
+                    consumer_id,
+                    force: false,
+                });
             }
         }
         ClaimRequest::Release {

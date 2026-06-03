@@ -126,7 +126,24 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 
 ---
 
-## 7. NIP-47 Wallet Connect (`ffi/wallet.rs`)
+## 6a. Replaceable event freshness (F-TTL)
+
+Lazy TTL re-verification for replaceable Nostr events (kind:0 profiles, kind:10002 mailboxes, parameterized replaceables). The kernel automatically tracks when each replaceable should be re-fetched based on kind-specific TTLs. Force-refresh is exposed as a `force` argument on the existing claim functions (see §6) — **not** a standalone symbol.
+
+There is no dedicated F-TTL symbol. The two claim functions carry a trailing `force: int`:
+
+| Symbol | Signature | Behavior | Callers | D6 | D7 |
+|---|---|---|---|---|---|
+| `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int)` | Refcount a kind:0 profile claim. When the profile is cached, run the TTL freshness gate: re-verify only if `check_again_after` has elapsed (`force == 0`), or unconditionally (`force != 0`, e.g. user opened the profile screen / pull-to-refresh). | Chirp (component avatars/names, force=0), force=1 reserved for explicit user navigation | non-hex pubkey → early return | n/a |
+| `nmp_app_claim_event` | `(app, uri: *const c_char, consumer_id: *const c_char, force: int)` | Refcount a `nostr:` URI claim. For cached `naddr` (addressable) identities, run the TTL gate as above; for immutable `nevent`/`note` URIs `force` is a silent no-op (no TTL record). | Chirp embed sink (force=0) | unparseable URI → early return | n/a |
+
+**Note:** force-refresh replaces the removed `nmp_app_refresh_replaceable` symbol (ADR-0041). `force != 0` is semantically "treat `check_again_after` as 0 for this claim", driving an immediate re-verification REQ. TTL management is otherwise transparent: the framework auto-re-verifies after kind-specific timeouts (default: kind:0 = 1h, kind:10002 = 6h).
+
+See also: `docs/design/replaceable-freshness.md` (F-TTL design + lifecycle).
+
+---
+
+## 8. NIP-47 Wallet Connect (`ffi/wallet.rs`)
 
 All fire-and-forget. Outcomes surface via snapshot `wallet_status` and
 `last_error_toast` fields.
@@ -139,14 +156,14 @@ All fire-and-forget. Outcomes surface via snapshot `wallet_status` and
 
 ---
 
-## 8. Cancellation (`nmp-signer-broker/src/ffi.rs`)
+## 9. Cancellation (`nmp-signer-broker/src/ffi.rs`)
 
 `nmp_app_cancel_bunker_handshake` — documented in section 2 (Signer broker).
 No `_drop` or `_cancel` symbols exist outside the broker crate.
 
 ---
 
-## 9. Diagnostics
+## 10. Diagnostics
 
 No dedicated diagnostic FFI symbols exist. Telemetry for the diagnostics screen
 rides on the standard update-callback JSON: the snapshot includes relay

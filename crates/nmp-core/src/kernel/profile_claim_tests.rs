@@ -46,7 +46,7 @@ fn cold_start_profile_claims_are_batched_into_one_req() {
 
     // Queue all 10 authors with can_send=false (relay not yet connected).
     for (i, pk) in authors.iter().enumerate() {
-        let _ = kernel.claim_profile(pk.clone(), format!("view-{i}"), false);
+        let _ = kernel.claim_profile(pk.clone(), format!("view-{i}"), false, false);
     }
 
     // Flush all pending via a single batch call.
@@ -71,7 +71,7 @@ fn cold_start_profile_claims_never_go_to_content_relay() {
 
     // Queue 5 cold-start authors.
     for i in 0..5 {
-        let _ = kernel.claim_profile(hex64(&format!("{i}")), format!("view-{i}"), false);
+        let _ = kernel.claim_profile(hex64(&format!("{i}")), format!("view-{i}"), false, false);
     }
 
     let all_msgs = kernel.pending_profile_claim_requests();
@@ -99,7 +99,7 @@ fn cold_start_profile_claims_go_to_indexer_relay_only() {
 
     let authors: Vec<String> = (0..5).map(|i| hex64(&format!("{i}"))).collect();
     for (i, pk) in authors.iter().enumerate() {
-        let _ = kernel.claim_profile(pk.clone(), format!("view-{i}"), false);
+        let _ = kernel.claim_profile(pk.clone(), format!("view-{i}"), false, false);
     }
 
     let all_msgs = kernel.pending_profile_claim_requests();
@@ -137,7 +137,7 @@ fn kind10002_arrival_requeues_already_requested_profile() {
     // Step 1: cold-start claim — alice is queued in `pending`, then flushed
     // through `pending_profile_claim_requests`. After flush alice sits in
     // `requested` (the inflight set).
-    let _ = kernel.claim_profile(alice.clone(), "view-0".to_string(), false);
+    let _ = kernel.claim_profile(alice.clone(), "view-0".to_string(), false, false);
     let _ = kernel.pending_profile_claim_requests();
     assert!(
         kernel
@@ -233,7 +233,7 @@ fn known_nip65_profile_claims_use_declared_write_relays() {
 
     kernel.seed_mailbox_relay_list(&alice, vec![], vec![alice_relay.to_string()], vec![]);
 
-    let msgs = kernel.claim_profile(alice.clone(), "view-0".to_string(), true);
+    let msgs = kernel.claim_profile(alice.clone(), "view-0".to_string(), true, false);
     let reqs: Vec<&OutboundMessage> = msgs
         .iter()
         .filter(|m| m.text.starts_with("[\"REQ\""))
@@ -307,7 +307,7 @@ fn warm_reclaim_reemits_profile_next_tick_with_no_req() {
     let consumer_a = "view-A".to_string();
 
     // 1. Consumer A claims a profile on P.
-    let _ = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false);
+    let _ = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false, false);
     // 2. A kind:0 for P arrives (name "Alice") — now resident.
     ingest_kind0_name(&mut kernel, &pubkey, "Alice");
 
@@ -334,7 +334,7 @@ fn warm_reclaim_reemits_profile_next_tick_with_no_req() {
     // 6. Re-claim P. Because the kind:0 is still resident, the claim call itself
     //    short-circuits (profile.rs `self.profiles.contains_key` early return)
     //    and emits NO outbound REQ.
-    let reclaim_msgs = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false);
+    let reclaim_msgs = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false, false);
     assert!(
         req_texts(&reclaim_msgs).is_empty(),
         "warm re-claim of a resident profile must emit zero REQ; got {:#?}",
@@ -381,7 +381,7 @@ fn claimed_profiles_present_iff_claim_held() {
     );
 
     // 2. Claim P → present on the next tick (placeholder card; no kind:0 yet).
-    let _ = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false);
+    let _ = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false, false);
     let snap = tick_snapshot(&mut kernel);
     assert!(
         snap["projections"]["claimed_profiles"]
@@ -412,8 +412,8 @@ fn multi_consumer_release_does_not_drop_resident_profile() {
     let consumer_b = "view-B".to_string();
 
     // 1. Two consumers claim P; a kind:0 arrives.
-    let _ = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false);
-    let _ = kernel.claim_profile(pubkey.clone(), consumer_b.clone(), false);
+    let _ = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false, false);
+    let _ = kernel.claim_profile(pubkey.clone(), consumer_b.clone(), false, false);
     ingest_kind0_name(&mut kernel, &pubkey, "Carol");
 
     // 2. Present with the resident name.

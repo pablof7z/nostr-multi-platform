@@ -129,6 +129,51 @@ an ADR (`docs/design/framework-magic/intro.md` §4). To add C14:
   (`test-scaffolding.md` §1); renaming it or its tests breaks the meta-test and
   needs an ADR.
 
+## Replaceable event freshness (F-TTL)
+
+The kernel automatically tracks when replaceable events (kind:0 profiles, kind:10002 mailboxes, parameterized replaceables) should be re-verified based on kind-specific TTLs. This avoids apps manually implementing profile-refresh polls or stale-data checks.
+
+**What the app gets for free:**
+
+- Profile data automatically re-fetched after kind-specific timeout (default: 1h for kind:0, 6h for kind:10002)
+- No polling loop needed in app code; framework wakes up only when a view claims the event
+- Lazy re-verification: a claim re-fetches a replaceable identity **only if its TTL has elapsed** — claiming a still-fresh profile/article is a no-op, so `.onAppear` on a feed of avatars never spams REQs
+- Forced refresh on demand via the **`force` argument on the existing claim functions** (no separate symbol)
+- Per-event freshness tracking in persistent LMDB sub-db (`replaceable_freshness`), survives app restarts
+
+**API surface:**
+
+- **Rust (kernel-internal):** `Kernel::claim_replaceable(kind, pubkey, d_tag?, force)` — re-fetch if the TTL has elapsed, or unconditionally when `force == true`
+- **FFI (app-facing):** force-refresh is a parameter on the two claim functions, **not** a standalone symbol:
+  - `nmp_app_claim_profile(app, pubkey, consumer_id, force: int)` — kind:0 profile
+  - `nmp_app_claim_event(app, uri, consumer_id, force: int)` — `naddr` addressable identities (a no-op for immutable `nevent`/`note` URIs, which carry no TTL record)
+  - Swift mirrors expose `force: Bool = false` (e.g. `claimProfile(pubkey:consumerID:force:)`), so background callers pass nothing.
+- **Customization:** `NmpAppBuilder::with_replaceable_ttl_config(ReplaceableTtlConfig { per_kind, default })`
+
+> The earlier `nmp_app_refresh_replaceable` symbol was **removed**. Force-refresh
+> is now `force = 1` on the claim functions, keeping the C-ABI surface frozen
+> (no new per-verb export).
+
+**When to pass `force = 1` (true):**
+
+- The user explicitly navigates to / opens this entity — a profile detail screen, or an article/event detail view.
+- Pull-to-refresh on a screen that is *about* this entity.
+
+**When to pass `force = 0` (false) — the default, and almost everything:**
+
+- Background claims and component self-claims (avatars, name labels, embed cards) on `.onAppear` / list-row render.
+- Cold-start replay of parked claims.
+- Any claim where you are not certain it is a deliberate user "refresh this now" action — when unsure, pass `0` and trust the TTL schedule.
+
+**App should never write:**
+
+- Manual TTL timers for profile data
+- Polling loops like `refreshProfileEvery(1h)`
+- Stale-check logic before rendering profile fields
+- Custom re-verify logic after claim failures
+
+Treat F-TTL as the framework's commitment to keep replaceable data fresh — the app claims the identity (passing `force = 1` only on explicit user refresh) and trusts the kernel's TTL schedule.
+
 See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md) ·
 [08 — EventStore + insert invariants + GC](08-eventstore.md) ·
 [10 — Outbox routing (NIP-65)](10-outbox-routing.md) ·

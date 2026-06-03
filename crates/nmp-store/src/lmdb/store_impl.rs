@@ -191,4 +191,18 @@ impl EventStore for LmdbEventStore {
     ) -> Result<DumpStats, StoreError> {
         dump_mod::dump(&self.inner, out, format)
     }
+
+    // ─── F-TTL replaceable freshness ───────────────────────────────────────────
+
+    fn get_check_again_after(&self, key: &crate::ReplaceableKey) -> Option<u64> {
+        self.inner.lmdb.get_check_again_after(key)
+    }
+
+    fn set_check_again_after(&self, key: crate::ReplaceableKey, ts_ms: u64) {
+        // D6 graceful degrade: a freshness-stamp failure must never block ingest
+        // or claim. A missed stamp just means the next claim re-verifies eagerly.
+        if let Err(e) = self.inner.lmdb.set_check_again_after_committed(key, ts_ms) {
+            tracing::warn!("F-TTL: set_check_again_after failed (ignored): {e}");
+        }
+    }
 }

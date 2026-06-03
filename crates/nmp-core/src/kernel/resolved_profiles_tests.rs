@@ -135,7 +135,7 @@ fn claimed_profiles_wins_over_mention_profiles() {
     // Surface `pk` in mention_profiles via a visible note (real ingest path).
     inject_note(&mut kernel, &keys, "a note");
     // Claim the profile so it lands in claimed_profiles.
-    let _ = kernel.claim_profile(pk.clone(), "view-0".to_string(), true);
+    let _ = kernel.claim_profile(pk.clone(), "view-0".to_string(), true, false);
 
     let snapshot = kernel.make_update_value_for_test(true);
 
@@ -242,7 +242,7 @@ fn author_view_is_only_if_absent_claimed_wins() {
     // A note by `pk` so the author view has items.
     inject_note(&mut kernel, &keys, "author's own note");
     // Claim it (highest precedence) and open its author view (second).
-    let _ = kernel.claim_profile(pk.clone(), "view-0".to_string(), true);
+    let _ = kernel.claim_profile(pk.clone(), "view-0".to_string(), true, false);
     let _ = kernel.open_author(pk.clone(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
     let snapshot = kernel.make_update_value_for_test(true);

@@ -87,6 +87,7 @@ Full byte layout for primary + every secondary in [`lmdb/keys.md`](lmdb/keys.md)
 - Secondary `idx_expires`: `expires_at_be[8] || event_id[32]` → empty. Scanned by the NIP-40 reaper.
 - `tombstones`: `target_id[32]` → CBOR `TombstoneRow { kind5_event_id: Option<[u8;32]>, origin: TombstoneOrigin, deleter_pubkey: Option<[u8;32]>, deleted_at, sources: Vec<RelayUrl> }`.
 - `tombstones_addr`: `pubkey[32] || kind_be[4] || dtag_len_be[2] || dtag_bytes` → CBOR `TombstoneRow`. For kind:5 `a`-tag deletes arriving before the target event exists (see [`lmdb/keys.md`](lmdb/keys.md) §4.2).
+- `replaceable_freshness`: `kind_be[4] || pubkey[32] || d_tag_utf8` → `u64` (8-byte big-endian unix milliseconds). NMP-owned. Lazy TTL re-verification for replaceable events (kind 0, 3, 10000–19999, 20000–39999). Key omits `d_tag_utf8` suffix for regular replaceables. Value is `check_again_after` — the timestamp after which a `claim_replaceable` will enqueue a fresh REQ. In-memory cache (`HashMap<ReplaceableKey, u64>`) hot-loaded on `EventStore::open()` for fast cache-hit paths in the kernel's claim loop. See [`docs/design/replaceable-freshness.md`](replaceable-freshness.md) for the full F-TTL lifecycle.
 
 All integer fields in keys are big-endian so LMDB's byte-wise comparator matches numeric order. `created_at_desc_be = (u64::MAX - created_at).to_be_bytes()` produces newest-first forward scans without `MDB_LAST + MDB_PREV`.
 

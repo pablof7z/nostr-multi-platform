@@ -159,6 +159,7 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
     tx1.send(ActorCommand::ClaimEvent {
         uri: GIGI_NADDR_S1.to_string(),
         consumer_id: "a3-s1".to_string(),
+        force: false,
     })
     .expect("A3 S1: ClaimEvent send");
 
@@ -231,6 +232,7 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
     tx2.send(ActorCommand::ClaimEvent {
         uri: GIGI_NADDR_S2.to_string(),
         consumer_id: "a3-s2".to_string(),
+        force: false,
     })
     .expect("A3 S2: ClaimEvent send");
 

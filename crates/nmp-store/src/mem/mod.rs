@@ -111,6 +111,13 @@ pub(super) struct MemState {
     /// Watermarks: (`filter_hash_hex`, `relay_url`) → `WatermarkRow`.
     pub(super) watermarks: HashMap<(String, String), WatermarkRow>,
 
+    /// F-TTL replaceable freshness: `ReplaceableKey` → `check_again_after_unix_ms`.
+    ///
+    /// Parity with the LMDB backend's `replaceable_freshness` sub-db so the
+    /// kernel's TTL gate (`claim_replaceable`) behaves identically on the
+    /// in-memory backend used by tests and the lmdb-off build.
+    pub(super) replaceable_freshness: HashMap<crate::ReplaceableKey, u64>,
+
     /// Domain data per namespace.
     pub(super) domain_data: HashMap<&'static str, DomainMap>,
 
@@ -149,6 +156,7 @@ impl MemState {
             provenance: HashMap::new(),
             relay_index: HashMap::new(),
             watermarks: HashMap::new(),
+            replaceable_freshness: HashMap::new(),
             domain_data: HashMap::new(),
             domain_versions: HashMap::new(),
             claim_budgets: HashMap::new(),

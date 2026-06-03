@@ -274,8 +274,11 @@ impl KernelReducer {
         pubkey: String,
         consumer_id: String,
         can_send: bool,
+        force: bool,
     ) -> Vec<OutboundMessage> {
-        let outbound = self.kernel.claim_profile(pubkey, consumer_id, can_send);
+        let outbound = self
+            .kernel
+            .claim_profile(pubkey, consumer_id, can_send, force);
         self.kernel.partition_auth_paused(outbound)
     }
 
@@ -299,8 +302,9 @@ impl KernelReducer {
         uri: String,
         consumer_id: String,
         can_send: bool,
+        force: bool,
     ) -> Vec<OutboundMessage> {
-        let outbound = self.kernel.claim_event(uri, consumer_id, can_send);
+        let outbound = self.kernel.claim_event(uri, consumer_id, can_send, force);
         self.kernel.partition_auth_paused(outbound)
     }
 
@@ -605,7 +609,7 @@ mod tests {
         let _ = r.reduce(KernelAction::Start);
         // any_relay_connected is false on a fresh reducer — assert the gate.
         assert!(!r.any_relay_connected(), "fresh reducer: no relay connected");
-        let out = r.claim_profile(PK.to_string(), "chirp-web-author-1".to_string(), false);
+        let out = r.claim_profile(PK.to_string(), "chirp-web-author-1".to_string(), false, false);
         assert!(out.is_empty(), "parked claim must emit no outbound");
     }
 
@@ -619,10 +623,20 @@ mod tests {
         let _ = r.reduce(KernelAction::Start);
 
         // First claim parks it.
-        let _ = r.claim_profile(PK.to_string(), "chirp-web-author-card-a".to_string(), false);
+        let _ = r.claim_profile(
+            PK.to_string(),
+            "chirp-web-author-card-a".to_string(),
+            false,
+            false,
+        );
         // Second claim for same pubkey, different consumer — must be a no-op
         // outbound (the profile is already pending / registered).
-        let out2 = r.claim_profile(PK.to_string(), "chirp-web-author-card-b".to_string(), false);
+        let out2 = r.claim_profile(
+            PK.to_string(),
+            "chirp-web-author-card-b".to_string(),
+            false,
+            false,
+        );
         assert!(
             out2.is_empty(),
             "second claim for same pubkey must not duplicate outbound: {out2:?}"
@@ -646,6 +660,7 @@ mod tests {
         let out = r.claim_event(
             "not-a-nostr-uri".to_string(),
             "chirp-web-embed-1".to_string(),
+            false,
             false,
         );
         assert!(out.is_empty(), "malformed URI must produce no outbound");

@@ -79,6 +79,7 @@ pub(crate) fn profile_thrashing() -> Scenario {
                 let _ = tx.send(ActorCommand::ClaimProfile {
                     pubkey: pubkey.to_string(),
                     consumer_id: consumer.clone(),
+                    force: false,
                 });
                 let _ = tx.send(ActorCommand::ReleaseProfile {
                     pubkey: pubkey.to_string(),

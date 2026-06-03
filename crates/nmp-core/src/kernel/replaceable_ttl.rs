@@ -26,14 +26,13 @@ pub struct ReplaceableTtlConfig {
     pub default: Duration,
 }
 
-impl ReplaceableTtlConfig {
+impl Default for ReplaceableTtlConfig {
     /// Construct a `ReplaceableTtlConfig` with sensible defaults.
     ///
     /// - kind:0 (user metadata) → 1 hour (D1: apps check profile changes frequently)
     /// - kind:10002 (relay list) → 6 hours (stable; users change relays infrequently)
     /// - all other replaceable kinds → 6 hours
-    #[must_use]
-    pub fn default() -> Self {
+    fn default() -> Self {
         let mut per_kind = BTreeMap::new();
         per_kind.insert(0, Duration::from_secs(3600)); // 1 hour
         per_kind.insert(10002, Duration::from_secs(6 * 3600)); // 6 hours
@@ -42,7 +41,9 @@ impl ReplaceableTtlConfig {
             default: Duration::from_secs(6 * 3600), // 6 hours
         }
     }
+}
 
+impl ReplaceableTtlConfig {
     /// Look up the TTL for a given kind.
     ///
     /// Returns the kind-specific TTL if configured, otherwise the default.

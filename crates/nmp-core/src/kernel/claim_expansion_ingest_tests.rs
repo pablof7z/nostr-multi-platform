@@ -531,7 +531,7 @@ mod production_ingest_tests {
             kind: Some(1),
         })
         .expect("encode_nevent");
-        let _ = kernel.claim_event(format!("nostr:{bech}"), "view-0".to_string(), true);
+        let _ = kernel.claim_event(format!("nostr:{bech}"), "view-0".to_string(), true, false);
 
         let interest_id = kernel
             .test_claim_interest_id(&primary_id)
@@ -651,7 +651,7 @@ mod production_ingest_tests {
             relays: vec![relay_url.to_string()],
         })
         .expect("encode_naddr");
-        let _ = kernel.claim_event(format!("nostr:{bech}"), "view-0".to_string(), true);
+        let _ = kernel.claim_event(format!("nostr:{bech}"), "view-0".to_string(), true, false);
 
         let interest_id = kernel
             .test_claim_interest_id(&coord_key)

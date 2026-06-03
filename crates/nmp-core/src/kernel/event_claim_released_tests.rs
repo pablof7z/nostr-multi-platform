@@ -56,7 +56,7 @@ fn poll_to_terminal_miss(kernel: &mut Kernel) {
 /// claim_event → planner-frame bridge wiring.
 fn claim_and_wire(kernel: &mut Kernel, id: &str, relay_url: &str) -> String {
     let uri = nevent_uri(id);
-    let _ = kernel.claim_event(uri, "view-0".to_string(), true);
+    let _ = kernel.claim_event(uri, "view-0".to_string(), true, false);
 
     // The claim registered a oneshot + a pending claim. Read the real
     // interest_id and bridge a WireFrame::Req so the planner-frame bridge

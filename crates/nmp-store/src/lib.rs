@@ -51,6 +51,67 @@ pub use types::{
 // Re-export error types from types (defined there to avoid circular imports).
 pub use types::{StoreError, VerifyError};
 
+// F-TTL — re-export replaceable freshness types from nmp-nostr-lmdb.
+// Only available when lmdb-backend is enabled (the module owns the LMDB types).
+#[cfg(feature = "lmdb-backend")]
+pub use nmp_nostr_lmdb::{
+    is_parameterized_replaceable, is_replaceable, ReplaceableKey,
+};
+
+// F-TTL — stub implementations for non-lmdb builds (tests, wasm).
+// These allow the code to compile but the kernel will never use them
+// (reverify queue and freshness store operations are no-ops in MemEventStore).
+#[cfg(not(feature = "lmdb-backend"))]
+pub mod replaceable_stubs {
+    use std::collections::HashMap;
+
+    /// Stub ReplaceableKey for non-LMDB builds.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub enum ReplaceableKey {
+        /// Regular replaceable event: identified by kind and author pubkey.
+        Regular { kind: u32, pubkey: [u8; 32] },
+        /// Parameterized replaceable event: identified by kind, author pubkey, and d-tag.
+        Parameterized {
+            kind: u32,
+            pubkey: [u8; 32],
+            d_tag: String,
+        },
+    }
+
+    impl ReplaceableKey {
+        /// Get the kind for this key.
+        pub fn kind(&self) -> u32 {
+            match self {
+                Self::Regular { kind, .. } | Self::Parameterized { kind, .. } => *kind,
+            }
+        }
+    }
+
+    /// Check if a kind is parameterized replaceable / addressable (NIP-01).
+    ///
+    /// Delegates to [`nostr::Kind::is_addressable`] — the single source of
+    /// truth — so the non-LMDB build classifies kinds identically to the
+    /// LMDB build. Addressable is the `30000..=39999` range only.
+    pub fn is_parameterized_replaceable(kind: u32) -> bool {
+        nostr::Kind::from(kind as u16).is_addressable()
+    }
+
+    /// Check if a kind is regular replaceable (NIP-01).
+    ///
+    /// Delegates to [`nostr::Kind::is_replaceable`]. Regular replaceable is
+    /// kinds `0`, `3`, `41` and the `10000..=19999` range — NOT the broad
+    /// `kind < 20000` the prior hand-rolled stub used.
+    pub fn is_replaceable(kind: u32) -> bool {
+        nostr::Kind::from(kind as u16).is_replaceable()
+    }
+
+    /// Stub cache type.
+    pub type ReplaceableCache = HashMap<ReplaceableKey, u64>;
+}
+
+#[cfg(not(feature = "lmdb-backend"))]
+pub use replaceable_stubs::{is_parameterized_replaceable, is_replaceable, ReplaceableKey, ReplaceableCache};
+
 use std::path::PathBuf;
 
 /// Storage backend selector.

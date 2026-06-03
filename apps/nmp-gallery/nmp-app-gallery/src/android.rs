@@ -198,7 +198,8 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimProfi
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
         return;
     };
-    nmp_app_claim_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
+    // F-TTL — Android JNI claim is a background/auto-claim → force = 0.
+    nmp_app_claim_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr(), 0);
 }
 
 #[no_mangle]
@@ -238,7 +239,8 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimEvent
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
         return;
     };
-    nmp_app_claim_event(s.app, uri.as_ptr(), consumer_id.as_ptr());
+    // F-TTL — Android JNI claim is a background/auto-claim → force = 0.
+    nmp_app_claim_event(s.app, uri.as_ptr(), consumer_id.as_ptr(), 0);
 }
 
 #[no_mangle]

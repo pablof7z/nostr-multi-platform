@@ -35,7 +35,11 @@ void nmp_app_stop(void *app);
 // across all consumers (`consumer_id` is the bookkeeping key for matched
 // release calls). Claimed profiles are projected under
 // `projections.claimed_profiles[pubkey]` in the regular update snapshot.
-void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id);
+// F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
+// gate for the cached kind:0 profile. Pass `1` on explicit user navigation /
+// pull-to-refresh; pass `0` for background / `.onAppear` claims. Replaces the
+// removed `nmp_app_refresh_replaceable` symbol (no new C-ABI symbol).
+void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id, int force);
 void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
 
 // Open an author view on `pubkey`. The kernel fetches kind:10002 + kind:0
@@ -54,7 +58,11 @@ void nmp_app_close_author(void *app, const char *pubkey);
 // (event-id hex for `nevent`/`note`; `"kind:pubkey:d"` for `naddr`).
 // FFI-clean (D6): null/invalid arguments are silent no-ops, never panics.
 // D8: forwards to the actor; no polling, no sync wait.
-void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id);
+// F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
+// gate; it only affects `naddr` (addressable / replaceable) URIs and is a
+// silent no-op for immutable `nevent`/`note` URIs. Pass `1` on explicit user
+// navigation / pull-to-refresh; pass `0` for background claims.
+void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id, int force);
 void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 
 // ── Relay management ─────────────────────────────────────────────────────

@@ -637,9 +637,14 @@ pub enum ActorCommand {
     OpenContactListSubscription {
         kinds: std::collections::BTreeSet<u32>,
     },
+    /// Refcounted profile (kind:0) claim. `force` (F-TTL) bypasses the TTL
+    /// freshness gate so a user-initiated navigation / pull-to-refresh always
+    /// re-verifies the cached profile; `force == false` is the lazy, gated
+    /// path used by background claims and `.onAppear` list rows.
     ClaimProfile {
         pubkey: String,
         consumer_id: String,
+        force: bool,
     },
     ReleaseProfile {
         pubkey: String,
@@ -648,10 +653,13 @@ pub enum ActorCommand {
     /// Refcounted event claim — drives the generic `claim_event` kernel
     /// primitive (F-CR-06 / ADR-0034). `uri` is a `nostr:` URI
     /// (nevent/note/naddr); profile URIs are rejected (use `ClaimProfile`).
-    /// Symmetric with `ClaimProfile` in shape and dispatch.
+    /// Symmetric with `ClaimProfile` in shape and dispatch. `force` (F-TTL)
+    /// bypasses the TTL freshness gate for addressable (naddr) coordinates;
+    /// it is a silent no-op for immutable nevent/note URIs.
     ClaimEvent {
         uri: String,
         consumer_id: String,
+        force: bool,
     },
     /// Release a previously claimed event (the same `uri` +
     /// `consumer_id` pair). On the last consumer's release the
@@ -898,18 +906,6 @@ pub enum ActorCommand {
         /// `send`-ed without blocking from any thread (the actor never holds a
         /// borrow on the channel after the `send` call).
         ack: std::sync::mpsc::SyncSender<()>,
-    },
-    /// F-TTL — host-initiated refresh of a replaceable event (kind, pubkey, d_tag?).
-    /// On receipt, the kernel queues the key in `pending_reverify` and immediately
-    /// dispatches fresh REQs against the appropriate relay set. Fresh data arrives
-    /// via the normal snapshot push mechanism.
-    ///
-    /// STUB: remove when T-A/T-B/T-C PRs merge. The kernel dispatch arm and the
-    /// underlying `claim_replaceable` + `check_again_after` machinery are incomplete.
-    RefreshReplaceable {
-        kind: u32,
-        pubkey: String,
-        d_tag: Option<String>, // null for non-parameterized kinds
     },
 }
 

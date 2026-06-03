@@ -58,6 +58,7 @@ impl Kernel {
         uri: String,
         consumer_id: String,
         can_send: bool,
+        force: bool,
     ) -> Vec<OutboundMessage> {
         // D6: silently swallow parse failures. The host may surface
         // arbitrary user-typed URIs (text content, mention pickers,
@@ -81,6 +82,13 @@ impl Kernel {
         // W5: carry author and relay hints from the URI TLV for claim-expansion.
         let mut uri_author: Option<String> = None;
         let mut uri_relay_hints: Vec<String> = Vec::new();
+        // F-TTL — only naddr URIs address a replaceable (addressable) identity
+        // (kind, author-pubkey, d-tag). Captured here so it is in scope at the
+        // cached-event branch below, where the TTL gate decides whether a
+        // freshness re-verification REQ is due. nevent/note URIs are immutable
+        // events with no TTL record, so they leave this `None` and `force`
+        // is a silent no-op for them.
+        let mut replaceable_coord: Option<(u32, String, String)> = None;
 
         let (primary_id, shape) = match parsed {
             NostrUri::Profile { .. } => {
@@ -128,6 +136,9 @@ impl Kernel {
                 // W5: naddr author is the pubkey field (single-author by construction).
                 uri_author = Some(pubkey.clone());
                 uri_relay_hints = relays;
+                // F-TTL — capture the addressable coordinate so the cached
+                // branch can run the freshness gate (kind, author-pubkey, d-tag).
+                replaceable_coord = Some((kind, pubkey.clone(), identifier.clone()));
                 let mut tags: std::collections::BTreeMap<
                     String,
                     std::collections::BTreeSet<String>,
@@ -185,6 +196,18 @@ impl Kernel {
 
         // Already resolved or already requested → no fetch needed.
         if self.event_already_known(&primary_id) {
+            // F-TTL — the event is cached, so no cold fetch goes out. For an
+            // addressable (naddr) coordinate, run the freshness gate: a lazy
+            // re-verification REQ fires only if the TTL has elapsed
+            // (`force == false`), or unconditionally when the user explicitly
+            // navigated to / refreshed this entity (`force == true`).
+            // nevent/note URIs are immutable (`replaceable_coord == None`) and
+            // skip this entirely — `force` is a silent no-op for them.
+            if let Some((kind, pubkey_hex, d_tag)) = replaceable_coord {
+                if let Ok(pk) = nostr::PublicKey::from_hex(&pubkey_hex) {
+                    self.claim_replaceable(kind, pk.to_bytes(), Some(d_tag), force);
+                }
+            }
             return Vec::new();
         }
         if self.event_claim_requested.contains(&primary_id) {
@@ -384,7 +407,11 @@ impl Kernel {
         let parked: Vec<(String, String)> = std::mem::take(&mut self.pending_event_claims);
         let mut out = Vec::new();
         for (uri, consumer_id) in parked {
-            out.extend(self.claim_event(uri, consumer_id, true));
+            // Cold-start replay is the gated path (`force = false`): a parked
+            // claim is for an as-yet-unknown event, so it cold-fetches fresh
+            // on replay regardless — force only matters for an already-cached
+            // replaceable identity (the user-navigation refresh case).
+            out.extend(self.claim_event(uri, consumer_id, true, false));
         }
         out
     }

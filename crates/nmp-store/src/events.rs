@@ -14,6 +14,7 @@ use super::types::{
 };
 use super::StoreError;
 use crate::DomainMigration;
+use crate::ReplaceableKey;
 
 // ─── EventIter ────────────────────────────────────────────────────────────────
 
@@ -404,6 +405,35 @@ pub trait EventStore: Send + Sync {
         target_version: u32,
         migrations: &[DomainMigration],
     ) -> Result<(), StoreError>;
+
+    // ─── F-TTL replaceable freshness ───────────────────────────────────────────
+
+    /// Read the `check_again_after` timestamp (unix milliseconds) for a
+    /// replaceable identity, or `None` if it has never been freshness-stamped.
+    ///
+    /// Default no-op (`None`) so non-LMDB backends (e.g. `MemEventStore`) need
+    /// no change — the kernel's TTL gate treats `None` as "due now". The LMDB
+    /// backend overrides this with the real in-memory-cache-backed lookup.
+    ///
+    /// `&self` (interior mutability) — the kernel holds the store as
+    /// `Arc<dyn EventStore>`, so a `&mut self` method would be uncallable and
+    /// break `dyn`-compatibility. The LMDB cache is an `Arc<Mutex<…>>`.
+    fn get_check_again_after(&self, _key: &ReplaceableKey) -> Option<u64> {
+        None
+    }
+
+    /// Stamp the `check_again_after` timestamp (unix milliseconds) for a
+    /// replaceable identity.
+    ///
+    /// Default no-op so non-LMDB backends need no change. The LMDB backend
+    /// overrides this to durably persist the timestamp (opening its own write
+    /// transaction internally and updating the in-memory cache only after the
+    /// transaction commits successfully — see `LmdbEventStore`).
+    ///
+    /// Errors are intentionally swallowed at this seam: a freshness-stamp
+    /// failure must never block ingest or claim (D6 graceful degrade — a
+    /// missed stamp simply means the next claim re-verifies eagerly).
+    fn set_check_again_after(&self, _key: ReplaceableKey, _ts_ms: u64) {}
 
     // ─── Export ──────────────────────────────────────────────────────────────
 

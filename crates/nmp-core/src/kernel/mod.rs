@@ -167,6 +167,8 @@ mod relay_score_record;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
+#[cfg(test)]
+mod replaceable_ttl_gate_tests;
 mod reply;
 mod requests;
 #[cfg(test)]
@@ -451,6 +453,13 @@ pub(crate) const MAX_CLAIMS_PER_PUBKEY: usize = 256;
 /// a claim attempt past the cap silently no-ops and increments
 /// `event_claim_drops_total`.
 pub(crate) const MAX_EVENT_CLAIMS_PER_KEY: usize = 256;
+
+/// F-TTL — inflight REQ guard duration (unix milliseconds). When a replaceable
+/// event's re-verification REQ is dispatched, the kernel sets its
+/// `check_again_after` to `now + INFLIGHT_GUARD_MS` so rapid repeated claims
+/// for the same identity don't hammer relays with concurrent REQs. On EOSE
+/// or event insertion, the kernel updates it to `now + ttl_for_kind(kind)`.
+pub(crate) const INFLIGHT_GUARD_MS: u64 = 3_600_000; // 1 hour
 
 /// Per-relay-role NIP-42 credentials. The closure signs the kind:22242 with
 /// whatever keypair is appropriate for that role (user identity for Content /
@@ -1035,11 +1044,25 @@ pub struct Kernel {
     /// Set by `set_relay_score_store` after construction. D4: the kernel
     /// holds `Box` (not `Arc`) because it is the sole logical writer.
     relay_score_store: Option<Box<dyn crate::substrate::RelayAuthorScoreStore>>,
-    /// F-TTL — replaceable event freshness configuration. Specifies per-kind TTLs
+    /// F-TTL — replaceable event freshness policy. Configures per-kind TTLs
     /// for how long replaceable identities (kind, pubkey, d_tag?) remain "fresh"
-    /// before re-verification REQs are needed. Defaults to kind:0 = 1h,
-    /// kind:10002 = 6h, others = 6h. Can be overridden via `set_replaceable_ttl`.
+    /// before a re-verification REQ is needed. The LMDB sub-db `replaceable_freshness`
+    /// stores `check_again_after` timestamps; this config determines the delta
+    /// added to `now` to produce the next check_again_after value. Defaults to
+    /// kind:0 = 1h, kind:10002 = 6h, others = 6h. Can be overridden via
+    /// `set_replaceable_ttl()`.
     replaceable_ttl: replaceable_ttl::ReplaceableTtlConfig,
+    /// F-TTL — pending re-verification queue for replaceable events. When a
+    /// replaceable identity's `check_again_after` is due, it is enqueued here
+    /// and drained in `pending_view_requests` as REQ filters. Maps to subscription
+    /// IDs via `reverify_subs` so the EOSE handler can update `check_again_after`
+    /// with fresh TTL when the REQ completes.
+    pending_reverify: VecDeque<crate::store::ReplaceableKey>,
+    /// F-TTL — in-flight reverification subscriptions. Maps wire sub_id →
+    /// Vec<ReplaceableKey> so the EOSE handler knows which keys to update
+    /// with fresh TTL on completion. Entries are removed when their sub_id
+    /// receives EOSE.
+    reverify_subs: HashMap<String, Vec<crate::store::ReplaceableKey>>,
     /// V-67: set when a persistent storage path was supplied but the LMDB
     /// store failed to open. `None` in the healthy case AND when no path was
     /// given (in-memory is the legitimate default for tests/CI — not a
@@ -1440,6 +1463,101 @@ impl Kernel {
         self.replaceable_ttl.ttl_for_kind(kind)
     }
 
+    /// F-TTL — enqueue a replaceable event for re-verification if its freshness
+    /// has expired.
+    ///
+    /// Called when a view component claims a replaceable identity (kind, pubkey, d_tag?).
+    ///
+    /// TTL-gated (F-TTL): a claim only enqueues a re-verification REQ when the
+    /// cached identity's `check_again_after` has elapsed. A fresh identity (one
+    /// whose TTL has not yet expired) is a no-op — this is what stops the
+    /// kernel from spamming a REQ on every claim. Identities the store has
+    /// never stamped (`None` → treated as `0`) are always due, so a cold cache
+    /// re-verifies eagerly.
+    ///
+    /// On enqueue we stamp `check_again_after = now + INFLIGHT_GUARD_MS` so that
+    /// repeated claims for the same identity while a REQ is in flight (before
+    /// its EOSE lands and re-stamps with the real per-kind TTL) do not re-enqueue.
+    ///
+    /// `force` bypasses the TTL gate: a forced claim treats the stored
+    /// `check_again_after` as `0` (always due), so it enqueues a re-fetch even
+    /// when the cached identity is still fresh. This is the "user explicitly
+    /// navigated to / pulled-to-refresh this entity" path; the lazy, gated path
+    /// (`force == false`) is what stops the kernel from spamming a REQ on every
+    /// `.onAppear`. (Replaces the deleted `nmp_app_refresh_replaceable` FFI:
+    /// force-refresh is now a `force` argument on the claim functions.)
+    ///
+    /// D9 clock seam: `now_ms()` reads the injected `Clock`.
+    pub(crate) fn claim_replaceable(
+        &mut self,
+        kind: u32,
+        pubkey: [u8; 32],
+        d_tag: Option<String>,
+        force: bool,
+    ) {
+        // `is_parameterized_replaceable` is the NIP-01 addressable predicate
+        // (30000..=39999) — only those identities carry a `d`-tag.
+        let key = if crate::store::is_parameterized_replaceable(kind) {
+            crate::store::ReplaceableKey::Parameterized {
+                kind,
+                pubkey,
+                d_tag: d_tag.unwrap_or_default(),
+            }
+        } else {
+            crate::store::ReplaceableKey::Regular { kind, pubkey }
+        };
+
+        let now = self.now_ms();
+        // `force` zeroes the freshness stamp for the gate check below, so a
+        // user-initiated refresh always reads as due (`now > 0`) and enqueues
+        // a re-fetch even when the cached identity is still within its TTL.
+        // No redundant store write: the enqueue path overwrites with
+        // `now + INFLIGHT_GUARD_MS` anyway.
+        let check_at = if force {
+            0
+        } else {
+            self.store.get_check_again_after(&key).unwrap_or(0)
+        };
+
+        // Gate: still fresh, or already in flight → nothing to do.
+        if now > check_at && !self.pending_reverify.contains(&key) {
+            self.pending_reverify.push_back(key.clone());
+            // In-flight guard: prevent re-enqueue until EOSE re-stamps with the
+            // real per-kind TTL (or the guard window elapses on a lost EOSE).
+            self.store
+                .set_check_again_after(key, now + INFLIGHT_GUARD_MS);
+        }
+    }
+
+    /// Number of replaceable identities currently queued for re-verification.
+    /// Test-only window into the F-TTL gate (`claim_replaceable`).
+    #[cfg(test)]
+    pub(crate) fn pending_reverify_len(&self) -> usize {
+        self.pending_reverify.len()
+    }
+
+    /// Sub-ids currently tracked for reverify EOSE handling.
+    /// Test-only window into `reverify_subs` (introspection, not logic).
+    #[cfg(test)]
+    pub(crate) fn reverify_sub_ids_for_test(&self) -> Vec<String> {
+        self.reverify_subs.keys().cloned().collect()
+    }
+
+    /// Seed a reverify sub_id → key mapping directly.
+    ///
+    /// Test-only: the production registration happens in `drain_pending_reverify`,
+    /// but that path requires configured outbox relays to emit a REQ. This
+    /// seam lets the EOSE re-stamp arm be tested in isolation from relay
+    /// routing — it writes the same `reverify_subs` entry the drain would.
+    #[cfg(test)]
+    pub(crate) fn seed_reverify_sub_for_test(
+        &mut self,
+        sub_id: &str,
+        keys: Vec<crate::store::ReplaceableKey>,
+    ) {
+        self.reverify_subs.insert(sub_id.to_string(), keys);
+    }
+
     /// Borrow the kernel's `EventStore` handle.
     ///
     /// Returned as a cloned `Arc<dyn EventStore>` (the kernel uses `Arc` so
@@ -1803,6 +1921,8 @@ impl Kernel {
             relay_score_map: relay_score::RelayAuthorScoreMap::new(),
             relay_score_store: None,
             replaceable_ttl: replaceable_ttl::ReplaceableTtlConfig::default(),
+            pending_reverify: VecDeque::new(),
+            reverify_subs: HashMap::new(),
             store_open_failure,
             _not_send: PhantomData,
         };

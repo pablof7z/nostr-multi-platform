@@ -638,11 +638,13 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
         FIATJAF_PUBKEY.to_string(),
         "timeline-row:first".to_string(),
         true,
+        false,
     );
     let second = kernel.claim_profile(
         FIATJAF_PUBKEY.to_string(),
         "timeline-row:second".to_string(),
         true,
+        false,
     );
 
     // Cold-start profile claim must go to the indexer relay ONLY (not the content relay).

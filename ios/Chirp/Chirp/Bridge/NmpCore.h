@@ -27,7 +27,12 @@ void nmp_app_reset(void *app);
 void nmp_app_open_author(void *app, const char *pubkey);
 void nmp_app_open_thread(void *app, const char *event_id);
 void nmp_app_open_firehose_tag(void *app, const char *tag);
-void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id);
+// F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
+// gate for the cached kind:0 profile. Pass `1` when the user explicitly opened
+// this author's profile screen or pulled to refresh; pass `0` for background /
+// `.onAppear` list-row claims. Replaces the removed `nmp_app_refresh_replaceable`
+// symbol (force-refresh is now an argument; no new C-ABI symbol).
+void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id, int force);
 void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
 // Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted per
 // `consumer_id`; the kernel fetches the event over the OneshotApi (single-
@@ -36,7 +41,12 @@ void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer
 // hex for `nevent`/`note`; `"kind:pubkey:d"` for `naddr`). FFI-clean (D6):
 // null/invalid arguments are silent no-ops, never panics. D8: forwards to the
 // actor; no polling, no sync wait.
-void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id);
+// F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
+// gate; it only has an effect for `naddr` (addressable / replaceable) URIs and
+// is a silent no-op for immutable `nevent`/`note` URIs. Pass `1` when the user
+// explicitly navigated to / opened this article/event or pulled to refresh;
+// pass `0` for background claims.
+void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id, int force);
 void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 void nmp_app_close_author(void *app, const char *pubkey);
 void nmp_app_close_thread(void *app, const char *event_id);

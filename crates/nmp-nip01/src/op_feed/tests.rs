@@ -61,9 +61,9 @@ impl Harness {
         let claims_for_cb = Arc::clone(&claims);
         let dispatch: super::wiring::ActorCommandDispatch = Arc::new(move |cmd| {
             let recorded = match cmd {
-                ActorCommand::ClaimEvent { uri, consumer_id } => {
-                    RecordedCmd::Claim { uri, consumer_id }
-                }
+                ActorCommand::ClaimEvent {
+                    uri, consumer_id, ..
+                } => RecordedCmd::Claim { uri, consumer_id },
                 ActorCommand::ReleaseEvent { uri, consumer_id } => {
                     RecordedCmd::Release { uri, consumer_id }
                 }

@@ -194,4 +194,18 @@ impl EventStore for MemEventStore {
     ) -> Result<DumpStats, StoreError> {
         query::dump(self, out, format)
     }
+
+    // ─── F-TTL replaceable freshness ───────────────────────────────────────────
+
+    fn get_check_again_after(&self, key: &crate::ReplaceableKey) -> Option<u64> {
+        // A poisoned lock degrades to "no record" → the TTL gate treats the
+        // identity as due, which is correct-but-eager (never wrong).
+        self.lock().ok()?.replaceable_freshness.get(key).copied()
+    }
+
+    fn set_check_again_after(&self, key: crate::ReplaceableKey, ts_ms: u64) {
+        if let Ok(mut state) = self.lock() {
+            state.replaceable_freshness.insert(key, ts_ms);
+        }
+    }
 }
