@@ -319,8 +319,8 @@ fn render_compose_modal(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 
     frame.render_widget(Clear, popup);
 
-    let title = match state.reply_to.as_deref() {
-        Some(target) => format!(" \u{21a9} Reply to {} ", short_id(target)),
+    let title = match state.reply_to.as_ref() {
+        Some(target) => format!(" \u{21a9} Reply to {} ", short_id(&target.id)),
         None => " \u{270f} New Note ".to_string(),
     };
 

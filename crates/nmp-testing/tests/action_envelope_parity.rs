@@ -15,6 +15,20 @@ use nmp_app_chirp::typed_api::{
     follow_action, publish_note_action, react_action, send_dm_action, sign_in_nsec_action,
     switch_account_action, unfollow_action,
 };
+use nmp_core::tags::Nip10Refs;
+use nmp_nip01::NoteRecord;
+
+/// A minimal thread-root `NoteRecord` (no `Nip10Refs`), mirroring what a
+/// chirp shell captures from a selected timeline row before replying.
+fn parent_record(event_id: &str, author: &str) -> NoteRecord {
+    NoteRecord {
+        event_id: event_id.to_string(),
+        author: author.to_string(),
+        created_at: 0,
+        content: "parent".to_string(),
+        refs: Nip10Refs::default(),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // publish_note_action
@@ -22,7 +36,7 @@ use nmp_app_chirp::typed_api::{
 
 #[test]
 fn publish_note_action_has_correct_namespace_and_content() {
-    let (ns, json) = publish_note_action("hello world", None);
+    let (ns, json) = publish_note_action("hello world", None).unwrap();
     assert_eq!(ns, "nmp.publish");
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
     // A note is a kind:1 PublishRaw event.
@@ -35,16 +49,34 @@ fn publish_note_action_has_correct_namespace_and_content() {
 }
 
 #[test]
-fn publish_note_action_with_reply_has_nip10_reply_tag() {
-    let (ns, json) = publish_note_action("reply", Some("abc123"));
+fn publish_note_action_with_reply_has_full_nip10_tag_set() {
+    // Reply to a thread-root note by alice. The canonical `nmp_nip01::Note`
+    // builder emits the full NIP-10 set: marked-form root + reply `e` tags
+    // (parent is its own root here) and a `p` re-notification for the author.
+    let parent = parent_record("abc123", "alice");
+    let (ns, json) = publish_note_action("reply", Some(&parent)).unwrap();
     assert_eq!(ns, "nmp.publish");
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(v["PublishRaw"]["kind"], 1);
     assert_eq!(v["PublishRaw"]["content"], "reply");
-    // A reply is a NIP-10 marked `e` tag: ["e", reply_id, "", "reply"].
     assert_eq!(
         v["PublishRaw"]["tags"],
-        serde_json::json!([["e", "abc123", "", "reply"]])
+        serde_json::json!([
+            ["e", "abc123", "", "root"],
+            ["e", "abc123", "", "reply"],
+            ["p", "alice"]
+        ])
+    );
+}
+
+#[test]
+fn publish_note_action_rejects_empty_content() {
+    // The builder is fail-closed on empty content (D6): the error surfaces as
+    // a string rather than a panic, and no envelope is produced.
+    let err = publish_note_action("   ", None).unwrap_err();
+    assert!(
+        err.contains("non-empty content"),
+        "unexpected error: {err}"
     );
 }
 
@@ -56,7 +88,8 @@ fn publish_note_action_with_reply_has_nip10_reply_tag() {
 fn publish_note_action_deserializes_into_publish_raw_variant() {
     use nmp_core::publish::{PublishAction, PublishTarget};
 
-    let (_ns, json) = publish_note_action("hello world", Some("abc123"));
+    let parent = parent_record("abc123", "alice");
+    let (_ns, json) = publish_note_action("hello world", Some(&parent)).unwrap();
     let action: PublishAction =
         serde_json::from_str(&json).expect("builder JSON must deserialize into PublishAction");
     match action {
@@ -68,7 +101,14 @@ fn publish_note_action_deserializes_into_publish_raw_variant() {
         } => {
             assert_eq!(kind, 1);
             assert_eq!(content, "hello world");
-            assert_eq!(tags, vec![vec!["e", "abc123", "", "reply"]]);
+            assert_eq!(
+                tags,
+                vec![
+                    vec!["e", "abc123", "", "root"],
+                    vec!["e", "abc123", "", "reply"],
+                    vec!["p", "alice"],
+                ]
+            );
             assert_eq!(target, PublishTarget::Auto);
         }
         other => panic!("expected PublishRaw, got {other:?}"),

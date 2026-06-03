@@ -16,6 +16,7 @@
 use std::ffi::{CStr, CString};
 use serde_json::{json, Value};
 use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free_string, NmpApp};
+use nmp_nip01::{Note, NoteRecord};
 
 /// Typed Chirp action client.
 ///
@@ -100,8 +101,12 @@ impl ChirpClient {
     ///
     /// Returns the correlation ID on success; error if the action was rejected
     /// by the action registry.
-    pub fn publish_note(&self, content: &str, reply_to_id: Option<&str>) -> Result<String, String> {
-        let (namespace, action) = publish_note_action(content, reply_to_id);
+    pub fn publish_note(
+        &self,
+        content: &str,
+        reply_to: Option<&NoteRecord>,
+    ) -> Result<String, String> {
+        let (namespace, action) = publish_note_action(content, reply_to)?;
         self.dispatch_action(&namespace, &action)
     }
 
@@ -200,25 +205,45 @@ impl ChirpClient {
 
 /// Build a kind:1 note publish action envelope (`PublishRaw`).
 ///
-/// A reply is expressed as a NIP-10 `["e", reply_id, "", "reply"]` tag; a
-/// root note carries no tags. `target` defaults to `Auto` (NIP-65 outbox).
+/// The NIP-10 tag set is produced by the canonical `nmp_nip01::Note` builder
+/// (single source of truth for reply construction across all protocol crates),
+/// not hand-assembled here. For a reply it emits the marked-form `root` + `reply`
+/// `e` tags and the `p` re-notification tags (parent author first, then the
+/// parent's `mentioned_pubkeys`, de-duplicated); a root note carries no tags.
+/// `target` defaults to `Auto` (NIP-65 outbox).
+///
+/// The author/`created_at` slots on the builder's `UnsignedEvent` are discarded:
+/// `PublishRaw` is signer- and clock-free at the call site — the actor stamps
+/// `pubkey` from the active signer and `created_at` per D7. We harvest only the
+/// `tags`. The `p`-tag pubkeys come from the `NoteRecord`'s `author` /
+/// `mentioned_pubkeys` fields, so they are correct regardless of the empty
+/// build-time author.
+///
+/// # Errors
+///
+/// Returns the `NoteBuildError` display string when `content` is blank (D6 —
+/// errors never cross as panics).
 ///
 /// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
-pub fn publish_note_action(content: &str, reply_to_id: Option<&str>) -> (String, String) {
-    let tags: Vec<Vec<&str>> = match reply_to_id {
-        Some(reply_id) => vec![vec!["e", reply_id, "", "reply"]],
-        None => vec![],
-    };
+pub fn publish_note_action(
+    content: &str,
+    reply_to: Option<&NoteRecord>,
+) -> Result<(String, String), String> {
+    let mut builder = Note::new(content);
+    if let Some(parent) = reply_to {
+        builder = builder.reply_to(parent);
+    }
+    let unsigned = builder.build("", 0).map_err(|e| e.to_string())?;
     let action = json!({
         "PublishRaw": {
             "kind": 1,
-            "tags": tags,
+            "tags": unsigned.tags,
             "content": content,
             "target": "Auto"
         }
     })
     .to_string();
-    ("nmp.publish".to_string(), action)
+    Ok(("nmp.publish".to_string(), action))
 }
 
 /// Build a React (like/repost) action envelope.

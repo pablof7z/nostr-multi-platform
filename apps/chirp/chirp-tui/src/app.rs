@@ -48,6 +48,23 @@ pub enum OutboxSelection {
     History(usize),
 }
 
+/// The note being replied to, captured from the selected timeline row when
+/// the user starts a reply.
+///
+/// Carries the parent's `author` so the NIP-10 reply builder can emit the
+/// `p` re-notification tag (the whole point of post-#916 caller-side reply
+/// construction). The home-feed projection does not surface the parent's own
+/// `Nip10Refs`, so deep-thread root-forwarding is best-effort: the builder
+/// treats this parent as the thread root, which is correct for top-level
+/// replies and a reasonable fallback otherwise.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplyTarget {
+    pub id: String,
+    pub author_pubkey: String,
+    pub content: String,
+    pub created_at: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppState {
     pub focused: Pane,
@@ -76,7 +93,7 @@ pub struct AppState {
     pub detail_cursor: usize,
     pub detail_scroll: u16,
     pub compose: String,
-    pub reply_to: Option<String>,
+    pub reply_to: Option<ReplyTarget>,
     pub command: String,
     pub status: String,
     pub profile_pubkey: String,
