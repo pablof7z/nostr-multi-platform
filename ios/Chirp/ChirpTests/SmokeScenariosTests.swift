@@ -128,10 +128,10 @@ final class SmokeScenariosTests: XCTestCase {
         try await signIn(nsecA, label: "scenario-3")
 
         try await waitUntil(timeout: 45, "timeline backfills") { [self] in
-            !model.items.isEmpty
+            !model.modularTimeline.cards.isEmpty
         }
         XCTAssertFalse(
-            model.items.isEmpty,
+            model.modularTimeline.cards.isEmpty,
             "no events arrived — REQ-fallback backfill path failed")
 
         try await waitUntil(timeout: 20, "a relay reaches `connected`") { [self] in

@@ -29,9 +29,10 @@ import Foundation
 // renderer treats them as anchor-only.
 //
 // `ChirpEventCard` is a flat decoder-free struct. Author display name and
-// avatar URL come from the existing `KernelModel.items: [TimelineItem]`
-// lookup on the Swift side (D1 placeholders already in place there), so
-// the projection layer does not duplicate profile state.
+// avatar URL come from the `TimelineItem` lookups the thread_view /
+// author_view projections still carry (issue #911), falling back to a
+// synthetic item built from the card itself (D1 placeholders already in
+// place there), so the projection layer does not duplicate profile state.
 // ─────────────────────────────────────────────────────────────────────────
 
 /// One block in the modular home timeline. `standalone` renders as the
@@ -166,11 +167,11 @@ enum ThreadPointer: Decodable, Equatable {
     }
 }
 
-/// Per-event render metadata. Author display name / avatar come from
-/// `KernelModel.items: [TimelineItem]` — this struct is the minimal extra
-/// payload `nmp-app-chirp` ships so blocks are self-renderable when an id
-/// is not in the kernel's visible-items window (e.g., an ancestor that
-/// arrived before its child took the row).
+/// Per-event render metadata. Author display name / avatar come from the
+/// `TimelineItem` lookup the thread_view / author_view projections carry
+/// (issue #911) — this struct is the minimal extra payload `nmp-app-chirp`
+/// ships so blocks are self-renderable when an id is not in that lookup
+/// (e.g., an ancestor that arrived before its child took the row).
 /// ADR-0032: Rust ships raw protocol data only. Display fields are
 /// derived by the presentation layer:
 ///   • `createdAtDisplay`        → `createdAt.relativeTimeFromUnixSeconds`
