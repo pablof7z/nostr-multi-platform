@@ -60,7 +60,7 @@ extension KernelHandle {
 @MainActor
 final class FollowListStore: ObservableObject {
     /// The active account's follow list, mirrored verbatim from the kernel
-    /// projection. All display strings are pre-formatted in Rust.
+    /// projection. Entries carry raw pubkeys; Swift formats labels locally.
     @Published private(set) var follows: [FollowEntry] = []
 
     private unowned let kernel: KernelHandle

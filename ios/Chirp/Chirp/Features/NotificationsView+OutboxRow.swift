@@ -2,11 +2,11 @@ import SwiftUI
 
 // Per-row UI for `NotificationsView`. Lifted into a sibling file so the
 // parent screen stays focused on the summary + section composition. All
-// display strings (`statusLabel`, `targetSummary`, `attemptLabel`), the
-// SF Symbol name (`systemImage`), and the retry-enablement flag (`canRetry`)
-// come pre-formatted from Rust (`projections["publish_outbox"]`); these
-// structs only choose status-driven colors — presentation, not policy
-// (RMP bible commandment #4 / aim.md §4.4: no kind-number switches in Swift).
+// projection-provided status labels (`statusLabel`, `targetSummary`,
+// `attemptLabel`), the SF Symbol name (`systemImage`), and the retry flag
+// (`canRetry`) come from Rust (`projections["publish_outbox"]`); these structs
+// only choose status-driven colors — presentation, not policy (aim.md §4.4:
+// no kind-number switches in Swift).
 
 struct OutboxEventRow: View {
     let item: PublishOutboxItem

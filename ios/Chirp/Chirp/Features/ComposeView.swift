@@ -4,18 +4,16 @@ import SwiftUI
 // HomeFeedView / NoteRowView. Supports ComposeView() and
 // ComposeView(replyToID: "abc", replyToShortID: "abcdef12…34567890").
 //
-// V-28 thin-shell: `replyToShortID` is the pre-formatted `<first 8>…<last 8>`
-// abbreviation Rust emits as `TimelineItem.shortId`. The publish path still
-// receives the raw 64-char hex `replyToID` — only the banner caption uses
-// the short form. The view layer MUST NOT slice the raw id (aim.md §6.9).
+// `replyToShortID` is the presentation abbreviation computed from the raw
+// event id at the call site. The publish path still receives the raw 64-char
+// hex `replyToID`; only the banner caption uses the short form.
 
 struct ComposeView: View {
     @EnvironmentObject private var model: KernelModel
     @Environment(\.dismiss) private var dismiss
 
     var replyToID: String? = nil
-    /// Pre-formatted abbreviation rendered in the reply banner. Sourced from
-    /// `TimelineItem.shortId` at the call site; never derived in Swift.
+    /// Presentation abbreviation rendered in the reply banner.
     var replyToShortID: String? = nil
 
     @State private var text = ""
@@ -139,11 +137,9 @@ struct ComposeView: View {
 
             Spacer()
 
-            // V-28 thin-shell: Rust pre-formats this string as
-            // `TimelineItem.shortId` (`<first 8>…<last 8>`). The view binds
-            // it verbatim — no slicing in Swift. Empty string when the
-            // caller did not pass `replyToShortID` (older call sites or a
-            // raw-id reply path that has not been migrated yet).
+            // Empty string when the caller did not pass `replyToShortID`
+            // (older call sites or a raw-id reply path that has not been
+            // migrated yet).
             Text(shortID)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)

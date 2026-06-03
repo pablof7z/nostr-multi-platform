@@ -396,7 +396,7 @@ If a screenshot is added later (suggested: `tui-user-card-preview.png`):
 - [ ] Checkmark symbol + domain-only identifier (e.g., "✓ f7z.io" or equivalent) — domain only, no "_@" prefix
 
 ### user-npub (SwiftUI: `user-npub-ios-gallery-preview.png`)
-- [ ] Truncated npub chip visible: "npub1l2vyh...utajft" (Rust-formatted short form) — NOT full 63-char npub
+- [ ] Truncated npub chip visible: "npub1l2vyh...utajft" (platform-formatted short form) — NOT full 63-char npub
 - [ ] Full npub reference section: the monospaced full npub text visible (for verification context)
 - [ ] Chip has a tappable affordance (copy icon or capsule shape)
 

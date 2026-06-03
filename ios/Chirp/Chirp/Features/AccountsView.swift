@@ -316,7 +316,7 @@ private struct BunkerHandshakeProgress: View {
 
     private var stageLabel: String {
         // Fall back to `stage` only for legacy kernels (D1) that predate the
-        // pre-formatted label. A current kernel always supplies a non-empty
+        // projection-provided stage label. A current kernel supplies a non-empty
         // `stageLabel`, so this fallback never fires in production today.
         handshake.stageLabel ?? handshake.stage
     }

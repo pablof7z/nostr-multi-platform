@@ -22,7 +22,7 @@ struct SettingsHubView: View {
                         icon: "antenna.radiowaves.left.and.right",
                         iconColor: ChirpColor.accent,
                         title: "Relays",
-                        // §6/AP1: subtitle is pre-formatted in Rust
+                        // Projection-provided status subtitle
                         // (`projections.settings_hub.relays_subtitle`).
                         subtitle: model.settingsHub.relaysSubtitle
                     )
@@ -101,10 +101,10 @@ struct SettingsHubView: View {
 
 // ── Marmot key-package status row ─────────────────────────────────────────
 //
-// Surfaces the local MLS key-package state (subtitle + action label, both
-// pre-formatted in `nmp-marmot::projection`) and a publish / rotate action
-// calling the `publish_key_package` dispatch op. Key-package visibility lives
-// in Settings, not a top-level screen, per the milestone scope.
+// Surfaces the local MLS key-package state (subtitle + action label from
+// `nmp-marmot::projection`) and a publish / rotate action calling the
+// `publish_key_package` dispatch op. Key-package visibility lives in Settings,
+// not a top-level screen, per the milestone scope.
 
 private struct MarmotKeyPackageRow: View {
     @EnvironmentObject private var model: KernelModel

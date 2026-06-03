@@ -2,11 +2,9 @@ import SwiftUI
 
 // OWNER: Phase-2 Agent B (Profile screen). Init fixed by nav: ProfileView(pubkey:).
 //
-// Thin-shell rule (aim.md §6.9): no business logic in Swift. Rust authors
-// the primary-action label/icon/dispatch (`profile_action_for`), the post-
-// count display string (`note_count_display`), the truncated npub
-// (`ProfileCard.npub_short`), and the per-author mention map
-// (`projections["mention_profiles"]`).
+// Thin-shell rule: no business logic in Swift. Rust authors the primary-action
+// label/icon/dispatch (`profile_action_for`) and author-view membership; Swift
+// formats raw profile/count fields for presentation (ADR-0032).
 
 struct ProfileView: View {
     let pubkey: String
@@ -196,7 +194,8 @@ struct ProfileView: View {
                         Text("Posts")
                             .font(.headline)
                             .foregroundStyle(.primary)
-                        // `noteCountDisplay` is Rust-formatted — no `\(items.count)`.
+                        // Compatibility count token from the author projection;
+                        // pluralized presentation stays in the shell.
                         Text(authorView?.noteCountDisplay ?? "")
                             .font(.callout)
                             .foregroundStyle(.secondary)

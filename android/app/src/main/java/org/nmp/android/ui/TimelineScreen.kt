@@ -128,6 +128,18 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
     val hasOpFeed = opCards.isNotEmpty()
 
     var showComposeDialog by remember { mutableStateOf(false) }
+    var selectedProfilePubkey by remember { mutableStateOf<String?>(null) }
+
+    val selectedProfile = selectedProfilePubkey
+    if (selectedProfile != null) {
+        ProfileScreen(
+            pubkey = selectedProfile,
+            model = model,
+            onBack = { selectedProfilePubkey = null },
+            modifier = modifier,
+        )
+        return
+    }
 
     val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
         if (claim) model.claimProfile(pubkey, consumerId)
@@ -165,7 +177,12 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
                     // Typed OP-centric feed: one row per ChirpRootCard.
                     LazyColumn(Modifier.fillMaxSize()) {
                         itemsIndexed(opCards, key = { _, root -> root.card.id }) { _, root ->
-                            RootCardRow(root, emptyMap(), model)
+                            RootCardRow(
+                                root = root,
+                                items = emptyMap(),
+                                model = model,
+                                onAuthorClick = { selectedProfilePubkey = it },
+                            )
                             HorizontalDivider()
                         }
                     }
@@ -246,13 +263,20 @@ private fun RootCardRow(
     root: ChirpRootCard,
     items: Map<String, TimelineItem>,
     model: KernelModel,
+    onAuthorClick: (String) -> Unit,
 ) {
     Column(
         Modifier
             .fillMaxWidth()
             .clickable { model.openThread(root.card.id) }
     ) {
-        NoteRow(root.card.id, items, mapOf(root.card.id to root.card), model = model)
+        NoteRow(
+            eventId = root.card.id,
+            items = items,
+            cards = mapOf(root.card.id to root.card),
+            model = model,
+            onAuthorClick = onAuthorClick,
+        )
         if (root.attribution.isNotEmpty()) {
             val label = root.attribution
                 .take(3)
@@ -275,6 +299,7 @@ internal fun NoteRow(
     embedDepth: Int = 0,
     embedded: Boolean = false,
     model: KernelModel? = null,
+    onAuthorClick: ((String) -> Unit)? = null,
 ) {
     val item = items[eventId]
     val card = cards[eventId]
@@ -321,7 +346,7 @@ internal fun NoteRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.clickable(enabled = model != null && authorPubkey.isNotEmpty()) {
                 if (authorPubkey.isNotEmpty()) {
-                    model?.openAuthor(authorPubkey)
+                    onAuthorClick?.invoke(authorPubkey) ?: model?.openAuthor(authorPubkey)
                 }
             }
         ) {

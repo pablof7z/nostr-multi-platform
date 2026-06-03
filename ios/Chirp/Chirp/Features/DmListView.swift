@@ -158,10 +158,9 @@ private struct DmConversationRow: View {
 // surfaces a toast on a malformed key, D6).
 //
 // Contact picker: backed by `KernelModel.followList` (the active account's
-// NIP-02 follow list). Each entry is pre-formatted by Rust. The picker
-// filters by `shortNpub` as the user types; tapping an entry sets the
-// recipient field. The manual text field remains as a fallback for pasting
-// any pubkey not in the follow list.
+// NIP-02 follow list). Entries carry raw pubkeys; the picker filters the raw
+// pubkey as the user types. The manual text field remains as a fallback for
+// pasting any pubkey not in the follow list.
 
 private struct DmComposeSheet: View {
     @ObservedObject var store: DmInboxStore
@@ -279,4 +278,3 @@ private struct DmComposeSheet: View {
         dismiss()
     }
 }
-

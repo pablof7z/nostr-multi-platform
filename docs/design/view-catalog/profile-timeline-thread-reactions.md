@@ -108,7 +108,8 @@ Full rebuild on every kind:0 arrival; cheap, payload is small.
 
 ## 4. View: Timeline
 
-The workhorse. Paginated list of events matching a filter, with author display pre-formatted, sorted by `created_at` descending.
+The workhorse. Paginated list of events matching a filter, carrying raw author
+metadata and sorted by `created_at` descending.
 
 ### Spec
 
@@ -213,15 +214,15 @@ On projection change (e.g., author kind:0 arrived):
 
 `AppAction::AdvanceCursor { view_id }` triggers the actor to query the store for events older than the current cursor, append to `items`, emit `CursorAdvanced`. The planner concurrently issues a negentropy sync for the requested time window if not already covered (per spec §7.8). The action is non-blocking; if more events are available, they stream in via `Inserted` deltas after the action completes.
 
-### Best-effort placeholders
+### Best-effort absence
 
-| Field | Placeholder |
+| Field | Representation |
 |---|---|
-| `author_display` | shortened npub |
-| `author_picture` | identicon URI |
+| `author_display_name` | absent / null when kind:0 has no name |
+| `author_picture_url` | absent / null when kind:0 has no picture |
 | `author_nip05_domain` | empty string |
 | `content_preview` | empty if event content is empty; otherwise truncated event content |
-| `created_at_display` | pre-formatted ("3m ago", "yesterday", etc.) |
+| `created_at` | raw Unix timestamp |
 | `reaction_summary` | `ReactionSummary::default()` (all zeros) |
 | `zap_sats_total` | 0 |
 | `reply_count` | 0 |
