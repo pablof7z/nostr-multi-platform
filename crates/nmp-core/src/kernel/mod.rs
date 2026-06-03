@@ -2422,6 +2422,47 @@ impl Kernel {
         &mut self.lifecycle
     }
 
+    /// M2 (ADR-0042) — attach one owner to a generic feed interest and, when the
+    /// `(scope, key)` slot was newly installed, enqueue a recompile trigger so
+    /// the next compile pass emits the REQ. Shared by the `OpenInterest` and
+    /// `CloseInterest` dispatch arms (open calls this; close calls
+    /// [`Kernel::close_interest_sub`]).
+    ///
+    /// Returns `true` iff the interest was newly installed (the caller may use
+    /// this for diagnostics; the trigger enqueue is handled here so the two
+    /// dispatch arms cannot drift on the "trigger only on change" invariant).
+    pub(crate) fn open_interest_sub(
+        &mut self,
+        identity: crate::subs::SubIdentity,
+        interest: crate::planner::LogicalInterest,
+    ) -> bool {
+        let newly_installed = self.lifecycle.registry_mut().ensure_sub(identity, interest);
+        if newly_installed {
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
+                    reason: crate::subs::InvalidateReason::External("open-interest".to_string()),
+                });
+        }
+        newly_installed
+    }
+
+    /// M2 (ADR-0042) — detach one owner from a generic feed interest and, when
+    /// the last owner left (slot removed), enqueue a recompile trigger so the
+    /// next compile pass closes the REQ. Counterpart to
+    /// [`Kernel::open_interest_sub`].
+    ///
+    /// Returns `true` iff the slot was removed (last owner left).
+    pub(crate) fn close_interest_sub(&mut self, identity: &crate::subs::SubIdentity) -> bool {
+        let removed = self.lifecycle.registry_mut().drop_owner(identity);
+        if removed {
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
+                    reason: crate::subs::InvalidateReason::External("close-interest".to_string()),
+                });
+        }
+        removed
+    }
+
     /// Pre-populate `seed_contacts` for a given pubkey with the specified follows.
     /// Used during account creation so the follow-feed can be set up immediately
     /// without waiting for the kind:3 event to round-trip from relays.
