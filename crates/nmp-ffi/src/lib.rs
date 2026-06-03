@@ -556,19 +556,6 @@ pub struct NmpApp {
     /// content) so the wallet pay-invoice FFI shim can short-circuit a
     /// same-bolt11 retap before it crosses into `nmp-nip47`.
     pub(crate) inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
-    /// Idempotency guard for `nmp_app_create_new_account` (identity.rs).
-    ///
-    /// `nmp_app_create_new_account` sends `ActorCommand::CreateAccount`
-    /// directly. Without a guard, two rapid taps on the iOS "Create account"
-    /// button mint two distinct keypairs — the second overwrites the first and
-    /// the user loses the original nsec with no diagnostic signal.
-    ///
-    /// This slot holds the `Instant` of the last accepted dispatch. A
-    /// re-call within the create-account TTL (30 s) is a no-op. After the TTL
-    /// a legitimate retry (e.g. creation silently failed) is allowed through.
-    /// No actor coupling required: the guard lives entirely in the FFI layer,
-    /// same posture as `inflight_bolt11`.
-    pub(crate) creating_account_inflight: Mutex<Option<std::time::Instant>>,
 }
 
 impl Drop for NmpApp {
@@ -1010,10 +997,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // content); the wallet runtime that consumes the dispatched action
         // moved to `crates/nmp-nip47`.
         inflight_bolt11: Mutex::new(std::collections::HashMap::new()),
-        // create_account idempotency guard: None until first call; set to
-        // `Some(Instant::now())` by `nmp_app_create_new_account` and
-        // re-admits after the create-account TTL (30 s).
-        creating_account_inflight: Mutex::new(None),
     };
 
     // V-38: the `"wallet"` snapshot projection moved to `crates/nmp-nip47`.
