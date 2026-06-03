@@ -240,7 +240,7 @@ fn publish_compose(state: &mut AppState, runtime: &AppRuntime) {
     let Some((content, reply_to)) = state.take_compose() else {
         return;
     };
-    match runtime.publish_note(&content, reply_to.as_deref()) {
+    match runtime.publish_note(&content, reply_to.as_ref()) {
         Ok(correlation_id) => state.track_action(correlation_id, "note publish"),
         Err(error) => state.status = format!("publish failed: {error}"),
     }

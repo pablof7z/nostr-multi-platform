@@ -8,9 +8,13 @@ use std::sync::{Arc, Mutex};
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
     nmp_app_chirp_identity_restore, nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_marmot_unregister, nmp_signer_broker_init, ChirpHandle, MarmotHandle,
+    nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, ChirpHandle, MarmotHandle,
 };
+use nmp_core::tags::Nip10Refs;
 use nmp_core::{KindFilter, RawEventObserver};
+use nmp_nip01::NoteRecord;
+
+use crate::app::ReplyTarget;
 use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string,
     nmp_app_load_older_feed, nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline,
@@ -156,16 +160,23 @@ impl AppRuntime {
         self.dispatch_visible_note_relations("release", event_id)
     }
 
-    pub fn publish_note(&self, content: &str, reply_to: Option<&str>) -> Result<String> {
-        let action = json!({
-            "PublishNote": {
-                "content": content,
-                "reply_to_id": reply_to,
-                "target": "Auto"
-            }
-        })
-        .to_string();
-        self.dispatch_action("nmp.publish", &action)
+    pub fn publish_note(&self, content: &str, reply_to: Option<&ReplyTarget>) -> Result<String> {
+        // Reconstruct the minimal NoteRecord the NIP-10 reply builder needs.
+        // The home-feed projection carries the parent's author/content but not
+        // its own Nip10Refs, so `refs` defaults to empty: the builder then
+        // treats this parent as the thread root (correct for top-level replies,
+        // best-effort for deep threads). The shared `publish_note_action` is
+        // the single source of truth for the PublishRaw{kind:1} envelope and
+        // the marked-form reply / `p` re-notification tags.
+        let record = reply_to.map(|t| NoteRecord {
+            event_id: t.id.clone(),
+            author: t.author_pubkey.clone(),
+            created_at: t.created_at,
+            content: t.content.clone(),
+            refs: Nip10Refs::default(),
+        });
+        let (namespace, action) = publish_note_action(content, record.as_ref())?;
+        self.dispatch_action(&namespace, &action)
     }
 
     pub fn react(&self, event_id: &str, reaction: &str) -> Result<String> {

@@ -24,6 +24,7 @@ use nmp_app_chirp::{
     nmp_app_nostrconnect_uri, nmp_broker_free_string, nmp_marmot_unregister, nmp_signer_broker_init,
     ChirpClient, ChirpHandle, MarmotHandle,
 };
+use nmp_nip01::NoteRecord;
 use nmp_ffi::{
     nmp_app_dispatch_action,
     nmp_app_free, nmp_app_free_string, nmp_app_load_older_feed,
@@ -296,7 +297,11 @@ impl AppRuntime {
     // Social actions
     // ------------------------------------------------------------------
 
-    pub fn publish_note(&self, content: &str, reply_to: Option<&str>) -> Result<String, String> {
+    pub fn publish_note(
+        &self,
+        content: &str,
+        reply_to: Option<&NoteRecord>,
+    ) -> Result<String, String> {
         self.client.publish_note(content, reply_to)
     }
 

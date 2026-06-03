@@ -102,46 +102,53 @@ fn assert_action_has_fields(action_json: &str, expected_keys: &[&str], action_na
 // Test suite: envelope shape smoke tests (unit-level, no network)
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Test: PublishNote action envelope has required fields.
+/// Test: kind:1 note publish (`PublishRaw`) envelope has required fields.
 ///
 /// Validates:
 /// - Envelope JSON is well-formed
-/// - Top-level key is "PublishNote"
+/// - Top-level key is "PublishRaw"
+/// - "kind" is 1 (a note)
 /// - "content" field is present and non-empty
 /// - "target" field is present
 #[test]
 fn publish_note_envelope_has_required_fields() {
     // Simulate what ChirpClient::publish_note builds internally.
     let action = json!({
-        "PublishNote": {
+        "PublishRaw": {
+            "kind": 1,
+            "tags": [],
             "content": "Hello, cross-platform world!",
-            "reply_to_id": null,
             "target": "Auto"
         }
     })
     .to_string();
 
     // Validate the action JSON structure.
-    assert_action_has_fields(&action, &["PublishNote"], "publish_note");
+    assert_action_has_fields(&action, &["PublishRaw"], "publish_note");
 
     let obj = serde_json::from_str::<Value>(&action).unwrap();
-    let publish_note = &obj["PublishNote"];
+    let publish_raw = &obj["PublishRaw"];
 
-    assert!(
-        publish_note.get("content").and_then(Value::as_str).is_some(),
-        "publish_note: PublishNote.content must be present and a string"
+    assert_eq!(
+        publish_raw.get("kind").and_then(Value::as_u64),
+        Some(1),
+        "publish_note: PublishRaw.kind must be 1 (a note)"
     );
     assert!(
-        !publish_note
+        publish_raw.get("content").and_then(Value::as_str).is_some(),
+        "publish_note: PublishRaw.content must be present and a string"
+    );
+    assert!(
+        !publish_raw
             .get("content")
             .and_then(Value::as_str)
             .unwrap_or("")
             .is_empty(),
-        "publish_note: PublishNote.content must not be empty"
+        "publish_note: PublishRaw.content must not be empty"
     );
     assert!(
-        publish_note.get("target").is_some(),
-        "publish_note: PublishNote.target must be present"
+        publish_raw.get("target").is_some(),
+        "publish_note: PublishRaw.target must be present"
     );
 }
 
@@ -494,9 +501,10 @@ fn all_action_json_parses_valid() {
         (
             "publish_note",
             json!({
-                "PublishNote": {
+                "PublishRaw": {
+                    "kind": 1,
+                    "tags": [],
                     "content": "Test",
-                    "reply_to_id": null,
                     "target": "Auto"
                 }
             })
@@ -550,9 +558,10 @@ fn all_action_json_parses_valid() {
 fn action_json_serialization_is_deterministic() {
     // Build an action.
     let action = json!({
-        "PublishNote": {
+        "PublishRaw": {
+            "kind": 1,
+            "tags": [],
             "content": "Cross-platform test",
-            "reply_to_id": null,
             "target": "Auto"
         }
     });

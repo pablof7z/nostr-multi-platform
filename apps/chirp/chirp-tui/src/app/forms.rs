@@ -1,4 +1,4 @@
-use crate::app::{AppState, Mode};
+use crate::app::{AppState, Mode, ReplyTarget};
 use crate::short_id;
 
 impl AppState {
@@ -14,10 +14,16 @@ impl AppState {
             self.status = "select a note before replying".to_string();
             return;
         };
-        let row_id = row.id.clone();
+        let target = ReplyTarget {
+            id: row.id.clone(),
+            author_pubkey: row.author_pubkey.clone(),
+            content: row.content.clone(),
+            created_at: row.created_at,
+        };
+        let row_id = target.id.clone();
         self.mode = Mode::Compose;
         self.compose.clear();
-        self.reply_to = Some(row_id.clone());
+        self.reply_to = Some(target);
         self.status = format!(
             "replying to {}: Enter sends, Shift+Enter for newline, Esc cancels",
             short_id(&row_id)
@@ -74,7 +80,7 @@ impl AppState {
         self.compose.pop();
     }
 
-    pub fn take_compose(&mut self) -> Option<(String, Option<String>)> {
+    pub fn take_compose(&mut self) -> Option<(String, Option<ReplyTarget>)> {
         let content = self.compose.trim().to_string();
         if content.is_empty() {
             self.status = "compose is empty".to_string();
