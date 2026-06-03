@@ -99,7 +99,7 @@ extension OnboardingView {
 
             HStack(spacing: ChirpSpace.s) {
                 Button {
-                    model.signInBunker(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines))
+                    model.addSigner(bunkerUri: bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines), makeActive: true)
                 } label: {
                     Label("Connect", systemImage: "arrow.right.circle.fill")
                         .font(ChirpFont.headline)

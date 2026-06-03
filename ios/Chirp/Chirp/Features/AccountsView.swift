@@ -161,7 +161,7 @@ private struct AddAccountSheet: View {
                 .autocorrectionDisabled()
 
             Button {
-                model.signInNsec(nsec.trimmingCharacters(in: .whitespacesAndNewlines))
+                model.addSigner(localNsec: nsec.trimmingCharacters(in: .whitespacesAndNewlines), makeActive: true)
                 dismiss()
             } label: {
                 Label("Sign in", systemImage: "key.fill")
@@ -212,7 +212,7 @@ private struct AddAccountSheet: View {
                 let trimmed = bunkerURI.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
                 bunkerSubmitted = true
-                model.signInBunker(trimmed)
+                model.addSigner(bunkerUri: trimmed, makeActive: true)
             } label: {
                 Label(connectButtonTitle, systemImage: "network")
             }

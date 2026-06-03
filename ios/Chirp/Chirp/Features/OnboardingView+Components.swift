@@ -142,7 +142,7 @@ extension OnboardingView {
                             .focused($nsecFieldFocused)
 
                         Button {
-                            model.signInNsec(nsec.trimmingCharacters(in: .whitespacesAndNewlines))
+                            model.addSigner(localNsec: nsec.trimmingCharacters(in: .whitespacesAndNewlines), makeActive: true)
                         } label: {
                             Label("Sign in", systemImage: "key.fill")
                                 .font(.headline)

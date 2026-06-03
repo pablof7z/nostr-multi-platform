@@ -46,7 +46,7 @@ struct ChirpApp: App {
                     if let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
                        let bunkerUri = comps.queryItems?.first(where: { $0.name == "bunker_uri" || $0.name == "uri" })?.value,
                        bunkerUri.hasPrefix("bunker://") {
-                        model.signInBunker(bunkerUri)
+                        model.addSigner(bunkerUri: bunkerUri, makeActive: true)
                     }
                 }
         }

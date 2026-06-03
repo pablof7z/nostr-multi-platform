@@ -446,12 +446,23 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     // business logic, no cached state (D5/D8) — every accessor above is a
     // pure read of the kernel snapshot.
 
-    func signInNsec(_ secret: String) {
-        kmLog.info("signInNsec dispatched (len=\(secret.count))")
+    /// Add a local-key (nsec) signer. Mirrors the Rust `add_signer(source:
+    /// SignerSource::LocalNsec, make_active:)` API. The nsec path routes
+    /// through the Chirp/Marmot identity FFI so the MLS registration
+    /// side-effect is preserved (a bare `add_signer` on `NmpApp` would not
+    /// register Marmot). `makeActive` is plumbed for API parity; the current
+    /// Chirp identity FFI always activates the imported account.
+    func addSigner(localNsec secret: String, makeActive: Bool = true) {
+        kmLog.info("addSigner(localNsec) dispatched (len=\(secret.count), makeActive=\(makeActive))")
         kernel.signInNsecAndRegisterMarmot(secret)
     }
 
-    func signInBunker(_ uri: String) { kernel.signInBunker(uri) }
+    /// Add a NIP-46 remote (bunker) signer. Mirrors the Rust `add_signer(source:
+    /// SignerSource::Bunker, make_active:)` API. Flows through the signer
+    /// broker, which drives the connect handshake and emits `AddRemoteSigner`.
+    func addSigner(bunkerUri uri: String, makeActive: Bool = true) {
+        kernel.signInBunker(uri)
+    }
 
     /// Cancel an in-flight NIP-46 handshake. The handshake projection is part
     /// of `snapshot`, so reading `bunkerHandshake` reconciles automatically

@@ -183,10 +183,16 @@ final class KernelHandle {
 
     // ── T66a identity / publish / multi-account / relay-edit ──────────────
 
-    func signInNsec(_ secret: String) {
-        secret.withCString { nmp_app_signin_nsec(raw, $0) }
-    }
+    // NOTE: the local-nsec sign-in path does NOT go through `nmp_app_signin_nsec`
+    // here — `KernelModel.addSigner(localNsec:)` routes through
+    // `MarmotBridge.signInNsecAndRegisterMarmot` (the Chirp/Marmot identity FFI)
+    // so the MLS registration side-effect is preserved. The bare
+    // `nmp_app_signin_nsec` wrapper that used to live here had no callers and was
+    // removed when the Rust `add_signer` redesign landed.
 
+    // TODO: update to add_signer API — swap to the new `nmp_app_add_signer_*`
+    // C ABI once the parallel Rust agent lands it; for now this still calls the
+    // existing `nmp_app_signin_bunker` symbol (not in the deletion list).
     func signInBunker(_ uri: String) {
         uri.withCString { nmp_app_signin_bunker(raw, $0) }
     }
