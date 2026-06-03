@@ -3,11 +3,9 @@ use nmp_threading::{ThreadPointer, TimelineBlock};
 
 use super::*;
 use crate::note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
-use crate::profile_display::AuthorDisplay;
 use crate::timeline_projection::{
-    ContentEventRenderData, ContentProfileRenderData, ContentRenderData, ModularTimelineSnapshot,
-    RepostAttribution, TimelineEventCard, TimelineWindowCursor, TimelineWindowMetrics,
-    TimelineWindowPage,
+    ModularTimelineSnapshot, RepostAttribution, TimelineEventCard, TimelineWindowCursor,
+    TimelineWindowMetrics, TimelineWindowPage,
 };
 
 fn event_id(byte: u8) -> String {
@@ -38,65 +36,20 @@ fn loading_counts() -> NoteRelationCounts {
     }
 }
 
-fn full_author_display() -> AuthorDisplay {
-    AuthorDisplay {
-        name: Some("Alice".to_string()),
-        npub: Some("npub1alice".to_string()),
-        picture_url: Some("https://example.com/a.png".to_string()),
-    }
-}
-
-fn fallback_author_display() -> AuthorDisplay {
-    AuthorDisplay {
-        name: None,
-        npub: Some("npub1bob".to_string()),
-        picture_url: None,
-    }
-}
-
 fn rich_content_tree() -> ContentTreeWire {
     use nmp_content::{tokenize_with_kind, RenderMode};
     tokenize_with_kind("hello #nostr https://example.com", &[], RenderMode::Auto, 1).to_wire()
-}
-
-fn rich_content_render() -> ContentRenderData {
-    let mut render = ContentRenderData::default();
-    render.profiles.insert(
-        event_id(0x11),
-        ContentProfileRenderData {
-            pubkey: event_id(0x11),
-            display: full_author_display(),
-        },
-    );
-    render.events.insert(
-        event_id(0x22),
-        ContentEventRenderData {
-            id: event_id(0x22),
-            author_pubkey: event_id(0x33),
-            author_display: fallback_author_display(),
-            kind: 1,
-            created_at: 1_700_000_100,
-            content_preview: "embedded preview".to_string(),
-            content_tree: rich_content_tree(),
-        },
-    );
-    render
 }
 
 fn sample_card() -> TimelineEventCard {
     TimelineEventCard {
         id: event_id(0x01),
         author_pubkey: event_id(0x02),
-        author_display: full_author_display(),
         kind: 1,
         created_at: 1_700_000_000,
         content: "hello world".to_string(),
         content_tree: rich_content_tree(),
-        content_render: rich_content_render(),
         relation_counts: known_counts(),
-        author_display_name: Some("Alice".to_string()),
-        author_picture_url: Some("https://example.com/a.png".to_string()),
-        content_preview: "hello world".to_string(),
         reposted_by: None,
     }
 }
@@ -105,15 +58,9 @@ fn repost_card() -> TimelineEventCard {
     let mut card = sample_card();
     card.id = event_id(0x09);
     card.kind = 6;
-    card.author_display = fallback_author_display();
-    card.author_display_name = None;
-    card.author_picture_url = None;
     card.relation_counts = loading_counts();
     card.reposted_by = Some(RepostAttribution {
         author_pubkey: event_id(0x42),
-        author_display: full_author_display(),
-        author_display_name: Some("Alice".to_string()),
-        author_picture_url: Some("https://example.com/a.png".to_string()),
         note_created_at: 1_699_000_000,
     });
     card
@@ -269,14 +216,12 @@ fn card_with_repost_round_trips() {
 }
 
 #[test]
-fn card_absent_display_fields_stay_none() {
-    let mut card = sample_card();
-    card.author_display = fallback_author_display();
-    card.author_display_name = None;
-    card.author_picture_url = None;
+fn repost_attribution_carries_raw_pubkey_only() {
+    // GH #920: `RepostAttribution` is raw pubkey + `note_created_at`; the wire
+    // round-trip preserves exactly those, with no denormalized display copy.
     let snapshot = ModularTimelineSnapshot {
         blocks: Vec::new(),
-        cards: vec![card],
+        cards: vec![repost_card()],
         page: None,
         metrics: None,
     };
@@ -284,11 +229,12 @@ fn card_absent_display_fields_stay_none() {
 
     let decoded =
         decode_modular_timeline_snapshot(&encode_modular_timeline_snapshot(&snapshot)).unwrap();
-    let card = &decoded.cards[0];
-    assert_eq!(card.author_display_name, None);
-    assert_eq!(card.author_picture_url, None);
-    assert_eq!(card.author_display.name, None);
-    assert_eq!(card.author_display.picture_url, None);
+    let attribution = decoded.cards[0]
+        .reposted_by
+        .as_ref()
+        .expect("repost attribution present");
+    assert_eq!(attribution.author_pubkey, event_id(0x42));
+    assert_eq!(attribution.note_created_at, 1_699_000_000);
 }
 
 #[test]

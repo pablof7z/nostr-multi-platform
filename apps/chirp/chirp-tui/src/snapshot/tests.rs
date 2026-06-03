@@ -164,25 +164,16 @@ fn op_feed_snapshot_value() -> Value {
             "card": {
                 "id": "aa".repeat(32),
                 "author_pubkey": "bb".repeat(32),
-                "author_display": {
-                    "name": "Alice",
-                    "npub": "npub1alice",
-                    "picture_url": "https://example.com/a.png"
-                },
                 "kind": 1,
                 "created_at": 1_700_000_000u64,
                 "content": "a thread root",
                 "content_tree": { "nodes": [], "roots": [], "mode": "Plain" },
-                "content_render": { "profiles": {}, "events": {} },
                 "relation_counts": {
                     "replies": { "state": "known", "count": 2 },
                     "reactions": { "state": "known", "count": 0 },
                     "reposts": { "state": "known", "count": 0 },
                     "zaps": { "state": "known", "count": 0 }
-                },
-                "author_display_name": "Alice",
-                "author_picture_url": "https://example.com/a.png",
-                "content_preview": "a thread root"
+                }
             },
             "attribution": [{
                 "author_pubkey": "cc".repeat(32),

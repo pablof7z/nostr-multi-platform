@@ -80,14 +80,6 @@ pub fn profile_from_event(event: &KernelEvent) -> Option<ProfileDisplay> {
     })
 }
 
-#[must_use]
-pub fn should_replace(current: Option<&ProfileDisplay>, candidate: &ProfileDisplay) -> bool {
-    current.is_none_or(|profile| {
-        candidate.created_at > profile.created_at
-            || (candidate.created_at == profile.created_at && candidate.event_id < profile.event_id)
-    })
-}
-
 fn string_field(value: &serde_json::Value, key: &str) -> Option<String> {
     value
         .get(key)
@@ -137,20 +129,4 @@ mod tests {
         assert_eq!(profile.picture_url, None);
     }
 
-    #[test]
-    fn replacement_uses_created_at_then_event_id() {
-        let old = ProfileDisplay {
-            display: Some("old".to_string()),
-            picture_url: None,
-            created_at: 10,
-            event_id: "b".to_string(),
-        };
-        let tie_winner = ProfileDisplay {
-            display: Some("new".to_string()),
-            picture_url: None,
-            created_at: 10,
-            event_id: "a".to_string(),
-        };
-        assert!(should_replace(Some(&old), &tie_winner));
-    }
 }

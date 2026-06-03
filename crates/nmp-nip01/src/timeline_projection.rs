@@ -22,7 +22,7 @@ use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
 use crate::note_relations::{NoteRelationCounts, NoteRelationIndex};
-use crate::profile_display::{profile_from_event, should_replace, AuthorDisplay, ProfileDisplay};
+use crate::profile_display::{profile_from_event, AuthorDisplay};
 
 pub use nmp_feed::{
     FeedCursor as TimelineWindowCursor, FeedPage as TimelineWindowPage,
@@ -46,56 +46,44 @@ pub use nmp_feed::{
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TimelineEventCard {
     pub id: String,
+    /// Author Nostr pubkey, hex (64 chars). The presentation layer joins
+    /// against the snapshot's `resolved_profiles` map (keyed by pubkey) for
+    /// the display name / picture — the row carries no denormalized display
+    /// copy of its own (aim.md §2 — raw protocol data only).
     pub author_pubkey: String,
-    pub author_display: AuthorDisplay,
     pub kind: u32,
     pub created_at: u64,
     pub content: String,
+    /// Structural parse of `content` (NIP-19 URIs, hashtags, links). This is
+    /// a protocol projection of the note body, not a render decision — the
+    /// presentation layer walks the tree to lay out mentions / embeds, and
+    /// resolves any referenced profile/event via the snapshot's
+    /// `resolved_profiles` / `claimed_events` maps.
     pub content_tree: ContentTreeWire,
-    /// Kernel-owned render facts for URI nodes in `content_tree`.
-    ///
-    /// The tree stays a protocol projection. This companion payload carries
-    /// best-known, already-ingested kind:0/profile and quote-event facts so
-    /// render shells can display names and embed cards without decoding,
-    /// fetching, or inventing policy.
-    pub content_render: ContentRenderData,
     pub relation_counts: NoteRelationCounts,
-    /// Flat mirror of `author_display.name` for renderers that want a
-    /// simple display-name field without decoding the nested
-    /// `AuthorDisplay` object. `None` when no kind:0 has arrived yet for
-    /// this author — presentation layer falls back to formatting
-    /// `author_pubkey` itself.
-    pub author_display_name: Option<String>,
-    /// Author's profile picture URL from kind:0. `None` when no kind:0
-    /// has arrived, or the kind:0 omits `picture` — presentation layer
-    /// chooses a placeholder/identicon strategy.
-    pub author_picture_url: Option<String>,
-    /// First 180 Unicode scalars of render content, no ellipsis appended.
-    /// Scalar-based (`chars()`) rather than grapheme-cluster-based; for
-    /// Nostr text this is indistinguishable in practice.
-    pub content_preview: String,
     /// `None` for ordinary notes; `Some` when this card was surfaced because
-    /// a NIP-18 kind:6 repost superseded the original. The `author_*` fields
-    /// above name the *original* note's author; this struct names who
-    /// reposted it and when the original was authored (so the UI can show
-    /// "<original-author> · <note-time> · ↻ reposted by <reposter>").
+    /// a NIP-18 kind:6 repost superseded the original. `author_pubkey` /
+    /// `content` above name the *original* note; this struct names who
+    /// reposted it (raw pubkey) and when the original was authored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reposted_by: Option<RepostAttribution>,
 }
 
 /// Attribution payload for a card whose surfacing was driven by a repost.
-/// Sibling to the card's primary author fields — those name the *original*
-/// note's author; these fields name the *reposter*.
+/// Sibling to the card's primary author field — that names the *original*
+/// note's author; this names the *reposter*.
+///
+/// Raw protocol data only: the reposter's hex pubkey and the original note's
+/// publish time. The presentation layer resolves the reposter's display name /
+/// picture via the snapshot's `resolved_profiles` map (aim.md §2).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RepostAttribution {
+    /// Reposter (kind:6 wrapper author) Nostr pubkey, hex (64 chars).
     pub author_pubkey: String,
-    pub author_display: AuthorDisplay,
-    pub author_display_name: Option<String>,
-    pub author_picture_url: Option<String>,
-    /// Original note's publish time. The card's own `created_at` is the
-    /// repost timestamp (used as the feed-cursor sort key so the repost
-    /// bumps the note to the top); this is the timestamp the UI shows next
-    /// to the original author.
+    /// Original note's publish time (Unix seconds). The card's own
+    /// `created_at` is the repost timestamp (the feed-cursor sort key, so the
+    /// repost bumps the note to the top); this is the timestamp the UI shows
+    /// next to the original author.
     pub note_created_at: u64,
 }
 
@@ -132,18 +120,13 @@ impl TimelineEventCard {
     /// the wrapper's (repost) timestamp so the feed cursor bumps the card.
     #[must_use]
     pub fn from_event_for_op_feed(event: &KernelEvent, target: Option<&KernelEvent>) -> Self {
-        let profiles: BoundedMessageMap<String, ProfileDisplay> =
-            BoundedMessageMap::new(MAX_PROJECTION_MESSAGES);
-        let cards: BoundedMessageMap<String, TimelineEventCard> =
-            BoundedMessageMap::new(MAX_PROJECTION_MESSAGES);
-
         let Some(repost) = try_from_repost_event(event) else {
             // Plain root: build directly from the event.
             let counts = NoteRelationCounts::for_note(
                 &event.id,
                 crate::note_relations::TargetRelationCounts::default(),
             );
-            return Self::from_event(event, None, &profiles, &cards, counts);
+            return Self::from_event(event, counts);
         };
 
         // Reposted root: the card identity is the superseded target id.
@@ -159,30 +142,21 @@ impl TimelineEventCard {
                 &target_event.id,
                 crate::note_relations::TargetRelationCounts::default(),
             );
-            (
-                Self::from_event(target_event, None, &profiles, &cards, counts),
-                target_event.created_at,
-            )
+            (Self::from_event(target_event, counts), target_event.created_at)
         } else if let Some(inner) = repost.embedded_event.as_ref() {
             // L-1: the wrapper embeds the inner note. `from_event` decodes it.
             let counts = NoteRelationCounts::for_note(
                 &target_id,
                 crate::note_relations::TargetRelationCounts::default(),
             );
-            (
-                Self::from_event(event, None, &profiles, &cards, counts),
-                inner.created_at,
-            )
+            (Self::from_event(event, counts), inner.created_at)
         } else {
             // L-3: e-tag-only repost, target not yet local → placeholder body.
             let counts = NoteRelationCounts::for_note(
                 &target_id,
                 crate::note_relations::TargetRelationCounts::default(),
             );
-            (
-                Self::from_event(event, None, &profiles, &cards, counts),
-                event.created_at,
-            )
+            (Self::from_event(event, counts), event.created_at)
         };
 
         // Force the card identity to the target id; the engine keys by it.
@@ -190,22 +164,13 @@ impl TimelineEventCard {
         // Stamp repost provenance (the wrapper author) and the repost timestamp.
         card.reposted_by = Some(RepostAttribution {
             author_pubkey: event.author.clone(),
-            author_display: AuthorDisplay::fallback(&event.author),
-            author_display_name: None,
-            author_picture_url: None,
             note_created_at,
         });
         card.created_at = event.created_at;
         card
     }
 
-    fn from_event(
-        event: &KernelEvent,
-        profile: Option<&ProfileDisplay>,
-        profiles: &BoundedMessageMap<String, ProfileDisplay>,
-        cards: &BoundedMessageMap<String, TimelineEventCard>,
-        relation_counts: NoteRelationCounts,
-    ) -> Self {
+    fn from_event(event: &KernelEvent, relation_counts: NoteRelationCounts) -> Self {
         let render_payload = RenderPayload::from_event(event);
         let content_tree = tokenize_with_kind(
             &render_payload.content,
@@ -214,24 +179,13 @@ impl TimelineEventCard {
             render_payload.kind,
         )
         .to_wire();
+        // For an embedded repost the original note's author is decoupled from
+        // the outer kind:6 wrapper's author; surface the original author here.
         let display_author = render_payload.author.as_deref().unwrap_or(&event.author);
-        let display_profile = if render_payload.author.is_some() {
-            // Embedded note's author is decoupled from the outer event's
-            // author; consult the profile cache directly rather than the
-            // outer event's pre-fetched `profile` argument.
-            profiles.get(display_author)
-        } else {
-            profile
-        };
-        let author_display = AuthorDisplay::from_profile(display_author, display_profile);
-        let author_display_name = author_display.name.clone();
-        let author_picture_url = author_display.picture_url.clone();
-        let content_render = content_render_for(&content_tree, profiles, cards);
-        let reposted_by = render_payload.repost_attribution(&event.author, profiles);
+        let reposted_by = render_payload.repost_attribution(&event.author);
         Self {
             id: event.id.clone(),
             author_pubkey: display_author.to_string(),
-            author_display,
             kind: render_payload.kind,
             // Sort key: the outer event's `created_at`. For reposts this is
             // the repost time (so the card bumps to the top); for ordinary
@@ -239,11 +193,7 @@ impl TimelineEventCard {
             created_at: event.created_at,
             content: render_payload.content,
             content_tree,
-            content_render,
             relation_counts,
-            author_display_name,
-            author_picture_url,
-            content_preview: content_preview(&render_payload.preview_source, 180),
             reposted_by,
         }
     }
@@ -272,53 +222,8 @@ pub struct ContentEventRenderData {
     pub content_tree: ContentTreeWire,
 }
 
-fn content_render_for(
-    tree: &ContentTreeWire,
-    profiles: &BoundedMessageMap<String, ProfileDisplay>,
-    cards: &BoundedMessageMap<String, TimelineEventCard>,
-) -> ContentRenderData {
-    let mut data = ContentRenderData::default();
-    for node in &tree.nodes {
-        match node {
-            WireNode::Mention { uri } if uri.kind == WireNostrUriKind::Profile => {
-                let pubkey = &uri.primary_id;
-                data.profiles
-                    .entry(pubkey.clone())
-                    .or_insert_with(|| ContentProfileRenderData {
-                        pubkey: pubkey.clone(),
-                        display: AuthorDisplay::from_profile(pubkey, profiles.get(pubkey)),
-                    });
-            }
-            WireNode::EventRef { uri } if uri.kind == WireNostrUriKind::Event => {
-                if let Some(card) = cards.get(uri.primary_id.as_str()) {
-                    data.events
-                        .entry(uri.primary_id.clone())
-                        .or_insert_with(|| ContentEventRenderData::from(card));
-                }
-            }
-            _ => {}
-        }
-    }
-    data
-}
-
-impl From<&TimelineEventCard> for ContentEventRenderData {
-    fn from(card: &TimelineEventCard) -> Self {
-        Self {
-            id: card.id.clone(),
-            author_pubkey: card.author_pubkey.clone(),
-            author_display: card.author_display.clone(),
-            kind: card.kind,
-            created_at: card.created_at,
-            content_preview: card.content_preview.clone(),
-            content_tree: card.content_tree.clone(),
-        }
-    }
-}
-
 struct RenderPayload {
     content: String,
-    preview_source: String,
     tags: Vec<Vec<String>>,
     kind: u32,
     /// `Some` when the source event is a NIP-18 repost with an embedded
@@ -337,7 +242,6 @@ impl RenderPayload {
         if let Some(repost) = try_from_repost_event(event) {
             if let Some(inner) = repost.embedded_event {
                 return Self {
-                    preview_source: inner.content.clone(),
                     content: inner.content,
                     tags: inner.tags,
                     kind: inner.kind,
@@ -351,7 +255,6 @@ impl RenderPayload {
             // come from the outer kind:6 (caller's existing behaviour).
             return Self {
                 content: String::new(),
-                preview_source: String::new(),
                 tags: Vec::new(),
                 kind: KIND_SHORT_NOTE,
                 author: None,
@@ -361,7 +264,6 @@ impl RenderPayload {
 
         Self {
             content: event.content.clone(),
-            preview_source: event.content.clone(),
             tags: event.tags.clone(),
             kind: event.kind,
             author: None,
@@ -372,22 +274,13 @@ impl RenderPayload {
     /// Build the `reposted_by` attribution from the *outer* event (the
     /// kind:6 wrapper). Returns `None` for ordinary notes and for e-tag-only
     /// reposts (no inner note → no original-author/timestamp split to
-    /// surface).
-    fn repost_attribution(
-        &self,
-        outer_author: &str,
-        profiles: &BoundedMessageMap<String, ProfileDisplay>,
-    ) -> Option<RepostAttribution> {
+    /// surface). Carries the reposter's raw pubkey only — the presentation
+    /// layer resolves the display name via the snapshot `resolved_profiles`
+    /// map (aim.md §2).
+    fn repost_attribution(&self, outer_author: &str) -> Option<RepostAttribution> {
         let note_created_at = self.note_created_at?;
-        let reposter_profile = profiles.get(outer_author);
-        let author_display = AuthorDisplay::from_profile(outer_author, reposter_profile);
-        let author_display_name = author_display.name.clone();
-        let author_picture_url = author_display.picture_url.clone();
         Some(RepostAttribution {
             author_pubkey: outer_author.to_string(),
-            author_display,
-            author_display_name,
-            author_picture_url,
             note_created_at,
         })
     }
@@ -395,11 +288,6 @@ impl RenderPayload {
 
 fn has_render_card(event: &KernelEvent) -> bool {
     crate::try_from_kernel_event(event).is_some() || try_from_repost_event(event).is_some()
-}
-
-/// First `n` Unicode scalars of `content`, no ellipsis.
-fn content_preview(content: &str, n: usize) -> String {
-    content.chars().take(n).collect()
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -455,7 +343,6 @@ struct Inner {
     state: ModularTimelineState,
     window: nmp_feed::FeedWindowState,
     cards: BoundedMessageMap<String, TimelineEventCard>,
-    profiles: BoundedMessageMap<String, ProfileDisplay>,
     relations: NoteRelationIndex,
 }
 
@@ -469,7 +356,6 @@ impl ModularTimelineProjection {
                 state,
                 window: nmp_feed::FeedWindowState::default(),
                 cards: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
-                profiles: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
                 relations: NoteRelationIndex::default(),
             }),
             suppression: empty_suppression_lookup(),
@@ -613,12 +499,11 @@ impl KernelEventObserver for ModularTimelineProjection {
             return;
         };
         let ctx = ViewContext::default();
-        if let Some(profile) = profile_from_event(event) {
-            if should_replace(inner.profiles.get(&event.author), &profile) {
-                inner.profiles.insert(event.author.clone(), profile);
-                inner.refresh_author_cards(&event.author);
-                inner.refresh_content_render_data();
-            }
+        // kind:0 carries no card and the card row no longer denormalizes any
+        // profile display (the presentation layer joins against the snapshot's
+        // `resolved_profiles` map). So profile events are inert for this
+        // projection — skip them entirely.
+        if profile_from_event(event).is_some() {
             return;
         }
         let changed_relation_targets = inner.relations.ingest(event);
@@ -626,17 +511,9 @@ impl KernelEventObserver for ModularTimelineProjection {
             inner.refresh_relation_counts(&target);
         }
         if has_render_card(event) {
-            let profile = inner.profiles.get(&event.author).cloned();
             let relation_counts = inner.relations.counts_for(&event.id);
-            let card = TimelineEventCard::from_event(
-                event,
-                profile.as_ref(),
-                &inner.profiles,
-                &inner.cards,
-                relation_counts,
-            );
+            let card = TimelineEventCard::from_event(event, relation_counts);
             inner.cards.insert(event.id.clone(), card);
-            inner.refresh_content_render_data();
         }
         let _ = Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event);
         // delta unused — projection takes snapshots directly
@@ -644,85 +521,11 @@ impl KernelEventObserver for ModularTimelineProjection {
 }
 
 impl Inner {
-    fn refresh_author_cards(&mut self, author: &str) {
-        let profile = self.profiles.get(author);
-        for card in self.cards.values_mut() {
-            if card.author_pubkey == author {
-                card.author_display = AuthorDisplay::from_profile(author, profile);
-                // V-27 thin-shell: keep the flat mirror in sync so host
-                // renderers see the profile-loaded display name on the next
-                // snapshot.
-                card.author_display_name = card.author_display.name.clone();
-                // V-32 thin-shell: same rationale for the picture URL —
-                // when a kind:0 arrives after the note, the card's
-                // identicon placeholder must be replaced by the parsed
-                // profile picture on the next snapshot.
-                card.author_picture_url = card.author_display.picture_url.clone();
-            }
-            // Repost cards carry a second author (the reposter) on
-            // `reposted_by`. When that author's kind:0 lands later, refresh
-            // the attribution so the UI shows the resolved display name.
-            if let Some(attribution) = card.reposted_by.as_mut() {
-                if attribution.author_pubkey == author {
-                    attribution.author_display = AuthorDisplay::from_profile(author, profile);
-                    attribution.author_display_name = attribution.author_display.name.clone();
-                    attribution.author_picture_url = attribution.author_display.picture_url.clone();
-                }
-            }
-        }
-    }
-
-    fn refresh_content_render_data(&mut self) {
-        let profiles = &self.profiles;
-        let cards = self.cards.values().cloned().collect::<Vec<_>>();
-        let card_lookup = {
-            let mut lookup = BTreeMap::new();
-            for card in &cards {
-                lookup.insert(card.id.clone(), ContentEventRenderData::from(card));
-            }
-            lookup
-        };
-        for card in self.cards.values_mut() {
-            card.content_render =
-                content_render_for_snapshot(&card.content_tree, profiles, &card_lookup);
-        }
-    }
-
     fn refresh_relation_counts(&mut self, event_id: &str) {
         if let Some(card) = self.cards.get_mut(event_id) {
             card.relation_counts = self.relations.counts_for(event_id);
         }
     }
-}
-
-fn content_render_for_snapshot(
-    tree: &ContentTreeWire,
-    profiles: &BoundedMessageMap<String, ProfileDisplay>,
-    cards: &BTreeMap<String, ContentEventRenderData>,
-) -> ContentRenderData {
-    let mut data = ContentRenderData::default();
-    for node in &tree.nodes {
-        match node {
-            WireNode::Mention { uri } if uri.kind == WireNostrUriKind::Profile => {
-                let pubkey = &uri.primary_id;
-                data.profiles
-                    .entry(pubkey.clone())
-                    .or_insert_with(|| ContentProfileRenderData {
-                        pubkey: pubkey.clone(),
-                        display: AuthorDisplay::from_profile(pubkey, profiles.get(pubkey)),
-                    });
-            }
-            WireNode::EventRef { uri } if uri.kind == WireNostrUriKind::Event => {
-                if let Some(card) = cards.get(&uri.primary_id) {
-                    data.events
-                        .entry(uri.primary_id.clone())
-                        .or_insert_with(|| card.clone());
-                }
-            }
-            _ => {}
-        }
-    }
-    data
 }
 
 fn sorted_projection_blocks(inner: &Inner) -> Vec<TimelineBlock> {

@@ -91,20 +91,25 @@ fn cards_include_known_reply_counts_and_loading_relation_interests() {
 }
 
 #[test]
-fn kind0_profile_refines_existing_author_display() {
+fn card_carries_raw_pubkey_and_kind0_does_not_mutate_it() {
+    // GH #920: the card no longer denormalizes any kind:0 display copy. The
+    // raw hex pubkey is the author identity it carries; a kind:0 for the
+    // author neither adds a card nor mutates the existing one (display is
+    // resolved at the snapshot layer via `resolved_profiles`).
     let author = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     let proj = ModularTimelineProjection::new(&spec());
     proj.on_kernel_event(&note_by("S", author, 1, vec![]));
 
     let before = proj.snapshot();
     let card = before.cards.iter().find(|c| c.id == "S").expect("card");
-    assert_eq!(card.author_display.name, None);
+    assert_eq!(card.author_pubkey, author);
 
     proj.on_kernel_event(&profile_event(author, "Alice"));
 
     let after = proj.snapshot();
+    assert_eq!(after.cards.len(), 1, "kind:0 adds no card");
     let card = after.cards.iter().find(|c| c.id == "S").expect("card");
-    assert_eq!(card.author_display.name.as_deref(), Some("Alice"));
+    assert_eq!(card.author_pubkey, author);
 }
 
 #[test]

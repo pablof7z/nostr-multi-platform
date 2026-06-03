@@ -4,10 +4,8 @@ use nmp_threading::{ThreadPointer, TimelineBlock};
 
 use super::fb;
 use crate::note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
-use crate::profile_display::AuthorDisplay;
 use crate::timeline_projection::{
-    ContentEventRenderData, ContentProfileRenderData, ContentRenderData, ModularTimelineSnapshot,
-    RepostAttribution, TimelineEventCard,
+    ModularTimelineSnapshot, RepostAttribution, TimelineEventCard,
 };
 
 // ===========================================================================
@@ -117,14 +115,6 @@ fn decode_block(block: fb::TimelineBlockEntry<'_>) -> Result<TimelineBlock, Stri
     }
 }
 
-fn decode_author_display(display: fb::AuthorDisplay<'_>) -> AuthorDisplay {
-    AuthorDisplay {
-        name: optional_string(display.has_name(), display.name()),
-        npub: optional_string(display.has_npub(), display.npub()),
-        picture_url: optional_string(display.has_picture_url(), display.picture_url()),
-    }
-}
-
 fn decode_relation_count(count: fb::RelationCount<'_>) -> Result<RelationCount, String> {
     match count.state() {
         fb::RelationCountState::Known => Ok(RelationCount::Known {
@@ -160,25 +150,13 @@ fn decode_relation_counts(
 fn decode_repost_attribution(
     attribution: fb::RepostAttribution<'_>,
 ) -> Result<RepostAttribution, String> {
-    let author_display = decode_author_display(
-        attribution
-            .author_display()
-            .ok_or("RepostAttribution missing author_display")?,
-    );
+    // GH #920: only the reposter's raw pubkey + `note_created_at` survive on
+    // the struct. The display slots remain on the wire but are not read back.
     Ok(RepostAttribution {
         author_pubkey: attribution
             .author_pubkey()
             .ok_or("RepostAttribution missing author_pubkey")?
             .to_string(),
-        author_display,
-        author_display_name: optional_string(
-            attribution.has_author_display_name(),
-            attribution.author_display_name(),
-        ),
-        author_picture_url: optional_string(
-            attribution.has_author_picture_url(),
-            attribution.author_picture_url(),
-        ),
         note_created_at: attribution.note_created_at(),
     })
 }
@@ -190,8 +168,6 @@ fn decode_repost_attribution(
 /// identical per-card decoding — including the embedded typed NFCT content tree
 /// and `content_render` — rather than re-deriving it (ADR-0038 Commitment 2).
 pub(crate) fn decode_card(card: fb::TimelineEventCard<'_>) -> Result<TimelineEventCard, String> {
-    let author_display =
-        decode_author_display(card.author_display().ok_or("card missing author_display")?);
     let relation_counts = decode_relation_counts(
         card.relation_counts()
             .ok_or("card missing relation_counts")?,
@@ -202,34 +178,22 @@ pub(crate) fn decode_card(card: fb::TimelineEventCard<'_>) -> Result<TimelineEve
         .transpose()?;
 
     let content_tree = decode_content_tree_bytes(card.content_tree_bytes())?;
-    let content_render = card
-        .content_render()
-        .map(decode_content_render)
-        .transpose()?
-        .unwrap_or_default();
 
+    // GH #920: the card no longer carries `author_display`, the flat display
+    // mirrors, `content_preview`, or `content_render`. The wire still ships
+    // those slots (kept byte-identical pending the cross-language follow-up);
+    // the decoder simply does not read them back into the slimmed struct.
     Ok(TimelineEventCard {
         id: card.id().ok_or("card missing id")?.to_string(),
         author_pubkey: card
             .author_pubkey()
             .ok_or("card missing author_pubkey")?
             .to_string(),
-        author_display,
         kind: card.kind(),
         created_at: card.created_at(),
         content: card.content().unwrap_or_default().to_string(),
         content_tree,
-        content_render,
         relation_counts,
-        author_display_name: optional_string(
-            card.has_author_display_name(),
-            card.author_display_name(),
-        ),
-        author_picture_url: optional_string(
-            card.has_author_picture_url(),
-            card.author_picture_url(),
-        ),
-        content_preview: card.content_preview().unwrap_or_default().to_string(),
         reposted_by,
     })
 }
@@ -249,67 +213,6 @@ fn decode_content_tree_bytes(
     }
 }
 
-fn decode_content_render(render: fb::ContentRenderData<'_>) -> Result<ContentRenderData, String> {
-    let mut out = ContentRenderData::default();
-    if let Some(profiles) = render.profiles() {
-        for index in 0..profiles.len() {
-            let entry = profiles.get(index);
-            let profile = decode_content_profile_render_entry(entry)?;
-            let key = entry.key().unwrap_or(profile.pubkey.as_str()).to_string();
-            out.profiles.insert(key, profile);
-        }
-    }
-    if let Some(events) = render.events() {
-        for index in 0..events.len() {
-            let entry = events.get(index);
-            let event = decode_content_event_render_entry(entry)?;
-            let key = entry.key().unwrap_or(event.id.as_str()).to_string();
-            out.events.insert(key, event);
-        }
-    }
-    Ok(out)
-}
-
-fn decode_content_profile_render_entry(
-    entry: fb::ContentProfileRenderEntry<'_>,
-) -> Result<ContentProfileRenderData, String> {
-    Ok(ContentProfileRenderData {
-        pubkey: entry
-            .pubkey()
-            .ok_or("content profile render entry missing pubkey")?
-            .to_string(),
-        display: decode_author_display(
-            entry
-                .display()
-                .ok_or("content profile render entry missing display")?,
-        ),
-    })
-}
-
-fn decode_content_event_render_entry(
-    entry: fb::ContentEventRenderEntry<'_>,
-) -> Result<ContentEventRenderData, String> {
-    Ok(ContentEventRenderData {
-        id: entry
-            .id()
-            .ok_or("content event render entry missing id")?
-            .to_string(),
-        author_pubkey: entry
-            .author_pubkey()
-            .ok_or("content event render entry missing author_pubkey")?
-            .to_string(),
-        author_display: decode_author_display(
-            entry
-                .author_display()
-                .ok_or("content event render entry missing author_display")?,
-        ),
-        kind: entry.kind(),
-        created_at: entry.created_at(),
-        content_preview: entry.content_preview().unwrap_or_default().to_string(),
-        content_tree: decode_content_tree_bytes(entry.content_tree_bytes())?,
-    })
-}
-
 /// Decode the embedded typed nmp-feed `FeedWindow` buffer. Absent or empty
 /// bytes decode to the default empty window, matching the unpaged diagnostics
 /// snapshot shape.
@@ -321,16 +224,6 @@ fn decode_feed_window_bytes(
             nmp_feed::decode_feed_window(v.bytes()).map_err(|err| format!("feed_window: {err}"))
         }
         _ => Ok(FeedWindowWire::default()),
-    }
-}
-
-/// Reconstruct an `Option<String>` from a `has_*` flag + the wire string,
-/// distinguishing absent (`None`) from present-empty (`Some("")`).
-fn optional_string(present: bool, value: Option<&str>) -> Option<String> {
-    if present {
-        Some(value.unwrap_or_default().to_string())
-    } else {
-        None
     }
 }
 

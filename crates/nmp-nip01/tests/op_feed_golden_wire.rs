@@ -22,7 +22,7 @@ use nmp_nip01::op_feed::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER,
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
 };
-use nmp_nip01::timeline_projection::{ContentRenderData, RepostAttribution};
+use nmp_nip01::timeline_projection::RepostAttribution;
 use nmp_nip01::{
     AuthorDisplay, Nip10ReplyAttribution, NoteRelationCounts, RelationCount, RelationCountInterest,
     TimelineEventCard,
@@ -46,21 +46,15 @@ fn full_display() -> AuthorDisplay {
     }
 }
 
-/// A plain (non-repost) thread-root card with absent display mirrors.
+/// A plain (non-repost) thread-root card. GH #920: raw pubkey only.
 fn root_card() -> TimelineEventCard {
     TimelineEventCard {
         id: hex32(0x03),
         author_pubkey: hex32(0x04),
-        author_display: AuthorDisplay {
-            name: None,
-            npub: Some("npub1bob".to_string()),
-            picture_url: None,
-        },
         kind: 1,
         created_at: 1_700_000_500,
         content: "a thread root".to_string(),
         content_tree: content_tree(),
-        content_render: ContentRenderData::default(),
         relation_counts: NoteRelationCounts {
             replies: RelationCount::Known { count: 1 },
             reactions: RelationCount::Known { count: 0 },
@@ -69,9 +63,6 @@ fn root_card() -> TimelineEventCard {
                 interest: RelationCountInterest::zaps(&hex32(0x03)),
             },
         },
-        author_display_name: None,
-        author_picture_url: None,
-        content_preview: "a thread root".to_string(),
         reposted_by: None,
     }
 }
@@ -81,12 +72,10 @@ fn repost_card() -> TimelineEventCard {
     TimelineEventCard {
         id: hex32(0x09),
         author_pubkey: hex32(0x02),
-        author_display: full_display(),
         kind: 6,
         created_at: 1_700_000_000,
         content: "hello world".to_string(),
         content_tree: content_tree(),
-        content_render: ContentRenderData::default(),
         relation_counts: NoteRelationCounts {
             replies: RelationCount::Known { count: 2 },
             reactions: RelationCount::Loading {
@@ -95,14 +84,8 @@ fn repost_card() -> TimelineEventCard {
             reposts: RelationCount::Known { count: 1 },
             zaps: RelationCount::Known { count: 0 },
         },
-        author_display_name: Some("Alice".to_string()),
-        author_picture_url: Some("https://example.com/a.png".to_string()),
-        content_preview: "hello world".to_string(),
         reposted_by: Some(RepostAttribution {
             author_pubkey: hex32(0x42),
-            author_display: full_display(),
-            author_display_name: Some("Alice".to_string()),
-            author_picture_url: Some("https://example.com/a.png".to_string()),
             note_created_at: 1_699_000_000,
         }),
     }
