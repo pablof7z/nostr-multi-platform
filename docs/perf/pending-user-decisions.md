@@ -1078,3 +1078,190 @@ is done, PRed, verified, merged, no hacks, no debt"). Decisions made without blo
 **No user decision strictly required** — the migration is complete + the behavior is
 test-verified; items above are a tracked rollout tail (V-84/V-85/V-86) and an environment
 limitation on this machine. Flagged for awareness.
+
+---
+
+## V-112 M2 author/thread read-path — scope finding + sequencing decision (2026-06-03)
+
+**Context.** Tasked to "complete the M2 subscription migration — delete the four
+`open_author`/`open_thread`/`close_author`/`close_thread` C-ABI symbols + their
+kernel machinery + `author_view`/`thread_view` projections, and migrate
+ProfileView/ThreadScreen to the `nmp-feed`/`op_feed` path." Framed as a
+delete-cascade. ffi-surface-freeze gate already deleted (#933) so no ADR needed
+for the surface delta.
+
+**Verified ground truth (code-grounded, not assumed):**
+
+1. `Kernel::should_store_event` (`kernel/ingest/timeline.rs:234`) admits events
+   ONLY via `timeline_authors` (follow set), `author_view.selected_author`, and
+   the `author-notes-`/`thread-ids-`/`thread-replies-`/`diag-firehose-` sub-id
+   prefixes. A generic `open_interest` `sub-<hash>` for a NON-followed author
+   matches none → the event is dropped before `self.events`. **Generalising
+   admission is mandatory, not optional** (confirms ADR-0042 §5.1; the task's
+   "register a feed" bullet glosses this).
+
+2. `author_view`/`thread_view` snapshot projections are the SOLE read path for
+   `ProfileView.swift` (`items { authorView?.items ?? [] }`, plus `.profile`,
+   `.primaryAction`, `.noteCountDisplay`) and `ThreadScreen.swift`
+   (`thread?.items`). Deleting them blanks both screens unless a replacement
+   feed is built FIRST.
+
+3. **`RootIndexedFeed` (the `op_feed` engine behind `nmp.feed.home`) cannot
+   serve the author feed.** Its own module doc (`root_indexed.rs:3`): "The home
+   feed is a stream of **thread roots only**; a followed author's replies appear
+   only as *attribution* metadata." A profile screen must show ALL of one
+   author's kind:1/6 as TOP-LEVEL rows (including replies-to-others). The
+   root-indexing/attribution model structurally cannot express a flat
+   single-author list. → The architecturally-correct construct is a **new flat
+   `FeedController`** (InterestShape-parameterised, distinct snapshot key per
+   consumer, e.g. `nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`), reusing
+   `nmp-feed`'s `FeedRegistry` + `KernelEventObserver` seam — NOT reusing
+   `RootIndexedFeed` (would force replies to vanish), and NOT a bespoke
+   `interest_feeds` kernel projection (would be parallel machinery). The thread
+   feed is root-centric and MAY fit `RootIndexedFeed` with an injected
+   `event_gate` (`kind∈{1,6} && #e==<id>`) + own key — to be confirmed during build.
+
+**Snapshot reuse — VERIFIED, no new wire schema.** The op_feed snapshot is
+`RootFeedSnapshot { cards: Vec<RootCard> }` (`nmp-feed/src/root_indexed/card.rs`),
+each `RootCard { card: TimelineEventCard, attribution: Vec<…> }`. HomeFeedView
+renders `model.modularTimeline.cards` (`[ChirpRootCard]`), one row per card. A
+flat single-author feed emits the SAME `RootFeedSnapshot` with each note as its
+own `RootCard{ card, attribution: [] }` — so ProfileView reads it exactly as
+HomeFeedView reads `nmp.feed.home`. **No new FlatBuffers schema, no new codegen.**
+`FeedController` is a 2-method trait (`snapshot_json`/`load_older`). This collapses
+the earlier "multi-day, new schema" estimate; the read-path build is in-session
+sized. (Initial pass over-set the bar to "running iOS build showing notes"; the
+task's actual gate is the cargo test scope + `check-ffi-header-drift.sh`, and the
+op_feed precedent — `nmp-app-template` `op_feed_defaults_test` — establishes
+test-verified-Rust as the project standard, with iOS-visual deferred to a
+configured env. Xcode-26-beta `UIUtilities` workaround is absent on this machine,
+so iOS-visual confirmation is deferred, NOT a hard gate.)
+
+**DECISION (autonomous-mode; logged, not blocking) — BUILD it (revised 2026-06-03):**
+- Read-path replacement is built (not deferred): (a) a flat author
+  `FeedController` reusing `RootFeedSnapshot` (empty attribution); thread feed via
+  `RootIndexedFeed` + injected `EventGate` (`kind∈{1,6} && #e==<id>`), each under
+  its own key (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`); (b)
+  `should_store_event` generalised to admit on registered-interest match
+  (feed-engine `EventGate` + store-retain hook, ADR-0042 §5.1 D8 argument); (c)
+  ProfileView/ThreadScreen migrated to read the new feed snapshot + compose profile
+  card (`claimed_profiles`), primaryAction (local follow-state), noteCountDisplay
+  (feed length). Verification = the task's cargo scope + the `nmp-app-template`
+  op_feed harness pattern.
+- The **`open_firehose_tag` / `diagnostic_firehose` verb** (PR #932 NOT yet
+  merged; still fully present) is the clean −3 sub-case with ZERO projection /
+  Swift coupling. It is OUT of the four-symbol scope this task names, so it is left
+  to its own PR (#932), not smuggled in here.
+- V-112 BACKLOG updated to record the `RootIndexedFeed`-can't-serve-author finding
+  and the snapshot-reuse verification.
+
+**PROGRESS + HANDOFF (2026-06-03, session 1 — branch `worktree-agent-aed6d1530c4e8a070`,
+commit on top of master after rebase):**
+
+*Landed this session (additive, green, NOTHING deleted yet — all screens still work):*
+- `crates/nmp-nip01/src/flat_feed.rs` — `FlatFeed` (predicate-gated flat note feed)
+  + `author_feed_predicate` / `thread_feed_predicate`. Emits the SAME
+  `RootFeedSnapshot { cards:[RootCard{card, attribution:[] }] }` wire shape the home
+  feed uses → the existing Swift `nmp.feed.home` reader decodes it with NO new
+  FlatBuffers schema / codegen. Thread predicate admits root-by-id AND `#e` referrers.
+  6 unit tests green incl. "replies-to-others surface as top-level rows" (the case
+  `RootIndexedFeed` can't express) and "emits home-feed wire shape". Doctrine-lint clean.
+
+*Convergence with peer (no longer my work):* master already shipped the **store-admission
+generalisation** I had independently built — `Kernel::matches_active_open_interest`
+(`kernel/ingest/timeline.rs`) + `InterestShape::matches_event` / `matches_event_with_id`
+(`nmp-planner/src/interest.rs`) + `SubscriptionLifecycle::registry()` accessor +
+end-to-end ingest test (`kernel/ingest_tests.rs:739+`: signed event → `open_interest`
+registered → admitted to `self.events`, excluded from home timeline). My duplicate of
+this was dropped during rebase (took master's side). So step (b) of the plan is DONE on
+master; `FlatFeed` is the observer-side consumer of that same `notify_event_observers`
+fan-out.
+
+*Seam verification (the load-bearing chain — DO NOT treat as unverified next session):*
+the full path is `should_store_event` (→ `matches_active_open_interest`) admits →
+`self.events.insert` → `notify_event_observers` → `FlatFeed::on_kernel_event` → snapshot.
+This is covered by the UNION of three tests, each proving an adjacent link:
+(i) `kernel/ingest_tests.rs:798` — admission to `self.events` for a non-followed author
+matched by an `open_interest`; (ii) `kernel/event_observer_tests.rs:57` —
+`notify_event_observers` fires exactly once per accepted kind:1 ingest with correct
+fields (a `CapturingObserver`); (iii) `flat_feed.rs`
+`on_kernel_event_observer_entrypoint_renders_matching_event` — `FlatFeed`'s
+`KernelEventObserver` entry point forwards through the predicate + render path and the
+event surfaces in the `FeedController` snapshot. The only thing NOT exercised by a single
+test is all three links in one process (would need a running-actor `NmpApp` harness — the
+public test-support ingest seam `inject_replaceable_event` only handles replaceable kinds
+0/3/10002, not kind:1, so a bare-`Kernel` external test in `nmp-nip01` can't drive the
+kind:1 ingest path). The three-test union is the established project pattern for this; an
+end-to-end `NmpApp` integration test is a nice-to-have for the wiring PR, not a blocker.
+
+*Known divergence to verify during wiring (NOT a blocker):* `FlatFeed` builds cards via
+`TimelineEventCard::from_event_for_op_feed(event, None)` — `target = None`, i.e. no
+`event_lookup` backfill. `OpFeedEngine` passes a real `event_lookup` so a kind:6 repost
+whose target arrived separately gets L-5 backward hydration. In a `FlatFeed` an author's
+own repost (kind:6) may render as an empty placeholder until/unless the target is in the
+same feed. Verify repost rendering during the Swift wiring step; if it matters, thread an
+`event_lookup` (the `NmpApp::event_store_handle` slot, same as `register_op_feed_defaults`)
+into `FlatFeed::new`. (Author-display staleness is NOT a new risk — `OpFeedEngine` root
+cards already don't refresh; parity, don't chase.)
+
+*Task-scope checks run this session (against rebased master):* `cargo test -p nmp-nip01
+flat_feed` (7 green), `cargo test -p nmp-testing --test doctrine_lint_smoke` (46 green),
+`cargo check -p nmp-app-chirp` (clean). Not yet run: `cargo test -p nmp-core` /
+`cargo test -p nmp-ffi` full suites (no production nmp-core/nmp-ffi code changed this
+session — only additive nmp-nip01 — so deferred to the wiring/delete PRs that touch them).
+
+*Three gating facts for the remaining wiring — ALL VERIFIED this session:*
+1. **Swift can read an arbitrary feed key.** `NmpApp::register_feed(key, controller)`
+   (`nmp-ffi/src/lib.rs:1091`) registers any `FeedController` and surfaces it as a
+   snapshot projection (`register_snapshot_projection(key, || controller.snapshot_json())`).
+   So `nmp.feed.author.<pk>` appears in `KernelSnapshot::projections[...]` as generic
+   JSON, read by key — same mechanism as the home feed. `nmp_app_load_older_feed(key)`
+   already exists for paging.
+2. **Registration home = the host composition crate, NOT kernel dispatch.** The
+   `OpenInterest`/`CloseInterest` dispatch arms live in `nmp-core` (`actor/dispatch.rs`),
+   which CANNOT depend on `nmp-nip01`/`FlatFeed` (D0). `nmp-ffi` also does NOT depend on
+   `nmp-nip01`. But `nmp-app-chirp` AND `nmp-app-template` BOTH depend on `nmp-nip01` +
+   `nmp-feed` — they are the correct home, exactly where `register_op_feed_defaults`
+   already lives (`apps/chirp/nmp-app-chirp/src/ffi/register.rs:134`).
+3. **Teardown exists.** `NmpApp::unregister_event_observer(id)` (`nmp-ffi/src/lib.rs:1589`)
+   + `KernelEventObserverId`. GAP: `nmp_feed::FeedRegistry` has `register()` but NO
+   removal — must add `FeedRegistry::unregister(key)` (+ an `NmpApp::unregister_feed`
+   FFI wrapper) so a visited-then-closed profile doesn't leak a feed key + observer.
+
+*REMAINING BUILD (next session, in this order — commit at the green checkpoint BEFORE
+the delete-cascade):*
+- A. `nmp-feed`: add `FeedRegistry::unregister(key)`; `nmp-ffi`: `NmpApp::register_feed`
+  already exists, add `unregister_feed(key)`.
+- B. Host-side per-open registration in `nmp-app-chirp` (or `nmp-app-template`): on
+  author/thread open, construct a `FlatFeed`, register it as observer + `FeedController`
+  under `nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`, and track the observer id for
+  teardown on close. This is driven from the SAME Swift call site that calls
+  `openInterest`/`closeInterest` (the kernel command stays generic). Likely surfaced as
+  two new Chirp C-ABI symbols (e.g. `nmp_chirp_open_author_feed`) OR fold registration
+  into a Chirp-side wrapper the bridge calls alongside `openInterest`.
+- C. Swift: `KernelBridge.openAuthor` → `openInterest({"kinds":[1,6],"authors":[pk]},
+  "author-<pk>", 0)` + register author feed + `claimProfile(pk, "author-page-<pk>")`;
+  read notes from `nmp.feed.author.<pk>` (decode the existing RootCard shape, same as
+  `modularTimeline`). `ProfileView`: `items` ← new feed; `profile` ← `claimedProfiles`;
+  `primaryAction` ← local follow-state; `noteCountDisplay` ← feed length.
+  `ThreadScreen`: `items` ← `nmp.feed.thread.<id>`; `focusedEventId` ← the `eventID`
+  prop (local, no kernel); DROP `previousCount`/`nextCount` chrome (ADR §5 sanctions —
+  already `>0`-gated with `?? ""`).  **Commit here = green checkpoint (old projections
+  still present, unused, everything compiles + cargo-tests green).**
+- D. Delete-cascade (final commits): the four C-ABI symbols (`open_author`/`open_thread`/
+  `close_author`/`close_thread`), `OpenAuthor`/`OpenThread`/`CloseAuthor`/`CloseThread`
+  variants + dispatch arms, kernel `open_author`/`author_requests`/`close_author`/
+  `open_thread`/`close_thread`/`prepare_thread_requests`/`maybe_open_thread_hydration`/
+  `enqueue_thread_*`, `author_view`/`thread_view`/`ViewInterest` state, the two snapshot
+  projections + payloads + `nmp-codegen/src/swift_projections_registry.rs` entries (regen
+  `KernelTypes.generated.swift`), `NmpCore.h` (4 decls), `KernelBridge.swift` wrappers,
+  ~10 non-Chirp callers (chirp-desktop, chirp-tui, nmp-gallery android/ios/tui,
+  nmp-android-ffi, 3 ffi-stress bins), `docs/ffi-surface.md`. `open_firehose_tag` /
+  `diagnostic_firehose` stay OUT (their own PR #932). Verify `ci/check-ffi-header-drift.sh`
+  before push; rebase (peer is churning `nmp-ffi/src/*` + `NmpCore.h` for v0.2.4 #934 —
+  expect FFI-file conflicts, resolve by re-applying the 4-symbol deletion on top).
+
+*Peer-collision note:* the delete-cascade edits `nmp-ffi/src/timeline.rs` + `NmpCore.h`,
+the same files the peer's #934 (SignEventForReturn) touches. Do the read-path PR (A–C)
+first — it touches NO FFI symbols → zero collision — then the delete-cascade after #934
+lands.
