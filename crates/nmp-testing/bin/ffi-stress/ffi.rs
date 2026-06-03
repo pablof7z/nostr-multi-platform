@@ -17,9 +17,6 @@ pub(crate) use nmp_ffi::{
 // but S3/S4/S5 all use nmp_app_inject_signed_events (T44 round-4).
 #[allow(unused_imports)]
 pub(crate) use nmp_ffi::nmp_app_inject_pre_verified_events;
-// nmp_app_open_firehose_tag is retained for possible future use.
-#[allow(unused_imports)]
-pub(crate) use nmp_ffi::nmp_app_open_firehose_tag;
 
 /// Generate N deterministic lowercase 64-hex-char pubkeys suitable for all
 /// FFI calls that require `is_hex_pubkey` validation to pass.

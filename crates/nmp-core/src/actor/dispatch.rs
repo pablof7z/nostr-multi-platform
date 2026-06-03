@@ -573,11 +573,6 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::OpenFirehoseTag { tag } => {
-            let outbound = ctx.kernel.open_firehose_tag(tag, ctx.relays_ready);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
         ActorCommand::ClaimProfile {
             pubkey,
             consumer_id,

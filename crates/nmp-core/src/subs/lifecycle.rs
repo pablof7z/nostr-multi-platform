@@ -236,6 +236,14 @@ impl SubscriptionLifecycle {
         &mut self.registry
     }
 
+    /// Read-only access to the registry. The hot ingest path
+    /// (`Kernel::should_store_event`, ADR-0042 §5.1) iterates the active
+    /// interests to admit events matching a generic `open_interest`.
+    #[must_use]
+    pub fn registry(&self) -> &InterestRegistry {
+        &self.registry
+    }
+
     /// Compile counter (one increment per planner invocation).
     #[must_use]
     pub fn compile_count(&self) -> u64 {

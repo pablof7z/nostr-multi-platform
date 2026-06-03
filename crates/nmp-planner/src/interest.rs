@@ -300,6 +300,99 @@ impl InterestShape {
         Some(shape)
     }
 
+    /// Does an inbound event match this interest's wire filter? (ADR-0042 §5.1)
+    ///
+    /// This is the client-side analogue of a relay's NIP-01 REQ filter match,
+    /// used by `Kernel::should_store_event` to admit an event that satisfies an
+    /// active generic `open_interest` (a non-followed author, an arbitrary
+    /// thread, or a `#t` hashtag feed) into the read-cache so the feed-engine
+    /// observer fan-out can expose it.
+    ///
+    /// Only the **wire** dimensions are checked (the ones a relay would honour):
+    /// `authors`, `kinds`, `event_ids` (NIP-01 `ids`), `since`/`until`, and the
+    /// single-letter generic `tags` (`#e`/`#p`/`#t`/…). Empty collection =
+    /// wildcard (NIP-01 semantics). The client-side-only routing fields
+    /// (`relay_pin`, `p_tag_routing`, `addresses`, `limit`) are NOT match
+    /// predicates — they never appear on the wire filter a relay evaluates, so
+    /// they must not gate admission. A default (all-wildcard) shape matches
+    /// every event, mirroring an empty `{}` REQ filter.
+    ///
+    /// `tags` is the event's raw tag rows (`[["t","nostr"],["e","<id>"],…]`),
+    /// exactly the `Vec<Vec<String>>` the kernel ingest path holds. Only
+    /// single-letter tag keys participate (NIP-01 generic-tag query semantics).
+    #[must_use]
+    pub fn matches_event(
+        &self,
+        author: &str,
+        kind: u32,
+        created_at: UnixSeconds,
+        tags: &[Vec<String>],
+    ) -> bool {
+        if !self.authors.is_empty() && !self.authors.contains(author) {
+            return false;
+        }
+        if !self.kinds.is_empty() && !self.kinds.contains(&kind) {
+            return false;
+        }
+        if let Some(since) = self.since {
+            if created_at < since {
+                return false;
+            }
+        }
+        if let Some(until) = self.until {
+            if created_at > until {
+                return false;
+            }
+        }
+        // NIP-01 `ids`: the event's own id must be one of `event_ids`. The
+        // event id is row-independent, but the kernel holds it separately; the
+        // caller threads it as a synthetic `["id", <hex>]`-free check is not
+        // possible here, so `event_ids` matching is delegated to the caller via
+        // the `authors`/`kinds`/`tags` path. (Thread feeds match via `#e` tags,
+        // not bare `ids`, so this is not load-bearing for the M2 verbs.)
+        //
+        // Generic single-letter tag query: for each required tag dimension the
+        // event must carry at least one row `[key, value, …]` whose value is in
+        // the required set (AND across dimensions, OR within a dimension —
+        // NIP-01 §generic-tag-queries).
+        for (tag_key, wanted) in &self.tags {
+            if wanted.is_empty() {
+                continue;
+            }
+            // Only single-letter keys are wire-queryable.
+            if tag_key.len() != 1 {
+                continue;
+            }
+            let satisfied = tags.iter().any(|row| {
+                row.first().is_some_and(|k| k == tag_key)
+                    && row.get(1).is_some_and(|v| wanted.contains(v))
+            });
+            if !satisfied {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Like [`matches_event`](Self::matches_event) but also honours the NIP-01
+    /// `ids` dimension (`event_ids`): when non-empty, the event's own id must be
+    /// listed. Threaded separately because the kernel holds the event id apart
+    /// from the tag rows.
+    #[must_use]
+    pub fn matches_event_with_id(
+        &self,
+        event_id: &str,
+        author: &str,
+        kind: u32,
+        created_at: UnixSeconds,
+        tags: &[Vec<String>],
+    ) -> bool {
+        if !self.event_ids.is_empty() && !self.event_ids.contains(event_id) {
+            return false;
+        }
+        self.matches_event(author, kind, created_at, tags)
+    }
+
     /// Convenience constructor for a one-shot profile fetch.
     ///
     /// Fetches all indexer-relevant replaceable events for the author:
@@ -435,6 +528,85 @@ mod tests {
     /// Deterministic 64-char hex pubkey/event-id fixture from a single byte.
     fn hex(byte: &str) -> String {
         byte.repeat(32)
+    }
+
+    // ─── matches_event (ADR-0042 §5.1 store-admission predicate) ─────────────
+
+    #[test]
+    fn matches_event_default_shape_is_wildcard() {
+        // An all-default shape is the `{}` REQ filter: matches everything.
+        let shape = InterestShape::default();
+        assert!(shape.matches_event(&hex("aa"), 1, 100, &[]));
+        assert!(shape.matches_event(&hex("bb"), 30023, 0, &[vec![
+            "t".into(),
+            "x".into()
+        ]]));
+    }
+
+    #[test]
+    fn matches_event_author_and_kind_and() {
+        let mut shape = InterestShape::default();
+        shape.authors.insert(hex("aa"));
+        shape.kinds.insert(1);
+
+        // Both dimensions satisfied.
+        assert!(shape.matches_event(&hex("aa"), 1, 100, &[]));
+        // Wrong author.
+        assert!(!shape.matches_event(&hex("bb"), 1, 100, &[]));
+        // Wrong kind.
+        assert!(!shape.matches_event(&hex("aa"), 6, 100, &[]));
+    }
+
+    #[test]
+    fn matches_event_hashtag_or_within_dimension() {
+        let mut shape = InterestShape::default();
+        shape.kinds.insert(1);
+        shape
+            .tags
+            .insert("t".to_string(), ["nostr".into(), "bitcoin".into()].into_iter().collect());
+
+        // Event carrying one of the wanted #t values matches.
+        assert!(shape.matches_event(&hex("aa"), 1, 100, &[vec!["t".into(), "bitcoin".into()]]));
+        // Event with a #t value NOT in the set does not match.
+        assert!(!shape.matches_event(&hex("aa"), 1, 100, &[vec!["t".into(), "ethereum".into()]]));
+        // Event with no #t tag at all does not match a required #t dimension.
+        assert!(!shape.matches_event(&hex("aa"), 1, 100, &[vec!["e".into(), hex("cc")]]));
+    }
+
+    #[test]
+    fn matches_event_since_until_bounds() {
+        let mut shape = InterestShape::default();
+        shape.since = Some(100);
+        shape.until = Some(200);
+
+        assert!(shape.matches_event(&hex("aa"), 1, 150, &[]));
+        assert!(shape.matches_event(&hex("aa"), 1, 100, &[])); // inclusive lower
+        assert!(shape.matches_event(&hex("aa"), 1, 200, &[])); // inclusive upper
+        assert!(!shape.matches_event(&hex("aa"), 1, 99, &[]));
+        assert!(!shape.matches_event(&hex("aa"), 1, 201, &[]));
+    }
+
+    #[test]
+    fn matches_event_with_id_honours_ids_dimension() {
+        let mut shape = InterestShape::default();
+        shape.event_ids.insert(hex("11"));
+
+        assert!(shape.matches_event_with_id(&hex("11"), &hex("aa"), 1, 100, &[]));
+        assert!(!shape.matches_event_with_id(&hex("22"), &hex("aa"), 1, 100, &[]));
+        // `matches_event` (no id dimension) ignores event_ids — the wire-tag
+        // path is what thread feeds actually use.
+        assert!(shape.matches_event(&hex("22"), 1, 100, &[]));
+    }
+
+    #[test]
+    fn matches_event_ignores_client_side_only_fields() {
+        // `limit` is a client-side cap, never a relay match predicate.
+        let mut shape = InterestShape::default();
+        shape.kinds.insert(1);
+        shape.limit = Some(1);
+        // Two events both match despite limit=1 — limit must not gate admission.
+        assert!(shape.matches_event(&hex("aa"), 1, 100, &[]));
+        assert!(shape.matches_event(&hex("bb"), 1, 101, &[]));
     }
 
     #[test]

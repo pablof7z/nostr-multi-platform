@@ -139,16 +139,19 @@ final class KernelHandle {
         eventID.withCString { nmp_app_open_thread(raw, $0) }
     }
 
-    func openFirehose(tag: String) {
-        tag.withCString { nmp_app_open_firehose_tag(raw, $0) }
-    }
+    // M2 (ADR-0042): `openFirehose(tag:)` and the `nmp_app_open_firehose_tag`
+    // C symbol it wrapped were deleted. A hashtag feed is now expressed through
+    // `openInterest` below with a `{"kinds":[1],"#t":["<tag>"]}` filter at
+    // `.global` scope — the kind set + `#t` filter that the firehose verb
+    // hardcoded in the substrate now live app-side (D0-correct).
 
     /// M2 (ADR-0042) — generic feed-subscription open. `filterJSON` is a
     /// verbatim NIP-01 REQ filter (the app owns the kind set, e.g.
     /// `{"kinds":[1,6],"authors":["<hex>"]}`); `consumerID` refcounts owners so
     /// repeated opens of the same filter share one live subscription; `scope`
     /// is `.activeAccount` (re-route on switch) or `.global` (account-agnostic).
-    /// Generic replacement for `openAuthor` / `openThread` / `openFirehose`.
+    /// Generic replacement for the deleted `openFirehose` (and, post-#911, for
+    /// `openAuthor` / `openThread`).
     func openInterest(filterJSON: String, consumerID: String, scope: InterestScope) {
         filterJSON.withCString { filterPtr in
             consumerID.withCString { consumerPtr in

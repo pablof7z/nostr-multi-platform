@@ -10,7 +10,7 @@ use nmp_app_chirp::{
     nmp_broker_free_string, nmp_marmot_register_active, nmp_marmot_unregister,
 };
 use nmp_ffi::{
-    nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_firehose_tag,
+    nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_interest,
     nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
 };
 use serde_json::{json, Value};
@@ -113,9 +113,35 @@ impl AppRuntime {
     }
 
     pub fn open_tag(&self, tag: &str) -> Result<()> {
-        self.with_cstr(tag, |c| {
-            nmp_app_open_firehose_tag(self.app_ptr(), c.as_ptr())
-        })
+        // M2 (ADR-0042): the bespoke `open_firehose_tag` verb was replaced by
+        // the generic `open_interest`. The hashtag kind-set (`kind:1`) and the
+        // `#t` filter — formerly hardcoded in the substrate — now live here in
+        // the app, where the policy belongs (D0-correct). Scope `1` = Global
+        // (a hashtag feed is account-agnostic). Consumer id `tag-<tag>`
+        // refcounts the live subscription across repeated opens of the same tag.
+        //
+        // Tag normalization (strip leading `#`, trim, lowercase) was previously
+        // done substrate-side in `open_firehose_tag`; it is app policy and moves
+        // here with the kind/filter decision. NIP-12 `#t` values are
+        // conventionally lowercased, so `#Nostr` and `nostr` resolve to one
+        // subscription.
+        let tag = tag.trim().trim_start_matches('#').to_lowercase();
+        if tag.is_empty() {
+            return Ok(());
+        }
+        let filter_json = json!({ "kinds": [1], "#t": [tag] }).to_string();
+        let consumer_id = format!("tag-{tag}");
+        let filter_c =
+            CString::new(filter_json).map_err(|_| "filter contains NUL byte".to_string())?;
+        let consumer_c =
+            CString::new(consumer_id).map_err(|_| "consumer id contains NUL byte".to_string())?;
+        nmp_app_open_interest(
+            self.app_ptr(),
+            filter_c.as_ptr(),
+            consumer_c.as_ptr(),
+            1, // Global scope
+        );
+        Ok(())
     }
 
     pub fn retry_publish(&self, handle: &str) -> Result<()> {

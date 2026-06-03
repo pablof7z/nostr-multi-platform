@@ -248,6 +248,42 @@ impl Kernel {
             // Uses typed OneshotKind dispatch (T104) rather than string-prefix.
             || self.is_discovery_oneshot(sub_id)
             || self.claim_expansion_match_author(sub_id, event).is_some()
+            // M2 (ADR-0042 §5.1): admit any event matching the wire filter of an
+            // active generic `open_interest`. This is the single generalised
+            // admission clause that makes a generic `open_interest` REQ
+            // functional end-to-end — a non-followed author's notes, an
+            // arbitrary thread, or a `#t` hashtag feed reach `self.events` (and
+            // thus the `notify_event_observers` feed-engine fan-out) without any
+            // bespoke per-view sub-id prefix. The wire sub_id is a *merged*
+            // compiler hash (the lattice coalesces many shapes into one REQ), so
+            // it cannot be reverse-mapped to one interest; matching the event
+            // against the registered shapes is the robust admission test.
+            //
+            // D8 cost: this walks the active-interest set per inbound event. The
+            // cheap `timeline_authors.contains` short-circuit above still fronts
+            // the follow-feed hot path (the common case), so the walk only runs
+            // for events the follow-set / view / oneshot clauses did not already
+            // admit.
+            || self.matches_active_open_interest(event)
+    }
+
+    /// ADR-0042 §5.1 — does `event` satisfy the wire filter of any active
+    /// registered interest? Drives the generalised `should_store_event`
+    /// admission clause for generic `open_interest` feeds.
+    fn matches_active_open_interest(&self, event: &NostrEvent) -> bool {
+        self.lifecycle
+            .registry()
+            .iter_active()
+            .iter()
+            .any(|interest| {
+                interest.shape.matches_event_with_id(
+                    &event.id,
+                    &event.pubkey,
+                    event.kind,
+                    event.created_at,
+                    &event.tags,
+                )
+            })
     }
 
     pub(in crate::kernel) fn enqueue_thread_hydration_from_event(&mut self, event_id: &str) {

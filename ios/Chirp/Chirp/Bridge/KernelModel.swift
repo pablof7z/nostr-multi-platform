@@ -438,8 +438,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         return nil
     }
 
-    func openFirehose(tag: String) { kernel.openFirehose(tag: tag) }
-
     // ── T66a command surface (identity / publish / multi-account) ────────
     // Every method is a pass-through to a real kernel dispatch. No Swift-side
     // business logic, no cached state (D5/D8) — every accessor above is a

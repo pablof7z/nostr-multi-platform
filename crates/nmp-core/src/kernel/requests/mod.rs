@@ -69,15 +69,6 @@ impl Kernel {
         if self.thread_view.request_pending {
             requests.extend(self.prepare_thread_requests());
         }
-        if self.diagnostic_firehose.interest.is_some()
-            && !self
-                .wire
-                .subs
-                .keys()
-                .any(|(_relay_url, sub_id)| sub_id.starts_with("diag-firehose-"))
-        {
-            requests.extend(self.firehose_requests());
-        }
         requests.extend(self.pending_profile_claim_requests());
         requests.extend(self.pending_event_claim_requests());
         requests.extend(self.maybe_open_thread_hydration());

@@ -341,9 +341,6 @@ pub enum ActorCommand {
         /// `OpenContactListSubscription` (D0-clean precedent).
         kinds: std::collections::BTreeSet<u32>,
     },
-    OpenFirehoseTag {
-        tag: String,
-    },
     /// Unified sign-in command. Adds a signer to the actor-local identity store
     /// from one of the [`SignerSource`] variants and, when `make_active` is set,
     /// binds it as the active signer + retargets the timeline.
