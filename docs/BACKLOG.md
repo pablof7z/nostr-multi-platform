@@ -448,21 +448,6 @@ exists, do not claim full zeroization for local-key accounts.
 
 ---
 
-### V-78 · NIP-57 zap signing requires local keys — bunker (NIP-46) accounts cannot zap [MEDIUM · bunker feature gap]
-
-**Verified:** `crates/nmp-nip57/src/lnurl/mod.rs:199-211` — the zap executor (`Executor::run`; `ZapAction` itself lives in `crates/nmp-nip57/src/action.rs`) short-circuits with a toast (`"zap requires a local-keys account; bunker signing for kind:9734 is not yet implemented (ADR-0026 Phase 2 follow-up)"`) when `ctx.active_local_keys()` returns `None`. This is the same ADR-0026 Phase 1 cutline as V-08 (DM unwrap) and V-06 (NIP-42 AUTH), but a separate code path — the broker has no `sign_zap_request(kind:22242→9734)` RPC and the actor thread has no sync-compatible adapter for it.
-
-**Impact:** users authenticated via bunker can read zaps (kind:9735 receipts decode without keys) but cannot send a zap. The failure is non-silent (toast fires) so this is not a silent-fail violation, but it is a v1-A feature gap that is currently invisible from the BACKLOG. V-08 covers DMs and V-06 covers AUTH; zaps were missing as a tracked sibling.
-
-**Staged fix plan:**
-- Stage 1: surface the bunker-zap gap in onboarding / zap UI before the user attempts a zap (currently they only learn at zap time via toast).
-- Stage 2: broker side — expose `sign_zap_request(unsigned_kind_9734)` RPC. Companion to V-06 Stage 2 (the broker is the same target; both bunker-sign paths land in the same RPC table).
-- Stage 3: the zap executor (`lnurl/mod.rs` `Executor::run`) — when `active_local_keys()` is `None`, drive the broker RPC synchronously through the same one-shot channel pattern as V-06.
-
-**Deadline:** Stages 2-3 are post-v1. Either this is fixed or v1 copy drops "send zaps" as a v1 capability for bunker accounts.
-
----
-
 > **Provenance — V-87 … V-105 (2026-05-29 GH-issue audit, issues #600–#630).**
 > These nineteen entries fold the 31 open GitHub issues from the offline-first /
 > doctrine audit into Section 1. Every citation below was re-confirmed against

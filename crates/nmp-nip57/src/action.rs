@@ -18,14 +18,17 @@
 //! The kind:9735 receipt is what relays receive; the LN provider mints it
 //! after the invoice settles.
 //!
-//! # Signing constraint (ADR-0026 Phase 1)
+//! # Signing (V-78 — bunker zaps)
 //!
-//! The protocol command reads
-//! [`nmp_core::substrate::ProtocolCommandContext::active_local_keys`] to
-//! sign the kind:9734. Bunker (NIP-46) accounts return `None`; the command
-//! fails closed with a toast and records `ActionFailure` against the
-//! `correlation_id`. Remote-signer signing is the ADR-0026 Phase 2
-//! follow-up.
+//! The protocol command signs the kind:9734 through
+//! [`nmp_core::substrate::ProtocolCommandContext::sign_active_nonblocking`],
+//! which handles BOTH signer kinds: a local nsec signs on the actor thread
+//! (`SignerOp::Ready`), and a NIP-46 bunker dispatches the broker RPC
+//! (`SignerOp::Pending`) whose `op.wait()` the command resolves on its
+//! off-actor HTTP worker (D8 — never the actor loop). Only a genuinely
+//! absent account (no local key AND no remote signer) fails closed with a
+//! toast + `RecordActionFailure`. The legacy `active_local_keys()` gate
+//! (which refused bunker accounts) was the V-78 bug and is gone (D13).
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;

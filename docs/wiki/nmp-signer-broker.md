@@ -41,7 +41,7 @@ D13 lint bans `identity.active_local_keys()` in DM/zap paths in `nmp-core` and b
 
 The A1 bunker NIP-44 adapter implementation closes ADR-0026 Phase 2. <!-- [^121] --> <!-- [^156aa-7] -->
 
-V-78 tracks that Bunker (NIP-46) accounts cannot zap because kind:9734 requires local keys and ADR-0026 Phase 2 is not started. <!-- [^cd2b6-18] -->
+V-78 (RESOLVED) — Bunker (NIP-46) accounts can now zap. The NIP-57 zap command signs kind:9734 through `ProtocolCommandContext::sign_active_nonblocking` (delegating to the actor's `sign_active_nonblocking`): a local nsec resolves `SignerOp::Ready` on the actor thread; a bunker returns `SignerOp::Pending` whose `op.wait(ZAP_SIGN_TIMEOUT)` (10s) runs on the off-actor LNURL HTTP worker — D8-safe, no actor-loop block and no `PendingSign` park. The legacy `active_local_keys()` zap gate is gone (D13). <!-- [^cd2b6-18] -->
 ## Bunker Async-Pending Modeling
 
 Bunker async-pending modeling reuses the existing `PendingSign` machinery at `actor/pending_sign.rs`, extended to cover NIP-44 ops. PR-E Phase 2 for bunker DMs must extend `PendingSign` rather than use the OS-thread driver pattern. <!-- [^1c093-28] -->
