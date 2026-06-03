@@ -86,8 +86,21 @@ pub extern "C" fn nmp_app_sign_event_for_return(
 }
 
 
+/// Sign in with a local nsec and optionally make it the active account.
+///
+/// `make_active = 1` (the common path): registers the signer AND makes it the
+/// active account, publishing no metadata — the standard sign-in.
+///
+/// `make_active = 0`: registers the signer in the kernel's identity roster
+/// WITHOUT activating it. The key can then sign events via
+/// `nmp_app_sign_event_for_return` by naming its pubkey explicitly. Use this
+/// for agent / secondary keys that must sign (e.g. Blossom auth events) without
+/// disturbing the user's active account.
+///
+/// D13: the nsec is wrapped in `Zeroizing` the instant it is copied out of the
+/// C string; no raw key bytes are retained past the command dispatch.
 #[no_mangle]
-pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char) {
+pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char, make_active: u8) {
     let Some(app) = app_ref(app) else {
         return;
     };
@@ -99,11 +112,9 @@ pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char) {
     let Some(secret) = c_string_argument(secret).map(zeroize::Zeroizing::new) else {
         return;
     };
-    // C-ABI symbol kept byte-stable; rewired onto the unified `AddSigner`
-    // command. A bare nsec sign-in always makes the new account active.
     app.send_cmd(ActorCommand::AddSigner {
         source: nmp_core::SignerSource::LocalNsec(secret),
-        make_active: true,
+        make_active: make_active != 0,
     });
 }
 

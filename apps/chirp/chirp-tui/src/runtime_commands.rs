@@ -34,7 +34,7 @@ unsafe extern "C" {
 impl AppRuntime {
     pub fn sign_in_nsec(&self, nsec: &str) -> Result<()> {
         self.unregister_marmot();
-        self.with_cstr(nsec, |c| nmp_app_signin_nsec(self.app_ptr(), c.as_ptr()))
+        self.with_cstr(nsec, |c| nmp_app_signin_nsec(self.app_ptr(), c.as_ptr(), 1))
     }
 
     pub fn sign_in_nsec_with_marmot(&self, nsec: &str) -> Result<()> {

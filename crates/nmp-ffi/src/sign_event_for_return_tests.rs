@@ -100,7 +100,7 @@ fn sign_event_for_return_signs_with_active_local_key_and_returns_flat_json() {
 
     // Sign in a local nsec — the active account that will sign the draft.
     let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
-    super::nmp_app_signin_nsec(app, secret.as_ptr());
+    super::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
 
     // Request a kind:24242 Blossom auth event signed by the active account
     // (empty pubkey = active). The draft carries no pubkey; the kernel fills it.
@@ -208,7 +208,7 @@ fn sign_by_explicit_pubkey_uses_named_signer() {
     // Sign in with the test nsec (nmp_app_signin_nsec is the one registration
     // path — no separate "register without activating" FFI is needed).
     let nsec = std::ffi::CString::new(TEST_NSEC).unwrap();
-    super::identity::nmp_app_signin_nsec(app, nsec.as_ptr());
+    super::identity::nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
 
     let pubkey = hex_pubkey(TEST_NSEC);
     let draft = r#"{"kind":24242,"content":"Upload image","tags":[["x","abc"]]}"#;

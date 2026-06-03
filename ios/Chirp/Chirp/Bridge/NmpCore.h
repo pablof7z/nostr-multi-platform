@@ -71,7 +71,10 @@ void nmp_app_close_thread(void *app, const char *event_id);
 // route through the generic `nmp_app_dispatch_action` path under the
 // `nmp.nip25.react` / `nmp.follow` / `nmp.unfollow` namespaces, which
 // `nmp-app-template` registers from `nmp_app_chirp_register`.
-void nmp_app_signin_nsec(void *app, const char *secret);
+// make_active=1: sign in and set as the active account (normal sign-in).
+// make_active=0: register without activating — for agent/secondary keys that
+//   sign via nmp_app_sign_event_for_return without becoming the active account.
+void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
 void nmp_app_signin_bunker(void *app, const char *uri);
 // Sign an unsigned event with the named account's signer and park the result
 // in the snapshot's signed_events projection.  Returns a correlation_id string

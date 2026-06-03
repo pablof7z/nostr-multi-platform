@@ -25,7 +25,7 @@ pub extern "C" fn nmp_app_chirp_identity_restore(
         return std::ptr::null_mut();
     }
     if !test_nsec.is_null() {
-        nmp_app_signin_nsec(app, test_nsec);
+        nmp_app_signin_nsec(app, test_nsec, 1);
         return nmp_marmot_register(app, test_nsec, db_dir);
     }
     nmp_marmot_register_active(app, db_dir)
@@ -43,7 +43,7 @@ pub extern "C" fn nmp_app_chirp_identity_sign_in_nsec(
     if app.is_null() || secret.is_null() {
         return std::ptr::null_mut();
     }
-    nmp_app_signin_nsec(app, secret);
+    nmp_app_signin_nsec(app, secret, 1);
     nmp_marmot_register(app, secret, db_dir)
 }
 

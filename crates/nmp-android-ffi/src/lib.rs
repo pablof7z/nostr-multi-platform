@@ -459,7 +459,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSignInNsec(
     let Some(secret) = jstring_to_cstring(&mut env, &secret) else {
         return;
     };
-    nmp_app_signin_nsec(s.app, secret.as_ptr());
+    nmp_app_signin_nsec(s.app, secret.as_ptr(), 1);
 }
 
 /// Switch the active account to the given pubkey.
