@@ -40,11 +40,20 @@ struct ThreadScreen: View {
         .navigationTitle("Thread")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            // V-112 Step C — open BOTH paths. The M2 flat thread feed
+            // (`openThreadFeed`) registers `nmp.feed.thread.<id>` and pulls the
+            // `#e` referrers into storage; the legacy `openThread` keeps
+            // `thread_view` populated, which still drives this screen's ordered
+            // item list + the Rust-pre-formatted "N earlier" / "N more replies"
+            // context affordances (focus-relative counts the flat feed has no
+            // concept of). Step D re-homes those counts app-side, then switches
+            // the render source to the flat feed and drops `openThread`.
+            model.openThreadFeed(eventID: eventID)
             model.openThread(eventID: eventID)
         }
         .onDisappear {
-            // T152: release the thread subscription when this view is no
-            // longer visible.  Symmetric with openThread in .task above.
+            // T152: release both subs on nav-away (wire_subs baseline).
+            model.closeThreadFeed(eventID: eventID)
             model.closeThread(eventID: eventID)
         }
         .sheet(item: $replyTargetID) { target in

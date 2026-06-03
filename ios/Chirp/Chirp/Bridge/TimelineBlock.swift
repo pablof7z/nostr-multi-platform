@@ -374,3 +374,40 @@ struct MentionProfile: Equatable, Sendable {
     let initials: String
     let colorHex: String
 }
+
+// ─── TimelineItem ← ChirpEventCard mapping (V-112 Step C) ───────────────────
+//
+// The M2 flat feeds (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`) emit
+// `ChirpEventCard`s (the home-feed `RootFeedSnapshot` card shape), but the
+// profile/thread row components (`ProfileNoteRow`, `ThreadNoteRow`) render a
+// `TimelineItem`. This synthesises a `TimelineItem` from a card so the existing
+// row layout renders feed cards unchanged — the same mapping `ModularBlockView`
+// uses for the home feed, lifted here so both call sites agree on one mapping.
+//
+// Raw protocol data only (ADR-0032): no display formatting. Fields the card
+// does not carry (`authorLnurl`, `relayCount`) take neutral no-data defaults —
+// a feed-card row simply doesn't surface those affordances until a richer
+// source fills them.
+extension TimelineItem {
+    /// Build a `TimelineItem` from a flat-feed `ChirpEventCard`. `backing` is an
+    /// optional already-known `TimelineItem` for the same id whose
+    /// snapshot-baked display name / picture / lnurl is preferred over the
+    /// card's own kind:0 fields when present.
+    static func synthetic(from card: ChirpEventCard, backing: TimelineItem? = nil) -> TimelineItem {
+        TimelineItem(
+            authorDisplayName: backing?.authorDisplayName ?? card.authorDisplayName,
+            authorLnurl: backing?.authorLnurl,
+            authorPictureUrl: backing?.authorPictureUrl ?? card.authorPictureUrl,
+            authorPubkey: card.authorPubkey,
+            content: card.content,
+            contentPreview: card.contentPreview,
+            createdAt: card.createdAt,
+            id: card.id,
+            isRepost: false,
+            kind: card.kind,
+            navTargetId: card.id,
+            relayCount: 0,
+            repostInnerContent: ""
+        )
+    }
+}

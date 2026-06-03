@@ -1266,6 +1266,109 @@ the same files the peer's #934 (SignEventForReturn) touches. Do the read-path PR
 first — it touches NO FFI symbols → zero collision — then the delete-cascade after #934
 lands.
 
+**PROGRESS + HANDOFF (session 3 — branch `worktree-agent-acb01af98c23cbb14`, on top of
+master `24330f71` with #935 + #936 merged). Step C Swift read-path: decode infra +
+plumbing LANDED & build-verified; the ProfileView item-source CUTOVER held back +
+delete-cascade (Step D) deferred — both on a code-grounded runtime block, NOT a doctrine
+or build block.**
+
+*Two prior-handoff CORRECTIONS this session found (load-bearing — do NOT re-trust the old
+text):*
+1. **"Gating fact #1 — Swift can read an arbitrary feed key as generic JSON" was WRONG.**
+   The Swift snapshot decode is NOT `JSONDecoder` reading a `[String: Value]` — it is a
+   custom FlatBuffers `Value` decoder (`KernelUpdateFrameDecoder.swift`) into the
+   *generated* `SnapshotProjections` struct, which has ONE static `CodingKey` per
+   projection (`homeFeed = "nmp.feed.home"`, …) and structurally cannot read a per-open
+   key like `nmp.feed.author.<pk>`. An arbitrary-key reader did not exist; building it was
+   in-scope and is now DONE (see below). The home feed only works because it has a static
+   key AND a typed NOFS sidecar — neither applies to the per-open author/thread feeds.
+2. **The handoff's Step-C plan "`primaryAction` ← local follow-state; `noteCountDisplay`
+   ← feed length (in Swift)" VIOLATES aim.md §6.9 / §4.4** (pedantically enforced —
+   `feedback_always_right_never_smallest`, MEMORY). `profile_action_for`
+   (`kernel/update/views.rs:185`) authors the follow/unfollow/edit action (label + icon +
+   `nmp.follow`/`nmp.unfollow` dispatch body) from kernel-private `seed_contacts` +
+   `active_account`; `note_count_display` and the thread `previous/next_count_label`s are
+   Rust-owned display strings. Deriving any of them in Swift is the banned thin-shell
+   violation. They must be RE-HOMED to a Rust survivor (the app crate `nmp-app-chirp`,
+   which removes a D0 smell — those `nmp.follow`/`nmp.unfollow` namespaces are Chirp's, so
+   their authorship belongs app-side, not in `nmp-core`) BEFORE the `author_view`/
+   `thread_view` projections are deleted. This is the real shape of Step D's "exposure"
+   half and the prior handoff under-specified it.
+
+*LANDED this session (all additive, iOS sim build SUCCEEDED, `cargo test -p nmp-app-chirp`
+green, doctrine-lint 46 green — NOTHING deleted, every screen still renders via the live
+old path):*
+- **Arbitrary-key feed-projection decode** — `KernelUpdateFrameDecoder.extractFeedProjections`
+  + `FeedProjectionKey` (`ios/.../Bridge/KernelUpdateFrameDecoder.swift`). Lifts dynamic
+  `nmp.feed.author.*` / `nmp.feed.thread.*` keys out of the snapshot `payload` Value map
+  into `[String: ChirpTimelineSnapshot]` (same `RootFeedSnapshot` Decodable the home feed
+  uses — no new card model). Threaded through `KernelUpdateFrame.snapshot` →
+  `KernelUpdateResult.feedProjections` → `KernelModel.feedProjections` (parallel to
+  `typedHomeFeed`). NON-generated on purpose so the Step-D registry regen can't wipe it.
+- **Read accessors** `KernelModel.authorFeed(pubkey:)` / `threadFeed(eventId:)`.
+- **C-ABI wrappers** `KernelHandle.{open,close}{Author,Thread}Feed` + `KernelModel`
+  pass-throughs, wrapping the PR-#936 `nmp_app_chirp_*_feed` symbols.
+- **Screen wiring (exercise, not cutover):** `ProfileView.task`/`ThreadScreen.task` now
+  call `openAuthorFeed`/`openThreadFeed` ALONGSIDE the legacy `openAuthor`/`openThread`
+  (+ symmetric closes). So the new feed is registered + populated + decoded end-to-end on
+  every visit; only the render SOURCE still points at the old projection.
+- **Shared `TimelineItem.synthetic(from:backing:)`** (`Bridge/TimelineBlock.swift`) —
+  lifted out of `ModularBlockView`'s private `syntheticItem` (call site migrated, dup
+  removed) so the home-feed path and the (pending) profile cutover share ONE card→item
+  mapping. ProfileView's one-line cutover is `items { model.authorFeed(pubkey: pubkey).cards.map { .synthetic(from: $0.card) } }`.
+- **Real-relay oracle** — `ChirpTests/SmokeScenariosTests` Scenario 7
+  (`testScenario7_AuthorFlatFeedReadPath`, `NMP_SMOKE`-gated so it is SKIPPED in CI — CI
+  never sets `NMP_SMOKE`, grep-confirmed). Drives the exact ProfileView path
+  (`openAuthorFeed` → `authorFeed(pubkey:).cards`) and asserts non-empty + predicate
+  integrity (author == pk, kind ∈ {1,6}). It is the verification gate for the cutover.
+- The xcscheme `TestAction` env (`NMP_SMOKE=1`, `shouldUseLaunchSchemeArgsEnv=NO`) is a
+  local-only generated artifact (xcschemes are not git-tracked) used to run the oracle.
+
+*WHY the cutover is held back (code-grounded, the binding fact):* the full warm-kernel
+smoke run is the valid oracle (the suite shares one kernel; Scenario 2 follows jb55,
+Scenario 3 backfills, by Scenario 7 it's warm). That run's Scenario 7 probe:
+`flatFeedCards=0 oldAuthorViewItems=0 homeFeedCards=0 authorWireSub=state=opening
+eventsRx=0 eose=false decodedFeedKeys=[nmp.feed.author.32e18…]`. Reading it:
+- The decode is PROVEN CORRECT — the key is present in `decodedFeedKeys`; key-present +
+  empty-`cards` is only reachable if Rust emitted `RootFeedSnapshot { cards: [] }` (the
+  decode inserts the key only on a successful `try?` and `cards` is non-optional).
+- It is the **environmental** branch, NOT a new-path regression: the OLD `author_view`
+  path is **equally empty** (`oldAuthorViewItems=0`), the **home feed is empty**
+  (`homeFeedCards=0`), and **Scenario 3 — the established backfill assertion — FAILED in
+  the same run** (`timed out waiting for: timeline backfills`). The author wire sub DID
+  open (`state=opening, eventsRx=0`): the kernel issued the REQ; no events came back. The
+  dev environment's relays are simply not backfilling today. So the smoke run cannot
+  currently VERIFY the flat feed populates — and an item-source cutover to a runtime-empty
+  feed would blank the profile screen for real users (`compiles` ≠ `works`,
+  `feedback_verify_running_result`). Hence: keep `items` on the live `author_view` until a
+  warm run shows Scenario 7 green (`flatFeedCards>0`), then take the one-line cutover.
+
+*EXACTLY what unblocks the cutover (next session, in priority order):*
+1. Re-run the FULL `SmokeScenariosTests` suite (NOT `-only-testing:scenario7` — that
+   gives a cold kernel) on a machine whose relays backfill (Scenario 3 must pass first).
+   If Scenario 7 goes green → take the ProfileView one-line cutover, rebuild, done with
+   Step C's author half. ThreadScreen's item cutover is gated additionally on re-homing
+   the focus-relative `previous/next_count` + labels (the flat feed is flat/newest-first
+   with no focus concept — `focusedEventId` is free, ThreadScreen has `eventID` from nav).
+2. THEN Step D (the delete-cascade) — but only AFTER (a) ProfileView+ThreadScreen are
+   cut over and verified, and (b) the Rust survivor for `primary_action` /
+   `note_count_display` / thread counts+labels is built in `nmp-app-chirp` (correction #2
+   above). The cascade scope is unchanged from the session-2 list; add the survivor build
+   as a prerequisite. Do NOT delete the four C-ABI symbols while Swift still links them —
+   cargo-green does not authorize it (cargo never compiles Swift).
+
+*iOS build recipe that WORKS here (the prior "environmentally blocked" note was a
+self-inflicted pbxproj churn — `xcodegen-pbxproj-churn`, MEMORY):* do NOT run
+`just gen-ios`/`build-ios` (their `xcodegen` runs before the `Generate BuildInfo` script,
+dropping `BuildInfo.generated.swift` from Compile Sources → `cannot find 'BuildInfo'`).
+Instead: `git checkout HEAD -- ios/Chirp/Chirp.xcodeproj/project.pbxproj` (if churned),
+`just rust-ios-sim` (builds the sim `libnmp_app_chirp.a` WITH marmot — bare cargo omits
+it), then `xcodebuild -project ios/Chirp/Chirp.xcodeproj -scheme Chirp -destination
+'platform=iOS Simulator,name=iPhone 16 ci,OS=26.5' -derivedDataPath ios/DerivedData
+build`. This session's full build SUCCEEDED via that path. The `iPhone 17` device in the
+`just build-ios` recipe does not exist on this machine; `iPhone 16 ci` / the dedicated
+`121F34F8-…` sim (OS 26.5) do.
+
 **PROGRESS + HANDOFF (session 2 — branch `worktree-agent-a7b662e4aa5ee284e`, on top of
 the foundation commit `0a707ab2`; #935 still OPEN at session start):**
 

@@ -231,6 +231,82 @@ final class SmokeScenariosTests: XCTestCase {
             "accounts projection disagrees with activeAccount after switch-back")
     }
 
+    // MARK: - Scenario 7 — V-112 M2 author flat-feed read path
+
+    /// Drive the EXACT read path `ProfileView` uses after the V-112 Step C
+    /// migration: `openAuthorFeed(pubkey:)` registers the `nmp-nip01::FlatFeed`
+    /// under `nmp.feed.author.<pk>` + pushes the `{"kinds":[1,6],"authors":[pk]}`
+    /// interest, and the screen reads its note list from
+    /// `model.authorFeed(pubkey:).cards`. Over a real relay this proves the full
+    /// chain end-to-end — interest admission → `notify_event_observers` →
+    /// `FlatFeed` render → `nmp.feed.author.<pk>` projection →
+    /// `extractFeedProjections` decode → `authorFeed(pubkey:)` — i.e. that an
+    /// author's notes actually surface on the profile screen through the new
+    /// path, not the deleted-soon `author_view`.
+    ///
+    /// `followTarget` (jb55, prolific) is the queried author; he is NOT the
+    /// signed-in account, so this also exercises the V-112 gating fact #1 fix:
+    /// a NON-followed author's kind:1/6 must reach storage via the generic
+    /// `open_interest` admission, where the old follow-only gate would have
+    /// dropped them.
+    func testScenario7_AuthorFlatFeedReadPath() async throws {
+        try await signIn(nsecA, label: "scenario-7")
+
+        // A relay must be live before an author backfill can arrive — wait for
+        // the connect the same way scenario 3 does (cold-open over a real
+        // socket takes time; the home feed proves the kernel is reachable).
+        try await waitUntil(timeout: 30, "a relay reaches `connected`") { [self] in
+            model.relayStatuses.contains { $0.connection == "connected" }
+        }
+
+        // Open BOTH the new flat feed and the OLD author view in the same run,
+        // so a side-by-side outcome splits the three sub-causes if the new feed
+        // stays empty: (a) new-path regression (old populates, new doesn't),
+        // (b) environmental (BOTH empty — jb55 not on the connected subset),
+        // (c) admission/fan-out drop (the wire sub shows events_rx > 0 but the
+        // FlatFeed renders nothing).
+        model.openAuthorFeed(pubkey: followTarget)
+        model.openAuthor(pubkey: followTarget)
+        defer {
+            model.closeAuthorFeed(pubkey: followTarget)
+            model.closeAuthor(pubkey: followTarget)
+        }
+
+        // Wait until EITHER path produces items, or the budget elapses — we want
+        // the comparison even on the failure path.
+        try? await waitUntil(timeout: 45, "either author path populates") { [self] in
+            !model.authorFeed(pubkey: followTarget).cards.isEmpty
+                || !(model.authorView?.items.isEmpty ?? true)
+        }
+
+        let flatCount = model.authorFeed(pubkey: followTarget).cards.count
+        let oldCount = model.authorView?.items.count ?? 0
+        let homeCount = model.modularTimeline.cards.count
+        let authorSub = model.wireSubscriptions.first { $0.filterSummary.contains(followTarget) }
+        let probe = """
+            V-112 Scenario 7 probe — \
+            flatFeedCards=\(flatCount) oldAuthorViewItems=\(oldCount) \
+            homeFeedCards=\(homeCount) \
+            authorWireSub=\(authorSub.map { "state=\($0.state) eventsRx=\($0.eventsRx) eose=\($0.eoseAtMs != nil)" } ?? "ABSENT") \
+            decodedFeedKeys=[\(model.feedProjections.keys.sorted().joined(separator: ", "))]
+            """
+        print(probe)
+
+        XCTAssertFalse(
+            model.authorFeed(pubkey: followTarget).cards.isEmpty,
+            "nmp.feed.author.\(followTarget) produced no cards. \(probe)")
+
+        // Predicate integrity — only when the feed populated.
+        for root in model.authorFeed(pubkey: followTarget).cards {
+            XCTAssertEqual(
+                root.card.authorPubkey, followTarget,
+                "flat author feed leaked a foreign author \(root.card.authorPubkey)")
+            XCTAssertTrue(
+                root.card.kind == 1 || root.card.kind == 6,
+                "flat author feed admitted off-policy kind \(root.card.kind)")
+        }
+    }
+
     // MARK: - Helpers
 
     /// Drive `nmp_app_signin_nsec` and wait for the kernel to surface an

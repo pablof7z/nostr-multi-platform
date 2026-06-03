@@ -227,6 +227,38 @@ final class KernelHandle {
         eventID.withCString { nmp_app_close_thread(raw, $0) }
     }
 
+    // ── V-112 M2 flat-feed read path (ADR-0042 §5.1) ──────────────────────
+    //
+    // These wrap the Chirp-side composition symbols added in PR #936
+    // (`apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs`). Each `open`
+    // registers an `nmp-nip01::FlatFeed` under `nmp.feed.author.<pk>` /
+    // `nmp.feed.thread.<id>` AND pushes the matching kernel `open_interest`, so
+    // a non-followed author / arbitrary thread reaches `self.events` and fans
+    // out to the feed. The feed's `RootFeedSnapshot` surfaces in the snapshot
+    // `projections` map under that key; the host reads it via
+    // `KernelModel.authorFeed(pubkey:)` / `threadFeed(eventId:)`
+    // (`extractFeedProjections`). `close` tears the feed + interest down.
+
+    /// Open the per-author flat feed for `pubkey` (`nmp.feed.author.<pubkey>`).
+    func openAuthorFeed(pubkey: String) {
+        pubkey.withCString { nmp_app_chirp_open_author_feed(raw, $0) }
+    }
+
+    /// Close the per-author flat feed for `pubkey`. Call from `.onDisappear`.
+    func closeAuthorFeed(pubkey: String) {
+        pubkey.withCString { nmp_app_chirp_close_author_feed(raw, $0) }
+    }
+
+    /// Open the per-thread flat feed for `eventID` (`nmp.feed.thread.<eventID>`).
+    func openThreadFeed(eventID: String) {
+        eventID.withCString { nmp_app_chirp_open_thread_feed(raw, $0) }
+    }
+
+    /// Close the per-thread flat feed for `eventID`. Call from `.onDisappear`.
+    func closeThreadFeed(eventID: String) {
+        eventID.withCString { nmp_app_chirp_close_thread_feed(raw, $0) }
+    }
+
     // ── T66a identity / publish / multi-account / relay-edit ──────────────
 
     // NOTE: the local-nsec sign-in path does NOT go through `nmp_app_signin_nsec`
@@ -604,7 +636,7 @@ final class KernelHandle {
         let data = Data(bytes: bytes, count: count)
         do {
             let frame = try KernelUpdateFrameDecoder.decode(data)
-            guard case let .snapshot(frameSchemaVersion, update, envelopes) = frame else {
+            guard case let .snapshot(frameSchemaVersion, update, envelopes, feedProjections) = frame else {
                 if case let .panic(message) = frame {
                     kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
                     return .panic(message)
@@ -630,6 +662,7 @@ final class KernelHandle {
                 KernelUpdateResult(
                     update: update,
                     typedHomeFeed: typedHomeFeed,
+                    feedProjections: feedProjections,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
                     decodeMicros: duration.microseconds
@@ -713,6 +746,12 @@ struct KernelUpdateResult {
     /// `NFCT` decoder could fully populate. `nil` means the generic
     /// `projections.homeFeed` fallback applies (ADR-0037 Commitment 4).
     let typedHomeFeed: ChirpTimelineSnapshot?
+    /// V-112 Step C — dynamic-key M2 flat feeds, keyed by full projection key
+    /// (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`). Empty when no
+    /// author/thread screen is open. `ProfileView` / `ThreadScreen` read their
+    /// per-open feed out of this map (the generated `SnapshotProjections`
+    /// struct cannot express the per-open key — see `extractFeedProjections`).
+    let feedProjections: [String: ChirpTimelineSnapshot]
     let payloadBytes: Int
     let callbackReceivedAt: ContinuousClock.Instant
     let decodeMicros: Int

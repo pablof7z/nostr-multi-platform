@@ -21,6 +21,18 @@ struct ProfileView: View {
         model.authorView?.pubkey == pubkey ? model.authorView : nil
     }
     private var profile: ProfileCard? { authorView?.profile }
+    // V-112 Step C — the M2 flat author feed (`nmp.feed.author.<pubkey>`) IS
+    // wired and exercised below (`openAuthorFeed`/`closeAuthorFeed`, read via
+    // `model.authorFeed(pubkey:)` → `TimelineItem.synthetic(from:)`), but the
+    // item-source CUTOVER is deliberately NOT taken yet: a full-suite real-relay
+    // smoke run (ChirpTests Scenario 7) could not VERIFY the flat feed populates
+    // — the dev environment's relays are not backfilling today (Scenario 3, the
+    // established backfill assertion, fails identically; the home feed and the
+    // old `author_view` path are equally empty). Cutting `items` to a feed that
+    // is runtime-empty would blank the screen. So `items` stays on the live
+    // `author_view` projection until the feed is verified populating; the
+    // cutover is a one-line swap to `model.authorFeed(pubkey:)` once it is.
+    // See `docs/perf/pending-user-decisions.md` (V-112 Step C, 2026-06-04).
     private var items: [TimelineItem] { authorView?.items ?? [] }
     private var primaryAction: ProfileAction? { authorView?.primaryAction }
 
@@ -32,7 +44,8 @@ struct ProfileView: View {
             mentionProfiles: model.mentionProfiles,
             // V-80 — the home feed is roots-only (`cards: [ChirpRootCard]`);
             // reach into each root's inner `.card` for this best-effort side
-            // lookup (the profile view's primary source is `author_view`).
+            // lookup (the profile view's primary source is `author_view`). Stays
+            // on the home feed until the V-112 flat-feed cutover (see `items`).
             eventCards: Dictionary(
                 uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.card.id, $0.card) }),
             timelineItems: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
@@ -53,10 +66,17 @@ struct ProfileView: View {
         .navigationTitle(profile?.displayLabel ?? "Profile")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            // V-112 Step C — open BOTH paths during the transition: the M2 flat
+            // feed (`openAuthorFeed`) drives the note list `items` reads; the
+            // legacy `openAuthor` keeps `author_view` populated for the header /
+            // primary action / post-count. Step D drops the legacy half once
+            // those survive app-side.
+            model.openAuthorFeed(pubkey: pubkey)
             model.openAuthor(pubkey: pubkey)
         }
         .onDisappear {
-            // T152: release the author sub on nav-away (wire_subs baseline).
+            // T152: release both subs on nav-away (wire_subs baseline).
+            model.closeAuthorFeed(pubkey: pubkey)
             model.closeAuthor(pubkey: pubkey)
         }
         .animation(.smooth(duration: 0.3), value: profile)

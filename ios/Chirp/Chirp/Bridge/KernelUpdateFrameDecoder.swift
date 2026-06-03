@@ -22,7 +22,14 @@ enum KernelUpdateFrameDecoderError: LocalizedError {
 }
 
 enum KernelUpdateFrame {
-    case snapshot(UInt32, KernelUpdate, [TypedProjectionEnvelope])
+    /// `(schemaVersion, update, typedEnvelopes, feedProjections)`.
+    ///
+    /// `feedProjections` (V-112 Step C) carries the dynamic-key M2 flat feeds
+    /// (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`) that the generated
+    /// `SnapshotProjections` struct cannot express as static `CodingKeys`
+    /// (their suffix varies per open screen). Empty when no author/thread
+    /// screen is open — the steady state.
+    case snapshot(UInt32, KernelUpdate, [TypedProjectionEnvelope], [String: ChirpTimelineSnapshot])
     case panic(String)
 }
 
@@ -55,7 +62,8 @@ enum KernelUpdateFrameDecoder {
             }
             let update = try KernelUpdate(from: FlatBufferValueDecoder(value: payload, codingPath: []))
             let envelopes = extractTypedProjections(from: snapshot)
-            return .snapshot(snapshot.schemaVersion, update, envelopes)
+            let feedProjections = extractFeedProjections(payload: payload)
+            return .snapshot(snapshot.schemaVersion, update, envelopes, feedProjections)
         case .panic:
             guard let message = frame.panic?.msg else {
                 throw KernelUpdateFrameDecoderError.missingPanicPayload
@@ -89,6 +97,77 @@ enum KernelUpdateFrameDecoder {
         }
         return envelopes
     }
+
+    /// V-112 Step C — lift the dynamic-key M2 flat feeds out of the snapshot
+    /// `payload` map into `[fullKey: ChirpTimelineSnapshot]`.
+    ///
+    /// The generated `SnapshotProjections` struct has one static `CodingKey`
+    /// per projection and structurally cannot read a per-open key like
+    /// `nmp.feed.author.<pubkey_hex>` (suffix varies). These flat feeds
+    /// (ADR-0042 §5.1, registered at runtime by
+    /// `nmp_app_chirp_open_author_feed` / `…_thread_feed`) emit the SAME
+    /// `RootFeedSnapshot` wire shape the home feed uses, so each value decodes
+    /// through `ChirpTimelineSnapshot`'s existing Decodable verbatim.
+    ///
+    /// Lives here (not the generated file) so the V-112 Step D registry regen
+    /// never wipes it, and reuses the file-private `FlatBufferValueDecoder` (the
+    /// transport is a FlatBuffers `Value` map, not JSON). A key that is absent,
+    /// null, or fails to decode is skipped — a malformed transient feed never
+    /// aborts the whole snapshot (D1/D6, same contract as
+    /// `extractTypedProjections`). Empty map when no feed screen is open.
+    private static func extractFeedProjections(
+        payload: nmp_transport_Value
+    ) -> [String: ChirpTimelineSnapshot] {
+        guard payload.kind == .map,
+              let projections = mapValue(payload, forKey: "projections") else {
+            return [:]
+        }
+        var result: [String: ChirpTimelineSnapshot] = [:]
+        for pair in projections.map {
+            guard let key = pair.key,
+                  key.hasPrefix(FeedProjectionKey.authorPrefix)
+                      || key.hasPrefix(FeedProjectionKey.threadPrefix),
+                  let value = pair.value,
+                  value.kind == .map else {
+                continue
+            }
+            if let snapshot = try? ChirpTimelineSnapshot(
+                from: FlatBufferValueDecoder(value: value, codingPath: [])
+            ) {
+                result[key] = snapshot
+            }
+        }
+        return result
+    }
+
+    /// Return the `.map`-kinded value stored under `key` in `container`'s map,
+    /// or `nil` when absent / not a map. Linear scan — the projections map has
+    /// O(tens) of entries and this runs once per snapshot frame.
+    private static func mapValue(
+        _ container: nmp_transport_Value,
+        forKey key: String
+    ) -> nmp_transport_Value? {
+        for pair in container.map where pair.key == key {
+            guard let value = pair.value, value.kind == .map else { return nil }
+            return value
+        }
+        return nil
+    }
+}
+
+/// Snapshot-key construction for the M2 per-open flat feeds (V-112 Step C).
+/// Mirrors the Rust `author_feed_key` / `thread_feed_key`
+/// (`apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs`) — the single source of
+/// truth for these strings so the Swift read key and Rust write key cannot
+/// drift.
+enum FeedProjectionKey {
+    /// `nmp.feed.author.<pubkey_hex>` — read by `ProfileView`.
+    static let authorPrefix = "nmp.feed.author."
+    /// `nmp.feed.thread.<event_id_hex>` — read by `ThreadScreen`.
+    static let threadPrefix = "nmp.feed.thread."
+
+    static func author(_ pubkeyHex: String) -> String { authorPrefix + pubkeyHex }
+    static func thread(_ eventIdHex: String) -> String { threadPrefix + eventIdHex }
 }
 
 private final class FlatBufferValueDecoder: Decoder {

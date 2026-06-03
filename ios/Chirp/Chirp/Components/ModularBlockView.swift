@@ -91,7 +91,7 @@ struct ModularBlockView: View {
             // ancestor of a reply lands but isn't in the kernel's visible
             // window (timeline_authors filter, visible_limit, etc.).
             NoteRowView(
-                item: syntheticItem(card: card, item: nil),
+                item: TimelineItem.synthetic(from: card),
                 contentTree: card.contentTree,
                 mentionProfiles: mentionProfiles,
                 eventCards: cards,
@@ -298,36 +298,10 @@ struct ModularBlockView: View {
         return context.contentTree(for: item, fallback: card?.contentTree)
     }
 
-    private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {
-        // ADR-0032: `TimelineItem` now carries raw protocol data only —
-        // display formatting is the presentation layer's responsibility.
-        // `isRepost` / `navTargetId` / `repostInnerContent` keep their
-        // neutral kind:1 defaults; synthetic-from-card rows are not
-        // surfaced through the repost rendering path.
-        TimelineItem(
-            // Inherit the snapshot-baked display name from the backing item
-            // when present; fall back to the card's own kind:0 name. `nil`
-            // when neither has a name yet — the row formats the pubkey as
-            // short hex.
-            authorDisplayName: item?.authorDisplayName ?? card.authorDisplayName,
-            // Inherit lnurl from the cached TimelineItem when present so a
-            // synthetic-from-card row still exposes the zap affordance.
-            // `nil` for cards without a backing item is correct — the row
-            // hides the zap button (no lnurl known yet).
-            authorLnurl: item?.authorLnurl,
-            authorPictureUrl: item?.authorPictureUrl ?? card.authorPictureUrl,
-            authorPubkey: card.authorPubkey,
-            content: card.content,
-            contentPreview: card.contentPreview,
-            createdAt: card.createdAt,
-            id: card.id,
-            isRepost: false,
-            kind: card.kind,
-            navTargetId: card.id,
-            relayCount: 0,
-            repostInnerContent: ""
-        )
-    }
+    // V-112 Step C — `syntheticItem(card:item:)` was lifted to the shared
+    // `TimelineItem.synthetic(from:backing:)` extension (Bridge/TimelineBlock.swift)
+    // so ProfileView's flat-feed read path and this home-feed path use one
+    // mapping. Call site above now uses `TimelineItem.synthetic(from: card)`.
 
     private func truncate(_ s: String, _ n: Int) -> String {
         s.count <= n ? s : String(s.prefix(n)) + "…"

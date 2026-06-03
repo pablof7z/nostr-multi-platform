@@ -53,6 +53,14 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// `snapshot?.homeFeed` (generic `Value` decode) is used instead.
     @Published private(set) var typedHomeFeed: ChirpTimelineSnapshot?
 
+    /// V-112 Step C — dynamic-key M2 flat feeds from the latest snapshot,
+    /// keyed by full projection key (`nmp.feed.author.<pk>` /
+    /// `nmp.feed.thread.<id>`). Empty when no author/thread screen is open.
+    /// Read via `authorFeed(pubkey:)` / `threadFeed(eventId:)`. Held outside
+    /// `snapshot` because the per-open feed key cannot be a static field on
+    /// the generated `SnapshotProjections` struct.
+    @Published private(set) var feedProjections: [String: ChirpTimelineSnapshot] = [:]
+
     // ── Local mutable state ──────────────────────────────────────────────
 
     @Published private(set) var snapshotCount: UInt64 = 0
@@ -103,6 +111,23 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// relationCounts) when available; falls back to the generic Value path
     /// when the typed path returns nil (ADR-0037 Commitment 4).
     var modularTimeline: ChirpTimelineSnapshot { typedHomeFeed ?? snapshot?.homeFeed ?? .empty }
+
+    /// V-112 Step C — the per-author flat feed for `pubkey`
+    /// (`nmp.feed.author.<pubkey>`), or `.empty` until the first snapshot
+    /// carrying it lands. `ProfileView` reads its note list from here after
+    /// calling `openAuthorFeed(pubkey:)`.
+    func authorFeed(pubkey: String) -> ChirpTimelineSnapshot {
+        feedProjections[FeedProjectionKey.author(pubkey)] ?? .empty
+    }
+
+    /// V-112 Step C — the per-thread flat feed for `eventId`
+    /// (`nmp.feed.thread.<eventId>`), or `.empty` until the first snapshot
+    /// carrying it lands. `ThreadScreen` reads its note list from here after
+    /// calling `openThreadFeed(eventId:)`.
+    func threadFeed(eventId: String) -> ChirpTimelineSnapshot {
+        feedProjections[FeedProjectionKey.thread(eventId)] ?? .empty
+    }
+
     var rev: UInt64 { snapshot?.rev ?? 0 }
     var profile: ProfileCard? { snapshot?.profile }
     var authorView: AuthorProfileSnapshot? { snapshot?.authorView }
@@ -378,6 +403,21 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     func closeAuthor(pubkey: String) { kernel.closeAuthor(pubkey: pubkey) }
     func openThread(eventID: String) { kernel.openThread(eventID: eventID) }
     func closeThread(eventID: String) { kernel.closeThread(eventID: eventID) }
+
+    // V-112 Step C — the M2 flat-feed read path (ADR-0042 §5.1). These register
+    // an `nmp-nip01::FlatFeed` under `nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`
+    // + an `open_interest` so a non-followed author's / arbitrary thread's
+    // kind:1/6 reach storage and fan out to the feed. `ProfileView` /
+    // `ThreadScreen` read the resulting note list via `authorFeed(pubkey:)` /
+    // `threadFeed(eventId:)`. During the V-112 transition these are called
+    // ALONGSIDE the legacy `openAuthor` / `openThread` (which still populate
+    // `author_view` / `thread_view` for the profile header, primary action, and
+    // thread-context counts the flat feed does not carry); Step D deletes the
+    // legacy half once those survive app-side.
+    func openAuthorFeed(pubkey: String) { kernel.openAuthorFeed(pubkey: pubkey) }
+    func closeAuthorFeed(pubkey: String) { kernel.closeAuthorFeed(pubkey: pubkey) }
+    func openThreadFeed(eventID: String) { kernel.openThreadFeed(eventID: eventID) }
+    func closeThreadFeed(eventID: String) { kernel.closeThreadFeed(eventID: eventID) }
     func claimProfile(pubkey: String, consumerID: String) {
         kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
     }
@@ -691,6 +731,9 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // ADR-0038: store the typed home-feed result. Nil means the generic
         // projections.homeFeed fallback applies for this tick.
         typedHomeFeed = result.typedHomeFeed
+        // V-112 Step C: the per-open M2 flat feeds (empty when no author/thread
+        // screen is open). Read via `authorFeed(pubkey:)` / `threadFeed(eventId:)`.
+        feedProjections = result.feedProjections
         lastErrorToast = update.lastErrorToast
 
         #if DEBUG
