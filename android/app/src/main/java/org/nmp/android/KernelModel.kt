@@ -117,6 +117,11 @@ class KernelModel : ViewModel() {
     /**
      * Publish a new note. Routes through dispatch_action("nmp.publish", ...).
      *
+     * Emits a generic `PublishRaw` kind:1 envelope (the `PublishNote` variant
+     * was removed in #916 — `PublishRaw` is the sole unsigned-publish door).
+     * For replies, builds a minimal NIP-10 reply marker tag
+     * (`["e", replyToId, "", "reply"]`); full root forwarding is a follow-up.
+     *
      * Returns the correlation_id if accepted, or null on error.
      */
     fun publishNote(
@@ -126,10 +131,10 @@ class KernelModel : ViewModel() {
     ): String? {
         val actionJson = when {
             replyToId != null -> {
-                """{"PublishNote":{"content":"${escapeJson(content)}","reply_to_id":"$replyToId","target":"$target"}}"""
+                """{"PublishRaw":{"kind":1,"tags":[["e","$replyToId","","reply"]],"content":"${escapeJson(content)}","target":"$target"}}"""
             }
             else -> {
-                """{"PublishNote":{"content":"${escapeJson(content)}","reply_to_id":null,"target":"$target"}}"""
+                """{"PublishRaw":{"kind":1,"tags":[],"content":"${escapeJson(content)}","target":"$target"}}"""
             }
         }
         val response = bridge.dispatchAction("nmp.publish", actionJson)
