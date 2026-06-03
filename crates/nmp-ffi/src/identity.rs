@@ -13,9 +13,15 @@
 //! Swift bridge sees a flat C ABI regardless of the Rust module split.
 
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
-use crate::action::INFLIGHT_DISPATCH_TTL;
 use nmp_core::ActorCommand;
 use std::ffi::c_char;
+use std::time::Duration;
+
+/// Wall-clock window during which a second `nmp_app_create_new_account` call
+/// is treated as an accidental double-tap and dropped. Sized to cover a slow
+/// account-creation round-trip without locking the user out of a genuine
+/// retry after a silent failure.
+const CREATE_ACCOUNT_INFLIGHT_TTL: Duration = Duration::from_secs(30);
 
 #[no_mangle]
 pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char) {
@@ -94,14 +100,13 @@ pub extern "C" fn nmp_app_create_new_account(
 
     // Idempotency guard: two rapid taps mint two distinct keypairs (the second
     // overwrites the first and the user silently loses their nsec). Reject a
-    // second dispatch within INFLIGHT_DISPATCH_TTL (30 s) — same TTL as the
-    // generic `inflight_dispatches` guard. A poisoned mutex degrades to "let
-    // the dispatch through" rather than silently blocking account creation
-    // forever (D6: failures are data, not crashes).
+    // second dispatch within CREATE_ACCOUNT_INFLIGHT_TTL (30 s). A poisoned
+    // mutex degrades to "let the dispatch through" rather than silently
+    // blocking account creation forever (D6: failures are data, not crashes).
     if let Ok(mut slot) = app.creating_account_inflight.lock() {
         let now = std::time::Instant::now();
         if let Some(started) = *slot {
-            if now.duration_since(started) < INFLIGHT_DISPATCH_TTL {
+            if now.duration_since(started) < CREATE_ACCOUNT_INFLIGHT_TTL {
                 return;
             }
         }

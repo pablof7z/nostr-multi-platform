@@ -53,26 +53,9 @@
 //!   channel send.
 
 use std::ffi::{c_char, CString};
-use std::time::{Duration, Instant};
 
 use super::{app_ref, c_string_argument, NmpApp};
-use nmp_core::stable_hash::stable_hash64;
 use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
-
-/// Time-to-live for an `inflight_dispatches` entry — the wall-clock window
-/// during which a same-`(namespace, action_json)` retap collapses to the
-/// original dispatch's `correlation_id` instead of enqueueing a second
-/// `ActorCommand`.
-///
-/// 30s is sized to cover "slow relay round-trip" without locking the user out
-/// of a legitimate retry after a genuine failure. The wallet guard
-/// (`INFLIGHT_BOLT11_TTL = 60s`) uses a longer window because NIP-47
-/// `pay_invoice` typically takes longer to settle and the cost of a
-/// double-pay (real funds moved) is higher than the cost of a duplicated DM
-/// (visible to recipients) — 30s for the dispatch guard hits the median
-/// "the response is in flight" case and the host can drive a real retry
-/// after that.
-pub(crate) const INFLIGHT_DISPATCH_TTL: Duration = Duration::from_secs(30);
 
 /// Dispatch a named action through the action registry.
 ///
@@ -235,24 +218,6 @@ pub extern "C" fn nmp_app_register_action_result_observer(
 /// against the registry, drive its execution through the actor, and return
 /// the JSON result string. Split out so the unit tests can exercise the
 /// dispatch logic without raw pointers.
-///
-/// # Idempotency guard
-///
-/// Before validating the action, the dispatcher computes a stable 64-bit
-/// FNV-1a hash of `(namespace, action_json)` and consults the app's
-/// [`NmpApp::inflight_dispatches`] map. A same-key entry younger than
-/// [`INFLIGHT_DISPATCH_TTL`] short-circuits the call: no `start()`, no
-/// executor, no `ActorCommand` enqueued — the call returns
-/// `{"correlation_id":"<original>"}` carrying the FIRST dispatch's
-/// `correlation_id` so the host's spinner stays bound to the in-flight action.
-/// This collapses rapid re-taps (the classic DM double-send pathology) into a
-/// single wire-side request without changing the host's accepted-action
-/// contract.
-///
-/// Insertion happens AFTER successful executor dispatch, so a malformed dup
-/// (or a registry-rejected action) does not poison the map — the host can
-/// fix and re-submit immediately. Expired entries are swept lazily on every
-/// call by wall-clock.
 pub(super) fn dispatch_action_json(
     app: Option<&NmpApp>,
     namespace: &str,
@@ -261,25 +226,6 @@ pub(super) fn dispatch_action_json(
     let Some(app) = app else {
         return error_json("null app");
     };
-    // Idempotency guard: compute the dedup key and check (under one lock
-    // acquisition) whether a same-key entry is still inside the TTL window.
-    // The check happens BEFORE `start()` so a re-tap inside the window does
-    // not even pay the validation cost. The lock is acquired ONLY for the
-    // check (it is released before `start()`), so a poisoned guard (D6)
-    // degrades to "let the dispatch through" — same posture as the wallet
-    // bolt11 guard.
-    let dedup_key = stable_hash64((namespace, action_json));
-    if let Ok(mut guard) = app.inflight_dispatches.lock() {
-        let now = Instant::now();
-        guard.retain(|_, (started, _)| now.duration_since(*started) < INFLIGHT_DISPATCH_TTL);
-        if let Some((_, original_id)) = guard.get(&dedup_key) {
-            // Re-tap inside the TTL window — return the original
-            // correlation_id so the host's spinner stays bound to the first
-            // dispatch. No `RecordActionFailure` is enqueued and no second
-            // `ActorCommand` is sent.
-            return format!(r#"{{"correlation_id":{}}}"#, json_string(original_id));
-        }
-    }
     let dispatch_now_ms = {
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()
@@ -311,19 +257,6 @@ pub(super) fn dispatch_action_json(
             // (preferred_action_id already bound it to the event id).
             match execute_action(app, namespace, action_json, &correlation_id) {
                 Ok(()) => {
-                    // Record the inflight entry NOW so a rapid re-tap inside
-                    // the TTL window short-circuits. We insert here (post-
-                    // execute success) rather than after `start()` so a
-                    // dispatch that the executor rejected does not poison the
-                    // map — the host can fix the action and re-submit
-                    // immediately. A poisoned mutex (D6) is a silent skip —
-                    // the dedup gap is acceptable degradation for an
-                    // already-broken process; the alternative of returning an
-                    // error after a successfully-enqueued ActorCommand would
-                    // be a worse correctness story.
-                    if let Ok(mut guard) = app.inflight_dispatches.lock() {
-                        guard.insert(dedup_key, (Instant::now(), correlation_id.clone()));
-                    }
                     // Push the "action accepted and enqueued" signal to the
                     // host's result observer, if one is registered. Built-in
                     // executors are fire-and-forget, so `result_json` is
