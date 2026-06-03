@@ -1365,5 +1365,21 @@ not a finished feature — frame it that way to avoid the "registered-but-inert"
   view that double-fires `onAppear` (open twice) then closes once replaces the feed but
   leaves the subscription refcount at 1 → a leaked sub. Either dedup opens host-side or
   ensure one close per open.
+- **`FlatFeed` is forward-only — no backfill from `self.events` (the load-bearing Step-C
+  iOS-sim check).** A `FlatFeed` is registered at profile/thread OPEN time and fills ONLY
+  from events flowing through `notify_event_observers` AFTER registration — it does not
+  replay events already in the kernel store. The home feed never hits this (registered once
+  at app start, accumulates from empty); a late-registered per-open feed does. Consequence:
+  events already in `self.events` (seen via the home feed or a prior visit) that the
+  author's relays won't re-serve — history past the relay's return limit, or a non-followed
+  author whose kind:10002 outbox relays are unknown so the `open_interest` REQ routes to
+  relays lacking their history — are in the store but INVISIBLE to a feed that started
+  empty. So the Step-C iOS-sim verification is NOT just "does a profile render" — it is
+  specifically: *does a freshly-opened profile show the author's notes INCLUDING ones
+  already in the store, and does `open_interest` route to relays that actually hold the
+  author's history?* If sparse/empty, the fix is a conscious design call made THEN, not now:
+  replay matching `self.events` into the feed on registration (a `FlatFeed::seed(&[KernelEvent])`
+  + a kernel read at register time) vs. accept relay-refetch-only. This is the general case
+  of the rootless-thread `#e`-only edge flagged above — file both together.
 - **D. Delete-cascade** (unchanged from the session-1 plan above) — only after C-Swift
   lands AND #935 + #934/0.2.4 are on master.
