@@ -46,10 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.model.ChirpEventCard
 import org.nmp.android.model.ChirpRootCard
-import org.nmp.android.model.ModuleTimelineBlock
 import org.nmp.android.model.ProfileCard
-import org.nmp.android.model.StandaloneTimelineBlock
-import org.nmp.android.model.TimelineBlock
 import org.nmp.android.model.TimelineItem
 
 /**
@@ -122,10 +119,11 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
     val activeAccount = s.projections
         ?.accounts
         ?.firstOrNull { it.id == s.activeAccount }
-    val itemLookup = s.items.associateBy { it.id }
 
-    // V-85 OP-centric render: prefer typed root cards from the NOFS decoder;
-    // fall back to the legacy `s.items` path (ADR-0037 Commitment 4).
+    // V-85 OP-centric render: typed root cards from the NOFS decoder are the
+    // sole home-feed source. The legacy `s.items` fallback (ADR-0037
+    // Commitment 4) was removed in #920 — the kernel's `"timeline"` projection
+    // was deleted in #924, so `s.items` is permanently empty.
     val opCards = s.modularTimeline.cards
     val hasOpFeed = opCards.isNotEmpty()
 
@@ -150,12 +148,12 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
                 ) {
                     Text("Chirp", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        "rev ${s.rev} · ${if (hasOpFeed) opCards.size else s.items.size} cards",
+                        "rev ${s.rev} · ${opCards.size} cards",
                         style = MaterialTheme.typography.labelSmall,
                     )
                 }
                 HorizontalDivider()
-                if (!hasOpFeed && s.items.isEmpty()) {
+                if (!hasOpFeed) {
                     Placeholder(
                         activeAccountLabel = activeAccount?.npubShort ?: s.activeAccount,
                         hasAccount = s.activeAccount.isNotEmpty(),
@@ -163,20 +161,11 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
                         lastErrorToast = s.lastErrorToast,
                         onCreateAccount = { model.createLocalAccount() },
                     )
-                } else if (hasOpFeed) {
+                } else {
                     // Typed OP-centric feed: one row per ChirpRootCard.
                     LazyColumn(Modifier.fillMaxSize()) {
                         itemsIndexed(opCards, key = { _, root -> root.card.id }) { _, root ->
-                            RootCardRow(root, itemLookup, model)
-                            HorizontalDivider()
-                        }
-                    }
-                } else {
-                    // Legacy item fallback — items rendered as standalone blocks.
-                    val legacyBlocks = s.items.map { StandaloneTimelineBlock(it.id) }
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        itemsIndexed(legacyBlocks, key = { index, block -> blockKey(index, block) }) { _, block ->
-                            TimelineBlockRow(block, itemLookup, emptyMap(), model)
+                            RootCardRow(root, emptyMap(), model)
                             HorizontalDivider()
                         }
                     }
@@ -273,44 +262,6 @@ private fun RootCardRow(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 56.dp, bottom = 4.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun TimelineBlockRow(
-    block: TimelineBlock,
-    items: Map<String, TimelineItem>,
-    cards: Map<String, ChirpEventCard>,
-    model: KernelModel? = null,
-) {
-    when (block) {
-        is StandaloneTimelineBlock -> NoteRow(block.eventId, items, cards, model = model)
-        is ModuleTimelineBlock -> ModuleBlockRow(block, items, cards, model)
-    }
-}
-
-@Composable
-private fun ModuleBlockRow(
-    block: ModuleTimelineBlock,
-    items: Map<String, TimelineItem>,
-    cards: Map<String, ChirpEventCard>,
-    model: KernelModel? = null,
-) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        block.events.forEachIndexed { index, eventId ->
-            NoteRow(eventId, items, cards, model = model)
-            if (index < block.events.lastIndex) {
-                HorizontalDivider(Modifier.padding(start = 56.dp))
-            }
-        }
-        if (block.hasGap) {
-            Text(
-                "Thread has more context",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 56.dp, bottom = 8.dp),
             )
         }
     }
@@ -448,11 +399,6 @@ private fun parseHexColor(hex: String): Color? {
         green = ((v shr 8) and 0xFF) / 255f,
         blue = (v and 0xFF) / 255f,
     )
-}
-
-private fun blockKey(index: Int, block: TimelineBlock): String {
-    val ids = block.eventIds.joinToString(":")
-    return ids.ifEmpty { "block-$index" }
 }
 
 private fun String.nonEmptyOrNull(): String? = if (isEmpty()) null else this
