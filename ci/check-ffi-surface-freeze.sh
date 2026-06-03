@@ -48,9 +48,19 @@ set -euo pipefail
 # bash 3.2 which has no associative-array support.
 #
 # adr-override: ADR-0028 — nmp_app_is_alive (lifecycle observability probe).
+# adr-override: ADR-0042 — nmp_app_open_interest / nmp_app_close_interest are the
+#   generic M2 feed-subscription surface. They are ADDED before the five legacy
+#   per-verb symbols (open_author/open_thread/open_firehose_tag/close_author/
+#   close_thread) are deleted (the delete-cascade is the architecture-significant
+#   PR2 — see BACKLOG V-112), so the net delta in THIS additive PR is +2 rather
+#   than the eventual −3. The override accepts the interim +2; once PR2 lands the
+#   net is −3 and these entries can be removed (the rename/relocate exemption
+#   then covers them, or they simply no longer appear as net-new).
 ADR_OVERRIDES=(
     "nmp_app_is_alive ADR-0028"
     "nmp_app_load_older_feed ADR-0033"
+    "nmp_app_open_interest ADR-0042"
+    "nmp_app_close_interest ADR-0042"
 )
 
 # Resolve an ADR override for a given symbol. Echoes the ADR number on a
