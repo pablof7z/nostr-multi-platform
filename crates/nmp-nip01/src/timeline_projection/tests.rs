@@ -221,110 +221,6 @@ fn cards_include_content_tree_wire_for_mentions() {
 }
 
 #[test]
-fn content_render_profiles_refresh_when_kind0_arrives_later() {
-    const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-    let mention = format!("nostr:{}", encode_npub(PK).expect("fixture npub encodes"));
-    let proj = ModularTimelineProjection::new(&spec());
-    proj.on_kernel_event(&note_with_content(
-        "S",
-        1,
-        vec![],
-        &format!("hello {mention}"),
-    ));
-
-    let pre = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "S")
-        .expect("card exists");
-    assert_eq!(
-        pre.content_render
-            .profiles
-            .get(PK)
-            .and_then(|profile| profile.display.name.as_deref()),
-        None
-    );
-
-    proj.on_kernel_event(&KernelEvent {
-        id: "P".into(),
-        author: PK.into(),
-        kind: 0,
-        created_at: 2,
-        tags: vec![],
-        content: r#"{"display_name":"Bob","picture":"https://example.com/b.png"}"#.into(),
-    });
-    let post = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "S")
-        .expect("card exists");
-    let profile = post
-        .content_render
-        .profiles
-        .get(PK)
-        .expect("mention profile");
-    assert_eq!(profile.display.name.as_deref(), Some("Bob"));
-    assert_eq!(
-        profile.display.picture_url.as_deref(),
-        Some("https://example.com/b.png")
-    );
-}
-
-#[test]
-fn content_render_events_refresh_when_quoted_event_arrives_later() {
-    let quoted_id = "b".repeat(64);
-    let note_uri = format!(
-        "nostr:{}",
-        encode_note(&quoted_id).expect("fixture note id encodes")
-    );
-    let proj = ModularTimelineProjection::new(&spec());
-    proj.on_kernel_event(&note_with_content(
-        "root",
-        1,
-        vec![],
-        &format!("quote {note_uri}"),
-    ));
-    let pre = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "root")
-        .expect("card exists");
-    assert!(
-        pre.content_render.events.is_empty(),
-        "quote cannot render until the referenced event is in the projection"
-    );
-
-    proj.on_kernel_event(&KernelEvent {
-        id: quoted_id.clone(),
-        author: "c".repeat(64),
-        kind: 1,
-        created_at: 2,
-        tags: vec![],
-        content: "quoted note body #nostr".into(),
-    });
-    let post = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "root")
-        .expect("card exists");
-    let quote = post
-        .content_render
-        .events
-        .get(&quoted_id)
-        .expect("resolved quote event");
-    assert_eq!(quote.content_preview, "quoted note body #nostr");
-    assert!(quote
-        .content_tree
-        .nodes
-        .iter()
-        .any(|node| matches!(node, WireNode::Hashtag { tag } if tag == "nostr")));
-}
-
-#[test]
 fn repost_cards_render_embedded_event_content_tree() {
     let embedded = serde_json::json!({
         "id": "inner",
@@ -396,86 +292,15 @@ fn observer_trait_object_drives_grouper() {
     proj.on_kernel_event(&note("X", 1, vec![]));
 }
 
-// ── Raw-data display-field tests (aim.md §2) ─────────────────────────
+// ── Raw-data card tests (aim.md §2 — no denormalized display) ────────
 
 #[test]
-fn card_with_no_profile_yields_optional_fields_as_none() {
-    const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-    let event = KernelEvent {
-        id: "E".into(),
-        author: PK.into(),
-        kind: 1,
-        created_at: 1,
-        tags: vec![],
-        content: "hello".into(),
-    };
-    let proj = ModularTimelineProjection::new(&spec());
-    proj.on_kernel_event(&event);
-    let snap = proj.snapshot();
-    let card = snap
-        .cards
-        .iter()
-        .find(|c| c.id == "E")
-        .expect("card exists");
-
-    // Raw hex pubkey passes through verbatim.
-    assert_eq!(card.author_pubkey, PK);
-    // No kind:0 has arrived yet → display_name / picture_url are None.
-    assert_eq!(card.author_display_name, None);
-    assert_eq!(card.author_picture_url, None);
-    assert_eq!(card.author_display.name, None);
-    assert_eq!(card.author_display.picture_url, None);
-    // npub is pubkey-deterministic, always present.
-    assert!(card
-        .author_display
-        .npub
-        .as_deref()
-        .unwrap()
-        .starts_with("npub1"));
-}
-
-#[test]
-fn refresh_author_cards_populates_display_name_when_kind0_arrives_later() {
-    const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-    let proj = ModularTimelineProjection::new(&spec());
-    let note_event = KernelEvent {
-        id: "E".into(),
-        author: PK.into(),
-        kind: 1,
-        created_at: 1,
-        tags: vec![],
-        content: "hi".into(),
-    };
-    proj.on_kernel_event(&note_event);
-    let pre = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "E")
-        .expect("card");
-    assert_eq!(pre.author_display_name, None);
-
-    let profile_event = KernelEvent {
-        id: "P".into(),
-        author: PK.into(),
-        kind: 0,
-        created_at: 2,
-        tags: vec![],
-        content: r#"{"display_name":"Alice"}"#.into(),
-    };
-    proj.on_kernel_event(&profile_event);
-    let post = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "E")
-        .expect("card");
-    assert_eq!(post.author_display_name.as_deref(), Some("Alice"));
-    assert_eq!(post.author_display.name.as_deref(), Some("Alice"));
-}
-
-#[test]
-fn refresh_author_cards_populates_picture_url_when_kind0_arrives_later() {
+fn card_carries_raw_pubkey_and_no_denormalized_display() {
+    // GH #920: the card no longer denormalizes any kind:0 display copy. The
+    // raw hex pubkey is the only author identity it carries; the presentation
+    // layer joins against the snapshot's `resolved_profiles` map. A kind:0 for
+    // the author is inert for this projection (it produces no card and does
+    // not mutate the existing one).
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     let proj = ModularTimelineProjection::new(&spec());
     proj.on_kernel_event(&KernelEvent {
@@ -484,16 +309,19 @@ fn refresh_author_cards_populates_picture_url_when_kind0_arrives_later() {
         kind: 1,
         created_at: 1,
         tags: vec![],
-        content: "hi".into(),
+        content: "hello".into(),
     });
     let pre = proj
         .snapshot()
         .cards
         .into_iter()
         .find(|c| c.id == "E")
-        .expect("card");
-    assert_eq!(pre.author_picture_url, None);
+        .expect("card exists");
+    // Raw hex pubkey passes through verbatim.
+    assert_eq!(pre.author_pubkey, PK);
+    assert_eq!(pre.content, "hello");
 
+    // A later kind:0 does not add a card and leaves the existing one unchanged.
     proj.on_kernel_event(&KernelEvent {
         id: "P".into(),
         author: PK.into(),
@@ -502,41 +330,8 @@ fn refresh_author_cards_populates_picture_url_when_kind0_arrives_later() {
         tags: vec![],
         content: r#"{"display_name":"Alice","picture":"https://example.com/a.png"}"#.into(),
     });
-    let post = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "E")
-        .expect("card");
-    assert_eq!(
-        post.author_picture_url.as_deref(),
-        Some("https://example.com/a.png")
-    );
-    assert_eq!(post.author_display.picture_url, post.author_picture_url);
-}
-
-#[test]
-fn content_preview_truncates_at_180_scalars_without_ellipsis() {
-    // 200-char ASCII body → preview is the first 180 chars, no `…`.
-    let body = "a".repeat(200);
-    let expected = "a".repeat(180);
-    let event = KernelEvent {
-        id: "L".into(),
-        author: "a".repeat(64),
-        kind: 1,
-        created_at: 1,
-        tags: vec![],
-        content: body,
-    };
-    let proj = ModularTimelineProjection::new(&spec());
-    proj.on_kernel_event(&event);
-    let card = proj
-        .snapshot()
-        .cards
-        .into_iter()
-        .find(|c| c.id == "L")
-        .expect("card");
-    assert_eq!(card.content_preview.len(), 180);
-    assert_eq!(card.content_preview, expected);
-    assert!(!card.content_preview.ends_with('…'));
+    let post = proj.snapshot();
+    assert_eq!(post.cards.len(), 1, "kind:0 produces no card");
+    let card = post.cards.into_iter().find(|c| c.id == "E").expect("card");
+    assert_eq!(card.author_pubkey, PK);
 }

@@ -239,25 +239,22 @@ fn encode_repost_attribution<'bldr>(
     builder: &mut FlatBufferBuilder<'bldr>,
     attribution: &RepostAttribution,
 ) -> WIPOffset<fb::RepostAttribution<'bldr>> {
-    let author_display = encode_author_display(builder, &attribution.author_display);
+    // GH #920: `RepostAttribution` carries the reposter's raw pubkey +
+    // `note_created_at` only — no denormalized display copy. The vestigial
+    // wire slots (kept byte-identical pending the cross-language follow-up)
+    // get the absent shape: an npub-only fallback display + `has_* = false`.
+    let author_display =
+        encode_author_display(builder, &AuthorDisplay::fallback(&attribution.author_pubkey));
     let author_pubkey = builder.create_string(&attribution.author_pubkey);
-    let author_display_name = attribution
-        .author_display_name
-        .as_ref()
-        .map(|s| builder.create_string(s));
-    let author_picture_url = attribution
-        .author_picture_url
-        .as_ref()
-        .map(|s| builder.create_string(s));
     fb::RepostAttribution::create(
         builder,
         &fb::RepostAttributionArgs {
             author_pubkey: Some(author_pubkey),
             author_display: Some(author_display),
-            has_author_display_name: attribution.author_display_name.is_some(),
-            author_display_name,
-            has_author_picture_url: attribution.author_picture_url.is_some(),
-            author_picture_url,
+            has_author_display_name: false,
+            author_display_name: None,
+            has_author_picture_url: false,
+            author_picture_url: None,
             note_created_at: attribution.note_created_at,
         },
     )
@@ -274,8 +271,17 @@ pub(crate) fn encode_card<'bldr>(
     builder: &mut FlatBufferBuilder<'bldr>,
     card: &TimelineEventCard,
 ) -> WIPOffset<fb::TimelineEventCard<'bldr>> {
-    // Child offsets must be created before the parent table.
-    let author_display = encode_author_display(builder, &card.author_display);
+    // GH #920: `TimelineEventCard` no longer denormalizes any author display
+    // copy (`author_display`, `author_display_name`, `author_picture_url`),
+    // the render preview (`content_preview`), or the embedded-ref render facts
+    // (`content_render`). The presentation layer joins against the snapshot's
+    // `resolved_profiles` / `claimed_events` maps instead. The `.fbs` schema +
+    // generated bindings stay byte-identical (the coordinated cross-language
+    // wire-slot removal rides with the iOS/Android follow-up), so the encoder
+    // fills the now-vestigial slots with the absent shape: a fallback
+    // `AuthorDisplay` (npub-only, derived from the raw pubkey), empty preview,
+    // `has_* = false`, and an empty `ContentRenderData`.
+    let author_display = encode_author_display(builder, &AuthorDisplay::fallback(&card.author_pubkey));
     let relation_counts = encode_relation_counts(builder, &card.relation_counts);
     let reposted_by = card
         .reposted_by
@@ -285,19 +291,11 @@ pub(crate) fn encode_card<'bldr>(
     let id = builder.create_string(&card.id);
     let author_pubkey = builder.create_string(&card.author_pubkey);
     let content = builder.create_string(&card.content);
-    let content_preview = builder.create_string(&card.content_preview);
-    let author_display_name = card
-        .author_display_name
-        .as_ref()
-        .map(|s| builder.create_string(s));
-    let author_picture_url = card
-        .author_picture_url
-        .as_ref()
-        .map(|s| builder.create_string(s));
+    let content_preview = builder.create_string("");
 
     let content_tree_bytes = encode_content_tree_bytes(&card.content_tree);
     let content_tree_bytes = builder.create_vector(&content_tree_bytes);
-    let content_render = encode_content_render(builder, &card.content_render);
+    let content_render = encode_content_render(builder, &ContentRenderData::default());
 
     fb::TimelineEventCard::create(
         builder,
@@ -311,10 +309,10 @@ pub(crate) fn encode_card<'bldr>(
             content_tree_bytes: Some(content_tree_bytes),
             content_render: Some(content_render),
             relation_counts: Some(relation_counts),
-            has_author_display_name: card.author_display_name.is_some(),
-            author_display_name,
-            has_author_picture_url: card.author_picture_url.is_some(),
-            author_picture_url,
+            has_author_display_name: false,
+            author_display_name: None,
+            has_author_picture_url: false,
+            author_picture_url: None,
             content_preview: Some(content_preview),
             reposted_by,
         },

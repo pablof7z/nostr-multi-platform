@@ -10,7 +10,7 @@ use nmp_feed::{FeedCursor, FeedPage, FeedWindowMetrics, RootCard, RootFeedSnapsh
 use super::*;
 use crate::note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
 use crate::profile_display::AuthorDisplay;
-use crate::timeline_projection::{ContentRenderData, RepostAttribution, TimelineEventCard};
+use crate::timeline_projection::{RepostAttribution, TimelineEventCard};
 
 /// Deterministic 32-byte hex id from a single byte (`0xab` -> "abab...ab").
 fn hex32(byte: u8) -> String {
@@ -36,12 +36,10 @@ fn repost_card() -> TimelineEventCard {
     TimelineEventCard {
         id: hex32(0x09),
         author_pubkey: hex32(0x02),
-        author_display: full_display(),
         kind: 6,
         created_at: 1_700_000_000,
         content: "hello world".to_string(),
         content_tree: content_tree(),
-        content_render: ContentRenderData::default(),
         relation_counts: NoteRelationCounts {
             replies: RelationCount::Known { count: 2 },
             reactions: RelationCount::Loading {
@@ -52,44 +50,29 @@ fn repost_card() -> TimelineEventCard {
                 interest: RelationCountInterest::zaps(&hex32(0xaa)),
             },
         },
-        author_display_name: Some("Alice".to_string()),
-        author_picture_url: Some("https://example.com/a.png".to_string()),
-        content_preview: "hello world".to_string(),
         reposted_by: Some(RepostAttribution {
             author_pubkey: hex32(0x42),
-            author_display: full_display(),
-            author_display_name: Some("Alice".to_string()),
-            author_picture_url: Some("https://example.com/a.png".to_string()),
             note_created_at: 1_699_000_000,
         }),
     }
 }
 
-/// A plain (non-repost) root card with absent display mirrors — proves the
-/// `has_*` absence flags survive (no kind:0 seen yet).
+/// A plain (non-repost) root card. GH #920: the card carries the raw pubkey
+/// only — no denormalized display copy.
 fn bare_card() -> TimelineEventCard {
     TimelineEventCard {
         id: hex32(0x03),
         author_pubkey: hex32(0x04),
-        author_display: AuthorDisplay {
-            name: None,
-            npub: Some("npub1bob".to_string()),
-            picture_url: None,
-        },
         kind: 1,
         created_at: 1_700_000_500,
         content: "a thread root".to_string(),
         content_tree: content_tree(),
-        content_render: ContentRenderData::default(),
         relation_counts: NoteRelationCounts {
             replies: RelationCount::Known { count: 0 },
             reactions: RelationCount::Known { count: 0 },
             reposts: RelationCount::Known { count: 0 },
             zaps: RelationCount::Known { count: 0 },
         },
-        author_display_name: None,
-        author_picture_url: None,
-        content_preview: "a thread root".to_string(),
         reposted_by: None,
     }
 }
