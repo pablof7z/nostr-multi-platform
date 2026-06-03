@@ -68,6 +68,7 @@ fn builder_output_plugs_directly_into_publish_unsigned_event_command() {
     let cmd = ActorCommand::PublishUnsignedEvent {
         event: unsigned,
         correlation_id: None,
+        signer_pubkey: None,
     };
     // Confirm the variant carries the kind through unchanged — extracting
     // by pattern-match also doubles as a compile-time shape lock.

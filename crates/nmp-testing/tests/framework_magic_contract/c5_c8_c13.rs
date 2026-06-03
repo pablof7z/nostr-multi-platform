@@ -272,10 +272,11 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     // Without an active account, open_contact_list_sub short-circuits to
     // toast_no_account and follow_feed_kinds stays empty, which means
     // projections.timeline is absent (D5 snapshot bounding, PR #770 / V-46).
-    tx.send(ActorCommand::SignInNsec {
-        secret: zeroize::Zeroizing::new(TEST_NSEC.to_string()),
+    tx.send(ActorCommand::AddSigner {
+        source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
+        make_active: true,
     })
-    .expect("send SignInNsec");
+    .expect("send AddSigner");
 
     // Open the timeline view (kind:1) so follow_feed_kinds is non-empty.
     // D5: projections.timeline is only emitted when the shell has subscribed

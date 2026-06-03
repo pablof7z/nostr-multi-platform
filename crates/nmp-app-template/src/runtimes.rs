@@ -149,6 +149,8 @@ impl DmRuntimeController {
                 ActorCommand::PublishUnsignedEvent {
                     event,
                     correlation_id: None,
+                    // Internal DM-relay-list publish signs with the active account.
+                    signer_pubkey: None,
                 }
             }
         };

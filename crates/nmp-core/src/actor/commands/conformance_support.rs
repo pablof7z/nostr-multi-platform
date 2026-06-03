@@ -8,8 +8,9 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use super::identity::{create_account, sign_in_nsec, IdentityRuntime};
+use super::identity::{add_signer, create_account, IdentityRuntime};
 use super::publish::{follow, publish_note, publish_unsigned_event, react};
+use crate::actor::SignerSource;
 use crate::kernel::Kernel;
 use crate::publish::{InMemoryPublishStore, PublishStore, PublishTarget};
 use crate::relay::{OutboundMessage, DEFAULT_VISIBLE_LIMIT};
@@ -61,7 +62,13 @@ impl ConformanceHarness {
     /// the active account so the (fail-closed) outbox resolver has targets and
     /// publish commands produce non-empty outbound frames.
     pub fn sign_in_and_seed_nip65(&mut self, nsec: &str, write_relays: &[&str]) {
-        sign_in_nsec(&mut self.identity, &mut self.kernel, nsec, false);
+        add_signer(
+            &mut self.identity,
+            &mut self.kernel,
+            SignerSource::LocalNsec(zeroize::Zeroizing::new(nsec.to_string())),
+            true,
+            false,
+        );
         let pubkey = self
             .identity
             .active_pubkey()
@@ -165,6 +172,8 @@ impl ConformanceHarness {
             &self.identity,
             &mut self.kernel,
             unsigned,
+            None,
+            // Conformance harness signs with the active account.
             None,
             &mut Vec::new(),
         );

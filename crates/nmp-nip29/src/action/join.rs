@@ -105,7 +105,7 @@ mod tests {
         let cmds = run_execute(input()).expect("well-formed input executes");
         assert_eq!(cmds.len(), 1, "join executor must send exactly one command, got {cmds:?}");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, .. } => {
                 // Pinned to EXACTLY the host relay — never the NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.kind, KIND_JOIN_REQUEST);

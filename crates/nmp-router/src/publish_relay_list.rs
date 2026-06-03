@@ -304,6 +304,8 @@ impl ActionModule for PublishRelayListAction {
         send(ActorCommand::PublishUnsignedEvent {
             event,
             correlation_id: Some(correlation_id.to_string()),
+            // The kind:10002 relay list signs with the active account.
+            signer_pubkey: None,
         });
         Ok(())
     }

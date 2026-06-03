@@ -21,8 +21,9 @@ fn actor_command_from_event(event: BrokerEvent) -> ActorCommand {
         BrokerEvent::Progress { stage, message } => {
             ActorCommand::BunkerHandshakeProgress { stage, message }
         }
-        BrokerEvent::SignerReady { signer } => ActorCommand::AddRemoteSigner {
-            handle: Box::new(ArcRemoteSigner(signer)),
+        BrokerEvent::SignerReady { signer } => ActorCommand::AddSigner {
+            source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcRemoteSigner(signer))),
+            make_active: true,
         },
         // V-14 step b: relay-layer connection state. Routes through the actor
         // (D4 — actor is sole writer of the `bunker_connection_state` slot),

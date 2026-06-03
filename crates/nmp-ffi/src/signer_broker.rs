@@ -58,8 +58,15 @@ fn handle_broker_event(tx: &Sender<ActorCommand>, event: BrokerEvent) {
         BrokerEvent::Progress { stage, message } => {
             ActorCommand::BunkerHandshakeProgress { stage, message }
         }
-        BrokerEvent::SignerReady { signer } => ActorCommand::AddRemoteSigner {
-            handle: Box::new(ArcRemoteSigner(signer)),
+        // The broker completed a NIP-46 handshake. Route the resolved signer
+        // back through the unified `AddSigner` command. The broker adapter
+        // cannot see the `make_active` flag the originating `BunkerUri` command
+        // stashed in the actor's `IdentityRuntime`; it requests activation, and
+        // the actor reconciles that with the stashed value (taking either
+        // signal, and always activating when no account is active).
+        BrokerEvent::SignerReady { signer } => ActorCommand::AddSigner {
+            source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcRemoteSigner(signer))),
+            make_active: true,
         },
         // V-14 step b: relay-layer connection state. Routes through the actor
         // (D4 — actor is sole writer of the `bunker_connection_state` slot).

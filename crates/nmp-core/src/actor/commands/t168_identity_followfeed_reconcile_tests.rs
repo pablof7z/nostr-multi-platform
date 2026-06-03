@@ -38,7 +38,16 @@ fn fresh() -> (IdentityRuntime, Kernel) {
 /// Sign in account A, register A's kind:3 follow set (follows ALICE), and
 /// drain so the M2 follow-feed sub is registered + live on the wire.
 fn sign_in_a_with_followfeed(id: &mut IdentityRuntime, kernel: &mut Kernel) -> String {
-    sign_in_nsec(id, kernel, TEST_NSEC, false);
+    // Pre-`AddSigner` this was `sign_in_nsec(id, kernel, TEST_NSEC, false)`;
+    // the unified reducer's `LocalNsec` branch with `make_active: true` is the
+    // direct replacement (the old `sign_in_nsec` always activated).
+    add_signer(
+        id,
+        kernel,
+        crate::actor::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
+        true,
+        false,
+    );
     let active_pk = id.active_pubkey().expect("active account after sign_in");
     kernel.seed_kind10002_for_test(ALICE, &["wss://alice-t168.relay/"]);
     kernel.inject_replaceable_event(

@@ -6,7 +6,9 @@
 //! an exception across FFI), then routes through `Kernel::publish_signed`
 //! which resolves the NIP-65 outbox (D3) and emits the wire `EVENT` frame.
 
-use crate::actor::commands::identity::{sign_active_nonblocking, IdentityRuntime};
+use crate::actor::commands::identity::{
+    sign_active_nonblocking, sign_with_account_nonblocking, IdentityRuntime,
+};
 use crate::actor::pending_sign::PendingSign;
 use crate::kernel::Kernel;
 use crate::kinds::KIND_GIFT_WRAP;
@@ -114,9 +116,14 @@ pub(crate) fn publish_unsigned_event(
     kernel: &mut Kernel,
     unsigned: UnsignedEvent,
     correlation_id: Option<String>,
+    signer_pubkey: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
-    if identity.active_pubkey().is_none() {
+    // `signer_pubkey: Some(_)` publishes under a SPECIFIC (possibly non-active)
+    // account — the active-account guard is skipped (a non-active signer
+    // publish must succeed even with no active account). `None` keeps the
+    // legacy active-account requirement.
+    if signer_pubkey.is_none() && identity.active_pubkey().is_none() {
         // Broken-promise fix: a dispatched action handed the host a
         // `correlation_id`; `toast_no_account` records the matching
         // `Failed` terminal so the spinner clears, and is a no-op for `None`.
@@ -125,7 +132,11 @@ pub(crate) fn publish_unsigned_event(
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op that is parked in `pending_signs` and `poll()`ed
     // by the actor's idle section — the actor thread never blocks (D8).
-    let mut op = match sign_active_nonblocking(identity, &unsigned) {
+    let sign_result = match &signer_pubkey {
+        Some(pubkey) => sign_with_account_nonblocking(identity, pubkey, &unsigned),
+        None => sign_active_nonblocking(identity, &unsigned),
+    };
+    let mut op = match sign_result {
         Ok(op) => op,
         Err(reason) => {
             // Broken-promise fix: a sign-setup failure happens on the actor
@@ -203,9 +214,13 @@ pub(crate) fn publish_unsigned_event_to_relays(
     unsigned: UnsignedEvent,
     relays: Vec<crate::publish::RelayUrl>,
     correlation_id: Option<String>,
+    signer_pubkey: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
-    if identity.active_pubkey().is_none() {
+    // `signer_pubkey: Some(_)` publishes under a SPECIFIC (possibly non-active)
+    // account — skip the active-account guard. `None` keeps the legacy
+    // active-account requirement.
+    if signer_pubkey.is_none() && identity.active_pubkey().is_none() {
         // Broken-promise fix: dispatched callers (NIP-29 group-message
         // executor — the only live consumer today) receive a correlation_id
         // from `nmp_app_dispatch_action`; without recording the terminal
@@ -220,7 +235,11 @@ pub(crate) fn publish_unsigned_event_to_relays(
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op parked in `pending_signs` with the explicit
     // target + correlation_id attached — the actor thread never blocks (D8).
-    let mut op = match sign_active_nonblocking(identity, &unsigned) {
+    let sign_result = match &signer_pubkey {
+        Some(pubkey) => sign_with_account_nonblocking(identity, pubkey, &unsigned),
+        None => sign_active_nonblocking(identity, &unsigned),
+    };
+    let mut op = match sign_result {
         Ok(op) => op,
         Err(reason) => {
             // Broken-promise fix: dispatched callers are waiting on

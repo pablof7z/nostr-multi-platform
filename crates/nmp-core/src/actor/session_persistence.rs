@@ -134,7 +134,17 @@ fn restore_local(
         return Vec::new();
     };
 
-    let outbound = commands::sign_in_nsec(identity, kernel, &secret, relays_ready);
+    // Restoring a persisted active account: add the local key and make it
+    // active (mirrors the pre-`AddSigner` `sign_in_nsec`, which always
+    // activated). The secret is wrapped in `Zeroizing` so the plaintext is
+    // wiped when `add_signer` drops the source.
+    let outbound = commands::add_signer(
+        identity,
+        kernel,
+        crate::actor::SignerSource::LocalNsec(zeroize::Zeroizing::new(secret)),
+        true,
+        relays_ready,
+    );
     if identity.active_pubkey().as_deref() == Some(identity_id) {
         enqueue_persist_current_active_session(identity, capability_work_tx);
     } else {

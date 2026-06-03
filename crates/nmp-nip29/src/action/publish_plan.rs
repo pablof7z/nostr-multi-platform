@@ -126,6 +126,8 @@ impl PublishPlan {
             },
             relays: vec![relay],
             correlation_id,
+            // NIP-29 group actions always sign with the active account.
+            signer_pubkey: None,
         })
     }
 }
@@ -193,7 +195,7 @@ mod tests {
         use nmp_core::ActorCommand;
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
         match p.into_actor_command(None).expect("pinned plan converts") {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, .. } => {
                 // Pinned to EXACTLY the group's host relay — never the
                 // author's NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://h.example.com".to_string()]);

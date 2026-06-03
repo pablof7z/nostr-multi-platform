@@ -242,7 +242,13 @@ fn capability_result_ready_dropped_for_removed_account() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Sign in an account so there IS an active account.
-    commands::sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
+    commands::add_signer(
+        &mut identity,
+        &mut kernel,
+        crate::actor::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
+        true,
+        false,
+    );
     let active_id = identity.active_pubkey().unwrap();
 
     // Simulate a result for a DIFFERENT (removed) account.
@@ -323,7 +329,13 @@ fn capability_result_ready_error_toasts_for_present_account() {
     );
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    commands::sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
+    commands::add_signer(
+        &mut identity,
+        &mut kernel,
+        crate::actor::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
+        true,
+        false,
+    );
     let active_id = identity.active_pubkey().unwrap();
 
     // An ERROR result for the present account.

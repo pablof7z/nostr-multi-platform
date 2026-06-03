@@ -171,7 +171,7 @@ fn maybe_publish_relay_list_after_edit(
     let Some(unsigned) = commands::build_relay_list_event(projection_after) else {
         return Vec::new();
     };
-    commands::publish_unsigned_event(identity, kernel, unsigned, None, pending_signs)
+    commands::publish_unsigned_event(identity, kernel, unsigned, None, None, pending_signs)
 }
 
 /// Borrowed bundle of the actor loop's mutable runtime state.
@@ -560,24 +560,50 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::SignInNsec { secret } => {
-            // `secret` is `Zeroizing<String>`; pass the borrowed `&str` and let
-            // the wrapper wipe the plaintext when it drops at end of scope.
-            let outbound =
-                commands::sign_in_nsec(ctx.identity, ctx.kernel, secret.as_str(), ctx.relays_ready);
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
-            // ADR-0040 §3 — enqueue the Keychain write off-actor (D8).
-            session_persistence::enqueue_persist_current_active_session(
+        ActorCommand::AddSigner {
+            source,
+            make_active,
+        } => {
+            use crate::actor::SignerSource;
+            // A `BunkerUri` source kicks off an async handshake and stores no
+            // signer yet — no keyring persistence runs until the resolved
+            // `RemoteHandle` arrives. A `RemoteHandle` source must persist the
+            // remote-signer payload off-actor; capture its persistence metadata
+            // BEFORE `add_signer` consumes the `source`.
+            let is_bunker_handshake = matches!(source, SignerSource::BunkerUri(_));
+            let remote_persistence = match &source {
+                SignerSource::RemoteHandle(handle) => {
+                    Some((handle.pubkey_hex(), handle.persistence_payload_json()))
+                }
+                _ => None,
+            };
+            let outbound = commands::add_signer(
                 ctx.identity,
-                ctx.capability_work_tx,
+                ctx.kernel,
+                source,
+                make_active,
+                ctx.relays_ready,
             );
+            // ADR-0040 §3 — enqueue all Keychain writes off-actor (D8). The
+            // bunker-handshake-initiation path has nothing to persist yet (the
+            // signer arrives later as a `RemoteHandle`); skip persistence so we
+            // don't write a session for an account that doesn't exist yet.
+            if !is_bunker_handshake {
+                if let Some((remote_identity_id, Some(payload_json))) = &remote_persistence {
+                    session_persistence::enqueue_persist_remote_signer_payload(
+                        remote_identity_id,
+                        payload_json,
+                        ctx.capability_work_tx,
+                    );
+                }
+                update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
+                session_persistence::enqueue_persist_current_active_session(
+                    ctx.identity,
+                    ctx.capability_work_tx,
+                );
+            }
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
-        }
-        ActorCommand::SignInBunker { uri } => {
-            commands::sign_in_bunker(ctx.identity, ctx.kernel, &uri);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
         }
         ActorCommand::CreateAccount {
             profile,
@@ -621,27 +647,6 @@ pub(super) fn dispatch_command(
             // executes before any subsequent persist for the new active
             // account — the single worker drains in enqueue order.
             session_persistence::enqueue_forget_account(&identity_id, ctx.capability_work_tx);
-            session_persistence::enqueue_persist_current_active_session(
-                ctx.identity,
-                ctx.capability_work_tx,
-            );
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        ActorCommand::AddRemoteSigner { handle } => {
-            let remote_identity_id = handle.pubkey_hex();
-            let remote_payload_json = handle.persistence_payload_json();
-            let outbound =
-                commands::add_remote_signer(ctx.identity, ctx.kernel, handle, ctx.relays_ready);
-            // ADR-0040 §3 — enqueue all Keychain writes off-actor (D8).
-            if let Some(payload_json) = remote_payload_json {
-                session_persistence::enqueue_persist_remote_signer_payload(
-                    &remote_identity_id,
-                    &payload_json,
-                    ctx.capability_work_tx,
-                );
-            }
-            update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
             session_persistence::enqueue_persist_current_active_session(
                 ctx.identity,
                 ctx.capability_work_tx,
@@ -731,6 +736,8 @@ pub(super) fn dispatch_command(
                     ctx.kernel,
                     unsigned,
                     correlation_id,
+                    // PublishRaw always signs with the active account.
+                    None,
                     ctx.pending_signs,
                 ),
                 crate::publish::PublishTarget::Explicit { relays } => {
@@ -740,6 +747,8 @@ pub(super) fn dispatch_command(
                         unsigned,
                         relays,
                         correlation_id,
+                        // PublishRaw always signs with the active account.
+                        None,
                         ctx.pending_signs,
                     )
                 }
@@ -771,6 +780,7 @@ pub(super) fn dispatch_command(
         ActorCommand::PublishUnsignedEvent {
             event: mut unsigned,
             correlation_id,
+            signer_pubkey,
         } => {
             // D7: apply the same created_at=0 sentinel as PublishUnsignedEventToRelays.
             // A host that builds an UnsignedEvent without setting created_at gets
@@ -790,6 +800,7 @@ pub(super) fn dispatch_command(
                 ctx.kernel,
                 unsigned,
                 correlation_id,
+                signer_pubkey,
                 ctx.pending_signs,
             );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -799,6 +810,7 @@ pub(super) fn dispatch_command(
             mut event,
             relays,
             correlation_id,
+            signer_pubkey,
         } => {
             // D7: kernel owns the wall clock. Executors in NIP crates set
             // created_at = 0 as a sentinel; we re-stamp here so they never
@@ -820,6 +832,7 @@ pub(super) fn dispatch_command(
                 event,
                 relays,
                 correlation_id,
+                signer_pubkey,
                 ctx.pending_signs,
             );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -1888,8 +1901,9 @@ mod nip65_auto_publish_tests {
     //! relay — to drive `IdentityRuntime` so `active_pubkey()` is `Some`.
     use super::*;
     use crate::actor::commands::{
-        add_relay, new_bunker_handshake_slot, remove_relay, sign_in_nsec, IdentityRuntime,
+        add_relay, add_signer, new_bunker_handshake_slot, remove_relay, IdentityRuntime,
     };
+    use crate::actor::SignerSource;
     use crate::kernel::Kernel;
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
@@ -1914,10 +1928,16 @@ mod nip65_auto_publish_tests {
 
     fn signed_in_identity(kernel: &mut Kernel) -> IdentityRuntime {
         let mut identity = fresh_identity();
-        sign_in_nsec(&mut identity, kernel, TEST_NSEC, false);
+        add_signer(
+            &mut identity,
+            kernel,
+            SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
+            true,
+            false,
+        );
         assert!(
             identity.active_pubkey().is_some(),
-            "sign_in_nsec must produce an active account",
+            "add_signer(LocalNsec, make_active) must produce an active account",
         );
         identity
     }

@@ -1534,13 +1534,27 @@ impl NmpApp {
         self.tx.clone()
     }
 
-    /// Import a local secret through the actor-owned identity reducer.
-    pub fn sign_in_nsec(&self, secret: Zeroizing<String>) {
-        self.send_cmd(ActorCommand::SignInNsec { secret });
+    /// Add a signer through the actor-owned identity reducer. The unified
+    /// entry point that replaced the per-source `sign_in_nsec` /
+    /// `sign_in_bunker` / `add_remote_signer` methods.
+    ///
+    /// `make_active` activates the resulting account once it resolves (for a
+    /// `BunkerUri` source the flag is stashed across the async handshake
+    /// round-trip; see [`nmp_core::SignerSource`]).
+    pub fn add_signer(&self, source: nmp_core::SignerSource, make_active: bool) {
+        self.send_cmd(ActorCommand::AddSigner {
+            source,
+            make_active,
+        });
     }
 
     /// Restore an app-scoped local secret from the keyring capability or use
     /// an injected test secret, then sign it in through the identity reducer.
+    ///
+    /// Retained (not deleted with the bare `sign_in_nsec` wrapper) because it
+    /// owns the keyring-restore integration that `nmp-marmot` and the host
+    /// shells depend on. Rewired onto the unified `AddSigner` command — a
+    /// restored local secret always activates its account.
     pub fn restore_local_nsec_from_keyring(
         &self,
         account_id: &str,
@@ -1550,12 +1564,19 @@ impl NmpApp {
             Some(secret) => Some(secret),
             None => self.recall_local_nsec(account_id),
         }?;
-        self.sign_in_nsec(Zeroizing::new(secret.clone()));
+        self.add_signer(
+            nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
+            true,
+        );
         Some(secret)
     }
 
     /// Persist a newly-imported local secret through the keyring capability,
     /// then sign it in through the identity reducer.
+    ///
+    /// Retained (not deleted with the bare `sign_in_nsec` wrapper) because it
+    /// owns the keyring-persist integration that `nmp-marmot` and the host
+    /// shells depend on. Rewired onto the unified `AddSigner` command.
     #[must_use]
     pub fn sign_in_local_nsec_with_keyring(&self, account_id: &str, secret: String) -> String {
         let req = nmp_core::substrate::KeyringIdentityWiring::persist_secret(
@@ -1564,7 +1585,10 @@ impl NmpApp {
             &secret,
         );
         let _ = self.dispatch_capability(&req);
-        self.sign_in_nsec(Zeroizing::new(secret.clone()));
+        self.add_signer(
+            nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
+            true,
+        );
         secret
     }
 

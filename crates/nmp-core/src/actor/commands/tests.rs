@@ -21,6 +21,40 @@ const SECOND_HEX: &str = "000000000000000000000000000000000000000000000000000000
 /// kind:10002 for the active account before publishing.
 const TEST_WRITE_RELAYS: &[&str] = &["wss://test-write-r1.test", "wss://test-write-r2.test"];
 
+/// Test shim preserving the pre-`AddSigner` `sign_in_nsec(id, kernel, secret,
+/// relays_ready)` call shape used throughout this file. Delegates to the
+/// unified `add_signer` reducer with `make_active: true` (the old `sign_in_nsec`
+/// always activated the imported key).
+fn sign_in_nsec(
+    identity: &mut IdentityRuntime,
+    kernel: &mut Kernel,
+    secret: &str,
+    relays_ready: bool,
+) -> Vec<crate::relay::OutboundMessage> {
+    add_signer(
+        identity,
+        kernel,
+        crate::actor::SignerSource::LocalNsec(zeroize::Zeroizing::new(secret.to_string())),
+        true,
+        relays_ready,
+    )
+}
+
+/// Test shim preserving the pre-`AddSigner` `sign_in_bunker(id, kernel, uri)`
+/// call shape. Delegates to the unified `add_signer` reducer's `BunkerUri`
+/// branch with `make_active: true` (the old bunker sign-in always activated the
+/// resolved account). Needs `&mut` because the reducer stashes the
+/// `make_active` flag for the async handshake round-trip.
+fn sign_in_bunker(identity: &mut IdentityRuntime, kernel: &mut Kernel, uri: &str) {
+    add_signer(
+        identity,
+        kernel,
+        crate::actor::SignerSource::BunkerUri(uri.to_string()),
+        true,
+        false,
+    );
+}
+
 fn fresh() -> (IdentityRuntime, Kernel) {
     (
         IdentityRuntime::new(
@@ -426,7 +460,7 @@ fn publish_unsigned_event_without_account_toasts_and_no_outbound() {
         content: "body".into(),
         created_at: 0,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -450,7 +484,7 @@ fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
         content: "# body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":30023"));
     assert!(outbound[0]
@@ -487,7 +521,7 @@ fn publish_unsigned_event_rejects_oversized_kind_with_toast() {
         content: "should not publish".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "oversized kind must produce no outbound frames"
@@ -518,7 +552,7 @@ fn publish_unsigned_event_valid_kind_publishes_normally() {
         content: "valid kind".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert!(
         !outbound.is_empty(),
         "valid kind:1 must produce outbound frames"
@@ -541,7 +575,7 @@ fn publish_unsigned_event_rejects_malformed_tag_with_toast() {
         content: "tag test".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "malformed tag must produce no outbound frames"
@@ -575,7 +609,7 @@ fn publish_unsigned_event_valid_tags_pass_through() {
         content: "body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert_eq!(kernel.last_error_toast_snapshot(), None);
     assert!(outbound[0].text.contains("\"d\""));
@@ -1149,6 +1183,7 @@ fn publish_unsigned_event_to_relays_signs_and_routes_to_exactly_those() {
         unsigned,
         relays.clone(),
         None,
+        None,
         &mut Vec::new(),
     );
 
@@ -1196,7 +1231,15 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
     };
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let outbound =
-        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, relays, None, &mut Vec::new());
+        publish_unsigned_event_to_relays(
+            &id,
+            &mut kernel,
+            unsigned,
+            relays,
+            None,
+            None,
+            &mut Vec::new(),
+        );
 
     assert!(
         outbound.is_empty(),
@@ -1228,6 +1271,7 @@ fn publish_unsigned_event_to_relays_empty_relays_fails_closed() {
         &mut kernel,
         unsigned,
         Vec::new(),
+        None,
         None,
         &mut Vec::new(),
     );
@@ -1263,6 +1307,7 @@ fn publish_unsigned_event_to_relays_invalid_relay_fails_closed() {
         &mut kernel,
         unsigned,
         vec!["https://not-a-nostr-relay.example".to_string()],
+        None,
         None,
         &mut Vec::new(),
     );
@@ -1696,7 +1741,7 @@ fn profile_update_publishes_kind0_metadata_event() {
         content: r#"{"name":"marcus","display_name":"Marcus Webb"}"#.into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert!(
         !outbound.is_empty(),
         "kind:0 update must produce an EVENT frame"
@@ -1728,7 +1773,7 @@ fn profile_update_without_account_toasts_and_no_outbound() {
         content: r#"{"display_name":"Nobody"}"#.into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "profile update with no active account must produce no outbound frames"
@@ -1778,10 +1823,10 @@ fn sign_in_bunker_seeds_handshake_progress() {
     use std::sync::Arc;
     crate::bunker_hook::register_bunker_hook(Arc::new(|_uri| {}));
 
-    let (id, mut kernel) = fresh();
+    let (mut id, mut kernel) = fresh();
     let pk = "c".repeat(64);
     sign_in_bunker(
-        &id,
+        &mut id,
         &mut kernel,
         &format!("bunker://{pk}?relay=wss://r.example"),
     );
@@ -1797,8 +1842,8 @@ fn sign_in_bunker_seeds_handshake_progress() {
 
 #[test]
 fn sign_in_bunker_rejects_malformed_uri() {
-    let (id, mut kernel) = fresh();
-    sign_in_bunker(&id, &mut kernel, "bunker://nope");
+    let (mut id, mut kernel) = fresh();
+    sign_in_bunker(&mut id, &mut kernel, "bunker://nope");
     assert!(kernel
         .last_error_toast_snapshot()
         .is_some_and(|t| t.contains("invalid bunker")));
@@ -1829,10 +1874,10 @@ fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
     use std::sync::Arc;
     crate::bunker_hook::register_bunker_hook(Arc::new(|_uri| {}));
 
-    let (id, mut kernel) = fresh();
+    let (mut id, mut kernel) = fresh();
     let pk = "d".repeat(64);
     sign_in_bunker(
-        &id,
+        &mut id,
         &mut kernel,
         &format!("bunker://{pk}?relay=wss://r.example"),
     );

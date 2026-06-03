@@ -30,7 +30,12 @@ pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char) {
     let Some(secret) = c_string_argument(secret).map(zeroize::Zeroizing::new) else {
         return;
     };
-    app.send_cmd(ActorCommand::SignInNsec { secret });
+    // C-ABI symbol kept byte-stable; rewired onto the unified `AddSigner`
+    // command. A bare nsec sign-in always makes the new account active.
+    app.send_cmd(ActorCommand::AddSigner {
+        source: nmp_core::SignerSource::LocalNsec(secret),
+        make_active: true,
+    });
 }
 
 #[no_mangle]
@@ -41,7 +46,14 @@ pub extern "C" fn nmp_app_signin_bunker(app: *mut NmpApp, uri: *const c_char) {
     let Some(uri) = c_string_argument(uri) else {
         return;
     };
-    app.send_cmd(ActorCommand::SignInBunker { uri });
+    // C-ABI symbol kept byte-stable; rewired onto the unified `AddSigner`
+    // command. A bunker sign-in always makes the resolved account active — the
+    // flag is stashed across the async handshake round-trip (D0: nmp-core
+    // owns the stash; the broker adapter cannot see it).
+    app.send_cmd(ActorCommand::AddSigner {
+        source: nmp_core::SignerSource::BunkerUri(uri),
+        make_active: true,
+    });
 }
 
 #[no_mangle]

@@ -84,10 +84,11 @@ fn cold_open_profile_view_full_pipeline() {
     .expect("send Start");
 
     // Step 1: Sign in — establishes active account (alice) with local key.
-    tx.send(ActorCommand::SignInNsec {
-        secret: zeroize::Zeroizing::new(TEST_NSEC.to_string()),
+    tx.send(ActorCommand::AddSigner {
+        source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
+        make_active: true,
     })
-    .expect("send SignInNsec");
+    .expect("send AddSigner");
 
     // Step 2: Publish alice's profile.
     // Actor dispatch: PublishProfile → publish_profile() → sign locally →

@@ -162,6 +162,8 @@ impl ActionModule for PublishDmRelayListAction {
         send(ActorCommand::PublishUnsignedEvent {
             event,
             correlation_id: Some(correlation_id.to_string()),
+            // The kind:10050 DM-relay list signs with the active account.
+            signer_pubkey: None,
         });
         Ok(())
     }
@@ -375,7 +377,7 @@ mod tests {
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEvent { event, correlation_id } => {
+            ActorCommand::PublishUnsignedEvent { event, correlation_id, .. } => {
                 assert_eq!(event.kind, 10050, "DM relay list must emit kind:10050");
                 assert_eq!(correlation_id.as_deref(), Some("test-cid"),
                     "correlation_id must thread through so the host spinner closes");

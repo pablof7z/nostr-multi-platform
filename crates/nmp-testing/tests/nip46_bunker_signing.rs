@@ -214,6 +214,7 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
         .send(ActorCommand::PublishUnsignedEvent {
             event: unsigned,
             correlation_id: None,
+            signer_pubkey: None,
         })
         .expect("send PublishUnsignedEvent");
 
@@ -289,7 +290,10 @@ fn wait_for_add_remote_signer(
     loop {
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;
         match actor_rx.recv_timeout(remaining) {
-            Ok(ActorCommand::AddRemoteSigner { handle }) => return Some(handle),
+            Ok(ActorCommand::AddSigner {
+                source: nmp_core::SignerSource::RemoteHandle(handle),
+                ..
+            }) => return Some(handle),
             Ok(ActorCommand::BunkerHandshakeProgress { stage, message }) => {
                 if stage == "failed" {
                     panic!("bunker handshake failed: {stage}: {message:?}");

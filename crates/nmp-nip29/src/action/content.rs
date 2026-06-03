@@ -136,7 +136,7 @@ mod tests {
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, .. } => {
                 assert_eq!(event.kind, KIND_CHAT_MESSAGE, "must emit kind:9");
                 assert_eq!(
                     relays,
