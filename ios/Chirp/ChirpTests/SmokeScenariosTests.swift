@@ -202,7 +202,7 @@ final class SmokeScenariosTests: XCTestCase {
         let accountAID = try XCTUnwrap(model.activeAccount, "account A has no id")
 
         // Add account B (same sign-in path the Accounts "+ Add" sheet drives).
-        model.signInNsec(nsecB)
+        model.addSigner(localNsec: nsecB, makeActive: true)
         try await waitUntil(timeout: 25, "second account lands") { [self] in
             model.accounts.count >= 2
         }
@@ -243,7 +243,7 @@ final class SmokeScenariosTests: XCTestCase {
     /// so the safe contract is "ensure signed in", not "sign in again".
     private func signIn(_ nsec: String, label: String) async throws {
         if model.hasActiveAccount { return }
-        model.signInNsec(nsec)
+        model.addSigner(localNsec: nsec, makeActive: true)
         try await waitUntil(timeout: 20, "\(label): active account") { [self] in
             model.hasActiveAccount
         }

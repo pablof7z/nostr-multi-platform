@@ -23,7 +23,7 @@ import Foundation
 
 extension KernelHandle {
     /// Register the Chirp modular timeline projection on the kernel event
-    /// observer slot. Viewer pubkey is `nil` on cold boot — `signInNsec`
+    /// observer slot. Viewer pubkey is `nil` on cold boot — `addSigner`
     /// etc. retarget the projection once an account becomes active
     /// (`Spec.viewer` is currently only used for future personalization
     /// keys; the grouper accepts every kind:1 the kernel ingests

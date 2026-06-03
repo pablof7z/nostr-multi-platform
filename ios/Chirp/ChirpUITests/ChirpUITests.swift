@@ -11,7 +11,7 @@ import XCTest
 ///   Settings → Home → tap author → Profile  (for profile assertions)
 ///   Profile → tap note row → Thread  (for thread assertions)
 ///
-/// `NMP_TEST_NSEC` causes KernelModel to auto-call `signInNsec` on start,
+/// `NMP_TEST_NSEC` causes KernelModel to restore a Chirp identity on start,
 /// bypassing the Onboarding wall so the test can reach the main tabs without
 /// driving the UI sign-in flow.
 @MainActor
