@@ -11,6 +11,7 @@ package org.nmp.android
  * into `nmp-ffi`/`nmp-app-chirp` through Rust paths.
  */
 class KernelBridge {
+    @Volatile
     private var handle: Long = 0
 
     init {
@@ -24,6 +25,18 @@ class KernelBridge {
 
     fun stop() {
         if (handle != 0L) nativeStop(handle)
+    }
+
+    /**
+     * Close the Rust update sender without freeing the session id.
+     *
+     * Lifecycle invariant: callers that own a reader coroutine must call this
+     * first, join the reader after `nextUpdate()` wakes with
+     * [IllegalStateException], and only then call [free].
+     */
+    fun closeUpdates() {
+        val current = handle
+        if (current != 0L) nativeClose(current)
     }
 
     fun openTimeline() {
@@ -180,8 +193,9 @@ class KernelBridge {
     fun rawHandle(): Long = handle
 
     fun free() {
-        if (handle != 0L) {
-            nativeFree(handle)
+        val current = handle
+        if (current != 0L) {
+            nativeFree(current)
             handle = 0
         }
     }
@@ -191,6 +205,7 @@ class KernelBridge {
     private external fun nativeOpenTimeline(handle: Long)
     private external fun nativeCreateLocalAccount(handle: Long, displayName: String)
     private external fun nativeStop(handle: Long)
+    private external fun nativeClose(handle: Long)
     private external fun nativeNextUpdate(handle: Long): ByteArray?
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)

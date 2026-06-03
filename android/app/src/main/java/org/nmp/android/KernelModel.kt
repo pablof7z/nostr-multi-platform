@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -12,7 +14,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runBlocking
 import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
@@ -60,12 +62,13 @@ class KernelModel : ViewModel() {
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var started = false
+    private var readerJob: Job? = null
 
     fun start() {
         if (started) return
         started = true
         bridge.start(visibleLimit = 80, emitHz = 4)
-        viewModelScope.launch(Dispatchers.IO) {
+        readerJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 val bytes = try {
                     bridge.nextUpdate()
@@ -82,11 +85,9 @@ class KernelModel : ViewModel() {
 
                 val decoded = decodeUpdate(bytes) ?: continue
                 if (decoded.rev <= _state.value.rev) continue  // mirror only
-                withContext(Dispatchers.Main) {
-                    _state.value = decoded
-                    _snapshotCount.value += 1
-                    _lastSnapshotAtMs.value = System.currentTimeMillis()
-                }
+                _state.value = decoded
+                _snapshotCount.value += 1
+                _lastSnapshotAtMs.value = System.currentTimeMillis()
             }
         }
     }
@@ -361,7 +362,14 @@ class KernelModel : ViewModel() {
     }
 
     override fun onCleared() {
+        val job = readerJob
+        readerJob = null
+        started = false
         bridge.stop()
+        bridge.closeUpdates()
+        runBlocking {
+            job?.cancelAndJoin()
+        }
         bridge.free()
         super.onCleared()
     }

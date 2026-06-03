@@ -18,74 +18,30 @@
 //! `nmp_ffi::nmp_app_new()` (enabled by the `android-ffi` feature) is the
 //! portable fix that makes rustc include the bodies.
 
-use std::ffi::{c_void, CString};
-use std::sync::atomic::AtomicPtr;
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::ffi::CString;
+use std::sync::Arc;
 use std::time::Duration;
 
 use jni::objects::{JClass, JString};
 use jni::sys::{jbyteArray, jint, jlong};
 use jni::JNIEnv;
 
-use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
+use nmp_app_chirp::nmp_app_chirp_register;
 
 // Marmot (MLS-over-Nostr) JNI entry points + symbol-retention glue live in their
 // own module to keep this transport file cohesive (and off the file-size
 // ceiling). The `#[no_mangle] Java_…` symbol names are unaffected by module
 // nesting.
 mod marmot;
+mod session;
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
-    nmp_app_dispatch_action, nmp_app_free,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_dispatch_action,
     nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
-    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account,
-    nmp_app_remove_relay, nmp_app_set_update_callback, nmp_app_signin_nsec,
-    nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
+    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
 };
-
-/// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
-/// kernel holds as an opaque callback context. Freed exactly once in
-/// `nativeFree` (mirrors Swift `KernelHandle.deinit`).
-pub(crate) struct Session {
-    pub(crate) app: *mut NmpApp,
-    chirp: *mut ChirpHandle,
-    rx: Receiver<Vec<u8>>,
-    tx: *mut Sender<Vec<u8>>,
-    /// Opaque `*mut MarmotHandle` (or null when no MLS identity is registered).
-    /// Stored type-erased as `*mut c_void` so the `Session` struct does not need
-    /// to be feature-gated; the marmot JNI entry points cast at the call site
-    /// under `#[cfg(feature = "marmot")]`. `AtomicPtr` because registration
-    /// happens after `nativeNew` (post sign-in) on the caller thread while the
-    /// shared `&Session` from `session_ref` only hands out `&`. Unregistered
-    /// exactly once in `nativeFree` (BEFORE `nmp_app_free` — the Marmot FFI
-    /// contract requires `nmp_marmot_unregister` to run first), mirroring iOS
-    /// `KernelHandle.unregisterMarmotIfNeeded()`.
-    // Always constructed (null) so `Session` stays feature-agnostic; only read
-    // through the `#[cfg(feature = "marmot")]` helpers, hence dead in a
-    // Marmot-free build.
-    #[cfg_attr(not(feature = "marmot"), allow(dead_code))]
-    pub(crate) marmot: AtomicPtr<c_void>,
-}
-
-// SAFETY: Session is sent across threads only inside a Box whose ownership is
-// transferred to Kotlin as a jlong handle. Access is serialized by the Kotlin
-// caller (nativeNew → nativeFree lifecycle; nativeNextUpdate on one reader thread).
-unsafe impl Send for Session {}
-
-/// Update callback — runs on the kernel's listener thread. `context` is the
-/// `*mut Sender<Vec<u8>>` we registered; the FlatBuffers payload is borrowed
-/// for this call only.
-extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
-    if context.is_null() || bytes.is_null() {
-        return;
-    }
-    // SAFETY: `context` is the pointer passed to `nmp_app_set_update_callback`,
-    // alive until `nativeFree` clears the callback before reclaiming it.
-    let tx = unsafe { &*(context as *const Sender<Vec<u8>>) };
-    // Copy out of the borrowed buffer before it is invalidated (§3).
-    let owned = unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec();
-    let _ = tx.send(owned); // dead receiver ⇒ silent no-op (D6)
-}
+use session::{insert_session, remove_session, NextUpdate};
+pub(crate) use session::{session_arc, Session};
 
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
@@ -96,18 +52,9 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
     if app.is_null() {
         return 0;
     }
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    let tx = Box::into_raw(Box::new(tx));
-    nmp_app_set_update_callback(app, tx as *mut c_void, Some(on_update));
     let chirp = nmp_app_chirp_register(app, std::ptr::null());
-    let session = Box::new(Session {
-        app,
-        chirp,
-        rx,
-        tx,
-        marmot: AtomicPtr::new(std::ptr::null_mut()),
-    });
-    Box::into_raw(session) as jlong
+    let session = Arc::new(Session::new(app, chirp));
+    insert_session(session)
 }
 
 #[no_mangle]
@@ -118,9 +65,22 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStart(
     visible_limit: jint,
     emit_hz: jint,
 ) {
-    if let Some(s) = session_ref(handle) {
-        nmp_app_start(s.app, 0, visible_limit as u32, emit_hz as u32);
-        seed_chirp_reference_relays(s.app);
+    if let Some(s) = session_arc(handle) {
+        s.with_app(|app| {
+            nmp_app_start(app, 0, visible_limit as u32, emit_hz as u32);
+            seed_chirp_reference_relays(app);
+        });
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClose(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if let Some(s) = session_arc(handle) {
+        s.close_updates();
     }
 }
 
@@ -130,8 +90,8 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenTimeline(
     _class: JClass,
     handle: jlong,
 ) {
-    if let Some(s) = session_ref(handle) {
-        nmp_app_open_timeline(s.app);
+    if let Some(s) = session_arc(handle) {
+        s.with_app(|app| nmp_app_open_timeline(app));
     }
 }
 
@@ -142,7 +102,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
     handle: jlong,
     display_name: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let name = env
@@ -156,13 +116,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
     //   relays_json  = [["url","role"],…]  (Vec<(String,String)> serde shape)
     let profile_json = format!(r#"{{"name":"{}"}}"#, name.replace('"', ""));
     let relays_json = default_chirp_relays_json_array();
-    let (Ok(profile_c), Ok(relays_c)) = (
-        CString::new(profile_json),
-        CString::new(relays_json),
-    ) else {
+    let (Ok(profile_c), Ok(relays_c)) = (CString::new(profile_json), CString::new(relays_json))
+    else {
         return;
     };
-    nmp_app_create_new_account(s.app, profile_c.as_ptr(), relays_c.as_ptr(), false, 1);
+    s.with_app(|app| {
+        nmp_app_create_new_account(app, profile_c.as_ptr(), relays_c.as_ptr(), false, 1);
+    });
 }
 
 #[no_mangle]
@@ -171,8 +131,8 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
     _class: JClass,
     handle: jlong,
 ) {
-    if let Some(s) = session_ref(handle) {
-        nmp_app_stop(s.app);
+    if let Some(s) = session_arc(handle) {
+        s.with_app(|app| nmp_app_stop(app));
     }
 }
 
@@ -182,16 +142,12 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
 /// Return contract (mirrors PR #644 / V-57 P5 for nmp-gallery — the two
 /// `recv_timeout` arms have distinct meanings and must NOT be conflated):
 ///
-/// * [`RecvTimeoutError::Timeout`] — normal idle tick. Returns `null`; the
+/// * timeout — normal idle tick. Returns `null`; the
 ///   Kotlin caller loops back into `nextUpdate`. This is the steady state
 ///   between snapshot emits at `emit_hz`.
-/// * [`RecvTimeoutError::Disconnected`] — the boxed [`Sender`] inside this
-///   [`Session`] has been dropped. The only drop site is
-///   [`Java_org_nmp_android_KernelBridge_nativeFree`], which calls
-///   `nmp_app_free` (joining the actor thread) before dropping the boxed
-///   sender. Surfaces as a JNI `java.lang.IllegalStateException` so the
-///   Kotlin reader coroutine breaks out of its `while (isActive)` loop
-///   instead of busy-spinning on a dead channel.
+/// * closed — `nativeClose`/`nativeFree` has closed the callback sender. The
+///   reader gets a JNI `java.lang.IllegalStateException` and stops before
+///   Kotlin frees the handle id.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdateBytes<'l>(
     env: JNIEnv<'l>,
@@ -212,21 +168,16 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdate<'l>(
 
 fn next_update_byte_array<'l>(mut env: JNIEnv<'l>, handle: jlong) -> jbyteArray {
     let null = std::ptr::null_mut();
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return null;
     };
-    match s.rx.recv_timeout(Duration::from_millis(250)) {
-        Ok(bytes) => match env.byte_array_from_slice(&bytes) {
+    match s.recv_next_update(Duration::from_millis(250)) {
+        NextUpdate::Frame(bytes) => match env.byte_array_from_slice(&bytes) {
             Ok(array) => array.into_raw(),
             Err(_) => null,
         },
-        // Normal idle tick — Kotlin caller loops back into `nextUpdate`.
-        Err(RecvTimeoutError::Timeout) => null,
-        // Sender dropped: raise a JNI exception so the Kotlin reader breaks
-        // out of its polling loop instead of spinning on a dead channel.
-        // Per the JNI contract, we do no further env calls after `throw_new`
-        // and return null; the JVM honours the pending exception on return.
-        Err(RecvTimeoutError::Disconnected) => {
+        NextUpdate::Idle => null,
+        NextUpdate::Closed => {
             let _ = env.throw_new(
                 "java/lang/IllegalStateException",
                 "kernel update channel closed",
@@ -252,7 +203,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimProfile(
     pubkey: JString,
     consumer_id: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
@@ -265,7 +216,9 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimProfile(
     // (the lazy, TTL-gated path). User-navigation force-refresh is a Swift-app
     // feature; the Android bridge does not expose a `force` parameter (V-109:
     // Android is largely unwired).
-    nmp_app_claim_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr(), 0);
+    s.with_app(|app| {
+        nmp_app_claim_profile(app, pubkey.as_ptr(), consumer_id.as_ptr(), 0);
+    });
 }
 
 /// Demand-driven profile fetch release: the UI no longer needs `pubkey`
@@ -280,7 +233,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
     pubkey: JString,
     consumer_id: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
@@ -289,7 +242,9 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
         return;
     };
-    nmp_app_release_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
+    s.with_app(|app| {
+        nmp_app_release_profile(app, pubkey.as_ptr(), consumer_id.as_ptr());
+    });
 }
 
 /// Dispatch a named action through the action registry.
@@ -311,7 +266,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
     namespace: JString,
     action_json: JString,
 ) -> jni::sys::jstring {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return env
             .new_string("{}")
             .unwrap_or_else(|_| env.new_string("{}").unwrap())
@@ -331,7 +286,14 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
     };
 
     // Call the FFI function; it returns a heap-allocated C string we must free.
-    let result_ptr = nmp_app_dispatch_action(s.app, namespace.as_ptr(), action_json.as_ptr());
+    let Some(result_ptr) =
+        s.with_app(|app| nmp_app_dispatch_action(app, namespace.as_ptr(), action_json.as_ptr()))
+    else {
+        return env
+            .new_string("{}")
+            .unwrap_or_else(|_| env.new_string("{}").unwrap())
+            .into_raw();
+    };
     if result_ptr.is_null() {
         return env
             .new_string("{}")
@@ -373,13 +335,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenThread(
     handle: jlong,
     note_id: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let Some(note_id) = jstring_to_cstring(&mut env, &note_id) else {
         return;
     };
-    nmp_app_open_thread(s.app, note_id.as_ptr());
+    s.with_app(|app| nmp_app_open_thread(app, note_id.as_ptr()));
 }
 
 /// Open an author by pubkey.
@@ -392,13 +354,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenAuthor(
     handle: jlong,
     pubkey: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
         return;
     };
-    nmp_app_open_author(s.app, pubkey.as_ptr());
+    s.with_app(|app| nmp_app_open_author(app, pubkey.as_ptr()));
 }
 
 /// Add a relay by URL and role string ("read", "write", or "both").
@@ -412,7 +374,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeAddRelay(
     url: JString,
     role: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let Some(url) = jstring_to_cstring(&mut env, &url) else {
@@ -421,7 +383,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeAddRelay(
     let Some(role) = jstring_to_cstring(&mut env, &role) else {
         return;
     };
-    nmp_app_add_relay(s.app, url.as_ptr(), role.as_ptr());
+    s.with_app(|app| nmp_app_add_relay(app, url.as_ptr(), role.as_ptr()));
 }
 
 /// Remove a relay by URL.
@@ -434,13 +396,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRemoveRelay(
     handle: jlong,
     url: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let Some(url) = jstring_to_cstring(&mut env, &url) else {
         return;
     };
-    nmp_app_remove_relay(s.app, url.as_ptr());
+    s.with_app(|app| nmp_app_remove_relay(app, url.as_ptr()));
 }
 
 /// Sign in with an nsec secret key.
@@ -453,13 +415,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSignInNsec(
     handle: jlong,
     secret: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let Some(secret) = jstring_to_cstring(&mut env, &secret) else {
         return;
     };
-    nmp_app_signin_nsec(s.app, secret.as_ptr(), 1);
+    s.with_app(|app| nmp_app_signin_nsec(app, secret.as_ptr(), 1));
 }
 
 /// Switch the active account to the given pubkey.
@@ -472,13 +434,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSwitchAccount(
     handle: jlong,
     pubkey: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
         return;
     };
-    nmp_app_switch_active(s.app, pubkey.as_ptr());
+    s.with_app(|app| nmp_app_switch_active(app, pubkey.as_ptr()));
 }
 
 /// Remove an account by pubkey.
@@ -491,13 +453,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRemoveAccount(
     handle: jlong,
     pubkey: JString,
 ) {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return;
     };
     let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
         return;
     };
-    nmp_app_remove_account(s.app, pubkey.as_ptr());
+    s.with_app(|app| nmp_app_remove_account(app, pubkey.as_ptr()));
 }
 
 #[no_mangle]
@@ -506,33 +468,11 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeFree(
     _class: JClass,
     handle: jlong,
 ) {
-    if handle == 0 {
-        return;
-    }
-    // SAFETY: `handle` was produced by `nativeNew`; freed exactly once.
-    let s = unsafe { Box::from_raw(handle as *mut Session) };
-    // Marmot FFI contract: `nmp_marmot_unregister` MUST run before `nmp_app_free`
-    // (it drops kernel observer registrations that reference `app`). No-op when
-    // no MLS identity was registered or the `marmot` feature is off.
-    marmot::unregister(&s);
-    unsafe {
-        if !s.chirp.is_null() {
-            nmp_app_chirp_unregister(s.chirp);
-        }
-        nmp_app_set_update_callback(s.app, std::ptr::null_mut(), None);
-        nmp_app_free(s.app);
-        drop(Box::from_raw(s.tx)); // reclaim the boxed Sender (callback cleared)
-    }
-}
-
-#[must_use]
-pub(crate) fn session_ref<'a>(handle: jlong) -> Option<&'a Session> {
-    if handle == 0 {
-        None
-    } else {
-        // SAFETY: non-zero handles are live `Session` pointers from nativeNew
-        // until nativeFree; Kotlin never calls after free.
-        Some(unsafe { &*(handle as *const Session) })
+    if let Some(s) = remove_session(handle) {
+        // `free_native` first closes the update sender, waking any blocked
+        // `nativeNextUpdate`. The `Arc<Session>` held by that reader keeps the
+        // receiver allocation alive until the JNI call returns.
+        s.free_native();
     }
 }
 
@@ -557,4 +497,3 @@ fn seed_chirp_reference_relays(app: *mut NmpApp) {
         nmp_app_add_relay(app, url.as_ptr(), role.as_ptr());
     }
 }
-

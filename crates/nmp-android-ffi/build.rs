@@ -13,6 +13,10 @@
 // path: it changes only the linker invocation, not the kernel's source.
 
 fn main() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("android") {
+        return;
+    }
+
     let production_symbols = [
         // Lifecycle/read-side symbols. Android calls the wider FFI surface
         // through Rust paths in `src/lib.rs`; these `-u` entries are kept for
