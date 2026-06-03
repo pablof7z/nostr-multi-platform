@@ -22,7 +22,16 @@ enum KernelUpdateFrameDecoderError: LocalizedError {
 }
 
 enum KernelUpdateFrame {
-    case snapshot(UInt32, KernelUpdate, [TypedProjectionEnvelope])
+    /// `snapshot(schemaVersion, update, typedEnvelopes, flatFeeds)`.
+    ///
+    /// `flatFeeds` (M2 Step-C) is the set of dynamically-keyed per-open feed
+    /// projections — `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<id>` —
+    /// decoded out of the generic `projections` sub-map. They share the exact
+    /// `RootFeedSnapshot` (`ChirpTimelineSnapshot`) wire shape the home feed
+    /// uses, but their keys carry a runtime pubkey / event-id so they cannot be
+    /// static `SnapshotProjections` CodingKeys. ProfileView / ThreadScreen read
+    /// them through `KernelModel.feedProjection(key:)`.
+    case snapshot(UInt32, KernelUpdate, [TypedProjectionEnvelope], [String: ChirpTimelineSnapshot])
     case panic(String)
 }
 
@@ -55,7 +64,8 @@ enum KernelUpdateFrameDecoder {
             }
             let update = try KernelUpdate(from: FlatBufferValueDecoder(value: payload, codingPath: []))
             let envelopes = extractTypedProjections(from: snapshot)
-            return .snapshot(snapshot.schemaVersion, update, envelopes)
+            let flatFeeds = extractFlatFeeds(from: payload)
+            return .snapshot(snapshot.schemaVersion, update, envelopes, flatFeeds)
         case .panic:
             guard let message = frame.panic?.msg else {
                 throw KernelUpdateFrameDecoderError.missingPanicPayload
@@ -88,6 +98,59 @@ enum KernelUpdateFrameDecoder {
             ))
         }
         return envelopes
+    }
+
+    /// M2 Step-C: pull the dynamically-keyed per-open feed projections
+    /// (`nmp.feed.author.<pubkey>`, `nmp.feed.thread.<id>`) out of the generic
+    /// `projections` sub-map and decode each into a `ChirpTimelineSnapshot`.
+    ///
+    /// These keys carry a runtime pubkey / event-id, so they cannot be static
+    /// `SnapshotProjections` CodingKeys — the generated struct drops them. They
+    /// share the home feed's `RootFeedSnapshot` wire shape, so the same
+    /// `ChirpTimelineSnapshot` decoder applies. The decode runs here, inside the
+    /// frame decoder, while the `payload` FlatBuffer is still alive (the backing
+    /// `ByteBuffer` is not retained past `decode`); the resulting value-type
+    /// snapshots are threaded forward through `KernelUpdateResult`.
+    ///
+    /// The feed keys live one level down — inside the `payload`'s `projections`
+    /// pair, NOT at the payload root (the root carries `rev` / `metrics` /
+    /// `projections` …), mirroring `KernelUpdate.projections?.homeFeed`
+    /// (`"nmp.feed.home"` is a key INSIDE the `projections` object).
+    ///
+    /// Per-key decode is wrapped in `try?` so one malformed feed is skipped
+    /// rather than aborting the whole snapshot (mirrors `extractTypedProjections`
+    /// resilience).
+    private static func extractFlatFeeds(
+        from payload: nmp_transport_Value
+    ) -> [String: ChirpTimelineSnapshot] {
+        guard payload.kind == .map else { return [:] }
+        // Locate the `projections` sub-map. Keys here are raw (no
+        // `convertFromSnakeCase` — `pair.key` is read verbatim); `projections`
+        // has no underscores so it would pass through unchanged regardless.
+        var projectionsValue: nmp_transport_Value?
+        for pair in payload.map where pair.key == "projections" {
+            projectionsValue = pair.value
+            break
+        }
+        guard let projections = projectionsValue, projections.kind == .map else {
+            return [:]
+        }
+
+        var feeds: [String: ChirpTimelineSnapshot] = [:]
+        for pair in projections.map {
+            guard let key = pair.key,
+                  key.hasPrefix("nmp.feed.author.") || key.hasPrefix("nmp.feed.thread."),
+                  let value = pair.value else {
+                continue
+            }
+            // Same decoder path the generic `homeFeed` Value projection uses.
+            if let snapshot = try? ChirpTimelineSnapshot(
+                from: FlatBufferValueDecoder(value: value, codingPath: [])
+            ) {
+                feeds[key] = snapshot
+            }
+        }
+        return feeds
     }
 }
 

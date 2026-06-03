@@ -299,34 +299,10 @@ struct ModularBlockView: View {
     }
 
     private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {
-        // ADR-0032: `TimelineItem` now carries raw protocol data only —
-        // display formatting is the presentation layer's responsibility.
-        // `isRepost` / `navTargetId` / `repostInnerContent` keep their
-        // neutral kind:1 defaults; synthetic-from-card rows are not
-        // surfaced through the repost rendering path.
-        TimelineItem(
-            // Inherit the snapshot-baked display name from the backing item
-            // when present; fall back to the card's own kind:0 name. `nil`
-            // when neither has a name yet — the row formats the pubkey as
-            // short hex.
-            authorDisplayName: item?.authorDisplayName ?? card.authorDisplayName,
-            // Inherit lnurl from the cached TimelineItem when present so a
-            // synthetic-from-card row still exposes the zap affordance.
-            // `nil` for cards without a backing item is correct — the row
-            // hides the zap button (no lnurl known yet).
-            authorLnurl: item?.authorLnurl,
-            authorPictureUrl: item?.authorPictureUrl ?? card.authorPictureUrl,
-            authorPubkey: card.authorPubkey,
-            content: card.content,
-            contentPreview: card.contentPreview,
-            createdAt: card.createdAt,
-            id: card.id,
-            isRepost: false,
-            kind: card.kind,
-            navTargetId: card.id,
-            relayCount: 0,
-            repostInnerContent: ""
-        )
+        // M2 Step-C: the builder now lives on `TimelineItem(card:item:)`
+        // (TimelineBlock.swift) so the home / author / thread feeds all derive
+        // synthetic items identically.
+        TimelineItem(card: card, item: item)
     }
 
     private func truncate(_ s: String, _ n: Int) -> String {

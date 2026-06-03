@@ -1,8 +1,18 @@
 import SwiftUI
 
 // OWNER: Phase-2 Agent B (Thread screen).
-// Type name is ThreadScreen — Bridge already defines a Decodable `ThreadView`.
 // Init signature FIXED by nav contract: ThreadScreen(eventID:).
+//
+// M2 Step-C (V-112, ADR-0042 §5): the thread now reads from the dynamic
+// per-thread feed projection `nmp.feed.thread.<eventID>` (registered by
+// `openThreadFeed`) instead of the static `thread_view` snapshot. The flat feed
+// is the root by id plus every kind:1/6 referencing it via `#e`, ordered
+// chronologically — it carries NO ancestor chain, focus pointer, or
+// prev/next-count affordances the old `ThreadView` did. So this step renders a
+// flat chronological list: the opened `eventID` is the focused row
+// (`isFocused = item.id == eventID`); the "show N earlier" / "more replies"
+// affordances are dropped (the flat feed has no notion of them). This is an
+// intended simplification of the threaded tree for the read-migration step.
 
 struct ThreadScreen: View {
     let eventID: String
@@ -13,25 +23,37 @@ struct ThreadScreen: View {
     /// The event ID we want to present a reply compose sheet for.
     @State private var replyTargetID: ReplyTarget? = nil
 
-    private var thread: ThreadView? { model.threadView }
+    /// `nmp.feed.thread.<eventID>` — the dynamic per-thread feed key opened by
+    /// `openThreadFeed`. Read through `model.feedProjection(key:)`.
+    private var threadFeedKey: String { "nmp.feed.thread.\(eventID)" }
+
+    /// The thread's flat feed cards (root + `#e` referrers), or `nil` until the
+    /// first snapshot lands.
+    private var feedCards: [ChirpRootCard]? {
+        model.feedProjection(key: threadFeedKey)?.cards
+    }
+
+    /// Thread notes as synthetic `TimelineItem`s built from the feed cards (the
+    /// shape `ThreadNoteRow` renders). Ordered as the kernel emits them.
+    private var items: [TimelineItem] {
+        (feedCards ?? []).map { TimelineItem(card: $0.card) }
+    }
+
     private var cardLookup: [String: ChirpEventCard] {
-        // V-80 — the home feed is now roots-only (`cards: [ChirpRootCard]`);
-        // reach into each root's inner `.card`. This is a best-effort side
-        // lookup — the thread view's primary card source is `thread?.items`.
-        Dictionary(uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.card.id, $0.card) })
+        Dictionary(uniqueKeysWithValues: (feedCards ?? []).map { ($0.card.id, $0.card) })
     }
     private var itemLookup: [String: TimelineItem] {
-        Dictionary(uniqueKeysWithValues: (thread?.items ?? []).map { ($0.id, $0) })
+        Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
     }
-    // V-31 — `mention_profiles` snapshot projection now covers thread-view
-    // items (see `update.rs` `mention_profiles` block), so the Swift
-    // `Dictionary(items.map …)` derivation this view used to build is gone.
-    // Bind `model.mentionProfiles` directly at the call site.
 
     var body: some View {
         Group {
-            if let thread {
-                threadContent(thread)
+            // `feedCards == nil` → feed not yet emitted (loading). An empty
+            // (non-nil) array means the feed is open but no matching event has
+            // landed yet — still show the loading affordance until the root
+            // arrives so the screen never flashes an empty list.
+            if let cards = feedCards, !cards.isEmpty {
+                threadContent(cards)
             } else {
                 loadingState
             }
@@ -40,12 +62,14 @@ struct ThreadScreen: View {
         .navigationTitle("Thread")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            model.openThread(eventID: eventID)
+            // M2 Step-C: open the dynamic per-thread feed (root + `#e`
+            // referrers → `nmp.feed.thread.<eventID>`).
+            model.openThreadFeed(eventID: eventID)
         }
         .onDisappear {
-            // T152: release the thread subscription when this view is no
-            // longer visible.  Symmetric with openThread in .task above.
-            model.closeThread(eventID: eventID)
+            // T152: release the thread feed when this view is no longer
+            // visible. Symmetric with openThreadFeed in .task above.
+            model.closeThreadFeed(eventID: eventID)
         }
         .sheet(item: $replyTargetID) { target in
             ComposeView(replyToID: target.eventID, replyToShortID: target.shortID)
@@ -69,21 +93,17 @@ struct ThreadScreen: View {
     // MARK: – Thread content
 
     @ViewBuilder
-    private func threadContent(_ thread: ThreadView) -> some View {
+    private func threadContent(_ cards: [ChirpRootCard]) -> some View {
+        // M2 Step-C: the flat feed has no ancestor chain or "more below"
+        // notion, so the "show N earlier" / "more replies" affordances are
+        // gone. The opened `eventID` is the focus row.
+        let rowItems = items
         ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(spacing: 0) {
-                // "Show N earlier" affordance — kernel pre-formats the label
-                // (aim.md §6 anti-pattern #1). `??` falls back to empty for
-                // older kernel builds; the `previousCount > 0` gate suppresses
-                // an empty row in that case.
-                if thread.previousCount > 0 {
-                    earlierAffordance(label: thread.previousCountLabel ?? "")
-                }
-
-                // All thread items — focused one is highlighted
-                ForEach(thread.items) { item in
-                    let isFocused = item.id == thread.focusedEventId
+                // All thread items — the opened event is highlighted.
+                ForEach(rowItems) { item in
+                    let isFocused = item.id == eventID
 
                     ThreadNoteRow(
                         item: item,
@@ -111,72 +131,29 @@ struct ThreadScreen: View {
                     .accessibilityIdentifier(isFocused ? "thread-focused-note" : "thread-note-\(item.id.prefix(8))")
 
                     // Thread connector line between non-focused notes
-                    if item.id != thread.items.last?.id {
+                    if item.id != rowItems.last?.id {
                         threadConnector(isFocused: isFocused)
                     }
-                }
-
-                // More replies below affordance. Kernel pre-formats the
-                // pluralized label (aim.md §6 anti-pattern #1: no native-side
-                // pluralization). `??` falls back to the empty string for
-                // older kernel builds that predate `nextCountLabel` — the row
-                // collapses naturally because `nextCount > 0` is the gate.
-                if thread.nextCount > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "ellipsis.bubble")
-                            .font(.system(size: 13))
-                        Text(thread.nextCountLabel ?? "")
-                            .font(.callout)
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 Spacer(minLength: 32)
             }
         }
         .accessibilityIdentifier("thread-detail-list")
-        // Scroll to the focused event whenever the kernel snapshot delivers
-        // a focused id — fires on first appearance (`initial: true`) and on
-        // any subsequent snapshot tick that changes the focused row. This is
-        // a snapshot observer, not a time-delayed sleep (AGENTS.md:60 — "No
-        // polling — ever": no `DispatchQueue.main.asyncAfter` waiting for the
-        // `LazyVStack` to lay out before we act). The id changing IS the
-        // event we react to; SwiftUI re-runs this closure after layout has
-        // resolved row identities, so `proxy.scrollTo` resolves the anchor.
-        .onChange(of: thread.focusedEventId, initial: true) { _, newId in
-            proxy.scrollTo(newId, anchor: .center)
+        // Scroll to the opened event once the feed populates it. Observing the
+        // item count (not a time delay) is the snapshot event we react to
+        // (AGENTS.md:60 — "No polling — ever"); SwiftUI re-runs this closure
+        // after layout resolves row identities, so `proxy.scrollTo` finds the
+        // anchor. `initial: true` covers the case where the root is already
+        // present on first render.
+        .onChange(of: rowItems.count, initial: true) { _, _ in
+            guard rowItems.contains(where: { $0.id == eventID }) else { return }
+            proxy.scrollTo(eventID, anchor: .center)
         }
         } // ScrollViewReader
     }
 
     // MARK: – Sub-views
-
-    private func earlierAffordance(label: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "arrow.up.circle")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(ChirpColor.link)
-            Text(label)
-                .font(.callout)
-                .foregroundStyle(ChirpColor.link)
-            Spacer()
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            // No kernel command exists to expand context yet — haptic feedback only.
-            let g = UIImpactFeedbackGenerator(style: .light)
-            g.impactOccurred()
-        }
-    }
 
     @ViewBuilder
     private func threadConnector(isFocused: Bool) -> some View {

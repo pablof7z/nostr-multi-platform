@@ -2,11 +2,19 @@ import SwiftUI
 
 // OWNER: Phase-2 Agent B (Profile screen). Init fixed by nav: ProfileView(pubkey:).
 //
-// Thin-shell rule (aim.md §6.9): no business logic in Swift. Rust authors
-// the primary-action label/icon/dispatch (`profile_action_for`), the post-
-// count display string (`note_count_display`), the truncated npub
-// (`ProfileCard.npub_short`), and the per-author mention map
-// (`projections["mention_profiles"]`).
+// M2 Step-C (V-112, ADR-0042 §5): the notes list now reads from the dynamic
+// per-author feed projection `nmp.feed.author.<pubkey>` (registered by
+// `openAuthorFeed`) instead of the static `author_view` snapshot. The profile
+// CARD (name / bio / nip05 / npub) still comes from `claimed_profiles` — opening
+// the author feed admits kind:1/6 only, so this view force-claims the author's
+// kind:0 on appear so the header populates for non-followed visited profiles.
+//
+// Thin-shell rule (aim.md §6.9): the FOLLOW WRITE still flows through Rust
+// (`model.follow`/`model.unfollow` → kernel composes the kind:3 mutation). Only
+// the follow-STATE read and the Follow/Following label+icon choice are local —
+// ADR-0032 presentation-layer formatting of a boolean (precedent: the local
+// like-state toggle in `ProfileNoteRow`). With `author_view` abandoned, the
+// note-count string is likewise derived from the card count here.
 
 struct ProfileView: View {
     let pubkey: String
@@ -17,24 +25,46 @@ struct ProfileView: View {
     @State private var copiedNpub = false
     @State private var isEditingProfile = false
 
-    private var authorView: AuthorProfileSnapshot? {
-        model.authorView?.pubkey == pubkey ? model.authorView : nil
+    /// Consumer id for the kind:0 claim taken while this profile is on-screen.
+    private var profileClaimConsumerID: String { "ios.profile-view:\(pubkey)" }
+
+    /// `nmp.feed.author.<pubkey>` — the dynamic per-author feed key opened by
+    /// `openAuthorFeed`. Read through `model.feedProjection(key:)`.
+    private var authorFeedKey: String { "nmp.feed.author.\(pubkey)" }
+
+    /// The author's profile card from `claimed_profiles` (the kind:0 self-claim
+    /// taken on appear). Unchanged source for name / bio / nip05 / npub.
+    private var profile: ProfileCard? { model.claimedProfiles[pubkey] }
+
+    /// Notes for this author, derived from the dynamic feed projection. The flat
+    /// feed is `RootFeedSnapshot` (`cards: [ChirpRootCard]`, attribution always
+    /// empty for the author feed); each inner card becomes a synthetic
+    /// `TimelineItem` the existing `ProfileNoteRow` renders.
+    private var items: [TimelineItem] {
+        (model.feedProjection(key: authorFeedKey)?.cards ?? [])
+            .map { TimelineItem(card: $0.card) }
     }
-    private var profile: ProfileCard? { authorView?.profile }
-    private var items: [TimelineItem] { authorView?.items ?? [] }
-    private var primaryAction: ProfileAction? { authorView?.primaryAction }
+
+    /// True when `pubkey` is the active account's own profile — drives the
+    /// "Edit Profile" affordance instead of Follow/Unfollow.
+    private var isOwnProfile: Bool { model.activeAccount == pubkey }
+
+    /// Local follow-state read of the active account's kind:3 contact list. The
+    /// WRITE still routes through Rust (`model.follow`/`unfollow`).
+    private var isFollowing: Bool {
+        model.followList.follows.contains { $0.pubkey == pubkey }
+    }
 
     /// Render context fed to each `ProfileNoteRow`. `mentionProfiles` is the
-    /// Rust-derived projection (aim.md §4.2); the two remaining lookups are
-    /// folded into one context built once per body pass.
+    /// Rust-derived projection (aim.md §4.2). `eventCards` is the per-author
+    /// feed's own cards (its primary source post-migration); `timelineItems`
+    /// is the synthetic items built from those cards.
     private var noteRenderContext: NoteRenderContext {
-        NoteRenderContext(
+        let feedCards = model.feedProjection(key: authorFeedKey)?.cards ?? []
+        return NoteRenderContext(
             mentionProfiles: model.mentionProfiles,
-            // V-80 — the home feed is roots-only (`cards: [ChirpRootCard]`);
-            // reach into each root's inner `.card` for this best-effort side
-            // lookup (the profile view's primary source is `author_view`).
             eventCards: Dictionary(
-                uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.card.id, $0.card) }),
+                uniqueKeysWithValues: feedCards.map { ($0.card.id, $0.card) }),
             timelineItems: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         )
     }
@@ -53,11 +83,19 @@ struct ProfileView: View {
         .navigationTitle(profile?.displayLabel ?? "Profile")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            model.openAuthor(pubkey: pubkey)
+            // M2 Step-C: open the dynamic per-author feed (kind:1/6 of this
+            // author → `nmp.feed.author.<pubkey>`). Force-claim the author's
+            // kind:0 too — the feed admits notes only, so the profile card
+            // (bio / nip05 / npub) needs an explicit claim to populate for a
+            // non-followed visited profile.
+            model.openAuthorFeed(pubkey: pubkey)
+            model.claimProfile(pubkey: pubkey, consumerID: profileClaimConsumerID)
         }
         .onDisappear {
-            // T152: release the author sub on nav-away (wire_subs baseline).
-            model.closeAuthor(pubkey: pubkey)
+            // T152: release the author feed + kind:0 claim on nav-away so the
+            // kernel's wire_subs / claim counts return to baseline.
+            model.closeAuthorFeed(pubkey: pubkey)
+            model.releaseProfile(pubkey: pubkey, consumerID: profileClaimConsumerID)
         }
         .animation(.smooth(duration: 0.3), value: profile)
         .animation(.smooth(duration: 0.25), value: items.count)
@@ -116,20 +154,48 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var profileActions: some View {
-        if let primaryAction {
-            HStack(spacing: 8) {
+        // M2 Step-C: the Rust-authored `primaryAction` died with the
+        // `author_view` read. The self-vs-other branch + Follow/Following label
+        // are now derived locally (ADR-0032 presentation formatting of booleans);
+        // the WRITE still routes through Rust (`model.follow`/`unfollow`).
+        HStack(spacing: 8) {
+            if isOwnProfile {
                 Button {
-                    perform(primaryAction)
+                    isEditingProfile = true
                 } label: {
-                    // label + iconName both authored by Rust — no Swift
-                    // `switch action.kind` over SF Symbol names.
-                    Label(primaryAction.label, systemImage: primaryAction.iconName)
+                    Label("Edit Profile", systemImage: "pencil")
                         .font(.callout.weight(.semibold))
                         .labelStyle(.titleAndIcon)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 .controlSize(.small)
-                .accessibilityLabel(primaryAction.label)
+                .accessibilityLabel("Edit Profile")
+            } else {
+                let following = isFollowing
+                Button {
+                    if following {
+                        model.unfollow(pubkey)
+                    } else {
+                        model.follow(pubkey)
+                    }
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                } label: {
+                    Label(
+                        following ? "Following" : "Follow",
+                        systemImage: following ? "checkmark" : "plus"
+                    )
+                    .font(.callout.weight(.semibold))
+                    .labelStyle(.titleAndIcon)
+                }
+                // `.borderedProminent` keeps the type concrete (no
+                // `AnyButtonStyle` erasure); the tint swap de-emphasises the
+                // button once following (accent CTA → neutral surface) and
+                // `.borderedProminent` derives the readable label colour from
+                // the tint automatically.
+                .buttonStyle(.borderedProminent)
+                .tint(following ? ChirpColor.surface : ChirpColor.accent)
+                .controlSize(.small)
+                .accessibilityLabel(following ? "Following" : "Follow")
             }
         }
     }
@@ -196,8 +262,11 @@ struct ProfileView: View {
                         Text("Posts")
                             .font(.headline)
                             .foregroundStyle(.primary)
-                        // `noteCountDisplay` is Rust-formatted — no `\(items.count)`.
-                        Text(authorView?.noteCountDisplay ?? "")
+                        // M2 Step-C: with `author_view.noteCountDisplay`
+                        // abandoned, the count is derived from the feed card
+                        // count. ADR-0032 presentation formatting (a plain
+                        // integer needs no locale-sensitive Rust formatter).
+                        Text("\(items.count)")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("profile-notes-count-value")
@@ -242,18 +311,6 @@ struct ProfileView: View {
     }
 
     // MARK: – Helpers
-
-    /// Branches on presence-of-dispatch (write vs local intent) — NOT on
-    /// `action.kind` (aim.md §4.4: writes flow through registered
-    /// ActionModules, shell binds blindly).
-    private func perform(_ action: ProfileAction) {
-        if let dispatch = action.dispatch {
-            model.dispatchProfileAction(dispatch)
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        } else {
-            isEditingProfile = true
-        }
-    }
 
     private func copyNpub() {
         guard let npub = profile?.npub else { return }

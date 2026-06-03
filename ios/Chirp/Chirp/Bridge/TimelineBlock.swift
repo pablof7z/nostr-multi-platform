@@ -216,6 +216,51 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
     }
 }
 
+extension TimelineItem {
+    /// Build a synthetic `TimelineItem` from a flat-feed `ChirpEventCard`, the
+    /// shape `ProfileNoteRow` / `ThreadNoteRow` / `NoteRowView` consume.
+    ///
+    /// Lifted from `ModularBlockView.syntheticItem` (M2 Step-C) so the home
+    /// feed, the per-author feed (`nmp.feed.author.<pk>`), and the per-thread
+    /// feed (`nmp.feed.thread.<id>`) all derive `TimelineItem`s from a card the
+    /// SAME way — no copy-pasted builder per call site.
+    ///
+    /// `item` is an OPTIONAL backing `TimelineItem` (present only on the home
+    /// feed's still-live snapshot lookup); its display name / avatar / lnurl are
+    /// preferred when set, falling back to the card's own kind:0-derived fields.
+    /// The flat author/thread feeds pass `item: nil` — they carry no separate
+    /// `TimelineItem` lookup.
+    ///
+    /// ADR-0032: `TimelineItem` carries raw protocol data only — display
+    /// formatting is the presentation layer's job. `isRepost` / `navTargetId` /
+    /// `repostInnerContent` keep their neutral kind:1 defaults; synthetic-from-
+    /// card rows are not surfaced through the repost rendering path.
+    init(card: ChirpEventCard, item: TimelineItem? = nil) {
+        self.init(
+            // Inherit the snapshot-baked display name from the backing item
+            // when present; fall back to the card's own kind:0 name. `nil` when
+            // neither has a name yet — the row formats the pubkey as short hex.
+            authorDisplayName: item?.authorDisplayName ?? card.authorDisplayName,
+            // Inherit lnurl from the cached TimelineItem when present so a
+            // synthetic-from-card row still exposes the zap affordance. `nil`
+            // for cards without a backing item is correct — the row hides the
+            // zap button (no lnurl known yet).
+            authorLnurl: item?.authorLnurl,
+            authorPictureUrl: item?.authorPictureUrl ?? card.authorPictureUrl,
+            authorPubkey: card.authorPubkey,
+            content: card.content,
+            contentPreview: card.contentPreview,
+            createdAt: card.createdAt,
+            id: card.id,
+            isRepost: false,
+            kind: card.kind,
+            navTargetId: card.id,
+            relayCount: 0,
+            repostInnerContent: ""
+        )
+    }
+}
+
 struct NoteRelationCounts: Decodable, Equatable, Sendable {
     let replies: RelationCount
     let reactions: RelationCount

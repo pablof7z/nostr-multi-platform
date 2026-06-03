@@ -53,6 +53,16 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// `snapshot?.homeFeed` (generic `Value` decode) is used instead.
     @Published private(set) var typedHomeFeed: ChirpTimelineSnapshot?
 
+    /// M2 Step-C (V-112) — dynamically-keyed per-open feed projections decoded
+    /// from the generic `projections` sub-map: `nmp.feed.author.<pubkey>` (read
+    /// by `ProfileView`) and `nmp.feed.thread.<id>` (read by `ThreadScreen`).
+    /// Each is the SAME `RootFeedSnapshot` (`ChirpTimelineSnapshot`) shape the
+    /// home feed uses. Empty when no author / thread feed is open. Read through
+    /// `feedProjection(key:)`. These keys carry a runtime pubkey / event-id, so
+    /// they cannot be static `SnapshotProjections` fields — they are decoded out
+    /// of band in `KernelUpdateFrameDecoder` and threaded through here.
+    @Published private(set) var flatFeeds: [String: ChirpTimelineSnapshot] = [:]
+
     // ── Local mutable state ──────────────────────────────────────────────
 
     @Published private(set) var snapshotCount: UInt64 = 0
@@ -103,6 +113,14 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// relationCounts) when available; falls back to the generic Value path
     /// when the typed path returns nil (ADR-0037 Commitment 4).
     var modularTimeline: ChirpTimelineSnapshot { typedHomeFeed ?? snapshot?.homeFeed ?? .empty }
+
+    /// M2 Step-C (V-112) — read a dynamically-keyed per-open feed projection.
+    /// Pass the full snapshot key, e.g. `"nmp.feed.author.\(pubkey)"` (read by
+    /// `ProfileView`, opened via `openAuthorFeed`) or `"nmp.feed.thread.\(id)"`
+    /// (read by `ThreadScreen`, opened via `openThreadFeed`). Returns `nil`
+    /// until the feed's first snapshot lands — the feed is registered on open
+    /// but only carries cards once the kernel ingests matching kind:1/6 events.
+    func feedProjection(key: String) -> ChirpTimelineSnapshot? { flatFeeds[key] }
     var rev: UInt64 { snapshot?.rev ?? 0 }
     var profile: ProfileCard? { snapshot?.profile }
     var authorView: AuthorProfileSnapshot? { snapshot?.authorView }
@@ -329,6 +347,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // Dropping `snapshot` clears every kernel-driven projection in one
         // move via the computed accessors. Local-only slots clear explicitly.
         snapshot = nil
+        // M2 Step-C: `flatFeeds` is a separate @Published slot (the per-open
+        // feed projections are decoded out of band, not behind `snapshot`), so
+        // clear it explicitly on reset. The next tick repopulates open feeds.
+        flatFeeds = [:]
         // T146 — Reset preserves the observer slot but the grouper retains
         // the prior session's blocks; re-register so it starts empty.
         kernel.reregisterChirpProjection()
@@ -378,6 +400,17 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     func closeAuthor(pubkey: String) { kernel.closeAuthor(pubkey: pubkey) }
     func openThread(eventID: String) { kernel.openThread(eventID: eventID) }
     func closeThread(eventID: String) { kernel.closeThread(eventID: eventID) }
+
+    // ── M2 Step-C (V-112) per-open flat author / thread feeds ─────────────
+    // Register / tear down a `FlatFeed` under `nmp.feed.author.<pubkey>` /
+    // `nmp.feed.thread.<id>` (read via `feedProjection(key:)`). Each open also
+    // pushes the kernel interest that admits the matching kind:1/6 into storage;
+    // each close detaches it. These supersede `openAuthor` / `openThread` for
+    // the ProfileView / ThreadScreen read path.
+    func openAuthorFeed(pubkey: String) { kernel.openAuthorFeed(pubkey: pubkey) }
+    func closeAuthorFeed(pubkey: String) { kernel.closeAuthorFeed(pubkey: pubkey) }
+    func openThreadFeed(eventID: String) { kernel.openThreadFeed(eventID: eventID) }
+    func closeThreadFeed(eventID: String) { kernel.closeThreadFeed(eventID: eventID) }
     func claimProfile(pubkey: String, consumerID: String) {
         kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
     }
@@ -691,6 +724,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // ADR-0038: store the typed home-feed result. Nil means the generic
         // projections.homeFeed fallback applies for this tick.
         typedHomeFeed = result.typedHomeFeed
+        // M2 Step-C: store the dynamically-keyed per-open feed projections
+        // (`nmp.feed.author.<pubkey>` / `nmp.feed.thread.<id>`). Empty when no
+        // author / thread feed is open; ProfileView / ThreadScreen read them
+        // via `feedProjection(key:)`.
+        flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 
         #if DEBUG
