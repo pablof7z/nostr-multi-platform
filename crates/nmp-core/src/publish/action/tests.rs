@@ -26,6 +26,7 @@ fn explicit_publish_target_requires_non_empty_relays() {
         tags: Vec::new(),
         content: "hello".to_string(),
         target: PublishTarget::Explicit { relays: Vec::new() },
+        signer_pubkey: None,
     };
     let err = PublishModule::start(&mut ctx(), action)
         .expect_err("empty explicit target must fail closed");
@@ -55,6 +56,7 @@ fn explicit_publish_target_accepts_valid_relay_url() {
         target: PublishTarget::Explicit {
             relays: vec!["wss://relay.example".to_string()],
         },
+        signer_pubkey: None,
     };
     PublishModule::start(&mut ctx(), action).expect("valid explicit target should pass validation");
 }
@@ -69,6 +71,7 @@ fn publish_raw_rejects_kind_0_to_protect_profile_path() {
         tags: Vec::new(),
         content: "{}".to_string(),
         target: PublishTarget::Auto,
+        signer_pubkey: None,
     };
     let err = PublishModule::start(&mut ctx(), action).expect_err("PublishRaw must reject kind:0");
     assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("PublishProfile")));
@@ -85,6 +88,7 @@ fn publish_raw_rejects_kind_3_pending_dedicated_path() {
         tags: Vec::new(),
         content: String::new(),
         target: PublishTarget::Auto,
+        signer_pubkey: None,
     };
     let err = PublishModule::start(&mut ctx(), action).expect_err("PublishRaw must reject kind:3");
     assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("kind:3")));
@@ -101,6 +105,7 @@ fn publish_raw_accepts_arbitrary_event_kind_with_auto_target() {
         tags: vec![vec!["d".to_string(), "my-article".to_string()]],
         content: "# Hello, second app".to_string(),
         target: PublishTarget::Auto,
+        signer_pubkey: None,
     };
     PublishModule::start(&mut ctx(), action)
         .expect("valid PublishRaw with Auto target should pass validation");
@@ -116,6 +121,7 @@ fn publish_raw_propagates_explicit_target_validation_failure() {
         tags: Vec::new(),
         content: "body".to_string(),
         target: PublishTarget::Explicit { relays: Vec::new() },
+        signer_pubkey: None,
     };
     let err = PublishModule::start(&mut ctx(), action)
         .expect_err("empty explicit target must fail closed for PublishRaw too");
@@ -171,6 +177,7 @@ fn execute_publish_raw_emits_publish_raw_event_command() {
         tags: vec![vec!["d".to_string(), "slug".to_string()]],
         content: "body".to_string(),
         target: PublishTarget::Auto,
+        signer_pubkey: None,
     };
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
@@ -179,15 +186,85 @@ fn execute_publish_raw_emits_publish_raw_event_command() {
             kind,
             content,
             target,
+            signer_pubkey,
             correlation_id,
             ..
         } => {
             assert_eq!(kind, 30023);
             assert_eq!(content, "body");
             assert_eq!(target, PublishTarget::Auto);
+            assert_eq!(
+                signer_pubkey, None,
+                "no selector supplied → active account (None)"
+            );
             assert_eq!(correlation_id.as_deref(), Some("test-cid"));
         }
         other => panic!("expected PublishRawEvent, got {other:?}"),
+    }
+}
+
+#[test]
+fn execute_publish_raw_threads_signer_pubkey_onto_actor_command() {
+    // The signer selector must survive `execute`: a `PublishRaw` carrying
+    // `signer_pubkey: Some(agent_pk)` lands on the `ActorCommand::PublishRawEvent`
+    // the actor dispatches, so the agent / per-podcast key signs instead of the
+    // active account (app-signer-slot.md §"Publishing with an agent key").
+    let agent_pk = "f".repeat(64);
+    let action = PublishAction::PublishRaw {
+        kind: 30023,
+        tags: Vec::new(),
+        content: "agent-authored".to_string(),
+        target: PublishTarget::Auto,
+        signer_pubkey: Some(agent_pk.clone()),
+    };
+    let cmds = run_execute(action).expect("execute must succeed");
+    assert_eq!(cmds.len(), 1, "must emit exactly one command");
+    match cmds.into_iter().next().unwrap() {
+        ActorCommand::PublishRawEvent { signer_pubkey, .. } => {
+            assert_eq!(
+                signer_pubkey,
+                Some(agent_pk),
+                "execute must thread the signer selector onto the actor command"
+            );
+        }
+        other => panic!("expected PublishRawEvent, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_raw_serde_default_signer_pubkey_is_none_when_field_omitted() {
+    // Backward-compat: dispatch JSON authored before the selector existed
+    // omits `signer_pubkey`; `#[serde(default)]` must deserialize it to `None`
+    // (active account) rather than failing the decode.
+    let json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hi","target":"Auto"}}"#;
+    let action: PublishAction =
+        serde_json::from_str(json).expect("legacy PublishRaw JSON must deserialize");
+    match action {
+        PublishAction::PublishRaw { signer_pubkey, .. } => {
+            assert_eq!(
+                signer_pubkey, None,
+                "an omitted signer_pubkey must default to None (active account)"
+            );
+        }
+        other => panic!("expected PublishRaw, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_raw_serde_round_trips_explicit_signer_pubkey() {
+    // The selector must also survive the wire when a host *does* supply it, so
+    // a Swift / Kotlin shell can address an agent key by hex pubkey.
+    let agent_pk = "a".repeat(64);
+    let json = format!(
+        r#"{{"PublishRaw":{{"kind":1,"tags":[],"content":"hi","target":"Auto","signer_pubkey":"{agent_pk}"}}}}"#
+    );
+    let action: PublishAction =
+        serde_json::from_str(&json).expect("PublishRaw JSON with signer_pubkey must deserialize");
+    match action {
+        PublishAction::PublishRaw { signer_pubkey, .. } => {
+            assert_eq!(signer_pubkey, Some(agent_pk));
+        }
+        other => panic!("expected PublishRaw, got {other:?}"),
     }
 }
 

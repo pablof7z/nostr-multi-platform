@@ -891,6 +891,7 @@ pub(super) fn dispatch_command(
             tags,
             content,
             target,
+            signer_pubkey,
             correlation_id,
         } => {
             // D7: kernel owns the wall clock. Unlike `PublishUnsignedEvent`
@@ -931,8 +932,10 @@ pub(super) fn dispatch_command(
                     ctx.kernel,
                     unsigned,
                     correlation_id,
-                    // PublishRaw always signs with the active account.
-                    None,
+                    // Honour the `PublishRaw` signer selector: `None` signs with
+                    // the active account; `Some(pubkey)` signs with that
+                    // registered agent / per-podcast key (app-signer-slot.md).
+                    signer_pubkey,
                     ctx.pending_signs,
                 ),
                 crate::publish::PublishTarget::Explicit { relays } => {
@@ -942,8 +945,10 @@ pub(super) fn dispatch_command(
                         unsigned,
                         relays,
                         correlation_id,
-                        // PublishRaw always signs with the active account.
-                        None,
+                        // Honour the `PublishRaw` signer selector: `None` signs
+                        // with the active account; `Some(pubkey)` signs with that
+                        // registered agent / per-podcast key (app-signer-slot.md).
+                        signer_pubkey,
                         ctx.pending_signs,
                     )
                 }

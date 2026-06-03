@@ -123,12 +123,33 @@ pub enum PublishAction {
     /// apply protocol-specific processing (kind:0: field validation, kind:3:
     /// follow-list merge). `PublishRaw` rejects these kinds to prevent
     /// accidental data loss from bypassing that processing.
+    ///
+    /// # Signer selection
+    ///
+    /// `signer_pubkey` selects which registered signer signs the event:
+    /// `None` (the default) signs with the active account; `Some(hex_pubkey)`
+    /// signs with the registered signer whose pubkey matches — e.g. an agent /
+    /// per-podcast key added via `AddSigner { make_active: false }` (see
+    /// `app-signer-slot.md`). The active account is never changed. Whether the
+    /// selected key is local (nsec, signs inline) or remote (NIP-46 bunker,
+    /// parks on the kernel's `PendingSign` path) is transparent to the caller.
+    /// An unknown pubkey is **not** validated at dispatch time — it surfaces as
+    /// a sign-time error toast through `sign_with_account_nonblocking`'s
+    /// "no signer for account {pubkey}" path, the same contract as the rest of
+    /// the codebase (the roster isn't reachable from `start`, and a
+    /// registration enqueued just before the publish is FIFO-guaranteed to land
+    /// first).
     PublishRaw {
         kind: u32,
         tags: Vec<Vec<String>>,
         content: String,
         #[serde(default)]
         target: PublishTarget,
+        /// `None` = active account (default); `Some(hex_pubkey)` = the
+        /// registered signer whose pubkey matches. `#[serde(default)]` keeps
+        /// existing dispatch JSON that omits the field deserializing to `None`.
+        #[serde(default)]
+        signer_pubkey: Option<String>,
     },
     /// Cancel an in-flight publish, addressed by its [`PublishHandle`].
     ///
@@ -284,12 +305,14 @@ impl ActionModule for PublishModule {
                 tags,
                 content,
                 target,
+                signer_pubkey,
             } => {
                 send(ActorCommand::PublishRawEvent {
                     kind,
                     tags,
                     content,
                     target,
+                    signer_pubkey,
                     correlation_id: Some(correlation_id.to_string()),
                 });
                 Ok(())

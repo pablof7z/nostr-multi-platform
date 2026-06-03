@@ -98,6 +98,7 @@ fn publish_note_action_deserializes_into_publish_raw_variant() {
             tags,
             content,
             target,
+            signer_pubkey,
         } => {
             assert_eq!(kind, 1);
             assert_eq!(content, "hello world");
@@ -110,6 +111,9 @@ fn publish_note_action_deserializes_into_publish_raw_variant() {
                 ]
             );
             assert_eq!(target, PublishTarget::Auto);
+            // The note-builder envelope omits `signer_pubkey`, so
+            // `#[serde(default)]` must deserialize it to `None` (active account).
+            assert_eq!(signer_pubkey, None);
         }
         other => panic!("expected PublishRaw, got {other:?}"),
     }
