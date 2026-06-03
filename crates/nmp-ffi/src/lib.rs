@@ -556,51 +556,6 @@ pub struct NmpApp {
     /// content) so the wallet pay-invoice FFI shim can short-circuit a
     /// same-bolt11 retap before it crosses into `nmp-nip47`.
     pub(crate) inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
-    /// Generic dispatch idempotency guard: dedup-keys for
-    /// [`action::nmp_app_dispatch_action`] calls accepted by the registry but
-    /// whose action-result has not yet cleared. Keyed by a stable 64-bit
-    /// FNV-1a hash of `(namespace, action_json)` (see
-    /// [`nmp_core::stable_hash::stable_hash64`]) — a same-action retap inside
-    /// the TTL window maps to the same key, and the FFI short-circuits before
-    /// the second `start()` + executor pass enqueues a duplicate
-    /// `ActorCommand`. The stored value is `(when_first_seen,
-    /// original_correlation_id)`: a dedup hit returns the original id in the
-    /// `{"correlation_id":...}` envelope so the host's spinner stays bound to
-    /// the first dispatch (mirrors the "id stays bound" semantic of the
-    /// `executor_failure_returns_correlation_id_and_enqueues_
-    /// failed_terminal` test).
-    ///
-    /// Mirrors the [`inflight_bolt11`] pattern but for ALL action namespaces,
-    /// not just `pay_invoice`. The primary motivator is the NIP-17 DM send
-    /// path: a rapid re-tap on Send before the gift-wrap fan-out completes
-    /// would otherwise mint a second batch of kind:1059 envelopes that are
-    /// indistinguishable to recipients (no on-the-wire dedup is possible).
-    /// The guard is generic by intent — every namespace the host dispatches
-    /// shares the same 30-second wall-clock window.
-    ///
-    /// Lives entirely in the FFI layer (no actor coupling): expiry is
-    /// wall-clock based — entries older than
-    /// [`action::INFLIGHT_DISPATCH_TTL`] are swept at every
-    /// `dispatch_action_json` call, so a legitimate retry after the TTL
-    /// passes through.
-    ///
-    /// D14: `Mutex<HashMap<…>>` is NOT the banned `Arc<Mutex<Vec<…>>>` shape
-    /// — same reasoning as `inflight_bolt11` above.
-    inflight_dispatches: Mutex<std::collections::HashMap<u64, (std::time::Instant, String)>>,
-    /// Idempotency guard for `nmp_app_create_new_account` (identity.rs).
-    ///
-    /// `nmp_app_create_new_account` bypasses `inflight_dispatches` (which
-    /// covers `dispatch_action` only) and sends `ActorCommand::CreateAccount`
-    /// directly. Without a guard, two rapid taps on the iOS "Create account"
-    /// button mint two distinct keypairs — the second overwrites the first and
-    /// the user loses the original nsec with no diagnostic signal.
-    ///
-    /// This slot holds the `Instant` of the last accepted dispatch. A
-    /// re-call within 30 s (matching `INFLIGHT_DISPATCH_TTL`) is a no-op.
-    /// After the TTL a legitimate retry (e.g. creation silently failed) is
-    /// allowed through. No actor coupling required: the guard lives entirely
-    /// in the FFI layer, same posture as `inflight_dispatches`.
-    pub(crate) creating_account_inflight: Mutex<Option<std::time::Instant>>,
 }
 
 impl Drop for NmpApp {
@@ -1042,14 +997,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // content); the wallet runtime that consumes the dispatched action
         // moved to `crates/nmp-nip47`.
         inflight_bolt11: Mutex::new(std::collections::HashMap::new()),
-        // Generic dispatch idempotency guard. Empty at construction; populated
-        // by `ffi::action::dispatch_action_json` on each accepted dispatch,
-        // swept on TTL expiry (no cross-thread coupling).
-        inflight_dispatches: Mutex::new(std::collections::HashMap::new()),
-        // create_account idempotency guard: None until first call; set to
-        // `Some(Instant::now())` by `nmp_app_create_new_account` and
-        // re-admits after 30 s (same TTL as `inflight_dispatches`).
-        creating_account_inflight: Mutex::new(None),
     };
 
     // V-38: the `"wallet"` snapshot projection moved to `crates/nmp-nip47`.

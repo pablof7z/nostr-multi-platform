@@ -124,10 +124,7 @@ pub extern "C" fn nmp_app_wallet_disconnect(app: *mut NmpApp) {
 /// cross-thread coupling): expired entries are swept on every call by
 /// wall-clock. The guard is per-`bolt11` (independent of `amount_msats`),
 /// so two rapid taps on the same invoice with different amounts ALSO
-/// collapse to one wire request — the generic `inflight_dispatches`
-/// guard keyed on `(namespace, action_json)` would not deduplicate those
-/// because the JSON differs. The wallet-specific guard runs FIRST so the
-/// generic dispatch guard never sees a same-`bolt11` retap.
+/// collapse to one wire request.
 ///
 /// A retry of the same invoice AFTER the TTL passes through — the NWC
 /// wallet itself is responsible for deduping a true on-the-wire retry by

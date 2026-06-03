@@ -13,7 +13,6 @@
 //! Swift bridge sees a flat C ABI regardless of the Rust module split.
 
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
-use crate::action::INFLIGHT_DISPATCH_TTL;
 use nmp_core::ActorCommand;
 use std::ffi::c_char;
 
@@ -91,22 +90,6 @@ pub extern "C" fn nmp_app_create_new_account(
         });
         return;
     };
-
-    // Idempotency guard: two rapid taps mint two distinct keypairs (the second
-    // overwrites the first and the user silently loses their nsec). Reject a
-    // second dispatch within INFLIGHT_DISPATCH_TTL (30 s) — same TTL as the
-    // generic `inflight_dispatches` guard. A poisoned mutex degrades to "let
-    // the dispatch through" rather than silently blocking account creation
-    // forever (D6: failures are data, not crashes).
-    if let Ok(mut slot) = app.creating_account_inflight.lock() {
-        let now = std::time::Instant::now();
-        if let Some(started) = *slot {
-            if now.duration_since(started) < INFLIGHT_DISPATCH_TTL {
-                return;
-            }
-        }
-        *slot = Some(now);
-    }
 
     app.set_pending_mls_autopublish(mls);
     app.send_cmd(ActorCommand::CreateAccount {
