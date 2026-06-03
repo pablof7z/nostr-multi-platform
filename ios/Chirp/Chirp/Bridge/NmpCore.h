@@ -375,6 +375,34 @@ void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 void nmp_app_chirp_register_dm_inbox(void *app);
 void nmp_app_chirp_unregister(void *handle);
 
+// ── M2 per-open flat author / thread feeds (ADR-0042 §5.1, V-112) ─────────
+//
+// Replace the deleted `author_view` / `thread_view` snapshot projections (and
+// the `nmp_app_open_author` / `nmp_app_open_thread` symbols above). Each open
+// registers a flat `FlatFeed` under a per-consumer snapshot key AND pushes the
+// kernel interest that admits the matching kind:1/6 into storage; each close
+// tears both down. The `{1,6}` note-kind policy lives host-side in
+// `nmp-app-chirp` (D0).
+//
+//   • `nmp_app_chirp_open_author_feed(app, pubkey_hex)` — registers
+//     `"nmp.feed.author.<pubkey_hex>"`, read by ProfileView. The feed emits the
+//     SAME `RootFeedSnapshot` (`{ "cards": [{ card, attribution }] }`) shape the
+//     home feed emits (attribution always empty), so the existing
+//     `nmp.feed.home` reader decodes it with no new schema.
+//   • `nmp_app_chirp_open_thread_feed(app, event_id_hex)` — registers
+//     `"nmp.feed.thread.<event_id_hex>"`, read by ThreadScreen: the root by id
+//     plus every kind:1/6 referencing it via `#e`.
+//   • The matching `close_*` symbols drop the feed controller, its snapshot
+//     projection, and its ingest observer, and detach the kernel interest.
+//     Idempotent — closing an unopened feed is a harmless no-op.
+//   • Fire-and-forget (D6): a null `app` or null / invalid-UTF-8 id is a silent
+//     no-op. `app` MUST outlive the feed; call the matching `close_*` (or rely
+//     on the `nmp_app_free` actor join) before freeing it.
+void nmp_app_chirp_open_author_feed(void *app, const char *pubkey_hex);
+void nmp_app_chirp_close_author_feed(void *app, const char *pubkey_hex);
+void nmp_app_chirp_open_thread_feed(void *app, const char *event_id_hex);
+void nmp_app_chirp_close_thread_feed(void *app, const char *event_id_hex);
+
 // ── NIP-29 group-chat read projection ────────────────────────────────────
 //
 // Wires a single NIP-29 group's chat-message read model into the kernel.

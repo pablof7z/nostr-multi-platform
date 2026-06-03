@@ -23,6 +23,11 @@ mod event_by_id_tests;
 #[cfg(test)]
 #[path = "sign_event_for_return_tests.rs"]
 mod sign_event_for_return_tests;
+// M2 (ADR-0042 §5.1, V-112) — register_feed_with_observer / unregister_feed
+// transient-feed teardown-seam tests.
+#[cfg(test)]
+#[path = "interest_feed_tests.rs"]
+mod interest_feed_tests;
 mod event_observer;
 mod feed;
 mod identity;
@@ -454,6 +459,18 @@ pub struct NmpApp {
     /// surfaces here; shells report viewport intent through generic feed FFI
     /// instead of app-specific cursor/window APIs.
     feed_registry: nmp_feed::FeedRegistrySlot,
+    /// Per-open feed → ingest-observer bookkeeping for *transient* feeds (a
+    /// visited profile / open thread registered through
+    /// [`Self::register_feed_with_observer`]). The home feed is NOT here — it
+    /// registers its observer once via [`Self::register_event_observer`] and
+    /// keeps it for the life of the app. A transient feed must instead drop
+    /// its `KernelEventObserver` when its screen closes, or the kernel keeps
+    /// fanning every ingested event into a dead feed (an unbounded observer
+    /// leak across many visited profiles). [`Self::unregister_feed`] reads
+    /// this map to tear the observer down alongside the feed controller and
+    /// its snapshot projection. Protocol-agnostic teardown bookkeeping (a
+    /// `key → id` map carries no NIP/kind knowledge — D0-clean).
+    interest_feed_observers: Mutex<std::collections::HashMap<String, KernelEventObserverId>>,
     /// G-S4 — straddle counter for the actor command channel depth. The
     /// command channel is an unbounded `std::sync::mpsc::channel()` whose
     /// `Receiver` has no `len()`, so depth is observed indirectly: `send_cmd`
@@ -966,6 +983,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // `nmp_app_register_snapshot_projection` during init.
         snapshot_projections,
         feed_registry,
+        // Per-open transient-feed observer bookkeeping; empty until the first
+        // `register_feed_with_observer` (a visited profile / open thread).
+        interest_feed_observers: Mutex::new(std::collections::HashMap::new()),
         // G-S4 — the `NmpApp`'s clone of the command-channel depth counter,
         // incremented by `send_cmd`. The actor holds the matching clone.
         queue_depth,
@@ -1108,6 +1128,88 @@ impl NmpApp {
             self.send_cmd(ActorCommand::MarkChangedSinceEmit);
         }
         changed
+    }
+
+    /// Register a **transient** feed surface — a feed whose snapshot key must
+    /// be torn down when its screen closes (a visited profile / open thread),
+    /// as opposed to [`Self::register_feed`]'s permanent feeds (the home
+    /// feed).
+    ///
+    /// This does everything `register_feed` does — registers the
+    /// [`nmp_feed::FeedController`] under `key` and installs its
+    /// `snapshot_json` as a snapshot projection — AND additionally plugs
+    /// `observer` into the kernel's [`KernelEventObserver`] registry so the
+    /// feed receives ingested events, **tracking the returned observer id
+    /// under `key`** so [`Self::unregister_feed`] can revoke it. The caller
+    /// typically passes the same `Arc<FlatFeed>` as both `controller` and
+    /// `observer`.
+    ///
+    /// Registering the same `key` twice replaces the controller / projection
+    /// (last-writer-wins) and revokes the previously-tracked observer before
+    /// installing the new one, so a re-open never leaks the prior observer.
+    ///
+    /// D6 — a poisoned bookkeeping mutex degrades to "observer registered but
+    /// untracked": the feed still works, but its observer outlives the screen
+    /// (a bounded soft-leak, never a crash). D8 — `register_event_observer` is
+    /// an init-style registry push, not a hot-path call.
+    pub fn register_feed_with_observer(
+        &self,
+        key: impl Into<String>,
+        controller: std::sync::Arc<dyn nmp_feed::FeedController>,
+        observer: std::sync::Arc<dyn KernelEventObserver>,
+    ) {
+        let key = key.into();
+        self.register_feed(key.clone(), controller);
+        let observer_id = self.register_event_observer(observer);
+        if let Ok(mut map) = self.interest_feed_observers.lock() {
+            if let Some(previous) = map.insert(key, observer_id) {
+                // A re-open under the same key: the new observer is now
+                // tracked; revoke the stale one so the kernel stops fanning
+                // events into the replaced feed instance.
+                self.unregister_event_observer(previous);
+            }
+        }
+    }
+
+    /// Tear down a feed registered through [`Self::register_feed_with_observer`].
+    ///
+    /// Performs all three removals the registration installed, in any
+    /// combination present (each is an independent no-op when its target is
+    /// absent, so an unknown key is harmless):
+    ///
+    /// 1. the [`nmp_feed::FeedController`] from the feed registry;
+    /// 2. the snapshot projection closure (generic + typed) so it stops
+    ///    emitting a stale empty subtree on every tick;
+    /// 3. the tracked [`KernelEventObserver`], if one was recorded for `key`.
+    ///
+    /// CALLER CONTRACT — call this ONLY for transient keys registered through
+    /// [`Self::register_feed_with_observer`]. It is **destructive on any key**
+    /// that has a live `FeedController` / projection: calling it on the
+    /// permanent home-feed key (`nmp.feed.home`, registered via the plain
+    /// [`Self::register_feed`]) WOULD drop the home feed's controller and
+    /// projection — it is "safe" there only in the sense that it never panics,
+    /// not that it preserves the feed. The home feed has no tracked observer, so
+    /// step 3 is a no-op there, but steps 1–2 are not.
+    ///
+    /// Returns `true` when any registration was removed. D6 — poisoned locks
+    /// degrade to partial teardown (best-effort); the `nmp_app_free` actor
+    /// join remains the hard fence for in-flight callbacks.
+    pub fn unregister_feed(&self, key: &str) -> bool {
+        let removed_feed = self.feed_registry.unregister(key);
+        let removed_projection = self
+            .snapshot_projections
+            .lock()
+            .map(|mut registry| registry.remove(key))
+            .unwrap_or(false);
+        let removed_observer = self
+            .interest_feed_observers
+            .lock()
+            .ok()
+            .and_then(|mut map| map.remove(key));
+        if let Some(observer_id) = removed_observer {
+            self.unregister_event_observer(observer_id);
+        }
+        removed_feed || removed_projection || removed_observer.is_some()
     }
 
     /// Register a host-supplied action-result observer — the *push*

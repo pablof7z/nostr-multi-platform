@@ -1265,3 +1265,121 @@ the delete-cascade):*
 the same files the peer's #934 (SignEventForReturn) touches. Do the read-path PR (A–C)
 first — it touches NO FFI symbols → zero collision — then the delete-cascade after #934
 lands.
+
+**PROGRESS + HANDOFF (session 2 — branch `worktree-agent-a7b662e4aa5ee284e`, on top of
+the foundation commit `0a707ab2`; #935 still OPEN at session start):**
+
+*Landed this session (steps A + B + the C header half — all additive, green, NOTHING
+deleted; old `author_view`/`thread_view` projections still present so every screen keeps
+working):*
+- **Step A — teardown seams.** `FeedRegistry::unregister(key) -> bool` (`nmp-feed`,
+  + 2 unit tests). `SnapshotRegistry::remove(key) -> bool` (`nmp-core/kernel/
+  snapshot_registry.rs`) — removes from BOTH `projections` and `typed_projections`, so a
+  closed transient feed stops emitting a stale empty subtree every tick (the leak the
+  handoff flagged). `NmpApp::register_feed_with_observer(key, controller, observer)` +
+  `NmpApp::unregister_feed(key) -> bool` (`nmp-ffi/src/lib.rs`). The new method tracks
+  the observer id under the key in a new `interest_feed_observers:
+  Mutex<HashMap<String, KernelEventObserverId>>` slot on `NmpApp` (the home feed keeps
+  using the plain `register_feed` + a dropped observer id — unchanged). `unregister_feed`
+  does the full THREE-part teardown (controller + projection + observer) and is a safe
+  no-op on an absent key (incl. the home-feed key). D0-clean: a key→id map carries no
+  NIP/kind knowledge (doctrine-lint green).
+- **Step B — host-side per-open registration** in `nmp-app-chirp`
+  (`src/ffi/interest_feed.rs`, new). Four C-ABI symbols:
+  `nmp_app_chirp_{open,close}_{author,thread}_feed(app, hex)`. `open_author_feed`
+  registers a `FlatFeed(author_feed_predicate(pk, [1,6]))` under `nmp.feed.author.<pk>`
+  via `register_feed_with_observer` AND pushes the kernel interest
+  `{"kinds":[1,6],"authors":[pk]}` / consumer `author-<pk>` / scope Global through the
+  existing validated `nmp_app_open_interest` seam (kernel admission — V-112 fact #1).
+  Thread variant: `thread_feed_predicate(root_id, [1,6])` + `{"kinds":[1,6],"#e":[root]}`.
+  The `{1,6}` note-kind policy is defined ONCE (`const FEED_KINDS`) and feeds BOTH the
+  predicate (render gate) and the filter (admission), so they cannot diverge — a unit
+  test asserts the filter JSON parses as a valid `InterestShape`. `close_*` calls
+  `unregister_feed` + `nmp_app_close_interest`. (Folding `open_interest` into the Chirp
+  symbol — rather than a separate Swift call — is the single-source-of-kinds choice; the
+  advisor + handoff both sanctioned it.)
+- **C header half.** `NmpCore.h` gains the 4 decls; `ci/check-ffi-header-drift.sh`
+  `FFI_FILE_ROOTS` gains `interest_feed.rs`; drift check green (64 symbols in sync). The
+  handoff's "A–C touches NO FFI symbols" line was wrong — adding a Chirp symbol DOES touch
+  the header. Collision with the peer's #934/0.2.4 `NmpCore.h` churn is an ADDITIVE block
+  (new decls after `nmp_app_chirp_unregister`), trivially rebased.
+
+*Task-scope checks (rebased foundation, correct worktree):* `cargo test -p nmp-feed`
+(24, incl. 2 new registry tests) + `-p nmp-nip01` (FlatFeed) + `-p nmp-core --lib` (1086)
++ `-p nmp-app-chirp --lib` (29, incl. 3 new interest_feed tests) + `-p nmp-testing --test
+doctrine_lint_smoke` (46) ALL GREEN. `cargo check -p nmp-app-chirp` clean.
+
+*DEFERRED — Step C Swift read-path migration (ProfileView/ThreadScreen).* **NOT done this
+session — by design, not omission, and the reason is structural, not time:** the dynamic
+per-pubkey/per-root feed key (`nmp.feed.author.<pk>`) cannot be read by the current Swift
+decode path without net-new decoder work. `SnapshotProjections`
+(`ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`) is a CODEGEN-OWNED struct
+with a static-`CodingKeys` registry and a CI drift gate (`codegen-drift.yml`) — it silently
+drops any key not in its fixed enum, and MUST NOT be hand-edited. The generic projections
+subtree is a FlatBuffer `nmp_transport_Value` map that `KernelUpdate(from:)` decodes into
+that static struct and then discards; the raw map is not retained for a dynamic
+`feedSnapshot(forKey:)` accessor. There are THREE ways to wire the dynamic read; the
+**third is the easiest and is the recommended path** (a prior draft of this note listed only
+the first two — corrected here):
+- **(a)** a codegen extension for dynamic-key projections (broadest; touches the codegen
+  pipeline + drift gate).
+- **(b)** a hand-written raw-map capture in the non-generated `KernelUpdate` decode path
+  (`KernelUpdateFrameDecoder.swift`) — retain the generic `nmp_transport_Value` projections
+  map and expose a `feedSnapshot(forKey:)` over it.
+- **(c) RECOMMENDED — typed-sidecar, the data is already key-addressable.**
+  `KernelUpdateFrameDecoder` ALREADY retains the typed projection envelopes as
+  `[TypedProjectionEnvelope]`, each carrying a `.key` (`extractTypedProjections`). The home
+  feed already emits a typed NOFS sidecar via `register_typed_snapshot_projection` +
+  `encode_op_feed_snapshot`, and `FlatFeed::snapshot()` returns the SAME `RootFeedSnapshot`
+  type — so a transient feed can emit the identical NOFS sidecar under its own key, and Swift
+  reads it from the already-key-addressable `envelopes` array, sidestepping BOTH the
+  discarded generic map AND the codegen struct. The only Swift blocker: `TypedHomeFeedDecoder`
+  hardcodes `projectionKey = "nmp.feed.home"` (`TypedHomeFeedDecoder.swift:31`, matched at
+  `decode(from:)` line 45 as `$0.key == projectionKey`); generalise it to take a `key`
+  parameter. **Rust prerequisite (do it in the wiring PR, not a follow-up):**
+  `register_feed_with_observer` should ALSO register the typed sidecar (mirror
+  `register_op_feed_defaults` step 5b — `register_typed_snapshot_projection(key, ||
+  encode_op_feed_snapshot(&feed.snapshot(...)))`) so the bytes are present the easy way when
+  Step C lands. (NOT added in this PR — flagged so the follow-up adds it alongside the Swift
+  decoder change, keeping the typed/generic registration symmetric with the home feed.)
+
+None of the three is compilable/runtime-verifiable in this Rust-only env (no Xcode-26
+`UIUtilities` here, per the V-112 iOS-visual deferral). Deferring is SAFE because this PR
+runs NO delete-cascade: `author_view`/`thread_view` stay registered and ProfileView/
+ThreadScreen keep reading them unchanged. The 4 new Chirp symbols ship unit-tested but
+runtime-unexercised until Swift flips the call site (a documented build-before-delete half,
+not a finished feature — frame it that way to avoid the "registered-but-inert" trap).
+
+*REMAINING (next session):*
+- **C-Swift.** Prefer path (c): generalise `TypedHomeFeedDecoder` to a `key` param + have
+  `register_feed_with_observer` also register the NOFS typed sidecar; expose
+  `model.feedSnapshot(forKey: "nmp.feed.author.<pk>") -> ChirpTimelineSnapshot?` (the type is
+  identical to `homeFeed`). Then `ProfileView`: `items` ← feed cards, `noteCountDisplay` ←
+  cards count, `profile` ← `claimedProfiles[pk]`, `primaryAction` ← local follow-state;
+  `ThreadScreen`: `items` ← `nmp.feed.thread.<id>`. Swift call sites call the new Chirp
+  open/close symbols on appear/disappear. iOS-sim verify required (handoff's deep-link
+  rootless-thread edge: the `#e` interest pulls replies, not the root — if the root isn't
+  already stored, add an `{"ids":[root]}` interest).
+- **Double-open / single-close asymmetry (handle at Swift wiring time).** The feed
+  registration is last-writer-wins, but the kernel `open_interest` is refcounted. A SwiftUI
+  view that double-fires `onAppear` (open twice) then closes once replaces the feed but
+  leaves the subscription refcount at 1 → a leaked sub. Either dedup opens host-side or
+  ensure one close per open.
+- **`FlatFeed` is forward-only — no backfill from `self.events` (the load-bearing Step-C
+  iOS-sim check).** A `FlatFeed` is registered at profile/thread OPEN time and fills ONLY
+  from events flowing through `notify_event_observers` AFTER registration — it does not
+  replay events already in the kernel store. The home feed never hits this (registered once
+  at app start, accumulates from empty); a late-registered per-open feed does. Consequence:
+  events already in `self.events` (seen via the home feed or a prior visit) that the
+  author's relays won't re-serve — history past the relay's return limit, or a non-followed
+  author whose kind:10002 outbox relays are unknown so the `open_interest` REQ routes to
+  relays lacking their history — are in the store but INVISIBLE to a feed that started
+  empty. So the Step-C iOS-sim verification is NOT just "does a profile render" — it is
+  specifically: *does a freshly-opened profile show the author's notes INCLUDING ones
+  already in the store, and does `open_interest` route to relays that actually hold the
+  author's history?* If sparse/empty, the fix is a conscious design call made THEN, not now:
+  replay matching `self.events` into the feed on registration (a `FlatFeed::seed(&[KernelEvent])`
+  + a kernel read at register time) vs. accept relay-refetch-only. This is the general case
+  of the rootless-thread `#e`-only edge flagged above — file both together.
+- **D. Delete-cascade** (unchanged from the session-1 plan above) — only after C-Swift
+  lands AND #935 + #934/0.2.4 are on master.
