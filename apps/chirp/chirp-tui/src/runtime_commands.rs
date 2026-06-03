@@ -20,7 +20,7 @@ use crate::Result;
 
 unsafe extern "C" {
     fn nmp_app_remove_account(app: *mut c_void, identity_id: *const std::ffi::c_char);
-    fn nmp_app_signin_bunker(app: *mut c_void, uri: *const std::ffi::c_char);
+    fn nmp_app_signin_bunker(app: *mut c_void, uri: *const std::ffi::c_char, make_active: u8);
     fn nmp_app_switch_active(app: *mut c_void, identity_id: *const std::ffi::c_char);
     fn nmp_app_wallet_connect(app: *mut c_void, uri: *const std::ffi::c_char);
     fn nmp_app_wallet_disconnect(app: *mut c_void);
