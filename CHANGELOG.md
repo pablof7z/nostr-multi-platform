@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.2.2 — 2026-08-04
+
+**Non-breaking C-ABI. No migration required.**
+
+11 commits since 0.2.1 (tagged 2026-07-07).
+
+### Added
+
+- **Replaceable event freshness / TTL tracking** (F-ttl): a new subsystem in
+  `nmp-core` and `nmp-nostr-lmdb` that assigns `freshness: "fresh"` to newly
+  ingested replaceable events, computes TTL from `kind → freshness → epoch`, and
+  tracks three freshness levels (`fresh` / `stale` / `expired`). Events enter
+  the LMDB store through `timeline_insert_events` (single) and
+  `timeline_insert_event_batch` (batch) — `ReplaceableTtlActor` manages the
+  transition lifecycle asynchronously.
+
+- **iOS Home Feed view wiring** (iOS): `HomeFeedView` is bridged into the
+  `RootShell` with a native SwiftUI timeline backed by the kernel snapshot
+  and `TimelineItem` rendering identity.
+
+### Changed
+
+- **`timeline_insert_events` → `timeline_insert_event_batch`** (C-ABI): the
+  singular `timeline_insert_events` FFI entry point is renamed to
+  `timeline_insert_event_batch`. All first-party shells (iOS `KernelBridge.swift`,
+  chirp-tui, chirp-desktop) have been updated; third-party callers using the old
+  symbol will fail to link on 0.2.2 until updated.
+
+---
+
 ## nmp-v0.2.1 — 2026-06-01
 
 **Non-breaking C-ABI. One projection-key rename requires shell updates (see below).**
