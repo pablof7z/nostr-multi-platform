@@ -118,21 +118,27 @@ pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char, m
     });
 }
 
+/// Connect a NIP-46 bunker signer.
+///
+/// `make_active = 1`: handshake completes and the resolved pubkey becomes the
+/// active account (the normal bunker sign-in path).
+///
+/// `make_active = 0`: registers the bunker signer WITHOUT activating it once
+/// the handshake completes — for agent/secondary keys that sign via
+/// `nmp_app_sign_event_for_return` without disturbing the user's active
+/// account. The `make_active` flag is carried through the async handshake
+/// round-trip by the kernel's signer broker (D0: nmp-core owns the stash).
 #[no_mangle]
-pub extern "C" fn nmp_app_signin_bunker(app: *mut NmpApp, uri: *const c_char) {
+pub extern "C" fn nmp_app_signin_bunker(app: *mut NmpApp, uri: *const c_char, make_active: u8) {
     let Some(app) = app_ref(app) else {
         return;
     };
     let Some(uri) = c_string_argument(uri) else {
         return;
     };
-    // C-ABI symbol kept byte-stable; rewired onto the unified `AddSigner`
-    // command. A bunker sign-in always makes the resolved account active — the
-    // flag is stashed across the async handshake round-trip (D0: nmp-core
-    // owns the stash; the broker adapter cannot see it).
     app.send_cmd(ActorCommand::AddSigner {
         source: nmp_core::SignerSource::BunkerUri(uri),
-        make_active: true,
+        make_active: make_active != 0,
     });
 }
 

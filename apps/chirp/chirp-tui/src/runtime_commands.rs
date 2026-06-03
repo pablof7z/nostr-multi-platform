@@ -54,7 +54,7 @@ impl AppRuntime {
     pub fn sign_in_bunker(&self, uri: &str) -> Result<()> {
         self.unregister_marmot();
         self.with_cstr(uri, |c| unsafe {
-            nmp_app_signin_bunker(self.app_ptr().cast(), c.as_ptr())
+            nmp_app_signin_bunker(self.app_ptr().cast(), c.as_ptr(), 1)
         })
     }
 

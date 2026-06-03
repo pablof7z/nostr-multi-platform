@@ -75,7 +75,7 @@ void nmp_app_close_thread(void *app, const char *event_id);
 // make_active=0: register without activating — for agent/secondary keys that
 //   sign via nmp_app_sign_event_for_return without becoming the active account.
 void nmp_app_signin_nsec(void *app, const char *secret, uint8_t make_active);
-void nmp_app_signin_bunker(void *app, const char *uri);
+void nmp_app_signin_bunker(void *app, const char *uri, uint8_t make_active);
 // Sign an unsigned event with the named account's signer and park the result
 // in the snapshot's signed_events projection.  Returns a correlation_id string
 // that the caller uses to retrieve the signed event JSON.  Free with
