@@ -1343,13 +1343,39 @@ eventsRx=0 eose=false decodedFeedKeys=[nmp.feed.author.32e18…]`. Reading it:
   `feedback_verify_running_result`). Hence: keep `items` on the live `author_view` until a
   warm run shows Scenario 7 green (`flatFeedCards>0`), then take the one-line cutover.
 
+*HONESTY CAVEAT — what is and is NOT verified:* the Swift DECODE is verified (key decoded;
+`cards` correctly empty when Rust emits `cards:[]`). The flat-feed END-TO-END DELIVERY
+chain (`open_interest` → store admission → `notify_event_observers` → `FlatFeed` render →
+`nmp.feed.author.<pk>` projection) has **NEVER been observed carrying a single event** —
+`authorWireSub=opening, eventsRx=0` means even the REQ returned nothing. "Not a regression
+in my Swift code" is proven; "the read path works" is NOT. Whoever flips the cutover must
+NOT assume the chain is green. Open sub-question public-relays-down left unanswered: does a
+generic `open_interest` open a wire fetch for an ARBITRARY (non-followed) author AT ALL?
+(`eventsRx=0` fits both "fetched, relay empty" and "no fetch issued".)
+
+*ALSO shipped, flagged:* `ProfileView`/`ThreadScreen` call `openAuthorFeed`/`openThreadFeed`
+on EVERY visit (the surface the smoke test exercises). This adds a live-but-currently-UNREAD
+author/thread subscription per visit — defensible (keeps the path warm + decoded for
+verification) but it is unverified behaviour in production, the same risk class the
+cutover-revert avoids. If it proves costly, gate the open behind the same flag as the cutover.
+
 *EXACTLY what unblocks the cutover (next session, in priority order):*
-1. Re-run the FULL `SmokeScenariosTests` suite (NOT `-only-testing:scenario7` — that
-   gives a cold kernel) on a machine whose relays backfill (Scenario 3 must pass first).
-   If Scenario 7 goes green → take the ProfileView one-line cutover, rebuild, done with
-   Step C's author half. ThreadScreen's item cutover is gated additionally on re-homing
-   the focus-relative `previous/next_count` + labels (the flat feed is flat/newest-first
-   with no focus concept — `focusedEventId` is free, ThreadScreen has `eventID` from nav).
+1. **Use `nak serve` (deterministic), NOT "a machine with working relays" (non-deterministic).**
+   The public-relay smoke run (Scenario 7) is flaky AND, even when green, cannot isolate
+   new-path-vs-environment on a later failure. Instead (per `live-relay-test-harness` /
+   `nak-bunker-signer`, MEMORY): start an in-memory `nak serve`, seed it with a few jb55
+   kind:1 events, point the kernel's relays at it, sign in, `openAuthorFeed(jb55)`, and
+   assert `authorFeed(pubkey:).cards` non-empty. This removes public-relay flakiness AND
+   answers the open sub-question above — does `open_interest` actually fetch an arbitrary
+   non-followed author. If it populates → take the ProfileView one-line cutover
+   (`items { model.authorFeed(pubkey: pubkey).cards.map { .synthetic(from: $0.card) } }`),
+   rebuild, done with Step C's author half. If it does NOT populate against a relay that
+   demonstrably HAS the events → the gap is in the #935/#936 Rust foundation
+   (`open_interest` wire fetch / admission / fan-out), squarely in the FFI/network area a
+   peer is churning; surface it, do not rewrite the wire layer in the Swift PR.
+   ThreadScreen's item cutover is gated additionally on re-homing the focus-relative
+   `previous/next_count` + labels (the flat feed is flat/newest-first with no focus concept
+   — `focusedEventId` is free, ThreadScreen has `eventID` from nav).
 2. THEN Step D (the delete-cascade) — but only AFTER (a) ProfileView+ThreadScreen are
    cut over and verified, and (b) the Rust survivor for `primary_action` /
    `note_count_display` / thread counts+labels is built in `nmp-app-chirp` (correction #2
