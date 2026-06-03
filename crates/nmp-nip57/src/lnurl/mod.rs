@@ -31,9 +31,11 @@
 //!   `inject_recipient_relays` consumes this to populate the kind:9734
 //!   `relays` tag so the LN provider knows where to publish the kind:9735
 //!   zap receipt (NIP-57 § "Appendix F").
-//! - [`ProtocolCommandContext::active_local_keys`] — ADR-0026 Phase 1:
-//!   local-keys accounts only. Bunker (NIP-46) accounts return `None`; we
-//!   fail closed with a clear toast and a `RecordActionFailure`.
+//! - [`ProtocolCommandContext::sign_active_nonblocking`] — V-78: signs the
+//!   kind:9734 with the active account, covering BOTH local nsec
+//!   (`SignerOp::Ready`, signed on the actor thread) AND NIP-46 bunker
+//!   (`SignerOp::Pending`, resolved by `op.wait()` on the off-actor HTTP
+//!   worker — D8). Only a genuinely absent account fails closed.
 //! - [`ProtocolCommandContext::record_action_stage_requested`] — track the
 //!   `Requested` stage against the host's `correlation_id` (when supplied)
 //!   so the stage observer sees the transition before the worker thread
@@ -44,9 +46,14 @@
 //!
 //! # D8 — no blocking on the actor thread
 //!
-//! The actor thread signs the zap request (sync, ~30µs) and immediately
-//! spawns a `std::thread` for the HTTP work. The thread:
+//! The actor thread DISPATCHES the kind:9734 sign (non-blocking — a local
+//! nsec resolves `SignerOp::Ready` in ~30µs; a NIP-46 bunker returns
+//! `SignerOp::Pending` after firing the broker RPC) and immediately spawns a
+//! `std::thread` for the sign-wait + HTTP work. The thread:
 //!
+//! 0. `op.wait()`s the parked sign op (V-78) — instant for a local nsec, up
+//!    to `ZAP_SIGN_TIMEOUT` for a bunker round-trip — then serializes the
+//!    signed kind:9734 into the flat NIP-01 JSON the callback expects.
 //! 1. Decodes the LNURL (bech32) or lightning-address (`user@domain`) input
 //!    into a `https://…/.well-known/lnurlp/<user>` URL via
 //!    [`pay::lnurl_to_well_known_url`].
@@ -72,10 +79,13 @@
 mod pay;
 
 use std::io::Read;
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use std::time::Duration;
+
 use nmp_core::substrate::{
-    ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
+    ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, SignedEvent, UnsignedEvent,
 };
 use nmp_core::ActorCommand;
 use nmp_kinds::KIND_ZAP_RECEIPT;
@@ -88,6 +98,17 @@ pub use pay::{looks_like_bolt11, lnurl_to_well_known_url, url_encode_query, url_
 /// LN provider from accumulating worker threads even though each thread
 /// is independent of the actor loop.
 const LNURL_HTTP_TIMEOUT_SECS: u64 = 10;
+
+/// V-78 — wall-clock budget for `op.wait()` on the kind:9734 zap-request
+/// sign when the active account is a NIP-46 bunker (`SignerOp::Pending`).
+/// This wait runs on the off-actor HTTP worker (NEVER the actor loop, D8),
+/// so it does not freeze relay ingest / UI. 10s (vs. the 5s actor-loop
+/// `PENDING_SIGN_TIMEOUT`) gives a human enough time to approve the sign in
+/// a bunker app before the two-leg LNURL HTTP round-trip even begins — per
+/// `docs/wiki/nmp-signer-broker.md`, the full zap chain (sign + fetch) needs
+/// a looser budget than a bare publish. A local nsec returns
+/// `SignerOp::Ready` and never consumes this budget.
+const ZAP_SIGN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Maximum response body the worker will accept from either LNURL hop.
 /// LNURL-pay responses are tiny JSON objects (a few hundred bytes); 64 KiB
@@ -193,32 +214,24 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         // receipt. Pure computation — no I/O, safe on the actor thread.
         inject_lnurl_tag(&lnurl_or_address, &mut unsigned);
 
-        // ADR-0026 Phase 1 — local keys only. Bunker accounts have no local
-        // secret material so the kind:9734 signature cannot be minted on this
-        // path. Fail closed with a clear toast + `RecordActionFailure` so the
-        // host spinner resolves.
-        let Some(keys) = ctx.active_local_keys() else {
-            let reason = "zap requires a local-keys account; bunker signing for kind:9734 \
-                          is not yet implemented (ADR-0026 Phase 2 follow-up)";
-            ctx.send(ActorCommand::ShowToast {
-                message: reason.to_string(),
-            });
-            if let Some(cid) = correlation_id {
-                ctx.send(ActorCommand::RecordActionFailure {
-                    correlation_id: cid,
-                    reason: reason.to_string(),
-                });
-            }
-            return Ok(());
-        };
-
-        // Sign the kind:9734 on the actor thread (D7). The signed JSON is
-        // what the LNURL callback expects in its `nostr=<urlencoded>` query
-        // param.
-        let signed_json = match sign_zap_request(&keys, &unsigned) {
-            Ok(json) => json,
+        // V-78 — non-blocking sign of the kind:9734. Covers BOTH signer kinds
+        // through the substrate seam:
+        //
+        // * **Local nsec** — the sign is CPU-bound; `sign_active_nonblocking`
+        //   returns `SignerOp::Ready` (signed on the actor thread, D7) and the
+        //   worker's `op.wait()` resolves it instantly.
+        // * **NIP-46 bunker** — `sign_active_nonblocking` dispatches the broker
+        //   RPC and returns `SignerOp::Pending`. We hand that op to the HTTP
+        //   worker and `op.wait()` it THERE (off-actor), never on the actor
+        //   loop (D8). This closes V-78: bunker accounts can now zap. We never
+        //   call `active_local_keys()` on this path (D13).
+        //
+        // `Err` here is the genuinely-no-active-account case (no local key AND
+        // no remote signer) — fail closed with a D6 toast + `RecordActionFailure`.
+        let sign_op = match ctx.sign_active_nonblocking(&unsigned) {
+            Ok(op) => op,
             Err(reason) => {
-                let msg = format!("failed to sign zap request: {reason}");
+                let msg = format!("cannot zap: {reason}");
                 ctx.send(ActorCommand::ShowToast { message: msg.clone() });
                 if let Some(cid) = correlation_id {
                     ctx.send(ActorCommand::RecordActionFailure {
@@ -236,6 +249,12 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         // references the actor's mutable state after this point. D8: zero
         // blocking on the actor thread.
         //
+        // V-78: the worker FIRST resolves the parked sign op via
+        // `op.wait(ZAP_SIGN_TIMEOUT)` (instant for a local nsec; up to 10s for
+        // a bunker that must round-trip the broker), serializes the signed
+        // kind:9734 into the flat NIP-01 JSON the LNURL callback expects, THEN
+        // runs the two-leg LNURL-pay round-trip.
+        //
         // [`ProtocolCommandContext::command_sender_clone`] hands us an
         // owned `Sender<ActorCommand>` (cheap atomic ref-count bump) the
         // worker moves into its closure. The worker uses it to post
@@ -244,6 +263,28 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         // dispatch arm (and its `ProtocolCommandContext`) have returned.
         let worker_tx = ctx.command_sender_clone();
         std::thread::spawn(move || {
+            // D8: `op.wait` runs HERE, off the actor thread — never in the
+            // actor loop. A local nsec's `SignerOp::Ready` resolves with no
+            // wait; a bunker's `SignerOp::Pending` blocks this worker (only)
+            // until the broker responds or `ZAP_SIGN_TIMEOUT` elapses.
+            let signed_json = match sign_op
+                .wait(ZAP_SIGN_TIMEOUT)
+                .map_err(|e| format!("sign zap request: {e}"))
+                .and_then(|signed| signed_event_to_nostr_json(&signed))
+            {
+                Ok(json) => json,
+                Err(reason) => {
+                    let msg = format!("Zap failed: {reason}");
+                    let _ = worker_tx.send(ActorCommand::ShowToast { message: msg });
+                    if let Some(cid) = correlation_id {
+                        let _ = worker_tx.send(ActorCommand::RecordActionFailure {
+                            correlation_id: cid,
+                            reason,
+                        });
+                    }
+                    return;
+                }
+            };
             match fetch_lnurl_invoice_blocking(
                 &lnurl_or_address,
                 amount_msats,
@@ -405,6 +446,49 @@ pub fn sign_zap_request(keys: &Keys, unsigned: &UnsignedEvent) -> Result<String,
         .custom_created_at(Timestamp::from(unsigned.created_at))
         .sign_with_keys(keys)
         .map_err(|e| format!("sign: {e}"))?;
+    serde_json::to_string(&event).map_err(|e| format!("serialize signed zap request: {e}"))
+}
+
+/// V-78 — re-serialize a substrate [`SignedEvent`] into the flat NIP-01 JSON
+/// object the LNURL callback expects in its `nostr=<urlencoded>` parameter.
+///
+/// The substrate [`SignedEvent`] is a nested `{ id, sig, unsigned: { … } }`
+/// shape; the LN provider needs the flat `{ id, pubkey, created_at, kind,
+/// tags, content, sig }` NIP-01 wire form. We reconstruct a `nostr::Event`
+/// from the signed fields and serialize it through the SAME `serde` path
+/// [`sign_zap_request`] uses — so a bunker-signed zap request is byte-for-byte
+/// the wire shape a local-nsec zap produced, the moment the broker returns the
+/// `id`/`sig`. No re-signing: the kind:9734 signature minted by the active
+/// account (local OR bunker) is carried through verbatim.
+pub fn signed_event_to_nostr_json(signed: &SignedEvent) -> Result<String, String> {
+    let SignedEvent { id, sig, unsigned } = signed;
+
+    let event_id = nostr::EventId::from_hex(id).map_err(|e| format!("zap event id: {e}"))?;
+    let pubkey = nostr::PublicKey::from_hex(&unsigned.pubkey)
+        .map_err(|e| format!("zap pubkey: {e}"))?;
+    let signature = nostr::secp256k1::schnorr::Signature::from_str(sig)
+        .map_err(|e| format!("zap signature: {e}"))?;
+    let kind = Kind::from_u16(
+        u16::try_from(unsigned.kind).map_err(|e| format!("zap kind out of range: {e}"))?,
+    );
+    let tags: Vec<Tag> = unsigned
+        .tags
+        .iter()
+        .map(|t| {
+            Tag::parse(t.iter().map(String::as_str).collect::<Vec<_>>())
+                .map_err(|e| format!("tag parse: {e}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let event = nostr::Event::new(
+        event_id,
+        pubkey,
+        Timestamp::from(unsigned.created_at),
+        kind,
+        tags,
+        unsigned.content.clone(),
+        signature,
+    );
     serde_json::to_string(&event).map_err(|e| format!("serialize signed zap request: {e}"))
 }
 

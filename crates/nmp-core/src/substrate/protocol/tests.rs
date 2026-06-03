@@ -128,6 +128,44 @@ impl LocalSignerAccess for LocalSigners {
     fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
         self.signer.clone()
     }
+    fn sign_active_nonblocking(
+        &self,
+        unsigned: &crate::substrate::UnsignedEvent,
+    ) -> Result<
+        nmp_signer_iface::SignerOp<crate::substrate::SignedEvent>,
+        String,
+    > {
+        // Mirror production semantics: a local nsec signs synchronously
+        // (Ready); no key → no active account (Err). The bunker/Pending path
+        // is exercised by `nmp-nip57`'s own tests.
+        match &self.keys {
+            Some(keys) => {
+                let event = nostr::EventBuilder::new(
+                    nostr::Kind::from_u16(unsigned.kind as u16),
+                    unsigned.content.clone(),
+                )
+                .custom_created_at(nostr::Timestamp::from(unsigned.created_at))
+                .sign_with_keys(keys)
+                .map_err(|e| format!("sign failed: {e}"))?;
+                Ok(nmp_signer_iface::SignerOp::ok(crate::substrate::SignedEvent {
+                    id: event.id.to_hex(),
+                    sig: event.sig.to_string(),
+                    unsigned: crate::substrate::UnsignedEvent {
+                        pubkey: event.pubkey.to_hex(),
+                        kind: u32::from(event.kind.as_u16()),
+                        tags: event
+                            .tags
+                            .iter()
+                            .map(|t| t.as_slice().to_vec())
+                            .collect(),
+                        content: event.content.clone(),
+                        created_at: event.created_at.as_secs(),
+                    },
+                }))
+            }
+            None => Err("no active account — sign in first".to_string()),
+        }
+    }
 }
 
 struct RecordingErrors {

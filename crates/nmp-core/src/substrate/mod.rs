@@ -81,6 +81,16 @@ pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandler
 // `nmp_core::substrate::{DomainMigration, MigrationTx}` import path is
 // unchanged.
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
+/// V-78 — NIP crates need to name `SignerOp` to `op.wait()` a parked
+/// remote (NIP-46 bunker) sign on an off-actor worker thread (the
+/// `nmp-nip57` zap path). Re-exported through the substrate so NIP crates
+/// reach it via `nmp_core::substrate::SignerOp` rather than adding a direct
+/// `nmp-signer-iface` dependency — every signer surface a NIP crate touches
+/// stays funnelled through `nmp_core::substrate` (mirrors `SignerForSeal`).
+/// [`SignerError`] rides along because `SignerOp::Pending` carries a
+/// `Receiver<Result<T, SignerError>>`, so any crate constructing or matching
+/// on a pending op needs the error name too.
+pub use nmp_signer_iface::{SignerError, SignerOp};
 pub use ingest::{EventIngestDispatcher, IngestParser};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,

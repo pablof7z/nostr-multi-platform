@@ -70,6 +70,7 @@ use std::sync::Arc;
 use crate::kernel::Kernel;
 use crate::relay::OutboundMessage;
 use crate::ActorCommand;
+use nmp_signer_iface::SignerOp;
 
 /// Error returned by a [`ProtocolCommand::run`]. Kernel surfaces it as the
 /// `last_error_toast` projection (step 4+); step 1.b just logs.
@@ -126,6 +127,26 @@ pub trait LocalSignerAccess: Send + Sync {
     /// `Pending` on a per-invocation driver thread). `None` when no account
     /// is active or a remote signer reported a malformed pubkey.
     fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>>;
+
+    /// V-78 — non-blocking Schnorr sign of `unsigned` with the active
+    /// account, covering BOTH signer kinds uniformly:
+    ///
+    /// * **Local-nsec accounts** — the sign is CPU-bound and resolves on the
+    ///   actor thread into [`SignerOp::Ready`].
+    /// * **NIP-46 bunker accounts** — the broker RPC is dispatched and the
+    ///   call returns [`SignerOp::Pending`]; the caller MUST move the
+    ///   `op.wait()` off the actor thread (D8) onto a spawned worker — never
+    ///   block the actor loop.
+    ///
+    /// This is the seam that unblocks bunker zaps: the kind:9734 zap request
+    /// can no longer be signed via [`Self::active_local_keys`] (which returns
+    /// `None` for bunker accounts, the V-78 bug). `Err(String)` (a D6 toast
+    /// reason) covers ONLY the genuinely-no-active-account case; a remote
+    /// signer that is active returns `Ok(SignerOp::Pending)`.
+    fn sign_active_nonblocking(
+        &self,
+        unsigned: &crate::substrate::UnsignedEvent,
+    ) -> Result<SignerOp<crate::substrate::SignedEvent>, String>;
 }
 
 /// NIP-17 kind:10050 DM-inbox relay reads — substrate-generic. Re-uses
@@ -210,6 +231,12 @@ impl LocalSignerAccess for NoopLocalSignerAccess {
     }
     fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
         None
+    }
+    fn sign_active_nonblocking(
+        &self,
+        _unsigned: &crate::substrate::UnsignedEvent,
+    ) -> Result<SignerOp<crate::substrate::SignedEvent>, String> {
+        Err("no active account — sign in first".to_string())
     }
 }
 
@@ -508,6 +535,24 @@ impl<'a> ProtocolCommandContext<'a> {
         let s = self.signers;
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| s.signer_for_seal()))
             .unwrap_or(None)
+    }
+
+    /// V-78 — D15-wrapped [`LocalSignerAccess::sign_active_nonblocking`].
+    /// Non-blocking Schnorr sign with the active account (local nsec →
+    /// [`SignerOp::Ready`]; NIP-46 bunker → [`SignerOp::Pending`], which the
+    /// caller MUST `op.wait()` off the actor thread per D8). A panicking
+    /// adapter is folded into the `Err` branch (treated like no-active-
+    /// account) so a host-side signer panic can never unwind the calling
+    /// `ProtocolCommand::run` frame.
+    pub fn sign_active_nonblocking(
+        &self,
+        unsigned: &crate::substrate::UnsignedEvent,
+    ) -> Result<SignerOp<crate::substrate::SignedEvent>, String> {
+        let s = self.signers;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            s.sign_active_nonblocking(unsigned)
+        }))
+        .unwrap_or_else(|_| Err("signer adapter panicked while signing".to_string()))
     }
 
     /// D15-wrapped [`DmInboxLookup::dm_inbox_relays`]. Returns `None`
