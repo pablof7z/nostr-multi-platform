@@ -253,6 +253,52 @@ pub(crate) use relay_roles::RelayRoleOption;
 #[cfg(feature = "native")]
 pub use relay_roles::{nostrconnect_relay_url, Nip65Role};
 
+/// Where a signer added via [`ActorCommand::AddSigner`] comes from.
+///
+/// Replaces the per-source `SignInNsec` / `SignInBunker` / `AddRemoteSigner`
+/// command split: the source kind is now a payload of one unified command.
+///
+/// D0: the `RemoteHandle` arm carries a `Box<dyn RemoteSignerHandle>` whose
+/// concrete type lives in `nmp-signers` — `nmp-core` only sees the trait object
+/// (defined in [`crate::remote_signer`]); it never imports the broker or signer
+/// crate.
+#[allow(dead_code)] // live cross-crate constructors in nmp-ffi — per-crate lint false positive
+pub enum SignerSource {
+    /// Local secret key — a `nsec1…` bech32 or 64-hex string. Resolves
+    /// synchronously: the actor parses it and (when `make_active`) activates it
+    /// immediately. Carried as [`zeroize::Zeroizing<String>`] so the plaintext
+    /// secret is wiped from memory the instant the command is dropped — the
+    /// in-flight window between FFI ingest and key parsing is minimized.
+    LocalNsec(zeroize::Zeroizing<String>),
+    /// NIP-46 `bunker://` URI. Triggers an asynchronous broker handshake: the
+    /// actor seeds the `bunker_handshake` projection, stashes `make_active`, and
+    /// delegates the connect/get_public_key dance to the registered broker. The
+    /// broker reports completion by sending back an `AddSigner` carrying a
+    /// [`SignerSource::RemoteHandle`].
+    BunkerUri(String),
+    /// A fully-handshaken remote signer handle. The broker adapter constructs
+    /// this after a NIP-46 handshake completes and sends it back to the actor,
+    /// which inserts it into `IdentityRuntime.remote_signers` and applies
+    /// `make_active` (the value the originating `BunkerUri` command stashed).
+    RemoteHandle(Box<dyn crate::RemoteSignerHandle>),
+}
+
+impl std::fmt::Debug for SignerSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Never print the secret: `LocalNsec` redacts its payload. `Box<dyn
+        // RemoteSignerHandle>` is not `Debug`, so `RemoteHandle` prints only its
+        // discriminant + the handle's pubkey.
+        match self {
+            SignerSource::LocalNsec(_) => f.write_str("LocalNsec(<redacted>)"),
+            SignerSource::BunkerUri(uri) => f.debug_tuple("BunkerUri").field(uri).finish(),
+            SignerSource::RemoteHandle(handle) => f
+                .debug_tuple("RemoteHandle")
+                .field(&handle.pubkey_hex())
+                .finish(),
+        }
+    }
+}
+
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
 /// through the `testing` re-export gate.  In normal (non-test-support) builds
@@ -298,23 +344,34 @@ pub enum ActorCommand {
     OpenFirehoseTag {
         tag: String,
     },
-    /// T66a identity — import an nsec/hex secret, add to the actor-local
-    /// identity store, bind it as the active signer, retarget the timeline.
+    /// Unified sign-in command. Adds a signer to the actor-local identity store
+    /// from one of the [`SignerSource`] variants and, when `make_active` is set,
+    /// binds it as the active signer + retargets the timeline.
     ///
-    /// The `secret` is carried as [`zeroize::Zeroizing<String>`] so the
-    /// plaintext nsec is wiped from memory the instant the command is dropped
-    /// — the in-flight window between FFI ingest and key parsing is minimized.
-    SignInNsec {
-        secret: zeroize::Zeroizing<String>,
-    },
-    /// T66a identity — parse a `bunker://` NIP-46 URI, seed the
-    /// `bunker_handshake` snapshot projection with "connecting", and delegate
-    /// the handshake to the registered broker via
-    /// [`crate::bunker_hook::invoke_bunker_connect_hook`]. D0: the broker
-    /// app/FFI adapter translates the app-neutral broker event into
-    /// `AddRemoteSigner`; `nmp-core` never imports the broker or signer crate.
-    SignInBunker {
-        uri: String,
+    /// This is the single entry point that replaces the old `SignInNsec`,
+    /// `SignInBunker`, and `AddRemoteSigner` variants:
+    ///
+    /// * [`SignerSource::LocalNsec`] — parse the secret synchronously and (when
+    ///   `make_active`) activate immediately.
+    /// * [`SignerSource::BunkerUri`] — shape-validate the `bunker://` URI, seed
+    ///   the `bunker_handshake` projection with `"connecting"`, stash
+    ///   `make_active` for the async round-trip, and delegate the handshake to
+    ///   the registered broker. D0: the broker app/FFI adapter translates the
+    ///   app-neutral broker event back into `AddSigner { RemoteHandle, .. }`;
+    ///   `nmp-core` never imports the broker or signer crate.
+    /// * [`SignerSource::RemoteHandle`] — register a fully-handshaken remote
+    ///   signer (e.g. completed NIP-46 bunker handshake) and apply `make_active`
+    ///   immediately. The broker adapter sends this after the handshake
+    ///   completes, threading through the `make_active` value the `BunkerUri`
+    ///   command originally stashed.
+    ///
+    /// Has live cross-crate callers in `nmp-ffi` (the C-ABI sign-in shims and
+    /// the broker adapter); `#[allow(dead_code)]` only suppresses rustc's
+    /// per-crate dead-code lint, which cannot see the cross-crate constructors.
+    #[allow(dead_code)]
+    AddSigner {
+        source: SignerSource,
+        make_active: bool,
     },
     /// Create a new keypair, publish a kind:0 metadata event and a kind:10002
     /// relay-list event, then register the identity and make it active.
@@ -338,23 +395,6 @@ pub enum ActorCommand {
     /// the active one.
     RemoveAccount {
         identity_id: String,
-    },
-    /// Broker adapter → actor: register a fully-handshaken remote signer (e.g.
-    /// completed NIP-46 bunker handshake). Actor inserts into
-    /// `IdentityRuntime.remote_signers` and emits a snapshot update.
-    /// Becomes active if no account was active. D0 stays clean — the
-    /// trait object's concrete type lives in `nmp-signers` but `nmp-core`
-    /// only sees `dyn RemoteSignerHandle` (defined in
-    /// [`crate::remote_signer`]).
-    ///
-    /// Constructed by app/FFI composition when the app-neutral broker reports
-    /// a completed signer. It has a live production caller outside
-    /// `nmp-core`; `#[allow(dead_code)]` only suppresses rustc's *per-crate*
-    /// dead-code lint, which cannot see the cross-crate constructor.
-    #[allow(dead_code)]
-    // live cross-crate caller in nmp-ffi — per-crate lint false positive
-    AddRemoteSigner {
-        handle: Box<dyn crate::RemoteSignerHandle>,
     },
     /// Broker adapter → actor: progress event for the bunker handshake UI.
     /// Actor stores the latest into a kernel snapshot field; the adapter is
@@ -457,6 +497,13 @@ pub enum ActorCommand {
     PublishUnsignedEvent {
         event: crate::substrate::UnsignedEvent,
         correlation_id: Option<String>,
+        /// When `Some(pubkey)`, the actor signs with the account whose pubkey
+        /// matches — looked up across BOTH local keys and remote signers — via
+        /// `sign_with_account_nonblocking`, instead of the active account. This
+        /// lets a non-active account publish without first switching active.
+        /// `None` preserves the legacy behaviour: sign with the active account
+        /// (and fail closed when no account is active).
+        signer_pubkey: Option<String>,
     },
     /// Publish an unsigned event to an explicit relay set, bypassing the
     /// NIP-65 outbox resolver. Used by action executors that target a
@@ -487,6 +534,11 @@ pub enum ActorCommand {
         /// `None` for callers that are not action-dispatched (e.g. direct
         /// `NmpApp::` Rust API calls).
         correlation_id: Option<String>,
+        /// When `Some(pubkey)`, the actor signs with the account whose pubkey
+        /// matches — looked up across BOTH local keys and remote signers — via
+        /// `sign_with_account_nonblocking`, instead of the active account.
+        /// `None` preserves the legacy behaviour (sign with the active account).
+        signer_pubkey: Option<String>,
     },
     /// Generic publish of an **already-signed** event. The kernel verifies
     /// the Schnorr signature + event-id hash, then routes the event verbatim

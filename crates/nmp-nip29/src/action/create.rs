@@ -138,6 +138,7 @@ mod tests {
                 event,
                 relays,
                 correlation_id,
+                ..
             } => {
                 assert_eq!(event.kind, KIND_CREATE_GROUP);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
@@ -156,6 +157,7 @@ mod tests {
                 event,
                 relays,
                 correlation_id,
+                ..
             } => {
                 assert_eq!(event.kind, KIND_EDIT_METADATA);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);

@@ -166,7 +166,13 @@ fn add_remote_signer_projects_nip46_account_summary() {
     let (mut id, mut kernel) = fresh();
     let (handle, _count) = stub_signer();
     let expected_pk = handle.pubkey_hex();
-    add_remote_signer(&mut id, &mut kernel, handle, false);
+    add_signer(
+        &mut id,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(handle),
+        false,
+        false,
+    );
 
     let (accounts, active) = kernel.account_snapshot();
     assert!(
@@ -280,7 +286,13 @@ fn sign_active_routes_through_remote_signer_when_active() {
     let (mut id, mut kernel) = fresh();
     let (handle, count) = stub_signer();
     let expected_pk = handle.pubkey_hex();
-    add_remote_signer(&mut id, &mut kernel, handle, false);
+    add_signer(
+        &mut id,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(handle),
+        false,
+        false,
+    );
     assert_eq!(count.load(Ordering::Relaxed), 0);
 
     // Drive a publish through the actor path: it must call `sign_active`,
@@ -310,7 +322,13 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
     let (mut id, mut kernel) = fresh();
     let (handle, count) = stub_signer();
     let expected_pk = handle.pubkey_hex();
-    add_remote_signer(&mut id, &mut kernel, handle, false);
+    add_signer(
+        &mut id,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(handle),
+        false,
+        false,
+    );
     // Seed kind:10002 so the fail-closed resolver finds write relays.
     kernel.seed_kind10002_for_test(
         &expected_pk,
@@ -324,7 +342,7 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
         content: "# hello bunker".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
     assert_eq!(
         count.load(Ordering::Relaxed),
         1,
@@ -369,7 +387,13 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
     let (mut id, mut kernel) = fresh();
     let (handle, sign_count) = stub_signer();
     let sender_hex = handle.pubkey_hex();
-    add_remote_signer(&mut id, &mut kernel, handle, false);
+    add_signer(
+        &mut id,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(handle),
+        false,
+        false,
+    );
 
     // Debt C — wrap the identity reference in a `LocalSignerAccess`
     // adapter so the test exercises the same capability surface the
@@ -866,7 +890,10 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
     let (handle, _count) = stub_signer();
     let pk = handle.pubkey_hex();
     cmd_tx
-        .send(ActorCommand::AddRemoteSigner { handle })
+        .send(ActorCommand::AddSigner {
+            source: crate::actor::SignerSource::RemoteHandle(handle),
+            make_active: true,
+        })
         .unwrap();
     cmd_tx
         .send(ActorCommand::BunkerHandshakeProgress {

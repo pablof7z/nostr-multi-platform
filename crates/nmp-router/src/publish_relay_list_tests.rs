@@ -304,6 +304,7 @@ fn execute_emits_kind10002_publish_unsigned_event_command() {
         ActorCommand::PublishUnsignedEvent {
             event,
             correlation_id,
+            ..
         } => {
             assert_eq!(event.kind, 10002, "relay list must emit kind:10002");
             assert_eq!(

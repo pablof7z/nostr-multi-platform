@@ -202,9 +202,13 @@ pub use update_envelope::{
 // Stage 4 of NIP-46 wiring: app/FFI composition translates app-neutral
 // broker events into actor commands. The `actor` module is crate-private so
 // this re-export is the only Rust-side path for adapters that need to push
-// `AddRemoteSigner` / `BunkerHandshakeProgress` back to the actor. The enum
+// `AddSigner` / `BunkerHandshakeProgress` back to the actor. The enum
 // variants themselves are already `pub`.
-pub use actor::ActorCommand;
+//
+// `SignerSource` is re-exported alongside so the FFI sign-in shims and the
+// broker adapter can name `SignerSource::{LocalNsec, BunkerUri, RemoteHandle}`
+// when constructing an `AddSigner` command.
+pub use actor::{ActorCommand, SignerSource};
 
 // Step 11 final — every `nmp_app_*` `extern "C"` symbol that used to be
 // re-exported from `ffi::` now lives in the standalone `nmp-ffi` crate.

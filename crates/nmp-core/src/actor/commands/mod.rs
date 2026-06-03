@@ -103,15 +103,14 @@ mod tests;
 // V-01 Phase 1c: identity command handlers sit on the native actor runtime.
 #[cfg(feature = "native")]
 pub(super) use identity::{
-    add_remote_signer, bunker_connection_state_changed, bunker_handshake_progress, create_account,
-    remove_account, restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active,
-    IdentityRuntime,
+    add_signer, bunker_connection_state_changed, bunker_handshake_progress, create_account,
+    remove_account, restore_bunker_session, switch_active, IdentityRuntime,
 };
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot + its
 // constructor are re-exported (crate-wide) so the `ffi` module can build the
 // shared slot and register the built-in `"bunker_handshake"` snapshot
 // projection. `BunkerHandshakeDto` stays `identity`-private — callers drive it
-// only through `bunker_handshake_progress` / `sign_in_bunker`.
+// only through `bunker_handshake_progress` / `add_signer`.
 // V-01 Phase 1c: bunker types consumed only by native FFI / actor runtime.
 #[cfg(feature = "native")]
 pub(crate) use identity::build_nip46_onboarding_dto;

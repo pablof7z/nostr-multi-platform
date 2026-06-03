@@ -88,6 +88,7 @@ fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
             event,
             relays,
             correlation_id,
+            ..
         } => {
             // Pinned to EXACTLY the group's host relay — never the
             // author's NIP-65 outbox.
@@ -331,6 +332,7 @@ fn nip29_join_executor_emits_kind_9021_with_host_pin() {
             event,
             relays,
             correlation_id,
+            ..
         } => {
             assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
             assert_eq!(event.kind, 9021);

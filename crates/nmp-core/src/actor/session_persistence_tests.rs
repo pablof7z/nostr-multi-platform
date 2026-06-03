@@ -123,7 +123,13 @@ fn restores_imported_nsec_without_swift_cache() {
     let work_tx = spawn_capability_worker(Arc::clone(&slot), cmd_tx);
 
     let (mut identity, mut kernel) = fresh();
-    commands::sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
+    commands::add_signer(
+        &mut identity,
+        &mut kernel,
+        crate::actor::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
+        true,
+        false,
+    );
     let expected = identity.active_pubkey().unwrap();
 
     // persist_current_active_session (local account) enqueues 3 writes:

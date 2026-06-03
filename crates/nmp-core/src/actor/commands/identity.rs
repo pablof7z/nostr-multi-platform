@@ -416,6 +416,16 @@ pub(crate) struct IdentityRuntime {
     /// handshake completes so it can show a reconnecting indicator or
     /// prompt re-auth rather than silently bricking the session.
     bunker_connection_state: BunkerConnectionStateSlot,
+    /// Stashed `make_active` flag for an in-flight `bunker://` handshake.
+    ///
+    /// `AddSigner { source: BunkerUri, make_active }` starts an async broker
+    /// handshake; the resolved signer arrives later as a separate
+    /// `AddSigner { source: RemoteHandle, .. }`. The originating `make_active`
+    /// must survive that round-trip, so it is parked here rather than on the
+    /// serialized [`BunkerHandshakeDto`] (which would leak the transient flag
+    /// onto the snapshot wire). Set when the `BunkerUri` handshake is started;
+    /// read + cleared when the matching `RemoteHandle` completes.
+    pending_bunker_make_active: bool,
 }
 
 impl IdentityRuntime {
@@ -437,6 +447,7 @@ impl IdentityRuntime {
             active: None,
             bunker_handshake,
             bunker_connection_state,
+            pending_bunker_make_active: false,
         }
     }
 
@@ -497,23 +508,25 @@ impl IdentityRuntime {
     }
 
     /// Register a remote-signer handle keyed by its user pubkey hex. Mirrors
-    /// `add` for local keys: if the pubkey is new, append to `order`; if no
-    /// account is active yet, the new remote becomes active.
-    pub(crate) fn add_remote(&mut self, handle: Box<dyn RemoteSignerHandle>) -> IdentityId {
+    /// `add` for local keys: if the pubkey is new, append to `order`. Unlike the
+    /// pre-`AddSigner` `add_remote`, this NEVER auto-activates — activation is
+    /// the `add_signer` reducer's job (it owns the `make_active` decision,
+    /// including the stashed-bunker-flag round-trip). Returns the account id.
+    pub(crate) fn add_remote_inactive(
+        &mut self,
+        handle: Box<dyn RemoteSignerHandle>,
+    ) -> IdentityId {
         let id = handle.pubkey_hex();
         if !self.keys.contains_key(&id) && !self.remote_signers.contains_key(&id) {
             self.order.push(id.clone());
         }
         // `Box<dyn T>` → `Arc<dyn T>` via `Arc::from(box)`. The actor's
-        // boundary (`ActorCommand::AddRemoteSigner`) still takes `Box<dyn>`
-        // so the broker / nmp-signers contract is unchanged; the actor
-        // converts on insertion (ADR-0026 Phase 2 — see the
-        // `remote_signers` field doc on [`IdentityRuntime`]).
+        // boundary (`ActorCommand::AddSigner` / `SignerSource::RemoteHandle`)
+        // still takes `Box<dyn>` so the broker / nmp-signers contract is
+        // unchanged; the actor converts on insertion (ADR-0026 Phase 2 — see
+        // the `remote_signers` field doc on [`IdentityRuntime`]).
         self.remote_signers
             .insert(id.clone(), std::sync::Arc::from(handle));
-        if self.active.is_none() {
-            self.active = Some(id.clone());
-        }
         id
     }
 
@@ -744,6 +757,38 @@ pub(crate) fn sign_active_nonblocking(
     }
 }
 
+/// Non-blocking sign with a SPECIFIC account, looked up by pubkey hex across
+/// BOTH the local-key and remote-signer maps — independent of which account is
+/// currently active.
+///
+/// This is the `signer_pubkey: Some(_)` path for `PublishUnsignedEvent` /
+/// `PublishUnsignedEventToRelays`: it lets a non-active account publish without
+/// first switching active. Remote signers shadow local keys for the same
+/// pubkey (consistent with `sign_active`'s ordering). Returns an `Err(String)`
+/// (surfaced as a toast per D6) when no account matches the pubkey; a
+/// local-signing failure is folded into a `SignerOp::Ready(Err(..))` so the
+/// caller's single `poll()` match handles both signer kinds uniformly — exactly
+/// like [`sign_active_nonblocking`].
+pub(crate) fn sign_with_account_nonblocking(
+    identity: &IdentityRuntime,
+    pubkey: &str,
+    unsigned: &UnsignedEvent,
+) -> Result<SignerOp<SignedEvent>, String> {
+    if let Some(handle) = identity.remote_signers.get(pubkey) {
+        return Ok(handle.sign(unsigned));
+    }
+    let keys = identity
+        .keys
+        .get(pubkey)
+        .ok_or_else(|| format!("no signer for account {pubkey} — add it first"))?;
+    match sign_with(keys, unsigned) {
+        Ok(signed) => Ok(SignerOp::ok(signed)),
+        Err(e) => Ok(SignerOp::err(nmp_signer_iface::SignerError::Backend(
+            format!("local sign failed: {e}"),
+        ))),
+    }
+}
+
 /// Bech32-encode a hex pubkey as `npub1…`. Falls back to the raw hex if the
 /// pubkey doesn't parse (defensive — never panics across FFI, D6).
 fn npub_from_hex(hex: &str) -> String {
@@ -866,25 +911,75 @@ pub(super) fn retarget_timeline(
     }
 }
 
-pub(crate) fn sign_in_nsec(
+/// Unified sign-in reducer. Adds a signer from `source` and, when
+/// `make_active`, binds it as the active account + retargets the timeline.
+///
+/// Replaces the old `sign_in_nsec` / `sign_in_bunker` / `add_remote_signer`
+/// trio: the per-source logic now branches inside this single function.
+///
+/// * [`SignerSource::LocalNsec`] — parse the secret, register the local key,
+///   and (when `make_active`) activate immediately. Returns the bootstrap +
+///   retarget outbound frames so a fresh local account starts syncing at once.
+/// * [`SignerSource::BunkerUri`] — shape-validate the URI, seed the
+///   `bunker_handshake` projection, stash `make_active` for the async
+///   round-trip, and delegate the handshake to the registered broker. No
+///   outbound frames yet — the signer arrives later as a `RemoteHandle`.
+/// * [`SignerSource::RemoteHandle`] — register the completed remote signer and
+///   (when `make_active`) activate it, returning the retarget frames.
+pub(crate) fn add_signer(
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
-    secret: &str,
+    source: crate::actor::SignerSource,
+    make_active: bool,
     relays_ready: bool,
 ) -> Vec<OutboundMessage> {
-    let Some(keys) = parse_secret(secret) else {
-        kernel.set_last_error_toast(Some(
-            "invalid secret key — expected nsec1… or 64-hex".to_string(),
-        ));
-        return Vec::new();
-    };
-    let id = identity.add(keys);
-    identity.active = Some(id);
-    sync_kernel(identity, kernel);
-    kernel.reconcile_follow_feed_after_identity_change();
-    let mut outbound = kernel.active_account_bootstrap_requests();
-    outbound.extend(retarget_timeline(identity, kernel, relays_ready));
-    outbound
+    match source {
+        crate::actor::SignerSource::LocalNsec(secret) => {
+            let Some(keys) = parse_secret(secret.as_str()) else {
+                kernel.set_last_error_toast(Some(
+                    "invalid secret key — expected nsec1… or 64-hex".to_string(),
+                ));
+                return Vec::new();
+            };
+            let id = identity.add(keys);
+            if make_active {
+                identity.active = Some(id);
+            }
+            sync_kernel(identity, kernel);
+            kernel.reconcile_follow_feed_after_identity_change();
+            let mut outbound = kernel.active_account_bootstrap_requests();
+            outbound.extend(retarget_timeline(identity, kernel, relays_ready));
+            outbound
+        }
+        crate::actor::SignerSource::BunkerUri(uri) => {
+            // Stash `make_active` so the async broker round-trip can apply it
+            // when the resolved signer arrives as a `RemoteHandle` (the
+            // serialized `BunkerHandshakeDto` must NOT carry this transient
+            // flag — it would leak onto the snapshot wire).
+            identity.pending_bunker_make_active = make_active;
+            start_bunker_handshake(identity, kernel, &uri);
+            Vec::new()
+        }
+        crate::actor::SignerSource::RemoteHandle(handle) => {
+            let id = identity.add_remote_inactive(handle);
+            // The broker round-trip may complete long after the originating
+            // `BunkerUri` command; the `make_active` the user requested then was
+            // stashed in `pending_bunker_make_active` (the broker adapter cannot
+            // see the stash, so it sends its own `make_active` value). Honour
+            // EITHER signal: the command's flag OR the stashed flag. Always
+            // take + clear the stash so a later non-bunker `RemoteHandle` does
+            // not inherit a stale value.
+            let stashed = std::mem::take(&mut identity.pending_bunker_make_active);
+            // A remote signer with no other active account always becomes
+            // active so the user is signed in (`add_remote_inactive` never
+            // auto-activates; this is the sole activation site).
+            if make_active || stashed || identity.active.is_none() {
+                identity.active = Some(id);
+            }
+            sync_kernel(identity, kernel);
+            retarget_timeline(identity, kernel, relays_ready)
+        }
+    }
 }
 
 /// Pubkeys every fresh account follows out-of-the-box (hex, kind:3).
@@ -1236,21 +1331,6 @@ pub(crate) fn remove_account(
     Vec::new()
 }
 
-/// Broker adapter → actor: register a fully-handshaken remote signer (e.g.
-/// completed NIP-46 bunker handshake). Becomes active if no account was
-/// active; pushes a snapshot update + timeline retarget so the UI swaps
-/// immediately.
-pub(crate) fn add_remote_signer(
-    identity: &mut IdentityRuntime,
-    kernel: &mut Kernel,
-    handle: Box<dyn RemoteSignerHandle>,
-    relays_ready: bool,
-) -> Vec<OutboundMessage> {
-    let _id = identity.add_remote(handle);
-    sync_kernel(identity, kernel);
-    retarget_timeline(identity, kernel, relays_ready)
-}
-
 /// Broker adapter → actor: latest NIP-46 handshake progress. Stage `"idle"`
 /// clears the projection; everything else replaces it.
 ///
@@ -1297,7 +1377,12 @@ pub(crate) fn bunker_handshake_progress(
     kernel.mark_changed_since_emit();
 }
 
-pub(crate) fn sign_in_bunker(identity: &IdentityRuntime, kernel: &mut Kernel, uri: &str) {
+/// Shape-validate a `bunker://` URI, seed the `bunker_handshake` projection
+/// with `"connecting"`, and delegate the handshake to the registered broker.
+///
+/// Called by [`add_signer`]'s [`crate::actor::SignerSource::BunkerUri`] arm
+/// (which has already stashed `make_active` in `pending_bunker_make_active`).
+fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: &str) {
     // Stage 3 of NIP-46 wiring: actor exposes handshake-progress snapshot.
     // Stage 4 of NIP-46 wiring: actor delegates the handshake to a broker
     // registered via `crate::bunker_hook::register_bunker_hook`.
@@ -1306,8 +1391,8 @@ pub(crate) fn sign_in_bunker(identity: &IdentityRuntime, kernel: &mut Kernel, ur
     // so the host sign-in flow renders progress immediately, then hand
     // the URI to the registered broker. The broker drives the connect /
     // get_public_key dance on its own thread and reports progress via
-    // `BunkerHandshakeProgress` + `AddRemoteSigner`. D0 stays clean:
-    // `nmp-core` imports neither the broker crate nor `nmp-signers`.
+    // `BunkerHandshakeProgress` + `AddSigner { RemoteHandle, .. }`. D0 stays
+    // clean: `nmp-core` imports neither the broker crate nor `nmp-signers`.
     if parse_bunker_remote(uri).is_none() {
         kernel.set_last_error_toast(Some(
             "invalid bunker:// URI — expected bunker://<64-hex-pubkey>?relay=…".to_string(),

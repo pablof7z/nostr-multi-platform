@@ -152,7 +152,7 @@ mod tests {
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "react executor must send exactly one command, got {cmds:?}");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, .. } => {
                 assert_eq!(event.kind, REACTION_KIND, "react must emit kind:7");
                 assert_eq!(
                     relays,

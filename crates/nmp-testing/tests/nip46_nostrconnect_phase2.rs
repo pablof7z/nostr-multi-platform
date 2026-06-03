@@ -123,7 +123,10 @@ fn nostrconnect_wrong_secret_fails_handshake() {
                 saw_failed = true;
                 break;
             }
-            Ok(ActorCommand::AddRemoteSigner { .. }) => {
+            Ok(ActorCommand::AddSigner {
+                source: nmp_core::SignerSource::RemoteHandle(_),
+                ..
+            }) => {
                 saw_add_remote = true;
                 break;
             }
@@ -152,7 +155,10 @@ fn wait_for_add_remote_signer(
     loop {
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;
         match actor_rx.recv_timeout(remaining) {
-            Ok(ActorCommand::AddRemoteSigner { handle }) => return Some(handle),
+            Ok(ActorCommand::AddSigner {
+                source: nmp_core::SignerSource::RemoteHandle(handle),
+                ..
+            }) => return Some(handle),
             Ok(ActorCommand::BunkerHandshakeProgress { stage, message }) => {
                 if stage == "failed" {
                     panic!("nostrconnect handshake failed: {stage}: {message:?}");
