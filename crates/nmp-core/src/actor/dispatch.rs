@@ -1639,17 +1639,6 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::RefreshReplaceable {
-            kind,
-            pubkey,
-            d_tag,
-        } => {
-            // STUB: F-TTL implementation. Dispatch arm awaiting T-A/T-B/T-C PR merges.
-            // When merged, this will call ctx.kernel.refresh_replaceable(kind, pubkey, d_tag)
-            // which queues the key in pending_reverify and immediately emits fresh REQs.
-            // For now this is a silent no-op (D6).
-            Some(Vec::new())
-        }
     }
 }
 

@@ -116,7 +116,7 @@ pub use snapshot::nmp_app_register_snapshot_projection;
 pub use timeline::{
     nmp_app_claim_event, nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread,
     nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri,
-    nmp_app_refresh_replaceable, nmp_app_release_event, nmp_app_release_profile,
+    nmp_app_release_event, nmp_app_release_profile,
 };
 
 // ── test-support delta ───────────────────────────────────────────────────
