@@ -1,4 +1,5 @@
-//! Timeline / profile FFI wrappers — open/close author + thread + firehose,
+//! Timeline / profile FFI wrappers — open/close author + thread, generic
+//! `open_interest`/`close_interest` (the M2 hashtag-feed replacement),
 //! `nostr:` URI routing, and profile claim/release.
 //!
 //! Split out of `ffi/mod.rs` to keep both files under the 300-LOC soft cap.
@@ -75,22 +76,11 @@ pub extern "C" fn nmp_app_open_thread(app: *mut NmpApp, event_id: *const c_char)
     });
 }
 
-#[no_mangle]
-pub extern "C" fn nmp_app_open_firehose_tag(app: *mut NmpApp, tag: *const c_char) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(tag) = c_string_argument(tag) else {
-        return;
-    };
-
-    app.send_cmd(ActorCommand::OpenFirehoseTag { tag });
-}
-
 /// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
 /// interest. The generic replacement for `nmp_app_open_author` /
-/// `nmp_app_open_thread` / `nmp_app_open_firehose_tag`: the app passes a
-/// verbatim NIP-01 REQ filter, so the `{1,6}` kind decisions live in the app
+/// `nmp_app_open_thread` / the deleted `nmp_app_open_firehose_tag`: the app
+/// passes a verbatim NIP-01 REQ filter, so the `{1,6}` kind decisions (and the
+/// hashtag `#t` filter the firehose verb hardcoded) live in the app
 /// (D0-correct), not in the substrate.
 ///
 /// * `filter_json` — standard Nostr REQ filter, e.g.

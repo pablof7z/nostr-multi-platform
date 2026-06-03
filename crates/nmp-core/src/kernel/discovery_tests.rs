@@ -252,8 +252,29 @@ fn discovered_event_on_oneshot_sub_passes_the_store_gate() {
         kernel.should_store_event(&oneshot_sub, &quoted),
         "a discovered event on its bridged planner sub_id must be storable"
     );
-    // Sanity: the same event on an unrelated sub is still gated out.
-    assert!(!kernel.should_store_event("some-other-sub", &quoted));
+    // ADR-0042 §5.1: store admission is now SHAPE-based, not sub-id-keyed. The
+    // discovery oneshot registers an interest with `event_ids = {QUOTED_ID}` in
+    // the registry, so the quoted event (id == QUOTED_ID) is storable on ANY
+    // sub_id — `matches_active_open_interest` admits it by content. The old
+    // assertion that an unrelated sub_id gates it out encoded the pre-M2
+    // sub-id-exclusive admission model and is obsolete: an event matching an
+    // active registered interest is storable regardless of which wire sub
+    // delivered it (the wire sub is a merged compiler hash, not a per-interest
+    // key). A truly unmatched event is still dropped — see
+    // `should_store_event` returning false below for an id no interest names.
+    let unmatched = NostrEvent {
+        id: "a".repeat(64), // no active interest names this id/author
+        pubkey: "b".repeat(64),
+        created_at: 1,
+        kind: 1,
+        tags: Vec::new(),
+        content: "unrelated".to_string(),
+        sig: String::new(),
+    };
+    assert!(
+        !kernel.should_store_event("some-other-sub", &unmatched),
+        "an event matching NO active interest is still gated out"
+    );
 }
 
 #[test]

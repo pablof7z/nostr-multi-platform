@@ -642,11 +642,22 @@ pub(super) struct ThreadViewState {
     pub(super) reply_kinds: BTreeSet<u32>,
 }
 
-/// Diagnostic hashtag-firehose tracking: interest, sequence, and event counter.
+/// Diagnostic ingest event counter.
+///
+/// M2 (ADR-0042): the production `open_firehose_tag` hashtag-feed verb was
+/// deleted in favour of the generic `open_interest` C-ABI. The `interest` /
+/// `seq` subscription-tracking fields went with it. What remains is the
+/// `events` counter, kept because the `diag-firehose-` **test ingest seam**
+/// (`should_store_event` line ~244 + the timeline-insert clause) is still
+/// load-bearing test infrastructure — ~15 kernel test files drive events
+/// through that prefix to bypass the follow-set gate with timeline-injection
+/// semantics the generic `open_interest` deliberately does NOT replicate
+/// (open_interest stays out of the home timeline). The counter feeds the
+/// `diagnostic_firehose_events` snapshot field; keeping it avoids unrelated
+/// FFI/codegen-Swift regen churn. Retiring the test seam itself is a separate
+/// test-support refactor (tracked in V-112).
 #[derive(Default)]
 pub(super) struct DiagnosticFirehoseState {
-    pub(super) interest: Option<ViewInterest>,
-    pub(super) seq: u64,
     pub(super) events: u64,
 }
 

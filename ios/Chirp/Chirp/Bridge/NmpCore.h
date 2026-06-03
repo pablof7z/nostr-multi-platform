@@ -26,13 +26,14 @@ void nmp_app_stop(void *app);
 void nmp_app_reset(void *app);
 void nmp_app_open_author(void *app, const char *pubkey);
 void nmp_app_open_thread(void *app, const char *event_id);
-void nmp_app_open_firehose_tag(void *app, const char *tag);
-// M2 (ADR-0042) — generic feed-subscription surface that replaces
-// open_author / open_thread / open_firehose_tag. `filter_json` is a verbatim
-// NIP-01 REQ filter (e.g. {"kinds":[1,6],"authors":["<hex>"]}); the app owns
-// the kind set (D0). `consumer_id` refcounts owners across call sites passing
-// the same filter; `scope` is 0 = ActiveAccount (re-route on switch),
-// 1 = Global (account-agnostic, e.g. a hashtag firehose).
+// M2 (ADR-0042) — generic feed-subscription surface. Replaces the deleted
+// open_firehose_tag verb (a hashtag feed is now open_interest with
+// {"kinds":[1],"#t":["<tag>"]}, scope Global); the author/thread verbs above
+// remain until #911 retires their frozen FFI symbols. `filter_json` is a
+// verbatim NIP-01 REQ filter (e.g. {"kinds":[1,6],"authors":["<hex>"]}); the
+// app owns the kind set (D0). `consumer_id` refcounts owners across call sites
+// passing the same filter; `scope` is 0 = ActiveAccount (re-route on switch),
+// 1 = Global (account-agnostic, e.g. a hashtag feed).
 void nmp_app_open_interest(void *app, const char *filter_json,
                            const char *consumer_id, uint32_t scope);
 void nmp_app_close_interest(void *app, const char *filter_json,

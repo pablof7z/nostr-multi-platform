@@ -45,9 +45,49 @@ explicit coordination.
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
 
-### V-112 · M2 author/thread feed read-path migration (ADR-0042 §5) [HIGH · in-flight, PR1 landed]
+### V-112 · M2 author/thread feed read-path migration (ADR-0042 §5) [HIGH · in-flight, PR2 landed]
 
-**Status (2026-06-03):** The generic `open_interest` / `close_interest`
+**Status (PR2 — store-admission generalisation + firehose delete):** Two of the
+three remaining pieces are now done:
+
+1. **Store admission generalised (ADR-0042 §5.1 — DONE).**
+   `Kernel::should_store_event` (`crates/nmp-core/src/kernel/ingest/timeline.rs`)
+   now admits any event matching the **wire filter of any active registered
+   interest**, not just the bespoke follow-set / `author_view` / sub-id-prefix
+   clauses. The matcher is `InterestShape::matches_event` /
+   `matches_event_with_id` (`crates/nmp-planner/src/interest.rs`, substrate-pure:
+   `authors`/`kinds`/`event_ids`/`since`/`until`/single-letter `#tags`, empty =
+   wildcard; ignores client-side-only `relay_pin`/`p_tag_routing`/`limit`). The
+   wire sub_id is a *merged* compiler hash (the lattice coalesces many shapes
+   into one REQ) so it cannot be reverse-mapped to one interest — shape-matching
+   the event is the robust admission test. A generic `open_interest` REQ is now
+   functional end-to-end: a non-followed author / arbitrary thread / `#t`
+   hashtag feed reaches `self.events` (and the `notify_event_observers`
+   feed-engine fan-out) **without** entering the follow-only home `timeline`
+   ordering projection. Note: this changes admission from sub-id-keyed to
+   content/shape-based — the obsolete sub-id-exclusivity assertion in
+   `discovery_tests.rs` was corrected accordingly.
+
+2. **`open_firehose_tag` deleted (the clean −1 sub-case — DONE).** Removed the
+   C-ABI `nmp_app_open_firehose_tag`, `ActorCommand::OpenFirehoseTag` + its
+   dispatch arm, kernel `open_firehose_tag`/`firehose_requests`, the
+   `DiagnosticFirehoseState.interest`/`.seq` fields + their `requests/mod.rs`
+   caller and `status.rs` display row, the `NmpCore.h`/`KernelBridge.swift`/
+   `KernelModel.swift` wrappers, the `chirp-tui` call site (migrated to
+   `open_interest` with `{"kinds":[1],"#t":[…]}`, scope Global), the
+   `ffi-stress` re-export, and `ffi-surface.md` rows. Header-drift gate green
+   (60 symbols). **Deliberately KEPT:** the `diag-firehose-` **test ingest
+   seam** (`should_store_event` + the timeline-insert clause + the
+   `DiagnosticFirehoseState.events` counter + its `diagnostic_firehose_events`
+   snapshot field). ~15 kernel test files drive events through that prefix to
+   bypass the follow gate **with timeline-injection semantics** the generic
+   `open_interest` deliberately does NOT replicate (`open_interest` stays out of
+   the home timeline; `perf_tests`/`timeline_perf_tests` measure `make_update`
+   over `visible_items()`, so migrating them would measure an empty snapshot).
+   Retiring the test seam is a separate test-support refactor, not part of this
+   ADR.
+
+**Status (2026-06-03, PR1):** The generic `open_interest` / `close_interest`
 mechanism is landed and callable (ADR-0042 §2): parser
 `InterestShape::from_filter_json` (`crates/nmp-planner/src/interest.rs`),
 `ActorCommand::{OpenInterest,CloseInterest}` + dispatch arms
@@ -56,9 +96,17 @@ mechanism is landed and callable (ADR-0042 §2): parser
 (`crates/nmp-ffi/src/timeline.rs`), `NmpCore.h` + `KernelBridge.swift`
 wrappers. Additive, Chirp behaviour unchanged. 11 unit tests green.
 
-**Remaining (the architecture-significant half the task under-counted):**
-deleting `OpenAuthor`/`OpenThread`/`OpenFirehoseTag`/`CloseAuthor`/`CloseThread`
-is **not** read-neutral. Two coupled blockers, both grep-verified:
+**Remaining (BLOCKED by #911 — author/thread read-path):** deleting
+`OpenAuthor`/`OpenThread`/`CloseAuthor`/`CloseThread` and the
+`author_view`/`thread_view` snapshot projections is **not** read-neutral. The
+store-admission blocker (1) is now resolved generically, but the **exposure**
+blocker remains: `author_view`/`thread_view` are the sole read path for Chirp
+`ProfileView`/`ThreadScreen`. Their replacement is feed-engine registration via
+the existing `nmp-feed` `FeedRegistry` + `nmp-nip01::register_op_feed` seam
+(ADR-0042 §5.1 — NOT a new bespoke `interest_feeds` projection). The frozen FFI
+symbols `nmp_app_open_author`/`nmp_app_open_thread` are retired by #911; do not
+delete the author/thread cluster or its projections before then. Two coupled
+blockers, both grep-verified (blocker 1 now generalised; blocker 2 stands):
 
 1. **Store admission.** `Kernel::should_store_event`
    (`crates/nmp-core/src/kernel/ingest/timeline.rs:234`) admits events only via

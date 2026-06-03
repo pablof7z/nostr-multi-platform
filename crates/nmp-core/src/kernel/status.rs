@@ -280,25 +280,10 @@ impl Kernel {
                 warming_until_ms: None,
             });
         }
-        if let Some(interest) = self.diagnostic_firehose.interest.as_ref() {
-            interests.push(LogicalInterestStatus {
-                key: format!("DiagnosticFirehose(#{})", interest.key),
-                state: if self
-                    .wire
-                    .subs
-                    .values()
-                    .any(|sub| sub.id.starts_with("diag-firehose-") && sub.state == "live")
-                {
-                    "tailing".to_string()
-                } else {
-                    "opening".to_string()
-                },
-                refcount: interest.refcount,
-                relay_urls: self.bootstrap_urls_for_role(RelayRole::Content),
-                cache_coverage: format!("{} events", self.diagnostic_firehose.events),
-                warming_until_ms: None,
-            });
-        }
+        // M2 (ADR-0042): the `DiagnosticFirehose(#tag)` logical-interest status
+        // row was removed with the `open_firehose_tag` verb; generic
+        // `open_interest` feeds surface through the standard registry/wire-sub
+        // status rows like every other subscription.
         interests
     }
 

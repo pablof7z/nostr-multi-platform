@@ -42,8 +42,10 @@
 //! - `author_requests`     → disappears (replaced by `open_author` interest registration)
 //! - `profile_claim_request` → disappears (compiler routes via Stage 1+2)
 //! - `pending_profile_requests` → disappears (compiler handles deferred relay reconnect)
-//! - `open_firehose_tag`   → register `LogicalInterest` { kinds:[1], tags:{#t:[tag]} }
-//! - `firehose_requests`   → disappears (replaced by `open_firehose_tag` registration)
+//! - `open_firehose_tag` / `firehose_requests` → DONE (ADR-0042, V-112 PR2):
+//!   the bespoke kernel methods were deleted; a hashtag feed is now a generic
+//!   `open_interest` ({"kinds":[1],"#t":[tag]}, scope Global) routed through the
+//!   `SubscriptionCompiler` like every other subscription.
 //!
 //! The `req()` helper and `RelayRole`-based routing are replaced by the
 //! wire-emitter's `emit_req(relay_url, sub_id, filter)` call.
@@ -112,38 +114,6 @@ impl Kernel {
             self.author_requests()
         } else {
             self.log("author view request queued until relay connects");
-            Vec::new()
-        }
-    }
-
-    pub(crate) fn open_firehose_tag(
-        &mut self,
-        tag: String,
-        can_send: bool,
-    ) -> Vec<OutboundMessage> {
-        let tag = tag.trim().trim_start_matches('#').to_lowercase();
-        if tag.is_empty() {
-            return Vec::new();
-        }
-        match self.diagnostic_firehose.interest.as_mut() {
-            Some(interest) if interest.key == tag => {
-                interest.refcount = interest.refcount.saturating_add(1);
-                return Vec::new();
-            }
-            _ => {
-                self.diagnostic_firehose.interest = Some(ViewInterest {
-                    key: tag.clone(),
-                    refcount: 1,
-                });
-            }
-        }
-        self.changed_since_emit = true;
-        self.log(format!("open diagnostic firehose #{tag}"));
-
-        if can_send {
-            self.firehose_requests()
-        } else {
-            self.log("diagnostic firehose queued until relay connects");
             Vec::new()
         }
     }
@@ -306,52 +276,6 @@ impl Kernel {
             "author-notes-",
             "author-relays-",
         ])
-    }
-
-    pub(crate) fn firehose_requests(&mut self) -> Vec<OutboundMessage> {
-        let Some(tag) = self
-            .diagnostic_firehose
-            .interest
-            .as_ref()
-            .map(|interest| interest.key.clone())
-        else {
-            return Vec::new();
-        };
-        self.diagnostic_firehose.seq = self.diagnostic_firehose.seq.saturating_add(1);
-        let seq = self.diagnostic_firehose.seq;
-
-        // T122 / codex R2: hashtag firehose REQs are inbox-direction (D3) —
-        // the user IS the recipient of their own hashtag interest, so the
-        // routing destination is the active account's NIP-65 read relays
-        // resolved through the router. Cold-start (no active account
-        // selected, or no kind:10002 cached) falls back to the bootstrap
-        // discovery seed via the substrate `app_relays` lane 7.
-        let relays: Vec<String> = match self.active_account.clone() {
-            Some(active) => {
-                let interest_id = stable_hash64(("diag-firehose", tag.as_str(), seq));
-                self.route_subscription_relays(
-                    interest_id,
-                    &[active.as_str()],
-                    &[1],
-                    BootstrapSeed::Discovery,
-                )
-            }
-            None => self.bootstrap_seed_urls(BootstrapSeed::Discovery),
-        };
-
-        relays
-            .into_iter()
-            .map(|relay_url| {
-                let tag_suffix = relay_tag(&relay_url);
-                self.req_for_relay(
-                    RelayRole::Content,
-                    relay_url,
-                    &format!("diag-firehose-{seq}-{tag_suffix}"),
-                    &format!("diagnostic hashtag firehose #{tag}"),
-                    json!({"kinds":[1],"#t":[tag],"limit":500}),
-                )
-            })
-            .collect()
     }
 
     pub(crate) fn pending_profile_claim_requests(&mut self) -> Vec<OutboundMessage> {
