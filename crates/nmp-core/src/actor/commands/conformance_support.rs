@@ -15,6 +15,7 @@ use crate::kernel::Kernel;
 use crate::publish::{InMemoryPublishStore, PublishStore};
 use crate::relay::{OutboundMessage, DEFAULT_VISIBLE_LIMIT};
 use crate::substrate::UnsignedEvent;
+use crate::tags::{e_tag, p_tag};
 
 /// A real `Kernel` + `IdentityRuntime` driven by the actual command
 /// handlers — no mocks. Each `emit_*` method runs a command and returns the
@@ -133,6 +134,46 @@ impl ConformanceHarness {
             &mut self.kernel,
             pubkey,
             add,
+            None,
+            &mut Vec::new(),
+        );
+        last_event_json(&outbound)
+    }
+
+
+    /// Drive a kind:1 short-text note publish. Returns the emitted `EVENT` JSON
+    /// object. When `reply_to` is `Some(parent_id)` the note is built as a
+    /// NIP-10 marked-form reply: the parent event is looked up from the kernel
+    /// read-cache (via `seed_note`) and the reply carries `e`(root) + `e`(reply)
+    /// markers plus a `p` tag re-notifying the parent's author.
+    ///
+    /// When `reply_to` is `None` the note is a plain top-level kind:1 with no
+    /// `e` or `p` tags (NIP-01 §short-text-note).
+    pub fn emit_note(&mut self, content: &str, reply_to: Option<&str>) -> Value {
+        let mut tags: Vec<Vec<String>> = Vec::new();
+        if let Some(parent_id) = reply_to {
+            // NIP-10 marked form: both root and reply point at the parent when
+            // the parent itself is the thread root (no root ref in its tags).
+            // The conformance test always seeds a root-level parent via
+            // `seed_note(id, author, vec![])`, so this holds in all test cases.
+            tags.push(e_tag(parent_id, None, Some("root")));
+            tags.push(e_tag(parent_id, None, Some("reply")));
+            if let Some(author) = self.kernel.event_author(parent_id) {
+                tags.push(p_tag(&author, None));
+            }
+        }
+        let unsigned = UnsignedEvent {
+            pubkey: String::new(),
+            kind: 1,
+            tags,
+            content: content.to_string(),
+            created_at: self.kernel.now_secs(),
+        };
+        let outbound = publish_unsigned_event(
+            &self.identity,
+            &mut self.kernel,
+            unsigned,
+            None,
             None,
             &mut Vec::new(),
         );
