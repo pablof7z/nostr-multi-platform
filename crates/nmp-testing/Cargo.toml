@@ -91,6 +91,10 @@ path = "bin/doctrine-lint/main.rs"
 name = "doctrine_lint_smoke"
 path = "bin/doctrine-lint/tests.rs"
 
+[[test]]
+name = "doctrine_native_smoke"
+path = "bin/doctrine-lint/native_tests.rs"
+
 # M2 subscription compiler audit gate — Assertions 1–5 (phase 1 subset).
 # `cargo test -p nmp-testing --test m2_subscription_compilation_audit`
 [[test]]
