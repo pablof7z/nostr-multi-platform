@@ -111,12 +111,6 @@ impl LocalSignerAccess for DelayedSignerAccess {
     fn signer_for_seal(&self) -> Option<Arc<dyn SignerForSeal>> {
         Some(Arc::clone(&self.signer))
     }
-    fn sign_active_nonblocking(
-        &self,
-        _unsigned: &nmp_core::substrate::UnsignedEvent,
-    ) -> Result<nmp_core::substrate::SignerOp<nmp_core::substrate::SignedEvent>, String> {
-        Err("DelayedSignerAccess has no active account for nonblocking sign".to_string())
-    }
 }
 
 /// Drive the command with an explicit `SignerForSeal` (not a `nostr::Keys`).
@@ -196,32 +190,6 @@ impl LocalSignerAccess for StaticSigner {
     }
     fn signer_for_seal(&self) -> Option<Arc<dyn SignerForSeal>> {
         self.signer.clone()
-    }
-    fn sign_active_nonblocking(
-        &self,
-        unsigned: &nmp_core::substrate::UnsignedEvent,
-    ) -> Result<nmp_core::substrate::SignerOp<nmp_core::substrate::SignedEvent>, String> {
-        use nmp_core::substrate::SignerOp;
-        let keys = self.keys.as_ref().ok_or("no active account")?;
-        let event = nostr::EventBuilder::new(
-            nostr::Kind::from(unsigned.kind as u16),
-            unsigned.content.clone(),
-        )
-        .tags(
-            unsigned
-                .tags
-                .iter()
-                .filter_map(|t| nostr::Tag::parse(t).ok())
-                .collect::<Vec<_>>(),
-        )
-        .custom_created_at(nostr::Timestamp::from_secs(unsigned.created_at))
-        .sign_with_keys(keys)
-        .map_err(|e| e.to_string())?;
-        Ok(SignerOp::ok(nmp_core::substrate::SignedEvent {
-            id: event.id.to_hex(),
-            sig: event.sig.to_string(),
-            unsigned: unsigned.clone(),
-        }))
     }
 }
 

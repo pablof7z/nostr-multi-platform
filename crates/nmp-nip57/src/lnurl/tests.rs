@@ -21,7 +21,6 @@ use super::*;
 use nmp_core::substrate::{
     ActionStageTracker, KernelClock, LocalSignerAccess, NoopErrorSurface,
     NoopRecipientRelayLookup, ProtocolCommandContextParts, RecipientRelayLookup, SignedEvent,
-    SignerError, SignerOp,
 };
 
 const RECIPIENT_HEX: &str =
@@ -46,90 +45,44 @@ impl KernelClock for FixedClock {
     }
 }
 
-/// Test [`LocalSignerAccess`] modelling the three account states the V-78
-/// zap sign path must distinguish:
-///
-/// * [`Self::None`] — no account at all. `active_local_keys` → `None`,
-///   `sign_active_nonblocking` → `Err` (genuine fail-closed).
-/// * [`Self::Local`] — a local nsec. `active_local_keys` → `Some(keys)`,
-///   `sign_active_nonblocking` → `SignerOp::Ready` (signed on the spot).
-/// * [`Self::Bunker`] — a NIP-46 bunker. `active_local_keys` → `None` (the
-///   V-78 bug surface), but `sign_active_nonblocking` → `SignerOp::Pending`
-///   resolved off-actor — so the zap is NOT fail-closed.
-enum LocalSigner {
-    None,
-    Local(Keys),
-    /// Carries the keys used to mint the signed event the parked `Pending`
-    /// op resolves to (modelling the broker turning the request around),
-    /// plus a sender kept alive so the channel does not disconnect early.
-    Bunker(Keys, std::sync::Mutex<Vec<std::sync::mpsc::Sender<Result<SignedEvent, SignerError>>>>),
-}
+/// Noop [`LocalSignerAccess`] for the relay-injection tests. V-78 reconcile:
+/// `FetchLnurlInvoiceCommand::run` no longer signs through this trait — signing
+/// now leaves the command via the `ActorCommand::SignEventForAccount` port,
+/// which the actor's dispatch arm resolves (proven in `nmp-core`'s
+/// `sign_event_for_account_tests`). So the test signer only needs to satisfy
+/// the (now sign-free) trait surface; the relay-injection tests never sign at
+/// all. The sign-path tests instead pull the port command's continuation out of
+/// the captured `send` and drive it directly (see [`run_with_signer`]).
+struct LocalSigner;
 
 impl LocalSigner {
     /// Back-compat constructor for the existing relay-injection tests that
-    /// wrote `LocalSigner::none()` (they never sign). Maps to [`Self::None`].
+    /// wrote `LocalSigner::none()` (they never sign).
     fn none() -> Self {
-        Self::None
-    }
-
-    fn local(keys: Keys) -> Self {
-        Self::Local(keys)
-    }
-
-    /// A bunker whose broker resolves the parked sign immediately with a
-    /// valid kind:9734 signed by `keys` (so the worker's `op.wait` succeeds).
-    fn bunker(keys: Keys) -> Self {
-        Self::Bunker(keys, std::sync::Mutex::new(Vec::new()))
+        Self
     }
 }
 
 impl LocalSignerAccess for LocalSigner {
     fn active_local_keys(&self) -> Option<Keys> {
-        match self {
-            Self::Local(keys) => Some(keys.clone()),
-            // V-78: a bunker has NO local keys — this is exactly the accessor
-            // the buggy path used to gate on.
-            Self::None | Self::Bunker(..) => None,
-        }
+        None
     }
     fn signer_for_seal(
         &self,
     ) -> Option<std::sync::Arc<dyn nmp_core::substrate::SignerForSeal>> {
         None
     }
-    fn sign_active_nonblocking(
-        &self,
-        unsigned: &UnsignedEvent,
-    ) -> Result<SignerOp<SignedEvent>, String> {
-        match self {
-            Self::None => Err("no active account — sign in first".to_string()),
-            Self::Local(keys) => {
-                // Sign synchronously → Ready, mirroring the production
-                // local-nsec path.
-                let json = sign_zap_request(keys, unsigned)
-                    .map_err(|e| format!("local sign failed: {e}"))?;
-                let event: nostr::Event = serde_json::from_str(&json)
-                    .map_err(|e| format!("reparse signed: {e}"))?;
-                Ok(SignerOp::ok(nostr_event_to_signed(&event)))
-            }
-            Self::Bunker(keys, senders) => {
-                // Model the broker: a Pending op whose channel is resolved on
-                // a spawned thread (off-actor, like the real RemoteSignerHandle).
-                let (tx, rx) = std::sync::mpsc::channel();
-                let json = sign_zap_request(keys, unsigned)
-                    .map_err(|e| format!("bunker sign failed: {e}"))?;
-                let event: nostr::Event = serde_json::from_str(&json)
-                    .map_err(|e| format!("reparse signed: {e}"))?;
-                let signed = nostr_event_to_signed(&event);
-                let tx_clone = tx.clone();
-                senders.lock().unwrap().push(tx);
-                std::thread::spawn(move || {
-                    let _ = tx_clone.send(Ok(signed));
-                });
-                Ok(SignerOp::Pending(rx))
-            }
-        }
-    }
+}
+
+/// Mint the `SignedEvent` the dispatch arm's port would hand to the
+/// continuation for a local-nsec / bunker account signing `unsigned` with
+/// `keys`. Used by the sign-path tests to drive the captured continuation
+/// (modelling what the actor's `SignEventForAccount` dispatch arm produces —
+/// proven backend-transparent in `nmp-core`'s `sign_event_for_account_tests`).
+fn signed_for(keys: &Keys, unsigned: &UnsignedEvent) -> SignedEvent {
+    let json = sign_zap_request(keys, unsigned).expect("sign must succeed");
+    let event: nostr::Event = serde_json::from_str(&json).expect("valid event");
+    nostr_event_to_signed(&event)
 }
 
 /// Flatten a signed `nostr::Event` into the substrate [`SignedEvent`] the
@@ -182,10 +135,39 @@ impl RecipientRelayLookup for FixedRecipientLookup {
     }
 }
 
-/// Build a `ProtocolCommandContext` whose kernel accessors are wired to
-/// fixed capability adapters. The LNURL tests never spawn a worker, so
-/// the sender is unused; the DM-inbox / toast / failure surfaces use the
-/// `Empty` / `Noop` defaults.
+/// Build a `ProtocolCommandContext` whose kernel accessors are wired to fixed
+/// capability adapters. `command_sender` backs
+/// [`ProtocolCommandContext::command_sender_clone`] — the sign-path tests pass a
+/// sender whose receiver they keep so the continuation's worker `send`s are
+/// observable; the relay-injection tests pass a throwaway (the
+/// [`ctx_with`] helper's default) since they never spawn a worker. The DM-inbox
+/// / toast / failure surfaces use the `Empty` / `Noop` defaults.
+fn ctx_with_sender<'a>(
+    send: &'a dyn Fn(ActorCommand),
+    command_sender: std::sync::mpsc::Sender<ActorCommand>,
+    clock: &'a dyn KernelClock,
+    signers: &'a LocalSigner,
+    stages: &'a RecordingStages,
+    recipients: &'a dyn RecipientRelayLookup,
+) -> ProtocolCommandContext<'a> {
+    static EMPTY_DM: nmp_core::substrate::EmptyDmInboxRelayLookup =
+        nmp_core::substrate::EmptyDmInboxRelayLookup;
+    static ERRORS: NoopErrorSurface = NoopErrorSurface;
+    ProtocolCommandContext::new(ProtocolCommandContextParts {
+        send,
+        command_sender,
+        clock,
+        signers,
+        dms: &EMPTY_DM,
+        errors: &ERRORS,
+        stages,
+        recipients,
+    })
+}
+
+/// [`ctx_with_sender`] with a throwaway command sender (receiver dropped, so
+/// worker `send`s are benign no-ops). Used by the relay-injection tests, which
+/// never spawn a worker.
 fn ctx_with<'a>(
     send: &'a dyn Fn(ActorCommand),
     clock: &'a dyn KernelClock,
@@ -194,19 +176,7 @@ fn ctx_with<'a>(
     recipients: &'a dyn RecipientRelayLookup,
 ) -> ProtocolCommandContext<'a> {
     let (tx, _rx) = std::sync::mpsc::channel::<ActorCommand>();
-    static EMPTY_DM: nmp_core::substrate::EmptyDmInboxRelayLookup =
-        nmp_core::substrate::EmptyDmInboxRelayLookup;
-    static ERRORS: NoopErrorSurface = NoopErrorSurface;
-    ProtocolCommandContext::new(ProtocolCommandContextParts {
-        send,
-        command_sender: tx,
-        clock,
-        signers,
-        dms: &EMPTY_DM,
-        errors: &ERRORS,
-        stages,
-        recipients,
-    })
+    ctx_with_sender(send, tx, clock, signers, stages, recipients)
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -440,13 +410,24 @@ fn sign_zap_request_rejects_out_of_range_kind() {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// `FetchLnurlInvoiceCommand::run` — sign-path branches.
+// `FetchLnurlInvoiceCommand::run` — sign-path branches (V-78 reconcile).
 //
-// The HTTP-success leg requires a live LN provider; the iOS shell drives
-// that end-to-end. The branches below are what we can pin from the
-// unit-test level: the genuine no-account fail-closed, the V-78 bunker
-// path that NO LONGER fails closed, and stage tracking against
-// `correlation_id`.
+// `run` no longer signs directly: it emits exactly one
+// `ActorCommand::SignEventForAccount { signer_pubkey: None, .. }` carrying a
+// continuation. The actor's dispatch arm resolves the sign behind that port —
+// inline for a local nsec, parked-then-drained for a NIP-46 bunker — and calls
+// the continuation with the resolved `SignedEvent` (or an `Err`). That
+// backend-transparent resolution is proven in `nmp-core`'s
+// `sign_event_for_account_tests`; HERE we prove the nip57 half of the seam:
+//
+//  * `run` emits the port command (with the Requested stage first), and
+//  * driving its continuation with `Ok(signed)` spawns the HTTP worker, while
+//    `Err(reason)` fails closed (ShowToast [+ RecordActionFailure]).
+//
+// Composed, the two crates' tests preserve #938's bunker-zap proof across the
+// crate seam. The HTTP-success leg needs a live LN provider (the iOS shell
+// drives it end-to-end); we point the worker at a parse-failing target so the
+// continuation's worker thread never opens a socket.
 // ────────────────────────────────────────────────────────────────────
 
 use std::sync::Mutex;
@@ -470,57 +451,119 @@ impl Sink {
 /// `lnurl1…`, not `https://`. The HTTP worker errors at the very first line
 /// of `fetch_lnurl_invoice_blocking` (the parse), before opening any socket,
 /// so the sign-path tests below stay fully hermetic (no network egress from
-/// `cargo test`). The worker's failure `send`s land on the dropped receiver
-/// installed by `ctx_with` — invisible to the actor-thread `sink.sends`.
+/// `cargo test`).
 const UNREACHABLE_LNURL: &str = "not-a-valid-lnurl-target";
 
-/// Run the command with a given signer and collect everything the `send`
-/// closure captured + the recorded stages. `lnurl` lets a test pick a
-/// parse-failing target ([`UNREACHABLE_LNURL`]) so the spawned worker never
-/// touches the network.
-fn run_with_signer(
-    sink: &Sink,
-    signers: &LocalSigner,
-    lnurl: &str,
-    correlation_id: Option<String>,
-) {
-    let send = |c: ActorCommand| sink.sends.lock().unwrap().push(c);
-    let clock = FixedClock(1_700_000_000);
-    // Bridge the sink's stages mutex through a RecordingStages adapter.
-    let stages = RecordingStages(Mutex::new(Vec::new()));
-    let recipients = NoopRecipientRelayLookup;
-    let mut ctx = ctx_with(&send, &clock, signers, &stages, &recipients);
-
-    let cmd = Box::new(FetchLnurlInvoiceCommand {
-        unsigned: unsigned_for(vec![
-            vec!["p".to_string(), RECIPIENT_HEX.to_string()],
-        ]),
-        recipient_pubkey: RECIPIENT_HEX.to_string(),
-        lnurl_or_address: Some(lnurl.to_string()),
-        amount_msats: 21_000,
-        correlation_id,
-    });
-    cmd.run(&mut ctx).expect("run returns Ok");
-    // Forward the captured stages into the shared sink so the asserts in
-    // the parent test can read them without restructuring.
-    *sink.stages.lock().unwrap() = stages.0.into_inner().unwrap();
+/// What `run` emitted: the single `SignEventForAccount` port command's fields
+/// plus the recorded stages and a kept-alive command receiver (so the
+/// continuation's worker `send`s are observable, not dropped).
+struct PortCapture {
+    signer_pubkey: Option<String>,
+    unsigned: UnsignedEvent,
+    continuation: nmp_core::SignContinuation,
+    stages: Vec<String>,
+    worker_rx: std::sync::mpsc::Receiver<ActorCommand>,
 }
 
-#[test]
-fn no_account_emits_toast_and_failure_when_correlation_present() {
-    // A genuinely-absent account (no local key AND no remote signer) still
-    // fails closed: the sign seam returns `Err`, the command emits the toast
-    // + `RecordActionFailure` before any worker spawns.
+/// Run the command with a parse-failing LNURL target and return the single
+/// `SignEventForAccount` port command it emitted (continuation extracted),
+/// the recorded stages, and the kept-alive command receiver. Asserts that
+/// `run` itself emits NOTHING on the actor-thread `send` closure other than
+/// the one port command — all terminal/worker traffic flows through the
+/// continuation + the worker's `command_sender` clone.
+fn run_and_capture_port(
+    correlation_id: Option<String>,
+) -> PortCapture {
     let sink = Sink::new();
-    run_with_signer(&sink, &LocalSigner::none(), UNREACHABLE_LNURL, Some("cid-none".to_string()));
+    let send = |c: ActorCommand| sink.sends.lock().unwrap().push(c);
+    let clock = FixedClock(1_700_000_000);
+    let stages = RecordingStages(Mutex::new(Vec::new()));
+    let recipients = NoopRecipientRelayLookup;
+    // Keep the receiver alive so the continuation's worker `send`s are
+    // observable rather than landing on a dropped channel.
+    let (worker_tx, worker_rx) = std::sync::mpsc::channel::<ActorCommand>();
+    let signers = LocalSigner::none();
 
-    let sends = sink.sends.lock().unwrap();
-    assert_eq!(sends.len(), 2, "expected ShowToast + RecordActionFailure: {sends:?}");
+    {
+        let mut ctx =
+            ctx_with_sender(&send, worker_tx, &clock, &signers, &stages, &recipients);
+        let cmd = Box::new(FetchLnurlInvoiceCommand {
+            unsigned: unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]),
+            recipient_pubkey: RECIPIENT_HEX.to_string(),
+            lnurl_or_address: Some(UNREACHABLE_LNURL.to_string()),
+            amount_msats: 21_000,
+            correlation_id,
+        });
+        cmd.run(&mut ctx).expect("run returns Ok");
+    }
+
+    let mut sends = sink.sends.into_inner().unwrap();
+    assert_eq!(
+        sends.len(),
+        1,
+        "run must emit exactly one command — the SignEventForAccount port command: {sends:?}"
+    );
+    let (signer_pubkey, unsigned, continuation) = match sends.remove(0) {
+        ActorCommand::SignEventForAccount {
+            signer_pubkey,
+            unsigned,
+            continuation,
+        } => (signer_pubkey, unsigned, continuation),
+        other => panic!("expected SignEventForAccount port command, got {other:?}"),
+    };
+    PortCapture {
+        signer_pubkey,
+        unsigned,
+        continuation,
+        stages: stages.0.into_inner().unwrap(),
+        worker_rx,
+    }
+}
+
+/// `run` must sign the kind:9734 through the unified `SignEventForAccount`
+/// port with the ACTIVE account (`signer_pubkey: None`), AFTER recording the
+/// Requested stage. The unsigned event carried into the port is the kind:9734
+/// with `created_at` re-stamped from the context clock (D7).
+#[test]
+fn run_emits_sign_event_for_account_port_with_active_account() {
+    let cap = run_and_capture_port(Some("cid-port".to_string()));
+    assert_eq!(
+        cap.signer_pubkey, None,
+        "the zap request signs with the ACTIVE account (signer_pubkey = None)"
+    );
+    assert_eq!(cap.unsigned.kind, 9734, "the port carries the kind:9734 zap request");
+    assert_eq!(
+        cap.unsigned.created_at, 1_700_000_000,
+        "created_at must be re-stamped from the context clock (D7)"
+    );
+    assert_eq!(
+        cap.stages,
+        vec!["cid-port".to_string()],
+        "Requested stage must record once before the sign port command"
+    );
+}
+
+/// V-78 reconcile — the genuine no-account / sign-error case still fails
+/// closed: driving the port continuation with `Err(reason)` emits the toast +
+/// `RecordActionFailure` through the worker channel. (In production the
+/// dispatch arm produces this `Err` when there is no active account.)
+#[test]
+fn continuation_err_fails_closed_with_toast_and_failure() {
+    let cap = run_and_capture_port(Some("cid-none".to_string()));
+    cap.continuation
+        .call(Err("no active account — sign in first".to_string()));
+
+    let sends: Vec<ActorCommand> = cap.worker_rx.try_iter().collect();
+    assert_eq!(
+        sends.len(),
+        2,
+        "expected ShowToast + RecordActionFailure: {sends:?}"
+    );
     match &sends[0] {
         ActorCommand::ShowToast { message } => {
             assert!(
-                message.contains("no active account"),
-                "toast must explain the no-account reason: {message}"
+                message.to_lowercase().contains("zap failed"),
+                "toast must surface the zap failure: {message}"
             );
         }
         other => panic!("expected ShowToast, got {other:?}"),
@@ -531,69 +574,67 @@ fn no_account_emits_toast_and_failure_when_correlation_present() {
         }
         other => panic!("expected RecordActionFailure, got {other:?}"),
     }
-
-    let stages = sink.stages.lock().unwrap();
-    assert_eq!(*stages, vec!["cid-none".to_string()], "Requested stage must record once");
 }
 
+/// Without a `correlation_id`, a sign-error continuation emits ONLY the toast
+/// (no `RecordActionFailure` — there is no spinner to clear).
 #[test]
-fn no_account_emits_only_toast_when_no_correlation_id() {
-    let sink = Sink::new();
-    run_with_signer(&sink, &LocalSigner::none(), UNREACHABLE_LNURL, None);
+fn continuation_err_without_correlation_emits_only_toast() {
+    let cap = run_and_capture_port(None);
+    assert!(cap.stages.is_empty(), "no correlation_id → no Requested stage");
+    cap.continuation.call(Err("no active account".to_string()));
 
-    let sends = sink.sends.lock().unwrap();
+    let sends: Vec<ActorCommand> = cap.worker_rx.try_iter().collect();
     assert_eq!(sends.len(), 1, "expected only ShowToast: {sends:?}");
     assert!(matches!(&sends[0], ActorCommand::ShowToast { .. }));
-    let stages = sink.stages.lock().unwrap();
-    assert!(stages.is_empty(), "no correlation_id → no Requested stage");
 }
 
-/// V-78 regression — the core fix. A NIP-46 bunker account (no local keys)
-/// must NOT fail closed at dispatch: the command resolves the sign through
-/// `sign_active_nonblocking` (→ `SignerOp::Pending`), spawns the off-actor
-/// worker, and returns WITHOUT emitting `ShowToast`/`RecordActionFailure`
-/// on the actor thread. The buggy path emitted a "zap requires a local-keys
-/// account" toast here.
+/// V-78 reconcile — the core proof. Whether the active account is a local
+/// nsec or a NIP-46 bunker, the dispatch arm resolves the port to the SAME
+/// `Ok(signed)` (proven backend-transparent in `nmp-core`). Driving this
+/// command's continuation with that `Ok(signed)` spawns the off-actor HTTP
+/// worker — NO synchronous fail-closed toast/failure. The worker fails at the
+/// parse-failing LNURL leg (off-thread), surfacing a `ShowToast` +
+/// `RecordActionFailure` through the worker channel, NOT a "no local keys"
+/// rejection. This is the bunker zap working through the unified seam.
 #[test]
-fn bunker_account_does_not_fail_closed_at_dispatch() {
-    let sink = Sink::new();
-    let bunker = LocalSigner::bunker(Keys::generate());
-    run_with_signer(&sink, &bunker, UNREACHABLE_LNURL, Some("cid-bunker".to_string()));
+fn continuation_ok_spawns_worker_carrying_signed_event() {
+    let cap = run_and_capture_port(Some("cid-ok".to_string()));
+    // Mint the SignedEvent the dispatch arm's port hands back for this
+    // kind:9734 — identical shape for local nsec and bunker (the backend is
+    // invisible past the port).
+    let keys = Keys::generate();
+    let signed = signed_for(&keys, &cap.unsigned);
+    cap.continuation.call(Ok(signed));
 
-    // The Requested stage is recorded (the action is in flight), but NO
-    // terminal failure/toast is emitted synchronously — the worker owns the
-    // outcome. (The worker will fail at the live-HTTP leg in this unit test,
-    // but that happens off-thread and is not captured by `sink.sends`, which
-    // only sees the actor-thread `send` closure, not the worker's
-    // `command_sender` clone whose receiver is dropped.)
-    let sends = sink.sends.lock().unwrap();
-    assert!(
-        sends.is_empty(),
-        "V-78: a bunker zap must NOT emit a sync fail-closed toast/failure: {sends:?}"
-    );
-    let stages = sink.stages.lock().unwrap();
-    assert_eq!(
-        *stages,
-        vec!["cid-bunker".to_string()],
-        "Requested stage must still record for an in-flight bunker zap"
-    );
-}
-
-/// V-78 — a local-nsec account also routes through `sign_active_nonblocking`
-/// (→ `SignerOp::Ready`) and likewise does not fail closed at dispatch.
-#[test]
-fn local_account_does_not_fail_closed_at_dispatch() {
-    let sink = Sink::new();
-    let local = LocalSigner::local(Keys::generate());
-    run_with_signer(&sink, &local, UNREACHABLE_LNURL, Some("cid-local".to_string()));
-
-    let sends = sink.sends.lock().unwrap();
-    assert!(
-        sends.is_empty(),
-        "a local-keys zap must NOT emit a sync fail-closed toast/failure: {sends:?}"
-    );
-    let stages = sink.stages.lock().unwrap();
-    assert_eq!(*stages, vec!["cid-local".to_string()]);
+    // The continuation spawned the HTTP worker; it fails at the unreachable
+    // LNURL parse and posts its terminal through the worker channel. Block
+    // briefly on the worker's first message so the off-thread send is observed
+    // deterministically (no polling).
+    let first = cap
+        .worker_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("worker must post a terminal after the LNURL leg fails");
+    match first {
+        ActorCommand::ShowToast { message } => {
+            assert!(
+                message.to_lowercase().contains("zap failed"),
+                "worker surfaces the LNURL failure (NOT a no-local-keys rejection): {message}"
+            );
+        }
+        other => panic!("expected ShowToast from the worker, got {other:?}"),
+    }
+    // The matching RecordActionFailure follows (correlation present).
+    let second = cap
+        .worker_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("RecordActionFailure must follow when correlation_id is present");
+    match second {
+        ActorCommand::RecordActionFailure { correlation_id, .. } => {
+            assert_eq!(correlation_id, "cid-ok");
+        }
+        other => panic!("expected RecordActionFailure, got {other:?}"),
+    }
 }
 
 /// V-78 — `signed_event_to_nostr_json` must reproduce the EXACT flat NIP-01

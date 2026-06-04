@@ -208,7 +208,13 @@ pub use update_envelope::{
 // `SignerSource` is re-exported alongside so the FFI sign-in shims and the
 // broker adapter can name `SignerSource::{LocalNsec, BunkerUri, RemoteHandle}`
 // when constructing an `AddSigner` command.
-pub use actor::{ActorCommand, SignerSource};
+//
+// `SignContinuation` is the boxed sign-outcome callback carried by the
+// `ActorCommand::SignEventForAccount` port (ADR-0043 Decision 2). Re-exported
+// so protocol crates that consume the port through
+// `ProtocolCommandContext::sign_event_for_account` (e.g. `nmp-nip57`'s zap
+// command) can name it — chiefly in tests that drive the continuation directly.
+pub use actor::{ActorCommand, SignContinuation, SignerSource};
 
 // Step 11 final — every `nmp_app_*` `extern "C"` symbol that used to be
 // re-exported from `ffi::` now lives in the standalone `nmp-ffi` crate.
