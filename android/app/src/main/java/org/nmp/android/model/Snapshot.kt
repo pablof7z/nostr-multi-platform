@@ -45,12 +45,11 @@ data class SnapshotProjections(
     @SerialName("wallet_balance") val walletBalance: String? = null,
     @SerialName("claimed_profiles") val claimedProfiles: Map<String, ProfileCard> = emptyMap(),
     @SerialName("mention_profiles") val mentionProfiles: Map<String, ProfileCard> = emptyMap(),
-    // Pre-merged profile map (claimed > author_view > mention) shipped by the
-    // kernel (PR #812). The UI reads this single key; claimed_profiles /
-    // mention_profiles above are retained for non-UI consumers but no longer
-    // merged in the presentation layer.
+    // Pre-merged profile map shipped by the kernel. The UI reads this single key;
+    // claimed_profiles / mention_profiles above are retained for non-UI consumers
+    // but no longer merged in the presentation layer.
     @SerialName("resolved_profiles") val resolvedProfiles: Map<String, ProfileCard> = emptyMap(),
-    @SerialName("author_view") val authorView: AuthorViewPayload? = null,
+    val flatFeeds: Map<String, ChirpOpFeedSnapshot> = emptyMap(),
     // Marmot (MLS-over-Nostr) push projections (V-107 / ADR-0039), present only
     // when a Marmot MLS identity is registered. `nmp.marmot.snapshot` carries
     // the group list / welcomes / key-package; `nmp.marmot.messages` is keyed
@@ -78,44 +77,6 @@ data class ProfileCard(
     val about: String = "",
     val hasProfile: Boolean = false,
     val lnurl: String? = null,
-)
-
-/**
- * `author_view` projection payload.
- *
- * Mirrors Rust `AuthorViewPayload` (crates/nmp-core/src/kernel/types.rs).
- * Present only when the kernel has an open author view.
- */
-@Serializable
-data class AuthorViewPayload(
-    val pubkey: String = "",
-    val state: String = "",
-    val profile: ProfileCard = ProfileCard(),
-    val items: List<TimelineItem> = emptyList(),
-    val noteCount: Int = 0,
-    val noteCountDisplay: String = "",
-    val primaryAction: ProfileAction? = null,
-)
-
-/**
- * Rust-authored profile action descriptor.
- *
- * Android renders the label and forwards [dispatch] when present; it does not
- * branch on [kind] to choose follow/unfollow behavior locally.
- */
-@Serializable
-data class ProfileAction(
-    val kind: String = "",
-    val label: String = "",
-    val targetPubkey: String = "",
-    val iconName: String = "",
-    val dispatch: ProfileDispatchSpec? = null,
-)
-
-@Serializable
-data class ProfileDispatchSpec(
-    val namespace: String = "",
-    val bodyJson: String = "",
 )
 
 @Serializable

@@ -10,7 +10,6 @@ import nmp.transport.UpdateFrame
 import nmp.transport.Value
 import nmp.transport.ValueKind
 import org.nmp.android.model.AccountSummary
-import org.nmp.android.model.AuthorViewPayload
 import org.nmp.android.model.DmConversation
 import org.nmp.android.model.DmInboxSnapshot
 import org.nmp.android.model.DmMessage
@@ -21,9 +20,7 @@ import org.nmp.android.model.MarmotKeyPackage
 import org.nmp.android.model.MarmotMessage
 import org.nmp.android.model.MarmotPendingWelcome
 import org.nmp.android.model.MarmotSnapshot
-import org.nmp.android.model.ProfileAction
 import org.nmp.android.model.ProfileCard
-import org.nmp.android.model.ProfileDispatchSpec
 import org.nmp.android.model.RelayStatus
 import org.nmp.android.model.SnapshotProjections
 import org.nmp.android.model.TimelineItem
@@ -32,12 +29,6 @@ import java.nio.ByteOrder
 
 private const val TAG = "KernelUpdateFrameDecoder"
 
-/**
- * Result of decoding one kernel update frame.
- *
- * Mirrors iOS `KernelUpdateFrame` — either a valid snapshot with its typed
- * projection sidecar, or a Rust actor-panic terminal signal (D7).
- */
 sealed interface KernelDecodedUpdateFrame {
     data class Snapshot(
         val update: KernelUpdate,
@@ -47,14 +38,6 @@ sealed interface KernelDecodedUpdateFrame {
     data class Panic(val message: String) : KernelDecodedUpdateFrame
 }
 
-/**
- * Lightweight envelope for one typed projection sidecar entry.
- *
- * Mirrors iOS `TypedProjectionEnvelope` (ADR-0037). The [payload] bytes are
- * opaque; hosts that recognise [schemaId] decode them with the matching typed
- * decoder (e.g. [TypedHomeFeedDecoder] for "nmp.nip01.opfeed", the OP-centric
- * `NOFS` home feed — ADR-0038).
- */
 data class TypedProjectionEnvelope(
     val key: String,
     val schemaId: String,
@@ -83,18 +66,6 @@ data class TypedProjectionEnvelope(
     }
 }
 
-/**
- * Decodes a FlatBuffers `UpdateFrame` (file_identifier "NMPU") into a Kotlin
- * view.
- *
- * Direct port of iOS `KernelUpdateFrameDecoder` + `FlatBufferValueDecoder`.
- * The `SnapshotFrame.payload` is a generic FlatBuffers `Value` tree that the
- * kernel serialises as a recursive map. We walk it with scalar helpers and
- * reconstruct a [KernelUpdate] without going through JSON.
- *
- * Falls back gracefully on any error — returns `null` so callers keep
- * rendering the previous state (D1).
- */
 object KernelUpdateFrameDecoder {
 
     fun decode(bytes: ByteArray): KernelDecodedUpdateFrame? {
@@ -137,10 +108,6 @@ object KernelUpdateFrameDecoder {
         val projections = extractTypedProjections(snapshot)
         return KernelDecodedUpdateFrame.Snapshot(update, projections)
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // KernelUpdate reconstruction from the FlatBuffers Value tree
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun decodeKernelUpdate(root: Value): KernelUpdate? {
         if (root.kind != ValueKind.Map) {
@@ -210,19 +177,11 @@ object KernelUpdateFrameDecoder {
             accounts = m["accounts"]?.listOf { decodeAccountSummary(it) } ?: emptyList(),
             claimedProfiles = m["claimedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
             mentionProfiles = m["mentionProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
-            // Pre-merged profile map (claimed > author_view > mention) shipped by
-            // the kernel (PR #812); the UI reads this single key instead of
-            // re-deriving the precedence per-platform.
             resolvedProfiles = m["resolvedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
-            authorView = m["authorView"]?.let { decodeAuthorView(it) },
-            // "nmp.nip17.dm_inbox" → after convertFromSnakeCase → "nmp.nip17.dmInbox"
+            flatFeeds = FlatFeedProjectionDecoder.decode(m),
             dmInbox = m["nmp.nip17.dmInbox"]?.let { decodeDmInboxSnapshot(it) },
-            // "wallet" → no underscores → key stays "wallet"
             walletStatus = m["wallet"]?.let { decodeWalletStatusString(it) },
             walletBalance = m["wallet"]?.let { decodeWalletBalanceString(it) },
-            // Marmot push projections (V-107 / ADR-0039). The keys
-            // "nmp.marmot.snapshot" / "nmp.marmot.messages" carry dots but no
-            // underscores, so convertFromSnakeCase leaves them unchanged.
             marmotSnapshot = m["nmp.marmot.snapshot"]?.let { decodeMarmotSnapshot(it) },
             marmotMessages = m["nmp.marmot.messages"]
                 ?.mapOf { groupMessages -> groupMessages.listOf { decodeMarmotMessage(it) } }
@@ -231,9 +190,6 @@ object KernelUpdateFrameDecoder {
     }
 
     private fun decodeMarmotSnapshot(v: Value): MarmotSnapshot? {
-        // The kernel emits an empty object `{}` when no Marmot identity is
-        // registered (the projection slot is None). An empty map has no keys,
-        // so every field falls through to its default — a benign empty snapshot.
         if (v.kind != ValueKind.Map) return null
         val m = buildValueMap(v)
         return MarmotSnapshot(
@@ -315,47 +271,11 @@ object KernelUpdateFrameDecoder {
         )
     }
 
-    private fun decodeAuthorView(v: Value): AuthorViewPayload? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return AuthorViewPayload(
-            pubkey = m["pubkey"]?.stringOr("") ?: "",
-            state = m["state"]?.stringOr("") ?: "",
-            profile = m["profile"]?.let { decodeProfileCard(it) } ?: ProfileCard(),
-            items = m["items"]?.listOf { decodeTimelineItem(it) } ?: emptyList(),
-            noteCount = m["noteCount"]?.intOr(0) ?: 0,
-            noteCountDisplay = m["noteCountDisplay"]?.stringOr("") ?: "",
-            primaryAction = m["primaryAction"]?.let { decodeProfileAction(it) },
-        )
-    }
-
-    private fun decodeProfileAction(v: Value): ProfileAction? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return ProfileAction(
-            kind = m["kind"]?.stringOr("") ?: "",
-            label = m["label"]?.stringOr("") ?: "",
-            targetPubkey = m["targetPubkey"]?.stringOr("") ?: "",
-            iconName = m["iconName"]?.stringOr("") ?: "",
-            dispatch = m["dispatch"]?.let { decodeProfileDispatchSpec(it) },
-        )
-    }
-
-    private fun decodeProfileDispatchSpec(v: Value): ProfileDispatchSpec? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return ProfileDispatchSpec(
-            namespace = m["namespace"]?.stringOr("") ?: "",
-            bodyJson = m["bodyJson"]?.stringOr("") ?: "",
-        )
-    }
-
     private fun decodeDmInboxSnapshot(v: Value): DmInboxSnapshot? {
         if (v.kind != ValueKind.Map) return null
         val m = buildValueMap(v)
         return DmInboxSnapshot(
             conversations = m["conversations"]?.listOf { decodeDmConversation(it) } ?: emptyList(),
-            // "remote_signer_unsupported" → "remoteSignerUnsupported"
             remoteSignerUnsupported = m["remoteSignerUnsupported"]?.boolOr(false) ?: false,
         )
     }
@@ -364,7 +284,6 @@ object KernelUpdateFrameDecoder {
         if (v.kind != ValueKind.Map) return null
         val m = buildValueMap(v)
         return DmConversation(
-            // "peer_pubkey" → "peerPubkey"
             peerPubkey = m["peerPubkey"]?.stringOr("") ?: "",
             messages = m["messages"]?.listOf { decodeDmMessage(it) } ?: emptyList(),
         )
@@ -375,41 +294,21 @@ object KernelUpdateFrameDecoder {
         val m = buildValueMap(v)
         return DmMessage(
             id = m["id"]?.stringOr("") ?: "",
-            // "sender_pubkey" → "senderPubkey"
             senderPubkey = m["senderPubkey"]?.stringOr("") ?: "",
             content = m["content"]?.stringOr("") ?: "",
-            // "created_at" → "createdAt"
             createdAt = m["createdAt"]?.longOr(0L) ?: 0L,
-            // "reply_to" → "replyTo"
             replyTo = m["replyTo"]?.stringOrNull(),
-            // "is_outgoing" → "isOutgoing"
             isOutgoing = m["isOutgoing"]?.boolOr(false) ?: false,
-            // "source_relays" → "sourceRelays"; listOf already drops null entries
             sourceRelays = m["sourceRelays"]?.listOf { relay -> relay.stringOrNull() },
         )
     }
 
-    /**
-     * Extract the `status` string from the `"wallet"` projection map.
-     *
-     * The Rust `WalletStatus` struct serialises `status` as a plain string
-     * (`"connecting"` | `"ready"` | `"error"` | `"disconnected"`). The
-     * projection value is JSON `null` when no wallet has been connected this
-     * session — `ValueKind.Map` guard handles that.
-     */
     private fun decodeWalletStatusString(v: Value): String? {
         if (v.kind != ValueKind.Map) return null
         val m = buildValueMap(v)
         return m["status"]?.stringOrNull()
     }
 
-    /**
-     * Extract the compatibility balance display string from the `"wallet"`
-     * projection.
-     *
-     * `balance_sats_display` → `balanceSatsDisplay` after convertFromSnakeCase.
-     * `None` in Rust serialises as JSON `null` → `stringOrNull()` returns null.
-     */
     private fun decodeWalletBalanceString(v: Value): String? {
         if (v.kind != ValueKind.Map) return null
         val m = buildValueMap(v)
@@ -428,10 +327,6 @@ object KernelUpdateFrameDecoder {
         )
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Typed projection sidecar extraction (ADR-0037)
-    // ─────────────────────────────────────────────────────────────────────────
-
     private fun extractTypedProjections(snapshot: SnapshotFrame): List<TypedProjectionEnvelope> {
         val count = snapshot.typedProjectionsLength
         if (count == 0) return emptyList()
@@ -441,8 +336,6 @@ object KernelUpdateFrameDecoder {
             val key = projection.key ?: continue
             val typed: TypedPayload = projection.payload ?: continue
             val schemaId = typed.schemaId ?: continue
-            // Copy the payload bytes out of the shared ByteBuffer before it
-            // goes out of scope — same reason as the Rust `to_vec()` in on_update.
             val payloadBytes: ByteArray = typed.payloadAsByteBuffer?.let { buf ->
                 val bytes = ByteArray(buf.remaining())
                 buf.get(bytes)
@@ -461,11 +354,6 @@ object KernelUpdateFrameDecoder {
         return result
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Value helpers — build a snake_case → camelCase map from the FlatBuffers
-    // map vector, mirroring iOS `FlatBufferKeyedContainer.convertFromSnakeCase`.
-    // ─────────────────────────────────────────────────────────────────────────
-
     private fun buildValueMap(v: Value): Map<String, Value> {
         val len = v.mapLength
         if (len == 0) return emptyMap()
@@ -473,22 +361,12 @@ object KernelUpdateFrameDecoder {
         for (i in 0 until len) {
             val pair: Pair = v.map(i) ?: continue
             val value: Value = pair.value ?: continue
-            // Pair.key is non-nullable (marked required in the schema); any
-            // thrown AssertionError here is caught by the outer try/catch.
             val key = pair.key
             result[convertFromSnakeCase(key)] = value
         }
         return result
     }
 
-    /**
-     * Convert Rust snake_case keys to camelCase, matching the behaviour of
-     * `JSONDecoder.KeyDecodingStrategy.convertFromSnakeCase` on iOS.
-     *
-     * Leading/trailing underscores are preserved; interior underscores are
-     * removed and the following letter capitalised. Empty or already-camelCase
-     * keys (no underscores) are returned unchanged.
-     */
     private fun convertFromSnakeCase(key: String): String {
         if (!key.contains('_')) return key
         val leadingCount = key.indexOfFirst { it != '_' }.takeIf { it >= 0 } ?: return key
@@ -513,11 +391,6 @@ object KernelUpdateFrameDecoder {
         val trailing = key.substring(end)
         return leading + sb.toString() + trailing
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Value scalar helpers — each returns a sensible default on kind mismatch
-    // (D1: fail closed, never crash)
-    // ─────────────────────────────────────────────────────────────────────────
 
     private fun Value.longOr(default: Long): Long = when (kind) {
         ValueKind.Int -> intValue
@@ -556,14 +429,6 @@ object KernelUpdateFrameDecoder {
         return result
     }
 
-    /**
-     * Decode a FlatBuffers map-of-maps (e.g. `claimed_profiles`,
-     * `mention_profiles`) into a Kotlin `Map<String, T>`.
-     *
-     * The outer Value must be `ValueKind.Map`. Each entry's raw key is
-     * preserved as-is (these are hex pubkeys, not snake_case field names,
-     * so no camelCase conversion is applied).
-     */
     private fun <T : Any> Value.mapOf(decode: (Value) -> T?): Map<String, T> {
         if (kind != ValueKind.Map) return emptyMap()
         val len = mapLength
@@ -572,7 +437,7 @@ object KernelUpdateFrameDecoder {
         for (i in 0 until len) {
             val pair: nmp.transport.Pair = map(i) ?: continue
             val entryValue: Value = pair.value ?: continue
-            val rawKey = pair.key // hex pubkey — keep as-is, no camelCase conversion
+            val rawKey = pair.key
             val decoded = decode(entryValue) ?: continue
             result[rawKey] = decoded
         }

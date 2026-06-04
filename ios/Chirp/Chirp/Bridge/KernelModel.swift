@@ -53,6 +53,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// `snapshot?.homeFeed` (generic `Value` decode) is used instead.
     @Published private(set) var typedHomeFeed: ChirpTimelineSnapshot?
 
+    /// Dynamic flat feeds opened per profile/thread screen. Keys are
+    /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
+    @Published private(set) var flatFeeds: [String: ChirpTimelineSnapshot] = [:]
+
     // ── Local mutable state ──────────────────────────────────────────────
 
     @Published private(set) var snapshotCount: UInt64 = 0
@@ -105,7 +109,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     var modularTimeline: ChirpTimelineSnapshot { typedHomeFeed ?? snapshot?.homeFeed ?? .empty }
     var rev: UInt64 { snapshot?.rev ?? 0 }
     var profile: ProfileCard? { snapshot?.profile }
-    var authorView: AuthorProfileSnapshot? { snapshot?.authorView }
     var metrics: KernelMetrics? { snapshot?.metrics }
     var relayStatuses: [RelayStatus] { snapshot?.relayStatuses ?? [] }
     var accounts: [AccountSummary] { snapshot?.accounts ?? [] }
@@ -116,7 +119,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     var configuredRelays: [AppRelay] { snapshot?.configuredRelays ?? [] }
     var relayRoleOptions: [RelayRoleOption] { snapshot?.relayRoleOptions ?? [] }
     var settingsHub: SettingsHubSummary { snapshot?.settingsHub ?? .empty }
-    var threadView: ThreadView? { snapshot?.threadView }
     var walletStatus: WalletStatusData? { snapshot?.walletStatus }
     var logicalInterests: [LogicalInterestStatus] { snapshot?.logicalInterests ?? [] }
     var wireSubscriptions: [WireSubscriptionStatus] { snapshot?.wireSubscriptions ?? [] }
@@ -132,11 +134,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     /// Resolved profiles for mention/author rendering — adapted from the
     /// pre-merged `resolved_profiles` projection (PR #812) at read time. This
-    /// map applies the canonical precedence (claimed > author_view > mention)
-    /// in Rust, so it is strictly broader than the old `mention_profiles`
-    /// source it replaces. The component-facing `[String: MentionProfile]`
-    /// shape is unchanged. Falls back to `[:]` when an older kernel elides the
-    /// projection.
+    /// map applies profile fallback precedence in Rust, so it is strictly
+    /// broader than the old `mention_profiles` source it replaces. The
+    /// component-facing `[String: MentionProfile]` shape is unchanged. Falls
+    /// back to `[:]` when an older kernel elides the projection.
     var mentionProfiles: [String: MentionProfile] {
         guard let cards = snapshot?.resolvedProfiles else { return [:] }
         return cards.mapValues(MentionProfile.init(card:))
@@ -146,6 +147,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// an older kernel elides the projection.
     var claimedProfiles: [String: ProfileCard] {
         snapshot?.projections?.claimedProfiles ?? [:]
+    }
+
+    var resolvedProfileCards: [String: ProfileCard] {
+        snapshot?.resolvedProfiles ?? [:]
     }
 
     var hasActiveAccount: Bool { activeAccount != nil }
@@ -329,6 +334,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // Dropping `snapshot` clears every kernel-driven projection in one
         // move via the computed accessors. Local-only slots clear explicitly.
         snapshot = nil
+        flatFeeds = [:]
         // T146 — Reset preserves the observer slot but the grouper retains
         // the prior session's blocks; re-register so it starts empty.
         kernel.reregisterChirpProjection()
@@ -378,6 +384,12 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     func closeAuthor(pubkey: String) { kernel.closeAuthor(pubkey: pubkey) }
     func openThread(eventID: String) { kernel.openThread(eventID: eventID) }
     func closeThread(eventID: String) { kernel.closeThread(eventID: eventID) }
+    func authorFeed(pubkey: String) -> ChirpTimelineSnapshot? {
+        flatFeeds["nmp.feed.author.\(pubkey)"]
+    }
+    func threadFeed(eventID: String) -> ChirpTimelineSnapshot? {
+        flatFeeds["nmp.feed.thread.\(eventID)"]
+    }
     func claimProfile(pubkey: String, consumerID: String) {
         kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
     }
@@ -691,6 +703,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // ADR-0038: store the typed home-feed result. Nil means the generic
         // projections.homeFeed fallback applies for this tick.
         typedHomeFeed = result.typedHomeFeed
+        flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 
         #if DEBUG

@@ -132,11 +132,11 @@ final class KernelHandle {
     }
 
     func openAuthor(pubkey: String) {
-        pubkey.withCString { nmp_app_open_author(raw, $0) }
+        pubkey.withCString { nmp_app_chirp_open_author_feed(raw, $0) }
     }
 
     func openThread(eventID: String) {
-        eventID.withCString { nmp_app_open_thread(raw, $0) }
+        eventID.withCString { nmp_app_chirp_open_thread_feed(raw, $0) }
     }
 
     // M2 (ADR-0042): `openFirehose(tag:)` and the `nmp_app_open_firehose_tag`
@@ -217,14 +217,14 @@ final class KernelHandle {
     /// returns to baseline. Call from `.onDisappear` on the AuthorView
     /// (ProfileView) to prevent sub-leaks on navigation pop.
     func closeAuthor(pubkey: String) {
-        pubkey.withCString { nmp_app_close_author(raw, $0) }
+        pubkey.withCString { nmp_app_chirp_close_author_feed(raw, $0) }
     }
 
     /// Signal that the thread for `eventID` is no longer visible.
     /// Symmetric counterpart to `openThread`; call from `.onDisappear`
     /// on the ThreadScreen to release the thread subscription.
     func closeThread(eventID: String) {
-        eventID.withCString { nmp_app_close_thread(raw, $0) }
+        eventID.withCString { nmp_app_chirp_close_thread_feed(raw, $0) }
     }
 
     // ── T66a identity / publish / multi-account / relay-edit ──────────────
@@ -604,7 +604,7 @@ final class KernelHandle {
         let data = Data(bytes: bytes, count: count)
         do {
             let frame = try KernelUpdateFrameDecoder.decode(data)
-            guard case let .snapshot(frameSchemaVersion, update, envelopes) = frame else {
+            guard case let .snapshot(frameSchemaVersion, update, envelopes, flatFeeds) = frame else {
                 if case let .panic(message) = frame {
                     kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
                     return .panic(message)
@@ -630,6 +630,7 @@ final class KernelHandle {
                 KernelUpdateResult(
                     update: update,
                     typedHomeFeed: typedHomeFeed,
+                    flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
                     decodeMicros: duration.microseconds
@@ -713,6 +714,10 @@ struct KernelUpdateResult {
     /// `NFCT` decoder could fully populate. `nil` means the generic
     /// `projections.homeFeed` fallback applies (ADR-0037 Commitment 4).
     let typedHomeFeed: ChirpTimelineSnapshot?
+    /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
+    /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
+    /// target, so they cannot be codegen'd as fixed projection fields.
+    let flatFeeds: [String: ChirpTimelineSnapshot]
     let payloadBytes: Int
     let callbackReceivedAt: ContinuousClock.Instant
     let decodeMicros: Int
@@ -806,13 +811,10 @@ struct KernelUpdate: Decodable {
     let schemaVersion: UInt32
     let updateKind: String?
     let running: Bool
-    // D0: the views cluster (`profile`, `author_view`, `thread_view`, and the
-    // bounded `nmp.feed.home` home feed) is not a typed `KernelSnapshot` field
-    // set — every view is surfaced through the host-extensible `projections`
-    // map under built-in keys. The stored decode for these fields is removed (a
-    // stored property would throw `keyNotFound` and drop the entire snapshot at
-    // `decode`); computed accessors below keep call sites (`KernelModel`)
-    // reading `update.profile` / `update.authorView` etc. unchanged.
+    // D0: app views are surfaced through the host-extensible `projections`
+    // map. Profile/thread navigation uses dynamic flat-feed keys extracted by
+    // `KernelUpdateFrameDecoder`; the old `author_view`/`thread_view` fields
+    // remain only in generated compatibility decode state.
     let metrics: KernelMetrics
     // Single-relay backwards compat field alongside the array.
     let relayStatus: RelayStatus?
@@ -912,12 +914,10 @@ struct KernelUpdate: Decodable {
 
     // ── D0 views cluster — projections-backed accessors ───────────────────
     //
-    // The kernel emits the `profile` / `author_view` / `thread_view` views and
-    // the bounded `nmp.feed.home` home feed through `projections`. The legacy
+    // The kernel emits the active-account `profile` view and the bounded
+    // `nmp.feed.home` home feed through `projections`. The legacy
     // generic `timeline` / `inserted` / `updated` / `removed` keys were deleted
-    // upstream (nmp-core #924); the home-feed path is `homeFeed`
-    // (`ChirpTimelineSnapshot`). These accessors keep every call site
-    // (`KernelModel.apply`, the feature views) reading `update.profile` etc.
+    // upstream (nmp-core #924); the home-feed path is `homeFeed`.
 
     /// Active-account profile card — `projections["profile"]`. Falls back to a
     /// neutral placeholder card if a (legacy) kernel elides the projection, so
@@ -929,22 +929,12 @@ struct KernelUpdate: Decodable {
     /// generic `timeline` projection was removed (nmp-core #924).
     var homeFeed: ChirpTimelineSnapshot? { projections?.homeFeed }
 
-    /// Open author-view payload — `projections["author_view"]`. `nil` when no
-    /// author view is open (kernel emits JSON null).
-    var authorView: AuthorProfileSnapshot? { projections?.authorView }
-
-    /// Open thread-view payload — `projections["thread_view"]`. `nil` when no
-    /// thread view is open (kernel emits JSON null).
-    var threadView: ThreadView? { projections?.threadView }
-
     /// Pre-merged profile map — `projections["resolved_profiles"]` (PR #812).
     /// Keyed by pubkey, one `ProfileCard` per profile the kernel can resolve,
-    /// applying the canonical precedence once in Rust: claimed_profiles >
-    /// author_view.profile > mention_profiles. Replaces the narrower
-    /// `mention_profiles` projection Chirp used to read (which omitted claimed
-    /// profiles). Always present as `{}` when empty (D1); never nil for a
-    /// current-schema kernel. Same Rust/Swift type as `claimed_profiles`
-    /// (`[String: ProfileCard]`).
+    /// applying profile fallback precedence once in Rust. Replaces the narrower
+    /// `mention_profiles` projection Chirp used to read. Always present as `{}`
+    /// when empty (D1); never nil for a current-schema kernel. Same Rust/Swift
+    /// type as `claimed_profiles` (`[String: ProfileCard]`).
     var resolvedProfiles: [String: ProfileCard]? { projections?.resolvedProfiles }
 
     /// NIP-29 group-chat read model — `projections["nmp.nip29.group_chat"]`.
@@ -1023,9 +1013,8 @@ struct KernelUpdate: Decodable {
 // consumes. It is now built from a `ProfileCard` carried by the pre-merged
 // `projections["resolved_profiles"]` map (PR #812) rather than from the older
 // `mention_profiles` wire DTO. The component API (`[String: MentionProfile]`)
-// is unchanged — only the source projection is broader (claimed + author_view
-// + mention, merged once in Rust). No Swift derives a `MentionProfile` from a
-// `TimelineItem` anymore.
+// is unchanged — only the source projection is broader and merged once in Rust.
+// No Swift derives a `MentionProfile` from a `TimelineItem` anymore.
 
 extension MentionProfile {
     /// Bridge from a resolved `ProfileCard`. `display` falls back to the

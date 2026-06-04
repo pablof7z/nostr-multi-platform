@@ -148,19 +148,27 @@ class KernelModel : ViewModel() {
     }
 
     /**
-     * Open a thread by note ID. The kernel batches a kind:1 REQ and opens
-     * the timeline to display the thread.
+     * Open a thread by note ID. Rust registers `nmp.feed.thread.<noteId>`.
      */
     fun openThread(noteId: String) {
         bridge.openThread(noteId)
     }
 
+    /** Close the dynamic thread feed opened by [openThread]. */
+    fun closeThread(noteId: String) {
+        bridge.closeThread(noteId)
+    }
+
     /**
-     * Open an author profile by pubkey. The kernel batches a kind:0 REQ and
-     * opens the timeline to display the author's notes.
+     * Open an author profile by pubkey. Rust registers `nmp.feed.author.<pubkey>`.
      */
     fun openAuthor(pubkey: String) {
         bridge.openAuthor(pubkey)
+    }
+
+    /** Close the dynamic author feed opened by [openAuthor]. */
+    fun closeAuthor(pubkey: String) {
+        bridge.closeAuthor(pubkey)
     }
 
     /**

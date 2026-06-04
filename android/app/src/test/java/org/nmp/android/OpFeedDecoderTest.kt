@@ -1,5 +1,12 @@
 package org.nmp.android
 
+import com.google.flatbuffers.FlatBufferBuilder
+import nmp.transport.FrameKind
+import nmp.transport.SnapshotFrame
+import nmp.transport.Pair as TransportPair
+import nmp.transport.UpdateFrame
+import nmp.transport.Value
+import nmp.transport.ValueKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -282,6 +289,25 @@ class OpFeedDecoderTest {
         assertEquals("aabbcc", decoded.page!!.nextCursor?.id)
     }
 
+    @Test
+    fun genericUpdateFrameDecodesDynamicFlatFeedProjection() {
+        val pubkey = hex32(0x12)
+        val eventId = hex32(0x34)
+        val frame = dynamicFlatFeedUpdateFrame(pubkey = pubkey, eventId = eventId)
+        val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
+        val feeds = decoded.update.projections?.flatFeeds.orEmpty()
+        val feed = requireNotNull(feeds["nmp.feed.author.$pubkey"])
+
+        assertEquals(7L, decoded.update.rev)
+        assertEquals(1, feed.cards.size)
+        assertEquals(eventId, feed.cards[0].card.id)
+        assertEquals(pubkey, feed.cards[0].card.authorPubkey)
+        assertEquals("Alice", feed.cards[0].card.authorDisplayName)
+        assertEquals("hello dynamic feed", feed.cards[0].card.content)
+        assertEquals(1, feed.cards[0].attribution.size)
+        assertEquals(hex32(0x56), feed.cards[0].attribution[0].replyEventId)
+    }
+
     // ── Empty fixture ───────────────────────────────────────────────────────
 
     @Test
@@ -321,6 +347,74 @@ class OpFeedDecoderTest {
     @Test
     fun emptyPayloadFallsBack() {
         assertNull(TypedHomeFeedDecoder.decode(ByteArray(0)))
+    }
+
+    private fun dynamicFlatFeedUpdateFrame(pubkey: String, eventId: String): ByteArray {
+        val builder = FlatBufferBuilder(1024)
+        val card = valueMap(
+            builder,
+            "id" to valueString(builder, eventId),
+            "author_pubkey" to valueString(builder, pubkey),
+            "kind" to valueInt(builder, 1),
+            "created_at" to valueInt(builder, 1_700_000_000L),
+            "content" to valueString(builder, "hello dynamic feed"),
+            "content_preview" to valueString(builder, "hello dynamic feed"),
+            "author_display_name" to valueString(builder, "Alice"),
+        )
+        val attribution = valueMap(
+            builder,
+            "author_pubkey" to valueString(builder, hex32(0x78)),
+            "reply_event_id" to valueString(builder, hex32(0x56)),
+            "reply_created_at" to valueInt(builder, 1_700_000_001L),
+        )
+        val root = valueMap(
+            builder,
+            "card" to card,
+            "attribution" to valueList(builder, attribution),
+        )
+        val feed = valueMap(
+            builder,
+            "cards" to valueList(builder, root),
+        )
+        val projections = valueMap(
+            builder,
+            "nmp.feed.author.$pubkey" to feed,
+        )
+        val payload = valueMap(
+            builder,
+            "rev" to valueInt(builder, 7),
+            "running" to valueBool(builder, true),
+            "relay_url" to valueString(builder, ""),
+            "projections" to projections,
+        )
+        val snapshot = SnapshotFrame.createSnapshotFrame(builder, 1u, payload, 0)
+        val frame = UpdateFrame.createUpdateFrame(builder, FrameKind.Snapshot, snapshot, 0)
+        UpdateFrame.finishUpdateFrameBuffer(builder, frame)
+        return builder.sizedByteArray()
+    }
+
+    private fun valueString(builder: FlatBufferBuilder, value: String): Int {
+        val stringOffset = builder.createString(value)
+        return Value.createValue(builder, ValueKind.String, false, 0L, 0UL, 0.0, stringOffset, 0, 0)
+    }
+
+    private fun valueInt(builder: FlatBufferBuilder, value: Long): Int =
+        Value.createValue(builder, ValueKind.Int, false, value, 0UL, 0.0, 0, 0, 0)
+
+    private fun valueBool(builder: FlatBufferBuilder, value: Boolean): Int =
+        Value.createValue(builder, ValueKind.Bool, value, 0L, 0UL, 0.0, 0, 0, 0)
+
+    private fun valueList(builder: FlatBufferBuilder, vararg values: Int): Int {
+        val list = Value.createListVector(builder, values)
+        return Value.createValue(builder, ValueKind.List, false, 0L, 0UL, 0.0, 0, list, 0)
+    }
+
+    private fun valueMap(builder: FlatBufferBuilder, vararg entries: Pair<String, Int>): Int {
+        val pairs = entries.map { (key, value) ->
+            TransportPair.createPair(builder, builder.createString(key), value)
+        }.toIntArray()
+        val map = Value.createMapVector(builder, pairs)
+        return Value.createValue(builder, ValueKind.Map, false, 0L, 0UL, 0.0, 0, 0, map)
     }
 
     companion object {

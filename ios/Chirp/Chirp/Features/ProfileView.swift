@@ -2,9 +2,9 @@ import SwiftUI
 
 // OWNER: Phase-2 Agent B (Profile screen). Init fixed by nav: ProfileView(pubkey:).
 //
-// Thin-shell rule: no business logic in Swift. Rust authors the primary-action
-// label/icon/dispatch (`profile_action_for`) and author-view membership; Swift
-// formats raw profile/count fields for presentation (ADR-0032).
+// Thin-shell rule: no business logic in Swift. Rust authors the flat author
+// feed membership under `nmp.feed.author.<pubkey>`; Swift formats raw
+// profile/count fields for presentation (ADR-0032).
 
 struct ProfileView: View {
     let pubkey: String
@@ -15,12 +15,10 @@ struct ProfileView: View {
     @State private var copiedNpub = false
     @State private var isEditingProfile = false
 
-    private var authorView: AuthorProfileSnapshot? {
-        model.authorView?.pubkey == pubkey ? model.authorView : nil
-    }
-    private var profile: ProfileCard? { authorView?.profile }
-    private var items: [TimelineItem] { authorView?.items ?? [] }
-    private var primaryAction: ProfileAction? { authorView?.primaryAction }
+    private var profileConsumerID: String { "profile-screen-\(pubkey)" }
+    private var profile: ProfileCard? { model.claimedProfiles[pubkey] ?? model.resolvedProfileCards[pubkey] }
+    private var items: [ChirpRootCard] { model.authorFeed(pubkey: pubkey)?.cards ?? [] }
+    private var primaryAction: ProfileAction? { nil }
 
     /// Render context fed to each `ProfileNoteRow`. `mentionProfiles` is the
     /// Rust-derived projection (aim.md §4.2); the two remaining lookups are
@@ -28,12 +26,8 @@ struct ProfileView: View {
     private var noteRenderContext: NoteRenderContext {
         NoteRenderContext(
             mentionProfiles: model.mentionProfiles,
-            // V-80 — the home feed is roots-only (`cards: [ChirpRootCard]`);
-            // reach into each root's inner `.card` for this best-effort side
-            // lookup (the profile view's primary source is `author_view`).
-            eventCards: Dictionary(
-                uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.card.id, $0.card) }),
-            timelineItems: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+            eventCards: Dictionary(uniqueKeysWithValues: items.map { ($0.card.id, $0.card) }),
+            timelineItems: [:]
         )
     }
 
@@ -52,10 +46,12 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             model.openAuthor(pubkey: pubkey)
+            model.claimProfile(pubkey: pubkey, consumerID: profileConsumerID)
         }
         .onDisappear {
             // T152: release the author sub on nav-away (wire_subs baseline).
             model.closeAuthor(pubkey: pubkey)
+            model.releaseProfile(pubkey: pubkey, consumerID: profileConsumerID)
         }
         .animation(.smooth(duration: 0.3), value: profile)
         .animation(.smooth(duration: 0.25), value: items.count)
@@ -194,9 +190,7 @@ struct ProfileView: View {
                         Text("Posts")
                             .font(.headline)
                             .foregroundStyle(.primary)
-                        // Compatibility count token from the author projection;
-                        // pluralized presentation stays in the shell.
-                        Text(authorView?.noteCountDisplay ?? "")
+                        Text("\(items.count)")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("profile-notes-count-value")
@@ -211,26 +205,26 @@ struct ProfileView: View {
 
                 Divider()
 
-                ForEach(items) { item in
+                ForEach(items) { root in
+                    let card = root.card
                     ProfileNoteRow(
-                        item: item,
-                        contentTree: context.eventCards[item.id]?.contentTree,
+                        card: card,
                         renderContext: context,
                         onAvatarTap: {
-                            router.push(.profile(pubkey: item.authorPubkey))
+                            router.push(.profile(pubkey: card.authorPubkey))
                         },
                         onRowTap: {
-                            router.push(.thread(eventID: item.id))
+                            router.push(.thread(eventID: card.id))
                         },
                         onLike: {
-                            model.react(targetEventID: item.id, reaction: "❤")
+                            model.react(targetEventID: card.id, reaction: "❤")
                         },
                         onRepost: {
-                            model.repost(eventID: item.id, authorPubkey: item.authorPubkey)
+                            model.repost(eventID: card.id, authorPubkey: card.authorPubkey)
                         }
                     )
 
-                    if item.id != items.last?.id {
+                    if root.id != items.last?.id {
                         Divider()
                             .padding(.leading, 68)
                             .opacity(0.35)

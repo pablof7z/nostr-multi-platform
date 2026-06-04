@@ -4,9 +4,8 @@ import SwiftUI
 /// (the event the thread was opened on) which gives it a hairline accent
 /// leading edge and slightly more visual weight.
 struct ThreadNoteRow: View {
-    let item: TimelineItem
+    let card: ChirpEventCard
     let isFocused: Bool
-    let contentTree: ContentTreeWire?
     let mentionProfiles: [String: MentionProfile]
     let eventCards: [String: ChirpEventCard]
     let timelineItems: [String: TimelineItem]
@@ -19,18 +18,16 @@ struct ThreadNoteRow: View {
     @State private var likeTapped = false
 
     private var authorDisplayLabel: String {
-        model.profile(forPubkey: item.authorPubkey)?.display
-            ?? item.authorDisplayName                         // ← baked into snapshot, claim-independent
-            ?? eventCards[item.id]?.authorDisplayName
-            ?? mentionProfiles[item.authorPubkey]?.display
-            ?? item.authorPubkey.shortHex
+        model.profile(forPubkey: card.authorPubkey)?.display
+            ?? card.authorDisplayName
+            ?? mentionProfiles[card.authorPubkey]?.display
+            ?? card.authorPubkey.shortHex
     }
 
     private var authorAvatarInitials: String {
-        let name = model.profile(forPubkey: item.authorPubkey)?.display
-            ?? item.authorDisplayName                         // ← baked into snapshot, claim-independent
-            ?? eventCards[item.id]?.authorDisplayName
-        return (name ?? item.authorPubkey).displayInitials
+        let name = model.profile(forPubkey: card.authorPubkey)?.display
+            ?? card.authorDisplayName
+        return (name ?? card.authorPubkey).displayInitials
     }
 
     var body: some View {
@@ -47,10 +44,10 @@ struct ThreadNoteRow: View {
             HStack(alignment: .top, spacing: 8) {
                 Button(action: onAvatarTap) {
                     ChirpAvatar(
-                        pubkey: item.authorPubkey,
-                        url: item.authorPictureUrl,
+                        pubkey: card.authorPubkey,
+                        url: card.authorPictureUrl,
                         initials: authorAvatarInitials,
-                        colorHex: item.authorPubkey.pubkeyColorHex,
+                        colorHex: card.authorPubkey.pubkeyColorHex,
                         size: isFocused ? 46 : 38
                     )
                 }
@@ -71,14 +68,13 @@ struct ThreadNoteRow: View {
     // with view builders inside the parent `HStack`.
 
     private var noteBodyContent: some View {
-        let isRepost = item.isRepost
+        let isRepost = card.kind == 6
         let context = NoteRenderContext(
             mentionProfiles: mentionProfiles,
             eventCards: eventCards,
             timelineItems: timelineItems
         )
-        let displayContent = item.renderedContent
-        let displayTree = context.contentTree(for: item, fallback: contentTree)
+        let displayContent = card.contentPreview.isEmpty ? card.content : card.contentPreview
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text(authorDisplayLabel)
@@ -87,7 +83,7 @@ struct ThreadNoteRow: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer()
-                Text(item.createdAt.relativeTimeFromUnixSeconds)
+                Text(card.createdAt.relativeTimeFromUnixSeconds)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -105,7 +101,7 @@ struct ThreadNoteRow: View {
             if !displayContent.isEmpty {
                 NoteContentView(
                     content: displayContent,
-                    contentTree: displayTree,
+                    contentTree: card.contentTree,
                     renderContext: context,
                     font: isFocused ? .body : .callout
                 )
@@ -150,15 +146,6 @@ struct ThreadNoteRow: View {
                     .buttonStyle(.plain)
                 }
 
-                if item.relayCount > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .font(.caption)
-                        Text("\(item.relayCount)")
-                            .font(.caption)
-                    }
-                    .foregroundStyle(.secondary)
-                }
             }
             .padding(.top, 4)
         }

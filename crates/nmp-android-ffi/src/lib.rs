@@ -9,14 +9,6 @@
 //! `nativeNextUpdate` (blocking, timed) — this sidesteps JNI
 //! thread-attach/global-ref complexity while staying a faithful mirror of the
 //! iOS push model.
-//!
-//! WHY Rust paths, not `extern "C"`:
-//! `extern "C" { fn nmp_app_new() }` is opaque to Rust CGU compilation — the
-//! rlib is consumed at compile time into CGU object files, but only code
-//! reachable through RUST paths enters those files. Symbols declared only via
-//! `extern "C"` stay `U` (undefined) in the final cdylib. Calling through
-//! `nmp_ffi::nmp_app_new()` (enabled by the `android-ffi` feature) is the
-//! portable fix that makes rustc include the bodies.
 
 use std::ffi::{c_void, CString};
 use std::sync::atomic::AtomicPtr;
@@ -29,17 +21,12 @@ use jni::JNIEnv;
 
 use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
 
-// Marmot (MLS-over-Nostr) JNI entry points + symbol-retention glue live in their
-// own module to keep this transport file cohesive (and off the file-size
-// ceiling). The `#[no_mangle] Java_…` symbol names are unaffected by module
-// nesting.
+mod flat_feed;
 mod marmot;
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
-    nmp_app_dispatch_action, nmp_app_free,
-    nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
-    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account,
-    nmp_app_remove_relay, nmp_app_set_update_callback, nmp_app_signin_nsec,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_dispatch_action,
+    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_open_timeline, nmp_app_release_profile,
+    nmp_app_remove_account, nmp_app_remove_relay, nmp_app_set_update_callback, nmp_app_signin_nsec,
     nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
 };
 
@@ -51,18 +38,7 @@ pub(crate) struct Session {
     chirp: *mut ChirpHandle,
     rx: Receiver<Vec<u8>>,
     tx: *mut Sender<Vec<u8>>,
-    /// Opaque `*mut MarmotHandle` (or null when no MLS identity is registered).
-    /// Stored type-erased as `*mut c_void` so the `Session` struct does not need
-    /// to be feature-gated; the marmot JNI entry points cast at the call site
-    /// under `#[cfg(feature = "marmot")]`. `AtomicPtr` because registration
-    /// happens after `nativeNew` (post sign-in) on the caller thread while the
-    /// shared `&Session` from `session_ref` only hands out `&`. Unregistered
-    /// exactly once in `nativeFree` (BEFORE `nmp_app_free` — the Marmot FFI
-    /// contract requires `nmp_marmot_unregister` to run first), mirroring iOS
-    /// `KernelHandle.unregisterMarmotIfNeeded()`.
-    // Always constructed (null) so `Session` stays feature-agnostic; only read
-    // through the `#[cfg(feature = "marmot")]` helpers, hence dead in a
-    // Marmot-free build.
+    /// Opaque `*mut MarmotHandle`; null until MLS is registered.
     #[cfg_attr(not(feature = "marmot"), allow(dead_code))]
     pub(crate) marmot: AtomicPtr<c_void>,
 }
@@ -156,10 +132,8 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
     //   relays_json  = [["url","role"],…]  (Vec<(String,String)> serde shape)
     let profile_json = format!(r#"{{"name":"{}"}}"#, name.replace('"', ""));
     let relays_json = default_chirp_relays_json_array();
-    let (Ok(profile_c), Ok(relays_c)) = (
-        CString::new(profile_json),
-        CString::new(relays_json),
-    ) else {
+    let (Ok(profile_c), Ok(relays_c)) = (CString::new(profile_json), CString::new(relays_json))
+    else {
         return;
     };
     nmp_app_create_new_account(s.app, profile_c.as_ptr(), relays_c.as_ptr(), false, 1);
@@ -176,22 +150,8 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
     }
 }
 
-/// Blocking binary drain with a 250 ms timeout so the Kotlin reader thread
-/// stays responsive to cancellation.
-///
-/// Return contract (mirrors PR #644 / V-57 P5 for nmp-gallery — the two
-/// `recv_timeout` arms have distinct meanings and must NOT be conflated):
-///
-/// * [`RecvTimeoutError::Timeout`] — normal idle tick. Returns `null`; the
-///   Kotlin caller loops back into `nextUpdate`. This is the steady state
-///   between snapshot emits at `emit_hz`.
-/// * [`RecvTimeoutError::Disconnected`] — the boxed [`Sender`] inside this
-///   [`Session`] has been dropped. The only drop site is
-///   [`Java_org_nmp_android_KernelBridge_nativeFree`], which calls
-///   `nmp_app_free` (joining the actor thread) before dropping the boxed
-///   sender. Surfaces as a JNI `java.lang.IllegalStateException` so the
-///   Kotlin reader coroutine breaks out of its `while (isActive)` loop
-///   instead of busy-spinning on a dead channel.
+/// Blocking binary drain with a 250 ms timeout. Timeout returns null; channel
+/// disconnect raises `IllegalStateException` so Kotlin stops reading.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdateBytes<'l>(
     env: JNIEnv<'l>,
@@ -236,14 +196,7 @@ fn next_update_byte_array<'l>(mut env: JNIEnv<'l>, handle: jlong) -> jbyteArray 
     }
 }
 
-/// Demand-driven profile fetch claim: the UI is rendering `pubkey` under
-/// `consumer_id`; the kernel batches a kind:0 REQ against the indexer lane
-/// (or the author's NIP-65 write set once known). Same contract as the iOS
-/// `nmp_app_claim_profile` symbol; calls through to it directly.
-///
-/// D6 — null/invalid argument is a silent no-op. Non-hex pubkeys are
-/// dropped by the underlying `nmp_app_claim_profile` (the kernel's hex
-/// gate guards correctness across all FFI surfaces).
+/// Demand-driven profile fetch claim. D6: bad handles/strings are no-ops.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimProfile(
     mut env: JNIEnv,
@@ -292,17 +245,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
     nmp_app_release_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr());
 }
 
-/// Dispatch a named action through the action registry.
-///
-/// Returns a JSON C string the caller receives as a jstring. The caller need not
-/// free it — JNI String lifetime is managed by the VM.
-///
-/// * `{"correlation_id":"<32-hex>"}` — the action was accepted and assigned a
-///   correlation id.
-/// * `{"error":"<message>"}` — the action was rejected (null app, invalid
-///   arguments, unknown namespace, malformed JSON).
-///
-/// D6: on null handle or any error, returns "{}" (empty JSON object).
+/// Dispatch a named action through the action registry. D6: errors return `{}`.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
     mut env: JNIEnv,
@@ -330,7 +273,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
             .into_raw();
     };
 
-    // Call the FFI function; it returns a heap-allocated C string we must free.
     let result_ptr = nmp_app_dispatch_action(s.app, namespace.as_ptr(), action_json.as_ptr());
     if result_ptr.is_null() {
         return env
@@ -339,15 +281,10 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
             .into_raw();
     }
 
-    // Convert to a Rust string, then to JString.
     let result_str = unsafe { std::ffi::CStr::from_ptr(result_ptr) }
         .to_string_lossy()
         .into_owned();
-
-    // Free the C string.
     nmp_app_free_string(result_ptr);
-
-    // Return as jstring.
     env.new_string(&result_str)
         .unwrap_or_else(|_| env.new_string("{}").unwrap())
         .into_raw()
@@ -361,44 +298,6 @@ fn default_chirp_relays_json_array() -> String {
         .map(|e| [e.url, e.role])
         .collect();
     serde_json::to_string(&relays).unwrap_or_else(|_| "[]".to_string())
-}
-
-/// Open a thread by note ID.
-///
-/// D6: null handle or invalid note_id is a silent no-op.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenThread(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    note_id: JString,
-) {
-    let Some(s) = session_ref(handle) else {
-        return;
-    };
-    let Some(note_id) = jstring_to_cstring(&mut env, &note_id) else {
-        return;
-    };
-    nmp_app_open_thread(s.app, note_id.as_ptr());
-}
-
-/// Open an author by pubkey.
-///
-/// D6: null handle or invalid pubkey is a silent no-op.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenAuthor(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    pubkey: JString,
-) {
-    let Some(s) = session_ref(handle) else {
-        return;
-    };
-    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
-        return;
-    };
-    nmp_app_open_author(s.app, pubkey.as_ptr());
 }
 
 /// Add a relay by URL and role string ("read", "write", or "both").
@@ -557,4 +456,3 @@ fn seed_chirp_reference_relays(app: *mut NmpApp) {
         nmp_app_add_relay(app, url.as_ptr(), role.as_ptr());
     }
 }
-
