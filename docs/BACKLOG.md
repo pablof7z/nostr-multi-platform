@@ -187,8 +187,13 @@ PR `claude/fix-v57-kind-constants` (2026-05-31):
 
 - **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
   `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` dispatches two
-  protocol publishes while tracking only one correlation id. **Next step:** expose a
-  composite Rust action / action-stage projection for the relay-settings publish.
+  protocol publishes while tracking only one correlation id. The same native-policy
+  class includes the currently allowlisted D18 raw publish envelope construction in
+  `ios/Chirp/Chirp/Bridge/KernelBridge.swift` (`PublishRaw` / `PublishProfile`) and
+  `android/app/src/main/java/org/nmp/android/KernelModel.kt` (`PublishRaw` with
+  native-authored kind/tags/target). **Next step:** expose Rust-owned typed publish /
+  repost / profile actions and a composite Rust action / action-stage projection for
+  the relay-settings publish, then remove the D18 allowlist entries.
 - **P6 — strengthen enforcement so these regressions trip earlier.**
   V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
   dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
@@ -530,7 +535,10 @@ conversion of `create_account` is worth the park-arm complexity.
 `s.rx.recv_timeout(Duration::from_millis(250))`, forcing Kotlin into a polling
 drain loop with a 250 ms blocking budget per call. iOS uses a push model (callback
 on the listener thread); Android should match. The `recv_timeout` polling pattern
-is a D8 violation at the FFI boundary.
+is a D8 violation at the FFI boundary. D18 also allowlists the current native drain
+loops in `android/app/src/main/java/org/nmp/android/KernelModel.kt` and
+`apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt`
+so new `.nextUpdate()` polling loops fail while this migration remains staged.
 
 **Correct fix:** Replace the `recv_timeout` polling pattern with a push-based
 callback notification model matching the iOS `set_update_callback` architecture.

@@ -2,7 +2,8 @@
 # check-file-size.sh — enforce AGENTS.md 300/500 LOC limits on hand-authored source.
 #
 # LOC is counted by `wc -l` (blank lines + comments included), matching AGENTS.md wording.
-# Extensions checked: .rs .swift .md .ts .tsx
+# Extensions checked: .rs .swift .md .ts .tsx .kt .kts .java .toml .yml
+# .yaml .sh .bash .zsh .mjs, plus tracked files under .githooks/, ci/, scripts/.
 #
 # Usage:
 #   check-file-size.sh [OPTIONS]
@@ -13,6 +14,8 @@
 #   --from-ref REF     Check only files changed from REF..TO_REF.
 #   --to-ref REF       Required with --from-ref.
 #   --dry-run          Report violations but exit 0 (used by smoke tests).
+#   --baseline-file F  Read hard-cap baseline from F instead of .file-size-baseline.
+#                      Used by smoke tests.
 #   --force-include F  Always include path F even if it matches .file-size-ignore.
 #                      May be repeated. Used by smoke tests to exercise the fixture.
 #
@@ -28,6 +31,7 @@ DRY_RUN=0
 CHANGED_ONLY=0
 FROM_REF=""
 TO_REF=""
+BASELINE_FILE_OVERRIDE=""
 FORCE_INCLUDES=()
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
@@ -37,6 +41,7 @@ while [[ $# -gt 0 ]]; do
         --changed-only)  CHANGED_ONLY=1; shift ;;
         --from-ref)      FROM_REF="$2"; shift 2 ;;
         --to-ref)        TO_REF="$2"; shift 2 ;;
+        --baseline-file) BASELINE_FILE_OVERRIDE="$2"; shift 2 ;;
         --force-include) FORCE_INCLUDES+=("$2"); shift 2 ;;
         --) shift; break ;;
         -*) echo "check-file-size: unknown option: $1" >&2; exit 1 ;;
@@ -58,6 +63,7 @@ fi
 # ── Locate repo root (works from any worktree) ────────────────────────────────
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 IGNORE_FILE="$REPO_ROOT/.file-size-ignore"
+BASELINE_FILE="${BASELINE_FILE_OVERRIDE:-$REPO_ROOT/.file-size-baseline}"
 
 # ── Collect candidate files ───────────────────────────────────────────────────
 collect_files() {
@@ -82,6 +88,8 @@ collect_files() {
 # Each non-blank, non-comment line is a glob pattern tested against the relative path.
 # Patterns with ** match path separators (bash 'case' supports this on macOS and Linux).
 declare -a IGNORE_PATTERNS=()
+declare -a BASELINE_PATHS=()
+declare -a BASELINE_LOCS=()
 
 if [[ -f "$IGNORE_FILE" ]]; then
     while IFS= read -r line; do
@@ -90,6 +98,39 @@ if [[ -f "$IGNORE_FILE" ]]; then
         IGNORE_PATTERNS+=("$line")
     done < "$IGNORE_FILE"
 fi
+
+# ── Load hard-cap baseline ───────────────────────────────────────────────────
+# Format: <relative path><TAB><LOC>. Blank/comment lines are ignored.
+# In ref-diff CI mode, read the baseline from FROM_REF so a PR cannot make an
+# over-limit file larger by raising the baseline in the same change.
+load_baseline_from_stream() {
+    while IFS=$'\t' read -r rel loc _rest; do
+        [[ -z "${rel// /}" || "${rel:0:1}" == "#" ]] && continue
+        [[ "$loc" =~ ^[0-9]+$ ]] || continue
+        BASELINE_PATHS+=("$rel")
+        BASELINE_LOCS+=("$loc")
+    done
+}
+
+if [[ -n "$FROM_REF" && -z "$BASELINE_FILE_OVERRIDE" ]]; then
+    if git -C "$REPO_ROOT" cat-file -e "$FROM_REF:.file-size-baseline" 2>/dev/null; then
+        load_baseline_from_stream < <(git -C "$REPO_ROOT" show "$FROM_REF:.file-size-baseline")
+    fi
+elif [[ -f "$BASELINE_FILE" ]]; then
+    load_baseline_from_stream < "$BASELINE_FILE"
+fi
+
+baseline_loc_for() {
+    local rel="$1"
+    local idx
+    for idx in "${!BASELINE_PATHS[@]}"; do
+        if [[ "${BASELINE_PATHS[$idx]}" == "$rel" ]]; then
+            echo "${BASELINE_LOCS[$idx]}"
+            return 0
+        fi
+    done
+    return 1
+}
 
 # ── Check if a relative path is ignored ──────────────────────────────────────
 is_ignored() {
@@ -113,16 +154,22 @@ is_ignored() {
     return 1  # not ignored
 }
 
+is_checked_file() {
+    local rel="$1"
+    case "$rel" in
+        *.rs|*.swift|*.md|*.ts|*.tsx|*.kt|*.kts|*.java|*.toml|*.yml|*.yaml|*.sh|*.bash|*.zsh|*.mjs) return 0 ;;
+        .githooks/*|ci/*|scripts/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # ── Main check loop ───────────────────────────────────────────────────────────
 WARNINGS=0
 FAILURES=0
+BASELINED=0
 
 while IFS= read -r rel_path; do
-    # Filter by extension
-    case "$rel_path" in
-        *.rs|*.swift|*.md|*.ts|*.tsx) ;;
-        *) continue ;;
-    esac
+    is_checked_file "$rel_path" || continue
 
     abs_path="$REPO_ROOT/$rel_path"
     [[ -f "$abs_path" ]] || continue
@@ -133,8 +180,17 @@ while IFS= read -r rel_path; do
     loc=$(wc -l < "$abs_path")
 
     if [[ $loc -ge $HARD_LOC ]]; then
-        echo "HARD-cap violation ($loc LOC >= $HARD_LOC): $rel_path" >&2
-        FAILURES=$((FAILURES + 1))
+        baseline="$(baseline_loc_for "$rel_path" || true)"
+        if [[ -n "$baseline" && $loc -le $baseline ]]; then
+            echo "BASELINE hard-cap debt ($loc LOC >= $HARD_LOC, baseline $baseline): $rel_path" >&2
+            BASELINED=$((BASELINED + 1))
+        elif [[ -n "$baseline" ]]; then
+            echo "HARD-cap expansion ($loc LOC > baseline $baseline): $rel_path" >&2
+            FAILURES=$((FAILURES + 1))
+        else
+            echo "HARD-cap violation ($loc LOC >= $HARD_LOC): $rel_path" >&2
+            FAILURES=$((FAILURES + 1))
+        fi
     elif [[ $loc -ge $WARN_LOC ]]; then
         echo "SOFT-cap warning ($loc LOC >= $WARN_LOC): $rel_path" >&2
         WARNINGS=$((WARNINGS + 1))
@@ -146,12 +202,19 @@ if [[ $FAILURES -gt 0 ]]; then
     echo "" >&2
     echo "file-size gate: $FAILURES hard-cap violation(s) detected." >&2
     echo "  Split file(s) into cohesive submodules (AGENTS.md: 500 LOC hard ceiling)." >&2
+    echo "  Legacy hard-cap debt must not exceed .file-size-baseline." >&2
     echo "  Exempt generated/output files via .file-size-ignore." >&2
     if [[ $DRY_RUN -eq 1 ]]; then
         echo "  (--dry-run: exiting 0)" >&2
         exit 0
     fi
     exit 1
+fi
+
+if [[ $BASELINED -gt 0 ]]; then
+    echo "" >&2
+    echo "file-size gate: $BASELINED baseline hard-cap item(s) unchanged or reduced." >&2
+    echo "  Do not raise .file-size-baseline; split files and remove entries as debt is retired." >&2
 fi
 
 if [[ $WARNINGS -gt 0 ]]; then
