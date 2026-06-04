@@ -45,20 +45,21 @@ sealed interface ContentWireNode {
     data class UrlNode(val url: String) : ContentWireNode
     data class MediaNode(val urls: List<String>, val mediaKind: String) : ContentWireNode
     data class EmojiNode(val shortcode: String, val url: String?) : ContentWireNode
+    data class InvoiceNode(val invoiceKind: String, val payload: String) : ContentWireNode
     data class ParagraphNode(val children: List<Int>) : ContentWireNode
     data class HeadingNode(val level: Int, val children: List<Int>) : ContentWireNode
     data class EmphasisNode(val children: List<Int>) : ContentWireNode
     data class StrongNode(val children: List<Int>) : ContentWireNode
     data class InlineCodeNode(val code: String) : ContentWireNode
     data class LinkNode(val children: List<Int>, val href: String?) : ContentWireNode
-    data class ImageNode(val alt: String, val src: String?) : ContentWireNode
+    data class ImageNode(val alt: String, val title: String?, val src: String?) : ContentWireNode
     data class CodeBlockNode(val info: String?, val body: String) : ContentWireNode
     data class ListNode(val orderedStart: Long?, val items: List<List<Int>>) : ContentWireNode
     data class BlockQuoteNode(val children: List<Int>) : ContentWireNode
     data object RuleNode : ContentWireNode
     data object SoftBreakNode : ContentWireNode
     data object HardBreakNode : ContentWireNode
-    data object PlaceholderNode : ContentWireNode
+    data class PlaceholderNode(val reason: String = "depth_limit") : ContentWireNode
 }
 
 object ContentWireNodeSerializer : KSerializer<ContentWireNode> {
@@ -76,20 +77,22 @@ object ContentWireNodeSerializer : KSerializer<ContentWireNode> {
             "url" -> ContentWireNode.UrlNode(obj.string("url"))
             "media" -> ContentWireNode.MediaNode(obj.stringList("urls"), obj.string("media_kind"))
             "emoji" -> ContentWireNode.EmojiNode(obj.string("shortcode"), obj.optString("url"))
+            "invoice" -> obj.invoiceNode()
             "paragraph" -> ContentWireNode.ParagraphNode(obj.indexList("children"))
             "heading" -> ContentWireNode.HeadingNode(obj.int("level"), obj.indexList("children"))
             "emphasis" -> ContentWireNode.EmphasisNode(obj.indexList("children"))
             "strong" -> ContentWireNode.StrongNode(obj.indexList("children"))
             "inline_code" -> ContentWireNode.InlineCodeNode(obj.string("code"))
             "link" -> ContentWireNode.LinkNode(obj.indexList("children"), obj.optString("href"))
-            "image" -> ContentWireNode.ImageNode(obj.string("alt"), obj.optString("src"))
+            "image" -> ContentWireNode.ImageNode(obj.string("alt"), obj.optString("title"), obj.optString("src"))
             "code_block" -> ContentWireNode.CodeBlockNode(obj.optString("info"), obj.string("body"))
             "list" -> ContentWireNode.ListNode(obj.longOrNull("ordered_start"), obj.indexLists("items"))
             "block_quote" -> ContentWireNode.BlockQuoteNode(obj.indexList("children"))
             "rule" -> ContentWireNode.RuleNode
             "soft_break" -> ContentWireNode.SoftBreakNode
             "hard_break" -> ContentWireNode.HardBreakNode
-            else -> ContentWireNode.PlaceholderNode
+            "placeholder" -> ContentWireNode.PlaceholderNode(obj.string("reason").ifEmpty { "depth_limit" })
+            else -> ContentWireNode.PlaceholderNode()
         }
     }
 
@@ -126,4 +129,10 @@ private fun JsonObject.stringList(key: String): List<String> =
 private fun JsonObject.uri(input: JsonDecoder, key: String): WireNostrUri {
     val value = this[key] ?: return WireNostrUri()
     return input.json.decodeFromJsonElement(WireNostrUri.serializer(), value)
+}
+
+private fun JsonObject.invoiceNode(): ContentWireNode.InvoiceNode {
+    val invoice = this["invoice"]?.jsonObject ?: return ContentWireNode.InvoiceNode("", "")
+    val entry = invoice.entries.firstOrNull() ?: return ContentWireNode.InvoiceNode("", "")
+    return ContentWireNode.InvoiceNode(entry.key, entry.value.jsonPrimitive.contentOrNull.orEmpty())
 }

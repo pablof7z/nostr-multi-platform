@@ -40,6 +40,7 @@ data class ChirpEventCard(
     @SerialName("created_at") val createdAt: Long = 0,
     val content: String = "",
     @SerialName("content_tree") val contentTree: ContentTreeWire? = null,
+    @SerialName("relation_counts") val relationCounts: NoteRelationCounts? = null,
     // aim.md §2 — display_name + picture_url are nullable: the
     // backend ships JSON null when no kind:0 has arrived for this
     // author, and the Compose layer is responsible for choosing its

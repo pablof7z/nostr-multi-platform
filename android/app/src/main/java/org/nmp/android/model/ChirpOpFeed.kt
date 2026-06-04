@@ -53,6 +53,28 @@ data class ChirpRootCard(
     val attribution: List<ChirpReplyAttribution> = emptyList(),
 )
 
+@Serializable
+data class NoteRelationCounts(
+    val replies: RelationCount = RelationCount.loading(),
+    val reactions: RelationCount = RelationCount.loading(),
+    val reposts: RelationCount = RelationCount.loading(),
+    val zaps: RelationCount = RelationCount.loading(),
+)
+
+@Serializable
+data class RelationCount(
+    val state: String = "loading",
+    val count: ULong = 0UL,
+) {
+    val value: ULong?
+        get() = if (state == "known") count else null
+
+    companion object {
+        fun known(count: ULong): RelationCount = RelationCount(state = "known", count = count)
+        fun loading(): RelationCount = RelationCount(state = "loading")
+    }
+}
+
 /** A feed position — raw protocol hex event id plus its signed `created_at`. */
 @Serializable
 data class TimelineWindowCursor(

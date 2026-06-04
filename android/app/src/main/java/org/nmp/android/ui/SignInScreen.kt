@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import org.nmp.android.KernelModel
 
 /**
- * Sign-in screen for Android Chirp app. Provides three authentication paths:
+ * Sign-in screen for Android Chirp app. Provides two authentication paths:
  * 1. Sign in with nsec (hex secret or bech32 private key)
  * 2. Create a local account with a display name
  * 3. Connect to a bunker URI (NIP-46 remote signer)
