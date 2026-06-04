@@ -67,6 +67,7 @@ impl ActionModule for DiscoverGroupsAction {
         // on `action_results`. Mirror the NIP-57 zap worker's success leg.
         send(ActorCommand::RecordActionSuccess {
             correlation_id: correlation_id.to_string(),
+            result_json: None,
         });
         Ok(())
     }
@@ -112,7 +113,7 @@ mod tests {
         }
         // Terminal `Accepted` stage is what closes the host spinner.
         match &cmds[1] {
-            ActorCommand::RecordActionSuccess { correlation_id } => {
+            ActorCommand::RecordActionSuccess { correlation_id, .. } => {
                 assert_eq!(correlation_id, "test-cid");
             }
             other => panic!("expected RecordActionSuccess, got {other:?}"),

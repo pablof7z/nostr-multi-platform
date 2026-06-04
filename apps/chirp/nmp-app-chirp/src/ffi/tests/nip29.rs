@@ -261,7 +261,7 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
     // Terminal `RecordActionSuccess` is what closes the host spinner for
     // this subscription-only action.
     match &cmds[1] {
-        ActorCommand::RecordActionSuccess { correlation_id } => {
+        ActorCommand::RecordActionSuccess { correlation_id, .. } => {
             assert_eq!(correlation_id, "test-cid");
         }
         other => panic!("expected RecordActionSuccess, got {other:?}"),

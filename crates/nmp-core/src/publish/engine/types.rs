@@ -81,6 +81,15 @@ pub struct LastTerminal {
     pub correlation_id: PublishHandle,
     pub status: &'static str,
     pub error: Option<String>,
+    /// Opaque structured result body the action carried to a success terminal
+    /// (ADR-0043 Decision 4). `nmp-core` NEVER parses this — it is forwarded
+    /// verbatim into the `action_results[correlation_id]` row's `result` field
+    /// so a protocol crate can attach a descriptor (e.g. a Blossom blob
+    /// descriptor) without `nmp-core` learning any protocol noun (D0). `None`
+    /// for every publish-engine terminal and the bare `record_action_success`
+    /// path; `Some(json)` only on the `RecordActionSuccess { result_json }`
+    /// off-band path.
+    pub result_json: Option<String>,
 }
 
 impl LastTerminal {
@@ -117,12 +126,14 @@ impl LastTerminal {
                 correlation_id,
                 status: "failed",
                 error,
+                result_json: None,
             }
         } else {
             Self {
                 correlation_id,
                 status: "ok",
                 error: None,
+                result_json: None,
             }
         }
     }

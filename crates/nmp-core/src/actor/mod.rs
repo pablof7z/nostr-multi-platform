@@ -35,7 +35,7 @@ mod fairness;
 #[cfg(feature = "native")]
 mod outbound;
 #[cfg(feature = "native")]
-mod pending_sign;
+pub(crate) mod pending_sign;
 #[cfg(all(test, feature = "native"))]
 mod publish_relay_dispatch_tests;
 #[cfg(feature = "native")]
@@ -53,6 +53,8 @@ mod send_gate_universal_tests;
 mod session_persistence;
 #[cfg(all(test, feature = "native"))]
 mod session_persistence_tests;
+#[cfg(all(test, feature = "native"))]
+mod sign_event_for_account_tests;
 #[cfg(all(test, feature = "native"))]
 mod tests;
 #[cfg(feature = "native")]
@@ -299,6 +301,40 @@ impl std::fmt::Debug for SignerSource {
     }
 }
 
+/// Boxed continuation invoked with the resolved sign outcome.
+///
+/// Defined here (always-compiled) rather than in the `native`-gated
+/// `pending_sign` module so the always-compiled `ActorCommand::SignEventForAccount`
+/// variant can name it on `wasm32` / no-`native` builds — see the `[features]`
+/// note: the `ActorCommand` enum stays always-compiled; only the actor runtime
+/// that *consumes* it is gated. The newtype lets the enum's derived `Debug`
+/// compile despite holding a `Box<dyn FnOnce(..) + Send>` (neither `Debug` nor
+/// inspectable); the `Debug` impl below prints a fixed placeholder.
+pub struct SignContinuation(
+    pub Box<dyn FnOnce(Result<crate::substrate::SignedEvent, String>) + Send>,
+);
+
+impl SignContinuation {
+    /// Construct from any `FnOnce` matching the sign-outcome shape.
+    #[must_use]
+    pub fn new(
+        f: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
+    ) -> Self {
+        Self(Box::new(f))
+    }
+
+    /// Invoke the continuation with the sign outcome, consuming it.
+    pub fn call(self, outcome: Result<crate::substrate::SignedEvent, String>) {
+        (self.0)(outcome);
+    }
+}
+
+impl std::fmt::Debug for SignContinuation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SignContinuation(<sign-account continuation>)")
+    }
+}
+
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
 /// through the `testing` re-export gate.  In normal (non-test-support) builds
@@ -365,6 +401,44 @@ pub enum ActorCommand {
         account_pubkey: String,
         unsigned_json: String,
         correlation_id: String,
+    },
+    /// Generic, backend-transparent sign-account port for `ProtocolCommand`
+    /// workers (ADR-0043 Decision 2). Sign `unsigned` with the named account
+    /// (`signer_pubkey = Some(hex)`) or the active account (`None`), then invoke
+    /// `continuation` with the resolved [`SignedEvent`] (or an error string).
+    ///
+    /// Local-vs-bunker is invisible to the caller: the dispatch arm routes
+    /// through `sign_active_nonblocking` / `sign_with_account_nonblocking` (the
+    /// same functions the publish path uses, which look across BOTH local keys
+    /// and remote signers). A local key resolves `Ready` and the continuation
+    /// runs inline on the actor thread; a NIP-46 bunker resolves `Pending` and
+    /// is parked in [`crate::actor::pending_sign::PendingSignReturn`] with a
+    /// continuation sink — the idle-loop drain invokes the continuation when the
+    /// broker turns the request around (or on timeout, with an `Err`). Either
+    /// way the worker code path is identical.
+    ///
+    /// The continuation runs on the actor thread and MUST only enqueue further
+    /// work (e.g. spawn an HTTP worker via the cloned `Sender<ActorCommand>`) —
+    /// never block (D8). It never receives raw key bytes — only a `SignedEvent`
+    /// (D13).
+    ///
+    /// `signer_pubkey` matches the publish-path field byte-for-byte
+    /// (`PublishUnsignedEvent` / `PublishUnsignedEventToRelays`): `None` = active
+    /// account, `Some(pubkey)` = a named roster key.
+    ///
+    // V-78 reconcile: `nmp-nip57`'s `FetchLnurlInvoiceCommand` should migrate
+    // its kind:9734 signing off `active_local_keys` onto this port so bunker
+    // accounts can zap (one correct seam, two consumers). That retarget is
+    // owned by the V-78 fix (PR #938); this variant is the seam it adopts.
+    SignEventForAccount {
+        /// The unsigned event to sign. `created_at` should already be stamped
+        /// by the caller from the kernel clock (D7).
+        unsigned: crate::substrate::UnsignedEvent,
+        /// `None` = active account; `Some(hex)` = a named roster key.
+        signer_pubkey: Option<String>,
+        /// Invoked with the resolved sign outcome — inline (local) or from the
+        /// idle-loop drain (bunker / timeout).
+        continuation: SignContinuation,
     },
     /// Unified sign-in command. Adds a signer to the actor-local identity store
     /// from one of the [`SignerSource`] variants and, when `make_active` is set,
@@ -773,6 +847,13 @@ pub enum ActorCommand {
     /// no-op).
     RecordActionSuccess {
         correlation_id: String,
+        /// ADR-0043 Decision 4 — opaque structured result body forwarded
+        /// verbatim into the `action_results[correlation_id]` row's `result`
+        /// field. `nmp-core` NEVER parses it (D0: no protocol noun in the
+        /// substrate). `None` for the NWC pay-invoice path; `Some(json)` for a
+        /// protocol crate (e.g. a Blossom blob descriptor) carrying a return
+        /// payload.
+        result_json: Option<String>,
     },
     Stop,
     Reset,
@@ -2174,42 +2255,17 @@ pub fn run_actor_with_observers(
         // this a single `Vec::retain_mut` over zero items — heap-free.
         if !pending_sign_returns.is_empty() {
             pending_sign_returns.retain_mut(|ps| {
-                // Poll first so a result landing on the same tick as the
-                // deadline is not lost to the timeout check.
-                match ps.op.poll() {
-                    None => {
-                        if ps.timed_out() {
-                            kernel.record_signed_event_return(
-                                &ps.correlation_id,
-                                Err("signing timed out".to_string()),
-                            );
-                            if running {
-                                emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                            }
-                            false // Abandon — broker did not respond in time.
-                        } else {
-                            true // Still pending — keep for the next tick.
-                        }
-                    }
-                    Some(Ok(signed)) => {
-                        let json = dispatch::signed_event_to_json(&signed);
-                        kernel.record_signed_event_return(&ps.correlation_id, Ok(json));
-                        if running {
-                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                        }
-                        false // Done — remove.
-                    }
-                    Some(Err(e)) => {
-                        kernel.record_signed_event_return(
-                            &ps.correlation_id,
-                            Err(e.to_string()),
-                        );
-                        if running {
-                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                        }
-                        false // Done — remove.
-                    }
+                // Resolve one parked op against its sink (signed_events
+                // projection OR generic continuation). Returns `true` to keep a
+                // still-pending op, `false` once it has resolved / timed-out so
+                // `retain_mut` drops it. Extracted into `pending_sign` so both
+                // sink terminals share one tested drain (no duplicated
+                // poll/timeout/dispatch machinery).
+                let keep = pending_sign::resolve_pending_sign_return(ps, &mut kernel);
+                if !keep && running {
+                    emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                 }
+                keep
             });
         }
         // Only emit when state actually changed; do not emit on every

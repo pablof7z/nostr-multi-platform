@@ -99,3 +99,13 @@ pub const KIND_MUTE_LIST: u32 = 10000;
 /// NIP-51 blocked relays list (kind:10006). The relays a user explicitly
 /// refuses to publish to or receive events from. Tag shape: `["relay", <wss-url>]`.
 pub const KIND_BLOCKED_RELAYS: u32 = 10_006;
+
+// ─── Blossom (BUD-02) — blob-server upload authorization ───────────────────
+
+/// Blossom BUD-01/BUD-02 authorization event (kind:24242). A short-lived,
+/// signed Nostr event placed in an `Authorization: Nostr <base64(event)>`
+/// header to authorise a blob PUT/GET/DELETE against a Blossom blob server.
+/// Tag shape for an upload: `["t","upload"]`, `["x",<sha256-hex>]`,
+/// `["expiration",<unix-secs>]`. The kind constant lives here (Layer-0
+/// vocabulary); all Blossom build/transport logic lives in `nmp-blossom`.
+pub const KIND_BLOSSOM_AUTH: u32 = 24242;

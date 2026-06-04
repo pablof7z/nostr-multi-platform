@@ -27,6 +27,7 @@ members = [
     "crates/nmp-nip51",
     "crates/nmp-nip57",
     "crates/nmp-nip59",
+    "crates/nmp-blossom",
     "apps/nmp-gallery/nmp-app-gallery",
     "crates/nmp-nip77",
     "crates/nmp-wot",
@@ -54,7 +55,7 @@ resolver = "2"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/pablof7z/nostr-multi-platform"
-version = "0.2.4"
+version = "0.2.5"
 
 # Shared third-party dependency versions. Declare the *version* and the
 # default-features posture here only; each member crate adds its own
