@@ -7,7 +7,8 @@ use nmp_app_chirp::ffi::{
 };
 use nmp_app_chirp::{
     nmp_app_cancel_bunker_handshake, nmp_app_chirp_identity_sign_in_nsec, nmp_app_nostrconnect_uri,
-    nmp_broker_free_string, nmp_marmot_register_active, nmp_marmot_unregister,
+    nmp_broker_free_string, nmp_marmot_register_active, nmp_marmot_unregister, send_dm_spec,
+    zap_spec,
 };
 use nmp_ffi::{
     nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_interest,
@@ -183,19 +184,30 @@ impl AppRuntime {
     }
 
     pub fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<String> {
-        self.dispatch_action_value(
-            "nmp.nip17.send",
-            &json!({ "recipient_pubkey": recipient_pubkey, "content": content }),
-        )
+        let spec = send_dm_spec(recipient_pubkey, content, None);
+        self.dispatch_action(&spec.namespace, &spec.body_json)
     }
 
     /// Dispatch `nmp.nip57.zap`. Rust owns the asynchronous LNURL fetch and
-    /// NWC pay-invoice chain; the TUI only forwards the
-    /// [`nmp_nip57::ZapInput`] wire form — `recipient_pubkey` and
-    /// `amount_msats` are required, while `lnurl`, `comment`,
-    /// `target_event_id`, and `relays` are optional.
-    pub fn zap(&self, body: &Value) -> Result<String> {
-        self.dispatch_action_value("nmp.nip57.zap", body)
+    /// NWC pay-invoice chain and the exact action JSON shape; the TUI only
+    /// forwards user intent and optional contextual inputs.
+    pub fn zap(
+        &self,
+        recipient_pubkey: &str,
+        amount_msats: u64,
+        target_event_id: Option<&str>,
+        comment: Option<&str>,
+        lnurl: Option<&str>,
+    ) -> Result<String> {
+        let spec = zap_spec(
+            recipient_pubkey,
+            amount_msats,
+            target_event_id,
+            comment,
+            lnurl,
+            Vec::new(),
+        );
+        self.dispatch_action(&spec.namespace, &spec.body_json)
     }
 
     pub fn register_dm_inbox(&self) {

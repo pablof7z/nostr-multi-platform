@@ -1,5 +1,4 @@
 import Foundation
-import os.log
 
 // ─────────────────────────────────────────────────────────────────────────
 // NIP-17 private direct-message FFI bridge.
@@ -32,8 +31,6 @@ import os.log
 //     tick (the actor gift-wraps a self-copy to the sender).
 // ─────────────────────────────────────────────────────────────────────────
 
-private let dmLog = Logger(subsystem: "io.f7z.chirp", category: "DmBridge")
-
 // ── KernelHandle NIP-17 DM extension (C-FFI surface) ─────────────────────
 
 extension KernelHandle {
@@ -48,27 +45,11 @@ extension KernelHandle {
     /// `replyTo`, when supplied, is the event id this message replies to; the
     /// Rust action adds the NIP-10 reply marker.
     func sendDm(recipientPubkey: String, content: String, replyTo: String? = nil) {
-        var payload: [String: Any] = [
-            "recipient_pubkey": recipientPubkey,
-            "content": content,
-        ]
-        if let replyTo {
-            payload["reply_to"] = replyTo
-        }
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: payload),
-            let json = String(data: data, encoding: .utf8)
-        else {
-            dmLog.error("sendDm: failed to encode action payload")
-            return
-        }
-        json.withCString { jsonPtr in
-            "nmp.nip17.send".withCString { nsPtr in
-                if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
-                    nmp_app_free_string(ptr)
-                }
-            }
-        }
+        _ = dispatchChirpIntent(.sendDm(
+            recipientPubkey: recipientPubkey,
+            content: content,
+            replyTo: replyTo
+        ))
     }
 
 }

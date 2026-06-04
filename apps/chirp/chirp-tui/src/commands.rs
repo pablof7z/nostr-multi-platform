@@ -188,16 +188,7 @@ fn zap(rest: &str, runtime: &AppRuntime) -> Result<CommandResult, String> {
     }
     let pubkey = resolve_nip05_pubkey(address)?;
 
-    let mut body = serde_json::json!({
-        "recipient_pubkey": pubkey,
-        "amount_msats": sats * 1000,
-        "lnurl": address,
-    });
-    if let Some(c) = comment {
-        body["comment"] = Value::String(c);
-    }
-
-    let cid = runtime.zap(&body)?;
+    let cid = runtime.zap(&pubkey, sats * 1000, None, comment.as_deref(), Some(address))?;
     Ok(action(cid, &format!("zap {sats} sat → {address}")))
 }
 

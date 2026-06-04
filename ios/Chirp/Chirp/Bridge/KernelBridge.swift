@@ -19,6 +19,190 @@ enum InterestScope: UInt32 {
     case global = 1
 }
 
+struct ChirpReplyTarget: Codable, Equatable, Identifiable {
+    let eventID: String
+    let authorPubkey: String
+    let createdAt: UInt64
+    let content: String
+
+    var id: String { eventID }
+
+    init(eventID: String, authorPubkey: String, createdAt: UInt64 = 0, content: String = "") {
+        self.eventID = eventID
+        self.authorPubkey = authorPubkey
+        self.createdAt = createdAt
+        self.content = content
+    }
+
+    init(item: TimelineItem) {
+        self.init(
+            eventID: item.id,
+            authorPubkey: item.authorPubkey,
+            createdAt: item.createdAt,
+            content: item.content
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case eventID = "event_id"
+        case authorPubkey = "author_pubkey"
+        case createdAt = "created_at"
+        case content
+    }
+}
+
+struct ChirpActionIntent: Encodable {
+    let type: String
+    let content: String?
+    let replyTo: ChirpReplyTarget?
+    let replyToEventID: String?
+    let dmReplyTo: String?
+    let name: String?
+    let about: String?
+    let picture: String?
+    let eventID: String?
+    let authorPubkey: String?
+    let reaction: String?
+    let pubkey: String?
+    let targetEventID: String?
+    let recipientPubkey: String?
+    let amountMsats: UInt64?
+    let lnurl: String?
+    let comment: String?
+
+    static func publishNote(content: String, replyTo: ChirpReplyTarget?) -> Self {
+        Self(type: "publish_note", content: content, replyTo: replyTo)
+    }
+
+    static func publishProfile(name: String, about: String, picture: String) -> Self {
+        Self(type: "publish_profile", name: name, about: about, picture: picture)
+    }
+
+    static func repost(eventID: String, authorPubkey: String) -> Self {
+        Self(type: "repost", eventID: eventID, authorPubkey: authorPubkey)
+    }
+
+    static func react(eventID: String, reaction: String) -> Self {
+        Self(type: "react", eventID: eventID, reaction: reaction)
+    }
+
+    static func follow(pubkey: String) -> Self {
+        Self(type: "follow", pubkey: pubkey)
+    }
+
+    static func unfollow(pubkey: String) -> Self {
+        Self(type: "unfollow", pubkey: pubkey)
+    }
+
+    static func zap(
+        targetEventID: String,
+        recipientPubkey: String,
+        amountMsats: UInt64,
+        lnurl: String,
+        comment: String?
+    ) -> Self {
+        Self(
+            type: "zap",
+            targetEventID: targetEventID,
+            recipientPubkey: recipientPubkey,
+            amountMsats: amountMsats,
+            lnurl: lnurl,
+            comment: comment
+        )
+    }
+
+    static func sendDm(recipientPubkey: String, content: String, replyTo: String?) -> Self {
+        Self(
+            type: "send_dm",
+            content: content,
+            dmReplyTo: replyTo,
+            recipientPubkey: recipientPubkey
+        )
+    }
+
+    private init(
+        type: String,
+        content: String? = nil,
+        replyTo: ChirpReplyTarget? = nil,
+        replyToEventID: String? = nil,
+        dmReplyTo: String? = nil,
+        name: String? = nil,
+        about: String? = nil,
+        picture: String? = nil,
+        eventID: String? = nil,
+        authorPubkey: String? = nil,
+        reaction: String? = nil,
+        pubkey: String? = nil,
+        targetEventID: String? = nil,
+        recipientPubkey: String? = nil,
+        amountMsats: UInt64? = nil,
+        lnurl: String? = nil,
+        comment: String? = nil
+    ) {
+        self.type = type
+        self.content = content
+        self.replyTo = replyTo
+        self.replyToEventID = replyToEventID
+        self.dmReplyTo = dmReplyTo
+        self.name = name
+        self.about = about
+        self.picture = picture
+        self.eventID = eventID
+        self.authorPubkey = authorPubkey
+        self.reaction = reaction
+        self.pubkey = pubkey
+        self.targetEventID = targetEventID
+        self.recipientPubkey = recipientPubkey
+        self.amountMsats = amountMsats
+        self.lnurl = lnurl
+        self.comment = comment
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, content, name, about, picture, reaction, pubkey, lnurl, comment
+        case replyTo = "reply_to"
+        case replyToEventID = "reply_to_event_id"
+        case eventID = "event_id"
+        case authorPubkey = "author_pubkey"
+        case targetEventID = "target_event_id"
+        case recipientPubkey = "recipient_pubkey"
+        case amountMsats = "amount_msats"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(type, forKey: .type)
+        try c.encodeIfPresent(content, forKey: .content)
+        try c.encodeIfPresent(replyTo, forKey: .replyTo)
+        try c.encodeIfPresent(replyToEventID, forKey: .replyToEventID)
+        try c.encodeIfPresent(dmReplyTo, forKey: .replyTo)
+        try c.encodeIfPresent(name, forKey: .name)
+        try c.encodeIfPresent(about, forKey: .about)
+        try c.encodeIfPresent(picture, forKey: .picture)
+        try c.encodeIfPresent(eventID, forKey: .eventID)
+        try c.encodeIfPresent(authorPubkey, forKey: .authorPubkey)
+        try c.encodeIfPresent(reaction, forKey: .reaction)
+        try c.encodeIfPresent(pubkey, forKey: .pubkey)
+        try c.encodeIfPresent(targetEventID, forKey: .targetEventID)
+        try c.encodeIfPresent(recipientPubkey, forKey: .recipientPubkey)
+        try c.encodeIfPresent(amountMsats, forKey: .amountMsats)
+        try c.encodeIfPresent(lnurl, forKey: .lnurl)
+        try c.encodeIfPresent(comment, forKey: .comment)
+    }
+}
+
+private struct ChirpActionSpecEnvelope: Decodable {
+    let namespace: String?
+    let bodyJson: String?
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case namespace
+        case bodyJson = "body_json"
+        case error
+    }
+}
+
 /// Thin C-FFI wrapper around the `nmp_core` static library.
 final class KernelHandle {
     let raw: UnsafeMutableRawPointer
@@ -326,17 +510,14 @@ final class KernelHandle {
 
     /// Publish a kind:0 profile metadata event for the active account through
     /// the kernel's `ActionModule` family. Routes via the single
-    /// namespace-keyed `nmp_app_dispatch_action` entry point (`"nmp.publish"`
-    /// namespace, `PublishAction::PublishProfile` JSON) — the kind:0 event,
-    /// its `created_at` stamp, and signing are all owned by Rust (thin-shell
-    /// rule: zero protocol logic in Swift). PR-A: returns the synchronous
+    /// namespace-keyed `nmp_app_dispatch_action` entry point. Swift supplies
+    /// profile fields only; Rust builds the action JSON, kind:0 event,
+    /// `created_at` stamp, and signature. PR-A: returns the synchronous
     /// dispatch result so the caller can drive a spinner keyed on the
     /// correlation_id (or surface the error envelope to the user).
     @discardableResult
-    func publishProfile(profile: [String: String]) -> DispatchResult {
-        dispatchAction(
-            namespace: "nmp.publish",
-            body: ["PublishProfile": ["fields": profile]])
+    func publishProfile(name: String, about: String, picture: String) -> DispatchResult {
+        dispatchChirpIntent(.publishProfile(name: name, about: about, picture: picture))
     }
 
     func switchActive(identityID: String) {
@@ -348,47 +529,24 @@ final class KernelHandle {
     }
 
     /// Publish a kind:1 note (optionally a reply) through the kernel's
-    /// `ActionModule` family. Routes via the single namespace-keyed
-    /// `nmp_app_dispatch_action` entry point (`"nmp.publish"` namespace,
-    /// `PublishAction::PublishRaw` JSON, kind:1) — the kind-specific
-    /// `PublishAction::PublishNote` variant was deleted in #916, so the host
-    /// now constructs the kind:1 envelope (and any NIP-10 reply tags) itself.
+    /// `ActionModule` family. Swift supplies compose input only; Rust builds
+    /// the `nmp.publish` action spec, `PublishRaw` body, and any NIP-10 tags.
     /// PR-A: returns the synchronous dispatch result so the caller can drive a
     /// spinner keyed on the correlation_id (or surface the error envelope to the
     /// user). The terminal verdict arrives through
     /// `projections["action_results"]` on a later snapshot tick — match by
     /// `correlation_id` to clear the spinner.
     ///
-    /// Reply tagging: a minimal NIP-10 `["e", <id>, "", "reply"]` marker is
-    /// emitted for replies. Full NIP-10 root forwarding needs the parent event
-    /// from the snapshot (`nmp-nip01`'s `Note::reply_to` is the reference) and
-    /// is a follow-up; the minimal reply marker is correct for now.
     @discardableResult
-    func publishNote(content: String, replyToID: String?) -> DispatchResult {
-        var tags: [[String]] = []
-        if let replyToID {
-            tags = [["e", replyToID, "", "reply"]]
-        }
-        let inner: [String: Any] = [
-            "kind": 1,
-            "tags": tags,
-            "content": content,
-            "target": "Auto",
-        ]
-        return dispatchAction(namespace: "nmp.publish", body: ["PublishRaw": inner])
+    func publishNote(content: String, replyTo: ChirpReplyTarget?) -> DispatchResult {
+        dispatchChirpIntent(.publishNote(content: content, replyTo: replyTo))
     }
 
     /// Publish a kind:6 repost of the given note through `PublishRaw`.
     /// NIP-18: tags `["e", eventID]` and `["p", authorPubkey]`, empty content.
     @discardableResult
     func repost(eventID: String, authorPubkey: String) -> DispatchResult {
-        let inner: [String: Any] = [
-            "kind": 6,
-            "tags": [["e", eventID], ["p", authorPubkey]],
-            "content": "",
-            "target": "Auto",
-        ]
-        return dispatchAction(namespace: "nmp.publish", body: ["PublishRaw": inner])
+        dispatchChirpIntent(.repost(eventID: eventID, authorPubkey: authorPubkey))
     }
 
     func retryPublish(handle: String) {
@@ -399,10 +557,11 @@ final class KernelHandle {
         handle.withCString { nmp_app_cancel_publish(raw, $0) }
     }
 
-    /// Dispatch a Chirp social-verb action through the generic
-    /// `nmp_app_dispatch_action` path. `namespace` is one of `nmp.nip25.react` /
-    /// `nmp.follow` / `nmp.unfollow` — registered by `nmp-app-chirp` at
-    /// `nmp_app_chirp_register` time. `body` is the action JSON object.
+    /// Dispatch an already-authored JSON action through the generic
+    /// `nmp_app_dispatch_action` path. Common Chirp social/write actions use
+    /// `dispatchChirpIntent` so Rust owns the protocol envelope; this helper
+    /// remains for existing Rust-authored specs and action families that still
+    /// accept a small host DTO.
     ///
     /// PR-A: returns a `DispatchResult` parsed from the Rust-supplied JSON
     /// envelope so a host can drive a spinner keyed on the synchronous
@@ -437,19 +596,17 @@ final class KernelHandle {
 
     @discardableResult
     func react(targetEventID: String, reaction: String) -> DispatchResult {
-        dispatchAction(
-            namespace: "nmp.nip25.react",
-            body: ["target_event_id": targetEventID, "reaction": reaction])
+        dispatchChirpIntent(.react(eventID: targetEventID, reaction: reaction))
     }
 
     @discardableResult
     func follow(pubkey: String) -> DispatchResult {
-        dispatchAction(namespace: "nmp.follow", body: ["pubkey": pubkey])
+        dispatchChirpIntent(.follow(pubkey: pubkey))
     }
 
     @discardableResult
     func unfollow(pubkey: String) -> DispatchResult {
-        dispatchAction(namespace: "nmp.unfollow", body: ["pubkey": pubkey])
+        dispatchChirpIntent(.unfollow(pubkey: pubkey))
     }
 
     /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
@@ -459,10 +616,8 @@ final class KernelHandle {
     /// without a second host round-trip. The shell never sees the bolt11
     /// or parses LNURL/kind:9734 — thin-shell rule (aim.md §6.9).
     ///
-    /// `lnurl` is the pre-extracted `authorLnurl` from the timeline item;
-    /// `relays` is the receiver's preferred-relay set (today: the active
-    /// account's read relays, falling back to `relay.damus.io` + `nos.lol`
-    /// when the snapshot's relay list is empty). PR-A: returns the
+    /// `lnurl` is the pre-extracted `authorLnurl` from the timeline item.
+    /// Relay selection stays kernel policy. PR-A: returns the
     /// synchronous dispatch envelope so the host can drive a spinner keyed
     /// on the minted correlation_id.
     @discardableResult
@@ -471,20 +626,60 @@ final class KernelHandle {
         authorPubkey: String,
         lnurl: String,
         amountMsats: UInt64,
-        relays: [String],
         comment: String? = nil
     ) -> DispatchResult {
-        var body: [String: Any] = [
-            "recipient_pubkey": authorPubkey,
-            "amount_msats": amountMsats,
-            "lnurl": lnurl,
-            "relays": relays,
-            "target_event_id": targetEventID,
-        ]
-        if let comment, !comment.isEmpty {
-            body["comment"] = comment
+        dispatchChirpIntent(.zap(
+            targetEventID: targetEventID,
+            recipientPubkey: authorPubkey,
+            amountMsats: amountMsats,
+            lnurl: lnurl,
+            comment: comment
+        ))
+    }
+
+    /// Build and dispatch a Chirp action spec authored by Rust.
+    ///
+    /// Swift owns only raw user intent. Rust returns the exact namespace and
+    /// body JSON to feed through `nmp_app_dispatch_action`.
+    @discardableResult
+    func dispatchChirpIntent(_ intent: ChirpActionIntent) -> DispatchResult {
+        let intentJson: String
+        do {
+            let data = try JSONEncoder().encode(intent)
+            guard let json = String(data: data, encoding: .utf8) else {
+                return .failure("failed to encode Chirp action intent as UTF-8")
+            }
+            intentJson = json
+        } catch {
+            return .failure("failed to encode Chirp action intent: \(error.localizedDescription)")
         }
-        return dispatchAction(namespace: "nmp.nip57.zap", body: body)
+        let specJson: String? = intentJson.withCString { intentPtr in
+            guard let ptr = nmp_app_chirp_action_spec(intentPtr) else {
+                return nil
+            }
+            defer { nmp_app_free_string(ptr) }
+            return String(cString: ptr)
+        }
+        guard let specJson else {
+            return .failure("action spec builder returned a null envelope")
+        }
+        let spec: ChirpActionSpecEnvelope
+        do {
+            guard let data = specJson.data(using: .utf8) else {
+                return .failure("action spec envelope was not UTF-8")
+            }
+            spec = try JSONDecoder().decode(ChirpActionSpecEnvelope.self, from: data)
+        } catch {
+            return .failure("failed to decode action spec envelope: \(error.localizedDescription)")
+        }
+        if let error = spec.error {
+            return .failure(error)
+        }
+        guard let namespace = spec.namespace, let bodyJson = spec.bodyJson,
+              !namespace.isEmpty, !bodyJson.isEmpty else {
+            return .failure("action spec envelope missing dispatch fields")
+        }
+        return dispatchRawAction(namespace: namespace, bodyJson: bodyJson)
     }
 
     /// Generic dispatch entry-point keyed on a kernel-supplied

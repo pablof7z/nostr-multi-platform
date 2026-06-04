@@ -373,6 +373,10 @@ void nmp_broker_free_string(char *ptr);
 void *nmp_app_chirp_register(void *app, const char *viewer_pubkey_or_null);
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 void nmp_app_chirp_register_dm_inbox(void *app);
+// Build a Rust-authored Chirp action dispatch spec from typed user intent JSON.
+// Returns {"namespace":"...","body_json":"..."} or {"error":"..."}; free with
+// nmp_app_free_string.
+char *nmp_app_chirp_action_spec(const char *intent_json);
 void nmp_app_chirp_unregister(void *handle);
 
 // ── M2 per-open flat author / thread feeds (ADR-0042 §5.1, V-112) ─────────

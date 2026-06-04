@@ -496,10 +496,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     @discardableResult
     func publishProfile(name: String, about: String, picture: String) -> DispatchResult {
-        var profile: [String: String] = ["name": name]
-        if !about.isEmpty { profile["about"] = about }
-        if !picture.isEmpty { profile["picture"] = picture }
-        return track(kernel.publishProfile(profile: profile))
+        return track(kernel.publishProfile(name: name, about: about, picture: picture))
     }
 
     func switchActive(_ identityID: String) {
@@ -512,8 +509,8 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
 
     @discardableResult
-    func publishNote(_ content: String, replyToID: String? = nil) -> DispatchResult {
-        track(kernel.publishNote(content: content, replyToID: replyToID))
+    func publishNote(_ content: String, replyTo: ChirpReplyTarget? = nil) -> DispatchResult {
+        track(kernel.publishNote(content: content, replyTo: replyTo))
     }
 
     func retryPublish(handle: String) { kernel.retryPublish(handle: handle) }
@@ -574,7 +571,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 authorPubkey: authorPubkey,
                 lnurl: lnurl,
                 amountMsats: amountMsats,
-                relays: [],
                 comment: comment
             )
         )

@@ -27,7 +27,9 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jbyteArray, jint, jlong};
 use jni::JNIEnv;
 
-use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
+use nmp_app_chirp::{
+    action_spec_json_for_intent, nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle,
+};
 
 // Marmot (MLS-over-Nostr) JNI entry points + symbol-retention glue live in their
 // own module to keep this transport file cohesive (and off the file-size
@@ -35,12 +37,11 @@ use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandl
 // nesting.
 mod marmot;
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
-    nmp_app_dispatch_action, nmp_app_free,
-    nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
-    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account,
-    nmp_app_remove_relay, nmp_app_set_update_callback, nmp_app_signin_nsec,
-    nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_dispatch_action,
+    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
+    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
+    nmp_app_switch_active, NmpApp,
 };
 
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
@@ -156,10 +157,8 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
     //   relays_json  = [["url","role"],…]  (Vec<(String,String)> serde shape)
     let profile_json = format!(r#"{{"name":"{}"}}"#, name.replace('"', ""));
     let relays_json = default_chirp_relays_json_array();
-    let (Ok(profile_c), Ok(relays_c)) = (
-        CString::new(profile_json),
-        CString::new(relays_json),
-    ) else {
+    let (Ok(profile_c), Ok(relays_c)) = (CString::new(profile_json), CString::new(relays_json))
+    else {
         return;
     };
     nmp_app_create_new_account(s.app, profile_c.as_ptr(), relays_c.as_ptr(), false, 1);
@@ -349,6 +348,34 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
 
     // Return as jstring.
     env.new_string(&result_str)
+        .unwrap_or_else(|_| env.new_string("{}").unwrap())
+        .into_raw()
+}
+
+/// Build a Chirp action dispatch spec from typed user intent.
+///
+/// Kotlin passes user intent only. Rust owns the action namespace and body JSON
+/// shape returned as `{"namespace":"...","body_json":"..."}` or
+/// `{"error":"..."}`.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeBuildActionSpec(
+    mut env: JNIEnv,
+    _class: JClass,
+    intent_json: JString,
+) -> jni::sys::jstring {
+    let Some(intent) = env
+        .get_string(&intent_json)
+        .map(|s| s.to_string_lossy().into_owned())
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+    else {
+        return env
+            .new_string(r#"{"error":"missing Chirp action intent JSON"}"#)
+            .unwrap_or_else(|_| env.new_string("{}").unwrap())
+            .into_raw();
+    };
+    let result = action_spec_json_for_intent(&intent);
+    env.new_string(&result)
         .unwrap_or_else(|_| env.new_string("{}").unwrap())
         .into_raw()
 }
@@ -557,4 +584,3 @@ fn seed_chirp_reference_relays(app: *mut NmpApp) {
         nmp_app_add_relay(app, url.as_ptr(), role.as_ptr());
     }
 }
-

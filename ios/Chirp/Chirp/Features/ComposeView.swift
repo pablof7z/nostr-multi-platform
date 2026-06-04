@@ -2,26 +2,20 @@ import SwiftUI
 
 // OWNER: Phase-2 Agent C (Compose sheet). Presented as a sheet from
 // HomeFeedView / NoteRowView. Supports ComposeView() and
-// ComposeView(replyToID: "abc", replyToShortID: "abcdef12…34567890").
-//
-// `replyToShortID` is the presentation abbreviation computed from the raw
-// event id at the call site. The publish path still receives the raw 64-char
-// hex `replyToID`; only the banner caption uses the short form.
+// ComposeView(replyTo: ChirpReplyTarget(item: item)).
 
 struct ComposeView: View {
     @EnvironmentObject private var model: KernelModel
     @Environment(\.dismiss) private var dismiss
 
-    var replyToID: String? = nil
-    /// Presentation abbreviation rendered in the reply banner.
-    var replyToShortID: String? = nil
+    var replyTo: ChirpReplyTarget? = nil
 
     @State private var text = ""
     @FocusState private var editorFocused: Bool
 
     private let characterLimit = 280
 
-    private var isReply: Bool { replyToID != nil }
+    private var isReply: Bool { replyTo != nil }
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var isEmpty: Bool { trimmed.isEmpty }
     private var charCount: Int { text.count }
@@ -34,8 +28,8 @@ struct ComposeView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                if replyToID != nil {
-                    replyBanner(shortID: replyToShortID ?? "")
+                if let replyTo {
+                    replyBanner(shortID: replyTo.eventID.shortHex)
                 }
 
                 composeRow
@@ -137,9 +131,6 @@ struct ComposeView: View {
 
             Spacer()
 
-            // Empty string when the caller did not pass `replyToShortID`
-            // (older call sites or a raw-id reply path that has not been
-            // migrated yet).
             Text(shortID)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
@@ -153,7 +144,7 @@ struct ComposeView: View {
     }
 
     private func submit() {
-        model.publishNote(trimmed, replyToID: replyToID)
+        model.publishNote(trimmed, replyTo: replyTo)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
     }

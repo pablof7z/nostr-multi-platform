@@ -123,7 +123,7 @@ struct NoteRowView: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showReply) {
-            ComposeView(replyToID: item.id, replyToShortID: item.id.shortHex)
+            ComposeView(replyTo: ChirpReplyTarget(item: item))
         }
         .onAppear { model.claimVisibleNoteRelations(eventID: item.id) }
         .onDisappear { model.releaseVisibleNoteRelations(eventID: item.id) }

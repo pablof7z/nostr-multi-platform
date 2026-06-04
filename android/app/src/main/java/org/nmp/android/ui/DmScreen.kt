@@ -314,8 +314,7 @@ private fun DmConversationView(
                         // Fire-and-forget: dispatch nmp.nip17.send action.
                         // The sent message reappears through the next snapshot tick
                         // (the actor gift-wraps a self-copy to the sender).
-                        val actionJson = """{"recipient_pubkey":"$peerPubkey","content":"${escapeJson(trimmed)}"}"""
-                        model.dispatchAction("nmp.nip17.send", actionJson)
+                        model.sendDm(peerPubkey, trimmed)
                         draftMessage = ""
                     }
                 },
@@ -454,18 +453,6 @@ private fun formatRelativeTime(createdAtSeconds: Long): String {
         deltaSecs < 86_400 -> "${deltaSecs / 3_600}h ago"
         else -> "${deltaSecs / 86_400}d ago"
     }
-}
-
-/**
- * Escape special JSON characters in a string.
- * Mirrors [KernelModel.escapeJson].
- */
-private fun escapeJson(s: String): String {
-    return s.replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
 }
 
 /**

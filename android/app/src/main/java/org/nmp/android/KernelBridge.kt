@@ -87,6 +87,15 @@ class KernelBridge {
         if (handle != 0L) nativeDispatchAction(handle, namespace, actionJson) else "{}"
 
     /**
+     * Build a Chirp action dispatch spec from typed user intent.
+     *
+     * Returns `{"namespace":"...","body_json":"..."}` on success or
+     * `{"error":"..."}` on malformed intent. Kotlin passes user input only;
+     * Rust owns the action envelope and namespace.
+     */
+    fun buildActionSpec(intentJson: String): String = nativeBuildActionSpec(intentJson)
+
+    /**
      * Open a thread by note ID. The kernel batches a corresponding
      * kind:1 REQ and opens the thread timeline for rendering.
      *
@@ -195,6 +204,7 @@ class KernelBridge {
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
+    private external fun nativeBuildActionSpec(intentJson: String): String
     private external fun nativeOpenThread(handle: Long, noteId: String)
     private external fun nativeOpenAuthor(handle: Long, pubkey: String)
     private external fun nativeAddRelay(handle: Long, url: String, role: String)

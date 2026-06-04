@@ -51,6 +51,7 @@ mod identity;
 mod interest_feed;
 mod register;
 mod snapshot;
+mod typed_actions;
 
 #[cfg(test)]
 mod tests;
@@ -70,3 +71,4 @@ pub use register::{
     nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
 };
 pub use snapshot::nmp_app_chirp_unregister;
+pub use typed_actions::nmp_app_chirp_action_spec;

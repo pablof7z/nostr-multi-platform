@@ -80,17 +80,13 @@ fn dispatch_zap_amount(value: &str, state: &mut AppState, runtime: &AppRuntime) 
             return;
         }
     };
-    let mut body = serde_json::json!({
-        "recipient_pubkey": pubkey,
-        "amount_msats": sats * 1000,
-    });
-    if let Some(id) = event_id {
-        body["target_event_id"] = serde_json::Value::String(id);
-    }
-    if !comment.is_empty() {
-        body["comment"] = serde_json::Value::String(comment.to_string());
-    }
-    match runtime.zap(&body) {
+    match runtime.zap(
+        &pubkey,
+        sats * 1000,
+        event_id.as_deref(),
+        (!comment.is_empty()).then_some(comment),
+        None,
+    ) {
         Ok(cid) => {
             state.track_action(cid, &format!("zap {sats} sat"));
         }
