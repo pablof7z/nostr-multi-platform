@@ -1,4 +1,4 @@
-//! W2 — `Kernel::flush_relay_scores_if_dirty`
+//! `Kernel::flush_relay_scores_if_dirty`
 //!
 //! Drains the in-memory `RelayAuthorScoreMap` into the injected
 //! `RelayAuthorScoreStore` when the map is dirty.
@@ -9,15 +9,15 @@
 //!   across the FFI boundary.
 //! - D8: the flush is gated by `relay_score_map.dirty`; a clean map is a
 //!   no-op O(1) check.
-//! - §8.9: keys use `[32 pubkey bytes][1 byte URL-len u8][N URL bytes]`;
+//! - Keys use `[32 pubkey bytes][1 byte URL-len u8][N URL bytes]`;
 //!   URLs >255 bytes are skipped with `tracing::warn!`.
-//! - §8.10: URLs are canonicalized via `CanonicalRelayUrl::parse_or_raw`
+//! - URLs are canonicalized via `CanonicalRelayUrl::parse_or_raw`
 //!   *before* reaching the store layer.
 
 impl super::Kernel {
     /// Flush dirty score cells to the injected `RelayAuthorScoreStore`.
     ///
-    /// Called on actor idle (W2 §8.7). No-op when the map is clean or when no
+    /// Called on actor idle. No-op when the map is clean or when no
     /// store has been injected. On store error: logs + returns without marking
     /// clean so the next idle cycle retries.
     pub fn flush_relay_scores_if_dirty(&mut self) {
@@ -32,9 +32,9 @@ impl super::Kernel {
             .snapshot()
             .into_iter()
             .filter_map(|(pk, url, score)| {
-                // §8.10 — canonicalize before keying.
+                // Canonicalize before keying.
                 let canon_url = crate::relay::CanonicalRelayUrl::parse_or_raw(&url).into_string();
-                // §8.9 / §W2 E12 — reject URLs > 255 bytes.
+                // Reject URLs > 255 bytes.
                 if canon_url.len() > 255 {
                     tracing::warn!(
                         relay_url = %canon_url,
@@ -113,7 +113,7 @@ mod tests {
         (k, calls)
     }
 
-    /// §W2 T3 — flush is a no-op when the map has never been written to.
+    /// Flush is a no-op when the map has never been written to.
     ///
     /// With a fresh `RelayAuthorScoreMap` (dirty = false) the flush must not
     /// call `put_batch` at all.
@@ -129,11 +129,11 @@ mod tests {
         );
     }
 
-    /// §W2 T4 — canonicalization consolidates trailing-slash and no-slash
+    /// Canonicalization consolidates trailing-slash and no-slash
     /// variant to one cell.
     ///
     /// `wss://r.example.com/` and `wss://r.example.com` both canonicalize to
-    /// `wss://r.example.com` (§8.10 strip-trailing-slash rule). Writing via
+    /// `wss://r.example.com` (strip-trailing-slash rule). Writing via
     /// both spellings results in one score cell.
     #[test]
     fn canonicalization_consolidates_trailing_slash_to_one_cell() {

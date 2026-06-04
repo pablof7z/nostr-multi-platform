@@ -74,7 +74,7 @@ planner module doc (`crates/nmp-core/src/planner/mod.rs:18-25`): construct
 this (`crates/nmp-core/src/subs/mod.rs:100-114` — `InMemoryMailboxCache::new()`,
 `indexer_relays = ["wss://purplepag.es"]`). M3 swaps the trait impl for an
 LMDB-backed one; the compiler never knows the backend
-(`docs/design/subscription-compilation/nip65.md` §6.3).
+(`docs/design/subscription-compilation/router.md`).
 
 The write direction is the `PublishPlanner` trait
 (`docs/design/subscription-compilation/outbox.md` §7.1). Its default impl

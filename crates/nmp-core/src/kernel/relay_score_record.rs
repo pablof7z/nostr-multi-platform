@@ -1,11 +1,11 @@
-//! W3: score-update seam — translates accepted claim-expansion outcomes
+//! Score-update seam — translates accepted claim-expansion outcomes
 //! (matching EVENT = Hit, EOSE-without-match = EoseNoMatch, relay_failed =
 //! Failed) into score deltas via `relay_score::ClaimOutcome`.
 //!
 //! [`Kernel::record_claim_outcome`] is the single, typed entry point.
 //! It converts the kernel's injected wall-clock to a `now_unix_s: u64`,
 //! delegates to [`relay_score::RelayAuthorScoreMap::record`] (which
-//! applies the §8.5 delta table and sets the dirty flag), and emits a
+//! applies the scoring contract and sets the dirty flag), and emits a
 //! `WireLogEvent::ScoreUpdate` when `NMP_CLAIM_LOG` is set.
 
 use super::{
@@ -211,11 +211,11 @@ mod tests {
 
         assert_eq!(
             cell_after_hit.successes, cell_after_eose.successes,
-            "EoseNoMatch must not change successes (§8.5)"
+            "EoseNoMatch must not change successes"
         );
         assert_eq!(
             cell_after_hit.failures, cell_after_eose.failures,
-            "EoseNoMatch must not change failures (§8.5)"
+            "EoseNoMatch must not change failures"
         );
     }
 
@@ -226,7 +226,7 @@ mod tests {
 
         let cell = kernel.get_relay_score("alice", "wss://r.test");
         assert_eq!(cell.successes, 0, "Failed must not touch successes");
-        assert_eq!(cell.failures, 3, "Failed must add 3 to failures (§8.5)");
+        assert_eq!(cell.failures, 3, "Failed must add 3 to failures");
     }
 
     #[test]

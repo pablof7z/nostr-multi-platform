@@ -1,18 +1,24 @@
 # Relay-Search-Radius Expansion for OneshotApi Event Fetches
 
-**Status**: WIP product spec — no code yet. Anchors PR for issue [#632](https://github.com/pablof7z/nostr-multi-platform/issues/632).
+**Status**: Accepted product behavior for `claim_event` relay-search expansion.
+Implementation anchors live in `crates/nmp-core/src/kernel/claim_expansion*.rs`,
+`crates/nmp-core/src/kernel/relay_score*.rs`, and the
+`relay_search_radius_*` integration tests in `crates/nmp-testing/tests/`.
 
 **Scope**: The OneshotApi event-fetch path that backs `nmp_app_claim_event(uri)` (the renderer's "I have a `nostr:` URI, get me the event" entry point). All other OneshotApi shapes (profile claims, thread hydration) are explicitly out-of-scope for this iteration — see §11.
 
 **Doctrines**: D0 (substrate purity in `nmp-core`), D4 (`InterestRegistry` is the single writer), D6 (no panics across FFI), D8 (no polling — every score update is edge-triggered).
 
-This document is the product spec. The implementation plan and the independent review are separate documents (`relay-search-radius-impl-plan.md`, `relay-search-radius-review.md`) produced in Phase 2.
+This document is the durable product/design contract. Implementation plans and
+review notes are temporal artifacts and must not be committed as reference docs.
 
 ---
 
 ## 1. Problem statement
 
-When the renderer triggers `nmp_app_claim_event(uri)` for an embedded event (e.g. a `nostr:naddr1…` article in note content), the planner currently routes the OneshotApi REQ to:
+When the renderer triggers `nmp_app_claim_event(uri)` for an embedded event
+(e.g. a `nostr:naddr1…` article in note content), the warm request path starts
+with:
 
 1. The configured `app_relays` (operator-pinned, additive — protected against selector pruning in [`680666a0`](https://github.com/pablof7z/nostr-multi-platform/commit/680666a0)).
 2. The author's NIP-65 outbox relays, **capped at `max_per_user = 2`** by the greedy max-coverage selector in `crates/nmp-planner/src/selection.rs`.
@@ -51,9 +57,9 @@ The user has no recovery path short of an operator manually adding another relay
 
 ## 3. Acceptance criteria
 
-Numbered for traceability into Agent A's workstream test plan and Phase 3 integration tests.
+Numbered for traceability into the relay-search-radius integration tests.
 
-**A1.** From a cold gallery TUI launched against `app_relays = [purplepag.es]` only — no Primal, no Gigi-relay — claiming Gigi's article (`naddr1…the-internet-left-me`) resolves within ~5 s, verified by reading `NMP_WIRE_LOG`. The wire log must show:
+**A1.** From a cold gallery TUI launched against `app_relays = [purplepag.es]` only — no Primal, no Gigi-relay — claiming Gigi's article (`naddr1…the-internet-left-me`) resolves within ~5 s, verified by reading `NMP_CLAIM_LOG`. The claim log must show:
 
 1. An initial REQ to `purplepag.es` (Phase 1).
 2. A subsequent REQ to ≥1 NIP-65 outbox relay of Gigi's not in app_relays (Phase 2).
@@ -73,7 +79,8 @@ Numbered for traceability into Agent A's workstream test plan and Phase 3 integr
 
 ## 4. Three-phase behaviour
 
-The behaviour is broken into **three phases per claim**, plus a **persistence/learning loop** that bridges across claims. Phase numbers here are claim-internal; do not confuse them with the project's three-phase delivery process (spec / design / implement) from issue #632.
+The behaviour is broken into **three phases per claim**, plus a
+**persistence/learning loop** that bridges across claims.
 
 ```text
 Claim arrives → Phase 1 (warm) → [event found?] → done
@@ -90,19 +97,27 @@ Claim arrives → Phase 1 (warm) → [event found?] → done
 - All `app_relays` (operator-pinned; never pruned by the selector — invariant from `680666a0`).
 - The author's NIP-65 outbox, **filtered to "preferred"**:
   - Already-connected (no socket-open cost), **OR**
-  - Score ≥ `WARM_THRESHOLD` (see §7 — exact value TBD by Agent A).
+- Score ≥ `WARM_THRESHOLD` (0.40; source of truth:
+  `crates/nmp-core/src/kernel/relay_score.rs`).
 - If the author has no NIP-65 yet (we haven't seen kind:10002), fall back to `app_relays` only and pre-emptively kick off a NIP-65 fetch for the author. (This already happens via `collect_unknown_refs` indirectly; the spec just notes the dependency.)
 
 **Outcome that advances the phase**:
 
 - **Hit** (EVENT frame matches the claim's filter): the OneshotApi token completes via `complete_unknown_oneshot`. **Score update**: increment `(author, R)` for the relay R that delivered. **Stop.** Other Phase 1 relays may still EOSE; their entries get a *neutral* `seen-but-didn't-deliver` outcome — neither incremented nor decremented (the event might genuinely not be on R; we can't tell whether R is bad or just doesn't have this specific event).
-- **EOSE-without-match from every Phase 1 relay**: advance to Phase 2. Each EOSE-without-match decrements the corresponding `(author, R)` by a small amount (less than the increment for a hit) — see §7.
-- **Phase 1 wall-clock budget elapsed** (default proposal: 1.5 s — TBD by Agent A): advance to Phase 2 even if some Phase 1 relays are still pending. Pending relays continue running in parallel; their later outcomes still feed the score table.
+- **EOSE-without-match from every Phase 1 relay**: advance to Phase 2.
+  EOSE-without-match is neutral for scoring; it records recency but does not
+  increment success or failure counters.
+- **Phase 1 wall-clock budget elapsed**
+  (`PHASE_1_BUDGET_MS = 1500`): advance to Phase 2 even if some Phase 1 relays
+  are still pending. Pending relays continue running in parallel; their later
+  outcomes still feed the score table.
 
 **Edge cases handled in Phase 1**
 
 - *Phase 1 relay accepts the REQ but never EOSE's.* D8 forbids polling. We use the actor's existing wall-clock-gated observer (the one driving `drain_lifecycle_tick`) to fire a `PhaseTimeout` event when the Phase 1 budget elapses. No `sleep` loop.
-- *Phase 1 relay declared unreachable* (worker reports `FailedAfterRetries`): the relay leaves the Phase 1 set; if the set is now empty before the budget elapses, advance to Phase 2 immediately. Score update: large decrement for `(author, R)`.
+- *Phase 1 relay declared unreachable* (`Kernel::relay_failed`): the relay
+  leaves the Phase 1 set; if the set is now empty before the budget elapses,
+  advance to Phase 2 immediately. Score update: `ClaimOutcome::Failed`.
 - *No NIP-65 known, no app_relays configured*: claim immediately fails (cannot search; surfaced via `claim_state = exhausted`). Operator configuration error.
 
 ### 4.2 Phase 2 — radius expansion
@@ -113,15 +128,20 @@ Claim arrives → Phase 1 (warm) → [event found?] → done
 
 **Ordering within Phase 2**: relays are tried in descending `(author, R)` score, ties broken by lex-DESC URL (matches the planner selector tiebreak). This gives "best unused option first" without committing to opening all of them at once.
 
-**Concurrency cap per claim**: at most `MAX_EXPANSION_CONCURRENCY` (proposal: 3 — TBD by Agent A) additional REQs in flight simultaneously, to avoid a connection storm for a single claim.
+**Concurrency cap per claim**: at most `MAX_EXPANSION_CONCURRENCY = 3`
+additional REQs in flight simultaneously, to avoid a connection storm for a
+single claim.
 
 **Outcome that advances the phase**:
 
 - **Hit** on any Phase 2 relay: complete the oneshot. Score update: large increment on the delivering `(author, R)`, neutral on still-pending Phase 2 relays whose REQs we then CLOSE.
-- **EOSE-without-match** on a Phase 2 relay: small decrement on `(author, R)`, slot freed for the next unseen relay (descending score order).
+- **EOSE-without-match** on a Phase 2 relay: neutral score outcome; the slot is
+  freed for the next unseen relay (descending score order).
 - **Unreachable / failed**: large decrement on `(author, R)`. Slot freed.
 - **All outbox relays exhausted with no match**: the oneshot enters the *terminal-exhausted* state. We do NOT keep retrying. The renderer is notified via the existing oneshot completion path (the event will simply not be in the store; the renderer's existing "loading" → "not found" transition is preserved). Score update: nothing new — every relay that contributed an EOSE/fail was already scored.
-- **Per-claim wall-clock budget elapsed** (proposal: 8 s total from claim arrival — TBD by Agent A): like exhausted, but distinguished in diagnostics. Pending Phase 2 REQs are CLOSE'd. *Open question:* do we let pending Phase 2 REQs run to completion in the background after the user-visible budget expires (so their scores still update)? Recommend yes; see §7.
+- **Per-claim wall-clock budget elapsed**
+  (`PER_CLAIM_TOTAL_BUDGET_MS = 8000`): terminate the tracked claim as
+  `Budget`, distinct from `Exhausted` diagnostics.
 
 ### 4.3 Phase 3 — score writeback
 
@@ -129,36 +149,39 @@ Claim arrives → Phase 1 (warm) → [event found?] → done
 
 **Behaviour**: edge-triggered (D8). The kernel actor — the sole writer (D4) — applies a score delta to the `(author, relay)` cell. The store-layer write is buffered in-memory and flushed on actor idle (LMDB transaction batching; see §8) — no per-frame fsync.
 
-The exact delta function is an open question listed in §7 and is for Agent A to resolve.
+The delta function is owned by `ClaimOutcome` in
+`crates/nmp-core/src/kernel/relay_score.rs`: hit increments successes,
+EOSE-without-match is neutral, and relay failure increments failures.
 
 ---
 
-## 5. Edge cases (must be addressed by impl plan)
+## 5. Edge Cases
 
 | # | Case | Resolution |
 |---|---|---|
-| E1 | Relay unreachable mid-claim, after returning some EVENT frames but before EOSE | Treat as Phase advancement event: the EVENT count to date is preserved (those events are persisted to the store and the renderer sees them), but the relay is scored as `Failed` (the outcome `Kernel::relay_failed` records — see impl plan §8.1 retarget; the earlier "FailedAfterRetries" name was publish-engine terminology and did not apply here) for the current claim. |
+| E1 | Relay unreachable mid-claim, after returning some EVENT frames but before EOSE | Treat as Phase advancement event: the EVENT count to date is preserved (those events are persisted to the store and the renderer sees them), but the relay is scored as `Failed` through `Kernel::relay_failed`. |
 | E2 | EOSE arrives before the relay's WebSocket is fully open (out-of-order frame from a buffering worker) | Cannot occur: EOSE is keyed on `sub_id`, which doesn't exist until the REQ is sent. The relay_worker invariant from `nmp-network` already prevents this; spec notes it for traceability. |
 | E3 | Simultaneous claims for two different events authored by the same author | Registry dedup is keyed on `(scope, shape)`. Different `event_ids` ⇒ different shapes ⇒ no dedup. The two claims run independent Phase 1/2 budgets. Score writes are serialized by the kernel actor (D4), so the second claim's Phase 1 sees scores updated by the first claim's Phase 1 only if those writes have been applied before the second claim's compile pass — by D4 single-writer this is well-ordered. |
 | E4 | Simultaneous claims for the *same* event (same `event_ids` filter) | Registry dedups ⇒ one wire REQ, both oneshot tokens complete on the same EOSE/EVENT. Already handled by the existing OneshotApi dedup tests; no new code path needed. |
-| E5 | Score decay over time | *Open question* — Agent A picks decay model from the candidates in §7. Without decay, a relay that was great a year ago but is now down would stay warm forever, defeating the learning. |
+| E5 | Score decay over time | Scores use exponential age decay with a 14-day half-life. Without decay, a relay that was great a year ago but is now down would stay warm forever, defeating the learning. |
 | E6 | Score reset on schema change | The store schema has a version field; bumping it on a schema-incompatible change invalidates all score rows (drop and recreate the table). This is a one-time event (schema bumps are rare and intentional); no graceful migration is required. |
 | E7 | Operator removes a relay from `app_relays` after some claims have run | Scores for `(author, that-relay)` persist — the relay can still be picked in Phase 1 via the "already-connected or score ≥ threshold" rule. If the operator wants to forget, scores are *passively* aged out by the decay model. |
 | E8 | Author publishes a new NIP-65 list reducing their outbox | Old outbox relays in the score table that are no longer in NIP-65 are *not* automatically purged. They remain candidates if connected; otherwise they are simply never tried (Phase 2 only walks the *current* NIP-65 set). Their stale scores age out via decay. |
 | E9 | `app_relays` is empty AND no NIP-65 for the author | Claim immediately terminates as exhausted (see §4.1). Renderer's loading state ends. |
 | E10 | Two events authored by the same author land via different `(scope, shape)` paths concurrently — e.g. one via discovery `event_ids`, one via addressable `authors+kinds+d_tags` | Both are independent oneshots; both update scores for the same `(author, relay)` cells. Last-write-wins under D4 single-writer; the actor serializes writes. No lost update. |
 | E11 | A relay reports as connected but is silently dropping frames (zombie connection) | Out of scope at the protocol level (relay_worker already detects this via NIP-42 heartbeat / write-failure detection). Phase 2 would still kick in via the wall-clock budget. |
-| E12 | Author has a kind:10002 outbox but it lists zero `r` write-relays (empty NIP-65) | Phase 2 has no expansion candidates. Treat the claim as exhausted immediately after Phase 1 EOSE-without-match — do not spin or retry. Scoring impact: Phase 1 EoseNoMatches are *neutral* per §7's revised delta table (no demerit for a relay that legitimately doesn't carry this event). Acceptance: claim resolves to `terminal-exhausted` within `PHASE_1_BUDGET_MS + epsilon`. Reviewer ref §C.E12. |
-| E13 | NIP-65 for the author arrives mid-claim — Phase 1 started against `app_relays` only (no outbox known), then the indexer hydrates kind:10002 before Phase 1 elapses | Build the Phase-2 candidate queue **lazily at Phase-2 entry**, not at claim registration. Reading `MailboxCache.write_relays` is cheap (one call). This means a freshly-arrived outbox is honoured on the same claim's Phase 2 instead of being missed until the next claim. Scoring impact: only Phase-2 outcomes update scores for the newly-discovered relays; the Phase-1 EOSE on `app_relays` is scored against `app_relays`, not the (then-unknown) outbox. Reviewer ref §C.E13. |
-| E14 | Relay-URL canonicalisation mismatch — a score row is written under `wss://relay.example.com/` (trailing slash) and read under `wss://relay.example.com` (no slash) | Both `record_claim_outcome` (write) and `is_warm` / `weight` (read) call `CanonicalRelayUrl::parse_or_raw` before keying the score map. Cell consolidation is by canonical form. Scoring impact: a single relay served under multiple textual forms scores as one cell, not many — preserves the "one author, one relay" invariant the score weight assumes. NIP-65 outbox entries (author-provided, not always canonical) and `app_relays` (operator-configured, usually canonical) both flow through the same canonicaliser. Reviewer ref §C.E14. |
-| E15 | A relay in the Phase 2 candidate list requires NIP-42 AUTH and the kernel has no key bound for it | **Deferred to follow-up issue, post-v1.** Today's AUTH gate (`crates/nmp-core/src/kernel/auth.rs`) parks the REQ until authenticated; the per-relay 5 s timeout would then implicitly demerit the relay as `Failed` even though the failure mode is "no key bound", not "relay is bad". Correct resolution (per reviewer §C.E15 recommendation): AUTH-pause excludes the relay from Phase 2 attribution and records a *neutral* score outcome — but wiring this requires touching the auth gate's pause semantics, which is out of scope for the first feature iteration. Tracked as v1-OOS in §11. |
-| E16 | Consumer calls `release_event` mid-Phase-2 — the user navigated away before the claim completed | Phase 2 in-flight REQs **continue** to completion in the background (matches §10 Q7's "background-complete after user budget = yes" rationale: the score-learning is worth the cost even when the user is gone). The OneshotApi token is released when the EOSE handler fires for the last in-flight Phase-2 sub; the renderer's loading state ends immediately on `release_event`. Scoring impact: Phase-2 outcomes still write scores even after the user-visible release, so the next claim for an event from the same author benefits from the learning. Reviewer ref §C.E16. |
+| E12 | Author has a kind:10002 outbox but it lists zero `r` write-relays (empty NIP-65) | Phase 2 has no expansion candidates. Treat the claim as exhausted immediately after Phase 1 EOSE-without-match — do not spin or retry. Scoring impact: Phase 1 EoseNoMatches are neutral (no demerit for a relay that legitimately doesn't carry this event). Acceptance: claim resolves to `terminal-exhausted` within `PHASE_1_BUDGET_MS + epsilon`. |
+| E13 | NIP-65 for the author arrives mid-claim — Phase 1 started against `app_relays` only (no outbox known), then the indexer hydrates kind:10002 before Phase 1 elapses | Build the Phase-2 candidate queue lazily at Phase-2 entry, not at claim registration. Reading `MailboxCache.write_relays` is cheap. This means a freshly-arrived outbox is honoured on the same claim's Phase 2 instead of being missed until the next claim. Scoring impact: only Phase-2 outcomes update scores for the newly-discovered relays; the Phase-1 EOSE on `app_relays` is scored against `app_relays`, not the then-unknown outbox. |
+| E14 | Relay-URL canonicalisation mismatch — a score row is written under `wss://relay.example.com/` (trailing slash) and read under `wss://relay.example.com` (no slash) | Both `record_claim_outcome` (write) and `is_warm` / `weight` (read) call `CanonicalRelayUrl::parse_or_raw` before keying the score map. Cell consolidation is by canonical form. Scoring impact: a single relay served under multiple textual forms scores as one cell, not many — preserves the "one author, one relay" invariant the score weight assumes. NIP-65 outbox entries (author-provided, not always canonical) and `app_relays` (operator-configured, usually canonical) both flow through the same canonicaliser. |
+| E15 | A relay in the Phase 2 candidate list requires NIP-42 AUTH and the kernel has no key bound for it | AUTH-pause is a follow-up outside this contract. The durable scoring rule is that an authentication pause must not be treated as relay unreliability unless the relay actually fails. |
+| E16 | Consumer calls `release_event` mid-Phase-2 — the user navigated away before the claim completed | Release removes the tracked claim and reverse-index entries. A later claim for the same author starts from the score table state already committed by earlier outcomes. |
 
 ---
 
-## 6. Wall-clock budgets
+## 6. Wall-Clock Budgets
 
-All budget numbers below are **proposals** for Agent A to confirm or refine based on the m16 wire-log timing data.
+The code constants are the source of truth. This table records the product
+contract they express.
 
 | Budget | Proposed value | Rationale |
 |---|---|---|
@@ -172,11 +195,11 @@ All budget numbers below are **proposals** for Agent A to confirm or refine base
 
 ---
 
-## 7. Score data shape — open question
+## 7. Score Data Shape
 
-The issue explicitly leaves the scoring schema open. Agent A must pick from these candidates (or propose a better one) with file:line-level justification.
+The accepted scheme is paired counters with exponential age decay.
 
-### Candidate A — paired counters
+### Paired counters
 
 ```rust
 struct Score {
@@ -191,36 +214,10 @@ fn weight(s: &Score, now: u64) -> f32 {
 }
 ```
 
-- **Pros**: trivial to reason about; restart-stable; easy to debug ("Gigi/dergigi: 17 successes, 3 failures").
-- **Cons**: cold-start cells (1 hit, 0 misses) look identical to 100% confidence; no early statistical discounting.
-
-### Candidate B — EWMA float
-
-```rust
-struct Score { ewma: f32, last_used_unix_s: u64 }
-// On hit: ewma = ALPHA * 1.0 + (1 - ALPHA) * ewma
-// On miss: ewma = ALPHA * 0.0 + (1 - ALPHA) * ewma
-// With ALPHA = 0.2: ~5-event memory; warmer recent outcomes weighted more.
-```
-
-- **Pros**: built-in decay-by-recency; smooth.
-- **Cons**: not restart-stable across schema changes (f32 representation needs careful serialization); harder to debug; loses cardinality info ("how many trials").
-
-### Candidate C — Wilson lower-bound
-
-```rust
-fn wilson_lower(successes: u32, n: u32) -> f32 {
-    // Wilson score interval, lower bound at z=1.96 (95% CI)
-    // …
-}
-```
-
-- **Pros**: principled cold-start (1/1 ≠ 17/17); the standard for "ranking by upvotes" problems.
-- **Cons**: heaviest math; agent must hand-implement; harder to explain to operators inspecting the table.
-
-**Recommendation for Agent A**: prefer Candidate A for v1. It's restart-trivial, debuggable, and the decay multiplier covers recency. The cold-start ambiguity (1/1 vs 100/100) doesn't actually matter for Phase 1 selection: anything above `WARM_THRESHOLD` is preferred; ranking among warm cells uses lex-DESC URL as the secondary tiebreak. Revisit if telemetry shows we're warming relays that have only one trial.
-
-**Open question for Agent A**: name the exact `WARM_THRESHOLD` value under the chosen scheme.
+The warm threshold is 0.40. A clean single hit weighs 0.50 and becomes warm; a
+single hit paired with a miss weighs about 0.33 and stays cold. This gives the
+claim path a cheap passive-learning memory without a floating EWMA schema or a
+hand-rolled Wilson interval.
 
 ---
 
@@ -244,12 +241,13 @@ pub struct Kernel {
 
 ### 8.2 Persistence
 
-**Recommendation**: a dedicated LMDB table in `nmp-nostr-lmdb`, name `relay_author_scores_v1`. Versioning the table name (vs. having a schema-version row) makes a schema bump a no-op rename — the old table is silently abandoned, scores reset, and the new table is empty. This matches §5 E6.
+Relay-author scores persist in the LMDB sub-database
+`relay-author-scores-v1`. Versioning the sub-database name makes a schema bump a
+no-op rename: old score rows remain allocated until the environment is reset,
+and the new table starts empty.
 
 - *Write strategy*: actor accumulates deltas in-memory; flushes on idle in the same LMDB transaction as other actor-driven writes (already a thing — see `Kernel::commit_pending_writes` in current code).
 - *Read strategy*: load into the in-memory `BTreeMap` on kernel construction. Lazy load (per-author) is rejected for v1 — keeps the read path simple and the working set bounded (an author has at most ~30 outbox relays; total table size is bounded by `|authors_we've_seen| × ~30`).
-- *Alternative* (call out for Agent A): a flat file in the kernel's data dir, JSON-serialized on idle. Simpler than LMDB but loses transactional consistency with other store writes. Likely rejected; document the trade.
-
 ### 8.3 Snapshot integration
 
 The scores table is NOT included in `AppUpdate` snapshots — it is purely internal kernel state, not a projection the UI consumes. (D8 update-equality is preserved trivially — no Swift/Kotlin code needs the table.)
@@ -260,39 +258,29 @@ The scores table is NOT included in `AppUpdate` snapshots — it is purely inter
 
 | Doctrine | Constraint | How this design satisfies |
 |---|---|---|
-| **D0** | No protocol nouns in `nmp-core` | `Score`, `relay_author_scores`, etc. are generic over `(Pubkey, RelayUrl)`. No NIP-XX naming. The fact that we *use* NIP-65 to derive the outbox is handled in an existing module (`nmp-nip65` adapter); the score table itself is protocol-agnostic. |
+| **D0** | No protocol nouns in `nmp-core` | `Score`, `relay_author_scores`, etc. are generic over `(Pubkey, RelayUrl)`. NIP-65 mailbox ownership stays in `nmp-router`; the score table itself is protocol-agnostic. |
 | **D4** | `InterestRegistry` is the single writer for sub state | All Phase 1/2 expansion goes through the existing `InterestRegistry::ensure_sub` / `drop_owner`. The expansion adds *more* `LogicalInterest` entries when it advances to Phase 2 — but each entry is registered the same way the original claim is. No bypass. |
 | **D6** | No panics, no `Result` across FFI | Score lookups are infallible (`get_or_default`). The Phase 2 trigger emits state, not errors. Operational failure (relay unreachable) surfaces as state fields the renderer already handles ("loading" / "not found"). |
 | **D8** | No polling | Every score update is edge-triggered by a frame arrival (EVENT / EOSE / `Kernel::relay_failed`). Phase advancement on wall-clock budget uses the existing actor observer tick, not a `sleep`. Snapshot update equality preserved — the score table is internal-only. |
 
-<!--
-  The earlier draft cited "Article VII (Simplicity Gate)" as a constraint. The
-  reviewer (`relay-search-radius-review.md` §B.5) confirmed this citation does
-  not resolve to any in-tree source — `docs/aim.md` §6 numbers 12 doctrines
-  without Roman numerals, and no `docs/principles/` or `docs/constitution.md`
-  carrying that framing exists. Citation dropped rather than re-anchored to a
-  substitute doctrine, because no in-tree doctrine cleanly maps to "no
-  future-proofing" without overloading its meaning (D9 "no business logic in
-  native code" is the closest, but it constrains the FFI surface, not feature
-  scope). The intent — keeping this feature minimal — is preserved by the
-  explicit non-goals in §2 (N1–N4) and the out-of-scope list in §11.
--->
-
-
 ---
 
-## 10. Open questions (for Agent A to resolve in the impl plan)
+## 10. Implementation Anchors
 
-1. **Score scheme** — Candidate A vs B vs C from §7. Recommendation: A.
-2. **`WARM_THRESHOLD`** — exact numeric threshold under the chosen scheme.
-3. **Wall-clock budgets** — confirm or refine the proposals in §6 against the m16 wire-log timing data.
-4. **Decay half-life** — proposal in §7 is 14 days; confirm.
-5. **Persistence target** — LMDB table vs. JSON-on-idle. Recommendation: LMDB.
-6. **Phase 2 ordering tiebreaker** — lex-DESC URL is the strawman; Agent A confirms or proposes an alternative (e.g. NIP-11 supported_nips intersection with the claim's kind).
-7. **Background-completion of Phase 2 REQs after user-visible budget** — recommend yes (still update scores); confirm.
-8. **Where does the "claim came in" entry point hand off to the new expansion controller?** A new module `crates/nmp-core/src/kernel/claim_expansion.rs`? Or extend `discovery.rs`? Agent A picks based on file-size budget (D-V12: 500 LOC ceiling).
-9. **Wire-level: do we open one REQ per relay in Phase 2 or batch?** The OneshotApi `(scope, shape)` is the same — one logical interest. The planner already partitions per-relay (`per_relay` map in `CompiledPlan`). Expansion likely re-runs `apply_selection` with a different `max_per_user` for the claim's specific sub-shape. Agent A defines the exact planner extension point.
-10. **Telemetry / wire-log** — what `NMP_WIRE_LOG` lines do we emit for Phase advancement? Acceptance test A1 depends on these being legible.
+- `crates/nmp-core/src/kernel/requests/event.rs` registers and releases
+  `claim_event` interests.
+- `crates/nmp-core/src/kernel/claim_expansion.rs` owns the per-claim phase
+  controller.
+- `crates/nmp-core/src/kernel/claim_expansion_helpers.rs` builds Phase 2 relay
+  candidates and enforces concurrency/fan-out limits.
+- `crates/nmp-core/src/kernel/relay_score.rs` owns score constants and cell
+  math.
+- `crates/nmp-core/src/kernel/relay_score_record.rs` records EVENT, EOSE, and
+  relay-failure outcomes.
+- `crates/nmp-core/src/kernel/relay_score_flush.rs` flushes dirty score cells.
+- `crates/nmp-store/src/lmdb/relay_scores.rs` owns LMDB encoding.
+- `crates/nmp-testing/tests/relay_search_radius_*.rs` owns A1-A6 integration
+  coverage.
 
 ---
 
@@ -307,24 +295,10 @@ The scores table is NOT included in `AppUpdate` snapshots — it is purely inter
 
 ---
 
-## 12. Process
-
-Per issue #632, this PR follows the three-phase workflow:
-
-1. ✅ **Phase 1 — spec PR (this document)**. WIP PR open. Issue linked.
-2. **Phase 2 — design and review**. Agent A writes `relay-search-radius-impl-plan.md` (workstream breakdown W1..Wn, file:line specifics, doctrine guards, test plans). Agent B reviews both this spec and Agent A's plan; writes `relay-search-radius-review.md` with file:line concerns.
-3. **Phase 3 — implementation**. Workstreams land into this same PR; A1–A6 verified.
-
-A separate concern surfaced during Phase 1: the agent harness in this session does not expose a sub-agent dispatch tool. Phase 2 will either be executed sequentially in-session (with planner and reviewer roles clearly labeled) or via a sub-process to the `claude` CLI. Either way, both documents land as commits on this PR before Phase 3 starts.
-
----
-
-## 13. References
+## 12. References
 
 - Issue [#632](https://github.com/pablof7z/nostr-multi-platform/issues/632).
 - `crates/nmp-core/src/subs/oneshot.rs` — OneshotApi.
-- `crates/nmp-core/src/kernel/discovery.rs` — claim/discovery seam, the analogue to imitate.
 - `crates/nmp-planner/src/selection.rs` — greedy max-coverage selector with `max_per_user`.
 - Commit [`680666a0`](https://github.com/pablof7z/nostr-multi-platform/commit/680666a0) — operator-pinned protection (predecessor fix).
 - `docs/aim.md` §6 — doctrine list.
-- `docs/plan/m16-kind-dispatch-handlers.md` — workstream-style plan to model Agent A's output after.

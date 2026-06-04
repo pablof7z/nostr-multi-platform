@@ -2,7 +2,7 @@
 
 > Derived cache — do not hand-edit. Rebuilt by proactive-context after each capture.
 
-Last updated: 2026-06-01
+Last updated: 2026-06-04
 
 ## Guides
 
@@ -22,7 +22,7 @@ Last updated: 2026-06-01
 | [article-embed-rendering](article-embed-rendering.md) | Article Embed Rendering | The article embed component is rendered inside a rounded box similar to the proposal 2 design (╭╮╰╯ corners) | capture | warm | 2026-05-28 |
 | [back-pressure-gate](back-pressure-gate.md) | Back-Pressure Gate (G-S4) | The actor_queue_depth in kernel/update.rs is hardcoded to 0, meaning the G-S4 reconciler back-pressure gate always passes trivially | capture | warm | 2026-05-18 |
 | [background-agent-worktrees](background-agent-worktrees.md) | Background Agent Worktrees | Background agents run `git rev-parse --show-toplevel` first and only work in their own worktree, never the primary checkout. | capture | warm | 2026-05-18 |
-| [backlog-document](backlog-document.md) | Consolidated Backlog Document (docs/BACKLOG.md) | A single consolidated backlog document at docs/BACKLOG.md is the authoritative source for all pending work, violations, and execution plans in the project | capture | warm | 2026-05-22 |
+| [backlog-document](backlog-document.md) | Backlog Document Synthesis | docs/BACKLOG.md is the tactical queue; active branch coordination lives only in WIP.md, and this wiki page is non-authoritative synthesis. | capture | warm | 2026-06-04 |
 | [bootstrap-relay-fallback](bootstrap-relay-fallback.md) | Bootstrap Relay Fallback & Zero-Discovery Sign-In | Bootstrap relay fallback is promoted from test-only to production to fix sign-in with zero discovery relays. | capture | warm | 2026-05-22 |
 | [branch-triage-and-deletion](branch-triage-and-deletion.md) | Branch Triage & Deletion Policy | Branch triage uses parallel Haiku agents for read-only git investigation with conservative classification so genuine work is never tagged for deletion | capture | warm | 2026-05-29 |
 | [builder-guide-conventions](builder-guide-conventions.md) | Builder Guide Writing Conventions | The documentation build session is file-disjoint from the primary orchestrator session: it creates only new files matching docs/builder-guide/NN-*.md and must n | capture | warm | 2026-05-18 |
@@ -155,7 +155,7 @@ Last updated: 2026-06-01
 | [openview-silent-stub-defect](openview-silent-stub-defect.md) | OpenView Silent Stub Defect (V-110) | The OpenView silent-stub defect (silently no-ops instead of failing loudly) is filed separately as V-110, not bundled with the Marmot fix. | capture | warm | 2026-05-29 |
 | [outbox-routing-gaps](outbox-routing-gaps.md) | Outbox Routing Gaps (D3) | The outbox routing (D3 doctrine) is not wired end-to-end | capture | warm | 2026-05-18 |
 | [pending-event-claim-queue](pending-event-claim-queue.md) | Pending Event Claim Queue & Drain Path | When `claim_event` fires with `!can_send` (relays not yet connected), the URI and consumer_id are parked in a `pending_event_claims: Vec<(String, String)>` queu | capture | warm | 2026-05-27 |
-| [plan-document](plan-document.md) | Canonical Plan & Tracking Documents | The three canonical planning files are plan.md, BACKLOG.md, and WIP.md | capture | warm | 2026-05-23 |
+| [plan-document](plan-document.md) | Planning Authority Documents | AGENTS.md defines the planning-authority split: plan.md is the temporal release view, BACKLOG.md is the tactical queue, and WIP.md is ignored live branch coordination. | capture | warm | 2026-06-04 |
 | [planner-lattice-panic-removal](planner-lattice-panic-removal.md) | Planner Lattice Panic Removal & Result Returns | Seven `panic!("expected Merged")` calls in `planner/lattice/mod.rs` (lines 227, 251, 272, 337, 371, 388, 433) violate D6 and must be replaced with Result return | capture | warm | 2026-05-18 |
 | [pr-merge-policy](pr-merge-policy.md) | PR Merge Policy & Manual Intervention | PR #739 must be merged manually by the user rather than by an automated agent | capture | warm | 2026-05-28 |
 | [pr-sequence-floor](pr-sequence-floor.md) | PR Sequence Floor | PR-D (tests-first floor) is the unambiguous starting point for the PR sequence. | capture | warm | 2026-05-21 |

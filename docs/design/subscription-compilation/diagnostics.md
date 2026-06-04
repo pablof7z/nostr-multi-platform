@@ -203,7 +203,8 @@ wired so the test assertions at `tests.md:202` that check `by_lane.hint` and
 4. `CompiledPlan` re-emissions — every plan recompile produces a `(plan_id, relay_url) → authors` projection this view subscribes to. The compiler exposes this as `RelayAuthorCoverage` in the projection cache.
 5. `ProvenanceRelayFact` records — feeds the rolling 60-second counter for `provenance_count_last_minute`.
 
-This is the M2 exit-gate diagnostic listed in [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md) ("Reverse-relay-coverage view for diagnostics: 'this relay is serving N authors of our timeline.'").
+This is the reverse-relay-coverage diagnostic: "this relay is serving N authors
+of our timeline."
 
 ## 8.3 Cardinality and emission cadence
 
@@ -213,4 +214,8 @@ Emission cadence follows ADR-0007's diagnostic-view rule: material-transition im
 
 ## 8.4 Why it lives in diagnostics, not in product UI
 
-Per `docs/aim.md` §4.4 ("the developer does not pick relays per operation; the framework does") and ADR-0007's domain-of-diagnostics separation, end-user product UIs do not show "relay X is serving 12 authors." That is operator/debug surface. Normal apps consume the `LogicalInterestStatus` summaries; `RelayCoveragePayload` is for the diagnostics screen (proof iOS app screenshot in `docs/perf/m2/outbox-routing.md` per [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md)).
+Per `docs/aim.md` §4.4 ("the developer does not pick relays per operation;
+the framework does") and ADR-0007's domain-of-diagnostics separation, end-user
+product UIs do not show "relay X is serving 12 authors." That is
+operator/debug surface. Normal apps consume the `LogicalInterestStatus`
+summaries; `RelayCoveragePayload` is for diagnostics screens.

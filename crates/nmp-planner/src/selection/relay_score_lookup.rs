@@ -1,4 +1,4 @@
-//! Relay-author score lookup seam (W4).
+//! Relay-author score lookup seam.
 //!
 //! A substrate-level read-only trait that lets `apply_selection` ask "is
 //! this relay warm for this author?" without depending on nmp-core. The
@@ -20,8 +20,7 @@
 //! # `WARM_THRESHOLD`
 //!
 //! 0.40 — admits a single-hit cell (weight = 1/(1+0+1) ≈ 0.50) but
-//! excludes a hit paired with a miss (1/(1+1+1) ≈ 0.33). See §8.5 Gigi
-//! math in `docs/design/relay-search-radius-impl-plan.md`.
+//! excludes a hit paired with a miss (1/(1+1+1) ≈ 0.33).
 //! The kernel-side mirror lives in `kernel/relay_score.rs::WARM_THRESHOLD`;
 //! they must stay in sync — a test in `relay_score_lookup_impl_tests.rs`
 //! asserts equality to catch drift.

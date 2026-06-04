@@ -32,11 +32,12 @@ treated as an immediate-fix violation.
 
 ## For Autonomous Agents
 
-**Pick the topmost item in Section 4 (Feature Backlog) that does NOT appear in Section 2
-(In Flight).** Do not start a Section 4 item already in progress. Section 1 (Active
-Violations) takes priority over Section 4 — if a Section 1 item has no open branch, create
-one before picking Section 4 work. Never start two items that touch overlapping files without
-explicit coordination.
+**Pick the topmost item in Section 4 (Feature Backlog) that is not already
+listed in [`WIP.md`](../WIP.md).** Do not start a Section 4 item already in
+progress. Section 1 (Active Violations) takes priority over Section 4 — if a
+Section 1 item has no active WIP branch, create one before picking Section 4
+work. Never start two items that touch overlapping files without explicit
+coordination.
 
 ---
 
@@ -425,6 +426,44 @@ once `nmp-codegen`'s Swift emitter is taught the new shape (the
 `gen modules --check` gate against `apps/fixture/nmp.toml` is currently
 green because the fixture types do not include these projection shapes).
 
+### V-113 · Residual `content_preview` / display-enrichment projection boundary [MEDIUM · ADR-0032 follow-up]
+
+**Verified (2026-06-04):** ADR-0032 says projections and snapshots send raw
+protocol data and presentation layers format. Current code still has a
+cross-surface ambiguity:
+
+- `crates/nmp-core/src/kernel/types.rs:128,136` — `TimelineItem` carries
+  `author_display_name: Option<String>` and `content_preview: String`.
+- `crates/nmp-core/src/kernel/update/views.rs:111-117` — the kernel bakes
+  cached kind:0 display name into the timeline item and truncates content into
+  `content_preview`.
+- `crates/nmp-nip01/src/timeline_projection.rs:217-223` —
+  `ContentEventRenderData` carries `author_display: AuthorDisplay` and
+  `content_preview`.
+- Generated bindings expose the same preview field
+  (`ios/Chirp/Chirp/Bridge/Generated/TimelineSnapshot.generated.swift:624`,
+  `android/app/src/main/java/nmp/nip01/TimelineEventCard.kt:147`).
+
+**Why this is not docs-only:** the fields are part of live wire/generated
+schemas and multiple shell models read them. A docs-only clarification would
+either bless pre-truncated content/display mirrors as raw projection data or
+contradict ADR-0032 without changing the code.
+
+**Required decision/fix:** choose one canonical boundary and implement it
+end-to-end:
+
+1. **Raw-only path:** remove `content_preview` and denormalized display mirrors
+   from projection/wire schemas, make shells truncate from raw `content` or walk
+   `ContentTreeWire`, and resolve author display through claimed/resolved
+   profile maps; regenerate Swift/Kotlin bindings and update registry examples.
+2. **Blessed-preview path:** amend ADR-0032/product docs to explicitly define
+   `content_preview` as a protocol projection affordance, not presentation
+   formatting, with exact ownership and length/whitespace rules; then keep the
+   code and update docs that currently imply "raw only" forbids it.
+
+Do not guess this inside an unrelated docs cleanup. The chosen path needs a
+schema-aware PR with generated binding updates.
+
 ### V-55 · `LocalKeySigner` cannot zero all `nostr::Keys` secret copies [MEDIUM · upstream-blocked]
 
 **Verified:** `crates/nmp-signers/src/signers/local.rs:35-46` documents that
@@ -773,7 +812,7 @@ recorded here as closed.
 ## Section 4 — V1 Feature Backlog
 
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
-autonomous agent picks the topmost item not already in Section 2.
+autonomous agent picks the topmost item not already listed as active in `WIP.md`.
 
 ### F-00 · Unify app directory layout — `apps/<app>/{ios,android,desktop,tui,web}` + `apps/<app>/crates/` [PRIORITY · repo structure]
 
@@ -911,10 +950,13 @@ hydration just because they render a component.
 
 **Plan:** [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md).
 
-**Status:** First implementation slice in progress: a built-in offline
-component registry, `nmp add component`, `nmp.components.lock`, dependency
-resolution, duplicate-install rejection, and the `swiftui/content-minimal`
-fixture kit.
+**Status (2026-06-04, refreshed from `crates/nmp-cli/registry/registry.toml`):**
+the offline registry is no longer just the first SwiftUI content slice. It now
+contains 50 component entries across SwiftUI, Compose, Ratatui, and desktop:
+content-core/minimal/view/kind renderers, mention/media/quote widgets, relay
+list, login block, and user avatar/name/NIP-05/npub/card primitives. The
+manifest is the source of truth for shipped component ids, versions,
+dependencies, and file targets; this backlog tracks remaining product gaps only.
 
 **Initial scope:**
 
@@ -946,11 +988,11 @@ drift is caught at test time by `tests/wire_fixtures.rs::wire_goldens_match`
 (byte-exact pin + orphan-file guard). iOS and Android decoders consume this
 exact byte set as the M16 cross-platform wire-contract truth.
 
-**Kind-dispatch sub-track (ADR-0034):** the next M16 slice is the kind-dispatched
-content rendering system.
+**Kind-dispatch sub-track (ADR-0034):** continue the kind-dispatched
+content-rendering system from the current registry manifest.
 Architectural decisions: [`ADR-0034`](decisions/0034-kind-dispatch-content-rendering.md).
 Items F-CR-01 through F-CR-12 below are ordered by dependency. Pick the topmost
-open item not already in Section 2. F-CR-01 and F-CR-06 landed (PR #588). The next highest-value open item is
+open item not already listed in `WIP.md`. F-CR-01 and F-CR-06 landed (PR #588). The next highest-value open item is
 F-CR-02, because Android must join `ContentTreeWire` before the Compose registry
 can replace the old embed card.
 
@@ -967,7 +1009,8 @@ ChirpAvatar `.task(id:)`, Android `RememberProfileClaim`, TUI
 from the `claimed_events` snapshot projection (currently baked in as a
 convenience shortcut). This is NOT blocking — the enrichment is harmless — but
 is the display-separation cleanup to complete the "backend sends raw pubkeys only"
-doctrine. Do not conflate with the proactive-fetch removal.
+doctrine. Do not conflate with the proactive-fetch removal. Broader
+`content_preview` / display-enrichment projection ambiguity is tracked in V-113.
 
 #### F-CR-02 · Android gallery → `ContentTreeWire` migration [PREREQUISITE · Android]
 

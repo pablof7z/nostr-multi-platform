@@ -1,10 +1,7 @@
-//! W7 hint-consumption tests for `case_a_authors` and `case_b_addresses`.
+//! Hint-consumption tests for `case_a_authors` and `case_b_addresses`.
 //!
-//! These tests drive the failing-first TDD cycle for
-//! `docs/design/relay-search-radius-impl-plan.md` §W7.
-//!
-//! All five tests are RED until the hint-walk logic is wired in
-//! `case_a_authors::route` and `case_b_addresses::route`.
+//! These tests pin the hint-walk logic in `case_a_authors::route` and
+//! `case_b_addresses::route`.
 //!
 //! Doctrine guards verified:
 //!   D3 — hints become `RoutingSource::Hint`; four-lane discipline preserved.

@@ -283,7 +283,7 @@ impl Kernel {
                         self.oneshot_subs
                             .insert(sub_id.clone(), (token, discovery::OneshotKind::Discovery));
                     }
-                    // W5 §8.3 — claim-expansion reverse-index bridge.
+                    // Claim-expansion reverse-index bridge.
                     // If this frame's `interest_id` belongs to a pending claim,
                     // map the planner-assigned `sub_id` → `interest_id` so the
                     // ingest seam can look up the originating claim in O(log N).
@@ -297,9 +297,9 @@ impl Kernel {
                             claim
                                 .in_flight_attempts
                                 .insert((canonical_relay.clone(), sub_id.clone()));
-                            // W8b: emit ReqEmit at the wire-frame emission seam
-                            // (option b from impl plan §W8b — keeps instrumentation
-                            // in nmp-core, not nmp-planner). Phase discriminant:
+                            // Emit ReqEmit at the wire-frame emission seam.
+                            // Keep instrumentation in nmp-core, not nmp-planner.
+                            // Phase discriminant:
                             // Phase1 → "phase1", Phase2InFlight → "phase2".
                             // D0: "phase" is a string discriminant, not a protocol noun.
                             let phase = match &claim.phase {

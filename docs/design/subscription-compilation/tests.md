@@ -1,9 +1,12 @@
 # Subscription Compilation §9 — Wire-Frame Audit Gate
 
 > Parent: `docs/design/subscription-compilation.md`.
-> Read first: [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md) (M2 exit gates); `docs/design/firehose-bench.md` (the modeled bench harness this test does *not* duplicate).
+> Read first: `docs/design/firehose-bench.md` (the modeled bench harness this
+> test does *not* duplicate).
 
-The M2 exit gate is a single integration test that asserts on the *shape and identity* of the compiler's wire output, not on perf budgets. It is the structural-correctness counterpart to firehose-bench's perf-correctness suite.
+The wire-frame audit gate asserts on the *shape and identity* of the compiler's
+wire output, not on perf budgets. It is the structural-correctness counterpart
+to firehose-bench's perf-correctness suite.
 
 ## 9.1 Test file location
 
@@ -11,7 +14,8 @@ The M2 exit gate is a single integration test that asserts on the *shape and ide
 crates/nmp-testing/tests/m2_subscription_compilation_audit.rs
 ```
 
-The `crates/nmp-testing/tests/` directory does not exist yet; M2 creates it. This is intentional — it establishes the convention that planner-correctness gates live as Cargo integration tests under `nmp-testing/tests/`, distinct from the modeled benches under `nmp-testing/bin/`.
+Planner-correctness gates live as Cargo integration tests under
+`nmp-testing/tests/`, distinct from modeled benches under `nmp-testing/bin/`.
 
 `Cargo.toml` for `nmp-testing` needs the standard `[[test]]` block:
 
@@ -21,11 +25,13 @@ name = "m2_subscription_compilation_audit"
 path = "tests/m2_subscription_compilation_audit.rs"
 ```
 
-`cargo test -p nmp-testing --test m2_subscription_compilation_audit` is the M2 exit-gate invocation. CI adds this to the `cargo test --workspace` pre-merge gate per [`docs/plan/ci-hygiene.md`](../../plan/ci-hygiene.md).
+Run `cargo test -p nmp-testing --test m2_subscription_compilation_audit`.
+CI covers this through the workspace pre-merge gate.
 
 ## 9.2 What the test asserts
 
-Four assertions corresponding to the four M2 exit-gate bullets in [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md), plus one substrate-invariant assertion (Assertion 5) covering D8 address-pointer dedup added by T24:
+The design intent is four audit assertions plus one substrate-invariant
+assertion covering D8 address-pointer dedup:
 
 ### Assertion 1 — Bug-extinction #3 surface check
 
@@ -463,16 +469,22 @@ The harness is the *minimum* surface required for the four assertions above. It 
 
 By design (these belong to other M2 gates or later milestones):
 
-- **Real wire frames against a relay.** This is `firehose-bench live` per [`docs/plan/m1-twitter-slice.md`](../../plan/m1-twitter-slice.md) (M1 exit gate "Firehose-bench live cold_start"); the audit test is offline and synthetic.
+- **Real wire frames against a relay.** That belongs to `firehose-bench live`;
+  the audit test is offline and synthetic.
 - **Wire-emitter diff correctness across two plans.** That is a separate unit test inside `nmp-core::kernel::wire`, not the milestone-exit gate.
 - **NIP-77 watermarks.** M4.
 - **Per-account auth state.** M5.
 - **The publish path running end-to-end.** M6.
 
-The audit gate's job is exactly the four assertions: API shape, fan-out structure, recompilation on late NIP-65, and four-lane diagnostic distinctness. Those are the four exit-gate bullets the milestone document lists; this test is the verification surface for all four.
+The audit gate's job is exactly the four assertions: API shape, fan-out
+structure, recompilation on late NIP-65, and four-lane diagnostic distinctness.
+This test is the verification surface for all four.
 
 ## 9.5 CI integration
 
 The test runs in the default `cargo test --workspace` job and takes < 1 second on standard hardware (no networking, no LMDB, in-memory cache only). It is the canonical regression test for "did someone re-introduce the hardcoded two-role planner?" and as such must never be skipped or `#[ignore]`d.
 
-If the M3 (LMDB) milestone graduates the mailbox cache to a real backend, this test continues to exercise the trait surface via the `InMemoryMailboxCache` impl — no changes required. That is the seam `nmp-nip65::cache::MailboxCache` exists for.
+If the store layer later gains a durable mailbox backend, this test continues
+to exercise the substrate trait through the injected cache implementation. The
+current in-memory implementation lives in `nmp-router`, not a standalone
+`nmp-nip65` crate.
