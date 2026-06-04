@@ -5,6 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.2.6 — 2026-06-04
+
+**No C-ABI change.** No `nmp_app_*` FFI symbol added, removed, or changed since v0.2.5 — apps can bump the pin without touching their header or call sites. The change below is internal substrate (`ProtocolCommand` workers only).
+
+### Changed
+
+- **V-78 reconcile — one signing seam for `ProtocolCommand` workers.** `nmp-nip57`'s LNURL zap-request signing now goes through the unified `ActorCommand::SignEventForAccount` port (introduced in v0.2.5) instead of a parallel `ProtocolCommandContext::sign_active_nonblocking` path. The redundant `sign_active_nonblocking` context method, its `LocalSignerAccess` trait method, and all impls were deleted — `SignEventForAccount` is now the single, backend-transparent (local + NIP-46 bunker) signing entry point for protocol-crate workers. Bunker accounts continue to zap correctly. No app-facing behavior change.
+
+### Fixed
+
+- CI hygiene: the FFI-header-drift scan list now covers `nmp-app-chirp`'s `ffi/typed_actions.rs`, and a D6 `.unwrap()` lint violation in that file was corrected.
+
+---
+
 ## nmp-v0.2.5 — 2026-06-04
 
 **Non-breaking C-ABI.** No existing FFI signature changed. New capabilities are additive (a new dispatchable action, a new optional JSON field, a new protocol crate).
