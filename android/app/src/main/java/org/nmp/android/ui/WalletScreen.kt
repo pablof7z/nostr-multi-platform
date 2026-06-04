@@ -20,7 +20,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,10 +28,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.model.isWalletConnectedStatus
+import org.nmp.android.model.isWalletReadyStatus
 
 /**
  * Wallet (NIP-47 / NWC) connection screen for Android Chirp.
@@ -54,7 +54,13 @@ fun WalletScreen(model: KernelModel, modifier: Modifier = Modifier) {
 
     // Wallet status from snapshot (if available)
     val walletStatus = s.projections?.walletStatus ?: ""
-    val isConnected = walletStatus.equals("connected", ignoreCase = true)
+    val isConnected = isWalletConnectedStatus(walletStatus)
+    val statusLabel = when {
+        isWalletReadyStatus(walletStatus) -> "Ready"
+        walletStatus.equals("connecting", ignoreCase = true) -> "Connecting"
+        walletStatus.isBlank() -> "Not connected"
+        else -> walletStatus.replaceFirstChar { it.titlecase() }
+    }
     val balance = s.projections?.walletBalance ?: ""
 
     Box(modifier.fillMaxSize()) {
@@ -99,7 +105,7 @@ fun WalletScreen(model: KernelModel, modifier: Modifier = Modifier) {
                         )
                         Spacer(Modifier.size(4.dp))
                         Text(
-                            if (isConnected) "Connected" else "Not connected",
+                            statusLabel,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (isConnected) {

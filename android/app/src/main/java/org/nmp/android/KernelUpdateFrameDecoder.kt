@@ -24,6 +24,7 @@ import org.nmp.android.model.MarmotSnapshot
 import org.nmp.android.model.ProfileAction
 import org.nmp.android.model.ProfileCard
 import org.nmp.android.model.ProfileDispatchSpec
+import org.nmp.android.model.RelayRoleOption
 import org.nmp.android.model.RelayStatus
 import org.nmp.android.model.SnapshotProjections
 import org.nmp.android.model.TimelineItem
@@ -220,6 +221,7 @@ object KernelUpdateFrameDecoder {
             // "wallet" → no underscores → key stays "wallet"
             walletStatus = m["wallet"]?.let { decodeWalletStatusString(it) },
             walletBalance = m["wallet"]?.let { decodeWalletBalanceString(it) },
+            relayRoleOptions = m["relayRoleOptions"]?.listOf { decodeRelayRoleOption(it) } ?: emptyList(),
             // Marmot push projections (V-107 / ADR-0039). The keys
             // "nmp.marmot.snapshot" / "nmp.marmot.messages" carry dots but no
             // underscores, so convertFromSnakeCase leaves them unchanged.
@@ -425,6 +427,17 @@ object KernelUpdateFrameDecoder {
             displayName = m["displayName"]?.stringOr("") ?: "",
             status = m["status"]?.stringOr("") ?: "",
             signerLabel = m["signerLabel"]?.stringOr("") ?: "",
+        )
+    }
+
+    private fun decodeRelayRoleOption(v: Value): RelayRoleOption? {
+        if (v.kind != ValueKind.Map) return null
+        val m = buildValueMap(v)
+        return RelayRoleOption(
+            value = m["value"]?.stringOr("") ?: "",
+            label = m["label"]?.stringOr("") ?: "",
+            tint = m["tint"]?.stringOr("") ?: "",
+            isDefault = m["isDefault"]?.boolOr(false) ?: false,
         )
     }
 

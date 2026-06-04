@@ -21,7 +21,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -373,18 +372,36 @@ internal fun NoteRow(
             embedDepth = embedDepth,
         )
         Spacer(Modifier.size(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            IconButton(
-                onClick = { model?.zapNote(eventId, authorPubkey) },
-                enabled = model != null,
-            ) {
-                Text("⚡", style = MaterialTheme.typography.labelMedium)
-            }
-        }
+        NoteActionsSummary(card)
     }
+}
+
+@Composable
+private fun NoteActionsSummary(card: ChirpEventCard?) {
+    val counts = card?.relationCounts ?: return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        RelationCountLabel("Reply", counts.replies.value)
+        RelationCountLabel("React", counts.reactions.value)
+        RelationCountLabel("Repost", counts.reposts.value)
+        RelationCountLabel("Zap", counts.zaps.value, muted = true)
+    }
+}
+
+@Composable
+private fun RelationCountLabel(label: String, count: ULong?, muted: Boolean = false) {
+    Text(
+        "$label ${count?.toString() ?: "..."}",
+        style = MaterialTheme.typography.labelSmall,
+        color = if (muted) {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    )
 }
 
 @Composable

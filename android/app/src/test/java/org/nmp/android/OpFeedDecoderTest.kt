@@ -146,9 +146,10 @@ class OpFeedDecoderTest {
      *
      * The `decodeWireNode` dispatch covers every variant. This test verifies
      * each kind discriminant maps to the expected [ContentWireNode] subtype.
-     * Variants without payload (Rule, SoftBreak, HardBreak, Placeholder) are
-     * object singletons; structured variants assert at least one constructor field.
-     * Invoice (kind=7) maps to PlaceholderNode to match the generic JSON path.
+     * Variants without payload (Rule, SoftBreak, HardBreak) are object
+     * singletons; structured variants assert at least one constructor field.
+     * Invoice, Image title, and Placeholder reason are preserved because the
+     * schema carries those fields explicitly.
      */
     @Test
     fun allWireNodeKindVariantsMap() {
@@ -169,7 +170,7 @@ class OpFeedDecoderTest {
         //   kind 4  (Url)         → ContentWireNode.UrlNode
         //   kind 5  (Media)       → ContentWireNode.MediaNode
         //   kind 6  (Emoji)       → ContentWireNode.EmojiNode
-        //   kind 7  (Invoice)     → ContentWireNode.PlaceholderNode   [no InvoiceNode in model]
+        //   kind 7  (Invoice)     → ContentWireNode.InvoiceNode
         //   kind 8  (Heading)     → ContentWireNode.HeadingNode
         //   kind 9  (Paragraph)   → ContentWireNode.ParagraphNode
         //   kind 10 (BlockQuote)  → ContentWireNode.BlockQuoteNode
@@ -203,7 +204,7 @@ class OpFeedDecoderTest {
             ContentWireNode.UrlNode(""),
             ContentWireNode.MediaNode(emptyList(), ""),
             ContentWireNode.EmojiNode("", null),
-            ContentWireNode.PlaceholderNode,   // Invoice → PlaceholderNode
+            ContentWireNode.InvoiceNode("", ""),
             ContentWireNode.HeadingNode(1, emptyList()),
             ContentWireNode.ParagraphNode(emptyList()),
             ContentWireNode.BlockQuoteNode(emptyList()),
@@ -214,10 +215,10 @@ class OpFeedDecoderTest {
             ContentWireNode.StrongNode(emptyList()),
             ContentWireNode.InlineCodeNode(""),
             ContentWireNode.LinkNode(emptyList(), null),
-            ContentWireNode.ImageNode("", null),
+            ContentWireNode.ImageNode("", null, null),
             ContentWireNode.SoftBreakNode,
             ContentWireNode.HardBreakNode,
-            ContentWireNode.PlaceholderNode,   // Placeholder(21)
+            ContentWireNode.PlaceholderNode(),   // Placeholder(21)
         )
         assertEquals("All 22 WireNodeKind branch targets must instantiate without error", 22, allKinds.size)
     }
@@ -244,6 +245,12 @@ class OpFeedDecoderTest {
                     "created_at": 1700000000,
                     "content": "hello",
                     "content_preview": "hello",
+                    "relation_counts": {
+                      "replies": { "state": "known", "count": 2 },
+                      "reactions": { "state": "loading", "count": 0 },
+                      "reposts": { "state": "known", "count": 1 },
+                      "zaps": { "state": "known", "count": 0 }
+                    },
                     "author_display_name": "Bob",
                     "author_picture_url": null
                   },
@@ -273,6 +280,11 @@ class OpFeedDecoderTest {
         assertEquals(1, decoded.cards.size)
         assertEquals("aabbcc", decoded.cards[0].card.id)
         assertEquals("Bob", decoded.cards[0].card.authorDisplayName)
+        val counts = requireNotNull(decoded.cards[0].card.relationCounts)
+        assertEquals(2UL, counts.replies.value)
+        assertNull(counts.reactions.value)
+        assertEquals(1UL, counts.reposts.value)
+        assertEquals(0UL, counts.zaps.value)
         assertEquals(1, decoded.cards[0].attribution.size)
         assertEquals("Alice", decoded.cards[0].attribution[0].authorDisplayName)
         assertNotNull(decoded.page)

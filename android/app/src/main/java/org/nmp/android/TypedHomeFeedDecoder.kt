@@ -5,10 +5,10 @@ import nmp.content.ContentTreeWire as FbContentTreeWire
 import nmp.content.WireNodeKind
 import nmp.content.WireNostrUriKind
 import nmp.content.PlaceholderReason as FbPlaceholderReason
-import nmp.content.RenderMode as FbRenderMode
 import nmp.feed.FeedWindow
 import nmp.nip01.OpFeedSnapshot
 import nmp.nip01.ReplyAttribution
+import nmp.nip01.RelationCountState
 import nmp.nip01.RootCard
 import nmp.nip01.TimelineEventCard
 import org.nmp.android.model.ChirpEventCard
@@ -17,6 +17,8 @@ import org.nmp.android.model.ChirpReplyAttribution
 import org.nmp.android.model.ChirpRootCard
 import org.nmp.android.model.ContentTreeWire
 import org.nmp.android.model.ContentWireNode
+import org.nmp.android.model.NoteRelationCounts
+import org.nmp.android.model.RelationCount
 import org.nmp.android.model.TimelineWindowCursor
 import org.nmp.android.model.TimelineWindowPage
 import org.nmp.android.model.WireNostrUri
@@ -30,6 +32,8 @@ private const val EVENT_KIND_NONE: UInt = UInt.MAX_VALUE
 
 /** Sentinel: `ordered_start = -1` means unordered list (mirrors `ORDERED_START_NONE`). */
 private const val ORDERED_START_NONE: Long = -1L
+
+private val SUPPORTED_SCHEMA_VERSION: UInt = 1u
 
 /**
  * Decodes the typed `nmp.feed.home` sidecar from a FlatBuffers `NOFS` buffer
@@ -76,6 +80,7 @@ object TypedHomeFeedDecoder {
         val projection = projections.firstOrNull {
             it.key == PROJECTION_KEY && it.schemaId == SCHEMA_ID
         } ?: return null
+        if (projection.schemaVersion != SUPPORTED_SCHEMA_VERSION) return null
         if (projection.payload.isEmpty()) return null
         return decode(projection.payload)
     }
@@ -96,6 +101,7 @@ object TypedHomeFeedDecoder {
                 return null
             }
             val snapshot = OpFeedSnapshot.getRootAsOpFeedSnapshot(bb)
+            if (snapshot.schemaVersion != SUPPORTED_SCHEMA_VERSION) return null
             val cards = buildList {
                 for (i in 0 until snapshot.cardsLength) {
                     val root = snapshot.cards(i) ?: continue
@@ -132,6 +138,7 @@ object TypedHomeFeedDecoder {
                 decodeContentTree(buf)
             }
         } else null
+        val relationCounts = card?.relationCounts?.let { makeRelationCounts(it) }
         return ChirpEventCard(
             id = card?.id ?: "",
             authorPubkey = card?.authorPubkey ?: "",
@@ -139,6 +146,7 @@ object TypedHomeFeedDecoder {
             createdAt = (card?.createdAt ?: 0UL).toLong(),
             content = card?.content ?: "",
             contentTree = contentTree,
+            relationCounts = relationCounts,
             // ADR-0032: `has_*` companion bool distinguishes "absent (no kind:0
             // yet)" from "present empty string".
             authorDisplayName = if (card?.hasAuthorDisplayName == true) card.authorDisplayName else null,
@@ -172,11 +180,9 @@ object TypedHomeFeedDecoder {
      * (schema: `crates/nmp-content/schema/content_tree.fbs`).
      * All 22 [WireNodeKind] variants are handled:
      * Text(0) Mention(1) EventRef(2) Hashtag(3) Url(4) Media(5) Emoji(6)
-     * Invoice(7→Placeholder) Heading(8) Paragraph(9) BlockQuote(10)
+     * Invoice(7) Heading(8) Paragraph(9) BlockQuote(10)
      * CodeBlock(11) List(12) Rule(13) Emphasis(14) Strong(15) InlineCode(16)
      * Link(17) Image(18) SoftBreak(19) HardBreak(20) Placeholder(21).
-     * Invoice is mapped to [ContentWireNode.PlaceholderNode] to match the
-     * generic JSON fallback path (the Kotlin model has no InvoiceNode).
      */
     private fun decodeContentTree(buf: ByteBuffer): ContentTreeWire? {
         if (!FbContentTreeWire.ContentTreeWireBufferHasIdentifier(buf)) {
@@ -204,6 +210,17 @@ object TypedHomeFeedDecoder {
         }
     }
 
+    internal fun decodeContentTreeBytes(bytes: ByteArray): ContentTreeWire? {
+        if (bytes.isEmpty()) return null
+        return try {
+            val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+            decodeContentTree(bb)
+        } catch (e: Exception) {
+            Log.e(TAG, "NFCT byte decode error: ${e.message}")
+            null
+        }
+    }
+
     /**
      * Map a single FlatBuffers [nmp.content.WireNode] to [ContentWireNode].
      *
@@ -226,9 +243,10 @@ object TypedHomeFeedDecoder {
                 shortcode = node.shortcode.orEmpty(),
                 url = node.emojiUrl,
             )
-            // Invoice: no InvoiceNode in the Kotlin model; map to Placeholder to
-            // match the generic JSON path (`ContentWireNodeSerializer` else branch).
-            WireNodeKind.Invoice -> ContentWireNode.PlaceholderNode
+            WireNodeKind.Invoice -> ContentWireNode.InvoiceNode(
+                invoiceKind = invoiceKindString(node.invoiceKind),
+                payload = node.invoicePayload.orEmpty(),
+            )
             WireNodeKind.Heading -> ContentWireNode.HeadingNode(
                 level = node.level.toInt(),
                 children = childrenList(node),
@@ -262,15 +280,15 @@ object TypedHomeFeedDecoder {
             )
             WireNodeKind.Image -> ContentWireNode.ImageNode(
                 alt = node.alt.orEmpty(),
+                title = node.imgTitle,
                 // `url` field in the schema encodes `src` for Image nodes
                 // (see encode_node in typed_fb.rs: `args.url = src`).
-                // `imgTitle` is dropped — the Kotlin model has no title field.
                 src = node.url,
             )
             WireNodeKind.SoftBreak -> ContentWireNode.SoftBreakNode
             WireNodeKind.HardBreak -> ContentWireNode.HardBreakNode
-            WireNodeKind.Placeholder -> ContentWireNode.PlaceholderNode
-            else -> ContentWireNode.PlaceholderNode // forward-compat: unknown kind
+            WireNodeKind.Placeholder -> ContentWireNode.PlaceholderNode(placeholderReasonString(node.placeholderReason))
+            else -> ContentWireNode.PlaceholderNode() // forward-compat: unknown kind
         }
     }
 
@@ -309,6 +327,19 @@ object TypedHomeFeedDecoder {
         1u.toUByte() -> "Video"
         2u.toUByte() -> "Audio"
         else -> "Image" // forward-compat default
+    }
+
+    private fun invoiceKindString(v: UByte): String = when (v) {
+        0u.toUByte() -> "Bolt11"
+        1u.toUByte() -> "Bolt12"
+        2u.toUByte() -> "Cashu"
+        else -> "Bolt11"
+    }
+
+    private fun placeholderReasonString(v: UByte): String = when (v) {
+        FbPlaceholderReason.DepthLimit -> "depth_limit"
+        FbPlaceholderReason.UnresolvedUri -> "unresolved_uri"
+        else -> "depth_limit"
     }
 
     /**
@@ -351,5 +382,26 @@ object TypedHomeFeedDecoder {
             hasMore = page.hasMore,
             totalBlocks = page.totalBlocks,
         )
+    }
+
+    private fun makeRelationCounts(fb: nmp.nip01.NoteRelationCounts): NoteRelationCounts? {
+        val replies = fb.replies ?: return null
+        val reactions = fb.reactions ?: return null
+        val reposts = fb.reposts ?: return null
+        val zaps = fb.zaps ?: return null
+        return NoteRelationCounts(
+            replies = makeRelationCount(replies),
+            reactions = makeRelationCount(reactions),
+            reposts = makeRelationCount(reposts),
+            zaps = makeRelationCount(zaps),
+        )
+    }
+
+    private fun makeRelationCount(fb: nmp.nip01.RelationCount): RelationCount {
+        return when (fb.state) {
+            RelationCountState.Known -> RelationCount.known(fb.count)
+            RelationCountState.Loading -> RelationCount.loading()
+            else -> RelationCount.loading()
+        }
     }
 }

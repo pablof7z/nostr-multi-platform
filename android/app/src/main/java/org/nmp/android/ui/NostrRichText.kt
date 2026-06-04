@@ -111,13 +111,14 @@ private fun ContentNode(
     when (val node = tree.node(index)) {
         is ContentWireNode.MediaNode -> MediaBlock(node.urls, node.mediaKind)
         is ContentWireNode.EventRefNode -> EventRefBlock(node.uri, items, cards, embedDepth)
-        is ContentWireNode.ImageNode -> MediaBlock(listOfNotNull(node.src), "Image")
+        is ContentWireNode.ImageNode -> ImageBlock(node)
+        is ContentWireNode.InvoiceNode -> InvoiceBlock(node)
         is ContentWireNode.CodeBlockNode -> CodeBlock(node.body, node.info)
         is ContentWireNode.ListNode -> ListBlock(node, tree)
         is ContentWireNode.BlockQuoteNode -> BlockQuote(node.children, tree)
         is ContentWireNode.RuleNode -> SurfaceLine()
-        is ContentWireNode.PlaceholderNode -> Placeholder()
-        null -> Placeholder()
+        is ContentWireNode.PlaceholderNode -> Placeholder(node.reason)
+        null -> Placeholder("depth_limit")
         else -> Text(
             inlineText(listOf(index), tree),
             style = MaterialTheme.typography.bodyMedium,
@@ -243,9 +244,43 @@ private fun SurfaceLine() {
 }
 
 @Composable
-private fun Placeholder() {
+private fun ImageBlock(node: ContentWireNode.ImageNode) {
+    val src = node.src
+    if (src.isNullOrEmpty()) {
+        Placeholder("unresolved_uri")
+        return
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        RemoteImage(src)
+        val caption = node.title ?: node.alt.takeIf { it.isNotEmpty() }
+        if (!caption.isNullOrEmpty()) {
+            Text(
+                caption,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun InvoiceBlock(node: ContentWireNode.InvoiceNode) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 1.dp,
+    ) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(node.invoiceKind, style = MaterialTheme.typography.labelMedium)
+            Text(node.payload, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+@Composable
+private fun Placeholder(reason: String) {
     Text(
-        "Unsupported content",
+        "Unsupported content: $reason",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

@@ -213,10 +213,6 @@ class KernelModel : ViewModel() {
     // Social
     // -------------------------------------------------------------------------
 
-    /** Zap a note (NIP-57). */
-    fun zapNote(eventId: String, recipientPubkey: String, amountMsats: Long = 21000L, comment: String = "") =
-        bridge.dispatchAction("nmp.nip57.zap", """{"target_event_id":"$eventId","recipient_pubkey":"$recipientPubkey","amount_msats":$amountMsats,"comment":"${escapeJson(comment)}"}""")
-
     /** React to a note (NIP-25). */
     fun react(eventId: String, reaction: String = "+") =
         bridge.dispatchAction("nmp.nip25.react", """{"target_event_id":"$eventId","reaction":"$reaction"}""")
