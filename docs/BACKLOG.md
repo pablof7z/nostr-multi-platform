@@ -46,128 +46,31 @@ coordination.
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
 
-### V-112 · M2 author/thread feed read-path migration (ADR-0042 §5) [HIGH · in-flight, PR2 landed]
+### V-112 · Retire legacy author/thread view stack after flat-feed migration [HIGH · residual]
 
-**Status (PR2 — store-admission generalisation + firehose delete):** Two of the
-three remaining pieces are now done:
+**Status (2026-06-04):** Chirp iOS/Android no longer read the legacy
+`author_view` / `thread_view` projections for profile and thread screens. The
+app-owned Rust seam registers dynamic flat feeds through
+`nmp_app_chirp_open_author_feed` / `nmp_app_chirp_open_thread_feed`
+(`apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs:111,170`), Swift opens those
+symbols (`ios/Chirp/Chirp/Bridge/KernelBridge.swift:125-130`) and reads
+`flatFeeds["nmp.feed.author.*"]` / `flatFeeds["nmp.feed.thread.*"]`
+(`ios/Chirp/Chirp/Bridge/KernelModel.swift:320-328`). Android mirrors the same
+projection keys in `KernelBridge.kt` / `KernelModel.kt`.
 
-1. **Store admission generalised (ADR-0042 §5.1 — DONE).**
-   `Kernel::should_store_event` (`crates/nmp-core/src/kernel/ingest/timeline.rs`)
-   now admits any event matching the **wire filter of any active registered
-   interest**, not just the bespoke follow-set / `author_view` / sub-id-prefix
-   clauses. The matcher is `InterestShape::matches_event` /
-   `matches_event_with_id` (`crates/nmp-planner/src/interest.rs`, substrate-pure:
-   `authors`/`kinds`/`event_ids`/`since`/`until`/single-letter `#tags`, empty =
-   wildcard; ignores client-side-only `relay_pin`/`p_tag_routing`/`limit`). The
-   wire sub_id is a *merged* compiler hash (the lattice coalesces many shapes
-   into one REQ) so it cannot be reverse-mapped to one interest — shape-matching
-   the event is the robust admission test. A generic `open_interest` REQ is now
-   functional end-to-end: a non-followed author / arbitrary thread / `#t`
-   hashtag feed reaches `self.events` (and the `notify_event_observers`
-   feed-engine fan-out) **without** entering the follow-only home `timeline`
-   ordering projection. Note: this changes admission from sub-id-keyed to
-   content/shape-based — the obsolete sub-id-exclusivity assertion in
-   `discovery_tests.rs` was corrected accordingly.
+**Still live:** the generic C-ABI symbols and core projection stack remain for
+other consumers: `nmp_app_open_author` / `nmp_app_open_thread`
+(`crates/nmp-ffi/src/timeline.rs:28,59`), core `author_view` / `thread_view`
+projection tests (`crates/nmp-core/src/kernel/state_projection_tests.rs:143-160`),
+desktop (`apps/chirp/chirp-desktop/src/app.rs:285-290`), TUI
+(`apps/chirp/chirp-tui/src/feature_snapshot.rs:64-65`), and gallery bridges.
 
-2. **`open_firehose_tag` deleted (the clean −1 sub-case — DONE).** Removed the
-   C-ABI `nmp_app_open_firehose_tag`, `ActorCommand::OpenFirehoseTag` + its
-   dispatch arm, kernel `open_firehose_tag`/`firehose_requests`, the
-   `DiagnosticFirehoseState.interest`/`.seq` fields + their `requests/mod.rs`
-   caller and `status.rs` display row, the `NmpCore.h`/`KernelBridge.swift`/
-   `KernelModel.swift` wrappers, the `chirp-tui` call site (migrated to
-   `open_interest` with `{"kinds":[1],"#t":[…]}`, scope Global), the
-   `ffi-stress` re-export, and `ffi-surface.md` rows. Header-drift gate green
-   (60 symbols). **Deliberately KEPT:** the `diag-firehose-` **test ingest
-   seam** (`should_store_event` + the timeline-insert clause + the
-   `DiagnosticFirehoseState.events` counter + its `diagnostic_firehose_events`
-   snapshot field). ~15 kernel test files drive events through that prefix to
-   bypass the follow gate **with timeline-injection semantics** the generic
-   `open_interest` deliberately does NOT replicate (`open_interest` stays out of
-   the home timeline; `perf_tests`/`timeline_perf_tests` measure `make_update`
-   over `visible_items()`, so migrating them would measure an empty snapshot).
-   Retiring the test seam is a separate test-support refactor, not part of this
-   ADR.
-
-**Status (2026-06-03, PR1):** The generic `open_interest` / `close_interest`
-mechanism is landed and callable (ADR-0042 §2): parser
-`InterestShape::from_filter_json` (`crates/nmp-planner/src/interest.rs`),
-`ActorCommand::{OpenInterest,CloseInterest}` + dispatch arms
-(`crates/nmp-core/src/actor/{mod,dispatch}.rs`), C-ABI
-`nmp_app_open_interest`/`nmp_app_close_interest`
-(`crates/nmp-ffi/src/timeline.rs`), `NmpCore.h` + `KernelBridge.swift`
-wrappers. Additive, Chirp behaviour unchanged. 11 unit tests green.
-
-**Remaining (BLOCKED by #911 — author/thread read-path):** deleting
-`OpenAuthor`/`OpenThread`/`CloseAuthor`/`CloseThread` and the
-`author_view`/`thread_view` snapshot projections is **not** read-neutral. The
-store-admission blocker (1) is now resolved generically, but the **exposure**
-blocker remains: `author_view`/`thread_view` are the sole read path for Chirp
-`ProfileView`/`ThreadScreen`. Their replacement is feed-engine registration via
-the existing `nmp-feed` `FeedRegistry` + `nmp-nip01::register_op_feed` seam
-(ADR-0042 §5.1 — NOT a new bespoke `interest_feeds` projection). The frozen FFI
-symbols `nmp_app_open_author`/`nmp_app_open_thread` are retired by #911; do not
-delete the author/thread cluster or its projections before then. Two coupled
-blockers, both grep-verified (blocker 1 now generalised; blocker 2 stands):
-
-1. **Store admission.** `Kernel::should_store_event`
-   (`crates/nmp-core/src/kernel/ingest/timeline.rs:234`) admits events only via
-   the bespoke `timeline_authors` / `author_view.selected_author` /
-   `author-notes-`/`thread-ids-`/`thread-replies-`/`diag-firehose-` sub-id
-   clauses. A generic `open_interest` `sub-<hash>` for a non-followed author
-   matches none → the event is never stored. Must generalise admission to
-   "matches an active registered interest" (D8 cost: shape-matching on the hot
-   ingest path — see ADR-0042 §5.1).
-2. **Exposure.** `author_view`/`thread_view` are the **sole** read path for
-   Chirp `ProfileView` (`ios/.../ProfileView.swift:24` —
-   `items { authorView?.items ?? [] }`) / `ThreadScreen`. They are snapshot
-   projections (`kernel/update/projections.rs:175,181`, registered in
-   `crates/nmp-codegen/src/swift_projections_registry.rs:211,216` as
-   `authorView`/`threadView`). Deleting them blanks those screens.
-
-**Decision (ADR-0042 §5.1 — reuse, not reinvent):** author/thread feeds
-register through the EXISTING generic feed seam — `nmp-feed`'s `FeedRegistry`
-(`register(key, Arc<dyn FeedController>)`, ADR-0033) + `nmp-nip01::register_op_feed`
-(ADR-0035/0038, already powering `nmp.feed.home`) — NOT a new bespoke
-`interest_feeds` projection (which would be parallel machinery). App composes
-the rest: profile card ← `claimed_profiles`, thread root ← `claimed_events`,
-counts/primary-action ← local derivation.
-
-**Open sub-decision:** exact admission-gate placement (kernel
-`should_store_event` generalisation vs. feed-engine-side `EventGate` + a
-store-retain hook). Resolve before the delete-cascade.
-
-**Refinement (2026-06-03, code-grounded):** the "reuse `register_op_feed`"
-decision is only PARTLY applicable. `RootIndexedFeed` (the engine behind
-`nmp.feed.home`) is **roots-only** — its own module doc (`nmp-feed/src/root_indexed.rs:3`):
-"a followed author's replies appear only as *attribution* metadata." A profile
-screen must show ALL of one author's kind:1/6 as TOP-LEVEL rows (replies-to-others
-included), which root-indexing structurally cannot express. So the **author**
-feed needs a NEW flat `FeedController` (InterestShape-parameterised, own key
-`nmp.feed.author.<pk>`), reusing the `FeedRegistry` + `KernelEventObserver`
-seam but NOT the `RootIndexedFeed` engine. The **thread** feed is root-centric
-and MAY fit `RootIndexedFeed` with an injected `event_gate`
-(`kind∈{1,6} && #e==<id>`) + own key — confirm during build. ProfileView also
-reads `.profile`/`.primaryAction`/`.noteCountDisplay` off `author_view`; those
-compose from `claimed_profiles` + local follow-state + feed length respectively.
-This makes the read-path half a multi-component BUILD (flat feed type +
-FlatBuffers schema + codegen + Swift rewrite of two screens), whose GREEN
-checkpoint ("screens still show notes") needs a running iOS build —
-environmentally blocked on the current dev machine (Xcode-26-beta `UIUtilities`
-workaround absent). Sequenced as its own PR; see
-`docs/perf/pending-user-decisions.md` (V-112 entry, 2026-06-03).
-
-**Scope of the delete-cascade (forced once the 5 symbols go):** 5 ActorCommand
-variants + arms; kernel methods `open_author`/`author_requests`/`close_author`/
-`open_firehose_tag`/`firehose_requests`/`open_thread`/`close_thread`/
-`prepare_thread_requests`/`maybe_open_thread_hydration`/`enqueue_thread_*`;
-state `author_view`/`thread_view`/`diagnostic_firehose`/`ViewInterest`;
-`pending_view_requests` branches; `close_subscriptions_with_prefixes`; the two
-snapshot projections + payloads + codegen registry entries + projections.rs
-precedence; regen `KernelTypes.generated.swift`; ~10 non-Chirp Rust callers
-(chirp-desktop, chirp-tui, nmp-gallery android/ios/tui, nmp-android-ffi, 3
-ffi-stress binaries); `ffi-surface.md`; the `ci/check-ffi-header-drift.sh` gate.
-The `diagnostic_firehose` verb has ZERO projection/Swift coupling — it is the
-clean mechanical −3 sub-case and can be deleted independently first.
+**Correct fix:** migrate the remaining consumers to explicit app-owned
+feed/claim contracts, then delete the old ActorCommand variants, kernel state,
+projection payloads, codegen registry entries, FFI symbols/header rows, and
+legacy tests in one verified cascade. Do not reintroduce native-owned read
+paths or bespoke projections; new consumers use registry/feed keys and Rust-owned
+admission.
 
 ### V-57 · Remaining kind-constant duplicates to migrate to nmp-kinds [LOW · residual]
 

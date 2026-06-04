@@ -15,12 +15,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
@@ -29,35 +25,6 @@ import org.nmp.android.model.TimelineWindowCursor
 
 private const val TAG = "NmpCore"
 private const val HOME_FEED_KEY = "nmp.feed.home"
-
-@OptIn(ExperimentalSerializationApi::class)
-private val chirpActionJson = Json {
-    encodeDefaults = false
-    explicitNulls = false
-    ignoreUnknownKeys = true
-}
-
-@Serializable
-private data class ChirpActionIntent(
-    @SerialName("type") val type: String,
-    val content: String? = null,
-    @SerialName("reply_to_event_id") val replyToEventId: String? = null,
-    @SerialName("event_id") val eventId: String? = null,
-    val reaction: String? = null,
-    val pubkey: String? = null,
-    @SerialName("recipient_pubkey") val recipientPubkey: String? = null,
-    @SerialName("amount_msats") val amountMsats: Long? = null,
-    @SerialName("target_event_id") val targetEventId: String? = null,
-    val lnurl: String? = null,
-    val comment: String? = null,
-)
-
-@Serializable
-private data class ChirpActionSpec(
-    val namespace: String = "",
-    @SerialName("body_json") val bodyJson: String = "",
-    val error: String? = null,
-)
 
 /**
  * Observable mirror of the kernel snapshot — the Android peer of iOS
