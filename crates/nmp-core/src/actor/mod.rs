@@ -426,10 +426,12 @@ pub enum ActorCommand {
     /// (`PublishUnsignedEvent` / `PublishUnsignedEventToRelays`): `None` = active
     /// account, `Some(pubkey)` = a named roster key.
     ///
-    // V-78 reconcile: `nmp-nip57`'s `FetchLnurlInvoiceCommand` should migrate
-    // its kind:9734 signing off `active_local_keys` onto this port so bunker
-    // accounts can zap (one correct seam, two consumers). That retarget is
-    // owned by the V-78 fix (PR #938); this variant is the seam it adopts.
+    // V-78 reconcile (done): `nmp-nip57`'s `FetchLnurlInvoiceCommand` consumes
+    // this port to sign the kind:9734 zap request (active account →
+    // `signer_pubkey: None`), so a NIP-46 bunker can zap through the SAME seam
+    // as a local nsec. One signing seam, both backends; the redundant
+    // `ProtocolCommandContext::sign_active_nonblocking` method it used to call
+    // is gone.
     SignEventForAccount {
         /// The unsigned event to sign. `created_at` should already be stamped
         /// by the caller from the kernel clock (D7).

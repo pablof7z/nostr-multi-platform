@@ -18,17 +18,21 @@
 //! The kind:9735 receipt is what relays receive; the LN provider mints it
 //! after the invoice settles.
 //!
-//! # Signing (V-78 — bunker zaps)
+//! # Signing (V-78 — bunker zaps, reconciled onto the unified port)
 //!
-//! The protocol command signs the kind:9734 through
-//! [`nmp_core::substrate::ProtocolCommandContext::sign_active_nonblocking`],
-//! which handles BOTH signer kinds: a local nsec signs on the actor thread
-//! (`SignerOp::Ready`), and a NIP-46 bunker dispatches the broker RPC
-//! (`SignerOp::Pending`) whose `op.wait()` the command resolves on its
-//! off-actor HTTP worker (D8 — never the actor loop). Only a genuinely
-//! absent account (no local key AND no remote signer) fails closed with a
-//! toast + `RecordActionFailure`. The legacy `active_local_keys()` gate
-//! (which refused bunker accounts) was the V-78 bug and is gone (D13).
+//! The protocol command signs the kind:9734 through the unified
+//! [`ActorCommand::SignEventForAccount`] port via
+//! [`nmp_core::substrate::ProtocolCommandContext::sign_event_for_account`]
+//! (ADR-0043 Decision 2). The actor's dispatch arm resolves BOTH signer kinds
+//! behind the port — a local nsec signs inline (`SignerOp::Ready`); a NIP-46
+//! bunker parks (`SignerOp::Pending`) and the idle-loop drain resolves it —
+//! then invokes the command's continuation with the resolved `SignedEvent`. The
+//! continuation spawns the off-actor LNURL HTTP worker (D8 — never the actor
+//! loop) carrying the already-signed event; it never branches on backend. Only
+//! a genuinely absent account (no local key AND no remote signer) surfaces an
+//! `Err` to the continuation, which fails closed with a toast +
+//! `RecordActionFailure`. One signing seam, both backends (D13 — only a
+//! `SignedEvent` ever crosses the port).
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;

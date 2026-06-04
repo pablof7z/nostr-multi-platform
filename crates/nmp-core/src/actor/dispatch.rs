@@ -428,20 +428,6 @@ impl<'a> crate::substrate::LocalSignerAccess for LocalSignerAccessAdapter<'a> {
     fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
         self.identity.borrow().active_signer_for_seal()
     }
-    fn sign_active_nonblocking(
-        &self,
-        unsigned: &crate::substrate::UnsignedEvent,
-    ) -> Result<
-        nmp_signer_iface::SignerOp<crate::substrate::SignedEvent>,
-        String,
-    > {
-        // V-78 — delegate to the actor-side non-blocking signer. A local
-        // nsec resolves to `SignerOp::Ready` on the actor thread; an active
-        // NIP-46 bunker dispatches the broker RPC and returns
-        // `SignerOp::Pending`, which the NIP-57 zap command `op.wait()`s on
-        // its off-actor HTTP worker (never on the actor loop — D8).
-        commands::sign_active_nonblocking(&self.identity.borrow(), unsigned)
-    }
 }
 
 struct ErrorSurfaceAdapter<'a> {

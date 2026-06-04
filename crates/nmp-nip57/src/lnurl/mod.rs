@@ -31,11 +31,15 @@
 //!   `inject_recipient_relays` consumes this to populate the kind:9734
 //!   `relays` tag so the LN provider knows where to publish the kind:9735
 //!   zap receipt (NIP-57 § "Appendix F").
-//! - [`ProtocolCommandContext::sign_active_nonblocking`] — V-78: signs the
-//!   kind:9734 with the active account, covering BOTH local nsec
-//!   (`SignerOp::Ready`, signed on the actor thread) AND NIP-46 bunker
-//!   (`SignerOp::Pending`, resolved by `op.wait()` on the off-actor HTTP
-//!   worker — D8). Only a genuinely absent account fails closed.
+//! - [`ProtocolCommandContext::sign_event_for_account`] — V-78 reconcile: signs
+//!   the kind:9734 with the active account through the unified
+//!   `ActorCommand::SignEventForAccount` port (ADR-0043 Decision 2). The actor
+//!   dispatch arm resolves BOTH backends behind the port — a local nsec signs
+//!   inline (`SignerOp::Ready`); a NIP-46 bunker parks (`SignerOp::Pending`) and
+//!   the idle-loop drain resolves it — then invokes the continuation with the
+//!   resolved `SignedEvent` (or an error string). This command's worker never
+//!   sees a `SignerOp` and never branches on backend; only a genuinely absent
+//!   account surfaces an `Err` to the continuation, which fails closed.
 //! - [`ProtocolCommandContext::record_action_stage_requested`] — track the
 //!   `Requested` stage against the host's `correlation_id` (when supplied)
 //!   so the stage observer sees the transition before the worker thread
@@ -46,14 +50,12 @@
 //!
 //! # D8 — no blocking on the actor thread
 //!
-//! The actor thread DISPATCHES the kind:9734 sign (non-blocking — a local
-//! nsec resolves `SignerOp::Ready` in ~30µs; a NIP-46 bunker returns
-//! `SignerOp::Pending` after firing the broker RPC) and immediately spawns a
-//! `std::thread` for the sign-wait + HTTP work. The thread:
+//! The actor thread DISPATCHES the kind:9734 sign through the
+//! `SignEventForAccount` port and returns immediately. The continuation runs
+//! on the actor thread too (inline for a local nsec, from the idle-loop drain
+//! for a bunker) and MUST NOT block — its sole job is to SPAWN the HTTP worker
+//! `std::thread` carrying the already-signed kind:9734. The worker thread:
 //!
-//! 0. `op.wait()`s the parked sign op (V-78) — instant for a local nsec, up
-//!    to `ZAP_SIGN_TIMEOUT` for a bunker round-trip — then serializes the
-//!    signed kind:9734 into the flat NIP-01 JSON the callback expects.
 //! 1. Decodes the LNURL (bech32) or lightning-address (`user@domain`) input
 //!    into a `https://…/.well-known/lnurlp/<user>` URL via
 //!    [`pay::lnurl_to_well_known_url`].
@@ -65,6 +67,10 @@
 //!    [`Sender<ActorCommand>`]: `Protocol(WalletPayInvoiceCommand)` on a
 //!    fetched invoice, or `ShowToast` + `RecordActionFailure` for LNURL
 //!    failures and missing-wallet failures.
+//!
+//! Because the port resolves the sign before the worker spawns, the worker
+//! never holds a `SignerOp` and never waits on the signer — it receives the
+//! serialized signed kind:9734 JSON ready for the callback's `nostr=` param.
 //!
 //! # NWC payment handoff
 //!
@@ -82,8 +88,6 @@ use std::io::Read;
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use std::time::Duration;
-
 use nmp_core::substrate::{
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, SignedEvent, UnsignedEvent,
 };
@@ -98,17 +102,6 @@ pub use pay::{looks_like_bolt11, lnurl_to_well_known_url, url_encode_query, url_
 /// LN provider from accumulating worker threads even though each thread
 /// is independent of the actor loop.
 const LNURL_HTTP_TIMEOUT_SECS: u64 = 10;
-
-/// V-78 — wall-clock budget for `op.wait()` on the kind:9734 zap-request
-/// sign when the active account is a NIP-46 bunker (`SignerOp::Pending`).
-/// This wait runs on the off-actor HTTP worker (NEVER the actor loop, D8),
-/// so it does not freeze relay ingest / UI. 10s (vs. the 5s actor-loop
-/// `PENDING_SIGN_TIMEOUT`) gives a human enough time to approve the sign in
-/// a bunker app before the two-leg LNURL HTTP round-trip even begins — per
-/// `docs/wiki/nmp-signer-broker.md`, the full zap chain (sign + fetch) needs
-/// a looser budget than a bare publish. A local nsec returns
-/// `SignerOp::Ready` and never consumes this budget.
-const ZAP_SIGN_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Maximum response body the worker will accept from either LNURL hop.
 /// LNURL-pay responses are tiny JSON objects (a few hundred bytes); 64 KiB
@@ -214,66 +207,35 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         // receipt. Pure computation — no I/O, safe on the actor thread.
         inject_lnurl_tag(&lnurl_or_address, &mut unsigned);
 
-        // V-78 — non-blocking sign of the kind:9734. Covers BOTH signer kinds
-        // through the substrate seam:
+        // V-78 reconcile — sign the kind:9734 through the unified
+        // `ActorCommand::SignEventForAccount` port (ADR-0043 Decision 2). The
+        // active account signs, so `signer_pubkey = None`. The actor's dispatch
+        // arm resolves BOTH backends behind the port — a local nsec inline
+        // (`SignerOp::Ready`); a NIP-46 bunker parked and resolved from the
+        // idle-loop drain (`SignerOp::Pending`) — and invokes `continuation`
+        // with the resolved `SignedEvent` (or an `Err` string). This worker
+        // never sees a `SignerOp` and never branches on backend; one seam, both
+        // signer kinds. This closes V-78 onto the same port the Blossom
+        // sign-and-return path uses (D13 — only a `SignedEvent` ever crosses).
         //
-        // * **Local nsec** — the sign is CPU-bound; `sign_active_nonblocking`
-        //   returns `SignerOp::Ready` (signed on the actor thread, D7) and the
-        //   worker's `op.wait()` resolves it instantly.
-        // * **NIP-46 bunker** — `sign_active_nonblocking` dispatches the broker
-        //   RPC and returns `SignerOp::Pending`. We hand that op to the HTTP
-        //   worker and `op.wait()` it THERE (off-actor), never on the actor
-        //   loop (D8). This closes V-78: bunker accounts can now zap. We never
-        //   call `active_local_keys()` on this path (D13).
-        //
-        // `Err` here is the genuinely-no-active-account case (no local key AND
-        // no remote signer) — fail closed with a D6 toast + `RecordActionFailure`.
-        let sign_op = match ctx.sign_active_nonblocking(&unsigned) {
-            Ok(op) => op,
-            Err(reason) => {
-                let msg = format!("cannot zap: {reason}");
-                ctx.send(ActorCommand::ShowToast { message: msg.clone() });
-                if let Some(cid) = correlation_id {
-                    ctx.send(ActorCommand::RecordActionFailure {
-                        correlation_id: cid,
-                        reason: msg,
-                    });
-                }
-                return Ok(());
-            }
-        };
-
-        // Spawn the HTTP worker. `std::thread` (not tokio) — nmp-nip57 has
-        // no async runtime; the actor itself is `std::thread`-based. The
-        // worker owns its own clones of everything it needs; nothing
-        // references the actor's mutable state after this point. D8: zero
-        // blocking on the actor thread.
-        //
-        // V-78: the worker FIRST resolves the parked sign op via
-        // `op.wait(ZAP_SIGN_TIMEOUT)` (instant for a local nsec; up to 10s for
-        // a bunker that must round-trip the broker), serializes the signed
-        // kind:9734 into the flat NIP-01 JSON the LNURL callback expects, THEN
-        // runs the two-leg LNURL-pay round-trip.
-        //
-        // [`ProtocolCommandContext::command_sender_clone`] hands us an
-        // owned `Sender<ActorCommand>` (cheap atomic ref-count bump) the
-        // worker moves into its closure. The worker uses it to post
-        // follow-up commands (`ShowToast`, `RecordActionSuccess`,
-        // `RecordActionFailure`) back into the actor loop after the
-        // dispatch arm (and its `ProtocolCommandContext`) have returned.
+        // [`ProtocolCommandContext::command_sender_clone`] hands us an owned
+        // `Sender<ActorCommand>` (a cheap atomic ref-count bump) for the
+        // continuation + worker to post follow-up commands (`ShowToast`,
+        // `Protocol(WalletPayInvoiceCommand)`, `RecordActionFailure`) back into
+        // the actor loop after the dispatch arm (and its
+        // `ProtocolCommandContext`) have returned.
         let worker_tx = ctx.command_sender_clone();
-        std::thread::spawn(move || {
-            // D8: `op.wait` runs HERE, off the actor thread — never in the
-            // actor loop. A local nsec's `SignerOp::Ready` resolves with no
-            // wait; a bunker's `SignerOp::Pending` blocks this worker (only)
-            // until the broker responds or `ZAP_SIGN_TIMEOUT` elapses.
-            let signed_json = match sign_op
-                .wait(ZAP_SIGN_TIMEOUT)
-                .map_err(|e| format!("sign zap request: {e}"))
-                .and_then(|signed| signed_event_to_nostr_json(&signed))
-            {
+        ctx.sign_event_for_account(unsigned, None, move |outcome| {
+            // Runs on the actor thread (inline for local, idle-drain for
+            // bunker). D8: it MUST NOT block — its only job is to serialize the
+            // signed kind:9734 and SPAWN the HTTP worker (or, on a sign error /
+            // absent account, post the fail-closed terminal).
+            let signed_json = match outcome.and_then(|signed| signed_event_to_nostr_json(&signed)) {
                 Ok(json) => json,
                 Err(reason) => {
+                    // Sign failed (genuinely-no-active-account, broker
+                    // rejection, or a malformed signer response) — fail closed
+                    // with a D6 toast + `RecordActionFailure`.
                     let msg = format!("Zap failed: {reason}");
                     let _ = worker_tx.send(ActorCommand::ShowToast { message: msg });
                     if let Some(cid) = correlation_id {
@@ -285,47 +247,51 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                     return;
                 }
             };
-            match fetch_lnurl_invoice_blocking(
-                &lnurl_or_address,
-                amount_msats,
-                &signed_json,
-            ) {
-                Ok(bolt11) => {
-                    // Hand the bolt11 to the NWC wallet so it pays the invoice.
-                    // The correlation_id threads through so the kind:23195
-                    // response handler closes the `nmp.nip57.zap` action stage
-                    // on wallet confirmation. If no wallet runtime is installed,
-                    // fail the action so the host spinner resolves with a clear
-                    // reason instead of hanging.
-                    match nmp_nip47::active_wallet_runtime() {
-                        Some(runtime) => {
-                            let _ = worker_tx.send(ActorCommand::Protocol(Box::new(
-                                nmp_nip47::WalletPayInvoiceCommand {
-                                    bolt11,
-                                    amount_msats: None, // bolt11 carries the amount
-                                    correlation_id,
-                                    runtime,
-                                },
-                            )));
-                        }
-                        None => {
-                            let reason =
-                                "zap: no wallet connected — connect a NWC wallet first".to_string();
-                            let _ = worker_tx.send(ActorCommand::ShowToast {
-                                message: reason.clone(),
-                            });
-                            if let Some(cid) = correlation_id {
-                                let _ = worker_tx.send(ActorCommand::RecordActionFailure {
-                                    correlation_id: cid,
-                                    reason,
-                                });
-                            }
-                        }
-                    }
+            spawn_lnurl_worker(worker_tx, lnurl_or_address, amount_msats, signed_json, correlation_id);
+        });
+
+        Ok(())
+    }
+}
+
+/// Spawn the off-actor HTTP worker that runs the two-leg LNURL-pay round-trip
+/// for an already-signed kind:9734 (serialized as `signed_json`). `std::thread`
+/// (not tokio) — `nmp-nip57` has no async runtime and the actor itself is
+/// `std::thread`-based. The worker owns clones of everything it needs; nothing
+/// references the actor's mutable state. D8: zero blocking on the actor thread —
+/// this function only *spawns*; the blocking HTTP work happens on the new
+/// thread.
+///
+/// On a fetched invoice the worker hands the bolt11 to the NWC wallet so the
+/// kind:23195 response handler closes the `nmp.nip57.zap` action stage on wallet
+/// confirmation; if no wallet runtime is installed (or the LNURL legs fail) it
+/// posts a `ShowToast` + `RecordActionFailure` so the host spinner resolves with
+/// a clear reason instead of hanging.
+fn spawn_lnurl_worker(
+    worker_tx: std::sync::mpsc::Sender<ActorCommand>,
+    lnurl_or_address: String,
+    amount_msats: u64,
+    signed_json: String,
+    correlation_id: Option<String>,
+) {
+    std::thread::spawn(move || {
+        match fetch_lnurl_invoice_blocking(&lnurl_or_address, amount_msats, &signed_json) {
+            Ok(bolt11) => match nmp_nip47::active_wallet_runtime() {
+                Some(runtime) => {
+                    let _ = worker_tx.send(ActorCommand::Protocol(Box::new(
+                        nmp_nip47::WalletPayInvoiceCommand {
+                            bolt11,
+                            amount_msats: None, // bolt11 carries the amount
+                            correlation_id,
+                            runtime,
+                        },
+                    )));
                 }
-                Err(reason) => {
+                None => {
+                    let reason =
+                        "zap: no wallet connected — connect a NWC wallet first".to_string();
                     let _ = worker_tx.send(ActorCommand::ShowToast {
-                        message: format!("Zap failed: {reason}"),
+                        message: reason.clone(),
                     });
                     if let Some(cid) = correlation_id {
                         let _ = worker_tx.send(ActorCommand::RecordActionFailure {
@@ -334,11 +300,20 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                         });
                     }
                 }
+            },
+            Err(reason) => {
+                let _ = worker_tx.send(ActorCommand::ShowToast {
+                    message: format!("Zap failed: {reason}"),
+                });
+                if let Some(cid) = correlation_id {
+                    let _ = worker_tx.send(ActorCommand::RecordActionFailure {
+                        correlation_id: cid,
+                        reason,
+                    });
+                }
             }
-        });
-
-        Ok(())
-    }
+        }
+    });
 }
 
 /// V-07 — inject the kind:9734 `relays` tag from the recipient's NIP-65
