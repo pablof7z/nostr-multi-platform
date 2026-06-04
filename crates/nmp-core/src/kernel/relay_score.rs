@@ -1,7 +1,7 @@
-//! W1: `RelayAuthorScore` substrate value type + per-author/relay scoring
-//! map + pure helpers. The single source of truth queried by W4 (planner
-//! warm-relay filter) and W5 (claim expansion). W2 hydrates it from LMDB
-//! at kernel construct and snapshots dirty cells on actor idle.
+//! `RelayAuthorScore` substrate value type + per-author/relay scoring map +
+//! pure helpers. The map is the single source of truth queried by the planner
+//! warm-relay filter and claim expansion. LMDB hydration happens at kernel
+//! construction; dirty cells are flushed on actor idle.
 //!
 //! Doctrine
 //! --------
@@ -14,9 +14,9 @@
 //! - **D8**: insertion is `BTreeMap::insert` (O(log N)) only on
 //!   edge-triggered seams (EVENT, EOSE-no-match — neutral, Failed).
 //!
-//! Per §8.5 of the impl plan: `EoseNoMatch` is **neutral** (touches
-//! `last_used_unix_s` for recency only; the score counters are
-//! unchanged). The original "decrement on EoseNoMatch" design demerited
+//! Per the accepted relay-search-radius scoring contract, `EoseNoMatch` is
+//! **neutral** (touches `last_used_unix_s` for recency only; the score counters
+//! are unchanged). The original "decrement on EoseNoMatch" design demerited
 //! good-but-narrow relays out of the warm pool (Gigi math:
 //! 10 hits / 40 niche EoseNoMatches → weight ≈ 0.196 < WARM_THRESHOLD).
 
@@ -28,8 +28,8 @@ use crate::relay::CanonicalRelayUrl;
 /// Score floor at-or-above which a `(author, relay)` cell is "warm" and
 /// eligible for Phase-1 selection bias (W4). 0.40 admits a one-hit cell
 /// (`weight = 1/(1+0+1) = 0.50`) but excludes a hit paired with a
-/// hypothetical (non-existent in §8.5) miss; in practice the threshold's
-/// only job is to gate the `successes == 0` cold start.
+/// hypothetical miss; in practice the threshold's only job is to gate the
+/// `successes == 0` cold start.
 pub const WARM_THRESHOLD: f32 = 0.40;
 
 /// Decay half-life in days. The score's exponential-decay multiplier
@@ -38,27 +38,26 @@ pub const DECAY_HALFLIFE_DAYS: f32 = 14.0;
 
 /// Cap on total relays tried per claim (Phase 1 + Phase 2 union). Above
 /// this, the claim terminates `Exhausted`. Spec §6.
-#[allow(dead_code)] // consumed by W5 (claim_expansion.rs)
+#[allow(dead_code)] // consumed by claim_expansion.rs
 pub const MAX_RELAYS_TRIED_PER_CLAIM: usize = 12;
 
 /// Max concurrent Phase-2 candidate REQs per claim. Spec §6.
-#[allow(dead_code)] // consumed by W5
+#[allow(dead_code)] // consumed by claim_expansion.rs
 pub const MAX_EXPANSION_CONCURRENCY: usize = 3;
 
 /// Wall-clock budget before Phase 1 → Phase 2 transition. Spec §6.
-#[allow(dead_code)] // consumed by W5
+#[allow(dead_code)] // consumed by claim_expansion.rs
 pub const PHASE_1_BUDGET_MS: u64 = 1500;
 
 /// Wall-clock budget for any single per-relay REQ in Phase 1 or Phase 2.
 /// Beyond this the REQ is considered failed for scoring purposes
 /// regardless of whether the socket eventually replies.
-#[allow(dead_code)] // consumed by W5
+#[allow(dead_code)] // consumed by claim_expansion.rs
 pub const PER_RELAY_REQ_TIMEOUT_MS: u64 = 5000;
 
-/// User-visible wall-clock budget. After this elapses the claim
-/// terminates `Budget`; Phase 2 in-flight REQs continue scoring in the
-/// background per spec §10 Q7.
-#[allow(dead_code)] // consumed by W5
+/// User-visible wall-clock budget. After this elapses the tracked claim
+/// terminates `Budget`.
+#[allow(dead_code)] // consumed by claim_expansion.rs
 pub const PER_CLAIM_TOTAL_BUDGET_MS: u64 = 8000;
 
 /// Per-`(Pubkey, RelayUrl)` score cell. Restart-stable: serializes to a
@@ -117,7 +116,8 @@ impl RelayAuthorScore {
         self.last_used_unix_s = now_unix_s;
     }
 
-    /// Record an EOSE-without-match. Per §8.5 this is **neutral** —
+    /// Record an EOSE-without-match. Per the scoring contract this is
+    /// **neutral** —
     /// recency stamp moves but counters are unchanged.
     pub fn record_eose_no_match(&mut self, now_unix_s: u64) {
         self.last_used_unix_s = now_unix_s;
@@ -133,7 +133,7 @@ impl RelayAuthorScore {
 }
 
 /// Canonicalize a relay URL with the same idiom used elsewhere in the
-/// kernel (`ingest/mod.rs:144` precedent). Per §8.10 — scoring under
+/// kernel (`ingest/mod.rs:144` precedent). Scoring under
 /// `wss://r.example/` and reading under `wss://r.example` must hit the
 /// same cell.
 #[inline]
@@ -143,13 +143,12 @@ pub fn canon(relay_url: &str) -> String {
 }
 
 /// In-memory score map. Keyed on `(Pubkey, canonical RelayUrl)`. The
-/// single source of truth at runtime; W2 persists dirty cells to LMDB on
-/// idle.
+/// single source of truth at runtime; dirty cells persist to LMDB on idle.
 #[derive(Debug, Default)]
 pub struct RelayAuthorScoreMap {
     cells: BTreeMap<(Pubkey, RelayUrl), RelayAuthorScore>,
     /// `true` if at least one cell mutated since the last LMDB flush.
-    /// W2's flush clears this; W3's `record_*` calls set it.
+    /// The flush path clears this; `record_*` calls set it.
     dirty: bool,
 }
 
@@ -205,7 +204,7 @@ impl RelayAuthorScoreMap {
         self.dirty = true;
     }
 
-    /// Snapshot of all cells, for W2's LMDB flush. Returns owned `Vec`
+    /// Snapshot of all cells for LMDB flush. Returns owned `Vec`
     /// (D6: no borrow leaks into the store thread).
     #[must_use]
     pub fn snapshot(&self) -> Vec<(Pubkey, RelayUrl, RelayAuthorScore)> {
@@ -215,7 +214,7 @@ impl RelayAuthorScoreMap {
             .collect()
     }
 
-    /// Reset the dirty flag — called by W2 after a successful LMDB flush.
+    /// Reset the dirty flag after a successful LMDB flush.
     pub fn mark_clean(&mut self) {
         self.dirty = false;
     }
@@ -226,7 +225,7 @@ impl RelayAuthorScoreMap {
     }
 
     /// Inject cells from LMDB at kernel construct. The store has already
-    /// canonicalized URLs on write (§8.10), so we trust the key shape.
+    /// canonicalized URLs on write, so we trust the key shape.
     pub fn bulk_load<I>(&mut self, cells: I)
     where
         I: IntoIterator<Item = (Pubkey, RelayUrl, RelayAuthorScore)>,
@@ -248,9 +247,10 @@ impl RelayAuthorScoreMap {
 }
 
 /// Discrete outcome of a per-relay claim observation, fed into
-/// `RelayAuthorScoreMap::record`. Mirrors §8.5's delta table.
+/// `RelayAuthorScoreMap::record`. Mirrors the relay-search-radius scoring
+/// contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)] // W3 / W5 consumers land in later commits
+#[allow(dead_code)] // consumed by relay score recording and claim expansion
 pub enum ClaimOutcome {
     /// Phase-1 or Phase-2 EVENT match — successes += 1.
     Hit,

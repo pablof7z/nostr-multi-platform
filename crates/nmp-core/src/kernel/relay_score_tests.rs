@@ -1,11 +1,9 @@
-//! W1 test plan — failing-first per §0/§W1 (with §8 amendments applied).
+//! Relay-search-radius scoring tests.
 //!
 //! Cases:
 //! 1. `weight_zero_for_unknown_cell`
-//! 2. `weight_above_threshold_after_clean_hit` (§8.5: EoseNoMatch is
-//!    neutral; the "paired miss" case from the original §W1 test #2 no
-//!    longer applies — see §8.5 retarget)
-//! 3. `weight_unchanged_after_eose_no_match` (replaces original #2 per §8.5)
+//! 2. `weight_above_threshold_after_clean_hit` (EoseNoMatch is neutral)
+//! 3. `weight_unchanged_after_eose_no_match`
 //! 4. `decay_halves_weight_at_14_days`
 //! 5. `record_hit_sets_now_and_increments`
 //! 6. `record_failure_increments_by_three`
@@ -55,7 +53,7 @@ fn weight_above_threshold_after_clean_hit() {
 
 #[test]
 fn weight_unchanged_after_eose_no_match() {
-    // §8.5 amendment: EoseNoMatch is neutral. A relay that EOSEs without
+    // Scoring contract: EoseNoMatch is neutral. A relay that EOSEs without
     // matching does not lose its warm status — only its recency stamp
     // moves. The Gigi math (10/(40+10+1) ≈ 0.196 < 0.40) drove this.
     let mut s = RelayAuthorScore::default();

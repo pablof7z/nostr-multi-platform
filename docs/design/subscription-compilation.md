@@ -1,9 +1,12 @@
 # Design: Subscription Compilation + Outbox Routing (M2)
 
-> **Status:** Draft (M2 design + impl-prep).
+> **Status:** Durable design reference.
 > **Date:** 2026-05-18.
-> **Companion docs:** [`docs/plan/m2-subscription-compilation.md`](../plan/m2-subscription-compilation.md); `docs/aim.md` §4.4–§4.5; `docs/design/ndk-applesauce-lessons.md` §7; ADR-0007 (diagnostic lanes); `docs/design/kernel-substrate.md` §3 (`ViewModule`) and §4 (`ActionModule`); `docs/product-spec/subsystems.md` §7.2–§7.3.
-> **Scope:** Replace the "hardcoded two-role relay set" planner in `crates/nmp-core/src/kernel/{requests,ingest,mod}.rs` with a **subscription compilation stage** that turns logical interests into per-relay plans driven by NIP-65 mailboxes, and graduates outbox routing to a first-class planner subsystem. v1 is in-memory; M3 plugs it into LMDB. This is a design doc; no implementation lands in this PR.
+> **Companion docs:** `docs/aim.md` §4.4–§4.5; `docs/design/ndk-applesauce-lessons.md` §7; ADR-0007 (diagnostic lanes); `docs/design/kernel-substrate.md` §3 (`ViewModule`) and §4 (`ActionModule`); `docs/product-spec/subsystems.md` §7.2–§7.3.
+> **Scope:** Subscription compilation turns logical interests into per-relay
+> plans driven by NIP-65 mailboxes and makes outbox routing a first-class
+> planner subsystem. Implementation status belongs in source, tests, and
+> `docs/BACKLOG.md`, not in this design reference.
 
 This document is split into focused sub-files to stay under the 500 LOC ceiling (`AGENTS.md`).
 
@@ -11,7 +14,7 @@ This document is split into focused sub-files to stay under the 500 LOC ceiling 
 - [Compiler — pipeline + plan-id contract + function migration table](subscription-compilation/compiler.md) (§3)
 - [Recompilation — triggers and actor message shapes](subscription-compilation/recompilation.md) (§4)
 - [Diagnostics — four-lane records + reverse-coverage view](subscription-compilation/diagnostics.md) (§5, §8)
-- [nmp-nip65 — crate layout, traits, public surface](subscription-compilation/nip65.md) (§6)
+- [Router-owned mailbox routing](subscription-compilation/router.md) (§6)
 - [Outbox — publish-planner seam + override action](subscription-compilation/outbox.md) (§7)
 - [Tests — wire-frame audit gate](subscription-compilation/tests.md) (§9)
 
@@ -24,10 +27,10 @@ This document is split into focused sub-files to stay under the 500 LOC ceiling 
 | 3 | Compilation pipeline: authors → mailboxes → per-relay plans + plan-id | compiler.md |
 | 4 | Recompilation triggers (kind:10002, view open/close, reconnect, account switch, manual, user-configured change) | recompilation.md |
 | 5 | Four-lane diagnostic records (NIP-65 / hint / provenance / user-configured) | diagnostics.md |
-| 6 | `nmp-nip65` file layout, `MailboxesViewModule`, public surface | nip65.md |
+| 6 | Router-owned NIP-65 mailbox cache and routing surface | router.md |
 | 7 | `PublishPlanner` trait, write fan-out policy, override + debug warning | outbox.md |
 | 8 | Reverse-relay-coverage diagnostic view ("this relay serves N authors of our timeline") | diagnostics.md |
-| 9 | M2 exit-gate audit test path + assertions | tests.md |
+| 9 | Wire-frame audit test path + assertions | tests.md |
 | 10 | Open questions for follow-up ADRs | this file (below) |
 
 ## 10. Open questions
@@ -45,4 +48,4 @@ These remain to be resolved by ADRs after design review, not in this design pass
 5. **User-configured relay precedence vs NIP-65.** A user adds `wss://my-private.example` to local config. Does it *augment* (union) or *override* (replace) NIP-65 routing for the active account? `subsystems.md` §7.3 default-resolves by NIP-65; user-configured is "fallback" in the indexer sense. ADR needs to spell out the augment/override question for the active account specifically.
 6. **Auth-paused relays in compiled plans.** If a relay is in `RelayAuthState::ChallengeReceived`, the compiler still produces a plan that assigns interests to it (so reconnect-after-auth resumes correctly), but emission must pause. Is the pause modeled inside the compiler (per-relay gate) or inside the wire-emitter (consumes plans, applies pause)? Bias: wire-emitter, but the compiler must surface the pause as a fact for `LogicalInterestStatus`. Resolve before M5.
 7. **NSE crate compilation surface.** `nmp-nip17-nse` (M9) runs in iOS Notification Service Extension with bounded memory; it needs to compile a single-author single-relay plan without the full planner. Confirm in an ADR that the compiler exposes a `compile_one(spec, mailbox_cache_snapshot) -> Plan` pure function suitable for NSE use, and that the function does not require a live actor.
-8. **Relay-count optimization (greedy set-cover).** Stage 3 currently assigns interests to every declared write relay. Applesauce's `selectOptimalRelays` (`docs/research/applesauce/outbox.md` §3, `relay-selection.ts:14-93`) shows a greedy set-cover heuristic that caps to `maxConnections` relays while maximizing author coverage. NMP should add an equivalent cap policy in a future ADR, after M2 proves the basic per-relay fan-out is correct. Referenced by `compiler.md` §3.3.
+8. **Relay-count optimization (greedy set-cover).** Stage 3 assigns interests to every declared write relay. Applesauce's `selectOptimalRelays` (`docs/research/applesauce/outbox.md` §3, `relay-selection.ts:14-93`) shows a greedy set-cover heuristic that caps to `maxConnections` relays while maximizing author coverage. NMP should add an equivalent cap policy in a future ADR after the basic per-relay fan-out contract is stable. Referenced by `compiler.md` §3.3.

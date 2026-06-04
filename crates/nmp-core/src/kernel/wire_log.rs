@@ -5,16 +5,15 @@
 //! All output is suppressed unless the `NMP_CLAIM_LOG` environment variable is
 //! set (any value). The check is cached after the first call via
 //! [`OnceLock`](std::sync::OnceLock) — one atomic load per emit, no OS
-//! syscall on the hot path (§8.8, R5 of the impl plan).
+//! syscall on the hot path.
 //!
 //! # Why `NMP_CLAIM_LOG` not `NMP_WIRE_LOG`
 //!
 //! `NMP_WIRE_LOG` is already used by `nmp-network::relay_worker::socket_io`
 //! as a *file-path* raw-frame logger (`[ts] <relay> → <text>\n`). The two
-//! semantics are incompatible, so this layer uses a distinct name (§7.4 of
-//! the impl plan).
+//! semantics are incompatible, so this layer uses a distinct name.
 //!
-//! # Call-site instrumentation (W8b — completed)
+//! # Call-site instrumentation
 //!
 //! Call sites wired by W8b (all env-gated via `NMP_CLAIM_LOG`):
 //!
