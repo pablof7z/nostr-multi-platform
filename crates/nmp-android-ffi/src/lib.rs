@@ -26,7 +26,9 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jbyteArray, jint, jlong};
 use jni::JNIEnv;
 
-use nmp_app_chirp::{nmp_app_chirp_register, nmp_signer_broker_init};
+use nmp_app_chirp::{
+    action_spec_json_for_intent, nmp_app_chirp_register, nmp_signer_broker_init,
+};
 
 // Marmot JNI entry points + symbol-retention glue live in their own module.
 mod action;
@@ -246,6 +248,34 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
     s.with_app(|app| {
         nmp_app_release_profile(app, pubkey.as_ptr(), consumer_id.as_ptr());
     });
+}
+
+/// Build a Chirp action dispatch spec from typed user intent.
+///
+/// Kotlin passes user intent only. Rust owns the action namespace and body JSON
+/// shape returned as `{"namespace":"...","body_json":"..."}` or
+/// `{"error":"..."}`.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeBuildActionSpec(
+    mut env: JNIEnv,
+    _class: JClass,
+    intent_json: JString,
+) -> jni::sys::jstring {
+    let Some(intent) = env
+        .get_string(&intent_json)
+        .map(|s| s.to_string_lossy().into_owned())
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+    else {
+        return env
+            .new_string(r#"{"error":"missing Chirp action intent JSON"}"#)
+            .unwrap_or_else(|_| env.new_string("{}").unwrap())
+            .into_raw();
+    };
+    let result = action_spec_json_for_intent(&intent);
+    env.new_string(&result)
+        .unwrap_or_else(|_| env.new_string("{}").unwrap())
+        .into_raw()
 }
 
 fn default_chirp_relays_json_array() -> String {

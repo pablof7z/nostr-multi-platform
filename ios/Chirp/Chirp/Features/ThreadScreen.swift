@@ -10,8 +10,8 @@ struct ThreadScreen: View {
     @EnvironmentObject private var model: KernelModel
     @EnvironmentObject private var router: ChirpRouter
 
-    /// The event ID we want to present a reply compose sheet for.
-    @State private var replyTargetID: ReplyTarget? = nil
+    /// The note we want to present a reply compose sheet for.
+    @State private var replyTarget: ChirpReplyTarget? = nil
 
     private var thread: ThreadView? { model.threadView }
     private var cardLookup: [String: ChirpEventCard] {
@@ -47,8 +47,8 @@ struct ThreadScreen: View {
             // longer visible.  Symmetric with openThread in .task above.
             model.closeThread(eventID: eventID)
         }
-        .sheet(item: $replyTargetID) { target in
-            ComposeView(replyToID: target.eventID, replyToShortID: target.shortID)
+        .sheet(item: $replyTarget) { target in
+            ComposeView(replyTo: target)
         }
     }
 
@@ -99,9 +99,7 @@ struct ThreadScreen: View {
                             model.react(targetEventID: item.id, reaction: "❤")
                         },
                         onReply: {
-                            // ADR-0032: shell-side abbreviation of the raw
-                            // event id for ComposeView's reply banner.
-                            replyTargetID = ReplyTarget(eventID: item.id, shortID: item.id.shortHex)
+                            replyTarget = ChirpReplyTarget(item: item)
                         },
                         onRepost: {
                             model.repost(eventID: item.id, authorPubkey: item.authorPubkey)
@@ -191,14 +189,4 @@ struct ThreadScreen: View {
             Spacer()
         }
     }
-}
-
-// MARK: – Lightweight wrapper used for sheet(item:) presentation
-
-private struct ReplyTarget: Identifiable {
-    let eventID: String
-    /// Presentation abbreviation computed from the raw event id at the call
-    /// site and forwarded to `ComposeView.replyToShortID`.
-    let shortID: String
-    var id: String { eventID }
 }

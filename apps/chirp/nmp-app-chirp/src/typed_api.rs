@@ -14,9 +14,15 @@
 //! tests and code to construct action JSON without a live kernel instance.
 
 use std::ffi::{CStr, CString};
+
 use serde_json::{json, Value};
+
+use crate::action_specs::{
+    follow_spec, publish_note_spec, publish_profile_spec, react_spec, repost_spec, send_dm_spec,
+    unfollow_spec, zap_spec,
+};
 use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free_string, NmpApp};
-use nmp_nip01::{Note, NoteRecord};
+use nmp_nip01::NoteRecord;
 
 /// Typed Chirp action client.
 ///
@@ -67,10 +73,10 @@ impl ChirpClient {
             return Err("runtime app is not available".to_string());
         }
 
-        let namespace =
-            CString::new(namespace).map_err(|_| "action namespace contains NUL byte".to_string())?;
-        let action = CString::new(action_json)
-            .map_err(|_| "action JSON contains NUL byte".to_string())?;
+        let namespace = CString::new(namespace)
+            .map_err(|_| "action namespace contains NUL byte".to_string())?;
+        let action =
+            CString::new(action_json).map_err(|_| "action JSON contains NUL byte".to_string())?;
 
         // SAFETY: `app` is a valid, non-null pointer. FFI always returns a
         // valid (non-null) JSON string for a valid app (D6).
@@ -150,7 +156,8 @@ impl ChirpClient {
         target_event_id: &str,
         comment: &str,
     ) -> Result<String, String> {
-        let (namespace, action) = zap_action(recipient_pubkey, amount_msats, target_event_id, comment);
+        let (namespace, action) =
+            zap_action(recipient_pubkey, amount_msats, target_event_id, comment);
         self.dispatch_action(&namespace, &action)
     }
 
@@ -229,21 +236,7 @@ pub fn publish_note_action(
     content: &str,
     reply_to: Option<&NoteRecord>,
 ) -> Result<(String, String), String> {
-    let mut builder = Note::new(content);
-    if let Some(parent) = reply_to {
-        builder = builder.reply_to(parent);
-    }
-    let unsigned = builder.build("", 0).map_err(|e| e.to_string())?;
-    let action = json!({
-        "PublishRaw": {
-            "kind": 1,
-            "tags": unsigned.tags,
-            "content": content,
-            "target": "Auto"
-        }
-    })
-    .to_string();
-    Ok(("nmp.publish".to_string(), action))
+    publish_note_spec(content, reply_to).map(|spec| spec.into_tuple())
 }
 
 /// Build a React (like/repost) action envelope.
@@ -253,40 +246,35 @@ pub fn publish_note_action(
 ///
 /// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
 pub fn react_action(event_id: &str, reaction: &str) -> (String, String) {
-    let action = json!({
-        "target_event_id": event_id,
-        "reaction": reaction
-    })
-    .to_string();
-    ("nmp.nip25.react".to_string(), action)
+    react_spec(event_id, reaction).into_tuple()
 }
 
 /// Build a Follow action envelope (add to contacts list).
 ///
 /// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
 pub fn follow_action(pubkey: &str) -> (String, String) {
-    let action = json!({ "pubkey": pubkey }).to_string();
-    ("nmp.follow".to_string(), action)
+    follow_spec(pubkey).into_tuple()
 }
 
 /// Build an Unfollow action envelope (remove from contacts list).
 ///
 /// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
 pub fn unfollow_action(pubkey: &str) -> (String, String) {
-    let action = json!({ "pubkey": pubkey }).to_string();
-    ("nmp.unfollow".to_string(), action)
+    unfollow_spec(pubkey).into_tuple()
 }
 
 /// Build a SendDM (NIP-17 private encrypted message) action envelope.
 ///
 /// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
 pub fn send_dm_action(recipient_pubkey: &str, content: &str) -> (String, String) {
-    let action = json!({
-        "recipient_pubkey": recipient_pubkey,
-        "content": content,
-    })
-    .to_string();
-    ("nmp.nip17.send".to_string(), action)
+    send_dm_spec(recipient_pubkey, content, None).into_tuple()
+}
+
+/// Build a kind:6 repost action envelope (`PublishRaw`).
+///
+/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
+pub fn repost_action(event_id: &str, author_pubkey: &str) -> (String, String) {
+    repost_spec(event_id, author_pubkey).into_tuple()
 }
 
 /// Build a Zap action envelope (send sats to an event or user).
@@ -301,14 +289,15 @@ pub fn zap_action(
     target_event_id: &str,
     comment: &str,
 ) -> (String, String) {
-    let action = json!({
-        "recipient_pubkey": recipient_pubkey,
-        "amount_msats": amount_msats,
-        "target_event_id": target_event_id,
-        "comment": comment
-    })
-    .to_string();
-    ("nmp.nip57.zap".to_string(), action)
+    zap_spec(
+        recipient_pubkey,
+        amount_msats,
+        Some(target_event_id),
+        Some(comment),
+        None,
+        Vec::new(),
+    )
+    .into_tuple()
 }
 
 /// Build a CreateAccount action envelope.
@@ -378,17 +367,7 @@ pub fn remove_account_action(pubkey: &str) -> (String, String) {
 ///
 /// Returns the action JSON string (call with "nmp.publish" namespace).
 pub fn publish_profile_action(name: &str, about: &str, picture: &str) -> String {
-    let mut fields = serde_json::Map::new();
-    if !name.is_empty() {
-        fields.insert("name".to_string(), Value::String(name.to_string()));
-    }
-    if !about.is_empty() {
-        fields.insert("about".to_string(), Value::String(about.to_string()));
-    }
-    if !picture.is_empty() {
-        fields.insert("picture".to_string(), Value::String(picture.to_string()));
-    }
-    json!({ "PublishProfile": { "fields": Value::Object(fields) } }).to_string()
+    publish_profile_spec(name, about, picture).body_json
 }
 
 /// Parse a dispatch result envelope.
@@ -417,10 +396,7 @@ mod tests {
     #[test]
     fn parse_dispatch_envelope_success() {
         let value = serde_json::json!({"correlation_id": "abc123"});
-        assert_eq!(
-            parse_dispatch_envelope(&value),
-            Ok("abc123".to_string())
-        );
+        assert_eq!(parse_dispatch_envelope(&value), Ok("abc123".to_string()));
     }
 
     #[test]

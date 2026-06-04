@@ -73,6 +73,8 @@ nmp-nip18 = { path = "../../../crates/nmp-nip18" }
 # `nmp_nip02::register_actions(app)` call (Opus direction review #10
 # 30-day call). D0-clean: `nmp-core` gains no NIP-02 / NIP-25 nouns.
 nmp-nip02 = { path = "../../../crates/nmp-nip02" }
+# NIP-17 DM action input type used by Chirp's Rust-owned action-spec builders.
+nmp-nip17 = { path = "../../../crates/nmp-nip17" }
 # NIP-29 relay-based groups. Chirp registers the crate's typed
 # `JoinRequestAction` `ActionModule` against the kernel action registry —
 # proving the host-extensibility seam works for NIP-crate modules, not just
@@ -114,11 +116,6 @@ zeroize.workspace = true
 # the slot. Matches the pattern in the other protocol crates (e.g. `nmp-nip01`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
-# `nmp-nip17` for the DM-inbox round-trip integration test
-# (`tests/dm_inbox_round_trip.rs`). The production
-# `DmInboxProjection` + `nmp.nip17.send` action module are wired in
-# Chirp via `nmp_app_template::register_defaults` (transitively).
-nmp-nip17 = { path = "../../../crates/nmp-nip17" }
 # (The `mdk-sqlite-storage` + `mdk-core` dev-deps were relocated alongside
 # the Marmot FFI smoke tests to `nmp-marmot`'s `src/ffi/tests.rs`; Chirp no
 # longer references any MLS types directly.)

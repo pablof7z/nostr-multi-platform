@@ -15,6 +15,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
@@ -23,6 +29,35 @@ import org.nmp.android.model.TimelineWindowCursor
 
 private const val TAG = "NmpCore"
 private const val HOME_FEED_KEY = "nmp.feed.home"
+
+@OptIn(ExperimentalSerializationApi::class)
+private val chirpActionJson = Json {
+    encodeDefaults = false
+    explicitNulls = false
+    ignoreUnknownKeys = true
+}
+
+@Serializable
+private data class ChirpActionIntent(
+    @SerialName("type") val type: String,
+    val content: String? = null,
+    @SerialName("reply_to_event_id") val replyToEventId: String? = null,
+    @SerialName("event_id") val eventId: String? = null,
+    val reaction: String? = null,
+    val pubkey: String? = null,
+    @SerialName("recipient_pubkey") val recipientPubkey: String? = null,
+    @SerialName("amount_msats") val amountMsats: Long? = null,
+    @SerialName("target_event_id") val targetEventId: String? = null,
+    val lnurl: String? = null,
+    val comment: String? = null,
+)
+
+@Serializable
+private data class ChirpActionSpec(
+    val namespace: String = "",
+    @SerialName("body_json") val bodyJson: String = "",
+    val error: String? = null,
+)
 
 /**
  * Observable mirror of the kernel snapshot — the Android peer of iOS
@@ -146,29 +181,23 @@ class KernelModel : ViewModel() {
     }
 
     /**
-     * Publish a new note. Routes through dispatch_action("nmp.publish", ...).
-     *
-     * Emits a generic `PublishRaw` kind:1 envelope (the `PublishNote` variant
-     * was removed in #916 — `PublishRaw` is the sole unsigned-publish door).
-     * For replies, builds a minimal NIP-10 reply marker tag
-     * (`["e", replyToId, "", "reply"]`); full root forwarding is a follow-up.
+     * Publish a new note. Kotlin forwards only user intent; Rust builds the
+     * `nmp.publish` namespace and `PublishRaw` body, including reply tags.
      *
      * Returns the correlation_id if accepted, or null on error.
      */
     fun publishNote(
         content: String,
         replyToId: String? = null,
-        target: String = "Auto",
     ): String? {
-        val actionJson = when {
-            replyToId != null -> {
-                """{"PublishRaw":{"kind":1,"tags":[["e","$replyToId","","reply"]],"content":"${escapeJson(content)}","target":"$target"}}"""
-            }
-            else -> {
-                """{"PublishRaw":{"kind":1,"tags":[],"content":"${escapeJson(content)}","target":"$target"}}"""
-            }
-        }
-        return bridge.dispatchAction("nmp.publish", actionJson).correlationId
+        val response = dispatchTypedIntent(
+            ChirpActionIntent(
+                type = "publish_note",
+                content = content,
+                replyToEventId = replyToId,
+            )
+        ) ?: return null
+        return response.correlationId
     }
 
     /**
@@ -268,26 +297,44 @@ class KernelModel : ViewModel() {
     // -------------------------------------------------------------------------
 
     /** Zap a note (NIP-57). */
-    fun zapNote(eventId: String, recipientPubkey: String, amountMsats: Long = 21000L, comment: String = "") =
-        bridge.dispatchAction("nmp.nip57.zap", """{"target_event_id":"$eventId","recipient_pubkey":"$recipientPubkey","amount_msats":$amountMsats,"comment":"${escapeJson(comment)}"}""")
+    fun zapNote(
+        eventId: String,
+        recipientPubkey: String,
+        amountMsats: Long = 21000L,
+        comment: String = "",
+    ): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(
+            type = "zap",
+            targetEventId = eventId,
+            recipientPubkey = recipientPubkey,
+            amountMsats = amountMsats,
+            comment = comment.takeIf { it.isNotEmpty() },
+        )
+    )
 
     /** React to a note (NIP-25). */
-    fun react(eventId: String, reaction: String = "+") =
-        bridge.dispatchAction("nmp.nip25.react", """{"target_event_id":"$eventId","reaction":"$reaction"}""")
+    fun react(eventId: String, reaction: String = "+"): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(type = "react", eventId = eventId, reaction = reaction)
+    )
 
     /** Follow a pubkey. */
-    fun follow(pubkey: String) = bridge.dispatchAction("nmp.follow", """{"pubkey":"$pubkey"}""")
+    fun follow(pubkey: String): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(type = "follow", pubkey = pubkey)
+    )
 
     /** Unfollow a pubkey. */
-    fun unfollow(pubkey: String) = bridge.dispatchAction("nmp.unfollow", """{"pubkey":"$pubkey"}""")
+    fun unfollow(pubkey: String): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(type = "unfollow", pubkey = pubkey)
+    )
 
     // -------------------------------------------------------------------------
     // DMs
     // -------------------------------------------------------------------------
 
     /** Send a NIP-17 direct message to the given recipient pubkey. */
-    fun sendDm(recipientPubkey: String, content: String) =
-        bridge.dispatchAction("nmp.nip17.send", """{"recipient_pubkey":"$recipientPubkey","content":"${escapeJson(content)}"}""")
+    fun sendDm(recipientPubkey: String, content: String): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(type = "send_dm", recipientPubkey = recipientPubkey, content = content)
+    )
 
     // -------------------------------------------------------------------------
     // Marmot (MLS-over-Nostr encrypted groups)
@@ -376,6 +423,28 @@ class KernelModel : ViewModel() {
             .replace("\n", "\\n")
             .replace("\r", "\\r")
             .replace("\t", "\\t")
+    }
+
+    private fun dispatchTypedIntent(intent: ChirpActionIntent): DispatchResult? {
+        val intentJson = chirpActionJson.encodeToString(intent)
+        val specResponse = bridge.buildActionSpec(intentJson)
+        val spec = try {
+            chirpActionJson.decodeFromString<ChirpActionSpec>(specResponse)
+        } catch (e: Exception) {
+            Log.d(TAG, "buildActionSpec parse error: $specResponse", e)
+            return null
+        }
+        if (spec.error != null) {
+            Log.d(TAG, "buildActionSpec rejected ${intent.type}: ${spec.error}")
+            return null
+        }
+        if (spec.namespace.isBlank() || spec.bodyJson.isBlank()) {
+            Log.d(TAG, "buildActionSpec missing dispatch fields: $specResponse")
+            return null
+        }
+        val response = bridge.dispatchAction(spec.namespace, spec.bodyJson)
+        Log.d(TAG, "dispatchTypedIntent(${intent.type}) response: $response")
+        return response
     }
 
     /**

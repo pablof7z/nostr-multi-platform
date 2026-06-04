@@ -11,3 +11,4 @@ mod nip29;
 mod nip57;
 mod register;
 mod social;
+mod typed_actions;
