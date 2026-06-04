@@ -340,7 +340,7 @@ fn record_action_success_lifts_into_lifecycle() {
     // pay_invoice → kind:23195 ack). It must mirror into the lifecycle
     // projection identically to `record_action_failure`.
     let mut k = kernel();
-    k.record_action_success("corr-ok".to_string());
+    k.record_action_success("corr-ok".to_string(), None);
 
     let proj = lifecycle_proj(&mut k).expect("projection emitted");
     let recent = proj["recent_terminal"].as_array().unwrap();

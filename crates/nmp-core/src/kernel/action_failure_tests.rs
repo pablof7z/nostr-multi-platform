@@ -130,6 +130,90 @@ fn multiple_action_failures_in_one_tick_all_survive() {
     }
 }
 
+#[test]
+fn record_action_success_surfaces_published_terminal_in_action_results() {
+    // The success leg of the same per-tick drain — `record_action_success`
+    // with no result body lands a `{correlation_id, status:"published"}` row.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.record_action_success("corr-ok".to_string(), None);
+
+    let results = action_results(&mut kernel);
+    let arr = results
+        .as_array()
+        .expect("action_results must be an array after a recorded success");
+    assert_eq!(arr.len(), 1);
+    let entry = &arr[0];
+    assert_eq!(
+        entry.get("correlation_id").and_then(|v| v.as_str()),
+        Some("corr-ok")
+    );
+    assert_eq!(
+        entry.get("status").and_then(|v| v.as_str()),
+        Some("published"),
+        "the kernel maps the engine's `ok` to the wire `published` status"
+    );
+    assert!(
+        entry.get("result").is_none(),
+        "no result_json → no `result` field (existing rows are byte-unchanged)"
+    );
+}
+
+#[test]
+fn record_action_success_with_result_json_carries_structured_result() {
+    // ADR-0043 Decision 4 — a success terminal that attaches an opaque
+    // structured result body surfaces it under the row's `result` field, as a
+    // parsed JSON OBJECT (not a JSON-encoded string). `nmp-core` forwards it
+    // verbatim and never interprets it — this is the linchpin the Blossom host
+    // reads from `action_results[cid].result`.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let descriptor = r#"{"url":"https://b.example/abc.png","sha256":"abc","size":5,"type":"image/png","uploaded":1733356800}"#;
+    kernel.record_action_success("corr-blob".to_string(), Some(descriptor.to_string()));
+
+    let results = action_results(&mut kernel);
+    let arr = results.as_array().expect("array after success");
+    let entry = arr
+        .iter()
+        .find(|e| e.get("correlation_id").and_then(|v| v.as_str()) == Some("corr-blob"))
+        .expect("the correlation_id must appear");
+    assert_eq!(
+        entry.get("status").and_then(|v| v.as_str()),
+        Some("published")
+    );
+    let result = entry
+        .get("result")
+        .expect("result_json must surface under `result`");
+    assert!(
+        result.is_object(),
+        "result must be a JSON object, not a JSON-encoded string: {result}"
+    );
+    assert_eq!(
+        result.get("sha256").and_then(|v| v.as_str()),
+        Some("abc"),
+        "the descriptor's sha256 is readable as a nested field"
+    );
+    assert_eq!(result.get("size").and_then(|v| v.as_u64()), Some(5));
+    assert_eq!(
+        result.get("url").and_then(|v| v.as_str()),
+        Some("https://b.example/abc.png")
+    );
+}
+
+#[test]
+fn record_action_success_with_non_json_result_forwards_as_string() {
+    // A non-JSON result body is forwarded as a raw string rather than dropped —
+    // the kernel never parses semantically, so it cannot reject a malformed
+    // body; it round-trips it so a host can still inspect it.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.record_action_success("corr-raw".to_string(), Some("not json".to_string()));
+    let results = action_results(&mut kernel);
+    let entry = &results.as_array().expect("array")[0];
+    assert_eq!(
+        entry.get("result").and_then(|v| v.as_str()),
+        Some("not json"),
+        "a non-JSON body forwards as a raw string under `result`"
+    );
+}
+
 fn signed(id: &str, author: &str) -> SignedEvent {
     SignedEvent {
         id: id.to_string(),

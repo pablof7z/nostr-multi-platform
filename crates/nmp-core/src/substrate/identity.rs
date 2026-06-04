@@ -22,6 +22,30 @@ pub struct SignedEvent {
     pub unsigned: UnsignedEvent,
 }
 
+impl SignedEvent {
+    /// Serialize to the FLAT NIP-01 wire JSON object
+    /// (`{ id, pubkey, created_at, kind, tags, content, sig }`), NOT this
+    /// type's nested `derive(Serialize)` shape (which nests under `unsigned`).
+    ///
+    /// This is the form every relay and out-of-band transport (e.g. a Blossom
+    /// `Authorization: Nostr <base64(json)>` header) expects. Generic — no
+    /// protocol noun; the actor's sign-and-return drain and protocol-crate
+    /// workers share this one serializer.
+    #[must_use]
+    pub fn to_nip01_json(&self) -> String {
+        serde_json::json!({
+            "id": self.id,
+            "pubkey": self.unsigned.pubkey,
+            "created_at": self.unsigned.created_at,
+            "kind": self.unsigned.kind,
+            "tags": self.unsigned.tags,
+            "content": self.unsigned.content,
+            "sig": self.sig,
+        })
+        .to_string()
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum SigningError {
     Unsupported(String),

@@ -4462,6 +4462,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-blossom"
+version = "0.2.4"
+dependencies = [
+ "base64",
+ "nmp-core",
+ "nmp-ffi",
+ "nmp-kinds",
+ "nostr",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tracing",
+ "ureq",
+]
+
+[[package]]
 name = "nmp-chirp-config"
 version = "0.2.4"
 

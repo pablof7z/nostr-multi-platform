@@ -66,11 +66,26 @@ impl Kernel {
                     "ok" => "published",
                     other => other,
                 };
-                serde_json::json!({
+                let mut row = serde_json::json!({
                     "correlation_id": terminal.correlation_id,
                     "status": status,
                     "error": terminal.error,
-                })
+                });
+                // ADR-0043 Decision 4 — forward the opaque structured result
+                // body verbatim under `result` when the action attached one.
+                // The string is re-parsed into a `serde_json::Value` purely so
+                // the host reads a JSON object (not a JSON-encoded string); this
+                // is forwarding, NOT interpretation — `nmp-core` learns no
+                // protocol noun (D0). A non-JSON body is forwarded as a raw
+                // string rather than dropped.
+                if let Some(result_json) = &terminal.result_json {
+                    let value = serde_json::from_str::<serde_json::Value>(result_json)
+                        .unwrap_or_else(|_| serde_json::Value::String(result_json.clone()));
+                    if let Some(obj) = row.as_object_mut() {
+                        obj.insert("result".to_string(), value);
+                    }
+                }
+                row
             })
             .collect();
         serde_json::Value::Array(arr)

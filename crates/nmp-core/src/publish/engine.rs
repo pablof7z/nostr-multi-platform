@@ -281,6 +281,7 @@ impl PublishEngine {
             correlation_id: handle,
             status: "cancelled",
             error: None,
+            result_json: None,
         });
         self.flush_view();
         Ok(())
