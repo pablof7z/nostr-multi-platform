@@ -103,6 +103,10 @@ FFI_FILE_ROOTS=(
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/register.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs"
+    # Native action-envelope builder (nmp_app_chirp_action_spec): the symbol
+    # is declared in NmpCore.h and #[no_mangle]-defined here, re-exported via
+    # ffi/mod.rs. Must be scanned or the header drift check reports it missing.
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/typed_actions.rs"
     # Marmot C-ABI lives in nmp-marmot (originally relocated from
     # nmp-app-chirp in PR #348; the crate itself returned from apps/marmot/
     # to crates/nmp-marmot/ in step 12, 2026-05-25). Symbols still land in

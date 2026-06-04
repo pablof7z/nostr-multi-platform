@@ -19,7 +19,7 @@ pub extern "C" fn nmp_app_chirp_action_spec(intent_json: *const c_char) -> *mut 
         .map(|intent| action_spec_json_for_intent(&intent))
         .unwrap_or_else(|| r#"{"error":"missing Chirp action intent JSON"}"#.to_string());
     CString::new(result)
-        .unwrap_or_else(|_| CString::new(r#"{"error":"invalid action spec string"}"#).unwrap())
+        .unwrap_or_else(|_| CString::new(r#"{"error":"invalid action spec string"}"#).unwrap_or_default())
         .into_raw()
 }
 
