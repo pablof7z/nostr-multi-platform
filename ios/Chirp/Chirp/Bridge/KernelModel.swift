@@ -78,6 +78,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published private(set) var lastDispatchError: String?
     @Published var visibleLimit: UInt32 = 80
     @Published var emitHz: UInt32 = 4
+    #if DEBUG
+    private var debugPubkeysWithResolvedProfileNames: Set<String> = []
+    private var debugPubkeysMissingAfterResolvedProfileName: Set<String> = []
+    #endif
 
     /// Embed host — updated on every snapshot push so EmbeddedEvent views
     /// see resolved envelopes as soon as the kernel delivers them (D8).
@@ -277,6 +281,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         kernel.reregisterChirpProjection()
         lastLoadMoreCursor = nil
         appMetrics = AppRuntimeMetrics()
+        #if DEBUG
+        debugPubkeysWithResolvedProfileNames.removeAll()
+        debugPubkeysMissingAfterResolvedProfileName.removeAll()
+        #endif
         lastLogicalInterestSummary = ""
         // V5 thin-shell: action lifecycle state lives in Rust and resets
         // with the kernel `reset()` above — no Swift-side mirror to clear.
@@ -343,6 +351,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// guarantees a non-nil npub.
     func profile(forPubkey pubkey: String) -> ProfileWire? {
         if let card = claimedProfiles[pubkey] {
+            #if DEBUG
+            if card.displayName?.isEmpty == false {
+                markProfileNameResolved(pubkey)
+            }
+            #endif
             return ProfileWire(
                 pubkey: pubkey,
                 displayName: (card.displayName?.isEmpty == false) ? card.displayName : nil,
@@ -357,6 +370,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         }
         if let mention = mentionProfiles[pubkey] {
             let isRawKey = mention.display == pubkey.shortHex
+            #if DEBUG
+            if !isRawKey && !mention.display.isEmpty {
+                markProfileNameResolved(pubkey)
+            }
+            #endif
             return ProfileWire(
                 pubkey: pubkey,
                 displayName: isRawKey ? nil : mention.display,
@@ -368,24 +386,27 @@ final class KernelModel: ObservableObject, NostrProfileHost {
             )
         }
         #if DEBUG
-        // A2: name-regression instrumentation. A nil return here forces the
-        // caller (`NoteRowView.authorDisplayLabel`) to fall through to
-        // `shortHex`. The defect we are chasing is a TRANSIENT nil — a pubkey
-        // that resolved to a real name a tick ago, lost from `claimed_profiles`
-        // for 1–2 ticks, then re-resolved.
-        //
-        // TODO(reliability): scope this counter to pubkeys that are STILL
-        // on-screen (an active claim) so it measures genuine regressions, not
-        // benign first-load misses. The Swift snapshot exposes no active-claim
-        // set today (`SnapshotProjections` carries `claimed_profiles` /
-        // `resolved_profiles`, but not the live claim registry). When the
-        // kernel surfaces the active-claim set as a projection, gate this on
-        // `pubkey ∈ activeClaims`. Until then this is an upper-bound counter,
-        // not invent a wrong on-screen condition.
-        appMetrics.recordNameRegression()
+        // A2: name-regression instrumentation. Count only the first nil after
+        // this pubkey has resolved to a real name, then re-arm once the name is
+        // seen again. First-load misses stay invisible to the counter.
+        recordProfileNameMissIfRegression(pubkey)
         #endif
         return nil
     }
+
+    #if DEBUG
+    private func markProfileNameResolved(_ pubkey: String) {
+        debugPubkeysWithResolvedProfileNames.insert(pubkey)
+        debugPubkeysMissingAfterResolvedProfileName.remove(pubkey)
+    }
+
+    private func recordProfileNameMissIfRegression(_ pubkey: String) {
+        guard debugPubkeysWithResolvedProfileNames.contains(pubkey) else { return }
+        guard !debugPubkeysMissingAfterResolvedProfileName.contains(pubkey) else { return }
+        debugPubkeysMissingAfterResolvedProfileName.insert(pubkey)
+        appMetrics.recordNameRegression()
+    }
+    #endif
 
     // ── T66a command surface (identity / publish / multi-account) ────────
     // Every method is a pass-through to a real kernel dispatch. No Swift-side
@@ -404,8 +425,9 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
 
     /// Add a NIP-46 remote (bunker) signer. Mirrors the Rust `add_signer(source:
-    /// SignerSource::Bunker, make_active:)` API. Flows through the signer
-    /// broker, which drives the connect handshake and emits `AddRemoteSigner`.
+    /// SignerSource::BunkerUri, make_active:)` API. Flows through the signer
+    /// broker, which drives the connect handshake and emits
+    /// `AddSigner(source: RemoteHandle, make_active:)`.
     func addSigner(bunkerUri uri: String, makeActive: Bool = true) {
         kernel.signInBunker(uri)
     }
@@ -760,8 +782,9 @@ struct AppRuntimeMetrics {
     // view — they are read by tests and `os_signpost` diagnostics only.
 
     /// A2: Name-regression counter — how many times a pubkey that should
-    /// resolve to a real name regressed to `shortHex` because
-    /// `claimed_profiles` lost it. See `KernelModel.profile(forPubkey:)`.
+    /// resolve to a real name had no claimed/resolved profile on the next
+    /// accessor read. First-load misses and repeated reads during the same
+    /// outage are excluded. See `KernelModel.profile(forPubkey:)`.
     private(set) var nameRegressionCount: Int = 0
 
     /// B1: Typed-decode tick counters. `typedHomeFeed` is the ADR-0038

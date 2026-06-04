@@ -138,6 +138,43 @@ final class ProfileNameFallbackTests: XCTestCase {
             "With no profile data the accessor must return nil (caller → shortHex).")
     }
 
+    func test_nameRegressionMetric_counts_only_missing_after_resolved_name() throws {
+        let claimedUpdate = try makeKernelUpdate(
+            claimed: [pk: cardJSON(pubkey: pk, displayName: "Alice")])
+        let emptyUpdate = try makeKernelUpdate()
+        let m = model(with: emptyUpdate)
+
+        XCTAssertNil(m.profile(forPubkey: pk))
+        XCTAssertEqual(
+            m.appMetrics.nameRegressionCount, 0,
+            "First-load misses must not be counted as name regressions.")
+
+        m.setSnapshotForTesting(claimedUpdate)
+        XCTAssertEqual(m.profile(forPubkey: pk)?.display, "Alice")
+        XCTAssertEqual(
+            m.appMetrics.nameRegressionCount, 0,
+            "Resolving a name arms the detector without incrementing it.")
+
+        m.setSnapshotForTesting(emptyUpdate)
+        XCTAssertNil(m.profile(forPubkey: pk))
+        XCTAssertEqual(
+            m.appMetrics.nameRegressionCount, 1,
+            "The first missing profile after a resolved name is a regression.")
+
+        XCTAssertNil(m.profile(forPubkey: pk))
+        XCTAssertEqual(
+            m.appMetrics.nameRegressionCount, 1,
+            "Repeated reads during the same missing window must not overcount.")
+
+        m.setSnapshotForTesting(claimedUpdate)
+        XCTAssertEqual(m.profile(forPubkey: pk)?.display, "Alice")
+        m.setSnapshotForTesting(emptyUpdate)
+        XCTAssertNil(m.profile(forPubkey: pk))
+        XCTAssertEqual(
+            m.appMetrics.nameRegressionCount, 2,
+            "A resolved name re-arms the detector for a later regression.")
+    }
+
     // MARK: - Test B — NoteRowView author-label gap filler
 
     /// Locks the `eventCards` rung of `NoteRowView.resolveAuthorLabel` as

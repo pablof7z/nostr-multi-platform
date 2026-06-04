@@ -35,7 +35,8 @@ final class KernelHandle {
         // `signInBunker(...)` dispatch can reach the actor. The broker
         // registers a hook with `nmp-core` that drives the NIP-46 connect /
         // get_public_key handshake on a worker thread, then translates the
-        // broker's signer-ready event into `AddRemoteSigner`.
+        // broker's signer-ready event into
+        // `AddSigner(source: RemoteHandle, make_active:)`.
         nmp_signer_broker_init(raw)
         // T146 — register the modular timeline projection on the kernel
         // event observer slot. See `Bridge/ModularTimelineBridge.swift`.
@@ -227,9 +228,10 @@ final class KernelHandle {
     // `nmp_app_signin_nsec` wrapper that used to live here had no callers and was
     // removed when the Rust `add_signer` redesign landed.
 
-    // TODO: update to add_signer API — swap to the new `nmp_app_add_signer_*`
-    // C ABI once the parallel Rust agent lands it; for now this still calls the
-    // existing `nmp_app_signin_bunker` symbol (not in the deletion list).
+    // Compatibility C ABI: the stable `nmp_app_signin_bunker` symbol now routes
+    // through Rust's unified `AddSigner { source: BunkerUri, .. }` command.
+    // Swift keeps the old symbol name so shipped shells do not need a header
+    // churn for the internal actor-command rename.
     func signInBunker(_ uri: String) {
         uri.withCString { nmp_app_signin_bunker(raw, $0, 1) }
     }
