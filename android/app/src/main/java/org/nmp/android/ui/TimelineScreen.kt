@@ -175,8 +175,15 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
                     )
                 } else {
                     // Typed OP-centric feed: one row per ChirpRootCard.
+                    val page = s.modularTimeline.page
                     LazyColumn(Modifier.fillMaxSize()) {
-                        itemsIndexed(opCards, key = { _, root -> root.card.id }) { _, root ->
+                        itemsIndexed(opCards, key = { _, root -> root.card.id }) { index, root ->
+                            val cursor = page?.nextCursor
+                            if (index == opCards.lastIndex && page?.hasMore == true && cursor != null) {
+                                LaunchedEffect(cursor) {
+                                    model.loadOlderTimeline(cursor)
+                                }
+                            }
                             RootCardRow(
                                 root = root,
                                 items = emptyMap(),

@@ -19,8 +19,10 @@ import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
 import org.nmp.android.model.RelayStatus
+import org.nmp.android.model.TimelineWindowCursor
 
 private const val TAG = "NmpCore"
+private const val HOME_FEED_KEY = "nmp.feed.home"
 
 /**
  * Observable mirror of the kernel snapshot — the Android peer of iOS
@@ -51,6 +53,9 @@ class KernelModel : ViewModel() {
     private val _lastSnapshotAtMs = MutableStateFlow<Long?>(null)
     val lastSnapshotAtMs: StateFlow<Long?> = _lastSnapshotAtMs.asStateFlow()
 
+    private val _kernelIsDead = MutableStateFlow(false)
+    val kernelIsDead: StateFlow<Boolean> = _kernelIsDead.asStateFlow()
+
     /** Derived: account list from the latest snapshot projections. */
     val accounts: StateFlow<List<AccountSummary>> =
         state.map { it.projections?.accounts ?: emptyList() }
@@ -63,10 +68,14 @@ class KernelModel : ViewModel() {
 
     private var started = false
     private var readerJob: Job? = null
+    private var lastLoadMoreCursor: TimelineWindowCursor? = null
 
-    fun start() {
+    fun start(storagePath: String? = null) {
         if (started) return
         started = true
+        if (!storagePath.isNullOrBlank()) {
+            bridge.setStoragePath(storagePath)
+        }
         bridge.start(visibleLimit = 80, emitHz = 4)
         readerJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
@@ -94,6 +103,27 @@ class KernelModel : ViewModel() {
 
     fun openTimeline() {
         bridge.openTimeline()
+    }
+
+    /** Report Android lifecycle foreground to Rust. */
+    fun lifecycleForeground() {
+        bridge.lifecycleForeground()
+    }
+
+    /** Report Android lifecycle background to Rust. */
+    fun lifecycleBackground() {
+        bridge.lifecycleBackground()
+    }
+
+    /**
+     * Pull-side actor-liveness probe for foreground resume. If Android missed
+     * the pushed panic frame while backgrounded, this still latches the fatal
+     * kernel state for the host.
+     */
+    fun checkAlive() {
+        if (!bridge.isAlive()) {
+            _kernelIsDead.value = true
+        }
     }
 
     fun createLocalAccount() {
@@ -138,14 +168,20 @@ class KernelModel : ViewModel() {
                 """{"PublishRaw":{"kind":1,"tags":[],"content":"${escapeJson(content)}","target":"$target"}}"""
             }
         }
-        val response = bridge.dispatchAction("nmp.publish", actionJson)
-        return try {
-            val json = org.json.JSONObject(response)
-            json.optString("correlation_id").takeIf { it.isNotEmpty() }
-        } catch (e: Exception) {
-            Log.d(TAG, "publishNote parse error: $response", e)
-            null
-        }
+        return bridge.dispatchAction("nmp.publish", actionJson).correlationId
+    }
+
+    /**
+     * Extend the Rust-owned home-feed window after the rendered tail becomes
+     * visible. Android treats [after] as an opaque edge marker; Rust owns page
+     * size, cap, cursor interpretation, and the next snapshot.
+     */
+    fun loadOlderTimeline(after: TimelineWindowCursor) {
+        val page = state.value.modularTimeline.page ?: return
+        if (!page.hasMore) return
+        if (lastLoadMoreCursor == after) return
+        lastLoadMoreCursor = after
+        bridge.loadOlderFeed(HOME_FEED_KEY)
     }
 
     /**
@@ -168,9 +204,14 @@ class KernelModel : ViewModel() {
      * Dispatch a named action through the action registry (generic path).
      * Fire-and-forget — outcomes arrive in the next snapshot tick.
      */
-    fun dispatchAction(namespace: String, actionJson: String) {
-        val response = bridge.dispatchAction(namespace, actionJson)
-        Log.d(TAG, "dispatchAction($namespace) response: $response")
+    fun dispatchAction(namespace: String, actionJson: String): DispatchResult {
+        val result = bridge.dispatchAction(namespace, actionJson)
+        Log.d(TAG, "dispatchAction($namespace) response: $result")
+        return result
+    }
+
+    fun ackActionStage(correlationId: String) {
+        bridge.ackActionStage(correlationId)
     }
 
     // -------------------------------------------------------------------------
@@ -182,6 +223,18 @@ class KernelModel : ViewModel() {
         bridge.signInNsec(secret)
         bridge.openTimeline()
     }
+
+    /** Sign in with a NIP-46 bunker URI through the Rust signer broker. */
+    fun signInBunker(uri: String) {
+        bridge.signInBunker(uri)
+    }
+
+    fun cancelBunkerHandshake() {
+        bridge.cancelBunkerHandshake()
+    }
+
+    fun nostrConnectUri(relayUrl: String? = null, callbackScheme: String? = null): String? =
+        bridge.nostrConnectUri(relayUrl, callbackScheme)
 
     /** Create a new local account with the given display name. */
     fun createAccount(displayName: String) {
@@ -336,15 +389,14 @@ class KernelModel : ViewModel() {
      * swallow).
      *
      * Panic frames are logged at ASSERT level — they indicate actor death (D7)
-     * and must not be silently ignored, but Android has no way to propagate
-     * them to a UI toast from a background coroutine without additional
-     * infrastructure. Future work: surface via a dedicated `panicState` flow.
+     * and also latch [kernelIsDead], matching the iOS fatal-kernel state.
      */
     private fun decodeUpdate(bytes: ByteArray): KernelUpdate? {
         return when (val frame = KernelUpdateFrameDecoder.decode(bytes)) {
             null -> null
             is KernelDecodedUpdateFrame.Panic -> {
                 Log.wtf(TAG, "NMP_ACTOR_PANIC: ${frame.message}")
+                _kernelIsDead.value = true
                 null
             }
             is KernelDecodedUpdateFrame.Snapshot -> {

@@ -67,15 +67,16 @@ mod testing;
 // that are android-only (account removal, bunker sign-in, full-actor stop,
 // active-account switch). Likewise `test-support` implies `native` in
 // practice (the `ffi` module itself is `#[cfg(feature = "native")]`), so the
-// test-support delta only adds the harness-only injectors / ack / read
-// helpers.
+// test-support delta only adds the harness-only injectors / read helpers.
 //
 // `allow(unused_imports)`: in-crate `tests` modules reach these symbols by
 // their `super::` / module path, so the facade re-export is only consumed by
 // out-of-crate clients; keeps `cargo test -p nmp-core --lib` clean.
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
-pub use action::{nmp_app_dispatch_action, nmp_app_register_action_result_observer};
+pub use action::{
+    nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_app_register_action_result_observer,
+};
 #[cfg(feature = "native")]
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
@@ -132,13 +133,10 @@ pub use timeline::{
 // ── test-support delta ───────────────────────────────────────────────────
 // Live-bench harnesses (`live-bench`) and integration test binaries
 // (`nmp-testing`) need a few extra entry points that production app crates
-// do not — per-action stage acks (action-FSM tests), pre-verified event
-// injection (S3/S4/S5 throughput harnesses), and read-side projection JSON
-// dumps (assert reducer output without going through the snapshot
-// callback). Kept gated on test-support so they don't pollute the
-// production-app re-export surface above.
-#[cfg(any(test, feature = "test-support"))]
-pub use action::nmp_app_ack_action_stage;
+// do not — pre-verified event injection (S3/S4/S5 throughput harnesses)
+// and read-side projection JSON dumps (assert reducer output without going
+// through the snapshot callback). Per-action stage ACK is part of the public
+// native C ABI and is re-exported above for Android JNI parity.
 #[cfg(any(test, feature = "test-support"))]
 pub use testing::{
     nmp_app_inject_pre_verified_events, nmp_app_inject_signed_event_json,

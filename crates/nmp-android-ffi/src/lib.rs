@@ -26,19 +26,19 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jbyteArray, jint, jlong};
 use jni::JNIEnv;
 
-use nmp_app_chirp::nmp_app_chirp_register;
+use nmp_app_chirp::{nmp_app_chirp_register, nmp_signer_broker_init};
 
-// Marmot (MLS-over-Nostr) JNI entry points + symbol-retention glue live in their
-// own module to keep this transport file cohesive (and off the file-size
-// ceiling). The `#[no_mangle] Java_…` symbol names are unaffected by module
-// nesting.
+// Marmot JNI entry points + symbol-retention glue live in their own module.
+mod action;
 mod marmot;
+mod platform;
 mod session;
+mod signer;
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_dispatch_action,
-    nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_open_thread,
-    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay,
-    nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_new,
+    nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline, nmp_app_release_profile,
+    nmp_app_remove_account, nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
+    nmp_app_switch_active, NmpApp,
 };
 use session::{insert_session, remove_session, NextUpdate};
 pub(crate) use session::{session_arc, Session};
@@ -52,6 +52,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
     if app.is_null() {
         return 0;
     }
+    nmp_signer_broker_init(app);
     let chirp = nmp_app_chirp_register(app, std::ptr::null());
     let session = Arc::new(Session::new(app, chirp));
     insert_session(session)
@@ -245,74 +246,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
     s.with_app(|app| {
         nmp_app_release_profile(app, pubkey.as_ptr(), consumer_id.as_ptr());
     });
-}
-
-/// Dispatch a named action through the action registry.
-///
-/// Returns a JSON C string the caller receives as a jstring. The caller need not
-/// free it — JNI String lifetime is managed by the VM.
-///
-/// * `{"correlation_id":"<32-hex>"}` — the action was accepted and assigned a
-///   correlation id.
-/// * `{"error":"<message>"}` — the action was rejected (null app, invalid
-///   arguments, unknown namespace, malformed JSON).
-///
-/// D6: on null handle or any error, returns "{}" (empty JSON object).
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    namespace: JString,
-    action_json: JString,
-) -> jni::sys::jstring {
-    let Some(s) = session_arc(handle) else {
-        return env
-            .new_string("{}")
-            .unwrap_or_else(|_| env.new_string("{}").unwrap())
-            .into_raw();
-    };
-    let Some(namespace) = jstring_to_cstring(&mut env, &namespace) else {
-        return env
-            .new_string("{}")
-            .unwrap_or_else(|_| env.new_string("{}").unwrap())
-            .into_raw();
-    };
-    let Some(action_json) = jstring_to_cstring(&mut env, &action_json) else {
-        return env
-            .new_string("{}")
-            .unwrap_or_else(|_| env.new_string("{}").unwrap())
-            .into_raw();
-    };
-
-    // Call the FFI function; it returns a heap-allocated C string we must free.
-    let Some(result_ptr) =
-        s.with_app(|app| nmp_app_dispatch_action(app, namespace.as_ptr(), action_json.as_ptr()))
-    else {
-        return env
-            .new_string("{}")
-            .unwrap_or_else(|_| env.new_string("{}").unwrap())
-            .into_raw();
-    };
-    if result_ptr.is_null() {
-        return env
-            .new_string("{}")
-            .unwrap_or_else(|_| env.new_string("{}").unwrap())
-            .into_raw();
-    }
-
-    // Convert to a Rust string, then to JString.
-    let result_str = unsafe { std::ffi::CStr::from_ptr(result_ptr) }
-        .to_string_lossy()
-        .into_owned();
-
-    // Free the C string.
-    nmp_app_free_string(result_ptr);
-
-    // Return as jstring.
-    env.new_string(&result_str)
-        .unwrap_or_else(|_| env.new_string("{}").unwrap())
-        .into_raw()
 }
 
 fn default_chirp_relays_json_array() -> String {
