@@ -143,8 +143,8 @@ class KernelBridge {
     fun buildActionSpec(intentJson: String): String = nativeBuildActionSpec(intentJson)
 
     /**
-     * Open a thread by note ID. The kernel batches a corresponding
-     * kind:1 REQ and opens the thread timeline for rendering.
+     * Open a thread by note ID. Rust registers `nmp.feed.thread.<noteId>` and
+     * admits matching kind:1/6 events for rendering.
      *
      * D6: null handle or invalid note_id is a silent no-op.
      */
@@ -153,13 +153,26 @@ class KernelBridge {
     }
 
     /**
-     * Open an author profile by pubkey. The kernel batches a corresponding
-     * kind:0 REQ and opens the author timeline for rendering.
+     * Close a thread feed opened with [openThread].
+     */
+    fun closeThread(noteId: String) {
+        if (handle != 0L) nativeCloseThread(handle, noteId)
+    }
+
+    /**
+     * Open an author profile by pubkey. Rust registers
+     * `nmp.feed.author.<pubkey>` and admits matching kind:1/6 events for
+     * rendering. Profile metadata is fetched via [claimProfile].
      *
      * D6: null handle or invalid pubkey is a silent no-op.
      */
     fun openAuthor(pubkey: String) {
         if (handle != 0L) nativeOpenAuthor(handle, pubkey)
+    }
+
+    /** Close an author feed opened with [openAuthor]. */
+    fun closeAuthor(pubkey: String) {
+        if (handle != 0L) nativeCloseAuthor(handle, pubkey)
     }
 
     /**
@@ -278,7 +291,9 @@ class KernelBridge {
     private external fun nativeLoadOlderFeed(handle: Long, feedKey: String)
     private external fun nativeBuildActionSpec(intentJson: String): String
     private external fun nativeOpenThread(handle: Long, noteId: String)
+    private external fun nativeCloseThread(handle: Long, noteId: String)
     private external fun nativeOpenAuthor(handle: Long, pubkey: String)
+    private external fun nativeCloseAuthor(handle: Long, pubkey: String)
     private external fun nativeAddRelay(handle: Long, url: String, role: String)
     private external fun nativeRemoveRelay(handle: Long, url: String)
     private external fun nativeSignInNsec(handle: Long, secret: String)

@@ -64,9 +64,8 @@ val LocalProfileClaimer = compositionLocalOf<ProfileClaimer?> { null }
 
 /**
  * Pre-merged author profile map from the kernel's `resolved_profiles`
- * projection (PR #812), keyed by hex pubkey. The kernel applies canonical
- * precedence (claimed > author_view > mention) so every consumer reads one
- * map instead of re-deriving the merge.
+ * projection (PR #812), keyed by hex pubkey. Every consumer reads one map
+ * instead of re-deriving profile fallback precedence locally.
  *
  * Provided once at each screen root (timeline, profile) and read by [NoteRow]
  * — including embedded notes rendered via `NostrRichText`, which a parameter
@@ -128,6 +127,7 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
 
     var showComposeDialog by remember { mutableStateOf(false) }
     var selectedProfilePubkey by remember { mutableStateOf<String?>(null) }
+    var selectedThreadId by remember { mutableStateOf<String?>(null) }
 
     val selectedProfile = selectedProfilePubkey
     if (selectedProfile != null) {
@@ -135,6 +135,17 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
             pubkey = selectedProfile,
             model = model,
             onBack = { selectedProfilePubkey = null },
+            modifier = modifier,
+        )
+        return
+    }
+
+    val selectedThread = selectedThreadId
+    if (selectedThread != null) {
+        ThreadScreen(
+            eventId = selectedThread,
+            model = model,
+            onBack = { selectedThreadId = null },
             modifier = modifier,
         )
         return
@@ -188,6 +199,7 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
                                 items = emptyMap(),
                                 model = model,
                                 onAuthorClick = { selectedProfilePubkey = it },
+                                onThreadClick = { selectedThreadId = it },
                             )
                             HorizontalDivider()
                         }
@@ -270,11 +282,12 @@ private fun RootCardRow(
     items: Map<String, TimelineItem>,
     model: KernelModel,
     onAuthorClick: (String) -> Unit,
+    onThreadClick: (String) -> Unit,
 ) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clickable { model.openThread(root.card.id) }
+            .clickable { onThreadClick(root.card.id) }
     ) {
         NoteRow(
             eventId = root.card.id,
