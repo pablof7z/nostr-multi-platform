@@ -202,7 +202,9 @@ where
     /// Fan a freshly-arrived profile into every attribution (live + pending)
     /// for its author, and cache it for future `from_reply` calls.
     fn apply_profile(&self, pubkey: &str, profile: A::Profile) {
-        let Ok(mut st) = self.state.lock() else { return };
+        let Ok(mut st) = self.state.lock() else {
+            return;
+        };
         st.profiles.insert(pubkey.to_string(), profile.clone());
         refresh_author(&mut st.attributions, pubkey, &profile);
         refresh_author(&mut st.pending_attributions, pubkey, &profile);
@@ -260,13 +262,31 @@ where
         self.released_signals_seen.load(Ordering::Relaxed)
     }
 
-    /// Tear down all per-account state on identity change / logout (§3-K). The
-    /// wiring layer calls this when `ActiveFollowSet` reports an account
-    /// switch. Pending pointers are cleared without emitting Release — the
-    /// host clears its own claim refcounts on identity change.
+    /// Tear down all per-account state on identity change / logout (§3-K).
+    ///
+    /// Pending root claims are engine-owned refcounts in the wiring layer, so
+    /// reset must release them before dropping the local pointer map. The state
+    /// lock is released before callbacks run; a claim sink may enqueue actor
+    /// commands and must not execute under the engine mutex.
     pub fn reset_for_identity_change(&self) {
-        if let Ok(mut st) = self.state.lock() {
-            *st = EngineState::new();
+        let releases = match self.state.lock() {
+            Ok(mut st) => {
+                let releases = st
+                    .pending_pointers
+                    .iter()
+                    .map(|(_, pointer)| pointer.clone())
+                    .collect::<Vec<_>>();
+                *st = EngineState::new();
+                releases
+            }
+            Err(_) => Vec::new(),
+        };
+
+        for pointer in releases {
+            (self.caps.claim_sink)(ClaimRequest::Release {
+                pointer,
+                consumer_id: self.caps.consumer_id.clone(),
+            });
         }
     }
 

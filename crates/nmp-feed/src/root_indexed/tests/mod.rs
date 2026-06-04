@@ -250,7 +250,12 @@ fn d5_visible_window_bounds_card_count_and_json() {
     let h = Harness::new(&["alice"]);
     // Populate many roots.
     for i in 0..2_000 {
-        h.ingest(&root_event(&format!("op{i}"), "bob", 1_000 + i as u64, "body"));
+        h.ingest(&root_event(
+            &format!("op{i}"),
+            "bob",
+            1_000 + i as u64,
+            "body",
+        ));
     }
     let snap = h.engine.snapshot(&FeedRequest::newest(80));
     assert_eq!(snap.cards.len(), 80, "window bounded to request limit");
@@ -325,6 +330,49 @@ fn reset_for_identity_change_clears_all_state() {
 
     h.engine.reset_for_identity_change();
     assert!(h.snapshot().cards.is_empty());
+}
+
+#[test]
+fn reset_for_identity_change_releases_pending_claims() {
+    let h = Harness::new(&["alice"]);
+    h.ingest(&reply_event("r1", "alice", 11, "op1"));
+    h.ingest(&reply_event("r2", "alice", 12, "op2"));
+
+    let before = h.claims();
+    assert_eq!(
+        before
+            .iter()
+            .filter(|c| matches!(c, ClaimRequest::Claim { .. }))
+            .count(),
+        2,
+        "two missing roots should be claimed before reset"
+    );
+
+    h.engine.reset_for_identity_change();
+
+    let claims = h.claims();
+    let released = claims
+        .iter()
+        .filter_map(|c| match c {
+            ClaimRequest::Release {
+                pointer,
+                consumer_id,
+            } => Some((pointer.event_id(), consumer_id.as_str())),
+            ClaimRequest::Claim { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        released,
+        vec![
+            (Some("op1"), "nmp.feed.home"),
+            (Some("op2"), "nmp.feed.home")
+        ],
+        "identity reset must release every outstanding engine-owned claim"
+    );
+    assert!(
+        h.snapshot().cards.is_empty(),
+        "reset still clears visible state"
+    );
 }
 
 #[test]

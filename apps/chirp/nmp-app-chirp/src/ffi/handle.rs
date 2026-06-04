@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use nmp_ffi::NmpApp;
 use nmp_nip01::OpFeedEngine;
-use nmp_nip02::ActiveFollowSet;
 
 /// Opaque handle returned by [`super::nmp_app_chirp_register`]. Boxed on the heap
 /// so the address is stable; the Swift consumer holds the raw pointer until
@@ -13,10 +12,8 @@ use nmp_nip02::ActiveFollowSet;
 ///
 /// V-80 rung 7 — the handle now owns the OP-centric feed engine (a
 /// [`nmp_nip01::OpFeedEngine`], `RootIndexedFeed<…>`) instead of the old
-/// `ModularTimelineProjection`. It also retains the [`ActiveFollowSet`] so the
-/// identity-change path can later drive
-/// [`ActiveFollowSet::notify_account_changed`] (currently a deferred
-/// follow-up — see `register.rs`).
+/// `ModularTimelineProjection`. Identity changes are handled by the app-
+/// template registration through `NmpApp`'s Rust-side identity observer.
 ///
 /// The engine and follow set are registered with the kernel by
 /// [`nmp_app_template::register_op_feed_defaults`], which plugs their observers
@@ -28,12 +25,6 @@ use nmp_nip02::ActiveFollowSet;
 pub struct ChirpHandle {
     /// The OP-feed engine. Snapshotted via [`ChirpHandle::snapshot`].
     pub(super) engine: Arc<OpFeedEngine>,
-    /// Retained so the identity-change path can drive
-    /// [`ActiveFollowSet::notify_account_changed`] (deferred follow-up — see
-    /// `register.rs`). Not read yet; holding the `Arc` keeps the producer alive
-    /// for the life of the handle and makes the follow-up a one-line addition.
-    #[allow(dead_code)]
-    pub(super) follow_set: Arc<ActiveFollowSet>,
     /// The originating `NmpApp`. Retained to document the lifetime contract
     /// (`nmp_app_free` must outlive the handle) and so a future
     /// `unregister`-time teardown has the app to reach. Not dereferenced after

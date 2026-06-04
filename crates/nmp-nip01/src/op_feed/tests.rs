@@ -546,3 +546,33 @@ fn release_signal_is_non_terminal_pending_survives() {
     assert_eq!(snap.cards.len(), 1);
     assert_eq!(snap.cards[0].attribution.len(), 1);
 }
+
+#[test]
+fn identity_reset_releases_pending_op_claim_command() {
+    let h = Harness::new(&[ALICE]);
+    h.ingest(&reply_event(REPLY_ID, ALICE, 10, OP_ID));
+
+    let before = h.claims();
+    assert_eq!(before.len(), 1, "missing OP should emit one ClaimEvent");
+    assert!(matches!(before[0], RecordedCmd::Claim { .. }));
+
+    h.engine.reset_for_identity_change();
+
+    let claims = h.claims();
+    assert_eq!(
+        claims.len(),
+        2,
+        "reset should emit the matching ReleaseEvent"
+    );
+    match &claims[1] {
+        RecordedCmd::Release { uri, consumer_id } => {
+            assert_nevent_for(uri, OP_ID);
+            assert_eq!(consumer_id, OP_FEED_SNAPSHOT_KEY);
+        }
+        other => panic!("expected ReleaseEvent after reset, got {other:?}"),
+    }
+    assert!(
+        h.snapshot().cards.is_empty(),
+        "identity reset clears OP-feed snapshot state"
+    );
+}
