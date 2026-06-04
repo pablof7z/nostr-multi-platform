@@ -51,6 +51,10 @@ data class SnapshotProjections(
     // merged in the presentation layer.
     @SerialName("resolved_profiles") val resolvedProfiles: Map<String, ProfileCard> = emptyMap(),
     @SerialName("author_view") val authorView: AuthorViewPayload? = null,
+    @SerialName("action_results") val actionResults: List<LastActionResult> = emptyList(),
+    @SerialName("last_action_result") val lastActionResult: LastActionResult? = null,
+    @SerialName("action_stages") val actionStages: Map<String, List<ActionStageEntry>> = emptyMap(),
+    @SerialName("action_lifecycle") val actionLifecycle: ActionLifecycleSnapshot? = null,
     // Marmot (MLS-over-Nostr) push projections (V-107 / ADR-0039), present only
     // when a Marmot MLS identity is registered. `nmp.marmot.snapshot` carries
     // the group list / welcomes / key-package; `nmp.marmot.messages` is keyed
@@ -116,6 +120,33 @@ data class ProfileAction(
 data class ProfileDispatchSpec(
     val namespace: String = "",
     val bodyJson: String = "",
+)
+
+@Serializable
+data class LastActionResult(
+    @SerialName("correlation_id") val correlationId: String = "",
+    val status: String = "",
+    val error: String? = null,
+)
+
+@Serializable
+data class ActionStageEntry(
+    val stage: String = "",
+    @SerialName("at_ms") val atMs: Long = 0,
+    val reason: String? = null,
+)
+
+@Serializable
+data class ActionLifecycleEntry(
+    @SerialName("correlation_id") val correlationId: String = "",
+    val stage: String = "",
+    val reason: String? = null,
+)
+
+@Serializable
+data class ActionLifecycleSnapshot(
+    @SerialName("in_flight") val inFlight: List<ActionLifecycleEntry> = emptyList(),
+    @SerialName("recent_terminal") val recentTerminal: List<ActionLifecycleEntry> = emptyList(),
 )
 
 @Serializable

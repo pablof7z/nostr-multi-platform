@@ -3,6 +3,7 @@ package org.nmp.android
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -24,7 +25,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.compose.viewModel
 import org.nmp.android.ui.DiagnosticsScreen
 import org.nmp.android.ui.DmScreen
 import org.nmp.android.ui.GroupsScreen
@@ -32,6 +32,7 @@ import org.nmp.android.ui.RelayScreen
 import org.nmp.android.ui.SignInScreen
 import org.nmp.android.ui.TimelineScreen
 import org.nmp.android.ui.WalletScreen
+import java.io.File
 
 /**
  * Single-activity Compose host. Mirrors iOS Chirp `RootShell`'s tabs, but for L1
@@ -40,15 +41,32 @@ import org.nmp.android.ui.WalletScreen
  * Rust-owned timeline view.
  */
 class MainActivity : ComponentActivity() {
+    private val model: KernelModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        model.start(storagePath = kernelStoragePath())
         setContent {
             MaterialTheme {
-                val model: KernelModel = viewModel()
-                model.start()
                 RootTabs(model)
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        model.checkAlive()
+        model.lifecycleForeground()
+    }
+
+    override fun onStop() {
+        model.lifecycleBackground()
+        super.onStop()
+    }
+
+    private fun kernelStoragePath(): String? {
+        val dir = File(filesDir, "NMP")
+        return if (dir.exists() || dir.mkdirs()) dir.absolutePath else null
     }
 }
 

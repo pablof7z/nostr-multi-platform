@@ -33,16 +33,16 @@ import org.nmp.android.KernelModel
  * Sign-in screen for Android Chirp app. Provides three authentication paths:
  * 1. Sign in with nsec (hex secret or bech32 private key)
  * 2. Create a local account with a display name
- * 3. Connect to a Bunker relay (NIP-46 remote signer)
+ * 3. Connect to a bunker URI (NIP-46 remote signer)
  *
  * All actions route through the shared KernelModel: signInNsec, createAccount,
- * and dispatchAction for Bunker. No local KernelBridge instantiation.
+ * and signInBunker. No local KernelBridge instantiation.
  */
 @Composable
 fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
     var nsecSecret by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
-    var bunkerRelayUrl by remember { mutableStateOf("") }
+    var bunkerUri by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
 
     Column(
@@ -166,25 +166,24 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
-                    value = bunkerRelayUrl,
-                    onValueChange = { bunkerRelayUrl = it },
-                    label = { Text("Relay URL") },
+                    value = bunkerUri,
+                    onValueChange = { bunkerUri = it },
+                    label = { Text("bunker:// URI") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
                 Button(
                     onClick = {
-                        if (bunkerRelayUrl.isBlank()) {
-                            errorMessage = "Please enter a relay URL"
+                        if (bunkerUri.isBlank()) {
+                            errorMessage = "Please enter a bunker URI"
                         } else {
-                            val actionJson = """{"ConnectBunker":"${escapeJson(bunkerRelayUrl)}"}"""
-                            model.dispatchAction("nmp.sign_in", actionJson)
-                            bunkerRelayUrl = ""
+                            model.signInBunker(bunkerUri.trim())
+                            bunkerUri = ""
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = bunkerRelayUrl.isNotBlank(),
+                    enabled = bunkerUri.isNotBlank(),
                 ) {
                     Text("Connect")
                 }
@@ -212,16 +211,4 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
 
         Spacer(Modifier.size(32.dp))
     }
-}
-
-/**
- * Escape special characters in JSON strings: backslash, quote, newline, carriage
- * return, and tab. Mirrors the iOS KernelModel pattern.
- */
-private fun escapeJson(s: String): String {
-    return s.replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
 }
