@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-18
-updated: 2026-05-21
+updated: 2026-06-03
 verified: 2026-05-18
 compiled-from: conversation
 sources:
@@ -15,6 +15,7 @@ sources:
   - session:d27a4f61-511b-4086-845d-335493f9b464
   - session:fe79b2c4-3f04-4fc9-8dde-08f19a3190b4
   - session:47203d35-d7c9-4c12-bc47-a40773d7acc2
+  - session:83b5dae5-d3f4-4f4d-b12f-9d04d17c9139
 ---
 
 # PublishUnsignedEvent Actor Command
@@ -34,4 +35,6 @@ Refactoring `publish.rs` to consume the new protocol-crate builders inverts D0 (
 
 The `nmp_app_publish_signed_event` FFI publishes pre-signed events verbatim without re-signing. Publish-handle FFI operations (`publish_signed_event*`, `retry_publish`, `cancel_publish`) reside in `ffi/publish.rs`, not `ffi/identity.rs`. The publish_key_package operation uses dual-path publishing: the kernel fire-and-forget path plus a direct WebSocket send_event path via fetch.rs.
 
-<!-- citations: [^590ca-229] [^590ca-253] [^d27a4-16] [^fe79b-13] [^47203-7] -->
+`PublishAction::PublishRaw` and `ActorCommand::PublishRawEvent` must accept `signer_pubkey: Option<String>` to allow publishing as a non-active account. v0.2.5 must add `signer_pubkey: Option<String>` to `PublishRaw` and `PublishRawEvent`, threading it into `publish_unsigned_event` and `publish_unsigned_event_to_relays` which already accept that parameter.
+
+<!-- citations: [^83b5d-4] [^590ca-229] [^590ca-253] [^d27a4-16] [^fe79b-13] [^47203-7] [^83b5d-9] -->

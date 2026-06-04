@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-19
-updated: 2026-05-30
+updated: 2026-06-03
 verified: 2026-05-19
 compiled-from: conversation
 sources:
@@ -29,6 +29,7 @@ sources:
   - session:d0690875-a693-48ef-ac6f-31a92f5699cc
   - session:c3f757f1-6292-4e52-b520-5bb52e7de2bf
   - session:c9ae5a7c-0f5e-44ec-94d6-d9b5e31d8991
+  - session:f1b740a8-d601-4b63-8633-072c83a6de22
 ---
 
 # NMP Projections & Snapshot Architecture
@@ -120,7 +121,9 @@ iOS `TypedHomeFeedDecoder` gracefully falls back to JSON when a typed sidecar is
 
 The merge conflict resolution for PR #747 drops the old typed sidecar block in `register.rs` (since it references a removed `projection`) and keeps both the new doc comment and the `#[deprecated]` attribute in `snapshot.rs`.
 
-<!-- citations: [^12b3f-17] [^1c093-24] [^222-226] [^355-360] [^54ae9-22] [^055ef-2] [^055ef-3] [^47203-6] [^86221-8] [^53838-8] [^42908-21] [^a0964-2] [^d0690-6] [^c3f75-12] [^c9ae5-7] -->
+V-112 Step C migrates ProfileView and ThreadScreen Swift reads to projections[nmp.feed.author.*] / projections[nmp.feed.thread.*], and Step D deletes the four legacy C-ABI symbols (`nmp_app_open_author`, `open_thread`, `close_author`, `close_thread`) and their Rust machinery.
+
+<!-- citations: [^12b3f-17] [^1c093-24] [^222-226] [^355-360] [^54ae9-22] [^055ef-2] [^055ef-3] [^47203-6] [^86221-8] [^53838-8] [^42908-21] [^a0964-2] [^d0690-6] [^c3f75-12] [^c9ae5-7] [^f1b74-40] -->
 ## Second-App Framework Thesis (PD-033-A)
 
 PD-033-A (the second-app proof of the framework thesis) is buildable today with zero new affordances: the existing push projection seam already provides kernel-owned projections, handshake-gated sign-in, and D3 outbox routing read off the pushed frame. The thesis is unblocked but not yet demonstrated — no second app has been built against the seam. The podcast player is the live candidate. See ADR-0039. <!-- [^12b3f-19] -->

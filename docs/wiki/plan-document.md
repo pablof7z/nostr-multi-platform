@@ -1,7 +1,7 @@
 ---
 title: Planning Authority Documents
 slug: plan-document
-summary: AGENTS.md defines the planning-authority split: plan.md is the temporal release view, BACKLOG.md is the tactical queue, and WIP.md is ignored live branch coordination.
+summary: "AGENTS.md defines the planning-authority split: plan.md is the temporal release view, BACKLOG.md is the tactical queue, and WIP.md is ignored live branch coordination."
 tags:
   - capture
 volatility: warm

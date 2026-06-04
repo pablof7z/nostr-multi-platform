@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-22
-updated: 2026-05-28
+updated: 2026-06-03
 verified: 2026-05-22
 compiled-from: conversation
 sources:
@@ -16,15 +16,16 @@ sources:
   - session:0c4f2143-76f1-4bb0-ba37-ea0f65f1432c
   - session:e4861768-9a00-4d83-b7a3-a39d07749d1c
   - session:594b7c34-efd1-4461-81ad-9fa33a6e76f9
+  - session:f1b740a8-d601-4b63-8633-072c83a6de22
 ---
 
 # NMP WASM Crate & Browser Facade
 
 ## Purpose & Current State
 
-nmp-wasm is a deliberate stub that simulates wire protocol handling without depending on nmp-core. Its one honest function is validating the wire protocol contract in unit tests while the full actor driver is pending. It lacks nmp-core dependency, real relay connections, real signing, subscriptions, and persistence. A WASM Nostr client must have live relay connectivity — it is non-negotiable. It stores PublishNote notes only in a local Vec<LocalNote> and emits a fake snapshot with author_pubkey set to 'browser-local'. It returns CapabilityFailure for all actions except PublishNote, with the message that the browser wasm facade accepts publish-note intents only and live relay-backed actions require the full actor driver. The nmp-wasm/src/lib.rs WasmRuntime implementation remains structurally unchanged from the toy stub.
+nmp-wasm is a deliberate stub that simulates wire protocol handling without depending on nmp-core. Its one honest function is validating the wire protocol contract in unit tests while the full actor driver is pending. It lacks nmp-core dependency, real relay connections, real signing, subscriptions, and persistence. A WASM Nostr client must have live relay connectivity — it is non-negotiable. It stores PublishNote notes only in a local Vec<LocalNote> and emits a fake snapshot with author_pubkey set to 'browser-local'. It returns CapabilityFailure for all actions except PublishNote, with the message that the browser wasm facade accepts publish-note intents only and live relay-backed actions require the full actor driver. The nmp-wasm/src/lib.rs WasmRuntime implementation remains structurally unchanged from the toy stub. Browser publish is not supported: OpenView logs 'interest not compiled', open_interest is not exposed to wasm, the write path rejects all non-PublishNote actions, SetSigner is missing from the web worker protocol, and dispatch_app_action_async is not exported.
 
-<!-- citations: [^ea099-1] [^ea099-2] [^1670f-14] [^0c4f2-1] -->
+<!-- citations: [^ea099-1] [^ea099-2] [^1670f-14] [^0c4f2-1] [^f1b74-42] -->
 ## Degraded Runtime Fallback
 
 The web worker in chirp falls back to DegradedRuntime that rejects everything if the wasm build artifact at /nmp-wasm/nmp_wasm.js is not available. The DegradedMode::BrowserActorDriverMissing protocol variant is the code's own acknowledgment of the wasm capability gap. <!-- [^ea099-3] -->

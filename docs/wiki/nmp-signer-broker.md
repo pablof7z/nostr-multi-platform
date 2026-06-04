@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-19
-updated: 2026-05-28
+updated: 2026-06-03
 verified: 2026-05-19
 compiled-from: conversation
 sources:
@@ -17,6 +17,7 @@ sources:
   - session:1670fcb8-f275-498c-975b-8bd912331ded
   - session:cd2b6122-2b7c-43fc-941b-c51e79ffc691
   - session:594b7c34-efd1-4461-81ad-9fa33a6e76f9
+  - session:83b5dae5-d3f4-4f4d-b12f-9d04d17c9139
 ---
 
 # NMP Signer Broker & ADR-0031 Justification
@@ -26,6 +27,8 @@ sources:
 ADR-0031 justifies `nmp-signer-broker` existing instead of `nostr-connect` for five reasons: D0 compliance, async mismatch (mio/blocking vs tokio), multi-relay broadcast, D12 progress telemetry, and verb extensibility. NMP cannot adopt nostr-relay-pool because it spawns tokio tasks with no external-step API — the async-loop mismatch is architectural, not a version issue. V-65 tracks the hardcoded NOSTRCONNECT_DEFAULT_RELAY_URL = wss://relay.damus.io in nmp-core, which violates D0 and creates a third-party dependency.
 
 NIP-07 signing works on WASM via `window.nostr.signEvent`. NIP-46 bunker signing on WASM is blocked on a wasm-native async transport for bunker RPC. <!-- [^594b7-6] -->
+
+Signer transparency is a binding principle: local versus bunker signing must be invisible to the ProtocolCommand worker. Any divergence indicates a signer-interface defect that must be fixed, not documented as a special case. The uniform ProtocolCommand sign-account port (which fixes local-vs-bunker transparency) also fixes the `nmp-nip57` V-78 bunker-zap bug caused by `active_local_keys`-only signing. [^83b5d-16]
 
 <!-- citations: [^12b3f-21] [^1670f-13] [^cd2b6-17] -->
 ## Bunker DM Access & Local-Key Gate

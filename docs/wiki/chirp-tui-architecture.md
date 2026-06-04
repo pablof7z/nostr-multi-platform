@@ -7,7 +7,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-21
-updated: 2026-05-29
+updated: 2026-06-03
 verified: 2026-05-21
 compiled-from: conversation
 sources:
@@ -17,6 +17,7 @@ sources:
   - session:f8543716-09b7-4884-8952-da52f571962e
   - session:16ca6097-5734-4d49-8b9a-0a20d42a324b
   - session:f3d8d762-5bb9-4db7-b127-667085e512bf
+  - session:f1b740a8-d601-4b63-8633-072c83a6de22
 ---
 
 # Chirp TUI Architecture & Rendering Stack
@@ -28,6 +29,8 @@ The Chirp TUI uses ratatui + crossterm as its rendering stack. The build uses ra
 
 
 The TUI must consume shared snapshot types from `nmp-app-chirp`. <!-- [^f3d8d-10] -->
+
+chirp-tui has its own inline extern C declarations for FFI functions that must be updated separately when signatures change. [^f1b74-34]
 ## Image Display
 
 The image display fallback chain follows the order Kitty → iTerm2 → Sixel → Unicode halfblocks, using ratatui-image with Picker::from_query_stdio(). Author avatars are rendered inline using ratatui-image with auto-detection of Kitty/iTerm2/Sixel protocols and halfblock fallback; StatefulProtocol/StatefulImage must be used instead of the stateless Protocol/Image path to avoid silently blank images on area changes. iTerm2 image rendering is detected via TERM_PROGRAM=iTerm.app rather than the escape-sequence probe that iTerm2 silently ignores.

@@ -1,7 +1,7 @@
 ---
 title: NMP Display Helpers & Cross-Surface Formatting
 slug: nmp-display-helpers
-summary: Display helper primitives live in `nmp-core::display` for Rust presentation surfaces; kernel projections and FFI payloads emit raw data per ADR-0032.
+summary: "Display helper primitives live in `nmp-core::display` for Rust presentation surfaces; kernel projections and FFI payloads emit raw data per ADR-0032."
 tags:
   - capture
 volatility: warm
