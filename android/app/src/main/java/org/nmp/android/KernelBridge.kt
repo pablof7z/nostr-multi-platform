@@ -11,11 +11,20 @@ package org.nmp.android
  * into `nmp-ffi`/`nmp-app-chirp` through Rust paths.
  */
 class KernelBridge {
+    @Volatile
     private var handle: Long = 0
 
     init {
         System.loadLibrary("nmp_android_ffi")
         handle = nativeNew()
+    }
+
+    /**
+     * Configure the Rust LMDB storage directory. Must be called before [start].
+     * Android owns only the platform path; Rust owns storage semantics.
+     */
+    fun setStoragePath(path: String) {
+        if (handle != 0L) nativeSetStoragePath(handle, path)
     }
 
     fun start(visibleLimit: Int = 80, emitHz: Int = 4) {
@@ -25,6 +34,28 @@ class KernelBridge {
     fun stop() {
         if (handle != 0L) nativeStop(handle)
     }
+
+    /**
+     * Close the Rust update sender without freeing the session id.
+     *
+     * Lifecycle invariant: callers that own a reader coroutine must call this
+     * first, join the reader after `nextUpdate()` wakes with
+     * [IllegalStateException], and only then call [free].
+     */
+    fun closeUpdates() {
+        val current = handle
+        if (current != 0L) nativeClose(current)
+    }
+
+    fun lifecycleForeground() {
+        if (handle != 0L) nativeLifecycleForeground(handle)
+    }
+
+    fun lifecycleBackground() {
+        if (handle != 0L) nativeLifecycleBackground(handle)
+    }
+
+    fun isAlive(): Boolean = handle != 0L && nativeIsAlive(handle)
 
     fun openTimeline() {
         if (handle != 0L) nativeOpenTimeline(handle)
@@ -76,19 +107,44 @@ class KernelBridge {
     /**
      * Dispatch a named action through the action registry.
      *
-     * Returns a JSON response:
-     * * `{"correlation_id":"<32-hex>"}` — the action was accepted and assigned
+     * Returns the parsed Rust dispatch envelope:
+     * * `Accepted(correlation_id)` — the action was accepted and assigned
      *   a correlation id.
-     * * `{"error":"<message>"}` — the action was rejected (invalid arguments,
-     *   unknown namespace, malformed JSON).
-     * * `"{}"` — null handle or internal error.
+     * * `Failure(message)` — the action was rejected, the handle is null, or
+     *   Rust returned a malformed envelope.
      */
-    fun dispatchAction(namespace: String, actionJson: String): String =
-        if (handle != 0L) nativeDispatchAction(handle, namespace, actionJson) else "{}"
+    fun dispatchAction(namespace: String, actionJson: String): DispatchResult =
+        if (handle != 0L) {
+            DispatchResult.parse(nativeDispatchAction(handle, namespace, actionJson))
+        } else {
+            DispatchResult.Failure("dispatch returned a null handle")
+        }
 
     /**
-     * Open a thread by note ID. The kernel batches a corresponding
-     * kind:1 REQ and opens the thread timeline for rendering.
+     * Acknowledge a terminal `action_stages` entry after the host has reacted.
+     * Rust owns the lifecycle ledger; Android forwards only the correlation id.
+     */
+    fun ackActionStage(correlationId: String) {
+        if (handle != 0L) nativeAckActionStage(handle, correlationId)
+    }
+
+    /** Ask the Rust-owned feed controller to extend [feedKey]. */
+    fun loadOlderFeed(feedKey: String) {
+        if (handle != 0L) nativeLoadOlderFeed(handle, feedKey)
+    }
+
+    /**
+     * Build a Chirp action dispatch spec from typed user intent.
+     *
+     * Returns `{"namespace":"...","body_json":"..."}` on success or
+     * `{"error":"..."}` on malformed intent. Kotlin passes user input only;
+     * Rust owns the action envelope and namespace.
+     */
+    fun buildActionSpec(intentJson: String): String = nativeBuildActionSpec(intentJson)
+
+    /**
+     * Open a thread by note ID. Rust registers `nmp.feed.thread.<noteId>` and
+     * admits matching kind:1/6 events for rendering.
      *
      * D6: null handle or invalid note_id is a silent no-op.
      */
@@ -97,13 +153,26 @@ class KernelBridge {
     }
 
     /**
-     * Open an author profile by pubkey. The kernel batches a corresponding
-     * kind:0 REQ and opens the author timeline for rendering.
+     * Close a thread feed opened with [openThread].
+     */
+    fun closeThread(noteId: String) {
+        if (handle != 0L) nativeCloseThread(handle, noteId)
+    }
+
+    /**
+     * Open an author profile by pubkey. Rust registers
+     * `nmp.feed.author.<pubkey>` and admits matching kind:1/6 events for
+     * rendering. Profile metadata is fetched via [claimProfile].
      *
      * D6: null handle or invalid pubkey is a silent no-op.
      */
     fun openAuthor(pubkey: String) {
         if (handle != 0L) nativeOpenAuthor(handle, pubkey)
+    }
+
+    /** Close an author feed opened with [openAuthor]. */
+    fun closeAuthor(pubkey: String) {
+        if (handle != 0L) nativeCloseAuthor(handle, pubkey)
     }
 
     /**
@@ -128,6 +197,23 @@ class KernelBridge {
     fun signInNsec(secret: String) {
         if (handle != 0L) nativeSignInNsec(handle, secret)
     }
+
+    /** Sign in with a NIP-46 bunker URI through the Rust signer broker. */
+    fun signInBunker(uri: String) {
+        if (handle != 0L) nativeSignInBunker(handle, uri)
+    }
+
+    /** Cancel an in-flight NIP-46 handshake through the Rust signer broker. */
+    fun cancelBunkerHandshake() {
+        if (handle != 0L) nativeCancelBunkerHandshake(handle)
+    }
+
+    /**
+     * Generate a fresh `nostrconnect://` URI. Rust chooses relay/session
+     * details; Android supplies only optional platform callback information.
+     */
+    fun nostrConnectUri(relayUrl: String? = null, callbackScheme: String? = null): String? =
+        if (handle != 0L) nativeNostrConnectUri(handle, relayUrl, callbackScheme) else null
 
     /** Switch the active account to the given pubkey (calls nmp_app_switch_active directly). */
     fun switchAccount(pubkey: String) {
@@ -180,26 +266,40 @@ class KernelBridge {
     fun rawHandle(): Long = handle
 
     fun free() {
-        if (handle != 0L) {
-            nativeFree(handle)
+        val current = handle
+        if (current != 0L) {
+            nativeFree(current)
             handle = 0
         }
     }
 
     private external fun nativeNew(): Long
+    private external fun nativeSetStoragePath(handle: Long, path: String)
     private external fun nativeStart(handle: Long, visibleLimit: Int, emitHz: Int)
     private external fun nativeOpenTimeline(handle: Long)
     private external fun nativeCreateLocalAccount(handle: Long, displayName: String)
     private external fun nativeStop(handle: Long)
+    private external fun nativeClose(handle: Long)
+    private external fun nativeLifecycleForeground(handle: Long)
+    private external fun nativeLifecycleBackground(handle: Long)
+    private external fun nativeIsAlive(handle: Long): Boolean
     private external fun nativeNextUpdate(handle: Long): ByteArray?
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
+    private external fun nativeAckActionStage(handle: Long, correlationId: String)
+    private external fun nativeLoadOlderFeed(handle: Long, feedKey: String)
+    private external fun nativeBuildActionSpec(intentJson: String): String
     private external fun nativeOpenThread(handle: Long, noteId: String)
+    private external fun nativeCloseThread(handle: Long, noteId: String)
     private external fun nativeOpenAuthor(handle: Long, pubkey: String)
+    private external fun nativeCloseAuthor(handle: Long, pubkey: String)
     private external fun nativeAddRelay(handle: Long, url: String, role: String)
     private external fun nativeRemoveRelay(handle: Long, url: String)
     private external fun nativeSignInNsec(handle: Long, secret: String)
+    private external fun nativeSignInBunker(handle: Long, uri: String)
+    private external fun nativeCancelBunkerHandshake(handle: Long)
+    private external fun nativeNostrConnectUri(handle: Long, relayUrl: String?, callbackScheme: String?): String?
     private external fun nativeSwitchAccount(handle: Long, pubkey: String)
     private external fun nativeRemoveAccount(handle: Long, pubkey: String)
     private external fun nativeMarmotRegisterActive(handle: Long, dbDir: String): Boolean

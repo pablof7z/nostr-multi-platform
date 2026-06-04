@@ -1,4 +1,4 @@
-//! A5 — mid-claim unreachable relay acceptance test for relay-search-radius (W9).
+//! A5 — mid-claim unreachable relay acceptance test for relay-search-radius.
 //!
 //! Phase-1 fires against the bootstrap Content relay (`relay.primal.net`) for a
 //! fictional event id that will never exist on any relay (forces an EOSE with no
@@ -14,8 +14,8 @@
 //!
 //! The `relay_failed` / `relay_closed` kernel hook calls
 //! `record_claim_expansion_hit` with `ClaimOutcome::Failed` for every pending
-//! claim whose `attempted` set contains the failing relay URL (W3 / §8.1
-//! retarget).  A `Failed` outcome records `failures += 3` and reduces the
+//! claim whose `attempted` set contains the failing relay URL.  A `Failed`
+//! outcome records `failures += 3` and reduces the
 //! relay's `new_weight`.
 //!
 //! # Design

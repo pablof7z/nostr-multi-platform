@@ -10,15 +10,6 @@ let kbLog = Logger(subsystem: "io.f7z.chirp", category: "KernelBridge")
 /// renamed or retyped fields (see `update.rs` contract comment).
 private let KERNEL_SCHEMA_VERSION: UInt32 = 1
 
-/// M2 (ADR-0042) — account-context scope for `openInterest` / `closeInterest`.
-/// Mirrors the `scope` `uint32_t` argument of `nmp_app_open_interest`.
-enum InterestScope: UInt32 {
-    /// Re-routes on account switch — author / thread feeds bound to "me".
-    case activeAccount = 0
-    /// Account-agnostic — hashtag firehoses and other global feeds.
-    case global = 1
-}
-
 /// Thin C-FFI wrapper around the `nmp_core` static library.
 final class KernelHandle {
     let raw: UnsafeMutableRawPointer
@@ -132,11 +123,11 @@ final class KernelHandle {
     }
 
     func openAuthor(pubkey: String) {
-        pubkey.withCString { nmp_app_open_author(raw, $0) }
+        pubkey.withCString { nmp_app_chirp_open_author_feed(raw, $0) }
     }
 
     func openThread(eventID: String) {
-        eventID.withCString { nmp_app_open_thread(raw, $0) }
+        eventID.withCString { nmp_app_chirp_open_thread_feed(raw, $0) }
     }
 
     // M2 (ADR-0042): `openFirehose(tag:)` and the `nmp_app_open_firehose_tag`
@@ -217,14 +208,14 @@ final class KernelHandle {
     /// returns to baseline. Call from `.onDisappear` on the AuthorView
     /// (ProfileView) to prevent sub-leaks on navigation pop.
     func closeAuthor(pubkey: String) {
-        pubkey.withCString { nmp_app_close_author(raw, $0) }
+        pubkey.withCString { nmp_app_chirp_close_author_feed(raw, $0) }
     }
 
     /// Signal that the thread for `eventID` is no longer visible.
     /// Symmetric counterpart to `openThread`; call from `.onDisappear`
     /// on the ThreadScreen to release the thread subscription.
     func closeThread(eventID: String) {
-        eventID.withCString { nmp_app_close_thread(raw, $0) }
+        eventID.withCString { nmp_app_chirp_close_thread_feed(raw, $0) }
     }
 
     // ── T66a identity / publish / multi-account / relay-edit ──────────────
@@ -326,17 +317,14 @@ final class KernelHandle {
 
     /// Publish a kind:0 profile metadata event for the active account through
     /// the kernel's `ActionModule` family. Routes via the single
-    /// namespace-keyed `nmp_app_dispatch_action` entry point (`"nmp.publish"`
-    /// namespace, `PublishAction::PublishProfile` JSON) — the kind:0 event,
-    /// its `created_at` stamp, and signing are all owned by Rust (thin-shell
-    /// rule: zero protocol logic in Swift). PR-A: returns the synchronous
+    /// namespace-keyed `nmp_app_dispatch_action` entry point. Swift supplies
+    /// profile fields only; Rust builds the action JSON, kind:0 event,
+    /// `created_at` stamp, and signature. PR-A: returns the synchronous
     /// dispatch result so the caller can drive a spinner keyed on the
     /// correlation_id (or surface the error envelope to the user).
     @discardableResult
-    func publishProfile(profile: [String: String]) -> DispatchResult {
-        dispatchAction(
-            namespace: "nmp.publish",
-            body: ["PublishProfile": ["fields": profile]])
+    func publishProfile(name: String, about: String, picture: String) -> DispatchResult {
+        dispatchChirpIntent(.publishProfile(name: name, about: about, picture: picture))
     }
 
     func switchActive(identityID: String) {
@@ -348,47 +336,24 @@ final class KernelHandle {
     }
 
     /// Publish a kind:1 note (optionally a reply) through the kernel's
-    /// `ActionModule` family. Routes via the single namespace-keyed
-    /// `nmp_app_dispatch_action` entry point (`"nmp.publish"` namespace,
-    /// `PublishAction::PublishRaw` JSON, kind:1) — the kind-specific
-    /// `PublishAction::PublishNote` variant was deleted in #916, so the host
-    /// now constructs the kind:1 envelope (and any NIP-10 reply tags) itself.
+    /// `ActionModule` family. Swift supplies compose input only; Rust builds
+    /// the `nmp.publish` action spec, `PublishRaw` body, and any NIP-10 tags.
     /// PR-A: returns the synchronous dispatch result so the caller can drive a
     /// spinner keyed on the correlation_id (or surface the error envelope to the
     /// user). The terminal verdict arrives through
     /// `projections["action_results"]` on a later snapshot tick — match by
     /// `correlation_id` to clear the spinner.
     ///
-    /// Reply tagging: a minimal NIP-10 `["e", <id>, "", "reply"]` marker is
-    /// emitted for replies. Full NIP-10 root forwarding needs the parent event
-    /// from the snapshot (`nmp-nip01`'s `Note::reply_to` is the reference) and
-    /// is a follow-up; the minimal reply marker is correct for now.
     @discardableResult
-    func publishNote(content: String, replyToID: String?) -> DispatchResult {
-        var tags: [[String]] = []
-        if let replyToID {
-            tags = [["e", replyToID, "", "reply"]]
-        }
-        let inner: [String: Any] = [
-            "kind": 1,
-            "tags": tags,
-            "content": content,
-            "target": "Auto",
-        ]
-        return dispatchAction(namespace: "nmp.publish", body: ["PublishRaw": inner])
+    func publishNote(content: String, replyTo: ChirpReplyTarget?) -> DispatchResult {
+        dispatchChirpIntent(.publishNote(content: content, replyTo: replyTo))
     }
 
     /// Publish a kind:6 repost of the given note through `PublishRaw`.
     /// NIP-18: tags `["e", eventID]` and `["p", authorPubkey]`, empty content.
     @discardableResult
     func repost(eventID: String, authorPubkey: String) -> DispatchResult {
-        let inner: [String: Any] = [
-            "kind": 6,
-            "tags": [["e", eventID], ["p", authorPubkey]],
-            "content": "",
-            "target": "Auto",
-        ]
-        return dispatchAction(namespace: "nmp.publish", body: ["PublishRaw": inner])
+        dispatchChirpIntent(.repost(eventID: eventID, authorPubkey: authorPubkey))
     }
 
     func retryPublish(handle: String) {
@@ -399,10 +364,11 @@ final class KernelHandle {
         handle.withCString { nmp_app_cancel_publish(raw, $0) }
     }
 
-    /// Dispatch a Chirp social-verb action through the generic
-    /// `nmp_app_dispatch_action` path. `namespace` is one of `nmp.nip25.react` /
-    /// `nmp.follow` / `nmp.unfollow` — registered by `nmp-app-chirp` at
-    /// `nmp_app_chirp_register` time. `body` is the action JSON object.
+    /// Dispatch an already-authored JSON action through the generic
+    /// `nmp_app_dispatch_action` path. Common Chirp social/write actions use
+    /// `dispatchChirpIntent` so Rust owns the protocol envelope; this helper
+    /// remains for existing Rust-authored specs and action families that still
+    /// accept a small host DTO.
     ///
     /// PR-A: returns a `DispatchResult` parsed from the Rust-supplied JSON
     /// envelope so a host can drive a spinner keyed on the synchronous
@@ -437,19 +403,17 @@ final class KernelHandle {
 
     @discardableResult
     func react(targetEventID: String, reaction: String) -> DispatchResult {
-        dispatchAction(
-            namespace: "nmp.nip25.react",
-            body: ["target_event_id": targetEventID, "reaction": reaction])
+        dispatchChirpIntent(.react(eventID: targetEventID, reaction: reaction))
     }
 
     @discardableResult
     func follow(pubkey: String) -> DispatchResult {
-        dispatchAction(namespace: "nmp.follow", body: ["pubkey": pubkey])
+        dispatchChirpIntent(.follow(pubkey: pubkey))
     }
 
     @discardableResult
     func unfollow(pubkey: String) -> DispatchResult {
-        dispatchAction(namespace: "nmp.unfollow", body: ["pubkey": pubkey])
+        dispatchChirpIntent(.unfollow(pubkey: pubkey))
     }
 
     /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
@@ -459,10 +423,8 @@ final class KernelHandle {
     /// without a second host round-trip. The shell never sees the bolt11
     /// or parses LNURL/kind:9734 — thin-shell rule (aim.md §6.9).
     ///
-    /// `lnurl` is the pre-extracted `authorLnurl` from the timeline item;
-    /// `relays` is the receiver's preferred-relay set (today: the active
-    /// account's read relays, falling back to `relay.damus.io` + `nos.lol`
-    /// when the snapshot's relay list is empty). PR-A: returns the
+    /// `lnurl` is the pre-extracted `authorLnurl` from the timeline item.
+    /// Relay selection stays kernel policy. PR-A: returns the
     /// synchronous dispatch envelope so the host can drive a spinner keyed
     /// on the minted correlation_id.
     @discardableResult
@@ -471,20 +433,60 @@ final class KernelHandle {
         authorPubkey: String,
         lnurl: String,
         amountMsats: UInt64,
-        relays: [String],
         comment: String? = nil
     ) -> DispatchResult {
-        var body: [String: Any] = [
-            "recipient_pubkey": authorPubkey,
-            "amount_msats": amountMsats,
-            "lnurl": lnurl,
-            "relays": relays,
-            "target_event_id": targetEventID,
-        ]
-        if let comment, !comment.isEmpty {
-            body["comment"] = comment
+        dispatchChirpIntent(.zap(
+            targetEventID: targetEventID,
+            recipientPubkey: authorPubkey,
+            amountMsats: amountMsats,
+            lnurl: lnurl,
+            comment: comment
+        ))
+    }
+
+    /// Build and dispatch a Chirp action spec authored by Rust.
+    ///
+    /// Swift owns only raw user intent. Rust returns the exact namespace and
+    /// body JSON to feed through `nmp_app_dispatch_action`.
+    @discardableResult
+    func dispatchChirpIntent(_ intent: ChirpActionIntent) -> DispatchResult {
+        let intentJson: String
+        do {
+            let data = try JSONEncoder().encode(intent)
+            guard let json = String(data: data, encoding: .utf8) else {
+                return .failure("failed to encode Chirp action intent as UTF-8")
+            }
+            intentJson = json
+        } catch {
+            return .failure("failed to encode Chirp action intent: \(error.localizedDescription)")
         }
-        return dispatchAction(namespace: "nmp.nip57.zap", body: body)
+        let specJson: String? = intentJson.withCString { intentPtr in
+            guard let ptr = nmp_app_chirp_action_spec(intentPtr) else {
+                return nil
+            }
+            defer { nmp_app_free_string(ptr) }
+            return String(cString: ptr)
+        }
+        guard let specJson else {
+            return .failure("action spec builder returned a null envelope")
+        }
+        let spec: ChirpActionSpecEnvelope
+        do {
+            guard let data = specJson.data(using: .utf8) else {
+                return .failure("action spec envelope was not UTF-8")
+            }
+            spec = try JSONDecoder().decode(ChirpActionSpecEnvelope.self, from: data)
+        } catch {
+            return .failure("failed to decode action spec envelope: \(error.localizedDescription)")
+        }
+        if let error = spec.error {
+            return .failure(error)
+        }
+        guard let namespace = spec.namespace, let bodyJson = spec.bodyJson,
+              !namespace.isEmpty, !bodyJson.isEmpty else {
+            return .failure("action spec envelope missing dispatch fields")
+        }
+        return dispatchRawAction(namespace: namespace, bodyJson: bodyJson)
     }
 
     /// Generic dispatch entry-point keyed on a kernel-supplied
@@ -604,7 +606,7 @@ final class KernelHandle {
         let data = Data(bytes: bytes, count: count)
         do {
             let frame = try KernelUpdateFrameDecoder.decode(data)
-            guard case let .snapshot(frameSchemaVersion, update, envelopes) = frame else {
+            guard case let .snapshot(frameSchemaVersion, update, envelopes, flatFeeds) = frame else {
                 if case let .panic(message) = frame {
                     kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
                     return .panic(message)
@@ -630,6 +632,7 @@ final class KernelHandle {
                 KernelUpdateResult(
                     update: update,
                     typedHomeFeed: typedHomeFeed,
+                    flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
                     decodeMicros: duration.microseconds
@@ -713,6 +716,10 @@ struct KernelUpdateResult {
     /// `NFCT` decoder could fully populate. `nil` means the generic
     /// `projections.homeFeed` fallback applies (ADR-0037 Commitment 4).
     let typedHomeFeed: ChirpTimelineSnapshot?
+    /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
+    /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
+    /// target, so they cannot be codegen'd as fixed projection fields.
+    let flatFeeds: [String: ChirpTimelineSnapshot]
     let payloadBytes: Int
     let callbackReceivedAt: ContinuousClock.Instant
     let decodeMicros: Int
@@ -806,13 +813,10 @@ struct KernelUpdate: Decodable {
     let schemaVersion: UInt32
     let updateKind: String?
     let running: Bool
-    // D0: the views cluster (`profile`, `author_view`, `thread_view`, and the
-    // bounded `nmp.feed.home` home feed) is not a typed `KernelSnapshot` field
-    // set — every view is surfaced through the host-extensible `projections`
-    // map under built-in keys. The stored decode for these fields is removed (a
-    // stored property would throw `keyNotFound` and drop the entire snapshot at
-    // `decode`); computed accessors below keep call sites (`KernelModel`)
-    // reading `update.profile` / `update.authorView` etc. unchanged.
+    // D0: app views are surfaced through the host-extensible `projections`
+    // map. Profile/thread navigation uses dynamic flat-feed keys extracted by
+    // `KernelUpdateFrameDecoder`; the old `author_view`/`thread_view` fields
+    // remain only in generated compatibility decode state.
     let metrics: KernelMetrics
     // Single-relay backwards compat field alongside the array.
     let relayStatus: RelayStatus?
@@ -912,12 +916,10 @@ struct KernelUpdate: Decodable {
 
     // ── D0 views cluster — projections-backed accessors ───────────────────
     //
-    // The kernel emits the `profile` / `author_view` / `thread_view` views and
-    // the bounded `nmp.feed.home` home feed through `projections`. The legacy
+    // The kernel emits the active-account `profile` view and the bounded
+    // `nmp.feed.home` home feed through `projections`. The legacy
     // generic `timeline` / `inserted` / `updated` / `removed` keys were deleted
-    // upstream (nmp-core #924); the home-feed path is `homeFeed`
-    // (`ChirpTimelineSnapshot`). These accessors keep every call site
-    // (`KernelModel.apply`, the feature views) reading `update.profile` etc.
+    // upstream (nmp-core #924); the home-feed path is `homeFeed`.
 
     /// Active-account profile card — `projections["profile"]`. Falls back to a
     /// neutral placeholder card if a (legacy) kernel elides the projection, so
@@ -929,22 +931,12 @@ struct KernelUpdate: Decodable {
     /// generic `timeline` projection was removed (nmp-core #924).
     var homeFeed: ChirpTimelineSnapshot? { projections?.homeFeed }
 
-    /// Open author-view payload — `projections["author_view"]`. `nil` when no
-    /// author view is open (kernel emits JSON null).
-    var authorView: AuthorProfileSnapshot? { projections?.authorView }
-
-    /// Open thread-view payload — `projections["thread_view"]`. `nil` when no
-    /// thread view is open (kernel emits JSON null).
-    var threadView: ThreadView? { projections?.threadView }
-
     /// Pre-merged profile map — `projections["resolved_profiles"]` (PR #812).
     /// Keyed by pubkey, one `ProfileCard` per profile the kernel can resolve,
-    /// applying the canonical precedence once in Rust: claimed_profiles >
-    /// author_view.profile > mention_profiles. Replaces the narrower
-    /// `mention_profiles` projection Chirp used to read (which omitted claimed
-    /// profiles). Always present as `{}` when empty (D1); never nil for a
-    /// current-schema kernel. Same Rust/Swift type as `claimed_profiles`
-    /// (`[String: ProfileCard]`).
+    /// applying profile fallback precedence once in Rust. Replaces the narrower
+    /// `mention_profiles` projection Chirp used to read. Always present as `{}`
+    /// when empty (D1); never nil for a current-schema kernel. Same Rust/Swift
+    /// type as `claimed_profiles` (`[String: ProfileCard]`).
     var resolvedProfiles: [String: ProfileCard]? { projections?.resolvedProfiles }
 
     /// NIP-29 group-chat read model — `projections["nmp.nip29.group_chat"]`.
@@ -1023,9 +1015,8 @@ struct KernelUpdate: Decodable {
 // consumes. It is now built from a `ProfileCard` carried by the pre-merged
 // `projections["resolved_profiles"]` map (PR #812) rather than from the older
 // `mention_profiles` wire DTO. The component API (`[String: MentionProfile]`)
-// is unchanged — only the source projection is broader (claimed + author_view
-// + mention, merged once in Rust). No Swift derives a `MentionProfile` from a
-// `TimelineItem` anymore.
+// is unchanged — only the source projection is broader and merged once in Rust.
+// No Swift derives a `MentionProfile` from a `TimelineItem` anymore.
 
 extension MentionProfile {
     /// Bridge from a resolved `ProfileCard`. `display` falls back to the

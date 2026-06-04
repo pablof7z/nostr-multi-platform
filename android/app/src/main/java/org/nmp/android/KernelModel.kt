@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -12,13 +14,17 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import org.nmp.android.model.AccountSummary
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
 import org.nmp.android.model.RelayStatus
+import org.nmp.android.model.TimelineWindowCursor
 
 private const val TAG = "NmpCore"
+private const val HOME_FEED_KEY = "nmp.feed.home"
 
 /**
  * Observable mirror of the kernel snapshot — the Android peer of iOS
@@ -49,6 +55,9 @@ class KernelModel : ViewModel() {
     private val _lastSnapshotAtMs = MutableStateFlow<Long?>(null)
     val lastSnapshotAtMs: StateFlow<Long?> = _lastSnapshotAtMs.asStateFlow()
 
+    private val _kernelIsDead = MutableStateFlow(false)
+    val kernelIsDead: StateFlow<Boolean> = _kernelIsDead.asStateFlow()
+
     /** Derived: account list from the latest snapshot projections. */
     val accounts: StateFlow<List<AccountSummary>> =
         state.map { it.projections?.accounts ?: emptyList() }
@@ -60,12 +69,17 @@ class KernelModel : ViewModel() {
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var started = false
+    private var readerJob: Job? = null
+    private var lastLoadMoreCursor: TimelineWindowCursor? = null
 
-    fun start() {
+    fun start(storagePath: String? = null) {
         if (started) return
         started = true
+        if (!storagePath.isNullOrBlank()) {
+            bridge.setStoragePath(storagePath)
+        }
         bridge.start(visibleLimit = 80, emitHz = 4)
-        viewModelScope.launch(Dispatchers.IO) {
+        readerJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 val bytes = try {
                     bridge.nextUpdate()
@@ -82,17 +96,36 @@ class KernelModel : ViewModel() {
 
                 val decoded = decodeUpdate(bytes) ?: continue
                 if (decoded.rev <= _state.value.rev) continue  // mirror only
-                withContext(Dispatchers.Main) {
-                    _state.value = decoded
-                    _snapshotCount.value += 1
-                    _lastSnapshotAtMs.value = System.currentTimeMillis()
-                }
+                _state.value = decoded
+                _snapshotCount.value += 1
+                _lastSnapshotAtMs.value = System.currentTimeMillis()
             }
         }
     }
 
     fun openTimeline() {
         bridge.openTimeline()
+    }
+
+    /** Report Android lifecycle foreground to Rust. */
+    fun lifecycleForeground() {
+        bridge.lifecycleForeground()
+    }
+
+    /** Report Android lifecycle background to Rust. */
+    fun lifecycleBackground() {
+        bridge.lifecycleBackground()
+    }
+
+    /**
+     * Pull-side actor-liveness probe for foreground resume. If Android missed
+     * the pushed panic frame while backgrounded, this still latches the fatal
+     * kernel state for the host.
+     */
+    fun checkAlive() {
+        if (!bridge.isAlive()) {
+            _kernelIsDead.value = true
+        }
     }
 
     fun createLocalAccount() {
@@ -115,61 +148,74 @@ class KernelModel : ViewModel() {
     }
 
     /**
-     * Publish a new note. Routes through dispatch_action("nmp.publish", ...).
-     *
-     * Emits a generic `PublishRaw` kind:1 envelope (the `PublishNote` variant
-     * was removed in #916 — `PublishRaw` is the sole unsigned-publish door).
-     * For replies, builds a minimal NIP-10 reply marker tag
-     * (`["e", replyToId, "", "reply"]`); full root forwarding is a follow-up.
+     * Publish a new note. Kotlin forwards only user intent; Rust builds the
+     * `nmp.publish` namespace and `PublishRaw` body, including reply tags.
      *
      * Returns the correlation_id if accepted, or null on error.
      */
     fun publishNote(
         content: String,
         replyToId: String? = null,
-        target: String = "Auto",
     ): String? {
-        val actionJson = when {
-            replyToId != null -> {
-                """{"PublishRaw":{"kind":1,"tags":[["e","$replyToId","","reply"]],"content":"${escapeJson(content)}","target":"$target"}}"""
-            }
-            else -> {
-                """{"PublishRaw":{"kind":1,"tags":[],"content":"${escapeJson(content)}","target":"$target"}}"""
-            }
-        }
-        val response = bridge.dispatchAction("nmp.publish", actionJson)
-        return try {
-            val json = org.json.JSONObject(response)
-            json.optString("correlation_id").takeIf { it.isNotEmpty() }
-        } catch (e: Exception) {
-            Log.d(TAG, "publishNote parse error: $response", e)
-            null
-        }
+        val response = dispatchTypedIntent(
+            ChirpActionIntent(
+                type = "publish_note",
+                content = content,
+                replyToEventId = replyToId,
+            )
+        ) ?: return null
+        return response.correlationId
     }
 
     /**
-     * Open a thread by note ID. The kernel batches a kind:1 REQ and opens
-     * the timeline to display the thread.
+     * Extend the Rust-owned home-feed window after the rendered tail becomes
+     * visible. Android treats [after] as an opaque edge marker; Rust owns page
+     * size, cap, cursor interpretation, and the next snapshot.
+     */
+    fun loadOlderTimeline(after: TimelineWindowCursor) {
+        val page = state.value.modularTimeline.page ?: return
+        if (!page.hasMore) return
+        if (lastLoadMoreCursor == after) return
+        lastLoadMoreCursor = after
+        bridge.loadOlderFeed(HOME_FEED_KEY)
+    }
+
+    /**
+     * Open a thread by note ID. Rust registers `nmp.feed.thread.<noteId>`.
      */
     fun openThread(noteId: String) {
         bridge.openThread(noteId)
     }
 
+    /** Close the dynamic thread feed opened by [openThread]. */
+    fun closeThread(noteId: String) {
+        bridge.closeThread(noteId)
+    }
+
     /**
-     * Open an author profile by pubkey. The kernel batches a kind:0 REQ and
-     * opens the timeline to display the author's notes.
+     * Open an author profile by pubkey. Rust registers `nmp.feed.author.<pubkey>`.
      */
     fun openAuthor(pubkey: String) {
         bridge.openAuthor(pubkey)
+    }
+
+    /** Close the dynamic author feed opened by [openAuthor]. */
+    fun closeAuthor(pubkey: String) {
+        bridge.closeAuthor(pubkey)
     }
 
     /**
      * Dispatch a named action through the action registry (generic path).
      * Fire-and-forget — outcomes arrive in the next snapshot tick.
      */
-    fun dispatchAction(namespace: String, actionJson: String) {
-        val response = bridge.dispatchAction(namespace, actionJson)
-        Log.d(TAG, "dispatchAction($namespace) response: $response")
+    fun dispatchAction(namespace: String, actionJson: String): DispatchResult {
+        val result = bridge.dispatchAction(namespace, actionJson)
+        Log.d(TAG, "dispatchAction($namespace) response: $result")
+        return result
+    }
+
+    fun ackActionStage(correlationId: String) {
+        bridge.ackActionStage(correlationId)
     }
 
     // -------------------------------------------------------------------------
@@ -181,6 +227,18 @@ class KernelModel : ViewModel() {
         bridge.signInNsec(secret)
         bridge.openTimeline()
     }
+
+    /** Sign in with a NIP-46 bunker URI through the Rust signer broker. */
+    fun signInBunker(uri: String) {
+        bridge.signInBunker(uri)
+    }
+
+    fun cancelBunkerHandshake() {
+        bridge.cancelBunkerHandshake()
+    }
+
+    fun nostrConnectUri(relayUrl: String? = null, callbackScheme: String? = null): String? =
+        bridge.nostrConnectUri(relayUrl, callbackScheme)
 
     /** Create a new local account with the given display name. */
     fun createAccount(displayName: String) {
@@ -214,26 +272,44 @@ class KernelModel : ViewModel() {
     // -------------------------------------------------------------------------
 
     /** Zap a note (NIP-57). */
-    fun zapNote(eventId: String, recipientPubkey: String, amountMsats: Long = 21000L, comment: String = "") =
-        bridge.dispatchAction("nmp.nip57.zap", """{"target_event_id":"$eventId","recipient_pubkey":"$recipientPubkey","amount_msats":$amountMsats,"comment":"${escapeJson(comment)}"}""")
+    fun zapNote(
+        eventId: String,
+        recipientPubkey: String,
+        amountMsats: Long = 21000L,
+        comment: String = "",
+    ): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(
+            type = "zap",
+            targetEventId = eventId,
+            recipientPubkey = recipientPubkey,
+            amountMsats = amountMsats,
+            comment = comment.takeIf { it.isNotEmpty() },
+        )
+    )
 
     /** React to a note (NIP-25). */
-    fun react(eventId: String, reaction: String = "+") =
-        bridge.dispatchAction("nmp.nip25.react", """{"target_event_id":"$eventId","reaction":"$reaction"}""")
+    fun react(eventId: String, reaction: String = "+"): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(type = "react", eventId = eventId, reaction = reaction)
+    )
 
     /** Follow a pubkey. */
-    fun follow(pubkey: String) = bridge.dispatchAction("nmp.follow", """{"pubkey":"$pubkey"}""")
+    fun follow(pubkey: String): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(type = "follow", pubkey = pubkey)
+    )
 
     /** Unfollow a pubkey. */
-    fun unfollow(pubkey: String) = bridge.dispatchAction("nmp.unfollow", """{"pubkey":"$pubkey"}""")
+    fun unfollow(pubkey: String): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(type = "unfollow", pubkey = pubkey)
+    )
 
     // -------------------------------------------------------------------------
     // DMs
     // -------------------------------------------------------------------------
 
     /** Send a NIP-17 direct message to the given recipient pubkey. */
-    fun sendDm(recipientPubkey: String, content: String) =
-        bridge.dispatchAction("nmp.nip17.send", """{"recipient_pubkey":"$recipientPubkey","content":"${escapeJson(content)}"}""")
+    fun sendDm(recipientPubkey: String, content: String): DispatchResult? = dispatchTypedIntent(
+        ChirpActionIntent(type = "send_dm", recipientPubkey = recipientPubkey, content = content)
+    )
 
     // -------------------------------------------------------------------------
     // Marmot (MLS-over-Nostr encrypted groups)
@@ -324,6 +400,28 @@ class KernelModel : ViewModel() {
             .replace("\t", "\\t")
     }
 
+    private fun dispatchTypedIntent(intent: ChirpActionIntent): DispatchResult? {
+        val intentJson = chirpActionJson.encodeToString(intent)
+        val specResponse = bridge.buildActionSpec(intentJson)
+        val spec = try {
+            chirpActionJson.decodeFromString<ChirpActionSpec>(specResponse)
+        } catch (e: Exception) {
+            Log.d(TAG, "buildActionSpec parse error: $specResponse", e)
+            return null
+        }
+        if (spec.error != null) {
+            Log.d(TAG, "buildActionSpec rejected ${intent.type}: ${spec.error}")
+            return null
+        }
+        if (spec.namespace.isBlank() || spec.bodyJson.isBlank()) {
+            Log.d(TAG, "buildActionSpec missing dispatch fields: $specResponse")
+            return null
+        }
+        val response = bridge.dispatchAction(spec.namespace, spec.bodyJson)
+        Log.d(TAG, "dispatchTypedIntent(${intent.type}) response: $response")
+        return response
+    }
+
     /**
      * Decode one FlatBuffers update frame.
      *
@@ -335,15 +433,14 @@ class KernelModel : ViewModel() {
      * swallow).
      *
      * Panic frames are logged at ASSERT level — they indicate actor death (D7)
-     * and must not be silently ignored, but Android has no way to propagate
-     * them to a UI toast from a background coroutine without additional
-     * infrastructure. Future work: surface via a dedicated `panicState` flow.
+     * and also latch [kernelIsDead], matching the iOS fatal-kernel state.
      */
     private fun decodeUpdate(bytes: ByteArray): KernelUpdate? {
         return when (val frame = KernelUpdateFrameDecoder.decode(bytes)) {
             null -> null
             is KernelDecodedUpdateFrame.Panic -> {
                 Log.wtf(TAG, "NMP_ACTOR_PANIC: ${frame.message}")
+                _kernelIsDead.value = true
                 null
             }
             is KernelDecodedUpdateFrame.Snapshot -> {
@@ -361,7 +458,14 @@ class KernelModel : ViewModel() {
     }
 
     override fun onCleared() {
+        val job = readerJob
+        readerJob = null
+        started = false
         bridge.stop()
+        bridge.closeUpdates()
+        runBlocking {
+            job?.cancelAndJoin()
+        }
         bridge.free()
         super.onCleared()
     }

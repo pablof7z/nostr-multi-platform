@@ -43,14 +43,18 @@ data class SnapshotProjections(
     @SerialName("nmp.nip17.dm_inbox") val dmInbox: DmInboxSnapshot? = null,
     @SerialName("wallet_status") val walletStatus: String? = null,
     @SerialName("wallet_balance") val walletBalance: String? = null,
+    @SerialName("relay_role_options") val relayRoleOptions: List<RelayRoleOption> = emptyList(),
     @SerialName("claimed_profiles") val claimedProfiles: Map<String, ProfileCard> = emptyMap(),
     @SerialName("mention_profiles") val mentionProfiles: Map<String, ProfileCard> = emptyMap(),
-    // Pre-merged profile map (claimed > author_view > mention) shipped by the
-    // kernel (PR #812). The UI reads this single key; claimed_profiles /
-    // mention_profiles above are retained for non-UI consumers but no longer
-    // merged in the presentation layer.
+    // Pre-merged profile map shipped by the kernel. The UI reads this single key;
+    // claimed_profiles / mention_profiles above are retained for non-UI consumers
+    // but no longer merged in the presentation layer.
     @SerialName("resolved_profiles") val resolvedProfiles: Map<String, ProfileCard> = emptyMap(),
-    @SerialName("author_view") val authorView: AuthorViewPayload? = null,
+    @SerialName("action_results") val actionResults: List<LastActionResult> = emptyList(),
+    @SerialName("last_action_result") val lastActionResult: LastActionResult? = null,
+    @SerialName("action_stages") val actionStages: Map<String, List<ActionStageEntry>> = emptyMap(),
+    @SerialName("action_lifecycle") val actionLifecycle: ActionLifecycleSnapshot? = null,
+    val flatFeeds: Map<String, ChirpOpFeedSnapshot> = emptyMap(),
     // Marmot (MLS-over-Nostr) push projections (V-107 / ADR-0039), present only
     // when a Marmot MLS identity is registered. `nmp.marmot.snapshot` carries
     // the group list / welcomes / key-package; `nmp.marmot.messages` is keyed
@@ -80,42 +84,31 @@ data class ProfileCard(
     val lnurl: String? = null,
 )
 
-/**
- * `author_view` projection payload.
- *
- * Mirrors Rust `AuthorViewPayload` (crates/nmp-core/src/kernel/types.rs).
- * Present only when the kernel has an open author view.
- */
 @Serializable
-data class AuthorViewPayload(
-    val pubkey: String = "",
-    val state: String = "",
-    val profile: ProfileCard = ProfileCard(),
-    val items: List<TimelineItem> = emptyList(),
-    val noteCount: Int = 0,
-    val noteCountDisplay: String = "",
-    val primaryAction: ProfileAction? = null,
-)
-
-/**
- * Rust-authored profile action descriptor.
- *
- * Android renders the label and forwards [dispatch] when present; it does not
- * branch on [kind] to choose follow/unfollow behavior locally.
- */
-@Serializable
-data class ProfileAction(
-    val kind: String = "",
-    val label: String = "",
-    val targetPubkey: String = "",
-    val iconName: String = "",
-    val dispatch: ProfileDispatchSpec? = null,
+data class LastActionResult(
+    @SerialName("correlation_id") val correlationId: String = "",
+    val status: String = "",
+    val error: String? = null,
 )
 
 @Serializable
-data class ProfileDispatchSpec(
-    val namespace: String = "",
-    val bodyJson: String = "",
+data class ActionStageEntry(
+    val stage: String = "",
+    @SerialName("at_ms") val atMs: Long = 0,
+    val reason: String? = null,
+)
+
+@Serializable
+data class ActionLifecycleEntry(
+    @SerialName("correlation_id") val correlationId: String = "",
+    val stage: String = "",
+    val reason: String? = null,
+)
+
+@Serializable
+data class ActionLifecycleSnapshot(
+    @SerialName("in_flight") val inFlight: List<ActionLifecycleEntry> = emptyList(),
+    @SerialName("recent_terminal") val recentTerminal: List<ActionLifecycleEntry> = emptyList(),
 )
 
 @Serializable

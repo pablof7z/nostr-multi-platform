@@ -228,8 +228,7 @@ private struct TimelineListView: View, Equatable {
     /// V-31 — kernel-owned profile map (replaces the Swift
     /// `Dictionary(items.map …)` derivation this view used to build). Bound
     /// from `model.mentionProfiles`, which reads the pre-merged
-    /// `resolved_profiles` snapshot projection (PR #812 — claimed +
-    /// author_view + mention, merged once in Rust).
+    /// `resolved_profiles` snapshot projection (PR #812, merged once in Rust).
     let mentionProfiles: [String: MentionProfile]
     let onRefresh: () -> Void
     let onLike: (String) -> Void
@@ -252,8 +251,8 @@ private struct TimelineListView: View, Equatable {
         // feed renders entirely from `roots` (the `nmp.feed.home` modular cards).
         // `ModularBlockView` builds a synthetic `TimelineItem` from each card
         // when its lookup misses, so an empty lookup is the steady state here —
-        // populated `TimelineItem` lookups now only flow from the still-live
-        // `thread_view` / `author_view` projections (issue #911).
+        // author/profile and thread screens now use flat-feed projections rather
+        // than legacy `TimelineItem` lookup paths.
         let itemLookup: [String: TimelineItem] = [:]
 
         return List {

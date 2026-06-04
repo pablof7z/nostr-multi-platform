@@ -7,8 +7,9 @@ use std::sync::{Arc, Mutex};
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    nmp_app_chirp_identity_restore, nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, ChirpHandle, MarmotHandle,
+    follow_spec, nmp_app_chirp_identity_restore, nmp_app_chirp_register,
+    nmp_app_chirp_unregister, nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action,
+    react_spec, unfollow_spec, ChirpHandle, MarmotHandle,
 };
 use nmp_core::tags::Nip10Refs;
 use nmp_core::{KindFilter, RawEventObserver};
@@ -180,14 +181,17 @@ impl AppRuntime {
     }
 
     pub fn react(&self, event_id: &str, reaction: &str) -> Result<String> {
-        let action = json!({ "target_event_id": event_id, "reaction": reaction }).to_string();
-        self.dispatch_action("nmp.nip25.react", &action)
+        let spec = react_spec(event_id, reaction);
+        self.dispatch_action(&spec.namespace, &spec.body_json)
     }
 
     pub fn follow(&self, pubkey: &str, add: bool) -> Result<String> {
-        let action = json!({ "pubkey": pubkey }).to_string();
-        let namespace = if add { "nmp.follow" } else { "nmp.unfollow" };
-        self.dispatch_action(namespace, &action)
+        let spec = if add {
+            follow_spec(pubkey)
+        } else {
+            unfollow_spec(pubkey)
+        };
+        self.dispatch_action(&spec.namespace, &spec.body_json)
     }
 
     pub fn ack_action_stage(&self, correlation_id: &str) -> Result<()> {

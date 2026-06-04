@@ -220,8 +220,7 @@ Notes on the algorithm:
   ensures the privacy constraint is always checked — the override cannot bypass the
   `PrivateToRecipients` fail-closed check by returning early before validation.
 - **Step 3(b)'s `UserConfigured`-indexer-fallback check** is the structural enforcement of
-  bug-extinction #4 ([`docs/plan/m9-messaging.md`](../../plan/m9-messaging.md) — "DM to
-  public: no API path can send a DM to a non-inbox relay"). An inbox sourced from
+  private-message routing: no API path can send a DM to a non-inbox relay. An inbox sourced from
   `RoutingSource::UserConfigured` where the relay carries `UserConfiguredCategory::Indexer`
   means we have no NIP-65-declared inbox — fail-closed is correct. Compare: NDK gotcha
   `a912a2c2` (`docs/research/ndk/gotchas.md`) shows bootstrap timing can leave inbox relays
@@ -290,7 +289,12 @@ impl ActionModule for PublishWithOverride {
 }
 ```
 
-The override action's existence is what test #2 in the bug-extinction list ([`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md)) asserts: "no public API path lets the developer specify relays for a publish; explicit override action exists and produces a debug warning." The `PublishWithOverride` variant is the *only* `AppAction` that carries a relay set; the audit string is required (compile-time non-optional); the warning fires unconditionally on dispatch.
+The override action's existence is what the audit contract asserts: no public
+API path lets the developer specify relays for a publish; explicit override
+action exists and produces a debug warning. The `PublishWithOverride` variant
+is the *only* `AppAction` that carries a relay set; the audit string is
+required (compile-time non-optional); the warning fires unconditionally on
+dispatch.
 
 ### Diagnostic shape
 
@@ -311,7 +315,8 @@ This is the SideEffect-lane payload per ADR-0007. The platform diagnostic UI ren
 
 Per `docs/design/kernel-substrate.md` §4 ("Atomicity"): the action ledger ensures the action's local store insert (for the signed event) happens in the same actor message as the ledger transition. The publish plan's per-relay attempts are *not* atomic with the local insert — relays may NACK over a long window — but the ledger correlates them.
 
-The bug-extinction #7 test ([`docs/plan/m6-signers-write.md`](../../plan/m6-signers-write.md)) — "publish OK / store fail and store OK / publish fail both roll back atomically" — runs against the M6 implementation. The seam M2 lands here must make that test possible. Specifically:
+The publish atomicity test must prove that publish OK / store fail and store OK
+/ publish fail both roll back atomically. Specifically:
 
 - The publish-fanout step in `PublishWithOverride::reduce` is `AwaitCapability { request: CapabilityRequest::Publish { ... }, next_step }` per the `ActionTransition` enum in `docs/design/kernel-substrate.md` §4. The kernel owns the publish attempts and reports per-relay outcomes back into the next `reduce`.
 - The local store insert happens *before* the publish step (optimistic insert), with rollback on `PartiallyFailed` if `required_success_count` is not met. This matches the "atomic with reversibility" reading of doctrine D4 (single writer per fact).

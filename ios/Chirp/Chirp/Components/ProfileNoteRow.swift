@@ -3,15 +3,11 @@ import SwiftUI
 /// Compact note row used inside ProfileView's post list.
 /// Avatar tap → profile, row tap → thread.
 ///
-/// `renderContext` carries the per-note mention map, event-card lookup, and
-/// timeline-item lookup `NoteContentView` consumes. ProfileView builds it
-/// once at the body root rather than passing three separate dictionaries
-/// (aim.md §4.2 — derived views are kernel-supplied; ProfileView reads
-/// `mentionProfiles` from `projections["mention_profiles"]` instead of
-/// rebuilding it from `items`).
+/// `renderContext` carries the per-note mention map and embedded event-card
+/// lookup `NoteContentView` consumes. ProfileView builds it once at the body
+/// root from the dynamic `nmp.feed.author.<pubkey>` flat-feed projection.
 struct ProfileNoteRow: View {
-    let item: TimelineItem
-    let contentTree: ContentTreeWire?
+    let card: ChirpEventCard
     let renderContext: NoteRenderContext
     let onAvatarTap: () -> Void
     let onRowTap: () -> Void
@@ -22,15 +18,21 @@ struct ProfileNoteRow: View {
     @State private var likeTapped = false
 
     private var authorDisplayLabel: String {
-        model.profile(forPubkey: item.authorPubkey)?.display
-            ?? renderContext.mentionProfiles[item.authorPubkey]?.display
-            ?? item.authorPubkey.shortHex
+        model.profile(forPubkey: card.authorPubkey)?.display
+            ?? card.authorDisplayName
+            ?? renderContext.mentionProfiles[card.authorPubkey]?.display
+            ?? card.authorPubkey.shortHex
     }
 
     private var authorAvatarInitials: String {
-        let name = model.profile(forPubkey: item.authorPubkey)?.display
-            ?? renderContext.mentionProfiles[item.authorPubkey]?.display
-        return (name ?? item.authorPubkey).displayInitials
+        let name = model.profile(forPubkey: card.authorPubkey)?.display
+            ?? card.authorDisplayName
+            ?? renderContext.mentionProfiles[card.authorPubkey]?.display
+        return (name ?? card.authorPubkey).displayInitials
+    }
+
+    private var displayContent: String {
+        card.contentPreview.isEmpty ? card.content : card.contentPreview
     }
 
     var body: some View {
@@ -38,10 +40,10 @@ struct ProfileNoteRow: View {
             HStack(alignment: .top, spacing: 8) {
                 Button(action: onAvatarTap) {
                     ChirpAvatar(
-                        pubkey: item.authorPubkey,
-                        url: item.authorPictureUrl,
+                        pubkey: card.authorPubkey,
+                        url: card.authorPictureUrl,
                         initials: authorAvatarInitials,
-                        colorHex: item.authorPubkey.pubkeyColorHex,
+                        colorHex: card.authorPubkey.pubkeyColorHex,
                         size: 40
                     )
                 }
@@ -54,14 +56,14 @@ struct ProfileNoteRow: View {
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                         Spacer()
-                        Text(item.createdAt.relativeTimeFromUnixSeconds)
+                        Text(card.createdAt.relativeTimeFromUnixSeconds)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
 
                     NoteContentView(
-                        content: item.renderedContent,
-                        contentTree: renderContext.contentTree(for: item, fallback: contentTree),
+                        content: displayContent,
+                        contentTree: card.contentTree,
                         renderContext: renderContext,
                         font: .body
                     )
@@ -96,15 +98,6 @@ struct ProfileNoteRow: View {
                             .buttonStyle(.plain)
                         }
 
-                        if item.relayCount > 0 {
-                            HStack(spacing: 4) {
-                                Image(systemName: "antenna.radiowaves.left.and.right")
-                                    .font(.caption)
-                                Text("\(item.relayCount)")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.secondary)
-                        }
                     }
                     .padding(.top, 4)
                 }

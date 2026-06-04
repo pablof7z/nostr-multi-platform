@@ -205,67 +205,30 @@ data helpers `nucleo`, `reqwest`, `image`, `lru`; dev tools `insta` and `expectr
 Do not add `tui-textarea` for v1 unless its ratatui version matches the crate. The v1
 compose surface is `tui-input` plus a small custom multiline wrapper.
 
-## 7. Milestones & Acceptance Criteria
+## 7. Product Acceptance
 
-Treat each milestone as an independent PR/agent lane; split M4 into DM and group PRs if either exceeds one reviewable diff.
+Implementation sequencing belongs in `docs/BACKLOG.md` and `WIP.md`. This
+product spec records the durable acceptance shape:
 
-### M1 — Skeleton + observer wiring
-**Scope**: `apps/chirp/chirp-tui` compiles, renders placeholder layout, NMP push callback fires.
-
-- [ ] `cargo build -p chirp-tui` clean, zero warnings
-- [ ] `cargo run -p chirp-tui` opens ratatui window: title bar, 3 empty panes, status bar
-- [ ] `Ctrl+C` exits cleanly, raw-mode restored, no terminal corruption
-- [ ] `nmp_app_set_update_callback` fires within 5s of startup (status bar logs event count)
-- [ ] TestBackend insta golden: layout renders at 120×40 matches snapshot
-- [ ] No `sleep` loops anywhere; zero `thread::sleep` or `tokio::time::sleep` in main path
-- [ ] `cargo test -p chirp-tui` passes (scoped only, never full-workspace)
-
-### M2 — Timeline read + names + avatars
-**Scope**: Full read experience. Home feed with display names, timestamps, avatars, thread view.
-
-- [ ] Feed shows ≥20 notes after relay sync
-- [ ] ≥80% of author display_names resolved (not raw pubkeys) within 10s of feed load
-- [ ] Each note row: avatar (iTerm2 protocol or halfblock), colored display_name, relative time, content preview
-- [ ] Long content truncated at 2 lines; Enter expands to depth-indented thread view
-- [ ] `j`/`k` scroll, `gg`/`G` work; no jank at 30 FPS
-- [ ] Avatar placeholder (colored initials block) shows during async fetch; no layout shift
-- [ ] Profile cache LRU 512 entries; repeat visit to same author is instant (no re-fetch)
-- [ ] TestBackend snapshots: feed row render, thread render, avatar-placeholder state
-
-### M3 — Compose / react / reply / follow
-**Scope**: Full write experience (compose / react / reply / follow).
-
-- [ ] `i` opens compose textarea; `Ctrl+Enter` publishes; `Esc` cancels
-- [ ] Pending/published note appears via Rust snapshot within 200ms of `Ctrl+Enter`
-- [ ] Relay ACK spinner resolves to ✓; failure shown in status bar
-- [ ] `r` on selected note opens reply with parent note preview above textarea
-- [ ] `+` sends NIP-25 `+` reaction; confirmation in status bar
-- [ ] `f`/`F` follows/unfollows; status bar confirms
-- [ ] @-mention popup appears on `@`, filters by display_name prefix, Enter inserts npub
-- [ ] Works against real relays (wss://relay.damus.io or wss://relay.primal.net)
-
-### M4 — Threads + DM inbox + Group chat
-**Scope**: Full social graph: threaded conversations, NIP-17 DMs, Marmot MLS groups.
-
-- [ ] DM tab shows conversation list; Enter opens bubbled message thread
-- [ ] Outgoing messages right-aligned, incoming left-aligned with sender avatar
-- [ ] Composing in DM tab sends NIP-17 gift-wrap via dispatch_action
-- [ ] Group chat tab lists Marmot groups; Enter opens chat log
-- [ ] Unread badge in hotlist for DMs and mentions
-- [ ] `[`/`]` navigate sibling replies in thread view
-- [ ] `/profile <npub>` opens profile pane with avatar, bio, recent notes
-
-### M5 — Animations + polish + CI golden tests
-**Scope**: Production visual polish, full test suite, demo recordings.
-
-- [ ] tachyonfx slide-in (120ms) on new note arrival — visually smooth at ≥30 FPS
-- [ ] Braille-frame spinner on relay publish in-flight
-- [ ] tui-big-text startup banner dismisses on any key
-- [ ] `--basic` flag disables all animations and images; works in 16-color terminals
-- [ ] ≥15 insta snapshot golden scenarios passing in CI via TestBackend
-- [ ] expectrl E2E test: load nsec → relay connect → compose note → note visible in feed
-- [ ] README demo recording (QuickTime + iTerm2) showing avatars + animations
-- [ ] `cargo clippy -p chirp-tui -- -D warnings` passes
+- `apps/chirp/chirp-tui` builds as the terminal Chirp shell and exits cleanly
+  without corrupting terminal state.
+- All data changes enter through the NMP push callback; the render tick only
+  advances known animations.
+- Home feed rows render stable avatars, author labels, timestamps, relation
+  counts, relay badges, and compact content without layout shift.
+- Thread view renders a depth-indented, cycle-safe flat view and supports
+  sibling navigation.
+- Compose, reply, reaction, follow/unfollow, and publish-status flows route
+  through Rust-owned actions/projections.
+- DM and group surfaces render Rust-produced conversation/group state; decrypted
+  content and membership policy never live in the TUI shell.
+- Relay/settings diagnostics show why relays are connected, what subscriptions
+  they serve, and publish/REQ state without letting the shell decide policy.
+- `--basic` disables images and animations while preserving all workflows.
+- Golden widget tests cover core layouts; E2E PTY tests cover login, relay
+  connect, compose, and feed visibility.
+- Scoped validation is `cargo test -p chirp-tui` plus the always-on doctrine
+  smoke gate when touched.
 
 ---
 
@@ -276,7 +239,7 @@ Treat each milestone as an independent PR/agent lane; split M4 into DM and group
 | Unit | `#[test]` | Profile cache, color hashing, command parsing, content_tree parsing |
 | Widget render | `TestBackend` + `insta` | Layout at 80×24, 120×40, 200×50; all pane states |
 | E2E PTY | `expectrl` | nsec login → relay → compose → note appears |
-| Demo | QuickTime + iTerm2 | Image protocol, animations (manual, per milestone) |
+| Demo | QuickTime + iTerm2 | Image protocol and animations (manual) |
 
 Agents MUST scope all test runs: `cargo test -p chirp-tui`. Never `cargo test` workspace-wide.
 
@@ -298,7 +261,7 @@ Agents MUST scope all test runs: `cargo test -p chirp-tui`. Never `cargo test` w
 
 ## 10. Non-goals (v1)
 
-- NIP-57 zap UI (NWC executor exists but is deferred per review #38)
+- NIP-57 zap UI
 - WASM / web build
 - Windows / Terminal.app support
 - Push notifications / daemon mode

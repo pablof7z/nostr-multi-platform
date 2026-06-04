@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,18 +33,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.model.ProfileCard
-import org.nmp.android.model.TimelineItem
 
 /**
  * Author/profile detail screen — Jetpack Compose peer of iOS `ProfileView`.
  *
  * Renders an author's profile header (avatar, display name, pubkey), claims
  * the profile with the kernel for demand-driven kind:0 fetching, and displays
- * the author's timeline of notes. The profile card and items are both pushed
- * by the kernel snapshot during `openAuthor(pubkey)`.
+ * the author's flat feed from `nmp.feed.author.<pubkey>`.
  *
- * Thin-shell rule: Rust owns the author projection and action policy; Compose
- * renders raw projection fields and applies presentation formatting locally.
+ * Thin-shell rule: Rust owns author-feed membership; Compose renders raw
+ * projection fields and applies presentation formatting locally.
  */
 @Composable
 fun ProfileScreen(
@@ -54,28 +51,25 @@ fun ProfileScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Open the author projection and claim kind:0 on appearance; release the
-    // profile claim on disappearance. Author-view teardown is still exposed on
-    // iOS only, so Android returns to the timeline from the explicit Back path.
+    val profileConsumerId = "profile_screen-$pubkey"
     DisposableEffect(pubkey) {
         model.openAuthor(pubkey)
-        model.claimProfile(pubkey, "profile_screen")
+        model.claimProfile(pubkey, profileConsumerId)
         onDispose {
-            model.releaseProfile(pubkey, "profile_screen")
+            model.closeAuthor(pubkey)
+            model.releaseProfile(pubkey, profileConsumerId)
         }
     }
 
     val snapshot by model.state.collectAsStateWithLifecycle()
 
     val projections = snapshot.projections
-    val authorView = projections?.authorView?.takeIf { it.pubkey == pubkey }
-    val items: List<TimelineItem> = authorView?.items ?: emptyList()
+    val cards = projections?.flatFeeds?.get("nmp.feed.author.$pubkey")?.cards ?: emptyList()
+    val cardLookup = cards.associate { it.card.id to it.card }
 
-    val itemLookup = items.associateBy { it.id }
-
-    val profileCard: ProfileCard? = authorView
-        ?.profile
-        ?.takeIf { it.pubkey.isEmpty() || it.pubkey == pubkey }
+    val profileCard: ProfileCard? = projections
+        ?.claimedProfiles
+        ?.get(pubkey)
         ?: projections?.resolvedProfiles?.get(pubkey)
     val resolvedProfiles = if (profileCard != null) {
         (projections?.resolvedProfiles ?: emptyMap()) + (pubkey to profileCard)
@@ -92,16 +86,7 @@ fun ProfileScreen(
 
     val displayName = profileCard?.displayName?.takeIf { it.isNotEmpty() } ?: shortPubkey
     val initials = displayName.take(2).uppercase()
-    val noteCount = authorView?.noteCount ?: items.size
-    val noteCountDisplay = authorView
-        ?.noteCountDisplay
-        ?.takeIf { it.isNotEmpty() }
-        ?: noteCount.toString()
-    val primaryAction = authorView?.primaryAction
-    val actionLabel = primaryAction?.label?.takeIf { it.isNotEmpty() } ?: "Profile action"
-    val dispatchAction = primaryAction
-        ?.dispatch
-        ?.takeIf { it.namespace.isNotEmpty() && it.bodyJson.isNotEmpty() }
+    val noteCount = cards.size
 
     CompositionLocalProvider(
         LocalResolvedProfiles provides resolvedProfiles,
@@ -116,10 +101,7 @@ fun ProfileScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    IconButton(onClick = {
-                        model.openTimeline()
-                        onBack()
-                    }) {
+                    IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back to timeline",
@@ -177,26 +159,17 @@ fun ProfileScreen(
                     if (noteCount > 0) {
                         Spacer(Modifier.size(8.dp))
                         Text(
-                            "$noteCountDisplay ${if (noteCount == 1) "post" else "posts"}",
+                            "$noteCount ${if (noteCount == 1) "post" else "posts"}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-
-                    if (dispatchAction != null) {
-                        Spacer(Modifier.size(16.dp))
-                        Button(onClick = {
-                            model.dispatchAction(dispatchAction.namespace, dispatchAction.bodyJson)
-                        }) {
-                            Text(actionLabel)
-                        }
                     }
                 }
 
                 HorizontalDivider()
 
                 // Posts section: lazy-loaded timeline (D8: render verbatim from snapshot).
-                if (items.isEmpty()) {
+                if (cards.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -212,18 +185,18 @@ fun ProfileScreen(
                 } else {
                     LazyColumn(Modifier.fillMaxSize()) {
                         itemsIndexed(
-                            items,
-                            key = { _, item -> item.id },
-                        ) { index, item ->
+                            cards,
+                            key = { _, root -> root.card.id },
+                        ) { index, root ->
                             NoteRow(
-                                item.id,
-                                itemLookup,
+                                root.card.id,
                                 emptyMap(),
+                                cardLookup,
                                 model = model,
                             )
                             // Author display names resolve via LocalResolvedProfiles,
                             // provided by the enclosing CompositionLocalProvider.
-                            if (index < items.lastIndex) {
+                            if (index < cards.lastIndex) {
                                 HorizontalDivider(Modifier.padding(start = 56.dp))
                             }
                         }

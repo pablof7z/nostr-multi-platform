@@ -46,7 +46,11 @@
 //!   the FFI.
 
 use std::ffi::c_char;
+use std::sync::Arc;
 
+use nmp_core::store::{EventStore, StoreQuery, StoredEvent};
+use nmp_core::substrate::KernelEvent;
+use nmp_core::KernelEventObserver;
 use nmp_ffi::{nmp_app_close_interest, nmp_app_open_interest, NmpApp};
 use nmp_nip01::{author_feed_predicate, thread_feed_predicate, FlatFeed};
 
@@ -58,6 +62,10 @@ use super::helpers::c_string_opt;
 /// a divergence would either admit events the feed silently drops or starve the
 /// feed of events the kernel never stored.
 const FEED_KINDS: [u32; 2] = [1, 6];
+
+/// Bound store seeding so an old account with a large author history cannot
+/// make a screen open unbounded. Live relay pushes continue filling the feed.
+const FEED_SEED_LIMIT: usize = 512;
 
 /// Scope passed to `open_interest`: `1` = Global (account-agnostic). A visited
 /// profile / open thread is NOT re-routed on account switch — it pins a
@@ -113,6 +121,7 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
     let app_ref = unsafe { &*app };
 
     let feed = FlatFeed::new(author_feed_predicate(pubkey.clone(), FEED_KINDS.to_vec()));
+    seed_author_feed_from_store(app_ref, &feed, &pubkey);
     app_ref.register_feed_with_observer(author_feed_key(&pubkey), feed.clone(), feed);
 
     open_interest_for(
@@ -169,6 +178,7 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
     let app_ref = unsafe { &*app };
 
     let feed = FlatFeed::new(thread_feed_predicate(root_id.clone(), FEED_KINDS.to_vec()));
+    seed_thread_feed_from_store(app_ref, &feed, &root_id);
     app_ref.register_feed_with_observer(thread_feed_key(&root_id), feed.clone(), feed);
 
     open_interest_for(
@@ -238,9 +248,89 @@ fn close_interest_for(app: *mut NmpApp, filter_json: &str, consumer_id: &str) {
     nmp_app_close_interest(app, filter.as_ptr(), consumer.as_ptr(), SCOPE_GLOBAL);
 }
 
+fn seed_author_feed_from_store(app: &NmpApp, feed: &FlatFeed, pubkey_hex: &str) {
+    let Some(author) = hex32(pubkey_hex) else {
+        return;
+    };
+    let Some(store) = event_store(app) else {
+        return;
+    };
+    seed_query(
+        feed,
+        &*store,
+        StoreQuery::AuthorKind {
+            author,
+            kinds: FEED_KINDS.to_vec(),
+            since: None,
+            until: None,
+        },
+    );
+}
+
+fn seed_thread_feed_from_store(app: &NmpApp, feed: &FlatFeed, root_id_hex: &str) {
+    if let Some(root) = app.event_by_id(root_id_hex) {
+        KernelEventObserver::on_kernel_event(feed, &root);
+    }
+    let Some(target) = hex32(root_id_hex) else {
+        return;
+    };
+    let Some(store) = event_store(app) else {
+        return;
+    };
+    seed_query(
+        feed,
+        &*store,
+        StoreQuery::Etag {
+            target,
+            kinds: FEED_KINDS.to_vec(),
+        },
+    );
+}
+
+fn seed_query(feed: &FlatFeed, store: &dyn EventStore, query: StoreQuery) {
+    let Ok(events) = store.query(&query, FEED_SEED_LIMIT) else {
+        return;
+    };
+    for stored in events {
+        KernelEventObserver::on_kernel_event(feed, &kernel_event_from_stored(&stored));
+    }
+}
+
+fn event_store(app: &NmpApp) -> Option<Arc<dyn EventStore>> {
+    app.event_store_handle().lock().ok()?.clone()
+}
+
+fn kernel_event_from_stored(stored: &StoredEvent) -> KernelEvent {
+    KernelEvent {
+        id: stored.raw.id.clone(),
+        author: stored.raw.pubkey.clone(),
+        created_at: stored.raw.created_at,
+        kind: stored.raw.kind,
+        tags: stored.raw.tags.clone(),
+        content: stored.raw.content.clone(),
+    }
+}
+
+fn hex32(value: &str) -> Option<[u8; 32]> {
+    if value.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (idx, chunk) in value.as_bytes().chunks_exact(2).enumerate() {
+        let pair = std::str::from_utf8(chunk).ok()?;
+        out[idx] = u8::from_str_radix(pair, 16).ok()?;
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::{CStr, CString};
+
+    use nmp_core::store::{MemEventStore, RawEvent, VerifiedEvent};
+    use nmp_ffi::{nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_read_projection_json};
+    use serde_json::Value;
 
     #[test]
     fn keys_are_namespaced_per_consumer() {
@@ -280,5 +370,128 @@ mod tests {
                 "filter must parse: {json}"
             );
         }
+    }
+
+    #[test]
+    fn author_feed_open_seeds_cached_kind1_and_close_removes_projection() {
+        let app = nmp_app_new();
+        assert!(!app.is_null());
+        let store = Arc::new(MemEventStore::new());
+        let pubkey = "11".repeat(32);
+        insert_raw(
+            &store,
+            RawEvent {
+                id: "a1".repeat(32),
+                pubkey: pubkey.clone(),
+                created_at: 10,
+                kind: 1,
+                tags: vec![],
+                content: "older".into(),
+                sig: "a".repeat(128),
+            },
+        );
+        insert_raw(
+            &store,
+            RawEvent {
+                id: "a2".repeat(32),
+                pubkey: pubkey.clone(),
+                created_at: 20,
+                kind: 1,
+                tags: vec![],
+                content: "newer".into(),
+                sig: "a".repeat(128),
+            },
+        );
+        install_store(app, store);
+
+        let pubkey_c = CString::new(pubkey.clone()).unwrap();
+        nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
+        let snapshot = read_projection(app, &author_feed_key(&pubkey)).unwrap();
+        let ids = card_ids(&snapshot);
+        assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
+
+        nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
+        assert!(read_projection(app, &author_feed_key(&pubkey)).is_none());
+        nmp_app_free(app);
+    }
+
+    #[test]
+    fn thread_feed_open_seeds_cached_root_and_replies() {
+        let app = nmp_app_new();
+        assert!(!app.is_null());
+        let store = Arc::new(MemEventStore::new());
+        let root_id = "b1".repeat(32);
+        insert_raw(
+            &store,
+            RawEvent {
+                id: root_id.clone(),
+                pubkey: "22".repeat(32),
+                created_at: 10,
+                kind: 1,
+                tags: vec![],
+                content: "root".into(),
+                sig: "a".repeat(128),
+            },
+        );
+        insert_raw(
+            &store,
+            RawEvent {
+                id: "b2".repeat(32),
+                pubkey: "33".repeat(32),
+                created_at: 20,
+                kind: 1,
+                tags: vec![vec!["e".into(), root_id.clone()]],
+                content: "reply".into(),
+                sig: "a".repeat(128),
+            },
+        );
+        install_store(app, store);
+
+        let root_c = CString::new(root_id.clone()).unwrap();
+        nmp_app_chirp_open_thread_feed(app, root_c.as_ptr());
+        let snapshot = read_projection(app, &thread_feed_key(&root_id)).unwrap();
+        let ids = card_ids(&snapshot);
+        assert_eq!(ids, vec!["b2".repeat(32), root_id.clone()]);
+
+        nmp_app_chirp_close_thread_feed(app, root_c.as_ptr());
+        assert!(read_projection(app, &thread_feed_key(&root_id)).is_none());
+        nmp_app_free(app);
+    }
+
+    fn install_store(app: *mut NmpApp, store: Arc<MemEventStore>) {
+        let app_ref = unsafe { &*app };
+        *app_ref.event_store_handle().lock().unwrap() = Some(store);
+    }
+
+    fn insert_raw(store: &MemEventStore, raw: RawEvent) {
+        store
+            .insert(
+                VerifiedEvent::from_raw_unchecked(raw),
+                &"wss://seed.example/".to_string(),
+                1_000,
+            )
+            .unwrap();
+    }
+
+    fn read_projection(app: *mut NmpApp, key: &str) -> Option<Value> {
+        let key = CString::new(key).unwrap();
+        let ptr = nmp_app_read_projection_json(app, key.as_ptr());
+        if ptr.is_null() {
+            return None;
+        }
+        let json = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
+        nmp_app_free_string(ptr);
+        serde_json::from_str(&json).ok()
+    }
+
+    fn card_ids(snapshot: &Value) -> Vec<String> {
+        snapshot["cards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|card| card["card"]["id"].as_str().unwrap().to_string())
+            .collect()
     }
 }

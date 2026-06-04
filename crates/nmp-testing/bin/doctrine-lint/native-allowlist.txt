@@ -1,0 +1,13 @@
+# D18 native-doctrine allowlist.
+#
+# Format: relative path<TAB>line fragment<TAB>tracking note.
+# Entries must point to existing transitional debt already tracked in
+# docs/BACKLOG.md. Keep fragments exact enough that nearby new code does not
+# inherit the exemption accidentally.
+
+ios/Chirp/Chirp/Bridge/KernelBridge.swift	body: ["PublishProfile": ["fields": profile]]	V-57 P3 native publish policy migration
+ios/Chirp/Chirp/Bridge/KernelBridge.swift	return dispatchAction(namespace: "nmp.publish", body: ["PublishRaw": inner])	V-57 P3 native publish policy migration
+android/app/src/main/java/org/nmp/android/KernelModel.kt	"""{"PublishRaw":{"kind":1,"tags":[["e","$replyToId","","reply"]],"content":"${escapeJson(content)}","target":"$target"}}"""	V-57 P3 native publish policy migration
+android/app/src/main/java/org/nmp/android/KernelModel.kt	"""{"PublishRaw":{"kind":1,"tags":[],"content":"${escapeJson(content)}","target":"$target"}}"""	V-57 P3 native publish policy migration
+android/app/src/main/java/org/nmp/android/KernelModel.kt	bridge.nextUpdate()	V-91 Android push-update migration
+apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt	bridge.nextUpdate(timeoutMs = 30_000L)	V-91 Android push-update migration

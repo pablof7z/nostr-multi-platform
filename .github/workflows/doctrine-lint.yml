@@ -61,8 +61,14 @@ jobs:
       - name: Run D8 no-polling gate across all production crates and apps
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --workspace-d8
 
+      - name: Run D18 native doctrine gate across Swift/Kotlin/Java
+        run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --workspace-native
+
       - name: Run smoke tests (fixtures pass/fail per rule)
         run: cargo test -p nmp-testing --test doctrine_lint_smoke -- --nocapture
+
+      - name: Run native doctrine smoke tests
+        run: cargo test -p nmp-testing --test doctrine_native_smoke -- --nocapture
 
       - name: Run rule unit tests
         run: cargo test -p nmp-testing --bin doctrine-lint

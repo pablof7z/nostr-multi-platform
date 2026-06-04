@@ -15,8 +15,8 @@
 //! 2. Builds the four closures `register_op_feed` needs:
 //!    * **follow predicate** — `active_follow_set.predicate()` (live view of
 //!      the active account's follow set);
-//!    * **event lookup** — a no-op `|_| None` this rung (see
-//!      [the event-lookup note](#why-event_lookup-is-a-no-op-this-rung));
+//!    * **event lookup** — a synchronous read through the kernel event-store
+//!      handle exposed by `NmpApp`;
 //!    * **claim sink** — `nmp_nip01::op_feed::build_actor_claim_sink` over a
 //!      dispatcher built from `app.actor_sender()` (the public command-send
 //!      seam; `NmpApp::send_cmd` is crate-private);
@@ -31,6 +31,9 @@
 //!    sibling `FollowListProjection` already uses).
 //! 5. Registers an `on_change` callback that resets the engine **only on an
 //!    account switch** (see [the account-switch note](#account-switch-vs-kind3-update)).
+//! 6. Registers the follow-set notifier on `NmpApp`'s identity-change observer
+//!    seam so sign-in, switch, logout, and reset are pushed after the actor has
+//!    written the active-account slot.
 //!
 //! # CRITICAL DECISION — no per-follow interest expansion here
 //!
@@ -58,7 +61,8 @@
 //! kernel-side per-follow expansion was never removed — it is still the live
 //! producer of the follow-feed subscription). The composition root therefore
 //! only needs to wire the **engine** (predicate + event_lookup + claim sink +
-//! card builder) and the `ActiveFollowSet` `on_change`; no interest expansion.
+//! card builder), the `ActiveFollowSet` `on_change`, and the app-level
+//! identity-change callback; no interest expansion.
 //!
 //! # `event_lookup` reads the kernel event store (V-83)
 //!
@@ -90,17 +94,13 @@
 //! correctness-preserving: the L-2 fallback re-keys on a later observer arrival
 //! and L-5 shows the placeholder until the target lands).
 //!
-//! # Why the constructor takes `ActiveAccountSlot`, not an `NmpApp` accessor
+//! # Active-account source of truth
 //!
-//! `ActiveFollowSet::new` needs the kernel's [`ActiveAccountSlot`]. `NmpApp`
-//! does not expose one: the kernel constructs its `active_account_handle`
-//! internally (`crates/nmp-core/src/kernel/mod.rs:1406`) and never threads a
-//! clone back to `NmpApp` (unlike `configured_relays`, which `NmpApp` owns and
-//! injects). Adding an `NmpApp::active_account_handle()` accessor would require
-//! threading the slot through `run_actor_with_observers` and binding it onto
-//! the kernel — an `nmp-core`/actor change beyond rung 6's scope. So the slot
-//! is an explicit parameter; rung 7 (the Chirp cut-over) obtains it however it
-//! reaches the kernel, and the accessor is filed as BACKLOG `V-82`.
+//! `ActiveFollowSet::new` needs the kernel's [`ActiveAccountSlot`].
+//! `register_op_feed_defaults` reads it directly from
+//! [`NmpApp::active_account_handle`](nmp_ffi::NmpApp::active_account_handle)
+//! so the follow predicate and the identity-change observer share the same
+//! app-owned `Arc` the actor writes in `Kernel::set_accounts`.
 //!
 //! # Account switch vs kind:3 update
 //!
@@ -124,20 +124,17 @@
 //!
 //! ## The account-change race (rung-4 flagged this)
 //!
-//! On a switch A → B the host (rung 7) writes B into the slot and then calls
-//! `notify_account_changed()`. `ActiveFollowSet` clears the set and re-seeds
+//! On a switch A → B the actor updates the active-account slot, emits a state
+//! frame, and `NmpApp`'s update listener fires its identity observers before
+//! forwarding that frame to native. The callback registered here calls
+//! `notify_account_changed()`: `ActiveFollowSet` clears the set and re-seeds
 //! self-inclusion of B (its follows are still empty — B's kind:3 has not landed
 //! yet) and fires `on_change`; this callback sees `B != A`, resets the engine,
 //! and records B. When B's kind:3 later ingests, `ActiveFollowSet`'s own
 //! observer repopulates the set and fires `on_change` again; the callback sees
 //! `B == B` and no-ops, while the predicate is now live for B's follows. The
-//! clear-then-repopulate ordering means a `notify_account_changed()` issued
-//! before B's kind:3 lands never rebuilds against a stale follow set — it
-//! rebuilds against the empty (self-only) set and lets the kind:3 ingest fill
-//! it in. **Driving `notify_account_changed()` from the real identity-change
-//! path is rung 7's responsibility** (there is no account-switch push seam at
-//! the composition root today); this rung wires the safe-clear behaviour and
-//! tests the switch→clear→kind:3→repopulate sequence directly.
+//! clear-then-repopulate ordering means the switch-before-kind:3 window never
+//! rebuilds against a stale follow set.
 //!
 //! [`ActiveAccountSlot`]: nmp_core::slots::ActiveAccountSlot
 
@@ -154,28 +151,23 @@ use nmp_nip02::ActiveFollowSet;
 
 /// What [`register_op_feed_defaults`] hands back to the composition caller.
 ///
-/// Rung 6 originally returned only the `Arc<OpFeedEngine>`. Rung 7 (the Chirp
-/// cut-over) also needs the `Arc<ActiveFollowSet>` so the host can drive
-/// [`ActiveFollowSet::notify_account_changed`] from the real identity-change
-/// path (logout / switch-before-kind:3 — the cases the kind:3-driven observer
-/// does not cover). Returning both is the minimal rung-6 amendment that closes
-/// the loop the module docs already telegraph ("Driving
-/// `notify_account_changed()` from the real identity-change path is rung 7's
-/// responsibility").
+/// Returns both registered pieces so tests and diagnostic callers can inspect
+/// the engine and the follow-set producer. Production identity changes are
+/// driven through the `NmpApp` observer registered inside
+/// [`register_op_feed_defaults`]; callers do not manually notify the follow set.
 pub struct OpFeedDefaults {
     /// The registered OP-feed engine — already wired as a `KernelEventObserver`
     /// (ingest) and a `FeedController` under `"nmp.feed.home"` (output).
     pub engine: Arc<OpFeedEngine>,
-    /// The follow-set producer — already wired as a `KernelEventObserver` so
-    /// the active account's kind:3 keeps it current. Held by the caller so the
-    /// identity-change path can call [`ActiveFollowSet::notify_account_changed`]
-    /// on logout / pre-kind:3 switch.
+    /// The follow-set producer — already wired as a `KernelEventObserver` for
+    /// kind:3 updates and as an `NmpApp` identity observer for sign-in, switch,
+    /// logout, and reset.
     pub follow_set: Arc<ActiveFollowSet>,
 }
 
 /// Wire the OP-centric home feed into `app`.
 ///
-/// Constructs the [`nmp_nip02::ActiveFollowSet`] over `active_account_slot`,
+/// Constructs the [`nmp_nip02::ActiveFollowSet`] over the app's active-account slot,
 /// builds the engine via [`nmp_nip01::op_feed::register_op_feed`], and
 /// registers the engine as both a [`KernelEventObserver`] (ingest) and a
 /// [`FeedController`] under `"nmp.feed.home"` (output). Also registers a typed
@@ -185,19 +177,12 @@ pub struct OpFeedDefaults {
 /// registers the `ActiveFollowSet` as its own `KernelEventObserver` and an
 /// `on_change` callback that resets the engine on an account switch.
 ///
-/// Returns an [`OpFeedDefaults`] carrying the `Arc<OpFeedEngine>` (so callers
-/// and tests can drive the engine directly or interrogate it) and the
-/// `Arc<ActiveFollowSet>` (so rung 7's host can drive
-/// [`ActiveFollowSet::notify_account_changed`] on identity change). Both are
-/// already registered with `app`.
+/// Returns an [`OpFeedDefaults`] carrying the `Arc<OpFeedEngine>` and
+/// `Arc<ActiveFollowSet>` for direct tests/diagnostics. Both are already
+/// registered with `app`, including identity-change notification.
 ///
-/// **This function is NOT called by [`crate::register_defaults`] and is not
-/// wired into any production app in this rung.** Rung 7 makes Chirp call it
-/// (and removes the `ModularTimelineProjection` registration). Until then the
-/// feed key `"nmp.feed.home"` stays owned by whatever the host registers; if a
-/// host calls *both* this and `ModularTimelineProjection::register`, the
-/// feed-registry is last-writer-wins (the swap is a single atomic edit in rung
-/// 7, never a dual registration).
+/// Chirp calls this during app registration to own the home feed key. A host
+/// must not also register a legacy home-feed producer under `"nmp.feed.home"`.
 ///
 /// # CRITICAL DECISION
 ///
@@ -210,15 +195,12 @@ pub struct OpFeedDefaults {
 /// Like [`crate::register_defaults`], call before `nmp_app_start`: the engine
 /// and the follow-set observer must be visible to the kernel when the first
 /// event arrives.
-pub fn register_op_feed_defaults(
-    app: &NmpApp,
-    viewer: Pubkey,
-    active_account_slot: ActiveAccountSlot,
-) -> OpFeedDefaults {
+pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) -> OpFeedDefaults {
     // ── 1. Follow-set producer ───────────────────────────────────────────
     //
-    // Constructed over the kernel's active-account slot (NOT `&NmpApp` — see
-    // module docs). Self-seeds the active account's own pubkey immediately.
+    // Constructed over the kernel's active-account slot exposed by `NmpApp`.
+    // Self-seeds the active account's own pubkey immediately.
+    let active_account_slot = app.active_account_handle();
     let follow_set = nmp_nip02::ActiveFollowSet::new(active_account_slot.clone());
 
     // Register the follow-set as its own `KernelEventObserver` so the active
@@ -251,10 +233,9 @@ pub fn register_op_feed_defaults(
     // publishes into — see `nmp-ffi`). The closure captures the slot handle (NOT
     // `&app`, which it would outlive) and reads through it on every call, so a
     // `Reset` (which re-publishes a fresh store into the same slot) is observed
-    // without re-capturing. Pre-`nmp_app_start` the slot is empty → `None`,
-    // which is exactly the prior no-op behaviour, so wiring is safe before the
-    // kernel exists. Mirrors V-82's slot-capture in the `on_change` callback
-    // below.
+    // without re-capturing. Pre-`nmp_app_start` the slot is empty → `None`, so
+    // wiring is safe before the kernel exists; the L-2/L-5 paths re-check on the
+    // next event arrival.
     let event_store = app.event_store_handle();
     let event_lookup: nmp_feed::EventLookup = Arc::new(move |id: &nmp_core::substrate::EventId| {
         nmp_core::slots::event_by_id_from_store(&event_store, id)
@@ -308,7 +289,7 @@ pub fn register_op_feed_defaults(
     // positive. See the module docs for the full switch race analysis.
     let last_seen = Arc::new(Mutex::new(read_active(&active_account_slot)));
     let engine_for_cb = engine.clone();
-    let slot_for_cb = active_account_slot;
+    let slot_for_cb = active_account_slot.clone();
     follow_set.on_change(Box::new(move || {
         let current = read_active(&slot_for_cb);
         let Ok(mut last) = last_seen.lock() else {
@@ -319,6 +300,14 @@ pub fn register_op_feed_defaults(
             engine_for_cb.reset_for_identity_change();
         }
     }));
+
+    let follow_set_for_identity = follow_set.clone();
+    // Identity changes are pushed from `NmpApp` after the actor has written the
+    // active-account slot. This is the canonical app/FFI composition seam for
+    // OP-feed account reset; hosts do not call `notify_account_changed` manually.
+    app.register_identity_change_observer(move |_| {
+        follow_set_for_identity.notify_account_changed();
+    });
 
     OpFeedDefaults { engine, follow_set }
 }

@@ -34,6 +34,7 @@
 //! * **D6** — every FFI symbol degrades silently on null pointers, lock
 //!   poisoning, or serialization failure.
 
+pub mod action_specs;
 pub mod ffi;
 pub mod snapshot_types;
 pub mod typed_api;
@@ -43,6 +44,11 @@ mod wallet_runtime;
 pub use ffi::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
 // M2 (ADR-0042 §5.1, V-112): per-open flat author/thread feeds that replace the
 // `author_view`/`thread_view` projections + the four `open_*`/`close_*` symbols.
+pub use action_specs::{
+    action_spec_for_intent, action_spec_for_intent_json, action_spec_json_for_intent, follow_spec,
+    publish_note_spec, publish_profile_spec, react_spec, repost_spec, send_dm_spec, unfollow_spec,
+    zap_spec, ActionDispatchSpec, ChirpActionIntent, ReplyTargetInput,
+};
 pub use ffi::{
     nmp_app_chirp_close_author_feed, nmp_app_chirp_close_thread_feed,
     nmp_app_chirp_open_author_feed, nmp_app_chirp_open_thread_feed,
@@ -60,7 +66,7 @@ pub use snapshot_types::{
 };
 pub use typed_api::{
     create_account_action, follow_action, publish_note_action, publish_profile_action,
-    react_action, remove_account_action, send_dm_action, sign_in_nsec_action,
+    react_action, remove_account_action, repost_action, send_dm_action, sign_in_nsec_action,
     switch_account_action, unfollow_action, zap_action, ChirpClient,
 };
 

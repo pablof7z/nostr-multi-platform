@@ -25,7 +25,7 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jboolean, jlong};
 use jni::JNIEnv;
 
-use crate::{jstring_to_cstring, session_ref, Session};
+use crate::{jstring_to_cstring, session_arc, Session};
 
 // Re-exported by `nmp-app-chirp` under its `marmot` feature (forwarded here by
 // the `nmp-android-ffi/marmot` feature). Reached through the Rust path for
@@ -50,13 +50,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeMarmotRegisterAct
     handle: jlong,
     db_dir: JString,
 ) -> jboolean {
-    let Some(s) = session_ref(handle) else {
+    let Some(s) = session_arc(handle) else {
         return 0;
     };
     let Some(dir) = jstring_to_cstring(&mut env, &db_dir) else {
         return 0;
     };
-    register_active(s, &dir) as jboolean
+    register_active(&s, &dir) as jboolean
 }
 
 /// Drop the Marmot observer registration if one exists. Idempotent — a no-op
@@ -69,8 +69,8 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeMarmotUnregister(
     _class: JClass,
     handle: jlong,
 ) {
-    if let Some(s) = session_ref(handle) {
-        unregister(s);
+    if let Some(s) = session_arc(handle) {
+        unregister(&s);
     }
 }
 
@@ -82,16 +82,19 @@ fn register_active(s: &Session, db_dir: &std::ffi::CStr) -> bool {
     // Re-register cleanly: tear down a stale handle before installing a fresh
     // one (account switch / re-sign-in), mirroring iOS.
     unregister(s);
-    // `s.app` is a live `NmpApp` for the session lifetime; `db_dir` is a valid
-    // NUL-terminated C string for the duration of this call. The FFI function
-    // is a safe `extern "C" fn` (it guards null internally — D6).
-    let new_handle = nmp_marmot_register_active(s.app, db_dir.as_ptr());
-    if new_handle.is_null() {
-        return false;
-    }
-    s.marmot
-        .store(new_handle as *mut std::ffi::c_void, Ordering::SeqCst);
-    true
+    // `db_dir` is a valid NUL-terminated C string for the duration of this
+    // call. The guarded app accessor returns `None` after close/free, making
+    // late registration a no-op instead of racing native teardown.
+    s.with_app(|app| {
+        let new_handle = nmp_marmot_register_active(app, db_dir.as_ptr());
+        if new_handle.is_null() {
+            return false;
+        }
+        s.marmot
+            .store(new_handle as *mut std::ffi::c_void, Ordering::SeqCst);
+        true
+    })
+    .unwrap_or(false)
 }
 
 #[cfg(not(feature = "marmot"))]

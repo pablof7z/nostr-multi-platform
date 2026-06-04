@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,11,12,13,14,15,16,17}.rs` for
+//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,11,12,13,14,15,16,17,18}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -19,6 +19,9 @@
 //!
 //! # Workspace-wide D8 no-polling scan (every production crate)
 //! cargo run -p nmp-testing --bin doctrine-lint -- --workspace-d8
+//!
+//! # Workspace-wide D18 native shell scan (Swift/Kotlin/Java)
+//! cargo run -p nmp-testing --bin doctrine-lint -- --workspace-native
 //! ```
 //!
 //! ## `--workspace-d8` mode
@@ -50,15 +53,17 @@
 
 mod allow;
 mod braces;
+mod cli;
 mod report;
 mod rules;
 mod walker;
 
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
-use rules::{d0, d10, d11, d12, d13, d14, d15, d16, d17, d6, d7, d8, d9};
+use cli::{parse_args, resolve_roots};
+use rules::{d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -67,14 +72,7 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("doctrine-lint: {}", e);
             eprintln!();
-            eprintln!(
-                "usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] \
-                 [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
-                 [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] \
-                 [--d13-extra-scope <fragment>] [--d14-extra-scope <fragment>] \
-                 [--d15-extra-scope <fragment>] [--d16-extra-scope <fragment>] [--d17-extra-scope <fragment>] \
-                 [--workspace-d8 [--workspace-d8-root <dir>]]"
-            );
+            eprintln!("{}", cli::USAGE);
             return ExitCode::from(2);
         }
     };
@@ -87,6 +85,30 @@ fn main() -> ExitCode {
         }
     };
     let mut all_findings: Vec<report::Finding> = Vec::new();
+
+    if cfg.workspace_native {
+        for root in &roots {
+            let files = match d18::collect_native_files(root) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("doctrine-lint: failed to walk {}: {}", root.display(), e);
+                    return ExitCode::from(2);
+                }
+            };
+            for path in &files {
+                if let Err(e) = d18::scan_file(path, &mut all_findings) {
+                    eprintln!("doctrine-lint: failed to read {}: {}", path.display(), e);
+                    return ExitCode::from(2);
+                }
+            }
+        }
+        return finish(
+            roots.len(),
+            "D18 native doctrine",
+            cfg.allow_findings,
+            all_findings,
+        );
+    }
 
     for root in &roots {
         let files = match walker::collect_rs_files(root) {
@@ -117,6 +139,20 @@ fn main() -> ExitCode {
         }
     }
 
+    let rules = if cfg.workspace_d8 {
+        "D8 no-polling"
+    } else {
+        "D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17"
+    };
+    finish(roots.len(), rules, cfg.allow_findings, all_findings)
+}
+
+fn finish(
+    root_count: usize,
+    rule_label: &str,
+    allow_findings: bool,
+    mut all_findings: Vec<report::Finding>,
+) -> ExitCode {
     // Stable order: by file, then by line, then by column.
     all_findings.sort_by(|a, b| {
         a.path
@@ -130,18 +166,12 @@ fn main() -> ExitCode {
     }
 
     if all_findings.is_empty() {
-        let rules = if cfg.workspace_d8 {
-            "D8 no-polling"
-        } else {
-            "D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17"
-        };
         eprintln!(
             "doctrine-lint: 0 findings across {} root(s) ({} clean).",
-            roots.len(),
-            rules
+            root_count, rule_label
         );
         ExitCode::from(0)
-    } else if cfg.allow_findings {
+    } else if allow_findings {
         eprintln!(
             "doctrine-lint: {} finding(s) (passing because --allow-findings).",
             all_findings.len()
@@ -680,299 +710,4 @@ fn d13_file_extra_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 fn is_doctrine_lint_source(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     (s.contains("/doctrine-lint/") || s.starts_with("doctrine-lint/")) && !s.contains("/fixtures/")
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// CLI
-// ────────────────────────────────────────────────────────────────────────────
-
-#[derive(Default)]
-struct Config {
-    crate_name: Option<String>,
-    explicit_paths: Vec<PathBuf>,
-    allow_findings: bool,
-    /// Extra path fragments treated as D8-in-scope. Used by the fixture
-    /// smoke test to point the rule at `bin/doctrine-lint/fixtures/d8/`.
-    d8_extra_scopes: Vec<String>,
-    /// Extra path fragments treated as D9-in-scope. Same role as
-    /// [`Self::d8_extra_scopes`]: lets the fixture smoke test point the
-    /// rule at `bin/doctrine-lint/fixtures/d9/`, which otherwise falls
-    /// outside the protocol-crate scope.
-    d9_extra_scopes: Vec<String>,
-    /// Extra path fragments treated as D10-in-scope. Same role as
-    /// [`Self::d9_extra_scopes`]: lets the fixture smoke test point the
-    /// rule at `bin/doctrine-lint/fixtures/d10/`, which otherwise falls
-    /// outside the `nmp-{core,nip17,marmot}` scope.
-    d10_extra_scopes: Vec<String>,
-    /// Extra path fragments treated as D12-in-scope. Same role as
-    /// [`Self::d9_extra_scopes`]; the fixture smoke test opts the
-    /// staged d12 fixture in.
-    d12_extra_scopes: Vec<String>,
-    /// Extra path fragments treated as D13 Part-A in-scope. Same role as
-    /// [`Self::d9_extra_scopes`]: lets the fixture smoke test point the
-    /// rule at `bin/doctrine-lint/fixtures/d13/`, which otherwise falls
-    /// outside the default `dm.rs`-only Part-A scope (Part B is
-    /// path-derived workspace-wide so needs no extra-scope hook).
-    d13_extra_scopes: Vec<String>,
-    /// Extra path fragments treated as D14-in-scope. Same role as
-    /// [`Self::d8_extra_scopes`] / [`Self::d9_extra_scopes`]: lets the
-    /// fixture smoke test point the rule at
-    /// `bin/doctrine-lint/fixtures/d14/`, which otherwise falls outside
-    /// the `crates/nmp-core/src/` substrate scope.
-    d14_extra_scopes: Vec<String>,
-    /// Extra path fragments treated as D15-in-scope. Same role as
-    /// [`Self::d8_extra_scopes`] / [`Self::d9_extra_scopes`]: opts a
-    /// fixture path under `target/<label>/` into the D15 scan.
-    d15_extra_scopes: Vec<String>,
-    /// Extra path fragments treated as D16-in-scope. Same role as
-    /// [`Self::d9_extra_scopes`]: opts a fixture path under `target/<label>/`
-    /// into the D16 scan (projection-key prefix check for `apps/chirp/`).
-    d16_extra_scopes: Vec<String>,
-    /// Extra path fragments treated as D17-in-scope. Same role as
-    /// [`Self::d9_extra_scopes`]: opts a fixture path under `target/<label>/`
-    /// into the D17 scan (social-kind filter regression guard for
-    /// `crates/nmp-core/src/`).
-    d17_extra_scopes: Vec<String>,
-    /// `--workspace-d8`: scan every production crate for D8 no-polling
-    /// violations only. D0/D6/D7 (substrate-purity rules) stay nmp-core
-    /// scoped — only the universally-applicable `thread::sleep` check runs.
-    workspace_d8: bool,
-    /// `--workspace-d8-root <dir>`: override the workspace root used by
-    /// `--workspace-d8`. Defaults to the workspace root resolved from
-    /// `CARGO_MANIFEST_DIR`. The smoke test points this at a temp tree so
-    /// a positive fixture can be scanned without a real violation.
-    workspace_d8_root: Option<PathBuf>,
-}
-
-fn parse_args(args: &[String]) -> Result<Config, String> {
-    let mut cfg = Config::default();
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--crate" => {
-                i += 1;
-                cfg.crate_name = Some(
-                    args.get(i)
-                        .ok_or_else(|| "--crate requires a name".to_string())?
-                        .clone(),
-                );
-            }
-            "--path" => {
-                i += 1;
-                cfg.explicit_paths.push(PathBuf::from(
-                    args.get(i)
-                        .ok_or_else(|| "--path requires a path".to_string())?,
-                ));
-            }
-            "--allow-findings" => {
-                cfg.allow_findings = true;
-            }
-            "--d8-extra-scope" => {
-                i += 1;
-                cfg.d8_extra_scopes.push(
-                    args.get(i)
-                        .ok_or_else(|| "--d8-extra-scope requires a path fragment".to_string())?
-                        .clone(),
-                );
-            }
-            "--d9-extra-scope" => {
-                i += 1;
-                cfg.d9_extra_scopes.push(
-                    args.get(i)
-                        .ok_or_else(|| "--d9-extra-scope requires a path fragment".to_string())?
-                        .clone(),
-                );
-            }
-            "--d10-extra-scope" => {
-                i += 1;
-                cfg.d10_extra_scopes.push(
-                    args.get(i)
-                        .ok_or_else(|| "--d10-extra-scope requires a path fragment".to_string())?
-                        .clone(),
-                );
-            }
-            "--d12-extra-scope" => {
-                i += 1;
-                cfg.d12_extra_scopes.push(
-                    args.get(i)
-                        .ok_or_else(|| "--d12-extra-scope requires a path fragment".to_string())?
-                        .clone(),
-                );
-            }
-            "--d13-extra-scope" => {
-                i += 1;
-                cfg.d13_extra_scopes.push(
-                    args.get(i)
-                        .ok_or_else(|| "--d13-extra-scope requires a path fragment".to_string())?
-                        .clone(),
-                );
-            }
-            "--d14-extra-scope" => {
-                i += 1;
-                cfg.d14_extra_scopes.push(
-                    args.get(i)
-                        .ok_or_else(|| "--d14-extra-scope requires a path fragment".to_string())?
-                        .clone(),
-                );
-            }
-            "--d15-extra-scope" => {
-                i += 1;
-                cfg.d15_extra_scopes.push(
-                    args.get(i)
-                        .ok_or_else(|| "--d15-extra-scope requires a path fragment".to_string())?
-                        .clone(),
-                );
-            }
-            "--d16-extra-scope" => {
-                i += 1;
-                cfg.d16_extra_scopes.push(
-                    args.get(i)
-                        .ok_or_else(|| "--d16-extra-scope requires a path fragment".to_string())?
-                        .clone(),
-                );
-            }
-            "--d17-extra-scope" => {
-                i += 1;
-                cfg.d17_extra_scopes.push(
-                    args.get(i)
-                        .ok_or_else(|| "--d17-extra-scope requires a path fragment".to_string())?
-                        .clone(),
-                );
-            }
-            "--workspace-d8" => {
-                cfg.workspace_d8 = true;
-            }
-            "--workspace-d8-root" => {
-                i += 1;
-                cfg.workspace_d8_root =
-                    Some(PathBuf::from(args.get(i).ok_or_else(|| {
-                        "--workspace-d8-root requires a path".to_string()
-                    })?));
-            }
-            "-h" | "--help" => {
-                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] [--d13-extra-scope <fragment>] [--d14-extra-scope <fragment>] [--d15-extra-scope <fragment>] [--d16-extra-scope <fragment>] [--d17-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
-                std::process::exit(0);
-            }
-            other => return Err(format!("unknown argument: {}", other)),
-        }
-        i += 1;
-    }
-    if cfg.workspace_d8 {
-        // Workspace-d8 mode owns root resolution end-to-end — it must NOT
-        // fall through to the `--crate nmp-core` default below, and mixing
-        // it with `--crate` / `--path` would be ambiguous.
-        if cfg.crate_name.is_some() || !cfg.explicit_paths.is_empty() {
-            return Err("--workspace-d8 cannot be combined with --crate or --path".to_string());
-        }
-    } else {
-        if cfg.workspace_d8_root.is_some() {
-            return Err("--workspace-d8-root requires --workspace-d8".to_string());
-        }
-        if cfg.crate_name.is_none() && cfg.explicit_paths.is_empty() {
-            // Default: scan nmp-core.
-            cfg.crate_name = Some("nmp-core".to_string());
-        }
-    }
-    Ok(cfg)
-}
-
-fn resolve_roots(cfg: &Config) -> Result<Vec<PathBuf>, String> {
-    if cfg.workspace_d8 {
-        let workspace_root = cfg
-            .workspace_d8_root
-            .clone()
-            .unwrap_or_else(default_workspace_root);
-        return workspace_crate_src_roots(&workspace_root);
-    }
-
-    let mut roots = Vec::new();
-    if let Some(name) = &cfg.crate_name {
-        // Best-effort: assume invocation from workspace root. CI invokes
-        // exactly that way.
-        roots.push(PathBuf::from(format!("crates/{}/src", name)));
-    }
-    for p in &cfg.explicit_paths {
-        roots.push(p.clone());
-    }
-    Ok(roots)
-}
-
-/// Crates excluded from `--workspace-d8`:
-/// - `nmp-android-ffi` — its own separate Cargo workspace, scanned by its
-///   own gate; including it here double-counts and may break on its layout.
-/// - `nmp-testing` — test-infrastructure crate; sleep in test harnesses and
-///   benches is legitimate, mirroring the `#[cfg(test)]` exemption.
-const WORKSPACE_D8_SKIP_CRATES: &[&str] = &["nmp-android-ffi", "nmp-testing"];
-
-/// The workspace root, resolved from `CARGO_MANIFEST_DIR` (the `nmp-testing`
-/// crate dir) by walking up two levels: `crates/nmp-testing` → `crates` →
-/// workspace root. This makes `--workspace-d8` independent of the CWD.
-fn default_workspace_root() -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.to_path_buf())
-        .unwrap_or(manifest)
-}
-
-/// Enumerate every `<workspace_root>/crates/<name>/src/` directory, skipping
-/// the crates in [`WORKSPACE_D8_SKIP_CRATES`]. Also enumerates app-layer
-/// Rust crates under `apps/<app>/<crate>/src/` (one level deeper than
-/// `crates/`). Returns a sorted, deterministic list. A crate with no `src/`
-/// directory is silently skipped.
-fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut roots = Vec::new();
-
-    // ── crates/<name>/src/ ────────────────────────────────────────────────────
-    let crates_dir = workspace_root.join("crates");
-    let entries = std::fs::read_dir(&crates_dir)
-        .map_err(|e| format!("failed to read {}: {}", crates_dir.display(), e))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("failed to read crates/ entry: {}", e))?;
-        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            continue;
-        }
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if WORKSPACE_D8_SKIP_CRATES.contains(&name.as_ref()) {
-            continue;
-        }
-        let src = entry.path().join("src");
-        if src.is_dir() {
-            roots.push(src);
-        }
-    }
-
-    // ── apps/<app>/<crate>/src/ ───────────────────────────────────────────────
-    // App-layer Rust crates live one level deeper than `crates/` (the extra
-    // nesting is the app name, e.g. `apps/chirp/nmp-app-chirp/src`). Walk two
-    // levels: app-directory → crate-directory → src.
-    let apps_dir = workspace_root.join("apps");
-    if apps_dir.is_dir() {
-        let app_entries = std::fs::read_dir(&apps_dir)
-            .map_err(|e| format!("failed to read {}: {}", apps_dir.display(), e))?;
-        for app_entry in app_entries {
-            let app_entry = app_entry.map_err(|e| format!("failed to read apps/ entry: {}", e))?;
-            if !app_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                continue;
-            }
-            let crate_entries = std::fs::read_dir(app_entry.path())
-                .map_err(|e| format!("failed to read {}: {}", app_entry.path().display(), e))?;
-            for crate_entry in crate_entries {
-                let crate_entry =
-                    crate_entry.map_err(|e| format!("failed to read app crate entry: {}", e))?;
-                if !crate_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    continue;
-                }
-                let src = crate_entry.path().join("src");
-                if src.is_dir() {
-                    roots.push(src);
-                }
-            }
-        }
-    }
-
-    roots.sort();
-    Ok(roots)
 }

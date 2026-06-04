@@ -51,3 +51,39 @@ jobs:
             exit 1
           fi
           echo "Smoke test passed — gate correctly identified oversized.rs as a violation."
+
+      - name: Smoke test — expanded coverage catches Kotlin
+        run: |
+          mkdir -p target/file-size-gate-smoke
+          yes "// oversized Kotlin fixture" | head -n 501 > target/file-size-gate-smoke/oversized.kt
+          OUTPUT=$(bash .githooks/check-file-size.sh --dry-run \
+            --force-include target/file-size-gate-smoke/oversized.kt 2>&1 || true)
+          echo "$OUTPUT"
+          if ! echo "$OUTPUT" | grep -q "HARD-cap violation"; then
+            echo "SMOKE TEST FAILED: gate did not report a Kotlin hard-cap violation." >&2
+            exit 1
+          fi
+
+      - name: Smoke test — baseline permits current debt but blocks expansion
+        run: |
+          mkdir -p target/file-size-gate-smoke
+          yes "// baseline fixture" | head -n 501 > target/file-size-gate-smoke/baselined.kt
+          printf "target/file-size-gate-smoke/baselined.kt\t501\n" > target/file-size-gate-smoke/baseline
+
+          OUTPUT=$(bash .githooks/check-file-size.sh --dry-run \
+            --baseline-file target/file-size-gate-smoke/baseline \
+            --force-include target/file-size-gate-smoke/baselined.kt 2>&1 || true)
+          echo "$OUTPUT"
+          if ! echo "$OUTPUT" | grep -q "BASELINE hard-cap debt"; then
+            echo "SMOKE TEST FAILED: baseline did not permit an unchanged over-limit file." >&2
+            exit 1
+          fi
+
+          echo "// one more line" >> target/file-size-gate-smoke/baselined.kt
+          if bash .githooks/check-file-size.sh \
+            --baseline-file target/file-size-gate-smoke/baseline \
+            --force-include target/file-size-gate-smoke/baselined.kt; then
+            echo "SMOKE TEST FAILED: baseline expansion should fail." >&2
+            exit 1
+          fi
+          echo "Smoke test passed — baseline expansion is rejected."

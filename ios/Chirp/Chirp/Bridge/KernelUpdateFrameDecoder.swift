@@ -22,7 +22,7 @@ enum KernelUpdateFrameDecoderError: LocalizedError {
 }
 
 enum KernelUpdateFrame {
-    case snapshot(UInt32, KernelUpdate, [TypedProjectionEnvelope])
+    case snapshot(UInt32, KernelUpdate, [TypedProjectionEnvelope], [String: ChirpTimelineSnapshot])
     case panic(String)
 }
 
@@ -55,7 +55,8 @@ enum KernelUpdateFrameDecoder {
             }
             let update = try KernelUpdate(from: FlatBufferValueDecoder(value: payload, codingPath: []))
             let envelopes = extractTypedProjections(from: snapshot)
-            return .snapshot(snapshot.schemaVersion, update, envelopes)
+            let flatFeeds = extractFlatFeeds(from: payload)
+            return .snapshot(snapshot.schemaVersion, update, envelopes, flatFeeds)
         case .panic:
             guard let message = frame.panic?.msg else {
                 throw KernelUpdateFrameDecoderError.missingPanicPayload
@@ -88,6 +89,28 @@ enum KernelUpdateFrameDecoder {
             ))
         }
         return envelopes
+    }
+
+    private static func extractFlatFeeds(from root: nmp_transport_Value) -> [String: ChirpTimelineSnapshot] {
+        guard root.kind == .map else { return [:] }
+        guard let projections = root.map.first(where: { $0.key == "projections" })?.value,
+              projections.kind == .map else {
+            return [:]
+        }
+        var feeds: [String: ChirpTimelineSnapshot] = [:]
+        for pair in projections.map {
+            guard let key = pair.key,
+                  key.hasPrefix("nmp.feed.author.") || key.hasPrefix("nmp.feed.thread.") else {
+                continue
+            }
+            guard let feed = try? ChirpTimelineSnapshot(
+                from: FlatBufferValueDecoder(value: pair.value, codingPath: [])
+            ) else {
+                continue
+            }
+            feeds[key] = feed
+        }
+        return feeds
     }
 }
 

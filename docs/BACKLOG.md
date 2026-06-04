@@ -32,11 +32,12 @@ treated as an immediate-fix violation.
 
 ## For Autonomous Agents
 
-**Pick the topmost item in Section 4 (Feature Backlog) that does NOT appear in Section 2
-(In Flight).** Do not start a Section 4 item already in progress. Section 1 (Active
-Violations) takes priority over Section 4 — if a Section 1 item has no open branch, create
-one before picking Section 4 work. Never start two items that touch overlapping files without
-explicit coordination.
+**Pick the topmost item in Section 4 (Feature Backlog) that is not already
+listed in [`WIP.md`](../WIP.md).** Do not start a Section 4 item already in
+progress. Section 1 (Active Violations) takes priority over Section 4 — if a
+Section 1 item has no active WIP branch, create one before picking Section 4
+work. Never start two items that touch overlapping files without explicit
+coordination.
 
 ---
 
@@ -45,128 +46,31 @@ explicit coordination.
 Code-verified structural violations on current HEAD. Count must only decrease. No new entry
 without a `file:line` citation confirmed against the current tree.
 
-### V-112 · M2 author/thread feed read-path migration (ADR-0042 §5) [HIGH · in-flight, PR2 landed]
+### V-112 · Retire legacy author/thread view stack after flat-feed migration [HIGH · residual]
 
-**Status (PR2 — store-admission generalisation + firehose delete):** Two of the
-three remaining pieces are now done:
+**Status (2026-06-04):** Chirp iOS/Android no longer read the legacy
+`author_view` / `thread_view` projections for profile and thread screens. The
+app-owned Rust seam registers dynamic flat feeds through
+`nmp_app_chirp_open_author_feed` / `nmp_app_chirp_open_thread_feed`
+(`apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs:111,170`), Swift opens those
+symbols (`ios/Chirp/Chirp/Bridge/KernelBridge.swift:125-130`) and reads
+`flatFeeds["nmp.feed.author.*"]` / `flatFeeds["nmp.feed.thread.*"]`
+(`ios/Chirp/Chirp/Bridge/KernelModel.swift:320-328`). Android mirrors the same
+projection keys in `KernelBridge.kt` / `KernelModel.kt`.
 
-1. **Store admission generalised (ADR-0042 §5.1 — DONE).**
-   `Kernel::should_store_event` (`crates/nmp-core/src/kernel/ingest/timeline.rs`)
-   now admits any event matching the **wire filter of any active registered
-   interest**, not just the bespoke follow-set / `author_view` / sub-id-prefix
-   clauses. The matcher is `InterestShape::matches_event` /
-   `matches_event_with_id` (`crates/nmp-planner/src/interest.rs`, substrate-pure:
-   `authors`/`kinds`/`event_ids`/`since`/`until`/single-letter `#tags`, empty =
-   wildcard; ignores client-side-only `relay_pin`/`p_tag_routing`/`limit`). The
-   wire sub_id is a *merged* compiler hash (the lattice coalesces many shapes
-   into one REQ) so it cannot be reverse-mapped to one interest — shape-matching
-   the event is the robust admission test. A generic `open_interest` REQ is now
-   functional end-to-end: a non-followed author / arbitrary thread / `#t`
-   hashtag feed reaches `self.events` (and the `notify_event_observers`
-   feed-engine fan-out) **without** entering the follow-only home `timeline`
-   ordering projection. Note: this changes admission from sub-id-keyed to
-   content/shape-based — the obsolete sub-id-exclusivity assertion in
-   `discovery_tests.rs` was corrected accordingly.
+**Still live:** the generic C-ABI symbols and core projection stack remain for
+other consumers: `nmp_app_open_author` / `nmp_app_open_thread`
+(`crates/nmp-ffi/src/timeline.rs:28,59`), core `author_view` / `thread_view`
+projection tests (`crates/nmp-core/src/kernel/state_projection_tests.rs:143-160`),
+desktop (`apps/chirp/chirp-desktop/src/app.rs:285-290`), TUI
+(`apps/chirp/chirp-tui/src/feature_snapshot.rs:64-65`), and gallery bridges.
 
-2. **`open_firehose_tag` deleted (the clean −1 sub-case — DONE).** Removed the
-   C-ABI `nmp_app_open_firehose_tag`, `ActorCommand::OpenFirehoseTag` + its
-   dispatch arm, kernel `open_firehose_tag`/`firehose_requests`, the
-   `DiagnosticFirehoseState.interest`/`.seq` fields + their `requests/mod.rs`
-   caller and `status.rs` display row, the `NmpCore.h`/`KernelBridge.swift`/
-   `KernelModel.swift` wrappers, the `chirp-tui` call site (migrated to
-   `open_interest` with `{"kinds":[1],"#t":[…]}`, scope Global), the
-   `ffi-stress` re-export, and `ffi-surface.md` rows. Header-drift gate green
-   (60 symbols). **Deliberately KEPT:** the `diag-firehose-` **test ingest
-   seam** (`should_store_event` + the timeline-insert clause + the
-   `DiagnosticFirehoseState.events` counter + its `diagnostic_firehose_events`
-   snapshot field). ~15 kernel test files drive events through that prefix to
-   bypass the follow gate **with timeline-injection semantics** the generic
-   `open_interest` deliberately does NOT replicate (`open_interest` stays out of
-   the home timeline; `perf_tests`/`timeline_perf_tests` measure `make_update`
-   over `visible_items()`, so migrating them would measure an empty snapshot).
-   Retiring the test seam is a separate test-support refactor, not part of this
-   ADR.
-
-**Status (2026-06-03, PR1):** The generic `open_interest` / `close_interest`
-mechanism is landed and callable (ADR-0042 §2): parser
-`InterestShape::from_filter_json` (`crates/nmp-planner/src/interest.rs`),
-`ActorCommand::{OpenInterest,CloseInterest}` + dispatch arms
-(`crates/nmp-core/src/actor/{mod,dispatch}.rs`), C-ABI
-`nmp_app_open_interest`/`nmp_app_close_interest`
-(`crates/nmp-ffi/src/timeline.rs`), `NmpCore.h` + `KernelBridge.swift`
-wrappers. Additive, Chirp behaviour unchanged. 11 unit tests green.
-
-**Remaining (BLOCKED by #911 — author/thread read-path):** deleting
-`OpenAuthor`/`OpenThread`/`CloseAuthor`/`CloseThread` and the
-`author_view`/`thread_view` snapshot projections is **not** read-neutral. The
-store-admission blocker (1) is now resolved generically, but the **exposure**
-blocker remains: `author_view`/`thread_view` are the sole read path for Chirp
-`ProfileView`/`ThreadScreen`. Their replacement is feed-engine registration via
-the existing `nmp-feed` `FeedRegistry` + `nmp-nip01::register_op_feed` seam
-(ADR-0042 §5.1 — NOT a new bespoke `interest_feeds` projection). The frozen FFI
-symbols `nmp_app_open_author`/`nmp_app_open_thread` are retired by #911; do not
-delete the author/thread cluster or its projections before then. Two coupled
-blockers, both grep-verified (blocker 1 now generalised; blocker 2 stands):
-
-1. **Store admission.** `Kernel::should_store_event`
-   (`crates/nmp-core/src/kernel/ingest/timeline.rs:234`) admits events only via
-   the bespoke `timeline_authors` / `author_view.selected_author` /
-   `author-notes-`/`thread-ids-`/`thread-replies-`/`diag-firehose-` sub-id
-   clauses. A generic `open_interest` `sub-<hash>` for a non-followed author
-   matches none → the event is never stored. Must generalise admission to
-   "matches an active registered interest" (D8 cost: shape-matching on the hot
-   ingest path — see ADR-0042 §5.1).
-2. **Exposure.** `author_view`/`thread_view` are the **sole** read path for
-   Chirp `ProfileView` (`ios/.../ProfileView.swift:24` —
-   `items { authorView?.items ?? [] }`) / `ThreadScreen`. They are snapshot
-   projections (`kernel/update/projections.rs:175,181`, registered in
-   `crates/nmp-codegen/src/swift_projections_registry.rs:211,216` as
-   `authorView`/`threadView`). Deleting them blanks those screens.
-
-**Decision (ADR-0042 §5.1 — reuse, not reinvent):** author/thread feeds
-register through the EXISTING generic feed seam — `nmp-feed`'s `FeedRegistry`
-(`register(key, Arc<dyn FeedController>)`, ADR-0033) + `nmp-nip01::register_op_feed`
-(ADR-0035/0038, already powering `nmp.feed.home`) — NOT a new bespoke
-`interest_feeds` projection (which would be parallel machinery). App composes
-the rest: profile card ← `claimed_profiles`, thread root ← `claimed_events`,
-counts/primary-action ← local derivation.
-
-**Open sub-decision:** exact admission-gate placement (kernel
-`should_store_event` generalisation vs. feed-engine-side `EventGate` + a
-store-retain hook). Resolve before the delete-cascade.
-
-**Refinement (2026-06-03, code-grounded):** the "reuse `register_op_feed`"
-decision is only PARTLY applicable. `RootIndexedFeed` (the engine behind
-`nmp.feed.home`) is **roots-only** — its own module doc (`nmp-feed/src/root_indexed.rs:3`):
-"a followed author's replies appear only as *attribution* metadata." A profile
-screen must show ALL of one author's kind:1/6 as TOP-LEVEL rows (replies-to-others
-included), which root-indexing structurally cannot express. So the **author**
-feed needs a NEW flat `FeedController` (InterestShape-parameterised, own key
-`nmp.feed.author.<pk>`), reusing the `FeedRegistry` + `KernelEventObserver`
-seam but NOT the `RootIndexedFeed` engine. The **thread** feed is root-centric
-and MAY fit `RootIndexedFeed` with an injected `event_gate`
-(`kind∈{1,6} && #e==<id>`) + own key — confirm during build. ProfileView also
-reads `.profile`/`.primaryAction`/`.noteCountDisplay` off `author_view`; those
-compose from `claimed_profiles` + local follow-state + feed length respectively.
-This makes the read-path half a multi-component BUILD (flat feed type +
-FlatBuffers schema + codegen + Swift rewrite of two screens), whose GREEN
-checkpoint ("screens still show notes") needs a running iOS build —
-environmentally blocked on the current dev machine (Xcode-26-beta `UIUtilities`
-workaround absent). Sequenced as its own PR; see
-`docs/perf/pending-user-decisions.md` (V-112 entry, 2026-06-03).
-
-**Scope of the delete-cascade (forced once the 5 symbols go):** 5 ActorCommand
-variants + arms; kernel methods `open_author`/`author_requests`/`close_author`/
-`open_firehose_tag`/`firehose_requests`/`open_thread`/`close_thread`/
-`prepare_thread_requests`/`maybe_open_thread_hydration`/`enqueue_thread_*`;
-state `author_view`/`thread_view`/`diagnostic_firehose`/`ViewInterest`;
-`pending_view_requests` branches; `close_subscriptions_with_prefixes`; the two
-snapshot projections + payloads + codegen registry entries + projections.rs
-precedence; regen `KernelTypes.generated.swift`; ~10 non-Chirp Rust callers
-(chirp-desktop, chirp-tui, nmp-gallery android/ios/tui, nmp-android-ffi, 3
-ffi-stress binaries); `ffi-surface.md`; the `ci/check-ffi-header-drift.sh` gate.
-The `diagnostic_firehose` verb has ZERO projection/Swift coupling — it is the
-clean mechanical −3 sub-case and can be deleted independently first.
+**Correct fix:** migrate the remaining consumers to explicit app-owned
+feed/claim contracts, then delete the old ActorCommand variants, kernel state,
+projection payloads, codegen registry entries, FFI symbols/header rows, and
+legacy tests in one verified cascade. Do not reintroduce native-owned read
+paths or bespoke projections; new consumers use registry/feed keys and Rust-owned
+admission.
 
 ### V-57 · Remaining kind-constant duplicates to migrate to nmp-kinds [LOW · residual]
 
@@ -187,8 +91,13 @@ PR `claude/fix-v57-kind-constants` (2026-05-31):
 
 - **P3 — move Chirp shell business logic behind Rust-owned actions/projections.**
   `ios/Chirp/Chirp/Features/RelaySettingsView.swift:159-177` dispatches two
-  protocol publishes while tracking only one correlation id. **Next step:** expose a
-  composite Rust action / action-stage projection for the relay-settings publish.
+  protocol publishes while tracking only one correlation id. The same native-policy
+  class includes the currently allowlisted D18 raw publish envelope construction in
+  `ios/Chirp/Chirp/Bridge/KernelBridge.swift` (`PublishRaw` / `PublishProfile`) and
+  `android/app/src/main/java/org/nmp/android/KernelModel.kt` (`PublishRaw` with
+  native-authored kind/tags/target). **Next step:** expose Rust-owned typed publish /
+  repost / profile actions and a composite Rust action / action-stage projection for
+  the relay-settings publish, then remove the D18 allowlist entries.
 - **P6 — strengthen enforcement so these regressions trip earlier.**
   V-12 already tracks oversized boundary files; the new gap is doctrine-lint coverage for
   dependency direction and app-noun leakage. **Next step:** add a dependency-graph/layer
@@ -425,6 +334,44 @@ once `nmp-codegen`'s Swift emitter is taught the new shape (the
 `gen modules --check` gate against `apps/fixture/nmp.toml` is currently
 green because the fixture types do not include these projection shapes).
 
+### V-113 · Residual `content_preview` / display-enrichment projection boundary [MEDIUM · ADR-0032 follow-up]
+
+**Verified (2026-06-04):** ADR-0032 says projections and snapshots send raw
+protocol data and presentation layers format. Current code still has a
+cross-surface ambiguity:
+
+- `crates/nmp-core/src/kernel/types.rs:128,136` — `TimelineItem` carries
+  `author_display_name: Option<String>` and `content_preview: String`.
+- `crates/nmp-core/src/kernel/update/views.rs:111-117` — the kernel bakes
+  cached kind:0 display name into the timeline item and truncates content into
+  `content_preview`.
+- `crates/nmp-nip01/src/timeline_projection.rs:217-223` —
+  `ContentEventRenderData` carries `author_display: AuthorDisplay` and
+  `content_preview`.
+- Generated bindings expose the same preview field
+  (`ios/Chirp/Chirp/Bridge/Generated/TimelineSnapshot.generated.swift:624`,
+  `android/app/src/main/java/nmp/nip01/TimelineEventCard.kt:147`).
+
+**Why this is not docs-only:** the fields are part of live wire/generated
+schemas and multiple shell models read them. A docs-only clarification would
+either bless pre-truncated content/display mirrors as raw projection data or
+contradict ADR-0032 without changing the code.
+
+**Required decision/fix:** choose one canonical boundary and implement it
+end-to-end:
+
+1. **Raw-only path:** remove `content_preview` and denormalized display mirrors
+   from projection/wire schemas, make shells truncate from raw `content` or walk
+   `ContentTreeWire`, and resolve author display through claimed/resolved
+   profile maps; regenerate Swift/Kotlin bindings and update registry examples.
+2. **Blessed-preview path:** amend ADR-0032/product docs to explicitly define
+   `content_preview` as a protocol projection affordance, not presentation
+   formatting, with exact ownership and length/whitespace rules; then keep the
+   code and update docs that currently imply "raw only" forbids it.
+
+Do not guess this inside an unrelated docs cleanup. The chosen path needs a
+schema-aware PR with generated binding updates.
+
 ### V-55 · `LocalKeySigner` cannot zero all `nostr::Keys` secret copies [MEDIUM · upstream-blocked]
 
 **Verified:** `crates/nmp-signers/src/signers/local.rs:35-46` documents that
@@ -445,21 +392,6 @@ exists, do not claim full zeroization for local-key accounts.
 **Impact:** the iOS host believes it registered a logged-in user; the Rust side proceeds with the all-zeros pubkey as the active viewer. Personal-timeline projections, NIP-65 outbox resolution, and DM inbox filtering all run against the zero-pubkey "anonymous" identity. The user appears to be logged in to themselves but is treated as the canonical empty account by every Rust subsystem.
 
 **Correct fix:** the C-ABI `nmp_app_chirp_register` must return `NmpRegisterStatus::InvalidViewerPubkey` on null or non-32-byte input; Swift surfaces the failure to the onboarding flow. There is no doctrined reason for a register call with an invalid identity to silently succeed as anonymous.
-
----
-
-### V-78 · NIP-57 zap signing requires local keys — bunker (NIP-46) accounts cannot zap [MEDIUM · bunker feature gap]
-
-**Verified:** `crates/nmp-nip57/src/lnurl/mod.rs:199-211` — the zap executor (`Executor::run`; `ZapAction` itself lives in `crates/nmp-nip57/src/action.rs`) short-circuits with a toast (`"zap requires a local-keys account; bunker signing for kind:9734 is not yet implemented (ADR-0026 Phase 2 follow-up)"`) when `ctx.active_local_keys()` returns `None`. This is the same ADR-0026 Phase 1 cutline as V-08 (DM unwrap) and V-06 (NIP-42 AUTH), but a separate code path — the broker has no `sign_zap_request(kind:22242→9734)` RPC and the actor thread has no sync-compatible adapter for it.
-
-**Impact:** users authenticated via bunker can read zaps (kind:9735 receipts decode without keys) but cannot send a zap. The failure is non-silent (toast fires) so this is not a silent-fail violation, but it is a v1-A feature gap that is currently invisible from the BACKLOG. V-08 covers DMs and V-06 covers AUTH; zaps were missing as a tracked sibling.
-
-**Staged fix plan:**
-- Stage 1: surface the bunker-zap gap in onboarding / zap UI before the user attempts a zap (currently they only learn at zap time via toast).
-- Stage 2: broker side — expose `sign_zap_request(unsigned_kind_9734)` RPC. Companion to V-06 Stage 2 (the broker is the same target; both bunker-sign paths land in the same RPC table).
-- Stage 3: the zap executor (`lnurl/mod.rs` `Executor::run`) — when `active_local_keys()` is `None`, drive the broker RPC synchronously through the same one-shot channel pattern as V-06.
-
-**Deadline:** Stages 2-3 are post-v1. Either this is fixed or v1 copy drops "send zaps" as a v1 capability for bunker accounts.
 
 ---
 
@@ -545,7 +477,10 @@ conversion of `create_account` is worth the park-arm complexity.
 `s.rx.recv_timeout(Duration::from_millis(250))`, forcing Kotlin into a polling
 drain loop with a 250 ms blocking budget per call. iOS uses a push model (callback
 on the listener thread); Android should match. The `recv_timeout` polling pattern
-is a D8 violation at the FFI boundary.
+is a D8 violation at the FFI boundary. D18 also allowlists the current native drain
+loops in `android/app/src/main/java/org/nmp/android/KernelModel.kt` and
+`apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/bridge/GalleryModel.kt`
+so new `.nextUpdate()` polling loops fail while this migration remains staged.
 
 **Correct fix:** Replace the `recv_timeout` polling pattern with a push-based
 callback notification model matching the iOS `set_update_callback` architecture.
@@ -788,7 +723,7 @@ recorded here as closed.
 ## Section 4 — V1 Feature Backlog
 
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
-autonomous agent picks the topmost item not already in Section 2.
+autonomous agent picks the topmost item not already listed as active in `WIP.md`.
 
 ### F-00 · Unify app directory layout — `apps/<app>/{ios,android,desktop,tui,web}` + `apps/<app>/crates/` [PRIORITY · repo structure]
 
@@ -926,10 +861,13 @@ hydration just because they render a component.
 
 **Plan:** [`docs/plan/m16-component-registry.md`](plan/m16-component-registry.md).
 
-**Status:** First implementation slice in progress: a built-in offline
-component registry, `nmp add component`, `nmp.components.lock`, dependency
-resolution, duplicate-install rejection, and the `swiftui/content-minimal`
-fixture kit.
+**Status (2026-06-04, refreshed from `crates/nmp-cli/registry/registry.toml`):**
+the offline registry is no longer just the first SwiftUI content slice. It now
+contains 50 component entries across SwiftUI, Compose, Ratatui, and desktop:
+content-core/minimal/view/kind renderers, mention/media/quote widgets, relay
+list, login block, and user avatar/name/NIP-05/npub/card primitives. The
+manifest is the source of truth for shipped component ids, versions,
+dependencies, and file targets; this backlog tracks remaining product gaps only.
 
 **Initial scope:**
 
@@ -961,11 +899,11 @@ drift is caught at test time by `tests/wire_fixtures.rs::wire_goldens_match`
 (byte-exact pin + orphan-file guard). iOS and Android decoders consume this
 exact byte set as the M16 cross-platform wire-contract truth.
 
-**Kind-dispatch sub-track (ADR-0034):** the next M16 slice is the kind-dispatched
-content rendering system.
+**Kind-dispatch sub-track (ADR-0034):** continue the kind-dispatched
+content-rendering system from the current registry manifest.
 Architectural decisions: [`ADR-0034`](decisions/0034-kind-dispatch-content-rendering.md).
 Items F-CR-01 through F-CR-12 below are ordered by dependency. Pick the topmost
-open item not already in Section 2. F-CR-01 and F-CR-06 landed (PR #588). The next highest-value open item is
+open item not already listed in `WIP.md`. F-CR-01 and F-CR-06 landed (PR #588). The next highest-value open item is
 F-CR-02, because Android must join `ContentTreeWire` before the Compose registry
 can replace the old embed card.
 
@@ -982,7 +920,8 @@ ChirpAvatar `.task(id:)`, Android `RememberProfileClaim`, TUI
 from the `claimed_events` snapshot projection (currently baked in as a
 convenience shortcut). This is NOT blocking — the enrichment is harmless — but
 is the display-separation cleanup to complete the "backend sends raw pubkeys only"
-doctrine. Do not conflate with the proactive-fetch removal.
+doctrine. Do not conflate with the proactive-fetch removal. Broader
+`content_preview` / display-enrichment projection ambiguity is tracked in V-113.
 
 #### F-CR-02 · Android gallery → `ContentTreeWire` migration [PREREQUISITE · Android]
 
@@ -1212,7 +1151,7 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | Cashu wallet (NIP-60) + nutzaps (NIP-61) | NWC + NIP-57 cover the v1 zap use case; nutzap UX layer requires Cashu wallet primitives first. `crates/nmp-nip60` / `crates/nmp-nip61` do not exist on master. |
 | `nmp-codegen` full Swift bridge | Pilot (F-05) must land first to prove the pattern |
 | Second non-social app (shipped product) | PD-033-A decision needed first; the v1 spike is a thesis test, not a shipped product |
-| Android parity with iOS Chirp | Android Chirp shell exists but lacks feature parity with iOS; v1 ships iOS-first. Parity work blocked on UniFFI (M14) to avoid hand-maintaining two FFI surfaces. |
+| Android parity with iOS Chirp | Android Chirp shell exists but lacks feature parity with iOS; v1 ships iOS-first. TD-2 closed the existing Rust-owned bridge gaps for storage path, lifecycle foreground/background, liveness, action-stage ACK, dispatch envelope parsing, home-feed pagination, and basic NIP-46 signer-broker JNI seams. Remaining infrastructure parity includes Android `nmp_app_set_capability_callback`/Keystore handling plus Nostr Connect deep-link/QR UX; do this as real JNI + Android Keystore capability work, not no-op placeholders. Broader parity work is blocked on UniFFI (M14) to avoid hand-maintaining two FFI surfaces. |
 | Additional Nostr-aware component packs | Content rendering moved to F-08 / M16. Post-v1 packs cover broader reusable app blocks such as account switchers, diagnostics inspectors, full thread screens, auth blocks, and non-content templates. |
 | Raw-data projection follow-ups | ADR-0032 is canonical. Post-v1 work may add a shared `nmp-display` helper/codegen surface, a doctrine-lint rule for banned display helpers in projections, and a review of free-form metadata fallbacks. |
 | Chirp TUI approach-B visual refresh | The top-level scratch plans were deleted. If this work resumes, track it as a scoped TUI UX item here or in WIP while a branch is active; preserve existing `chirp-tui` runtime/bridge/command wiring and keep rendering modules under the LOC ceiling. |

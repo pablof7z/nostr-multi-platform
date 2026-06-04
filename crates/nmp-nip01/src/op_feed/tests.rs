@@ -8,227 +8,12 @@
 //! covered by `nmp-feed`'s synthetic-payload tests, so here we assert the
 //! NIP-10 *binding* is correct.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
-use nmp_core::nip19::decode_nevent;
-use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_core::{ActorCommand, KernelEventObserver};
-use nmp_feed::{AttributionPayload, EventLookup, FeedRequest, FollowPredicate};
+use nmp_feed::AttributionPayload;
 
 use super::attribution::Nip10ReplyAttribution;
-use super::wiring::{build_actor_claim_sink, register_op_feed, OpFeedEngine, OP_FEED_SNAPSHOT_KEY};
+use super::test_support::*;
+use super::wiring::OP_FEED_SNAPSHOT_KEY;
 use crate::profile_display::ProfileDisplay;
-
-const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
-const BOB: &str = "bbbb000000000000000000000000000000000000000000000000000000000002";
-const CAROL: &str = "cccc000000000000000000000000000000000000000000000000000000000003";
-
-// 64-hex event ids so the nevent encoder (32-byte TLV) accepts them.
-const OP_ID: &str = "0000000000000000000000000000000000000000000000000000000000000abc";
-const REPLY_ID: &str = "0000000000000000000000000000000000000000000000000000000000000de1";
-const REPOST_ID: &str = "0000000000000000000000000000000000000000000000000000000000000f06";
-
-// ─── Harness ────────────────────────────────────────────────────────────────
-
-/// A recorded actor command — `ActorCommand` is not `Clone`, so the test
-/// dispatcher captures only the fields the assertions care about.
-#[derive(Clone, Debug, PartialEq)]
-enum RecordedCmd {
-    Claim { uri: String, consumer_id: String },
-    Release { uri: String, consumer_id: String },
-}
-
-struct Harness {
-    engine: Arc<OpFeedEngine>,
-    claims: Arc<Mutex<Vec<RecordedCmd>>>,
-    lookup: Arc<Mutex<HashMap<EventId, KernelEvent>>>,
-}
-
-impl Harness {
-    fn new(follows: &[&str]) -> Self {
-        let follow_set: std::collections::HashSet<String> =
-            follows.iter().map(|s| (*s).to_string()).collect();
-        let follow: FollowPredicate = Arc::new(move |pk: &str| follow_set.contains(pk));
-
-        let lookup: Arc<Mutex<HashMap<EventId, KernelEvent>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let lookup_for_cb = Arc::clone(&lookup);
-        let event_lookup: EventLookup =
-            Arc::new(move |id: &EventId| lookup_for_cb.lock().unwrap().get(id).cloned());
-
-        let claims: Arc<Mutex<Vec<RecordedCmd>>> = Arc::new(Mutex::new(Vec::new()));
-        let claims_for_cb = Arc::clone(&claims);
-        let dispatch: super::wiring::ActorCommandDispatch = Arc::new(move |cmd| {
-            let recorded = match cmd {
-                ActorCommand::ClaimEvent {
-                    uri, consumer_id, ..
-                } => RecordedCmd::Claim { uri, consumer_id },
-                ActorCommand::ReleaseEvent { uri, consumer_id } => {
-                    RecordedCmd::Release { uri, consumer_id }
-                }
-                _ => return,
-            };
-            claims_for_cb.lock().unwrap().push(recorded);
-        });
-        let claim_sink = build_actor_claim_sink(dispatch);
-
-        let engine = register_op_feed(ALICE.to_string(), follow, event_lookup, claim_sink);
-        Self {
-            engine,
-            claims,
-            lookup,
-        }
-    }
-
-    /// Feed an event the way the kernel observer fan-out would: it is in the
-    /// read cache AND the observer fires.
-    fn ingest(&self, event: &KernelEvent) {
-        self.lookup
-            .lock()
-            .unwrap()
-            .insert(event.id.clone(), event.clone());
-        self.engine.on_kernel_event(event);
-    }
-
-    /// Store an event in the read cache WITHOUT firing the observer — models a
-    /// kernel-resolved event the engine can look up but has not observed.
-    fn store(&self, event: &KernelEvent) {
-        self.lookup
-            .lock()
-            .unwrap()
-            .insert(event.id.clone(), event.clone());
-    }
-
-    fn claims(&self) -> Vec<RecordedCmd> {
-        self.claims.lock().unwrap().clone()
-    }
-
-    fn snapshot(
-        &self,
-    ) -> nmp_feed::RootFeedSnapshot<
-        crate::timeline_projection::TimelineEventCard,
-        Nip10ReplyAttribution,
-    > {
-        self.engine.snapshot(&FeedRequest::default())
-    }
-}
-
-// ─── Event builders ───────────────────────────────────────────────────────
-
-fn op_event(id: &str, author: &str, created_at: u64, body: &str) -> KernelEvent {
-    KernelEvent {
-        id: id.to_string(),
-        author: author.to_string(),
-        kind: 1,
-        created_at,
-        tags: Vec::new(),
-        content: body.to_string(),
-    }
-}
-
-fn reply_event(id: &str, author: &str, created_at: u64, root_id: &str) -> KernelEvent {
-    KernelEvent {
-        id: id.to_string(),
-        author: author.to_string(),
-        kind: 1,
-        created_at,
-        tags: vec![
-            vec![
-                "e".to_string(),
-                root_id.to_string(),
-                String::new(),
-                "root".to_string(),
-            ],
-            vec![
-                "e".to_string(),
-                root_id.to_string(),
-                String::new(),
-                "reply".to_string(),
-            ],
-        ],
-        content: "a reply".to_string(),
-    }
-}
-
-/// A NIP-10 reply whose reply marker points at `parent_id` (used for L-2: the
-/// parent is a kind:6 wrapper).
-fn reply_to_parent(id: &str, author: &str, created_at: u64, parent_id: &str) -> KernelEvent {
-    KernelEvent {
-        id: id.to_string(),
-        author: author.to_string(),
-        kind: 1,
-        created_at,
-        tags: vec![vec![
-            "e".to_string(),
-            parent_id.to_string(),
-            String::new(),
-            "reply".to_string(),
-        ]],
-        content: "reply to a repost".to_string(),
-    }
-}
-
-/// An e-tag-only kind:6 repost of `target` (no embedded note → L-3 / L-5).
-fn repost_etag(id: &str, author: &str, created_at: u64, target: &str) -> KernelEvent {
-    KernelEvent {
-        id: id.to_string(),
-        author: author.to_string(),
-        kind: 6,
-        created_at,
-        tags: vec![vec!["e".to_string(), target.to_string()]],
-        content: String::new(),
-    }
-}
-
-/// A kind:6 repost with the original note embedded in `content` (L-1).
-fn repost_embedded(id: &str, author: &str, created_at: u64, target: &KernelEvent) -> KernelEvent {
-    let embedded = serde_json::json!({
-        "id": target.id,
-        "pubkey": target.author,
-        "kind": target.kind,
-        "created_at": target.created_at,
-        "tags": target.tags,
-        "content": target.content,
-    });
-    KernelEvent {
-        id: id.to_string(),
-        author: author.to_string(),
-        kind: 6,
-        created_at,
-        tags: vec![vec!["e".to_string(), target.id.clone()]],
-        content: embedded.to_string(),
-    }
-}
-
-fn profile_event(author: &str, created_at: u64, display_name: &str) -> KernelEvent {
-    KernelEvent {
-        id: format!("profile-{author}"),
-        author: author.to_string(),
-        kind: 0,
-        created_at,
-        tags: Vec::new(),
-        content: serde_json::json!({ "display_name": display_name }).to_string(),
-    }
-}
-
-fn claimed_event_ids(claims: &[RecordedCmd]) -> Vec<String> {
-    claims
-        .iter()
-        .filter_map(|c| match c {
-            RecordedCmd::Claim { uri, .. } => Some(uri.clone()),
-            RecordedCmd::Release { .. } => None,
-        })
-        .collect()
-}
-
-/// Assert a claim URI is a `nostr:nevent…` carrying exactly `event_id`.
-fn assert_nevent_for(uri: &str, event_id: &str) {
-    let bech = uri.strip_prefix("nostr:").expect("nostr: prefix");
-    assert!(bech.starts_with("nevent1"), "expected nevent, got {bech}");
-    let data = decode_nevent(bech).expect("decodes nevent");
-    assert_eq!(data.event_id, event_id);
-}
 
 // ─── Attribution unit tests ─────────────────────────────────────────────────
 
@@ -545,4 +330,34 @@ fn release_signal_is_non_terminal_pending_survives() {
     let snap = h.snapshot();
     assert_eq!(snap.cards.len(), 1);
     assert_eq!(snap.cards[0].attribution.len(), 1);
+}
+
+#[test]
+fn identity_reset_releases_pending_op_claim_command() {
+    let h = Harness::new(&[ALICE]);
+    h.ingest(&reply_event(REPLY_ID, ALICE, 10, OP_ID));
+
+    let before = h.claims();
+    assert_eq!(before.len(), 1, "missing OP should emit one ClaimEvent");
+    assert!(matches!(before[0], RecordedCmd::Claim { .. }));
+
+    h.engine.reset_for_identity_change();
+
+    let claims = h.claims();
+    assert_eq!(
+        claims.len(),
+        2,
+        "reset should emit the matching ReleaseEvent"
+    );
+    match &claims[1] {
+        RecordedCmd::Release { uri, consumer_id } => {
+            assert_nevent_for(uri, OP_ID);
+            assert_eq!(consumer_id, OP_FEED_SNAPSHOT_KEY);
+        }
+        other => panic!("expected ReleaseEvent after reset, got {other:?}"),
+    }
+    assert!(
+        h.snapshot().cards.is_empty(),
+        "identity reset clears OP-feed snapshot state"
+    );
 }

@@ -53,6 +53,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// `snapshot?.homeFeed` (generic `Value` decode) is used instead.
     @Published private(set) var typedHomeFeed: ChirpTimelineSnapshot?
 
+    /// Dynamic flat feeds opened per profile/thread screen. Keys are
+    /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
+    @Published private(set) var flatFeeds: [String: ChirpTimelineSnapshot] = [:]
+
     // ── Local mutable state ──────────────────────────────────────────────
 
     @Published private(set) var snapshotCount: UInt64 = 0
@@ -95,68 +99,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// event store / MLS DB / NIP-77 watermarks are in an unknown state
     /// after a panic.
     @Published private(set) var kernelIsDead: Bool = false
-
-    // ── Computed projections — read through `snapshot` ────────────────────
-
-    var isRunning: Bool { snapshot?.running ?? false }
-    /// ADR-0038: prefers the typed NOFS+NFCT decode (full contentTree +
-    /// relationCounts) when available; falls back to the generic Value path
-    /// when the typed path returns nil (ADR-0037 Commitment 4).
-    var modularTimeline: ChirpTimelineSnapshot { typedHomeFeed ?? snapshot?.homeFeed ?? .empty }
-    var rev: UInt64 { snapshot?.rev ?? 0 }
-    var profile: ProfileCard? { snapshot?.profile }
-    var authorView: AuthorProfileSnapshot? { snapshot?.authorView }
-    var metrics: KernelMetrics? { snapshot?.metrics }
-    var relayStatuses: [RelayStatus] { snapshot?.relayStatuses ?? [] }
-    var accounts: [AccountSummary] { snapshot?.accounts ?? [] }
-    var activeAccount: String? { snapshot?.activeAccount }
-    var publishQueue: [PublishQueueEntry] { snapshot?.publishQueue ?? [] }
-    var publishOutbox: [PublishOutboxItem] { snapshot?.publishOutbox ?? [] }
-    var outboxSummary: OutboxSummary { snapshot?.outboxSummary ?? .empty }
-    var configuredRelays: [AppRelay] { snapshot?.configuredRelays ?? [] }
-    var relayRoleOptions: [RelayRoleOption] { snapshot?.relayRoleOptions ?? [] }
-    var settingsHub: SettingsHubSummary { snapshot?.settingsHub ?? .empty }
-    var threadView: ThreadView? { snapshot?.threadView }
-    var walletStatus: WalletStatusData? { snapshot?.walletStatus }
-    var logicalInterests: [LogicalInterestStatus] { snapshot?.logicalInterests ?? [] }
-    var wireSubscriptions: [WireSubscriptionStatus] { snapshot?.wireSubscriptions ?? [] }
-    var relayDiagnostics: RelayDiagnosticsSnapshot { snapshot?.relayDiagnostics ?? .empty }
-    var logs: [String] { snapshot?.logs ?? [] }
-    var bunkerHandshake: BunkerHandshake? { snapshot?.bunkerHandshake }
-    var nip46Onboarding: Nip46Onboarding? { snapshot?.nip46Onboarding }
-    /// V5 thin-shell display projection — Rust-owned action lifecycle.
-    /// Carries `{ inFlight, recentTerminal }` arrays the views render
-    /// verbatim (spinner per in-flight, success/failure toast per
-    /// recent terminal). `nil` in steady state.
-    var actionLifecycle: ActionLifecycleSnapshot? { snapshot?.actionLifecycle }
-
-    /// Resolved profiles for mention/author rendering — adapted from the
-    /// pre-merged `resolved_profiles` projection (PR #812) at read time. This
-    /// map applies the canonical precedence (claimed > author_view > mention)
-    /// in Rust, so it is strictly broader than the old `mention_profiles`
-    /// source it replaces. The component-facing `[String: MentionProfile]`
-    /// shape is unchanged. Falls back to `[:]` when an older kernel elides the
-    /// projection.
-    var mentionProfiles: [String: MentionProfile] {
-        guard let cards = snapshot?.resolvedProfiles else { return [:] }
-        return cards.mapValues(MentionProfile.init(card:))
-    }
-
-    /// Claimed profiles from the kernel snapshot. Falls back to `[:]` when
-    /// an older kernel elides the projection.
-    var claimedProfiles: [String: ProfileCard] {
-        snapshot?.projections?.claimedProfiles ?? [:]
-    }
-
-    var hasActiveAccount: Bool { activeAccount != nil }
-
-    /// O(N) lookup of the active `AccountSummary` (kept on the model so
-    /// views never write `.first(where:)` — aim.md §4.5).
-    var activeAccountSummary: AccountSummary? {
-        guard let id = activeAccount else { return nil }
-        for account in accounts where account.id == id { return account }
-        return nil
-    }
 
     // ── Stores & capabilities (non-published) ────────────────────────────
 
@@ -329,6 +271,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // Dropping `snapshot` clears every kernel-driven projection in one
         // move via the computed accessors. Local-only slots clear explicitly.
         snapshot = nil
+        flatFeeds = [:]
         // T146 — Reset preserves the observer slot but the grouper retains
         // the prior session's blocks; re-register so it starts empty.
         kernel.reregisterChirpProjection()
@@ -378,6 +321,12 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     func closeAuthor(pubkey: String) { kernel.closeAuthor(pubkey: pubkey) }
     func openThread(eventID: String) { kernel.openThread(eventID: eventID) }
     func closeThread(eventID: String) { kernel.closeThread(eventID: eventID) }
+    func authorFeed(pubkey: String) -> ChirpTimelineSnapshot? {
+        flatFeeds["nmp.feed.author.\(pubkey)"]
+    }
+    func threadFeed(eventID: String) -> ChirpTimelineSnapshot? {
+        flatFeeds["nmp.feed.thread.\(eventID)"]
+    }
     func claimProfile(pubkey: String, consumerID: String) {
         kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
     }
@@ -496,10 +445,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     @discardableResult
     func publishProfile(name: String, about: String, picture: String) -> DispatchResult {
-        var profile: [String: String] = ["name": name]
-        if !about.isEmpty { profile["about"] = about }
-        if !picture.isEmpty { profile["picture"] = picture }
-        return track(kernel.publishProfile(profile: profile))
+        return track(kernel.publishProfile(name: name, about: about, picture: picture))
     }
 
     func switchActive(_ identityID: String) {
@@ -512,8 +458,8 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
 
     @discardableResult
-    func publishNote(_ content: String, replyToID: String? = nil) -> DispatchResult {
-        track(kernel.publishNote(content: content, replyToID: replyToID))
+    func publishNote(_ content: String, replyTo: ChirpReplyTarget? = nil) -> DispatchResult {
+        track(kernel.publishNote(content: content, replyTo: replyTo))
     }
 
     func retryPublish(handle: String) { kernel.retryPublish(handle: handle) }
@@ -574,7 +520,6 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 authorPubkey: authorPubkey,
                 lnurl: lnurl,
                 amountMsats: amountMsats,
-                relays: [],
                 comment: comment
             )
         )
@@ -691,6 +636,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // ADR-0038: store the typed home-feed result. Nil means the generic
         // projections.homeFeed fallback applies for this tick.
         typedHomeFeed = result.typedHomeFeed
+        flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 
         #if DEBUG

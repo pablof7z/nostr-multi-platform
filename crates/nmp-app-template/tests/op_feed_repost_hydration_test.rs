@@ -17,9 +17,8 @@
 //! (Split out of `op_feed_defaults_test.rs` to keep both files under the
 //! 500-LOC ceiling.)
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::KernelEvent;
 // `on_kernel_event` is a `KernelEventObserver` method (the engine impls it).
@@ -105,8 +104,10 @@ fn repost_kernel_event(id: &str, author: &str, created_at: u64, target: &str) ->
     }
 }
 
-fn slot(active: Option<&str>) -> ActiveAccountSlot {
-    Arc::new(Mutex::new(active.map(str::to_string)))
+fn set_app_active(app: *mut NmpApp, active: Option<&str>) {
+    // SAFETY: tests pass a live pointer returned by `nmp_app_new`.
+    let handle = unsafe { &*app }.active_account_handle();
+    *handle.lock().expect("active-account slot") = active.map(str::to_string);
 }
 
 /// Build a `MemEventStore` seeded with `events` and publish it into the app's
@@ -157,12 +158,9 @@ fn repost_l5_backward_hydration_resolves_wrapper_via_real_event_lookup() {
     // ALICE is the active account (self-included → a follow); CAROL's repost is
     // attributed regardless of follow because reposts surface the target root.
     // SAFETY: valid non-null pointer.
-    let engine = nmp_app_template::register_op_feed_defaults(
-        unsafe { &*app },
-        ALICE.to_string(),
-        slot(Some(ALICE)),
-    )
-    .engine;
+    set_app_active(app, Some(ALICE));
+    let engine =
+        nmp_app_template::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
 
     // 1. The repost wrapper arrives (fan-out). Placeholder keyed by the target,
     //    provenance recorded, target not local yet → claim emitted.
@@ -231,12 +229,9 @@ fn repost_l2_reply_to_kind6_wrapper_rekeys_via_real_event_lookup() {
     );
 
     // SAFETY: valid non-null pointer.
-    let engine = nmp_app_template::register_op_feed_defaults(
-        unsafe { &*app },
-        ALICE.to_string(),
-        slot(Some(ALICE)),
-    )
-    .engine;
+    set_app_active(app, Some(ALICE));
+    let engine =
+        nmp_app_template::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
 
     // The target OP is observed (so it is a live root) and the wrapper too.
     engine.on_kernel_event(&op_event(OP_ID, BOB, 9, "Bob's original"));
@@ -280,9 +275,8 @@ fn event_lookup_is_correctness_preserving_before_store_published() {
         "empty slot → None (matches the prior no-op)"
     );
 
-    let engine =
-        nmp_app_template::register_op_feed_defaults(app_ref, ALICE.to_string(), slot(Some(ALICE)))
-            .engine;
+    set_app_active(app, Some(ALICE));
+    let engine = nmp_app_template::register_op_feed_defaults(app_ref, ALICE.to_string()).engine;
 
     // Drive the L-5 sequence with no published store: placeholder, then hydrate
     // body — but provenance is absent (no wrapper read possible), and crucially

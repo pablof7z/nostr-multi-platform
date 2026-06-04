@@ -408,6 +408,15 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
         fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
             self.0.active_signer_for_seal()
         }
+        fn sign_active_nonblocking(
+            &self,
+            unsigned: &crate::substrate::UnsignedEvent,
+        ) -> Result<
+            nmp_signer_iface::SignerOp<crate::substrate::SignedEvent>,
+            String,
+        > {
+            super::sign_active_nonblocking(self.0, unsigned)
+        }
     }
     // SAFETY: single-threaded test scope; the `&IdentityRuntime` borrow
     // never crosses a thread boundary. The trait carries the bound.

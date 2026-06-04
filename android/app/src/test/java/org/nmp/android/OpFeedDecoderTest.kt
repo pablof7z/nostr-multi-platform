@@ -1,5 +1,12 @@
 package org.nmp.android
 
+import com.google.flatbuffers.FlatBufferBuilder
+import nmp.transport.FrameKind
+import nmp.transport.SnapshotFrame
+import nmp.transport.Pair as TransportPair
+import nmp.transport.UpdateFrame
+import nmp.transport.Value
+import nmp.transport.ValueKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -146,9 +153,10 @@ class OpFeedDecoderTest {
      *
      * The `decodeWireNode` dispatch covers every variant. This test verifies
      * each kind discriminant maps to the expected [ContentWireNode] subtype.
-     * Variants without payload (Rule, SoftBreak, HardBreak, Placeholder) are
-     * object singletons; structured variants assert at least one constructor field.
-     * Invoice (kind=7) maps to PlaceholderNode to match the generic JSON path.
+     * Variants without payload (Rule, SoftBreak, HardBreak) are object
+     * singletons; structured variants assert at least one constructor field.
+     * Invoice, Image title, and Placeholder reason are preserved because the
+     * schema carries those fields explicitly.
      */
     @Test
     fun allWireNodeKindVariantsMap() {
@@ -169,7 +177,7 @@ class OpFeedDecoderTest {
         //   kind 4  (Url)         → ContentWireNode.UrlNode
         //   kind 5  (Media)       → ContentWireNode.MediaNode
         //   kind 6  (Emoji)       → ContentWireNode.EmojiNode
-        //   kind 7  (Invoice)     → ContentWireNode.PlaceholderNode   [no InvoiceNode in model]
+        //   kind 7  (Invoice)     → ContentWireNode.InvoiceNode
         //   kind 8  (Heading)     → ContentWireNode.HeadingNode
         //   kind 9  (Paragraph)   → ContentWireNode.ParagraphNode
         //   kind 10 (BlockQuote)  → ContentWireNode.BlockQuoteNode
@@ -203,7 +211,7 @@ class OpFeedDecoderTest {
             ContentWireNode.UrlNode(""),
             ContentWireNode.MediaNode(emptyList(), ""),
             ContentWireNode.EmojiNode("", null),
-            ContentWireNode.PlaceholderNode,   // Invoice → PlaceholderNode
+            ContentWireNode.InvoiceNode("", ""),
             ContentWireNode.HeadingNode(1, emptyList()),
             ContentWireNode.ParagraphNode(emptyList()),
             ContentWireNode.BlockQuoteNode(emptyList()),
@@ -214,10 +222,10 @@ class OpFeedDecoderTest {
             ContentWireNode.StrongNode(emptyList()),
             ContentWireNode.InlineCodeNode(""),
             ContentWireNode.LinkNode(emptyList(), null),
-            ContentWireNode.ImageNode("", null),
+            ContentWireNode.ImageNode("", null, null),
             ContentWireNode.SoftBreakNode,
             ContentWireNode.HardBreakNode,
-            ContentWireNode.PlaceholderNode,   // Placeholder(21)
+            ContentWireNode.PlaceholderNode(),   // Placeholder(21)
         )
         assertEquals("All 22 WireNodeKind branch targets must instantiate without error", 22, allKinds.size)
     }
@@ -244,6 +252,12 @@ class OpFeedDecoderTest {
                     "created_at": 1700000000,
                     "content": "hello",
                     "content_preview": "hello",
+                    "relation_counts": {
+                      "replies": { "state": "known", "count": 2 },
+                      "reactions": { "state": "loading", "count": 0 },
+                      "reposts": { "state": "known", "count": 1 },
+                      "zaps": { "state": "known", "count": 0 }
+                    },
                     "author_display_name": "Bob",
                     "author_picture_url": null
                   },
@@ -273,6 +287,11 @@ class OpFeedDecoderTest {
         assertEquals(1, decoded.cards.size)
         assertEquals("aabbcc", decoded.cards[0].card.id)
         assertEquals("Bob", decoded.cards[0].card.authorDisplayName)
+        val counts = requireNotNull(decoded.cards[0].card.relationCounts)
+        assertEquals(2UL, counts.replies.value)
+        assertNull(counts.reactions.value)
+        assertEquals(1UL, counts.reposts.value)
+        assertEquals(0UL, counts.zaps.value)
         assertEquals(1, decoded.cards[0].attribution.size)
         assertEquals("Alice", decoded.cards[0].attribution[0].authorDisplayName)
         assertNotNull(decoded.page)
@@ -280,6 +299,25 @@ class OpFeedDecoderTest {
         assertTrue(decoded.page!!.hasMore)
         assertEquals(1UL, decoded.page!!.totalBlocks)
         assertEquals("aabbcc", decoded.page!!.nextCursor?.id)
+    }
+
+    @Test
+    fun genericUpdateFrameDecodesDynamicFlatFeedProjection() {
+        val pubkey = hex32(0x12)
+        val eventId = hex32(0x34)
+        val frame = dynamicFlatFeedUpdateFrame(pubkey = pubkey, eventId = eventId)
+        val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
+        val feeds = decoded.update.projections?.flatFeeds.orEmpty()
+        val feed = requireNotNull(feeds["nmp.feed.author.$pubkey"])
+
+        assertEquals(7L, decoded.update.rev)
+        assertEquals(1, feed.cards.size)
+        assertEquals(eventId, feed.cards[0].card.id)
+        assertEquals(pubkey, feed.cards[0].card.authorPubkey)
+        assertEquals("Alice", feed.cards[0].card.authorDisplayName)
+        assertEquals("hello dynamic feed", feed.cards[0].card.content)
+        assertEquals(1, feed.cards[0].attribution.size)
+        assertEquals(hex32(0x56), feed.cards[0].attribution[0].replyEventId)
     }
 
     // ── Empty fixture ───────────────────────────────────────────────────────
@@ -321,6 +359,74 @@ class OpFeedDecoderTest {
     @Test
     fun emptyPayloadFallsBack() {
         assertNull(TypedHomeFeedDecoder.decode(ByteArray(0)))
+    }
+
+    private fun dynamicFlatFeedUpdateFrame(pubkey: String, eventId: String): ByteArray {
+        val builder = FlatBufferBuilder(1024)
+        val card = valueMap(
+            builder,
+            "id" to valueString(builder, eventId),
+            "author_pubkey" to valueString(builder, pubkey),
+            "kind" to valueInt(builder, 1),
+            "created_at" to valueInt(builder, 1_700_000_000L),
+            "content" to valueString(builder, "hello dynamic feed"),
+            "content_preview" to valueString(builder, "hello dynamic feed"),
+            "author_display_name" to valueString(builder, "Alice"),
+        )
+        val attribution = valueMap(
+            builder,
+            "author_pubkey" to valueString(builder, hex32(0x78)),
+            "reply_event_id" to valueString(builder, hex32(0x56)),
+            "reply_created_at" to valueInt(builder, 1_700_000_001L),
+        )
+        val root = valueMap(
+            builder,
+            "card" to card,
+            "attribution" to valueList(builder, attribution),
+        )
+        val feed = valueMap(
+            builder,
+            "cards" to valueList(builder, root),
+        )
+        val projections = valueMap(
+            builder,
+            "nmp.feed.author.$pubkey" to feed,
+        )
+        val payload = valueMap(
+            builder,
+            "rev" to valueInt(builder, 7),
+            "running" to valueBool(builder, true),
+            "relay_url" to valueString(builder, ""),
+            "projections" to projections,
+        )
+        val snapshot = SnapshotFrame.createSnapshotFrame(builder, 1u, payload, 0)
+        val frame = UpdateFrame.createUpdateFrame(builder, FrameKind.Snapshot, snapshot, 0)
+        UpdateFrame.finishUpdateFrameBuffer(builder, frame)
+        return builder.sizedByteArray()
+    }
+
+    private fun valueString(builder: FlatBufferBuilder, value: String): Int {
+        val stringOffset = builder.createString(value)
+        return Value.createValue(builder, ValueKind.String, false, 0L, 0UL, 0.0, stringOffset, 0, 0)
+    }
+
+    private fun valueInt(builder: FlatBufferBuilder, value: Long): Int =
+        Value.createValue(builder, ValueKind.Int, false, value, 0UL, 0.0, 0, 0, 0)
+
+    private fun valueBool(builder: FlatBufferBuilder, value: Boolean): Int =
+        Value.createValue(builder, ValueKind.Bool, value, 0L, 0UL, 0.0, 0, 0, 0)
+
+    private fun valueList(builder: FlatBufferBuilder, vararg values: Int): Int {
+        val list = Value.createListVector(builder, values)
+        return Value.createValue(builder, ValueKind.List, false, 0L, 0UL, 0.0, 0, list, 0)
+    }
+
+    private fun valueMap(builder: FlatBufferBuilder, vararg entries: Pair<String, Int>): Int {
+        val pairs = entries.map { (key, value) ->
+            TransportPair.createPair(builder, builder.createString(key), value)
+        }.toIntArray()
+        val map = Value.createMapVector(builder, pairs)
+        return Value.createValue(builder, ValueKind.Map, false, 0L, 0UL, 0.0, 0, 0, map)
     }
 
     companion object {

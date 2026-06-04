@@ -38,8 +38,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
-import org.nmp.android.model.KernelUpdate
+import org.nmp.android.model.RelayRoleOption
 import org.nmp.android.model.RelayStatus
+import org.nmp.android.model.canonicalRelayRoleInput
+import org.nmp.android.model.defaultRelayRoleOptions
+import org.nmp.android.model.defaultRelayRoleValue
+import org.nmp.android.model.relayRoleLabel
 
 /**
  * Relay management screen for Android Chirp — displays current relay
@@ -57,10 +61,18 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
     val state by model.state.collectAsStateWithLifecycle()
     val relays = state.relayStatuses
     val isLoading = state.rev == 0L
+    val roleOptions = state.projections?.relayRoleOptions?.takeIf { it.isNotEmpty() }
+        ?: defaultRelayRoleOptions()
+    val defaultRole = defaultRelayRoleValue(roleOptions)
 
-    var showAddForm by remember { mutableStateOf(false) }
     var newRelayUrl by remember { mutableStateOf("") }
-    var newRelayRole by remember { mutableStateOf("Read") }
+    var newRelayRole by remember { mutableStateOf(defaultRole) }
+
+    LaunchedEffect(defaultRole, roleOptions) {
+        if (roleOptions.none { it.value == newRelayRole }) {
+            newRelayRole = defaultRole
+        }
+    }
 
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -99,7 +111,7 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
             } else {
                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                     items(relays, key = { "${it.role}:${it.relayUrl}" }) { relay ->
-                        RelayRow(relay) {
+                        RelayRow(relay, roleOptions) {
                             model.removeRelay(relay.relayUrl)
                         }
                         HorizontalDivider()
@@ -114,11 +126,13 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
                 onUrlChange = { newRelayUrl = it },
                 role = newRelayRole,
                 onRoleChange = { newRelayRole = it },
+                roleOptions = roleOptions,
                 onAdd = {
                     if (newRelayUrl.isNotBlank()) {
-                        model.addRelay(newRelayUrl, newRelayRole)
+                        val role = canonicalRelayRoleInput(newRelayRole, roleOptions) ?: defaultRole
+                        model.addRelay(newRelayUrl, role)
                         newRelayUrl = ""
-                        newRelayRole = "Read"
+                        newRelayRole = defaultRole
                     }
                 },
                 modifier = Modifier
@@ -141,6 +155,7 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
 @Composable
 private fun RelayRow(
     relay: RelayStatus,
+    roleOptions: List<RelayRoleOption>,
     onRemove: () -> Unit,
 ) {
     Column(
@@ -176,7 +191,7 @@ private fun RelayRow(
                         modifier = Modifier.padding(0.dp),
                     ) {
                         Text(
-                            relay.role,
+                            relayRoleLabel(relay.role, roleOptions),
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(4.dp, 2.dp),
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -233,11 +248,11 @@ private fun AddRelayForm(
     onUrlChange: (String) -> Unit,
     role: String,
     onRoleChange: (String) -> Unit,
+    roleOptions: List<RelayRoleOption>,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expandedRoleMenu by remember { mutableStateOf(false) }
-    val roleOptions = listOf("Read", "Write", "ReadWrite")
 
     Column(modifier.fillMaxWidth()) {
         Text(
@@ -265,7 +280,7 @@ private fun AddRelayForm(
                     onClick = { expandedRoleMenu = !expandedRoleMenu },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(role)
+                    Text(relayRoleLabel(role, roleOptions))
                 }
                 DropdownMenu(
                     expanded = expandedRoleMenu,
@@ -274,9 +289,9 @@ private fun AddRelayForm(
                 ) {
                     roleOptions.forEach { opt ->
                         DropdownMenuItem(
-                            text = { Text(opt) },
+                            text = { Text(opt.label) },
                             onClick = {
-                                onRoleChange(opt)
+                                onRoleChange(opt.value)
                                 expandedRoleMenu = false
                             },
                         )

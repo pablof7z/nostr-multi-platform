@@ -33,5 +33,8 @@ pub use wiring::{
 };
 
 #[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

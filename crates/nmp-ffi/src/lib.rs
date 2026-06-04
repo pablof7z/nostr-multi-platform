@@ -25,15 +25,16 @@ mod event_by_id_tests;
 mod sign_event_for_return_tests;
 // M2 (ADR-0042 §5.1, V-112) — register_feed_with_observer / unregister_feed
 // transient-feed teardown-seam tests.
-#[cfg(test)]
-#[path = "interest_feed_tests.rs"]
-mod interest_feed_tests;
 mod event_observer;
 mod feed;
 mod identity;
+#[cfg(test)]
+#[path = "interest_feed_tests.rs"]
+mod interest_feed_tests;
 mod lifecycle;
 mod publish;
 mod raw_event_tap;
+mod relay_config;
 #[cfg(feature = "signer-broker")]
 mod signer_broker;
 // V-51 phase 2 — routing-trace FFI snapshot accessor
@@ -41,6 +42,7 @@ mod signer_broker;
 // folded into the snapshot tick.
 mod routing_trace;
 mod snapshot;
+mod storage;
 mod timeline;
 // V-38: the `nmp_app_wallet_*` FFI symbols stay here as thin shims that
 // route through `nmp_app_dispatch_action` for the `nmp.wallet.*` namespaces.
@@ -67,15 +69,16 @@ mod testing;
 // that are android-only (account removal, bunker sign-in, full-actor stop,
 // active-account switch). Likewise `test-support` implies `native` in
 // practice (the `ffi` module itself is `#[cfg(feature = "native")]`), so the
-// test-support delta only adds the harness-only injectors / ack / read
-// helpers.
+// test-support delta only adds the harness-only injectors / read helpers.
 //
 // `allow(unused_imports)`: in-crate `tests` modules reach these symbols by
 // their `super::` / module path, so the facade re-export is only consumed by
 // out-of-crate clients; keeps `cargo test -p nmp-core --lib` clean.
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
-pub use action::{nmp_app_dispatch_action, nmp_app_register_action_result_observer};
+pub use action::{
+    nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_app_register_action_result_observer,
+};
 #[cfg(feature = "native")]
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
@@ -120,6 +123,8 @@ pub use signer_broker::{
     nmp_signer_broker_init,
 };
 #[cfg(feature = "native")]
+pub use storage::nmp_app_set_storage_path;
+#[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use snapshot::nmp_app_register_snapshot_projection;
 #[cfg(feature = "native")]
@@ -132,13 +137,10 @@ pub use timeline::{
 // ── test-support delta ───────────────────────────────────────────────────
 // Live-bench harnesses (`live-bench`) and integration test binaries
 // (`nmp-testing`) need a few extra entry points that production app crates
-// do not — per-action stage acks (action-FSM tests), pre-verified event
-// injection (S3/S4/S5 throughput harnesses), and read-side projection JSON
-// dumps (assert reducer output without going through the snapshot
-// callback). Kept gated on test-support so they don't pollute the
-// production-app re-export surface above.
-#[cfg(any(test, feature = "test-support"))]
-pub use action::nmp_app_ack_action_stage;
+// do not — pre-verified event injection (S3/S4/S5 throughput harnesses)
+// and read-side projection JSON dumps (assert reducer output without going
+// through the snapshot callback). Per-action stage ACK is part of the public
+// native C ABI and is re-exported above for Android JNI parity.
 #[cfg(any(test, feature = "test-support"))]
 pub use testing::{
     nmp_app_inject_pre_verified_events, nmp_app_inject_signed_event_json,
@@ -162,10 +164,10 @@ pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wall
 // constructors, registration helpers, default constants); everything
 // already on the public surface comes through `nmp_core::*` directly.
 use nmp_core::__ffi_internal::{
-    default_registry, dispatch_capability, has_role, new_app_relay_slot,
+    default_registry, dispatch_capability, new_app_relay_slot,
     new_bunker_connection_state_slot, new_bunker_handshake_slot, new_capability_callback_slot,
     new_event_observer_slot, new_lifecycle_observer_slot, new_raw_event_observer_slot,
-    new_snapshot_projection_slot, nostrconnect_relay_url, register_rust_observer,
+    new_snapshot_projection_slot, register_rust_observer,
     register_rust_raw_observer, run_actor_with_observers, unregister_observer,
     unregister_raw_observer, ActionRegistry, CapabilityCallbackSlot, KernelEventObserverSlot,
     LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
@@ -229,9 +231,52 @@ fn new_update_callback_slot() -> UpdateCallbackSlot {
     Arc::new(Mutex::new(None))
 }
 
+type IdentityChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
+type IdentityChangeObserverSlot = Arc<Mutex<Vec<IdentityChangeCallback>>>;
+
+fn new_identity_change_observer_slot() -> IdentityChangeObserverSlot {
+    Arc::new(Mutex::new(Vec::new()))
+}
+
+fn read_active_account(slot: &ActiveAccountSlot) -> Option<String> {
+    slot.lock().ok().and_then(|guard| guard.clone())
+}
+
+fn notify_identity_change_observers(
+    active_account: &ActiveAccountSlot,
+    last_notified: &Arc<Mutex<Option<String>>>,
+    observers: &IdentityChangeObserverSlot,
+) {
+    let current = read_active_account(active_account);
+    {
+        let Ok(mut last) = last_notified.lock() else {
+            return;
+        };
+        if *last == current {
+            return;
+        }
+        *last = current.clone();
+    }
+
+    let callbacks = observers
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_default();
+    for callback in callbacks {
+        let current = current.clone();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            callback(current);
+        }));
+    }
+}
+
 pub struct NmpApp {
     tx: Sender<ActorCommand>,
     update_callback: UpdateCallbackSlot,
+    /// Rust-side active-account observer registry. The update listener fires
+    /// callbacks after the actor has written `active_account_handle` and before
+    /// it forwards the same update frame to the native callback.
+    identity_change_observers: IdentityChangeObserverSlot,
     capability_callback: CapabilityCallbackSlot,
     /// T118 / G3 — lifecycle observer slot. Shared `Arc` with the actor
     /// thread: registrations through [`lifecycle::nmp_app_set_lifecycle_callback`]
@@ -358,9 +403,9 @@ pub struct NmpApp {
     /// no divergent mirror.
     ///
     /// Substrate-generic: the actor names no NIP when writing this slot (raw
-    /// pubkey `String`, D0). The accessor backs the V-80 OP-feed composition
-    /// root (rung 7) and Chirp: host code reads the live active account and
-    /// drives `ActiveFollowSet::notify_account_changed` on a switch.
+    /// pubkey `String`, D0). The accessor backs the OP-feed composition root,
+    /// while [`NmpApp::register_identity_change_observer`] provides the push
+    /// seam for per-account reset work after this slot changes.
     active_account_handle: ActiveAccountSlot,
     /// V-83 — the kernel's `EventStore` handle, published back by the actor
     /// right after kernel construction (and re-published on `Reset`). Unlike
@@ -699,6 +744,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // mutation IS the slot the host reads — single source of truth.
     let active_account_handle: ActiveAccountSlot = new_active_account_slot();
     let actor_active_account = Arc::clone(&active_account_handle);
+    let identity_change_observers = new_identity_change_observer_slot();
+    let listener_identity_change_observers = Arc::clone(&identity_change_observers);
+    let listener_active_account = Arc::clone(&active_account_handle);
+    let listener_last_active_account = Arc::new(Mutex::new(None));
     // V-83 — event-store publish-back slot. The `NmpApp` keeps one `Arc` clone
     // (read via `NmpApp::event_by_id` / `event_store_handle`); the actor carries
     // the matching clone and publishes `kernel.event_store_handle()` into it
@@ -932,6 +981,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     });
     let update_listener = thread::spawn(move || {
         while let Ok(update) = update_rx.recv() {
+            notify_identity_change_observers(
+                &listener_active_account,
+                &listener_last_active_account,
+                &listener_identity_change_observers,
+            );
             let callback = listener_callback.lock().ok().and_then(|guard| *guard);
             if let Some(registration) = callback {
                 // UB guard: the foreign update callback may panic / raise.
@@ -952,6 +1006,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let app = NmpApp {
         tx: command_tx,
         update_callback,
+        identity_change_observers,
         capability_callback,
         lifecycle_observer,
         event_observers,
@@ -1863,10 +1918,10 @@ impl NmpApp {
     /// read through the returned handle reflects the live active account —
     /// not a copy, not a mirror. `None` means no account is signed in.
     ///
-    /// This is the V-80 OP-feed seam: the composition root (rung 7,
-    /// `nmp-app-template`) supplies this handle to
-    /// `nmp_nip02::ActiveFollowSet::new` and re-reads it to drive
-    /// `notify_account_changed` on a switch; Chirp consumes the same accessor.
+    /// This is the V-80 OP-feed read seam: the composition root reads this
+    /// handle for `nmp_nip02::ActiveFollowSet::new`. Identity-change push
+    /// notification is provided separately by
+    /// [`Self::register_identity_change_observer`].
     ///
     /// Substrate-generic — the slot holds a raw pubkey `String`; what callers
     /// do with it is their concern (D0). Parallel in shape to
@@ -1874,6 +1929,27 @@ impl NmpApp {
     #[must_use]
     pub fn active_account_handle(&self) -> ActiveAccountSlot {
         Arc::clone(&self.active_account_handle)
+    }
+
+    /// Register a Rust-side callback for active-account changes.
+    ///
+    /// The callback runs on the update-listener thread after the actor has
+    /// written [`Self::active_account_handle`] and emitted an update frame. It
+    /// fires only when the slot value changes (`Some(pubkey)` on sign-in/switch,
+    /// `None` on logout/reset), never on ordinary snapshot ticks. This is the
+    /// canonical app/FFI composition seam for long-lived Rust projections that
+    /// need to reset per-account state without polling the slot.
+    ///
+    /// No unregister is provided because the current consumers are app-lifetime
+    /// registrations installed during host init, matching permanent home-feed
+    /// observer registration.
+    pub fn register_identity_change_observer<F>(&self, callback: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static,
+    {
+        if let Ok(mut observers) = self.identity_change_observers.lock() {
+            observers.push(Arc::new(callback));
+        }
     }
 
     /// V-83 — clone of the kernel's `EventStore` publish-back slot (`Arc`).
@@ -1940,68 +2016,6 @@ impl NmpApp {
     #[must_use]
     pub fn routing_trace(&self) -> Option<Arc<nmp_core::RoutingTraceProjection>> {
         self.routing_trace.lock().ok()?.clone()
-    }
-
-    /// Clone of the live relay-edit row slot.
-    ///
-    /// Per-app Rust controllers use this to derive protocol-specific relay
-    /// projections without asking platform shells to parse `AppRelay.role`.
-    /// The actor is the sole writer; callers should take quick snapshots only.
-    ///
-    /// The slot type is [`nmp_core::AppRelaySlot`] — a
-    /// newtype `Arc<Mutex<AppRelayList>>`. Readers iterate via
-    /// `guard.as_slice()` so they never touch the inner `Vec` directly. D14
-    /// (`crates/nmp-testing/bin/doctrine-lint/rules/d14.rs`) forbids new bare
-    /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp`; the typed alias makes the
-    /// slot's purpose visible at every call site.
-    #[must_use]
-    pub fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
-        Arc::clone(&self.configured_relays)
-    }
-
-    /// Store the initial relay configuration to be passed to
-    /// `ActorCommand::Start { initial_relays }`.
-    ///
-    /// Must be called before `nmp_app_start`. Used by `NmpAppBuilder::start()`
-    /// (the Rust composition path); C-ABI callers can seed relays before start
-    /// via `nmp_app_add_relay` instead. The app — not `nmp-core` — owns its
-    /// default relay list: there is no hardcoded fallback.
-    pub fn set_initial_relays_for_start(&self, relays: Vec<(String, String)>) {
-        if let Ok(mut guard) = self.initial_relays_for_start.lock() {
-            *guard = relays;
-        }
-    }
-
-    /// The configured LMDB storage path, if one was set via
-    /// `nmp_app_set_storage_path` (e.g. through `NmpAppBuilder::storage_path`).
-    ///
-    /// Returns `None` for the in-memory store (no path set). `NmpAppBuilder`
-    /// reads this to decide where the relay-config JSON sidecar lives: `Some`
-    /// → persist/load the sidecar in that directory; `None` → in-memory, use
-    /// the declared defaults without touching disk.
-    #[must_use]
-    pub fn storage_path_for_start(&self) -> Option<String> {
-        self.storage_path.lock().ok().and_then(|g| g.clone())
-    }
-
-    /// Return the user's current write-relay URLs, read from the shared kernel relay-edit
-    /// projection. Empty when the user has not configured any write relays.
-    /// Used by per-app crates so relay resolution stays Rust-owned (D0).
-    ///
-    /// The underlying slot is a typed `AppRelayList`; the
-    /// reader iterates via `as_slice()` so it never touches the inner `Vec`
-    /// directly.
-    #[must_use]
-    pub fn write_relay_urls(&self) -> Vec<String> {
-        let Ok(guard) = self.configured_relays.lock() else {
-            return Vec::new();
-        };
-        guard
-            .as_slice()
-            .iter()
-            .filter(|r| has_role(r.role(), "write"))
-            .map(|r| r.url().to_string())
-            .collect()
     }
 
     /// Workspace-internal kernel publish API — verbatim publish of an
@@ -2080,33 +2094,6 @@ impl NmpApp {
         });
     }
 
-    /// Choose the relay for a client-initiated NIP-46 `nostrconnect://`
-    /// handshake.
-    ///
-    /// Resolution order:
-    /// 1. First write-capable relay in the user's configured relay-edit rows.
-    /// 2. The host-registered bootstrap relay
-    ///    (`set_nostrconnect_bootstrap_relay`), if any.
-    ///
-    /// Returns `None` when neither a write relay nor a bootstrap relay is
-    /// configured — the caller must handle this as a typed error rather than
-    /// falling back to any hardcoded URL (V-65 / D0).
-    #[must_use]
-    pub fn nostrconnect_relay_url(&self) -> Option<String> {
-        // 1. Try the user's configured write relay.
-        if let Ok(guard) = self.configured_relays.lock() {
-            if let Some(url) =
-                nostrconnect_relay_url(guard.as_slice().iter().map(|row| (row.url(), row.role())))
-            {
-                return Some(url);
-            }
-        }
-        // 2. Fall back to the host-registered bootstrap relay (V-65).
-        self.nostrconnect_bootstrap_relay
-            .lock()
-            .ok()
-            .and_then(|guard| guard.clone())
-    }
 }
 
 impl nmp_core::substrate::ActionRegistrar for NmpApp {
@@ -2245,9 +2232,7 @@ impl nmp_core::substrate::AppHost for NmpApp {
     }
 
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {
-        if let Ok(mut guard) = self.nostrconnect_bootstrap_relay.lock() {
-            *guard = Some(url);
-        }
+        NmpApp::set_nostrconnect_bootstrap_relay(self, url)
     }
 }
 
@@ -2282,44 +2267,6 @@ pub extern "C" fn nmp_app_set_update_callback(
         context: context as usize,
         callback,
     });
-}
-
-/// Set the persistent storage directory for the LMDB `EventStore` backend.
-///
-/// Threads the host-supplied path through to the kernel so the
-/// `lmdb-backend` feature can be used in production (iOS / Android). When
-/// the crate is built without `--features lmdb-backend` the path is stored
-/// but inert — the in-memory store is always used.
-///
-/// Call ordering: this MUST be called before [`nmp_app_start`]. The kernel
-/// resolves its `EventStore` once, on the actor thread, when the first
-/// `Start` would otherwise need it; a path set after the kernel is built
-/// has no effect until the next process launch. A `NULL` or empty `path`
-/// clears any previously-set path (the kernel then falls back to the
-/// `NMP_LMDB_PATH` env var, or the in-memory store).
-///
-/// Mirrors the `app_ref` + `Mutex::lock` pattern of the other
-/// `nmp_app_set_*` setters — no panic can cross the C ABI boundary because
-/// the body performs no foreign callback and no panicking operation.
-///
-/// # Safety
-/// `app` must be a valid non-null pointer from [`nmp_app_new`], or null
-/// (a null `app` is a silent no-op). `path` must be a valid UTF-8
-/// null-terminated C string, or null. Invalid UTF-8 is treated as "unset".
-#[no_mangle]
-pub extern "C" fn nmp_app_set_storage_path(app: *mut NmpApp, path: *const c_char) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    // `c_optional_string_argument` collapses NULL / empty / whitespace to
-    // `None` and returns `Some(trimmed)` otherwise — exactly the
-    // "empty clears, non-empty sets" semantics documented above. It also
-    // rejects invalid UTF-8 (→ `None`), so no panic is possible here.
-    let resolved = c_optional_string_argument(path);
-    let Ok(mut slot) = app.storage_path.lock() else {
-        return;
-    };
-    *slot = resolved;
 }
 
 #[no_mangle]

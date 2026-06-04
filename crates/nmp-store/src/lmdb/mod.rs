@@ -111,9 +111,9 @@ mod inner {
         pub(crate) domain_versions: Database<Bytes, Bytes>,
         /// Domain data: namespace bytes || 0x00 || key bytes → value bytes.
         pub(crate) domain_data: Database<Bytes, Bytes>,
-        /// W2 — relay-author-scores: `[32 pubkey bytes][1 url-len u8][N url bytes]` →
+        /// Relay-author scores: `[32 pubkey bytes][1 url-len u8][N url bytes]` →
         /// `[u32 successes BE][u32 failures BE][u64 last_used_unix_s BE][u64 reserved BE]`.
-        /// See `relay_scores.rs` for the encode/decode layer and §8.9/§8.10 of the impl plan.
+        /// See `relay_scores.rs` for the encode/decode layer and canonicalization.
         pub(crate) relay_author_scores: Database<Bytes, Bytes>,
         /// V-60 LRU access index: event_id (32 bytes) → seq (8 bytes BE).
         ///

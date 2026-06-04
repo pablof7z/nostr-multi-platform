@@ -21,7 +21,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -65,9 +64,8 @@ val LocalProfileClaimer = compositionLocalOf<ProfileClaimer?> { null }
 
 /**
  * Pre-merged author profile map from the kernel's `resolved_profiles`
- * projection (PR #812), keyed by hex pubkey. The kernel applies canonical
- * precedence (claimed > author_view > mention) so every consumer reads one
- * map instead of re-deriving the merge.
+ * projection (PR #812), keyed by hex pubkey. Every consumer reads one map
+ * instead of re-deriving profile fallback precedence locally.
  *
  * Provided once at each screen root (timeline, profile) and read by [NoteRow]
  * — including embedded notes rendered via `NostrRichText`, which a parameter
@@ -129,6 +127,7 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
 
     var showComposeDialog by remember { mutableStateOf(false) }
     var selectedProfilePubkey by remember { mutableStateOf<String?>(null) }
+    var selectedThreadId by remember { mutableStateOf<String?>(null) }
 
     val selectedProfile = selectedProfilePubkey
     if (selectedProfile != null) {
@@ -136,6 +135,17 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
             pubkey = selectedProfile,
             model = model,
             onBack = { selectedProfilePubkey = null },
+            modifier = modifier,
+        )
+        return
+    }
+
+    val selectedThread = selectedThreadId
+    if (selectedThread != null) {
+        ThreadScreen(
+            eventId = selectedThread,
+            model = model,
+            onBack = { selectedThreadId = null },
             modifier = modifier,
         )
         return
@@ -175,13 +185,21 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
                     )
                 } else {
                     // Typed OP-centric feed: one row per ChirpRootCard.
+                    val page = s.modularTimeline.page
                     LazyColumn(Modifier.fillMaxSize()) {
-                        itemsIndexed(opCards, key = { _, root -> root.card.id }) { _, root ->
+                        itemsIndexed(opCards, key = { _, root -> root.card.id }) { index, root ->
+                            val cursor = page?.nextCursor
+                            if (index == opCards.lastIndex && page?.hasMore == true && cursor != null) {
+                                LaunchedEffect(cursor) {
+                                    model.loadOlderTimeline(cursor)
+                                }
+                            }
                             RootCardRow(
                                 root = root,
                                 items = emptyMap(),
                                 model = model,
                                 onAuthorClick = { selectedProfilePubkey = it },
+                                onThreadClick = { selectedThreadId = it },
                             )
                             HorizontalDivider()
                         }
@@ -264,11 +282,12 @@ private fun RootCardRow(
     items: Map<String, TimelineItem>,
     model: KernelModel,
     onAuthorClick: (String) -> Unit,
+    onThreadClick: (String) -> Unit,
 ) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clickable { model.openThread(root.card.id) }
+            .clickable { onThreadClick(root.card.id) }
     ) {
         NoteRow(
             eventId = root.card.id,
@@ -373,18 +392,36 @@ internal fun NoteRow(
             embedDepth = embedDepth,
         )
         Spacer(Modifier.size(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            IconButton(
-                onClick = { model?.zapNote(eventId, authorPubkey) },
-                enabled = model != null,
-            ) {
-                Text("⚡", style = MaterialTheme.typography.labelMedium)
-            }
-        }
+        NoteActionsSummary(card)
     }
+}
+
+@Composable
+private fun NoteActionsSummary(card: ChirpEventCard?) {
+    val counts = card?.relationCounts ?: return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        RelationCountLabel("Reply", counts.replies.value)
+        RelationCountLabel("React", counts.reactions.value)
+        RelationCountLabel("Repost", counts.reposts.value)
+        RelationCountLabel("Zap", counts.zaps.value, muted = true)
+    }
+}
+
+@Composable
+private fun RelationCountLabel(label: String, count: ULong?, muted: Boolean = false) {
+    Text(
+        "$label ${count?.toString() ?: "..."}",
+        style = MaterialTheme.typography.labelSmall,
+        color = if (muted) {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    )
 }
 
 @Composable
@@ -427,50 +464,3 @@ private fun parseHexColor(hex: String): Color? {
 }
 
 private fun String.nonEmptyOrNull(): String? = if (isEmpty()) null else this
-
-/**
- * Minimal compose note dialog: text input + send button.
- *
- * Routes the note through KernelModel.publishNote, which dispatches the
- * nmp.publish action and returns a correlation_id on success.
- */
-@Composable
-private fun ComposeNoteDialog(
-    onDismiss: () -> Unit,
-    onPublish: (content: String) -> Unit,
-) {
-    var content by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("New Note") },
-        text = {
-            TextField(
-                value = content,
-                onValueChange = { content = it },
-                label = { Text("What's happening?") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                maxLines = 8,
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (content.isNotBlank()) {
-                        onPublish(content)
-                    }
-                },
-                enabled = content.isNotBlank(),
-            ) {
-                Text("Publish")
-            }
-        },
-        dismissButton = {
-            Button(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
-    )
-}
