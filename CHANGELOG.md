@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.2.5 — 2026-06-04
+
+**Non-breaking C-ABI.** No existing FFI signature changed. New capabilities are additive (a new dispatchable action, a new optional JSON field, a new protocol crate).
+
+### Added
+
+- **`nmp-blossom` crate — idiomatic Blossom (BUD-02) media uploads.** Dispatch `nmp_app_dispatch_action("nmp.blossom.upload", json)` with `{ file_path, content_type?, servers, signer_pubkey? }`; the crate streams + SHA-256-hashes the blob off the actor thread, builds and signs a kind:24242 auth event (5-minute TTL), PUTs to each server, and surfaces the blob descriptor (`url`, `sha256`, `size`, `type`, `uploaded`) via `action_results[correlation_id]`. The app never handles keys, base64, headers, or continuation-scanning. HTTP lives in the protocol crate (the `ProtocolCommand` seam, like `nmp-nip57`); `nmp-core` stays HTTP-free and noun-free (D0). v1 is upload-only; the `nmp.blossom.*` namespace is built to extend (ADR-0043).
+
+- **`PublishRaw { …, signer_pubkey: Option<String> }`** — a dispatched `nmp.publish` `PublishRaw` action can now sign with a registered non-active signer (an agent / per-podcast NIP-F4 key registered via `nmp_app_signin_nsec(make_active=0)`) by naming its pubkey. Omitted/`None` signs with the active account (unchanged default). The field is `#[serde(default)]`, so existing payloads are unaffected. Local-vs-bunker is transparent.
+
+- **`ActorCommand::SignEventForAccount` — generic, backend-transparent sign-account port.** Internal substrate seam giving any `ProtocolCommand` worker a uniform "sign this unsigned event with account X, then run this continuation with the `SignedEvent`" capability. Generalizes `PendingSignReturn`: local keys resolve inline, NIP-46 bunkers park and resolve async through the same path — worker code is identical and never touches `active_local_keys` or raw key bytes (D13). This is the single signing entry point for protocol-crate workers going forward.
+
+### Fixed
+
+- **V-78 — NIP-46 bunker accounts can now zap.** `nmp-nip57`'s LNURL zap-request signing moved to the non-blocking sign path, so bunker-backed accounts are no longer blocked from zapping.
+
+---
+
 ## nmp-v0.2.4 — 2026-06-03
 
 **Non-breaking C-ABI. Existing callers of `nmp_app_signin_nsec`, `nmp_app_signin_bunker`, and `nmp_app_create_new_account` must add the new `make_active` argument (see below).**
