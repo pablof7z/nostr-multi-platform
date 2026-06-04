@@ -25,12 +25,12 @@ mod event_by_id_tests;
 mod sign_event_for_return_tests;
 // M2 (ADR-0042 §5.1, V-112) — register_feed_with_observer / unregister_feed
 // transient-feed teardown-seam tests.
-#[cfg(test)]
-#[path = "interest_feed_tests.rs"]
-mod interest_feed_tests;
 mod event_observer;
 mod feed;
 mod identity;
+#[cfg(test)]
+#[path = "interest_feed_tests.rs"]
+mod interest_feed_tests;
 mod lifecycle;
 mod publish;
 mod raw_event_tap;
@@ -229,9 +229,52 @@ fn new_update_callback_slot() -> UpdateCallbackSlot {
     Arc::new(Mutex::new(None))
 }
 
+type IdentityChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
+type IdentityChangeObserverSlot = Arc<Mutex<Vec<IdentityChangeCallback>>>;
+
+fn new_identity_change_observer_slot() -> IdentityChangeObserverSlot {
+    Arc::new(Mutex::new(Vec::new()))
+}
+
+fn read_active_account(slot: &ActiveAccountSlot) -> Option<String> {
+    slot.lock().ok().and_then(|guard| guard.clone())
+}
+
+fn notify_identity_change_observers(
+    active_account: &ActiveAccountSlot,
+    last_notified: &Arc<Mutex<Option<String>>>,
+    observers: &IdentityChangeObserverSlot,
+) {
+    let current = read_active_account(active_account);
+    {
+        let Ok(mut last) = last_notified.lock() else {
+            return;
+        };
+        if *last == current {
+            return;
+        }
+        *last = current.clone();
+    }
+
+    let callbacks = observers
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_default();
+    for callback in callbacks {
+        let current = current.clone();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            callback(current);
+        }));
+    }
+}
+
 pub struct NmpApp {
     tx: Sender<ActorCommand>,
     update_callback: UpdateCallbackSlot,
+    /// Rust-side active-account observer registry. The update listener fires
+    /// callbacks after the actor has written `active_account_handle` and before
+    /// it forwards the same update frame to the native callback.
+    identity_change_observers: IdentityChangeObserverSlot,
     capability_callback: CapabilityCallbackSlot,
     /// T118 / G3 — lifecycle observer slot. Shared `Arc` with the actor
     /// thread: registrations through [`lifecycle::nmp_app_set_lifecycle_callback`]
@@ -358,9 +401,9 @@ pub struct NmpApp {
     /// no divergent mirror.
     ///
     /// Substrate-generic: the actor names no NIP when writing this slot (raw
-    /// pubkey `String`, D0). The accessor backs the V-80 OP-feed composition
-    /// root (rung 7) and Chirp: host code reads the live active account and
-    /// drives `ActiveFollowSet::notify_account_changed` on a switch.
+    /// pubkey `String`, D0). The accessor backs the OP-feed composition root,
+    /// while [`NmpApp::register_identity_change_observer`] provides the push
+    /// seam for per-account reset work after this slot changes.
     active_account_handle: ActiveAccountSlot,
     /// V-83 — the kernel's `EventStore` handle, published back by the actor
     /// right after kernel construction (and re-published on `Reset`). Unlike
@@ -699,6 +742,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // mutation IS the slot the host reads — single source of truth.
     let active_account_handle: ActiveAccountSlot = new_active_account_slot();
     let actor_active_account = Arc::clone(&active_account_handle);
+    let identity_change_observers = new_identity_change_observer_slot();
+    let listener_identity_change_observers = Arc::clone(&identity_change_observers);
+    let listener_active_account = Arc::clone(&active_account_handle);
+    let listener_last_active_account = Arc::new(Mutex::new(None));
     // V-83 — event-store publish-back slot. The `NmpApp` keeps one `Arc` clone
     // (read via `NmpApp::event_by_id` / `event_store_handle`); the actor carries
     // the matching clone and publishes `kernel.event_store_handle()` into it
@@ -932,6 +979,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     });
     let update_listener = thread::spawn(move || {
         while let Ok(update) = update_rx.recv() {
+            notify_identity_change_observers(
+                &listener_active_account,
+                &listener_last_active_account,
+                &listener_identity_change_observers,
+            );
             let callback = listener_callback.lock().ok().and_then(|guard| *guard);
             if let Some(registration) = callback {
                 // UB guard: the foreign update callback may panic / raise.
@@ -952,6 +1004,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let app = NmpApp {
         tx: command_tx,
         update_callback,
+        identity_change_observers,
         capability_callback,
         lifecycle_observer,
         event_observers,
@@ -1863,10 +1916,10 @@ impl NmpApp {
     /// read through the returned handle reflects the live active account —
     /// not a copy, not a mirror. `None` means no account is signed in.
     ///
-    /// This is the V-80 OP-feed seam: the composition root (rung 7,
-    /// `nmp-app-template`) supplies this handle to
-    /// `nmp_nip02::ActiveFollowSet::new` and re-reads it to drive
-    /// `notify_account_changed` on a switch; Chirp consumes the same accessor.
+    /// This is the V-80 OP-feed read seam: the composition root reads this
+    /// handle for `nmp_nip02::ActiveFollowSet::new`. Identity-change push
+    /// notification is provided separately by
+    /// [`Self::register_identity_change_observer`].
     ///
     /// Substrate-generic — the slot holds a raw pubkey `String`; what callers
     /// do with it is their concern (D0). Parallel in shape to
@@ -1874,6 +1927,27 @@ impl NmpApp {
     #[must_use]
     pub fn active_account_handle(&self) -> ActiveAccountSlot {
         Arc::clone(&self.active_account_handle)
+    }
+
+    /// Register a Rust-side callback for active-account changes.
+    ///
+    /// The callback runs on the update-listener thread after the actor has
+    /// written [`Self::active_account_handle`] and emitted an update frame. It
+    /// fires only when the slot value changes (`Some(pubkey)` on sign-in/switch,
+    /// `None` on logout/reset), never on ordinary snapshot ticks. This is the
+    /// canonical app/FFI composition seam for long-lived Rust projections that
+    /// need to reset per-account state without polling the slot.
+    ///
+    /// No unregister is provided because the current consumers are app-lifetime
+    /// registrations installed during host init, matching permanent home-feed
+    /// observer registration.
+    pub fn register_identity_change_observer<F>(&self, callback: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static,
+    {
+        if let Ok(mut observers) = self.identity_change_observers.lock() {
+            observers.push(Arc::new(callback));
+        }
     }
 
     /// V-83 — clone of the kernel's `EventStore` publish-back slot (`Arc`).

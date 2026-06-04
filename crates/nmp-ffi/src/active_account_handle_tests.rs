@@ -23,10 +23,7 @@ const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9l
 /// possibly-malformed literal.
 fn second_nsec() -> String {
     let sk = SecretKey::from_slice(&[2u8; 32]).expect("valid 32-byte secret");
-    Keys::new(sk)
-        .secret_key()
-        .to_bech32()
-        .expect("nsec bech32")
+    Keys::new(sk).secret_key().to_bech32().expect("nsec bech32")
 }
 
 /// Linearise the tests: they share a process-global update-signal channel.
@@ -252,4 +249,35 @@ fn active_account_handle_survives_reset() {
 
     nmp_app_free(app);
     uninstall_update_signal();
+}
+
+#[test]
+fn identity_change_observer_runs_after_slot_update() {
+    let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    let app_ref = super::app_ref(app).expect("app");
+    let slot = app_ref.active_account_handle();
+    let (tx, rx) = channel::<(Option<String>, Option<String>)>();
+    let slot_for_cb = Arc::clone(&slot);
+
+    app_ref.register_identity_change_observer(move |active| {
+        let slot_value = slot_for_cb.lock().expect("slot lock").clone();
+        let _ = tx.send((active, slot_value));
+    });
+
+    nmp_app_start(app, 0, 256, 4);
+    let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
+    super::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
+
+    let expected = hex_pubkey(TEST_NSEC);
+    let observed = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("identity observer should fire after sign-in");
+    assert_eq!(
+        observed,
+        (Some(expected.clone()), Some(expected)),
+        "observer argument and active-account slot must agree"
+    );
+
+    nmp_app_free(app);
 }

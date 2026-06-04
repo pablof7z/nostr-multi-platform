@@ -34,7 +34,9 @@ use nmp_core::KernelEventObserver;
 // `AttributionPayload` brings `author_pubkey()` into scope for the attribution
 // assertion in `followed_reply_surfaces_root_with_attribution`.
 use nmp_feed::AttributionPayload as _;
-use nmp_ffi::{nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_read_projection_json, NmpApp};
+use nmp_ffi::{
+    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_read_projection_json, NmpApp,
+};
 
 // Valid-looking 64-hex pubkeys (distinct), mirroring the rung-4/rung-5 idioms.
 const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
@@ -102,6 +104,12 @@ fn slot(active: Option<&str>) -> ActiveAccountSlot {
     Arc::new(Mutex::new(active.map(str::to_string)))
 }
 
+fn set_app_active(app: *mut NmpApp, active: Option<&str>) {
+    // SAFETY: tests pass a live pointer returned by `nmp_app_new`.
+    let handle = unsafe { &*app }.active_account_handle();
+    *handle.lock().expect("active-account slot") = active.map(str::to_string);
+}
+
 fn read_projection(app: *mut NmpApp, key: &str) -> Option<serde_json::Value> {
     let key_c = CString::new(key).unwrap();
     let raw = nmp_app_read_projection_json(app, key_c.as_ptr());
@@ -123,11 +131,9 @@ fn registers_op_feed_engine_under_home_key() {
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
-    let _defaults = nmp_app_template::register_op_feed_defaults(
-        unsafe { &*app },
-        ALICE.to_string(),
-        slot(Some(ALICE)),
-    );
+    set_app_active(app, Some(ALICE));
+    let _defaults =
+        nmp_app_template::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string());
 
     // The engine's `RootFeedSnapshot` shape is `{ cards, page, metrics }`.
     // `ModularTimelineProjection` would emit a `ChirpTimelineSnapshot`
@@ -165,12 +171,9 @@ fn followed_reply_surfaces_root_with_attribution() {
     // Active account == ALICE: self-inclusion makes ALICE a follow, so ALICE's
     // reply qualifies for attribution without the actor delivering a kind:3.
     // SAFETY: valid non-null pointer.
-    let engine = nmp_app_template::register_op_feed_defaults(
-        unsafe { &*app },
-        ALICE.to_string(),
-        slot(Some(ALICE)),
-    )
-    .engine;
+    set_app_active(app, Some(ALICE));
+    let engine =
+        nmp_app_template::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
 
     // ALICE (a follow, via self-inclusion) replies to BOB's not-yet-seen OP.
     let reply = reply_event(REPLY_ID, ALICE, 200, OP_ID);
@@ -208,18 +211,9 @@ fn followed_reply_surfaces_root_with_attribution() {
 
 #[test]
 fn account_switch_clears_then_kind3_repopulates() {
-    // Build the producer exactly as `register_op_feed_defaults` does — over an
-    // `ActiveAccountSlot`. Drive the same switch sequence the composition
-    // root's `on_change` callback observes.
-    //
-    // Coverage note: this exercises the production *pattern*, not the literal
-    // wired callback. `register_op_feed_defaults` keeps its `ActiveFollowSet`
-    // internal (it returns only the engine), so reaching the registered
-    // follow-set observer would need the running actor to deliver kind:3 +
-    // `notify_account_changed`. The production wiring uses the identical
-    // self-detecting reset logic mirrored below; this is the honest level of
-    // coverage available for a function that is uncalled in production this
-    // rung.
+    // Pure follow-set/reset sanity check for the clear -> kind:3 -> repopulate
+    // sequence. The production app-level observer path is covered separately
+    // in the update-driven identity tests.
     let account_slot = slot(Some(ALICE));
     let follow_set = nmp_nip02::ActiveFollowSet::new(account_slot.clone());
 
@@ -312,12 +306,9 @@ fn wiring_does_not_register_duplicate_follow_feed_interests() {
     assert!(!app.is_null());
 
     // SAFETY: valid non-null pointer.
-    let engine = nmp_app_template::register_op_feed_defaults(
-        unsafe { &*app },
-        ALICE.to_string(),
-        slot(Some(ALICE)),
-    )
-    .engine;
+    set_app_active(app, Some(ALICE));
+    let engine =
+        nmp_app_template::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
 
     let snapshot = engine.snapshot(&nmp_feed::FeedRequest::default());
     assert!(
