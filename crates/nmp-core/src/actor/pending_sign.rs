@@ -18,6 +18,7 @@
 //! `PENDING_SIGN_TIMEOUT` has its `PendingSign` dropped and a toast surfaced
 //! (D6 — the error becomes kernel state, the actor never wedges).
 
+use super::SignContinuation;
 use crate::publish::PublishTarget;
 use crate::substrate::SignedEvent;
 use nmp_signer_iface::SignerOp;
@@ -128,34 +129,6 @@ impl PendingSign {
     /// True once the op has overrun `PENDING_SIGN_TIMEOUT`.
     pub fn timed_out(&self) -> bool {
         Instant::now() >= self.deadline
-    }
-}
-
-/// Boxed continuation invoked with the resolved sign outcome.
-///
-/// Wrapped in a newtype so [`PendingSignReturn`] (and therefore the
-/// `ActorCommand` that carries one before parking) can derive `Debug` despite
-/// holding a `Box<dyn FnOnce(..) + Send>` (which is itself neither `Debug` nor
-/// inspectable). The `Debug` impl prints a fixed placeholder so the enclosing
-/// `ActorCommand`'s derived `Debug` still compiles.
-pub struct SignContinuation(pub Box<dyn FnOnce(Result<SignedEvent, String>) + Send>);
-
-impl SignContinuation {
-    /// Construct from any `FnOnce` matching the sign-outcome shape.
-    #[must_use]
-    pub fn new(f: impl FnOnce(Result<SignedEvent, String>) + Send + 'static) -> Self {
-        Self(Box::new(f))
-    }
-
-    /// Invoke the continuation with the sign outcome, consuming it.
-    pub fn call(self, outcome: Result<SignedEvent, String>) {
-        (self.0)(outcome);
-    }
-}
-
-impl std::fmt::Debug for SignContinuation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("SignContinuation(<sign-account continuation>)")
     }
 }
 

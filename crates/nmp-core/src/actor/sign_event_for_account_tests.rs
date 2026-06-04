@@ -32,10 +32,8 @@ use nostr::{EventBuilder, Keys, SecretKey, Timestamp};
 
 use super::commands::{self, IdentityRuntime};
 use super::dispatch::{dispatch_command, ActorContext};
-use super::pending_sign::{
-    resolve_pending_sign_return, PendingSign, PendingSignReturn, SignContinuation,
-};
-use super::ActorCommand;
+use super::pending_sign::{resolve_pending_sign_return, PendingSign, PendingSignReturn};
+use super::{ActorCommand, SignContinuation};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::remote_signer::RemoteSignerHandle;

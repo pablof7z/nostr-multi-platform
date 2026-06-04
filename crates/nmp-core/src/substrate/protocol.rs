@@ -625,7 +625,7 @@ pub fn build_sign_event_for_account(
     ActorCommand::SignEventForAccount {
         unsigned,
         signer_pubkey,
-        continuation: crate::actor::pending_sign::SignContinuation::new(continuation),
+        continuation: crate::actor::SignContinuation::new(continuation),
     }
 }
 

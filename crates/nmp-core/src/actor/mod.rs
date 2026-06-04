@@ -301,6 +301,40 @@ impl std::fmt::Debug for SignerSource {
     }
 }
 
+/// Boxed continuation invoked with the resolved sign outcome.
+///
+/// Defined here (always-compiled) rather than in the `native`-gated
+/// `pending_sign` module so the always-compiled `ActorCommand::SignEventForAccount`
+/// variant can name it on `wasm32` / no-`native` builds — see the `[features]`
+/// note: the `ActorCommand` enum stays always-compiled; only the actor runtime
+/// that *consumes* it is gated. The newtype lets the enum's derived `Debug`
+/// compile despite holding a `Box<dyn FnOnce(..) + Send>` (neither `Debug` nor
+/// inspectable); the `Debug` impl below prints a fixed placeholder.
+pub struct SignContinuation(
+    pub Box<dyn FnOnce(Result<crate::substrate::SignedEvent, String>) + Send>,
+);
+
+impl SignContinuation {
+    /// Construct from any `FnOnce` matching the sign-outcome shape.
+    #[must_use]
+    pub fn new(
+        f: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
+    ) -> Self {
+        Self(Box::new(f))
+    }
+
+    /// Invoke the continuation with the sign outcome, consuming it.
+    pub fn call(self, outcome: Result<crate::substrate::SignedEvent, String>) {
+        (self.0)(outcome);
+    }
+}
+
+impl std::fmt::Debug for SignContinuation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SignContinuation(<sign-account continuation>)")
+    }
+}
+
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
 /// through the `testing` re-export gate.  In normal (non-test-support) builds
@@ -404,7 +438,7 @@ pub enum ActorCommand {
         signer_pubkey: Option<String>,
         /// Invoked with the resolved sign outcome — inline (local) or from the
         /// idle-loop drain (bunker / timeout).
-        continuation: crate::actor::pending_sign::SignContinuation,
+        continuation: SignContinuation,
     },
     /// Unified sign-in command. Adds a signer to the actor-local identity store
     /// from one of the [`SignerSource`] variants and, when `make_active` is set,
