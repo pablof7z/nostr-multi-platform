@@ -65,7 +65,7 @@ pub use kinds::*;
 pub use mint_announce::{
     decode_mint_announce_event, mint_announce_filter, MintAnnouncement,
 };
-pub use nip60_wallet::{DepositRequest, Nip60WalletHandle};
+pub use nip60_wallet::{DepositRequest, Nip60WalletHandle, RelayStatus, RelaySyncResult};
 pub use nutzap::{
     build_nutzap_event, build_nutzap_info_event, decode_nutzap_event, decode_nutzap_info_event,
     p2pk_secret, verify_nutzap_dleq, NutZapInfo, NutZapProof, ReceivedNutZap,
