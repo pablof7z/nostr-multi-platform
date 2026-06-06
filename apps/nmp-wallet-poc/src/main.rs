@@ -25,7 +25,6 @@ use nmp_nip60::{
 };
 use tracing::warn;
 
-const DEFAULT_RELAY: &str = "wss://nos.lol";
 const DEFAULT_MINT: &str = "https://testnut.cashu.space";
 
 #[derive(Parser)]
@@ -36,8 +35,9 @@ struct Cli {
     #[arg(long)]
     nsec: Option<String>,
 
-    /// Relay URL to use for wallet events.
-    #[arg(long, default_value = DEFAULT_RELAY)]
+    /// Relay URL to use for your own wallet events (kind:17375, kind:7375, kind:7376).
+    /// Recipient discovery uses purplepag.es → their NIP-65 relays automatically.
+    #[arg(long)]
     relay: String,
 
     /// Cashu mint URL. Only used when creating a brand-new wallet.

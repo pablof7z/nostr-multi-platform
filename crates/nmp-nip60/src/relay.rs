@@ -12,7 +12,7 @@ use std::net::TcpStream;
 use std::sync::Once;
 use std::time::{Duration, Instant};
 
-use nostr::{Event, Filter, JsonUtil};
+use nostr::{Event, Filter, JsonUtil, PublicKey};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{connect, Message, WebSocket};
 
@@ -99,6 +99,45 @@ pub fn fetch_events(relay_url: &str, filter: Filter) -> Result<Vec<Event>, Strin
 
     let _ = sock.send(Message::Text(format!(r#"["CLOSE","{sub_id}"]"#)));
     Ok(events)
+}
+
+/// Fetch a user's NIP-65 relay list (kind:10002) from purplepag.es.
+///
+/// purplepag.es is the canonical indexer for relay lists. Returns the write
+/// (or read+write) relays so callers can locate the user's content. Falls
+/// back to an empty list on any error — the caller handles the fallback.
+pub fn fetch_nip65_relays(pubkey: &PublicKey) -> Vec<String> {
+    const INDEXER: &str = "wss://purplepag.es";
+    let filter = Filter::new()
+        .kind(nostr::Kind::RelayList)
+        .author(*pubkey)
+        .limit(1);
+
+    let events = match fetch_events(INDEXER, filter) {
+        Ok(evts) => evts,
+        Err(_) => return Vec::new(),
+    };
+
+    let Some(event) = events.into_iter().max_by_key(|e| e.created_at) else {
+        return Vec::new();
+    };
+
+    // NIP-65: `r` tags — ["r", "<url>"] or ["r", "<url>", "read"|"write"].
+    // Include relays marked "write" or unmarked. Skip "read"-only.
+    let mut relays = Vec::new();
+    for tag in event.tags.iter() {
+        let slice = tag.as_slice();
+        if slice.first().map(|s| s.as_str()) != Some("r") {
+            continue;
+        }
+        let Some(url) = slice.get(1).map(|s| s.as_str()) else { continue };
+        let marker = slice.get(2).map(|s| s.as_str());
+        if marker == Some("read") {
+            continue;
+        }
+        relays.push(url.to_owned());
+    }
+    relays
 }
 
 /// Publish an event to a relay. Returns the relay's OK/NOTICE response.
