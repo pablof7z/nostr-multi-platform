@@ -1,0 +1,27 @@
+[package]
+name = "nmp-nip60"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery. Provides a WalletBackend trait that is transparent to apps whether the user has a NIP-60 ecash wallet or a NWC-connected Lightning wallet."
+
+[dependencies]
+# nostr: NIP-44 encryption for wallet events, NIP-60 event types, key ops.
+nostr = { version = "0.44", features = ["std", "nip44", "nip60"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# sha2: Cashu hash_to_curve (SHA-256 try-and-increment).
+sha2 = "0.10"
+# ureq: synchronous HTTP client for Cashu mint API calls.
+# Matches the pattern used by nmp-nip57's LNURL fetcher.
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+tracing = "0.1"
+hex = "0.4"
+# tungstenite + rustls: WebSocket connections to relay for wallet event fetch.
+tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+
+[dev-dependencies]
+# Real-relay integration tests require nostr Keys generation.
+nostr = { version = "0.44", features = ["std", "nip44", "nip60"] }

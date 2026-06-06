@@ -1,0 +1,17 @@
+[package]
+name = "nmp-wallet-poc"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-60 wallet proof-of-concept: deposit testnut tokens, send a nutzap, receive and redeem."
+
+[[bin]]
+name = "wallet-poc"
+path = "src/main.rs"
+
+[dependencies]
+nmp-nip60 = { path = "../../crates/nmp-nip60" }
+nostr = { version = "0.44", features = ["std", "nip44", "nip60"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = "0.1"

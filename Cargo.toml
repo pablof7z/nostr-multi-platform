@@ -38,6 +38,8 @@ members = [
     "crates/nmp-planner",
     "crates/nmp-router",
     "crates/nmp-store",
+    "crates/nmp-nip60",
+    "apps/nmp-wallet-poc",
     "crates/nmp-nwc",
     "crates/nmp-repl",
     "crates/nmp-signer-broker",
