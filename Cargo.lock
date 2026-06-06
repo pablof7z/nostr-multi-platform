@@ -4972,6 +4972,7 @@ dependencies = [
 name = "nmp-wallet-poc"
 version = "0.2.6"
 dependencies = [
+ "clap",
  "nmp-nip60",
  "nostr",
  "tracing",
