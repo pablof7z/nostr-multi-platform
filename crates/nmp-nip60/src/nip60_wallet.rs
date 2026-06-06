@@ -31,7 +31,7 @@ use crate::kinds::{KIND_NUTZAP_INFO, KIND_TOKEN, KIND_WALLET};
 use crate::nutzap::{
     build_nutzap_info_event, p2pk_secret, NutZapInfo, NutZapProof,
 };
-use crate::relay::{fetch_events, publish_event};
+use crate::relay::{fetch_events, fetch_nip65_relays, publish_event};
 use crate::token_event::{build_token_event, decode_token_event, TokenRecord};
 use crate::wallet_event::{build_wallet_event, decode_wallet_event, WalletConfig};
 
@@ -346,21 +346,33 @@ impl Nip60WalletHandle {
     fn fetch_nutzap_info(
         &self,
         recipient_pubkey: &PublicKey,
-        recipient_relays: &[String],
+        hint_relays: &[String],
     ) -> Result<NutZapInfo, Nip60Error> {
-        let filter = Filter::new()
+        let nutzap_filter = Filter::new()
             .kind(Kind::from(KIND_NUTZAP_INFO))
             .author(*recipient_pubkey)
             .limit(1);
 
-        let search_relays: Vec<String> = if recipient_relays.is_empty() {
-            self.relays.clone()
-        } else {
-            recipient_relays.to_vec()
-        };
+        // 1. Discover the recipient's relay list via purplepag.es (NIP-65 indexer).
+        //    This is the correct approach: don't assume the recipient uses our relays.
+        let nip65_relays = fetch_nip65_relays(recipient_pubkey);
+
+        // 2. Build the search order: NIP-65 relays first, then any caller-supplied
+        //    hints, then our own relays as a last resort.
+        let mut search_relays: Vec<String> = nip65_relays;
+        for r in hint_relays {
+            if !search_relays.contains(r) {
+                search_relays.push(r.clone());
+            }
+        }
+        for r in &self.relays {
+            if !search_relays.contains(r) {
+                search_relays.push(r.clone());
+            }
+        }
 
         for relay in &search_relays {
-            match fetch_events(relay, filter.clone()) {
+            match fetch_events(relay, nutzap_filter.clone()) {
                 Ok(events) => {
                     if let Some(evt) = events.into_iter().max_by_key(|e| e.created_at) {
                         return Ok(crate::nutzap::decode_nutzap_info_event(&evt));
