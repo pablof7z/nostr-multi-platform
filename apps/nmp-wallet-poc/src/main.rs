@@ -22,6 +22,7 @@ use clap::{Parser, Subcommand};
 use nostr::{Filter, Keys, Kind, PublicKey, SecretKey};
 use nmp_nip60::{
     decode_nutzap_event, error::Nip60Error, verify_nutzap_dleq, Nip60WalletHandle, KIND_NUTZAP,
+    RelayStatus,
 };
 use tracing::warn;
 
@@ -76,6 +77,14 @@ enum Cmd {
 
     /// Publish your kind:10019 NutZap info event (tells others how to send to you).
     Advertise,
+
+    /// Show the health of each relay in your wallet event's relay list.
+    /// Reports reachability and how many wallet events each relay holds.
+    Status,
+
+    /// Republish any wallet events that are missing from one or more relays.
+    /// Use this to repair a relay that went down or to add coverage to a new relay.
+    Sync,
 }
 
 fn main() {
@@ -204,6 +213,65 @@ fn main() {
                 }
             }
         }
+
+        Cmd::Status => {
+            let relays = wallet.relays();
+            if relays.is_empty() {
+                println!("No relays configured in wallet event (wallet will rely on outbox routing).");
+                return;
+            }
+            println!("Checking {} relay(s)…\n", relays.len());
+            let statuses = wallet.relay_health();
+            print_relay_table(&statuses);
+        }
+
+        Cmd::Sync => {
+            let relays = wallet.relays();
+            if relays.is_empty() {
+                println!("No relays configured in wallet event — nothing to sync.");
+                return;
+            }
+            println!("Syncing wallet events to {} relay(s)…\n", relays.len());
+
+            // Show health before sync.
+            let before = wallet.relay_health();
+            print_relay_table(&before);
+
+            let results = wallet.sync_to_relays();
+            let total_pushed: usize = results.iter().map(|r| r.events_pushed).sum();
+            if total_pushed == 0 {
+                println!("\nAll relays are in sync — nothing to do.");
+            } else {
+                println!();
+                for r in &results {
+                    if r.events_pushed > 0 {
+                        println!("  {} ← pushed {} event(s)", r.url, r.events_pushed);
+                    }
+                }
+                // Show health after sync.
+                println!("\nAfter sync:");
+                let after = wallet.relay_health();
+                print_relay_table(&after);
+            }
+        }
+    }
+}
+
+fn print_relay_table(statuses: &[RelayStatus]) {
+    println!(
+        "  {:<45}  {:<10}  {:<7}  {:>6}  {:>7}",
+        "relay", "reachable", "wallet", "tokens", "history"
+    );
+    println!("  {}", "-".repeat(82));
+    for s in statuses {
+        println!(
+            "  {:<45}  {:<10}  {:<7}  {:>6}  {:>7}",
+            s.url,
+            if s.reachable { "✓" } else { "✗ DOWN" },
+            if s.has_wallet_event { "✓" } else { "missing" },
+            s.token_count,
+            s.history_count,
+        );
     }
 }
 

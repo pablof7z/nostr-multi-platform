@@ -79,13 +79,17 @@ impl Nip60WalletHandle {
         })
     }
 
-    /// Load an existing NIP-60 wallet from the given relays.
+    /// Load an existing NIP-60 wallet from bootstrap relays.
     ///
-    /// Fetches the most recent kind:17375 event, decrypts it, and loads all
-    /// associated kind:7375 token events.
+    /// Bootstrap relays are used ONLY to locate the most recent kind:17375 wallet
+    /// event. Once found, the wallet's relay list comes exclusively from the event's
+    /// own `relay` tags — not from the bootstrap relays. If the wallet event has no
+    /// relay tags, falls back to the user's NIP-65 relays from purplepag.es. If
+    /// neither is available the wallet operates with an empty relay list and relies
+    /// on an external outbox to route events.
     pub fn load_from_relays(
         keys: &Keys,
-        relays: &[String],
+        bootstrap_relays: &[String],
     ) -> Result<Self, Nip60Error> {
         let filter = Filter::new()
             .kind(Kind::from(KIND_WALLET))
@@ -93,7 +97,7 @@ impl Nip60WalletHandle {
             .limit(1);
 
         let mut wallet_events = Vec::new();
-        for relay in relays {
+        for relay in bootstrap_relays {
             match fetch_events(relay, filter.clone()) {
                 Ok(evts) => wallet_events.extend(evts),
                 Err(e) => warn!("wallet fetch from {relay}: {e}"),
@@ -105,17 +109,21 @@ impl Nip60WalletHandle {
             .max_by_key(|e| e.created_at)
             .ok_or(Nip60Error::NotInitialised)?;
         let config = decode_wallet_event(&wallet_event, keys.secret_key(), &keys.public_key())?;
-        let effective_relays = if config.relays.is_empty() {
-            relays.to_vec()
-        } else {
+
+        // The wallet event's relay tags are authoritative. Fall back to NIP-65 only
+        // if the event has none. Never fall back to the bootstrap relays — those were
+        // just for discovery.
+        let effective_relays = if !config.relays.is_empty() {
             config.relays.clone()
+        } else {
+            fetch_nip65_relays(&keys.public_key())
         };
 
         let handle = Self {
             keys: keys.clone(),
             config: Arc::new(Mutex::new(config)),
             tokens: Arc::new(Mutex::new(Vec::new())),
-            relays: effective_relays.clone(),
+            relays: effective_relays,
         };
         handle.refresh_tokens()?;
         Ok(handle)
@@ -635,6 +643,129 @@ impl Nip60WalletHandle {
     pub fn pubkey(&self) -> PublicKey {
         self.keys.public_key()
     }
+
+    // ── Relay health & sync ────────────────────────────────────────────────
+
+    /// Check the health of every relay in the wallet's relay list.
+    ///
+    /// For each relay: is it reachable? Does it have our wallet event?
+    /// How many token events (kind:7375) and history events (kind:7376) does it hold?
+    pub fn relay_health(&self) -> Vec<RelayStatus> {
+        let wallet_filter = Filter::new()
+            .kind(Kind::from(KIND_WALLET))
+            .author(self.keys.public_key())
+            .limit(1);
+        let token_filter = Filter::new()
+            .kind(Kind::from(KIND_TOKEN))
+            .author(self.keys.public_key());
+        let history_filter = Filter::new()
+            .kind(Kind::from(crate::kinds::KIND_HISTORY))
+            .author(self.keys.public_key());
+
+        self.relays
+            .iter()
+            .map(|relay| {
+                let wallet_event = fetch_events(relay, wallet_filter.clone())
+                    .map(|evts| !evts.is_empty())
+                    .unwrap_or(false);
+                let token_count = fetch_events(relay, token_filter.clone())
+                    .map(|evts| evts.len())
+                    .unwrap_or(0);
+                let history_count = fetch_events(relay, history_filter.clone())
+                    .map(|evts| evts.len())
+                    .unwrap_or(0);
+
+                // A relay is reachable if we could query it (even with 0 results).
+                let reachable = fetch_events(relay, wallet_filter.clone()).is_ok();
+                RelayStatus {
+                    url: relay.clone(),
+                    reachable,
+                    has_wallet_event: wallet_event,
+                    token_count,
+                    history_count,
+                }
+            })
+            .collect()
+    }
+
+    /// Republish all wallet events to every relay that is missing them.
+    ///
+    /// Returns one entry per relay with the number of events pushed to it.
+    /// Useful for repairing relay inconsistencies after a relay goes down and
+    /// comes back, or after adding a new relay to the wallet event's relay tags.
+    pub fn sync_to_relays(&self) -> Vec<RelaySyncResult> {
+        // Collect all events we own and want present on every relay.
+        let mut events_to_sync: Vec<nostr::Event> = Vec::new();
+
+        // kind:17375 — wallet config event.
+        {
+            let config = self.config.lock().unwrap();
+            if let Some(event_id) = config.event_id {
+                let filter = Filter::new().id(event_id);
+                // Fetch from whichever relay has it first.
+                for relay in &self.relays {
+                    if let Ok(evts) = fetch_events(relay, filter.clone()) {
+                        if let Some(e) = evts.into_iter().next() {
+                            events_to_sync.push(e);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // kind:7375 — token events.
+        {
+            let tokens = self.tokens.lock().unwrap();
+            let ids: Vec<nostr::EventId> = tokens
+                .iter()
+                .filter_map(|r| r.event_id)
+                .collect();
+            drop(tokens);
+            if !ids.is_empty() {
+                let filter = Filter::new().ids(ids);
+                for relay in &self.relays {
+                    if let Ok(evts) = fetch_events(relay, filter.clone()) {
+                        for e in evts {
+                            if !events_to_sync.iter().any(|x| x.id == e.id) {
+                                events_to_sync.push(e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut results = Vec::new();
+        for relay in &self.relays {
+            let mut pushed = 0usize;
+
+            // Find out what this relay already has.
+            let present: std::collections::HashSet<nostr::EventId> = events_to_sync
+                .iter()
+                .filter(|e| {
+                    fetch_events(relay, Filter::new().id(e.id))
+                        .map(|evts| !evts.is_empty())
+                        .unwrap_or(false)
+                })
+                .map(|e| e.id)
+                .collect();
+
+            for event in &events_to_sync {
+                if !present.contains(&event.id) {
+                    if publish_event(relay, event).is_ok() {
+                        pushed += 1;
+                    }
+                }
+            }
+
+            results.push(RelaySyncResult {
+                url: relay.clone(),
+                events_pushed: pushed,
+            });
+        }
+        results
+    }
 }
 
 // ─── WalletBackend impl ────────────────────────────────────────────────────
@@ -662,6 +793,28 @@ impl WalletBackend for Nip60WalletHandle {
     fn backend_type(&self) -> &'static str {
         "nip60"
     }
+}
+
+/// Health status of a single relay in the wallet's relay list.
+#[derive(Debug, Clone)]
+pub struct RelayStatus {
+    pub url: String,
+    /// Whether the relay responded to a query (reachable = true even if it has 0 events).
+    pub reachable: bool,
+    /// Whether the relay holds our kind:17375 wallet config event.
+    pub has_wallet_event: bool,
+    /// Number of kind:7375 token events found on this relay.
+    pub token_count: usize,
+    /// Number of kind:7376 history events found on this relay.
+    pub history_count: usize,
+}
+
+/// Result of pushing missing events to a single relay during a sync.
+#[derive(Debug, Clone)]
+pub struct RelaySyncResult {
+    pub url: String,
+    /// Number of events that were missing and successfully republished.
+    pub events_pushed: usize,
 }
 
 /// A pending deposit request (bolt11 invoice + quote id).
