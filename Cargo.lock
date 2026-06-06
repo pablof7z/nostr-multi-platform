@@ -966,7 +966,7 @@ dependencies = [
 
 [[package]]
 name = "chirp-desktop"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "eframe",
  "egui",
@@ -983,7 +983,7 @@ dependencies = [
 
 [[package]]
 name = "chirp-tui"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "clap",
  "color-eyre",
@@ -2194,7 +2194,7 @@ checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 
 [[package]]
 name = "fixture-todo-core"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-ffi",
@@ -4043,6 +4043,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "matchers"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
+dependencies = [
+ "regex-automata",
+]
+
+[[package]]
 name = "mdk-core"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4395,7 +4404,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-app-chirp"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-app-template",
  "nmp-core",
@@ -4420,7 +4429,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-app-fixture"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "fixture-todo-core",
  "nmp-core",
@@ -4431,7 +4440,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-app-gallery"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "jni 0.21.1",
  "nmp-app-template",
@@ -4443,7 +4452,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-app-template"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-coverage-gate",
@@ -4463,7 +4472,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-blossom"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "base64",
  "nmp-core",
@@ -4479,11 +4488,11 @@ dependencies = [
 
 [[package]]
 name = "nmp-chirp-config"
-version = "0.2.5"
+version = "0.2.6"
 
 [[package]]
 name = "nmp-cli"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-codegen",
  "serde",
@@ -4494,7 +4503,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-codegen"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -4503,7 +4512,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-content"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4518,7 +4527,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-content-fixtures"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-content",
  "nmp-core",
@@ -4530,7 +4539,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-core"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "bech32",
  "chrono",
@@ -4557,11 +4566,11 @@ dependencies = [
 
 [[package]]
 name = "nmp-coverage-gate"
-version = "0.2.5"
+version = "0.2.6"
 
 [[package]]
 name = "nmp-feed"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4572,7 +4581,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-ffi"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-feed",
@@ -4587,7 +4596,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-gallery-desktop"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "iced",
  "image",
@@ -4601,7 +4610,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-gallery-tui"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "crossterm 0.29.0",
  "image",
@@ -4618,11 +4627,11 @@ dependencies = [
 
 [[package]]
 name = "nmp-kinds"
-version = "0.2.5"
+version = "0.2.6"
 
 [[package]]
 name = "nmp-marmot"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "apple-native-keyring-store",
  "keyring-core",
@@ -4638,7 +4647,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-network"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "js-sys",
  "mio",
@@ -4652,7 +4661,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip01"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "flatbuffers",
  "nmp-content",
@@ -4667,7 +4676,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip02"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-ffi",
@@ -4678,7 +4687,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip17"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-kinds",
@@ -4692,7 +4701,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip18"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "serde",
@@ -4701,7 +4710,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip29"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-ffi",
@@ -4711,7 +4720,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip42"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-nip42-types",
@@ -4721,7 +4730,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip42-types"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -4729,7 +4738,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip47"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-nwc",
@@ -4742,7 +4751,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip51"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-kinds",
@@ -4754,7 +4763,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip57"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "bech32",
  "nmp-core",
@@ -4770,7 +4779,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip59"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "futures",
  "nmp-kinds",
@@ -4779,8 +4788,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip60"
+version = "0.2.6"
+dependencies = [
+ "hex",
+ "nostr",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tracing",
+ "tungstenite",
+ "ureq",
+]
+
+[[package]]
 name = "nmp-nip77"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "negentropy",
  "nmp-core",
@@ -4791,7 +4815,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nostr-lmdb"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "async-utility",
  "flume",
@@ -4806,7 +4830,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nwc"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nostr",
  "rustls",
@@ -4819,7 +4843,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-planner"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -4827,7 +4851,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-repl"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "chrono",
  "crossterm 0.28.1",
@@ -4845,7 +4869,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-router"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-kinds",
@@ -4856,7 +4880,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-signer-broker"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-network",
  "nmp-signer-iface",
@@ -4869,14 +4893,14 @@ dependencies = [
 
 [[package]]
 name = "nmp-signer-iface"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "nmp-signers"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "js-sys",
  "nmp-core",
@@ -4893,7 +4917,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-store"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "heed",
  "nmp-nostr-lmdb",
@@ -4907,7 +4931,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-testing"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "libc",
  "mdk-core",
@@ -4937,7 +4961,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-threading"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "serde",
@@ -4945,8 +4969,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-wallet-poc"
+version = "0.2.6"
+dependencies = [
+ "nmp-nip60",
+ "nostr",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "nmp-wasm"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "js-sys",
  "nmp-chirp-config",
@@ -4963,7 +4997,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-wot"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "nmp-core",
  "nmp-nip77",
@@ -5023,6 +5057,15 @@ dependencies = [
  "lru",
  "nostr",
  "tokio",
+]
+
+[[package]]
+name = "nu-ansi-term"
+version = "0.50.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
+dependencies = [
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7836,14 +7879,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-log"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+dependencies = [
+ "log",
+ "once_cell",
+ "tracing-core",
+]
+
+[[package]]
 name = "tracing-subscriber"
 version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
+ "matchers",
+ "nu-ansi-term",
+ "once_cell",
+ "regex-automata",
  "sharded-slab",
+ "smallvec",
  "thread_local",
+ "tracing",
  "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
