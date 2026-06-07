@@ -1,0 +1,84 @@
+# RMP/NMP Hard Rules
+
+Use this reference as the architectural source for NMP/RMP app work. These rules are intentionally strict. The point of the architecture is to make bad Nostr apps and bad multiplatform apps structurally hard to build.
+
+## RMP Baseline
+
+RMP starts from one idea: one Rust core owns behavior and each platform renders native UI.
+
+- Rust owns state machines, policy decisions, business logic, validation, protocol behavior, transport, cryptography, persistence, networking, long-lived state, cross-platform invariants, routing decisions, and error semantics.
+- Native owns rendering, native UX affordances, accessibility semantics, and bounded execution of OS capabilities such as Keychain, file pickers, camera, push, location, audio sessions, and secure storage.
+- Data flow is TEA/Elm: `AppAction` enters Rust, one actor processes it, state changes, a snapshot/update is emitted, native applies it on the UI thread and renders.
+- `dispatch()` is fire-and-forget. It must not block and must not return operation success.
+- The actor is the single writer. Async work reports back through explicit internal events. Reducers do not await.
+- Full snapshots are the correctness baseline. Granular updates are allowed only when they are lossless and profiling proves they are needed.
+- Native navigation may use native widgets, gestures, and transitions, but Rust owns navigation state.
+- Apps must feel fully native: 60fps scrolling, instant touch response, platform-native navigation, platform-native accessibility, and no visible "Rust is involved" tax.
+
+## NMP Evolutions Over RMP
+
+NMP keeps the RMP skeleton and adds stricter doctrine and Nostr-specific correctness gates.
+
+- RMP says "Rust owns business logic"; NMP makes this enforceable through D0-D10, doctrine lint, bounded snapshots, and extension seams.
+- RMP's early examples sometimes lower display strings into Rust. NMP refines this: Rust owns semantic state and invariant-bearing derived facts; platform rendering may own pure visual formatting such as truncation, typography, local date presentation, and layout labels when those choices do not affect behavior or protocol meaning. If a string affects policy, routing, sorting, identity, replay, tests, or cross-platform semantic parity, compute it in Rust.
+- RMP permits full snapshots as a simple baseline. NMP requires snapshots to be bounded by open views and app chrome. The event store never crosses FFI.
+- RMP allows native capability bridges. NMP requires them to report raw results only, never policy, retry, routing, cipher choice, or recoverability.
+- RMP values performance. NMP treats performance as correctness: no polling, bounded working set, <=60 Hz per view, no hot-path allocation after warmup where D8 applies, no unbounded queues, no native jank.
+- NMP adds Nostr-specific rules: outbox routing is automatic, negentropy-first history sync, injected kernel time, provenance, and private-event fail-closed behavior.
+
+## D0-D10 In One Page
+
+Resolve conflicts in order: D0 outranks D1, D1 outranks D2, and so on.
+
+- D0: The framework core knows nothing about any app domain. No app nouns in `nmp-core`; app and protocol modules contribute typed variants through seams. Business logic does not move to Swift/Kotlin/TS to avoid Rust boundaries.
+- D1: Render now, refine in place. Do not hide renderable content behind loading gates. View payloads carry values or typed placeholders, not "wait for profile" status.
+- D2: History syncs by diff, not re-download. Historical backfill uses negentropy/NIP-77 coverage gates where supported; raw REQ scans are not the default.
+- D3: Relay routing is automatic. App-facing send, publish, and view-open surfaces do not accept relay URLs. Manual relay selection is an audited opt-out.
+- D4: One source of truth. Exactly one writer owns each fact; downstream caches and views derive mechanically. No app-side cache mirrors the Rust state.
+- D5: Only what is on screen crosses FFI. Snapshots are small, screen-shaped, and scoped to open views. The event store, history, watermarks, signer state, and gossip cache stay inside Rust.
+- D6: Errors show up in state, not exceptions. No `Result<T,E>`, thrown exception, panic, or typed per-op error crosses FFI. Failures clear busy flags and surface as toast, diagnostic, or action-stage state.
+- D7: Native bridges execute; the kernel decides. Native never decides retry, recoverability, relay, cipher, routing, next state, or fallback policy. Capability lifecycles are idempotent.
+- D8: Reactivity is bounded. No polling. No false wake loops. No per-event hot-path allocation after warmup. No view emits above 60 Hz. Memory scales with active views, not event history.
+- D9: The kernel owns time. Reducers and replay paths use an injected clock. Replaceable resolution, expiration, and publish timestamps are kernel decisions, not relay claims or native wall-clock reads.
+- D10: Private messages stay private. Gift-wrap/private events target verified recipient inbox relays only; unknown inbox fails closed. Received private events are never laundered to public relays.
+
+## Clean Architecture Absolutes
+
+- Do the architecture-correct fix. Do not paper over a boundary failure with a local shortcut.
+- Do not add temporary hacks, stubs, planned TODO debt, parallel paths, or duplicate representations.
+- Do not leave two code paths for the same concept. Delete or migrate the old one in the same change unless a canonical staged plan already exists.
+- Do not add a native cache, native state machine, native retry loop, or native data derivation because plumbing Rust state feels tedious.
+- Do not introduce broad "manager" or "service" objects that own facts already owned by the actor.
+- Do not split TEA by technical role into global `model/`, `update/`, `view/`, `state/`, or `actions/` buckets. Co-locate by feature/domain owner and split by cohesive subdomain when files grow.
+- Do not create unbounded queues, unbounded snapshots, unbounded in-memory history, or unbounded cross-FFI payloads.
+- Do not let tests pass by weakening doctrine, widening an escape hatch, or adding a special test-only production path.
+
+## Performance Absolutes
+
+Pristine, performant applications are mandatory. Performance is not a later polish phase.
+
+- Native UI must remain responsive and platform-correct: 60fps scroll and transitions, instant taps, no avoidable main-thread blocking.
+- Rust hot paths must be budgeted before implementation. Name the steady-state allocation, wakeup, and memory bounds.
+- FFI update cadence must be bounded and coalesced. High-frequency data must not serialize one update per event/frame unless intentionally designed and measured.
+- Use blocking/event-driven primitives, not polling. `sleep` plus checking state is a violation in Rust, Swift, Kotlin, TypeScript, tests, and background jobs.
+- If a feature can firehose events, profiles, reactions, messages, or media frames, design the reverse index, dependency declaration, coalescing, and eviction path before writing UI.
+- A performance concern is not a license for native caching. Optimize the Rust projection/update contract or use a lossless delta after profiling.
+
+## Capability Bridge Rules
+
+- Rust requests the capability.
+- Native executes the OS API.
+- Native reports raw data or raw failure.
+- Rust decides what it means.
+- Rust owns retries, fallbacks, state transitions, user-visible messages, and teardown.
+- Native holds only transient OS handles or buffers.
+- Start, stop, and restart must be safe when called repeatedly.
+- Secrets may cross only through explicit secret-bearing side-effect updates or secure capability channels; never embed them in normal snapshots, logs, action tags, or debug history.
+
+## Documentation And Source Of Truth
+
+- Product corrections may require source-of-truth updates, not just code changes.
+- Durable rules belong in product specs, architecture/design docs, ADRs, or builder guides.
+- Temporal work belongs only in canonical planning/status files used by the repo.
+- If an implementation discovers a new invariant, document the invariant in the durable owner in the same PR.
+- If a doctrine needs an exception, write an ADR. No ADR means no waiver.
