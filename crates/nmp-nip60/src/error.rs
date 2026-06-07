@@ -30,6 +30,8 @@ pub enum Nip60Error {
     Invalid(String),
     /// Mint quote has not been paid yet — caller should retry later.
     QuoteNotPaid,
+    /// Nutzap receipt was already redeemed.
+    AlreadyRedeemed(nostr::EventId),
 }
 
 impl fmt::Display for Nip60Error {
@@ -50,6 +52,7 @@ impl fmt::Display for Nip60Error {
             Self::MintDiscovery(e) => write!(f, "mint discovery: {e}"),
             Self::Invalid(e) => write!(f, "invalid: {e}"),
             Self::QuoteNotPaid => write!(f, "mint quote not yet paid — retry after a moment"),
+            Self::AlreadyRedeemed(event_id) => write!(f, "nutzap already redeemed: {event_id}"),
         }
     }
 }
