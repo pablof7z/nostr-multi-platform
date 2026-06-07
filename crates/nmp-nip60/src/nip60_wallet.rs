@@ -17,6 +17,7 @@
 //! println!("balance: {} sat", wallet.balance_sats());
 //! ```
 
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use nostr::{EventId, Filter, Keys, Kind, PublicKey};
@@ -26,8 +27,8 @@ use crate::backend::{PayResult, WalletBackend, WalletError};
 use crate::cashu::client::{split_amount, MintClient, self as cashu_client};
 use crate::cashu::types::Proof;
 use crate::error::Nip60Error;
-use crate::history_event::{build_history_event, HistoryRecord};
-use crate::kinds::{KIND_NUTZAP_INFO, KIND_TOKEN, KIND_WALLET};
+use crate::history_event::{build_history_event, redeemed_nutzap_ids, HistoryRecord};
+use crate::kinds::{KIND_HISTORY, KIND_NUTZAP_INFO, KIND_TOKEN, KIND_WALLET};
 use crate::nutzap::{
     build_nutzap_info_event, p2pk_secret, NutZapInfo, NutZapProof,
 };
@@ -43,6 +44,7 @@ pub struct Nip60WalletHandle {
     keys: Keys,
     config: Arc<Mutex<WalletConfig>>,
     tokens: Arc<Mutex<Vec<TokenRecord>>>,
+    redeemed: Arc<Mutex<HashSet<EventId>>>,
     relays: Vec<String>,
 }
 
@@ -75,6 +77,7 @@ impl Nip60WalletHandle {
             keys: keys.clone(),
             config: Arc::new(Mutex::new(config)),
             tokens: Arc::new(Mutex::new(Vec::new())),
+            redeemed: Arc::new(Mutex::new(HashSet::new())),
             relays,
         })
     }
@@ -123,9 +126,11 @@ impl Nip60WalletHandle {
             keys: keys.clone(),
             config: Arc::new(Mutex::new(config)),
             tokens: Arc::new(Mutex::new(Vec::new())),
+            redeemed: Arc::new(Mutex::new(HashSet::new())),
             relays: effective_relays,
         };
         handle.refresh_tokens()?;
+        handle.refresh_redeemed_nutzaps()?;
         Ok(handle)
     }
 
@@ -168,6 +173,46 @@ impl Nip60WalletHandle {
         }
         *self.tokens.lock().unwrap() = records;
         Ok(())
+    }
+
+    /// Reload redeemed nutzap IDs from kind:7376 history events.
+    pub fn refresh_redeemed_nutzaps(&self) -> Result<(), Nip60Error> {
+        let filter = Filter::new()
+            .kind(Kind::from(KIND_HISTORY))
+            .author(self.keys.public_key());
+
+        let mut all_events = Vec::new();
+        for relay in &self.relays {
+            match fetch_events(relay, filter.clone()) {
+                Ok(evts) => all_events.extend(evts),
+                Err(e) => warn!("history fetch from {relay}: {e}"),
+            }
+        }
+        all_events.sort_by_key(|e| e.id);
+        all_events.dedup_by_key(|e| e.id);
+
+        let mut redeemed = HashSet::new();
+        for event in &all_events {
+            redeemed.extend(redeemed_nutzap_ids(event));
+        }
+        *self.redeemed.lock().unwrap() = redeemed;
+        Ok(())
+    }
+
+    /// Event IDs of nutzaps already redeemed by this wallet.
+    pub fn redeemed_nutzap_ids(&self) -> Vec<EventId> {
+        let mut ids: Vec<EventId> = self.redeemed.lock().unwrap().iter().copied().collect();
+        ids.sort();
+        ids
+    }
+
+    /// Whether this wallet already redeemed the given nutzap event.
+    pub fn has_redeemed_nutzap(&self, event_id: EventId) -> bool {
+        self.redeemed.lock().unwrap().contains(&event_id)
+    }
+
+    fn mark_redeemed_nutzap(&self, event_id: EventId) {
+        self.redeemed.lock().unwrap().insert(event_id);
     }
 
     // ── Deposit ────────────────────────────────────────────────────────────
@@ -569,7 +614,9 @@ impl Nip60WalletHandle {
         &self,
         nutzap: &crate::nutzap::ReceivedNutZap,
     ) -> Result<u64, Nip60Error> {
-        
+        if self.has_redeemed_nutzap(nutzap.event_id) {
+            return Err(Nip60Error::AlreadyRedeemed(nutzap.event_id));
+        }
 
         // Sign P2PK proofs with our Cashu private key.
         let config = self.config.lock().unwrap().clone();
@@ -631,6 +678,7 @@ impl Nip60WalletHandle {
                 }
             }
         }
+        self.mark_redeemed_nutzap(nutzap.event_id);
 
         info!("redeemed nutzap: {total} sat from {}", nutzap.sender_pubkey.to_hex());
         Ok(total)
@@ -765,6 +813,52 @@ impl Nip60WalletHandle {
             });
         }
         results
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::nutzap::ReceivedNutZap;
+
+    fn empty_wallet() -> Nip60WalletHandle {
+        Nip60WalletHandle::create_new(&Keys::generate(), "https://mint.example", Vec::new())
+            .expect("wallet")
+    }
+
+    #[test]
+    fn redeemed_nutzap_ids_are_queryable() {
+        let wallet = empty_wallet();
+        let event_id = EventId::from_byte_array([3u8; 32]);
+
+        wallet.mark_redeemed_nutzap(event_id);
+
+        assert!(wallet.has_redeemed_nutzap(event_id));
+        assert_eq!(wallet.redeemed_nutzap_ids(), vec![event_id]);
+    }
+
+    #[test]
+    fn redeem_nutzap_short_circuits_before_mint_for_known_event() {
+        let wallet = empty_wallet();
+        let event_id = EventId::from_byte_array([5u8; 32]);
+        wallet.mark_redeemed_nutzap(event_id);
+
+        let nutzap = ReceivedNutZap {
+            event_id,
+            sender_pubkey: Keys::generate().public_key(),
+            proofs: Vec::new(),
+            mint_url: "http://127.0.0.1:1".to_string(),
+            amount_sats: 0,
+            comment: String::new(),
+            zapped_event_id: None,
+        };
+
+        let err = wallet.redeem_nutzap(&nutzap).expect_err("already redeemed");
+
+        assert!(matches!(
+            err,
+            Nip60Error::AlreadyRedeemed(already_redeemed) if already_redeemed == event_id
+        ));
     }
 }
 

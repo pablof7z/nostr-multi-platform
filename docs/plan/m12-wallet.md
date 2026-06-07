@@ -19,7 +19,7 @@
 
 - Pay a 100-sat zap via NWC to a real LUD-16 endpoint; receipt verifies; balance updates within one ViewBatch.
 - Receive a zap (test via a separate device or simulated): zap-history view reflects within one ViewBatch.
-- Nutzap claim from a Cashu mint: proofs land in the wallet; balance updates.
+- Nutzap claim from a Cashu mint: proofs land in the wallet; balance updates; retrying the same nutzap after restart returns before mint I/O.
 - Wallet operations never block the UI thread.
 
 **Runnable artifact.** Chirp with working zaps. Report in `docs/perf/m12/wallet.md`.

@@ -5,7 +5,7 @@
 //! Redeemed (nutzap) events are referenced in plain `e` tags (not encrypted).
 
 use nostr::nips::nip44;
-use nostr::{EventBuilder, EventId, Keys, Kind, Tag};
+use nostr::{Event, EventBuilder, EventId, Keys, Kind, Tag};
 
 use crate::error::Nip60Error;
 use crate::kinds::KIND_HISTORY;
@@ -35,7 +35,7 @@ pub struct HistoryRecord {
     pub created: Vec<EventId>,
     /// Token event IDs that were destroyed in this transaction.
     pub destroyed: Vec<EventId>,
-    /// Token event IDs that were redeemed (nutzap receipts) — stored plain.
+    /// Nutzap event IDs that were redeemed — stored plain.
     pub redeemed: Vec<EventId>,
 }
 
@@ -90,4 +90,49 @@ pub fn build_history_event(record: &HistoryRecord, keys: &Keys) -> Result<EventB
     }
 
     Ok(EventBuilder::new(Kind::from(KIND_HISTORY), content).tags(tags))
+}
+
+/// Extract kind:7376 plain `e` tags marked as redeemed nutzap receipts.
+pub fn redeemed_nutzap_ids(event: &Event) -> Vec<EventId> {
+    if event.kind != Kind::from(KIND_HISTORY) {
+        return Vec::new();
+    }
+
+    event
+        .tags
+        .iter()
+        .filter_map(|tag| {
+            let row = tag.as_slice();
+            match (
+                row.first().map(String::as_str),
+                row.get(1),
+                row.get(3).map(String::as_str),
+            ) {
+                (Some("e"), Some(id), Some("redeemed")) => EventId::from_hex(id).ok(),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redeemed_nutzap_ids_reads_plain_history_tags() {
+        let keys = Keys::generate();
+        let redeemed = EventId::from_byte_array([7u8; 32]);
+        let ignored_created = EventId::from_byte_array([9u8; 32]);
+        let mut history = HistoryRecord::new_in(10);
+        history.redeemed.push(redeemed);
+        history.created.push(ignored_created);
+
+        let event = build_history_event(&history, &keys)
+            .expect("history event builder")
+            .sign_with_keys(&keys)
+            .expect("signed history event");
+
+        assert_eq!(redeemed_nutzap_ids(&event), vec![redeemed]);
+    }
 }

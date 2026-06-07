@@ -169,6 +169,9 @@ fn main() {
                 match nmp_nip60::relay::fetch_events(&relay, filter.clone()) {
                     Ok(events) => {
                         for event in events {
+                            if wallet.has_redeemed_nutzap(event.id) {
+                                continue;
+                            }
                             match decode_nutzap_event(&event) {
                                 Ok(nutzap) => {
                                     println!(
@@ -188,8 +191,8 @@ fn main() {
                                                 wallet.balance_sats()
                                             );
                                         }
+                                        Err(Nip60Error::AlreadyRedeemed(_)) => {}
                                         Err(e) => {
-                                            // Already redeemed proofs cause a swap error — ignore.
                                             warn!("redeem: {e}");
                                         }
                                     }

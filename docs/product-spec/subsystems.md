@@ -311,6 +311,8 @@ The long-term module unifies four payment surfaces:
 
 `WalletState` is a `uniffi::Record` field of `AppState`. Wallet attachment is an action; payment is an action; receipt verification is automatic. No wallet UI hook mutates proof, token, nutzap, or transaction state directly; those records live in the actor-owned domain store and transition through the action ledger.
 
+NIP-61 redemption state is keyed by kind:7376 history `redeemed` markers. Claiming a nutzap is idempotent: once a nutzap event ID is known as redeemed, retrying the claim returns before mint I/O.
+
 ### 7.10 Messaging
 
 `nmp-messages` implements NIP-17 over NIP-44 + NIP-59 after the kernel release. Initial product support targets:
