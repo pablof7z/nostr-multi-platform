@@ -143,8 +143,8 @@ impl BunkerBroker {
                 // `tungstenite::connect()` (TCP+TLS+WS handshake), Shutdown
                 // sits in the channel until the OS-level connect timeout
                 // returns. Shared with `nmp-core::relay_worker`; tracked
-                // for resolution by V-13 Stage 1 (shared connection
-                // primitive with explicit connect_timeout) in `docs/BACKLOG.md`.
+                // for resolution in GitHub Issues as a shared connection
+                // primitive with explicit connect_timeout.
                 let _ = handle.join();
             }
         }

@@ -35,7 +35,7 @@ Use this page to decide where a future wiki article should look first.
 | What doctrine means what? | `docs/product-spec/doctrine.md` |
 | What does doctrine-lint enforce right now? | `crates/nmp-testing/bin/doctrine-lint/` and `crates/nmp-testing/Cargo.toml` |
 | What is active right now? | `WIP.md` |
-| What is queued or blocked? | `docs/BACKLOG.md` |
+| What is queued or blocked? | GitHub Issues |
 | What is the current release-plan view? | `docs/plan.md` |
 
 ## Wiki Use

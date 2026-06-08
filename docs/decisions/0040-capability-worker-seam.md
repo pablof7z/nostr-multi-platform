@@ -131,7 +131,7 @@ be re-introduced on the actor thread — is a separate D8 item, not this ADR.)
 ### Why this is one ADR
 
 The 2026-05-29 `open-backlog-resolution` workflow produced a single off-actor
-design for the V-54 + V-90 cluster (recorded as the BACKLOG "DESIGN PRODUCED,
+design for the V-54 + V-90 cluster (recorded in the tracker as "DESIGN PRODUCED,
 ADR-pending" note). It rests on **three precedented primitives, no ad-hoc
 copies**. Two of the three reuse mechanisms that already ship; **only the
 serialized capability-worker thread is genuinely new and needs ratification** —
@@ -224,7 +224,7 @@ For each in-actor capability dispatch, spawn a `std::thread`, run
   `persist(acct-A)` then `forget(acct-A)` from a rapid import-then-remove) race
   the Keychain on independent threads with no ordering guarantee; the forget can
   land before the persist, leaving a secret at rest that should have been
-  deleted. This is the precise hazard the BACKLOG note flags
+  deleted. This is the precise hazard the tracker note flags
   ("per-op spawn forget/persist would race").
 - *Complexity:* low per call, but unbounded thread churn under burst.
 - *D8:* compliant (each thread blocks-recv), but ordering violation makes it
@@ -462,7 +462,7 @@ primitive" hardening is filed separately as V-111.
   no-poll worker-advances-only-on-recv assertion; plus
   `cargo test -p nmp-testing --test doctrine_lint_smoke`.
 - Doc: mark ADR-0024 **Superseded (native capability class)**; update the V-90 /
-  V-54 BACKLOG entries to **DONE** as each PR lands.
+  V-54 issues to **DONE** as each PR lands.
 
 ---
 

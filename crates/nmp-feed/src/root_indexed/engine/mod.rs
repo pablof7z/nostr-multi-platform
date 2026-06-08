@@ -17,8 +17,8 @@
 //! Rung 1's `event_claim_released` ring fires on **Phase-1 EOSE**, which is
 //! *not* the final "this root will never arrive" verdict — Phase-2 relay
 //! retargeting may still be fetching the root. The design doc §3-D originally
-//! said `on_claim_released` should drop `pending_attributions[root]`; **BACKLOG
-//! V-81 supersedes that** (it postdates the doc). [`Self::on_event_claim_released`]
+//! said `on_claim_released` should drop `pending_attributions[root]`; **former
+//! tracker V-81 supersedes that** (it postdates the doc). [`Self::on_event_claim_released`]
 //! is therefore a no-op beyond a diagnostic counter: a pending attribution
 //! survives a release signal and is dropped ONLY when (a) the root actually
 //! arrives (drains pending → attributions) or (b) the bounded map evicts it
@@ -250,8 +250,8 @@ where
     /// signal does not mean the root will never arrive (Phase-2 retargeting may
     /// still be running), so the engine MUST NOT drop `pending_attributions`
     /// here. We only bump a diagnostic counter. Pending entries are dropped
-    /// solely by root arrival (drain) or D5 capacity eviction. See ADR-0035 +
-    /// BACKLOG V-81.
+    /// solely by root arrival (drain) or D5 capacity eviction. See ADR-0035
+    /// and former tracker V-81.
     pub fn on_event_claim_released(&self, _primary_id: &EventId) {
         self.released_signals_seen.fetch_add(1, Ordering::Relaxed);
     }

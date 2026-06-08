@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-05-24
-- **Resolves:** V-36 in `docs/BACKLOG.md`
+- **Resolves:** V-36.
 - **Related:** ADR-0022 (NMP owns its relay transport), ADR-0026 (signer NIP-44 seal seam),
   ADR-0027 (unified `ActionModule` trait)
 
@@ -106,7 +106,7 @@ upstream timeline is out of NMP's control.
 
 **Option B — maintain `nmp-signer-broker` as-is:** Continue improving the broker in-tree,
 extract the non-NMP-specific relay-client primitive into `crates/nmp-relay-conn/` (the
-V-13 Stage 1 plan in BACKLOG.md), and share it with `nmp-core`'s relay worker.
+V-13 Stage 1 issue), and share it with `nmp-core`'s relay worker.
 
 **Current ruling:** Option B. The broker owns the NIP-46 relay transport. V-13's
 `nmp-relay-conn` extraction (when it lands) eliminates the remaining duplicate-transport

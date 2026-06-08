@@ -2,7 +2,7 @@
 
 **Status:** Decision plan (pre-implementation).
 **Scope:** `crates/nmp-core/src/kernel/` + `crates/nmp-core/src/subs/`.
-**Decision (already taken in BACKLOG.md V-04):** **Option A** — designate
+**Decision (already taken in former tracker V-04):** **Option A** — designate
 `InterestRegistry` canonical, migrate every `req()` / `req_for_relay()` caller
 to it, delete the hand-rolled path.
 
@@ -108,7 +108,7 @@ violation: two systems share the same fact, neither is authoritative.
 ### 2.1 Verdict — Option A: `InterestRegistry` is canonical
 
 The architectural answer is **Option A** without ambiguity, and it is the
-choice already documented in `docs/BACKLOG.md` V-04 line 81 and PD-033-C
+choice already documented in former tracker V-04 and PD-033-C
 line 210. Adopting it formally here:
 
 - **`InterestRegistry` is the single writer of "what is subscribed."**
@@ -630,7 +630,7 @@ A PR series implementing this plan is done when **all** of the following hold:
 4. The comment block at `crates/nmp-core/src/kernel/mod.rs:382-391` is
    deleted.
 5. `! grep -rn "M2 migration plan\|two paths coexist\|M1 hand-rolled" docs/ crates/`
-   except in a single "V-04 closed" log entry in `docs/BACKLOG.md`.
+   except in a single historical "V-04 closed" log entry.
 6. All existing tests pass green: `cargo test -p nmp-core`. Targeted suites:
    - `t140_m1_retirement_tests`
    - `eose_ok_notice_ingest_tests`
@@ -653,8 +653,8 @@ A PR series implementing this plan is done when **all** of the following hold:
    "Single-writer registry of active logical interests" doc; no new
    `pub fn` is added to a non-`subs::` module that mutates the active
    wire-sub set. (Manual review item — no automated check.)
-9. PR description for the final stage links the V-04 entry in `BACKLOG.md`
-   and moves it from the open list to the closed (Appendix) list.
+9. PR description for the final stage links the V-04 issue
+   and closes it.
 
 ### What a follow-up Opus reviewer must check
 

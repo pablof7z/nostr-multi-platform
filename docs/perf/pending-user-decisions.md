@@ -1,8 +1,8 @@
 # Pending User Decisions
 
-> **SUPERSEDED by [`docs/BACKLOG.md`](../BACKLOG.md)** (2026-05-23).
-> Open PDs are consolidated there (Section 3). This file is kept as an append-only audit log.
-> Do not add new entries here — add to `docs/BACKLOG.md` instead.
+> **SUPERSEDED by GitHub Issues** (2026-06-08).
+> Open PDs are consolidated there under `category:decision`. This file is kept as an append-only audit log.
+> Do not add new entries here — create or update a GitHub issue instead.
 
 Decisions I made autonomously while the user was asleep, with my reasoning. If the user disagrees with any, the noted commit can be reverted or amended.
 
@@ -1152,7 +1152,7 @@ so iOS-visual confirmation is deferred, NOT a hard gate.)
   merged; still fully present) is the clean −3 sub-case with ZERO projection /
   Swift coupling. It is OUT of the four-symbol scope this task names, so it is left
   to its own PR (#932), not smuggled in here.
-- V-112 BACKLOG updated to record the `RootIndexedFeed`-can't-serve-author finding
+- V-112 tracker updated to record the `RootIndexedFeed`-can't-serve-author finding
   and the snapshot-reuse verification.
 
 **PROGRESS + HANDOFF (2026-06-03, session 1 — branch `worktree-agent-aed6d1530c4e8a070`,

@@ -589,7 +589,7 @@ schema") is precisely the follow-up this ADR specifies.
 | **D5** (bounded projections) | `OpFeedSnapshot.cards` is the engine's visible window (bounded); `RootCard.attribution` is bounded at encode time by `MAX_ATTRIBUTION_PER_ROOT`. ✅ |
 | **D8** (non-blocking) | The typed projection closure runs inside the snapshot tick: one engine snapshot + one FlatBuffers encode, no I/O. Same contract as the generic projection. ✅ |
 | **D11** (no new bespoke C-ABI symbol) | Uses the existing `register_typed_snapshot_projection` Rust seam (ADR-0037). No new `extern "C"`. ✅ |
-| **Planning discipline** | This ADR is the single source for the typed-OP-feed decision; the V-80 architecture doc tracks the product-model work; `docs/BACKLOG.md` gets one V-entry pointing here. ✅ |
+| **Planning discipline** | This ADR is the single source for the typed-OP-feed decision; the V-80 architecture doc tracks the product-model work; the issue tracker gets one V-entry pointing here. ✅ |
 
 ---
 

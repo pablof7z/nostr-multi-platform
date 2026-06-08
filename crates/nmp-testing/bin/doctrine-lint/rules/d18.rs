@@ -159,7 +159,7 @@ fn check_line(path: &Path, line: &str, is_comment: bool, in_loop: bool) -> Vec<H
                     "`{}` in native lifecycle code violates D18 - model ownership instead of documenting a leak",
                     marker
                 ),
-                suggested: "release/unregister through the native lifecycle or track the staged fix in BACKLOG.md".to_string(),
+                suggested: "release/unregister through the native lifecycle or track the staged fix in a GitHub issue labeled status:staged".to_string(),
             });
         }
     }

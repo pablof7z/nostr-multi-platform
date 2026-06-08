@@ -863,7 +863,7 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
     // remote is active. V-06 Stage 1: toast on the transition so the user
     // knows AUTH-required relays are degraded (replaces silent failure).
     // V-06 Stage 2/3: broker-side sign_auth_challenge RPC + AuthSignerFn
-    // adapter (post-v1, tracked in BACKLOG).
+    // adapter (post-v1, tracked in issue #960).
     if let Some(active_id) = active.as_ref() {
         if identity.remote_signers.contains_key(active_id) {
             // Toast only on the transition from having auth capability to

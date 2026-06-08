@@ -43,7 +43,7 @@ pub struct LocalKeySigner {
     /// reducing — but not eliminating — recoverable secret material in freed
     /// memory.  Full mitigation requires upstream `Zeroize` support in `nostr`
     /// (or a `nostr`/`secp256k1` upgrade that adds it).  Tracked as V-55 in
-    /// `docs/BACKLOG.md`.
+    /// GitHub issue #971.
     ///
     /// Stored as an inline `[u8; 32]` (which `zeroize` natively implements
     /// `Zeroize` for); the bytes are wiped wherever the enclosing

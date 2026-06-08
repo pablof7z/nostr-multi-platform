@@ -6,7 +6,7 @@
 > **Scope:** Subscription compilation turns logical interests into per-relay
 > plans driven by NIP-65 mailboxes and makes outbox routing a first-class
 > planner subsystem. Implementation status belongs in source, tests, and
-> `docs/BACKLOG.md`, not in this design reference.
+> GitHub Issues, not in this design reference.
 
 This document is split into focused sub-files to stay under the 500 LOC ceiling (`AGENTS.md`).
 

@@ -7,9 +7,9 @@
 > - **Durable doctrine** — [`docs/product-spec/doctrine.md`](product-spec/doctrine.md).
 > - **Durable architecture** — [`docs/architecture/`](architecture/) and [`docs/design/`](design/).
 > - **Live in-flight tracker** — [`WIP.md`](../WIP.md) (temporal work currently on a branch).
-> - **Tactical tracker** — [`docs/BACKLOG.md`](BACKLOG.md) (temporal violations, pending user decisions, ordered v1 feature backlog, post-v1 list).
+> - **Tactical tracker** — GitHub Issues, sorted by `priority:*` labels, then narrowed by `category:*`, `phase:*`, `area:*`, `doctrine:*`, and `status:*`.
 >
-> **This file is not durable understanding.** It is the current release-plan view. Active items belong in `WIP.md` (in-flight) or `BACKLOG.md` (queue). Implemented or invalidated plan detail should be deleted or reduced to the smallest remaining live follow-up; lasting understanding belongs in aim, product, design, architecture, ADR, builder-guide, or wiki docs.
+> **This file is not durable understanding.** It is the current release-plan view. Active items belong in `WIP.md` (in-flight) or GitHub Issues (queue). Implemented or invalidated plan detail should be deleted or reduced to the smallest remaining live follow-up; lasting understanding belongs in aim, product, design, architecture, ADR, builder-guide, or wiki docs.
 
 ---
 
@@ -30,7 +30,7 @@ runtime update transport is one canonical FlatBuffers schema for `FullState`,
 `ViewBatch`, and side-effect frames. UniFFI remains the generated
 binding/lifecycle/capability surface; it is not the hot payload format. Legacy
 JSON update payloads are historical raw-C/migration surface only, not a
-production fallback. Track under [F-10](BACKLOG.md#f-10--canonical-flatbuffers-runtime-update-transport-v1-infra--in-progress).
+production fallback. Track under [F-10 issue #991](https://github.com/pablof7z/nostr-multi-platform/issues/991).
 
 **What does not work yet** (v1 blockers):
 1. **V-01** — `nmp-wasm` no longer a stub: `WasmRuntime` drives the real `KernelReducer` (Stage 2, PR #372), owns a `BrowserRelayDriver` pool (Stage 3, PR #375), NIP-07 signer + async snapshot push (Stage 3b, PR #378), publish-path wire + multi-role bootstrap (Stage 3c, PR #385 — merged 2026-05-24). **Two web items remain v1-blocking: F-01 IndexedDB persistence, and exit-criterion #6 (honest cross-platform — the wasm runtime drives `KernelReducer` directly via `WasmRuntime`, not the native `NmpApp` actor).** No persistent chirp-web features may be added until F-01 lands.
@@ -38,9 +38,9 @@ production fallback. Track under [F-10](BACKLOG.md#f-10--canonical-flatbuffers-r
 3. **F-04** — Zap E2E round-trip (NWC `pay_invoice` → kind:9735 → `ZapsAggregateProjection`) not verified against a live wallet.
 4. **F-05** — `nmp-codegen` Swift `Decodable` pilot for `TimelineBlock` + `KernelUpdate`. Targets the hand-written `Decodable` block of `KernelBridge.swift` (1,900 LOC today; the ~740-LOC C-ABI/dispatch glue at the top is permanent, not a codegen target). Stage 1+2 generate 9 of ~52 Decodable types (≈17%); the tagged-enum sweep is the remainder.
 
-**Framework thesis — RE-OPENED AS BUILDABLE (2026-05-29, ADR-0039):** the push projection seam already satisfies every property a second app needs — kernel-owned projection (no shell-side D5 parsing), handshake-gated sign-in via `projections["bunker_handshake"]`, and D3 outbox routing read off the pushed frame. No new affordances are required. The **podcast player** is the live candidate, to be built on the push seam (deleting its bespoke `nmp_app_podcast_snapshot` pull symbol + 500 ms poll). The thesis is therefore unblocked but not yet *demonstrated* — no second app has been built against the seam yet. See [PD-033-A](BACKLOG.md) and ADR-0039.
+**Framework thesis — RE-OPENED AS BUILDABLE (2026-05-29, ADR-0039):** the push projection seam already satisfies every property a second app needs — kernel-owned projection (no shell-side D5 parsing), handshake-gated sign-in via `projections["bunker_handshake"]`, and D3 outbox routing read off the pushed frame. No new affordances are required. The **podcast player** is the live candidate, to be built on the push seam (deleting its bespoke `nmp_app_podcast_snapshot` pull symbol + 500 ms poll). The thesis is therefore unblocked but not yet *demonstrated* — no second app has been built against the seam yet. See [PD-033-A issue #975](https://github.com/pablof7z/nostr-multi-platform/issues/975) and ADR-0039.
 
-**C-ABI surface — frozen, not debt:** the named `nmp_app_*` C-ABI symbols (54 today, in the extracted `crates/nmp-ffi/src/` crate; `lib.rs` is 2,330 LOC) are legitimate framework API — lifecycle, callbacks, capability sockets, observer + projection registration, identity/relay ops, and the generic `nmp_app_dispatch_action` path. They are **not** migration debt to schedule away. The surface is frozen at 54: `ci/check-ffi-surface-freeze.sh` (`.github/workflows/ffi-surface-freeze.yml`) rejects any net-new symbol without a merged ADR (precedent: `nmp_app_is_alive` / ADR-0028). The only open item on the surface is V-68 Stage 2 — the three `open_timeline`/`open_author`/`open_thread` symbols that hardcode Chirp's social kinds `{1,6}`, tracked in [#911](https://github.com/pablof7z/nostr-multi-platform/issues/911) and blocked on an ADR for the `nmp_app_open_interest(filter_json, consumer_id, scope)` replacement.
+**C-ABI surface — frozen, not debt:** the named `nmp_app_*` C-ABI symbols (54 today, in the extracted `crates/nmp-ffi/src/` crate; `lib.rs` is 2,330 LOC) are legitimate framework API — lifecycle, callbacks, capability sockets, observer + projection registration, identity/relay ops, and the generic `nmp_app_dispatch_action` path. They are **not** migration debt to schedule away. The surface is frozen at 54: `ci/check-ffi-surface-freeze.sh` (`.github/workflows/ffi-surface-freeze.yml`) rejects any net-new symbol without a merged ADR (precedent: `nmp_app_is_alive` / ADR-0028). The only open item on the surface is V-68 Stage 2 — the three `open_timeline`/`open_author`/`open_thread` symbols that hardcode Chirp's social kinds `{1,6}`, tracked in [#958](https://github.com/pablof7z/nostr-multi-platform/issues/958) and blocked on an ADR for the `nmp_app_open_interest(filter_json, consumer_id, scope)` replacement.
 
 ---
 
@@ -63,7 +63,7 @@ The durable doctrine lives in [`docs/product-spec/doctrine.md`](product-spec/doc
 - **D12** action_stages substrate with ack-based retention (in force)
 - **D14** relay slots are typed projections (in force)
 
-Corollary — **no hacks, no fragmentation, no debt**: temporary workarounds, stubs, "for now" branches, and silent failures are forbidden. Staging is allowed only when the staging plan is written in `BACKLOG.md` and progress advances each sprint.
+Corollary — **no hacks, no fragmentation, no debt**: temporary workarounds, stubs, "for now" branches, and silent failures are forbidden. Staging is allowed only when the staging plan is written in a GitHub issue labeled `status:staged` and progress advances each sprint.
 
 ---
 
@@ -104,7 +104,7 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | M17 v1 release | pending | ❌ Pending |
 
 Detail per milestone lives in [`docs/plan/m*.md`](plan/). Active violations,
-pending decisions, and feature backlog items live in [`docs/BACKLOG.md`](BACKLOG.md).
+pending decisions, and queued feature work live in GitHub Issues.
 
 ---
 
@@ -112,24 +112,24 @@ pending decisions, and feature backlog items live in [`docs/BACKLOG.md`](BACKLOG
 
 v1 ships when **all of the following** hold:
 
-1. **No `BACKLOG.md` Section 1 violation is open** (or every open one has a staged plan that crosses the v1 line with progress per sprint).
-2. **Every `BACKLOG.md` Section 4 v1-blocker item is closed.** Today: F-01, F-02, F-04, F-05.
-3. **Every pending user decision in Section 3 is resolved** (today: PD-033-C, PD-037 closed; PD-033-A **re-opened as buildable 2026-05-29, ADR-0039** — the push seam satisfies the second-app properties; the podcast player is the live candidate).
-4. **Stateful second-app spike is run** — the `apps/notes` spike was deleted (2026-05-28); PD-033-A is re-opened as buildable on the push projection seam (ADR-0039), with the podcast player as the live candidate. The seam is proven sufficient; an actual second app has not yet been built against it. See [PD-033-A in BACKLOG.md](BACKLOG.md).
-5. **`nmp-wasm` is no longer a stub.** ✅ Stages 2–3c all complete (PRs #372/#375/#378/#385). **F-01 IndexedDB persistence + criterion #6 (honest cross-platform) remain** before chirp-web can claim full parity — see F-01 in BACKLOG.md.
+1. **No open `category:violation` issue blocks v1** (or every such issue has a `status:staged` plan that crosses the v1 line with progress per sprint).
+2. **Every `phase:v1-blocker` feature issue is closed.** Today: F-01 [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007), F-02 [#977](https://github.com/pablof7z/nostr-multi-platform/issues/977), F-04 [#978](https://github.com/pablof7z/nostr-multi-platform/issues/978), F-05 [#979](https://github.com/pablof7z/nostr-multi-platform/issues/979).
+3. **Every pending `category:decision` issue that blocks v1 is resolved** (today: PD-033-C, PD-037 closed; PD-033-A [#975](https://github.com/pablof7z/nostr-multi-platform/issues/975) **re-opened as buildable 2026-05-29, ADR-0039** — the push seam satisfies the second-app properties; the podcast player is the live candidate).
+4. **Stateful second-app spike is run** — the `apps/notes` spike was deleted (2026-05-28); PD-033-A is re-opened as buildable on the push projection seam (ADR-0039), with the podcast player as the live candidate. The seam is proven sufficient; an actual second app has not yet been built against it. See [PD-033-A issue #975](https://github.com/pablof7z/nostr-multi-platform/issues/975).
+5. **`nmp-wasm` is no longer a stub.** ✅ Stages 2–3c all complete (PRs #372/#375/#378/#385). **F-01 IndexedDB persistence [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) + criterion #6 honest cross-platform [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008) remain** before chirp-web can claim full parity.
 6. **Cross-platform claim is honest.** Either wasm runs a real `NmpApp` actor on a Web Worker, or "cross-platform" is rewritten as "iOS + macOS + Android" in `aim.md` and product copy.
-7. **The C-ABI surface is frozen: no net-new `nmp_app_*` symbol without a merged ADR.** ✅ Enforcement: `ci/check-ffi-surface-freeze.sh` (`.github/workflows/ffi-surface-freeze.yml`) rejects net-additions by default; ADR override is required (precedent: `nmp_app_is_alive` / ADR-0028). The sole open item on the existing surface is V-68 Stage 2: the three `open_timeline`/`open_author`/`open_thread` symbols that hardcode kinds `{1,6}` — tracked in [#911](https://github.com/pablof7z/nostr-multi-platform/issues/911) and blocked on an ADR for the `nmp_app_open_interest` replacement.
+7. **The C-ABI surface is frozen: no net-new `nmp_app_*` symbol without a merged ADR.** ✅ Enforcement: `ci/check-ffi-surface-freeze.sh` (`.github/workflows/ffi-surface-freeze.yml`) rejects net-additions by default; ADR override is required (precedent: `nmp_app_is_alive` / ADR-0028). The sole open item on the existing surface is V-68 Stage 2: the three `open_timeline`/`open_author`/`open_thread` symbols that hardcode kinds `{1,6}` — tracked in [#958](https://github.com/pablof7z/nostr-multi-platform/issues/958) and blocked on an ADR for the `nmp_app_open_interest` replacement.
 8. **Snapshot serialization has a CI regression gate.** ✅ done — `make_update_us` + `serialize_us` instrumented in `crates/nmp-core/src/kernel/update.rs`. Gate: `snapshot_perf_firehose_gate` in `crates/nmp-core/src/kernel/perf_tests.rs` asserts `make_update_us < 250_000` μs and `serialize_us < 150_000` μs over a 1k-event firehose with `visible_limit = 500`. Thresholds = ≈ 10 × the observed dev-hardware debug baseline (~25 ms / ~15 ms, 5-run variance < 5 %); sized to catch a 10 × regression on `ubuntu-latest` debug CI without flaking on shared-runner jitter. The `NMP_PERF` log line in `kernel::update` remains the live monitoring signal in production. Test runs on every PR via `test.yml` (no new workflow required).
 9. **All M0–M8 + M10.5 milestones gates are met against the current code** (the table above is honest; no silent endings).
 10. **Doctrine D0–D14 enforced by lint** (doctrine-lint scoped run is part of CI on master).
 
-Item 6 (honest cross-platform) is the remaining open item from the 2026-05-23 direction review and must be added to `BACKLOG.md` if work is going to start on it.
+Item 6 (honest cross-platform) is tracked in issue [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008).
 
 ---
 
 ## Post-v1 — explicitly deferred
 
-Deliberately deferred. See [`BACKLOG.md` §5](BACKLOG.md#section-5--post-v1) and [`plan/post-v1.md`](plan/post-v1.md).
+Deliberately deferred. See GitHub Issues labeled `phase:post-v1` and [`plan/post-v1.md`](plan/post-v1.md).
 
 - Blossom uploads/downloads (M10)
 - Web-of-Trust (M13)
@@ -152,7 +152,7 @@ These are not negotiable; they exist because each was learned the hard way. Full
 - **Agents must NEVER run full-workspace `cargo test`.** Scoped tests only — the orchestrator owns the full-suite pre-merge gate.
 - **Heartbeat commits MUST be pathspec-scoped** (`git commit -- <file>`); land via throwaway worktree when the main tree is dirty.
 - **README + this file are heartbeat-maintained.** Refresh dynamic parts only at each heartbeat; ≤200 LOC budget for the README, ≤250 LOC for this file.
-- **After every merge to master, review the diff for notable findings.** Promote actionable items into `BACKLOG.md`; do not commit code reviews to the repo.
+- **After every merge to master, review the diff for notable findings.** Promote actionable items into GitHub Issues; do not commit code reviews to the repo.
 
 ---
 
@@ -162,7 +162,7 @@ Where to look for detail:
 
 - [`docs/aim.md`](aim.md) — architectural north star (immutable)
 - [`docs/product-spec.md`](product-spec.md) + [`docs/product-spec/doctrine.md`](product-spec/doctrine.md) — full doctrine
-- [`docs/BACKLOG.md`](BACKLOG.md) — active violations, pending decisions, v1 backlog
+- GitHub Issues — active violations, pending decisions, v1 queue; sort by `priority:*` labels
 - [`WIP.md`](../WIP.md) — live in-flight tracker
 - [`docs/plan/principles.md`](plan/principles.md) — execution principles
 - [`docs/plan/subsystem-matrix.md`](plan/subsystem-matrix.md) — subsystem coverage + NIP roadmap
@@ -184,5 +184,5 @@ Where to look for detail:
 - **Not a schedule.** Milestones are sequential; durations depend on team size and surface complexity. No dates, no person-months.
 - **Not a marketing roadmap.** v1 ships when the exit criteria above are met, not on a calendar.
 - **Not durable understanding.** Implemented or invalidated plan detail must be removed, not preserved as reference documentation.
-- **Not the active-work tracker.** `WIP.md` owns in-flight; `BACKLOG.md` owns the queue. This file is only the current release-plan view.
+- **Not the active-work tracker.** `WIP.md` owns in-flight; GitHub Issues own the queue. This file is only the current release-plan view.
 - **Not exhaustive about post-v1.** Additional protocol modules (NIP-23 long-form is in, more video/long-form work post-v1), app demonstrations, and the framework GA are scoped only after v1.

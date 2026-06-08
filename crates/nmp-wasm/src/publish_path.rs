@@ -22,11 +22,11 @@
 //! [`publish_app_action`] (this module) composes those two seams plus the
 //! relay-pool fan-out into a single `js_sys::Promise`-friendly async fn.
 //!
-//! # Scope (PR boundary, BACKLOG F-01)
+//! # Scope (PR boundary, F-01 issue #1007)
 //!
 //! This module wires **`PublishNote` (kind:1)** only. `React` / `Follow` /
 //! `Unfollow` are scoped down to an honest `publish_path_not_wired_for_kind`
-//! error pointing at the BACKLOG follow-up. Adding them is small (build the
+//! error pointing at the GitHub issue follow-up. Adding them is small (build the
 //! unsigned event for kind:7 / kind:3 / kind:3-edit and the same async path
 //! handles them) but each kind has tag-construction subtleties the native
 //! `react` / `follow` commands own (e.g. NIP-25 `k` tag derivation, kind:3
@@ -70,7 +70,7 @@ pub(crate) fn write_path_not_wired_for_kind_reason(action_type: &str) -> String 
     format!(
         "publish_path_not_wired_for_kind: action {action_type:?} is not yet wired through the \
          wasm publish path. V-01 Stage 3c first PR wired `nmp.publish` (kind:1 notes) only — \
-         React / Follow / Unfollow follow up. See BACKLOG F-01."
+         React / Follow / Unfollow follow up. See issue #1007."
     )
 }
 

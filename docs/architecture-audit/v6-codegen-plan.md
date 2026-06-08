@@ -10,7 +10,7 @@
   sub-questions ADR-0030 left unanswered: *what input format the emitter
   reads*, *how the dotted-projection-key registry is represented*, and *how
   the build / CI gate is wired*.
-- **Backlog item:** F-05 (`docs/BACKLOG.md:287`).
+- **Issue:** F-05 (#979).
 
 ---
 

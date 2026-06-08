@@ -263,7 +263,7 @@ fn event_lookup_is_correctness_preserving_before_store_published() {
     // same behaviour as the prior no-op closure. The engine must still function:
     // the L-5 placeholder shows, and the wrapper-less rebuild simply omits
     // provenance until a real read is available. This locks in the
-    // "correctness-preserving" contract the BACKLOG V-83 entry highlighted.
+    // "correctness-preserving" contract the former tracker V-83 entry highlighted.
     let app = nmp_app_new();
     assert!(!app.is_null());
 

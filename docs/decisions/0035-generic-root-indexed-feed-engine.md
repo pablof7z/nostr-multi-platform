@@ -8,7 +8,7 @@ Date: 2026-05-28
 
 The home feed product model is changing from "threaded notes (replies + roots)
 over the follow-set" to **"thread roots only, with follows' replies as
-attribution metadata on their root"** (BACKLOG V-80; full design in
+attribution metadata on their root"** (former tracker V-80; full design in
 [`docs/perf/op-centric-feed-architecture.md`](../perf/op-centric-feed-architecture.md)).
 A followed user's reply to a *non-followed* root must surface that root with an
 "↳ Alice replied" badge. Reply rows never stand alone.
@@ -85,7 +85,7 @@ Rung 1's `event_claim_released` ring fires on **Phase-1 EOSE**, which is *not*
 the final "this root will never arrive" verdict — Phase-2 relay retargeting may
 still be fetching the root. The design doc §3-D originally specified
 `on_claim_released(primary_id)` should `drop pending_attributions[primary_id]`.
-**BACKLOG V-81 (dated after the doc) supersedes that.**
+**Former tracker V-81 (dated after the doc) supersedes that.**
 
 The engine therefore implements **option (a)**: `on_event_claim_released` is a
 no-op beyond a diagnostic `AtomicU64` counter. A pending attribution survives a
