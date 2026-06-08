@@ -16,7 +16,7 @@ It does not own active work state, roadmap state, pending decisions, or release
 truth. Those are temporal coordination facts and belong only in:
 
 - `docs/plan.md`
-- `docs/BACKLOG.md`
+- GitHub Issues
 - `WIP.md`
 
 ## Authority Boundary

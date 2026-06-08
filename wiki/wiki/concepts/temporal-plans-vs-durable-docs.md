@@ -30,7 +30,7 @@ tests.
 The temporal coordination files are:
 
 - `docs/plan.md`: current release-plan view and v1 exit criteria.
-- `docs/BACKLOG.md`: active violations, pending user decisions, and queued work.
+- GitHub Issues: active violations, pending user decisions, and queued work.
 - `WIP.md`: live worktrees and branches.
 
 These files can describe active state, but completed detail should be removed

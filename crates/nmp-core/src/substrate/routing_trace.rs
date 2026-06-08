@@ -1,6 +1,6 @@
 //! Routing-trace observer substrate seam — V-51 phase 1 / V-75.
 //!
-//! See `docs/BACKLOG.md` §V-51 for the four-phase rollout. This module ships
+//! See GitHub issue #968 for the V-51 rollout. This module ships
 //! phase 1 (the observer trait + per-call summary structs) extended by V-75
 //! (per-lane `RouteAttempt` records so the inspector can answer "why did
 //! lanes 1–6 return empty and Lane 7 fire?"). Phase 2 adds the FFI/wasm

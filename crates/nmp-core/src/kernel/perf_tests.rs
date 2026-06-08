@@ -34,7 +34,7 @@
 //! The real monitoring signal is the `NMP_PERF` log line emitted on every
 //! tick in production; this gate is the coarse net that catches a snapshot
 //! path that has clearly broken. Tighten the ceiling only if a follow-up
-//! perf budget is documented in `docs/plan.md` or `BACKLOG.md`.
+//! perf budget is documented in `docs/plan.md` or GitHub Issues.
 //!
 //! See `docs/plan.md` v1 exit criterion #8 for the contract.
 //!

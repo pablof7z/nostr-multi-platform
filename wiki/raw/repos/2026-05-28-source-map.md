@@ -25,7 +25,7 @@ updated: 2026-05-28
 ## Temporal Sources
 
 - `docs/plan.md`: current release-plan view and v1 exit criteria.
-- `docs/BACKLOG.md`: active violations, pending decisions, and feature backlog.
+- GitHub Issues: active violations, pending decisions, and feature queue.
 - `WIP.md`: live branches and worktrees.
 
 These temporal sources may be cited for current status, but wiki articles must

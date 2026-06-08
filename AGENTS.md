@@ -22,7 +22,7 @@ When the user gives any correction or instruction about how the NMP product
 should work, treat it as a possible product-authority update, not just an
 implementation request. Before making code changes, delegate a separate agent
 to research whether the correction should be represented in product specs,
-doctrine, canonical docs, `docs/plan.md`, `docs/BACKLOG.md`, ADRs under
+doctrine, canonical docs, `docs/plan.md`, GitHub Issues, ADRs under
 `docs/decisions/`, or another existing authoritative document.
 
 The delegated research must report where the instruction already lives, where
@@ -71,30 +71,32 @@ every importer — run `cargo build --workspace` and search the
 compile errors for the touched symbol. The compile pass is much
 faster than the test pass and surfaces the same blast radius.
 
-## Planning discipline — temporal files, no duplicate plans
+## Planning discipline — GitHub queue, temporal files, no duplicate plans
 
-This repository has exactly **three canonical planning/status files** for temporal coordination. Every active plan, todo, roadmap, milestone, violation, pending decision, and in-flight task lives in one of them. Scattered notes, ad-hoc `TODO.md` / `NOTES.md` / `ROADMAP.md` / `PLAN-foo.md` files, parallel planning docs, and inline `// TODO:` annotations used as a substitute for tracking are **forbidden**.
+This repository has exactly **one canonical tactical queue: GitHub Issues**. Every active violation, pending user decision, queued feature, post-v1 item, staged fix, and follow-up belongs in an open GitHub issue with labels. Scattered notes, ad-hoc `TODO.md` / `NOTES.md` / `ROADMAP.md` / `PLAN-foo.md` files, parallel planning docs, and inline `// TODO:` annotations used as a substitute for tracking are **forbidden**.
 
 Plans are not durable understanding and must not survive as reference documentation after they have been implemented, executed, or invalidated. When a plan completes, remove it from the temporal tracker or collapse it to the smallest live follow-up. Any lasting knowledge learned from the work belongs in durable documentation instead: `docs/aim.md` for the north star, `docs/product-spec/` for product doctrine, `docs/architecture/` and `docs/design/` for architecture, `docs/decisions/` for ADRs, the builder guide for maintained how-to material, and `wiki/` for source-backed synthesis.
 
-| File | Role | Update cadence |
+| Surface | Role | Update cadence |
 |---|---|---|
 | [`docs/plan.md`](docs/plan.md) | Temporal release plan — current milestones, current state, v1 exit criteria, and pointers to durable docs. | Only when a milestone changes status or the v1 exit criteria move; remove completed planning detail instead of preserving it as history. |
-| [`docs/BACKLOG.md`](docs/BACKLOG.md) | Tactical queue — active violations, pending user decisions, ordered v1 feature backlog, post-v1 list. | Every PR that touches an item listed here; close/remove executed items and move lasting conclusions to durable docs. |
+| GitHub Issues | Tactical queue — active violations, pending user decisions, ordered v1 feature work, post-v1 list, staged fixes, and follow-ups. | Every PR that touches a queued item; update/close the issue and move lasting conclusions to durable docs. |
 | [`WIP.md`](WIP.md) | Live in-flight tracker — branches currently on a worktree. | When an agent starts work (add entry) and when work finishes/merges (remove entry). |
 
 Rules — enforced strictly:
 
-- **Do not create new top-level planning files.** No `PLAN.md`, `TODO.md`, `ROADMAP.md`, `NEXT.md`, `STATUS.md`, or per-feature plan files at the repo root or directly under `docs/`. New temporal detail belongs in one of: `docs/plan/m*.md` (per-milestone while active), `docs/architecture-audit/<plan>.md` (migration plans gating a specific violation), or `docs/BACKLOG.md` (queue items). Durable decisions belong in `docs/decisions/00NN-*.md` ADRs, not in plans. Never create a parallel overview.
-- **Do not duplicate state across files.** A violation tracked in `BACKLOG.md §1` is not also a row in `WIP.md`. If an agent is actively fixing it on a branch, only the branch reference lives in `WIP.md`; the violation entry stays in `BACKLOG.md`.
-- **Plan files have authority over scattered notes only for active work.** A `// TODO:` comment in code is not a plan. If it represents work to be done, it belongs in `BACKLOG.md`. If it represents a known limitation or durable decision, it belongs in an ADR, doctrine clarification, architecture/design doc, builder-guide page, or wiki article as appropriate.
-- **Single source of truth per fact** — this is D4 (single writer per fact) applied to docs. Temporal state belongs in the three files above. Durable facts belong in durable docs or code. Audit reports may *reference* the canonical files; they must not become parallel authorities.
-- **Never commit code reviews.** AI code review output, direction reviews, codex review dumps, and post-merge review notes must not be committed to the repository. If a review surfaces an actionable finding, promote it into `BACKLOG.md` (active) or a durable doc (lasting understanding) — then discard the review itself.
-- **Edit existing entries; do not append parallel ones.** If a `BACKLOG.md` item changes, edit it in place. If a milestone status in `docs/plan.md` changes, edit the table. Append-only history files (`docs/perf/pending-user-decisions.md`) are explicitly opt-in and named — do not invent new ones.
-- **Retire executed plans.** A plan that has been implemented is no longer a source of truth. Delete it, close the backlog item, or replace it with the smallest remaining live follow-up. Preserve durable lessons in the durable doc that owns that concept.
-- **When in doubt, fewer planning files.** The cost of a duplicate plan is divergence: within one sprint two files will describe different states of the same world, and neither will be trustworthy. If a new planning file feels necessary, justify why it cannot be a section of one of the three canonical files before creating it.
+- **Do not create new top-level planning files.** No `PLAN.md`, `TODO.md`, `ROADMAP.md`, `NEXT.md`, `STATUS.md`, or per-feature plan files at the repo root or directly under `docs/`. New tactical detail belongs in a GitHub issue. Short-lived migration plans may live in `docs/plan/m*.md` or `docs/architecture-audit/<plan>.md` only when they gate a specific active milestone or violation and link back to the owning issue. Durable decisions belong in `docs/decisions/00NN-*.md` ADRs, not in plans. Never create a parallel overview.
+- **Do not duplicate state across files.** A violation or feature tracked in GitHub Issues is not also restated as a queue row in `WIP.md` or `docs/plan.md`. If an agent is actively fixing it on a branch, only the branch reference and issue number live in `WIP.md`; the issue remains the queue authority.
+- **Issue labels define priority order.** Work in this order: `priority:p0`, `priority:p1`, `priority:p2`, `priority:p3`, then `priority:p4`. Within a priority bucket, prefer `category:violation` before `category:feature`, then `category:test`, then `category:decision` unless the user explicitly directs otherwise. Use `phase:*`, `area:*`, `doctrine:*`, and `status:*` labels to filter scope.
+- **GitHub search is the backlog view.** Use `gh issue list --state open --label priority:p0 --limit 50`, then repeat for `priority:p1` through `priority:p4`. Skip issues whose number appears in `WIP.md` unless explicitly coordinating with that agent.
+- **Plan files have authority over scattered notes only for active release state.** A `// TODO:` comment in code is not a plan. If it represents work to be done, it belongs in a GitHub issue. If it represents a known limitation or durable decision, it belongs in an ADR, doctrine clarification, architecture/design doc, builder-guide page, or wiki article as appropriate.
+- **Single source of truth per fact** — this is D4 (single writer per fact) applied to docs. Tactical state belongs in GitHub Issues. In-flight branch ownership belongs in `WIP.md`. Release-plan checkpoints belong in `docs/plan.md`. Durable facts belong in durable docs or code. Audit reports may reference the canonical issue; they must not become parallel authorities.
+- **Never commit code reviews.** AI code review output, direction reviews, codex review dumps, and post-merge review notes must not be committed to the repository. If a review surfaces an actionable finding, promote it into a GitHub issue (active) or a durable doc (lasting understanding) — then discard the review itself.
+- **Edit existing issues; do not append parallel ones.** If queued work changes, update the existing issue body/labels/title in place. If a milestone status in `docs/plan.md` changes, edit the table. Append-only history files (`docs/perf/pending-user-decisions.md`) are explicitly historical — do not invent new ones.
+- **Retire executed plans.** A plan that has been implemented is no longer a source of truth. Close the issue, delete the temporal detail, or replace it with the smallest remaining live follow-up issue. Preserve durable lessons in the durable doc that owns that concept.
+- **When in doubt, fewer planning files.** The cost of a duplicate plan is divergence: within one sprint two sources will describe different states of the same world, and neither will be trustworthy. If a new planning file feels necessary, justify why it cannot be a GitHub issue plus a durable doc.
 
-This discipline is non-negotiable. A PR that introduces a duplicate planning file, a scattered todo list, or a parallel roadmap is rejected and the entries are folded back into the canonical files.
+This discipline is non-negotiable. A PR that introduces a duplicate planning file, a scattered todo list, or a parallel roadmap is rejected and the entries are folded back into GitHub Issues or durable docs.
 
 ## File Size
 
@@ -153,8 +155,8 @@ Full rationale: `docs/builder-guide/06-reactivity-contract.md` §Anti-patterns a
 **No temporary hacks. Ever.** This is a strict, non-negotiable rule enforced pedantically:
 
 - No "for now" workarounds, stubs that stay, or `// TODO: fix this properly` comments left
-  in production code. A staged fix is allowed *only* when a written plan in `BACKLOG.md`
-  documents every stage with a completion deadline. An unplanned, undocumented "temporary"
+  in production code. A staged fix is allowed *only* when a GitHub issue labeled
+  `status:staged` documents every stage with a completion deadline. An unplanned, undocumented "temporary"
   measure is categorically forbidden — there is no such thing as acceptable technical debt.
 - No fragmentation: every concept has exactly one canonical representation and one code path.
   If two paths exist for the same concern, one must be deleted before the PR merges.

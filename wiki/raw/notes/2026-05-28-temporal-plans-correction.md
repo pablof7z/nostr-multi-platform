@@ -15,7 +15,7 @@ The user correction for this wiki and guidance update:
 
 Operational interpretation for this repo:
 
-- `docs/plan.md`, `docs/BACKLOG.md`, and `WIP.md` are temporal coordination surfaces.
+- `docs/plan.md`, GitHub Issues, and `WIP.md` are temporal coordination surfaces.
 - Implemented or invalidated plan detail should be removed, closed, or reduced to live follow-up state.
 - Durable understanding belongs in product specs, doctrine, architecture docs, design docs, ADRs, builder guide pages, source code, tests, and source-backed wiki synthesis.
 - The committed wiki must not preserve executed plans as reference documentation.

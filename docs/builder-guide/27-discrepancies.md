@@ -49,7 +49,7 @@
 The former builder-guide `PLAN.md` was a writer-dispatch artifact and has been
 deleted. The numbered section files are now the source of truth for this guide.
 Future guide-wide reconciliation work belongs in this section or
-`docs/BACKLOG.md`, not in a parallel plan file.
+GitHub Issues, not in a parallel plan file.
 
 ## Anti-patterns
 

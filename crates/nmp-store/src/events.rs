@@ -291,7 +291,7 @@ pub trait EventStore: Send + Sync {
     /// The `MemEventStore` backend maintains a secondary `relay_index` map
     /// (relay_url → event_ids) that makes this an O(1) lookup. The LMDB backend
     /// does not yet maintain this index and returns `Err(StoreError::NotSupported)`
-    /// as a tracked follow-up (V-52 LMDB index — see docs/BACKLOG.md).
+    /// as a tracked follow-up (V-52 LMDB index — see issue #969).
     ///
     /// Callers that need fallback behaviour for LMDB should inspect the error
     /// variant and degrade gracefully (e.g. fall back to a provenance scan,

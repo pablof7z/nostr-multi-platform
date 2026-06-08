@@ -2,7 +2,7 @@
 #
 # Format: relative path<TAB>line fragment<TAB>tracking note.
 # Entries must point to existing transitional debt already tracked in
-# docs/BACKLOG.md. Keep fragments exact enough that nearby new code does not
+# GitHub Issues. Keep fragments exact enough that nearby new code does not
 # inherit the exemption accidentally.
 
 ios/Chirp/Chirp/Bridge/KernelBridge.swift	body: ["PublishProfile": ["fields": profile]]	V-57 P3 native publish policy migration

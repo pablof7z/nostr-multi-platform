@@ -10,7 +10,7 @@
 //!
 //! See `docs/decisions/0035-generic-root-indexed-feed-engine.md` and
 //! `docs/perf/op-centric-feed-architecture.md` §3 for the full design, and
-//! `docs/BACKLOG.md` V-81 for the release-signal timing decision implemented
+//! former tracker V-81 for the release-signal timing decision implemented
 //! in [`RootIndexedFeed::on_event_claim_released`].
 
 mod attribution;

@@ -61,7 +61,7 @@ pub enum StoreError {
     /// The operation is not implemented by this backend.
     ///
     /// V-52: `list_events_seen_on` returns this for the LMDB backend until a
-    /// secondary relay-url index is implemented there (tracked in BACKLOG.md).
+    /// secondary relay-url index is implemented there (tracked in issue #969).
     NotSupported(String),
 }
 

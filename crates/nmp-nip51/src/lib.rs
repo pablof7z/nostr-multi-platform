@@ -51,8 +51,8 @@
 //! `nmp-nip51` serves the **timeline suppression** (hard mute — hide the card
 //! entirely), `nmp-wot` serves **trust scoring** (soft signal — deprioritize
 //! in a ranked feed). The duplication of the kind:10000 `p`-tag parse is an
-//! acknowledged overlap tracked as a BACKLOG follow-up (see V-42 note in
-//! `docs/BACKLOG.md`). Consolidating both onto `nmp-nip51`'s decode would
+//! acknowledged overlap tracked as GitHub issue #964. Consolidating both onto
+//! `nmp-nip51`'s decode would
 //! require `nmp-wot` to depend on `nmp-nip51` — a legal Layer-4 sibling edge
 //! per the spec. That consolidation is a future clean-up step, not v1 scope.
 

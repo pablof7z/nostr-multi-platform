@@ -183,7 +183,7 @@ mod tests {
 
     /// Pin the published defaults so any change is a deliberate edit caught
     /// by review (these values are quoted in the rustdoc and in V-05's
-    /// BACKLOG entry).
+    /// tracker entry).
     #[test]
     fn default_values_are_pinned() {
         let gate = CoverageGate::default();

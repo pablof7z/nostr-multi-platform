@@ -4,7 +4,7 @@ Status: IMPLEMENTED (2026-05-30) — `NmpAppBuilder<S>` typestate shipped in PR 
 the three open design decisions (§7.i-iii) are resolved as: consume-and-return
 typestate, phantom-typed states, builder-is-the-AppHost.
 
-Backlog: V-94 (issue #618). Co-designed with F-08 (NmpAppBuilder) and V-95
+Issue: V-94 (#618). Co-designed with F-08 (NmpAppBuilder) and V-95
 (issue #619, WalletRuntime init order).
 
 ## 1. Problem (code-grounded)

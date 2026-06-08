@@ -6,7 +6,7 @@
 //! [`VecDeque`]s (one for publish traces, one for subscription traces) with
 //! oldest-drop semantics when full.
 //!
-//! See `docs/BACKLOG.md` §V-51 for the four-phase rollout. Phase 2 wires this
+//! See GitHub issue #968 for the V-51 rollout. Phase 2 wires this
 //! projection's [`RoutingTraceProjection::snapshot_publishes`] /
 //! `snapshot_subscriptions` outputs to the FFI/wasm snapshot surface so
 //! Chirp (phase 3) and the validation CLI (phase 4) can read them.

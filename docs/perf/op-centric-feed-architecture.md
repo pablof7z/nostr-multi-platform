@@ -3,8 +3,8 @@
 > **Status:** FINAL design. Implementation-ready.
 > **Author:** Architect (Serena Blackwood)
 > **Revision:** 2026-05-27d (post-codex-v2 + user decisions). This is the
-> implementation-input draft. Subsequent residual concerns track as TODOs in
-> `docs/BACKLOG.md`, not as further revisions.
+> implementation-input draft. Subsequent residual concerns track in GitHub Issues,
+> not as further revisions.
 >
 > **Scope:** redefine the chirp-tui / Chirp / NMP home-feed model from
 > "threaded notes (replies + roots) over the follow-set" to **"thread roots
@@ -635,7 +635,7 @@ v2/v3 design strengthened it.
 
 **V-45 status:** the original V-45 issue is closed by this design,
 just not through the originally-named `SocialTimeline` mechanism. The
-BACKLOG entry needs to record that the V-45 affordance is delivered
+tracker entry needs to record that the V-45 affordance is delivered
 through `nmp-app-template::register_op_feed_defaults` instead.
 
 ### E. `TimelineBlock::Standalone` lossless reshape
@@ -904,7 +904,7 @@ engine drops all incoming replies.
 
 **NIP-51 mute-list (post-v1 V-42).** Adapter-side subtraction:
 `ActiveFollowSet::predicate()` AND-clauses with `!is_muted(pubkey)`
-when the mute list is implemented. Tracked under V-42 in BACKLOG.
+when the mute list is implemented. Tracked under V-42.
 
 ### L. Repost edge cases (REVISED per codex H3-remainder)
 
@@ -1074,7 +1074,7 @@ Tests in §3-J cover all five cases.
 | `ios/Chirp/Chirp/Bridge/Generated/*.swift` | Regenerated for `RootFeedSnapshot` + `Nip10ReplyAttribution`. | varies |
 | `crates/nmp-codegen/src/swift_projections_registry.rs` | Bind `nmp.feed.home` to new `OpFeedSnapshot` Swift type. | +6 / -3 |
 | `docs/architecture/crate-boundaries.md` | Row updates for `nmp-feed` and `nmp-nip02`. | +25 |
-| `docs/BACKLOG.md` | Close V-45 (resolved via composition-root expansion). Add V-59 (this work). Add V-60 (mute-list interaction post-v1, per Q5 + §3-K). Add V-61 (NIP-22 instance post-v1, per Q5). | varies |
+| GitHub Issues | Close V-45 (resolved via composition-root expansion). Add V-59 (this work). Add V-60 (mute-list interaction post-v1, per Q5 + §3-K). Add V-61 (NIP-22 instance post-v1, per Q5). | varies |
 | `docs/plan.md` | Bump framework-thesis status. | +5 |
 
 **Total worktree footprint:** ~7 PRs, ~2,400 LOC net add (engine + tests
@@ -1120,10 +1120,10 @@ file level (different crates). Sensible execution order: 1 → (2 ‖ 3 ‖
 
 ---
 
-## 7. Residual concerns tracked as BACKLOG TODOs
+## 7. Residual concerns tracked as issue TODOs
 
 > Per the user's "no further revision rounds" rule, anything not
-> resolved in v4 lands as a BACKLOG TODO, not as v5.
+> resolved in v4 lands as a GitHub issue, not as v5.
 
 - **V-60:** NIP-51 mute-list interaction with the OP feed. Adapter-side
   subtraction in `ActiveFollowSet::predicate`. Post-v1.
@@ -1145,7 +1145,7 @@ file level (different crates). Sensible execution order: 1 → (2 ‖ 3 ‖
 
 ---
 
-## 8. Backlog entry (final draft for `docs/BACKLOG.md`)
+## 8. Former tracker entry draft
 
 ```markdown
 ### V-59 · Home feed is thread-roots-only with reply attribution [HIGH · v1 PRODUCT-MODEL FIX]
@@ -1229,9 +1229,9 @@ cleanup), V-64 (`event_provenance` accessor).
 | §3-B-3 inaccuracy: naddr uses `kinds + authors + #d`, not `addresses` | **Resolved** | §3-B-3 corrected per `crates/nmp-core/src/kernel/requests/event.rs:110-155`. |
 | §6 LMDB-restored claim | **Resolved** | Removed; replaced with honest pre-kind:3 buffer behavior. |
 | §6 `LogicalInterest::SocialTimeline` may be unnecessary | **Adopted** | Composition-root expansion replaces it. §3-D. |
-| §6 `timeline_authors` is already a substrate social cache | **Acknowledged** | V-62 in BACKLOG (retire post-v1). |
-| §6 `claim_event` EOSE vs host-release mismatch | **Acknowledged** | V-63 in BACKLOG. |
+| §6 `timeline_authors` is already a substrate social cache | **Acknowledged** | V-62 issue (retire post-v1). |
+| §6 `claim_event` EOSE vs host-release mismatch | **Acknowledged** | V-63 issue. |
 | Q1 user answer: raw data, display-layer decision | **Adopted** | `attribution_total` deleted; `Vec<A>` length is the count; chirp-tui renders 1, iOS renders N. §3-C, §3-G. |
 | Q2 user answer: convert `LogicalInterest` to enum | **Moot** | No `SocialTimeline` variant exists in v4; nothing to convert. §3-D documents the override and reasoning. |
-| Q5 user confirmation: NIP-22 post-v1 | **Adopted** | V-61 in BACKLOG. |
+| Q5 user confirmation: NIP-22 post-v1 | **Adopted** | V-61 issue. |
 | Q7 user answer: add replay capability | **Adopted (in kernel, not engine)** | Pre-kind:3 buffer in kernel (rung 1) replays through normal ingest. Engine needs no replay API. §3-K. |

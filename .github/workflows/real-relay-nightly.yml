@@ -9,7 +9,7 @@ name: real-relay nightly
 # skipped instead of failed so downtime doesn't block v1 tracking.
 #
 # Gate: v1 exits only after this workflow is green for 7 consecutive days
-# (see docs/BACKLOG.md V-15).
+# (see F-02 issue #977 and F-04 issue #978).
 
 on:
   schedule:

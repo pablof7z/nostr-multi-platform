@@ -13,15 +13,15 @@ currently in-flight.
 
 ## Cold-start reading order
 
-1. [`AGENTS.md`](AGENTS.md) — repository conventions, planning discipline (three canonical files), doctrine corollaries, agent workflow, file-size rules.
+1. [`AGENTS.md`](AGENTS.md) — repository conventions, planning discipline, doctrine corollaries, agent workflow, file-size rules.
 2. [`docs/aim.md`](docs/aim.md) — immutable architectural north star.
 3. [`docs/plan.md`](docs/plan.md) — temporal release plan, milestone ladder vs. actual state, v1 exit criteria.
-4. [`docs/BACKLOG.md`](docs/BACKLOG.md) — active violations, pending user decisions, ordered v1 feature backlog, post-v1 list.
+4. GitHub Issues — active violations, pending user decisions, ordered v1 feature queue, post-v1 list. Sort by `priority:*` labels.
 5. [`WIP.md`](WIP.md) — work currently on a branch.
 
 ## Planning discipline — TL;DR
 
-Three canonical temporal files: `docs/plan.md` (release-plan view), `docs/BACKLOG.md` (queue), `WIP.md` (in-flight). Plans are coordination artifacts, not durable understanding; implemented plan detail is removed or moved into durable docs. No new top-level plan files, no scattered todo lists, no parallel roadmaps. Full rules in [`AGENTS.md`](AGENTS.md#planning-discipline--temporal-files-no-duplicate-plans).
+Canonical temporal surfaces: `docs/plan.md` (release-plan view), GitHub Issues (queue), and `WIP.md` (in-flight). Issue labels define priority order: `priority:p0` through `priority:p4`, with `category:*`, `phase:*`, `area:*`, `doctrine:*`, and `status:*` labels for sorting. Plans are coordination artifacts, not durable understanding; implemented plan detail is removed or moved into durable docs. No new top-level plan files, no scattered todo lists, no parallel roadmaps. Full rules in [`AGENTS.md`](AGENTS.md#planning-discipline--github-queue-temporal-files-no-duplicate-plans).
 
 ## Test scope — TL;DR
 

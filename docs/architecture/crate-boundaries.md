@@ -7,7 +7,7 @@ This document owns durable crate-boundary rules: which layer owns which
 responsibility, which dependency directions are valid, and which seams are
 allowed between layers. It does **not** own migration status, completed-step
 history, active branches, PR state, or "what is currently being fixed" claims.
-Temporal coordination belongs in `docs/plan.md`, `docs/BACKLOG.md`, and the
+Temporal coordination belongs in `docs/plan.md`, GitHub Issues, and the
 ignored live `WIP.md` tracker.
 
 If this document disagrees with code, ADRs, or doctrine, fix the single source
@@ -22,7 +22,7 @@ of truth that owns the concept. Do not create a second crate-boundary plan.
 - `docs/product-spec/doctrine.md` owns durable doctrine.
 - `docs/decisions/` owns accepted architectural decisions.
 - This file owns the durable crate graph and crate responsibility rules.
-- `docs/BACKLOG.md` owns unresolved violations and queued work.
+- GitHub Issues own unresolved violations and queued work.
 - `WIP.md` owns active branch/worktree coordination only.
 
 Plans are temporary. Once a migration has landed, this file keeps only the
@@ -72,7 +72,7 @@ must not depend on another binding crate for business behavior.
 
 `nmp-core` must not grow new protocol-specific parsers, routing algorithms,
 action bodies, or app-specific nouns. If an existing protocol-shaped exception
-remains, it belongs in `docs/BACKLOG.md` with a code citation and removal path.
+remains, it belongs in a GitHub issue with a code citation and removal path.
 
 ---
 
@@ -199,7 +199,7 @@ shape, panic guards, callbacks, lifecycle handles, and platform-specific bridge
 mechanics. They do not own business policy.
 
 The C-ABI surface is frozen by CI. Net-new `nmp_app_*` symbols require an ADR
-or an accepted backlog item that explicitly explains why the generic action,
+or an accepted GitHub issue that explicitly explains why the generic action,
 projection, or capability seam is insufficient.
 
 ---
@@ -209,7 +209,7 @@ projection, or capability seam is insufficient.
 When a crate-boundary rule changes:
 
 1. Update the durable owner document: this file, a product spec, or an ADR.
-2. Update `docs/BACKLOG.md` only for live work still required.
+2. Update or create GitHub Issues only for live work still required.
 3. Do not add a parallel plan, review dump, or architecture ladder.
 4. Do not preserve completed migration history here. Git history already does
    that.

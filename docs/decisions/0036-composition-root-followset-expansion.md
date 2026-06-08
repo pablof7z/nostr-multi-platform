@@ -6,7 +6,7 @@ Date: 2026-05-28
 
 ## Context
 
-The OP-centric home feed (BACKLOG V-80; full design in
+The OP-centric home feed (former tracker V-80; full design in
 [`docs/perf/op-centric-feed-architecture.md`](../perf/op-centric-feed-architecture.md))
 needs two things from the active account's follow set:
 
@@ -137,7 +137,7 @@ in the planner and not in the kernel.
   seam. This ADR delivers the same affordance — every composing app gets the
   follow-set-driven home feed through a one-line
   `register_op_feed_defaults(app, viewer)` — without the planner-side variant.
-  The BACKLOG V-45 entry should record that V-45 is satisfied via
+  The tracker V-45 entry should record that V-45 is satisfied via
   composition-root expansion (rung 6), not via `SocialTimeline`.
 - **The user's Q2 (LogicalInterest enum-vs-discriminator) is moot.** There is
   no `SocialTimeline` variant to convert.

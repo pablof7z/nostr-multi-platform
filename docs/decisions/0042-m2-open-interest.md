@@ -190,7 +190,7 @@ that argues further for reusing the feed engine's own event gate
 `ParentResolver`-driven filter on the observer path) rather than re-deriving
 admission in the kernel. The exact gate placement (kernel `should_store_event`
 generalisation vs. feed-engine-side gating with a store-retain hook) is the
-open sub-decision for the author/thread half; it is recorded in `docs/BACKLOG.md`
+open sub-decision for the author/thread half; it is recorded in GitHub Issues
 as the next-sprint task and does not block the additive PR1 mechanism below.
 
 ### 5.2 Why the original task framing under-counted the scope
@@ -203,7 +203,7 @@ projections are the sole read path for Chirp's `ProfileView` / `ThreadScreen`
 (verified: `ProfileView.swift` derives its note list from `authorView.items`),
 and deleting them forces the store-admission + feed-registration work above.
 The author/thread read-path migration is the architecture-significant half and
-is sequenced as a follow-up sprint (see `docs/BACKLOG.md`).
+is sequenced as a follow-up sprint (see GitHub Issues).
 
 ## 6. Consequences
 
