@@ -8,7 +8,7 @@
 > - [`WIP.md`](../WIP.md) — live tracker for work currently on a branch (in-flight)
 > - [`docs/plan.md`](plan.md) — overarching plan (milestones, doctrine, where we are)
 >
-> Verified against `origin/master` **c295efcc** (2026-05-29). Update this file
+> Verified against `origin/master` **56a0d8d9** (2026-06-08). Update this file
 > in every PR that touches an item listed here. (Cleanup pass 2026-05-27 — completed
 > items removed; see git history for prior state.)
 >
@@ -16,6 +16,10 @@
 > during the v0.1.0/0.1.1 backend sweep (V-46, V-58, V-61–V-67, V-69–V-72, V-74–V-75,
 > V-77, V-79, V-84–V-86, V-92, V-96); renumbered duplicate V-68-iOS to V-106;
 > deduplicated V-82; resolved PD-041.
+>
+> Reconciled against open GitHub issues on 2026-06-08: restored V-68 Stage 2
+> for #911, linked #920 to V-113 instead of adding a duplicate TimelineItem
+> tracker, added #954 to post-v1 capability work, and verified #906 as fixed.
 
 ---
 
@@ -71,6 +75,33 @@ projection payloads, codegen registry entries, FFI symbols/header rows, and
 legacy tests in one verified cascade. Do not reintroduce native-owned read
 paths or bespoke projections; new consumers use registry/feed keys and Rust-owned
 admission.
+
+### V-68 · Retire Chirp social-kind defaults from generic FFI open surfaces [HIGH · issue #911]
+
+**Verified (2026-06-08):** `nmp-ffi` is the generic C-ABI surface, but three
+stable entry points still declare Chirp's social feed kinds `{1,6}`:
+
+- `crates/nmp-ffi/src/identity.rs:260-266` —
+  `nmp_app_open_timeline` sends `OpenContactListSubscription` with
+  `BTreeSet::from([1u32, 6u32])`.
+- `crates/nmp-ffi/src/timeline.rs:28-45` — `nmp_app_open_author` sends
+  `OpenAuthor` with `BTreeSet::from([1u32, 6u32])`.
+- `crates/nmp-ffi/src/timeline.rs:59-75` — `nmp_app_open_thread` sends
+  `OpenThread` with `BTreeSet::from([1u32, 6u32])`.
+
+**Why this is live:** Stage 1 made `nmp-core` carry kind sets as opaque filter
+data, so this is not a fresh `nmp-core` D0 violation. It is still a framework
+surface violation: a non-Chirp app that calls the generic FFI symbols inherits
+tweet/repost semantics. `docs/plan.md` already names this as the sole open
+C-ABI surface item, but it had fallen out of Section 1 after Stage 1 closed.
+
+**Correct fix:** keep the already-present generic
+`nmp_app_open_interest(filter_json, consumer_id, scope)` / `close_interest`
+surface, write the required ADR for retiring frozen C-ABI symbols, migrate
+remaining consumers to app-owned filter composition plus explicit claim/profile
+hydration, then delete `nmp_app_open_timeline` / `open_author` / `open_thread`
+and their legacy actor/kernel projection path in the same verified cascade.
+Pairs with V-112; do not add another social-kind default to generic FFI.
 
 ### V-57 · Remaining kind-constant duplicates to migrate to nmp-kinds [LOW · residual]
 
@@ -334,7 +365,7 @@ once `nmp-codegen`'s Swift emitter is taught the new shape (the
 `gen modules --check` gate against `apps/fixture/nmp.toml` is currently
 green because the fixture types do not include these projection shapes).
 
-### V-113 · Residual `content_preview` / display-enrichment projection boundary [MEDIUM · ADR-0032 follow-up]
+### V-113 · Residual `TimelineItem` / display-enrichment projection boundary [MEDIUM · ADR-0032/#920 follow-up]
 
 **Verified (2026-06-04):** ADR-0032 says projections and snapshots send raw
 protocol data and presentation layers format. Current code still has a
@@ -356,6 +387,11 @@ cross-surface ambiguity:
 schemas and multiple shell models read them. A docs-only clarification would
 either bless pre-truncated content/display mirrors as raw projection data or
 contradict ADR-0032 without changing the code.
+
+**GitHub reconciliation (2026-06-08):** issue #920 tracks the broader
+`TimelineItem` relocation concern. Do not add a parallel Section 1 item for the
+same projection boundary; the canonical tracker is this V-entry unless a future
+audit splits a narrower, code-verified violation with its own current citations.
 
 **Required decision/fix:** choose one canonical boundary and implement it
 end-to-end:
@@ -1156,6 +1192,7 @@ Deliberately deferred. Do not start until Section 4 is complete.
 | Raw-data projection follow-ups | ADR-0032 is canonical. Post-v1 work may add a shared `nmp-display` helper/codegen surface, a doctrine-lint rule for banned display helpers in projections, and a review of free-form metadata fallbacks. |
 | Chirp TUI approach-B visual refresh | The top-level scratch plans were deleted. If this work resumes, track it as a scoped TUI UX item here or in WIP while a branch is active; preserve existing `chirp-tui` runtime/bridge/command wiring and keep rendering modules under the LOC ceiling. |
 | Indexer-republish follow-ups | The default composition installs `nmp_router::IndexerRepublishPolicy` through `nmp-core`'s generic raw-event forwarding seam. Deferred add-ons are runtime toggles, telemetry, and parameterized replaceable support only if product demand appears. |
+| Streaming STT/TTS session capabilities (#954) | Podcast-player is the live second-app candidate, but no `apps/podcast-player` code is in this repo. Track the framework capability gap here until the app lands: define canonical `nmp.stt.capability` / `nmp.tts.capability` session contracts for binary chunks, ordering, cancellation, backpressure, credential handoff, and host capture/playback obligations so platforms execute audio I/O and Rust owns provider URLs, request bodies, parsing, and policy. |
 | Chirp TUI unfinished interactions | `apps/chirp/chirp-tui/src/input.rs:350,431,433,523` — repost, group-discover, add-relay, add-account, and DM-open are all `// not yet wired (post-v1)` no-ops. Mirror: `ios/Chirp/Chirp/Components/NoteRowView.swift:225` repost is also a no-op. Wire once the corresponding `dispatch_action` namespaces exist. |
 | `nmp-content` Phase-2 claim dependency channel | `crates/nmp-content/src/embed_registry/mod.rs:26` — `// Phase 2: expose the claim-driven dependency channel`. The embed registry currently resolves claims synchronously; the async demand-producer path for late-arriving embedded events is not exposed to callers. |
 | F-01 wasm IndexedDB store | chirp-web runs in-memory only (resets on reload); port persistence to IndexedDB-backed `nostr-database` impl once wasm is in scope. All prior native stages merged. |
@@ -1217,4 +1254,5 @@ Recorded so Opus reviews do not re-flag these as violations.
 | V-86 · Flatbuffers pin-check Android coverage | PR #781; `ci/check-flatbuffers-version-pins.sh` covers full `android/app/src/main/java/nmp/` tree. Verified at HEAD. |
 | V-92 · Relay backoff reset after healthy session | Commit 5da5942c; `RELAY_BACKOFF_RESET_AFTER_SECS` reset at line ~426 in `nmp-network/src/relay_worker/mod.rs`. Verified at HEAD. |
 | V-96 · NIP-57 bolt11 consolidation | Already `pub(crate)` at HEAD: `fetch_lnurl_invoice_blocking` (`:419`) + `fetch_bolt11_for_zap` (`:559`) in `nmp-nip57/src/lnurl/mod.rs`; no external callers confirmed. Close GH #620. |
+| GH #906 · `inflight_dispatches` guard + core `PublishNote` variant | Verified fixed on `origin/master` 56a0d8d9: zero `inflight_dispatches` / `INFLIGHT_DISPATCH_TTL` / `PublishAction::PublishNote` / `ActorCommand::PublishNote` / `reply_tags_for_parent` / `kick_thread_hydration` hits in `crates/nmp-core` + `crates/nmp-ffi`; `PublishAction` now contains `Publish`, `PublishProfile`, and `PublishRaw` only. |
 | V-109 · Android Marmot build + Groups tab | 2026-05-31 (branch `v-109-android-marmot`): all three blockers closed. (a) `android/app/build.gradle.kts` cargoNdk passes `--features marmot`; (b) `nmp-android-ffi` gained a forwarding `marmot` feature → `nmp-app-chirp/marmot`; (c) `nativeMarmotRegisterActive`/`nativeMarmotUnregister` JNI shim (`crates/nmp-android-ffi/src/marmot.rs`) reaches `nmp_marmot_register_active`/`_unregister` via Rust paths for cdylib symbol retention, and a Compose Groups tab (`GroupsScreen.kt` + `GroupChatScreen.kt`) lists groups / creates / sends / accepts welcomes / publishes key package off the `nmp.marmot.snapshot` + `nmp.marmot.messages` push projections, all writes routed through `dispatch_action("nmp.marmot", …)`. Skeleton merge bar per the V-109 brief; remaining iOS parity (invite-into-existing-group, join-by-link, member management, profile/relative-time display) is incremental Android work, not a platform gap. |
