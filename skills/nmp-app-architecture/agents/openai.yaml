@@ -1,0 +1,4 @@
+interface:
+  display_name: "NMP App Architecture"
+  short_description: "Enforce RMP/NMP app architecture rules"
+  default_prompt: "Use $nmp-app-architecture to review this app for RMP/NMP architecture, doctrine, and performance compliance."
