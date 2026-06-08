@@ -15,6 +15,8 @@ ignore = [
     "RUSTSEC-2024-0384",
     # `paste` is archived upstream; existing usage is non-networked macro glue.
     "RUSTSEC-2024-0436",
+    # proc-macro-error2 is unmaintained (RUSTSEC-2026-0173); no upgrade path via hax-lib/openmls chain.
+    "RUSTSEC-2026-0173",
 ]
 
 [licenses]
