@@ -44,8 +44,8 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
 
 | ID | Rule | Origin | Layer | Sev | Detection |
 |----|------|--------|-------|-----|-----------|
-| C1 | No relay URL on any app-facing open/send/publish call (`relays:` param) | D3 | any | block | `relays:`, `relayUrls`, `wss://` literal in shell |
-| C2 | No hardcoded relay constants in app code; routing resolves via outbox | D3 / C6 | any | block | `"wss://` literal, relay list constant |
+| C1 | No relay-routing override (`relays:` param) on an app-facing open/send/publish call | D3 | any | block | `relays:`/`relayUrls:` as a *routing arg* — EXCLUDE NIP-65/NIP-17 relay-list *payloads* (the list is the event content, not a route) |
+| C2 | App MAY declare a default/bootstrap relay set; MUST NOT pass per-call routing relays | D3 / C6 | any | block | per-call `relays:` override — EXCLUDE app default-seed into `configured_relays`/`addRelay` bootstrap (required; you cannot outbox-resolve from zero relays) |
 | C3 | DM / gift-wrap never falls back to public relays — fail closed | D3 / C7 | any | block | semantic + public-relay fallback in DM path |
 
 ## D — Don't write the fallback (framework-magic contract)
@@ -70,7 +70,7 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
 
 | ID | Rule | Origin | Layer | Sev | Detection |
 |----|------|--------|-------|-----|-----------|
-| F1 | No `try/catch` / `do { try } catch` around a framework call in shell | D6 | swift/kotlin/ts | block | `do {` / `try {` / `catch` wrapping an `nmp_`/kernel call |
+| F1 | No `try/catch` / `do { try } catch` around a framework call in shell | D6 | swift/kotlin/ts | block | `catch` whose `try` body calls `nmp_`/kernel — EXCLUDE stdlib `JSONEncoder`/`JSONDecoder`/FlatBuffer decode of app-side *input* (those legitimately throw) |
 | F2 | Every failure surfaces via observable state (toast / `busy` clears / diagnostic) | D6 | any | warn | semantic |
 | F3 | No new per-operation error enum plumbed through FFI | D6 | any | warn | error enum crossing the C-ABI |
 
@@ -85,7 +85,7 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
 
 | ID | Rule | Origin | Layer | Sev | Detection |
 |----|------|--------|-------|-----|-----------|
-| H1 | App consumes generated typed bindings; no hand-written `Decodable`/JSON parse over the snapshot | D5 / D6 | swift/kotlin/ts | block | hand-written `Decodable` of kernel payloads; `JSONDecoder().decode` on snapshot |
+| H1 | App consumes generated typed bindings; no hand-written `Decodable`/JSON parse over the snapshot | D5 / D6 | swift/kotlin/ts | block→warn¹ | hand-written `Decodable` of kernel payloads; `JSONDecoder().decode` on snapshot |
 | H2 | No raw JSON string-keying of kernel snapshot/delta in app code | D5 | any | warn | `json["..."]`, dictionary access on snapshot |
 | H3 | Writes go through typed action payloads, not raw event taps / bespoke publish doors | D0 / D6 | any | block | semantic + raw event-tap publish in shell |
 
@@ -107,7 +107,7 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
 
 | ID | Rule | Origin | Layer | Sev | Detection |
 |----|------|--------|-------|-----|-----------|
-| K1 | App doesn't compute replaceable-resolution / expiration / `created_at` trust; kernel owns time | D9 | any | warn | `created_at` comparison / TTL decision in shell |
+| K1 | App doesn't compute replaceable-resolution / expiration / `created_at` trust; kernel owns time | D9 | any | warn | `created_at` in a *comparison/arithmetic* (`>`/`<`/`-`/TTL math) — EXCLUDE display formatting of a kernel-provided value |
 
 ## L — Provenance & privacy (D10)
 
@@ -127,3 +127,29 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
 - **Severity is advisory to the report, not a CI gate.** `block` = "this
   reintroduces a bug class the framework already extinguished"; `warn` =
   "smells like drift, confirm intent"; `note` = informational.
+- **¹ H1 drops to `warn` behind a schema-version reject gate.** Hand-decoding the
+  snapshot is acceptable *only* if a `schema_version` mismatch is rejected
+  (fails closed) rather than silently misparsed — that gate extinguishes the
+  drift bug class H1 guards, leaving only DX/maintenance debt. Chirp's
+  `KERNEL_SCHEMA_VERSION` check is the worked example. Without such a gate, H1
+  is a `block`. (Origin: D5.)
+
+## Calibration log (what real scans taught the catalog)
+
+Each entry is a precision/recall lesson from a scan against a shipping app.
+Keep the *signatures* honest — a rule that cries wolf trains builders to ignore
+the scanner.
+
+- **2026-06-09 · Chirp (iOS) first run.** Confirmed real drift: bespoke kind
+  dispatch in `EmbedHost.swift` (A1/A2, root cause = kernel doesn't emit the
+  typed `EmbedKindProjection` into the snapshot, so the shell re-runs
+  `nmp-content::resolve_event`); a stray `kind == 6` in `ThreadNoteRow.swift`
+  ignoring the already-projected `isRepost` (A3); the hand-decode `KernelBridge`
+  surface (H1, schema-gated → `warn`). **Signature hardening applied** to
+  C1/C2/F1/K1: each over-fired on a *legitimate* pattern — app default-relay
+  seeding (C2), NIP-65/17 relay-list payloads (C1), stdlib `JSONEncoder` throws
+  (F1), `created_at` display formatting (K1). The lesson: a `relays:` /
+  `created_at` / `do-catch` token alone is not the harm; the harm is the
+  *semantic role* (routing override vs. data; trust-arithmetic vs. display;
+  wrapping an `nmp_` call vs. stdlib). The mechanical pass narrows; only the
+  semantic pass convicts.
