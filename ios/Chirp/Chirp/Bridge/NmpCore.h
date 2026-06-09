@@ -89,6 +89,15 @@ void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
 void nmp_app_open_timeline(void *app);
 
+// H4 — NMP-provided NIP-19 identity encoder. Turns a 64-char hex pubkey into a
+// bech32 display identifier so app shells stop hand-rolling bech32.  Prefers
+// `nprofile1…` (pubkey + relays) when the kernel already holds the pubkey's
+// kind:10002 relay hints; otherwise returns a bare `npub1…`.  Never fetches —
+// it is a synchronous read of cached kind:10002 state.  Returns a heap string
+// the caller MUST free via nmp_app_free_string.  D6: a null/invalid input or
+// any encode failure degrades to a copy of the raw input, never NULL.
+char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
+
 // ── Publish lifecycle (control plane only) ───────────────────────────────
 //
 // PR-F (one door per capability) DELETED the bespoke event-producing

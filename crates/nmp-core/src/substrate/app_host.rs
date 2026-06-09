@@ -48,6 +48,15 @@ pub trait AppHost: ActionRegistrar {
 
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn DmInboxRelayLookup>);
 
+    /// H4 — install the read-only [`MailboxCache`] handle the host's NIP-19
+    /// identity encoder (`nmp_app_encode_profile`) reads kind:10002 relay
+    /// hints from. The composition root passes the SAME `MailboxCache`
+    /// instance it hands [`AppHost::set_routing_substrate`] and the
+    /// kind:10002 [`IngestParser`], so the encoder can prefer `nprofile` over
+    /// a bare `npub` using the hints the parser writes on ingest. Read-only,
+    /// synchronous — no network, no actor round-trip.
+    fn set_mailbox_cache_reader(&self, cache: Arc<dyn MailboxCache>);
+
     fn set_routing_substrate<F>(&self, factory: F)
     where
         F: Fn(Arc<dyn RoutingTraceObserver>) -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>)

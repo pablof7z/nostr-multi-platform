@@ -455,6 +455,11 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.set_dm_inbox_relay_lookup(lookup);
     }
 
+    fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.set_mailbox_cache_reader(cache);
+    }
+
     fn set_routing_substrate<F>(&self, factory: F)
     where
         F: Fn(

@@ -32,6 +32,11 @@ mod identity;
 #[path = "interest_feed_tests.rs"]
 mod interest_feed_tests;
 mod lifecycle;
+// H4 — NMP-provided NIP-19 identity encoder (`nmp_app_encode_profile`). Split
+// out of `identity.rs` under the same owner namespace to keep both files
+// under the LOC ceiling; the `#[no_mangle]` symbol name is ABI-stable across
+// the split (same precedent as `publish.rs` ← `identity.rs`).
+mod nip19_ffi;
 mod publish;
 mod raw_event_tap;
 mod relay_config;
@@ -92,6 +97,8 @@ pub use identity::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_account,
     nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
+#[cfg(feature = "native")]
+pub use nip19_ffi::nmp_app_encode_profile;
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use lifecycle::{
@@ -598,6 +605,19 @@ pub struct NmpApp {
     /// time and binds the resolved value onto the kernel via
     /// [`nmp_core::kernel::Kernel::set_bootstrap_self_kinds_override`].
     bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
+    /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the
+    /// `nmp_app_encode_profile` NIP-19 identity encoder. The per-app crate
+    /// (today `nmp-app-template`) writes the SAME `Arc<InMemoryMailboxCache>`
+    /// here via [`Self::set_mailbox_cache_reader`] that it hands the routing
+    /// factory and the `Kind10002Parser`. That instance identity is the whole
+    /// ballgame: the encoder reads kind:10002 relay hints out of the very
+    /// cache the parser fills on ingest, so it can prefer `nprofile` over a
+    /// bare `npub`. A divergent / fresh instance silently kills the nprofile
+    /// branch (the read always misses → always npub). Read-only — never
+    /// shared with the actor thread, so unlike `dm_inbox_relays_slot` there is
+    /// no `actor_*` clone. `None` (the default) means "no relay hints known",
+    /// which the encoder treats as the npub fallback.
+    mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,
     /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
     /// already accepted for `pay_invoice` but for which the kind:23195
     /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
@@ -1072,6 +1092,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // slots. Mirrors the dm_inbox_relays_slot wiring above.
         blocked_relays_slot,
         bootstrap_self_kinds,
+        // H4 — read-only NIP-19 encoder cache handle. Empty until an app
+        // crate wires the SAME `InMemoryMailboxCache` it gives the routing
+        // factory + Kind10002Parser through `set_mailbox_cache_reader`.
+        mailbox_cache_reader: Mutex::new(None),
         // V-38: NIP-47 wallet `pay_invoice` double-tap guard. The state is
         // still in `NmpApp` (a generic UI dedup primitive, no protocol
         // content); the wallet runtime that consumes the dispatched action
@@ -1460,6 +1484,43 @@ impl NmpApp {
         if let Ok(mut slot) = self.blocked_relays_slot.lock() {
             *slot = lookup;
         }
+    }
+
+    /// H4 — install the read-only [`nmp_core::substrate::MailboxCache`] handle
+    /// the `nmp_app_encode_profile` NIP-19 encoder reads kind:10002 relay
+    /// hints from. Mirrors [`Self::set_blocked_relay_lookup`] /
+    /// [`Self::set_dm_inbox_relay_lookup`]: a poisoned lock is a silent no-op
+    /// (D6).
+    ///
+    /// The `Arc` passed here MUST be the SAME `InMemoryMailboxCache` instance
+    /// the app crate hands the routing-substrate factory and (critically) the
+    /// `nmp_router::Kind10002Parser`. Instance identity is load-bearing: the
+    /// encoder prefers `nprofile` only when it can read the relay hints the
+    /// parser wrote on kind:10002 ingest. A fresh / divergent instance leaves
+    /// the encoder reading an always-empty cache, silently degrading every
+    /// result to a bare `npub`.
+    ///
+    /// MUST be called before `nmp_app_start` for the encoder to see relay
+    /// hints ingested after start; the slot may be read on any thread (the
+    /// encoder is a synchronous cache read, no actor round-trip).
+    pub fn set_mailbox_cache_reader(
+        &self,
+        cache: std::sync::Arc<dyn nmp_core::substrate::MailboxCache>,
+    ) {
+        if let Ok(mut slot) = self.mailbox_cache_reader.lock() {
+            *slot = Some(cache);
+        }
+    }
+
+    /// Snapshot the installed NIP-19-encoder mailbox-cache handle, if any.
+    /// Returns a clone of the `Arc` so the caller can read it without holding
+    /// the lock across the `write_relays` call. A poisoned lock reads as
+    /// `None` (D6 — the encoder then falls back to `npub`).
+    #[must_use]
+    pub(crate) fn mailbox_cache_reader(
+        &self,
+    ) -> Option<std::sync::Arc<dyn nmp_core::substrate::MailboxCache>> {
+        self.mailbox_cache_reader.lock().ok().and_then(|slot| slot.clone())
     }
 
     /// Override the active-account bootstrap Tailing self-kinds list.
@@ -2139,6 +2200,10 @@ impl nmp_core::substrate::AppHost for NmpApp {
 
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         NmpApp::set_dm_inbox_relay_lookup(self, lookup);
+    }
+
+    fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
+        NmpApp::set_mailbox_cache_reader(self, cache);
     }
 
     fn set_routing_substrate<F>(&self, factory: F)
