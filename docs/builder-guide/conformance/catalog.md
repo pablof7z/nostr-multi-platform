@@ -28,9 +28,10 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
 | ID | Rule | Origin | Layer | Sev | Detection |
 |----|------|--------|-------|-----|-----------|
 | A1 | No Nostr business logic in shell code (event interpretation, reducers, NIP semantics) | D0 | swift/kotlin/ts | block | semantic + `kind ==`, `switch.*kind`, NIP-name fns in shell |
-| A2 | No bespoke Nostr implementation routing around NMP (hand-rolled relay socket, REQ/EVENT framing, signer, MLS, NIP impl) | D0 | any | block | semantic + `WebSocket`/`URLSession.*wss`, `\["REQ"`, `secp256k1`, raw nip libs |
-| A3 | No `switch`/`if` branching on event `kind` in shell | D0 | swift/kotlin/ts | block | `kind ==`, `\.kind\b`, `switch .*kind` |
+| A2 | No bespoke Nostr implementation routing around NMP (hand-rolled relay socket, REQ/EVENT framing, signer, MLS, NIP impl) | D0 | any | block | semantic + `\["REQ"`, `secp256k1`/`schnorr`/`bech32`, direct nostr-sdk/NDK import. NAME-TRAP: a `*RelayBridge` / `wss://` may be a non-Nostr socket (TTS/LLM stream) — judge the protocol, not the name |
+| A3 | No `switch`/`if` branching on event `kind` in shell | D0 | swift/kotlin/ts | block | `kind` read on a kernel **event/snapshot** type (`SignedNostrEvent`, claimed-event DTO) — NOT a domain enum (`DownloadKind`/`AdKind`/`error.kind`); in a thick app ~all `\.kind` hits are domain enums |
 | A4 | App composes generic interest/action APIs; no app domain noun pushed into kernel calls | D0 | any | warn | semantic |
+| A5 | No shell-side reduction of raw kernel events (kind-dispatch, NIP-10 thread building, tag parsing); consume a typed projection | D0 / D5 | any | block | semantic — a raw `SignedNostrEvent`/event-with-`tags` crossing into the shell is itself the smell; the fix is a kernel-side typed projection (D5), not shell code |
 
 ## B — Best-effort rendering: placeholders, no gates (D1, C13)
 
@@ -88,6 +89,7 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
 | H1 | App consumes generated typed bindings; no hand-written `Decodable`/JSON parse over the snapshot | D5 / D6 | swift/kotlin/ts | block→warn¹ | hand-written `Decodable` of kernel payloads; `JSONDecoder().decode` on snapshot |
 | H2 | No raw JSON string-keying of kernel snapshot/delta in app code | D5 | any | warn | `json["..."]`, dictionary access on snapshot |
 | H3 | Writes go through typed action payloads, not raw event taps / bespoke publish doors | D0 / D6 | any | block | semantic + raw event-tap publish in shell |
+| H4 | Shell uses an NMP-provided npub/bech32 display helper; no hand-rolled NIP-19 encoding (even for display) | D0 / D5 | any | note | hand-rolled `Bech32.encode` / NIP-19 TLV in shell — currently a **framework gap**: NMP exposes no npub helper, so this is a `note` until it does |
 
 ## I — Compose self-claiming components (no app-side fetch)
 
@@ -132,7 +134,11 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
   (fails closed) rather than silently misparsed — that gate extinguishes the
   drift bug class H1 guards, leaving only DX/maintenance debt. Chirp's
   `KERNEL_SCHEMA_VERSION` check is the worked example. Without such a gate, H1
-  is a `block`. (Origin: D5.)
+  is a `block`. (Origin: D5.) **The gate must be a live comparison that
+  *rejects*** — a declared-but-never-compared `SCHEMA_VERSION` constant is
+  cosmetic and earns no discount (Podcastr declares the constant but decodes
+  leniently via `decodeIfPresent ?? default` and never rejects a mismatch, so a
+  newer schema silently misparses — that is still a `block`).
 
 ## Calibration log (what real scans taught the catalog)
 
@@ -153,3 +159,25 @@ the scanner.
   *semantic role* (routing override vs. data; trust-arithmetic vs. display;
   wrapping an `nmp_` call vs. stdlib). The mechanical pass narrows; only the
   semantic pass convicts.
+- **2026-06-09 · Podcastr (iOS) — first portable run against a separate repo,
+  and the first *thick* app.** Scanned from this catalog as the source of truth
+  against `~/Work/podcast-player` (a podcast player consuming NMP via symlink).
+  Integration surface largely conformant (profile resolution, NIP-46, account
+  creation, publish-signing all delegated; no bespoke relay socket or Swift
+  signer). Real drift localized to the **feedback subsystem**: shell-side
+  reduction of raw `SignedNostrEvent`s (A1/A3/**A5**) + app-side replaceable
+  supersession (D1), plus clip/note NIP-tag building in Swift (A4) and a
+  Blossom hand-built auth event (A2, documented waiver). **Three catalog
+  changes added by this run:** (1) new rule **A5** — the feedback drift is the
+  *same shape* as Chirp's `EmbedHost` (kernel emits raw events → shell reduces
+  them); naming it points the fix at the kernel projection, not the shell.
+  (2) new rule **H4** — shell hand-rolls NIP-19 bech32 for display because NMP
+  exposes no npub helper (a framework gap; `note` until the helper ships).
+  (3) footnote ¹ tightened — a declared-but-uncompared schema constant is a
+  cosmetic gate, no `warn` discount. **Signature lesson (thick app):** A3's
+  `\.kind\b` is near-useless here — 40+ `kind ==` hits were *all* domain enums
+  (`DownloadKind`/`AdKind`/`error.kind`), zero Nostr; and name-traps abound
+  (`AgentRelayBridge` = an LLM loop, `ElevenLabs wss://` = TTS audio). The
+  catalog held the line *only* because the semantic pass discarded every one of
+  these — a thick app is where "grep narrows, semantic convicts" stops being
+  advice and becomes load-bearing.
