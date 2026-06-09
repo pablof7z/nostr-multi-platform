@@ -5,6 +5,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.2.7 — 2026-06-10
+
+**C-ABI change (additive, non-breaking).** One new `nmp_app_*` FFI symbol added: `nmp_app_encode_profile`. No existing symbol changed or removed — apps can bump the pin without touching their header or existing call sites; adopt the new symbol to delete hand-rolled NIP-19 encoding.
+
+### Added
+
+- **`nmp_app_encode_profile(app, pubkey_hex) → *char`** — NMP-provided NIP-19 identity encoder (closes app-conformance finding H4: "shell hand-rolls NIP-19 bech32"). Prefers an `nprofile` carrying the pubkey plus up to 3 of its kind:10002 write-relay hints **when the kernel already holds them** (no fetch — reads the same mailbox cache the kind:10002 ingest parser fills); falls back to a plain `npub` when there is no relay hint. Lets app shells stop reimplementing bech32/NIP-19 for display. Free the returned string via `nmp_app_free_string`.
+
+---
+
 ## nmp-v0.2.6 — 2026-06-04
 
 **No C-ABI change.** No `nmp_app_*` FFI symbol added, removed, or changed since v0.2.5 — apps can bump the pin without touching their header or call sites. The change below is internal substrate (`ProtocolCommand` workers only).
