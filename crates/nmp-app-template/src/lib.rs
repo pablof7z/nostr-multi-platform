@@ -200,6 +200,15 @@ pub fn register_defaults(app: &mut impl AppHost) {
     // re-invoked by the `Reset` dispatch arm against the rebuilt kernel's
     // fresh trace projection.
     let mailbox_cache: Arc<InMemoryMailboxCache> = Arc::new(InMemoryMailboxCache::new());
+    // H4 — install the SAME mailbox-cache instance as the read side for the
+    // `nmp_app_encode_profile` NIP-19 encoder. This is a THIRD clone of the
+    // one `InMemoryMailboxCache`: the other two go to the routing factory
+    // (below) and the `Kind10002Parser` (further below). Sharing one instance
+    // is what lets the encoder prefer `nprofile` from the kind:10002 relay
+    // hints the parser writes on ingest.
+    app.set_mailbox_cache_reader(
+        Arc::clone(&mailbox_cache) as Arc<dyn nmp_core::substrate::MailboxCache>,
+    );
     let cache_for_factory = Arc::clone(&mailbox_cache);
     app.set_routing_substrate(
         move |observer: Arc<dyn RoutingTraceObserver>|
