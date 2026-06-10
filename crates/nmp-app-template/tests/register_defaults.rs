@@ -145,6 +145,41 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
     nmp_app_free(app);
 }
 
+/// The NIP-57 zap-subscription reconciler no longer registers a snapshot
+/// projection: it was re-homed onto the generic per-tick observer seam
+/// (`AppHost::register_snapshot_tick_observer`) because it only diffs the active
+/// pubkey and enqueues `PushInterest` / `WithdrawInterest` — it produced no
+/// projection data (a `Value::Null` projection, the last NON-DATA abuse of the
+/// dynamic snapshot-projection registry). After the re-home,
+/// `"nmp.nip57.zap_subscription"` must NOT appear as a projection key at all.
+/// `nmp_app_read_projection_json` runs ONLY the JSON registry, so a null return
+/// for this key is the direct proof the reconciler left the registry entirely.
+///
+/// This is discriminating, NOT vacuous: `nmp_app_read_projection_json` returns a
+/// null pointer only for an ABSENT key — a key present with a `Value::Null`
+/// value (exactly what the old `register_snapshot_projection(... Null)` produced,
+/// since `SnapshotRegistry::run` inserts the Null) serializes to the string
+/// `"null"` and returns a NON-null pointer. So this assertion would have FAILED
+/// against the pre-re-home code and passes only because the key is now gone.
+#[test]
+fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
+    let app = nmp_app_new();
+    assert!(!app.is_null(), "nmp_app_new returned null");
+
+    // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
+    nmp_app_template::register_defaults(unsafe { &mut *app });
+
+    let key = CString::new("nmp.nip57.zap_subscription").unwrap();
+    let raw = nmp_app_read_projection_json(app, key.as_ptr());
+    assert!(
+        raw.is_null(),
+        "zap_subscription must NOT appear in the JSON projections map — it is a \
+         per-tick observer now, not a projection"
+    );
+
+    nmp_app_free(app);
+}
+
 fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> String {
     let ns_c = CString::new(namespace).unwrap();
     let json_c = CString::new(action_json).unwrap();

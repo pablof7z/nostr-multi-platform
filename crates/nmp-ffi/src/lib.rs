@@ -2196,6 +2196,13 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::register_typed_snapshot_projection(self, key, f);
     }
 
+    fn register_snapshot_tick_observer<F>(&self, f: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        NmpApp::register_snapshot_tick_observer(self, f);
+    }
+
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
         NmpApp::set_coverage_hook(self, hook);
     }

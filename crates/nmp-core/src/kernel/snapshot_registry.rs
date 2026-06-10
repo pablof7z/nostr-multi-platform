@@ -74,6 +74,25 @@ pub type ProjectionFn = Box<dyn Fn() -> serde_json::Value + Send + Sync + 'stati
 /// inside the snapshot tick, exactly like a generic projection).
 pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send + Sync + 'static>;
 
+/// A host-registered **per-tick observer** closure — a no-result callback fired
+/// once on every snapshot tick.
+///
+/// Unlike a [`ProjectionFn`] / [`TypedProjectionFn`] (which produce snapshot
+/// *data* under a key), a tick observer produces nothing: it is a pure per-tick
+/// side-effect seam for host-side reconcilers that need a "the kernel just
+/// ticked" callback but contribute no projection output (e.g. an active-account
+/// subscription reconciler that diffs the active pubkey each tick and enqueues
+/// `PushInterest` / `WithdrawInterest` actor commands). Such reconcilers
+/// previously abused the projection registry — registering a `ProjectionFn` that
+/// returned `Value::Null` purely to get the per-tick callback, leaving a phantom
+/// null-valued key in every snapshot.
+///
+/// `Send + Sync` because the box lives behind an `Arc<Mutex<…>>` shared with the
+/// actor thread. D8: like a projection closure, it runs inside the snapshot tick
+/// and MUST be non-blocking — it may only enqueue work, never do I/O or wait on
+/// a lock.
+pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
+
 /// Registry of host-supplied snapshot projections.
 ///
 /// Keyed by `String` so re-registering the same key replaces the old closure
@@ -84,6 +103,14 @@ pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send 
 pub struct SnapshotRegistry {
     projections: HashMap<String, ProjectionFn>,
     typed_projections: HashMap<String, TypedProjectionFn>,
+    /// Per-tick observers — no-result callbacks fired once per snapshot tick.
+    ///
+    /// A `Vec` rather than a keyed map: tick observers contribute no snapshot
+    /// data, so there is no namespace to collide on and no "replace by key"
+    /// semantics — each registration is an independent side-effect that should
+    /// fire on every tick. (Production wires exactly one today, the re-homed
+    /// zap-subscription reconciler.)
+    tick_observers: Vec<TickObserverFn>,
 }
 
 impl SnapshotRegistry {
@@ -205,6 +232,39 @@ impl SnapshotRegistry {
         }
         out
     }
+
+    /// Register a per-tick observer closure — a no-result callback fired once
+    /// on every snapshot tick.
+    ///
+    /// The generic, projection-free counterpart to [`Self::register`]: where a
+    /// projection produces snapshot data under a key, a tick observer produces
+    /// nothing — it is a pure per-tick side-effect seam (see [`TickObserverFn`]).
+    /// Registrations are additive (no key, no replace-by-key); each fires on
+    /// every tick. D8: the closure runs inside the snapshot tick and MUST be
+    /// non-blocking.
+    pub fn register_tick_observer(&mut self, f: impl Fn() + Send + Sync + 'static) {
+        self.tick_observers.push(Box::new(f));
+    }
+
+    /// Run every registered per-tick observer.
+    ///
+    /// Mirrors [`Self::run`]'s safety contract: each observer runs on the actor
+    /// thread inside `make_update`, so it must be non-blocking (D8). D6: each
+    /// observer is invoked inside [`catch_unwind`] — a host tick observer is
+    /// untrusted plugin code, and a panic here would otherwise unwind the actor
+    /// thread into a terminal `Panic` frame and permanently kill the kernel. A
+    /// panicking observer is swallowed (the default panic hook still prints the
+    /// payload, so the bug stays visible) and every sibling observer in the same
+    /// tick still fires.
+    pub fn run_tick_observers(&self) {
+        for observer in &self.tick_observers {
+            // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but a
+            // panic here is fully contained — nothing the closure touched is
+            // observed again after it unwinds, so there is no broken-invariant
+            // hazard.
+            let _ = catch_unwind(AssertUnwindSafe(observer));
+        }
+    }
 }
 
 /// Shared snapshot-projection registry handle.
@@ -278,6 +338,22 @@ impl Kernel {
                 .map(|registry| registry.run_typed())
                 .unwrap_or_default(),
             None => Vec::new(),
+        }
+    }
+
+    /// Fire every registered per-tick observer.
+    ///
+    /// A no-op when no slot is bound or the mutex is poisoned — D6: an observer
+    /// dispatch failure is silently absorbed, never a panic at the boundary.
+    /// Shares the slot (and therefore the registry) with
+    /// [`Self::run_snapshot_projections`]; called from `make_update` on every
+    /// tick. The per-observer `catch_unwind` (D6) lives in
+    /// [`SnapshotRegistry::run_tick_observers`].
+    pub(in crate::kernel) fn run_tick_observers(&self) {
+        if let Some(slot) = &self.snapshot_projections {
+            if let Ok(registry) = slot.lock() {
+                registry.run_tick_observers();
+            }
         }
     }
 }
