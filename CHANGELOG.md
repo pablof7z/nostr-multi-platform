@@ -5,6 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.2.9 — 2026-06-11
+
+**No `nmp_app_*` C-ABI symbol change.** Existing FFI callers do not need call-site
+changes.
+
+### Added
+
+- **Generated typed-sidecar Swift decoders (consumer foundation).** `nmp gen typed-decoders`
+  emits `TypedProjectionDecoders.generated.swift` — per-projection-key scaffold that
+  reads the typed FlatBuffer sidecar (envelope key + schemaId lookup,
+  `getCheckedRoot(fileId:)` into the flatc `--swift` reader struct). Decoders compile
+  against the two proof-key `flatc --swift` bindings (`accounts`, `active_account`) shipped
+  in this release. Consumer wire-up (switching read sites off JSON `payload`) follows in
+  the next batch.
+
+---
+
 ## nmp-v0.2.8 — 2026-06-11
 
 **No `nmp_app_*` C-ABI symbol change.** Existing FFI callers do not need call-site
