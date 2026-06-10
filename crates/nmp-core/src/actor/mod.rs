@@ -16,6 +16,12 @@
 //! `CreateAccount` during onboarding.
 
 mod commands;
+// Tier-1 (closure-path) typed-projection codecs for the actor-owned NIP-46
+// built-ins `"bunker_handshake"` / `"nip46_onboarding"`. Native-only: the
+// `register_typed` registration site is in `run_actor_with_observers`
+// (`#[cfg(feature = "native")]`), the only caller of these builders.
+#[cfg(feature = "native")]
+mod typed_projections;
 // V-01 Phase 1c: the actor *runtime* (dispatch / tick / relay management /
 // session persistence) sits on top of the native `relay_worker` and is
 // therefore native-only. `ActorCommand` (pure data), the observer slots,
@@ -1692,6 +1698,12 @@ pub fn run_actor_with_observers(
     // on the FFI surface so every actor consumer — FFI or test — gets it.
     {
         let projection_slot = Arc::clone(&bunker_handshake);
+        // Typed sidecar (ADR-0037) registered ALONGSIDE the generic projection,
+        // reading the SAME slot clone. Conditionally present: the builder
+        // returns `None` (no sidecar entry) when the slot is `None`, mirroring
+        // the generic closure's JSON `null` — see `typed_projections::
+        // bunker_handshake_typed`.
+        let typed_slot = Arc::clone(&bunker_handshake);
         if let Ok(mut registry) = snapshot_projections.lock() {
             registry.register("bunker_handshake", move || {
                 // D6: a poisoned bunker-handshake mutex recovers via
@@ -1702,6 +1714,9 @@ pub fn run_actor_with_observers(
                 slot.as_ref().map_or(serde_json::Value::Null, |dto| {
                     serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
                 })
+            });
+            registry.register_typed("bunker_handshake", move || {
+                typed_projections::bunker_handshake_typed(&typed_slot)
             });
         }
     }
@@ -1717,10 +1732,19 @@ pub fn run_actor_with_observers(
     // can read `signer_apps` even when no handshake is in flight.
     {
         let projection_slot = Arc::clone(&bunker_handshake);
+        // Typed sidecar (ADR-0037) registered ALONGSIDE the generic projection,
+        // reading the SAME slot via the SAME `build_nip46_onboarding_dto`.
+        // Always present (never JSON `null`): the static signer-app probe table
+        // is emitted even when idle, so the builder always returns `Some` — see
+        // `typed_projections::nip46_onboarding_typed`.
+        let typed_slot = Arc::clone(&bunker_handshake);
         if let Ok(mut registry) = snapshot_projections.lock() {
             registry.register("nip46_onboarding", move || {
                 let dto = build_nip46_onboarding_dto(&projection_slot);
                 serde_json::to_value(&dto).unwrap_or(serde_json::Value::Null)
+            });
+            registry.register_typed("nip46_onboarding", move || {
+                typed_projections::nip46_onboarding_typed(&typed_slot)
             });
         }
     }

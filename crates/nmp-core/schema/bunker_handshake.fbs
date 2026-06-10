@@ -1,0 +1,62 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the actor-owned `bunker_handshake` snapshot
+// projection (Tier-1 closure path — registered via `SnapshotRegistry::register`
+// AND `SnapshotRegistry::register_typed` in `crates/nmp-core/src/actor/mod.rs`).
+//
+// The producer is the `registry.register("bunker_handshake", …)` closure in
+// `crates/nmp-core/src/actor/mod.rs`, which serialises the shared
+// `BunkerHandshakeSlot` (an `Arc<Mutex<Option<BunkerHandshakeDto>>>`). When the
+// slot holds `None` (no handshake in flight) the closure contributes JSON
+// `null`; when it holds `Some(dto)` it serialises the `BunkerHandshakeDto`.
+// That generic `Value` projection stays the source of truth (registered
+// unchanged); this buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s
+// `typed_projections` sidecar (ADR-0037) under the SAME key, and ONLY when the
+// JSON closure produces a non-null value (the typed closure returns `None`
+// while the slot is `None`, so no sidecar entry is emitted while idle). A host
+// with a `KBHS` decoder prefers this typed payload; an un-updated host falls
+// back to the generic `Value` subtree. Purely additive (Tier-2 completion).
+//
+// Field-for-field mirror of the SERIALISED `BunkerHandshakeDto`
+// (`crates/nmp-core/src/actor/commands/identity.rs`). `message` is the only
+// `Option<String>` field and carries NO serde `skip_serializing_if`, so it
+// serialises as JSON `null`-when-`None` (key always present); the typed buffer
+// carries its presence as an explicit `has_message` flag (the #1029
+// `ProfileCard` convention). All other fields are scalars present in every
+// serialisation.
+//
+// D0: NIP-46 remote signing is an app noun; handshake state is NOT a typed
+// `KernelSnapshot` field — it is projected under `projections["bunker_handshake"]`
+// exactly like a host-registered namespace, and typed here ALONGSIDE the
+// generic `Value`. D6: the decoder returns `Err(String)` on malformed input,
+// never panics.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/actor/typed_projections/generated \
+//         crates/nmp-core/schema/bunker_handshake.fbs
+
+table BunkerHandshake {
+  // Wire stage token: "connecting" | "awaiting_pubkey" | "ready" | "failed" |
+  // "idle". Carried verbatim from `BunkerHandshakeDto::stage`.
+  stage:string;
+  // Optional human-readable status (relay URL, error reason).
+  // `has_message == false` mirrors JSON `null`.
+  has_message:bool;
+  message:string;
+  // `stage == "idle"`.
+  is_idle:bool;
+  // `stage` is one of "connecting" or "awaiting_pubkey".
+  is_in_flight:bool;
+  // `stage == "failed"`.
+  is_failed:bool;
+  // `stage == "ready"` — the handshake terminated successfully.
+  is_terminal_success:bool;
+  // True when a cancel action would do something (handshake in flight).
+  can_cancel:bool;
+  // Pre-formatted English label for `stage`. Always non-empty (D1).
+  stage_label:string;
+}
+
+file_identifier "KBHS";
+root_type BunkerHandshake;

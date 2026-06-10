@@ -1,0 +1,79 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the actor-owned `nip46_onboarding` snapshot
+// projection (Tier-1 closure path — registered via `SnapshotRegistry::register`
+// AND `SnapshotRegistry::register_typed` in `crates/nmp-core/src/actor/mod.rs`).
+//
+// The producer is the `registry.register("nip46_onboarding", …)` closure in
+// `crates/nmp-core/src/actor/mod.rs`, which serialises the
+// `Nip46OnboardingDto` built by `build_nip46_onboarding_dto`
+// (`crates/nmp-core/src/actor/commands/identity.rs`). UNLIKE `bunker_handshake`,
+// this projection is ALWAYS present (never JSON `null`): the static signer-app
+// probe table is emitted even when no handshake is in flight, so the typed
+// closure always returns `Some`. That generic `Value` projection stays the
+// source of truth (registered unchanged); this buffer is emitted ALONGSIDE it
+// in the `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037) under the
+// SAME key. A host with a `KN46` decoder prefers this typed payload; an
+// un-updated host falls back to the generic `Value` subtree. Purely additive
+// (Tier-2 completion).
+//
+// Field-for-field mirror of the SERIALISED `Nip46OnboardingDto`. Two fields are
+// `Option<_>` and carry NO serde `skip_serializing_if`, so they serialise as
+// JSON `null`-when-`None` (key always present); the typed buffer carries each
+// presence as an explicit `has_*` flag (the #1029 `ProfileCard` convention):
+//   * `stage_kind`  : `Option<BunkerStageKind>` — serialised as a snake_case
+//                     wire token ("idle" | "connecting" | "awaiting_pubkey" |
+//                     "ready" | "failed" | "unknown"); carried here verbatim as
+//                     `stage_kind:string` so a host re-types it the same way it
+//                     would the JSON. `has_stage_kind == false` mirrors `null`.
+//   * progress_message : `Option<String>` — `has_progress_message == false`
+//                     mirrors `null`.
+// `signer_apps` is always present and never empty (the static Rust-owned table).
+//
+// D0: NIP-46 remote signing is an app noun; this read model lives under
+// `projections["nip46_onboarding"]` exactly like `bunker_handshake`, never as a
+// typed `KernelSnapshot` field. The signer-app scheme table is Rust-owned
+// protocol knowledge (which schemes qualify as NIP-46 signers), not a
+// platform-shell concern. D6: the decoder returns `Err(String)` on malformed
+// input, never panics.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/actor/typed_projections/generated \
+//         crates/nmp-core/schema/nip46_onboarding.fbs
+
+// One row of the static NIP-46 signer-app probe table — a field-for-field
+// mirror of one SERIALISED `SignerAppDescriptor`.
+table SignerApp {
+  // Platform URL scheme to probe ("nostrsigner://", "primal://", …).
+  scheme:string;
+  // Human-readable name hosts use in detected-signer CTAs.
+  display_label:string;
+  // Stable signer-kind token ("nip46" for every entry today).
+  signer_kind:string;
+}
+
+table Nip46Onboarding {
+  // Static `(scheme, display_label, signer_kind)` probe table. Always present,
+  // never empty.
+  signer_apps:[SignerApp];
+  // Typed handshake stage as a snake_case wire token; `has_stage_kind == false`
+  // mirrors JSON `null` (no handshake in flight).
+  has_stage_kind:bool;
+  stage_kind:string;
+  // Human-readable progress / error message (verbatim copy of the bunker slot's
+  // `message`); `has_progress_message == false` mirrors JSON `null`.
+  has_progress_message:bool;
+  progress_message:string;
+  // True while a handshake is mid-flight ("connecting" / "awaiting_pubkey").
+  is_in_flight:bool;
+  // True when the last handshake attempt ended in "failed".
+  is_failed:bool;
+  // True when the handshake reached "ready" (final success).
+  is_terminal_success:bool;
+  // True when a cancel action would do something (handshake in flight).
+  can_cancel:bool;
+}
+
+file_identifier "KN46";
+root_type Nip46Onboarding;

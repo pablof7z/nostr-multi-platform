@@ -528,6 +528,105 @@ fn snapshot_carries_bunker_handshake_value() {
     );
 }
 
+#[test]
+fn frame_carries_bunker_handshake_typed_sidecar_only_when_some() {
+    // Full-frame integration proof (ADR-0037): register BOTH the generic and
+    // the typed `"bunker_handshake"` projections exactly as the actor does
+    // (`run_actor_with_observers`), then decode the SnapshotFrame `make_update`
+    // actually emits. The typed sidecar entry must be ABSENT while the slot is
+    // idle (mirroring JSON `null`) and PRESENT — decoding back to the same
+    // value — once a handshake is in flight.
+    let bunker_slot = new_bunker_handshake_slot();
+    let id = IdentityRuntime::new(
+        Arc::clone(&bunker_slot),
+        crate::actor::new_bunker_connection_state_slot(),
+    );
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let projections = crate::kernel::new_snapshot_projection_slot();
+    {
+        let generic_slot = Arc::clone(&bunker_slot);
+        let typed_slot = Arc::clone(&bunker_slot);
+        let mut registry = projections.lock().expect("registry lock");
+        registry.register("bunker_handshake", move || {
+            let slot = generic_slot.lock().unwrap_or_else(|e| e.into_inner());
+            slot.as_ref()
+                .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
+                .unwrap_or(serde_json::Value::Null)
+        });
+        registry.register_typed("bunker_handshake", move || {
+            crate::actor::typed_projections::bunker_handshake_typed(&typed_slot)
+        });
+    }
+    kernel.set_snapshot_projection_handle(projections);
+
+    // Idle: typed sidecar must NOT carry the key.
+    let (_value, typed) = kernel.make_update_typed_for_test(true);
+    assert!(
+        !typed.iter().any(|t| t.key == "bunker_handshake"),
+        "no bunker_handshake typed sidecar while the slot is idle: {typed:?}"
+    );
+
+    // In flight: typed sidecar carries the key, decodes back to the live state.
+    bunker_handshake_progress(
+        &id,
+        &mut kernel,
+        "connecting".to_string(),
+        Some("dialing wss://r.example".to_string()),
+    );
+    let (_value, typed) = kernel.make_update_typed_for_test(true);
+    let entry = typed
+        .iter()
+        .find(|t| t.key == "bunker_handshake")
+        .expect("bunker_handshake typed sidecar present once a handshake is in flight");
+    assert_eq!(entry.file_identifier, "KBHS");
+    let decoded = crate::actor::typed_projections::decode_bunker_handshake(&entry.payload)
+        .expect("typed sidecar decodes");
+    assert_eq!(decoded.stage, "connecting");
+    assert_eq!(decoded.message.as_deref(), Some("dialing wss://r.example"));
+    assert!(decoded.is_in_flight);
+}
+
+#[test]
+fn frame_carries_nip46_onboarding_typed_sidecar_always() {
+    // Full-frame integration proof (ADR-0037): unlike `bunker_handshake`, the
+    // `"nip46_onboarding"` typed sidecar is ALWAYS present (the static
+    // signer-app table is emitted even when idle), mirroring the JSON
+    // projection's never-`null` contract.
+    let bunker_slot = new_bunker_handshake_slot();
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let projections = crate::kernel::new_snapshot_projection_slot();
+    {
+        let generic_slot = Arc::clone(&bunker_slot);
+        let typed_slot = Arc::clone(&bunker_slot);
+        let mut registry = projections.lock().expect("registry lock");
+        registry.register("nip46_onboarding", move || {
+            let dto = crate::actor::commands::build_nip46_onboarding_dto(&generic_slot);
+            serde_json::to_value(&dto).unwrap_or(serde_json::Value::Null)
+        });
+        registry.register_typed("nip46_onboarding", move || {
+            crate::actor::typed_projections::nip46_onboarding_typed(&typed_slot)
+        });
+    }
+    kernel.set_snapshot_projection_handle(projections);
+
+    // Even on an idle slot the typed sidecar is present.
+    let (_value, typed) = kernel.make_update_typed_for_test(true);
+    let entry = typed
+        .iter()
+        .find(|t| t.key == "nip46_onboarding")
+        .expect("nip46_onboarding typed sidecar present even when idle");
+    assert_eq!(entry.file_identifier, "KN46");
+    let decoded = crate::actor::typed_projections::decode_nip46_onboarding(&entry.payload)
+        .expect("typed sidecar decodes");
+    assert!(
+        !decoded.signer_apps.is_empty(),
+        "static signer-app table is always present"
+    );
+    assert_eq!(decoded.stage_kind, None);
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // V-14 step b: BunkerConnectionState projection tests.
 //
