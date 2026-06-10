@@ -1,0 +1,58 @@
+namespace nmp.nip47;
+
+// Typed FlatBuffers wire for `nmp_nip47::WalletStatus` (the app noun projected
+// onto the snapshot under `projections["wallet"]`).
+//
+// This is the typed sidecar counterpart to the authoritative serde JSON of
+// `WalletStatus`: the generic `Value` projection stays the source of truth
+// (`apps/chirp/.../wallet_runtime.rs` still registers it), and this buffer is
+// emitted ALONGSIDE it in every `SnapshotFrame`'s `typed_projections` sidecar
+// (ADR-0037). A host with a `NWST` decoder prefers this typed payload; an
+// un-updated host falls back to the generic `Value` subtree. Purely additive.
+//
+// Field-for-field mirror of the Rust struct (raw protocol values only):
+//   * String fields are required (non-optional in the serde struct).
+//   * `Option<...>` fields carry a `has_*` presence flag plus the value, so
+//     absent (`None`) round-trips distinctly from a present default — the same
+//     optional-fields convention used by content_tree.fbs / op_feed.fbs.
+//   * `Option<NwcConnectionState>` is the `connection_state` enum + its
+//     `has_connection_state` flag.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// has no `include`, so generate plainly:
+//   flatc --rust -o crates/nmp-nip47/src/wire/generated \
+//         crates/nmp-nip47/schema/wallet_status.fbs
+
+// Coarse-grained NWC transport-health state (`nmp_nip47::NwcConnectionState`).
+enum NwcConnectionState:ubyte { Connected = 0, Reconnecting = 1, TransportLost = 2 }
+
+table WalletStatus {
+  // "connecting" | "ready" | "error" | "disconnected"
+  status:string;
+  // The NWC relay URL (from the connection URI).
+  relay_url:string;
+  // The wallet service pubkey in bech32 npub form.
+  wallet_npub:string;
+  // balance_msats: Option<u64>
+  has_balance_msats:bool;
+  balance_msats:uint64;
+  // balance_sats: Option<u64>
+  has_balance_sats:bool;
+  balance_sats:uint64;
+  // balance_sats_display: Option<String>
+  has_balance_sats_display:bool;
+  balance_sats_display:string;
+  // Abbreviated npub (first 10 chars + "…" + last 6 chars).
+  wallet_npub_short:string;
+  // status == "ready"
+  is_ready:bool;
+  // status == "connecting" || status == "ready"
+  is_connected:bool;
+  // connection_state: Option<NwcConnectionState>
+  has_connection_state:bool;
+  connection_state:NwcConnectionState;
+}
+
+file_identifier "NWST";
+root_type WalletStatus;

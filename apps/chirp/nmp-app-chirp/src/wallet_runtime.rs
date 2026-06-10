@@ -9,12 +9,14 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::RelayTextInterceptor;
-use nmp_core::{Kernel, OutboundMessage};
+use nmp_core::{Kernel, OutboundMessage, TypedProjectionData};
 use nmp_ffi::NmpApp;
 
 use nmp_nip47::{
-    install_wallet_runtime, new_wallet_runtime_handle, WalletConnectModule, WalletDisconnectModule,
-    WalletPayInvoiceModule, WalletRuntime, WalletRuntimeHandle, WalletStatusSlot,
+    encode_wallet_status, install_wallet_runtime, new_wallet_runtime_handle, WalletConnectModule,
+    WalletDisconnectModule, WalletPayInvoiceModule, WalletRuntime, WalletRuntimeHandle,
+    WalletStatusSlot, WALLET_STATUS_FILE_IDENTIFIER, WALLET_STATUS_SCHEMA_ID,
+    WALLET_STATUS_SCHEMA_VERSION,
 };
 
 /// Adapter that wires the wallet runtime's [`nmp_nip47::handle_nwc_text`]
@@ -117,10 +119,11 @@ pub(crate) fn register_nip47_wallet(app: &mut NmpApp) {
     app.register_action::<WalletPayInvoiceModule>();
 
     // 2. Shared status slot — one `Arc` clone goes to the runtime (sole
-    //    writer, D4), the other is captured below by the `"wallet"`
-    //    snapshot projection closure.
+    //    writer, D4), the others are captured below by the `"wallet"`
+    //    generic + typed snapshot projection closures.
     let status_slot: WalletStatusSlot = nmp_nip47::new_wallet_status_slot();
     let projection_slot = Arc::clone(&status_slot);
+    let typed_projection_slot = Arc::clone(&status_slot);
 
     // 3. Wallet runtime — held inside an `Arc<Mutex<Option<WalletRuntime>>>`
     //    handle the `ProtocolCommand` impls and the interceptor both lock.
@@ -150,4 +153,34 @@ pub(crate) fn register_nip47_wallet(app: &mut NmpApp) {
             .unwrap_or(serde_json::Value::Null),
         Err(_) => serde_json::Value::Null,
     });
+
+    // 7. The typed `"wallet"` sidecar (Wave A of the typed-snapshot migration,
+    //    ADR-0037) — emitted ALONGSIDE the generic `Value` projection above,
+    //    never replacing it. A host with an `NWST` decoder prefers this typed
+    //    payload; an un-updated host falls back to the generic subtree.
+    //    Additive — un-updated hosts are unaffected.
+    app.register_typed_snapshot_projection("wallet", move || {
+        wallet_typed_projection(&typed_projection_slot)
+    });
 }
+
+/// Build the typed `"wallet"` sidecar entry from the shared status slot, or
+/// `None` when no wallet is connected this session (the slot holds `None`).
+///
+/// Extracted from the `register_typed_snapshot_projection` closure so the
+/// registration's schema identity (`key` / `schema_id` / `file_identifier`) and
+/// the encode are unit-testable without spinning the actor (Wave A proof test).
+pub(crate) fn wallet_typed_projection(slot: &WalletStatusSlot) -> Option<TypedProjectionData> {
+    let status = slot.lock().ok()?.clone()?;
+    Some(TypedProjectionData {
+        key: "wallet".to_string(),
+        schema_id: WALLET_STATUS_SCHEMA_ID.to_string(),
+        schema_version: WALLET_STATUS_SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(WALLET_STATUS_FILE_IDENTIFIER).into_owned(),
+        payload: encode_wallet_status(&status),
+    })
+}
+
+#[cfg(test)]
+#[path = "wallet_runtime_tests.rs"]
+mod tests;
