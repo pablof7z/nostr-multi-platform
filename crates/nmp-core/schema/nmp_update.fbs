@@ -52,10 +52,135 @@ table TypedProjection {
   payload:TypedPayload;
 }
 
+// ADR-0044 Tier-3 nested tables. Each mirrors the framework-owned `nmp-core`
+// struct of the same name field-for-field, in Rust declaration order
+// (crates/nmp-core/src/kernel/types.rs). All values raw per ADR-0032
+// (hex pubkeys, ms/unix-seconds, raw counts) — typing is a transport
+// optimization, not a license to pre-format. Rust `usize`/`u128` counters map
+// to `ulong` for platform-width independence; `Option<u128>`/`Option<bool>`
+// map to native-optional scalars (`= null`); `Option<String>` maps to a string
+// field that is simply absent when `None`. Append new fields at the TAIL only.
+
+// Mirrors nmp_core::kernel::types::Metrics (types.rs:729).
+table Metrics {
+  generated_events:ulong;
+  note_events:ulong;
+  profile_events:ulong;
+  duplicate_events:ulong;
+  delete_events:ulong;
+  stored_events:ulong;                    // usize -> ulong
+  tombstones:ulong;                       // usize -> ulong
+  visible_items:ulong;                    // usize -> ulong
+  visible_profiled_items:ulong;           // usize -> ulong
+  visible_placeholder_avatar_items:ulong; // usize -> ulong
+  open_views:uint;
+  events_since_last_update:ulong;
+  diagnostic_firehose_events:ulong;
+  inserted_count:ulong;                   // usize -> ulong
+  updated_count:ulong;                    // usize -> ulong
+  removed_count:ulong;                    // usize -> ulong
+  events_per_second_configured:uint;
+  emit_hz_configured:uint;
+  update_sequence:ulong;
+  estimated_store_bytes:ulong;            // usize -> ulong
+  payload_bytes:ulong;                    // usize -> ulong
+  store_to_payload_ratio:double;
+  actor_queue_depth:uint;
+  frames_rx:ulong;
+  events_rx:ulong;
+  eose_rx:ulong;
+  notices_rx:ulong;
+  closed_rx:ulong;
+  bytes_rx:ulong;
+  bytes_tx:ulong;
+  contacts_authors:ulong;                 // usize -> ulong
+  timeline_authors:ulong;                 // usize -> ulong
+  first_event_ms:ulong = null;            // Option<u128> -> native-optional
+  target_profile_loaded_ms:ulong = null;
+  timeline_opened_ms:ulong = null;
+  timeline_first_item_ms:ulong = null;
+  update_emitted_ms:ulong = null;
+  last_event_to_emit_ms:ulong = null;
+  max_event_to_emit_ms:ulong;             // u128 -> ulong
+  max_events_per_update:ulong;
+  dispatch_drops_total:ulong;
+  claim_drops_total:ulong;
+  make_update_us:ulong;                   // u128 -> ulong
+  serialize_us:ulong;                     // u128 -> ulong
+  update_frame_degradations_total:ulong;
+}
+
+// Mirrors nmp_core::kernel::types::RelayStatus (types.rs:324).
+table RelayStatus {
+  role:string;
+  relay_url:string;
+  connection:string;
+  auth:string;
+  negentropy_probe:string;
+  active_wire_subscriptions:ulong;        // usize -> ulong
+  reconnect_count:uint;
+  last_connected_at_ms:ulong = null;      // Option<u128> -> native-optional
+  last_event_at_ms:ulong = null;
+  last_notice:string;                     // Option<String> -> absent = null
+  last_error:string;
+  error_category:string;
+  events_rx:ulong;
+  bytes_rx:ulong;
+  bytes_tx:ulong;
+  denied:bool = false;
+  last_close_reason:string;
+}
+
+// Mirrors nmp_core::kernel::types::LogicalInterestStatus (types.rs:377).
+table LogicalInterestStatus {
+  key:string;
+  state:string;
+  refcount:uint;
+  relay_urls:[string];
+  cache_coverage:string;
+  warming_until_ms:ulong = null;          // Option<u128> -> native-optional
+}
+
+// Mirrors nmp_core::kernel::types::WireSubscriptionStatus (types.rs:360).
+table WireSubscriptionStatus {
+  wire_id:string;
+  relay_url:string;
+  filter_summary:string;
+  state:string;
+  logical_consumer_count:uint;
+  events_rx:ulong;
+  opened_at_ms:ulong;                     // u128 -> ulong
+  last_event_at_ms:ulong = null;          // Option<u128> -> native-optional
+  eose_at_ms:ulong = null;
+  close_reason:string;                    // Option<String> -> absent = null
+}
+
 table SnapshotFrame {
   schema_version:uint = 1;
   payload:Value;                          // compatibility during migration
   typed_projections:[TypedProjection];    // new: typed sidecar
+
+  // ADR-0044 Tier-3 envelope fields. APPENDED at the tail so existing
+  // payload-readers stay byte-compatible (FlatBuffers keys fields by vtable
+  // slot; new trailing fields read as default/absent on an old reader).
+  // Mirrors the top-level KernelSnapshot fields (types.rs:799).
+  rev:ulong;                              // identity / revision
+  kernel_schema_version:uint;             // KERNEL_SCHEMA_VERSION (distinct from
+                                          // the transport schema_version above)
+  last_tick_ms:ulong;                     // timing / actor-liveness (ADR-0028)
+  update_kind:string;                     // run-state ("ViewBatch")
+  running:bool = false;
+  metrics:Metrics;
+  relay_status:RelayStatus;               // aggregate connection summary
+  relay_statuses:[RelayStatus];           // per-relay vector (keyed by relay_url)
+  logical_interests:[LogicalInterestStatus];
+  wire_subscriptions:[WireSubscriptionStatus];
+  logs:[string];
+  last_error_toast:string;                // Option<String> -> absent = null
+  last_error_category:string;
+  last_planner_error:string;
+  store_open_failure:string;
+  no_configured_relays:bool = null;       // Option<bool> -> native-optional
 }
 
 table PanicFrame {

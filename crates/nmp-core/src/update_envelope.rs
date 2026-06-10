@@ -16,6 +16,12 @@ use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use serde_json::{Map, Number, Value};
 use std::fmt;
 
+// ADR-0044 — the typed Tier-3 dual-emit `SnapshotFrame` encoder lives in a
+// submodule so this file stays under the LOC ceiling. Re-exported so the
+// kernel's `make_update` calls `crate::update_envelope::encode_snapshot_with_envelope`.
+mod tier3_frame;
+pub(crate) use tier3_frame::encode_snapshot_with_envelope;
+
 /// Schema version of the periodic snapshot payload. Bump on any breaking
 /// snapshot field change.
 pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
@@ -111,6 +117,7 @@ pub fn encode_snapshot_with_typed(
             schema_version: SNAPSHOT_SCHEMA_VERSION,
             payload: Some(payload),
             typed_projections,
+            ..Default::default()
         },
     );
     let root = fb::UpdateFrame::create(

@@ -1007,6 +1007,2381 @@ pub mod nmp {
                 ds.finish()
             }
         }
+        pub enum MetricsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct Metrics<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for Metrics<'a> {
+            type Inner = Metrics<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> Metrics<'a> {
+            pub const VT_GENERATED_EVENTS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_NOTE_EVENTS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_PROFILE_EVENTS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_DUPLICATE_EVENTS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_DELETE_EVENTS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_STORED_EVENTS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_TOMBSTONES: ::flatbuffers::VOffsetT = 16;
+            pub const VT_VISIBLE_ITEMS: ::flatbuffers::VOffsetT = 18;
+            pub const VT_VISIBLE_PROFILED_ITEMS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_VISIBLE_PLACEHOLDER_AVATAR_ITEMS: ::flatbuffers::VOffsetT = 22;
+            pub const VT_OPEN_VIEWS: ::flatbuffers::VOffsetT = 24;
+            pub const VT_EVENTS_SINCE_LAST_UPDATE: ::flatbuffers::VOffsetT = 26;
+            pub const VT_DIAGNOSTIC_FIREHOSE_EVENTS: ::flatbuffers::VOffsetT = 28;
+            pub const VT_INSERTED_COUNT: ::flatbuffers::VOffsetT = 30;
+            pub const VT_UPDATED_COUNT: ::flatbuffers::VOffsetT = 32;
+            pub const VT_REMOVED_COUNT: ::flatbuffers::VOffsetT = 34;
+            pub const VT_EVENTS_PER_SECOND_CONFIGURED: ::flatbuffers::VOffsetT = 36;
+            pub const VT_EMIT_HZ_CONFIGURED: ::flatbuffers::VOffsetT = 38;
+            pub const VT_UPDATE_SEQUENCE: ::flatbuffers::VOffsetT = 40;
+            pub const VT_ESTIMATED_STORE_BYTES: ::flatbuffers::VOffsetT = 42;
+            pub const VT_PAYLOAD_BYTES: ::flatbuffers::VOffsetT = 44;
+            pub const VT_STORE_TO_PAYLOAD_RATIO: ::flatbuffers::VOffsetT = 46;
+            pub const VT_ACTOR_QUEUE_DEPTH: ::flatbuffers::VOffsetT = 48;
+            pub const VT_FRAMES_RX: ::flatbuffers::VOffsetT = 50;
+            pub const VT_EVENTS_RX: ::flatbuffers::VOffsetT = 52;
+            pub const VT_EOSE_RX: ::flatbuffers::VOffsetT = 54;
+            pub const VT_NOTICES_RX: ::flatbuffers::VOffsetT = 56;
+            pub const VT_CLOSED_RX: ::flatbuffers::VOffsetT = 58;
+            pub const VT_BYTES_RX: ::flatbuffers::VOffsetT = 60;
+            pub const VT_BYTES_TX: ::flatbuffers::VOffsetT = 62;
+            pub const VT_CONTACTS_AUTHORS: ::flatbuffers::VOffsetT = 64;
+            pub const VT_TIMELINE_AUTHORS: ::flatbuffers::VOffsetT = 66;
+            pub const VT_FIRST_EVENT_MS: ::flatbuffers::VOffsetT = 68;
+            pub const VT_TARGET_PROFILE_LOADED_MS: ::flatbuffers::VOffsetT = 70;
+            pub const VT_TIMELINE_OPENED_MS: ::flatbuffers::VOffsetT = 72;
+            pub const VT_TIMELINE_FIRST_ITEM_MS: ::flatbuffers::VOffsetT = 74;
+            pub const VT_UPDATE_EMITTED_MS: ::flatbuffers::VOffsetT = 76;
+            pub const VT_LAST_EVENT_TO_EMIT_MS: ::flatbuffers::VOffsetT = 78;
+            pub const VT_MAX_EVENT_TO_EMIT_MS: ::flatbuffers::VOffsetT = 80;
+            pub const VT_MAX_EVENTS_PER_UPDATE: ::flatbuffers::VOffsetT = 82;
+            pub const VT_DISPATCH_DROPS_TOTAL: ::flatbuffers::VOffsetT = 84;
+            pub const VT_CLAIM_DROPS_TOTAL: ::flatbuffers::VOffsetT = 86;
+            pub const VT_MAKE_UPDATE_US: ::flatbuffers::VOffsetT = 88;
+            pub const VT_SERIALIZE_US: ::flatbuffers::VOffsetT = 90;
+            pub const VT_UPDATE_FRAME_DEGRADATIONS_TOTAL: ::flatbuffers::VOffsetT = 92;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                Metrics { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MetricsArgs,
+            ) -> ::flatbuffers::WIPOffset<Metrics<'bldr>> {
+                let mut builder = MetricsBuilder::new(_fbb);
+                builder.add_update_frame_degradations_total(args.update_frame_degradations_total);
+                builder.add_serialize_us(args.serialize_us);
+                builder.add_make_update_us(args.make_update_us);
+                builder.add_claim_drops_total(args.claim_drops_total);
+                builder.add_dispatch_drops_total(args.dispatch_drops_total);
+                builder.add_max_events_per_update(args.max_events_per_update);
+                builder.add_max_event_to_emit_ms(args.max_event_to_emit_ms);
+                if let Some(x) = args.last_event_to_emit_ms {
+                    builder.add_last_event_to_emit_ms(x);
+                }
+                if let Some(x) = args.update_emitted_ms {
+                    builder.add_update_emitted_ms(x);
+                }
+                if let Some(x) = args.timeline_first_item_ms {
+                    builder.add_timeline_first_item_ms(x);
+                }
+                if let Some(x) = args.timeline_opened_ms {
+                    builder.add_timeline_opened_ms(x);
+                }
+                if let Some(x) = args.target_profile_loaded_ms {
+                    builder.add_target_profile_loaded_ms(x);
+                }
+                if let Some(x) = args.first_event_ms {
+                    builder.add_first_event_ms(x);
+                }
+                builder.add_timeline_authors(args.timeline_authors);
+                builder.add_contacts_authors(args.contacts_authors);
+                builder.add_bytes_tx(args.bytes_tx);
+                builder.add_bytes_rx(args.bytes_rx);
+                builder.add_closed_rx(args.closed_rx);
+                builder.add_notices_rx(args.notices_rx);
+                builder.add_eose_rx(args.eose_rx);
+                builder.add_events_rx(args.events_rx);
+                builder.add_frames_rx(args.frames_rx);
+                builder.add_store_to_payload_ratio(args.store_to_payload_ratio);
+                builder.add_payload_bytes(args.payload_bytes);
+                builder.add_estimated_store_bytes(args.estimated_store_bytes);
+                builder.add_update_sequence(args.update_sequence);
+                builder.add_removed_count(args.removed_count);
+                builder.add_updated_count(args.updated_count);
+                builder.add_inserted_count(args.inserted_count);
+                builder.add_diagnostic_firehose_events(args.diagnostic_firehose_events);
+                builder.add_events_since_last_update(args.events_since_last_update);
+                builder.add_visible_placeholder_avatar_items(args.visible_placeholder_avatar_items);
+                builder.add_visible_profiled_items(args.visible_profiled_items);
+                builder.add_visible_items(args.visible_items);
+                builder.add_tombstones(args.tombstones);
+                builder.add_stored_events(args.stored_events);
+                builder.add_delete_events(args.delete_events);
+                builder.add_duplicate_events(args.duplicate_events);
+                builder.add_profile_events(args.profile_events);
+                builder.add_note_events(args.note_events);
+                builder.add_generated_events(args.generated_events);
+                builder.add_actor_queue_depth(args.actor_queue_depth);
+                builder.add_emit_hz_configured(args.emit_hz_configured);
+                builder.add_events_per_second_configured(args.events_per_second_configured);
+                builder.add_open_views(args.open_views);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn generated_events(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_GENERATED_EVENTS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn note_events(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_NOTE_EVENTS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn profile_events(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_PROFILE_EVENTS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn duplicate_events(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_DUPLICATE_EVENTS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn delete_events(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_DELETE_EVENTS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn stored_events(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_STORED_EVENTS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn tombstones(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_TOMBSTONES, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn visible_items(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_VISIBLE_ITEMS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn visible_profiled_items(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_VISIBLE_PROFILED_ITEMS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn visible_placeholder_avatar_items(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_VISIBLE_PLACEHOLDER_AVATAR_ITEMS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn open_views(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(Metrics::VT_OPEN_VIEWS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn events_since_last_update(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_EVENTS_SINCE_LAST_UPDATE, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn diagnostic_firehose_events(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_DIAGNOSTIC_FIREHOSE_EVENTS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn inserted_count(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_INSERTED_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn updated_count(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_UPDATED_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn removed_count(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_REMOVED_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn events_per_second_configured(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(Metrics::VT_EVENTS_PER_SECOND_CONFIGURED, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn emit_hz_configured(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(Metrics::VT_EMIT_HZ_CONFIGURED, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn update_sequence(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_UPDATE_SEQUENCE, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn estimated_store_bytes(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_ESTIMATED_STORE_BYTES, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn payload_bytes(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_PAYLOAD_BYTES, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn store_to_payload_ratio(&self) -> f64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<f64>(Metrics::VT_STORE_TO_PAYLOAD_RATIO, Some(0.0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn actor_queue_depth(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(Metrics::VT_ACTOR_QUEUE_DEPTH, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn frames_rx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_FRAMES_RX, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn events_rx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_EVENTS_RX, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn eose_rx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(Metrics::VT_EOSE_RX, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn notices_rx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_NOTICES_RX, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn closed_rx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_CLOSED_RX, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn bytes_rx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(Metrics::VT_BYTES_RX, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn bytes_tx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(Metrics::VT_BYTES_TX, Some(0)).unwrap() }
+            }
+            #[inline]
+            pub fn contacts_authors(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_CONTACTS_AUTHORS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn timeline_authors(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_TIMELINE_AUTHORS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn first_event_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(Metrics::VT_FIRST_EVENT_MS, None) }
+            }
+            #[inline]
+            pub fn target_profile_loaded_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_TARGET_PROFILE_LOADED_MS, None)
+                }
+            }
+            #[inline]
+            pub fn timeline_opened_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(Metrics::VT_TIMELINE_OPENED_MS, None) }
+            }
+            #[inline]
+            pub fn timeline_first_item_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_TIMELINE_FIRST_ITEM_MS, None)
+                }
+            }
+            #[inline]
+            pub fn update_emitted_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(Metrics::VT_UPDATE_EMITTED_MS, None) }
+            }
+            #[inline]
+            pub fn last_event_to_emit_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_LAST_EVENT_TO_EMIT_MS, None)
+                }
+            }
+            #[inline]
+            pub fn max_event_to_emit_ms(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_MAX_EVENT_TO_EMIT_MS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn max_events_per_update(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_MAX_EVENTS_PER_UPDATE, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn dispatch_drops_total(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_DISPATCH_DROPS_TOTAL, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn claim_drops_total(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_CLAIM_DROPS_TOTAL, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn make_update_us(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_MAKE_UPDATE_US, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn serialize_us(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_SERIALIZE_US, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn update_frame_degradations_total(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(Metrics::VT_UPDATE_FRAME_DEGRADATIONS_TOTAL, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for Metrics<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("generated_events", Self::VT_GENERATED_EVENTS, false)?
+                    .visit_field::<u64>("note_events", Self::VT_NOTE_EVENTS, false)?
+                    .visit_field::<u64>("profile_events", Self::VT_PROFILE_EVENTS, false)?
+                    .visit_field::<u64>("duplicate_events", Self::VT_DUPLICATE_EVENTS, false)?
+                    .visit_field::<u64>("delete_events", Self::VT_DELETE_EVENTS, false)?
+                    .visit_field::<u64>("stored_events", Self::VT_STORED_EVENTS, false)?
+                    .visit_field::<u64>("tombstones", Self::VT_TOMBSTONES, false)?
+                    .visit_field::<u64>("visible_items", Self::VT_VISIBLE_ITEMS, false)?
+                    .visit_field::<u64>(
+                        "visible_profiled_items",
+                        Self::VT_VISIBLE_PROFILED_ITEMS,
+                        false,
+                    )?
+                    .visit_field::<u64>(
+                        "visible_placeholder_avatar_items",
+                        Self::VT_VISIBLE_PLACEHOLDER_AVATAR_ITEMS,
+                        false,
+                    )?
+                    .visit_field::<u32>("open_views", Self::VT_OPEN_VIEWS, false)?
+                    .visit_field::<u64>(
+                        "events_since_last_update",
+                        Self::VT_EVENTS_SINCE_LAST_UPDATE,
+                        false,
+                    )?
+                    .visit_field::<u64>(
+                        "diagnostic_firehose_events",
+                        Self::VT_DIAGNOSTIC_FIREHOSE_EVENTS,
+                        false,
+                    )?
+                    .visit_field::<u64>("inserted_count", Self::VT_INSERTED_COUNT, false)?
+                    .visit_field::<u64>("updated_count", Self::VT_UPDATED_COUNT, false)?
+                    .visit_field::<u64>("removed_count", Self::VT_REMOVED_COUNT, false)?
+                    .visit_field::<u32>(
+                        "events_per_second_configured",
+                        Self::VT_EVENTS_PER_SECOND_CONFIGURED,
+                        false,
+                    )?
+                    .visit_field::<u32>("emit_hz_configured", Self::VT_EMIT_HZ_CONFIGURED, false)?
+                    .visit_field::<u64>("update_sequence", Self::VT_UPDATE_SEQUENCE, false)?
+                    .visit_field::<u64>(
+                        "estimated_store_bytes",
+                        Self::VT_ESTIMATED_STORE_BYTES,
+                        false,
+                    )?
+                    .visit_field::<u64>("payload_bytes", Self::VT_PAYLOAD_BYTES, false)?
+                    .visit_field::<f64>(
+                        "store_to_payload_ratio",
+                        Self::VT_STORE_TO_PAYLOAD_RATIO,
+                        false,
+                    )?
+                    .visit_field::<u32>("actor_queue_depth", Self::VT_ACTOR_QUEUE_DEPTH, false)?
+                    .visit_field::<u64>("frames_rx", Self::VT_FRAMES_RX, false)?
+                    .visit_field::<u64>("events_rx", Self::VT_EVENTS_RX, false)?
+                    .visit_field::<u64>("eose_rx", Self::VT_EOSE_RX, false)?
+                    .visit_field::<u64>("notices_rx", Self::VT_NOTICES_RX, false)?
+                    .visit_field::<u64>("closed_rx", Self::VT_CLOSED_RX, false)?
+                    .visit_field::<u64>("bytes_rx", Self::VT_BYTES_RX, false)?
+                    .visit_field::<u64>("bytes_tx", Self::VT_BYTES_TX, false)?
+                    .visit_field::<u64>("contacts_authors", Self::VT_CONTACTS_AUTHORS, false)?
+                    .visit_field::<u64>("timeline_authors", Self::VT_TIMELINE_AUTHORS, false)?
+                    .visit_field::<u64>("first_event_ms", Self::VT_FIRST_EVENT_MS, false)?
+                    .visit_field::<u64>(
+                        "target_profile_loaded_ms",
+                        Self::VT_TARGET_PROFILE_LOADED_MS,
+                        false,
+                    )?
+                    .visit_field::<u64>("timeline_opened_ms", Self::VT_TIMELINE_OPENED_MS, false)?
+                    .visit_field::<u64>(
+                        "timeline_first_item_ms",
+                        Self::VT_TIMELINE_FIRST_ITEM_MS,
+                        false,
+                    )?
+                    .visit_field::<u64>("update_emitted_ms", Self::VT_UPDATE_EMITTED_MS, false)?
+                    .visit_field::<u64>(
+                        "last_event_to_emit_ms",
+                        Self::VT_LAST_EVENT_TO_EMIT_MS,
+                        false,
+                    )?
+                    .visit_field::<u64>(
+                        "max_event_to_emit_ms",
+                        Self::VT_MAX_EVENT_TO_EMIT_MS,
+                        false,
+                    )?
+                    .visit_field::<u64>(
+                        "max_events_per_update",
+                        Self::VT_MAX_EVENTS_PER_UPDATE,
+                        false,
+                    )?
+                    .visit_field::<u64>(
+                        "dispatch_drops_total",
+                        Self::VT_DISPATCH_DROPS_TOTAL,
+                        false,
+                    )?
+                    .visit_field::<u64>("claim_drops_total", Self::VT_CLAIM_DROPS_TOTAL, false)?
+                    .visit_field::<u64>("make_update_us", Self::VT_MAKE_UPDATE_US, false)?
+                    .visit_field::<u64>("serialize_us", Self::VT_SERIALIZE_US, false)?
+                    .visit_field::<u64>(
+                        "update_frame_degradations_total",
+                        Self::VT_UPDATE_FRAME_DEGRADATIONS_TOTAL,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct MetricsArgs {
+            pub generated_events: u64,
+            pub note_events: u64,
+            pub profile_events: u64,
+            pub duplicate_events: u64,
+            pub delete_events: u64,
+            pub stored_events: u64,
+            pub tombstones: u64,
+            pub visible_items: u64,
+            pub visible_profiled_items: u64,
+            pub visible_placeholder_avatar_items: u64,
+            pub open_views: u32,
+            pub events_since_last_update: u64,
+            pub diagnostic_firehose_events: u64,
+            pub inserted_count: u64,
+            pub updated_count: u64,
+            pub removed_count: u64,
+            pub events_per_second_configured: u32,
+            pub emit_hz_configured: u32,
+            pub update_sequence: u64,
+            pub estimated_store_bytes: u64,
+            pub payload_bytes: u64,
+            pub store_to_payload_ratio: f64,
+            pub actor_queue_depth: u32,
+            pub frames_rx: u64,
+            pub events_rx: u64,
+            pub eose_rx: u64,
+            pub notices_rx: u64,
+            pub closed_rx: u64,
+            pub bytes_rx: u64,
+            pub bytes_tx: u64,
+            pub contacts_authors: u64,
+            pub timeline_authors: u64,
+            pub first_event_ms: Option<u64>,
+            pub target_profile_loaded_ms: Option<u64>,
+            pub timeline_opened_ms: Option<u64>,
+            pub timeline_first_item_ms: Option<u64>,
+            pub update_emitted_ms: Option<u64>,
+            pub last_event_to_emit_ms: Option<u64>,
+            pub max_event_to_emit_ms: u64,
+            pub max_events_per_update: u64,
+            pub dispatch_drops_total: u64,
+            pub claim_drops_total: u64,
+            pub make_update_us: u64,
+            pub serialize_us: u64,
+            pub update_frame_degradations_total: u64,
+        }
+        impl<'a> Default for MetricsArgs {
+            #[inline]
+            fn default() -> Self {
+                MetricsArgs {
+                    generated_events: 0,
+                    note_events: 0,
+                    profile_events: 0,
+                    duplicate_events: 0,
+                    delete_events: 0,
+                    stored_events: 0,
+                    tombstones: 0,
+                    visible_items: 0,
+                    visible_profiled_items: 0,
+                    visible_placeholder_avatar_items: 0,
+                    open_views: 0,
+                    events_since_last_update: 0,
+                    diagnostic_firehose_events: 0,
+                    inserted_count: 0,
+                    updated_count: 0,
+                    removed_count: 0,
+                    events_per_second_configured: 0,
+                    emit_hz_configured: 0,
+                    update_sequence: 0,
+                    estimated_store_bytes: 0,
+                    payload_bytes: 0,
+                    store_to_payload_ratio: 0.0,
+                    actor_queue_depth: 0,
+                    frames_rx: 0,
+                    events_rx: 0,
+                    eose_rx: 0,
+                    notices_rx: 0,
+                    closed_rx: 0,
+                    bytes_rx: 0,
+                    bytes_tx: 0,
+                    contacts_authors: 0,
+                    timeline_authors: 0,
+                    first_event_ms: None,
+                    target_profile_loaded_ms: None,
+                    timeline_opened_ms: None,
+                    timeline_first_item_ms: None,
+                    update_emitted_ms: None,
+                    last_event_to_emit_ms: None,
+                    max_event_to_emit_ms: 0,
+                    max_events_per_update: 0,
+                    dispatch_drops_total: 0,
+                    claim_drops_total: 0,
+                    make_update_us: 0,
+                    serialize_us: 0,
+                    update_frame_degradations_total: 0,
+                }
+            }
+        }
+
+        pub struct MetricsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MetricsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_generated_events(&mut self, generated_events: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_GENERATED_EVENTS, generated_events, 0);
+            }
+            #[inline]
+            pub fn add_note_events(&mut self, note_events: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_NOTE_EVENTS, note_events, 0);
+            }
+            #[inline]
+            pub fn add_profile_events(&mut self, profile_events: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_PROFILE_EVENTS, profile_events, 0);
+            }
+            #[inline]
+            pub fn add_duplicate_events(&mut self, duplicate_events: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_DUPLICATE_EVENTS, duplicate_events, 0);
+            }
+            #[inline]
+            pub fn add_delete_events(&mut self, delete_events: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_DELETE_EVENTS, delete_events, 0);
+            }
+            #[inline]
+            pub fn add_stored_events(&mut self, stored_events: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_STORED_EVENTS, stored_events, 0);
+            }
+            #[inline]
+            pub fn add_tombstones(&mut self, tombstones: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_TOMBSTONES, tombstones, 0);
+            }
+            #[inline]
+            pub fn add_visible_items(&mut self, visible_items: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_VISIBLE_ITEMS, visible_items, 0);
+            }
+            #[inline]
+            pub fn add_visible_profiled_items(&mut self, visible_profiled_items: u64) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_VISIBLE_PROFILED_ITEMS,
+                    visible_profiled_items,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_visible_placeholder_avatar_items(
+                &mut self,
+                visible_placeholder_avatar_items: u64,
+            ) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_VISIBLE_PLACEHOLDER_AVATAR_ITEMS,
+                    visible_placeholder_avatar_items,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_open_views(&mut self, open_views: u32) {
+                self.fbb_
+                    .push_slot::<u32>(Metrics::VT_OPEN_VIEWS, open_views, 0);
+            }
+            #[inline]
+            pub fn add_events_since_last_update(&mut self, events_since_last_update: u64) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_EVENTS_SINCE_LAST_UPDATE,
+                    events_since_last_update,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_diagnostic_firehose_events(&mut self, diagnostic_firehose_events: u64) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_DIAGNOSTIC_FIREHOSE_EVENTS,
+                    diagnostic_firehose_events,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_inserted_count(&mut self, inserted_count: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_INSERTED_COUNT, inserted_count, 0);
+            }
+            #[inline]
+            pub fn add_updated_count(&mut self, updated_count: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_UPDATED_COUNT, updated_count, 0);
+            }
+            #[inline]
+            pub fn add_removed_count(&mut self, removed_count: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_REMOVED_COUNT, removed_count, 0);
+            }
+            #[inline]
+            pub fn add_events_per_second_configured(&mut self, events_per_second_configured: u32) {
+                self.fbb_.push_slot::<u32>(
+                    Metrics::VT_EVENTS_PER_SECOND_CONFIGURED,
+                    events_per_second_configured,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_emit_hz_configured(&mut self, emit_hz_configured: u32) {
+                self.fbb_
+                    .push_slot::<u32>(Metrics::VT_EMIT_HZ_CONFIGURED, emit_hz_configured, 0);
+            }
+            #[inline]
+            pub fn add_update_sequence(&mut self, update_sequence: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_UPDATE_SEQUENCE, update_sequence, 0);
+            }
+            #[inline]
+            pub fn add_estimated_store_bytes(&mut self, estimated_store_bytes: u64) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_ESTIMATED_STORE_BYTES,
+                    estimated_store_bytes,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_payload_bytes(&mut self, payload_bytes: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_PAYLOAD_BYTES, payload_bytes, 0);
+            }
+            #[inline]
+            pub fn add_store_to_payload_ratio(&mut self, store_to_payload_ratio: f64) {
+                self.fbb_.push_slot::<f64>(
+                    Metrics::VT_STORE_TO_PAYLOAD_RATIO,
+                    store_to_payload_ratio,
+                    0.0,
+                );
+            }
+            #[inline]
+            pub fn add_actor_queue_depth(&mut self, actor_queue_depth: u32) {
+                self.fbb_
+                    .push_slot::<u32>(Metrics::VT_ACTOR_QUEUE_DEPTH, actor_queue_depth, 0);
+            }
+            #[inline]
+            pub fn add_frames_rx(&mut self, frames_rx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_FRAMES_RX, frames_rx, 0);
+            }
+            #[inline]
+            pub fn add_events_rx(&mut self, events_rx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_EVENTS_RX, events_rx, 0);
+            }
+            #[inline]
+            pub fn add_eose_rx(&mut self, eose_rx: u64) {
+                self.fbb_.push_slot::<u64>(Metrics::VT_EOSE_RX, eose_rx, 0);
+            }
+            #[inline]
+            pub fn add_notices_rx(&mut self, notices_rx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_NOTICES_RX, notices_rx, 0);
+            }
+            #[inline]
+            pub fn add_closed_rx(&mut self, closed_rx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_CLOSED_RX, closed_rx, 0);
+            }
+            #[inline]
+            pub fn add_bytes_rx(&mut self, bytes_rx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_BYTES_RX, bytes_rx, 0);
+            }
+            #[inline]
+            pub fn add_bytes_tx(&mut self, bytes_tx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_BYTES_TX, bytes_tx, 0);
+            }
+            #[inline]
+            pub fn add_contacts_authors(&mut self, contacts_authors: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_CONTACTS_AUTHORS, contacts_authors, 0);
+            }
+            #[inline]
+            pub fn add_timeline_authors(&mut self, timeline_authors: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_TIMELINE_AUTHORS, timeline_authors, 0);
+            }
+            #[inline]
+            pub fn add_first_event_ms(&mut self, first_event_ms: u64) {
+                self.fbb_
+                    .push_slot_always::<u64>(Metrics::VT_FIRST_EVENT_MS, first_event_ms);
+            }
+            #[inline]
+            pub fn add_target_profile_loaded_ms(&mut self, target_profile_loaded_ms: u64) {
+                self.fbb_.push_slot_always::<u64>(
+                    Metrics::VT_TARGET_PROFILE_LOADED_MS,
+                    target_profile_loaded_ms,
+                );
+            }
+            #[inline]
+            pub fn add_timeline_opened_ms(&mut self, timeline_opened_ms: u64) {
+                self.fbb_
+                    .push_slot_always::<u64>(Metrics::VT_TIMELINE_OPENED_MS, timeline_opened_ms);
+            }
+            #[inline]
+            pub fn add_timeline_first_item_ms(&mut self, timeline_first_item_ms: u64) {
+                self.fbb_.push_slot_always::<u64>(
+                    Metrics::VT_TIMELINE_FIRST_ITEM_MS,
+                    timeline_first_item_ms,
+                );
+            }
+            #[inline]
+            pub fn add_update_emitted_ms(&mut self, update_emitted_ms: u64) {
+                self.fbb_
+                    .push_slot_always::<u64>(Metrics::VT_UPDATE_EMITTED_MS, update_emitted_ms);
+            }
+            #[inline]
+            pub fn add_last_event_to_emit_ms(&mut self, last_event_to_emit_ms: u64) {
+                self.fbb_.push_slot_always::<u64>(
+                    Metrics::VT_LAST_EVENT_TO_EMIT_MS,
+                    last_event_to_emit_ms,
+                );
+            }
+            #[inline]
+            pub fn add_max_event_to_emit_ms(&mut self, max_event_to_emit_ms: u64) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_MAX_EVENT_TO_EMIT_MS,
+                    max_event_to_emit_ms,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_max_events_per_update(&mut self, max_events_per_update: u64) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_MAX_EVENTS_PER_UPDATE,
+                    max_events_per_update,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_dispatch_drops_total(&mut self, dispatch_drops_total: u64) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_DISPATCH_DROPS_TOTAL,
+                    dispatch_drops_total,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_claim_drops_total(&mut self, claim_drops_total: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_CLAIM_DROPS_TOTAL, claim_drops_total, 0);
+            }
+            #[inline]
+            pub fn add_make_update_us(&mut self, make_update_us: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_MAKE_UPDATE_US, make_update_us, 0);
+            }
+            #[inline]
+            pub fn add_serialize_us(&mut self, serialize_us: u64) {
+                self.fbb_
+                    .push_slot::<u64>(Metrics::VT_SERIALIZE_US, serialize_us, 0);
+            }
+            #[inline]
+            pub fn add_update_frame_degradations_total(
+                &mut self,
+                update_frame_degradations_total: u64,
+            ) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_UPDATE_FRAME_DEGRADATIONS_TOTAL,
+                    update_frame_degradations_total,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> MetricsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MetricsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<Metrics<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for Metrics<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("Metrics");
+                ds.field("generated_events", &self.generated_events());
+                ds.field("note_events", &self.note_events());
+                ds.field("profile_events", &self.profile_events());
+                ds.field("duplicate_events", &self.duplicate_events());
+                ds.field("delete_events", &self.delete_events());
+                ds.field("stored_events", &self.stored_events());
+                ds.field("tombstones", &self.tombstones());
+                ds.field("visible_items", &self.visible_items());
+                ds.field("visible_profiled_items", &self.visible_profiled_items());
+                ds.field(
+                    "visible_placeholder_avatar_items",
+                    &self.visible_placeholder_avatar_items(),
+                );
+                ds.field("open_views", &self.open_views());
+                ds.field("events_since_last_update", &self.events_since_last_update());
+                ds.field(
+                    "diagnostic_firehose_events",
+                    &self.diagnostic_firehose_events(),
+                );
+                ds.field("inserted_count", &self.inserted_count());
+                ds.field("updated_count", &self.updated_count());
+                ds.field("removed_count", &self.removed_count());
+                ds.field(
+                    "events_per_second_configured",
+                    &self.events_per_second_configured(),
+                );
+                ds.field("emit_hz_configured", &self.emit_hz_configured());
+                ds.field("update_sequence", &self.update_sequence());
+                ds.field("estimated_store_bytes", &self.estimated_store_bytes());
+                ds.field("payload_bytes", &self.payload_bytes());
+                ds.field("store_to_payload_ratio", &self.store_to_payload_ratio());
+                ds.field("actor_queue_depth", &self.actor_queue_depth());
+                ds.field("frames_rx", &self.frames_rx());
+                ds.field("events_rx", &self.events_rx());
+                ds.field("eose_rx", &self.eose_rx());
+                ds.field("notices_rx", &self.notices_rx());
+                ds.field("closed_rx", &self.closed_rx());
+                ds.field("bytes_rx", &self.bytes_rx());
+                ds.field("bytes_tx", &self.bytes_tx());
+                ds.field("contacts_authors", &self.contacts_authors());
+                ds.field("timeline_authors", &self.timeline_authors());
+                ds.field("first_event_ms", &self.first_event_ms());
+                ds.field("target_profile_loaded_ms", &self.target_profile_loaded_ms());
+                ds.field("timeline_opened_ms", &self.timeline_opened_ms());
+                ds.field("timeline_first_item_ms", &self.timeline_first_item_ms());
+                ds.field("update_emitted_ms", &self.update_emitted_ms());
+                ds.field("last_event_to_emit_ms", &self.last_event_to_emit_ms());
+                ds.field("max_event_to_emit_ms", &self.max_event_to_emit_ms());
+                ds.field("max_events_per_update", &self.max_events_per_update());
+                ds.field("dispatch_drops_total", &self.dispatch_drops_total());
+                ds.field("claim_drops_total", &self.claim_drops_total());
+                ds.field("make_update_us", &self.make_update_us());
+                ds.field("serialize_us", &self.serialize_us());
+                ds.field(
+                    "update_frame_degradations_total",
+                    &self.update_frame_degradations_total(),
+                );
+                ds.finish()
+            }
+        }
+        pub enum RelayStatusOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct RelayStatus<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for RelayStatus<'a> {
+            type Inner = RelayStatus<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> RelayStatus<'a> {
+            pub const VT_ROLE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CONNECTION: ::flatbuffers::VOffsetT = 8;
+            pub const VT_AUTH: ::flatbuffers::VOffsetT = 10;
+            pub const VT_NEGENTROPY_PROBE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_ACTIVE_WIRE_SUBSCRIPTIONS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_RECONNECT_COUNT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_LAST_CONNECTED_AT_MS: ::flatbuffers::VOffsetT = 18;
+            pub const VT_LAST_EVENT_AT_MS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_LAST_NOTICE: ::flatbuffers::VOffsetT = 22;
+            pub const VT_LAST_ERROR: ::flatbuffers::VOffsetT = 24;
+            pub const VT_ERROR_CATEGORY: ::flatbuffers::VOffsetT = 26;
+            pub const VT_EVENTS_RX: ::flatbuffers::VOffsetT = 28;
+            pub const VT_BYTES_RX: ::flatbuffers::VOffsetT = 30;
+            pub const VT_BYTES_TX: ::flatbuffers::VOffsetT = 32;
+            pub const VT_DENIED: ::flatbuffers::VOffsetT = 34;
+            pub const VT_LAST_CLOSE_REASON: ::flatbuffers::VOffsetT = 36;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RelayStatus { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RelayStatusArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RelayStatus<'bldr>> {
+                let mut builder = RelayStatusBuilder::new(_fbb);
+                builder.add_bytes_tx(args.bytes_tx);
+                builder.add_bytes_rx(args.bytes_rx);
+                builder.add_events_rx(args.events_rx);
+                if let Some(x) = args.last_event_at_ms {
+                    builder.add_last_event_at_ms(x);
+                }
+                if let Some(x) = args.last_connected_at_ms {
+                    builder.add_last_connected_at_ms(x);
+                }
+                builder.add_active_wire_subscriptions(args.active_wire_subscriptions);
+                if let Some(x) = args.last_close_reason {
+                    builder.add_last_close_reason(x);
+                }
+                if let Some(x) = args.error_category {
+                    builder.add_error_category(x);
+                }
+                if let Some(x) = args.last_error {
+                    builder.add_last_error(x);
+                }
+                if let Some(x) = args.last_notice {
+                    builder.add_last_notice(x);
+                }
+                builder.add_reconnect_count(args.reconnect_count);
+                if let Some(x) = args.negentropy_probe {
+                    builder.add_negentropy_probe(x);
+                }
+                if let Some(x) = args.auth {
+                    builder.add_auth(x);
+                }
+                if let Some(x) = args.connection {
+                    builder.add_connection(x);
+                }
+                if let Some(x) = args.relay_url {
+                    builder.add_relay_url(x);
+                }
+                if let Some(x) = args.role {
+                    builder.add_role(x);
+                }
+                builder.add_denied(args.denied);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn role(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RelayStatus::VT_ROLE, None)
+                }
+            }
+            #[inline]
+            pub fn relay_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelayStatus::VT_RELAY_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn connection(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelayStatus::VT_CONNECTION,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn auth(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RelayStatus::VT_AUTH, None)
+                }
+            }
+            #[inline]
+            pub fn negentropy_probe(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelayStatus::VT_NEGENTROPY_PROBE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn active_wire_subscriptions(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(RelayStatus::VT_ACTIVE_WIRE_SUBSCRIPTIONS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn reconnect_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(RelayStatus::VT_RECONNECT_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn last_connected_at_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(RelayStatus::VT_LAST_CONNECTED_AT_MS, None)
+                }
+            }
+            #[inline]
+            pub fn last_event_at_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe { self._tab.get::<u64>(RelayStatus::VT_LAST_EVENT_AT_MS, None) }
+            }
+            #[inline]
+            pub fn last_notice(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelayStatus::VT_LAST_NOTICE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn last_error(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelayStatus::VT_LAST_ERROR,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn error_category(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelayStatus::VT_ERROR_CATEGORY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn events_rx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(RelayStatus::VT_EVENTS_RX, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn bytes_rx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(RelayStatus::VT_BYTES_RX, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn bytes_tx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(RelayStatus::VT_BYTES_TX, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn denied(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RelayStatus::VT_DENIED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn last_close_reason(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelayStatus::VT_LAST_CLOSE_REASON,
+                        None,
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for RelayStatus<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "role",
+                        Self::VT_ROLE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "relay_url",
+                        Self::VT_RELAY_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "connection",
+                        Self::VT_CONNECTION,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "auth",
+                        Self::VT_AUTH,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "negentropy_probe",
+                        Self::VT_NEGENTROPY_PROBE,
+                        false,
+                    )?
+                    .visit_field::<u64>(
+                        "active_wire_subscriptions",
+                        Self::VT_ACTIVE_WIRE_SUBSCRIPTIONS,
+                        false,
+                    )?
+                    .visit_field::<u32>("reconnect_count", Self::VT_RECONNECT_COUNT, false)?
+                    .visit_field::<u64>(
+                        "last_connected_at_ms",
+                        Self::VT_LAST_CONNECTED_AT_MS,
+                        false,
+                    )?
+                    .visit_field::<u64>("last_event_at_ms", Self::VT_LAST_EVENT_AT_MS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "last_notice",
+                        Self::VT_LAST_NOTICE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "last_error",
+                        Self::VT_LAST_ERROR,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "error_category",
+                        Self::VT_ERROR_CATEGORY,
+                        false,
+                    )?
+                    .visit_field::<u64>("events_rx", Self::VT_EVENTS_RX, false)?
+                    .visit_field::<u64>("bytes_rx", Self::VT_BYTES_RX, false)?
+                    .visit_field::<u64>("bytes_tx", Self::VT_BYTES_TX, false)?
+                    .visit_field::<bool>("denied", Self::VT_DENIED, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "last_close_reason",
+                        Self::VT_LAST_CLOSE_REASON,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RelayStatusArgs<'a> {
+            pub role: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub connection: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub auth: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub negentropy_probe: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub active_wire_subscriptions: u64,
+            pub reconnect_count: u32,
+            pub last_connected_at_ms: Option<u64>,
+            pub last_event_at_ms: Option<u64>,
+            pub last_notice: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub last_error: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub error_category: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub events_rx: u64,
+            pub bytes_rx: u64,
+            pub bytes_tx: u64,
+            pub denied: bool,
+            pub last_close_reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for RelayStatusArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RelayStatusArgs {
+                    role: None,
+                    relay_url: None,
+                    connection: None,
+                    auth: None,
+                    negentropy_probe: None,
+                    active_wire_subscriptions: 0,
+                    reconnect_count: 0,
+                    last_connected_at_ms: None,
+                    last_event_at_ms: None,
+                    last_notice: None,
+                    last_error: None,
+                    error_category: None,
+                    events_rx: 0,
+                    bytes_rx: 0,
+                    bytes_tx: 0,
+                    denied: false,
+                    last_close_reason: None,
+                }
+            }
+        }
+
+        pub struct RelayStatusBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayStatusBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_role(&mut self, role: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayStatus::VT_ROLE, role);
+            }
+            #[inline]
+            pub fn add_relay_url(&mut self, relay_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayStatus::VT_RELAY_URL,
+                    relay_url,
+                );
+            }
+            #[inline]
+            pub fn add_connection(&mut self, connection: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayStatus::VT_CONNECTION,
+                    connection,
+                );
+            }
+            #[inline]
+            pub fn add_auth(&mut self, auth: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayStatus::VT_AUTH, auth);
+            }
+            #[inline]
+            pub fn add_negentropy_probe(
+                &mut self,
+                negentropy_probe: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayStatus::VT_NEGENTROPY_PROBE,
+                    negentropy_probe,
+                );
+            }
+            #[inline]
+            pub fn add_active_wire_subscriptions(&mut self, active_wire_subscriptions: u64) {
+                self.fbb_.push_slot::<u64>(
+                    RelayStatus::VT_ACTIVE_WIRE_SUBSCRIPTIONS,
+                    active_wire_subscriptions,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_reconnect_count(&mut self, reconnect_count: u32) {
+                self.fbb_
+                    .push_slot::<u32>(RelayStatus::VT_RECONNECT_COUNT, reconnect_count, 0);
+            }
+            #[inline]
+            pub fn add_last_connected_at_ms(&mut self, last_connected_at_ms: u64) {
+                self.fbb_.push_slot_always::<u64>(
+                    RelayStatus::VT_LAST_CONNECTED_AT_MS,
+                    last_connected_at_ms,
+                );
+            }
+            #[inline]
+            pub fn add_last_event_at_ms(&mut self, last_event_at_ms: u64) {
+                self.fbb_
+                    .push_slot_always::<u64>(RelayStatus::VT_LAST_EVENT_AT_MS, last_event_at_ms);
+            }
+            #[inline]
+            pub fn add_last_notice(&mut self, last_notice: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayStatus::VT_LAST_NOTICE,
+                    last_notice,
+                );
+            }
+            #[inline]
+            pub fn add_last_error(&mut self, last_error: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayStatus::VT_LAST_ERROR,
+                    last_error,
+                );
+            }
+            #[inline]
+            pub fn add_error_category(
+                &mut self,
+                error_category: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayStatus::VT_ERROR_CATEGORY,
+                    error_category,
+                );
+            }
+            #[inline]
+            pub fn add_events_rx(&mut self, events_rx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(RelayStatus::VT_EVENTS_RX, events_rx, 0);
+            }
+            #[inline]
+            pub fn add_bytes_rx(&mut self, bytes_rx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(RelayStatus::VT_BYTES_RX, bytes_rx, 0);
+            }
+            #[inline]
+            pub fn add_bytes_tx(&mut self, bytes_tx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(RelayStatus::VT_BYTES_TX, bytes_tx, 0);
+            }
+            #[inline]
+            pub fn add_denied(&mut self, denied: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RelayStatus::VT_DENIED, denied, false);
+            }
+            #[inline]
+            pub fn add_last_close_reason(
+                &mut self,
+                last_close_reason: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayStatus::VT_LAST_CLOSE_REASON,
+                    last_close_reason,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> RelayStatusBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RelayStatusBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RelayStatus<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for RelayStatus<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RelayStatus");
+                ds.field("role", &self.role());
+                ds.field("relay_url", &self.relay_url());
+                ds.field("connection", &self.connection());
+                ds.field("auth", &self.auth());
+                ds.field("negentropy_probe", &self.negentropy_probe());
+                ds.field(
+                    "active_wire_subscriptions",
+                    &self.active_wire_subscriptions(),
+                );
+                ds.field("reconnect_count", &self.reconnect_count());
+                ds.field("last_connected_at_ms", &self.last_connected_at_ms());
+                ds.field("last_event_at_ms", &self.last_event_at_ms());
+                ds.field("last_notice", &self.last_notice());
+                ds.field("last_error", &self.last_error());
+                ds.field("error_category", &self.error_category());
+                ds.field("events_rx", &self.events_rx());
+                ds.field("bytes_rx", &self.bytes_rx());
+                ds.field("bytes_tx", &self.bytes_tx());
+                ds.field("denied", &self.denied());
+                ds.field("last_close_reason", &self.last_close_reason());
+                ds.finish()
+            }
+        }
+        pub enum LogicalInterestStatusOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct LogicalInterestStatus<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for LogicalInterestStatus<'a> {
+            type Inner = LogicalInterestStatus<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> LogicalInterestStatus<'a> {
+            pub const VT_KEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_STATE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REFCOUNT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_RELAY_URLS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CACHE_COVERAGE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_WARMING_UNTIL_MS: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                LogicalInterestStatus { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args LogicalInterestStatusArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<LogicalInterestStatus<'bldr>> {
+                let mut builder = LogicalInterestStatusBuilder::new(_fbb);
+                if let Some(x) = args.warming_until_ms {
+                    builder.add_warming_until_ms(x);
+                }
+                if let Some(x) = args.cache_coverage {
+                    builder.add_cache_coverage(x);
+                }
+                if let Some(x) = args.relay_urls {
+                    builder.add_relay_urls(x);
+                }
+                builder.add_refcount(args.refcount);
+                if let Some(x) = args.state {
+                    builder.add_state(x);
+                }
+                if let Some(x) = args.key {
+                    builder.add_key(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn key(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        LogicalInterestStatus::VT_KEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn state(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        LogicalInterestStatus::VT_STATE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn refcount(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(LogicalInterestStatus::VT_REFCOUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn relay_urls(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(LogicalInterestStatus::VT_RELAY_URLS, None)
+                }
+            }
+            #[inline]
+            pub fn cache_coverage(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        LogicalInterestStatus::VT_CACHE_COVERAGE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn warming_until_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(LogicalInterestStatus::VT_WARMING_UNTIL_MS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for LogicalInterestStatus<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "key",
+                        Self::VT_KEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "state",
+                        Self::VT_STATE,
+                        false,
+                    )?
+                    .visit_field::<u32>("refcount", Self::VT_REFCOUNT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("relay_urls", Self::VT_RELAY_URLS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "cache_coverage",
+                        Self::VT_CACHE_COVERAGE,
+                        false,
+                    )?
+                    .visit_field::<u64>("warming_until_ms", Self::VT_WARMING_UNTIL_MS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct LogicalInterestStatusArgs<'a> {
+            pub key: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub refcount: u32,
+            pub relay_urls: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+            pub cache_coverage: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub warming_until_ms: Option<u64>,
+        }
+        impl<'a> Default for LogicalInterestStatusArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                LogicalInterestStatusArgs {
+                    key: None,
+                    state: None,
+                    refcount: 0,
+                    relay_urls: None,
+                    cache_coverage: None,
+                    warming_until_ms: None,
+                }
+            }
+        }
+
+        pub struct LogicalInterestStatusBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> LogicalInterestStatusBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_key(&mut self, key: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    LogicalInterestStatus::VT_KEY,
+                    key,
+                );
+            }
+            #[inline]
+            pub fn add_state(&mut self, state: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    LogicalInterestStatus::VT_STATE,
+                    state,
+                );
+            }
+            #[inline]
+            pub fn add_refcount(&mut self, refcount: u32) {
+                self.fbb_
+                    .push_slot::<u32>(LogicalInterestStatus::VT_REFCOUNT, refcount, 0);
+            }
+            #[inline]
+            pub fn add_relay_urls(
+                &mut self,
+                relay_urls: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    LogicalInterestStatus::VT_RELAY_URLS,
+                    relay_urls,
+                );
+            }
+            #[inline]
+            pub fn add_cache_coverage(
+                &mut self,
+                cache_coverage: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    LogicalInterestStatus::VT_CACHE_COVERAGE,
+                    cache_coverage,
+                );
+            }
+            #[inline]
+            pub fn add_warming_until_ms(&mut self, warming_until_ms: u64) {
+                self.fbb_.push_slot_always::<u64>(
+                    LogicalInterestStatus::VT_WARMING_UNTIL_MS,
+                    warming_until_ms,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> LogicalInterestStatusBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                LogicalInterestStatusBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<LogicalInterestStatus<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for LogicalInterestStatus<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("LogicalInterestStatus");
+                ds.field("key", &self.key());
+                ds.field("state", &self.state());
+                ds.field("refcount", &self.refcount());
+                ds.field("relay_urls", &self.relay_urls());
+                ds.field("cache_coverage", &self.cache_coverage());
+                ds.field("warming_until_ms", &self.warming_until_ms());
+                ds.finish()
+            }
+        }
+        pub enum WireSubscriptionStatusOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct WireSubscriptionStatus<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WireSubscriptionStatus<'a> {
+            type Inner = WireSubscriptionStatus<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WireSubscriptionStatus<'a> {
+            pub const VT_WIRE_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_FILTER_SUMMARY: ::flatbuffers::VOffsetT = 8;
+            pub const VT_STATE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_LOGICAL_CONSUMER_COUNT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_EVENTS_RX: ::flatbuffers::VOffsetT = 14;
+            pub const VT_OPENED_AT_MS: ::flatbuffers::VOffsetT = 16;
+            pub const VT_LAST_EVENT_AT_MS: ::flatbuffers::VOffsetT = 18;
+            pub const VT_EOSE_AT_MS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_CLOSE_REASON: ::flatbuffers::VOffsetT = 22;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WireSubscriptionStatus { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WireSubscriptionStatusArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WireSubscriptionStatus<'bldr>> {
+                let mut builder = WireSubscriptionStatusBuilder::new(_fbb);
+                if let Some(x) = args.eose_at_ms {
+                    builder.add_eose_at_ms(x);
+                }
+                if let Some(x) = args.last_event_at_ms {
+                    builder.add_last_event_at_ms(x);
+                }
+                builder.add_opened_at_ms(args.opened_at_ms);
+                builder.add_events_rx(args.events_rx);
+                if let Some(x) = args.close_reason {
+                    builder.add_close_reason(x);
+                }
+                builder.add_logical_consumer_count(args.logical_consumer_count);
+                if let Some(x) = args.state {
+                    builder.add_state(x);
+                }
+                if let Some(x) = args.filter_summary {
+                    builder.add_filter_summary(x);
+                }
+                if let Some(x) = args.relay_url {
+                    builder.add_relay_url(x);
+                }
+                if let Some(x) = args.wire_id {
+                    builder.add_wire_id(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn wire_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WireSubscriptionStatus::VT_WIRE_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn relay_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WireSubscriptionStatus::VT_RELAY_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn filter_summary(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WireSubscriptionStatus::VT_FILTER_SUMMARY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn state(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WireSubscriptionStatus::VT_STATE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn logical_consumer_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(WireSubscriptionStatus::VT_LOGICAL_CONSUMER_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn events_rx(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WireSubscriptionStatus::VT_EVENTS_RX, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn opened_at_ms(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WireSubscriptionStatus::VT_OPENED_AT_MS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn last_event_at_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WireSubscriptionStatus::VT_LAST_EVENT_AT_MS, None)
+                }
+            }
+            #[inline]
+            pub fn eose_at_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WireSubscriptionStatus::VT_EOSE_AT_MS, None)
+                }
+            }
+            #[inline]
+            pub fn close_reason(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WireSubscriptionStatus::VT_CLOSE_REASON,
+                        None,
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WireSubscriptionStatus<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "wire_id",
+                        Self::VT_WIRE_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "relay_url",
+                        Self::VT_RELAY_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "filter_summary",
+                        Self::VT_FILTER_SUMMARY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "state",
+                        Self::VT_STATE,
+                        false,
+                    )?
+                    .visit_field::<u32>(
+                        "logical_consumer_count",
+                        Self::VT_LOGICAL_CONSUMER_COUNT,
+                        false,
+                    )?
+                    .visit_field::<u64>("events_rx", Self::VT_EVENTS_RX, false)?
+                    .visit_field::<u64>("opened_at_ms", Self::VT_OPENED_AT_MS, false)?
+                    .visit_field::<u64>("last_event_at_ms", Self::VT_LAST_EVENT_AT_MS, false)?
+                    .visit_field::<u64>("eose_at_ms", Self::VT_EOSE_AT_MS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "close_reason",
+                        Self::VT_CLOSE_REASON,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WireSubscriptionStatusArgs<'a> {
+            pub wire_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub filter_summary: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub logical_consumer_count: u32,
+            pub events_rx: u64,
+            pub opened_at_ms: u64,
+            pub last_event_at_ms: Option<u64>,
+            pub eose_at_ms: Option<u64>,
+            pub close_reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for WireSubscriptionStatusArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WireSubscriptionStatusArgs {
+                    wire_id: None,
+                    relay_url: None,
+                    filter_summary: None,
+                    state: None,
+                    logical_consumer_count: 0,
+                    events_rx: 0,
+                    opened_at_ms: 0,
+                    last_event_at_ms: None,
+                    eose_at_ms: None,
+                    close_reason: None,
+                }
+            }
+        }
+
+        pub struct WireSubscriptionStatusBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WireSubscriptionStatusBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_wire_id(&mut self, wire_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WireSubscriptionStatus::VT_WIRE_ID,
+                    wire_id,
+                );
+            }
+            #[inline]
+            pub fn add_relay_url(&mut self, relay_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WireSubscriptionStatus::VT_RELAY_URL,
+                    relay_url,
+                );
+            }
+            #[inline]
+            pub fn add_filter_summary(
+                &mut self,
+                filter_summary: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WireSubscriptionStatus::VT_FILTER_SUMMARY,
+                    filter_summary,
+                );
+            }
+            #[inline]
+            pub fn add_state(&mut self, state: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WireSubscriptionStatus::VT_STATE,
+                    state,
+                );
+            }
+            #[inline]
+            pub fn add_logical_consumer_count(&mut self, logical_consumer_count: u32) {
+                self.fbb_.push_slot::<u32>(
+                    WireSubscriptionStatus::VT_LOGICAL_CONSUMER_COUNT,
+                    logical_consumer_count,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_events_rx(&mut self, events_rx: u64) {
+                self.fbb_
+                    .push_slot::<u64>(WireSubscriptionStatus::VT_EVENTS_RX, events_rx, 0);
+            }
+            #[inline]
+            pub fn add_opened_at_ms(&mut self, opened_at_ms: u64) {
+                self.fbb_.push_slot::<u64>(
+                    WireSubscriptionStatus::VT_OPENED_AT_MS,
+                    opened_at_ms,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_last_event_at_ms(&mut self, last_event_at_ms: u64) {
+                self.fbb_.push_slot_always::<u64>(
+                    WireSubscriptionStatus::VT_LAST_EVENT_AT_MS,
+                    last_event_at_ms,
+                );
+            }
+            #[inline]
+            pub fn add_eose_at_ms(&mut self, eose_at_ms: u64) {
+                self.fbb_
+                    .push_slot_always::<u64>(WireSubscriptionStatus::VT_EOSE_AT_MS, eose_at_ms);
+            }
+            #[inline]
+            pub fn add_close_reason(&mut self, close_reason: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WireSubscriptionStatus::VT_CLOSE_REASON,
+                    close_reason,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WireSubscriptionStatusBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WireSubscriptionStatusBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WireSubscriptionStatus<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WireSubscriptionStatus<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WireSubscriptionStatus");
+                ds.field("wire_id", &self.wire_id());
+                ds.field("relay_url", &self.relay_url());
+                ds.field("filter_summary", &self.filter_summary());
+                ds.field("state", &self.state());
+                ds.field("logical_consumer_count", &self.logical_consumer_count());
+                ds.field("events_rx", &self.events_rx());
+                ds.field("opened_at_ms", &self.opened_at_ms());
+                ds.field("last_event_at_ms", &self.last_event_at_ms());
+                ds.field("eose_at_ms", &self.eose_at_ms());
+                ds.field("close_reason", &self.close_reason());
+                ds.finish()
+            }
+        }
         pub enum SnapshotFrameOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -1028,6 +3403,22 @@ pub mod nmp {
             pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
             pub const VT_PAYLOAD: ::flatbuffers::VOffsetT = 6;
             pub const VT_TYPED_PROJECTIONS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REV: ::flatbuffers::VOffsetT = 10;
+            pub const VT_KERNEL_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 12;
+            pub const VT_LAST_TICK_MS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_UPDATE_KIND: ::flatbuffers::VOffsetT = 16;
+            pub const VT_RUNNING: ::flatbuffers::VOffsetT = 18;
+            pub const VT_METRICS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_RELAY_STATUS: ::flatbuffers::VOffsetT = 22;
+            pub const VT_RELAY_STATUSES: ::flatbuffers::VOffsetT = 24;
+            pub const VT_LOGICAL_INTERESTS: ::flatbuffers::VOffsetT = 26;
+            pub const VT_WIRE_SUBSCRIPTIONS: ::flatbuffers::VOffsetT = 28;
+            pub const VT_LOGS: ::flatbuffers::VOffsetT = 30;
+            pub const VT_LAST_ERROR_TOAST: ::flatbuffers::VOffsetT = 32;
+            pub const VT_LAST_ERROR_CATEGORY: ::flatbuffers::VOffsetT = 34;
+            pub const VT_LAST_PLANNER_ERROR: ::flatbuffers::VOffsetT = 36;
+            pub const VT_STORE_OPEN_FAILURE: ::flatbuffers::VOffsetT = 38;
+            pub const VT_NO_CONFIGURED_RELAYS: ::flatbuffers::VOffsetT = 40;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1044,6 +3435,42 @@ pub mod nmp {
                 args: &'args SnapshotFrameArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<SnapshotFrame<'bldr>> {
                 let mut builder = SnapshotFrameBuilder::new(_fbb);
+                builder.add_last_tick_ms(args.last_tick_ms);
+                builder.add_rev(args.rev);
+                if let Some(x) = args.store_open_failure {
+                    builder.add_store_open_failure(x);
+                }
+                if let Some(x) = args.last_planner_error {
+                    builder.add_last_planner_error(x);
+                }
+                if let Some(x) = args.last_error_category {
+                    builder.add_last_error_category(x);
+                }
+                if let Some(x) = args.last_error_toast {
+                    builder.add_last_error_toast(x);
+                }
+                if let Some(x) = args.logs {
+                    builder.add_logs(x);
+                }
+                if let Some(x) = args.wire_subscriptions {
+                    builder.add_wire_subscriptions(x);
+                }
+                if let Some(x) = args.logical_interests {
+                    builder.add_logical_interests(x);
+                }
+                if let Some(x) = args.relay_statuses {
+                    builder.add_relay_statuses(x);
+                }
+                if let Some(x) = args.relay_status {
+                    builder.add_relay_status(x);
+                }
+                if let Some(x) = args.metrics {
+                    builder.add_metrics(x);
+                }
+                if let Some(x) = args.update_kind {
+                    builder.add_update_kind(x);
+                }
+                builder.add_kernel_schema_version(args.kernel_schema_version);
                 if let Some(x) = args.typed_projections {
                     builder.add_typed_projections(x);
                 }
@@ -1051,6 +3478,10 @@ pub mod nmp {
                     builder.add_payload(x);
                 }
                 builder.add_schema_version(args.schema_version);
+                if let Some(x) = args.no_configured_relays {
+                    builder.add_no_configured_relays(x);
+                }
+                builder.add_running(args.running);
                 builder.finish()
             }
 
@@ -1092,6 +3523,215 @@ pub mod nmp {
                     >>(SnapshotFrame::VT_TYPED_PROJECTIONS, None)
                 }
             }
+            #[inline]
+            pub fn rev(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(SnapshotFrame::VT_REV, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn kernel_schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(SnapshotFrame::VT_KERNEL_SCHEMA_VERSION, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn last_tick_ms(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(SnapshotFrame::VT_LAST_TICK_MS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn update_kind(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        SnapshotFrame::VT_UPDATE_KIND,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn running(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SnapshotFrame::VT_RUNNING, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn metrics(&self) -> Option<Metrics<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<Metrics>>(
+                        SnapshotFrame::VT_METRICS,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn relay_status(&self) -> Option<RelayStatus<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<RelayStatus>>(
+                            SnapshotFrame::VT_RELAY_STATUS,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn relay_statuses(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayStatus<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayStatus>>,
+                    >>(SnapshotFrame::VT_RELAY_STATUSES, None)
+                }
+            }
+            #[inline]
+            pub fn logical_interests(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<
+                    'a,
+                    ::flatbuffers::ForwardsUOffset<LogicalInterestStatus<'a>>,
+                >,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<LogicalInterestStatus>,
+                        >,
+                    >>(SnapshotFrame::VT_LOGICAL_INTERESTS, None)
+                }
+            }
+            #[inline]
+            pub fn wire_subscriptions(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<
+                    'a,
+                    ::flatbuffers::ForwardsUOffset<WireSubscriptionStatus<'a>>,
+                >,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<WireSubscriptionStatus>,
+                        >,
+                    >>(SnapshotFrame::VT_WIRE_SUBSCRIPTIONS, None)
+                }
+            }
+            #[inline]
+            pub fn logs(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(SnapshotFrame::VT_LOGS, None)
+                }
+            }
+            #[inline]
+            pub fn last_error_toast(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        SnapshotFrame::VT_LAST_ERROR_TOAST,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn last_error_category(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        SnapshotFrame::VT_LAST_ERROR_CATEGORY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn last_planner_error(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        SnapshotFrame::VT_LAST_PLANNER_ERROR,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn store_open_failure(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        SnapshotFrame::VT_STORE_OPEN_FAILURE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn no_configured_relays(&self) -> Option<bool> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SnapshotFrame::VT_NO_CONFIGURED_RELAYS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SnapshotFrame<'_> {
@@ -1110,6 +3750,72 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TypedProjection>>,
                     >>("typed_projections", Self::VT_TYPED_PROJECTIONS, false)?
+                    .visit_field::<u64>("rev", Self::VT_REV, false)?
+                    .visit_field::<u32>(
+                        "kernel_schema_version",
+                        Self::VT_KERNEL_SCHEMA_VERSION,
+                        false,
+                    )?
+                    .visit_field::<u64>("last_tick_ms", Self::VT_LAST_TICK_MS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "update_kind",
+                        Self::VT_UPDATE_KIND,
+                        false,
+                    )?
+                    .visit_field::<bool>("running", Self::VT_RUNNING, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<Metrics>>(
+                        "metrics",
+                        Self::VT_METRICS,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<RelayStatus>>(
+                        "relay_status",
+                        Self::VT_RELAY_STATUS,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RelayStatus>>,
+                    >>("relay_statuses", Self::VT_RELAY_STATUSES, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<LogicalInterestStatus>,
+                        >,
+                    >>("logical_interests", Self::VT_LOGICAL_INTERESTS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<WireSubscriptionStatus>,
+                        >,
+                    >>("wire_subscriptions", Self::VT_WIRE_SUBSCRIPTIONS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("logs", Self::VT_LOGS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "last_error_toast",
+                        Self::VT_LAST_ERROR_TOAST,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "last_error_category",
+                        Self::VT_LAST_ERROR_CATEGORY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "last_planner_error",
+                        Self::VT_LAST_PLANNER_ERROR,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "store_open_failure",
+                        Self::VT_STORE_OPEN_FAILURE,
+                        false,
+                    )?
+                    .visit_field::<bool>(
+                        "no_configured_relays",
+                        Self::VT_NO_CONFIGURED_RELAYS,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -1122,6 +3828,44 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TypedProjection<'a>>>,
                 >,
             >,
+            pub rev: u64,
+            pub kernel_schema_version: u32,
+            pub last_tick_ms: u64,
+            pub update_kind: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub running: bool,
+            pub metrics: Option<::flatbuffers::WIPOffset<Metrics<'a>>>,
+            pub relay_status: Option<::flatbuffers::WIPOffset<RelayStatus<'a>>>,
+            pub relay_statuses: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayStatus<'a>>>,
+                >,
+            >,
+            pub logical_interests: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<LogicalInterestStatus<'a>>,
+                    >,
+                >,
+            >,
+            pub wire_subscriptions: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<WireSubscriptionStatus<'a>>,
+                    >,
+                >,
+            >,
+            pub logs: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+            pub last_error_toast: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub last_error_category: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub last_planner_error: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub store_open_failure: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub no_configured_relays: Option<bool>,
         }
         impl<'a> Default for SnapshotFrameArgs<'a> {
             #[inline]
@@ -1130,6 +3874,22 @@ pub mod nmp {
                     schema_version: 1,
                     payload: None,
                     typed_projections: None,
+                    rev: 0,
+                    kernel_schema_version: 0,
+                    last_tick_ms: 0,
+                    update_kind: None,
+                    running: false,
+                    metrics: None,
+                    relay_status: None,
+                    relay_statuses: None,
+                    logical_interests: None,
+                    wire_subscriptions: None,
+                    logs: None,
+                    last_error_toast: None,
+                    last_error_category: None,
+                    last_planner_error: None,
+                    store_open_failure: None,
+                    no_configured_relays: None,
                 }
             }
         }
@@ -1165,6 +3925,153 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_rev(&mut self, rev: u64) {
+                self.fbb_.push_slot::<u64>(SnapshotFrame::VT_REV, rev, 0);
+            }
+            #[inline]
+            pub fn add_kernel_schema_version(&mut self, kernel_schema_version: u32) {
+                self.fbb_.push_slot::<u32>(
+                    SnapshotFrame::VT_KERNEL_SCHEMA_VERSION,
+                    kernel_schema_version,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_last_tick_ms(&mut self, last_tick_ms: u64) {
+                self.fbb_
+                    .push_slot::<u64>(SnapshotFrame::VT_LAST_TICK_MS, last_tick_ms, 0);
+            }
+            #[inline]
+            pub fn add_update_kind(&mut self, update_kind: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotFrame::VT_UPDATE_KIND,
+                    update_kind,
+                );
+            }
+            #[inline]
+            pub fn add_running(&mut self, running: bool) {
+                self.fbb_
+                    .push_slot::<bool>(SnapshotFrame::VT_RUNNING, running, false);
+            }
+            #[inline]
+            pub fn add_metrics(&mut self, metrics: ::flatbuffers::WIPOffset<Metrics<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<Metrics>>(
+                        SnapshotFrame::VT_METRICS,
+                        metrics,
+                    );
+            }
+            #[inline]
+            pub fn add_relay_status(
+                &mut self,
+                relay_status: ::flatbuffers::WIPOffset<RelayStatus<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<RelayStatus>>(
+                        SnapshotFrame::VT_RELAY_STATUS,
+                        relay_status,
+                    );
+            }
+            #[inline]
+            pub fn add_relay_statuses(
+                &mut self,
+                relay_statuses: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<RelayStatus<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotFrame::VT_RELAY_STATUSES,
+                    relay_statuses,
+                );
+            }
+            #[inline]
+            pub fn add_logical_interests(
+                &mut self,
+                logical_interests: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<LogicalInterestStatus<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotFrame::VT_LOGICAL_INTERESTS,
+                    logical_interests,
+                );
+            }
+            #[inline]
+            pub fn add_wire_subscriptions(
+                &mut self,
+                wire_subscriptions: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<WireSubscriptionStatus<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotFrame::VT_WIRE_SUBSCRIPTIONS,
+                    wire_subscriptions,
+                );
+            }
+            #[inline]
+            pub fn add_logs(
+                &mut self,
+                logs: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SnapshotFrame::VT_LOGS, logs);
+            }
+            #[inline]
+            pub fn add_last_error_toast(
+                &mut self,
+                last_error_toast: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotFrame::VT_LAST_ERROR_TOAST,
+                    last_error_toast,
+                );
+            }
+            #[inline]
+            pub fn add_last_error_category(
+                &mut self,
+                last_error_category: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotFrame::VT_LAST_ERROR_CATEGORY,
+                    last_error_category,
+                );
+            }
+            #[inline]
+            pub fn add_last_planner_error(
+                &mut self,
+                last_planner_error: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotFrame::VT_LAST_PLANNER_ERROR,
+                    last_planner_error,
+                );
+            }
+            #[inline]
+            pub fn add_store_open_failure(
+                &mut self,
+                store_open_failure: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SnapshotFrame::VT_STORE_OPEN_FAILURE,
+                    store_open_failure,
+                );
+            }
+            #[inline]
+            pub fn add_no_configured_relays(&mut self, no_configured_relays: bool) {
+                self.fbb_.push_slot_always::<bool>(
+                    SnapshotFrame::VT_NO_CONFIGURED_RELAYS,
+                    no_configured_relays,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> SnapshotFrameBuilder<'a, 'b, A> {
@@ -1187,6 +4094,22 @@ pub mod nmp {
                 ds.field("schema_version", &self.schema_version());
                 ds.field("payload", &self.payload());
                 ds.field("typed_projections", &self.typed_projections());
+                ds.field("rev", &self.rev());
+                ds.field("kernel_schema_version", &self.kernel_schema_version());
+                ds.field("last_tick_ms", &self.last_tick_ms());
+                ds.field("update_kind", &self.update_kind());
+                ds.field("running", &self.running());
+                ds.field("metrics", &self.metrics());
+                ds.field("relay_status", &self.relay_status());
+                ds.field("relay_statuses", &self.relay_statuses());
+                ds.field("logical_interests", &self.logical_interests());
+                ds.field("wire_subscriptions", &self.wire_subscriptions());
+                ds.field("logs", &self.logs());
+                ds.field("last_error_toast", &self.last_error_toast());
+                ds.field("last_error_category", &self.last_error_category());
+                ds.field("last_planner_error", &self.last_planner_error());
+                ds.field("store_open_failure", &self.store_open_failure());
+                ds.field("no_configured_relays", &self.no_configured_relays());
                 ds.finish()
             }
         }
