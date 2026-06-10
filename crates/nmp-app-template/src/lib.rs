@@ -312,6 +312,16 @@ pub fn register_defaults(app: &mut impl AppHost) {
     runtimes::register_dm_runtime(app);
     runtimes::register_zap_receipts_runtime(app);
 
+    // ── NIP-23 long-form TYPED snapshot projection (A5 root-cause fix) ────
+    //
+    // The default kind:30023 projection, emitted as a strongly-typed
+    // FlatBuffer in the `typed_projections` sidecar (NOT the generic JSON
+    // `projections` map — that map is being retired). Apps read resolved
+    // `ArticleProjection` entries off the typed `nmp.nip23.articles` payload
+    // instead of tapping raw events and re-parsing/re-superseding NIP-23 tags
+    // by hand (the recurring A5 pattern found in Chirp / Podcastr / tenex-off).
+    register_longform_projection(app);
+
     // ── Bootstrap relay for client-initiated NIP-46 (V-65) ──────────────
     //
     // Fallback relay for `nostrconnect://` handshakes when the user has no
@@ -322,4 +332,46 @@ pub fn register_defaults(app: &mut impl AppHost) {
     // invoking `AppHost::set_nostrconnect_bootstrap_relay` a second time
     // (last-writer-wins, like every other pre-start slot).
     app.set_nostrconnect_bootstrap_relay("wss://relay.damus.io".to_string());
+}
+
+/// Wire the default NIP-23 long-form (kind:30023) **typed** snapshot projection
+/// into `app`.
+///
+/// Constructs one [`nmp_content::LongformProjection`] and registers it twice
+/// against the same `Arc`: as a [`KernelEventObserver`](nmp_core::KernelEventObserver)
+/// (ingest — accumulates the resolved `ArticleProjection` for every kind:30023
+/// the kernel surfaces) AND as the typed snapshot projection under
+/// [`LONGFORM_PROJECTION_KEY`](nmp_content::LONGFORM_PROJECTION_KEY) (output —
+/// the `NL23` FlatBuffer carried in every frame's `typed_projections` sidecar).
+/// Mirrors `nmp_wot::register_runtime`.
+///
+/// **Typed-only.** It registers exclusively through
+/// [`AppHost::register_typed_snapshot_projection`]; it does NOT write into the
+/// generic JSON `projections` map (that map is being retired). A host decodes
+/// the `nmp.nip23.articles` payload with the generated `NL23` accessors.
+///
+/// D5-scoped: an observer only sees events from open subscriptions (an open
+/// `topic_articles` `#t` feed or a `claim_event(naddr)` document), so the
+/// snapshot only ever carries the articles whose subscriptions are open.
+/// Supersession is resolved by the kernel store before the observer fires
+/// (`Inserted | Replaced` only), so the projection keeps the winning event with
+/// no `created_at` comparison of its own.
+///
+/// Called by [`register_defaults`]; `pub` so an app opting out of the wholesale
+/// defaults can still wire just this projection.
+pub fn register_longform_projection(app: &impl AppHost) {
+    use nmp_content::LongformProjection;
+    use nmp_core::KernelEventObserver;
+
+    let projection = Arc::new(LongformProjection::new());
+    let observer_id =
+        app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    // A zero id means the observer slot was poisoned — soft-fail (D6): skip the
+    // snapshot registration too so we never publish a perpetually-empty key.
+    if observer_id == nmp_core::KernelEventObserverId(0) {
+        return;
+    }
+    app.register_typed_snapshot_projection(nmp_content::LONGFORM_PROJECTION_KEY, move || {
+        Some(projection.typed_projection())
+    });
 }

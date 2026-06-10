@@ -15,12 +15,18 @@
 //! [`WireNode::Placeholder`], never a dropped subtree) and D6 (no panics — no
 //! `unwrap`/`expect`/indexing that can panic on non-test paths).
 
+pub mod longform_fb;
 mod projection;
 pub mod typed_fb;
 
 #[cfg(test)]
 mod tests;
 
+pub use longform_fb::{
+    decode_longform_articles, encode_longform_articles, LongformArticles,
+    FILE_IDENTIFIER as LONGFORM_FILE_IDENTIFIER, SCHEMA_ID as LONGFORM_SCHEMA_ID,
+    SCHEMA_VERSION as LONGFORM_SCHEMA_VERSION,
+};
 pub use typed_fb::{
     decode_content_tree, encode_content_tree, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION,
 };

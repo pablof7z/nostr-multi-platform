@@ -1,0 +1,107 @@
+namespace nmp.nip23;
+
+// Typed FlatBuffers wire for the NIP-23 long-form (kind:30023) snapshot
+// projection (`nmp_content::longform::LongformProjection`), emitted under the
+// projection key `nmp.nip23.articles`.
+//
+// This is the TYPED sidecar payload carried in every `SnapshotFrame`'s
+// `typed_projections` slot (ADR-0037 / `crates/nmp-core/schema/nmp_update.fbs`
+// `TypedProjection`). The projection is registered through
+// `AppHost::register_typed_snapshot_projection` — it does NOT write into the
+// generic JSON `projections` map. The JSON map is being retired; this typed
+// payload is what hosts read.
+//
+// Shape mirrors `nmp_content::embed_projection::ArticleProjection` (the existing
+// NIP-23 resolver output — never a bespoke tag parser):
+//
+//   * `ArticleFeedItem` is the trimmed, screen-shaped feed-list row (D5): it
+//     carries NO `content_tree` body. Display fields are non-optional
+//     placeholders (D1): a missing `title`/`summary`/`image` tag is an empty
+//     string, never an absent field that would hide the row.
+//   * `ArticleDocument` is the full open-document shape: it keeps the resolver's
+//     `Option` tag fields verbatim (raw protocol data) via the `has_*` presence
+//     convention used by `content_tree.fbs` / `wallet_status.fbs`, plus the
+//     full article body as nested `content_tree` bytes.
+//
+// `content_tree` is the existing `ContentTreeWire` typed buffer (`NFCT` root,
+// `crates/nmp-content/schema/content_tree.fbs`) carried verbatim as opaque
+// bytes — the host already owns the `NFCT` decoder, so it decodes the nested
+// buffer for free. We do NOT `include` content_tree.fbs here: the standalone
+// `encode_content_tree` / `decode_content_tree` codec is reused as a unit,
+// exactly as the transport treats a typed payload as opaque bytes.
+//
+// FlatBuffers has no native map — `documents` is a `key`-keyed vector on the
+// addressable coordinate (`kind:author_hex:d_tag`) so a host can binary-search
+// a document by address.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// has no `include`, so generate plainly:
+//   flatc --rust -o crates/nmp-content/src/wire/generated \
+//         crates/nmp-content/schema/longform.fbs
+
+// Trimmed, screen-shaped feed-list row (D5: no `content_tree`). Display fields
+// are non-optional placeholders (D1): an absent tag is an empty string.
+table ArticleFeedItem {
+  // Addressable coordinate `kind:author_hex:d_tag` — the stable identity a host
+  // uses to open the full document.
+  address:string;
+  // 64-character hex event id of the winning event.
+  id:string;
+  // 64-character hex author pubkey.
+  author_pubkey:string;
+  // `title` tag, or empty string when absent (D1 placeholder).
+  title:string;
+  // `summary` tag, or empty string when absent (D1 placeholder).
+  summary:string;
+  // `image` (hero) tag, or empty string when absent (D1 placeholder).
+  hero_image_url:string;
+  // Addressable `d` tag value.
+  d_tag:string;
+  // Event creation time as Unix seconds.
+  created_at:uint64;
+}
+
+// Full open-document shape — the resolver's raw `ArticleProjection`, with the
+// `Option` tag fields kept verbatim via `has_*` presence flags and the full
+// article body as nested `content_tree` bytes.
+table ArticleDocument {
+  // Addressable coordinate `kind:author_hex:d_tag` — keyed for binary search.
+  address:string (key);
+  // 64-character hex event id of the winning event.
+  id:string;
+  // 64-character hex author pubkey.
+  author_pubkey:string;
+  // author_display_name: Option<String> (kind:0 enrichment; resolver leaves None).
+  has_author_display_name:bool;
+  author_display_name:string;
+  // author_picture_url: Option<String>.
+  has_author_picture_url:bool;
+  author_picture_url:string;
+  // Event creation time as Unix seconds.
+  created_at:uint64;
+  // title: Option<String>.
+  has_title:bool;
+  title:string;
+  // summary: Option<String>.
+  has_summary:bool;
+  summary:string;
+  // hero_image_url: Option<String> (the `image` tag).
+  has_hero_image_url:bool;
+  hero_image_url:string;
+  // Addressable `d` tag value.
+  d_tag:string;
+  // The article body as a verbatim `ContentTreeWire` (`NFCT`) buffer.
+  content_tree:[ubyte];
+}
+
+// Root: the whole `nmp.nip23.articles` projection in one buffer.
+table LongformArticles {
+  // Feed list, trimmed summaries, newest-first.
+  articles:[ArticleFeedItem];
+  // Full documents, keyed by addressable coordinate (sorted for binary search).
+  documents:[ArticleDocument];
+}
+
+file_identifier "NL23";
+root_type LongformArticles;
