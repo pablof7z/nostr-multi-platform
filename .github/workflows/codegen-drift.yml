@@ -41,3 +41,11 @@ jobs:
           cargo run --quiet -p nmp-core --features codegen-schema \
               --bin dump_projection_schemas \
             | cargo run --quiet -p nmp-codegen -- gen swift --check
+
+      # V6 Stage 4 (consumer-side) — the generated typed-FlatBuffer-sidecar
+      # decoders (`TypedProjectionDecoders.generated.swift`). Driven by the
+      # registry's `typed_sidecar` metadata; no schema-document stdin needed.
+      # Fails any PR whose generated Swift differs from a fresh run, so the
+      # decoders cannot drift from the registry.
+      - name: Check typed-decoder codegen is up to date
+        run: cargo run --quiet -p nmp-codegen -- gen typed-decoders --check
