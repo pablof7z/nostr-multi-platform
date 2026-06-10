@@ -57,13 +57,19 @@
 //! - **D6**: every `decode_*` returns `Err(String)` on malformed input; no panic
 //!   at the boundary.
 
+mod accounts_fb;
+mod active_account_fb;
+mod author_view_fb;
 mod builtins_publish;
+mod builtins_views;
 mod configured_relays_fb;
 mod outbox_summary_fb;
+mod profile_fb;
 mod publish_outbox_fb;
 mod publish_queue_fb;
 mod relay_role_options_fb;
 mod settings_hub_fb;
+mod thread_view_fb;
 
 pub(crate) use configured_relays_fb::{
     encode_configured_relays, ConfiguredRelaysModel, CONFIGURED_RELAYS_FILE_IDENTIFIER,
@@ -98,11 +104,45 @@ pub(crate) use publish_queue_fb::{
     encode_publish_queue, PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow,
     PUBLISH_QUEUE_FILE_IDENTIFIER, PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
 };
+// Wave C identity + views cluster (`accounts` / `active_account` / `profile` /
+// `author_view` / `thread_view`). The DTO→Model mappings live in
+// `builtins_views.rs` (heavier nested rows + the two conditional view pushes),
+// where the `pub(super)`/`pub(crate)` DTO types are reachable. `ProfileCardModel`
+// (from `profile_fb`) and `TimelineItemModel` (from `thread_view_fb`) are the
+// shared row shapes the `author_view` codec reuses.
+pub(crate) use accounts_fb::{
+    encode_accounts, AccountSummaryRow, AccountsModel, ACCOUNTS_FILE_IDENTIFIER,
+    ACCOUNTS_SCHEMA_ID, ACCOUNTS_SCHEMA_VERSION,
+};
+pub(crate) use active_account_fb::{
+    encode_active_account, ActiveAccountModel, ACTIVE_ACCOUNT_FILE_IDENTIFIER,
+    ACTIVE_ACCOUNT_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_VERSION,
+};
+pub(crate) use author_view_fb::{
+    encode_author_view, AuthorViewModel, ProfileActionModel, ProfileDispatchSpecModel,
+    AUTHOR_VIEW_FILE_IDENTIFIER, AUTHOR_VIEW_SCHEMA_ID, AUTHOR_VIEW_SCHEMA_VERSION,
+};
+pub(crate) use profile_fb::{
+    encode_profile, ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID,
+    PROFILE_SCHEMA_VERSION,
+};
+pub(crate) use thread_view_fb::{
+    encode_thread_view, ThreadViewModel, TimelineItemModel, THREAD_VIEW_FILE_IDENTIFIER,
+    THREAD_VIEW_SCHEMA_ID, THREAD_VIEW_SCHEMA_VERSION,
+};
 
+#[cfg(test)]
+pub(crate) use accounts_fb::decode_accounts;
+#[cfg(test)]
+pub(crate) use active_account_fb::decode_active_account;
+#[cfg(test)]
+pub(crate) use author_view_fb::decode_author_view;
 #[cfg(test)]
 pub(crate) use configured_relays_fb::decode_configured_relays;
 #[cfg(test)]
 pub(crate) use outbox_summary_fb::decode_outbox_summary;
+#[cfg(test)]
+pub(crate) use profile_fb::decode_profile;
 #[cfg(test)]
 pub(crate) use publish_outbox_fb::decode_publish_outbox;
 #[cfg(test)]
@@ -111,6 +151,8 @@ pub(crate) use publish_queue_fb::decode_publish_queue;
 pub(crate) use relay_role_options_fb::decode_relay_role_options;
 #[cfg(test)]
 pub(crate) use settings_hub_fb::decode_settings_hub;
+#[cfg(test)]
+pub(crate) use thread_view_fb::decode_thread_view;
 
 use crate::update_envelope::TypedProjectionData;
 
@@ -133,12 +175,14 @@ impl super::Kernel {
     /// D6: pure encode, no panics, no allocations beyond the buffers; called on
     /// the actor thread inside the snapshot tick (D8: non-blocking).
     pub(in crate::kernel) fn builtin_typed_projections(&self) -> Vec<TypedProjectionData> {
-        let mut out = Vec::with_capacity(6);
+        // 6 relay/settings/publish built-ins + up to 5 identity/views built-ins
+        // (`accounts` / `active_account` / `profile` always; `author_view` /
+        // `thread_view` only when open).
+        let mut out = Vec::with_capacity(11);
 
         // `configured_relays` — encoded from the SAME `AppRelay` slice the JSON
         // path serialises (`configured_relays_snapshot()`).
-        let configured_relays: ConfiguredRelaysModel =
-            self.configured_relays_snapshot().into();
+        let configured_relays: ConfiguredRelaysModel = self.configured_relays_snapshot().into();
         out.push(TypedProjectionData {
             key: CONFIGURED_RELAYS_SCHEMA_ID.to_string(),
             schema_id: CONFIGURED_RELAYS_SCHEMA_ID.to_string(),
@@ -191,6 +235,13 @@ impl super::Kernel {
         // rows) and must be inlined where the `pub(super)`/`pub(crate)` DTO
         // types are reachable, but they stay under the same owner.
         out.extend(self.publish_cluster_typed_projections());
+
+        // Wave C identity + views cluster (`accounts` / `active_account` /
+        // `profile` unconditionally; `author_view` / `thread_view` only when the
+        // respective view is open — D5). Extracted to `builtins_views.rs` to keep
+        // this file under the LOC ceiling (heavier nested DTO→Model mappings +
+        // the two conditional pushes), but kept under the same owner.
+        out.extend(self.views_cluster_typed_projections());
 
         out
     }

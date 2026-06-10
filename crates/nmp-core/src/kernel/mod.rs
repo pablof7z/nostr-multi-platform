@@ -21,14 +21,14 @@ pub(crate) mod action_registry;
 // `Kernel`-attached API itself lives on `impl Kernel` (see `mod.rs` below).
 #[cfg(test)]
 mod action_failure_tests;
-#[cfg(test)]
-mod signed_events_return_tests;
 pub(crate) mod action_lifecycle;
 #[cfg(test)]
 mod action_lifecycle_tests;
 pub(crate) mod action_stages;
 #[cfg(test)]
 mod action_stages_tests;
+#[cfg(test)]
+mod signed_events_return_tests;
 // V-59 rung 1 — public typed accessor over the active account's
 // `timeline_authors` projection (raw pubkeys). The OP-centric feed's
 // `FollowSetLookup` capability (later rung) reads through this seam.
@@ -164,11 +164,11 @@ mod relay_score_lookup_impl;
 // (EVENT = Hit, EOSE = EoseNoMatch, relay_failed = Failed) into score deltas.
 // The author lookup is a test seam until W5 populates `claim_expansion_subs`.
 mod relay_score_record;
+#[cfg(test)]
+mod replaceable_ttl_gate_tests;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
-#[cfg(test)]
-mod replaceable_ttl_gate_tests;
 mod requests;
 #[cfg(test)]
 mod retention_tests;
@@ -184,12 +184,6 @@ mod perf_tests;
 pub(crate) mod snapshot_registry;
 #[cfg(test)]
 mod snapshot_registry_tests;
-/// Tier-2 (kernel-owned built-in) typed-projection codecs + `make_update`
-/// wiring. The Wave C counterpart to the host-registered Tier-1 typed
-/// projections (ADR-0037). See the module doc for the mechanism rationale.
-mod typed_projections;
-#[cfg(test)]
-mod typed_projections_tests;
 #[cfg(test)]
 mod state_projection_tests;
 mod status;
@@ -213,6 +207,14 @@ mod tests;
 mod timeline_order_tests;
 #[cfg(test)]
 mod timeline_perf_tests;
+/// Tier-2 (kernel-owned built-in) typed-projection codecs + `make_update`
+/// wiring. The Wave C counterpart to the host-registered Tier-1 typed
+/// projections (ADR-0037). See the module doc for the mechanism rationale.
+mod typed_projections;
+#[cfg(test)]
+mod typed_projections_tests;
+#[cfg(test)]
+mod typed_projections_wave_c_tests;
 mod types;
 mod update;
 #[cfg(test)]

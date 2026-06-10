@@ -21,10 +21,7 @@ use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::update_envelope::TypedProjectionData;
 
-fn typed_entry<'a>(
-    typed: &'a [TypedProjectionData],
-    key: &str,
-) -> &'a TypedProjectionData {
+fn typed_entry<'a>(typed: &'a [TypedProjectionData], key: &str) -> &'a TypedProjectionData {
     typed
         .iter()
         .find(|t| t.key == key)
@@ -76,11 +73,17 @@ fn relay_settings_builtins_emit_typed_sidecars_alongside_json() {
     );
     // Non-empty nested data survives the round-trip through the real frame, and
     // the typed row agrees field-for-field with the JSON row.
-    assert_eq!(decoded_relays.relays.len(), 1, "the seeded relay must appear");
+    assert_eq!(
+        decoded_relays.relays.len(),
+        1,
+        "the seeded relay must appear"
+    );
     assert_eq!(decoded_relays.relays[0].url, "wss://seed.example/");
     assert_eq!(decoded_relays.relays[0].role, "both");
     assert_eq!(
-        json_relays[0].get("url").and_then(serde_json::Value::as_str),
+        json_relays[0]
+            .get("url")
+            .and_then(serde_json::Value::as_str),
         Some(decoded_relays.relays[0].url.as_str()),
         "typed and JSON configured_relays[0].url must agree"
     );
@@ -198,7 +201,10 @@ fn publish_cluster_builtins_emit_typed_sidecars_alongside_json() {
         .expect("the generic JSON `publish_outbox` entry must remain (additive)");
     let po = typed_entry(&typed, "publish_outbox");
     assert_eq!(po.schema_id, PUBLISH_OUTBOX_SCHEMA_ID);
-    assert_eq!(po.file_identifier.as_bytes(), PUBLISH_OUTBOX_FILE_IDENTIFIER);
+    assert_eq!(
+        po.file_identifier.as_bytes(),
+        PUBLISH_OUTBOX_FILE_IDENTIFIER
+    );
     let decoded_outbox =
         decode_publish_outbox(&po.payload).expect("publish_outbox sidecar must decode");
     assert_eq!(
@@ -214,7 +220,10 @@ fn publish_cluster_builtins_emit_typed_sidecars_alongside_json() {
         .expect("the generic JSON `outbox_summary` entry must remain (additive)");
     let os = typed_entry(&typed, "outbox_summary");
     assert_eq!(os.schema_id, OUTBOX_SUMMARY_SCHEMA_ID);
-    assert_eq!(os.file_identifier.as_bytes(), OUTBOX_SUMMARY_FILE_IDENTIFIER);
+    assert_eq!(
+        os.file_identifier.as_bytes(),
+        OUTBOX_SUMMARY_FILE_IDENTIFIER
+    );
     let decoded_summary =
         decode_outbox_summary(&os.payload).expect("outbox_summary sidecar must decode");
     // The kernel owns the English strings even with an empty outbox.
@@ -254,10 +263,26 @@ fn builtins_emit_without_any_host_typed_registration() {
     assert!(keys.contains("publish_queue"));
     assert!(keys.contains("publish_outbox"));
     assert!(keys.contains("outbox_summary"));
+    // Wave C identity + views cluster: accounts / active_account / profile are
+    // unconditional; the two view built-ins are absent on a fresh kernel (no
+    // author / thread view open — D5).
+    assert!(keys.contains("accounts"));
+    assert!(keys.contains("active_account"));
+    assert!(keys.contains("profile"));
+    assert!(
+        !keys.contains("author_view"),
+        "author_view is omitted when no author view is open (D5)"
+    );
+    assert!(
+        !keys.contains("thread_view"),
+        "thread_view is omitted when no thread view is open (D5)"
+    );
     assert_eq!(
         typed.len(),
-        6,
-        "exactly the six Tier-2 built-ins, no host registrations: {typed:?}"
+        9,
+        "the six relay/settings/publish built-ins + the three unconditional \
+         identity/views built-ins (accounts / active_account / profile); the two \
+         view built-ins are absent on a fresh kernel: {typed:?}"
     );
 }
 

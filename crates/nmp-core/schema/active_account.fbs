@@ -1,0 +1,32 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `active_account` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the active
+// account pubkey string (`account_snapshot().1`) under the JSON key
+// `"active_account"` — `null` when no account is active. That generic `Value`
+// projection stays the source of truth (inserted unchanged); this buffer is
+// emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections` sidecar
+// (ADR-0037) under the SAME key. A host with a `KACT` decoder prefers this
+// typed payload; an un-updated host falls back to the generic `Value` subtree.
+// Purely additive (Wave C).
+//
+// The typed entry is emitted unconditionally (mirroring the unconditional JSON
+// insertion); `has_active_account == false` mirrors JSON `null`.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/active_account.fbs
+
+table ActiveAccountSnapshot {
+  // True when an account is active. `false` mirrors the JSON `null`.
+  has_active_account:bool;
+  // Hex pubkey of the active account; empty when `has_active_account` is false.
+  pubkey:string;
+}
+
+file_identifier "KACT";
+root_type ActiveAccountSnapshot;

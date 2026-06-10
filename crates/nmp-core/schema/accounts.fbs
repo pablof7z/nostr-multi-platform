@@ -1,0 +1,56 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `accounts` snapshot projection
+// (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
+// `serde_json` serialisation of `accounts_enriched()` (a `Vec<AccountSummary>`,
+// patched with kind:0 `display_name` / `picture_url`) under the JSON key
+// `"accounts"`. That generic `Value` projection stays the source of truth
+// (inserted unchanged); this buffer is emitted ALONGSIDE it in the
+// `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037) under the SAME key.
+// A host with a `KACC` decoder prefers this typed payload; an un-updated host
+// falls back to the generic `Value` subtree. Purely additive (Wave C).
+//
+// Field-for-field mirror of `AccountSummary`. The JSON omits `picture_url`
+// when `None` (serde `skip_serializing_if`); the typed buffer carries the
+// presence as an explicit `has_picture_url` flag (`display_name` serialises as
+// `null`-when-`None`, so it needs the same flag treatment for the typed form).
+// Order is preserved verbatim from the producer vector.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/accounts.fbs
+
+table AccountSummaryRow {
+  // Hex pubkey — the canonical IdentityId.
+  id:string;
+  // Bech32 `npub1…` encoding of `id`.
+  npub:string;
+  // Display name from kind:0; `has_display_name == false` mirrors JSON `null`.
+  has_display_name:bool;
+  display_name:string;
+  // Stable signer wire token (`local` | `nip46` | …).
+  signer_kind:string;
+  // `active` for the active account, `idle` otherwise.
+  status:string;
+  // Pre-classified human-readable signer label (e.g. `nsec`, `NIP-46`).
+  signer_label:string;
+  // True when the signer's key material lives outside the kernel.
+  signer_is_remote:bool;
+  // Pre-derived `status == "active"`.
+  is_active:bool;
+  // Picture URL from kind:0; `has_picture_url == false` mirrors the JSON
+  // omitting the key entirely (serde `skip_serializing_if`).
+  has_picture_url:bool;
+  picture_url:string;
+}
+
+table AccountsSnapshot {
+  accounts:[AccountSummaryRow];
+}
+
+file_identifier "KACC";
+root_type AccountsSnapshot;
