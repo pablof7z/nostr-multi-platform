@@ -277,12 +277,20 @@ fn builtins_emit_without_any_host_typed_registration() {
         !keys.contains("thread_view"),
         "thread_view is omitted when no thread view is open (D5)"
     );
+    // Wave C profile/event cluster: all four are unconditional (`{}` when empty),
+    // so they appear even on a fresh kernel.
+    assert!(keys.contains("mention_profiles"));
+    assert!(keys.contains("claimed_profiles"));
+    assert!(keys.contains("claimed_events"));
+    assert!(keys.contains("resolved_profiles"));
     assert_eq!(
         typed.len(),
-        9,
+        13,
         "the six relay/settings/publish built-ins + the three unconditional \
-         identity/views built-ins (accounts / active_account / profile); the two \
-         view built-ins are absent on a fresh kernel: {typed:?}"
+         identity/views built-ins (accounts / active_account / profile) + the four \
+         unconditional profile/event built-ins (mention_profiles / claimed_profiles \
+         / claimed_events / resolved_profiles); the two view built-ins are absent \
+         on a fresh kernel: {typed:?}"
     );
 }
 

@@ -1,0 +1,65 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `mention_profiles` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
+// `serde_json` serialisation of `mention_profiles()` (a
+// `HashMap<String, MentionProfilePayload>`: pubkey -> per-author raw kind:0
+// fields) under the JSON key `"mention_profiles"`. That generic `Value`
+// projection stays the source of truth (inserted unchanged); this buffer is
+// emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections` sidecar
+// (ADR-0037) under the SAME key. A host with a `KMPR` decoder prefers this
+// typed payload; an un-updated host falls back to the generic `Value` subtree.
+// Purely additive (Wave C).
+//
+// FlatBuffers has no map type, so the `pubkey -> MentionProfilePayload` map is
+// flattened to a vector of `{key, value}` entries sorted by `key` (the nip29 /
+// zaps + #1028/#1029 convention). The serde JSON map is already BTree-ordered
+// (`serde_json::Map`), so sorting the entries by key here keeps the typed and
+// JSON orderings identical.
+//
+// Field-for-field mirror of the SERIALISED `MentionProfilePayload`. Its two
+// `Option<String>` fields (`display_name` / `picture_url`) carry NO serde
+// `skip_serializing_if`, so they serialise as JSON `null`-when-`None` (key
+// always present); the typed buffer carries each presence as an explicit
+// `has_*` flag (the #1029 `ProfileCard` convention).
+//
+// D0: `mention_profiles` is a generic derived view of raw kind:0 profile fields
+// for authors surfaced in any open view — it carries no protocol-specific
+// (NIP-NN) semantics, so it is kernel-owned and typed here. D6: the decoder
+// returns `Err(String)` on malformed input, never panics.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/mention_profiles.fbs
+
+// One per-author payload — a field-for-field mirror of one SERIALISED
+// `MentionProfilePayload`.
+table MentionProfile {
+  // Hex pubkey (64 chars) for the mentioned author. Carried in the body too so
+  // shells consuming a flat array of payloads keep provenance.
+  pubkey:string;
+  // Display name from kind:0; `has_display_name == false` mirrors JSON `null`.
+  has_display_name:bool;
+  display_name:string;
+  // Picture URL from kind:0; `has_picture_url == false` mirrors JSON `null`.
+  has_picture_url:bool;
+  picture_url:string;
+}
+
+// One `pubkey -> MentionProfile` map entry. Entries are sorted by `key`.
+table MentionProfileEntry {
+  // The map key — the author's hex pubkey (matches `value.pubkey`).
+  key:string;
+  value:MentionProfile;
+}
+
+table MentionProfilesSnapshot {
+  entries:[MentionProfileEntry];
+}
+
+file_identifier "KMPR";
+root_type MentionProfilesSnapshot;
