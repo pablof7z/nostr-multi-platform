@@ -126,6 +126,13 @@ pub(super) use identity::{sign_active_nonblocking, sign_with_account_nonblocking
 // shape — but the type stays out of the public docs.
 #[cfg(feature = "native")]
 pub use identity::{new_bunker_handshake_slot, BunkerHandshakeSlot};
+// Test-only: the actor-owned typed-projection proof tests
+// (`actor/typed_projections/typed_projections_tests.rs`) need to drive the
+// shared slot to `Some(..)` to assert the conditional-presence behaviour.
+// `BunkerHandshakeDto` stays production-private (above); this re-export is
+// gated to test builds so it never widens the production surface.
+#[cfg(all(test, feature = "native"))]
+pub(crate) use identity::BunkerHandshakeDto;
 // V-14 step b: bunker relay-layer connection-state slot + constructor.
 // Same pattern as `BunkerHandshakeSlot` / `new_bunker_handshake_slot`.
 #[cfg(feature = "native")]
