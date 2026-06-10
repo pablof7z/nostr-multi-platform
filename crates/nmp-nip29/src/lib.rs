@@ -43,6 +43,7 @@ pub mod interest;
 pub mod kinds;
 pub mod projection;
 pub mod register;
+pub mod wire;
 
 pub use group_id::GroupId;
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
@@ -51,6 +52,15 @@ pub use projection::{
     GroupChatProjection, GroupChatSnapshot,
 };
 pub use register::register_actions;
+pub use wire::discovered_groups_fb::{
+    decode_discovered_groups_snapshot, encode_discovered_groups_snapshot,
+    DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
+    DISCOVERED_GROUPS_SCHEMA_VERSION,
+};
+pub use wire::group_chat_fb::{
+    decode_group_chat_snapshot, encode_group_chat_snapshot, GROUP_CHAT_FILE_IDENTIFIER,
+    GROUP_CHAT_SCHEMA_ID, GROUP_CHAT_SCHEMA_VERSION,
+};
 
 #[cfg(test)]
 mod tests;

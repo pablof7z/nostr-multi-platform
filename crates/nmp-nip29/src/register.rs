@@ -63,6 +63,27 @@ pub fn wire_group_chat(app: &NmpApp, group_id: GroupId) {
         app.unregister_event_observer(prev);
     }
 
+    // Typed FlatBuffers sidecar (ADR-0037), registered ALONGSIDE the generic
+    // `Value` projection under the same key. A `NGCS`-aware host prefers this
+    // typed payload; an un-updated host falls back to the generic `Value`
+    // subtree (the permanent fallback). Additive — un-updated hosts unaffected.
+    // Clone the `Arc` first: the generic closure below consumes `projection`,
+    // so the typed closure needs its own handle.
+    let projection_typed = Arc::clone(&projection);
+    app.register_typed_snapshot_projection("nmp.nip29.group_chat", move || {
+        let snapshot = projection_typed.snapshot();
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.nip29.group_chat".to_string(),
+            schema_id: crate::wire::group_chat_fb::GROUP_CHAT_SCHEMA_ID.to_string(),
+            schema_version: crate::wire::group_chat_fb::GROUP_CHAT_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(
+                crate::wire::group_chat_fb::GROUP_CHAT_FILE_IDENTIFIER,
+            )
+            .into_owned(),
+            payload: crate::wire::group_chat_fb::encode_group_chat_snapshot(&snapshot),
+        })
+    });
+
     app.register_snapshot_projection("nmp.nip29.group_chat", move || projection.snapshot_json());
 }
 
@@ -85,6 +106,26 @@ pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
     if observer_id.0 == 0 {
         return;
     }
+    // Typed FlatBuffers sidecar (ADR-0037), registered ALONGSIDE the generic
+    // `Value` projection under the same key. Clone the `Arc` first: the generic
+    // closure below consumes `projection`.
+    let projection_typed = Arc::clone(&projection);
+    app.register_typed_snapshot_projection("nmp.nip29.discovered_groups", move || {
+        let snapshot = projection_typed.snapshot();
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.nip29.discovered_groups".to_string(),
+            schema_id: crate::wire::discovered_groups_fb::DISCOVERED_GROUPS_SCHEMA_ID.to_string(),
+            schema_version: crate::wire::discovered_groups_fb::DISCOVERED_GROUPS_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(
+                crate::wire::discovered_groups_fb::DISCOVERED_GROUPS_FILE_IDENTIFIER,
+            )
+            .into_owned(),
+            payload: crate::wire::discovered_groups_fb::encode_discovered_groups_snapshot(
+                &snapshot,
+            ),
+        })
+    });
+
     app.register_snapshot_projection("nmp.nip29.discovered_groups", move || {
         projection.snapshot_json()
     });
