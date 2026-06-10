@@ -34,6 +34,7 @@ mod crypto;
 pub mod protocol;
 pub mod runtime;
 pub mod status;
+pub mod wire;
 
 pub use action::{
     WalletAction, WalletConnectAction, WalletConnectModule, WalletDisconnectAction,
@@ -50,4 +51,8 @@ pub use runtime::{
 };
 pub use status::{
     format_sats_display, new_wallet_status_slot, NwcConnectionState, WalletStatus, WalletStatusSlot,
+};
+pub use wire::typed_fb::{
+    decode_wallet_status, encode_wallet_status, FILE_IDENTIFIER as WALLET_STATUS_FILE_IDENTIFIER,
+    SCHEMA_ID as WALLET_STATUS_SCHEMA_ID, SCHEMA_VERSION as WALLET_STATUS_SCHEMA_VERSION,
 };
