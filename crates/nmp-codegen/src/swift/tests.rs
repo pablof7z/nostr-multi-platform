@@ -243,16 +243,19 @@ fn render_snapshot_projections_emits_one_field_and_one_case_per_entry() {
             json_key: "wallet",
             swift_field: "wallet",
             swift_type: "WalletStatusData",
+            typed_sidecar: None,
         },
         SnapshotProjectionEntry {
             json_key: "bunker_handshake",
             swift_field: "bunkerHandshake",
             swift_type: "BunkerHandshake",
+            typed_sidecar: None,
         },
         SnapshotProjectionEntry {
             json_key: "nmp.nip29.group_chat",
             swift_field: "groupChat",
             swift_type: "GroupChatSnapshot",
+            typed_sidecar: None,
         },
     ];
     let mut out = String::new();
@@ -292,6 +295,7 @@ fn render_snapshot_projections_emits_explicit_raw_for_dotted_no_underscore_key()
         json_key: "nmp.nip57.zaps",
         swift_field: "zaps",
         swift_type: "ZapsAggregateSnapshot",
+        typed_sidecar: None,
     }];
     let mut out = String::new();
     render_snapshot_projections(&entries, &mut out);

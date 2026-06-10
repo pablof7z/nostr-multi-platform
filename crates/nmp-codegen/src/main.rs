@@ -25,6 +25,10 @@ fn run() -> Result<(), String> {
         // document (default: stdin) and writes Swift to `--out`. See
         // `crates/nmp-codegen/src/swift.rs` for the emitter itself.
         "swift" => run_gen_swift(args),
+        // V6 Stage 4 (consumer-side) — generated typed-FlatBuffer-sidecar
+        // decoders. Writes `TypedProjectionDecoders.generated.swift` from the
+        // registry's `typed_sidecar` metadata; no schema-document stdin needed.
+        "typed-decoders" => run_gen_typed_decoders(args),
         other => Err(format!("unknown subcommand `gen {other}`\n{}", help())),
     }
 }
@@ -150,6 +154,65 @@ fn run_gen_swift(args: Vec<String>) -> Result<(), String> {
     }
 }
 
+/// `nmp gen typed-decoders [--out <path>] [--check]`.
+///
+/// Generates `TypedProjectionDecoders.generated.swift` — the per-projection
+/// typed-FlatBuffer-sidecar decoders (consumer side). Driven entirely by the
+/// registry's `typed_sidecar` metadata in
+/// `crates/nmp-codegen/src/swift_projections_registry.rs`; takes no schema
+/// stdin.
+///
+/// `--out` defaults to
+/// `ios/Chirp/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift`
+/// (alongside `KernelTypes.generated.swift`, picked up by the xcodegen
+/// `sources: - path: Chirp` sweep without a pbxproj edit).
+///
+/// `--check` diffs against the file on disk and exits non-zero on drift. The
+/// CI gate at `.github/workflows/codegen-drift.yml` uses this mode.
+fn run_gen_typed_decoders(args: Vec<String>) -> Result<(), String> {
+    let mut out =
+        PathBuf::from("ios/Chirp/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift");
+    let mut check = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--out" => {
+                index += 1;
+                out = args
+                    .get(index)
+                    .map(PathBuf::from)
+                    .ok_or_else(|| "--out requires a path".to_string())?;
+            }
+            "--check" => check = true,
+            other => return Err(format!("unknown argument {other}\n{}", help())),
+        }
+        index += 1;
+    }
+
+    if check {
+        let outcome = nmp_codegen::check_typed_decoders(&out).map_err(|e| e.to_string())?;
+        if outcome.up_to_date {
+            println!("nmp gen typed-decoders --check: ok ({})", out.display());
+            Ok(())
+        } else {
+            let where_diff = outcome
+                .first_diff_line
+                .map(|n| format!(" (first differing line {n})"))
+                .unwrap_or_else(|| " (file missing)".to_string());
+            Err(format!(
+                "typed-decoder codegen stale at {}{where_diff}.\n\
+                 Regenerate with:\n  \
+                 cargo run -p nmp-codegen -- gen typed-decoders",
+                out.display()
+            ))
+        }
+    } else {
+        nmp_codegen::generate_typed_decoders(&out).map_err(|e| e.to_string())?;
+        println!("wrote {}", out.display());
+        Ok(())
+    }
+}
+
 /// Read the schema JSON from `path` (or stdin if `path == "-"`).
 fn read_schemas(path: &std::path::Path) -> Result<String, String> {
     if path == std::path::Path::new("-") {
@@ -172,7 +235,8 @@ fn read_schemas(path: &std::path::Path) -> Result<String, String> {
 
 fn help() -> String {
     "usage:\n  \
-     nmp gen modules [--manifest nmp.toml] [--out DIR] [--check]\n  \
-     nmp gen swift   [--schemas - | <path>] [--out <path>] [--check]"
+     nmp gen modules        [--manifest nmp.toml] [--out DIR] [--check]\n  \
+     nmp gen swift          [--schemas - | <path>] [--out <path>] [--check]\n  \
+     nmp gen typed-decoders [--out <path>] [--check]"
         .to_string()
 }

@@ -19,12 +19,24 @@ pub mod swift;
 // keys like `"nmp.nip29.group_chat"` without tripping doctrine-lint on
 // `nmp-core`. See module doc for the full rationale.
 pub mod swift_projections_registry;
+// V6 Stage 4 (consumer-side) — generated typed-FlatBuffer-sidecar decoders.
+// Reads `SnapshotProjectionEntry::typed_sidecar` and emits, per projection key
+// with a checked-in `flatc --swift` reader binding, the mechanical
+// lookup+decode scaffold (the reader→Chirp-domain mapping stays the
+// hand-written `TypedProjectionGlue` seam). Foundation for switching Chirp's
+// consumer off the JSON `payload` path. See module doc for the generated /
+// hand-written seam rationale.
+pub mod swift_typed_decoders;
 
 use std::path::Path;
 
 pub use generate::{generate_modules, GenerationReport};
 pub use manifest::{AppManifest, ModuleSet, NmpDependency};
 pub use swift::{check_swift, generate_swift, SwiftCheckOutcome, SwiftEmitError};
+pub use swift_typed_decoders::{
+    check_typed_decoders, generate_typed_decoders, render_typed_decoders,
+    TypedDecodersCheckOutcome,
+};
 
 #[must_use]
 pub fn check_modules(manifest_path: &Path, out_dir: &Path) -> Result<bool, String> {
