@@ -111,8 +111,22 @@ impl Kernel {
             author_display_name: profile.map(|p| p.display.clone()).filter(|d| !d.is_empty()),
             kind: event.kind,
             content: truncate(&event.content, 1_200),
-            content_preview: if is_repost && event.content.trim().is_empty() {
-                "Repost".to_string()
+            // NIP-18 kind:6: outer `content` is the stringified inner-event
+            // JSON, so we must NOT use it directly as the preview — that
+            // ships raw `{"id":"...` to the consumer. Instead derive the
+            // preview from the already-extracted `repost_inner_content`
+            // (flat-map newlines, truncate at 180 chars). Fall back to
+            // "Repost" when the inner content is unavailable or empty —
+            // this covers both the empty-outer-content case (NIP-18 allows
+            // omitting it) and the malformed-JSON case (D1 best-effort).
+            // Non-repost path is byte-identical to the old behaviour.
+            content_preview: if is_repost {
+                let inner = repost_inner_content.trim();
+                if inner.is_empty() {
+                    "Repost".to_string()
+                } else {
+                    truncate(&inner.replace('\n', " "), 180)
+                }
             } else {
                 truncate(&event.content.replace('\n', " "), 180)
             },
