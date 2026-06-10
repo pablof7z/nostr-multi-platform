@@ -1,0 +1,242 @@
+//! End-to-end proof for the Tier-2 (kernel-owned built-in) typed-projection
+//! sidecars — the Wave C pattern (ADR-0037).
+//!
+//! The bar (mirroring the Tier-1 proof
+//! `crates/nmp-app-template/tests/typed_dm_runtime_sidecar.rs`): a built-in
+//! typed projection must appear in the `typed_projections` sidecar of the frame
+//! `make_update` actually emits — decoded back to its typed struct — IN ADDITION
+//! to its existing generic `Value` entry under the SAME key. This drives the
+//! real frame path, NOT `run_typed_projections()` (which sees only the host
+//! registry, never the kernel-owned built-ins).
+
+use super::typed_projections::{
+    decode_configured_relays, decode_relay_role_options, decode_settings_hub,
+    CONFIGURED_RELAYS_FILE_IDENTIFIER, CONFIGURED_RELAYS_SCHEMA_ID,
+    CONFIGURED_RELAYS_SCHEMA_VERSION, RELAY_ROLE_OPTIONS_FILE_IDENTIFIER,
+    RELAY_ROLE_OPTIONS_SCHEMA_ID, SETTINGS_HUB_FILE_IDENTIFIER, SETTINGS_HUB_SCHEMA_ID,
+};
+use super::*;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::update_envelope::TypedProjectionData;
+
+fn typed_entry<'a>(
+    typed: &'a [TypedProjectionData],
+    key: &str,
+) -> &'a TypedProjectionData {
+    typed
+        .iter()
+        .find(|t| t.key == key)
+        .unwrap_or_else(|| panic!("typed sidecar must carry a `{key}` entry; got {typed:?}"))
+}
+
+/// All three relay/settings built-ins land in the `typed_projections` sidecar of
+/// the emitted frame, decode back to their typed structs, AND keep their generic
+/// `Value` entries (additivity).
+#[test]
+fn relay_settings_builtins_emit_typed_sidecars_alongside_json() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Seed a configured relay so the proof exercises non-empty nested data
+    // end-to-end through the real frame (not the trivial 0 == 0 empty case) —
+    // the template ~20 built-ins inherit must demonstrate populated rows.
+    kernel.set_configured_relays(vec![crate::kernel::AppRelay::new(
+        "wss://seed.example/".to_string(),
+        "both".to_string(),
+    )]);
+    let (value, typed) = kernel.make_update_typed_for_test(true);
+
+    let projections = value
+        .get("projections")
+        .and_then(serde_json::Value::as_object)
+        .expect("snapshot must carry a projections object");
+
+    // --- configured_relays --------------------------------------------------
+    assert!(
+        projections.contains_key("configured_relays"),
+        "the generic JSON `configured_relays` entry must remain (additive)"
+    );
+    let cr = typed_entry(&typed, "configured_relays");
+    assert_eq!(cr.schema_id, CONFIGURED_RELAYS_SCHEMA_ID);
+    assert_eq!(cr.schema_version, CONFIGURED_RELAYS_SCHEMA_VERSION);
+    assert_eq!(
+        cr.file_identifier.as_bytes(),
+        CONFIGURED_RELAYS_FILE_IDENTIFIER
+    );
+    let decoded_relays =
+        decode_configured_relays(&cr.payload).expect("configured_relays sidecar must decode");
+    let json_relays = projections
+        .get("configured_relays")
+        .and_then(serde_json::Value::as_array)
+        .expect("configured_relays JSON must be an array");
+    assert_eq!(
+        decoded_relays.relays.len(),
+        json_relays.len(),
+        "typed and JSON configured_relays must carry the same row count"
+    );
+    // Non-empty nested data survives the round-trip through the real frame, and
+    // the typed row agrees field-for-field with the JSON row.
+    assert_eq!(decoded_relays.relays.len(), 1, "the seeded relay must appear");
+    assert_eq!(decoded_relays.relays[0].url, "wss://seed.example/");
+    assert_eq!(decoded_relays.relays[0].role, "both");
+    assert_eq!(
+        json_relays[0].get("url").and_then(serde_json::Value::as_str),
+        Some(decoded_relays.relays[0].url.as_str()),
+        "typed and JSON configured_relays[0].url must agree"
+    );
+    assert_eq!(
+        json_relays[0]
+            .get("role")
+            .and_then(serde_json::Value::as_str),
+        Some(decoded_relays.relays[0].role.as_str()),
+        "typed and JSON configured_relays[0].role must agree"
+    );
+
+    // --- relay_role_options -------------------------------------------------
+    assert!(
+        projections.contains_key("relay_role_options"),
+        "the generic JSON `relay_role_options` entry must remain (additive)"
+    );
+    let rro = typed_entry(&typed, "relay_role_options");
+    assert_eq!(rro.schema_id, RELAY_ROLE_OPTIONS_SCHEMA_ID);
+    assert_eq!(
+        rro.file_identifier.as_bytes(),
+        RELAY_ROLE_OPTIONS_FILE_IDENTIFIER
+    );
+    let decoded_options =
+        decode_relay_role_options(&rro.payload).expect("relay_role_options sidecar must decode");
+    let json_options = projections
+        .get("relay_role_options")
+        .and_then(serde_json::Value::as_array)
+        .expect("relay_role_options JSON must be an array");
+    assert_eq!(
+        decoded_options.options.len(),
+        json_options.len(),
+        "typed and JSON relay_role_options must carry the same option count"
+    );
+    assert!(
+        !decoded_options.options.is_empty(),
+        "relay_role_options is a static non-empty option set"
+    );
+    // Field-for-field agreement on the first option (value/label/tint/is_default).
+    let first_typed = &decoded_options.options[0];
+    let first_json = &json_options[0];
+    assert_eq!(
+        first_json.get("value").and_then(serde_json::Value::as_str),
+        Some(first_typed.value.as_str()),
+        "typed and JSON relay_role_options[0].value must agree"
+    );
+    assert_eq!(
+        first_json
+            .get("is_default")
+            .and_then(serde_json::Value::as_bool),
+        Some(first_typed.is_default),
+        "typed and JSON relay_role_options[0].is_default must agree"
+    );
+
+    // --- settings_hub -------------------------------------------------------
+    let sh_json = projections
+        .get("settings_hub")
+        .and_then(serde_json::Value::as_object)
+        .expect("the generic JSON `settings_hub` entry must remain (additive)");
+    let sh = typed_entry(&typed, "settings_hub");
+    assert_eq!(sh.schema_id, SETTINGS_HUB_SCHEMA_ID);
+    assert_eq!(sh.file_identifier.as_bytes(), SETTINGS_HUB_FILE_IDENTIFIER);
+    let decoded_hub = decode_settings_hub(&sh.payload).expect("settings_hub sidecar must decode");
+    let json_count = sh_json
+        .get("relay_count")
+        .and_then(serde_json::Value::as_u64)
+        .expect("settings_hub JSON must carry relay_count");
+    assert_eq!(
+        u64::from(decoded_hub.relay_count),
+        json_count,
+        "typed and JSON settings_hub.relay_count must agree"
+    );
+}
+
+/// The Tier-2 built-in sidecars are emitted even when NO host typed projection
+/// is registered — they do not depend on the registry path. (A kernel built
+/// outside the actor has no projection slot bound at all.)
+#[test]
+fn builtins_emit_without_any_host_typed_registration() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let (_value, typed) = kernel.make_update_typed_for_test(true);
+    let keys: std::collections::BTreeSet<&str> = typed.iter().map(|t| t.key.as_str()).collect();
+    assert!(keys.contains("configured_relays"));
+    assert!(keys.contains("relay_role_options"));
+    assert!(keys.contains("settings_hub"));
+    assert_eq!(
+        typed.len(),
+        3,
+        "exactly the three Tier-2 built-ins, no host registrations: {typed:?}"
+    );
+}
+
+/// `builtin_typed_projections` is a pure read of `&self` — calling it twice on
+/// an unchanged kernel yields byte-identical payloads (deterministic; no hidden
+/// per-tick state).
+#[test]
+fn builtin_typed_projections_are_deterministic() {
+    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let first = kernel.builtin_typed_projections();
+    let second = kernel.builtin_typed_projections();
+    assert_eq!(first, second);
+}
+
+/// A built-in key wins on collision: a host that registers a typed projection
+/// under one of the reserved built-in keys is dropped, so the kernel-owned value
+/// stays authoritative AND remains the ONLY entry for that key (the host-side
+/// consumer matches by first key — a surviving host entry would shadow the
+/// built-in). Mirrors the documented generic-JSON contract.
+#[test]
+fn builtin_key_wins_over_colliding_host_typed_projection() {
+    use crate::kernel::snapshot_registry::new_snapshot_projection_slot;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let slot = new_snapshot_projection_slot();
+    // A host (mis)registers a typed projection under the reserved built-in key,
+    // plus a non-colliding one that must pass through untouched.
+    {
+        let mut registry = slot.lock().unwrap();
+        registry.register_typed("settings_hub", || {
+            Some(TypedProjectionData {
+                key: "settings_hub".to_string(),
+                schema_id: "host.imposter".to_string(),
+                schema_version: 99,
+                file_identifier: "HOST".to_string(),
+                payload: vec![0xFF, 0xFF, 0xFF, 0xFF],
+            })
+        });
+        registry.register_typed("host.feed", || {
+            Some(TypedProjectionData {
+                key: "host.feed".to_string(),
+                schema_id: "host.feed".to_string(),
+                schema_version: 1,
+                file_identifier: "HFED".to_string(),
+                payload: vec![0x01],
+            })
+        });
+    }
+    kernel.set_snapshot_projection_handle(slot);
+
+    let (_value, typed) = kernel.make_update_typed_for_test(true);
+
+    // Exactly one `settings_hub` entry, and it is the kernel-owned built-in
+    // (decodes as KSHB — the imposter's 0xFFFF... bytes would not).
+    let settings: Vec<&TypedProjectionData> =
+        typed.iter().filter(|t| t.key == "settings_hub").collect();
+    assert_eq!(
+        settings.len(),
+        1,
+        "the colliding host `settings_hub` entry must be dropped, not appended: {typed:?}"
+    );
+    assert_eq!(settings[0].schema_id, SETTINGS_HUB_SCHEMA_ID);
+    assert!(
+        decode_settings_hub(&settings[0].payload).is_ok(),
+        "the surviving `settings_hub` must be the kernel-owned KSHB buffer"
+    );
+
+    // The non-colliding host projection passes through untouched.
+    assert!(
+        typed.iter().any(|t| t.key == "host.feed"),
+        "a non-colliding host typed projection must still be emitted"
+    );
+}

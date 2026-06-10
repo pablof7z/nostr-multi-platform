@@ -184,6 +184,12 @@ mod perf_tests;
 pub(crate) mod snapshot_registry;
 #[cfg(test)]
 mod snapshot_registry_tests;
+/// Tier-2 (kernel-owned built-in) typed-projection codecs + `make_update`
+/// wiring. The Wave C counterpart to the host-registered Tier-1 typed
+/// projections (ADR-0037). See the module doc for the mechanism rationale.
+mod typed_projections;
+#[cfg(test)]
+mod typed_projections_tests;
 #[cfg(test)]
 mod state_projection_tests;
 mod status;
