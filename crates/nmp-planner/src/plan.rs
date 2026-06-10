@@ -132,7 +132,7 @@ pub struct SubShape {
     /// All logical interests whose filters were merged into this sub-shape.
     pub originating_interests: Vec<InterestId>,
     /// Canonical hash of the serialised `shape` for stable wire-subscription identity.
-    /// Current stop-gap format is 8 hex chars; see [`canonical_filter_hash`].
+    /// Format is 16 lowercase hex chars (full 64-bit FNV-1a digest); see [`canonical_filter_hash`].
     pub canonical_filter_hash: String,
 }
 
@@ -163,7 +163,7 @@ impl SubShape {
 ///
 /// Replacement target — once the BLAKE3-CBOR canonical encoding described in
 /// `docs/design/lmdb/watermarks.md` §3 lands, this function swaps to the
-/// 32-byte BLAKE3 hex form; the eight-character window will widen accordingly.
+/// 32-byte BLAKE3 hex form; the sixteen-character window will widen accordingly.
 /// All callers (compiler, planner gate, wire-emitter, watermark store) read
 /// this single helper so the swap is one edit.
 #[must_use]
@@ -172,7 +172,7 @@ pub fn canonical_filter_hash(shape: &InterestShape) -> String {
         |_| stable_hash64("canonical-filter-invalid-json"),
         |json| stable_hash64(("canonical-filter", json)),
     );
-    format!("{:08x}", hash & 0xffff_ffff)
+    format!("{:016x}", hash)
 }
 
 // ─── RelayPlan ───────────────────────────────────────────────────────────────
@@ -337,21 +337,49 @@ mod tests {
     }
 
     #[test]
-    fn canonical_filter_hash_emits_eight_hex_chars() {
-        // Documented stop-gap format: an 8-char lowercase hex string. Every
-        // caller (wire-emitter diff, watermark store) relies on this width.
+    fn canonical_filter_hash_emits_sixteen_hex_chars() {
+        // Full 64-bit FNV-1a digest: a 16-char lowercase hex string. Widened
+        // from the prior 8-char (32-bit) stop-gap to eliminate birthday
+        // collisions at a few-thousand-shape scale (audit finding P-1).
         for shape in [
             InterestShape::default(),
             InterestShape::timeline_for([hex("aa")].into_iter().collect(), tl_kinds()),
             InterestShape::profile_for(hex("cc")),
         ] {
             let hash = canonical_filter_hash(&shape);
-            assert_eq!(hash.len(), 8, "hash must be 8 chars: {hash}");
+            assert_eq!(hash.len(), 16, "hash must be 16 chars: {hash}");
             assert!(
                 hash.chars().all(|c| c.is_ascii_hexdigit()),
                 "hash must be hex: {hash}"
             );
         }
+    }
+
+    #[test]
+    fn canonical_filter_hash_emits_full_64bit_digest_not_truncated() {
+        // Regression guard: the old code truncated to 32 bits (`hash & 0xffff_ffff`).
+        // Verify the new code emits the full 64-bit FNV-1a digest by computing the
+        // expected value independently via `stable_hash64` and asserting the full
+        // 16-hex-char form matches.
+        use crate::stable_hash::stable_hash64;
+
+        let shape = InterestShape::profile_for(hex("aa"));
+        let json = serde_json::to_string(&shape).expect("serialise shape");
+        let expected_full_u64 = stable_hash64(("canonical-filter", json));
+
+        // The hash string must equal the full 64-bit digest in hex (16 chars).
+        let actual = canonical_filter_hash(&shape);
+        assert_eq!(actual, format!("{:016x}", expected_full_u64));
+        assert_eq!(actual.len(), 16);
+
+        // Verify the old 32-bit truncation differs for this input (ensuring the
+        // fix is observable — if by coincidence the upper 32 bits were zero the
+        // guard would be vacuous, but FNV-1a over non-trivial inputs never is).
+        let truncated = format!("{:08x}", expected_full_u64 & 0xffff_ffff);
+        assert_ne!(
+            actual, truncated,
+            "full 64-bit digest must differ from 32-bit truncation for this input"
+        );
     }
 
     // ── SubShape::recompute_hash ─────────────────────────────────────────────
