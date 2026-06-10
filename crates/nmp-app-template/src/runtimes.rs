@@ -21,20 +21,18 @@
 //!
 //! # Both controllers
 //!
-//! * Are captured by a `register_snapshot_projection` closure — the
-//!   snapshot tick is what drives reconciliation. An event-observer
-//!   would only fire on event arrival; the push has to happen
-//!   *before* the first event (the moment the user signs in).
-//! * Reconcile against a single `Mutex<Option<String>>` of the last-pushed
-//!   pubkey. The withdraw side uses a pubkey-invariant interest id so
-//!   an account switch cleanly replaces the prior subscription rather
-//!   than leaking one per pubkey.
-//! * Degrade silently on lock poisoning or actor-channel disconnect (D6).
+//! Captured by a `register_snapshot_projection` closure (the snapshot tick
+//! drives reconciliation — the push must happen *before* the first event, the
+//! moment the user signs in); reconcile against a single
+//! `Mutex<Option<String>>` of the last-pushed pubkey, withdrawing by a
+//! pubkey-invariant interest id so an account switch cleanly replaces rather
+//! than leaks; and degrade silently on lock poisoning / channel disconnect (D6).
 //!
 //! Originally lived in `apps/chirp/nmp-app-chirp/src/dm_runtime.rs` +
-//! `zap_receipts_runtime.rs` (115 + 167 LOC). Lifted here so any
-//! NMP-based app gets canonical DM + zap subscription behaviour through
-//! one `register_defaults` call.
+//! `zap_receipts_runtime.rs` (115 + 167 LOC). Lifted here so any NMP-based app
+//! gets canonical DM + zap subscription behaviour through one `register_defaults`
+//! call. The DM keys also emit typed FlatBuffers sidecars (ADR-0037, Wave A):
+//! `nmp.nip17.dm_inbox` (`NDMI`) and `nmp.nip17.dm_relay_list` (`NDRL`).
 
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -46,7 +44,6 @@ use nmp_nip17::{
     DmRuntimeEffect, DmRuntimeState,
 };
 use nmp_nip57::{self_zap_receipts_interest, self_zap_receipts_interest_id};
-use serde::Serialize;
 
 // ───────────────────────────────────────────────────────────────────────
 // NIP-17 DM runtime
@@ -73,6 +70,24 @@ pub fn register_dm_runtime(app: &impl AppHost) {
         tx: app.actor_sender(),
         state: Mutex::new(DmRuntimeState::default()),
     });
+
+    // Typed FlatBuffers sidecar (ADR-0037, Wave A) ALONGSIDE the generic `Value`
+    // projection (additive). The typed closure is a PURE READ — reconcile (which
+    // emits actor commands) stays exclusively in the `snapshot_json` closure
+    // below so the push/withdraw book-keeping runs exactly once per tick.
+    let controller_typed = Arc::clone(&controller);
+    app.register_typed_snapshot_projection("nmp.nip17.dm_relay_list", move || {
+        let relay_list = controller_typed.typed_relay_list();
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.nip17.dm_relay_list".to_string(),
+            schema_id: nmp_nip17::DM_RELAY_LIST_SCHEMA_ID.to_string(),
+            schema_version: nmp_nip17::DM_RELAY_LIST_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(nmp_nip17::DM_RELAY_LIST_FILE_IDENTIFIER)
+                .into_owned(),
+            payload: nmp_nip17::encode_dm_relay_list(&relay_list),
+        })
+    });
+
     app.register_snapshot_projection("nmp.nip17.dm_relay_list", move || {
         controller.snapshot_json()
     });
@@ -90,6 +105,24 @@ fn register_inbox_projection(app: &impl AppHost) {
     if let Some(prev) = app.swap_dm_inbox_observer(Some(observer_id)) {
         app.unregister_raw_event_observer(prev);
     }
+
+    // Typed FlatBuffers sidecar (ADR-0037, Wave A), registered ALONGSIDE the
+    // generic `Value` projection under the same key (additive — a `NDMI`-aware
+    // host prefers it, others fall back). Clone the `Arc` first: the generic
+    // closure below consumes `projection`.
+    let projection_typed = Arc::clone(&projection);
+    app.register_typed_snapshot_projection("nmp.nip17.dm_inbox", move || {
+        let snapshot = projection_typed.snapshot();
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.nip17.dm_inbox".to_string(),
+            schema_id: nmp_nip17::DM_INBOX_SCHEMA_ID.to_string(),
+            schema_version: nmp_nip17::DM_INBOX_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(nmp_nip17::DM_INBOX_FILE_IDENTIFIER)
+                .into_owned(),
+            payload: nmp_nip17::encode_dm_inbox_snapshot(&snapshot),
+        })
+    });
+
     app.register_snapshot_projection("nmp.nip17.dm_inbox", move || projection.snapshot_json());
 }
 
@@ -102,22 +135,33 @@ struct DmRuntimeController {
 
 impl DmRuntimeController {
     fn snapshot_json(&self) -> serde_json::Value {
-        let active_pubkey = self.active_pubkey();
-        let read_relay_urls = self.read_relay_urls();
+        let relay_list = self.typed_relay_list();
         {
             let mut state = self
                 .state
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for effect in state.reconcile(active_pubkey.as_deref(), &read_relay_urls) {
+            for effect in
+                state.reconcile(relay_list.active_pubkey.as_deref(), &relay_list.read_relay_urls)
+            {
                 self.apply(effect);
             }
         }
-        serde_json::to_value(DmRelayListSnapshot {
-            active_pubkey,
-            read_relay_urls,
-        })
-        .unwrap_or_else(|_| serde_json::json!({ "active_pubkey": null, "read_relay_urls": [] }))
+        serde_json::to_value(&relay_list)
+            .unwrap_or_else(|_| serde_json::json!({ "active_pubkey": null, "read_relay_urls": [] }))
+    }
+
+    /// Read the current `(active_pubkey, read_relay_urls)` into the SINGLE
+    /// `nmp_nip17::DmRelayList` read model both wire forms share. A PURE READ —
+    /// it deliberately does NOT run `reconcile`, so the push/withdraw actor
+    /// traffic stays driven exclusively by [`Self::snapshot_json`] (exactly once
+    /// per tick). Both closures observe the same single-threaded actor tick, so
+    /// the typed sidecar payload mirrors the JSON payload field-for-field.
+    fn typed_relay_list(&self) -> nmp_nip17::DmRelayList {
+        nmp_nip17::DmRelayList {
+            active_pubkey: self.active_pubkey(),
+            read_relay_urls: self.read_relay_urls(),
+        }
     }
 
     fn active_pubkey(&self) -> Option<String> {
@@ -156,12 +200,6 @@ impl DmRuntimeController {
         };
         let _ = self.tx.send(cmd);
     }
-}
-
-#[derive(Serialize)]
-struct DmRelayListSnapshot {
-    active_pubkey: Option<String>,
-    read_relay_urls: Vec<String>,
 }
 
 // ───────────────────────────────────────────────────────────────────────

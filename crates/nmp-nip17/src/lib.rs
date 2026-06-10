@@ -58,6 +58,7 @@ pub mod dm_runtime;
 pub mod dm_send;
 pub mod inbox;
 pub mod kind10050_parser;
+pub mod wire;
 
 pub use action::{SendDmAction, SendDmInput};
 pub use dm_relay_cache::DmRelayCache;
@@ -71,6 +72,14 @@ pub use inbox::{
     DmInboxProjection, DmInboxSnapshot, DmMessage,
 };
 pub use kind10050_parser::Kind10050Parser;
+pub use wire::dm_inbox_fb::{
+    decode_dm_inbox_snapshot, encode_dm_inbox_snapshot, DM_INBOX_FILE_IDENTIFIER,
+    DM_INBOX_SCHEMA_ID, DM_INBOX_SCHEMA_VERSION,
+};
+pub use wire::dm_relay_list_fb::{
+    decode_dm_relay_list, encode_dm_relay_list, DmRelayList, DM_RELAY_LIST_FILE_IDENTIFIER,
+    DM_RELAY_LIST_SCHEMA_ID, DM_RELAY_LIST_SCHEMA_VERSION,
+};
 
 /// Caller intent for a single outgoing NIP-17 direct message.
 ///
