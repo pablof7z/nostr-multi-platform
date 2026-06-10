@@ -1,0 +1,37 @@
+namespace nmp.nip17;
+
+// Typed FlatBuffers wire for the `nmp.nip17.dm_relay_list` snapshot projection.
+//
+// The producer is the `DmRuntimeController::snapshot_json` closure in
+// `crates/nmp-app-template/src/runtimes.rs`, which serialises the private
+// `DmRelayListSnapshot { active_pubkey: Option<String>, read_relay_urls:
+// Vec<String> }`. That generic `Value` projection stays the source of truth
+// (still registered via `register_snapshot_projection`); this buffer is emitted
+// ALONGSIDE it in every `SnapshotFrame`'s `typed_projections` sidecar
+// (ADR-0037). A host with a `NDRL` decoder prefers this typed payload; an
+// un-updated host falls back to the generic `Value` subtree. Purely additive
+// (Wave A).
+//
+// Field-for-field mirror (raw protocol values only):
+//   * `active_pubkey: Option<String>` carries a `has_active_pubkey` presence
+//     flag plus the value, so absent (`None`/JSON `null`) round-trips distinctly
+//     from a present default — the optional-fields convention used by
+//     content_tree.fbs / op_feed.fbs.
+//   * `read_relay_urls: Vec<String>` becomes a FlatBuffers vector, preserving
+//     the producer's order.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-nip17/src/wire/generated \
+//         crates/nmp-nip17/schema/dm_relay_list.fbs
+
+table DmRelayListSnapshot {
+  // active_pubkey: Option<String> — the active account's pubkey (hex), or absent.
+  has_active_pubkey:bool;
+  active_pubkey:string;
+  // The active account's read-eligible DM relay URLs (kind:10050), in order.
+  read_relay_urls:[string];
+}
+
+file_identifier "NDRL";
+root_type DmRelayListSnapshot;

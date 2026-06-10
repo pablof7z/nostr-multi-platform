@@ -1,0 +1,124 @@
+//! Typed FlatBuffers wire codec for the `"nmp.nip17.dm_relay_list"` projection.
+//!
+//! The authoritative FFI shape of this projection is the serde JSON produced by
+//! the `DmRuntimeController::snapshot_json` closure in
+//! `crates/nmp-app-template/src/runtimes.rs` — the private struct
+//! `DmRelayListSnapshot { active_pubkey: Option<String>, read_relay_urls:
+//! Vec<String> }` (registered via `register_snapshot_projection`). This module
+//! adds a **typed FlatBuffers** encoding of the same shape, carried in the
+//! `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing — the
+//! generic `Value` projection.
+//!
+//! [`DmRelayList`] is the SINGLE read model both wire forms share: its
+//! `Serialize` impl drives the generic `Value` projection (the app-template
+//! `snapshot_json` closure serialises it) AND this module's codec drives the
+//! typed sidecar, so the two can never structurally diverge. `active_pubkey:
+//! Option<String>` carries a `has_active_pubkey` presence flag + value so absent
+//! (`None`/JSON `null`) round-trips distinctly from a present default.
+//!
+//! Honours D6 (no panics): decode returns `Err(String)` on any malformed input.
+
+// The generated FlatBuffers bindings are intrinsically `unsafe`. This `allow`
+// block scopes the relaxation to the single generated module.
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+#[path = "generated/dm_relay_list_generated.rs"]
+pub mod generated;
+
+use flatbuffers::{FlatBufferBuilder, WIPOffset};
+use serde::Serialize;
+
+use generated::nmp::nip_17 as fb;
+
+/// Stable schema identifier carried in the typed-projection envelope.
+pub const DM_RELAY_LIST_SCHEMA_ID: &str = "nmp.nip17.dm_relay_list";
+/// FlatBuffers file identifier embedded in every buffer this module emits.
+pub const DM_RELAY_LIST_FILE_IDENTIFIER: &[u8; 4] = b"NDRL";
+/// Wire schema version. Bump on any breaking change to `dm_relay_list.fbs`.
+pub const DM_RELAY_LIST_SCHEMA_VERSION: u32 = 1;
+
+/// The `"nmp.nip17.dm_relay_list"` snapshot read model — the SINGLE source of
+/// truth for both the generic `serde_json::Value` projection (its `Serialize`
+/// impl is what the app-template `snapshot_json` closure emits) and the typed
+/// FlatBuffers sidecar (this module's codec). One struct so the two wire forms
+/// cannot structurally diverge.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct DmRelayList {
+    /// The active account's pubkey (hex), or `None` when not signed in — mirrors
+    /// the producer's `active_pubkey: Option<String>` (JSON `null` when absent).
+    pub active_pubkey: Option<String>,
+    /// The active account's read-eligible DM relay URLs (kind:10050), in order.
+    pub read_relay_urls: Vec<String>,
+}
+
+// --- encode ---------------------------------------------------------------
+
+/// Encode a [`DmRelayList`] to typed FlatBuffers bytes (with the `NDRL` file
+/// identifier). `read_relay_urls` order is preserved verbatim.
+#[must_use]
+pub fn encode_dm_relay_list(relay_list: &DmRelayList) -> Vec<u8> {
+    let mut fbb = FlatBufferBuilder::new();
+
+    let active_pubkey = relay_list
+        .active_pubkey
+        .as_ref()
+        .map(|s| fbb.create_string(s));
+    let url_offsets: Vec<WIPOffset<&str>> = relay_list
+        .read_relay_urls
+        .iter()
+        .map(|url| fbb.create_string(url))
+        .collect();
+    let read_relay_urls = fbb.create_vector(&url_offsets);
+
+    let root = fb::DmRelayListSnapshot::create(
+        &mut fbb,
+        &fb::DmRelayListSnapshotArgs {
+            has_active_pubkey: relay_list.active_pubkey.is_some(),
+            active_pubkey,
+            read_relay_urls: Some(read_relay_urls),
+        },
+    );
+    fb::finish_dm_relay_list_snapshot_buffer(&mut fbb, root);
+    fbb.finished_data().to_vec()
+}
+
+// --- decode ---------------------------------------------------------------
+
+/// Decode typed FlatBuffers bytes (as produced by [`encode_dm_relay_list`])
+/// back into a [`DmRelayList`]. Returns an error string on any malformed input.
+pub fn decode_dm_relay_list(bytes: &[u8]) -> Result<DmRelayList, String> {
+    if bytes.len() < 8 || !fb::dm_relay_list_snapshot_buffer_has_identifier(bytes) {
+        return Err("missing NDRL file identifier".to_string());
+    }
+    let root = fb::root_as_dm_relay_list_snapshot(bytes)
+        .map_err(|e| format!("not a valid DmRelayListSnapshot buffer: {e}"))?;
+
+    let mut read_relay_urls = Vec::new();
+    if let Some(fb_urls) = root.read_relay_urls() {
+        read_relay_urls.reserve(fb_urls.len());
+        for url in fb_urls.iter() {
+            read_relay_urls.push(url.to_string());
+        }
+    }
+
+    Ok(DmRelayList {
+        active_pubkey: if root.has_active_pubkey() {
+            Some(root.active_pubkey().unwrap_or_default().to_string())
+        } else {
+            None
+        },
+        read_relay_urls,
+    })
+}
+
+#[cfg(test)]
+#[path = "dm_relay_list_fb_tests.rs"]
+mod tests;

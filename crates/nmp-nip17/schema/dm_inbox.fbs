@@ -1,0 +1,66 @@
+namespace nmp.nip17;
+
+// Typed FlatBuffers wire for `nmp_nip17::inbox::DmInboxSnapshot` (the app noun
+// projected onto the snapshot under `projections["nmp.nip17.dm_inbox"]`).
+//
+// This is the typed sidecar counterpart to the authoritative serde JSON of
+// `DmInboxSnapshot`: the generic `Value` projection stays the source of truth
+// (`crates/nmp-app-template/src/runtimes.rs` still registers it via
+// `register_snapshot_projection`), and this buffer is emitted ALONGSIDE it in
+// every `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037). A host with a
+// `NDMI` decoder prefers this typed payload; an un-updated host falls back to
+// the generic `Value` subtree. Purely additive (Wave A).
+//
+// Field-for-field mirror of the Rust structs (raw protocol values only):
+//   * String fields are required (non-optional in the serde struct).
+//   * `Option<String> reply_to` carries a `has_reply_to` presence flag plus the
+//     value, so absent (`None`) round-trips distinctly from a present default —
+//     the same optional-fields convention used by content_tree.fbs / op_feed.fbs.
+//   * `Vec<...>` fields (conversations, messages, source_relays) become
+//     FlatBuffers vectors (preserving the producer's order: conversations are
+//     newest-thread-first, messages are oldest-first).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// has no `include`, so generate plainly:
+//   flatc --rust -o crates/nmp-nip17/src/wire/generated \
+//         crates/nmp-nip17/schema/dm_inbox.fbs
+
+// One message in a DM thread (`nmp_nip17::inbox::DmMessage`).
+table DmMessage {
+  // Inner kind:14 rumor event id (hex). Also the dedupe key in the inbox.
+  id:string;
+  // Pubkey (hex) of whoever wrote the message — from the verified kind:13 seal.
+  sender_pubkey:string;
+  // Plaintext kind:14 `content`, verbatim.
+  content:string;
+  // Unix seconds — the rumor's own `created_at` (raw; host formats it).
+  created_at:uint64;
+  // reply_to: Option<String> — NIP-10 reply target id (hex), if present.
+  has_reply_to:bool;
+  reply_to:string;
+  // `true` when the local account wrote this message.
+  is_outgoing:bool;
+  // Relay URLs that delivered this message's gift-wrap envelope.
+  source_relays:[string];
+}
+
+// One DM thread with a single peer (`nmp_nip17::inbox::DmConversation`).
+table DmConversation {
+  // The OTHER party in the thread (hex pubkey, 64 chars) — never the local user.
+  peer_pubkey:string;
+  // Messages, oldest-first (the natural chat-log render order).
+  messages:[DmMessage];
+}
+
+// The read-model a DM screen consumes (`nmp_nip17::inbox::DmInboxSnapshot`).
+table DmInboxSnapshot {
+  // Conversations, ordered by most-recent message (newest thread first).
+  conversations:[DmConversation];
+  // `true` when the active account uses a remote signer that cannot unseal
+  // gift-wraps — the inbox is always empty in that case.
+  remote_signer_unsupported:bool;
+}
+
+file_identifier "NDMI";
+root_type DmInboxSnapshot;

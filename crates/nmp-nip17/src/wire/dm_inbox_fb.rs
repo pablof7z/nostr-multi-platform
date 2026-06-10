@@ -1,0 +1,200 @@
+//! Typed FlatBuffers wire codec for [`crate::inbox::DmInboxSnapshot`].
+//!
+//! The authoritative FFI shape of the `"nmp.nip17.dm_inbox"` projection is the
+//! serde JSON of [`DmInboxSnapshot`] (registered via
+//! `register_snapshot_projection` in `crates/nmp-app-template/src/runtimes.rs`).
+//! This module adds a **typed FlatBuffers** encoding of the same struct — a
+//! self-describing, schema-versioned, language-neutral binary the host
+//! platforms (Swift / Kotlin / TypeScript) can decode with generated accessors
+//! instead of JSON reflection. It is a sidecar codec: the serde shape stays
+//! authoritative; this is the typed payload carried in the `typed_projections`
+//! sidecar (ADR-0037, `crates/nmp-core/schema/nmp_update.fbs`).
+//!
+//! The schema (`crates/nmp-nip17/schema/dm_inbox.fbs`) mirrors the Rust structs
+//! field-for-field. `Option<String> reply_to` carries a `has_reply_to` presence
+//! flag plus the value so absent (`None`) round-trips distinctly from a present
+//! default — the same optional-fields convention used by `content_tree.fbs`.
+//!
+//! Honours D6 (no panics): decode returns `Err(String)` on any malformed input;
+//! there are no `unwrap`/`expect`/panicking-index operations on the decode path.
+
+// The generated FlatBuffers bindings are intrinsically `unsafe` (every accessor
+// reads from a raw `Table`). This `allow` block scopes the relaxation to the
+// single generated module — no hand-written code in this file uses `unsafe`.
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+#[path = "generated/dm_inbox_generated.rs"]
+pub mod generated;
+
+use flatbuffers::{FlatBufferBuilder, WIPOffset};
+
+use generated::nmp::nip_17 as fb;
+
+use crate::inbox::{DmConversation, DmInboxSnapshot, DmMessage};
+
+/// Stable schema identifier carried in the typed-projection envelope.
+pub const DM_INBOX_SCHEMA_ID: &str = "nmp.nip17.dm_inbox";
+/// FlatBuffers file identifier embedded in every buffer this module emits.
+pub const DM_INBOX_FILE_IDENTIFIER: &[u8; 4] = b"NDMI";
+/// Wire schema version. Bump on any breaking change to `dm_inbox.fbs`.
+pub const DM_INBOX_SCHEMA_VERSION: u32 = 1;
+
+// --- encode ---------------------------------------------------------------
+
+/// Encode a [`DmInboxSnapshot`] to typed FlatBuffers bytes (with the `NDMI`
+/// file identifier). Conversation order (newest-thread-first) and per-thread
+/// message order (oldest-first) are preserved verbatim as the projection emits
+/// them.
+#[must_use]
+pub fn encode_dm_inbox_snapshot(snapshot: &DmInboxSnapshot) -> Vec<u8> {
+    let mut fbb = FlatBufferBuilder::new();
+
+    let conversation_offsets: Vec<WIPOffset<fb::DmConversation<'_>>> = snapshot
+        .conversations
+        .iter()
+        .map(|conversation| encode_conversation(&mut fbb, conversation))
+        .collect();
+    let conversations = fbb.create_vector(&conversation_offsets);
+
+    let root = fb::DmInboxSnapshot::create(
+        &mut fbb,
+        &fb::DmInboxSnapshotArgs {
+            conversations: Some(conversations),
+            remote_signer_unsupported: snapshot.remote_signer_unsupported,
+        },
+    );
+    fb::finish_dm_inbox_snapshot_buffer(&mut fbb, root);
+    fbb.finished_data().to_vec()
+}
+
+fn encode_conversation<'a>(
+    fbb: &mut FlatBufferBuilder<'a>,
+    conversation: &DmConversation,
+) -> WIPOffset<fb::DmConversation<'a>> {
+    let message_offsets: Vec<WIPOffset<fb::DmMessage<'a>>> = conversation
+        .messages
+        .iter()
+        .map(|message| encode_message(fbb, message))
+        .collect();
+    let messages = fbb.create_vector(&message_offsets);
+    let peer_pubkey = fbb.create_string(&conversation.peer_pubkey);
+    fb::DmConversation::create(
+        fbb,
+        &fb::DmConversationArgs {
+            peer_pubkey: Some(peer_pubkey),
+            messages: Some(messages),
+        },
+    )
+}
+
+fn encode_message<'a>(
+    fbb: &mut FlatBufferBuilder<'a>,
+    message: &DmMessage,
+) -> WIPOffset<fb::DmMessage<'a>> {
+    let id = fbb.create_string(&message.id);
+    let sender_pubkey = fbb.create_string(&message.sender_pubkey);
+    let content = fbb.create_string(&message.content);
+    let reply_to = message.reply_to.as_ref().map(|s| fbb.create_string(s));
+    let source_relay_offsets: Vec<WIPOffset<&str>> = message
+        .source_relays
+        .iter()
+        .map(|relay| fbb.create_string(relay))
+        .collect();
+    let source_relays = fbb.create_vector(&source_relay_offsets);
+    fb::DmMessage::create(
+        fbb,
+        &fb::DmMessageArgs {
+            id: Some(id),
+            sender_pubkey: Some(sender_pubkey),
+            content: Some(content),
+            created_at: message.created_at,
+            has_reply_to: message.reply_to.is_some(),
+            reply_to,
+            is_outgoing: message.is_outgoing,
+            source_relays: Some(source_relays),
+        },
+    )
+}
+
+// --- decode ---------------------------------------------------------------
+
+/// Decode typed FlatBuffers bytes (as produced by [`encode_dm_inbox_snapshot`])
+/// back into a [`DmInboxSnapshot`]. Returns an error string on any malformed
+/// input or missing required field.
+pub fn decode_dm_inbox_snapshot(bytes: &[u8]) -> Result<DmInboxSnapshot, String> {
+    if bytes.len() < 8 || !fb::dm_inbox_snapshot_buffer_has_identifier(bytes) {
+        return Err("missing NDMI file identifier".to_string());
+    }
+    let root = fb::root_as_dm_inbox_snapshot(bytes)
+        .map_err(|e| format!("not a valid DmInboxSnapshot buffer: {e}"))?;
+
+    let mut conversations = Vec::new();
+    if let Some(fb_conversations) = root.conversations() {
+        conversations.reserve(fb_conversations.len());
+        for fb_conversation in fb_conversations.iter() {
+            conversations.push(decode_conversation(fb_conversation)?);
+        }
+    }
+
+    Ok(DmInboxSnapshot {
+        conversations,
+        remote_signer_unsupported: root.remote_signer_unsupported(),
+    })
+}
+
+fn decode_conversation(conversation: fb::DmConversation<'_>) -> Result<DmConversation, String> {
+    let mut messages = Vec::new();
+    if let Some(fb_messages) = conversation.messages() {
+        messages.reserve(fb_messages.len());
+        for fb_message in fb_messages.iter() {
+            messages.push(decode_message(fb_message)?);
+        }
+    }
+    Ok(DmConversation {
+        peer_pubkey: str_field(conversation.peer_pubkey(), "DmConversation.peer_pubkey")?,
+        messages,
+    })
+}
+
+fn decode_message(message: fb::DmMessage<'_>) -> Result<DmMessage, String> {
+    let mut source_relays = Vec::new();
+    if let Some(fb_relays) = message.source_relays() {
+        source_relays.reserve(fb_relays.len());
+        for relay in fb_relays.iter() {
+            source_relays.push(relay.to_string());
+        }
+    }
+    Ok(DmMessage {
+        id: str_field(message.id(), "DmMessage.id")?,
+        sender_pubkey: str_field(message.sender_pubkey(), "DmMessage.sender_pubkey")?,
+        content: str_field(message.content(), "DmMessage.content")?,
+        created_at: message.created_at(),
+        reply_to: if message.has_reply_to() {
+            Some(message.reply_to().unwrap_or_default().to_string())
+        } else {
+            None
+        },
+        is_outgoing: message.is_outgoing(),
+        source_relays,
+    })
+}
+
+/// Require a present string field; an absent FlatBuffers string on a mandatory
+/// slot is a decode error.
+fn str_field(value: Option<&str>, ctx: &str) -> Result<String, String> {
+    value
+        .map(str::to_string)
+        .ok_or_else(|| format!("{ctx}: missing required string field"))
+}
+
+#[cfg(test)]
+#[path = "dm_inbox_fb_tests.rs"]
+mod tests;
