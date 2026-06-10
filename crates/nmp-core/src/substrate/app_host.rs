@@ -60,6 +60,34 @@ pub trait AppHost: ActionRegistrar {
         K: Into<String>,
         F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static;
 
+    /// Register a **per-tick observer** — a no-result callback fired once on
+    /// every snapshot tick, the generic projection-free counterpart to
+    /// [`AppHost::register_snapshot_projection`].
+    ///
+    /// Where a projection closure produces snapshot *data* under a key, a tick
+    /// observer produces nothing: it is a pure per-tick side-effect seam for
+    /// host-side reconcilers that need a "the kernel just ticked" callback but
+    /// contribute no projection output. The canonical consumer is an
+    /// active-account subscription reconciler that diffs the active pubkey each
+    /// tick and enqueues `PushInterest` / `WithdrawInterest` actor commands —
+    /// previously such reconcilers abused the projection registry by returning a
+    /// `Value::Null` projection purely to obtain the per-tick callback.
+    ///
+    /// This method lives on the trait — not only on the concrete `NmpApp` — so
+    /// reusable protocol/runtime crates that register through `&impl AppHost`
+    /// (e.g. `register_zap_receipts_runtime`) can wire a per-tick reconciler
+    /// without depending on the C-ABI crate. It mirrors
+    /// `register_snapshot_projection`: `&self` (the registry mutation is a
+    /// lock-and-push), and the same shared registry/slot.
+    ///
+    /// Like a projection closure, `f` runs on the actor thread inside the
+    /// snapshot tick — it MUST be non-blocking (D8: enqueue only, no I/O or
+    /// lock waits). A panicking observer is contained (D6) and cannot crash the
+    /// tick.
+    fn register_snapshot_tick_observer<F>(&self, f: F)
+    where
+        F: Fn() + Send + Sync + 'static;
+
     fn set_coverage_hook(&self, hook: PlanCoverageHook);
 
     fn set_req_frame_interceptor(&self, interceptor: Arc<dyn ReqFrameInterceptor>);

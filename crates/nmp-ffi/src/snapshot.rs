@@ -54,6 +54,23 @@ impl NmpApp {
             registry.register_typed(key, f);
         }
     }
+
+    /// Register a per-tick observer — a no-result callback fired once on every
+    /// snapshot tick. The generic, projection-free counterpart to
+    /// [`Self::register_snapshot_projection`]: it contributes no snapshot key,
+    /// it is a pure per-tick side-effect seam (e.g. an active-account
+    /// subscription reconciler that enqueues `PushInterest` / `WithdrawInterest`
+    /// each tick).
+    ///
+    /// Like `register_snapshot_projection`, this takes `&self` (the mutation is
+    /// a lock-and-push behind the shared registry slot) and is intended as a
+    /// host-init call. `f` runs on the actor thread inside the tick — it MUST be
+    /// non-blocking (D8). A poisoned registry mutex is a silent no-op (D6).
+    pub fn register_snapshot_tick_observer(&self, f: impl Fn() + Send + Sync + 'static) {
+        if let Ok(mut registry) = self.snapshot_projections.lock() {
+            registry.register_tick_observer(f);
+        }
+    }
 }
 
 /// Register a host-supplied snapshot projector for `key` — the host-extensible

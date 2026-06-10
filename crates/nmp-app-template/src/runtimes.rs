@@ -1,38 +1,42 @@
 //! Canonical host-side runtime controllers wired by [`super::register_defaults`].
 //!
-//! Two snapshot-projection-driven reconcilers that own the active-account
-//! per-tick `PushInterest` / `WithdrawInterest` book-keeping the kernel
-//! itself cannot do (D0 — `nmp-core` ships no DM/zap nouns):
+//! Two per-tick reconcilers that own the active-account `PushInterest` /
+//! `WithdrawInterest` book-keeping the kernel itself cannot do (D0 — `nmp-core`
+//! ships no DM/zap nouns):
 //!
 //! 1. [`register_dm_runtime`] — NIP-17 DM inbox.
 //!    * Wires the kind:1059 raw-event [`nmp_nip17::DmInboxProjection`] +
 //!      its `"nmp.nip17.dm_inbox"` snapshot projection.
-//!    * Owns a `DmRuntimeController` that on every snapshot tick
-//!      reconciles the active-account gift-wrap inbox interest (kind:1059
-//!      `#p`) and any pending kind:10050 publishes against the
-//!      relay-edit-rows snapshot.
+//!    * Owns a `DmRuntimeController` whose `"nmp.nip17.dm_relay_list"`
+//!      projection closure both reconciles (active-account gift-wrap inbox
+//!      interest + pending kind:10050 publishes) AND emits the relay-list
+//!      projection on every snapshot tick.
 //! 2. [`register_zap_receipts_runtime`] — NIP-57 self-zap receipts.
-//!    * Owns a `ZapReceiptsRuntimeController` that pushes /
-//!      withdraws the active-account kind:9735 `#p` subscription on
-//!      sign-in / account switch / sign-out (the `nmp.nip57.zaps`
-//!      aggregate projection is registered separately by an app crate
-//!      that wants the per-target counts; the template ships only the
-//!      subscription reconciler).
+//!    * Owns a `ZapReceiptsRuntimeController` registered via the generic
+//!      **per-tick observer** seam (`register_snapshot_tick_observer`): it
+//!      pushes / withdraws the active-account kind:9735 `#p` subscription on
+//!      sign-in / account switch / sign-out and contributes NO snapshot data
+//!      (the `nmp.nip57.zaps` aggregate projection is registered separately by
+//!      an app crate that wants the per-target counts; the template ships only
+//!      the subscription reconciler).
 //!
 //! # Both controllers
 //!
-//! Captured by a `register_snapshot_projection` closure (the snapshot tick
-//! drives reconciliation — the push must happen *before* the first event, the
-//! moment the user signs in); reconcile against a single
+//! The snapshot tick drives reconciliation — the push must happen *before* the
+//! first event, the moment the user signs in. Both reconcile against a single
 //! `Mutex<Option<String>>` of the last-pushed pubkey, withdrawing by a
 //! pubkey-invariant interest id so an account switch cleanly replaces rather
-//! than leaks; and degrade silently on lock poisoning / channel disconnect (D6).
+//! than leaks, and degrade silently on lock poisoning / channel disconnect (D6).
+//! The seam differs: the DM controller also emits a projection, so it reconciles
+//! inside its projection closure; the zap controller emits nothing, so it uses
+//! the data-free `register_snapshot_tick_observer` seam rather than abusing the
+//! projection registry with a `Value::Null` projection.
 //!
-//! Originally lived in `apps/chirp/nmp-app-chirp/src/dm_runtime.rs` +
-//! `zap_receipts_runtime.rs` (115 + 167 LOC). Lifted here so any NMP-based app
-//! gets canonical DM + zap subscription behaviour through one `register_defaults`
-//! call. The DM keys also emit typed FlatBuffers sidecars (ADR-0037, Wave A):
-//! `nmp.nip17.dm_inbox` (`NDMI`) and `nmp.nip17.dm_relay_list` (`NDRL`).
+//! Originally lived in `apps/chirp/nmp-app-chirp/src/{dm,zap_receipts}_runtime.rs`.
+//! Lifted here so any NMP-based app gets canonical DM + zap subscription
+//! behaviour through one `register_defaults` call. The DM keys also emit typed
+//! FlatBuffers sidecars (ADR-0037, Wave A): `nmp.nip17.dm_inbox` (`NDMI`) and
+//! `nmp.nip17.dm_relay_list` (`NDRL`).
 
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
@@ -208,17 +212,18 @@ impl DmRuntimeController {
 
 /// Wire the NIP-57 self-zap-receipts subscription runtime into `app`.
 ///
-/// Registers a snapshot-projection under `"nmp.nip57.zap_subscription"`
-/// whose closure body reconciles the active-account kind:9735 inbox
-/// interest against the last-applied pubkey, emitting at most one
-/// `PushInterest` (on account change / first sign-in) and at most one
-/// `WithdrawInterest` (on logout / before the re-push) per tick.
+/// Registers a **per-tick observer** (`register_snapshot_tick_observer`) whose
+/// body reconciles the active-account kind:9735 inbox interest against the
+/// last-applied pubkey, emitting at most one `PushInterest` (on account change /
+/// first sign-in) and at most one `WithdrawInterest` (on logout / before the
+/// re-push) per tick. It contributes NO snapshot data — it is a pure per-tick
+/// reconciler, so it uses the generic tick-observer seam rather than the
+/// projection registry (which it previously abused by returning a `Value::Null`
+/// projection purely to obtain the per-tick callback).
 ///
 /// The per-target zap aggregate read (`"nmp.nip57.zaps"`, fed by
-/// [`nmp_nip57::ZapsAggregateProjection`]) is registered separately by
-/// the per-app crate that wants it — the template ships only the
-/// subscription reconciler so apps that don't care about per-row zap
-/// counts don't carry an unused observer.
+/// [`nmp_nip57::ZapsAggregateProjection`]) is registered separately by the
+/// per-app crate that wants it; the template ships only this reconciler.
 ///
 /// Called by [`super::register_defaults`]; exposed `pub` so an app crate
 /// that opts out of the wholesale defaults can still wire just the zap
@@ -229,9 +234,7 @@ pub fn register_zap_receipts_runtime(app: &impl AppHost) {
         tx: app.actor_sender(),
         last_pushed_pubkey: Mutex::new(None),
     });
-    app.register_snapshot_projection("nmp.nip57.zap_subscription", move || {
-        controller.tick_and_snapshot()
-    });
+    app.register_snapshot_tick_observer(move || controller.tick());
 }
 
 /// Per-tick reconciler for the active-account zap-receipts interest.
@@ -242,7 +245,11 @@ struct ZapReceiptsRuntimeController {
 }
 
 impl ZapReceiptsRuntimeController {
-    fn tick_and_snapshot(&self) -> serde_json::Value {
+    /// Reconcile the active-account zap-receipts interest once per snapshot
+    /// tick. Produces no snapshot data — it only diffs the active pubkey against
+    /// the last-pushed one and enqueues Push/Withdraw interest on change (D8:
+    /// enqueue-only, non-blocking).
+    fn tick(&self) {
         let active = self.active_pubkey();
 
         // D6 — a poisoned slot is silently treated as "no prior push" so
@@ -282,8 +289,6 @@ impl ZapReceiptsRuntimeController {
             // Cold start before sign-in: nothing to do.
             (None, None) => {}
         }
-
-        serde_json::Value::Null
     }
 
     fn active_pubkey(&self) -> Option<String> {
@@ -293,3 +298,10 @@ impl ZapReceiptsRuntimeController {
             .and_then(|slot| slot.as_ref().map(|keys| keys.public_key().to_hex()))
     }
 }
+
+// Co-located zap-reconciler unit tests live in a sibling file (kept out of this
+// module body to hold it under the 300-LOC ceiling) but compile as a child
+// module so they reach the private `ZapReceiptsRuntimeController`.
+#[cfg(test)]
+#[path = "runtimes_zap_tests.rs"]
+mod zap_tests;

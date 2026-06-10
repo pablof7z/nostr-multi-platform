@@ -434,6 +434,20 @@ impl<S> AppHost for NmpAppBuilder<S> {
         NmpApp::register_typed_snapshot_projection(app, key, f);
     }
 
+    fn register_snapshot_tick_observer<F>(&self, f: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
+        // `&self` is safe — all AppHost methods take `&self`.
+        let app: &NmpApp = unsafe { &*self.app };
+        // Forwards into the same shared registry the projection seams write to;
+        // tick observers live alongside the projection closures (one slot, bound
+        // onto the kernel and surviving `Reset`). Fully qualified to the
+        // inherent `NmpApp` method.
+        NmpApp::register_snapshot_tick_observer(app, f);
+    }
+
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_coverage_hook(hook);
