@@ -538,6 +538,15 @@ pub struct NmpApp {
     /// controllers are wired. That is acceptable for the backpressure gate,
     /// which watches for *buildup*, not exact occupancy.
     queue_depth: Arc<AtomicU64>,
+    /// Test-only monotone send counter — counts every `send_cmd` call since
+    /// construction, **never decremented**. Unlike `queue_depth` (which the
+    /// actor thread races to decrement), this counter is a one-way ratchet that
+    /// tests can use to assert "at least one command was enqueued" without a
+    /// time-of-check / time-of-use race against the actor drain thread.
+    ///
+    /// Only compiled in `#[cfg(test)]`; zero overhead in production builds.
+    #[cfg(test)]
+    send_cmd_count: AtomicU64,
     /// D2 coverage-gate hook slot. Set by the per-app crate (`nmp-app-chirp`)
     /// via [`Self::set_coverage_hook`] before `nmp_app_start`. The actor thread
     /// reads it once after kernel construction and installs it on the
@@ -1064,6 +1073,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // G-S4 — the `NmpApp`'s clone of the command-channel depth counter,
         // incremented by `send_cmd`. The actor holds the matching clone.
         queue_depth,
+        // Test-only monotone send counter — starts at zero; incremented by
+        // every `send_cmd` call and never decremented. Initialised here so
+        // the `cfg(test)` field is present from construction.
+        #[cfg(test)]
+        send_cmd_count: AtomicU64::new(0),
         // D2 — the `NmpApp`'s clone of the coverage-gate hook slot. Written
         // by the per-app crate via [`NmpApp::set_coverage_hook`] before
         // `nmp_app_start`; the actor reads its clone after kernel
@@ -1139,6 +1153,11 @@ impl NmpApp {
         // send fails (actor thread gone) the command is dropped and the
         // counter is left one high; that is harmless on a dead actor.
         self.queue_depth.fetch_add(1, Ordering::Relaxed);
+        // Test-only monotone counter: never decremented, so tests can assert
+        // "at least one command was sent" without racing the actor drain thread
+        // (the TOCTOU race that made `queue_depth` unreliable for that use).
+        #[cfg(test)]
+        self.send_cmd_count.fetch_add(1, Ordering::Relaxed);
         let _ = self.tx.send(cmd);
     }
 

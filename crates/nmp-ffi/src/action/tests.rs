@@ -654,12 +654,17 @@ fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
     // `RecordActionFailure` on the actor channel.
     app_mut.register_action::<TestPanicModule>();
 
-    let depth_before = app_mut
-        .queue_depth
+    // Snapshot the monotone send counter before dispatch. Unlike
+    // `queue_depth` (which the actor drains concurrently), `send_cmd_count`
+    // is only ever incremented — never decremented — so reading it after
+    // `dispatch_action_json` returns is race-free: no other thread can make
+    // the count go *down* between the call and the assertion.
+    let sends_before = app_mut
+        .send_cmd_count
         .load(std::sync::atomic::Ordering::Relaxed);
     let out = dispatch_action_json(Some(&*app_mut), "test.panic", "{}");
-    let depth_after = app_mut
-        .queue_depth
+    let sends_after = app_mut
+        .send_cmd_count
         .load(std::sync::atomic::Ordering::Relaxed);
 
     let parsed: serde_json::Value = serde_json::from_str(&out)
@@ -688,14 +693,18 @@ fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
     );
 
     // (b) — at least one ActorCommand was enqueued (the
-    // `RecordActionFailure` fan-out). The actor consumes commands on
-    // its own thread; the depth check is a straddle counter the
-    // `nmp_app_*` dispatch symbols all rely on for this assertion
-    // pattern.
+    // `RecordActionFailure` fan-out). We use the monotone `send_cmd_count`
+    // (incremented by every `send_cmd` call, never decremented) rather than
+    // `queue_depth` (which the actor drain-thread races to decrement). The
+    // old `queue_depth` assertion was chronically flaky: the actor could
+    // process the command between `dispatch_action_json` returning and the
+    // `depth_after` read, collapsing `depth_after == depth_before` and
+    // failing the assertion. `send_cmd_count` is a one-way ratchet — the
+    // comparison is always valid regardless of actor scheduling.
     assert!(
-        depth_after > depth_before,
+        sends_after > sends_before,
         "executor failure must enqueue at least one ActorCommand \
-         (RecordActionFailure); depth_before={depth_before} depth_after={depth_after}"
+         (RecordActionFailure); sends_before={sends_before} sends_after={sends_after}"
     );
     nmp_app_free(app);
 }
