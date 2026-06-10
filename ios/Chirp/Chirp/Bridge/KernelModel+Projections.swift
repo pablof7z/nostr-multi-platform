@@ -8,8 +8,12 @@ extension KernelModel {
     var profile: ProfileCard? { snapshot?.profile }
     var metrics: KernelMetrics? { snapshot?.metrics }
     var relayStatuses: [RelayStatus] { snapshot?.relayStatuses ?? [] }
-    var accounts: [AccountSummary] { snapshot?.accounts ?? [] }
-    var activeAccount: String? { snapshot?.activeAccount }
+    // V6 Stage 4 (Wave B): typed-first with JSON fallback, mirroring
+    // `modularTimeline`'s `typedHomeFeed ?? snapshot?.homeFeed`. The typed
+    // `KACC` / `KACT` sidecars win when present; the generic JSON projection
+    // is the fallback (ADR-0037 Commitment 4).
+    var accounts: [AccountSummary] { typedAccounts ?? snapshot?.accounts ?? [] }
+    var activeAccount: String? { typedActiveAccount ?? snapshot?.activeAccount }
     var publishQueue: [PublishQueueEntry] { snapshot?.publishQueue ?? [] }
     var publishOutbox: [PublishOutboxItem] { snapshot?.publishOutbox ?? [] }
     var outboxSummary: OutboxSummary { snapshot?.outboxSummary ?? .empty }

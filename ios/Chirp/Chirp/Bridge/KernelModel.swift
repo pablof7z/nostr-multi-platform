@@ -53,6 +53,20 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// `snapshot?.homeFeed` (generic `Value` decode) is used instead.
     @Published private(set) var typedHomeFeed: ChirpTimelineSnapshot?
 
+    /// V6 Stage 4 (Wave B) typed `accounts` override. Non-nil when the typed
+    /// `KACC` sidecar decoded on the most-recent tick. Preferred over the
+    /// generic `snapshot?.accounts` in the `accounts` accessor
+    /// (`KernelModel+Projections`). Falls back to `nil` on any tick where the
+    /// typed path returns nil, at which point the generic JSON path is used.
+    @Published private(set) var typedAccounts: [AccountSummary]?
+
+    /// V6 Stage 4 (Wave B) typed `active_account` override. Non-nil when the
+    /// typed `KACT` sidecar decoded to an active pubkey on the most-recent tick.
+    /// Preferred over the generic `snapshot?.activeAccount` in the
+    /// `activeAccount` accessor. `nil` (no sidecar OR no active account) defers
+    /// to the generic JSON path — parity-preserving.
+    @Published private(set) var typedActiveAccount: String?
+
     /// Dynamic flat feeds opened per profile/thread screen. Keys are
     /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
     @Published private(set) var flatFeeds: [String: ChirpTimelineSnapshot] = [:]
@@ -634,10 +648,19 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         let callbackToApplyMicros = result.callbackReceivedAt.duration(to: applyStart).microseconds
 
         // Capture pre-assignment values for delta-driven side-effects below.
+        // `priorActiveAccount` reads the OLD effective value through the
+        // `activeAccount` accessor (typed-or-JSON of the previous tick).
         let priorActiveAccount = activeAccount
-        if update.activeAccount != priorActiveAccount {
+        // V6 Stage 4 (Wave B): the NEW effective active account is the typed
+        // sidecar when present, else the generic JSON `update.activeAccount`.
+        // Every internal consumer below (delta log, marmot re-registration,
+        // follow-list active-pubkey forward) MUST read this same value so the
+        // UI accessor and the side-effects never split-brain across the two
+        // sources — the parity contract is the safety net, not the design.
+        let newActiveAccount = result.typedActiveAccount ?? update.activeAccount
+        if newActiveAccount != priorActiveAccount {
             kmLog.info(
-                "apply: activeAccount \(priorActiveAccount ?? "nil") → \(update.activeAccount ?? "nil")")
+                "apply: activeAccount \(priorActiveAccount ?? "nil") → \(newActiveAccount ?? "nil")")
         }
 
         #if DEBUG
@@ -658,6 +681,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // ADR-0038: store the typed home-feed result. Nil means the generic
         // projections.homeFeed fallback applies for this tick.
         typedHomeFeed = result.typedHomeFeed
+        // V6 Stage 4 (Wave B): store the typed accounts / active-account decode.
+        // Nil means the generic `projections.accounts` / `projections.active_account`
+        // JSON fallback applies for this tick (read through the accessors).
+        typedAccounts = result.typedAccounts
+        typedActiveAccount = result.typedActiveAccount
         flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 
@@ -677,7 +705,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         }
         #endif
 
-        let activeAccountChanged = update.activeAccount != priorActiveAccount
+        let activeAccountChanged = newActiveAccount != priorActiveAccount
         if marmotRegistrationRequested, activeAccountChanged {
             _ = kernel.registerActiveMarmotIfAvailable()
             marmotRegistrationRequested = false
@@ -703,7 +731,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // which registers the read projection (`nmp_app_chirp_register_follow_list`).
         // The active-account pubkey is forwarded so the store can re-invoke
         // the FFI to update the projection's active-pubkey slot after sign-in.
-        followList.apply(snapshot: update.followList, activePubkey: update.activeAccount)
+        followList.apply(snapshot: update.followList, activePubkey: newActiveAccount)
 
         // NIP-29 group-discovery projection mirror. Push every tick so the
         // store tracks `projections["nmp.nip29.discovered_groups"]`. The store
