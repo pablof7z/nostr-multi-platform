@@ -77,6 +77,7 @@ pub mod interest;
 pub mod projection;
 pub mod service;
 pub mod view;
+pub mod wire;
 
 // ── C-ABI shell ──────────────────────────────────────────────────────────
 //

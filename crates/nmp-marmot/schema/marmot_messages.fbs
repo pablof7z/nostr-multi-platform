@@ -1,0 +1,58 @@
+namespace nmp.marmot;
+
+// Typed FlatBuffers wire for the `nmp.marmot.messages` push projection
+// (`MarmotProjection::messages_all_groups_json` — `{ group_id_hex ->
+// [MarmotMessageRow] }`).
+//
+// This is the typed sidecar (ADR-0037) carried ALONGSIDE the existing generic
+// `serde_json::Value` projection registered under the same key in
+// `crate::ffi::register_with_keys`. The serde shape stays authoritative; this
+// buffer mirrors it so a host with an `NMMG` decoder can read typed accessors
+// instead of JSON reflection. An un-updated host falls back to the generic
+// `Value` subtree. Purely additive — the dynamic
+// `register_snapshot_projection("nmp.marmot.messages")` call and
+// `messages_all_groups_json` are unchanged and remain the source of truth.
+//
+// Map flattening: FlatBuffers has no map type, so the JSON object keyed by
+// `group_id_hex` is flattened to a vector of `MarmotGroupMessages`, sorted by
+// `group_id_hex` ascending for a deterministic wire (the nip29/zaps precedent
+// for map flattening). Each group's `messages` array preserves the order
+// `messages_all_groups_json` emits (newest-N rows from `ops::group_messages`).
+//
+// Raw data only (aim.md §2): hex event ids / pubkeys, verbatim content,
+// Unix-second `created_at`. `epoch: Option<u64>` uses the `has_x` presence
+// convention so a pre-epoch message (`None`) round-trips distinctly from epoch
+// 0.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// is self-contained (no `include`), so generate with plain `flatc --rust`:
+//
+//   flatc --rust -o crates/nmp-marmot/src/wire/generated \
+//         crates/nmp-marmot/schema/marmot_messages.fbs
+
+// One decrypted message row. Mirrors
+// `crate::projection::payload::MarmotMessageRow`.
+table MarmotMessageRow {
+  id:string;                // rumor event id, hex
+  sender_pubkey_hex:string; // author Nostr pubkey (hex, 64 chars)
+  content:string;           // message content, verbatim
+  created_at:uint64;        // rumor created_at, Unix seconds
+  has_epoch:bool;           // Option<u64> presence
+  epoch:uint64;             // MLS epoch the message was decrypted at
+}
+
+// One flattened map entry: a group id and its newest-N message rows.
+table MarmotGroupMessages {
+  group_id_hex:string;
+  messages:[MarmotMessageRow];
+}
+
+// The flattened all-groups message map, sorted by `group_id_hex` ascending.
+table MarmotMessages {
+  schema_version:uint32 = 1;       // mirrors SCHEMA_VERSION
+  groups:[MarmotGroupMessages];
+}
+
+root_type MarmotMessages;
+file_identifier "NMMG";

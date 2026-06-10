@@ -1,0 +1,292 @@
+//! Typed FlatBuffers wire codec for [`crate::projection::payload::MarmotSnapshot`].
+//!
+//! The authoritative FFI shape of the `nmp.marmot.snapshot` projection is the
+//! serde JSON of [`MarmotSnapshot`] (registered via `register_snapshot_projection`
+//! in `crate::ffi::register_with_keys`). This module adds a **typed FlatBuffers**
+//! encoding of the same struct — a self-describing, schema-versioned,
+//! language-neutral binary the host platforms (Swift / Kotlin / TypeScript) can
+//! decode with generated accessors instead of JSON reflection. It is a sidecar
+//! codec: the serde shape stays authoritative; this is the typed payload carried
+//! in the `typed_projections` sidecar (ADR-0037,
+//! `crates/nmp-core/schema/nmp_update.fbs`).
+//!
+//! The schema (`crates/nmp-marmot/schema/marmot_snapshot.fbs`) mirrors the Rust
+//! struct field-for-field. Every `Option<T>` carries a `has_x` presence flag plus
+//! the value so absent (`None`) round-trips distinctly from a present-empty
+//! string / zero value — the same optional-field convention used by
+//! `content_tree.fbs` / `wallet_status.fbs` / `wot_bootstrap.fbs`.
+//!
+//! Honours D6 (no panics): decode returns `Err(String)` on any malformed input;
+//! there are no `unwrap`/`expect`/panicking-index operations on the decode path.
+
+// The generated FlatBuffers bindings are intrinsically `unsafe` (every accessor
+// reads from a raw `Table`). This `allow` block scopes the relaxation to the
+// single generated module — no hand-written code in this file uses `unsafe`.
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+#[path = "generated/marmot_snapshot_generated.rs"]
+pub mod generated;
+
+use generated::nmp::marmot as fb;
+
+use crate::projection::payload::{
+    KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
+};
+use nmp_core::TypedProjectionData;
+
+/// Host-declared projection key this typed payload is emitted under.
+pub const PROJECTION_KEY: &str = "nmp.marmot.snapshot";
+/// Stable schema identifier carried in the typed-projection envelope.
+pub const SCHEMA_ID: &str = "nmp.marmot.snapshot";
+/// FlatBuffers file identifier embedded in every buffer this module emits.
+pub const FILE_IDENTIFIER: &[u8; 4] = b"NMMS";
+/// Wire schema version. Bump on any breaking change to `marmot_snapshot.fbs`.
+pub const SCHEMA_VERSION: u32 = 1;
+
+// --- typed-projection envelope -------------------------------------------
+
+/// Build the [`TypedProjectionData`] sidecar entry for a snapshot — the value
+/// `register_typed_snapshot_projection`'s closure returns and the kernel
+/// collects into a frame's `typed_projections` sidecar.
+#[must_use]
+pub fn typed_projection(snapshot: &MarmotSnapshot) -> TypedProjectionData {
+    TypedProjectionData {
+        key: PROJECTION_KEY.to_string(),
+        schema_id: SCHEMA_ID.to_string(),
+        schema_version: SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(FILE_IDENTIFIER).into_owned(),
+        payload: encode_marmot_snapshot(snapshot),
+    }
+}
+
+// --- encode ---------------------------------------------------------------
+
+/// Encode a [`MarmotSnapshot`] to typed FlatBuffers bytes (with the `NMMS`
+/// file identifier).
+#[must_use]
+pub fn encode_marmot_snapshot(snapshot: &MarmotSnapshot) -> Vec<u8> {
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+
+    // All child offsets must be created before each parent table is started.
+    let groups: Vec<_> = snapshot
+        .groups
+        .iter()
+        .map(|g| encode_group_row(&mut fbb, g))
+        .collect();
+    let groups = fbb.create_vector(&groups);
+
+    let welcomes: Vec<_> = snapshot
+        .pending_welcomes
+        .iter()
+        .map(|w| encode_welcome_row(&mut fbb, w))
+        .collect();
+    let pending_welcomes = fbb.create_vector(&welcomes);
+
+    let key_package = encode_key_package(&mut fbb, &snapshot.key_package);
+
+    let cached: Vec<_> = snapshot
+        .cached_kp_pubkeys
+        .iter()
+        .map(|s| fbb.create_string(s))
+        .collect();
+    let cached_kp_pubkeys = fbb.create_vector(&cached);
+
+    let invites_chip_label = snapshot
+        .invites_chip_label
+        .as_ref()
+        .map(|s| fbb.create_string(s));
+
+    let root = fb::MarmotSnapshot::create(
+        &mut fbb,
+        &fb::MarmotSnapshotArgs {
+            schema_version: SCHEMA_VERSION,
+            groups: Some(groups),
+            pending_welcomes: Some(pending_welcomes),
+            key_package: Some(key_package),
+            cached_kp_pubkeys: Some(cached_kp_pubkeys),
+            has_invites_chip_label: snapshot.invites_chip_label.is_some(),
+            invites_chip_label,
+            is_registered: snapshot.is_registered,
+            orphaned_commit_count: snapshot.orphaned_commit_count,
+            keyring_unavailable: snapshot.keyring_unavailable,
+        },
+    );
+    fb::finish_marmot_snapshot_buffer(&mut fbb, root);
+    fbb.finished_data().to_vec()
+}
+
+type Off<'a, T> = flatbuffers::WIPOffset<T>;
+
+fn encode_group_row<'a>(
+    fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
+    g: &MarmotGroupRow,
+) -> Off<'a, fb::MarmotGroupRow<'a>> {
+    let id_hex = fbb.create_string(&g.id_hex);
+    let name = fbb.create_string(&g.name);
+    let display_name = fbb.create_string(&g.display_name);
+    let initials = fbb.create_string(&g.initials);
+    let members: Vec<_> = g.members.iter().map(|m| fbb.create_string(m)).collect();
+    let members = fbb.create_vector(&members);
+    fb::MarmotGroupRow::create(
+        fbb,
+        &fb::MarmotGroupRowArgs {
+            id_hex: Some(id_hex),
+            name: Some(name),
+            display_name: Some(display_name),
+            initials: Some(initials),
+            members: Some(members),
+            member_count: g.member_count,
+            has_unread_count: g.unread_count.is_some(),
+            unread_count: g.unread_count.unwrap_or(0),
+            has_last_msg_at: g.last_msg_at.is_some(),
+            last_msg_at: g.last_msg_at.unwrap_or(0),
+        },
+    )
+}
+
+fn encode_welcome_row<'a>(
+    fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
+    w: &PendingWelcomeRow,
+) -> Off<'a, fb::PendingWelcomeRow<'a>> {
+    let id_hex = fbb.create_string(&w.id_hex);
+    let group_name = fbb.create_string(&w.group_name);
+    let display_name = fbb.create_string(&w.display_name);
+    let inviter_npub = fbb.create_string(&w.inviter_npub);
+    fb::PendingWelcomeRow::create(
+        fbb,
+        &fb::PendingWelcomeRowArgs {
+            id_hex: Some(id_hex),
+            group_name: Some(group_name),
+            display_name: Some(display_name),
+            inviter_npub: Some(inviter_npub),
+        },
+    )
+}
+
+fn encode_key_package<'a>(
+    fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
+    kp: &KeyPackageStatus,
+) -> Off<'a, fb::KeyPackageStatus<'a>> {
+    let d_tag = kp.d_tag.as_ref().map(|s| fbb.create_string(s));
+    let age_display = kp.age_display.as_ref().map(|s| fbb.create_string(s));
+    let subtitle = fbb.create_string(&kp.subtitle);
+    let action_label = fbb.create_string(&kp.action_label);
+    fb::KeyPackageStatus::create(
+        fbb,
+        &fb::KeyPackageStatusArgs {
+            published: kp.published,
+            has_d_tag: kp.d_tag.is_some(),
+            d_tag,
+            has_age_secs: kp.age_secs.is_some(),
+            age_secs: kp.age_secs.unwrap_or(0),
+            stale: kp.stale,
+            has_age_display: kp.age_display.is_some(),
+            age_display,
+            subtitle: Some(subtitle),
+            action_label: Some(action_label),
+        },
+    )
+}
+
+// --- decode ---------------------------------------------------------------
+
+/// Decode typed FlatBuffers bytes (as produced by [`encode_marmot_snapshot`])
+/// back into a [`MarmotSnapshot`]. Returns an error string on any malformed
+/// input.
+pub fn decode_marmot_snapshot(bytes: &[u8]) -> Result<MarmotSnapshot, String> {
+    if bytes.len() < 8 || !fb::marmot_snapshot_buffer_has_identifier(bytes) {
+        return Err("missing NMMS file identifier".to_string());
+    }
+    let root = fb::root_as_marmot_snapshot(bytes)
+        .map_err(|e| format!("not a valid MarmotSnapshot buffer: {e}"))?;
+
+    let groups = root
+        .groups()
+        .map(|v| v.iter().map(decode_group_row).collect())
+        .unwrap_or_default();
+    let pending_welcomes = root
+        .pending_welcomes()
+        .map(|v| v.iter().map(decode_welcome_row).collect())
+        .unwrap_or_default();
+    let cached_kp_pubkeys = root
+        .cached_kp_pubkeys()
+        .map(|v| v.iter().map(str::to_string).collect())
+        .unwrap_or_default();
+
+    Ok(MarmotSnapshot {
+        groups,
+        pending_welcomes,
+        key_package: root.key_package().map(decode_key_package).unwrap_or_default(),
+        cached_kp_pubkeys,
+        invites_chip_label: optional_string(
+            root.has_invites_chip_label(),
+            root.invites_chip_label(),
+        ),
+        is_registered: root.is_registered(),
+        orphaned_commit_count: root.orphaned_commit_count(),
+        keyring_unavailable: root.keyring_unavailable(),
+    })
+}
+
+fn decode_group_row(g: fb::MarmotGroupRow<'_>) -> MarmotGroupRow {
+    MarmotGroupRow {
+        id_hex: g.id_hex().unwrap_or_default().to_string(),
+        name: g.name().unwrap_or_default().to_string(),
+        display_name: g.display_name().unwrap_or_default().to_string(),
+        initials: g.initials().unwrap_or_default().to_string(),
+        members: g
+            .members()
+            .map(|v| v.iter().map(str::to_string).collect())
+            .unwrap_or_default(),
+        member_count: g.member_count(),
+        unread_count: optional_u32(g.has_unread_count(), g.unread_count()),
+        last_msg_at: optional_u64(g.has_last_msg_at(), g.last_msg_at()),
+    }
+}
+
+fn decode_welcome_row(w: fb::PendingWelcomeRow<'_>) -> PendingWelcomeRow {
+    PendingWelcomeRow {
+        id_hex: w.id_hex().unwrap_or_default().to_string(),
+        group_name: w.group_name().unwrap_or_default().to_string(),
+        display_name: w.display_name().unwrap_or_default().to_string(),
+        inviter_npub: w.inviter_npub().unwrap_or_default().to_string(),
+    }
+}
+
+fn decode_key_package(kp: fb::KeyPackageStatus<'_>) -> KeyPackageStatus {
+    KeyPackageStatus {
+        published: kp.published(),
+        d_tag: optional_string(kp.has_d_tag(), kp.d_tag()),
+        age_secs: optional_u64(kp.has_age_secs(), kp.age_secs()),
+        stale: kp.stale(),
+        age_display: optional_string(kp.has_age_display(), kp.age_display()),
+        subtitle: kp.subtitle().unwrap_or_default().to_string(),
+        action_label: kp.action_label().unwrap_or_default().to_string(),
+    }
+}
+
+/// Reconstruct an `Option<String>` from a `has_*` flag + the wire string,
+/// distinguishing absent (`None`) from present-empty (`Some("")`).
+fn optional_string(present: bool, value: Option<&str>) -> Option<String> {
+    present.then(|| value.unwrap_or_default().to_string())
+}
+
+fn optional_u32(present: bool, value: u32) -> Option<u32> {
+    present.then_some(value)
+}
+
+fn optional_u64(present: bool, value: u64) -> Option<u64> {
+    present.then_some(value)
+}
+
+#[cfg(test)]
+#[path = "snapshot_fb_tests.rs"]
+mod tests;
