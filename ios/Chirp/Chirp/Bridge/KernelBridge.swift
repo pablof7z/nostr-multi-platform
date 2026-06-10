@@ -628,12 +628,21 @@ final class KernelHandle {
             // Returns nil when absent or malformed → generic path stays active
             // (ADR-0037 Commitment 4 graceful fallback).
             let typedHomeFeed = TypedHomeFeedDecoder.decode(from: envelopes)
+            // V6 Stage 4 (Wave B): prefer the typed `accounts` / `active_account`
+            // sidecars when present and well-formed. Each returns nil when the
+            // sidecar is absent or malformed → the generic `projections.<field>`
+            // JSON path stays active (ADR-0037 Commitment 4 graceful fallback),
+            // exactly mirroring `typedHomeFeed` above.
+            let typedAccounts = TypedAccountsDecoder.decode(from: envelopes)
+            let typedActiveAccount = TypedActiveAccountDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
                 KernelUpdateResult(
                     update: update,
                     typedHomeFeed: typedHomeFeed,
+                    typedAccounts: typedAccounts,
+                    typedActiveAccount: typedActiveAccount,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
@@ -718,6 +727,16 @@ struct KernelUpdateResult {
     /// `NFCT` decoder could fully populate. `nil` means the generic
     /// `projections.homeFeed` fallback applies (ADR-0037 Commitment 4).
     let typedHomeFeed: ChirpTimelineSnapshot?
+    /// Typed `accounts` projection decode (V6 Stage 4 / Wave B `KACC` sidecar).
+    /// Non-nil when the snapshot carried a well-formed `accounts` typed sidecar;
+    /// `nil` means the generic `projections.accounts` JSON fallback applies.
+    let typedAccounts: [AccountSummary]?
+    /// Typed `active_account` projection decode (V6 Stage 4 / Wave B `KACT`
+    /// sidecar). Non-nil when the snapshot carried a well-formed `active_account`
+    /// typed sidecar that resolved to an active pubkey; `nil` means either no
+    /// sidecar OR no active account — both defer to the generic
+    /// `projections.active_account` JSON fallback (parity-preserving).
+    let typedActiveAccount: String?
     /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
     /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
     /// target, so they cannot be codegen'd as fixed projection fields.
