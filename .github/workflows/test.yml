@@ -24,6 +24,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The full workspace build + all test binaries (secp256k1, lmdb, openmls,
+      # flatbuffers, …) exhaust the ~14 GB free on a bare `ubuntu-latest`
+      # runner during linking ("No space left on device" / ld Bus error). Drop
+      # the preinstalled SDKs we never use to reclaim ~25 GB before building.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
