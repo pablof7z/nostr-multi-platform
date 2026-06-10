@@ -28,6 +28,10 @@ serde_json = "1.0"
 [dev-dependencies]
 nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp" }
 nmp-core = { path = "../nmp-core" }
+# longform_projection_supersession.rs — drives the typed NIP-23
+# `LongformProjection` against the real event store to prove kernel-resolved
+# kind:30023 supersession (param-replaceable C2) reaches the projection.
+nmp-content = { path = "../nmp-content" }
 zeroize = { workspace = true }
 nmp-ffi = { path = "../nmp-ffi" }
 nmp-nip01 = { path = "../nmp-nip01" }

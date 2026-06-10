@@ -4938,6 +4938,7 @@ dependencies = [
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-app-chirp",
+ "nmp-content",
  "nmp-core",
  "nmp-ffi",
  "nmp-marmot",
