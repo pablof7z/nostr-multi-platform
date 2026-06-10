@@ -206,3 +206,26 @@ impl EventStore for LmdbEventStore {
         }
     }
 }
+
+// ─── Test-only helpers ────────────────────────────────────────────────────────
+
+#[cfg(all(test, feature = "lmdb-backend"))]
+impl LmdbEventStore {
+    /// Count the rows in the `nmp-addr-tombstones` sub-db.
+    ///
+    /// Exposed only for GC tests (S-2 fix) — not part of the public trait.
+    pub(super) fn addr_tombstone_count(&self) -> Result<usize, crate::StoreError> {
+        let txn = self
+            .inner
+            .env
+            .read_txn()
+            .map_err(|e| crate::StoreError::Io(format!("read_txn: {e}")))?;
+        let count = self
+            .inner
+            .addr_tombstones
+            .iter(&txn)
+            .map_err(|e| crate::StoreError::Io(format!("addr-tomb count iter: {e}")))?
+            .count();
+        Ok(count)
+    }
+}

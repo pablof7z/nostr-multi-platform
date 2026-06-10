@@ -198,6 +198,27 @@ pub(super) fn gc_step(
         st.tombstones.remove(&k);
     }
 
+    // ── Phase 3b: Purge old address tombstones ────────────────────────────────
+    //
+    // addr_tombstones guard param-replaceable re-inserts when an event arrives
+    // after the kind:5 `a`-tag delete that covered its coordinate.  The gate is
+    // `tomb.deleted_at >= event.created_at` — so any new version with a HIGHER
+    // created_at bypasses the gate regardless of whether the tombstone is present.
+    // A purged addr tombstone therefore only allows stale copies (created_at <=
+    // the original delete timestamp) to re-enter, which is identical to the
+    // class of stale re-deliveries the per-id tombstone policy already accepts
+    // after 90 days.  Safety: same retention argument as id-tombstones.
+    let stale_addr: Vec<String> = st
+        .addr_tombstones
+        .iter()
+        .filter(|(_, t)| now_secs.saturating_sub(t.deleted_at) > TOMBSTONE_MAX_AGE_SECS)
+        .map(|(k, _)| k.clone())
+        .collect();
+    report.addr_tombstones_purged = stale_addr.len();
+    for k in stale_addr {
+        st.addr_tombstones.remove(&k);
+    }
+
     finish(start, report)
 }
 
@@ -296,6 +317,98 @@ mod tests {
         assert!(
             !st.claim_budgets.contains_key(&c),
             "release must clear budget entry"
+        );
+    }
+
+    // ── addr_tombstone GC tests (S-2 fix) ────────────────────────────────────
+
+    /// Helper: inject an addr tombstone row directly into MemState.
+    fn inject_addr_tombstone(store: &MemEventStore, key: &str, deleted_at: u64) {
+        let mut st = store.lock().unwrap();
+        st.addr_tombstones.insert(
+            key.to_string(),
+            TombstoneRow {
+                target_id: [0u8; 32],
+                kind5_event_id: Some([1u8; 32]),
+                deleter_pubkey: Some([2u8; 32]),
+                deleted_at,
+                sources: vec!["wss://test/".into()],
+                origin: crate::types::TombstoneOrigin::Kind5,
+            },
+        );
+    }
+
+    /// Stale addr tombstones (older than TOMBSTONE_MAX_AGE_SECS) survive
+    /// gc_step BEFORE the fix — this test was RED on master and is the
+    /// failing proof required by the TDD brief.
+    ///
+    /// After the fix it must be GREEN: the addr tombstone is purged.
+    #[test]
+    fn mem_stale_addr_tombstone_is_purged_by_gc() {
+        let store = MemEventStore::new();
+        let key = "30023:aa".repeat(1) + ":some-dtag";
+
+        // deleted_at is TOMBSTONE_MAX_AGE_SECS + 1 seconds in the past.
+        let now_secs = 10_000_000u64;
+        let deleted_at = now_secs - TOMBSTONE_MAX_AGE_SECS - 1;
+
+        inject_addr_tombstone(&store, &key, deleted_at);
+
+        // Confirm row is present before GC.
+        {
+            let st = store.lock().unwrap();
+            assert!(
+                st.addr_tombstones.contains_key(&key),
+                "addr_tombstone must exist before gc_step"
+            );
+        }
+
+        let budget = crate::types::GcBudget {
+            max_events_per_step: 1000,
+            max_duration_ms: 10_000,
+            max_total_events: usize::MAX,
+        };
+        let report = gc_step(&store, budget, now_secs).unwrap();
+
+        let st = store.lock().unwrap();
+        assert!(
+            !st.addr_tombstones.contains_key(&key),
+            "stale addr_tombstone must be purged by gc_step"
+        );
+        assert_eq!(
+            report.addr_tombstones_purged, 1,
+            "report must count the purged addr_tombstone"
+        );
+    }
+
+    /// Fresh addr tombstones (younger than TOMBSTONE_MAX_AGE_SECS) must NOT
+    /// be purged — they are still needed to gate re-inserts.
+    #[test]
+    fn mem_fresh_addr_tombstone_is_retained_by_gc() {
+        let store = MemEventStore::new();
+        let key = "30023:bb".repeat(1) + ":my-dtag";
+
+        let now_secs = 10_000_000u64;
+        // deleted_at is only 1 second in the past (very fresh).
+        let deleted_at = now_secs - 1;
+
+        inject_addr_tombstone(&store, &key, deleted_at);
+
+        let budget = crate::types::GcBudget {
+            max_events_per_step: 1000,
+            max_duration_ms: 10_000,
+            max_total_events: usize::MAX,
+        };
+        let report = gc_step(&store, budget, now_secs).unwrap();
+
+        let st = store.lock().unwrap();
+        assert!(
+            st.addr_tombstones.contains_key(&key),
+            "fresh addr_tombstone must NOT be purged"
+        );
+        assert_eq!(
+            report.addr_tombstones_purged, 0,
+            "report must not count fresh addr_tombstone as purged"
         );
     }
 }

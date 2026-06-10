@@ -33,7 +33,10 @@ pub struct GcBudget {
 pub struct GcReport {
     pub expired_reaped: usize,
     pub lru_evicted: usize,
+    /// Per-id tombstone rows purged (origin: Kind5, NIP40Expiry, AdminPurge).
     pub tombstones_purged: usize,
+    /// Address-keyed tombstone rows purged (kind:5 `a`-tag deletes).
+    pub addr_tombstones_purged: usize,
     pub duration_ms: u32,
 }
 
