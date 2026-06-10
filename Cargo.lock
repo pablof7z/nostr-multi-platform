@@ -4712,6 +4712,7 @@ dependencies = [
 name = "nmp-nip29"
 version = "0.2.7"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-ffi",
  "serde",

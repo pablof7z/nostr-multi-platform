@@ -1,0 +1,66 @@
+namespace nmp.nip29;
+
+// Typed FlatBuffers wire for the NIP-29 group-discovery snapshot projection
+// (`nmp_nip29::projection::DiscoveredGroupsSnapshot`), schema_id
+// "nmp.nip29.discovered_groups".
+//
+// This is the typed sidecar (ADR-0037) carried alongside the existing generic
+// `serde_json::Value` projection registered under the same key in
+// `nmp_nip29::register::wire_group_discovery`. The serde shape
+// (`DiscoveredGroupsProjection::snapshot_json`) stays authoritative; this buffer
+// mirrors it byte-for-byte in field semantics so a host with a `NDGS` decoder can
+// read typed accessors instead of JSON reflection. An un-updated host falls back
+// to the generic `Value` subtree (the permanent fallback from ADR-0037).
+//
+// Raw data only (ADR-0032): protocol fields are raw values — the in-relay group
+// id (`["d", _]` tag value), the host relay URL, raw `["name"/"picture"/"about"]`
+// tag values, raw `["p", _]` tag cardinalities. The V-24 thin-shell display
+// fields (`initials`, `display_name`, `subtitle`) are pre-computed by Rust (the
+// projection owns presentation so the shell renders them verbatim) and travel
+// here unchanged — they are not re-derived host-side.
+//
+// Identity encoding: strings, not raw bytes — `group_id` / `host_relay_url` are
+// `String` in the source serde types, so `string` is byte-for-byte parity.
+//
+// Optional fields: `name` / `picture` / `about` are `Option<String>` in
+// `DiscoveredGroup`. They are tag-derived (absent when no kind:39000 carried the
+// tag); we encode them as bare FlatBuffers `string` (absent == `None`) — the
+// content_tree.fbs pattern. There is no present-empty vs absent distinction to
+// preserve for these tags, so no `has_*` companion is needed.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// is self-contained (no `include`), so generate with plain `flatc --rust`:
+//
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/discovered_groups.fbs
+
+// One discovered group row. A flat carrier mirroring
+// `nmp_nip29::DiscoveredGroup` exactly — all three metadata kinds rolled into
+// one row per in-relay `group_id`.
+table DiscoveredGroup {
+  group_id:string;          // raw `["d", _]` tag value (in-relay id)
+  host_relay_url:string;    // host relay this group lives on
+  name:string;              // raw `["name", _]` tag value (absent == None)
+  picture:string;           // raw `["picture", _]` tag value (absent == None)
+  about:string;             // raw `["about", _]` tag value (absent == None)
+  member_count:uint32;      // cardinality of `["p", _]` on latest 39002
+  admin_count:uint32;       // cardinality of `["p", _]` on latest 39001
+  public:bool;              // false iff latest 39000 carried `["private"]`
+  open:bool;                // false iff latest 39000 carried `["closed"]`
+  initials:string;          // pre-computed avatar initials (V-24, Rust-owned)
+  display_name:string;      // `name` else `group_id` fallback (V-24)
+  subtitle:string;          // pre-formatted accessibility subtitle (V-24)
+}
+
+// The serialised discovery read model. `groups` is ordered alphabetically by
+// `group_id`. `host_relay_url` is surfaced at the top (every row's
+// `host_relay_url` equals it — single-relay scoped).
+table DiscoveredGroupsSnapshot {
+  schema_version:uint32 = 1;   // mirrors DISCOVERED_GROUPS_SCHEMA_VERSION
+  host_relay_url:string;
+  groups:[DiscoveredGroup];
+}
+
+root_type DiscoveredGroupsSnapshot;
+file_identifier "NDGS";
