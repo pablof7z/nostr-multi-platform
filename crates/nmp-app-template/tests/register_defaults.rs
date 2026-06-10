@@ -154,6 +154,13 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
 /// `"nmp.nip57.zap_subscription"` must NOT appear as a projection key at all.
 /// `nmp_app_read_projection_json` runs ONLY the JSON registry, so a null return
 /// for this key is the direct proof the reconciler left the registry entirely.
+///
+/// This is discriminating, NOT vacuous: `nmp_app_read_projection_json` returns a
+/// null pointer only for an ABSENT key — a key present with a `Value::Null`
+/// value (exactly what the old `register_snapshot_projection(... Null)` produced,
+/// since `SnapshotRegistry::run` inserts the Null) serializes to the string
+/// `"null"` and returns a NON-null pointer. So this assertion would have FAILED
+/// against the pre-re-home code and passes only because the key is now gone.
 #[test]
 fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
     let app = nmp_app_new();
