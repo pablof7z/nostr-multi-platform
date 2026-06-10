@@ -27,7 +27,20 @@ pub fn register_runtime(app: &impl AppHost) {
     if let Some(previous) = app.swap_singleton_event_observer(Some(observer_id)) {
         app.unregister_event_observer(previous);
     }
+    // The generic `Value` projection stays authoritative (source of truth).
+    let typed_runtime = Arc::clone(&runtime);
     app.register_snapshot_projection("nmp.wot.bootstrap", move || runtime.snapshot_json());
+
+    // The typed FlatBuffers sidecar (Wave A of the typed-snapshot migration,
+    // ADR-0037) — emitted ALONGSIDE the generic `Value` projection above, never
+    // replacing it. A host with an `NWBS` decoder prefers this typed payload; an
+    // un-updated host falls back to the generic subtree. Purely additive. The
+    // trait→sidecar surface is proven generically by
+    // `nmp-ffi::snapshot::typed_projection_registered_through_trait_surfaces_in_sidecar`;
+    // this crate only depends on the `AppHost` trait, never on the C-ABI crate.
+    app.register_typed_snapshot_projection("nmp.wot.bootstrap", move || {
+        typed_runtime.snapshot_typed()
+    });
 }
 
 /// Runtime controller that watches kind:3/kind:10000 arrivals and emits the
@@ -46,13 +59,22 @@ struct WotRuntimeState {
     graph: WotGraph,
 }
 
-#[derive(Serialize)]
-struct WotBootstrapSnapshot {
-    active_pubkey: Option<String>,
-    active_follow_count: usize,
-    bootstrap_requested: bool,
-    graph_follow_authors: usize,
-    graph_mute_authors: usize,
+/// Small diagnostic noun the WOT bootstrap runtime projects onto the kernel
+/// snapshot under `nmp.wot.bootstrap`. The serde JSON of this struct is the
+/// authoritative `register_snapshot_projection` shape; the typed FlatBuffers
+/// sidecar (`crate::wire::typed_fb`) mirrors it field-for-field (ADR-0037).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct WotBootstrapSnapshot {
+    /// Active account hex pubkey, or `None` when no account is selected.
+    pub active_pubkey: Option<String>,
+    /// Number of follows in the active account's contact list.
+    pub active_follow_count: usize,
+    /// Whether the large replaceable-kind bootstrap interest has been pushed.
+    pub bootstrap_requested: bool,
+    /// Distinct follow-edge authors in the in-memory WOT graph.
+    pub graph_follow_authors: usize,
+    /// Distinct mute-edge authors in the in-memory WOT graph.
+    pub graph_mute_authors: usize,
 }
 
 impl WotBootstrapRuntime {
@@ -66,32 +88,53 @@ impl WotBootstrapRuntime {
         }
     }
 
-    /// Tick account-change cleanup and expose a small diagnostic snapshot.
+    /// Tick account-change cleanup and build the diagnostic snapshot shape.
+    ///
+    /// Single source of truth for both projection closures: the generic JSON
+    /// projection ([`Self::snapshot_json`]) and the typed FlatBuffers sidecar
+    /// ([`Self::snapshot_typed`]) both derive their payload from this struct.
+    /// Returns `None` only when the state lock is poisoned — never on an empty
+    /// graph or absent account (those round-trip as zero counts / `None`
+    /// pubkey), so the two projections emit in lock-step.
+    #[must_use]
+    pub fn current_snapshot(&self) -> Option<WotBootstrapSnapshot> {
+        let active = self.active_pubkey();
+        let mut state = self.state.lock().ok()?;
+        if state.active_pubkey != active {
+            if state.bootstrap_pushed {
+                self.withdraw_bootstrap();
+            }
+            state.active_pubkey = active.clone();
+            state.active_follows.clear();
+            state.bootstrap_pushed = false;
+        }
+        Some(WotBootstrapSnapshot {
+            active_pubkey: state.active_pubkey.clone(),
+            active_follow_count: state.active_follows.len(),
+            bootstrap_requested: state.bootstrap_pushed,
+            graph_follow_authors: state.graph.follow_author_count(),
+            graph_mute_authors: state.graph.mute_author_count(),
+        })
+    }
+
+    /// Tick account-change cleanup and expose a small diagnostic snapshot as
+    /// the authoritative serde JSON value (the generic `Value` projection).
     #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
-        let active = self.active_pubkey();
-        let snapshot = {
-            let mut state = match self.state.lock() {
-                Ok(state) => state,
-                Err(_) => return serde_json::Value::Null,
-            };
-            if state.active_pubkey != active {
-                if state.bootstrap_pushed {
-                    self.withdraw_bootstrap();
-                }
-                state.active_pubkey = active.clone();
-                state.active_follows.clear();
-                state.bootstrap_pushed = false;
-            }
-            WotBootstrapSnapshot {
-                active_pubkey: state.active_pubkey.clone(),
-                active_follow_count: state.active_follows.len(),
-                bootstrap_requested: state.bootstrap_pushed,
-                graph_follow_authors: state.graph.follow_author_count(),
-                graph_mute_authors: state.graph.mute_author_count(),
-            }
-        };
-        serde_json::to_value(snapshot).unwrap_or(serde_json::Value::Null)
+        match self.current_snapshot() {
+            Some(snapshot) => serde_json::to_value(snapshot).unwrap_or(serde_json::Value::Null),
+            None => serde_json::Value::Null,
+        }
+    }
+
+    /// Build the typed FlatBuffers sidecar entry for the `nmp.wot.bootstrap`
+    /// projection, or `None` when the state lock is poisoned (matching the
+    /// generic projection's only `Null` condition, so the typed sidecar is
+    /// emitted whenever — and only whenever — the JSON projection is non-Null).
+    #[must_use]
+    pub fn snapshot_typed(&self) -> Option<nmp_core::TypedProjectionData> {
+        let snapshot = self.current_snapshot()?;
+        Some(crate::wire::typed_fb::typed_projection(&snapshot))
     }
 
     fn active_pubkey(&self) -> Option<String> {
@@ -181,75 +224,5 @@ impl KernelEventObserver for WotBootstrapRuntime {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use nmp_core::planner::InterestLifecycle;
-    use nmp_core::slots::new_active_local_keys_slot;
-    use nostr::Keys;
-
-    fn author(n: u16) -> String {
-        format!("{n:064x}")
-    }
-
-    fn active_slot(keys: &Keys) -> ActiveLocalKeysSlot {
-        let slot = new_active_local_keys_slot();
-        *slot.lock().unwrap() = Some(keys.clone());
-        slot
-    }
-
-    fn contact_event(event_author: &str, follows: usize) -> KernelEvent {
-        KernelEvent {
-            id: nmp_core::substrate::EventId::from("1".repeat(64)),
-            author: event_author.to_string(),
-            kind: KIND_CONTACT_LIST,
-            created_at: 1_000,
-            tags: (0..follows)
-                .map(|i| vec!["p".to_string(), author(i as u16)])
-                .collect(),
-            content: String::new(),
-        }
-    }
-
-    #[test]
-    fn active_kind3_pushes_large_one_shot_wot_interest() {
-        let keys = Keys::generate();
-        let active = keys.public_key().to_hex();
-        let (tx, rx) = std::sync::mpsc::channel();
-        let runtime = WotBootstrapRuntime::new(active_slot(&keys), tx);
-
-        runtime.on_kernel_event(&contact_event(&active, 1_052));
-
-        let cmd = rx.recv().expect("wot bootstrap command");
-        let ActorCommand::PushInterest(interest) = cmd else {
-            panic!("expected PushInterest");
-        };
-        assert_eq!(interest.id, active_follow_graph_interest_id());
-        assert!(matches!(interest.lifecycle, InterestLifecycle::OneShot));
-        assert_eq!(interest.shape.limit, None);
-        assert_eq!(interest.shape.authors.len(), 1_052);
-        assert_eq!(
-            interest.shape.kinds.into_iter().collect::<Vec<_>>(),
-            crate::interest::WOT_BOOTSTRAP_KINDS
-        );
-    }
-
-    #[test]
-    fn account_switch_snapshot_withdraws_previous_bootstrap() {
-        let keys = Keys::generate();
-        let active = keys.public_key().to_hex();
-        let (tx, rx) = std::sync::mpsc::channel();
-        let slot = active_slot(&keys);
-        let runtime = WotBootstrapRuntime::new(Arc::clone(&slot), tx);
-
-        runtime.on_kernel_event(&contact_event(&active, 30));
-        let _ = rx.recv().expect("initial push");
-        *slot.lock().unwrap() = None;
-        let _ = runtime.snapshot_json();
-
-        let cmd = rx.recv().expect("withdraw command");
-        let ActorCommand::WithdrawInterest(id) = cmd else {
-            panic!("expected WithdrawInterest");
-        };
-        assert_eq!(id, active_follow_graph_interest_id());
-    }
-}
+#[path = "runtime_tests.rs"]
+mod tests;

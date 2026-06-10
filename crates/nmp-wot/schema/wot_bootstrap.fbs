@@ -1,0 +1,46 @@
+namespace nmp.wot;
+
+// Typed FlatBuffers wire for the `nmp.wot.bootstrap` snapshot projection
+// (`crate::runtime::WotBootstrapSnapshot`) — the small diagnostic noun the WOT
+// bootstrap runtime projects onto the kernel snapshot.
+//
+// This is the typed sidecar counterpart to the authoritative serde JSON of
+// `WotBootstrapSnapshot`: the generic `Value` projection stays the source of
+// truth (`crate::runtime::register_runtime` still registers it via
+// `register_snapshot_projection`), and this buffer is emitted ALONGSIDE it in
+// every `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037). A host with a
+// `NWBS` decoder prefers this typed payload; an un-updated host falls back to
+// the generic `Value` subtree. Purely additive.
+//
+// Field-for-field mirror of the Rust struct (raw protocol values only):
+//   * `active_pubkey: Option<String>` carries a `has_active_pubkey` presence
+//     flag plus the value, so absent (`None`, no active account) round-trips
+//     distinctly from a present-empty string — the same optional-fields
+//     convention used by content_tree.fbs / wallet_status.fbs.
+//   * The `usize` counts are represented as `uint64` (FlatBuffers has no
+//     `usize`); they are non-negative, so the `as u64` / `as usize` casts on
+//     the encode/decode paths are lossless on every supported target.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// has no `include`, so generate plainly:
+//   flatc --rust -o crates/nmp-wot/src/wire/generated \
+//         crates/nmp-wot/schema/wot_bootstrap.fbs
+
+table WotBootstrapSnapshot {
+  // active_pubkey: Option<String> — the active account's hex pubkey, or absent
+  // when no account is selected this session.
+  has_active_pubkey:bool;
+  active_pubkey:string;
+  // Number of follows in the active account's contact list (usize).
+  active_follow_count:uint64;
+  // Whether the large replaceable-kind bootstrap interest has been pushed.
+  bootstrap_requested:bool;
+  // Distinct follow-edge authors in the in-memory WOT graph (usize).
+  graph_follow_authors:uint64;
+  // Distinct mute-edge authors in the in-memory WOT graph (usize).
+  graph_mute_authors:uint64;
+}
+
+file_identifier "NWBS";
+root_type WotBootstrapSnapshot;
