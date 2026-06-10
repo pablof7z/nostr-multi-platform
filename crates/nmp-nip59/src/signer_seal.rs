@@ -157,15 +157,24 @@ fn build_seal_unsigned(
 /// key never leaves this function (the unlinkability guarantee per
 /// NIP-59 §1).
 ///
-/// The wrap timestamp re-uses `created_at` rather than re-tweaking; this
-/// matches the seal/wrap pair the `nostr` 0.44 `gift_wrap` helper
-/// produces today, where the same tweaked timestamp is applied to both
-/// envelopes (`make_seal` tweaks; `EventBuilder::gift_wrap` re-uses).
+/// The wrap timestamp is drawn INDEPENDENTLY via a fresh
+/// `Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK)` call, separate
+/// from the seal's `created_at`. This matches the behaviour of the
+/// `nostr` 0.44 `EventBuilder::gift_wrap` helper, which calls
+/// `Timestamp::tweaked` once inside `make_seal` (for the seal) and again
+/// inside `gift_wrap_from_seal` (for the wrap). Using two independent
+/// draws prevents a relay from correlating the seal and wrap by their
+/// timestamps (NIP-59 §1 privacy requirement).
 fn wrap_signed_seal(
     receiver: &PublicKey,
     seal_event: &Event,
-    created_at: Timestamp,
 ) -> Result<Event, Nip59Error> {
+    // Draw an independent timestamp for the outer wrap — NOT reusing the
+    // seal's created_at. NIP-59 §1 requires independently randomized
+    // timestamps on both envelopes.
+    let wrap_created_at =
+        Timestamp::tweaked(nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK);
+
     // Mint a fresh ephemeral keypair for the outer wrap. NEVER reused —
     // the unlinkability property depends on every kind:1059 envelope
     // carrying a distinct outer pubkey.
@@ -186,7 +195,7 @@ fn wrap_signed_seal(
 
     // Build + sign the kind:1059 envelope with the ephemeral key.
     let event = EventBuilder::new(Kind::GiftWrap, outer_content)
-        .custom_created_at(created_at)
+        .custom_created_at(wrap_created_at)
         .tag(nostr::Tag::public_key(*receiver))
         .sign_with_keys(&ephemeral)
         .map_err(|e| Nip59Error::Nostr(format!("outer wrap sign: {e}")))?;
@@ -226,10 +235,11 @@ fn wrap_signed_seal(
 ///   helper is called once per receiver — NIP-17 sends two envelopes
 ///   (recipient + self-copy) by calling this function twice, each with
 ///   a freshly-minted ephemeral key.
-/// - `created_at` is the timestamp stamped on BOTH the seal and the
-///   wrap. Callers passing a NIP-59-tweaked timestamp (per
-///   [`nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK`]) get the
-///   privacy property the spec intends.
+/// - `created_at` is the timestamp stamped on the kind:13 seal. The
+///   kind:1059 outer wrap receives its own independently randomized
+///   timestamp drawn inside [`wrap_signed_seal`] (per NIP-59 §1).
+///   Callers should pass a NIP-59-tweaked value (e.g.
+///   `Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK)`) for the seal.
 #[must_use]
 pub fn gift_wrap_with_signer(
     signer: &Arc<dyn SignerForSeal>,
@@ -266,7 +276,7 @@ pub fn gift_wrap_with_signer(
                     ));
                 }
             };
-            match wrap_signed_seal(receiver_pubkey, &seal_event, created_at) {
+            match wrap_signed_seal(receiver_pubkey, &seal_event) {
                 Ok(event) => SignerOp::ok(event),
                 Err(e) => SignerOp::err(SignerError::Backend(format!(
                     "gift_wrap_with_signer: outer wrap failed: {e}"
@@ -384,7 +394,7 @@ fn drive_remote_chain(
 
     // Step 3: wrap with a fresh ephemeral key (in-process — no signer
     // round-trip; the ephemeral key never leaves this function).
-    wrap_signed_seal(&receiver, &seal_event, created_at).map_err(|e| {
+    wrap_signed_seal(&receiver, &seal_event).map_err(|e| {
         SignerError::Backend(format!("gift_wrap driver: outer wrap failed: {e}"))
     })
 }

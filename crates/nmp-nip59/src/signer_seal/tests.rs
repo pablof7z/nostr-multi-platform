@@ -175,6 +175,63 @@ fn pending_encrypt_returns_pending_then_resolves_after_delivery() {
     assert_eq!(unwrapped.rumor.content, "hello via remote-signer path");
 }
 
+/// NIP-59 §1 requires INDEPENDENTLY randomized timestamps on the seal
+/// (kind:13) and the outer wrap (kind:1059) so a relay cannot correlate
+/// the two events by their `created_at` field.
+///
+/// This test builds N=20 gift wraps and asserts that at least one pair
+/// carries distinct timestamps. With two draws from a uniform 2-day
+/// window (~172 800 seconds) the probability of all N pairs having equal
+/// timestamps is astronomically small (~1 / 172800^19).
+#[test]
+fn wrap_and_seal_timestamps_are_independently_randomized() {
+    use nostr::nips::nip44;
+    use nostr::{Event, JsonUtil};
+
+    let sender_keys = Keys::generate();
+    let receiver_keys = Keys::generate();
+    let signer: Arc<dyn SignerForSeal> = Arc::new(sender_keys.clone());
+
+    let mut found_distinct = false;
+    const ATTEMPTS: usize = 20;
+
+    for i in 0..ATTEMPTS {
+        let rumor = sample_rumor(sender_keys.public_key(), &format!("ts-independence-{i}"));
+        let seal_ts = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
+
+        let op = gift_wrap_with_signer(&signer, &receiver_keys.public_key(), &rumor, seal_ts);
+        let gift_wrap = op
+            .wait(DRIVER_STEP_TIMEOUT)
+            .expect("local-keys path must resolve synchronously");
+
+        assert_eq!(gift_wrap.kind, Kind::GiftWrap);
+
+        // Decrypt the outer wrap using receiver key + ephemeral pubkey on envelope.
+        let seal_json = nip44::decrypt(
+            receiver_keys.secret_key(),
+            &gift_wrap.pubkey,
+            &gift_wrap.content,
+        )
+        .expect("outer wrap must decrypt successfully");
+
+        let seal_event: Event =
+            Event::from_json(&seal_json).expect("decrypted content must be valid Event JSON");
+
+        assert_eq!(seal_event.kind, Kind::Seal);
+
+        if gift_wrap.created_at != seal_event.created_at {
+            found_distinct = true;
+            break;
+        }
+    }
+
+    assert!(
+        found_distinct,
+        "after {ATTEMPTS} gift wraps, seal and outer wrap timestamps were ALWAYS equal — \
+         they must be drawn independently (NIP-59 §1 privacy requirement)"
+    );
+}
+
 #[test]
 fn pending_encrypt_propagates_step_failure() {
     // If the encrypt step fails (broker rejects, channel drops, ...),
