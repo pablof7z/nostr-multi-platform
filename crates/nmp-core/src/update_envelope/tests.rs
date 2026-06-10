@@ -136,6 +136,7 @@ fn non_finite_float_fails_decode_instead_of_degrading_to_null() {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
             payload: Some(payload),
             typed_projections: None,
+            ..Default::default()
         },
     );
     let root = fb::UpdateFrame::create(

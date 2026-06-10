@@ -217,6 +217,9 @@ mod typed_projections_tests;
 mod typed_projections_wave_c_tests;
 #[cfg(test)]
 mod typed_projections_wave_c_diagnostics_tests;
+mod tier3_encode;
+#[cfg(test)]
+mod tier3_envelope_tests;
 mod types;
 mod update;
 #[cfg(test)]
@@ -416,13 +419,17 @@ use crate::substrate::{
 use crate::util::sort_dedup;
 use relay_transport::RelayTransportMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+// ADR-0044 — re-exported crate-wide (not just `use`d into `kernel`) so the
+// transport layer (`crate::update_envelope::encode_snapshot_with_envelope`) can
+// name `&KernelSnapshot` to populate the typed Tier-3 `SnapshotFrame` fields.
+pub(crate) use types::KernelSnapshot;
 use types::{
     AuthorViewPayload, AuthorViewState, ClaimedEventDto, Counters, DiagnosticFirehoseState,
-    KernelSnapshot, LogicalInterestStatus, MentionProfilePayload, Metrics, OutboxSummarySnapshot,
-    Profile, ProfileAction, ProfileCard, ProfileDispatchSpec, ProfileRequestState,
-    PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent,
-    ThreadViewPayload, ThreadViewState, TimelineItem, TimingMilestones, ViewInterest, WireSub,
-    WireSubscriptionState, WireSubscriptionStatus,
+    LogicalInterestStatus, MentionProfilePayload, Metrics, OutboxSummarySnapshot, Profile,
+    ProfileAction, ProfileCard, ProfileDispatchSpec, ProfileRequestState, PublishOutboxItem,
+    PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, ThreadViewPayload, ThreadViewState,
+    TimelineItem, TimingMilestones, ViewInterest, WireSub, WireSubscriptionState,
+    WireSubscriptionStatus,
 };
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).

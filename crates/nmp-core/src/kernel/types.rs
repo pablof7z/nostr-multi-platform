@@ -795,8 +795,13 @@ pub(crate) struct Metrics {
 /// Full snapshot of kernel state encoded into the host update frame each tick.
 /// Named `KernelSnapshot` (not `KernelUpdate`) to avoid ambiguity with the
 /// public `crate::app::KernelUpdate` lifecycle-event enum.
+// ADR-0044 — widened from `pub(super)` to `pub(crate)` so the transport layer
+// (`crate::update_envelope`) can populate the typed Tier-3 `SnapshotFrame`
+// fields directly from this struct instead of re-walking the generic JSON
+// `payload`. Doctrinally fine: these are framework-owned envelope types, and
+// ADR-0044 §2 explicitly endorses the transport schema coupling to them.
 #[derive(Clone, Debug, Serialize)]
-pub(super) struct KernelSnapshot {
+pub(crate) struct KernelSnapshot {
     pub(super) rev: u64,
     /// Snapshot schema version (`KERNEL_SCHEMA_VERSION`). Lets a shell detect
     /// a kernel-vs-shell schema mismatch and degrade gracefully (D1) instead

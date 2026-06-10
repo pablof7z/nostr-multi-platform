@@ -17,7 +17,7 @@
 //! - `last_payload_bytes` lags one tick to avoid double-serialization.
 
 use super::{ratio, Instant, Kernel, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ};
-use crate::update_envelope::{encode_snapshot_with_typed, UpdateFrameBytes};
+use crate::update_envelope::{encode_snapshot_with_envelope, UpdateFrameBytes};
 
 mod helpers;
 mod projections;
@@ -268,7 +268,13 @@ impl Kernel {
         // so a colliding host entry must be dropped — not merely appended — or it
         // would shadow the built-in and silently contradict the JSON contract.
         let typed = self.merge_builtin_typed_projections(typed);
-        let encoded = encode_snapshot_with_typed(snapshot, &typed);
+        // ADR-0044: dual-emit — write the typed Tier-3 envelope fields directly
+        // from the `KernelSnapshot` struct (`&update`) alongside the unchanged
+        // generic `payload` Value built above. `update` is still owned here
+        // (`to_value` only borrowed it), including across the degradation
+        // fallback, so the typed envelope is emitted regardless of whether the
+        // JSON serialization degraded.
+        let encoded = encode_snapshot_with_envelope(snapshot, &typed, &update);
         // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous
         // tick's values (one-tick lag, same pattern as `payload_bytes`).
@@ -298,6 +304,18 @@ impl Kernel {
         self.last_make_update_us = this_make_update_us;
         self.last_payload_bytes = encoded.len();
         encoded
+    }
+
+    /// ADR-0044 proof seam — drive `make_update` and return the raw
+    /// `UpdateFrameBytes`, so a test can decode BOTH the generic JSON `payload`
+    /// AND the typed Tier-3 `SnapshotFrame` envelope fields off the one frame
+    /// and assert they agree field-for-field.
+    #[cfg(test)]
+    pub(crate) fn make_update_frame_for_test(
+        &mut self,
+        running: bool,
+    ) -> crate::update_envelope::UpdateFrameBytes {
+        self.make_update(running)
     }
 
     #[cfg(test)]
