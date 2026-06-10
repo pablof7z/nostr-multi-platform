@@ -1,0 +1,38 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `configured_relays` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
+// `serde_json` serialisation of `configured_relays_snapshot()` (a slice of
+// `AppRelay { url: String, role: String }`) under the JSON key
+// `"configured_relays"`. That generic `Value` projection stays the source of
+// truth (inserted unchanged); this buffer is emitted ALONGSIDE it in the
+// `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037) under the SAME key.
+// A host with a `KCRL` decoder prefers this typed payload; an un-updated host
+// falls back to the generic `Value` subtree. Purely additive (Wave C).
+//
+// Field-for-field mirror of `AppRelay` (raw protocol values only — `url` /
+// canonicalised `role` string; no derived/display fields). Order is preserved
+// verbatim from the producer slice.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/configured_relays.fbs
+
+table ConfiguredRelay {
+  // Relay websocket URL.
+  url:string;
+  // Canonicalised NIP-65 role token (`read`, `write`, `both`, `indexer`, or a
+  // composite like `both,indexer`).
+  role:string;
+}
+
+table ConfiguredRelaysSnapshot {
+  relays:[ConfiguredRelay];
+}
+
+file_identifier "KCRL";
+root_type ConfiguredRelaysSnapshot;

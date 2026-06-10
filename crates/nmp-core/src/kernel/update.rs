@@ -255,6 +255,19 @@ impl Kernel {
         // D8: these closures run on this actor thread inside the tick;
         // `run_typed_projections` documents the non-blocking contract.
         let typed = self.run_typed_projections();
+        // Wave C (ADR-0037): merge the kernel-owned (Tier-2) built-in typed
+        // sidecars with the host-registered (Tier-1) ones. These read live
+        // `&self` state, so — unlike a `register_typed` closure — they are
+        // emitted directly here. See `kernel::typed_projections` for the
+        // mechanism rationale and the per-built-in template.
+        //
+        // Built-in keys win on collision, mirroring the documented JSON rule in
+        // `snapshot_projections_with_publish_cluster` ("Built-in keys win on
+        // collision … so the kernel-owned value stays authoritative"). The
+        // host-side consumer matches by first key (`projections.first(where:)`),
+        // so a colliding host entry must be dropped — not merely appended — or it
+        // would shadow the built-in and silently contradict the JSON contract.
+        let typed = self.merge_builtin_typed_projections(typed);
         let encoded = encode_snapshot_with_typed(snapshot, &typed);
         // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous
@@ -296,5 +309,22 @@ impl Kernel {
     #[cfg(test)]
     pub(crate) fn make_update_json_for_test(&mut self, running: bool) -> String {
         serde_json::to_string(&self.make_update_value_for_test(running)).unwrap_or_default()
+    }
+
+    /// Drive `make_update` and decode BOTH halves of the resulting frame: the
+    /// generic `Value` snapshot AND the typed-projection sidecar. The Tier-2
+    /// proof asserts a built-in projection lands in BOTH (additivity), so it
+    /// needs the real frame, not `run_typed_projections()` (which sees only the
+    /// host registry, never the kernel-owned built-ins).
+    #[cfg(test)]
+    pub(crate) fn make_update_typed_for_test(
+        &mut self,
+        running: bool,
+    ) -> (
+        serde_json::Value,
+        Vec<crate::update_envelope::TypedProjectionData>,
+    ) {
+        crate::update_envelope::decode_snapshot_with_typed(&self.make_update(running))
+            .unwrap_or((serde_json::Value::Null, Vec::new()))
     }
 }

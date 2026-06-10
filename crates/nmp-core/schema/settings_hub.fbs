@@ -1,0 +1,32 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `settings_hub` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts
+// `{ "relay_count": configured_relays_snapshot().len() }` under the JSON key
+// `"settings_hub"`. That generic `Value` projection stays the source of truth
+// (inserted unchanged); this buffer is emitted ALONGSIDE it in the
+// `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037) under the SAME key.
+// A host with a `KSHB` decoder prefers this typed payload; an un-updated host
+// falls back to the generic `Value` subtree. Purely additive (Wave C).
+//
+// Raw count only — the host formats any pluralisation string (aim.md §6/AP1
+// forbids the shell from owning that, and equally forbids baking the formatted
+// string into the kernel projection).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/settings_hub.fbs
+
+table SettingsHubSnapshot {
+  // Number of configured relays. Mirrors the JSON `relay_count` (a `usize` on
+  // the producer side); `uint` is the widest portable count type the shells
+  // share.
+  relay_count:uint;
+}
+
+file_identifier "KSHB";
+root_type SettingsHubSnapshot;
