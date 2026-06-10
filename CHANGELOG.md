@@ -5,6 +5,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.2.8 — 2026-06-11
+
+**No `nmp_app_*` C-ABI symbol change.** Existing FFI callers do not need call-site
+changes. Apps that consume typed FlatBuffers snapshot sidecars should regenerate
+their generated NMP boundary after bumping the release pin so the new schema
+surface is available.
+
+### Added
+
+- **Typed FlatBuffers sidecars for built-in projections and action lifecycle
+  views.** The Wave A/C work after v0.2.7 adds typed sidecars for Wallet,
+  NIP-29, NIP-47, NIP-57 zaps, follow lists, NIP-23 longform, WOT bootstrap,
+  Marmot, NIP-17 inbox/relay-list, publish/outbox, relay/settings,
+  identity/views, profile/event, action-lifecycle/diagnostics, bunker
+  handshake, and NIP-46 onboarding projections.
+
+- **Typed Tier-3 snapshot envelope fields.** `SnapshotFrame` now carries the
+  typed top-level envelope fields from ADR-0044, completing the typed sidecar
+  release slice available to downstream apps pinning this baseline.
+
+### Changed
+
+- CI now frees unused preinstalled SDKs before the workspace cargo test job,
+  giving the release train more headroom on GitHub-hosted runners.
+
+- The zap subscription runtime now uses the generic per-tick observer seam
+  instead of owning a projection-registry-specific tick hook.
+
+- Release readiness now classifies `nmp-nip60` as a public crate and
+  `nmp-wallet-poc` as a private proof-of-concept app, and the configured gate
+  list matches the scripts that exist in `ci/`.
+
+---
+
 ## nmp-v0.2.7 — 2026-06-10
 
 **C-ABI change (additive, non-breaking).** One new `nmp_app_*` FFI symbol added: `nmp_app_encode_profile`. No existing symbol changed or removed — apps can bump the pin without touching their header or existing call sites; adopt the new symbol to delete hand-rolled NIP-19 encoding.
