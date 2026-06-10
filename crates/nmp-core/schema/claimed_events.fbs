@@ -1,0 +1,88 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `claimed_events` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
+// `serde_json` serialisation of `claimed_events()` (a
+// `BTreeMap<String, ClaimedEventDto>`: primary_id -> resolved+enriched event)
+// under the JSON key `"claimed_events"`. That generic `Value` projection stays
+// the source of truth (inserted unchanged); this buffer is emitted ALONGSIDE it
+// in the `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037) under the
+// SAME key. A host with a `KCEV` decoder prefers this typed payload; an
+// un-updated host falls back to the generic `Value` subtree. Purely additive
+// (Wave C).
+//
+// FlatBuffers has no map type, so the `primary_id -> ClaimedEventDto` map is
+// flattened to a vector of `{key, value}` entries. The producer is a `BTreeMap`,
+// so the entries are already sorted by key — preserved verbatim, matching the
+// BTree-ordered serde JSON map.
+//
+// Field-for-field mirror of the SERIALISED `ClaimedEventDto`. Its two
+// `Option<String>` author fields (`author_display_name` / `author_picture_url`)
+// carry NO serde `skip_serializing_if`, so they serialise as JSON
+// `null`-when-`None` (key always present); the typed buffer carries each
+// presence as an explicit `has_*` flag. The raw `tags` field is a
+// `Vec<Vec<String>>` (an array of tag rows, each a list of strings) — FlatBuffers
+// has no nested-vector type, so it is modelled as `[TagRow]` where each `TagRow`
+// wraps one inner `[string]`.
+//
+// D0: a claimed-events map carries raw protocol event data (kind / tags /
+// content) but `kind` rides as an opaque `uint` and no kind-dependent branching
+// happens in the buffer — it is a generic content-resolution view, not a
+// protocol-specific projection, so it is kernel-owned and typed here. D6: the
+// decoder returns `Err(String)` on malformed input, never panics.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/claimed_events.fbs
+
+// One raw event tag — a wrapper for one inner `[string]` of a
+// `Vec<Vec<String>>`. (FlatBuffers cannot nest vectors directly.)
+table TagRow {
+  values:[string];
+}
+
+// Field-for-field mirror of one SERIALISED `ClaimedEventDto`.
+table ClaimedEvent {
+  // The projection key — hex-64 event id (nevent/note) or `kind:pubkey:d_tag`
+  // (naddr). Carried in the body too (matches the map key).
+  primary_id:string;
+  // Canonical 64-hex event id of the resolved event.
+  id:string;
+  // Author pubkey, hex (64 chars).
+  author_pubkey:string;
+  // Author's display name from kind:0; `has_author_display_name == false`
+  // mirrors JSON `null`.
+  has_author_display_name:bool;
+  author_display_name:string;
+  // Author's picture URL from kind:0; `has_author_picture_url == false`
+  // mirrors JSON `null`.
+  has_author_picture_url:bool;
+  author_picture_url:string;
+  // Event kind (opaque passthrough — no kind-dependent branching in the buffer).
+  kind:uint;
+  // Unix-seconds `created_at`.
+  created_at:ulong;
+  // Raw event tags (an array of tag rows, each a list of strings).
+  tags:[TagRow];
+  // Raw event content.
+  content:string;
+}
+
+// One `primary_id -> ClaimedEvent` map entry. Entries are sorted by `key`
+// (BTreeMap).
+table ClaimedEventEntry {
+  // The map key — the event's `primary_id` (matches `value.primary_id`).
+  key:string;
+  value:ClaimedEvent;
+}
+
+table ClaimedEventsSnapshot {
+  entries:[ClaimedEventEntry];
+}
+
+file_identifier "KCEV";
+root_type ClaimedEventsSnapshot;

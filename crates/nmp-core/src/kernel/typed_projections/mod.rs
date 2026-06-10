@@ -70,6 +70,12 @@ mod publish_queue_fb;
 mod relay_role_options_fb;
 mod settings_hub_fb;
 mod thread_view_fb;
+// Wave C profile/event cluster (appended; see `builtins_profiles.rs`).
+mod builtins_profiles;
+mod claimed_events_fb;
+mod claimed_profiles_fb;
+mod mention_profiles_fb;
+mod resolved_profiles_fb;
 
 pub(crate) use configured_relays_fb::{
     encode_configured_relays, ConfiguredRelaysModel, CONFIGURED_RELAYS_FILE_IDENTIFIER,
@@ -130,6 +136,28 @@ pub(crate) use thread_view_fb::{
     encode_thread_view, ThreadViewModel, TimelineItemModel, THREAD_VIEW_FILE_IDENTIFIER,
     THREAD_VIEW_SCHEMA_ID, THREAD_VIEW_SCHEMA_VERSION,
 };
+// Wave C profile/event cluster (`mention_profiles` / `claimed_profiles` /
+// `claimed_events` / `resolved_profiles`). The map-entry / row types
+// (`MentionProfileRow`, `ClaimedEventRow`) and the shared `ProfileCardModel`
+// (from `profile_fb`, reused by `claimed_profiles` / `resolved_profiles`) are
+// named in the inline mappings in `builtins_profiles.rs`, so they are
+// re-exported here alongside their `Model` + encode entry points.
+pub(crate) use claimed_events_fb::{
+    encode_claimed_events, ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER,
+    CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
+};
+pub(crate) use claimed_profiles_fb::{
+    encode_claimed_profiles, ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER,
+    CLAIMED_PROFILES_SCHEMA_ID, CLAIMED_PROFILES_SCHEMA_VERSION,
+};
+pub(crate) use mention_profiles_fb::{
+    encode_mention_profiles, MentionProfileRow, MentionProfilesModel,
+    MENTION_PROFILES_FILE_IDENTIFIER, MENTION_PROFILES_SCHEMA_ID, MENTION_PROFILES_SCHEMA_VERSION,
+};
+pub(crate) use resolved_profiles_fb::{
+    encode_resolved_profiles, ResolvedProfilesModel, RESOLVED_PROFILES_FILE_IDENTIFIER,
+    RESOLVED_PROFILES_SCHEMA_ID, RESOLVED_PROFILES_SCHEMA_VERSION,
+};
 
 #[cfg(test)]
 pub(crate) use accounts_fb::decode_accounts;
@@ -153,6 +181,15 @@ pub(crate) use relay_role_options_fb::decode_relay_role_options;
 pub(crate) use settings_hub_fb::decode_settings_hub;
 #[cfg(test)]
 pub(crate) use thread_view_fb::decode_thread_view;
+// Wave C profile/event cluster test-only decoders.
+#[cfg(test)]
+pub(crate) use claimed_events_fb::decode_claimed_events;
+#[cfg(test)]
+pub(crate) use claimed_profiles_fb::decode_claimed_profiles;
+#[cfg(test)]
+pub(crate) use mention_profiles_fb::decode_mention_profiles;
+#[cfg(test)]
+pub(crate) use resolved_profiles_fb::decode_resolved_profiles;
 
 use crate::update_envelope::TypedProjectionData;
 
@@ -177,8 +214,10 @@ impl super::Kernel {
     pub(in crate::kernel) fn builtin_typed_projections(&self) -> Vec<TypedProjectionData> {
         // 6 relay/settings/publish built-ins + up to 5 identity/views built-ins
         // (`accounts` / `active_account` / `profile` always; `author_view` /
-        // `thread_view` only when open).
-        let mut out = Vec::with_capacity(11);
+        // `thread_view` only when open) + 4 profile/event built-ins
+        // (`mention_profiles` / `claimed_profiles` / `claimed_events` /
+        // `resolved_profiles`, all unconditional).
+        let mut out = Vec::with_capacity(15);
 
         // `configured_relays` — encoded from the SAME `AppRelay` slice the JSON
         // path serialises (`configured_relays_snapshot()`).
@@ -242,6 +281,13 @@ impl super::Kernel {
         // this file under the LOC ceiling (heavier nested DTO→Model mappings +
         // the two conditional pushes), but kept under the same owner.
         out.extend(self.views_cluster_typed_projections());
+
+        // Wave C profile/event cluster (`mention_profiles` / `claimed_profiles` /
+        // `claimed_events` / `resolved_profiles`, all unconditional). Extracted to
+        // `builtins_profiles.rs` to keep this file under the LOC ceiling: the
+        // map→sorted-vector flattening + DTO→Row mappings are inlined where the
+        // `pub(super)`/`pub(crate)` DTO types are reachable, under the same owner.
+        out.extend(self.profiles_cluster_typed_projections());
 
         out
     }

@@ -1,4 +1,4 @@
-use super::super::{ClaimedEventDto, Kernel, ProfileCard};
+use super::super::{ClaimedEventDto, Kernel, MentionProfilePayload, ProfileCard};
 
 impl Kernel {
     /// Collect the snapshot `projections` map: every host-registered
@@ -191,17 +191,7 @@ impl Kernel {
         // is now seeded only from the open author/thread views. First writer wins
         // on collision — matches `mention_profiles_from_items` semantics. Empty
         // `{}` when no view is open; never absent (D1).
-        let mut mention_profiles = self
-            .author_view()
-            .map(|av| self.mention_profiles_from_items(&av.items))
-            .unwrap_or_default();
-        for (k, v) in self
-            .thread_view()
-            .map(|tv| self.mention_profiles_from_items(&tv.items))
-            .unwrap_or_default()
-        {
-            mention_profiles.entry(k).or_insert(v);
-        }
+        let mention_profiles = self.mention_profiles();
         projections.insert(
             "mention_profiles".to_string(),
             serde_json::to_value(&mention_profiles)
@@ -214,15 +204,7 @@ impl Kernel {
         // claimed profile card here. Missing kind:0 data still emits a
         // placeholder card so components can render an honest fallback
         // immediately and refine in place when the profile arrives.
-        let mut claimed_profiles: std::collections::BTreeMap<String, _> =
-            std::collections::BTreeMap::new();
-        for pubkey in self.profile_claims.keys() {
-            let npub = crate::display::to_npub(pubkey);
-            claimed_profiles.insert(
-                pubkey.clone(),
-                self.profile_card_for(pubkey, Some(&npub), ""),
-            );
-        }
+        let claimed_profiles = self.claimed_profiles();
         projections.insert(
             "claimed_profiles".to_string(),
             serde_json::to_value(&claimed_profiles)
@@ -239,29 +221,7 @@ impl Kernel {
         // BTreeMap for deterministic key ordering (snapshot diff
         // stability across ticks); serialisation degrades to `{}` on
         // failure, mirroring `mention_profiles`.
-        let mut claimed_events: std::collections::BTreeMap<String, ClaimedEventDto> =
-            std::collections::BTreeMap::new();
-        for key in self.event_claims.keys() {
-            if let Some(stored) = self.lookup_for_primary_id(key) {
-                // Enrich with the author's display name + picture URL from
-                // the kernel's profile cache so the embed renderer can
-                // compose with NostrProfileName / NostrAvatar without
-                // having to make a separate FFI claim_profile round-trip.
-                // `None` when no kind:0 has been ingested for the author —
-                // the renderer falls back to truncated npub + identicon
-                // until the profile arrives in a later snapshot tick.
-                let profile = self.profile_for_pubkey(&stored.author);
-                let display_name = profile
-                    .map(|p| p.display.clone())
-                    .filter(|d| !d.trim().is_empty());
-                let picture_url = profile.and_then(|p| p.picture_url.clone());
-                claimed_events.insert(
-                    key.clone(),
-                    ClaimedEventDto::from_stored(key.clone(), &stored)
-                        .with_author_profile(display_name, picture_url),
-                );
-            }
-        }
+        let claimed_events = self.claimed_events();
         projections.insert(
             "claimed_events".to_string(),
             serde_json::to_value(&claimed_events)
@@ -275,39 +235,139 @@ impl Kernel {
         // key. Always present as `{}` when empty (D1); BTreeMap for
         // deterministic key ordering (snapshot diff stability), mirroring
         // `claimed_profiles` / `claimed_events`.
+        let resolved_profiles = self.resolved_profiles();
+        projections.insert(
+            "resolved_profiles".to_string(),
+            serde_json::to_value(&resolved_profiles)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
+        );
+        projections
+    }
+
+    /// `mention_profiles` accessor (aim.md §4.2): `pubkey ->
+    /// MentionProfilePayload` for every author surfaced in ANY currently-open
+    /// view. Built from the union of the open `author_view` items and the open
+    /// `thread_view` items — first writer wins on collision (matches
+    /// `mention_profiles_from_items` semantics). Empty `{}` when no view is open;
+    /// never absent (D1).
+    ///
+    /// This is the single accessor the snapshot's generic JSON `mention_profiles`
+    /// projection AND its Tier-2 typed FlatBuffer sidecar both read, in the same
+    /// tick, so the two wire forms cannot structurally diverge (ADR-0037).
+    pub(in crate::kernel) fn mention_profiles(
+        &self,
+    ) -> std::collections::HashMap<String, MentionProfilePayload> {
+        let mut mention_profiles = self
+            .author_view()
+            .map(|av| self.mention_profiles_from_items(&av.items))
+            .unwrap_or_default();
+        for (k, v) in self
+            .thread_view()
+            .map(|tv| self.mention_profiles_from_items(&tv.items))
+            .unwrap_or_default()
         {
-            let mut resolved: std::collections::BTreeMap<String, ProfileCard> =
-                std::collections::BTreeMap::new();
+            mention_profiles.entry(k).or_insert(v);
+        }
+        mention_profiles
+    }
 
-            // 1. claimed_profiles — highest precedence.
-            for (pubkey, card) in &claimed_profiles {
-                resolved.insert(pubkey.clone(), card.clone());
-            }
-
-            // 2. author_view.profile — only-if-absent (claimed wins). Gated on
-            //    `has_profile` so a placeholder author card never displaces a
-            //    real claimed card and never seeds an empty entry.
-            if let Some(av) = self.author_view() {
-                if av.profile.has_profile {
-                    resolved
-                        .entry(av.profile.pubkey.clone())
-                        .or_insert_with(|| av.profile.clone());
-                }
-            }
-
-            // 3. mention_profiles — only-if-absent (lowest precedence).
-            for (pubkey, m) in &mention_profiles {
-                resolved
-                    .entry(pubkey.clone())
-                    .or_insert_with(|| ProfileCard::from_mention(pubkey, m));
-            }
-
-            projections.insert(
-                "resolved_profiles".to_string(),
-                serde_json::to_value(&resolved)
-                    .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::default())),
+    /// `claimed_profiles` accessor — `pubkey -> ProfileCard` for every currently
+    /// claimed UI profile (the reference-first component path). Missing kind:0
+    /// data still emits a placeholder card so components can render an honest
+    /// fallback immediately and refine in place when the profile arrives.
+    /// BTreeMap for deterministic key ordering (snapshot diff stability).
+    ///
+    /// Shared accessor for the generic JSON projection and its Tier-2 typed
+    /// sidecar — see [`Self::mention_profiles`] for the divergence-safety
+    /// rationale.
+    pub(in crate::kernel) fn claimed_profiles(
+        &self,
+    ) -> std::collections::BTreeMap<String, ProfileCard> {
+        let mut claimed_profiles: std::collections::BTreeMap<String, ProfileCard> =
+            std::collections::BTreeMap::new();
+        for pubkey in self.profile_claims.keys() {
+            let npub = crate::display::to_npub(pubkey);
+            claimed_profiles.insert(
+                pubkey.clone(),
+                self.profile_card_for(pubkey, Some(&npub), ""),
             );
         }
-        projections
+        claimed_profiles
+    }
+
+    /// `claimed_events` accessor — keyed by `primary_id` (hex64 event id for
+    /// nevent/note URIs; `kind:pubkey:d_tag` coordinate for naddr URIs). Walks
+    /// the current `event_claims` set and looks each key up against `self.events`
+    /// via `lookup_for_primary_id`; missing entries are silently absent (D1
+    /// best-effort). Each entry is enriched with the author's cached kind:0
+    /// display name + picture URL so the embed renderer composes with
+    /// NostrProfileName / NostrAvatar without a separate claim round-trip.
+    /// BTreeMap for deterministic key ordering.
+    ///
+    /// Shared accessor for the generic JSON projection and its Tier-2 typed
+    /// sidecar — see [`Self::mention_profiles`] for the divergence-safety
+    /// rationale.
+    pub(in crate::kernel) fn claimed_events(
+        &self,
+    ) -> std::collections::BTreeMap<String, ClaimedEventDto> {
+        let mut claimed_events: std::collections::BTreeMap<String, ClaimedEventDto> =
+            std::collections::BTreeMap::new();
+        for key in self.event_claims.keys() {
+            if let Some(stored) = self.lookup_for_primary_id(key) {
+                let profile = self.profile_for_pubkey(&stored.author);
+                let display_name = profile
+                    .map(|p| p.display.clone())
+                    .filter(|d| !d.trim().is_empty());
+                let picture_url = profile.and_then(|p| p.picture_url.clone());
+                claimed_events.insert(
+                    key.clone(),
+                    ClaimedEventDto::from_stored(key.clone(), &stored)
+                        .with_author_profile(display_name, picture_url),
+                );
+            }
+        }
+        claimed_events
+    }
+
+    /// `resolved_profiles` accessor — the pre-merged `pubkey -> ProfileCard` map
+    /// every consumer reads. Precedence: [`Self::claimed_profiles`] (highest) →
+    /// `author_view.profile` (only-if-absent, gated on `has_profile`) →
+    /// [`Self::mention_profiles`] (lowest). Always present as `{}` when empty
+    /// (D1); BTreeMap for deterministic key ordering.
+    ///
+    /// Recomputes `claimed_profiles` / `mention_profiles` internally rather than
+    /// sharing a cached result — the snapshot helper already calls each accessor
+    /// independently, and caching across the JSON and typed call sites would
+    /// reintroduce the divergence risk this split exists to remove.
+    pub(in crate::kernel) fn resolved_profiles(
+        &self,
+    ) -> std::collections::BTreeMap<String, ProfileCard> {
+        let mut resolved: std::collections::BTreeMap<String, ProfileCard> =
+            std::collections::BTreeMap::new();
+
+        // 1. claimed_profiles — highest precedence.
+        for (pubkey, card) in self.claimed_profiles() {
+            resolved.insert(pubkey, card);
+        }
+
+        // 2. author_view.profile — only-if-absent (claimed wins). Gated on
+        //    `has_profile` so a placeholder author card never displaces a
+        //    real claimed card and never seeds an empty entry.
+        if let Some(av) = self.author_view() {
+            if av.profile.has_profile {
+                resolved
+                    .entry(av.profile.pubkey.clone())
+                    .or_insert_with(|| av.profile.clone());
+            }
+        }
+
+        // 3. mention_profiles — only-if-absent (lowest precedence).
+        for (pubkey, m) in self.mention_profiles() {
+            resolved
+                .entry(pubkey.clone())
+                .or_insert_with(|| ProfileCard::from_mention(&pubkey, &m));
+        }
+
+        resolved
     }
 }

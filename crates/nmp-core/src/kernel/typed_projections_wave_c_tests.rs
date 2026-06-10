@@ -13,12 +13,16 @@
 //! once the corresponding view is opened).
 
 use super::typed_projections::{
-    decode_accounts, decode_active_account, decode_author_view, decode_profile, decode_thread_view,
-    ACCOUNTS_FILE_IDENTIFIER, ACCOUNTS_SCHEMA_ID, ACCOUNTS_SCHEMA_VERSION,
+    decode_accounts, decode_active_account, decode_author_view, decode_claimed_events,
+    decode_claimed_profiles, decode_mention_profiles, decode_profile, decode_resolved_profiles,
+    decode_thread_view, ACCOUNTS_FILE_IDENTIFIER, ACCOUNTS_SCHEMA_ID, ACCOUNTS_SCHEMA_VERSION,
     ACTIVE_ACCOUNT_FILE_IDENTIFIER, ACTIVE_ACCOUNT_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_VERSION,
     AUTHOR_VIEW_FILE_IDENTIFIER, AUTHOR_VIEW_SCHEMA_ID, AUTHOR_VIEW_SCHEMA_VERSION,
+    CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_PROFILES_FILE_IDENTIFIER,
+    CLAIMED_PROFILES_SCHEMA_ID, MENTION_PROFILES_FILE_IDENTIFIER, MENTION_PROFILES_SCHEMA_ID,
     PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
-    THREAD_VIEW_FILE_IDENTIFIER, THREAD_VIEW_SCHEMA_ID, THREAD_VIEW_SCHEMA_VERSION,
+    RESOLVED_PROFILES_FILE_IDENTIFIER, RESOLVED_PROFILES_SCHEMA_ID, THREAD_VIEW_FILE_IDENTIFIER,
+    THREAD_VIEW_SCHEMA_ID, THREAD_VIEW_SCHEMA_VERSION,
 };
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
@@ -309,4 +313,106 @@ fn view_builtins_emit_only_when_their_views_are_open() {
         );
         assert!(!typed.iter().any(|t| t.key == "author_view"));
     }
+}
+
+/// Wave C profile/event cluster: all four map-shaped built-ins
+/// (`mention_profiles` / `claimed_profiles` / `claimed_events` /
+/// `resolved_profiles`) land in the `typed_projections` sidecar of the emitted
+/// frame, decode back to their typed structs, AND keep their generic `Value`
+/// entries (additivity). All four are unconditional (`{}` when empty), so they
+/// appear even on a fresh kernel; this test additionally claims a profile so the
+/// `claimed_profiles` / `resolved_profiles` maps are non-empty and the per-entry
+/// key + count parity is exercised against the real frame.
+#[test]
+fn profile_cluster_builtins_emit_typed_sidecars_alongside_json() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Claim a profile so `claimed_profiles` (and therefore `resolved_profiles`)
+    // carries a placeholder card — exercises the populated map path. No kind:0 is
+    // ingested, so every ProfileCard Option is `null`/`None` (placeholder).
+    let claimed_pubkey = "ab".repeat(32);
+    let _ = kernel.claim_profile(claimed_pubkey.clone(), "view-0".to_string(), true, false);
+
+    let (value, typed) = kernel.make_update_typed_for_test(true);
+    let projections = value
+        .get("projections")
+        .and_then(serde_json::Value::as_object)
+        .expect("snapshot must carry a projections object");
+
+    // Helper: assert a map-shaped projection's JSON object survives (additive),
+    // its typed sidecar is present with the right ids, and the typed entry count
+    // matches the JSON object's key count.
+    let json_map_len = |key: &str| -> usize {
+        projections
+            .get(key)
+            .and_then(serde_json::Value::as_object)
+            .unwrap_or_else(|| panic!("the generic JSON `{key}` entry must remain (additive)"))
+            .len()
+    };
+
+    // --- mention_profiles (empty here; no view open) ------------------------
+    let mp_json = json_map_len("mention_profiles");
+    let mp = typed_entry(&typed, "mention_profiles");
+    assert_eq!(mp.schema_id, MENTION_PROFILES_SCHEMA_ID);
+    assert_eq!(
+        mp.file_identifier.as_bytes(),
+        MENTION_PROFILES_FILE_IDENTIFIER
+    );
+    let mp_decoded =
+        decode_mention_profiles(&mp.payload).expect("mention_profiles sidecar must decode");
+    assert_eq!(
+        mp_decoded.entries.len(),
+        mp_json,
+        "typed and JSON mention_profiles must carry the same entry count"
+    );
+
+    // --- claimed_profiles (non-empty: one claimed placeholder card) ---------
+    let cp_json = json_map_len("claimed_profiles");
+    assert_eq!(cp_json, 1, "precondition: exactly one claimed profile");
+    let cp = typed_entry(&typed, "claimed_profiles");
+    assert_eq!(cp.schema_id, CLAIMED_PROFILES_SCHEMA_ID);
+    assert_eq!(
+        cp.file_identifier.as_bytes(),
+        CLAIMED_PROFILES_FILE_IDENTIFIER
+    );
+    let cp_decoded =
+        decode_claimed_profiles(&cp.payload).expect("claimed_profiles sidecar must decode");
+    assert_eq!(cp_decoded.entries.len(), cp_json);
+    assert_eq!(
+        cp_decoded.entries[0].0, claimed_pubkey,
+        "typed claimed_profiles key must equal the claimed pubkey"
+    );
+    // Placeholder card (no kind:0) → all Options None, has_profile false.
+    let card = &cp_decoded.entries[0].1;
+    assert_eq!(card.pubkey, claimed_pubkey);
+    assert_eq!(card.display_name, None);
+    assert!(!card.has_profile);
+
+    // --- claimed_events (empty here) ----------------------------------------
+    let ce_json = json_map_len("claimed_events");
+    let ce = typed_entry(&typed, "claimed_events");
+    assert_eq!(ce.schema_id, CLAIMED_EVENTS_SCHEMA_ID);
+    assert_eq!(
+        ce.file_identifier.as_bytes(),
+        CLAIMED_EVENTS_FILE_IDENTIFIER
+    );
+    let ce_decoded =
+        decode_claimed_events(&ce.payload).expect("claimed_events sidecar must decode");
+    assert_eq!(ce_decoded.entries.len(), ce_json);
+
+    // --- resolved_profiles (non-empty: the claimed card, highest precedence) -
+    let rp_json = json_map_len("resolved_profiles");
+    assert_eq!(rp_json, 1, "resolved_profiles must carry the claimed card");
+    let rp = typed_entry(&typed, "resolved_profiles");
+    assert_eq!(rp.schema_id, RESOLVED_PROFILES_SCHEMA_ID);
+    assert_eq!(
+        rp.file_identifier.as_bytes(),
+        RESOLVED_PROFILES_FILE_IDENTIFIER
+    );
+    let rp_decoded =
+        decode_resolved_profiles(&rp.payload).expect("resolved_profiles sidecar must decode");
+    assert_eq!(rp_decoded.entries.len(), rp_json);
+    assert_eq!(
+        rp_decoded.entries[0].0, claimed_pubkey,
+        "resolved_profiles must carry the claimed pubkey (claimed_profiles precedence)"
+    );
 }
