@@ -1,0 +1,74 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `action_results` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which DRAINS
+// `take_action_results_projection()` (a `serde_json::Value` array of
+// `{correlation_id, status, error, result?}` rows — every action terminal that
+// settled since the last emit) and inserts it under the JSON key
+// `"action_results"` ONLY when the drain returned a non-null value. That generic
+// `Value` projection stays the source of truth (inserted unchanged); this buffer
+// is emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections` sidecar
+// (ADR-0037) under the SAME key. A host with a `KARS` decoder prefers this typed
+// payload; an un-updated host falls back to the generic `Value` subtree. Purely
+// additive (Wave C).
+//
+// ## Drain-on-emit ownership (the hard part)
+//
+// `take_action_results_projection()` is a DRAIN with side effects (it records
+// each terminal into the `action_stages` mirror) — it MUST NOT be called twice
+// per tick. So the JSON path captures the drained `Value` ONCE into a per-tick
+// `Kernel` field; the typed path reads that captured `Value` and builds this
+// buffer by PARSING it (not by re-invoking the draining accessor, and not from a
+// DTO — the rows exist only as serde JSON after the drain). The typed entry is
+// pushed EXACTLY when the JSON key is present (same tick, same captured value),
+// and is ABSENT in steady state (no terminal settled → nothing captured → no key).
+// This is the necessary deviation from the #1031 DTO->Model convention: there is
+// no surviving DTO to map.
+//
+// Field-for-field mirror of one SERIALISED action-result row. `status` is the
+// host-facing string (`"published"` / `"failed"` / `"cancelled"` / …; the
+// producer already maps engine `"ok"` -> `"published"`). `error` is
+// `Option<String>` (serialises as JSON `null`-when-`None`, key always present)
+// carried as an explicit `has_error` flag. The opaque structured `result` body
+// (ADR-0043 Decision 4) is arbitrary forwarded JSON — modelled as the SERIALISED
+// JSON string with a `has_result` presence flag (nmp-core forwards, never
+// interprets — D0).
+//
+// D0: an action-result row carries only a correlation id, a generic status
+// string, an optional error string, and an opaque forwarded result body — no
+// protocol-specific (NIP-NN) semantics. It is a generic framework
+// action-dispatch edge, so it is kernel-owned and typed here. D6: the decoder
+// returns `Err(String)` on malformed input, never panics.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/action_results.fbs
+
+// Field-for-field mirror of one SERIALISED action-result row.
+table ActionResult {
+  // The action's correlation id (the host resolves its spinner by this).
+  correlation_id:string;
+  // Host-facing status string (`"published"` / `"failed"` / `"cancelled"` / …).
+  status:string;
+  // Error prose; `has_error == false` mirrors JSON `null`.
+  has_error:bool;
+  error:string;
+  // Opaque forwarded structured result body (ADR-0043 Decision 4), carried as
+  // the SERIALISED JSON string; `has_result == false` mirrors an absent
+  // `result` field.
+  has_result:bool;
+  result:string;
+}
+
+// The `action_results` projection — the drained array of rows, in producer
+// order (each tick surfaces every terminal that settled this tick).
+table ActionResultsSnapshot {
+  results:[ActionResult];
+}
+
+file_identifier "KARS";
+root_type ActionResultsSnapshot;

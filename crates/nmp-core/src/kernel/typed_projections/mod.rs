@@ -76,6 +76,16 @@ mod claimed_events_fb;
 mod claimed_profiles_fb;
 mod mention_profiles_fb;
 mod resolved_profiles_fb;
+// Wave C action-lifecycle + relay-diagnostics cluster (appended; see
+// `builtins_diagnostics.rs`). These five are capture-once built-ins — their
+// producing accessors drain / mutate / format-against-now, so the typed path
+// reads a per-tick `Kernel`-field capture written at the JSON-insertion site.
+mod action_lifecycle_fb;
+mod action_results_fb;
+mod action_stages_fb;
+mod builtins_diagnostics;
+mod relay_diagnostics_fb;
+mod signed_events_fb;
 
 pub(crate) use configured_relays_fb::{
     encode_configured_relays, ConfiguredRelaysModel, CONFIGURED_RELAYS_FILE_IDENTIFIER,
@@ -158,6 +168,33 @@ pub(crate) use resolved_profiles_fb::{
     encode_resolved_profiles, ResolvedProfilesModel, RESOLVED_PROFILES_FILE_IDENTIFIER,
     RESOLVED_PROFILES_SCHEMA_ID, RESOLVED_PROFILES_SCHEMA_VERSION,
 };
+// Wave C action-lifecycle + relay-diagnostics cluster (`action_results` /
+// `signed_events` / `action_stages` / `action_lifecycle` / `relay_diagnostics`).
+// The codec Models + row types are named in the cluster's struct->Model /
+// parse->Model mappings (`builtins_diagnostics.rs`), so they are re-exported here
+// alongside their `Model` + encode entry points + envelope constants. The four
+// drained codecs' `model_from_json` parsers are called module-qualified
+// (`super::<mod>::model_from_json`) and so are not re-exported.
+pub(crate) use action_lifecycle_fb::{
+    encode_action_lifecycle, ActionLifecycleModel, ACTION_LIFECYCLE_FILE_IDENTIFIER,
+    ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
+};
+pub(crate) use action_results_fb::{
+    encode_action_results, ActionResultsModel, ACTION_RESULTS_FILE_IDENTIFIER,
+    ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION,
+};
+pub(crate) use action_stages_fb::{
+    encode_action_stages, ActionStagesModel, ACTION_STAGES_FILE_IDENTIFIER, ACTION_STAGES_SCHEMA_ID,
+    ACTION_STAGES_SCHEMA_VERSION,
+};
+pub(crate) use relay_diagnostics_fb::{
+    encode_relay_diagnostics, InterestRow, RelayDiagnosticsModel, RelayRow, WireSubRow,
+    RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID, RELAY_DIAGNOSTICS_SCHEMA_VERSION,
+};
+pub(crate) use signed_events_fb::{
+    encode_signed_events, SignedEventsModel, SIGNED_EVENTS_FILE_IDENTIFIER, SIGNED_EVENTS_SCHEMA_ID,
+    SIGNED_EVENTS_SCHEMA_VERSION,
+};
 
 #[cfg(test)]
 pub(crate) use accounts_fb::decode_accounts;
@@ -190,6 +227,17 @@ pub(crate) use claimed_profiles_fb::decode_claimed_profiles;
 pub(crate) use mention_profiles_fb::decode_mention_profiles;
 #[cfg(test)]
 pub(crate) use resolved_profiles_fb::decode_resolved_profiles;
+// Wave C action-lifecycle + relay-diagnostics cluster test-only decoders.
+#[cfg(test)]
+pub(crate) use action_lifecycle_fb::decode_action_lifecycle;
+#[cfg(test)]
+pub(crate) use action_results_fb::decode_action_results;
+#[cfg(test)]
+pub(crate) use action_stages_fb::decode_action_stages;
+#[cfg(test)]
+pub(crate) use relay_diagnostics_fb::decode_relay_diagnostics;
+#[cfg(test)]
+pub(crate) use signed_events_fb::decode_signed_events;
 
 use crate::update_envelope::TypedProjectionData;
 
@@ -216,8 +264,11 @@ impl super::Kernel {
         // (`accounts` / `active_account` / `profile` always; `author_view` /
         // `thread_view` only when open) + 4 profile/event built-ins
         // (`mention_profiles` / `claimed_profiles` / `claimed_events` /
-        // `resolved_profiles`, all unconditional).
-        let mut out = Vec::with_capacity(15);
+        // `resolved_profiles`, all unconditional) + up to 5 action-lifecycle /
+        // diagnostics built-ins (`relay_diagnostics` unconditional once captured;
+        // `action_results` / `signed_events` / `action_stages` /
+        // `action_lifecycle` present only when captured this tick).
+        let mut out = Vec::with_capacity(20);
 
         // `configured_relays` — encoded from the SAME `AppRelay` slice the JSON
         // path serialises (`configured_relays_snapshot()`).
@@ -288,6 +339,16 @@ impl super::Kernel {
         // map→sorted-vector flattening + DTO→Row mappings are inlined where the
         // `pub(super)`/`pub(crate)` DTO types are reachable, under the same owner.
         out.extend(self.profiles_cluster_typed_projections());
+
+        // Wave C action-lifecycle + relay-diagnostics cluster (`action_results` /
+        // `signed_events` / `action_stages` / `action_lifecycle` /
+        // `relay_diagnostics`). Unlike every cluster above, these read per-tick
+        // `Kernel`-field CAPTURES (not live accessors): their producers drain /
+        // mutate / format-against-now and must not run twice in a tick. The four
+        // drain-on-emit entries are pushed only when captured this tick (present
+        // iff their JSON key is); `relay_diagnostics` is unconditional once
+        // captured. Extracted to `builtins_diagnostics.rs` (LOC ceiling).
+        out.extend(self.diagnostics_cluster_typed_projections());
 
         out
     }

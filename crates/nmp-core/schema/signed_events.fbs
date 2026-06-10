@@ -1,0 +1,76 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `signed_events` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which DRAINS
+// `take_signed_events_projection()` (a `serde_json::Value` object keyed by
+// `correlation_id`: each value is `{ "ok": true, "signed_json": "…" }` on
+// success or `{ "ok": false, "error": "…" }` on failure — every
+// `SignEventForReturn` result that landed since the last emit) and inserts it
+// under the JSON key `"signed_events"` ONLY when the drain returned a non-null
+// value. That generic `Value` projection stays the source of truth (inserted
+// unchanged); this buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s
+// `typed_projections` sidecar (ADR-0037) under the SAME key. A host with a
+// `KSEV` decoder prefers this typed payload; an un-updated host falls back to
+// the generic `Value` subtree. Purely additive (Wave C).
+//
+// ## Drain-on-emit ownership (the hard part)
+//
+// `take_signed_events_projection()` `clear()`s the `signed_events` map (the host
+// reads each id exactly once) — it MUST NOT be called twice per tick. So the
+// JSON path captures the drained `Value` ONCE into a per-tick `Kernel` field;
+// the typed path reads that captured `Value` and builds this buffer by PARSING
+// it. The typed entry is pushed EXACTLY when the JSON key is present (same tick,
+// same captured value), and is ABSENT in steady state. Necessary deviation from
+// the #1031 DTO->Model convention: there is no surviving DTO after the drain.
+//
+// FlatBuffers has no map type, so the `correlation_id -> value` map is flattened
+// to a vector of `{key, value}` entries SORTED BY KEY (the #1028/#1029
+// convention). The producer is a `serde_json::Map` (BTree-ordered), so sorting
+// the entries by key keeps the typed and JSON orderings identical.
+//
+// Each per-id value carries the `ok` flag and BOTH optional payloads: on success
+// `signed_json` is present (the flat Nostr event JSON, ready for an out-of-band
+// transport) and `error` is absent; on failure the reverse. Presence is carried
+// as explicit `has_*` flags.
+//
+// D0: a signed-event row carries a correlation id, an `ok` flag, and an opaque
+// signed-event JSON string / error string — no protocol-specific (NIP-NN)
+// branching (the signed JSON rides as an opaque passthrough). Generic framework
+// sign-and-return edge, so kernel-owned and typed here. D6: the decoder returns
+// `Err(String)` on malformed input, never panics.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/signed_events.fbs
+
+// Field-for-field mirror of one SERIALISED `signed_events` map value.
+table SignedEvent {
+  // The map key — the action's correlation id (carried in the body too).
+  correlation_id:string;
+  // True on success (`{"ok":true,…}`), false on failure (`{"ok":false,…}`).
+  ok:bool;
+  // Signed flat Nostr event JSON (opaque passthrough); present on success.
+  has_signed_json:bool;
+  signed_json:string;
+  // Failure prose; present on failure.
+  has_error:bool;
+  error:string;
+}
+
+// One `correlation_id -> SignedEvent` map entry. Entries are sorted by `key`.
+table SignedEventEntry {
+  // The map key — the action's correlation id (matches `value.correlation_id`).
+  key:string;
+  value:SignedEvent;
+}
+
+table SignedEventsSnapshot {
+  entries:[SignedEventEntry];
+}
+
+file_identifier "KSEV";
+root_type SignedEventsSnapshot;

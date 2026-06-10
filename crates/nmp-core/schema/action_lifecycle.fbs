@@ -1,0 +1,70 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `action_lifecycle` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which reads
+// `action_lifecycle_projection()` (a `serde_json::Value` object
+// `{ in_flight: [LifecycleEntry], recent_terminal: [LifecycleEntry] }` — the
+// V5 thin-shell collapse of the per-stage history into the host's
+// spinner/toast shape) and inserts it under the JSON key `"action_lifecycle"`
+// ONLY when the accessor returned a non-null value. That generic `Value`
+// projection stays the source of truth (inserted unchanged); this buffer is
+// emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections` sidecar
+// (ADR-0037) under the SAME key. A host with a `KALC` decoder prefers this typed
+// payload; an un-updated host falls back to the generic `Value` subtree. Purely
+// additive (Wave C).
+//
+// ## Capture-once / mutate-on-read ownership (the hard part)
+//
+// `action_lifecycle_projection()` takes `&mut self`: it runs the tracker's
+// wall-clock TTL sweep on every emit (a quiet kernel still prunes expired
+// terminals). It MUST NOT be called twice per tick — a second sweep against a
+// later clock reading could evict a terminal the JSON form still carries. So the
+// JSON path captures the produced `Value` ONCE into a per-tick `Kernel` field;
+// the typed path reads that captured `Value` and builds this buffer by PARSING
+// it (never re-invoking the mutating accessor). The typed entry is pushed
+// EXACTLY when the JSON key is present, and is ABSENT in steady state (nothing
+// tracked -> nothing captured). Necessary deviation from the #1031 DTO->Model
+// convention.
+//
+// Unlike the other four built-ins in this Wave C wave this projection is NOT a
+// map — it is a struct with two ordered arrays. Each `LifecycleEntry` carries a
+// `correlation_id` and a flattened collapsed stage string (same closed
+// vocabulary as `action_stages`); the `failed` variant lifts a `reason` sibling
+// carried with a `has_reason` flag. Array order is producer order.
+//
+// D0: a lifecycle row carries a correlation id, a generic stage string, and an
+// optional reason — no protocol-specific (NIP-NN) semantics. Generic framework
+// action-lifecycle display projection, so kernel-owned and typed here. D6: the
+// decoder returns `Err(String)` on malformed input, never panics.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/action_lifecycle.fbs
+
+// Field-for-field mirror of one SERIALISED `LifecycleEntry` row.
+table LifecycleEntry {
+  // The action's correlation id.
+  correlation_id:string;
+  // Collapsed snake_case stage string (`"requested"` / `"awaiting_capability"`
+  // / `"publishing"` / `"accepted"` / `"failed"`).
+  stage:string;
+  // `Failed { reason }`'s reason, lifted as a sibling of `stage`; present only
+  // when `stage == "failed"`.
+  has_reason:bool;
+  reason:string;
+}
+
+// `{ in_flight, recent_terminal }` — the two ordered arrays the host binds.
+table ActionLifecycleSnapshot {
+  // Actions whose latest stage is non-terminal.
+  in_flight:[LifecycleEntry];
+  // Actions that settled (`accepted` / `failed`), within the TTL window.
+  recent_terminal:[LifecycleEntry];
+}
+
+file_identifier "KALC";
+root_type ActionLifecycleSnapshot;
