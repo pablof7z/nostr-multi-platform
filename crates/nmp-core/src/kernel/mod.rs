@@ -215,6 +215,8 @@ mod typed_projections;
 mod typed_projections_tests;
 #[cfg(test)]
 mod typed_projections_wave_c_tests;
+#[cfg(test)]
+mod typed_projections_wave_c_diagnostics_tests;
 mod types;
 mod update;
 #[cfg(test)]
@@ -960,6 +962,32 @@ pub struct Kernel {
     /// host ack required. Drives the host's spinner/toast UI without any
     /// reducer-side bookkeeping in the shell.
     action_lifecycle: action_lifecycle::ActionLifecycleTracker,
+    /// Per-tick capture of the FIVE drain-on-emit / wall-clock-sensitive
+    /// projection values, written ONCE at their JSON-insertion site in
+    /// `snapshot_projections_with_publish_cluster` and read by the Tier-2
+    /// typed sidecar path (`builtin_typed_projections`) in the SAME tick (Wave
+    /// C, ADR-0037). These exist because the producing accessors must not be
+    /// invoked twice per tick:
+    /// - `action_results` / `signed_events` DRAIN their source (calling twice
+    ///   loses data);
+    /// - `action_lifecycle` runs a wall-clock TTL sweep (`&mut self`);
+    /// - `action_stages` is mutated earlier in the same tick by the
+    ///   `action_results` drain (captured for uniformity);
+    /// - `relay_diagnostics` pre-formats wall-clock-relative "Xs ago" labels
+    ///   against an internal `now` (a second call could straddle a one-second
+    ///   bucket and diverge from the JSON form).
+    ///
+    /// Each is reset every tick: `Some(value)` exactly when the matching JSON
+    /// key is inserted, `None` otherwise — so the typed entry is present iff the
+    /// JSON entry is, and never carries stale data into the next tick. The four
+    /// drain-on-emit ones hold the captured `serde_json::Value` (parsed back
+    /// into a typed Model by the codec); `relay_diagnostics` holds the captured
+    /// struct (mapped struct->Model, the #1031 convention).
+    captured_action_results: Option<serde_json::Value>,
+    captured_signed_events: Option<serde_json::Value>,
+    captured_action_stages: Option<serde_json::Value>,
+    captured_action_lifecycle: Option<serde_json::Value>,
+    captured_relay_diagnostics: Option<relay_diagnostics::RelayDiagnosticsSnapshot>,
     publish_engine: crate::publish::PublishEngine,
     /// Buffered (`relay_url`, frame) pairs produced by the engine. The kernel
     /// drains this after each engine call and wraps the pairs as
@@ -1919,6 +1947,13 @@ impl Kernel {
             configured_relays: Vec::new(),
             action_stages: action_stages::ActionStageTracker::new(),
             action_lifecycle: action_lifecycle::ActionLifecycleTracker::new(),
+            // Per-tick typed-sidecar capture slots — empty until the first
+            // `make_update` writes them at the JSON-insertion site (Wave C).
+            captured_action_results: None,
+            captured_signed_events: None,
+            captured_action_stages: None,
+            captured_action_lifecycle: None,
+            captured_relay_diagnostics: None,
             publish_engine,
             publish_dispatcher,
             publish_store,

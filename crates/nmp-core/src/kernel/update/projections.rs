@@ -81,6 +81,12 @@ impl Kernel {
         // array whenever any action settled this tick. The host resolves each
         // spinner by correlation_id.
         let action_results = self.take_action_results_projection();
+        // Wave C (ADR-0037): capture the DRAINED value ONCE this tick so the
+        // Tier-2 typed sidecar (`builtin_typed_projections`) encodes from the
+        // exact same array WITHOUT re-invoking the draining accessor.
+        // `Some` iff the JSON key is inserted below; `None` resets any prior
+        // tick's capture (present-iff-present, no stale carryover).
+        self.captured_action_results = (!action_results.is_null()).then(|| action_results.clone());
         if !action_results.is_null() {
             projections.insert("action_results".to_string(), action_results);
         }
@@ -91,6 +97,8 @@ impl Kernel {
         // `Null -> omit key` + drain-once convention as `action_results`; the
         // host reads each id exactly once. Absent in steady state.
         let signed_events = self.take_signed_events_projection();
+        // Wave C: capture the DRAINED value once (see `action_results` above).
+        self.captured_signed_events = (!signed_events.is_null()).then(|| signed_events.clone());
         if !signed_events.is_null() {
             projections.insert("signed_events".to_string(), signed_events);
         }
@@ -102,6 +110,11 @@ impl Kernel {
         // history and clears it on the terminal stage (`Accepted` / `Failed`)
         // before acking. Absent in steady state (`Null` -> not inserted).
         let action_stages = self.action_stages_projection();
+        // Wave C: capture once. This accessor is a `&self` COPY, but the
+        // `action_results` drain above records terminals into this mirror within
+        // the same tick, so capturing here reads the exact value the JSON key
+        // carries (uniform with the four genuinely-drained built-ins).
+        self.captured_action_stages = (!action_stages.is_null()).then(|| action_stages.clone());
         if !action_stages.is_null() {
             projections.insert("action_stages".to_string(), action_stages);
         }
@@ -113,6 +126,11 @@ impl Kernel {
         // The mutable borrow runs the tracker's TTL sweep on every emit so a
         // quiet kernel still prunes expired terminals.
         let action_lifecycle = self.action_lifecycle_projection();
+        // Wave C: capture once. `action_lifecycle_projection()` is `&mut self`
+        // (it runs the TTL sweep), so it MUST NOT be re-invoked for the typed
+        // path — capture the produced value here instead.
+        self.captured_action_lifecycle =
+            (!action_lifecycle.is_null()).then(|| action_lifecycle.clone());
         if !action_lifecycle.is_null() {
             projections.insert("action_lifecycle".to_string(), action_lifecycle);
         }
@@ -173,11 +191,18 @@ impl Kernel {
         // `kernel/relay_diagnostics.rs` module doc for the exact bible
         // references. Serialization failure degrades to JSON null so the
         // key still appears (mirrors the publish cluster's contract).
+        // Wave C: build the diagnostics roll-up ONCE this tick. The accessor
+        // pre-formats wall-clock-relative "Xs ago" labels against an internal
+        // `now`, so calling it a second time for the typed sidecar could
+        // straddle a one-second bucket and diverge from this JSON form. The JSON
+        // is serialised from the captured struct; the typed path
+        // (`builtin_typed_projections`) maps the SAME captured instance.
+        let relay_diagnostics = self.relay_diagnostics_snapshot();
         projections.insert(
             "relay_diagnostics".to_string(),
-            serde_json::to_value(self.relay_diagnostics_snapshot())
-                .unwrap_or(serde_json::Value::Null),
+            serde_json::to_value(&relay_diagnostics).unwrap_or(serde_json::Value::Null),
         );
+        self.captured_relay_diagnostics = Some(relay_diagnostics);
         // `mention_profiles` — derived view (aim.md §4.2): pubkey ->
         // {display, picture_url, avatar_initials, avatar_color} for every
         // author surfaced in ANY currently-open view. Built from the union of

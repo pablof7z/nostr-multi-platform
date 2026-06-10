@@ -1,0 +1,159 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `relay_diagnostics` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
+// `serde_json` serialisation of `relay_diagnostics_snapshot()` (a
+// `RelayDiagnosticsSnapshot` — the pre-rolled diagnostics-screen view: one
+// rolled-up row per relay URL plus the per-wire-subscription and logical-interest
+// detail rows, every aggregate computed and every display string pre-formatted)
+// under the JSON key `"relay_diagnostics"`. That generic `Value` projection stays
+// the source of truth (inserted unchanged); this buffer is emitted ALONGSIDE it
+// in the `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037) under the SAME
+// key. A host with a `KRDG` decoder prefers this typed payload; an un-updated
+// host falls back to the generic `Value` subtree. Purely additive (Wave C).
+//
+// ## Capture-once ownership (wall-clock-relative labels)
+//
+// `relay_diagnostics_snapshot()` is `&self` (idempotent on kernel state), but it
+// pre-formats WALL-CLOCK-RELATIVE labels (`last_connected_display` "3s ago",
+// `last_event_display`, `opened_display`, `eose_display`, …) against a `now` it
+// reads internally on each call (no injected clock). Calling it a second time
+// for the typed path — separated from the JSON call by the full-snapshot
+// `serde_json::to_value(&update)` and the rest of the tick — could straddle a
+// one-second bucket and emit a typed "Xs ago" that disagrees with the JSON's
+// "X-1s ago", a structural divergence. So the JSON path captures the produced
+// `RelayDiagnosticsSnapshot` ONCE into a per-tick `Kernel` field; the typed path
+// maps that single captured STRUCT (field-for-field, the #1031 convention) so
+// every formatted label is identical by construction. This built-in is
+// UNCONDITIONAL — its JSON key is always present (degrades to JSON `null` only on
+// a serialisation failure), so its typed entry is always pushed too (present on a
+// fresh kernel with empty `relays` / `interests`).
+//
+// Field-for-field mirror of the SERIALISED structs. The `Option<String>` fields
+// carry NO serde `skip_serializing_if`, so they serialise as JSON
+// `null`-when-`None` (key always present); the typed buffer carries each presence
+// as an explicit `has_*` flag.
+//
+// D0: a relay-diagnostics roll-up is generic transport telemetry — relay
+// connection / auth / role state, subscription counts, byte/event counters, and
+// pre-formatted display strings. No protocol-specific (NIP-NN) semantics. Generic
+// framework transport-diagnostics view, so kernel-owned and typed here. D6: the
+// decoder returns `Err(String)` on malformed input, never panics.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/relay_diagnostics.fbs
+
+// Enriched per-wire-subscription detail row (mirror of `RelayDiagnosticsWireSub`).
+table RelayDiagnosticsWireSub {
+  // Full wire id (hex) — stable list identity.
+  wire_id:string;
+  // Pre-formatted short id (`"abcd1234…"`).
+  short_wire_id:string;
+  // Owning relay URL.
+  relay_url:string;
+  // Filter prose, propagated unchanged from `WireSub.filter_summary`.
+  filter_summary:string;
+  // Pre-formatted state label (`"Open"` / `"Pending"` / `"Closed"` / …).
+  state_label:string;
+  // Semantic state hue (`"ok"` / `"warn"` / `"muted"` / `"error"`).
+  state_tone:string;
+  // Pre-formatted consumer-count label (`"1 consumer"` / …); empty when zero.
+  consumer_count_label:string;
+  // Pre-formatted events received (compact); `has_events_rx_display == false`
+  // mirrors JSON `null` (zero events).
+  has_events_rx_display:bool;
+  events_rx_display:string;
+  // True iff EOSE has been observed.
+  eose_observed:bool;
+  // Pre-formatted relative time the sub opened.
+  opened_display:string;
+  // Pre-formatted relative time for the last event; absent when none.
+  has_last_event_display:bool;
+  last_event_display:string;
+  // Pre-formatted relative time for EOSE; absent when none.
+  has_eose_display:bool;
+  eose_display:string;
+  // Close reason prose; absent when still open.
+  has_close_reason:bool;
+  close_reason:string;
+}
+
+// One rolled-up row per known relay URL (mirror of `RelayDiagnosticsRow`).
+table RelayDiagnosticsRow {
+  // Canonical relay URL — stable list identity.
+  relay_url:string;
+  // Pre-formatted short URL.
+  short_url:string;
+  // Display label for the relay's role (`"Content"` / `"Indexer"` / …).
+  role_label:string;
+  // Semantic role hue (`"primary"` / `"write"` / `"accent"` / `"secondary"`).
+  role_tone:string;
+  // Pre-formatted connection label (`"Connected"` / `"Reconnecting"` / …).
+  connection_label:string;
+  // Semantic connection hue (`"ok"` / `"warn"` / `"error"` / `"muted"`).
+  connection_tone:string;
+  // Pre-formatted auth label (`"OK"` / `"Pending"` / `"Required"` / `"—"`).
+  auth_label:string;
+  // Semantic auth hue (`"ok"` / `"warn"` / `"muted"`).
+  auth_tone:string;
+  // Total wire subscriptions known to this relay.
+  total_sub_count:uint;
+  // Wire subscriptions in an active state.
+  active_sub_count:uint;
+  // Wire subscriptions that have observed EOSE.
+  eosed_sub_count:uint;
+  // Session EVENT frames received on this relay URL.
+  total_events_rx:ulong;
+  // Pre-formatted total events (compact: `"1.2K"` / `"34"`).
+  total_events_display:string;
+  // Reconnect attempts since process start.
+  reconnect_count:uint;
+  // Pre-formatted bytes-received label; absent when the counter is zero.
+  has_bytes_rx_display:bool;
+  bytes_rx_display:string;
+  // Pre-formatted bytes-transmitted label; absent when zero.
+  has_bytes_tx_display:bool;
+  bytes_tx_display:string;
+  // Pre-formatted relative time for the last successful connect; absent when
+  // the relay never connected.
+  has_last_connected_display:bool;
+  last_connected_display:string;
+  // Pre-formatted relative time for the last event received; absent when none.
+  has_last_event_display:bool;
+  last_event_display:string;
+  // Most recent NIP-01 NOTICE prose; absent when none.
+  has_last_notice:bool;
+  last_notice:string;
+  // Most recent error prose; absent when none.
+  has_last_error:bool;
+  last_error:string;
+  // Per-wire-subscription detail rows (kernel-sorted by `wire_id`).
+  wire_subs:[RelayDiagnosticsWireSub];
+}
+
+// Enriched logical-interest row (mirror of `RelayDiagnosticsInterest`).
+table RelayDiagnosticsInterest {
+  key:string;
+  state:string;
+  // Semantic state hue (`"ok"` / `"warn"` / `"muted"`).
+  state_tone:string;
+  refcount:uint;
+  cache_coverage:string;
+  relay_urls:[string];
+}
+
+// Top-level diagnostics snapshot (mirror of `RelayDiagnosticsSnapshot`).
+table RelayDiagnosticsSnapshot {
+  // One row per known relay URL (kernel-ordered: typed lanes then outbox-only).
+  relays:[RelayDiagnosticsRow];
+  // Pre-rolled logical-interest rows.
+  interests:[RelayDiagnosticsInterest];
+}
+
+file_identifier "KRDG";
+root_type RelayDiagnosticsSnapshot;

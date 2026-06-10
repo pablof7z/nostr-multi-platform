@@ -283,14 +283,37 @@ fn builtins_emit_without_any_host_typed_registration() {
     assert!(keys.contains("claimed_profiles"));
     assert!(keys.contains("claimed_events"));
     assert!(keys.contains("resolved_profiles"));
+    // Wave C action-lifecycle + diagnostics cluster: `relay_diagnostics` is
+    // unconditional (captured every emit), so it appears on a fresh kernel; the
+    // four drain-on-emit built-ins are absent in steady state (nothing settled /
+    // tracked → nothing captured → no key).
+    assert!(keys.contains("relay_diagnostics"));
+    assert!(
+        !keys.contains("action_results"),
+        "action_results is absent in steady state (nothing settled this tick)"
+    );
+    assert!(
+        !keys.contains("signed_events"),
+        "signed_events is absent in steady state (nothing settled this tick)"
+    );
+    assert!(
+        !keys.contains("action_stages"),
+        "action_stages is absent in steady state (no correlation_id tracked)"
+    );
+    assert!(
+        !keys.contains("action_lifecycle"),
+        "action_lifecycle is absent in steady state (nothing tracked)"
+    );
     assert_eq!(
         typed.len(),
-        13,
+        14,
         "the six relay/settings/publish built-ins + the three unconditional \
          identity/views built-ins (accounts / active_account / profile) + the four \
          unconditional profile/event built-ins (mention_profiles / claimed_profiles \
-         / claimed_events / resolved_profiles); the two view built-ins are absent \
-         on a fresh kernel: {typed:?}"
+         / claimed_events / resolved_profiles) + `relay_diagnostics` (unconditional); \
+         the two view built-ins AND the four drain-on-emit built-ins (action_results \
+         / signed_events / action_stages / action_lifecycle) are absent on a fresh \
+         kernel: {typed:?}"
     );
 }
 
