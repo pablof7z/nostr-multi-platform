@@ -1,0 +1,94 @@
+namespace nmp.marmot;
+
+// Typed FlatBuffers wire for the `nmp.marmot.snapshot` push projection
+// (`crate::projection::payload::MarmotSnapshot`, the shape
+// `MarmotProjection::snapshot(now)` serialises).
+//
+// This is the typed sidecar (ADR-0037) carried ALONGSIDE the existing generic
+// `serde_json::Value` projection registered under the same key in
+// `crate::ffi::register_with_keys`. The serde shape stays authoritative; this
+// buffer mirrors it field-for-field so a host with an `NMMS` decoder can read
+// typed accessors instead of JSON reflection. An un-updated host falls back to
+// the generic `Value` subtree (the permanent fallback from ADR-0037). Purely
+// additive — the dynamic `register_snapshot_projection("nmp.marmot.snapshot")`
+// call is unchanged and remains the source of truth.
+//
+// Raw data only (aim.md §2): hex group ids / pubkeys, Unix-second timestamps,
+// raw counts. The few free-form metadata fallbacks already computed by the
+// projection (`display_name`, `initials`, `subtitle`, `invites_chip_label`,
+// `age_display`) are carried verbatim as the projection produced them — this
+// codec runs NO additional formatting on the encode path.
+//
+// Optional fields use the `has_x` presence-flag + value convention (the same
+// one used by content_tree.fbs / wallet_status.fbs / wot_bootstrap.fbs) so
+// `None` round-trips distinctly from a present-empty string / zero value:
+//   * MarmotGroupRow.unread_count: Option<u32>      -> has_unread_count + value
+//   * MarmotGroupRow.last_msg_at:  Option<u64>      -> has_last_msg_at  + value
+//   * KeyPackageStatus.d_tag:      Option<String>   -> has_d_tag        + value
+//   * KeyPackageStatus.age_secs:   Option<u64>      -> has_age_secs     + value
+//   * KeyPackageStatus.age_display:Option<String>   -> has_age_display  + value
+//   * MarmotSnapshot.invites_chip_label: Option<String>
+//                                                   -> has_invites_chip_label + value
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// is self-contained (no `include`), so generate with plain `flatc --rust`:
+//
+//   flatc --rust -o crates/nmp-marmot/src/wire/generated \
+//         crates/nmp-marmot/schema/marmot_snapshot.fbs
+
+// One group row. Mirrors `crate::projection::payload::MarmotGroupRow`.
+table MarmotGroupRow {
+  id_hex:string;            // MLS group id, hex
+  name:string;              // group name, verbatim MLS metadata (may be empty)
+  display_name:string;      // empty-name fallback ("Untitled group")
+  initials:string;          // 2-char avatar initials derived from name
+  members:[string];         // member Nostr pubkeys (hex, 64 chars), sorted
+  member_count:uint32;      // members.len()
+  has_unread_count:bool;    // Option<u32> presence
+  unread_count:uint32;      // total decrypted app-message count (no read cursor)
+  has_last_msg_at:bool;     // Option<u64> presence
+  last_msg_at:uint64;       // most-recent message created_at, Unix seconds
+}
+
+// One pending (un-accepted) Welcome. Mirrors
+// `crate::projection::payload::PendingWelcomeRow`.
+table PendingWelcomeRow {
+  id_hex:string;            // kind:444 Welcome event id, hex
+  group_name:string;        // group name verbatim from the Welcome (may be empty)
+  display_name:string;      // empty-name fallback ("Group invite")
+  inviter_npub:string;      // inviter Nostr pubkey (hex, 64 chars — name is historical)
+}
+
+// KeyPackage publication health. Mirrors
+// `crate::projection::payload::KeyPackageStatus`. The string fields are
+// pre-rendered by the projection (aim.md §6 AP1) and carried verbatim.
+table KeyPackageStatus {
+  published:bool;
+  has_d_tag:bool;           // Option<String> presence
+  d_tag:string;             // kind:30443 `d` tag of the most recent publication
+  has_age_secs:bool;        // Option<u64> presence
+  age_secs:uint64;          // seconds since most recent publication
+  stale:bool;               // age_secs exceeds the 7-day rotation threshold
+  has_age_display:bool;     // Option<String> presence
+  age_display:string;       // bucketed age string ("12s old" / "5d old")
+  subtitle:string;          // full rendered subtitle (four-branch policy)
+  action_label:string;      // "Publish key package" / "Rotate key package"
+}
+
+// The complete snapshot. Mirrors `crate::projection::payload::MarmotSnapshot`.
+table MarmotSnapshot {
+  schema_version:uint32 = 1;       // mirrors SCHEMA_VERSION
+  groups:[MarmotGroupRow];
+  pending_welcomes:[PendingWelcomeRow];
+  key_package:KeyPackageStatus;
+  cached_kp_pubkeys:[string];      // peer pubkeys (hex) with a cached KeyPackage
+  has_invites_chip_label:bool;     // Option<String> presence
+  invites_chip_label:string;       // pluralised pending-invites chip label
+  is_registered:bool;              // built against a registered signing identity
+  orphaned_commit_count:uint32;    // V-61 dropped-handle diagnostic
+  keyring_unavailable:bool;        // V-62 in-memory-credential-store diagnostic
+}
+
+root_type MarmotSnapshot;
+file_identifier "NMMS";

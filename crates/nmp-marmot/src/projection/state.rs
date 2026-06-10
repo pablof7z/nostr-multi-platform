@@ -279,6 +279,48 @@ impl MarmotProjection {
         .unwrap_or(serde_json::Value::Object(serde_json::Map::new()))
     }
 
+    /// Structured sibling of [`Self::messages_all_groups_json`] for the typed
+    /// FlatBuffers sidecar (ADR-0037, Wave A). Returns the SAME per-group data
+    /// the JSON projection emits — `(group_id_hex, newest-N rows)` for every
+    /// joined group — as native Rust structs instead of a `serde_json::Value`
+    /// map, so [`crate::wire::messages_fb`] can encode them without re-parsing
+    /// JSON.
+    ///
+    /// This is an additive read path: the authoritative JSON projection above is
+    /// untouched and stays the source of truth. The two methods each issue an
+    /// independent MDK read per tick (the typed sidecar is emitted alongside the
+    /// JSON one); they are NOT merged so the JSON projection's wire behaviour is
+    /// unchanged. The returned vector is in `get_groups()` order;
+    /// [`crate::wire::messages_fb::encode_marmot_messages`] sorts by
+    /// `group_id_hex` for a deterministic wire. D8 compliant: cheap,
+    /// non-blocking. D6: poisoned mutex → empty vector.
+    #[must_use]
+    pub fn messages_all_groups(
+        &self,
+        page: usize,
+    ) -> Vec<(String, Vec<crate::projection::payload::MarmotMessageRow>)> {
+        self.with_inner(|h| {
+            let group_ids: Vec<String> = h
+                .service()
+                .get_groups()
+                .map(|gs| {
+                    gs.into_iter()
+                        .map(|g| hex_encode(g.mls_group_id.as_slice()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            group_ids
+                .into_iter()
+                .map(|gid_hex| {
+                    let rows =
+                        crate::projection::ops::group_messages(h, &gid_hex, page);
+                    (gid_hex, rows)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+    }
+
     /// Build the JSON snapshot. D6 — poisoned mutex → empty snapshot.
     #[must_use]
     pub fn snapshot(&self, now_secs: u64) -> MarmotSnapshot {

@@ -4635,6 +4635,7 @@ name = "nmp-marmot"
 version = "0.2.7"
 dependencies = [
  "apple-native-keyring-store",
+ "flatbuffers",
  "keyring-core",
  "mdk-core",
  "mdk-sqlite-storage",
