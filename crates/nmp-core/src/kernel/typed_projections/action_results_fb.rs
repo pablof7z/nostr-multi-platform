@@ -43,28 +43,38 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const ACTION_RESULTS_SCHEMA_ID: &str = "action_results";
+pub const ACTION_RESULTS_SCHEMA_ID: &str = "action_results";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const ACTION_RESULTS_FILE_IDENTIFIER: &[u8; 4] = b"KARS";
+pub const ACTION_RESULTS_FILE_IDENTIFIER: &[u8; 4] = b"KARS";
 /// Wire schema version. Bump on any breaking change to `action_results.fbs`.
-pub(crate) const ACTION_RESULTS_SCHEMA_VERSION: u32 = 1;
+pub const ACTION_RESULTS_SCHEMA_VERSION: u32 = 1;
 
 /// A field-for-field mirror of one SERIALISED action-result row.
+///
+/// Public surface (re-exported via `nmp_core::typed_projections`) — external
+/// Rust consumers read these fields directly instead of string-keying the
+/// generic JSON `payload`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ActionResultRow {
-    pub(crate) correlation_id: String,
-    pub(crate) status: String,
-    pub(crate) error: Option<String>,
+pub struct ActionResultRow {
+    /// Correlation id of the dispatched action this row reports on.
+    pub correlation_id: String,
+    /// Terminal status string (e.g. `"published"`).
+    pub status: String,
+    /// Error string when the action failed; `None` on success.
+    pub error: Option<String>,
     /// The opaque structured result body (ADR-0043 Decision 4), carried as its
     /// SERIALISED JSON string. `None` mirrors an absent `result` field.
-    pub(crate) result: Option<String>,
+    pub result: Option<String>,
 }
 
 /// The `"action_results"` read model — the drained array of rows in producer
 /// order.
+///
+/// Public surface (re-exported via `nmp_core::typed_projections`).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ActionResultsModel {
-    pub(crate) results: Vec<ActionResultRow>,
+pub struct ActionResultsModel {
+    /// Settled action-result rows in producer order.
+    pub results: Vec<ActionResultRow>,
 }
 
 /// Build an [`ActionResultsModel`] by PARSING the captured `action_results`
@@ -161,8 +171,10 @@ pub(crate) fn encode_action_results(model: &ActionResultsModel) -> Vec<u8> {
 /// Decode typed FlatBuffers bytes (as produced by [`encode_action_results`])
 /// back into an [`ActionResultsModel`]. Returns an error string on any malformed
 /// input.
-#[cfg(test)]
-pub(crate) fn decode_action_results(bytes: &[u8]) -> Result<ActionResultsModel, String> {
+///
+/// Public surface (re-exported via `nmp_core::typed_projections`): the
+/// reachable decode entry point for the `action_results` sidecar key.
+pub fn decode_action_results(bytes: &[u8]) -> Result<ActionResultsModel, String> {
     if bytes.len() < 8 || !fb::action_results_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KARS file identifier".to_string());
     }
@@ -181,7 +193,6 @@ pub(crate) fn decode_action_results(bytes: &[u8]) -> Result<ActionResultsModel, 
 
 /// Decode this module's generated `ActionResult` table into an
 /// [`ActionResultRow`].
-#[cfg(test)]
 fn action_result_from_fb(row: fb::ActionResult<'_>) -> ActionResultRow {
     ActionResultRow {
         correlation_id: row.correlation_id().unwrap_or_default().to_string(),

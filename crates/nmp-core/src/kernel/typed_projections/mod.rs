@@ -116,10 +116,11 @@ pub(crate) use publish_outbox_fb::{
     encode_publish_outbox, PublishOutboxItemRow, PublishOutboxModel, PublishOutboxRelayRow,
     PUBLISH_OUTBOX_FILE_IDENTIFIER, PUBLISH_OUTBOX_SCHEMA_ID, PUBLISH_OUTBOX_SCHEMA_VERSION,
 };
-pub(crate) use publish_queue_fb::{
-    encode_publish_queue, PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow,
-    PUBLISH_QUEUE_FILE_IDENTIFIER, PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
-};
+// Internal-only encoder; the publicly re-exported `publish_queue` names
+// (`PublishQueueModel` / `PublishQueueEntryRow` / `RelayAckOutcomeRow` / the
+// envelope constants) live in the PUBLIC block below so they are not declared
+// twice in this module's namespace.
+pub(crate) use publish_queue_fb::encode_publish_queue;
 // Wave C identity + views cluster (`accounts` / `active_account` / `profile` /
 // `author_view` / `thread_view`). The DTO→Model mappings live in
 // `builtins_views.rs` (heavier nested rows + the two conditional view pushes),
@@ -179,10 +180,10 @@ pub(crate) use action_lifecycle_fb::{
     encode_action_lifecycle, ActionLifecycleModel, ACTION_LIFECYCLE_FILE_IDENTIFIER,
     ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
 };
-pub(crate) use action_results_fb::{
-    encode_action_results, ActionResultsModel, ACTION_RESULTS_FILE_IDENTIFIER,
-    ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION,
-};
+// Internal-only encoder; the publicly re-exported `action_results` names
+// (`ActionResultsModel` + the envelope constants) live in the PUBLIC block
+// below so they are not declared twice in this module's namespace.
+pub(crate) use action_results_fb::encode_action_results;
 pub(crate) use action_stages_fb::{
     encode_action_stages, ActionStagesModel, ACTION_STAGES_FILE_IDENTIFIER, ACTION_STAGES_SCHEMA_ID,
     ACTION_STAGES_SCHEMA_VERSION,
@@ -211,8 +212,6 @@ pub(crate) use profile_fb::decode_profile;
 #[cfg(test)]
 pub(crate) use publish_outbox_fb::decode_publish_outbox;
 #[cfg(test)]
-pub(crate) use publish_queue_fb::decode_publish_queue;
-#[cfg(test)]
 pub(crate) use relay_role_options_fb::decode_relay_role_options;
 #[cfg(test)]
 pub(crate) use settings_hub_fb::decode_settings_hub;
@@ -231,13 +230,39 @@ pub(crate) use resolved_profiles_fb::decode_resolved_profiles;
 #[cfg(test)]
 pub(crate) use action_lifecycle_fb::decode_action_lifecycle;
 #[cfg(test)]
-pub(crate) use action_results_fb::decode_action_results;
-#[cfg(test)]
 pub(crate) use action_stages_fb::decode_action_stages;
 #[cfg(test)]
 pub(crate) use relay_diagnostics_fb::decode_relay_diagnostics;
 #[cfg(test)]
 pub(crate) use signed_events_fb::decode_signed_events;
+
+// --- PUBLIC typed-projection decode surface --------------------------------
+//
+// The reachable, out-of-tree Rust API (re-exported through `kernel/mod.rs` ->
+// `lib.rs` as `nmp_core::typed_projections`). External consumers (e.g.
+// `tenex-off`) decode the typed sidecar instead of string-keying the generic
+// JSON `payload`.
+//
+// Return-type decision: we re-export the EXISTING internal DTOs verbatim rather
+// than mirroring them into a parallel public type. These structs are already
+// `#[derive(Clone, Debug, Eq, PartialEq)]` field-for-field mirrors of the wire;
+// a second identical type would be exactly the wrapper layer the anti-
+// abstraction doctrine forbids, and would need its own `From` glue. The single
+// source of truth is the codec module's DTO.
+//
+// Scope: only the two keys an external consumer needs NOW (`action_results`,
+// `publish_queue`). The Tier-2 cluster has ~18 more keys; each is exposed by
+// adding one `pub use` line below (the codec modules already follow the uniform
+// `decode_*` / `*Model` / `*_SCHEMA_ID` shape), so this is the documented
+// extension point — no new plumbing required.
+pub use action_results_fb::{
+    decode_action_results, ActionResultRow, ActionResultsModel, ACTION_RESULTS_FILE_IDENTIFIER,
+    ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION,
+};
+pub use publish_queue_fb::{
+    decode_publish_queue, PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow,
+    PUBLISH_QUEUE_FILE_IDENTIFIER, PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
+};
 
 use crate::update_envelope::TypedProjectionData;
 

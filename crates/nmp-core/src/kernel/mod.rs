@@ -275,6 +275,20 @@ use std::time::{SystemTime, UNIX_EPOCH};
 // `KernelReducer::handle_relay_frame`. Substrate-grade (D0).
 pub use relay_frame::RelayFrame;
 
+/// Public decode surface for the typed-projection sidecar (re-exported at the
+/// crate root as `nmp_core::typed_projections`). The per-key decoders + their
+/// typed DTOs let out-of-tree Rust consumers read typed projections instead of
+/// string-keying the generic JSON `payload`. See the `typed_projections` module
+/// doc for the return-type / scope rationale.
+pub mod public_typed_projections {
+    pub use super::typed_projections::{
+        decode_action_results, decode_publish_queue, ActionResultRow, ActionResultsModel,
+        PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow, ACTION_RESULTS_FILE_IDENTIFIER,
+        ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION, PUBLISH_QUEUE_FILE_IDENTIFIER,
+        PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
+    };
+}
+
 use nostr::{
     event_references, first_event_ref, parse_profile, parse_relay_list, ratio,
     referenced_event_ids, root_event_id, short_hex, truncate, NostrEvent,
