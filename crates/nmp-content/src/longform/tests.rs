@@ -1,0 +1,209 @@
+//! Proof tests for the NIP-23 long-form **typed** snapshot projection.
+//!
+//! The kernel fires `on_kernel_event` ONLY for store outcomes `Inserted |
+//! Replaced` (supersession already resolved). These tests drive the observer
+//! the same way the kernel's fan-out does, then **decode the typed
+//! FlatBuffers sidecar payload back to its struct** (NOT a JSON map) and assert
+//! the winning `ArticleProjection` is present, the superseded older event is
+//! gone, fields are populated, and the projection is scoped (D5).
+
+use super::*;
+use crate::wire::longform_fb::{decode_longform_articles, LongformArticles};
+
+const AUTHOR_A: &str = "aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11a";
+const AUTHOR_B: &str = "bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22b";
+
+fn article_event(
+    id: &str,
+    author: &str,
+    d_tag: &str,
+    created_at: u64,
+    title: &str,
+    summary: &str,
+    image: &str,
+    body: &str,
+) -> KernelEvent {
+    KernelEvent {
+        id: id.to_string(),
+        author: author.to_string(),
+        kind: KIND_LONG_FORM_ARTICLE,
+        created_at,
+        tags: vec![
+            vec!["d".to_string(), d_tag.to_string()],
+            vec!["title".to_string(), title.to_string()],
+            vec!["summary".to_string(), summary.to_string()],
+            vec!["image".to_string(), image.to_string()],
+        ],
+        content: body.to_string(),
+    }
+}
+
+/// Decode the projection's typed sidecar payload back into the round-trip
+/// struct — the load-bearing assertion that output is a TYPED FlatBuffer, not a
+/// JSON `Value`.
+fn decode_snapshot(p: &LongformProjection) -> LongformArticles {
+    let entry = p.typed_projection();
+    // Schema identity the host's NL23 decoder keys off.
+    assert_eq!(entry.key, "nmp.nip23.articles");
+    assert_eq!(entry.schema_id, "nmp.nip23.articles");
+    assert_eq!(entry.file_identifier, "NL23");
+    decode_longform_articles(&entry.payload).expect("typed sidecar payload must decode as NL23")
+}
+
+/// The headline proof: two kind:30023 for the SAME (author, d_tag) at different
+/// `created_at` plus one unrelated article. The newest supersedes the older,
+/// the typed `ArticleProjection` carries populated fields, the body round-trips
+/// as a typed `ContentTreeWire`, and the snapshot is scoped to the observed set.
+#[test]
+fn supersession_keeps_newest_typed_article_and_is_scoped() {
+    let projection = LongformProjection::new();
+
+    // Older event for (AUTHOR_A, "rust-guide").
+    projection.on_kernel_event(&article_event(
+        &"1".repeat(64),
+        AUTHOR_A,
+        "rust-guide",
+        1_000,
+        "Old Title",
+        "Old summary",
+        "https://img.example/old.png",
+        "old body",
+    ));
+    // Newer event for the SAME coordinate — supersedes the older one. (The
+    // kernel only fires us with the winner; firing both here proves
+    // last-write-wins converges to the newest regardless of arrival order.)
+    projection.on_kernel_event(&article_event(
+        &"2".repeat(64),
+        AUTHOR_A,
+        "rust-guide",
+        2_000,
+        "New Title",
+        "New summary",
+        "https://img.example/new.png",
+        "new body",
+    ));
+    // Unrelated article (different author + d_tag) — must coexist, proving the
+    // map is keyed by the addressable coordinate, not flattened.
+    projection.on_kernel_event(&article_event(
+        &"3".repeat(64),
+        AUTHOR_B,
+        "nostr-intro",
+        1_500,
+        "Nostr Intro",
+        "An intro",
+        "https://img.example/nostr.png",
+        "intro body",
+    ));
+
+    let snap = decode_snapshot(&projection);
+
+    // Scope: exactly two coordinates survive — the superseded older one is gone.
+    assert_eq!(
+        snap.articles.len(),
+        2,
+        "feed holds one row per surviving coordinate"
+    );
+    assert_eq!(
+        snap.documents.len(),
+        2,
+        "documents hold one entry per surviving coordinate"
+    );
+
+    let addr_a = format!("{KIND_LONG_FORM_ARTICLE}:{AUTHOR_A}:rust-guide");
+    let addr_b = format!("{KIND_LONG_FORM_ARTICLE}:{AUTHOR_B}:nostr-intro");
+
+    // The winning (newest) article replaced the older one under the same key.
+    let doc_a = snap.documents.get(&addr_a).expect("AUTHOR_A document");
+    assert_eq!(doc_a.id, "2".repeat(64));
+    assert_eq!(doc_a.title.as_deref(), Some("New Title"));
+    assert_eq!(doc_a.created_at, 2_000);
+
+    // The older event's id must NOT appear anywhere.
+    let old_id = "1".repeat(64);
+    assert!(
+        !snap.documents.values().any(|d| d.id == old_id),
+        "superseded older event must be gone"
+    );
+
+    // Newest-first ordering in the feed list.
+    assert_eq!(snap.articles[0].address, addr_a);
+    assert_eq!(snap.articles[1].address, addr_b);
+
+    // Typed feed-summary fields are populated (title/summary/image/author).
+    let row_a = &snap.articles[0];
+    assert_eq!(row_a.title, "New Title");
+    assert_eq!(row_a.summary, "New summary");
+    assert_eq!(row_a.hero_image_url, "https://img.example/new.png");
+    assert_eq!(row_a.author_pubkey, AUTHOR_A);
+    assert_eq!(row_a.d_tag, "rust-guide");
+
+    // The full document carries the typed content tree body (round-tripped via
+    // the existing NFCT codec, not re-parsed) — the body is non-empty.
+    assert!(
+        !doc_a.content_tree.nodes.is_empty() || !doc_a.content_tree.roots.is_empty(),
+        "open document carries the rendered article body"
+    );
+}
+
+/// Non-30023 events are ignored — the projection only ever holds articles (D5
+/// scope discipline; an unrelated kind on the same observer stream is a no-op).
+#[test]
+fn ignores_non_article_kinds() {
+    let projection = LongformProjection::new();
+    let note = KernelEvent {
+        id: "f".repeat(64),
+        author: AUTHOR_A.to_string(),
+        kind: 1,
+        created_at: 1_000,
+        tags: vec![],
+        content: "just a note".to_string(),
+    };
+    projection.on_kernel_event(&note);
+
+    let snap = decode_snapshot(&projection);
+    assert!(snap.articles.is_empty());
+    assert!(snap.documents.is_empty());
+}
+
+/// An empty projection is a well-formed, present typed buffer (D1: never absent
+/// at the boundary — even with nothing to show, the payload decodes cleanly).
+#[test]
+fn empty_projection_is_well_formed() {
+    let projection = LongformProjection::new();
+    let snap = decode_snapshot(&projection);
+    assert!(snap.articles.is_empty());
+    assert!(snap.documents.is_empty());
+}
+
+/// A missing `title`/`summary`/`image` tag yields empty-string placeholders in
+/// the feed summary (D1), not a hidden row — and `None` (absent), not a present
+/// empty string, in the full document (raw protocol data preserved).
+#[test]
+fn missing_tags_become_placeholders_in_feed_and_none_in_document() {
+    let projection = LongformProjection::new();
+    let bare = KernelEvent {
+        id: "e".repeat(64),
+        author: AUTHOR_A.to_string(),
+        kind: KIND_LONG_FORM_ARTICLE,
+        created_at: 1_000,
+        tags: vec![vec!["d".to_string(), "bare".to_string()]],
+        content: "body only".to_string(),
+    };
+    projection.on_kernel_event(&bare);
+
+    let snap = decode_snapshot(&projection);
+    assert_eq!(snap.articles.len(), 1);
+    let row = &snap.articles[0];
+    // Feed summary: empty-string placeholders (D1 — never hide the row).
+    assert_eq!(row.title, "");
+    assert_eq!(row.summary, "");
+    assert_eq!(row.hero_image_url, "");
+
+    // Full document: raw `Option` preserved as `None` (the `has_*` presence flag
+    // round-trips absent distinctly from a present empty string).
+    let addr = format!("{KIND_LONG_FORM_ARTICLE}:{AUTHOR_A}:bare");
+    let doc = snap.documents.get(&addr).expect("document present");
+    assert_eq!(doc.title, None);
+    assert_eq!(doc.summary, None);
+    assert_eq!(doc.hero_image_url, None);
+}

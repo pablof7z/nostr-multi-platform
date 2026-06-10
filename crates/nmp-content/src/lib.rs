@@ -40,6 +40,7 @@ pub mod context;
 pub mod embed_projection;
 pub mod embed_registry;
 mod grouper;
+pub mod longform;
 pub mod markdown;
 pub mod mode;
 mod regex_set;
@@ -48,6 +49,9 @@ mod tokenizer;
 pub mod wire;
 
 pub use context::{render_context_can_descend, RenderContext};
+pub use longform::{
+    ArticleFeedItem, LongformProjection, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY,
+};
 pub use embed_projection::{
     resolve_embed_projection, ArticleProjection, EmbedKindProjection, EmbeddedEventEnvelope,
     HighlightProjection, ProfileProjection, RenderContextWire, ShortNoteProjection,

@@ -115,6 +115,36 @@ fn register_defaults_wires_wot_bootstrap_projection() {
     nmp_app_free(app);
 }
 
+#[test]
+fn register_defaults_longform_is_typed_only_not_in_json_map() {
+    let app = nmp_app_new();
+    assert!(!app.is_null(), "nmp_app_new returned null");
+
+    // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
+    nmp_app_template::register_defaults(unsafe { &mut *app });
+
+    // The NIP-23 long-form projection is registered ONLY as a typed FlatBuffer
+    // in the `typed_projections` sidecar (`AppHost::register_typed_snapshot_projection`),
+    // NEVER in the generic JSON `projections` map (that map is being retired).
+    // `nmp_app_read_projection_json` runs ONLY the JSON registry, so a null
+    // return for this key is the direct proof the projection did not leak into
+    // the JSON map — the exact mistake that got the prior attempt rejected.
+    //
+    // (The positive proof that the typed payload is a well-formed, decodable
+    // `NL23` FlatBuffer lives in-crate next to the projection:
+    // `nmp_content::longform::tests` decodes `typed_projection().payload` back
+    // to the typed struct — the same posture the wallet / nip29 typed
+    // projections prove their payloads.)
+    let key = CString::new("nmp.nip23.articles").unwrap();
+    let raw = nmp_app_read_projection_json(app, key.as_ptr());
+    assert!(
+        raw.is_null(),
+        "longform projection must be typed-only — it must NOT appear in the JSON projections map"
+    );
+
+    nmp_app_free(app);
+}
+
 fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> String {
     let ns_c = CString::new(namespace).unwrap();
     let json_c = CString::new(action_json).unwrap();

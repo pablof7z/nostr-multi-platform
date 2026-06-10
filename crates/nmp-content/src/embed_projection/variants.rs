@@ -51,7 +51,7 @@ pub struct ShortNoteProjection {
 }
 
 /// Projection payload for a kind:30023 long-form article embed.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArticleProjection {
     /// 64-character hex event id.
