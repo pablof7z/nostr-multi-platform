@@ -1656,6 +1656,22 @@ impl NmpApp {
             .unwrap_or_default()
     }
 
+    /// Test-only: run every registered **typed** snapshot projection directly
+    /// against the app's shared registry, bypassing the actor/kernel tick. The
+    /// typed counterpart to [`Self::run_snapshot_projections_for_test`] — lets
+    /// the FFI registration tests assert that a projection registered through
+    /// the `AppHost::register_typed_snapshot_projection` trait seam surfaces in
+    /// the typed sidecar (`run_typed`).
+    #[cfg(test)]
+    pub(crate) fn run_typed_snapshot_projections_for_test(
+        &self,
+    ) -> Vec<nmp_core::TypedProjectionData> {
+        self.snapshot_projections
+            .lock()
+            .map(|registry| registry.run_typed())
+            .unwrap_or_default()
+    }
+
     /// Test-only direct execution path into the action registry.
     ///
     /// Bypasses [`ActionRegistry::start`] (which needs a
@@ -2170,6 +2186,14 @@ impl nmp_core::substrate::AppHost for NmpApp {
         F: Fn() -> serde_json::Value + Send + Sync + 'static,
     {
         NmpApp::register_snapshot_projection(self, key, f);
+    }
+
+    fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
+    where
+        K: Into<String>,
+        F: Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
+    {
+        NmpApp::register_typed_snapshot_projection(self, key, f);
     }
 
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
