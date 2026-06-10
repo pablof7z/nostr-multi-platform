@@ -453,6 +453,77 @@ fn resolve_returns_inbox_relay_reason_for_p_tags() {
     }
 }
 
+// ─── Fail-closed empty-write-set tests (audit finding 13) ──────────────────
+
+/// Regression guard for audit finding 13 (MEDIUM): when the active account has
+/// a cached kind:10002 whose write set is explicitly empty (all entries are
+/// read-marked), the resolver MUST return an empty set for a non-discovery kind
+/// (`NoTargets`), NOT fall through to `local_write_relays`.
+///
+/// Rationale: the local_write_relays bootstrap fallback exists only for the
+/// cold-start window where the user has *never* published a kind:10002 (lookup
+/// returns `None`). Once a kind:10002 is on file the author has deliberately
+/// expressed their write preference; an empty write set is a valid — if
+/// unusual — configuration meaning "publish nowhere". Overriding it with
+/// locally configured relays would violate D3 (outbox automatic: routing from
+/// durable state, not a hardcoded fallback).
+#[test]
+fn resolve_fail_closed_when_kind10002_has_only_read_relays_non_discovery() {
+    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    // kind:10002 with a single read-only relay (no write entries).
+    store_kind10002(
+        store.as_ref(),
+        AUTHOR_HEX,
+        vec![vec!["r".into(), "wss://read-only.example".into(), "read".into()]],
+    );
+    // Active account + non-empty local_write_relays — the fallback must NOT fire.
+    let resolver = Nip65OutboxResolver::with_local_relays(
+        store,
+        new_indexer_relays_slot(),
+        local_write_slot_with(vec!["wss://local-write.example".to_string()]),
+        Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
+    );
+    // Non-discovery kind (kind:1 note).
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    assert!(
+        out.is_empty(),
+        "kind:10002 with only read relays must resolve to empty (fail-closed, NoTargets) \
+         for a non-discovery kind; local_write_relays must NOT be used when kind:10002 \
+         exists — got {out:?}"
+    );
+    // Confirm the read relay itself is also absent (it's not a write relay).
+    let urls = urls_of(&out);
+    assert!(!urls.contains("wss://read-only.example"));
+    assert!(!urls.contains("wss://local-write.example"));
+}
+
+/// Complementary pin: the bootstrap fallback MUST still fire when the active
+/// account has NO kind:10002 cached at all (lookup returns `None`). This pins
+/// the deliberate bootstrap behavior so the fix cannot overshoot.
+#[test]
+fn resolve_local_write_fallback_fires_when_no_kind10002_at_all() {
+    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    // No kind:10002 stored at all → lookup returns None.
+    let resolver = Nip65OutboxResolver::with_local_relays(
+        store,
+        new_indexer_relays_slot(),
+        local_write_slot_with(vec!["wss://local-write.example".to_string()]),
+        Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
+    );
+    // Non-discovery kind — bootstrap fallback must fire.
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    assert_eq!(
+        urls_of(&out),
+        BTreeSet::from(["wss://local-write.example".to_string()]),
+        "active account with no kind:10002 must fall back to local_write_relays \
+         (bootstrap window — user has onboarded but kind:10002 not yet confirmed)"
+    );
+    assert!(matches!(
+        find_reason(&out, "wss://local-write.example"),
+        Some(RelaySelectionReason::LocalConfigRelay)
+    ));
+}
+
 /// Code path 5 — explicit targets short-circuit and every relay carries the
 /// `RelaySelectionReason::Explicit` variant.
 #[test]

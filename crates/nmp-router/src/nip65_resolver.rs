@@ -179,22 +179,36 @@ impl OutboxResolver for Nip65OutboxResolver {
 
         // 2. Author write-relays (when a kind:10002 is cached).
         //
-        // If the author has no kind:10002 on file (or has an empty write set),
-        // `out` stays empty here. For a non-discovery kind that is fail-closed
-        // per D3: the engine maps an empty resolve to
-        // `PublishEngineError::NoTargets` and surfaces a visible toast. This
-        // mirrors T134's subscription-side `unroutable_authors` discipline —
-        // unroutable is surfaced honestly, never silently widened. Discovery
-        // kinds escape the empty set via step 3 below.
-        if let Some((writes, _reads)) = self.lookup_kind10002(author_pubkey) {
-            for url in writes {
+        // Two distinct cases:
+        //
+        // a) `lookup_kind10002` returns `None` — the author has no kind:10002
+        //    on file at all. This is the cold-start / bootstrap window: the
+        //    active account has onboarded but the just-published kind:10002 has
+        //    not yet come back from a relay. In this case the local_write_relays
+        //    fallback (step 2b) is consulted so the user can still publish.
+        //
+        // b) `lookup_kind10002` returns `Some((writes, _))` — a kind:10002
+        //    *exists*, even if `writes` is empty (all entries are read-marked).
+        //    An empty write set is a deliberate "publish nowhere" signal; the
+        //    local_write_relays fallback must NOT override it. For a
+        //    non-discovery kind this is fail-closed per D3: the engine maps the
+        //    empty resolve to `PublishEngineError::NoTargets` and surfaces a
+        //    visible toast. This mirrors T134's subscription-side
+        //    `unroutable_authors` discipline — unroutable is surfaced honestly,
+        //    never silently widened. Discovery kinds escape via step 3 below.
+        let kind10002 = self.lookup_kind10002(author_pubkey);
+        if let Some((writes, _reads)) = &kind10002 {
+            for url in writes.iter().cloned() {
                 out.push(ResolvedRelay {
                     url,
                     reason: RelaySelectionReason::AuthorWriteRelay,
                 });
             }
         }
-        if out.is_empty() && self.is_active_account(author_pubkey) {
+        // Bootstrap fallback: only when no kind:10002 exists at all (None).
+        // A Some with an empty write list is a deliberate "publish nowhere"
+        // — do not override it with locally configured relays.
+        if kind10002.is_none() && self.is_active_account(author_pubkey) {
             if let Ok(guard) = self.local_write_relays.lock() {
                 for url in guard.as_slice().iter().cloned() {
                     out.push(ResolvedRelay {
