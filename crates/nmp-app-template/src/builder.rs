@@ -420,6 +420,20 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.register_snapshot_projection(key, f);
     }
 
+    fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
+    where
+        K: Into<String>,
+        F: Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
+    {
+        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
+        // `&self` is safe — all AppHost methods take `&self`.
+        let app: &NmpApp = unsafe { &*self.app };
+        // Forward into the same shared registry the generic projection seam
+        // writes to (ADR-0037 Commitment 4: typed + generic share the key
+        // space). Fully qualified to the inherent `NmpApp` method.
+        NmpApp::register_typed_snapshot_projection(app, key, f);
+    }
+
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_coverage_hook(hook);

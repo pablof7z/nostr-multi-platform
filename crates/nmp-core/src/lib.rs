@@ -296,8 +296,11 @@ pub mod __ffi_internal {
     };
     // ADR-0037: the typed-projection closure type lives alongside the generic
     // `ProjectionFn` in `snapshot_registry`; `nmp-ffi` reaches it through this
-    // internal surface to type the `NmpApp::register_typed_snapshot_projection`
-    // seam (the typed counterpart to `register_snapshot_projection`).
+    // internal surface to type the `register_typed_snapshot_projection` seam
+    // (the typed counterpart to `register_snapshot_projection`). That seam is
+    // now on the `AppHost` trait (`substrate::AppHost`), not only the concrete
+    // `NmpApp`, so reusable protocol/feed crates registering through `&impl
+    // AppHost` can wire typed projections for the JSON→typed snapshot migration.
     pub use crate::kernel::snapshot_registry::TypedProjectionFn;
     pub use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 }

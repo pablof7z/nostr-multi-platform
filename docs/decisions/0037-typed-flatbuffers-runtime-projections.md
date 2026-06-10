@@ -180,6 +180,24 @@ read. The generic subtree for a piloted key is only dropped once the per-key
   table — the transport schema is closed against app churn (the structural opposite
   of the ADR-0025 bespoke-cluster anti-pattern).
 
+### Registration seam lives on the `AppHost` trait (not concrete-only)
+
+`register_typed_snapshot_projection` is on the `AppHost` trait
+(`crates/nmp-core/src/substrate/app_host.rs`), mirroring the generic
+`register_snapshot_projection`, and is implemented by both `AppHost` impls —
+`NmpApp` (`crates/nmp-ffi/src/lib.rs`) and `NmpAppBuilder` (delegating into the
+same shared registry, `crates/nmp-app-template/src/builder.rs`). It was
+originally concrete-only on `NmpApp` (`crates/nmp-ffi/src/snapshot.rs`).
+**Rationale:** reusable protocol/feed crates register their substrate pieces
+through `register_runtime(app: &impl AppHost)` (e.g. `nmp-wot`,
+`nmp-app-template::register_defaults`), so they only ever see the trait. A
+concrete-only typed seam meant those crates could register a *generic* `Value`
+projection but not a *typed* one — which would block them from completing the
+JSON→typed snapshot migration this ADR drives. Promoting the seam to the trait
+is a pure mechanism addition (no projection migrated by it); the closure returns
+`Option<TypedProjectionData>` and the trait already carries generic closure
+methods, so adding one more generic method changes no object-safety property.
+
 ### What this does NOT change
 
 - `payload:Value` stays in `SnapshotFrame` **permanently**. It remains the sole

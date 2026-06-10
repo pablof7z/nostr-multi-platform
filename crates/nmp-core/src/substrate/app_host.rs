@@ -16,6 +16,7 @@ use crate::slots::{
 };
 use crate::store::EventStore;
 use crate::subs::PlanCoverageHook;
+use crate::update_envelope::TypedProjectionData;
 use crate::{
     ActorCommand, AppRelaySlot, KernelEventObserver, KernelEventObserverId, KindFilter,
     RawEventObserver, RawEventObserverId,
@@ -37,6 +38,27 @@ pub trait AppHost: ActionRegistrar {
     where
         K: Into<String>,
         F: Fn() -> serde_json::Value + Send + Sync + 'static;
+
+    /// Register a **typed** FlatBuffers projection closure under `key` — the
+    /// typed-sidecar counterpart to [`AppHost::register_snapshot_projection`]
+    /// (ADR-0037). The closure returns the projection's opaque, host-declared
+    /// FlatBuffers payload ([`TypedProjectionData`]) carried verbatim in every
+    /// `SnapshotFrame`'s `typed_projections` sidecar, or `None` when there is
+    /// nothing to emit this tick.
+    ///
+    /// This method lives on the trait — not only on the concrete `NmpApp` — so
+    /// reusable protocol/feed crates that register through `&impl AppHost`
+    /// (e.g. `register_runtime`) can wire typed projections without depending
+    /// on the C-ABI crate. It mirrors `register_snapshot_projection`: `&self`
+    /// (the registry mutation is a lock-and-insert), and the same host-chosen
+    /// key space shared with the generic registry (ADR-0037 Commitment 4).
+    ///
+    /// Like the generic closure, `f` runs on the actor thread inside the
+    /// snapshot tick — it MUST be non-blocking (D8).
+    fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
+    where
+        K: Into<String>,
+        F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static;
 
     fn set_coverage_hook(&self, hook: PlanCoverageHook);
 

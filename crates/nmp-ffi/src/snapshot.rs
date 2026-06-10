@@ -116,6 +116,8 @@ pub extern "C" fn nmp_app_register_snapshot_projection(
 mod tests {
     use super::super::{nmp_app_free, nmp_app_new};
     use super::*;
+    use nmp_core::substrate::AppHost;
+    use nmp_core::TypedProjectionData;
     use std::ffi::CString;
 
     /// A registered C projector contributes a parsed JSON value under its key.
@@ -209,6 +211,47 @@ mod tests {
                 .contains_key("test.counter"),
             "a null projector must register nothing"
         );
+        nmp_app_free(app);
+    }
+
+    /// ADR-0037 — the typed-projection registration seam is reachable through
+    /// the `AppHost` **trait** (was concrete-only on `NmpApp`), so a reusable
+    /// protocol/feed crate that wires through `register_runtime(app: &impl
+    /// AppHost)` can register a typed FlatBuffers projection. This mirrors
+    /// `registered_typed_projection_surfaces_through_run_typed`
+    /// (`nmp-core/src/kernel/snapshot_registry_tests.rs`) but drives the
+    /// registration through `&impl AppHost` — the exact path protocol crates
+    /// use — and asserts the typed projection surfaces in the typed sidecar.
+    #[test]
+    fn typed_projection_registered_through_trait_surfaces_in_sidecar() {
+        // Register through `&impl AppHost`, NOT the inherent `NmpApp` method —
+        // this is the seam protocol crates reach via `register_runtime`.
+        fn register_via_trait(host: &impl AppHost) {
+            host.register_typed_snapshot_projection("nmp.feed.home", || {
+                Some(TypedProjectionData {
+                    key: "nmp.feed.home".to_string(),
+                    schema_id: "nmp.nip01.timeline".to_string(),
+                    schema_version: 1,
+                    file_identifier: "NFTS".to_string(),
+                    payload: vec![0xde, 0xad, 0xbe, 0xef],
+                })
+            });
+        }
+
+        let app = nmp_app_new();
+        // SAFETY: `nmp_app_new` never returns null.
+        let app_ref = unsafe { &*app };
+        register_via_trait(app_ref);
+
+        let typed = app_ref.run_typed_snapshot_projections_for_test();
+        let entry = typed
+            .iter()
+            .find(|d| d.key == "nmp.feed.home")
+            .expect("a typed projection registered through the AppHost trait must surface in run_typed");
+        assert_eq!(entry.schema_id, "nmp.nip01.timeline");
+        assert_eq!(entry.schema_version, 1);
+        assert_eq!(entry.file_identifier, "NFTS");
+        assert_eq!(entry.payload, vec![0xde, 0xad, 0xbe, 0xef]);
         nmp_app_free(app);
     }
 }
