@@ -72,6 +72,18 @@ struct FollowListSnapshotPayload<'a> {
     follows: &'a [FollowEntry],
 }
 
+/// Owned snapshot of the active account's follow list — the typed read-model
+/// behind both [`FollowListProjection::snapshot_json`] (the authoritative serde
+/// shape) and [`FollowListProjection::snapshot`] (the typed-FB sidecar source,
+/// ADR-0037). A named field (rather than a bare `Vec`) leaves room to add
+/// sibling fields later without a breaking re-shape, and mirrors the
+/// `{"follows": […]}` JSON object the host already consumes.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct FollowListSnapshot {
+    /// The active account's follows (empty when no account / no kind:3 yet).
+    pub follows: Vec<FollowEntry>,
+}
+
 /// Accumulates NIP-02 kind:3 contact lists and exposes the active account's
 /// follow list as a formatted snapshot.
 ///
@@ -110,26 +122,27 @@ impl FollowListProjection {
         self.follows.lock().map(|g| g.len()).unwrap_or(0)
     }
 
-    /// The snapshot JSON for the `"nmp.follow_list"` projection key.
+    /// The active account's follow list as an owned typed snapshot — the
+    /// single source of truth behind both [`Self::snapshot_json`] (serde shape)
+    /// and the typed-FB sidecar (ADR-0037).
     ///
-    /// Returns the active account's follow list as
-    /// `{"follows": [<FollowEntry>, …]}`. An empty array when:
+    /// An empty `follows` vector when:
     ///   * No active account (`active_pubkey` slot is `None`).
     ///   * No kind:3 event for the active account has arrived yet.
     ///   * The active account's kind:3 has zero `p` tags (follows nobody).
     ///   * Any mutex is poisoned (D6).
     #[must_use]
-    pub fn snapshot_json(&self) -> serde_json::Value {
+    pub fn snapshot(&self) -> FollowListSnapshot {
         let active = match self.active_pubkey.lock() {
             Ok(guard) => guard.as_ref().cloned(),
             Err(_) => None,
         };
 
-        let follows_vec: Vec<FollowEntry> = match active {
+        let follows = match active {
             None => Vec::new(),
             Some(pubkey) => {
                 let Ok(follows_guard) = self.follows.lock() else {
-                    return serde_json::json!({ "follows": [] });
+                    return FollowListSnapshot::default();
                 };
                 match follows_guard.get(&pubkey) {
                     None => Vec::new(),
@@ -141,8 +154,20 @@ impl FollowListProjection {
             }
         };
 
+        FollowListSnapshot { follows }
+    }
+
+    /// The snapshot JSON for the `"nmp.follow_list"` projection key.
+    ///
+    /// Returns the active account's follow list as
+    /// `{"follows": [<FollowEntry>, …]}`. Delegates to [`Self::snapshot`] so the
+    /// serde shape and the typed-FB sidecar never drift. An empty array under
+    /// the same conditions documented on [`Self::snapshot`].
+    #[must_use]
+    pub fn snapshot_json(&self) -> serde_json::Value {
+        let snapshot = self.snapshot();
         serde_json::to_value(FollowListSnapshotPayload {
-            follows: &follows_vec,
+            follows: &snapshot.follows,
         })
         .unwrap_or_else(|_| serde_json::json!({ "follows": [] }))
     }
