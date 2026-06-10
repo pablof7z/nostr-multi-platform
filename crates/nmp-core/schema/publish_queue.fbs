@@ -1,0 +1,71 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `publish_queue` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
+// `serde_json` serialisation of `publish_queue_snapshot()` (a slice of
+// `PublishQueueEntry`) under the JSON key `"publish_queue"`. That generic
+// `Value` projection stays the source of truth (inserted unchanged); this
+// buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections`
+// sidecar (ADR-0037) under the SAME key. A host with a `KPBQ` decoder prefers
+// this typed payload; an un-updated host falls back to the generic `Value`
+// subtree. Purely additive (Wave C).
+//
+// Field-for-field mirror of the SERIALISED `PublishQueueEntry` shape (the two
+// `#[serde(skip)]` fields — `signed_event`, `target` — never cross the wire and
+// are intentionally absent here). `relay_outcomes` carries the per-relay
+// terminal verdict map; it is empty while the publish is still in flight
+// (`#[serde(skip_serializing_if = "Vec::is_empty")]` drops the JSON key in that
+// case — the typed buffer carries an empty vector, equivalent). Order is
+// preserved verbatim from the producer slice.
+//
+// D0: a publish queue/history is a generic publish-pipeline framework noun (the
+// settled history of a store-and-forward transport) — it carries no
+// protocol-specific (NIP-NN) semantics, so it is kernel-owned and typed here.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/publish_queue.fbs
+
+// One relay's terminal verdict for a settled publish — a field-for-field mirror
+// of the SERIALISED `RelayAckOutcome` (`message` / `relay_reason` are emitted
+// as empty strings when the producer skips them in JSON).
+table RelayAckOutcome {
+  // Relay websocket URL this verdict is for.
+  relay_url:string;
+  // `"ok"` for an accepted relay, `"failed"` for `FailedAfterRetries`.
+  status:string;
+  // Empty for `"ok"`; the engine's give-up reason for `"failed"`.
+  message:string;
+  // Per-relay selection rationale captured at publish time (raw hex pubkey
+  // verbatim — D6 forbids display:: abbreviation in projection code).
+  relay_reason:string;
+}
+
+table PublishQueueEntry {
+  // Hex64 event id of the published event.
+  event_id:string;
+  // Nostr event kind number.
+  kind:uint;
+  // Pre-formatted English kind label (e.g. `"Note"`). Kernel-owned.
+  title:string;
+  // Number of relays targeted (mirrors the JSON `usize`; `uint` is the widest
+  // portable count type the shells share).
+  target_relays:uint;
+  // Lifecycle status token (`"accepted_locally"` / `"ok"` / `"failed"` / ...).
+  status:string;
+  // Rust-owned Retry-button enablement decision.
+  can_retry:bool;
+  // Per-relay terminal outcomes, in insertion order. Empty while still settling.
+  relay_outcomes:[RelayAckOutcome];
+}
+
+table PublishQueueSnapshot {
+  entries:[PublishQueueEntry];
+}
+
+file_identifier "KPBQ";
+root_type PublishQueueSnapshot;

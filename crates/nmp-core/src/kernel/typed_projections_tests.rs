@@ -10,9 +10,11 @@
 //! registry, never the kernel-owned built-ins).
 
 use super::typed_projections::{
-    decode_configured_relays, decode_relay_role_options, decode_settings_hub,
-    CONFIGURED_RELAYS_FILE_IDENTIFIER, CONFIGURED_RELAYS_SCHEMA_ID,
-    CONFIGURED_RELAYS_SCHEMA_VERSION, RELAY_ROLE_OPTIONS_FILE_IDENTIFIER,
+    decode_configured_relays, decode_outbox_summary, decode_publish_outbox, decode_publish_queue,
+    decode_relay_role_options, decode_settings_hub, CONFIGURED_RELAYS_FILE_IDENTIFIER,
+    CONFIGURED_RELAYS_SCHEMA_ID, CONFIGURED_RELAYS_SCHEMA_VERSION, OUTBOX_SUMMARY_FILE_IDENTIFIER,
+    OUTBOX_SUMMARY_SCHEMA_ID, PUBLISH_OUTBOX_FILE_IDENTIFIER, PUBLISH_OUTBOX_SCHEMA_ID,
+    PUBLISH_QUEUE_FILE_IDENTIFIER, PUBLISH_QUEUE_SCHEMA_ID, RELAY_ROLE_OPTIONS_FILE_IDENTIFIER,
     RELAY_ROLE_OPTIONS_SCHEMA_ID, SETTINGS_HUB_FILE_IDENTIFIER, SETTINGS_HUB_SCHEMA_ID,
 };
 use super::*;
@@ -152,6 +154,91 @@ fn relay_settings_builtins_emit_typed_sidecars_alongside_json() {
     );
 }
 
+/// Wave C: all three publish/outbox built-ins land in the `typed_projections`
+/// sidecar of the emitted frame, decode back to their typed structs, AND keep
+/// their generic `Value` entries (additivity).
+///
+/// `publish_queue` / `publish_outbox` are empty in a fresh kernel (no publish
+/// in flight) — the populated-rows round-trip is carried by the per-codec
+/// `*_fb_tests.rs` unit tests (driving the publish engine here would add no
+/// coverage the codecs don't already have). This test pins the end-to-end frame
+/// contract: typed sidecar present, decodes, count-agrees with JSON, and the
+/// JSON entry survives. `outbox_summary` is non-empty even at `total = 0`, so it
+/// also proves field-for-field string agreement through the real frame.
+#[test]
+fn publish_cluster_builtins_emit_typed_sidecars_alongside_json() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let (value, typed) = kernel.make_update_typed_for_test(true);
+
+    let projections = value
+        .get("projections")
+        .and_then(serde_json::Value::as_object)
+        .expect("snapshot must carry a projections object");
+
+    // --- publish_queue ------------------------------------------------------
+    let json_queue = projections
+        .get("publish_queue")
+        .and_then(serde_json::Value::as_array)
+        .expect("the generic JSON `publish_queue` entry must remain (additive)");
+    let pq = typed_entry(&typed, "publish_queue");
+    assert_eq!(pq.schema_id, PUBLISH_QUEUE_SCHEMA_ID);
+    assert_eq!(pq.file_identifier.as_bytes(), PUBLISH_QUEUE_FILE_IDENTIFIER);
+    let decoded_queue =
+        decode_publish_queue(&pq.payload).expect("publish_queue sidecar must decode");
+    assert_eq!(
+        decoded_queue.entries.len(),
+        json_queue.len(),
+        "typed and JSON publish_queue must carry the same entry count"
+    );
+
+    // --- publish_outbox -----------------------------------------------------
+    let json_outbox = projections
+        .get("publish_outbox")
+        .and_then(serde_json::Value::as_array)
+        .expect("the generic JSON `publish_outbox` entry must remain (additive)");
+    let po = typed_entry(&typed, "publish_outbox");
+    assert_eq!(po.schema_id, PUBLISH_OUTBOX_SCHEMA_ID);
+    assert_eq!(po.file_identifier.as_bytes(), PUBLISH_OUTBOX_FILE_IDENTIFIER);
+    let decoded_outbox =
+        decode_publish_outbox(&po.payload).expect("publish_outbox sidecar must decode");
+    assert_eq!(
+        decoded_outbox.items.len(),
+        json_outbox.len(),
+        "typed and JSON publish_outbox must carry the same item count"
+    );
+
+    // --- outbox_summary (non-empty even at total = 0) -----------------------
+    let os_json = projections
+        .get("outbox_summary")
+        .and_then(serde_json::Value::as_object)
+        .expect("the generic JSON `outbox_summary` entry must remain (additive)");
+    let os = typed_entry(&typed, "outbox_summary");
+    assert_eq!(os.schema_id, OUTBOX_SUMMARY_SCHEMA_ID);
+    assert_eq!(os.file_identifier.as_bytes(), OUTBOX_SUMMARY_FILE_IDENTIFIER);
+    let decoded_summary =
+        decode_outbox_summary(&os.payload).expect("outbox_summary sidecar must decode");
+    // The kernel owns the English strings even with an empty outbox.
+    assert!(
+        !decoded_summary.title.is_empty(),
+        "outbox_summary.title is always non-empty (D1)"
+    );
+    assert_eq!(
+        os_json.get("title").and_then(serde_json::Value::as_str),
+        Some(decoded_summary.title.as_str()),
+        "typed and JSON outbox_summary.title must agree"
+    );
+    assert_eq!(
+        os_json.get("subtitle").and_then(serde_json::Value::as_str),
+        Some(decoded_summary.subtitle.as_str()),
+        "typed and JSON outbox_summary.subtitle must agree"
+    );
+    assert_eq!(
+        os_json.get("total").and_then(serde_json::Value::as_u64),
+        Some(u64::from(decoded_summary.total)),
+        "typed and JSON outbox_summary.total must agree"
+    );
+}
+
 /// The Tier-2 built-in sidecars are emitted even when NO host typed projection
 /// is registered — they do not depend on the registry path. (A kernel built
 /// outside the actor has no projection slot bound at all.)
@@ -163,10 +250,14 @@ fn builtins_emit_without_any_host_typed_registration() {
     assert!(keys.contains("configured_relays"));
     assert!(keys.contains("relay_role_options"));
     assert!(keys.contains("settings_hub"));
+    // Wave C publish/outbox cluster.
+    assert!(keys.contains("publish_queue"));
+    assert!(keys.contains("publish_outbox"));
+    assert!(keys.contains("outbox_summary"));
     assert_eq!(
         typed.len(),
-        3,
-        "exactly the three Tier-2 built-ins, no host registrations: {typed:?}"
+        6,
+        "exactly the six Tier-2 built-ins, no host registrations: {typed:?}"
     );
 }
 

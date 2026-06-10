@@ -44,13 +44,24 @@
 //! - **D0**: these are kernel-owned *framework* projections. Relay configuration
 //!   (`configured_relays` / `relay_role_options`) and the relay-count settings
 //!   summary (`settings_hub`) are generic transport/settings primitives, not app
-//!   nouns — they carry no protocol-specific (NIP-NN) semantics.
-//! - **D5**: each buffer is screen-shaped (the exact shape a settings screen
-//!   binds), bounded by the configured relay set — no unbounded fan-out.
+//!   nouns — they carry no protocol-specific (NIP-NN) semantics. The Wave C
+//!   publish cluster (`publish_queue` / `publish_outbox` / `outbox_summary`) is
+//!   likewise generic: it is the in-flight + settled state of the kernel's
+//!   store-and-forward publish pipeline — a framework transport noun. Event
+//!   *kinds* appear only as opaque `uint` passthroughs (the kernel pre-formats
+//!   every kind-dependent label/icon string), so no NIP semantics leak into the
+//!   shell.
+//! - **D5**: each buffer is screen-shaped (the exact shape a settings or outbox
+//!   screen binds), bounded by the configured relay set / the in-flight publish
+//!   set — no unbounded fan-out.
 //! - **D6**: every `decode_*` returns `Err(String)` on malformed input; no panic
 //!   at the boundary.
 
+mod builtins_publish;
 mod configured_relays_fb;
+mod outbox_summary_fb;
+mod publish_outbox_fb;
+mod publish_queue_fb;
 mod relay_role_options_fb;
 mod settings_hub_fb;
 
@@ -70,9 +81,32 @@ pub(crate) use settings_hub_fb::{
     encode_settings_hub, SettingsHubModel, SETTINGS_HUB_FILE_IDENTIFIER, SETTINGS_HUB_SCHEMA_ID,
     SETTINGS_HUB_SCHEMA_VERSION,
 };
+// Wave C publish/outbox cluster. The nested-row types (`PublishQueueEntryRow`,
+// `RelayAckOutcomeRow`, `PublishOutboxItemRow`, `PublishOutboxRelayRow`) are
+// named in the inline mappings in `builtin_typed_projections` below — where the
+// `pub(super)`/`pub(crate)` DTO types are reachable — so they are re-exported
+// here alongside their `Model` + encode entry points.
+pub(crate) use outbox_summary_fb::{
+    encode_outbox_summary, OutboxSummaryModel, OUTBOX_SUMMARY_FILE_IDENTIFIER,
+    OUTBOX_SUMMARY_SCHEMA_ID, OUTBOX_SUMMARY_SCHEMA_VERSION,
+};
+pub(crate) use publish_outbox_fb::{
+    encode_publish_outbox, PublishOutboxItemRow, PublishOutboxModel, PublishOutboxRelayRow,
+    PUBLISH_OUTBOX_FILE_IDENTIFIER, PUBLISH_OUTBOX_SCHEMA_ID, PUBLISH_OUTBOX_SCHEMA_VERSION,
+};
+pub(crate) use publish_queue_fb::{
+    encode_publish_queue, PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow,
+    PUBLISH_QUEUE_FILE_IDENTIFIER, PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
+};
 
 #[cfg(test)]
 pub(crate) use configured_relays_fb::decode_configured_relays;
+#[cfg(test)]
+pub(crate) use outbox_summary_fb::decode_outbox_summary;
+#[cfg(test)]
+pub(crate) use publish_outbox_fb::decode_publish_outbox;
+#[cfg(test)]
+pub(crate) use publish_queue_fb::decode_publish_queue;
 #[cfg(test)]
 pub(crate) use relay_role_options_fb::decode_relay_role_options;
 #[cfg(test)]
@@ -99,7 +133,7 @@ impl super::Kernel {
     /// D6: pure encode, no panics, no allocations beyond the buffers; called on
     /// the actor thread inside the snapshot tick (D8: non-blocking).
     pub(in crate::kernel) fn builtin_typed_projections(&self) -> Vec<TypedProjectionData> {
-        let mut out = Vec::with_capacity(3);
+        let mut out = Vec::with_capacity(6);
 
         // `configured_relays` — encoded from the SAME `AppRelay` slice the JSON
         // path serialises (`configured_relays_snapshot()`).
@@ -151,6 +185,13 @@ impl super::Kernel {
             payload: encode_settings_hub(&settings_hub),
         });
 
+        // Wave C publish cluster (`publish_queue` / `publish_outbox` /
+        // `outbox_summary`). Extracted to `builtins_publish.rs` to keep this
+        // file under the LOC ceiling: the DTO→Row mappings are heavier (nested
+        // rows) and must be inlined where the `pub(super)`/`pub(crate)` DTO
+        // types are reachable, but they stay under the same owner.
+        out.extend(self.publish_cluster_typed_projections());
+
         out
     }
 
@@ -164,9 +205,9 @@ impl super::Kernel {
     /// explicit drop (not just an append) because the host-side sidecar consumer
     /// matches by the FIRST entry with a given key — a colliding host entry left
     /// in the vector would shadow the built-in and silently diverge from the JSON
-    /// rule. Today nothing collides with the three relay/settings keys, but this
-    /// is the Wave C template for ~20 more built-ins, so the contract is enforced
-    /// here once.
+    /// rule. Today nothing collides with the six relay/settings/publish keys, but
+    /// this is the Wave C template for ~20 more built-ins, so the contract is
+    /// enforced here once.
     pub(in crate::kernel) fn merge_builtin_typed_projections(
         &self,
         host: Vec<TypedProjectionData>,
