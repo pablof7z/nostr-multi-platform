@@ -106,6 +106,15 @@ pub extern "C" fn nmp_app_chirp_register(
     let zaps_observer_id =
         app_ref.register_event_observer(Arc::clone(&zaps_proj) as Arc<dyn KernelEventObserver>);
     if zaps_observer_id.0 != 0 {
+        // Typed `"nmp.nip57.zaps"` sidecar (ADR-0037), emitted ALONGSIDE the
+        // generic `Value` projection below — never replacing it. A host with an
+        // `NZAP` decoder prefers the typed payload; an un-updated host falls
+        // back to the generic subtree. The extra `Arc` clone goes to the typed
+        // closure; the last clone is consumed by the generic `move` closure.
+        let typed_zaps_proj = Arc::clone(&zaps_proj);
+        app_ref.register_typed_snapshot_projection("nmp.nip57.zaps", move || {
+            zaps_typed_projection(&typed_zaps_proj)
+        });
         app_ref.register_snapshot_projection("nmp.nip57.zaps", move || zaps_proj.snapshot_json());
     }
 
@@ -343,7 +352,65 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
         return;
     }
 
+    // Typed `"nmp.follow_list"` sidecar (ADR-0037), emitted ALONGSIDE the
+    // generic `Value` projection below — never replacing it. The registration
+    // KEY stays `"nmp.follow_list"`; the typed payload's SCHEMA_ID is
+    // `"nmp.nip02.follow_list"` (the key/schema_id split mirrors wallet). A host
+    // with an `NF02` decoder prefers the typed payload; an un-updated host falls
+    // back to the generic subtree. The extra `Arc` clone goes to the typed
+    // closure; the last clone is consumed by the generic `move` closure.
+    let typed_projection = Arc::clone(&projection);
+    app_ref.register_typed_snapshot_projection("nmp.follow_list", move || {
+        follow_list_typed_projection(&typed_projection)
+    });
+
     // Output side: the no-argument snapshot read runs on the actor thread
     // inside each snapshot tick. The `move` consumes this last `Arc`.
     app_ref.register_snapshot_projection("nmp.follow_list", move || projection.snapshot_json());
+}
+
+/// Build the typed `"nmp.nip57.zaps"` sidecar entry from the live zaps
+/// projection. Always emits (parity with the generic projection, which always
+/// contributes `{"totals":{}}`): an empty session yields an empty typed buffer.
+///
+/// Extracted from the `register_typed_snapshot_projection` closure so the
+/// registration's schema identity (`key` / `schema_id` / `file_identifier`) and
+/// the encode are unit-testable without spinning the actor (Wave A proof test).
+pub(crate) fn zaps_typed_projection(
+    proj: &nmp_nip57::ZapsAggregateProjection,
+) -> Option<nmp_core::TypedProjectionData> {
+    let snapshot = proj.snapshot();
+    Some(nmp_core::TypedProjectionData {
+        key: "nmp.nip57.zaps".to_string(),
+        schema_id: nmp_nip57::ZAPS_SCHEMA_ID.to_string(),
+        schema_version: nmp_nip57::ZAPS_SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(nmp_nip57::ZAPS_FILE_IDENTIFIER).into_owned(),
+        payload: nmp_nip57::encode_zaps_snapshot(&snapshot),
+    })
+}
+
+/// Build the typed `"nmp.follow_list"` sidecar entry from the live follow-list
+/// projection. Always emits (parity with the generic projection, which always
+/// contributes `{"follows":[]}`): no active account yields an empty typed
+/// buffer.
+///
+/// The registration KEY is `"nmp.follow_list"` (matching the generic
+/// projection's namespace); the typed payload's `schema_id` is the distinct
+/// `"nmp.nip02.follow_list"`.
+///
+/// Extracted from the `register_typed_snapshot_projection` closure so the
+/// registration's schema identity and the encode are unit-testable without
+/// spinning the actor (Wave A proof test).
+pub(crate) fn follow_list_typed_projection(
+    proj: &FollowListProjection,
+) -> Option<nmp_core::TypedProjectionData> {
+    let snapshot = proj.snapshot();
+    Some(nmp_core::TypedProjectionData {
+        key: "nmp.follow_list".to_string(),
+        schema_id: nmp_nip02::FOLLOW_LIST_SCHEMA_ID.to_string(),
+        schema_version: nmp_nip02::FOLLOW_LIST_SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(nmp_nip02::FOLLOW_LIST_FILE_IDENTIFIER)
+            .into_owned(),
+        payload: nmp_nip02::encode_follow_list(&snapshot),
+    })
 }

@@ -21,6 +21,7 @@ pub mod kinds;
 pub mod lnurl;
 pub mod projection;
 pub mod view;
+pub mod wire;
 
 pub use action::{ZapAction, ZapInput};
 pub use build::{ZapRequest, ZapRequestBuildError, ZapRequestBuilder};
@@ -30,6 +31,10 @@ pub use kinds::{KIND_ZAP_RECEIPT, KIND_ZAP_REQUEST};
 pub use lnurl::{sign_zap_request, FetchLnurlInvoiceCommand};
 pub use projection::{ZapCount, ZapsAggregateProjection, ZapsAggregateSnapshot};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
+pub use wire::typed_fb::{
+    decode_zaps_snapshot, encode_zaps_snapshot, FILE_IDENTIFIER as ZAPS_FILE_IDENTIFIER,
+    SCHEMA_ID as ZAPS_SCHEMA_ID, SCHEMA_VERSION as ZAPS_SCHEMA_VERSION,
+};
 
 pub fn register_actions(app: &mut impl nmp_core::substrate::ActionRegistrar) {
     app.register_action::<ZapAction>();

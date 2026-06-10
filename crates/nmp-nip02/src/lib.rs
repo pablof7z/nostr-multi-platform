@@ -66,9 +66,14 @@ use serde::{Deserialize, Serialize};
 
 pub mod active_follow_set;
 pub mod projection;
+pub mod wire;
 
 pub use active_follow_set::ActiveFollowSet;
-pub use projection::{FollowEntry, FollowListProjection};
+pub use projection::{FollowEntry, FollowListProjection, FollowListSnapshot};
+pub use wire::typed_fb::{
+    decode_follow_list, encode_follow_list, FILE_IDENTIFIER as FOLLOW_LIST_FILE_IDENTIFIER,
+    SCHEMA_ID as FOLLOW_LIST_SCHEMA_ID, SCHEMA_VERSION as FOLLOW_LIST_SCHEMA_VERSION,
+};
 
 // ---------------------------------------------------------------------------
 // Wire shapes
