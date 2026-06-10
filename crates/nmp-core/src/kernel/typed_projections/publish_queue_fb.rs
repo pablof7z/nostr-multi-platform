@@ -40,41 +40,59 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const PUBLISH_QUEUE_SCHEMA_ID: &str = "publish_queue";
+pub const PUBLISH_QUEUE_SCHEMA_ID: &str = "publish_queue";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const PUBLISH_QUEUE_FILE_IDENTIFIER: &[u8; 4] = b"KPBQ";
+pub const PUBLISH_QUEUE_FILE_IDENTIFIER: &[u8; 4] = b"KPBQ";
 /// Wire schema version. Bump on any breaking change to `publish_queue.fbs`.
-pub(crate) const PUBLISH_QUEUE_SCHEMA_VERSION: u32 = 1;
+pub const PUBLISH_QUEUE_SCHEMA_VERSION: u32 = 1;
 
 /// One relay's terminal verdict — a field-for-field mirror of the SERIALISED
 /// [`RelayAckOutcome`](crate::kernel::RelayAckOutcome).
+///
+/// Public surface (re-exported via `nmp_core::typed_projections`).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct RelayAckOutcomeRow {
-    pub(crate) relay_url: String,
-    pub(crate) status: String,
-    pub(crate) message: String,
-    pub(crate) relay_reason: String,
+pub struct RelayAckOutcomeRow {
+    /// Relay URL this verdict came from.
+    pub relay_url: String,
+    /// Terminal status for this relay (e.g. `"ok"`, `"failed"`).
+    pub status: String,
+    /// Human-readable message from the relay, if any.
+    pub message: String,
+    /// Machine reason code from the relay, if any.
+    pub relay_reason: String,
 }
 
 /// One settled/in-flight publish row — a field-for-field mirror of the
 /// SERIALISED [`PublishQueueEntry`](crate::kernel::PublishQueueEntry).
+///
+/// Public surface (re-exported via `nmp_core::typed_projections`).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct PublishQueueEntryRow {
-    pub(crate) event_id: String,
-    pub(crate) kind: u32,
-    pub(crate) title: String,
-    pub(crate) target_relays: u32,
-    pub(crate) status: String,
-    pub(crate) can_retry: bool,
-    pub(crate) relay_outcomes: Vec<RelayAckOutcomeRow>,
+pub struct PublishQueueEntryRow {
+    /// Event id of the publish (empty until signed).
+    pub event_id: String,
+    /// Nostr event kind (opaque `uint` passthrough — no NIP semantics).
+    pub kind: u32,
+    /// Pre-formatted human title for this row.
+    pub title: String,
+    /// Number of relays this publish targets.
+    pub target_relays: u32,
+    /// Aggregate status string for the row.
+    pub status: String,
+    /// Whether a retry is offered for this row.
+    pub can_retry: bool,
+    /// Per-relay terminal verdicts collected so far.
+    pub relay_outcomes: Vec<RelayAckOutcomeRow>,
 }
 
 /// The `"publish_queue"` read model — the ordered queue rows. Built from the
 /// same `PublishQueueEntry` slice the JSON projection serialises (mapped inline
 /// in [`Kernel::builtin_typed_projections`](crate::kernel::Kernel)).
+///
+/// Public surface (re-exported via `nmp_core::typed_projections`).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct PublishQueueModel {
-    pub(crate) entries: Vec<PublishQueueEntryRow>,
+pub struct PublishQueueModel {
+    /// Publish queue rows in producer order.
+    pub entries: Vec<PublishQueueEntryRow>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -144,8 +162,10 @@ pub(crate) fn encode_publish_queue(model: &PublishQueueModel) -> Vec<u8> {
 /// Decode typed FlatBuffers bytes (as produced by [`encode_publish_queue`])
 /// back into a [`PublishQueueModel`]. Returns an error string on any malformed
 /// input.
-#[cfg(test)]
-pub(crate) fn decode_publish_queue(bytes: &[u8]) -> Result<PublishQueueModel, String> {
+///
+/// Public surface (re-exported via `nmp_core::typed_projections`): the
+/// reachable decode entry point for the `publish_queue` sidecar key.
+pub fn decode_publish_queue(bytes: &[u8]) -> Result<PublishQueueModel, String> {
     if bytes.len() < 8 || !fb::publish_queue_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KPBQ file identifier".to_string());
     }

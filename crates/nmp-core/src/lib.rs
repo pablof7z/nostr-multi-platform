@@ -199,6 +199,22 @@ pub use update_envelope::{
     SNAPSHOT_SCHEMA_VERSION,
 };
 
+/// Public decode surface for the kernel-owned (Tier-2) typed-projection
+/// sidecar carried alongside the generic `Value` snapshot (ADR-0037).
+///
+/// Pair these per-key decoders with [`decode_snapshot_with_typed`], which
+/// returns the snapshot's [`TypedProjectionData`] entries: look an entry up by
+/// `key` (e.g. [`typed_projections::PUBLISH_QUEUE_SCHEMA_ID`]) and pass its
+/// `payload` to the matching `decode_*` function to get a typed Rust struct —
+/// no string-keying of the JSON payload required.
+///
+/// Today this exposes the two keys external consumers need (`action_results`,
+/// `publish_queue`); the module is the documented extension point for the rest
+/// of the Tier-2 cluster (one `pub use` line per key).
+pub mod typed_projections {
+    pub use crate::kernel::public_typed_projections::*;
+}
+
 // Stage 4 of NIP-46 wiring: app/FFI composition translates app-neutral
 // broker events into actor commands. The `actor` module is crate-private so
 // this re-export is the only Rust-side path for adapters that need to push
