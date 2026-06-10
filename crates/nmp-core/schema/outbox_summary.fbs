@@ -1,0 +1,49 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `outbox_summary` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
+// `serde_json` serialisation of `outbox_summary_snapshot()` (an
+// `OutboxSummarySnapshot`: per-status counters + the pre-formatted English
+// `title` / `subtitle` header strings) under the JSON key `"outbox_summary"`.
+// That generic `Value` projection stays the source of truth (inserted
+// unchanged); this buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s
+// `typed_projections` sidecar (ADR-0037) under the SAME key. A host with a
+// `KOXS` decoder prefers this typed payload; an un-updated host falls back to
+// the generic `Value` subtree. Purely additive (Wave C).
+//
+// Field-for-field mirror of `OutboxSummarySnapshot`. The kernel owns BOTH the
+// counters AND the English strings (§6 anti-pattern #1: shells bind `title` /
+// `subtitle` verbatim instead of `.filter`-counting to derive them).
+//
+// D0: a publish-outbox header summary is a generic publish-pipeline framework
+// noun — it carries no protocol-specific (NIP-NN) semantics, so it is
+// kernel-owned and typed here.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/outbox_summary.fbs
+
+table OutboxSummarySnapshot {
+  // Pre-formatted headline (e.g. `"Nothing waiting"`, `"3 pending publishes"`).
+  // Always non-empty (D1).
+  title:string;
+  // Pre-formatted explanatory subtitle. Always non-empty (D1).
+  subtitle:string;
+  // Total in-flight publishes (sending + retrying + queued + failed).
+  total:uint;
+  // Count currently sending.
+  sending:uint;
+  // Count waiting to retry.
+  retrying:uint;
+  // Count queued / pending a relay connection.
+  queued:uint;
+  // Count that failed after retries.
+  failed:uint;
+}
+
+file_identifier "KOXS";
+root_type OutboxSummarySnapshot;

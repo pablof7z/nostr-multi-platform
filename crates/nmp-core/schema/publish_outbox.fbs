@@ -1,0 +1,92 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the kernel-owned `publish_outbox` snapshot
+// projection (Tier-2: kernel built-in).
+//
+// The producer is `Kernel::snapshot_projections_with_publish_cluster` in
+// `crates/nmp-core/src/kernel/update/projections.rs`, which inserts the
+// `serde_json` serialisation of `publish_outbox_items()` (a `Vec` of
+// `PublishOutboxItem`, each owning a `Vec<PublishOutboxRelay>`) under the JSON
+// key `"publish_outbox"`. That generic `Value` projection stays the source of
+// truth (inserted unchanged); this buffer is emitted ALONGSIDE it in the
+// `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037) under the SAME key.
+// A host with a `KPBO` decoder prefers this typed payload; an un-updated host
+// falls back to the generic `Value` subtree. Purely additive (Wave C).
+//
+// Field-for-field mirror of the SERIALISED `PublishOutboxItem` /
+// `PublishOutboxRelay` shape. `PublishOutboxRelay.relay_reason` is
+// `#[serde(skip_serializing_if = "String::is_empty")]` — absent from JSON when
+// empty, carried as an empty string here (equivalent). Order is preserved
+// verbatim from the producer vector (newest-first, then by event_id).
+//
+// D0: an in-flight publish outbox is a generic publish-pipeline framework noun
+// (the send queue of a store-and-forward transport) — it carries no
+// protocol-specific (NIP-NN) semantics, so it is kernel-owned and typed here.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/publish_outbox.fbs
+
+// One target relay of an in-flight publish — a field-for-field mirror of one
+// SERIALISED `PublishOutboxRelay`.
+table PublishOutboxRelay {
+  // Relay websocket URL.
+  relay_url:string;
+  // Per-relay status token (`"pending"` / `"sending"` / `"retrying"` / `"ok"`
+  // / `"failed"`).
+  status:string;
+  // Pre-formatted English label for `relay_status`. Always non-empty.
+  status_label:string;
+  // Retry attempt counter (0 before the first retry).
+  attempt:uint;
+  // Pre-formatted "try N" badge — empty until the first retry.
+  attempt_label:string;
+  // Per-relay human-readable detail message.
+  message:string;
+  // Pre-formatted "why was this relay targeted?" string (raw hex pubkey
+  // verbatim — D6 forbids display:: abbreviation in projection code). Empty
+  // for older persisted rows (the JSON key is then skipped).
+  relay_reason:string;
+}
+
+// One in-flight publish — a field-for-field mirror of one SERIALISED
+// `PublishOutboxItem`.
+table PublishOutboxItem {
+  // Opaque publish handle the host addresses retry/cancel commands to.
+  handle:string;
+  // Hex64 event id of the event being published.
+  event_id:string;
+  // Nostr event kind number.
+  kind:uint;
+  // Pre-formatted English kind label (e.g. `"Note"`). Kernel-owned.
+  title:string;
+  // Pre-formatted content preview (or an encrypted/empty placeholder).
+  preview:string;
+  // Pre-formatted creation-time display string.
+  created_at_display:string;
+  // Row-level status token (`"sending"` / `"retrying"` / `"pending"` /
+  // `"failed"` / `"queued"`).
+  status:string;
+  // Pre-formatted English label for `status`. Always non-empty.
+  status_label:string;
+  // SF Symbol name for the row icon, pre-classified from `kind`. Always
+  // non-empty (default `"doc.text"`).
+  system_image:string;
+  // Rust-owned Retry-button enablement decision.
+  can_retry:bool;
+  // Number of target relays (mirrors the JSON `usize`; `uint` is the widest
+  // portable count type the shells share).
+  target_relays:uint;
+  // Pre-formatted "N relays · <created_at>" header line.
+  target_summary:string;
+  // The per-relay rows, in producer order.
+  relays:[PublishOutboxRelay];
+}
+
+table PublishOutboxSnapshot {
+  items:[PublishOutboxItem];
+}
+
+file_identifier "KPBO";
+root_type PublishOutboxSnapshot;
