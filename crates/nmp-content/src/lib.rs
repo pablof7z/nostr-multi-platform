@@ -40,6 +40,7 @@ pub mod context;
 pub mod embed_projection;
 pub mod embed_registry;
 mod grouper;
+pub mod longform;
 pub mod markdown;
 pub mod mode;
 mod regex_set;
@@ -57,6 +58,7 @@ pub use embed_registry::{
     ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec, EmbedClaimState,
     EmbedRegistrySnapshot, EmbedTarget, EventClaimSink, NoopEventClaimSink,
 };
+pub use longform::{ArticleFeedItem, LongformProjection, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY};
 pub use markdown::{MarkdownInline, MarkdownNode};
 pub use mode::{sniff_mode_from_kind, RenderMode};
 pub use segment::{ContentTree, InvoiceKind, MediaKind, Segment};

@@ -22,6 +22,10 @@ nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-nip77 = { path = "../nmp-nip77" }
 nmp-wot = { path = "../nmp-wot" }
+# Layer-A content sidecar: supplies the typed NIP-23 `LongformProjection`
+# (reuses the existing `ArticleProjection` resolver) the template registers as
+# the default kind:30023 typed snapshot projection (`nmp.nip23.articles`).
+nmp-content = { path = "../nmp-content" }
 # D2 coverage-gate policy: thresholds + back-off rules for the default
 # `set_coverage_hook` installation. Zero `nmp-core` dep (the gate is pure
 # policy data); this assembly crate is one of the layers entitled to depend

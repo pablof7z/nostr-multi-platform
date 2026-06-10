@@ -4454,6 +4454,7 @@ dependencies = [
 name = "nmp-app-template"
 version = "0.2.7"
 dependencies = [
+ "nmp-content",
  "nmp-core",
  "nmp-coverage-gate",
  "nmp-feed",

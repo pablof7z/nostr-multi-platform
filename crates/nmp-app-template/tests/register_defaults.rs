@@ -115,6 +115,40 @@ fn register_defaults_wires_wot_bootstrap_projection() {
     nmp_app_free(app);
 }
 
+#[test]
+fn register_defaults_wires_longform_articles_projection() {
+    let app = nmp_app_new();
+    assert!(!app.is_null(), "nmp_app_new returned null");
+
+    nmp_app_template::register_defaults(unsafe { &mut *app });
+
+    // The NIP-23 typed projection is registered under "nmp.nip23.articles" and
+    // surfaces a well-formed `{ articles, documents }` value (D1: present and
+    // typed even when empty) through the standard FFI projection-read seam.
+    let key = CString::new("nmp.nip23.articles").unwrap();
+    let raw = nmp_app_read_projection_json(app, key.as_ptr());
+    assert!(
+        !raw.is_null(),
+        "longform articles projection was not registered by register_defaults"
+    );
+    let json = unsafe { CStr::from_ptr(raw) }
+        .to_string_lossy()
+        .into_owned();
+    nmp_app_free_string(raw);
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("projection JSON");
+
+    assert!(
+        parsed.get("articles").and_then(|v| v.as_array()).is_some(),
+        "longform projection must carry an `articles` array (got: {json})"
+    );
+    assert!(
+        parsed.get("documents").and_then(|v| v.as_object()).is_some(),
+        "longform projection must carry a `documents` object (got: {json})"
+    );
+
+    nmp_app_free(app);
+}
+
 fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> String {
     let ns_c = CString::new(namespace).unwrap();
     let json_c = CString::new(action_json).unwrap();
