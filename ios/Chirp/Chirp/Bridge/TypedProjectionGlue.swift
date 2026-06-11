@@ -383,4 +383,66 @@ enum TypedProjectionGlue {
             }
         )
     }
+
+    // MARK: profile cluster → ProfileCard
+
+    /// Map the SHARED `nmp_kernel_ProfileCard` reader (`ProfileCard.generated.swift`,
+    /// `include`d by `profile` / `claimed_profiles` / `resolved_profiles`) to the
+    /// Chirp `ProfileCard` domain type — the SAME value the JSON `payload` path
+    /// yields. The three `has_*` companion bools reproduce the JSON
+    /// `null`-when-`None` semantics (ADR-0032): when `has_x == false` the
+    /// optional field is `nil`, regardless of the (empty) string slot.
+    private static func profileCard(_ card: nmp_kernel_ProfileCard) -> ProfileCard {
+        ProfileCard(
+            pubkey: card.pubkey ?? "",
+            npub: card.npub ?? "",
+            displayName: card.hasDisplayName ? (card.displayName ?? "") : nil,
+            pictureUrl: card.hasPictureUrl ? (card.pictureUrl ?? "") : nil,
+            nip05: card.nip05 ?? "",
+            about: card.about ?? "",
+            hasProfile: card.hasProfile,
+            lnurl: card.hasLnurl ? (card.lnurl ?? "") : nil
+        )
+    }
+
+    // MARK: profile → ProfileCard
+
+    /// Map the typed `profile` sidecar (`KPRF` / `nmp_kernel_ProfileSnapshot`) to
+    /// the `ProfileCard` the JSON `projections.profile` path yields — the active
+    /// account's card.
+    static func profile(_ reader: nmp_kernel_ProfileSnapshot) -> ProfileCard? {
+        reader.card.map(profileCard)
+    }
+
+    // MARK: claimed_profiles → [String: ProfileCard]
+
+    /// Map the typed `claimed_profiles` sidecar (`KCPR` /
+    /// `nmp_kernel_ClaimedProfilesSnapshot`) to the `[String: ProfileCard]` the
+    /// JSON `projections.claimedProfiles` path yields. FlatBuffers has no map
+    /// type, so the producer flattens the `pubkey -> ProfileCard` map to a
+    /// key-sorted `[{key, value}]` vector; this rebuilds the dictionary.
+    static func claimedProfiles(
+        _ reader: nmp_kernel_ClaimedProfilesSnapshot
+    ) -> [String: ProfileCard] {
+        reader.entries.reduce(into: [String: ProfileCard]()) { out, entry in
+            guard let key = entry.key, let value = entry.value else { return }
+            out[key] = profileCard(value)
+        }
+    }
+
+    // MARK: resolved_profiles → [String: ProfileCard]
+
+    /// Map the typed `resolved_profiles` sidecar (`KRPR` /
+    /// `nmp_kernel_ResolvedProfilesSnapshot`) to the `[String: ProfileCard]` the
+    /// JSON `projections.resolvedProfiles` path yields — the pre-merged
+    /// pubkey -> card map (claimed > author_view > mention precedence applied in
+    /// Rust). Same flattened-vector shape as `claimed_profiles`.
+    static func resolvedProfiles(
+        _ reader: nmp_kernel_ResolvedProfilesSnapshot
+    ) -> [String: ProfileCard] {
+        reader.entries.reduce(into: [String: ProfileCard]()) { out, entry in
+            guard let key = entry.key, let value = entry.value else { return }
+            out[key] = profileCard(value)
+        }
+    }
 }

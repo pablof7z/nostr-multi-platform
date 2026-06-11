@@ -1,3 +1,5 @@
+include "profile_card.fbs";
+
 namespace nmp.kernel;
 
 // Typed FlatBuffers wire for the kernel-owned `claimed_profiles` snapshot
@@ -19,13 +21,11 @@ namespace nmp.kernel;
 // entries are already sorted by key — preserved verbatim, matching the
 // BTree-ordered serde JSON map.
 //
-// The `ProfileCard` table is a field-for-field mirror of `ProfileCard`,
-// re-declared verbatim from `profile.fbs` / `author_view.fbs` (its own
-// generated module — duplicate table names across separate `#[path]` modules
-// do not collide; this is the #1029 convention). `ProfileCard` carries NO serde
-// `skip_serializing_if`, so its three `Option<String>` fields serialise as JSON
-// `null`-when-`None` (key always present); the typed buffer carries each
-// presence as an explicit `has_*` flag.
+// The `ProfileCard` row type is the SHARED definition `include`d from
+// `profile_card.fbs` (see that file's header). `flatc` (no `--gen-all`) emits
+// `ProfileCard` only into `profile_card_generated.{rs,swift}`; this schema's
+// generated file merely references it — so the Swift `nmp_kernel_ProfileCard`
+// struct is declared exactly once across the whole profile cluster.
 //
 // D0: a claimed-profile map is a generic derived view of raw kind:0 profile
 // fields — it carries no protocol-specific (NIP-NN) semantics, so it is
@@ -36,30 +36,6 @@ namespace nmp.kernel;
 // pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
 //   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
 //         crates/nmp-core/schema/claimed_profiles.fbs
-
-// Field-for-field mirror of `ProfileCard` (re-declared from `profile.fbs`).
-table ProfileCard {
-  // Hex pubkey.
-  pubkey:string;
-  // Bech32 `npub1…` encoding.
-  npub:string;
-  // Display name from kind:0; `has_display_name == false` mirrors JSON `null`.
-  has_display_name:bool;
-  display_name:string;
-  // Picture URL from kind:0; `has_picture_url == false` mirrors JSON `null`.
-  has_picture_url:bool;
-  picture_url:string;
-  // NIP-05 identifier (always present, empty when unknown).
-  nip05:string;
-  // About text (always present, empty/placeholder when no kind:0).
-  about:string;
-  // True when a kind:0 metadata event has been received for this pubkey.
-  has_profile:bool;
-  // Pre-extracted lightning address (lud16) / LNURL (lud06);
-  // `has_lnurl == false` mirrors JSON `null`.
-  has_lnurl:bool;
-  lnurl:string;
-}
 
 // One `pubkey -> ProfileCard` map entry. Entries are sorted by `key` (BTreeMap).
 table ClaimedProfileEntry {

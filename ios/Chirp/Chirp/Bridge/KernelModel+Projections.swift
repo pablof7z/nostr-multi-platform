@@ -5,7 +5,14 @@ extension KernelModel {
     var isRunning: Bool { snapshot?.running ?? false }
     var modularTimeline: ChirpTimelineSnapshot { typedHomeFeed ?? snapshot?.homeFeed ?? .empty }
     var rev: UInt64 { snapshot?.rev ?? 0 }
-    var profile: ProfileCard? { snapshot?.profile }
+    // V6 Stage 4 (profile cluster): typed-first with JSON fallback, mirroring
+    // `accounts`'s `typedAccounts ?? snapshot?.accounts`. The typed `KPRF` /
+    // `KCPR` / `KRPR` sidecars win when present; the generic JSON projection is
+    // the fallback (ADR-0037 Commitment 4). All three keys are routed through
+    // these accessors below — `mentionProfiles` derives from `resolvedProfileCards`
+    // and `KernelModel.profile(forPubkey:)` reads `claimedProfiles`, so flipping
+    // the accessors flips every downstream consumer (single effective-value seam).
+    var profile: ProfileCard? { typedProfile ?? snapshot?.profile }
     var metrics: KernelMetrics? { snapshot?.metrics }
     var relayStatuses: [RelayStatus] { snapshot?.relayStatuses ?? [] }
     // V6 Stage 4 (Wave B): typed-first with JSON fallback, mirroring
@@ -53,16 +60,17 @@ extension KernelModel {
     var actionLifecycle: ActionLifecycleSnapshot? { typedActionLifecycle ?? snapshot?.actionLifecycle }
 
     var mentionProfiles: [String: MentionProfile] {
-        guard let cards = snapshot?.resolvedProfiles else { return [:] }
-        return cards.mapValues(MentionProfile.init(card:))
+        // Derived from the effective resolved-profile map so the typed `KRPR`
+        // sidecar flows through here too (not the raw `snapshot?.resolvedProfiles`).
+        resolvedProfileCards.mapValues(MentionProfile.init(card:))
     }
 
     var claimedProfiles: [String: ProfileCard] {
-        snapshot?.projections?.claimedProfiles ?? [:]
+        typedClaimedProfiles ?? snapshot?.projections?.claimedProfiles ?? [:]
     }
 
     var resolvedProfileCards: [String: ProfileCard] {
-        snapshot?.resolvedProfiles ?? [:]
+        typedResolvedProfiles ?? snapshot?.resolvedProfiles ?? [:]
     }
 
     var hasActiveAccount: Bool { activeAccount != nil }

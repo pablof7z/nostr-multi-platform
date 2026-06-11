@@ -1,6 +1,47 @@
 mod actor;
 mod app;
 pub mod bunker_hook;
+
+// SHARED FlatBuffers `ProfileCard` row type, mounted at the crate root so the
+// profile-cluster generated bindings can resolve it.
+//
+// `profile.fbs` / `claimed_profiles.fbs` / `resolved_profiles.fbs` all `include
+// "profile_card.fbs"` and reference its `ProfileCard` table. `flatc` (no
+// `--gen-all`) emits `ProfileCard` ONLY into `profile_card_generated.rs` and
+// drops a crate-root `use crate::profile_card_generated::*;` into each per-key
+// `*_generated.rs`. That glob only sees items at the *top* of
+// `profile_card_generated`, but the generated leaf types are nested under
+// `nmp::kernel`. So this wrapper hides the generated `pub mod nmp` inside
+// `inner` and flat-re-exports the `nmp::kernel` leaf types at the module root —
+// the per-key generated files' glob then resolves `ProfileCard` /
+// `ProfileCardArgs` by short name. Mirrors the `op_feed.fbs` →
+// `timeline_snapshot.fbs` include precedent in `crates/nmp-nip01/src/lib.rs`.
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+mod profile_card_generated {
+    mod inner {
+        #![allow(
+            clippy::all,
+            dead_code,
+            deprecated,
+            missing_docs,
+            non_camel_case_types,
+            non_snake_case,
+            unsafe_code,
+            unused_imports
+        )]
+        include!("kernel/typed_projections/generated/profile_card_generated.rs");
+    }
+    pub use inner::nmp::kernel::*;
+}
 // V6 Stage 1 — Swift `Decodable` emitter input surface. Feature-gated:
 // `cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas`
 // dumps one JSON schema per pilot projection type for `nmp-codegen gen swift`

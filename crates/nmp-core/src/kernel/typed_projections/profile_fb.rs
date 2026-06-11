@@ -35,6 +35,11 @@ pub mod generated;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 
 use generated::nmp::kernel as fb;
+// Shared `ProfileCard` row type: `profile.fbs` `include`s `profile_card.fbs`, so
+// the generated `ProfileCard` / `ProfileCardArgs` live in the crate-root
+// `profile_card_generated` wrapper, NOT in this module's `generated::nmp::kernel`
+// (that module only references them through its own private glob import).
+use crate::profile_card_generated as pc;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
@@ -68,7 +73,7 @@ pub(crate) struct ProfileCardModel {
 fn create_profile_card<'a>(
     fbb: &mut FlatBufferBuilder<'a>,
     card: &ProfileCardModel,
-) -> WIPOffset<fb::ProfileCard<'a>> {
+) -> WIPOffset<pc::ProfileCard<'a>> {
     let pubkey = fbb.create_string(&card.pubkey);
     let npub = fbb.create_string(&card.npub);
     let display_name = card
@@ -82,9 +87,9 @@ fn create_profile_card<'a>(
     let nip05 = fbb.create_string(&card.nip05);
     let about = fbb.create_string(&card.about);
     let lnurl = card.lnurl.as_ref().map(|value| fbb.create_string(value));
-    fb::ProfileCard::create(
+    pc::ProfileCard::create(
         fbb,
-        &fb::ProfileCardArgs {
+        &pc::ProfileCardArgs {
             pubkey: Some(pubkey),
             npub: Some(npub),
             has_display_name: card.display_name.is_some(),
@@ -118,7 +123,7 @@ pub(crate) fn encode_profile(model: &ProfileCardModel) -> Vec<u8> {
 /// each codec reads its OWN generated `ProfileCard` type (hence not a free
 /// function here — `author_view` mirrors this logic against its own bindings).
 #[cfg(test)]
-pub(crate) fn profile_card_from_fb(card: fb::ProfileCard<'_>) -> ProfileCardModel {
+pub(crate) fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey().unwrap_or_default().to_string(),
         npub: card.npub().unwrap_or_default().to_string(),

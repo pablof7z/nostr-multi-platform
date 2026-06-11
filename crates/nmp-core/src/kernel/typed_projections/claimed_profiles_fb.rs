@@ -38,6 +38,9 @@ use flatbuffers::{FlatBufferBuilder, WIPOffset};
 
 use super::ProfileCardModel;
 use generated::nmp::kernel as fb;
+// Shared `ProfileCard` row type (`include`d from `profile_card.fbs`): lives in
+// the crate-root `profile_card_generated` wrapper, not this module's `generated`.
+use crate::profile_card_generated as pc;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
@@ -57,13 +60,13 @@ pub(crate) struct ClaimedProfilesModel {
 
 // --- encode ---------------------------------------------------------------
 
-/// Encode a [`ProfileCardModel`] into THIS module's generated `ProfileCard`
-/// table. Mirrors `profile_fb::create_profile_card` against the
-/// `claimed_profiles` bindings (a distinct generated type).
+/// Encode a [`ProfileCardModel`] into the SHARED generated `ProfileCard` table
+/// (`include`d from `profile_card.fbs`). Mirrors
+/// `profile_fb::create_profile_card`; both now reference the same `pc::ProfileCard`.
 pub(super) fn create_profile_card<'a>(
     fbb: &mut FlatBufferBuilder<'a>,
     card: &ProfileCardModel,
-) -> WIPOffset<fb::ProfileCard<'a>> {
+) -> WIPOffset<pc::ProfileCard<'a>> {
     let pubkey = fbb.create_string(&card.pubkey);
     let npub = fbb.create_string(&card.npub);
     let display_name = card.display_name.as_ref().map(|v| fbb.create_string(v));
@@ -71,9 +74,9 @@ pub(super) fn create_profile_card<'a>(
     let nip05 = fbb.create_string(&card.nip05);
     let about = fbb.create_string(&card.about);
     let lnurl = card.lnurl.as_ref().map(|v| fbb.create_string(v));
-    fb::ProfileCard::create(
+    pc::ProfileCard::create(
         fbb,
-        &fb::ProfileCardArgs {
+        &pc::ProfileCardArgs {
             pubkey: Some(pubkey),
             npub: Some(npub),
             has_display_name: card.display_name.is_some(),
@@ -122,11 +125,11 @@ pub(crate) fn encode_claimed_profiles(model: &ClaimedProfilesModel) -> Vec<u8> {
 
 // --- decode ---------------------------------------------------------------
 
-/// Decode THIS module's generated `ProfileCard` table into a
-/// [`ProfileCardModel`] (mirrors `profile_fb::profile_card_from_fb` against the
-/// `claimed_profiles` bindings).
+/// Decode the SHARED generated `ProfileCard` table (`include`d from
+/// `profile_card.fbs`) into a [`ProfileCardModel`] (mirrors
+/// `profile_fb::profile_card_from_fb`; both read the same `pc::ProfileCard`).
 #[cfg(test)]
-pub(super) fn profile_card_from_fb(card: fb::ProfileCard<'_>) -> ProfileCardModel {
+fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey().unwrap_or_default().to_string(),
         npub: card.npub().unwrap_or_default().to_string(),
