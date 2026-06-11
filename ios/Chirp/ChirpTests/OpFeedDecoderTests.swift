@@ -146,25 +146,28 @@ final class OpFeedDecoderTests: XCTestCase {
 
     func testEmptyPayloadFallsBack() { XCTAssertNil(TypedHomeFeedDecoder.decode(bytes: Data())) }
 
-    func testGenericUpdateFrameDecodesDynamicFlatFeedProjection() throws {
-        let pubkey = hex32(0x12)
+    func testTypedUpdateFrameDecodesDynamicFlatFeedSidecar() throws {
+        // The dynamic author/thread feed now arrives as a typed NOFS sidecar
+        // under the `nmp.feed.thread.<id>` key (#1062), not the generic JSON
+        // `payload` projection — the decoder no longer reads `payload`. The
+        // frame carries the populated golden NOFS bytes under the thread key;
+        // the decoder must surface the typed-decoded feed in `flatFeeds`.
         let eventID = hex32(0x34)
-        let data = dynamicFlatFeedUpdateFrame(pubkey: pubkey, eventID: eventID)
+        let data = dynamicFlatFeedUpdateFrame(eventID: eventID)
 
-        guard case let .snapshot(schemaVersion, update, _, flatFeeds, _) =
+        guard case let .snapshot(schemaVersion, _, flatFeeds, _) =
             try KernelUpdateFrameDecoder.decode(data) else {
             return XCTFail("expected snapshot frame")
         }
 
-        let feed = try XCTUnwrap(flatFeeds["nmp.feed.thread.\(eventID)"])
         XCTAssertEqual(schemaVersion, 1)
-        XCTAssertEqual(update.rev, 7)
-        XCTAssertEqual(feed.cards.count, 1)
-        XCTAssertEqual(feed.cards[0].card.id, eventID)
-        XCTAssertEqual(feed.cards[0].card.authorPubkey, pubkey)
-        XCTAssertEqual(feed.cards[0].card.authorDisplayName, "Alice")
-        XCTAssertEqual(feed.cards[0].card.content, "hello dynamic feed")
-        XCTAssertEqual(feed.cards[0].attribution.first?.replyEventId, hex32(0x56))
+        let feed = try XCTUnwrap(flatFeeds["nmp.feed.thread.\(eventID)"])
+        // The populated golden fixture decodes to two root cards (ids 0x03 and
+        // 0x09) — the SAME parity model `nmp.feed.home` yields.
+        XCTAssertEqual(feed.cards.count, 2)
+        XCTAssertEqual(feed.cards[0].card.id, hex32(0x03))
+        XCTAssertEqual(feed.cards[0].card.content, "a thread root")
+        XCTAssertEqual(feed.cards[0].attribution.first?.replyEventId, hex32(0x90))
     }
 
     // ── Typed-first dynamic feed overlay (author/thread sidecars) ────────────
@@ -484,67 +487,44 @@ final class OpFeedDecoderTests: XCTestCase {
         return fbb.data
     }
 
-    private func dynamicFlatFeedUpdateFrame(pubkey: String, eventID: String) -> Data {
+    /// Build a snapshot frame carrying a typed NOFS op-feed sidecar under the
+    /// dynamic `nmp.feed.thread.<id>` key (the #1062 wire shape) — the populated
+    /// golden bytes, the SAME descriptor `nmp.feed.home` uses. A placeholder
+    /// generic `payload` is attached only so the frame matches production shape;
+    /// the decoder no longer reads it.
+    private func dynamicFlatFeedUpdateFrame(eventID: String) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 2048)
-        let card = valueMap(&fbb, [
-            ("id", valueString(&fbb, eventID)),
-            ("author_pubkey", valueString(&fbb, pubkey)),
-            ("kind", valueInt(&fbb, 1)),
-            ("created_at", valueInt(&fbb, 1_700_000_000)),
-            ("content", valueString(&fbb, "hello dynamic feed")),
-            ("content_preview", valueString(&fbb, "hello dynamic feed")),
-            ("author_display_name", valueString(&fbb, "Alice")),
-        ])
-        let attribution = valueMap(&fbb, [
-            ("author_pubkey", valueString(&fbb, hex32(0x78))),
-            ("reply_event_id", valueString(&fbb, hex32(0x56))),
-            ("reply_created_at", valueInt(&fbb, 1_700_000_001)),
-        ])
-        let root = valueMap(&fbb, [
-            ("card", card),
-            ("attribution", valueList(&fbb, [attribution])),
-        ])
-        let feed = valueMap(&fbb, [("cards", valueList(&fbb, [root]))])
-        let projections = valueMap(&fbb, [("nmp.feed.thread.\(eventID)", feed)])
-        let payload = valueMap(&fbb, [
-            ("rev", valueInt(&fbb, 7)),
-            ("schema_version", valueInt(&fbb, 1)),
-            ("running", valueBool(&fbb, true)),
-            ("metrics", metricsValue(&fbb)),
-            ("relay_statuses", valueList(&fbb, [])),
-            ("projections", projections),
-        ])
+
+        // Typed NOFS sidecar under the dynamic thread key.
+        let bytes = [UInt8](data(fromHex: Self.populatedHex))
+        let typedPayload = nmp_transport_TypedPayload.createTypedPayload(
+            &fbb,
+            schemaIdOffset: fbb.create(string: TypedHomeFeedDecoder.schemaId),
+            schemaVersion: 1,
+            fileIdentifierOffset: fbb.create(string: TypedHomeFeedDecoder.fileIdentifier),
+            payloadVectorOffset: fbb.createVector(bytes))
+        let projection = nmp_transport_TypedProjection.createTypedProjection(
+            &fbb,
+            keyOffset: fbb.create(string: "nmp.feed.thread.\(eventID)"),
+            payloadOffset: typedPayload)
+        let typedProjections = fbb.createVector(ofOffsets: [projection])
+
+        // Placeholder generic payload (ignored by the decoder).
+        let payload = valueMap(&fbb, [("schema_version", valueInt(&fbb, 1))])
+
         let snapshot = nmp_transport_SnapshotFrame.createSnapshotFrame(
-            &fbb, schemaVersion: 1, payloadOffset: payload)
+            &fbb,
+            schemaVersion: 1,
+            payloadOffset: payload,
+            typedProjectionsVectorOffset: typedProjections)
         let frame = nmp_transport_UpdateFrame.createUpdateFrame(
             &fbb, kind: .snapshot, snapshotOffset: snapshot)
         nmp_transport_UpdateFrame.finish(&fbb, end: frame)
         return fbb.data
     }
 
-    private func metricsValue(_ fbb: inout FlatBufferBuilder) -> Offset {
-        let keys = """
-        actor_queue_depth bytes_rx bytes_tx claim_drops_total closed_rx contacts_authors delete_events diagnostic_firehose_events dispatch_drops_total duplicate_events emit_hz_configured eose_rx estimated_store_bytes events_per_second_configured events_rx events_since_last_update frames_rx generated_events inserted_count make_update_us max_event_to_emit_ms max_events_per_update note_events notices_rx open_views payload_bytes profile_events removed_count serialize_us store_to_payload_ratio stored_events timeline_authors tombstones update_frame_degradations_total update_sequence updated_count visible_items visible_placeholder_avatar_items visible_profiled_items
-        """.split(separator: " ").map(String.init)
-        return valueMap(&fbb, keys.map { ($0, valueInt(&fbb, 0)) })
-    }
-
-    private func valueString(_ fbb: inout FlatBufferBuilder, _ value: String) -> Offset {
-        nmp_transport_Value.createValue(
-            &fbb, kind: .string, stringValueOffset: fbb.create(string: value))
-    }
-
     private func valueInt(_ fbb: inout FlatBufferBuilder, _ value: Int64) -> Offset {
         nmp_transport_Value.createValue(&fbb, kind: .int, intValue: value)
-    }
-
-    private func valueBool(_ fbb: inout FlatBufferBuilder, _ value: Bool) -> Offset {
-        nmp_transport_Value.createValue(&fbb, kind: .bool, boolValue: value)
-    }
-
-    private func valueList(_ fbb: inout FlatBufferBuilder, _ values: [Offset]) -> Offset {
-        nmp_transport_Value.createValue(
-            &fbb, kind: .list, listVectorOffset: fbb.createVector(ofOffsets: values))
     }
 
     private func valueMap(_ fbb: inout FlatBufferBuilder, _ entries: [(String, Offset)]) -> Offset {

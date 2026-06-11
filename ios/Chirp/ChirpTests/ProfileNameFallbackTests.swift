@@ -15,9 +15,9 @@ import XCTest
 ///
 /// These tests lock the two load-bearing fallback behaviours that keep the
 /// flicker from being worse than a single regression rung, exercised on the
-/// REAL read path (`.convertFromSnakeCase` decode → `snapshot` slot →
-/// projection accessors) so a CodingKey drift on `claimed_profiles` /
-/// `resolved_profiles` fails loudly here:
+/// REAL read path (typed `claimedProfiles` / `resolvedProfiles` slots →
+/// projection accessors — the SAME slots `apply(result:)` assigns from the
+/// `KCPR` / `KRPR` sidecars):
 ///
 ///   * Test A — `KernelModel.profile(forPubkey:)` precedence + the `isRawKey`
 ///     guard that stops a mention card from echoing the raw key as a name.
@@ -31,72 +31,51 @@ final class ProfileNameFallbackTests: XCTestCase {
 
     // MARK: - Synthetic snapshot construction
 
-    /// The exact decoder configuration `KernelHandle` uses for the kernel
-    /// snapshot payload — `.convertFromSnakeCase`, so the kernel's snake_case
-    /// JSON keys map onto the Swift property names. Reproduced bit-for-bit so
-    /// a CodingKey-mapping drift surfaces here, not silently in production.
-    private func snapshotDecoder() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return decoder
+    /// A bundle of the two profile-cluster typed projections under test, fed to
+    /// `KernelModel.setTypedSnapshotForTesting` so the read accessors
+    /// (`claimedProfiles`, `mentionProfiles`, `profile(forPubkey:)`) exercise
+    /// the SAME typed slots production assigns from the `KCPR` / `KRPR` sidecars.
+    private struct ProfileFixture {
+        let claimed: [String: ProfileCard]
+        let resolved: [String: ProfileCard]
     }
 
-    /// Decode a minimal but schema-valid `KernelUpdate` carrying the two
-    /// profile projections under test. The `metrics` blob is the only verbose
-    /// part — every `KernelMetrics` field is required by the synthesized
-    /// decoder, so the zeros are written once here and reused by every test.
-    /// If `KernelMetrics` grows a required field this helper fails to decode,
-    /// which is the same schema-drift-surfacing behaviour the conformance
-    /// suite relies on — fix the template, do not route around it.
+    /// Build the two typed profile projections under test directly as
+    /// `ProfileCard` maps — the typed read path. The generic `payload:Value`
+    /// JSON decode is retired (Chirp no longer reads it); the typed sidecars
+    /// are authoritative, so the fixture exercises the authoritative path.
     ///
     /// - Parameters:
-    ///   - claimed: pubkey → `claimed_profiles` card JSON object body.
-    ///   - resolved: pubkey → `resolved_profiles` card JSON object body
-    ///     (drives `KernelModel.mentionProfiles`).
-    private func makeKernelUpdate(
-        claimed: [String: String] = [:],
-        resolved: [String: String] = [:]
-    ) throws -> KernelUpdate {
-        func mapJSON(_ entries: [String: String]) -> String {
-            entries.map { "\"\($0.key)\": \($0.value)" }.joined(separator: ",\n")
-        }
-
-        let json = """
-        {
-          "rev": 1,
-          "schema_version": 1,
-          "running": true,
-          "relay_statuses": [],
-          "metrics": \(Self.metricsZerosJSON),
-          "projections": {
-            "claimed_profiles": { \(mapJSON(claimed)) },
-            "resolved_profiles": { \(mapJSON(resolved)) }
-          }
-        }
-        """
-        return try snapshotDecoder().decode(KernelUpdate.self, from: Data(json.utf8))
+    ///   - claimed: pubkey → `claimed_profiles` card.
+    ///   - resolved: pubkey → `resolved_profiles` card (drives
+    ///     `KernelModel.mentionProfiles`).
+    private func makeProfileFixture(
+        claimed: [String: ProfileCard] = [:],
+        resolved: [String: ProfileCard] = [:]
+    ) -> ProfileFixture {
+        ProfileFixture(claimed: claimed, resolved: resolved)
     }
 
-    /// A `claimed_profiles` / `resolved_profiles` card body. `displayName` is
-    /// passed pre-quoted-or-null so callers can model "no kind:0 yet".
-    private func cardJSON(pubkey: String, displayName: String?) -> String {
-        let nameField = displayName.map { "\"\($0)\"" } ?? "null"
-        return """
-        {
-          "pubkey": "\(pubkey)",
-          "npub": "npub1\(String(repeating: "q", count: 58))",
-          "display_name": \(nameField),
-          "picture_url": null,
-          "nip05": "",
-          "about": "",
-          "has_profile": \(displayName != nil)
-        }
-        """
+    /// A `claimed_profiles` / `resolved_profiles` `ProfileCard`. `displayName`
+    /// is `nil` to model "no kind:0 yet" (the card's `displayLabel` then falls
+    /// back to the abbreviated hex pubkey).
+    private func card(pubkey: String, displayName: String?) -> ProfileCard {
+        ProfileCard(
+            pubkey: pubkey,
+            npub: "npub1\(String(repeating: "q", count: 58))",
+            displayName: displayName,
+            pictureUrl: nil,
+            nip05: "",
+            about: "",
+            hasProfile: displayName != nil,
+            lnurl: nil)
     }
 
-    private func model(with update: KernelUpdate) -> KernelModel {
+    private func model(with fixture: ProfileFixture) -> KernelModel {
         let m = KernelModel()
-        m.setSnapshotForTesting(update)
+        m.setTypedSnapshotForTesting(
+            claimedProfiles: fixture.claimed,
+            resolvedProfiles: fixture.resolved)
         return m
     }
 
@@ -104,27 +83,27 @@ final class ProfileNameFallbackTests: XCTestCase {
 
     func test_profile_forPubkey_fallback_chain() throws {
         // 1. claimed_profiles carries a real display name → returned verbatim.
-        let claimedUpdate = try makeKernelUpdate(
-            claimed: [pk: cardJSON(pubkey: pk, displayName: "Alice")])
+        let claimedFixture = makeProfileFixture(
+            claimed: [pk: card(pubkey: pk, displayName: "Alice")])
         XCTAssertEqual(
-            model(with: claimedUpdate).profile(forPubkey: pk)?.display, "Alice",
+            model(with: claimedFixture).profile(forPubkey: pk)?.display, "Alice",
             "A claimed_profiles card with a non-empty displayName must win.")
 
         // 2. claimed_profiles empty, resolved_profiles (mentionProfiles) carries
         //    a real, non-shortHex display → mention display is returned.
-        let mentionUpdate = try makeKernelUpdate(
-            resolved: [pk: cardJSON(pubkey: pk, displayName: "Bob")])
+        let mentionFixture = makeProfileFixture(
+            resolved: [pk: card(pubkey: pk, displayName: "Bob")])
         XCTAssertEqual(
-            model(with: mentionUpdate).profile(forPubkey: pk)?.display, "Bob",
+            model(with: mentionFixture).profile(forPubkey: pk)?.display, "Bob",
             "With no claimed card, the resolved/mention display must fill in.")
 
         // 3. mention display == shortHex (no kind:0 → ProfileCard.displayLabel
         //    falls back to shortHex, so MentionProfile.display == shortHex).
         //    The `isRawKey` guard must blank displayName so the row does NOT
         //    echo a raw key as if it were a real name.
-        let rawKeyUpdate = try makeKernelUpdate(
-            resolved: [pk: cardJSON(pubkey: pk, displayName: nil)])
-        let rawProfile = model(with: rawKeyUpdate).profile(forPubkey: pk)
+        let rawKeyFixture = makeProfileFixture(
+            resolved: [pk: card(pubkey: pk, displayName: nil)])
+        let rawProfile = model(with: rawKeyFixture).profile(forPubkey: pk)
         XCTAssertNotNil(rawProfile, "A mention card still yields a ProfileWire.")
         XCTAssertNil(
             rawProfile?.displayName,
@@ -132,30 +111,30 @@ final class ProfileNameFallbackTests: XCTestCase {
 
         // 4. Both projections empty → profile(forPubkey:) is nil → the caller
         //    is responsible for showing shortHex.
-        let emptyUpdate = try makeKernelUpdate()
+        let emptyFixture = makeProfileFixture()
         XCTAssertNil(
-            model(with: emptyUpdate).profile(forPubkey: pk),
+            model(with: emptyFixture).profile(forPubkey: pk),
             "With no profile data the accessor must return nil (caller → shortHex).")
     }
 
     func test_nameRegressionMetric_counts_only_missing_after_resolved_name() throws {
-        let claimedUpdate = try makeKernelUpdate(
-            claimed: [pk: cardJSON(pubkey: pk, displayName: "Alice")])
-        let emptyUpdate = try makeKernelUpdate()
-        let m = model(with: emptyUpdate)
+        let claimed = makeProfileFixture(
+            claimed: [pk: card(pubkey: pk, displayName: "Alice")])
+        let empty = makeProfileFixture()
+        let m = model(with: empty)
 
         XCTAssertNil(m.profile(forPubkey: pk))
         XCTAssertEqual(
             m.appMetrics.nameRegressionCount, 0,
             "First-load misses must not be counted as name regressions.")
 
-        m.setSnapshotForTesting(claimedUpdate)
+        m.setTypedSnapshotForTesting(claimedProfiles: claimed.claimed, resolvedProfiles: claimed.resolved)
         XCTAssertEqual(m.profile(forPubkey: pk)?.display, "Alice")
         XCTAssertEqual(
             m.appMetrics.nameRegressionCount, 0,
             "Resolving a name arms the detector without incrementing it.")
 
-        m.setSnapshotForTesting(emptyUpdate)
+        m.setTypedSnapshotForTesting(claimedProfiles: empty.claimed, resolvedProfiles: empty.resolved)
         XCTAssertNil(m.profile(forPubkey: pk))
         XCTAssertEqual(
             m.appMetrics.nameRegressionCount, 1,
@@ -166,9 +145,9 @@ final class ProfileNameFallbackTests: XCTestCase {
             m.appMetrics.nameRegressionCount, 1,
             "Repeated reads during the same missing window must not overcount.")
 
-        m.setSnapshotForTesting(claimedUpdate)
+        m.setTypedSnapshotForTesting(claimedProfiles: claimed.claimed, resolvedProfiles: claimed.resolved)
         XCTAssertEqual(m.profile(forPubkey: pk)?.display, "Alice")
-        m.setSnapshotForTesting(emptyUpdate)
+        m.setTypedSnapshotForTesting(claimedProfiles: empty.claimed, resolvedProfiles: empty.resolved)
         XCTAssertNil(m.profile(forPubkey: pk))
         XCTAssertEqual(
             m.appMetrics.nameRegressionCount, 2,
@@ -233,58 +212,4 @@ final class ProfileNameFallbackTests: XCTestCase {
             "With no name source the label collapses to shortHex.")
     }
 
-    // MARK: - Fixtures
-
-    /// Every `KernelMetrics` field zeroed (optionals null). Written once;
-    /// reused by `makeKernelUpdate`. Snake_case keys — the decoder applies
-    /// `.convertFromSnakeCase` on the way in.
-    private static let metricsZerosJSON = """
-    {
-      "actor_queue_depth": 0,
-      "bytes_rx": 0,
-      "bytes_tx": 0,
-      "claim_drops_total": 0,
-      "closed_rx": 0,
-      "contacts_authors": 0,
-      "delete_events": 0,
-      "diagnostic_firehose_events": 0,
-      "dispatch_drops_total": 0,
-      "duplicate_events": 0,
-      "emit_hz_configured": 0,
-      "eose_rx": 0,
-      "estimated_store_bytes": 0,
-      "events_per_second_configured": 0,
-      "events_rx": 0,
-      "events_since_last_update": 0,
-      "first_event_ms": null,
-      "frames_rx": 0,
-      "generated_events": 0,
-      "inserted_count": 0,
-      "last_event_to_emit_ms": null,
-      "make_update_us": 0,
-      "max_event_to_emit_ms": 0,
-      "max_events_per_update": 0,
-      "note_events": 0,
-      "notices_rx": 0,
-      "open_views": 0,
-      "payload_bytes": 0,
-      "profile_events": 0,
-      "removed_count": 0,
-      "serialize_us": 0,
-      "store_to_payload_ratio": 0.0,
-      "stored_events": 0,
-      "target_profile_loaded_ms": null,
-      "timeline_authors": 0,
-      "timeline_first_item_ms": null,
-      "timeline_opened_ms": null,
-      "tombstones": 0,
-      "update_emitted_ms": null,
-      "update_frame_degradations_total": 0,
-      "update_sequence": 0,
-      "updated_count": 0,
-      "visible_items": 0,
-      "visible_placeholder_avatar_items": 0,
-      "visible_profiled_items": 0
-    }
-    """
 }
