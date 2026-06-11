@@ -38,8 +38,9 @@ pub const GC_MAX_DURATION_MS: u32 = 50;
 /// [`GcBudget::default`] uses the design-doc schedule values
 /// (`max_events_per_step = 2000`, `max_duration_ms = 50`) with
 /// `max_total_events = usize::MAX` (LRU eviction disabled — backward-compatible).
-/// [`GcBudget::production`] is the on-device call-site budget: identical scan
-/// bounds but with `max_total_events = HOT_EVENT_CEILING` so LRU eviction runs.
+/// [`GcBudget::production`] is the on-device call-site budget — currently
+/// identical to `default()`: the LRU ceiling is **disabled** until store-claims
+/// have production callers (V-117, see GitHub issue #1090).
 /// See `docs/design/lmdb/gc.md` §3.
 #[derive(Clone, Copy, Debug)]
 pub struct GcBudget {
@@ -49,8 +50,10 @@ pub struct GcBudget {
     /// `gc_step` evicts least-recently-accessed events (by access-sequence counter)
     /// down to this ceiling.  Only un-pinned (unclaimed) events are eligible.
     ///
-    /// `GcBudget::default()` leaves this `usize::MAX` (disabled);
-    /// [`GcBudget::production`] sets it to [`HOT_EVENT_CEILING`] to cap store size.
+    /// Both `GcBudget::default()` and [`GcBudget::production`] currently leave
+    /// this `usize::MAX` (eviction disabled) — pinning has no production callers
+    /// yet, so a finite ceiling would silently delete live events (V-117).
+    /// Issue #1090 tracks re-enabling [`HOT_EVENT_CEILING`] once claims are wired.
     pub max_total_events: usize,
 }
 
@@ -59,7 +62,8 @@ impl Default for GcBudget {
     ///
     /// This is the single source of truth for the `2000 / 50ms` scan bounds the
     /// doc quotes. The production call site uses [`GcBudget::production`], which
-    /// reuses these bounds and adds the finite LRU ceiling.
+    /// currently delegates to these exact values (LRU ceiling disabled pending
+    /// #1090).
     fn default() -> Self {
         Self {
             max_events_per_step: GC_MAX_EVENTS_PER_STEP,

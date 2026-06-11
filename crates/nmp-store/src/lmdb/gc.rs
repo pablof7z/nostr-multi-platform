@@ -124,6 +124,14 @@ pub(super) fn gc_step(
     //  - After a full sweep (we reach the bottom of the store without hitting
     //    the budget), the cursor is reset to `None` so the next pass re-scans
     //    from the top, catching newly inserted events.
+    //
+    // KNOWN LIMITATION (V-118, GitHub issue #1097): because `until(T)` is an
+    // inclusive bound, a block of NON-expired events sharing one `created_at`
+    // that is larger than one budget pass parks the cursor at `T` forever —
+    // every pass re-scans the same prefix and Phase 1 never reaches older
+    // events.  Narrow (needs a bulk import with thousands of events on one
+    // second) but real.  The durable fix is an `(expiry_ts → event_id)`
+    // expiration index that removes this cursor entirely; see #1097.
     {
         let cursor_secs: Option<u64> = *inner
             .gc_phase1_cursor
