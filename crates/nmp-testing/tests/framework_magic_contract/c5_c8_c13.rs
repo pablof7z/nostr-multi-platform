@@ -248,18 +248,19 @@ fn c8_subscriptions_coalesce_and_buffer() {
 ///
 /// Design: `docs/product-spec/doctrine.md` §D1, ADR-0017,
 ///         `docs/design/0001-ffi-update-channel-envelope.md` (T103).
+/// V-112 (ADR-0042): Updated to use `ClaimEvent` + `claimed_events` typed
+/// projection instead of the deleted `OpenAuthor` + `author_view` sidecar.
+/// C13 property remains the same: `author_picture_url` is None before kind:0.
 #[test]
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
+    use nmp_core::nip19::encode_note;
     use nmp_core::store::RawEvent;
     use nmp_core::testing::{spawn_actor, ActorCommand};
-    use nmp_core::typed_projections::{decode_author_view, AUTHOR_VIEW_SCHEMA_ID};
+    use nmp_core::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
     use nmp_core::{
         decode_snapshot_typed_projections, decode_update_frame, UpdateEnvelope,
     };
     use std::time::Duration;
-
-    // A fixed nsec used only in tests (same key as in actor/commands/tests.rs).
-    const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
     let (tx, rx) = spawn_actor();
 
@@ -271,15 +272,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     })
     .expect("send Start");
 
-    // Sign in so the actor has an active pubkey for the view path.
-    tx.send(ActorCommand::AddSigner {
-        source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
-        make_active: true,
-    })
-    .expect("send AddSigner");
-
     // Build a kind:1 event with a fixed author pubkey (no kind:0 will arrive).
-    // Author is distinct from the signed-in account so no profile auto-arrives.
     let author_pk = "c13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13a";
     let event_id = "c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000";
     let raw = RawEvent {
@@ -295,32 +288,29 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_core::store::VerifiedEvent;
     let verified = VerifiedEvent::from_raw_unchecked(raw);
     // The diag-firehose-stress path pushes the event directly into self.events
-    // regardless of timeline_authors, so it is visible to author_items().
+    // regardless of timeline_authors, so it is visible to claimed_events.
     tx.send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
         .expect("send IngestPreVerifiedEvents");
 
-    // Issue #920 (Step 3A): the home-feed projection cluster
-    // (`projections.timeline`) was removed from the kernel. The author-view
-    // items projection (`projections.author_view.items`) carries the same
-    // `[TimelineItem]` shape and is still emitted, so this integration proof of
-    // the D1 placeholder contract through the full actor → FFI-envelope →
-    // snapshot path moves its oracle there. Open the author view for the note's
-    // author (D5: view-dependent keys cross the boundary only when the view is
-    // open) so `author_view.items` carries the ingested note.
-    tx.send(ActorCommand::OpenAuthor {
-        pubkey: author_pk.to_string(),
-        kinds: std::collections::BTreeSet::from([1u32]),
+    // V-112 (ADR-0042): OpenAuthor deleted. Use ClaimEvent to surface the
+    // event in the `claimed_events` typed sidecar for C13 observation.
+    // D5: claimed_events carries the entry only after a ClaimEvent dispatch.
+    let note_uri = format!("nostr:{}", encode_note(event_id).expect("valid note uri"));
+    tx.send(ActorCommand::ClaimEvent {
+        uri: note_uri.clone(),
+        consumer_id: "c13-test".to_string(),
+        force: false,
     })
-    .expect("send OpenAuthor");
+    .expect("send ClaimEvent");
 
     // Drain envelopes until we find a `Snapshot` carrying our event in the
-    // typed `author_view` sidecar. Every frame on the channel is a FlatBuffers
+    // typed `claimed_events` sidecar. Every frame on the channel is a FlatBuffers
     // update frame per ADR-0001 (T103); decoding through `UpdateEnvelope`
     // first proves the snapshot is delivered with the canonical discriminator
     // — non-snapshot frames are skipped on the typed tag, never by key
     // sniffing. PR-B (#991/#979): view payloads travel in the typed
     // FlatBuffers sidecar; the generic JSON payload no longer exists.
-    let author_view = {
+    let our_row = {
         let mut found = None;
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while std::time::Instant::now() < deadline {
@@ -335,13 +325,15 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
                     }
                     let typed = decode_snapshot_typed_projections(&frame)
                         .expect("snapshot frame must carry a decodable typed sidecar");
-                    let view = typed
+                    let model = typed
                         .iter()
-                        .find(|t| t.key == AUTHOR_VIEW_SCHEMA_ID)
-                        .and_then(|t| decode_author_view(&t.payload).ok());
-                    if let Some(view) = view {
-                        if view.items.iter().any(|item| item.id == event_id) {
-                            found = Some(view);
+                        .find(|t| t.key == CLAIMED_EVENTS_SCHEMA_ID)
+                        .and_then(|t| decode_claimed_events(&t.payload).ok());
+                    if let Some(model) = model {
+                        if let Some(row) =
+                            model.entries.into_iter().find(|(k, _)| k == event_id).map(|(_, v)| v)
+                        {
+                            found = Some(row);
                             break;
                         }
                     }
@@ -350,27 +342,16 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
             }
         }
         found.expect(
-            "actor must emit a `snapshot` envelope whose typed author_view sidecar contains our event within 5 s",
+            "actor must emit a `snapshot` envelope whose typed claimed_events sidecar contains our event within 5 s",
         )
     };
-
-    // The typed `author_view` sidecar carries the projection of the kernel's
-    // open author view — D0: view payloads are in the projection sidecar, not
-    // typed KernelSnapshot fields.
-    let our_item = author_view
-        .items
-        .iter()
-        .find(|item| item.id == event_id)
-        .expect("our event must appear in items");
 
     // C13 core assertion: aim.md §2 — NMP ships raw data; the presentation
     // layer owns the placeholder/identicon strategy. author_picture_url is
     // None until a kind:0 event is received for this author (ADR-0032).
-    // (author_avatar_source was removed by ADR-0032's display-separation
-    // sweep — the typed `TimelineItemModel` has no such field, so its absence
-    // is a compile-time guarantee.)
+    // Observed via `claimed_events` (V-112: author_view deleted).
     assert!(
-        our_item.author_picture_url.is_none(),
+        our_row.author_picture_url.is_none(),
         "author_picture_url must be None before kind:0 arrives (aim.md §2)"
     );
 

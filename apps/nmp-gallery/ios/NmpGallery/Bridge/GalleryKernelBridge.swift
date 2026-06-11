@@ -11,8 +11,8 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///   • Profile data arrives via the PUSH callback registered with
 ///     `nmp_app_set_update_callback`. The callback receives a FlatBuffers
 ///     `UpdateFrame`; the gallery reads `projections.claimed_profiles[pubkey]`
-///     for component-owned profile claims, with `author_view` /
-    ///     `mention_profiles` as secondary projections for other showcases.
+///     for component-owned profile claims, with `mention_profiles` as a
+///     secondary projection for other showcases.
 ///   • There is no pull-side snapshot accessor; kernel liveness is observed
 ///     through `nmp_app_is_alive` and all state arrives via the push callback.
 ///
@@ -146,17 +146,6 @@ final class GalleryKernelHandle {
                 nmp_app_release_event(raw, uriPtr, cidPtr)
             }
         }
-    }
-
-    /// Open an author view on `pubkey`. The kernel fetches kind:10002 + kind:0
-    /// from discovery relays and exposes the resolved ProfileCard under
-    /// `projections.author_view.profile` in the push-callback snapshot.
-    func openAuthor(pubkey: String) {
-        pubkey.withCString { nmp_app_open_author(raw, $0) }
-    }
-
-    func closeAuthor(pubkey: String) {
-        pubkey.withCString { nmp_app_close_author(raw, $0) }
     }
 
     // ── Relay seeding ────────────────────────────────────────────────────

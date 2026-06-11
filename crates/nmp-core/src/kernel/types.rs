@@ -215,64 +215,10 @@ impl ProfileCard {
     }
 }
 
-/// Dispatch spec for a `ProfileAction` that fires a real write.
-///
-/// When this is `Some`, the shell wires the button to
-/// `nmp_app_dispatch_action(namespace, body_json)` with no further logic. The
-/// kernel/host registry decides what each namespace means; the shell never
-/// switches on a `kind` field to pick an FFI symbol (aim.md §4.4: writes go
-/// through the registered `ActionModule` family, not through hand-rolled
-/// per-verb plumbing).
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-pub(super) struct ProfileDispatchSpec {
-    /// Action namespace — registered via `ActionRegistry::register::<M>()`. Today:
-    /// `nmp.follow` or `nmp.unfollow`.
-    pub(super) namespace: &'static str,
-    /// Serialised JSON body the action module expects. Rust formats this so
-    /// the shell sends bytes the executor already validates.
-    pub(super) body_json: String,
-}
-
-/// Primary action the shell may render for an open profile view.
-///
-/// `dispatch` carries the namespace+body the shell must send through
-/// `nmp_app_dispatch_action` for write verbs (follow / unfollow). When
-/// `dispatch` is `None` the action is a pure local-UI intent (open the edit
-/// sheet) — there is no registered `ActionModule` for it. The shell branches on
-/// `dispatch.is_some()`, not on the `kind` string, killing the §4.4 switch.
-///
-/// `icon_name` is the SF Symbol (or equivalent) the shell renders next to
-/// `label`. Owning the icon name here keeps both `Label` text and icon
-/// authored by Rust — the shell binds blindly.
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-pub(super) struct ProfileAction {
-    /// Stable discriminator preserved for tests/diagnostics. The SHELL MUST
-    /// NOT switch on this — use `dispatch` (Some → write) or its absence
-    /// (None → local intent) instead.
-    pub(super) kind: &'static str,
-    pub(super) label: &'static str,
-    pub(super) target_pubkey: String,
-    /// SF Symbol name (iOS) the shell renders without further mapping.
-    pub(super) icon_name: &'static str,
-    /// Present when the action is a write — the shell wires straight through
-    /// `nmp_app_dispatch_action`. Absent for local-UI intents (edit sheet).
-    pub(super) dispatch: Option<ProfileDispatchSpec>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub(super) struct AuthorViewPayload {
-    pub(super) pubkey: String,
-    pub(super) state: String,
-    pub(super) profile: ProfileCard,
-    pub(super) items: Vec<TimelineItem>,
-    pub(super) note_count: usize,
-    /// Pre-formatted post-count string the shell binds verbatim
-    /// (e.g. `"5"`). Trivial today but keeps the shell from interpolating
-    /// any count derived from the items array (aim.md §6.9). Future
-    /// localisation work plugs in here, not in Swift.
-    pub(super) note_count_display: String,
-    pub(super) primary_action: Option<ProfileAction>,
-}
+// V-112 (ADR-0042): ProfileDispatchSpec, ProfileAction, AuthorViewPayload,
+// ThreadViewPayload deleted — the author_view / thread_view kernel projections
+// are removed. Profile display for the author screen now comes from the
+// resolved_profiles (claimed_profiles) projection.
 
 /// Per-author payload bundled into the `mention_profiles` projection.
 ///
@@ -295,23 +241,6 @@ pub(super) struct MentionProfilePayload {
     pub(super) picture_url: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub(super) struct ThreadViewPayload {
-    pub(super) focused_event_id: String,
-    pub(super) root_event_id: String,
-    pub(super) state: String,
-    pub(super) items: Vec<TimelineItem>,
-    pub(super) previous_count: usize,
-    pub(super) next_count: usize,
-    /// Pre-formatted, ready-to-render label for the "Show N earlier" affordance.
-    /// Empty string when `previous_count == 0`. Kernel owns pluralization
-    /// (aim.md §6 anti-pattern #1: duplicated formatting belongs in Rust).
-    pub(super) previous_count_label: String,
-    /// Pre-formatted, ready-to-render label for the "N more replies" affordance.
-    /// Empty string when `next_count == 0`. Same rationale as
-    /// `previous_count_label`.
-    pub(super) next_count_label: String,
-}
 
 // ── Relay health and wire subscription state ──────────────────────────────────
 // V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` so the
@@ -595,52 +524,9 @@ pub(super) struct ViewInterest {
     pub(super) refcount: u32,
 }
 
-// ── View-tracking sub-structs (D0 app-domain state) ───────────────────────────
-//
-// These group the kernel's view-tracking fields — app-domain state living in a
-// protocol-neutral kernel — into named locatable units, making the D0 boundary
-// explicit. Pure mechanical grouping: no behaviour of their own.
-
-/// Author-view tracking: selected author, request-pending flag, sequence count,
-/// and host-supplied note kinds for the author-notes REQ filter.
-#[derive(Default)]
-pub(super) struct AuthorViewState {
-    pub(super) selected_author: Option<ViewInterest>,
-    pub(super) request_pending: bool,
-    pub(super) seq: u64,
-    /// Host-supplied Nostr kinds to include in the author-notes REQ filter.
-    ///
-    /// Stored here (not threaded as a parameter) so the deferred-relay path —
-    /// where `open_author` queued the request at `can_send=false` and
-    /// `author_requests` fires later on a relay-ready tick via
-    /// `pending_view_requests` — sees the correct kinds even though no `kinds`
-    /// value is in scope at that deferred call site.
-    ///
-    /// Mirrors `ThreadViewState::reply_kinds` (V-68 Stage 2 thread-half).
-    pub(super) note_kinds: std::collections::BTreeSet<u32>,
-}
-
-/// Thread-view tracking: selected thread, hydration queues, and inflight flags.
-#[derive(Default)]
-pub(super) struct ThreadViewState {
-    pub(super) selected_thread: Option<ViewInterest>,
-    pub(super) request_pending: bool,
-    pub(super) seq: u64,
-    pub(super) pending_ids: BTreeSet<String>,
-    pub(super) requested_ids: HashSet<String>,
-    pub(super) ids_inflight: bool,
-    pub(super) pending_reply_targets: BTreeSet<String>,
-    pub(super) requested_reply_targets: HashSet<String>,
-    pub(super) replies_inflight: bool,
-    /// Host-supplied reply kinds for the thread-replies REQ filter.
-    ///
-    /// Stored here (not threaded as a parameter) so the deferred-relay path —
-    /// where `open_thread` queued the request at `can_send=false` and
-    /// `prepare_thread_requests` fires later on a relay-ready tick — sees the
-    /// correct kinds even though no `kinds` are in scope at that call site.
-    /// Mirrors how `follow_feed_kinds` is stored for `drain_lifecycle_tick`.
-    pub(super) reply_kinds: BTreeSet<u32>,
-}
+// V-68 / V-112 (ADR-0042): AuthorViewState / ThreadViewState deleted here.
+// Author and thread view state now lives inside the per-app FlatFeed registered
+// by nmp_app_chirp_open_author_feed / nmp_app_chirp_open_thread_feed.
 
 /// Diagnostic ingest event counter.
 ///
@@ -663,9 +549,10 @@ pub(super) struct DiagnosticFirehoseState {
 
 // ── Kernel sub-state groupings (phase 2 god-struct decomposition) ─────────────
 //
-// These continue the mechanical grouping started by `AuthorViewState` /
-// `ThreadViewState` / `DiagnosticFirehoseState`: cohesive Kernel field clusters
-// collapsed into named locatable units. Pure data — no behaviour of their own.
+// V-112 (ADR-0042): `AuthorViewState` / `ThreadViewState` deleted.
+// These continue the mechanical grouping started by `DiagnosticFirehoseState`:
+// cohesive Kernel field clusters collapsed into named locatable units.
+// Pure data — no behaviour of their own.
 
 /// Profile-fetch request tracking: the in-flight / queued sets plus the
 /// monotonic REQ-id sequence. Grouped because the three fields are always

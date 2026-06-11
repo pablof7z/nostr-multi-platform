@@ -168,19 +168,7 @@ impl Kernel {
             "profile".to_string(),
             serde_json::to_value(self.profile_card()).unwrap_or(serde_json::Value::Null),
         );
-        // D5: author_view / thread_view — only insert when the view is open.
-        if let Some(author_view) = self.author_view() {
-            projections.insert(
-                "author_view".to_string(),
-                serde_json::to_value(author_view).unwrap_or(serde_json::Value::Null),
-            );
-        }
-        if let Some(thread_view) = self.thread_view() {
-            projections.insert(
-                "thread_view".to_string(),
-                serde_json::to_value(thread_view).unwrap_or(serde_json::Value::Null),
-            );
-        }
+        // V-112 (ADR-0042): author_view / thread_view projection inserts deleted.
         // Diagnostics-screen projection. Pre-rolls the relay + wire-sub
         // arrays into one struct with every aggregate (active / EOSE'd /
         // total sub counts, total events_rx) and every display string
@@ -271,10 +259,13 @@ impl Kernel {
 
     /// `mention_profiles` accessor (aim.md §4.2): `pubkey ->
     /// MentionProfilePayload` for every author surfaced in ANY currently-open
-    /// view. Built from the union of the open `author_view` items and the open
-    /// `thread_view` items — first writer wins on collision (matches
-    /// `mention_profiles_from_items` semantics). Empty `{}` when no view is open;
-    /// never absent (D1).
+    /// view.
+    ///
+    /// V-112 (ADR-0042): the `author_view` / `thread_view` item sources were
+    /// deleted. The projection now returns an empty map. The mention_profiles
+    /// projection is still emitted (not absent) to preserve the D1 contract;
+    /// display name resolution for author/thread screens is delegated to the
+    /// resolved_profiles (claimed_profiles) projection instead.
     ///
     /// This is the single accessor the snapshot's generic JSON `mention_profiles`
     /// projection AND its Tier-2 typed FlatBuffer sidecar both read, in the same
@@ -282,18 +273,7 @@ impl Kernel {
     pub(in crate::kernel) fn mention_profiles(
         &self,
     ) -> std::collections::HashMap<String, MentionProfilePayload> {
-        let mut mention_profiles = self
-            .author_view()
-            .map(|av| self.mention_profiles_from_items(&av.items))
-            .unwrap_or_default();
-        for (k, v) in self
-            .thread_view()
-            .map(|tv| self.mention_profiles_from_items(&tv.items))
-            .unwrap_or_default()
-        {
-            mention_profiles.entry(k).or_insert(v);
-        }
-        mention_profiles
+        std::collections::HashMap::new()
     }
 
     /// `claimed_profiles` accessor — `pubkey -> ProfileCard` for every currently
@@ -375,16 +355,9 @@ impl Kernel {
             resolved.insert(pubkey, card);
         }
 
-        // 2. author_view.profile — only-if-absent (claimed wins). Gated on
-        //    `has_profile` so a placeholder author card never displaces a
-        //    real claimed card and never seeds an empty entry.
-        if let Some(av) = self.author_view() {
-            if av.profile.has_profile {
-                resolved
-                    .entry(av.profile.pubkey.clone())
-                    .or_insert_with(|| av.profile.clone());
-            }
-        }
+        // V-112 (ADR-0042): author_view.profile source deleted. Profile data for
+        // the author screen is now resolved via claimed_profiles (claim_profile
+        // from nmp_app_chirp_open_author_feed).
 
         // 3. mention_profiles — only-if-absent (lowest precedence).
         for (pubkey, m) in self.mention_profiles() {

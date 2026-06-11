@@ -59,32 +59,6 @@ impl Snapshot {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct TimelineItem {
-    #[serde(default)]
-    pub id: String,
-    #[serde(default)]
-    pub author_pubkey: String,
-    #[serde(default)]
-    pub author_picture_url: Option<String>,
-    #[serde(default)]
-    pub kind: u32,
-    #[serde(default)]
-    pub content: String,
-    #[serde(default)]
-    pub content_preview: String,
-    #[serde(default)]
-    pub created_at: u64,
-    #[serde(default)]
-    pub relay_count: u32,
-    #[serde(default)]
-    pub is_repost: bool,
-    #[serde(default)]
-    pub nav_target_id: String,
-    #[serde(default)]
-    pub repost_inner_content: String,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
 pub struct ProfileCard {
     #[serde(default)]
     pub pubkey: String,
@@ -148,67 +122,11 @@ pub struct AccountSummary {
 // Projections (deserialized from the `projections` map)
 // ---------------------------------------------------------------------------
 
-/// `author_view` projection payload.
-#[derive(Clone, Debug, Default, Deserialize)]
-pub struct AuthorViewPayload {
-    #[serde(default)]
-    pub pubkey: String,
-    #[serde(default)]
-    pub state: String,
-    #[serde(default)]
-    pub profile: ProfileCard,
-    #[serde(default)]
-    pub items: Vec<TimelineItem>,
-    #[serde(default)]
-    pub note_count: usize,
-    #[serde(default)]
-    pub note_count_display: String,
-    #[serde(default)]
-    pub primary_action: Option<ProfileAction>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-pub struct ProfileAction {
-    #[serde(default)]
-    pub kind: String,
-    #[serde(default)]
-    pub label: String,
-    #[serde(default)]
-    pub target_pubkey: String,
-    #[serde(default)]
-    pub icon_name: String,
-    #[serde(default)]
-    pub dispatch: Option<ProfileDispatchSpec>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-pub struct ProfileDispatchSpec {
-    #[serde(default)]
-    pub namespace: String,
-    #[serde(default)]
-    pub body_json: String,
-}
-
-/// `thread_view` projection payload.
-#[derive(Clone, Debug, Default, Deserialize)]
-pub struct ThreadViewPayload {
-    #[serde(default)]
-    pub focused_event_id: String,
-    #[serde(default)]
-    pub root_event_id: String,
-    #[serde(default)]
-    pub state: String,
-    #[serde(default)]
-    pub items: Vec<TimelineItem>,
-    #[serde(default)]
-    pub previous_count: usize,
-    #[serde(default)]
-    pub next_count: usize,
-    #[serde(default)]
-    pub previous_count_label: String,
-    #[serde(default)]
-    pub next_count_label: String,
-}
+// V-112 (ADR-0042): AuthorViewPayload, ThreadViewPayload, ProfileAction,
+// ProfileDispatchSpec deleted — the author_view / thread_view kernel projections
+// are removed.  Author and thread screens now read from the dynamic flat-feed
+// projections "nmp.feed.author.<pubkey>" / "nmp.feed.thread.<event_id>"
+// (ModularTimelineSnapshot).
 
 /// `mention_profiles` projection payload.
 #[derive(Clone, Debug, Default, Deserialize)]

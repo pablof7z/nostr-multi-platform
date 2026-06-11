@@ -321,13 +321,8 @@ impl Kernel {
         self.metric_note_events = self.metric_note_events.saturating_add(1);
     }
 
-    /// Read-only check that an id is sitting on the T121 thread-hydration
-    /// queue (either pending or already requested). Used by the cold-reply
-    /// test to assert the hydration REQ was kicked.
-    #[allow(dead_code)]
-    pub(crate) fn is_thread_hydration_requested(&self, id: &str) -> bool {
-        self.thread_view.requested_ids.contains(id) || self.thread_view.pending_ids.contains(id)
-    }
+    // V-112 (ADR-0042): is_thread_hydration_requested() deleted —
+    // ThreadViewState (including pending_ids / requested_ids) removed from kernel.
 
     /// Seed a kind:10002 (NIP-65 relay list) into the kernel's event store and
     /// relay-list cache for `author_pubkey` with `write_urls` as its write-marker

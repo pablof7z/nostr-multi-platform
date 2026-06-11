@@ -1923,12 +1923,12 @@ fn snapshot_json_carries_new_projections() {
         "configured_relays projection must have entries"
     );
     // D0: the views cluster (`profile`, `timeline`, `author_view`,
-    // `thread_view`, `inserted`, `updated`, `removed`) is no longer a typed
-    // `KernelSnapshot` field set — all are kernel-owned built-in entries in the
-    // same `projections` map. D5: `timeline`, `inserted`, `updated`, `removed`
-    // are present only when `follow_feed_kinds` is non-empty (the shell has
-    // called `nmp_app_open_timeline`); `author_view` / `thread_view` appear
-    // only when the respective view is open. `profile` is always present.
+    // `inserted`, `updated`, `removed`) is no longer a typed `KernelSnapshot`
+    // field set — all are kernel-owned built-in entries in the same `projections`
+    // map. D5: `timeline`, `inserted`, `updated`, `removed` are present only
+    // when `follow_feed_kinds` is non-empty (the shell has called
+    // `nmp_app_open_timeline`). `profile` is always present.
+    // V-112 (ADR-0042): `author_view` / `thread_view` deleted from projections.
     assert!(projections.get("profile").is_some());
     // `timeline` and deltas are absent — no `nmp_app_open_timeline` call above.
     assert!(
@@ -1947,17 +1947,15 @@ fn snapshot_json_carries_new_projections() {
         projections.get("removed").is_none(),
         "D5: removed must be absent before nmp_app_open_timeline"
     );
-    // `author_view` IS present: `sign_in_with_nip65` → `sign_in_nsec` →
-    // `retarget_timeline` → `kernel.open_author(pk, false)`, which opens the
-    // active account's author view as part of the sign-in flow.
+    // V-112 (ADR-0042): `author_view` / `thread_view` deleted from snapshot.
+    // `retarget_timeline` no longer calls `kernel.open_author()`.
     assert!(
-        projections.get("author_view").is_some(),
-        "author_view must be present: sign_in calls open_author for the active account"
+        projections.get("author_view").is_none(),
+        "V-112: author_view must be absent — deleted in ADR-0042 M2 migration"
     );
-    // `thread_view` is absent — no thread has been opened.
     assert!(
         projections.get("thread_view").is_none(),
-        "D5: thread_view must be absent before open_thread"
+        "V-112: thread_view must be absent — deleted in ADR-0042 M2 migration"
     );
     // The typed `KernelSnapshot` fields must be gone — a shell that still
     // reads them would silently get `null`.

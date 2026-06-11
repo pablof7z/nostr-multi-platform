@@ -4,16 +4,18 @@
 //! Gate: docs/design/ffi-hardening/gates.md §G-S2
 //!
 //! 10,000 dispatches/sec from N=4 caller threads × 60 s.
-//! Mix: 30% open_author, 30% close_author, 20% claim_profile, 20% release_profile.
+//! Mix: 60% claim_profile, 40% release_profile.
+//! V-68 / V-112 (ADR-0042): open_author / close_author deleted.
+//! Former 30/30/20/20 open_author/close_author/claim/release mix is now
+//! 60/40 claim/release (open_author+claim combined → claim; close_author+release → release).
 //!
 //! D8 (reactivity contract, <=60 Hz/view): actor mpsc backlog never exceeds 10,000.
 //! Bible #3 (fire-and-forget): every send call returns within p99 <= 1 ms.
 
 use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::ffi::{
-    nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free, nmp_app_new,
-    nmp_app_open_author, nmp_app_release_profile, nmp_app_set_update_callback, process_rss_bytes,
-    test_pubkeys, NmpApp,
+    nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_profile,
+    nmp_app_set_update_callback, process_rss_bytes, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -74,9 +76,9 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     let wall_start = Instant::now();
 
     // Configure-not-Start: nmp_app_configure sets emit_hz/visible_limit without spawning
-    // relay worker threads. S2 floods open_author/close_author at 10k/sec; spawning relay
-    // workers would send 3k+ REQ/CLOSE per second to real external relays, filling the TCP
-    // write buffer and blocking relay threads indefinitely — causing a hang at teardown.
+    // relay worker threads. S2 floods claim_profile/release_profile at 10k/sec; spawning
+    // relay workers would send 3k+ REQ/CLOSE per second to real external relays, filling
+    // the TCP write buffer and blocking relay threads indefinitely — causing a hang at teardown.
     let app: *mut NmpApp = nmp_app_new();
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(sink_cb));
     nmp_app_configure(app, 0, 80, 4);
@@ -125,14 +127,15 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
                 while thread_start.elapsed() < duration {
                     let pk_idx = seq as usize % pubkeys.len();
                     let pk = &pubkeys[pk_idx];
-                    // Mix per spec: 30/30/20/20.
+                    // Mix: 60% claim_profile, 40% release_profile.
+                    // V-68 / V-112 (ADR-0042): open_author / close_author deleted;
+                    // former 30/30/20/20 open_author/close_author/claim/release
+                    // compressed to 60/40 claim/release.
                     let dispatch_kind = seq % 10;
 
                     let t0 = Instant::now();
                     match dispatch_kind {
-                        0..=2 => nmp_app_open_author(app_ptr, pk.as_ptr()),
-                        3..=5 => nmp_app_close_author(app_ptr, pk.as_ptr()),
-                        6..=7 => {
+                        0..=5 => {
                             let consumer =
                                 CString::new(format!("t{thread_idx}-{seq}")).expect("no nuls");
                             nmp_app_claim_profile(app_ptr, pk.as_ptr(), consumer.as_ptr(), 0);

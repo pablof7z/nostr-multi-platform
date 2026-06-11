@@ -3,8 +3,8 @@ use serde_json::Value;
 use crate::bridge::UpdatePayload;
 use crate::feature_snapshot_json::{
     accounts_from, configured_relays_from, dm_from, follow_count_from, groups_from, messages_from,
-    outbox_from, profile_from, projection, publish_history_from, settings_hub_from, string_field,
-    summary_from, thread_from, wallet_from,
+    outbox_from, projection, publish_history_from, settings_hub_from, string_field, summary_from,
+    wallet_from,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -22,8 +22,10 @@ pub struct FeatureSnapshot {
     pub discovered_groups: Vec<GroupLine>,
     pub follow_count: usize,
     pub settings_hub: SummaryLine,
-    pub author_profile: Option<ProfileLine>,
-    pub thread: Option<ThreadLine>,
+    // V-112 (ADR-0042): author_profile (from deleted author_view projection) and
+    // thread (from deleted thread_view projection) removed. The profile pane reads
+    // profile data from claim_profile → resolved_profiles; note lists read from the
+    // dynamic nmp.feed.author.* / nmp.feed.thread.* flat-feed projections.
 }
 
 impl FeatureSnapshot {
@@ -92,8 +94,6 @@ impl FeatureSnapshot {
             discovered_groups: groups_from(projections),
             follow_count: follow_count_from(projections),
             settings_hub: settings_hub_from(projections.get("settings_hub")),
-            author_profile: profile_from(projections.get("author_view")),
-            thread: thread_from(projections.get("thread_view")),
         }
     }
 
@@ -213,24 +213,6 @@ pub struct GroupLine {
 pub struct SummaryLine {
     pub title: String,
     pub subtitle: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProfileLine {
-    pub pubkey: String,
-    pub display: String,
-    pub about: String,
-    pub note_count: String,
-    pub action_label: String,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ThreadLine {
-    pub focused_event_id: String,
-    pub state: String,
-    pub previous_label: String,
-    pub next_label: String,
-    pub item_count: usize,
 }
 
 /// Shared by the typed (`feature_snapshot_typed`) and JSON paths: render the

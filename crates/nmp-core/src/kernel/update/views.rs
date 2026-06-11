@@ -1,12 +1,8 @@
 use super::super::{
-    event_references, first_event_ref, referenced_event_ids, root_event_id, truncate,
-    AccountSummary, AuthorViewPayload, BTreeSet, Kernel, MentionProfilePayload, Profile,
-    ProfileAction, ProfileCard, ProfileDispatchSpec, StoredEvent, ThreadViewPayload, TimelineItem,
+    truncate, AccountSummary, Kernel, MentionProfilePayload, Profile, ProfileCard, StoredEvent,
+    TimelineItem,
 };
-use super::helpers::{
-    format_next_count_label, format_previous_count_label, hex64_to_bytes32, is_hex64_lower,
-    nmp_store_to_kernel_stored, parse_repost_inner,
-};
+use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored, parse_repost_inner};
 
 impl Kernel {
     /// Look up the `StoredEvent` that resolves a `claim_event`
@@ -196,50 +192,9 @@ impl Kernel {
         }
     }
 
-    pub(in crate::kernel) fn profile_action_for(&self, pubkey: &str) -> Option<ProfileAction> {
-        if pubkey.is_empty() {
-            return None;
-        }
-        let active = self.active_account.as_deref()?;
-        if active == pubkey {
-            // edit_profile is a LOCAL-UI intent (open the edit sheet) —
-            // there is no registered ActionModule for it. `dispatch: None`
-            // lets the shell branch on presence-of-dispatch rather than
-            // switching on `kind`. (aim.md §4.4: only writes flow through
-            // registered ActionModules.)
-            return Some(ProfileAction {
-                kind: "edit_profile",
-                label: "Edit",
-                target_pubkey: pubkey.to_string(),
-                icon_name: "square.and.pencil",
-                dispatch: None,
-            });
-        }
-
-        let is_following = self
-            .seed_contacts
-            .get(active)
-            .is_some_and(|follows| follows.iter().any(|follow| follow == pubkey));
-        let (kind, label, icon_name, namespace) = if is_following {
-            ("unfollow", "Unfollow", "person.badge.minus", "nmp.unfollow")
-        } else {
-            ("follow", "Follow", "person.badge.plus", "nmp.follow")
-        };
-        // Pre-serialize the action body so the shell sends the same bytes
-        // the executor validates: `{"pubkey":"<hex>"}` per
-        // `apps/chirp/nmp-app-chirp/src/ffi.rs` (NS_FOLLOW / NS_UNFOLLOW).
-        let body_json = serde_json::json!({ "pubkey": pubkey }).to_string();
-        Some(ProfileAction {
-            kind,
-            label,
-            target_pubkey: pubkey.to_string(),
-            icon_name,
-            dispatch: Some(ProfileDispatchSpec {
-                namespace,
-                body_json,
-            }),
-        })
-    }
+    // V-112 (ADR-0042): profile_action_for() deleted — it was called only from
+    // the deleted author_view() projection builder. Follow/unfollow actions now
+    // flow through the chirp nmp-app-chirp ActionModule seam directly.
 
     /// Returns the accounts list enriched with profile picture URLs and
     /// real display names from cached kind:0 metadata. The base
@@ -266,118 +221,10 @@ impl Kernel {
             .collect()
     }
 
-    pub(in crate::kernel) fn author_view(&self) -> Option<AuthorViewPayload> {
-        let pubkey = &self.author_view.selected_author.as_ref()?.key;
-        let items = self.author_items(pubkey);
-        let state = if self.author_view.request_pending {
-            "queued"
-        } else if items.is_empty() {
-            "opening"
-        } else {
-            "ready"
-        };
-
-        let note_count = items.len();
-        Some(AuthorViewPayload {
-            pubkey: pubkey.clone(),
-            state: state.to_string(),
-            profile: self.profile_card_for(pubkey, None, "Waiting for selected author kind:0"),
-            note_count,
-            note_count_display: note_count.to_string(),
-            primary_action: self.profile_action_for(pubkey),
-            items,
-        })
-    }
-
-    pub(in crate::kernel) fn author_items(&self, pubkey: &str) -> Vec<TimelineItem> {
-        let mut events = self
-            .events
-            .values()
-            .filter(|event| event.author == pubkey && matches!(event.kind, 1 | 6))
-            .collect::<Vec<_>>();
-        events.sort_by(|left, right| {
-            right
-                .created_at
-                .cmp(&left.created_at)
-                .then_with(|| left.id.cmp(&right.id))
-        });
-        events
-            .into_iter()
-            .take(100)
-            .map(|event| self.timeline_item(event))
-            .collect()
-    }
-
-    pub(in crate::kernel) fn thread_view(&self) -> Option<ThreadViewPayload> {
-        let focused_id = &self.thread_view.selected_thread.as_ref()?.key;
-        let root_id = self
-            .thread_root_id(focused_id)
-            .unwrap_or_else(|| focused_id.clone());
-        let items = self.thread_items(focused_id, &root_id);
-        let focused_index = items.iter().position(|item| item.id == *focused_id);
-        let previous_count = focused_index.unwrap_or(0);
-        let next_count = focused_index.map_or(0, |index| items.len().saturating_sub(index + 1));
-        let state = if self.thread_view.request_pending {
-            "queued"
-        } else if items.is_empty() {
-            "opening"
-        } else {
-            "ready"
-        };
-        let previous_count_label = format_previous_count_label(previous_count);
-        let next_count_label = format_next_count_label(next_count);
-
-        Some(ThreadViewPayload {
-            focused_event_id: focused_id.clone(),
-            root_event_id: root_id,
-            state: state.to_string(),
-            items,
-            previous_count,
-            next_count,
-            previous_count_label,
-            next_count_label,
-        })
-    }
-
-    pub(in crate::kernel) fn thread_items(
-        &self,
-        focused_id: &str,
-        root_id: &str,
-    ) -> Vec<TimelineItem> {
-        let mut ids = BTreeSet::new();
-        ids.insert(focused_id.to_string());
-        ids.insert(root_id.to_string());
-        if let Some(focused) = self.events.get(focused_id) {
-            ids.extend(referenced_event_ids(focused));
-        }
-
-        let mut events = self
-            .events
-            .values()
-            .filter(|event| {
-                ids.contains(&event.id)
-                    || event_references(event, root_id)
-                    || event_references(event, focused_id)
-            })
-            .collect::<Vec<_>>();
-        events.sort_by(|left, right| {
-            left.created_at
-                .cmp(&right.created_at)
-                .then_with(|| left.id.cmp(&right.id))
-        });
-        events
-            .into_iter()
-            .take(250)
-            .map(|event| self.timeline_item(event))
-            .collect()
-    }
-
-    pub(in crate::kernel) fn thread_root_id(&self, focused_id: &str) -> Option<String> {
-        let event = self.events.get(focused_id)?;
-        root_event_id(event)
-            .or_else(|| first_event_ref(event))
-            .or_else(|| Some(focused_id.to_string()))
-    }
+    // V-112 (ADR-0042): author_view(), author_items(), thread_view(),
+    // thread_items(), thread_root_id() deleted. View state and item lists now
+    // live in the per-app FlatFeed registered by nmp_app_chirp_open_author_feed
+    // / nmp_app_chirp_open_thread_feed.
 
     /// Build the `mention_profiles` projection from a slice of timeline
     /// items. Maps `author_pubkey -> MentionProfilePayload` joining

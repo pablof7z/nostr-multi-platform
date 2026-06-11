@@ -57,26 +57,6 @@ fn profile_card_value(card: &nmp_core::typed_projections::ProfileCardModel) -> s
     })
 }
 
-/// Map a kernel `TimelineItemModel` to the `Value` shape `snapshot::TimelineItem`
-/// deserialises from. Only the fields the desktop shell renders are emitted; the
-/// extra typed-model fields (`author_lnurl`, `author_display_name`) are dropped
-/// because `snapshot::TimelineItem` does not carry them.
-fn timeline_item_value(item: &nmp_core::typed_projections::TimelineItemModel) -> serde_json::Value {
-    serde_json::json!({
-        "id": item.id,
-        "author_pubkey": item.author_pubkey,
-        "author_picture_url": item.author_picture_url,
-        "kind": item.kind,
-        "content": item.content,
-        "content_preview": item.content_preview,
-        "created_at": item.created_at,
-        "relay_count": item.relay_count,
-        "is_repost": item.is_repost,
-        "nav_target_id": item.nav_target_id,
-        "repost_inner_content": item.repost_inner_content,
-    })
-}
-
 /// Decode one transport payload into a fully-populated [`Snapshot`] from typed
 /// sources only. Returns `None` when the Tier-3 envelope itself fails to decode
 /// (a malformed frame the shell should skip).
@@ -144,52 +124,12 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
     let mut projections: std::collections::HashMap<String, serde_json::Value> =
         std::collections::HashMap::new();
 
-    // thread_view — absent when no thread is focused (D5).
-    if let Some(m) = find(tp::THREAD_VIEW_SCHEMA_ID).and_then(|b| tp::decode_thread_view(b).ok()) {
-        let items: Vec<serde_json::Value> = m.items.iter().map(timeline_item_value).collect();
-        projections.insert(
-            "thread_view".to_string(),
-            serde_json::json!({
-                "focused_event_id": m.focused_event_id,
-                "root_event_id": m.root_event_id,
-                "state": m.state,
-                "items": items,
-                "previous_count": m.previous_count,
-                "next_count": m.next_count,
-                "previous_count_label": m.previous_count_label,
-                "next_count_label": m.next_count_label,
-            }),
-        );
-    }
-
-    // author_view — absent when no author is focused (D5).
-    if let Some(m) = find(tp::AUTHOR_VIEW_SCHEMA_ID).and_then(|b| tp::decode_author_view(b).ok()) {
-        let items: Vec<serde_json::Value> = m.items.iter().map(timeline_item_value).collect();
-        let primary_action = m.primary_action.map(|a| {
-            serde_json::json!({
-                "kind": a.kind,
-                "label": a.label,
-                "target_pubkey": a.target_pubkey,
-                "icon_name": a.icon_name,
-                "dispatch": a.dispatch.map(|d| serde_json::json!({
-                    "namespace": d.namespace,
-                    "body_json": d.body_json,
-                })),
-            })
-        });
-        projections.insert(
-            "author_view".to_string(),
-            serde_json::json!({
-                "pubkey": m.pubkey,
-                "state": m.state,
-                "profile": profile_card_value(&m.profile),
-                "items": items,
-                "note_count": m.note_count,
-                "note_count_display": m.note_count_display,
-                "primary_action": primary_action,
-            }),
-        );
-    }
+    // V-112 (ADR-0042): author_view / thread_view projections deleted.
+    // Author and thread screens now read from dynamic flat-feed projections
+    // registered by nmp_app_chirp_open_author_feed / _open_thread_feed under
+    // "nmp.feed.author.<pubkey>" / "nmp.feed.thread.<event_id>" keys. These
+    // are present in the typed sidecar list with schema_id "nmp.nip01.opfeed"
+    // and are decoded/inserted below alongside the home feed.
 
     // nmp.feed.home — typed OP-feed sidecar (same path as chirp-tui).
     if let Some(feed) = extract_home_feed_from_typed(&typed) {

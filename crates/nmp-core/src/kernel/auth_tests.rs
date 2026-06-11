@@ -476,17 +476,20 @@ fn nip42_kernel_auth_without_signer_holds_in_challenge_received() {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Bonus regression: actor-flow integration — view-open REQs are partitioned
+// Bonus regression: actor-flow integration — claim REQs are partitioned
 // at the single `send_all_outbound` choke point. This test mirrors what the
-// actor does for ActorCommand::OpenAuthor: it calls `kernel.open_author()`
-// (which historically returned REQs straight to the wire) and feeds the
-// output through `partition_auth_paused` (the routine `send_all_outbound`
-// calls). Without the relay_mgmt.rs choke-point change, this test would
-// fail — the view-open REQs would bypass the AUTH gate.
+// actor does for ActorCommand::ClaimProfile: it calls `kernel.claim_profile()`
+// (which emits a kind:0 REQ to the Indexer) and feeds the output through
+// `partition_auth_paused` (the routine `send_all_outbound` calls). Without
+// the relay_mgmt.rs choke-point change, this test would fail — the claim REQs
+// would bypass the AUTH gate.
+//
+// V-112 (ADR-0042): original test used `kernel.open_author()` (deleted).
+// Updated to use `kernel.claim_profile()` which also emits an Indexer REQ.
 // ───────────────────────────────────────────────────────────────────────────
 
 #[test]
-fn nip42_kernel_view_open_reqs_routed_through_auth_gate() {
+fn nip42_kernel_claim_reqs_routed_through_auth_gate() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let (signer, _) = make_signer(AUTH_EVENT_ID);
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
@@ -499,14 +502,14 @@ fn nip42_kernel_view_open_reqs_routed_through_auth_gate() {
     );
     assert!(kernel.relay_auth_paused(RelayRole::Indexer));
 
-    // Open an author view. open_author() emits REQs across Content +
-    // Indexer; the Indexer-bound REQs should be deferred because the
-    // Indexer relay is AUTH-paused (open_author dispatches relay-list and
-    // profile REQs to the Indexer).
-    let outbound = kernel.open_author(
+    // Claim a profile. claim_profile() emits a kind:0 REQ to the Indexer;
+    // the Indexer-bound REQs should be deferred because the Indexer relay is
+    // AUTH-paused.
+    let outbound = kernel.claim_profile(
         "1234567812345678123456781234567812345678123456781234567812345678".to_string(),
-        std::collections::BTreeSet::from([1u32, 6u32]),
+        "auth-gate-test".to_string(),
         true,
+        false,
     );
     let post_partition = kernel.partition_auth_paused(outbound);
 

@@ -191,12 +191,8 @@ impl Kernel {
                         sub.state = "closed".to_string();
                     }
                 }
-                if sub_id.starts_with("thread-ids-") {
-                    self.thread_view.ids_inflight = false;
-                }
-                if sub_id.starts_with("thread-replies-") {
-                    self.thread_view.replies_inflight = false;
-                }
+                // V-112 (ADR-0042): thread-ids-/thread-replies- inflight-flag
+                // updates deleted; thread_view state no longer exists in the kernel.
                 // T82/T104: a discovery oneshot's first stored set has landed
                 // (OneShot lifecycle == "EOSE closes"). Complete + release the
                 // token; the generic CLOSE below tears down the wire sub.
@@ -303,12 +299,7 @@ impl Kernel {
                 self.wire
                     .subs
                     .remove(&(wire_key_url.clone(), sub_id.clone()));
-                if sub_id.starts_with("thread-ids-") {
-                    self.thread_view.ids_inflight = false;
-                }
-                if sub_id.starts_with("thread-replies-") {
-                    self.thread_view.replies_inflight = false;
-                }
+                // V-112 (ADR-0042): thread-ids-/thread-replies- inflight flags deleted.
                 self.changed_since_emit = true;
                 // T120 (G8 / G11): apply the NIP-01 reason-prefix policy
                 // table. The classifier routes by reason (auth-required
@@ -357,7 +348,7 @@ impl Kernel {
         }
 
         outbound.extend(self.maybe_open_timeline());
-        outbound.extend(self.maybe_open_thread_hydration());
+        // V-68 / V-112 (ADR-0042): maybe_open_thread_hydration() deleted.
         // M5+M2+M8 wiring: the AUTH-pause partition lives at the single
         // send-time choke point in `actor::relay_mgmt::send_all_outbound`, so
         // every REQ regardless of producer (handle_text, view-open commands,

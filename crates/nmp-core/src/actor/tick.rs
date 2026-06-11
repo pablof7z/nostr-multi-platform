@@ -50,7 +50,7 @@ pub(super) fn emit_now(
 
 /// T114b — post-dispatch emit gate (per-dispatch retention audit).
 ///
-/// View-command dispatchers (`OpenAuthor`, `ClaimProfile`, … — everything in
+/// View-command dispatchers (`ClaimProfile`, … — everything in
 /// `dispatch.rs` that mutates kernel state but is NOT a lifecycle event) MUST
 /// route through this helper. It emits the snapshot only when `running=true`,
 /// matching the idle-tick path's gating contract (see [`compute_wait`]).
@@ -236,22 +236,21 @@ mod tests {
             })
             .unwrap();
         let pk = "0".repeat(64);
-        for _ in 0..50 {
+        // V-68 / V-112 (ADR-0042): OpenAuthor / CloseAuthor deleted.
+        // Dispatch claim/release_profile to flood the queue (same fire-and-forget path).
+        for i in 0..50u64 {
             cmd_tx
                 .send(ActorCommand::ClaimProfile {
                     pubkey: pk.clone(),
-                    consumer_id: "test-consumer".into(),
+                    consumer_id: format!("test-consumer-{i}"),
                     force: false,
                 })
                 .unwrap();
             cmd_tx
-                .send(ActorCommand::OpenAuthor {
+                .send(ActorCommand::ReleaseProfile {
                     pubkey: pk.clone(),
-                    kinds: std::collections::BTreeSet::from([1u32, 6u32]),
+                    consumer_id: format!("test-consumer-{i}"),
                 })
-                .unwrap();
-            cmd_tx
-                .send(ActorCommand::CloseAuthor { pubkey: pk.clone() })
                 .unwrap();
         }
         // The actor may be inside the 250 ms idle relay wait before it

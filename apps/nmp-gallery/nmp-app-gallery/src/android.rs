@@ -18,8 +18,8 @@ use jni::JNIEnv;
 
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_event, nmp_app_claim_profile, nmp_app_dispatch_action,
-    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_open_author, nmp_app_release_event,
-    nmp_app_release_profile, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
+    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_release_event, nmp_app_release_profile,
+    nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
 };
 
 /// Owns the kernel handle, snapshot receiver, and boxed sender held by the
@@ -160,25 +160,6 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStop(
     if let Some(s) = session_ref(handle) {
         nmp_app_stop(s.app);
     }
-}
-
-/// Open the author view for `pubkey`. Triggers a kind:0 + kind:10002 fetch
-/// and populates `projections.author_view` on every subsequent snapshot tick.
-/// Mirrors `nmp_app_open_author` from the iOS shell.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeOpenAuthor(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    pubkey: JString,
-) {
-    let Some(s) = session_ref(handle) else {
-        return;
-    };
-    let Some(pubkey) = jstring_to_cstring(&mut env, &pubkey) else {
-        return;
-    };
-    nmp_app_open_author(s.app, pubkey.as_ptr());
 }
 
 #[no_mangle]

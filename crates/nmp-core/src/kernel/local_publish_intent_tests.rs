@@ -7,11 +7,6 @@ use crate::substrate::{SignedEvent, UnsignedEvent};
 
 const FOLLOWED: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 
-fn snapshot(kernel: &mut Kernel) -> serde_json::Value {
-    serde_json::from_str(&kernel.make_update_json_for_test(true))
-        .expect("kernel snapshot must be valid JSON")
-}
-
 fn signed_contact_list(keys: &::nostr::Keys, follow: &str, created_at: u64) -> SignedEvent {
     let event = ::nostr::EventBuilder::new(::nostr::Kind::from(3u16), "")
         .tags([::nostr::Tag::parse(["p", follow]).expect("valid p tag")])
@@ -35,29 +30,36 @@ fn signed_contact_list(keys: &::nostr::Keys, follow: &str, created_at: u64) -> S
     }
 }
 
+/// V-112 (ADR-0042): `author_view.primary_action` was deleted with the author
+/// view state machine. The underlying property being tested — that publishing a
+/// kind:3 contact list updates `kernel.contacts` — is now observed directly.
 #[test]
-fn local_kind3_publish_updates_profile_action_from_contacts_projection() {
+fn local_kind3_publish_updates_contacts_set() {
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
     let signed = signed_contact_list(&keys, FOLLOWED, 1_700_000_000);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(author.clone());
     kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
-    kernel.open_author(FOLLOWED.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
-    // D0: the author view is no longer a typed `KernelSnapshot.author_view`
-    // field — it is a built-in entry in the `projections` map under the key
-    // `"author_view"`.
-    assert_eq!(
-        snapshot(&mut kernel)["projections"]["author_view"]["primary_action"]["kind"].as_str(),
-        Some("follow")
+    // Before publishing kind:3, FOLLOWED is not in seed_contacts for this author.
+    assert!(
+        kernel
+            .seed_contacts
+            .get(&author)
+            .map_or(true, |follows| !follows.contains(&FOLLOWED.to_string())),
+        "precondition: FOLLOWED must not be in seed_contacts before publish"
     );
 
     let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
 
     assert!(!outbound.is_empty(), "publish should have an outbox target");
-    assert_eq!(
-        snapshot(&mut kernel)["projections"]["author_view"]["primary_action"]["kind"].as_str(),
-        Some("unfollow")
+    // After publishing kind:3 with FOLLOWED in the p-tags, seed_contacts is updated.
+    assert!(
+        kernel
+            .seed_contacts
+            .get(&author)
+            .map_or(false, |follows| follows.contains(&FOLLOWED.to_string())),
+        "FOLLOWED must be in seed_contacts[author] after kind:3 publish"
     );
 }

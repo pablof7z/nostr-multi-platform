@@ -313,12 +313,10 @@ pub mod public_typed_projections {
         // profile
         decode_profile, ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID,
         PROFILE_SCHEMA_VERSION,
-        // author_view
-        decode_author_view, AuthorViewModel, ProfileActionModel, ProfileDispatchSpecModel,
-        AUTHOR_VIEW_FILE_IDENTIFIER, AUTHOR_VIEW_SCHEMA_ID, AUTHOR_VIEW_SCHEMA_VERSION,
-        // thread_view
-        decode_thread_view, ThreadViewModel, TimelineItemModel, THREAD_VIEW_FILE_IDENTIFIER,
-        THREAD_VIEW_SCHEMA_ID, THREAD_VIEW_SCHEMA_VERSION,
+        // V-112 (ADR-0042): decode_author_view, AuthorViewModel, ProfileActionModel,
+        // ProfileDispatchSpecModel, AUTHOR_VIEW_* deleted.
+        // V-112 (ADR-0042): decode_thread_view, ThreadViewModel, TimelineItemModel,
+        // THREAD_VIEW_* deleted.
         // publish_outbox
         decode_publish_outbox, PublishOutboxItemRow, PublishOutboxModel, PublishOutboxRelayRow,
         PUBLISH_OUTBOX_FILE_IDENTIFIER, PUBLISH_OUTBOX_SCHEMA_ID, PUBLISH_OUTBOX_SCHEMA_VERSION,
@@ -493,11 +491,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // name `&KernelSnapshot` to populate the typed Tier-3 `SnapshotFrame` fields.
 pub(crate) use types::KernelSnapshot;
 use types::{
-    AuthorViewPayload, AuthorViewState, ClaimedEventDto, Counters, DiagnosticFirehoseState,
-    LogicalInterestStatus, MentionProfilePayload, Metrics, OutboxSummarySnapshot, Profile,
-    ProfileAction, ProfileCard, ProfileDispatchSpec, ProfileRequestState, PublishOutboxItem,
-    PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, ThreadViewPayload, ThreadViewState,
-    TimelineItem, TimingMilestones, ViewInterest, WireSub, WireSubscriptionState,
+    ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
+    MentionProfilePayload, Metrics, OutboxSummarySnapshot, Profile, ProfileCard,
+    ProfileRequestState, PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus,
+    StoredEvent, TimelineItem, TimingMilestones, ViewInterest, WireSub, WireSubscriptionState,
     WireSubscriptionStatus,
 };
 
@@ -634,10 +631,8 @@ pub struct Kernel {
     /// memoize without &mut. See `status.rs` for the getter logic.
     cached_estimated_store_bytes: std::cell::Cell<Option<usize>>,
     timeline: VecDeque<String>,
-    /// Author-view tracking (D0 app-domain state). See [`AuthorViewState`].
-    author_view: AuthorViewState,
-    /// Thread-view tracking (D0 app-domain state). See [`ThreadViewState`].
-    thread_view: ThreadViewState,
+    // V-68 / V-112 (ADR-0042): author_view (AuthorViewState) / thread_view
+    // (ThreadViewState) fields deleted. View state lives in per-app FlatFeed.
     /// Diagnostic firehose tracking (D0 app-domain state). See
     /// [`DiagnosticFirehoseState`].
     diagnostic_firehose: DiagnosticFirehoseState,
@@ -1984,8 +1979,6 @@ impl Kernel {
             metric_stored_events: 0,
             cached_estimated_store_bytes: std::cell::Cell::new(None),
             timeline: VecDeque::new(),
-            author_view: AuthorViewState::default(),
-            thread_view: ThreadViewState::default(),
             diagnostic_firehose: DiagnosticFirehoseState::default(),
             deferred_outbound: VecDeque::new(),
             pending_backoff_hints: Vec::new(),

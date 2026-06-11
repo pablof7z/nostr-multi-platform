@@ -4,12 +4,12 @@
 //! Gate: docs/design/ffi-hardening/gates.md §G-S5
 //!
 //! Registers a callback that, on every emit, immediately dispatches
-//! `open_author` for a test pubkey from the listener thread.
+//! `claim_profile` for a test pubkey from the listener thread.
 //! Sustains for 30 s with configure() driving emits at ~4 Hz.
 //!
 //! Key invariants:
 //! - Zero deadlocks (external 5 s watchdog thread detects hangs).
-//! - Reentrant dispatch: nmp_app_open_author enqueues to actor's mpsc Sender
+//! - Reentrant dispatch: nmp_app_claim_profile enqueues to actor's mpsc Sender
 //!   (Send+Sync); the send never blocks or re-locks kernel state (bible #3).
 //! - Rev monotonicity after each emit.
 //! - No dispatch loss.
@@ -17,11 +17,12 @@
 //! D4 (single writer): reentrant dispatch enqueues to actor; callback does
 //!    not mutate kernel state directly.
 //! Bible #3 (fire-and-forget): send inside callback returns immediately.
+//! V-68 / V-112 (ADR-0042): open_author deleted; claim_profile used instead.
 
 use crate::common::{extract_rev, inject_signed_events, revs_strictly_increasing};
 use crate::ffi::{
-    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_open_author, nmp_app_set_update_callback,
-    test_pubkeys, NmpApp,
+    nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new,
+    nmp_app_set_update_callback, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -67,24 +68,27 @@ extern "C" fn reentrant_cb(ctx: *mut c_void, payload: *const u8, payload_len: us
     let emit_n = EMIT_COUNT.fetch_add(1, Ordering::Relaxed);
 
     let state_ptr = ctx as *mut Mutex<ReentryState>;
-    let (app_ptr, pk_cstr, rev) = {
+    let (app_ptr, pk_cstr, consumer_cstr, rev) = {
         let Ok(state) = (unsafe { (*state_ptr).lock() }) else {
             CB_IN_FLIGHT_TS_MS.store(0, Ordering::Release);
             return;
         };
         let pk = state.pubkeys[emit_n as usize % state.pubkeys.len()].clone();
+        let consumer =
+            std::ffi::CString::new(format!("s5-reentrant-{emit_n}")).unwrap_or_default();
         let rev = if !payload.is_null() && payload_len > 0 {
             let bytes = unsafe { std::slice::from_raw_parts(payload, payload_len) };
             extract_rev(bytes).unwrap_or(0)
         } else {
             0
         };
-        (state.app_usize as *mut NmpApp, pk, rev)
+        (state.app_usize as *mut NmpApp, pk, consumer, rev)
     };
 
     // Reentrant dispatch: enqueues to actor mpsc channel (fire-and-forget, bible #3).
     // Must not block: the actor's Sender::send() is O(1) non-blocking.
-    nmp_app_open_author(app_ptr, pk_cstr.as_ptr());
+    // V-68 / V-112 (ADR-0042): use claim_profile instead of deleted open_author.
+    nmp_app_claim_profile(app_ptr, pk_cstr.as_ptr(), consumer_cstr.as_ptr(), 0);
     REENTRANT_DISPATCHES.fetch_add(1, Ordering::Relaxed);
 
     let total_ns = t_start.elapsed().as_nanos() as u64;
@@ -250,8 +254,9 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
             .to_string(),
     );
     report.notes.push(
-        "Reentrant dispatch is fire-and-forget (bible #3): nmp_app_open_author enqueues \
-         to actor mpsc channel; does not block listener thread or re-lock any mutex."
+        "Reentrant dispatch is fire-and-forget (bible #3): nmp_app_claim_profile enqueues \
+         to actor mpsc channel; does not block listener thread or re-lock any mutex. \
+         V-68/V-112 (ADR-0042): claim_profile replaces deleted nmp_app_open_author."
             .to_string(),
     );
 

@@ -17,8 +17,8 @@ use std::collections::HashMap;
 use crate::bridge::AppRuntime;
 use crate::render::{effective_content, hex_color, note_body};
 use crate::snapshot::{
-    ActionStageRow, AppRelay, AuthorViewPayload, DmConversationSnapshot, ModularTimelineSnapshot,
-    ProfileCard, Snapshot, ThreadViewPayload, TimelineEventCard, TimelineItem,
+    ActionStageRow, AppRelay, DmConversationSnapshot, ModularTimelineSnapshot, ProfileCard,
+    Snapshot, TimelineEventCard,
 };
 use nmp_chirp_config;
 
@@ -249,12 +249,18 @@ impl DesktopApp {
         CentralPanel::default().show(ctx, |ui| match tab {
             AppTab::Home => self.timeline(ui, snap),
             AppTab::Thread(ref event_id) => {
-                let payload: Option<ThreadViewPayload> = snap.projection("thread_view");
-                self.thread_view(ui, snap, event_id, payload);
+                // V-112 (ADR-0042): read from flat-feed projection instead of deleted thread_view.
+                let key = format!("nmp.feed.thread.{event_id}");
+                let feed: Option<ModularTimelineSnapshot> = snap.projection(&key);
+                self.thread_view(ui, snap, event_id, feed);
             }
             AppTab::Author(ref pubkey) => {
-                let payload: Option<AuthorViewPayload> = snap.projection("author_view");
-                self.author_view(ui, snap, pubkey, payload);
+                // V-112 (ADR-0042): read from flat-feed projection instead of deleted author_view.
+                let key = format!("nmp.feed.author.{pubkey}");
+                let feed: Option<ModularTimelineSnapshot> = snap.projection(&key);
+                let profiles: HashMap<String, ProfileCard> =
+                    snap.projection("resolved_profiles").unwrap_or_default();
+                self.author_view(ui, snap, pubkey, feed, profiles);
             }
             AppTab::Dms => self.dm_panel(ui, snap),
             AppTab::Settings => self.settings_view(ui, snap),
@@ -350,36 +356,35 @@ impl DesktopApp {
     fn thread_view(
         &mut self,
         ui: &mut Ui,
-        _snap: &Snapshot,
-        _event_id: &str,
-        payload: Option<ThreadViewPayload>,
+        snap: &Snapshot,
+        event_id: &str,
+        feed: Option<ModularTimelineSnapshot>,
     ) {
+        let eid = event_id.to_string();
+        let profiles: HashMap<String, ProfileCard> =
+            snap.projection("resolved_profiles").unwrap_or_default();
         ui.horizontal(|ui| {
             if ui.button("← Back").clicked() {
                 self.tab = AppTab::Home;
-                self.bridge.close_thread();
+                self.bridge.close_thread(&eid);
             }
             ui.label(RichText::new("Thread").strong());
         });
         ui.separator();
 
-        let Some(thread) = payload else {
+        // V-112 (ADR-0042): thread_view projection deleted; items come from flat feed.
+        let Some(thread_feed) = feed else {
             ui.label("Loading thread…");
             return;
         };
 
-        ui.label(
-            RichText::new(format!("Root: {}", &thread.root_event_id[..16]))
-                .small()
-                .weak(),
-        );
         ui.add_space(4.0);
 
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for item in &thread.items {
-                    note_card(ui, item, &mut self.tab, &self.bridge);
+                for entry in &thread_feed.cards {
+                    feed_card(ui, &entry.card, &profiles, &mut self.tab, &self.bridge);
                     ui.add_space(4.0);
                 }
             });
@@ -390,31 +395,29 @@ impl DesktopApp {
         ui: &mut Ui,
         _snap: &Snapshot,
         pubkey: &str,
-        payload: Option<AuthorViewPayload>,
+        feed: Option<ModularTimelineSnapshot>,
+        profiles: HashMap<String, ProfileCard>,
     ) {
+        let pk = pubkey.to_string();
         ui.horizontal(|ui| {
             if ui.button("← Back").clicked() {
                 self.tab = AppTab::Home;
-                self.bridge.close_author();
+                self.bridge.close_author(&pk);
             }
             ui.label(RichText::new("Profile").strong());
         });
         ui.separator();
 
-        let Some(author) = payload else {
-            ui.label("Loading profile…");
-            return;
-        };
-
-        // Profile header
+        // V-112 (ADR-0042): author_view projection deleted; items come from flat feed.
+        // Profile header uses resolved_profiles (kernel-claimed via claim_profile).
         let initials = nmp_core::display::avatar_initials(&nmp_core::display::to_npub(pubkey));
         let color = nmp_core::display::avatar_color_hex(pubkey);
+        let profile = profiles.get(pubkey).cloned().unwrap_or_default();
         ui.horizontal(|ui| {
             avatar(ui, &initials, &color);
             ui.add_space(8.0);
             ui.vertical(|ui| {
-                let name = author
-                    .profile
+                let name = profile
                     .display_name
                     .as_deref()
                     .filter(|s| !s.is_empty())
@@ -425,9 +428,9 @@ impl DesktopApp {
                         .small()
                         .weak(),
                 );
-                if !author.profile.nip05.is_empty() {
+                if !profile.nip05.is_empty() {
                     ui.label(
-                        RichText::new(&author.profile.nip05)
+                        RichText::new(&profile.nip05)
                             .small()
                             .color(Color32::from_rgb(96, 165, 250)),
                     );
@@ -436,27 +439,19 @@ impl DesktopApp {
         });
         ui.add_space(4.0);
 
-        // Follow / unfollow button
-        if let Some(action) = &author.primary_action {
-            if let Some(dispatch) = &action.dispatch {
-                let label = &action.label;
-                if ui.button(label).clicked() {
-                    let _ = self
-                        .bridge
-                        .dispatch_action(&dispatch.namespace, &dispatch.body_json);
-                }
-            }
-        }
-
         ui.separator();
-        ui.label(RichText::new(format!("{} notes", author.note_count_display)).strong());
         ui.add_space(4.0);
+
+        let Some(author_feed) = feed else {
+            ui.label("Loading posts…");
+            return;
+        };
 
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for item in &author.items {
-                    note_card(ui, item, &mut self.tab, &self.bridge);
+                for entry in &author_feed.cards {
+                    feed_card(ui, &entry.card, &profiles, &mut self.tab, &self.bridge);
                     ui.add_space(4.0);
                 }
             });
@@ -1068,89 +1063,6 @@ fn feed_card(
                         if ui.small_button("⚡ Zap").clicked() {
                             // Default amount: 21 sats = 21,000 msats.
                             let _ = bridge.zap(&card.author_pubkey, 21_000, &card.id);
-                        }
-                    });
-                });
-            });
-        });
-}
-
-fn note_card(ui: &mut Ui, item: &TimelineItem, tab: &mut AppTab, bridge: &AppRuntime) {
-    let author_display = nmp_core::display::short_npub(&item.author_pubkey);
-    let initials =
-        nmp_core::display::avatar_initials(&nmp_core::display::to_npub(&item.author_pubkey));
-    let color = nmp_core::display::avatar_color_hex(&item.author_pubkey);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let created_at_display = nmp_core::display::format_ago_secs(now, item.created_at);
-
-    Frame::group(ui.style())
-        .fill(ui.visuals().faint_bg_color)
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                avatar(ui, &initials, &color);
-                ui.add_space(6.0);
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        // Clickable author name
-                        if ui.button(RichText::new(&author_display).strong()).clicked() {
-                            *tab = AppTab::Author(item.author_pubkey.clone());
-                            bridge.open_author(&item.author_pubkey);
-                        }
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(RichText::new(&created_at_display).weak().small());
-                            if item.relay_count > 1 {
-                                ui.label(
-                                    RichText::new(format!("·{}×", item.relay_count))
-                                        .weak()
-                                        .small(),
-                                );
-                            }
-                        });
-                    });
-                    let (text, is_repost) = effective_content(&item.content);
-                    if is_repost {
-                        ui.label(
-                            RichText::new("↩ repost")
-                                .small()
-                                .weak()
-                                .color(Color32::from_rgb(148, 163, 184)),
-                        );
-                    }
-                    if !text.is_empty() {
-                        // Clickable body → open thread
-                        let response = ui.label(text.as_ref());
-                        if response.clicked() {
-                            let target = if item.nav_target_id.is_empty() {
-                                item.id.clone()
-                            } else {
-                                item.nav_target_id.clone()
-                            };
-                            *tab = AppTab::Thread(target.clone());
-                            bridge.open_thread(&target);
-                        }
-                        note_body(ui, text.as_ref());
-                    }
-                    // Like button row
-                    ui.horizontal(|ui| {
-                        if ui.small_button("❤ Like").clicked() {
-                            let target = if item.nav_target_id.is_empty() {
-                                &item.id
-                            } else {
-                                &item.nav_target_id
-                            };
-                            let _ = bridge.react(target, "+");
-                        }
-                        if ui.small_button("⚡ Zap").clicked() {
-                            let target = if item.nav_target_id.is_empty() {
-                                &item.id
-                            } else {
-                                &item.nav_target_id
-                            };
-                            // Default amount: 21 sats = 21,000 msats
-                            let _ = bridge.zap(&item.author_pubkey, 21_000, target);
                         }
                     });
                 });

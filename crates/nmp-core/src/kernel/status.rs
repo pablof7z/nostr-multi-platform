@@ -233,53 +233,8 @@ impl Kernel {
             cache_coverage: "local".to_string(),
             warming_until_ms: None,
         });
-        if let Some(interest) = self.author_view.selected_author.as_ref() {
-            let pubkey = &interest.key;
-            let note_count = self.author_items(pubkey).len();
-            interests.push(LogicalInterestStatus {
-                key: format!("AuthorProfile({})", short_hex(pubkey)),
-                state: if self.author_view.request_pending {
-                    "queued".to_string()
-                } else if note_count > 0 {
-                    "tailing".to_string()
-                } else {
-                    "opening".to_string()
-                },
-                refcount: interest.refcount,
-                relay_urls: self.author_interest_relays(pubkey),
-                cache_coverage: if note_count > 0 {
-                    format!("{note_count} notes; {}", self.relay_list_coverage(pubkey))
-                } else {
-                    format!("warming; {}", self.relay_list_coverage(pubkey))
-                },
-                warming_until_ms: None,
-            });
-        }
-        if let Some(interest) = self.thread_view.selected_thread.as_ref() {
-            let event_id = &interest.key;
-            let root_id = self
-                .thread_root_id(event_id)
-                .unwrap_or_else(|| event_id.clone());
-            let item_count = self.thread_items(event_id, &root_id).len();
-            interests.push(LogicalInterestStatus {
-                key: format!("Thread({})", short_hex(event_id)),
-                state: if self.thread_view.request_pending {
-                    "queued".to_string()
-                } else if item_count > 0 {
-                    "tailing".to_string()
-                } else {
-                    "opening".to_string()
-                },
-                refcount: interest.refcount,
-                relay_urls: self.bootstrap_urls_for_role(RelayRole::Content),
-                cache_coverage: if item_count > 0 {
-                    format!("{item_count} events")
-                } else {
-                    "warming".to_string()
-                },
-                warming_until_ms: None,
-            });
-        }
+        // V-68 / V-112 (ADR-0042): AuthorProfile / Thread logical-interest status
+        // rows deleted — these interests now live in per-app FlatFeed state.
         // M2 (ADR-0042): the `DiagnosticFirehose(#tag)` logical-interest status
         // row was removed with the `open_firehose_tag` verb; generic
         // `open_interest` feeds surface through the standard registry/wire-sub

@@ -371,30 +371,10 @@ pub enum ActorCommand {
         visible_limit: usize,
         emit_hz: u32,
     },
-    OpenAuthor {
-        pubkey: String,
-        /// Host-declared Nostr kinds to include in the author-notes REQ filter.
-        ///
-        /// `nmp-core` carries these as opaque filter data only — no social-kind
-        /// knowledge lives in the substrate. The host (nmp-ffi or an ActionModule)
-        /// supplies the value; mirrors the identical `kinds` field on `OpenThread`
-        /// and `OpenContactListSubscription` (D0-clean precedents).
-        ///
-        /// V-68 Stage 2 (author-half): the C-ABI symbol `nmp_app_open_author` is
-        /// UNCHANGED — the shim (`nmp-ffi`) injects `{1, 6}` Rust-side exactly as
-        /// `nmp_app_open_thread` already does for the thread-reply path.
-        kinds: std::collections::BTreeSet<u32>,
-    },
-    OpenThread {
-        event_id: String,
-        /// Host-declared Nostr kinds to include in the thread-replies REQ filter.
-        ///
-        /// `nmp-core` carries these as opaque filter data only — no social-kind
-        /// knowledge lives in the substrate. The host (nmp-ffi or an ActionModule)
-        /// supplies the value; mirrors the `kinds` field on
-        /// `OpenContactListSubscription` (D0-clean precedent).
-        kinds: std::collections::BTreeSet<u32>,
-    },
+    // V-68 / V-112 (ADR-0042): OpenAuthor{kinds}, OpenThread{kinds} deleted.
+    // Apps register a per-app FlatFeed (nmp_app_chirp_open_author_feed etc.)
+    // and call OpenInterest for kernel admission — D0-clean since {1,6} lives
+    // in the app, not in nmp-core.
     /// Sign an unsigned event using the named account's signer and park the
     /// result in the `signed_events` snapshot projection keyed by
     /// `correlation_id`. The caller polls the projection to retrieve the
@@ -778,12 +758,7 @@ pub enum ActorCommand {
         uri: String,
         consumer_id: String,
     },
-    CloseAuthor {
-        pubkey: String,
-    },
-    CloseThread {
-        event_id: String,
-    },
+    // V-68 / V-112 (ADR-0042): CloseAuthor / CloseThread deleted.
     // V-38: the three `Wallet{Connect,Disconnect,PayInvoice}` variants moved
     // out. Wallet connect / disconnect / pay_invoice now route through
     // `ActorCommand::Protocol(Box<dyn ProtocolCommand>)` with concrete

@@ -63,15 +63,11 @@ impl Kernel {
         }
         // Check time-gated timeline open (contacts_deadline may have elapsed).
         requests.extend(self.maybe_open_timeline());
-        if self.author_view.request_pending {
-            requests.extend(self.author_requests());
-        }
-        if self.thread_view.request_pending {
-            requests.extend(self.prepare_thread_requests());
-        }
+        // V-68 / V-112 (ADR-0042): author_view.request_pending / author_requests(),
+        // thread_view.request_pending / prepare_thread_requests(), and
+        // maybe_open_thread_hydration() deleted — per-app FlatFeed handles these.
         requests.extend(self.pending_profile_claim_requests());
         requests.extend(self.pending_event_claim_requests());
-        requests.extend(self.maybe_open_thread_hydration());
         // F-TTL — drain pending re-verification REQs for replaceable events
         // whose freshness has expired. Each key becomes a REQ filter; the sub_id
         // is mapped to the key set so the EOSE handler can update check_again_after

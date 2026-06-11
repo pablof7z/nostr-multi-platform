@@ -628,16 +628,6 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::OpenAuthor { pubkey, kinds } => {
-            let outbound = ctx.kernel.open_author(pubkey, kinds, ctx.relays_ready);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        ActorCommand::OpenThread { event_id, kinds } => {
-            let outbound = ctx.kernel.open_thread(event_id, kinds, ctx.relays_ready);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
         ActorCommand::ClaimProfile {
             pubkey,
             consumer_id,
@@ -670,16 +660,6 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::ReleaseEvent { uri, consumer_id } => {
             let outbound = ctx.kernel.release_event(&uri, &consumer_id);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        ActorCommand::CloseAuthor { pubkey } => {
-            let outbound = ctx.kernel.close_author(&pubkey);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        ActorCommand::CloseThread { event_id } => {
-            let outbound = ctx.kernel.close_thread(&event_id);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
