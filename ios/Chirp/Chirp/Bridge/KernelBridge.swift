@@ -608,7 +608,7 @@ final class KernelHandle {
         let data = Data(bytes: bytes, count: count)
         do {
             let frame = try KernelUpdateFrameDecoder.decode(data)
-            guard case let .snapshot(frameSchemaVersion, update, envelopes, flatFeeds, typedEnvelope) = frame else {
+            guard case let .snapshot(frameSchemaVersion, envelopes, flatFeeds, typedEnvelope) = frame else {
                 if case let .panic(message) = frame {
                     kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
                     return .panic(message)
@@ -617,10 +617,12 @@ final class KernelHandle {
             }
             // Enforce the schema version contract: a mismatch means Rust's
             // field layout changed in a way the host cannot safely interpret.
-            // Return nil so the update is dropped rather than misparsed.
-            guard frameSchemaVersion == KERNEL_SCHEMA_VERSION,
-                  update.schemaVersion == KERNEL_SCHEMA_VERSION else {
-                kbLog.error("schema version mismatch: frame=\(frameSchemaVersion) payload=\(update.schemaVersion) host=\(KERNEL_SCHEMA_VERSION) — snapshot rejected")
+            // Return nil so the update is dropped rather than misparsed. The
+            // generic `payload` is no longer decoded, so the frame-level
+            // `schema_version` is the sole gate (it mirrors the former
+            // payload-level check — both were written from the same value).
+            guard frameSchemaVersion == KERNEL_SCHEMA_VERSION else {
+                kbLog.error("schema version mismatch: frame=\(frameSchemaVersion) host=\(KERNEL_SCHEMA_VERSION) — snapshot rejected")
                 return nil
             }
             // ADR-0038 typed path: prefer the typed home-feed decode when the
@@ -707,10 +709,9 @@ final class KernelHandle {
             let typedWallet = TypedWalletDecoder.decode(from: envelopes)
             let typedSettingsHub = TypedSettingsHubDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
-            kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
+            kbLog.info("decoded ok rev=\(typedEnvelope?.rev ?? 0) activeAccount=\(typedActiveAccount ?? "nil")")
             return .snapshot(
                 KernelUpdateResult(
-                    update: update,
                     typedHomeFeed: typedHomeFeed,
                     typedAccounts: typedAccounts,
                     typedActiveAccount: typedActiveAccount,
@@ -841,12 +842,18 @@ struct TypedSnapshotEnvelope: Equatable {
     let logicalInterests: [LogicalInterestStatus]
     let wireSubscriptions: [WireSubscriptionStatus]
     let logs: [String]
+    /// Snapshot-driven error toast — read DIRECTLY off the `SnapshotFrame`
+    /// table (`last_error_toast`), the same first-class envelope tier as the
+    /// other fields. `nil` ⇒ no toast on this tick. This re-homes the last
+    /// raw whole-payload read (`update.lastErrorToast`) onto the typed
+    /// envelope; `KernelModel` copies it into its user-clearable
+    /// `lastErrorToast` slot in `apply(result:)`.
+    let lastErrorToast: String?
 }
 
 // ─── Swift-side timing wrapper ────────────────────────────────────────────
 
 struct KernelUpdateResult {
-    let update: KernelUpdate
     /// Typed home-feed decode result (ADR-0038 typed path). Non-nil when the
     /// snapshot carried a well-formed `NOFS` typed projection that the Swift
     /// `NFCT` decoder could fully populate. `nil` means the generic
@@ -1041,197 +1048,6 @@ struct CreateAccountFFIPayload: Encodable {
     init(profile: [String: String], relays: [(String, String)]) {
         self.profile = profile
         self.relays = relays.map { [$0.0, $0.1] }
-    }
-}
-
-// ─── Decoded snapshot shape ───────────────────────────────────────────────
-
-struct KernelUpdate: Decodable {
-    let rev: UInt64
-    /// Snapshot schema version. Checked in `KernelBridge.decode()` against
-    /// `KERNEL_SCHEMA_VERSION`; a mismatch causes the snapshot to be rejected
-    /// rather than silently misparsed (see `update.rs` contract comment).
-    let schemaVersion: UInt32
-    let updateKind: String?
-    let running: Bool
-    // D0: app views are surfaced through the host-extensible `projections`
-    // map. Profile/thread navigation uses dynamic flat-feed keys extracted by
-    // `KernelUpdateFrameDecoder`; the old `author_view`/`thread_view` fields
-    // remain only in generated compatibility decode state.
-    let metrics: KernelMetrics
-    // Single-relay backwards compat field alongside the array.
-    let relayStatus: RelayStatus?
-    let relayStatuses: [RelayStatus]
-    // Perf diagnostics — optional so old kernels still decode (D1).
-    let logicalInterests: [LogicalInterestStatus]?
-    let wireSubscriptions: [WireSubscriptionStatus]?
-    let logs: [String]?
-    // D0: identity output (`accounts`, `active_account`) is no longer a typed
-    // `KernelSnapshot` field — both are surfaced through the host-extensible
-    // `projections` map under the built-in keys `"accounts"` /
-    // `"active_account"`. Computed accessors below keep call sites
-    // (`KernelModel`) reading `update.accounts` / `update.activeAccount`
-    // unchanged.
-    let lastErrorToast: String?
-    // D0: NIP-47 NWC and NIP-46 remote signing are app nouns — neither is a
-    // typed `KernelSnapshot` field anymore. Both are surfaced through the
-    // kernel's host-extensible `projections` map: a built-in `"wallet"`
-    // projection and a built-in `"bunker_handshake"` projection. The publish /
-    // relay-settings cluster (`publish_queue`, `publish_outbox`,
-    // `configured_relays`, `relay_role_options`) is likewise app-shaped
-    // relay/publish state and lives in the same map under built-in keys.
-    // Optional so an older kernel that elides the map still decodes (D1).
-    let projections: SnapshotProjections?
-
-    /// NIP-47 wallet projection — `projections["wallet"]`. Computed so call
-    /// sites (`KernelModel`) keep reading `update.walletStatus` unchanged.
-    var walletStatus: WalletStatusData? { projections?.wallet }
-
-    /// NIP-46 bunker handshake progress — `projections["bunker_handshake"]`.
-    /// Computed so call sites keep reading `update.bunkerHandshake` unchanged.
-    var bunkerHandshake: BunkerHandshake? { projections?.bunkerHandshake }
-
-    /// NIP-46 onboarding read model — `projections["nip46_onboarding"]`. Carries
-    /// the typed `stageKind` + pre-computed flags + the signer-app probe table
-    /// the onboarding screen reads. Always present once the kernel has emitted
-    /// a snapshot (the projection contributes a non-null payload on every tick).
-    var nip46Onboarding: Nip46Onboarding? { projections?.nip46Onboarding }
-
-    /// Publish queue projection — `projections["publish_queue"]`. Computed so
-    /// call sites (`KernelModel`) keep reading `update.publishQueue` unchanged.
-    var publishQueue: [PublishQueueEntry]? { projections?.publishQueue }
-
-    /// Publish outbox projection — `projections["publish_outbox"]`. Computed so
-    /// call sites keep reading `update.publishOutbox` unchanged.
-    var publishOutbox: [PublishOutboxItem]? { projections?.publishOutbox }
-
-    /// Outbox header summary — `projections["outbox_summary"]`. Pre-formatted
-    /// title + subtitle + per-status counters (§6 anti-pattern #1). Computed
-    /// so `NotificationsView` reads `update.outboxSummary` directly.
-    var outboxSummary: OutboxSummary? { projections?.outboxSummary }
-
-    /// Relay-edit rows projection — `projections["configured_relays"]`. Computed
-    /// so call sites keep reading `update.configuredRelays` unchanged.
-    var configuredRelays: [AppRelay]? { projections?.configuredRelays }
-
-    /// Relay-role picker options — `projections["relay_role_options"]`. Rust owns
-    /// the canonical value list plus display labels/tint tokens.
-    var relayRoleOptions: [RelayRoleOption]? { projections?.relayRoleOptions }
-
-    /// Account list projection — `projections["accounts"]`. D0: identity
-    /// output is no longer a typed snapshot field. Computed so call sites
-    /// (`KernelModel`) keep reading `update.accounts` unchanged.
-    var accounts: [AccountSummary]? { projections?.accounts }
-
-    /// Active-account handle projection — `projections["active_account"]`.
-    /// D0: identity output is no longer a typed snapshot field. Computed so
-    /// call sites keep reading `update.activeAccount` unchanged.
-    var activeAccount: String? { projections?.activeAccount }
-
-    /// Per-tick action terminals — `projections["action_results"]` (direction
-    /// review #29). `nil` in steady state; an array of every action that settled
-    /// this tick when any did. Prefer this over `lastActionResult` for spinner
-    /// management — the scalar drops terminals when two actions settle in one tick.
-    var actionResults: [LastActionResult]? { projections?.actionResults }
-
-    /// PR-G: per-correlation_id stage history — `projections["action_stages"]`.
-    /// `nil` in steady state; a `{correlation_id → [ActionStage...]}` map
-    /// whenever any action's stages are tracked. Unlike `actionResults` (drained
-    /// on emit) the same correlation_id reappears on every tick until the host
-    /// calls `kernel.ackActionStage(_:)` — the race-protection guarantee that
-    /// a dropped tick cannot strand a progress indicator.
-    var actionStages: [String: [ActionStageEntry]]? { projections?.actionStages }
-
-    /// V5 thin-shell display projection — `projections["action_lifecycle"]`.
-    /// Carries `{ in_flight, recent_terminal }` arrays the host renders
-    /// verbatim. The kernel handles all lifecycle bookkeeping (collapse to
-    /// latest stage per correlation_id, TTL drop on terminals); Swift does
-    /// not track `pendingActions` / `pendingTerminalStages` / manual ACK
-    /// any more. `nil` in steady state.
-    var actionLifecycle: ActionLifecycleSnapshot? { projections?.actionLifecycle }
-
-    /// Most recent terminal action result — `projections["last_action_result"]`
-    /// (direction review #24). Prefer `actionResults` (array) — this scalar
-    /// silently drops terminals when two actions settle in the same kernel tick.
-    var lastActionResult: LastActionResult? { projections?.lastActionResult }
-
-    // ── D0 views cluster — projections-backed accessors ───────────────────
-    //
-    // The kernel emits the active-account `profile` view and the bounded
-    // `nmp.feed.home` home feed through `projections`. The legacy
-    // generic `timeline` / `inserted` / `updated` / `removed` keys were deleted
-    // upstream (nmp-core #924); the home-feed path is `homeFeed`.
-
-    /// Active-account profile card — `projections["profile"]`. Falls back to a
-    /// neutral placeholder card if a (legacy) kernel elides the projection, so
-    /// the non-optional `KernelModel.profile` consumer never breaks.
-    var profile: ProfileCard? { projections?.profile }
-
-    /// Standard bounded home-feed projection from `nmp-feed`
-    /// (`projections["nmp.feed.home"]`). The sole timeline source since the
-    /// generic `timeline` projection was removed (nmp-core #924).
-    var homeFeed: ChirpTimelineSnapshot? { projections?.homeFeed }
-
-    /// Pre-merged profile map — `projections["resolved_profiles"]` (PR #812).
-    /// Keyed by pubkey, one `ProfileCard` per profile the kernel can resolve,
-    /// applying profile fallback precedence once in Rust. Replaces the narrower
-    /// `mention_profiles` projection Chirp used to read. Always present as `{}`
-    /// when empty (D1); never nil for a current-schema kernel. Same Rust/Swift
-    /// type as `claimed_profiles` (`[String: ProfileCard]`).
-    var resolvedProfiles: [String: ProfileCard]? { projections?.resolvedProfiles }
-
-    /// NIP-29 group-chat read model — `projections["nmp.nip29.group_chat"]`.
-    /// `nil` until `nmp_app_chirp_register_group_chat` has wired a group's
-    /// projection; an empty `messages` array once registered but no chat
-    /// events have arrived. Computed so the `GroupChatStore` consumer keeps
-    /// reading `update.groupChat` unchanged.
-    var groupChat: GroupChatSnapshot? { projections?.groupChat }
-
-    /// NIP-17 DM inbox read model — `projections["nmp.nip17.dm_inbox"]`.
-    /// `nil` until `nmp_app_chirp_register_dm_inbox` has wired the inbox
-    /// projection; an empty `conversations` array once registered but no
-    /// gift-wrap envelopes have arrived. Computed so the `DmInboxStore`
-    /// consumer keeps reading `update.dmInbox` unchanged.
-    var dmInbox: DmInboxSnapshot? { projections?.dmInbox }
-    /// NIP-02 follow list — `projections["nmp.follow_list"]`.
-    var followList: FollowListSnapshot? { projections?.followList }
-
-    /// NIP-29 group-discovery read model —
-    /// `projections["nmp.nip29.discovered_groups"]`. `nil` until
-    /// `nmp_app_chirp_register_group_discovery` has wired a relay's
-    /// projection; an empty `groups` array once registered but no
-    /// kind:39000/39001/39002 events have arrived. Computed so the
-    /// `DiscoveredGroupsStore` consumer keeps reading
-    /// `update.discoveredGroups` unchanged.
-    var discoveredGroups: DiscoveredGroupsSnapshot? { projections?.discoveredGroups }
-
-    /// NIP-57 zap aggregate read model — `projections["nmp.nip57.zaps"]`.
-    /// Wired by `nmp_app_chirp_register` (PR #288), which constructs a
-    /// `ZapsAggregateProjection` and binds it as both a `KernelEventObserver`
-    /// (ingest of kind:9735 receipts) and the snapshot-projection closure for
-    /// this key. `nil` on a kernel build that predates the registration; an
-    /// empty `totals` map once registered but no receipts have arrived.
-    /// Computed so a future zap-count view binds to `update.zaps?.totals` the
-    /// same way the chat / DM consumers bind to their snapshots.
-    var zaps: ZapsAggregateSnapshot? { projections?.zaps }
-
-    /// Diagnostics-screen read model — `projections["relay_diagnostics"]`
-    /// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?" cleanup).
-    /// One pre-rolled row per known relay URL with every aggregate (active /
-    /// EOSE'd / total sub counts, total events_rx, byte counters) and every
-    /// display string (relative-time labels, role / connection / auth
-    /// labels + semantic tones) computed by `Kernel::relay_diagnostics_snapshot`.
-    /// The three diagnostics views render fields directly — no `.filter` /
-    /// `.sorted` / `.reduce` / `Date(timeIntervalSince1970:)`.
-    /// `nil` only on a legacy kernel that predates the projection (D1).
-    var relayDiagnostics: RelayDiagnosticsSnapshot? { projections?.relayDiagnostics }
-
-    /// Settings-hub view payload — `projections["settings_hub"]`. Carries
-    /// the raw relay count the iOS Settings screen uses to format its
-    /// subtitle locally (ADR-0041: kernel now emits `{"relay_count": N}`).
-    var settingsHub: SettingsHubSummary? {
-        guard let dict = projections?.settingsHub else { return nil }
-        return SettingsHubSummary(relayCount: dict["relay_count"] ?? 0)
     }
 }
 

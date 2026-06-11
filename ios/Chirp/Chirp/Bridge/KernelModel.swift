@@ -23,14 +23,17 @@ private let reliabilityLog = OSLog(subsystem: "org.nmp.chirp.diag", category: "r
 /// binary FlatBuffers updates via the callback; the bridge decodes them and
 /// this class republishes the resulting model for SwiftUI consumption.
 ///
-/// PR-L (KernelModel collapse): every kernel-driven projection lives behind
-/// the single `@Published var snapshot: KernelUpdate?` slot; the computed
-/// accessors below restore the per-field view-facing API (`model.profile`,
-/// `model.modularTimeline`, …) verbatim. The genuinely-local mutable slots —
-/// `lastErrorToast` (clearable by the toast tap), `appMetrics` (timing
-/// accumulator), `lastDispatchError` (synchronous FFI rejection slot,
-/// distinct from the snapshot-driven `lastErrorToast`) — stay individual
-/// `@Published` properties.
+/// Every kernel-driven projection lives behind a dedicated typed slot
+/// (`typedHomeFeed`, `typedProfile`, `typedEnvelope`, …) assigned in
+/// `apply(result:)`; the computed accessors in `KernelModel+Projections`
+/// expose the per-field view-facing API (`model.profile`,
+/// `model.modularTimeline`, …) by reading those slots directly. Chirp no
+/// longer decodes the generic `payload:Value` whole-payload tree — the typed
+/// sidecars + the Tier-3 `SnapshotFrame` envelope are authoritative. The
+/// genuinely-local mutable slots — `lastErrorToast` (clearable by the toast
+/// tap), `appMetrics` (timing accumulator), `lastDispatchError` (synchronous
+/// FFI rejection slot, distinct from the envelope-driven `lastErrorToast`) —
+/// stay individual `@Published` properties.
 ///
 /// V5 thin-shell: action lifecycle tracking lives entirely in Rust. The
 /// `action_lifecycle` projection emits `{in_flight, recent_terminal}` on
@@ -41,73 +44,59 @@ private let reliabilityLog = OSLog(subsystem: "org.nmp.chirp.diag", category: "r
 @MainActor
 final class KernelModel: ObservableObject, NostrProfileHost {
 
-    // ── Snapshot slot — single source of truth for kernel-driven state ──
+    // ── Typed projection slots — single source of truth for kernel-driven state ──
+    //
+    // The generic `payload:Value` whole-payload tree is no longer decoded by
+    // Chirp. Every kernel-driven projection now lands in a dedicated typed
+    // slot below (assigned in `apply(result:)`), and the per-field accessors in
+    // `KernelModel+Projections` read those slots directly — no JSON fallback.
 
-    /// Latest decoded snapshot. `nil` before the first tick lands.
-    @Published private(set) var snapshot: KernelUpdate?
-
-    /// ADR-0038 typed home-feed override. Non-nil when the typed NOFS+NFCT
-    /// decode succeeded on the most-recent snapshot tick. Preferred over the
-    /// generic `snapshot?.homeFeed` in `modularTimeline`. Falls back to nil
-    /// on any tick where the typed path returns nil, at which point
-    /// `snapshot?.homeFeed` (generic `Value` decode) is used instead.
+    /// ADR-0038 typed home-feed. Non-nil when the typed NOFS+NFCT decode
+    /// succeeded on the most-recent tick; `nil` ⇒ the `modularTimeline`
+    /// accessor collapses to `.empty`.
     @Published private(set) var typedHomeFeed: ChirpTimelineSnapshot?
 
-    /// V6 Stage 4 (Wave B) typed `accounts` override. Non-nil when the typed
-    /// `KACC` sidecar decoded on the most-recent tick. Preferred over the
-    /// generic `snapshot?.accounts` in the `accounts` accessor
-    /// (`KernelModel+Projections`). Falls back to `nil` on any tick where the
-    /// typed path returns nil, at which point the generic JSON path is used.
+    /// V6 Stage 4 (Wave B) typed `accounts` (`KACC` sidecar). `nil` ⇒ the
+    /// `accounts` accessor collapses to `[]`.
     @Published private(set) var typedAccounts: [AccountSummary]?
 
-    /// V6 Stage 4 (Wave B) typed `active_account` override. Non-nil when the
-    /// typed `KACT` sidecar decoded to an active pubkey on the most-recent tick.
-    /// Preferred over the generic `snapshot?.activeAccount` in the
-    /// `activeAccount` accessor. `nil` (no sidecar OR no active account) defers
-    /// to the generic JSON path — parity-preserving.
+    /// V6 Stage 4 (Wave B) typed `active_account` (`KACT` sidecar). `nil` ⇒ no
+    /// active account (the `activeAccount` accessor returns `nil`).
     @Published private(set) var typedActiveAccount: String?
 
-    /// V6 Stage 4 (Wave B batch #2) typed overrides for the relay-settings +
-    /// publish-cluster thin-glue keys. Each is non-nil only on ticks where the
-    /// corresponding sidecar (`KCRL` / `KRRO` / `KOXS` / `KPBO` / `KPBQ`)
-    /// decoded; `nil` defers to the generic JSON path through the accessor
-    /// (`KernelModel+Projections`). Preferred over the matching
-    /// `snapshot?.<field>` in the accessor.
+    /// V6 Stage 4 (Wave B batch #2) typed slots for the relay-settings +
+    /// publish-cluster keys (`KCRL` / `KRRO` / `KOXS` / `KPBO` / `KPBQ`). `nil`
+    /// ⇒ the matching accessor collapses to its empty default.
     @Published private(set) var typedConfiguredRelays: [AppRelay]?
     @Published private(set) var typedRelayRoleOptions: [RelayRoleOption]?
     @Published private(set) var typedOutboxSummary: OutboxSummary?
     @Published private(set) var typedPublishOutbox: [PublishOutboxItem]?
     @Published private(set) var typedPublishQueue: [PublishQueueEntry]?
 
-    /// V6 Stage 4 (Wave B batch #3) typed overrides for the diagnostics +
-    /// action-lifecycle keys. Each is non-nil only on ticks where the
-    /// corresponding sidecar (`KRDG` / `KALC`) decoded; `nil` defers to the
-    /// generic JSON path through the accessor (`KernelModel+Projections`).
+    /// V6 Stage 4 (Wave B batch #3) typed slots for the diagnostics +
+    /// action-lifecycle keys (`KRDG` / `KALC`). `nil` ⇒ the accessor collapses
+    /// to its empty default.
     @Published private(set) var typedRelayDiagnostics: RelayDiagnosticsSnapshot?
     @Published private(set) var typedActionLifecycle: ActionLifecycleSnapshot?
 
-    /// V6 Stage 4 (Wave B Tier-1 #4) typed overrides for the app-projection
-    /// keys. Each is non-nil only on ticks where the corresponding sidecar
-    /// (`NF02` / `NZAP` / `NGCS` / `NDGS`) decoded; `nil` defers to the generic
-    /// JSON path. `typedZaps` is read through the `KernelModel+Projections`
-    /// accessor (`zaps`); the other three feed their dedicated stores
-    /// (`FollowListStore` / `GroupChatStore` / `DiscoveredGroupsStore`) through
-    /// the SAME typed-first effective value in `apply(result:)` so the store and
-    /// any accessor never split-brain (typed vs JSON).
+    /// V6 Stage 4 (Wave B Tier-1 #4) typed slots for the app-projection keys
+    /// (`NF02` / `NZAP` / `NGCS` / `NDGS`). `typedZaps` is read through the
+    /// `zaps` accessor; the other three feed their dedicated stores
+    /// (`FollowListStore` / `GroupChatStore` / `DiscoveredGroupsStore`) from the
+    /// SAME typed value in `apply(result:)`, so store and accessor never diverge.
     @Published private(set) var typedFollowList: FollowListSnapshot?
     @Published private(set) var typedZaps: ZapsAggregateSnapshot?
     @Published private(set) var typedGroupChat: GroupChatSnapshot?
     @Published private(set) var typedDiscoveredGroups: DiscoveredGroupsSnapshot?
     /// Typed profile-cluster sidecars (`KPRF` / `KCPR` / `KRPR`). `nil` ⇒ the
-    /// `KernelModel+Projections` accessor falls back to the generic JSON
-    /// `snapshot?.profile` / `.claimedProfiles` / `.resolvedProfiles`.
+    /// `profile` / `claimedProfiles` / `resolvedProfileCards` accessors collapse
+    /// to nil / `[:]`.
     @Published private(set) var typedProfile: ProfileCard?
     @Published private(set) var typedClaimedProfiles: [String: ProfileCard]?
     @Published private(set) var typedResolvedProfiles: [String: ProfileCard]?
     /// Typed NIP-17 DM cluster + claimed-event map sidecars (`NDMI` / `NDRL` /
-    /// `KCEV`). `nil` ⇒ the generic JSON path applies. `typedDmInbox` feeds the
-    /// `dmInbox` store and `typedClaimedEvents` feeds `EmbedHost` through the
-    /// SAME typed-first effective value in `apply(result:)` (no split-brain);
+    /// `KCEV`). `typedDmInbox` feeds the `dmInbox` store and `typedClaimedEvents`
+    /// feeds `EmbedHost` from the SAME typed value in `apply(result:)`;
     /// `typedDmRelayList` is read through the `dmRelayList` accessor (no consumer
     /// yet — wired for parity).
     @Published private(set) var typedDmInbox: DmInboxSnapshot?
@@ -115,28 +104,25 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published private(set) var typedClaimedEvents: [String: ClaimedEventDto]?
 
     /// NIP-46 cluster typed sidecars (`bunker_handshake` / `nip46_onboarding`).
-    /// `nil` ⇒ the generic JSON path applies, read through the `bunkerHandshake`
-    /// / `nip46Onboarding` accessors (`typed<Key> ?? snapshot?.<key>`).
+    /// `nil` ⇒ the `bunkerHandshake` / `nip46Onboarding` accessors return nil.
     @Published private(set) var typedBunkerHandshake: BunkerHandshake?
     @Published private(set) var typedNip46Onboarding: Nip46Onboarding?
 
-    /// Typed `wallet` (`NWST`) + `settings_hub` (`KSHB`) sidecars. Each is
-    /// non-nil only on ticks where the corresponding sidecar decoded; `nil` ⇒
-    /// the generic JSON path applies, read through the `walletStatus` /
-    /// `settingsHub` accessors (`KernelModel+Projections`). `typedWallet` emits
-    /// no sidecar while the wallet is disconnected, so nil is the steady state.
+    /// Typed `wallet` (`NWST`) + `settings_hub` (`KSHB`) sidecars. `typedWallet`
+    /// emits no sidecar while the wallet is disconnected, so nil is the steady
+    /// state (the `walletStatus` accessor returns nil). `typedSettingsHub` is a
+    /// single-key `["relay_count": Int]` dict the `settingsHub` accessor wraps.
     @Published private(set) var typedWallet: WalletStatusData?
     @Published private(set) var typedSettingsHub: [String: Int]?
 
     /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
     /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
-    /// `logs`). Non-nil when the frame carried the typed envelope (gated on
-    /// `metrics`); `nil` ⇒ the generic JSON `payload` top-level scalars apply.
-    /// Read through the `KernelModel+Projections` envelope accessors
-    /// (`isRunning` / `rev` / `metrics` / `relayStatuses` / `logicalInterests` /
-    /// `wireSubscriptions` / `logs`), each `typedEnvelope?.<field> ??
-    /// snapshot?.<field>`. This is the LAST consumer of `payload`'s top-level
-    /// scalars.
+    /// `logs` / `lastErrorToast`), read directly off the `SnapshotFrame` table.
+    /// Non-nil when the frame carried the typed envelope (gated on `metrics`,
+    /// written unconditionally on every production frame). The authoritative
+    /// source for those fields, read through the `KernelModel+Projections`
+    /// envelope accessors (`isRunning` / `rev` / `metrics` / `relayStatuses` /
+    /// `logicalInterests` / `wireSubscriptions` / `logs`).
     @Published private(set) var typedEnvelope: TypedSnapshotEnvelope?
 
     /// Dynamic flat feeds opened per profile/thread screen. Keys are
@@ -358,9 +344,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
     func resetAndRestart() {
         kernel.reset()
-        // Dropping `snapshot` clears every kernel-driven projection in one
-        // move via the computed accessors. Local-only slots clear explicitly.
-        snapshot = nil
+        // Clear every typed projection slot so the computed accessors collapse
+        // to their empty defaults. The next post-reset tick reassigns them all
+        // unconditionally. Local-only slots clear explicitly below.
+        clearTypedProjections()
         flatFeeds = [:]
         // T146 — Reset preserves the observer slot but the grouper retains
         // the prior session's blocks; re-register so it starts empty.
@@ -386,14 +373,24 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
 
     #if DEBUG
-    /// Test-only seam: inject a synthetic decoded snapshot directly into the
-    /// `snapshot` slot so unit tests can exercise the projection accessors
+    /// Test-only seam: inject synthetic typed projection values directly into
+    /// the typed slots so unit tests can exercise the projection accessors
     /// (`claimedProfiles`, `mentionProfiles`, `profile(forPubkey:)`) on the
-    /// real read path — including the `.convertFromSnakeCase` CodingKey
-    /// mapping the kernel relies on — without starting the Rust actor.
+    /// real read path — the SAME slots `apply(result:)` assigns from the typed
+    /// sidecars — without starting the Rust actor. Direct slot assignment, so
+    /// the `apply()` staleness guard never runs and repeated calls (a test
+    /// driving claim-churn across several "ticks") need no `rev` bookkeeping.
     /// Never compiled into a shipped build.
-    func setSnapshotForTesting(_ update: KernelUpdate) {
-        snapshot = update
+    ///
+    /// Each parameter defaults to `nil` so a test sets only the slots it
+    /// needs; passing `nil` collapses the matching accessor to its empty
+    /// default, mirroring a tick where that sidecar was absent.
+    func setTypedSnapshotForTesting(
+        claimedProfiles: [String: ProfileCard]? = nil,
+        resolvedProfiles: [String: ProfileCard]? = nil
+    ) {
+        typedClaimedProfiles = claimedProfiles
+        typedResolvedProfiles = resolvedProfiles
     }
     #endif
 
@@ -518,9 +515,9 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         kernel.signInBunker(uri)
     }
 
-    /// Cancel an in-flight NIP-46 handshake. The handshake projection is part
-    /// of `snapshot`, so reading `bunkerHandshake` reconciles automatically
-    /// when the broker emits `idle` on the next tick.
+    /// Cancel an in-flight NIP-46 handshake. The handshake projection rides the
+    /// `typedBunkerHandshake` sidecar, so reading `bunkerHandshake` reconciles
+    /// automatically when the broker emits `idle` on the next tick.
     func cancelBunkerHandshake() { kernel.cancelBunkerHandshake() }
 
     func nostrConnectURI() -> String? {
@@ -713,23 +710,26 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     // ── Snapshot apply ────────────────────────────────────────────────────
 
     private func apply(result: KernelUpdateResult) {
-        let update = result.update
-        guard update.rev > rev else { return }
+        // Staleness guard on the typed envelope. Production always emits the
+        // Tier-3 envelope (gated on `metrics`, written unconditionally by
+        // `encode_snapshot_with_envelope`), so a tick with no envelope is not a
+        // valid production frame and is dropped. `env.rev` is the authoritative
+        // revision; `rev` (the accessor) reads the PREVIOUSLY-stored envelope
+        // — assignment of `typedEnvelope` happens later in this body.
+        guard let env = result.typedEnvelope, env.rev > rev else { return }
 
         let applyStart = ContinuousClock.now
         let callbackToApplyMicros = result.callbackReceivedAt.duration(to: applyStart).microseconds
 
         // Capture pre-assignment values for delta-driven side-effects below.
         // `priorActiveAccount` reads the OLD effective value through the
-        // `activeAccount` accessor (typed-or-JSON of the previous tick).
+        // `activeAccount` accessor (the previous tick's typed sidecar).
         let priorActiveAccount = activeAccount
-        // V6 Stage 4 (Wave B): the NEW effective active account is the typed
-        // sidecar when present, else the generic JSON `update.activeAccount`.
-        // Every internal consumer below (delta log, marmot re-registration,
-        // follow-list active-pubkey forward) MUST read this same value so the
-        // UI accessor and the side-effects never split-brain across the two
-        // sources — the parity contract is the safety net, not the design.
-        let newActiveAccount = result.typedActiveAccount ?? update.activeAccount
+        // The NEW active account is the typed `active_account` sidecar (`nil`
+        // when no account is active). Every internal consumer below (delta log,
+        // marmot re-registration, follow-list active-pubkey forward) reads this
+        // SAME value as the `activeAccount` UI accessor — single source.
+        let newActiveAccount = result.typedActiveAccount
         if newActiveAccount != priorActiveAccount {
             kmLog.info(
                 "apply: activeAccount \(priorActiveAccount ?? "nil") → \(newActiveAccount ?? "nil")")
@@ -737,52 +737,34 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
         #if DEBUG
         // B2: capture the rendered timeline-card count BEFORE the
-        // snapshot/typedHomeFeed assignments below. `modularTimeline` reads
-        // through those slots, so reading it after the assignment would
-        // compare a value against itself and the empty-after-nonempty
-        // detector would never fire. `cards` is the per-thread-root row set
-        // the home feed renders.
+        // typedHomeFeed assignment below. `modularTimeline` reads through that
+        // slot, so reading it after the assignment would compare a value
+        // against itself and the empty-after-nonempty detector would never
+        // fire. `cards` is the per-thread-root row set the home feed renders.
         let prevTimelineCount = modularTimeline.cards.count
         #endif
 
-        // Single source-of-truth assignment — every projection accessor
-        // reads through this slot. `lastErrorToast` stays distinct because
-        // tap-to-dismiss has nowhere else to land.
-        snapshot = update
-        // Claimed-event map: typed-first effective value
-        // (`typedClaimedEvents ?? update.projections?.claimedEvents`). The `KCEV`
-        // sidecar wins when present; the generic JSON projection is the fallback.
-        // `EmbedHost` rebuilds the embed envelope map from the same effective
-        // value either path yields — no split-brain.
-        embedHost.update(
-            claimedEvents: result.typedClaimedEvents ?? update.projections?.claimedEvents
-        )
-        // ADR-0038: store the typed home-feed result. Nil means the generic
-        // projections.homeFeed fallback applies for this tick.
+        // Claimed-event map: `EmbedHost` rebuilds the embed envelope map from
+        // the typed `claimed_events` (`KCEV`) sidecar.
+        embedHost.update(claimedEvents: result.typedClaimedEvents)
+        // ADR-0038: store the typed home-feed result. `nil` ⇒ no home-feed
+        // sidecar this tick (accessor collapses to `.empty`).
         typedHomeFeed = result.typedHomeFeed
         // V6 Stage 4 (Wave B): store the typed accounts / active-account decode.
-        // Nil means the generic `projections.accounts` / `projections.active_account`
-        // JSON fallback applies for this tick (read through the accessors).
         typedAccounts = result.typedAccounts
         typedActiveAccount = result.typedActiveAccount
-        // V6 Stage 4 (Wave B batch #2): store the relay-settings + publish-cluster
-        // typed decodes. Nil ⇒ the generic JSON projection fallback applies for
-        // this tick (read through the `KernelModel+Projections` accessors).
+        // V6 Stage 4 (Wave B batch #2): relay-settings + publish-cluster slots.
         typedConfiguredRelays = result.typedConfiguredRelays
         typedRelayRoleOptions = result.typedRelayRoleOptions
         typedOutboxSummary = result.typedOutboxSummary
         typedPublishOutbox = result.typedPublishOutbox
         typedPublishQueue = result.typedPublishQueue
-        // V6 Stage 4 (Wave B batch #3): store the diagnostics + action-lifecycle
-        // typed decodes. Nil ⇒ the generic JSON projection fallback applies for
-        // this tick (read through the `KernelModel+Projections` accessors).
+        // V6 Stage 4 (Wave B batch #3): diagnostics + action-lifecycle slots.
         typedRelayDiagnostics = result.typedRelayDiagnostics
         typedActionLifecycle = result.typedActionLifecycle
-        // V6 Stage 4 (Wave B Tier-1 #4): store the app-projection typed decodes.
-        // Nil ⇒ the generic JSON projection fallback applies for this tick.
-        // `typedZaps` is read through the `zaps` accessor; the other three are
-        // consumed below via the effective `typed<Key> ?? update.<key>` value
-        // fed to their stores (no split-brain).
+        // V6 Stage 4 (Wave B Tier-1 #4): app-projection typed slots. `typedZaps`
+        // is read through the `zaps` accessor; the other three are consumed
+        // below via the same typed value fed to their stores (no split-brain).
         typedFollowList = result.typedFollowList
         typedZaps = result.typedZaps
         typedGroupChat = result.typedGroupChat
@@ -790,34 +772,28 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedProfile = result.typedProfile
         typedClaimedProfiles = result.typedClaimedProfiles
         typedResolvedProfiles = result.typedResolvedProfiles
-        // NIP-17 DM cluster + claimed-event map. Nil ⇒ the generic JSON
-        // projection fallback applies for this tick. `typedDmInbox` is consumed
-        // below via the effective `typedDmInbox ?? update.dmInbox` value fed to
-        // the `dmInbox` store; `typedClaimedEvents` via the effective map fed to
-        // `EmbedHost.update`; `typedDmRelayList` is read through the `dmRelayList`
-        // accessor (no consumer yet).
+        // NIP-17 DM cluster + claimed-event map. `typedDmInbox` is consumed
+        // below via the same typed value fed to the `dmInbox` store;
+        // `typedClaimedEvents` via the map fed to `EmbedHost.update` above;
+        // `typedDmRelayList` is read through the `dmRelayList` accessor.
         typedDmInbox = result.typedDmInbox
         typedDmRelayList = result.typedDmRelayList
         typedClaimedEvents = result.typedClaimedEvents
-        // NIP-46 cluster: store the typed bunker-handshake / onboarding decodes.
-        // Nil ⇒ the generic JSON projection fallback applies for this tick (read
-        // through the `bunkerHandshake` / `nip46Onboarding` accessors).
+        // NIP-46 cluster: typed bunker-handshake / onboarding slots.
         typedBunkerHandshake = result.typedBunkerHandshake
         typedNip46Onboarding = result.typedNip46Onboarding
-        // `wallet` (NWST) + `settings_hub` (KSHB): store the typed decodes. Nil ⇒
-        // the generic JSON projection fallback applies for this tick (read through
-        // the `walletStatus` / `settingsHub` accessors in `KernelModel+Projections`).
+        // `wallet` (NWST) + `settings_hub` (KSHB) typed slots.
         typedWallet = result.typedWallet
         typedSettingsHub = result.typedSettingsHub
-        // ADR-0044 Tier-3: store the typed `SnapshotFrame` envelope decode. Nil
-        // ⇒ the generic JSON `payload` top-level scalars apply for this tick
-        // (read through the `KernelModel+Projections` envelope accessors). The
-        // staleness guard above stays on raw `update.rev` (a guaranteed mirror
-        // per ADR-0032, so effective-rev ≡ update.rev) — flipping it would add
-        // risk with no behavior change.
+        // ADR-0044 Tier-3: store the typed `SnapshotFrame` envelope decode. This
+        // is the authoritative source for `rev` / `running` / `metrics` /
+        // relay+interest+wire vectors / logs / `last_error_toast`. `env` (bound
+        // by the staleness guard above) is the same value.
         typedEnvelope = result.typedEnvelope
         flatFeeds = result.flatFeeds
-        lastErrorToast = update.lastErrorToast
+        // Snapshot-driven error toast, re-homed onto the typed envelope. Stays
+        // in this distinct slot because tap-to-dismiss has nowhere else to land.
+        lastErrorToast = env.lastErrorToast
 
         #if DEBUG
         // B1: track the typed-decode success rate. A nil `typedHomeFeed` means
@@ -831,7 +807,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
             appMetrics.recordEmptyAfterNonEmpty()
             os_signpost(
                 .event, log: reliabilityLog, name: "timeline_empty_after_nonempty",
-                "rev=%llu prev_count=%ld", update.rev, prevTimelineCount)
+                "rev=%llu prev_count=%ld", env.rev, prevTimelineCount)
         }
         #endif
 
@@ -840,52 +816,40 @@ final class KernelModel: ObservableObject, NostrProfileHost {
             _ = kernel.registerActiveMarmotIfAvailable()
             marmotRegistrationRequested = false
         }
-        // V-107 / ADR-0039: Marmot state now comes from push projections
+        // V-107 / ADR-0039: Marmot state comes from push projections
         // (`nmp.marmot.snapshot` / `nmp.marmot.messages`) on the SnapshotFrame —
         // no more pull calls to `nmp_marmot_snapshot` / `nmp_marmot_group_messages`.
-        // `isMarmotRegistered` still reads the handle slot (unchanged — it is NOT
-        // a deleted symbol; it just checks whether the handle is non-nil).
+        // `isMarmotRegistered` still reads the handle slot (unchanged — it just
+        // checks whether the handle is non-nil).
         //
-        // Typed-first effective values (`typedMarmotSnapshot ?? update.projections?.marmotSnapshot`,
-        // `typedMarmotMessages ?? update.projections?.marmotMessages`). The `NMMS`/`NMMG`
-        // sidecars win when present; the generic JSON projections are the fallback —
-        // the SAME effective value either path yields. `MarmotGroupChatView` /
-        // `MarmotGroupsView` read off this same `marmot` store, so routing here keeps
-        // every Marmot consumer typed-first with no split-brain. A signed-out tick
-        // yields nil from both the typed decode and the JSON path → `apply` maps it
-        // to `.empty` / `[:]` (parity preserved).
+        // The typed `NMMS`/`NMMG` sidecars are the sole source. `MarmotGroupChatView`
+        // / `MarmotGroupsView` read off this same `marmot` store. A signed-out
+        // tick yields nil from the typed decode → `apply` maps it to `.empty` /
+        // `[:]` (the existing nil-handling is preserved).
         marmot.apply(
-            snapshot: result.typedMarmotSnapshot ?? update.projections?.marmotSnapshot,
-            messages: result.typedMarmotMessages ?? update.projections?.marmotMessages,
+            snapshot: result.typedMarmotSnapshot,
+            messages: result.typedMarmotMessages,
             isRegistered: kernel.isMarmotRegistered
         )
         // NIP-29 + NIP-17 stores — pushed every tick so their lazy init fires
         // on the first snapshot (registering the read projections in the
         // process). Rust owns the DM inbox interest lifecycle.
-        // V6 Stage 4 (Wave B Tier-1 #4): feed the store the typed-first effective
-        // value (`typedGroupChat ?? update.groupChat`). The `NGCS` sidecar wins
-        // when present; the generic JSON projection is the fallback — the SAME
-        // effective value the accessor would yield, so the store never diverges.
-        groupChat.apply(snapshot: result.typedGroupChat ?? update.groupChat)
-        // NIP-17 DM cluster: typed-first effective value
-        // (`typedDmInbox ?? update.dmInbox`). The `NDMI` sidecar wins when
-        // present; the generic JSON projection is the fallback. `DmListView` /
-        // `DmThreadView` read off this same `dmInbox` store, so routing here
-        // keeps every DM consumer typed-first — no split-brain.
-        dmInbox.apply(snapshot: result.typedDmInbox ?? update.dmInbox)
+        // The typed `NGCS` sidecar is the sole source — the SAME value the
+        // `typedGroupChat` slot holds, so the store never diverges from the UI.
+        groupChat.apply(snapshot: result.typedGroupChat)
+        // NIP-17 DM cluster: the typed `NDMI` sidecar is the sole source.
+        // `DmListView` / `DmThreadView` read off this same `dmInbox` store.
+        dmInbox.apply(snapshot: result.typedDmInbox)
         // NIP-02 follow list projection mirror. Push every tick so the store
         // tracks `projections["nmp.follow_list"]`. Touching `followList`
         // here forces the lazy `FollowListStore` init on the first snapshot,
         // which registers the read projection (`nmp_app_chirp_register_follow_list`).
         // The active-account pubkey is forwarded so the store can re-invoke
         // the FFI to update the projection's active-pubkey slot after sign-in.
-        // V6 Stage 4 (Wave B Tier-1 #4): typed-first effective value
-        // (`typedFollowList ?? update.followList`). `NF02` wins when present; the
-        // generic JSON projection is the fallback. `DmListView` reads
-        // `model.followList.follows` off this same store, so routing here keeps
-        // the picker typed-first too — no split-brain.
+        // The typed `NF02` sidecar is the sole source. `DmListView` reads
+        // `model.followList.follows` off this same store.
         followList.apply(
-            snapshot: result.typedFollowList ?? update.followList,
+            snapshot: result.typedFollowList,
             activePubkey: newActiveAccount
         )
 
@@ -895,12 +859,8 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // (`searchGroups`); the snapshot key is `nil` until then, and the
         // store ignores stale snapshots from a previously-registered
         // relay during a switch.
-        // V6 Stage 4 (Wave B Tier-1 #4): typed-first effective value
-        // (`typedDiscoveredGroups ?? update.discoveredGroups`). `NDGS` wins when
-        // present; the generic JSON projection is the fallback.
-        discoveredGroups.apply(
-            snapshot: result.typedDiscoveredGroups ?? update.discoveredGroups
-        )
+        // The typed `NDGS` sidecar is the sole source.
+        discoveredGroups.apply(snapshot: result.typedDiscoveredGroups)
 
         // V5 thin-shell: action lifecycle tracking is fully Rust-owned.
         // The kernel emits `projections["action_lifecycle"]` with `inFlight`
@@ -917,7 +877,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         if !logicalInterestSummary.isEmpty, logicalInterestSummary != lastLogicalInterestSummary {
             lastLogicalInterestSummary = logicalInterestSummary
             diagLog.debug(
-                "NMP_DIAG logical_interests rev=\(update.rev, privacy: .public) \(logicalInterestSummary, privacy: .public)")
+                "NMP_DIAG logical_interests rev=\(env.rev, privacy: .public) \(logicalInterestSummary, privacy: .public)")
         }
 
         let applyMicros = applyStart.duration(to: .now).microseconds
@@ -929,13 +889,45 @@ final class KernelModel: ObservableObject, NostrProfileHost {
             callbackToAppliedMicros: callbackToAppliedMicros,
             payloadBytes: result.payloadBytes
         )
-        let lastEventToEmit = update.metrics.lastEventToEmitMs.map(String.init) ?? "none"
+        let lastEventToEmit = env.metrics.lastEventToEmitMs.map(String.init) ?? "none"
         diagLog.debug(
-            "NMP_PERF swift_apply rev=\(update.rev, privacy: .public) total_events=\(update.metrics.eventsRx, privacy: .public) batch_events=\(update.metrics.eventsSinceLastUpdate, privacy: .public) visible=\(update.metrics.visibleItems, privacy: .public) payload_bytes=\(result.payloadBytes, privacy: .public) rust_event_to_emit_ms=\(lastEventToEmit, privacy: .public) decode_us=\(result.decodeMicros, privacy: .public) callback_to_apply_us=\(callbackToApplyMicros, privacy: .public) apply_us=\(applyMicros, privacy: .public) callback_to_applied_us=\(callbackToAppliedMicros, privacy: .public)"
+            "NMP_PERF swift_apply rev=\(env.rev, privacy: .public) total_events=\(env.metrics.eventsRx, privacy: .public) batch_events=\(env.metrics.eventsSinceLastUpdate, privacy: .public) visible=\(env.metrics.visibleItems, privacy: .public) payload_bytes=\(result.payloadBytes, privacy: .public) rust_event_to_emit_ms=\(lastEventToEmit, privacy: .public) decode_us=\(result.decodeMicros, privacy: .public) callback_to_apply_us=\(callbackToApplyMicros, privacy: .public) apply_us=\(applyMicros, privacy: .public) callback_to_applied_us=\(callbackToAppliedMicros, privacy: .public)"
         )
 
         snapshotCount &+= 1
         lastSnapshotAt = Date()
+    }
+
+    /// Null every typed projection slot so the computed accessors collapse to
+    /// their empty defaults. Used by `resetAndRestart()`: the next post-reset
+    /// tick reassigns each slot unconditionally, so this is a transient blank
+    /// rather than a steady state.
+    private func clearTypedProjections() {
+        typedHomeFeed = nil
+        typedAccounts = nil
+        typedActiveAccount = nil
+        typedConfiguredRelays = nil
+        typedRelayRoleOptions = nil
+        typedOutboxSummary = nil
+        typedPublishOutbox = nil
+        typedPublishQueue = nil
+        typedRelayDiagnostics = nil
+        typedActionLifecycle = nil
+        typedFollowList = nil
+        typedZaps = nil
+        typedGroupChat = nil
+        typedDiscoveredGroups = nil
+        typedProfile = nil
+        typedClaimedProfiles = nil
+        typedResolvedProfiles = nil
+        typedDmInbox = nil
+        typedDmRelayList = nil
+        typedClaimedEvents = nil
+        typedBunkerHandshake = nil
+        typedNip46Onboarding = nil
+        typedWallet = nil
+        typedSettingsHub = nil
+        typedEnvelope = nil
     }
 
 }

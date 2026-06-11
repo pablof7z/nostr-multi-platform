@@ -11,42 +11,35 @@ import FlatBuffers
 /// FlatBuffers presence signal of their own, so the whole envelope is gated on
 /// `SnapshotFrame.metrics != nil` (the producer
 /// `encode_snapshot_with_envelope` writes ALL envelope fields as a unit
-/// whenever metrics is present). These tests pin that gate:
+/// whenever metrics is present). These tests pin that gate and the glue:
 ///
-/// * `testTypedEnvelopePresentSurfacesDistinctValues` — the frame carries BOTH a
-///   JSON `payload` (one set of values) AND the typed envelope (a DISTINCT set).
-///   The decoder must surface the TYPED values, proving the typed path won
-///   rather than coincided. Asserts FULL-struct `KernelMetrics` Equatable so a
-///   silent field-swap in the glue cannot pass.
-/// * `testTypedEnvelopeAbsentFallsBack` — a frame with NO metrics envelope
-///   (the test-only no-envelope encode shape) yields `typedEnvelope == nil`, the
-///   signal the `KernelModel+Projections` accessors read as "fall back to the
-///   generic JSON `payload` top-level scalars" (ADR-0037 Commitment 4).
+/// * `testTypedEnvelopePresentSurfacesDistinctValues` — the frame carries the
+///   typed envelope; the decoder maps every field through the glue. Asserts
+///   FULL-struct `KernelMetrics` Equatable so a silent field-swap in the
+///   ~46-field mapping cannot pass, plus the vector mappings and the re-homed
+///   `last_error_toast`.
+/// * `testTypedEnvelopeAbsentYieldsNil` — a frame with NO metrics envelope (the
+///   test-only no-envelope encode shape) yields `typedEnvelope == nil`. A
+///   production frame always carries metrics, so a nil envelope is a
+///   non-production frame and `apply()` drops it (staleness guard).
 final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
 
     func testTypedEnvelopePresentSurfacesDistinctValues() throws {
-        // JSON payload values (the fallback path) are deliberately DIFFERENT from
-        // the typed envelope values built below, so a passing assertion proves
-        // the typed envelope is what surfaced.
         let data = frameWithTypedEnvelope(
-            jsonRev: 1,
-            jsonRunning: false,
             typedRev: 9_001,
             typedRunning: true)
 
-        guard case let .snapshot(_, update, _, _, typedEnvelope) =
+        guard case let .snapshot(_, _, _, typedEnvelope) =
             try KernelUpdateFrameDecoder.decode(data) else {
             return XCTFail("expected snapshot frame")
         }
 
-        // The JSON payload decoded with the fallback values …
-        XCTAssertEqual(update.rev, 1)
-        XCTAssertFalse(update.running)
-
-        // … but the typed envelope carries the DISTINCT typed values.
+        // The typed envelope carries the typed values, mapped field-for-field.
         let env = try XCTUnwrap(typedEnvelope, "metrics present ⇒ typed envelope built")
         XCTAssertEqual(env.rev, 9_001)
         XCTAssertTrue(env.running)
+        // `last_error_toast` is re-homed onto the Tier-3 envelope (this PR).
+        XCTAssertEqual(env.lastErrorToast, "typed toast")
 
         // Full-struct metrics equality — a glue field-swap cannot slip through.
         XCTAssertEqual(env.metrics, Self.expectedTypedMetrics)
@@ -90,19 +83,19 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
         XCTAssertEqual(env.logs, ["typed log a", "typed log b"])
     }
 
-    func testTypedEnvelopeAbsentFallsBack() throws {
+    func testTypedEnvelopeAbsentYieldsNil() throws {
         // A frame whose SnapshotFrame omits the metrics envelope entirely (the
         // test-only `encode_snapshot_with_typed` shape) → typedEnvelope nil.
-        let data = frameWithoutTypedEnvelope(jsonRev: 42, jsonRunning: true)
+        // This pins the metrics-presence gate: with no metrics, no envelope is
+        // built. A production frame always carries metrics, so a nil envelope
+        // is a non-production frame and `apply()` drops it (staleness guard).
+        let data = frameWithoutTypedEnvelope()
 
-        guard case let .snapshot(_, update, _, _, typedEnvelope) =
+        guard case let .snapshot(_, _, _, typedEnvelope) =
             try KernelUpdateFrameDecoder.decode(data) else {
             return XCTFail("expected snapshot frame")
         }
-        XCTAssertNil(typedEnvelope, "no metrics envelope ⇒ JSON fallback (nil)")
-        // The JSON payload still decodes — the fallback source stays intact.
-        XCTAssertEqual(update.rev, 42)
-        XCTAssertTrue(update.running)
+        XCTAssertNil(typedEnvelope, "no metrics envelope ⇒ nil (metrics-presence gate)")
     }
 
     // MARK: - Expected typed metrics (full struct)
@@ -159,16 +152,17 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
 
     // MARK: - FlatBuffers builders
 
-    /// Build a full `UpdateFrame` carrying a JSON `payload` (fallback values) AND
-    /// the typed Tier-3 envelope (distinct values, gated on the present metrics).
+    /// Build an `UpdateFrame` carrying the typed Tier-3 envelope (gated on the
+    /// present metrics). The producer still attaches a generic `payload` on the
+    /// frame for now (PR-B removes it from the schema); the decoder no longer
+    /// reads it, so the payload values are irrelevant — a placeholder is set so
+    /// the frame shape matches production.
     private func frameWithTypedEnvelope(
-        jsonRev: Int64,
-        jsonRunning: Bool,
         typedRev: UInt64,
         typedRunning: Bool
     ) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 2048)
-        let payload = jsonPayload(&fbb, rev: jsonRev, running: jsonRunning)
+        let payload = placeholderPayload(&fbb)
 
         let metrics = distinctMetrics(&fbb)
         let relays = fbb.createVector(ofOffsets: [distinctRelayStatus(&fbb)])
@@ -176,6 +170,7 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
         let wires = fbb.createVector(ofOffsets: [distinctWireSubscription(&fbb)])
         let logs = fbb.createVector(
             ofOffsets: ["typed log a", "typed log b"].map { fbb.create(string: $0) })
+        let lastErrorToast = fbb.create(string: "typed toast")
 
         let snapshot = nmp_transport_SnapshotFrame.createSnapshotFrame(
             &fbb,
@@ -187,18 +182,19 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
             relayStatusesVectorOffset: relays,
             logicalInterestsVectorOffset: interests,
             wireSubscriptionsVectorOffset: wires,
-            logsVectorOffset: logs)
+            logsVectorOffset: logs,
+            lastErrorToastOffset: lastErrorToast)
         let frame = nmp_transport_UpdateFrame.createUpdateFrame(
             &fbb, kind: .snapshot, snapshotOffset: snapshot)
         nmp_transport_UpdateFrame.finish(&fbb, end: frame)
         return fbb.data
     }
 
-    /// Build an `UpdateFrame` with the JSON `payload` only — NO metrics envelope
-    /// (mirrors the test-only `encode_snapshot_with_typed` wire shape).
-    private func frameWithoutTypedEnvelope(jsonRev: Int64, jsonRunning: Bool) -> Data {
+    /// Build an `UpdateFrame` with NO metrics envelope (mirrors the test-only
+    /// `encode_snapshot_with_typed` wire shape), so `typedEnvelope` is nil.
+    private func frameWithoutTypedEnvelope() -> Data {
         var fbb = FlatBufferBuilder(initialSize: 1024)
-        let payload = jsonPayload(&fbb, rev: jsonRev, running: jsonRunning)
+        let payload = placeholderPayload(&fbb)
         let snapshot = nmp_transport_SnapshotFrame.createSnapshotFrame(
             &fbb, schemaVersion: 1, payloadOffset: payload)
         let frame = nmp_transport_UpdateFrame.createUpdateFrame(
@@ -207,22 +203,10 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
         return fbb.data
     }
 
-    /// The generic `payload` Value tree — the minimal key set `KernelUpdate`
-    /// requires (`rev`, `schema_version`, `running`, `metrics`, `relay_statuses`,
-    /// `projections`). Its metrics are all-zero, distinct from the typed metrics.
-    private func jsonPayload(
-        _ fbb: inout FlatBufferBuilder,
-        rev: Int64,
-        running: Bool
-    ) -> Offset {
-        valueMap(&fbb, [
-            ("rev", valueInt(&fbb, rev)),
-            ("schema_version", valueInt(&fbb, 1)),
-            ("running", valueBool(&fbb, running)),
-            ("metrics", zeroMetricsValue(&fbb)),
-            ("relay_statuses", valueList(&fbb, [])),
-            ("projections", valueMap(&fbb, [])),
-        ])
+    /// A minimal generic `payload` Value tree. The decoder no longer reads it;
+    /// it exists only so the frame carries a `payload` like production does.
+    private func placeholderPayload(_ fbb: inout FlatBufferBuilder) -> Offset {
+        valueMap(&fbb, [("schema_version", valueInt(&fbb, 1))])
     }
 
     /// The typed `Metrics` table with the distinct values pinned by
@@ -323,37 +307,10 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
             openedAtMs: 1_700_000_333)
     }
 
-    /// All-zero metrics for the JSON fallback payload — every required metric key
-    /// present so `KernelMetrics` decodes, but distinct from the typed metrics.
-    private func zeroMetricsValue(_ fbb: inout FlatBufferBuilder) -> Offset {
-        let keys = """
-        actor_queue_depth bytes_rx bytes_tx claim_drops_total closed_rx \
-        contacts_authors delete_events diagnostic_firehose_events \
-        dispatch_drops_total duplicate_events emit_hz_configured eose_rx \
-        estimated_store_bytes events_per_second_configured events_rx \
-        events_since_last_update frames_rx generated_events inserted_count \
-        make_update_us max_event_to_emit_ms max_events_per_update note_events \
-        notices_rx open_views payload_bytes profile_events removed_count \
-        serialize_us store_to_payload_ratio stored_events timeline_authors \
-        tombstones update_frame_degradations_total update_sequence updated_count \
-        visible_items visible_placeholder_avatar_items visible_profiled_items
-        """.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
-        return valueMap(&fbb, keys.map { ($0, valueInt(&fbb, 0)) })
-    }
-
     // MARK: - generic Value builders (mirror OpFeedDecoderTests)
-
-    private func valueString(_ fbb: inout FlatBufferBuilder, _ value: String) -> Offset {
-        nmp_transport_Value.createValue(
-            &fbb, kind: .string, stringValueOffset: fbb.create(string: value))
-    }
 
     private func valueInt(_ fbb: inout FlatBufferBuilder, _ value: Int64) -> Offset {
         nmp_transport_Value.createValue(&fbb, kind: .int, intValue: value)
-    }
-
-    private func valueBool(_ fbb: inout FlatBufferBuilder, _ value: Bool) -> Offset {
-        nmp_transport_Value.createValue(&fbb, kind: .bool, boolValue: value)
     }
 
     private func valueList(_ fbb: inout FlatBufferBuilder, _ values: [Offset]) -> Offset {
