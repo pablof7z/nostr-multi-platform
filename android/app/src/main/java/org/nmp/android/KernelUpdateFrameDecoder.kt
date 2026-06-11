@@ -105,12 +105,19 @@ object KernelUpdateFrameDecoder {
             Log.e(TAG, "snapshot.payload is null bytes=$byteCount")
             return null
         }
-        val update = decodeKernelUpdate(payload) ?: return null
-        val projections = extractTypedProjections(snapshot)
-        return KernelDecodedUpdateFrame.Snapshot(update, projections)
+        // Lift the typed FlatBuffers sidecars FIRST so the projection decode can
+        // read author/thread flat feeds typed-first (F-05). The same envelope
+        // list is also returned to the caller for the `nmp.feed.home` decode in
+        // `KernelModel.decodeUpdate` — extracted once, used by both paths.
+        val typedProjections = extractTypedProjections(snapshot)
+        val update = decodeKernelUpdate(payload, typedProjections) ?: return null
+        return KernelDecodedUpdateFrame.Snapshot(update, typedProjections)
     }
 
-    private fun decodeKernelUpdate(root: Value): KernelUpdate? {
+    private fun decodeKernelUpdate(
+        root: Value,
+        typedProjections: List<TypedProjectionEnvelope>,
+    ): KernelUpdate? {
         if (root.kind != ValueKind.Map) {
             Log.e(TAG, "root value is not a map (kind=${root.kind})")
             return null
@@ -125,7 +132,7 @@ object KernelUpdateFrameDecoder {
                 metrics = map["metrics"]?.let { decodeMetricsLite(it) },
                 relayStatuses = map["relayStatuses"]?.listOf { decodeRelayStatus(it) } ?: emptyList(),
                 lastErrorToast = map["lastErrorToast"]?.stringOrNull(),
-                projections = map["projections"]?.let { decodeProjections(it) },
+                projections = map["projections"]?.let { decodeProjections(it, typedProjections) },
             )
         } catch (e: Exception) {
             Log.e(TAG, "KernelUpdate reconstruction failed: ${e.message}")
@@ -170,7 +177,10 @@ object KernelUpdateFrameDecoder {
         )
     }
 
-    private fun decodeProjections(v: Value): SnapshotProjections? {
+    private fun decodeProjections(
+        v: Value,
+        typedProjections: List<TypedProjectionEnvelope>,
+    ): SnapshotProjections? {
         if (v.kind != ValueKind.Map) return null
         val m = buildValueMap(v)
         return SnapshotProjections(
@@ -179,7 +189,16 @@ object KernelUpdateFrameDecoder {
             claimedProfiles = m["claimedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
             mentionProfiles = m["mentionProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
             resolvedProfiles = m["resolvedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
-            flatFeeds = FlatFeedProjectionDecoder.decode(m),
+            // F-05: author/thread flat feeds typed-first. The typed NOFS
+            // sidecars (`nmp.feed.author.*` / `nmp.feed.thread.*`) are decoded
+            // via TypedHomeFeedDecoder (byte-identical shape to nmp.feed.home),
+            // overlaid onto the generic `payload:Value` map so any key whose
+            // typed sidecar is absent/undecodable still falls back to the
+            // generic decode (ADR-0037 Commitment 4: the generic path is a
+            // permanent fallback, never removed). Mirrors iOS
+            // KernelUpdateFrameDecoder.overlayTypedFlatFeeds(json:typed:).
+            flatFeeds = FlatFeedProjectionDecoder.decode(m) +
+                TypedHomeFeedDecoder.decodeFlatFeeds(typedProjections),
             dmInbox = m["nmp.nip17.dmInbox"]?.let { decodeDmInboxSnapshot(it) },
             walletStatus = m["wallet"]?.let { decodeWalletStatusString(it) },
             walletBalance = m["wallet"]?.let { decodeWalletBalanceString(it) },

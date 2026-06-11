@@ -38,6 +38,51 @@ class TypedHomeFeedDecoderContractTest {
     }
 
     @Test
+    fun decodeFlatFeedsKeysAuthorAndThreadSidecarsOnly() {
+        val authorKey = "nmp.feed.author.${"ab".repeat(32)}"
+        val threadKey = "nmp.feed.thread.${"cd".repeat(32)}"
+        val nofs = emptyNofsSnapshot(schemaVersion = 1u)
+        val envelopes = listOf(
+            nofsEnvelope(authorKey, nofs),
+            nofsEnvelope(threadKey, nofs),
+            // home key is NOT an author/thread prefix → not swept into flatFeeds.
+            nofsEnvelope("nmp.feed.home", nofs),
+            // wrong schema id under an author prefix → ignored (no entry).
+            TypedProjectionEnvelope(
+                key = "nmp.feed.author.${"ef".repeat(32)}",
+                schemaId = "nmp.nip01.timeline",
+                schemaVersion = 1u,
+                fileIdentifier = "NFTS",
+                payload = nofs,
+            ),
+            // unrelated typed key → ignored.
+            nofsEnvelope("nmp.nip17.dm_inbox", nofs),
+        )
+
+        val feeds = TypedHomeFeedDecoder.decodeFlatFeeds(envelopes)
+
+        assertEquals(setOf(authorKey, threadKey), feeds.keys)
+    }
+
+    @Test
+    fun decodeFlatFeedsSkipsUndecodableSidecar() {
+        val authorKey = "nmp.feed.author.${"ab".repeat(32)}"
+        val garbled = emptyNofsSnapshot(schemaVersion = 1u).copyOf()
+        garbled[4] = 'X'.code.toByte() // clobber the NOFS file identifier
+        val feeds = TypedHomeFeedDecoder.decodeFlatFeeds(listOf(nofsEnvelope(authorKey, garbled)))
+        assertEquals(emptyMap<String, Any>(), feeds)
+    }
+
+    private fun nofsEnvelope(key: String, payload: ByteArray): TypedProjectionEnvelope =
+        TypedProjectionEnvelope(
+            key = key,
+            schemaId = TypedHomeFeedDecoder.SCHEMA_ID,
+            schemaVersion = 1u,
+            fileIdentifier = TypedHomeFeedDecoder.FILE_IDENTIFIER,
+            payload = payload,
+        )
+
+    @Test
     fun relationCountsDecodeFromTypedFixture() {
         val snapshot = requireNotNull(
             TypedHomeFeedDecoder.decode(relationCountsFixture()),
