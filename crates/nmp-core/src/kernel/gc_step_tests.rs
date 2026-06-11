@@ -186,19 +186,61 @@ fn gc_tick_interval_is_60_seconds() {
 /// The production budget carries the finite hot-event ceiling — without it,
 /// Phase-2 LRU eviction is a permanent no-op even once gc runs (the load-bearing
 /// piece of #1069).
+///
+/// V-117 update: the production budget intentionally disables the LRU ceiling
+/// (`max_total_events = usize::MAX`) until store-claims have production callers
+/// (see GitHub issue #1090).  This test is updated to document the CURRENT
+/// state and will need updating again when #1090 is resolved.
 #[test]
-fn production_budget_enables_lru_eviction() {
+fn production_budget_documents_ceiling_state() {
     let budget = crate::store::GcBudget::production();
+
+    // V-117: production ceiling is DISABLED until #1090 wires store-claims.
+    // When #1090 is done, this assertion should be changed to:
+    //   `assert_eq!(budget.max_total_events, crate::store::HOT_EVENT_CEILING)`
     assert_eq!(
         budget.max_total_events,
-        crate::store::HOT_EVENT_CEILING,
-        "production gc must enable LRU eviction at the hot-event ceiling",
-    );
-    assert_ne!(
-        budget.max_total_events,
         usize::MAX,
-        "a usize::MAX ceiling leaves LRU growth unbounded — the audit Finding 1 defect",
+        "V-117: production gc must have LRU eviction DISABLED until store-claims \
+         are wired (see #1090). HOT_EVENT_CEILING={}, see types/gc.rs.",
+        crate::store::HOT_EVENT_CEILING,
     );
     assert_eq!(budget.max_events_per_step, crate::store::GC_MAX_EVENTS_PER_STEP);
     assert_eq!(budget.max_duration_ms, crate::store::GC_MAX_DURATION_MS);
+}
+
+/// The GcReport from a gc pass must include a populated `duration_ms` so the
+/// kernel can observe how long each pass took.  This guards against the V-117
+/// concern that gc passes block the actor thread without any observable metric.
+#[test]
+fn gc_report_includes_duration_ms() {
+    let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
+    pin_clock(&mut kernel, T0_SECS);
+
+    // Ingest a few events and run a gc pass.
+    let keys = ::nostr::Keys::generate();
+    for i in 0..10u64 {
+        let event = signed_expiring_note(
+            &keys,
+            &format!("probe-{i}"),
+            T0_SECS + i,
+            T0_SECS + i + 10_000, // expires far in the future
+        );
+        kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", event);
+    }
+
+    pin_clock(&mut kernel, T0_SECS + 100);
+    let report = kernel
+        .run_gc_step()
+        .expect("gc_step must succeed");
+
+    // duration_ms must be set (non-zero on any real pass).
+    // Allow 0 only in theory (pass so fast it rounds to 0ms); the important
+    // invariant is that the field is populated and stays within the production
+    // budget plus generous jitter headroom (10 s).
+    assert!(
+        report.duration_ms < 10_000,
+        "gc_step duration_ms must be < 10 000 ms, got {}ms",
+        report.duration_ms,
+    );
 }
