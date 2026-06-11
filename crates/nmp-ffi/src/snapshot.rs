@@ -73,6 +73,28 @@ impl NmpApp {
             .unwrap_or_default()
     }
 
+    /// Run every registered **generic** (`Value`) projection closure and collect
+    /// the `key → JSON` map — the JSON-side counterpart to
+    /// [`Self::run_typed_snapshot_projections`].
+    ///
+    /// This is the same map the actor folds into a snapshot frame's generic
+    /// `payload:Value.projections` subtree on every tick. Exposing it as a
+    /// `&self` accessor lets the `payload:Value` → `typed_projections` migration
+    /// **prove producer-completeness**: any key present here but absent from
+    /// `run_typed_snapshot_projections()` is a generic projection whose typed
+    /// sidecar a consumer's `typed<K> ?? snapshot?.<k>` fallback would silently
+    /// hide — exactly the key that breaks if the JSON fallback is removed. A
+    /// closure returning `null` contributes nothing (same emit condition as its
+    /// paired typed closure). A poisoned registry mutex degrades to an empty
+    /// map (D6).
+    #[must_use]
+    pub fn run_snapshot_projections(&self) -> std::collections::HashMap<String, serde_json::Value> {
+        self.snapshot_projections
+            .lock()
+            .map(|registry| registry.run())
+            .unwrap_or_default()
+    }
+
     /// Register a per-tick observer — a no-result callback fired once on every
     /// snapshot tick. The generic, projection-free counterpart to
     /// [`Self::register_snapshot_projection`]: it contributes no snapshot key,
