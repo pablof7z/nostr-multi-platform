@@ -534,4 +534,215 @@ enum TypedProjectionGlue {
             )
         }
     }
+
+    // MARK: bunker_handshake → BunkerHandshake
+
+    /// Map the typed `bunker_handshake` sidecar (`KBHS` /
+    /// `nmp_kernel_BunkerHandshake`) to the `BunkerHandshake` the JSON
+    /// `projections["bunker_handshake"]` path yields. `message` is the only
+    /// `Option<String>` (its `has_message` companion → `nil` when absent, byte-
+    /// identical to the JSON `null`). The five flag bools + `stageLabel` are
+    /// always emitted by a current kernel; the domain type declares them
+    /// `Bool?` / `String?` purely for legacy-kernel forward-compat, so the typed
+    /// path always surfaces a non-nil value (the JSON path of a current kernel
+    /// does too — parity). `stage` is a non-optional domain `String` (wire
+    /// `?? ""`).
+    static func bunkerHandshake(_ reader: nmp_kernel_BunkerHandshake) -> BunkerHandshake {
+        BunkerHandshake(
+            stage: reader.stage ?? "",
+            message: reader.hasMessage ? (reader.message ?? "") : nil,
+            isIdle: reader.isIdle,
+            isInFlight: reader.isInFlight,
+            isFailed: reader.isFailed,
+            isTerminalSuccess: reader.isTerminalSuccess,
+            canCancel: reader.canCancel,
+            stageLabel: reader.stageLabel
+        )
+    }
+
+    // MARK: nip46_onboarding → Nip46Onboarding
+
+    /// Map the typed `nip46_onboarding` sidecar (`KN46` /
+    /// `nmp_kernel_Nip46Onboarding`) to the `Nip46Onboarding` the JSON
+    /// `projections["nip46_onboarding"]` path yields. `signerApps` is the always-
+    /// present, never-empty static probe table (nested-vector copy, order
+    /// preserved verbatim — Rust owns it). Two `Option<_>` fields carry `has_*`
+    /// companions: `stageKind` (the snake_case wire token re-typed to the SAME
+    /// `StageKind` enum the JSON path decodes, `.unknown` forward-compat fallback
+    /// for any token the host hasn't been re-typed against) and `progressMessage`
+    /// (`nil` when absent, byte-identical to JSON `null`). The four flag bools are
+    /// non-optional both sides.
+    static func nip46Onboarding(_ reader: nmp_kernel_Nip46Onboarding) -> Nip46Onboarding {
+        Nip46Onboarding(
+            signerApps: reader.signerApps.map { app in
+                Nip46Onboarding.SignerApp(
+                    scheme: app.scheme ?? "",
+                    displayLabel: app.displayLabel ?? "",
+                    signerKind: app.signerKind ?? ""
+                )
+            },
+            stageKind: reader.hasStageKind
+                ? (Nip46Onboarding.StageKind(rawValue: reader.stageKind ?? "") ?? .unknown)
+                : nil,
+            progressMessage: reader.hasProgressMessage ? (reader.progressMessage ?? "") : nil,
+            isInFlight: reader.isInFlight,
+            isFailed: reader.isFailed,
+            isTerminalSuccess: reader.isTerminalSuccess,
+            canCancel: reader.canCancel
+        )
+    }
+
+    // MARK: SnapshotFrame envelope (ADR-0044 Tier-3) → TypedSnapshotEnvelope
+
+    /// Map the ADR-0044 typed `SnapshotFrame` envelope fields (read directly off
+    /// the `SnapshotFrame` table, NOT a `typed_projections` sidecar) into the
+    /// Chirp domain `TypedSnapshotEnvelope`. The producer
+    /// (`encode_snapshot_with_envelope`, `kernel/update.rs`) writes ALL envelope
+    /// fields as a unit whenever `metrics` is present, so the caller gates the
+    /// whole struct on `frame.snapshot.metrics != nil` (the only field whose
+    /// FlatBuffers accessor reports presence) and never builds a partial value.
+    ///
+    /// Every value is a raw mirror of the top-level `KernelSnapshot` fields
+    /// (ADR-0032 — hex pubkeys, ms/unix-seconds, raw counts), field-identical to
+    /// what the generic JSON `payload` path yields. The `usize`-origin counters
+    /// (`storedEvents`, `tombstones`, the `visible*` set, `inserted`/`updated`/
+    /// `removed`, `contactsAuthors`, `timelineAuthors`, `estimatedStoreBytes`,
+    /// `payloadBytes`) are `UInt64` on the wire and `Int` on the domain type, so
+    /// they narrow with `Int(...)` exactly as the JSON `Int` decode does. The
+    /// `Option<u128>` ms fields are native-optional both sides (FlatBuffers
+    /// `= null` → Swift `UInt64?`), matching the JSON `null`-when-absent decode.
+    static func snapshotEnvelope(
+        rev: UInt64,
+        running: Bool,
+        metrics reader: nmp_transport_Metrics,
+        relayStatuses: FlatbufferVector<nmp_transport_RelayStatus>,
+        logicalInterests: FlatbufferVector<nmp_transport_LogicalInterestStatus>,
+        wireSubscriptions: FlatbufferVector<nmp_transport_WireSubscriptionStatus>,
+        logs: FlatbufferVector<String?>
+    ) -> TypedSnapshotEnvelope {
+        TypedSnapshotEnvelope(
+            rev: rev,
+            running: running,
+            metrics: snapshotMetrics(reader),
+            relayStatuses: relayStatuses.map(snapshotRelayStatus),
+            logicalInterests: logicalInterests.map(snapshotLogicalInterest),
+            wireSubscriptions: wireSubscriptions.map(snapshotWireSubscription),
+            logs: logs.map { $0 ?? "" }
+        )
+    }
+
+    /// Map the typed `Metrics` reader to the `KernelMetrics` domain type
+    /// field-for-field. The full-struct mapping is unit-tested for `Equatable`
+    /// parity against the JSON decode so a silent field-swap cannot slip through.
+    private static func snapshotMetrics(_ m: nmp_transport_Metrics) -> KernelMetrics {
+        KernelMetrics(
+            actorQueueDepth: m.actorQueueDepth,
+            bytesRx: m.bytesRx,
+            bytesTx: m.bytesTx,
+            claimDropsTotal: m.claimDropsTotal,
+            closedRx: m.closedRx,
+            contactsAuthors: Int(m.contactsAuthors),
+            deleteEvents: m.deleteEvents,
+            diagnosticFirehoseEvents: m.diagnosticFirehoseEvents,
+            dispatchDropsTotal: m.dispatchDropsTotal,
+            duplicateEvents: m.duplicateEvents,
+            emitHzConfigured: m.emitHzConfigured,
+            eoseRx: m.eoseRx,
+            estimatedStoreBytes: Int(m.estimatedStoreBytes),
+            eventsPerSecondConfigured: m.eventsPerSecondConfigured,
+            eventsRx: m.eventsRx,
+            eventsSinceLastUpdate: m.eventsSinceLastUpdate,
+            firstEventMs: m.firstEventMs,
+            framesRx: m.framesRx,
+            generatedEvents: m.generatedEvents,
+            insertedCount: Int(m.insertedCount),
+            lastEventToEmitMs: m.lastEventToEmitMs,
+            makeUpdateUs: m.makeUpdateUs,
+            maxEventToEmitMs: m.maxEventToEmitMs,
+            maxEventsPerUpdate: m.maxEventsPerUpdate,
+            noteEvents: m.noteEvents,
+            noticesRx: m.noticesRx,
+            openViews: m.openViews,
+            payloadBytes: Int(m.payloadBytes),
+            profileEvents: m.profileEvents,
+            removedCount: Int(m.removedCount),
+            serializeUs: m.serializeUs,
+            storeToPayloadRatio: m.storeToPayloadRatio,
+            storedEvents: Int(m.storedEvents),
+            targetProfileLoadedMs: m.targetProfileLoadedMs,
+            timelineAuthors: Int(m.timelineAuthors),
+            timelineFirstItemMs: m.timelineFirstItemMs,
+            timelineOpenedMs: m.timelineOpenedMs,
+            tombstones: Int(m.tombstones),
+            updateEmittedMs: m.updateEmittedMs,
+            updateFrameDegradationsTotal: m.updateFrameDegradationsTotal,
+            updateSequence: m.updateSequence,
+            updatedCount: Int(m.updatedCount),
+            visibleItems: Int(m.visibleItems),
+            visiblePlaceholderAvatarItems: Int(m.visiblePlaceholderAvatarItems),
+            visibleProfiledItems: Int(m.visibleProfiledItems)
+        )
+    }
+
+    /// Map one typed `RelayStatus` reader row to the domain type. `Option<String>`
+    /// fields (`lastNotice`, `lastError`, `errorCategory`, `lastCloseReason`)
+    /// are absent-on-the-wire → `nil`; the JSON decode yields `nil` for the same
+    /// `null`/omitted keys. The `= null` ms fields are native-optional both sides.
+    private static func snapshotRelayStatus(_ r: nmp_transport_RelayStatus) -> RelayStatus {
+        RelayStatus(
+            activeWireSubscriptions: Int(r.activeWireSubscriptions),
+            auth: r.auth ?? "",
+            bytesRx: r.bytesRx,
+            bytesTx: r.bytesTx,
+            connection: r.connection ?? "",
+            denied: r.denied,
+            errorCategory: r.errorCategory,
+            eventsRx: r.eventsRx,
+            lastCloseReason: r.lastCloseReason,
+            lastConnectedAtMs: r.lastConnectedAtMs,
+            lastError: r.lastError,
+            lastEventAtMs: r.lastEventAtMs,
+            lastNotice: r.lastNotice,
+            negentropyProbe: r.negentropyProbe ?? "",
+            reconnectCount: r.reconnectCount,
+            relayUrl: r.relayUrl ?? "",
+            role: r.role ?? ""
+        )
+    }
+
+    /// Map one typed `LogicalInterestStatus` reader row to the domain type.
+    /// `relayUrls` maps the always-present wire vector to `[String]`; the `= null`
+    /// `warmingUntilMs` is native-optional both sides.
+    private static func snapshotLogicalInterest(
+        _ l: nmp_transport_LogicalInterestStatus
+    ) -> LogicalInterestStatus {
+        LogicalInterestStatus(
+            cacheCoverage: l.cacheCoverage ?? "",
+            key: l.key ?? "",
+            refcount: l.refcount,
+            relayUrls: l.relayUrls.map { $0 ?? "" },
+            state: l.state ?? "",
+            warmingUntilMs: l.warmingUntilMs
+        )
+    }
+
+    /// Map one typed `WireSubscriptionStatus` reader row to the domain type.
+    /// `Option<String>` `closeReason` is absent-on-the-wire → `nil`; the `= null`
+    /// ms fields are native-optional both sides.
+    private static func snapshotWireSubscription(
+        _ w: nmp_transport_WireSubscriptionStatus
+    ) -> WireSubscriptionStatus {
+        WireSubscriptionStatus(
+            closeReason: w.closeReason,
+            eoseAtMs: w.eoseAtMs,
+            eventsRx: w.eventsRx,
+            filterSummary: w.filterSummary ?? "",
+            lastEventAtMs: w.lastEventAtMs,
+            logicalConsumerCount: w.logicalConsumerCount,
+            openedAtMs: w.openedAtMs,
+            relayUrl: w.relayUrl ?? "",
+            state: w.state ?? "",
+            wireId: w.wireId ?? ""
+        )
+    }
 }

@@ -22,7 +22,12 @@ enum KernelUpdateFrameDecoderError: LocalizedError {
 }
 
 enum KernelUpdateFrame {
-    case snapshot(UInt32, KernelUpdate, [TypedProjectionEnvelope], [String: ChirpTimelineSnapshot])
+    case snapshot(
+        UInt32,
+        KernelUpdate,
+        [TypedProjectionEnvelope],
+        [String: ChirpTimelineSnapshot],
+        TypedSnapshotEnvelope?)
     case panic(String)
 }
 
@@ -56,7 +61,8 @@ enum KernelUpdateFrameDecoder {
             let update = try KernelUpdate(from: FlatBufferValueDecoder(value: payload, codingPath: []))
             let envelopes = extractTypedProjections(from: snapshot)
             let flatFeeds = extractFlatFeeds(from: payload)
-            return .snapshot(snapshot.schemaVersion, update, envelopes, flatFeeds)
+            let typedEnvelope = extractTypedEnvelope(from: snapshot)
+            return .snapshot(snapshot.schemaVersion, update, envelopes, flatFeeds, typedEnvelope)
         case .panic:
             guard let message = frame.panic?.msg else {
                 throw KernelUpdateFrameDecoderError.missingPanicPayload
@@ -89,6 +95,32 @@ enum KernelUpdateFrameDecoder {
             ))
         }
         return envelopes
+    }
+
+    /// ADR-0044 Tier-3: lift the typed `SnapshotFrame` envelope fields (read
+    /// directly off the frame table, NOT the `typed_projections` sidecar) into
+    /// the `TypedSnapshotEnvelope` domain value. The producer
+    /// (`encode_snapshot_with_envelope`) writes ALL envelope fields as a unit
+    /// whenever it carries metrics, so `metrics != nil` is the all-or-nothing
+    /// presence gate: present ⇒ build the whole struct; absent (a legacy frame
+    /// or the test-only no-envelope encoder) ⇒ `nil`, and every accessor falls
+    /// through to the generic JSON `payload` (ADR-0037 Commitment 4). The bare
+    /// scalars (`rev`, `running`) have no FlatBuffers presence signal of their
+    /// own — they inherit the metrics gate, which is exactly why the whole
+    /// envelope is modelled as one optional struct rather than seven.
+    private static func extractTypedEnvelope(
+        from snapshot: nmp_transport_SnapshotFrame
+    ) -> TypedSnapshotEnvelope? {
+        guard let metrics = snapshot.metrics else { return nil }
+        return TypedProjectionGlue.snapshotEnvelope(
+            rev: snapshot.rev,
+            running: snapshot.running,
+            metrics: metrics,
+            relayStatuses: snapshot.relayStatuses,
+            logicalInterests: snapshot.logicalInterests,
+            wireSubscriptions: snapshot.wireSubscriptions,
+            logs: snapshot.logs
+        )
     }
 
     private static func extractFlatFeeds(from root: nmp_transport_Value) -> [String: ChirpTimelineSnapshot] {

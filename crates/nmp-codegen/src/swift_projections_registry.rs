@@ -207,7 +207,13 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "bunker_handshake",
             schema_id: "bunker_handshake",
             file_identifier: "KBHS",
-            swift_reader_type: None,
+            // Per-key sidecar flip: the `flatc --swift` reader
+            // (`nmp_kernel_BunkerHandshake`) ships with this batch from
+            // `crates/nmp-core/schema/bunker_handshake.fbs`. Flat field copy with
+            // the `has_message` companion → `String?` mapping; the always-present
+            // wire bools surface as the domain type's forward-compat `Bool?`
+            // (non-nil from the typed path). See `TypedProjectionGlue.bunkerHandshake`.
+            swift_reader_type: Some("nmp_kernel_BunkerHandshake"),
         }),
     },
     // NIP-46 typed onboarding read model. Always populated by the kernel;
@@ -222,7 +228,15 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "nip46_onboarding",
             schema_id: "nip46_onboarding",
             file_identifier: "KN46",
-            swift_reader_type: None,
+            // Per-key sidecar flip: the `flatc --swift` reader
+            // (`nmp_kernel_Nip46Onboarding`, wrapping `nmp_kernel_SignerApp`) ships
+            // with this batch from `crates/nmp-core/schema/nip46_onboarding.fbs`.
+            // `signer_apps` nested-vector copy; the `has_stage_kind` /
+            // `has_progress_message` companions → `StageKind?` / `String?`; the
+            // snake_case `stage_kind` wire token re-types to the same `StageKind`
+            // enum the JSON path decodes (`unknown` forward-compat fallback). See
+            // `TypedProjectionGlue.nip46Onboarding`.
+            swift_reader_type: Some("nmp_kernel_Nip46Onboarding"),
         }),
     },
     // NOTE: `bunker_connection_state` (V-14 step b) is emitted by the kernel
