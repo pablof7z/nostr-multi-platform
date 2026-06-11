@@ -25,6 +25,84 @@
 import FlatBuffers
 import Foundation
 
+// MARK: - TypedBunkerHandshakeDecoder
+// Projection `bunker_handshake` → typed sidecar `bunker_handshake` (KBHS). Domain type: `BunkerHandshake?`.
+enum TypedBunkerHandshakeDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "bunker_handshake"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "bunker_handshake"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_BunkerHandshake`.
+    static let fileIdentifier = "KBHS"
+
+    /// Decode the typed `bunker_handshake` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> BunkerHandshake? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `KBHS` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> BunkerHandshake? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_kernel_BunkerHandshake = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.bunkerHandshake`.
+        return TypedProjectionGlue.bunkerHandshake(reader)
+    }
+}
+
+// MARK: - TypedNip46OnboardingDecoder
+// Projection `nip46_onboarding` → typed sidecar `nip46_onboarding` (KN46). Domain type: `Nip46Onboarding?`.
+enum TypedNip46OnboardingDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "nip46_onboarding"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "nip46_onboarding"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_Nip46Onboarding`.
+    static let fileIdentifier = "KN46"
+
+    /// Decode the typed `nip46_onboarding` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> Nip46Onboarding? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `KN46` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> Nip46Onboarding? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_kernel_Nip46Onboarding = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.nip46Onboarding`.
+        return TypedProjectionGlue.nip46Onboarding(reader)
+    }
+}
+
 // MARK: - TypedPublishQueueDecoder
 // Projection `publish_queue` → typed sidecar `publish_queue` (KPBQ). Domain type: `[PublishQueueEntry]?`.
 enum TypedPublishQueueDecoder {

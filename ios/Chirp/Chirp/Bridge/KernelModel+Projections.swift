@@ -2,9 +2,18 @@ import Foundation
 
 @MainActor
 extension KernelModel {
-    var isRunning: Bool { snapshot?.running ?? false }
+    // ADR-0044 Tier-3 (envelope switch): typed-first with JSON fallback. The
+    // typed `SnapshotFrame` envelope (`typedEnvelope`, gated on `metrics`) wins
+    // when present; the generic JSON `payload` top-level scalar
+    // (`snapshot?.<field>`) is the fallback (ADR-0037 Commitment 4). These seven
+    // accessors are the LAST consumers of `payload`'s top-level scalars. The
+    // perf/diag log lines in `apply(result:)` read raw `update.rev` /
+    // `update.metrics.*` — those are guaranteed mirrors (ADR-0032), so the
+    // logged value is identical to the effective value; only the UI accessors
+    // need the typed-first seam.
+    var isRunning: Bool { typedEnvelope?.running ?? snapshot?.running ?? false }
     var modularTimeline: ChirpTimelineSnapshot { typedHomeFeed ?? snapshot?.homeFeed ?? .empty }
-    var rev: UInt64 { snapshot?.rev ?? 0 }
+    var rev: UInt64 { typedEnvelope?.rev ?? snapshot?.rev ?? 0 }
     // V6 Stage 4 (profile cluster): typed-first with JSON fallback, mirroring
     // `accounts`'s `typedAccounts ?? snapshot?.accounts`. The typed `KPRF` /
     // `KCPR` / `KRPR` sidecars win when present; the generic JSON projection is
@@ -13,8 +22,8 @@ extension KernelModel {
     // and `KernelModel.profile(forPubkey:)` reads `claimedProfiles`, so flipping
     // the accessors flips every downstream consumer (single effective-value seam).
     var profile: ProfileCard? { typedProfile ?? snapshot?.profile }
-    var metrics: KernelMetrics? { snapshot?.metrics }
-    var relayStatuses: [RelayStatus] { snapshot?.relayStatuses ?? [] }
+    var metrics: KernelMetrics? { typedEnvelope?.metrics ?? snapshot?.metrics }
+    var relayStatuses: [RelayStatus] { typedEnvelope?.relayStatuses ?? snapshot?.relayStatuses ?? [] }
     // V6 Stage 4 (Wave B): typed-first with JSON fallback, mirroring
     // `modularTimeline`'s `typedHomeFeed ?? snapshot?.homeFeed`. The typed
     // `KACC` / `KACT` sidecars win when present; the generic JSON projection
@@ -35,8 +44,8 @@ extension KernelModel {
     var relayRoleOptions: [RelayRoleOption] { typedRelayRoleOptions ?? snapshot?.relayRoleOptions ?? [] }
     var settingsHub: SettingsHubSummary { snapshot?.settingsHub ?? .empty }
     var walletStatus: WalletStatusData? { snapshot?.walletStatus }
-    var logicalInterests: [LogicalInterestStatus] { snapshot?.logicalInterests ?? [] }
-    var wireSubscriptions: [WireSubscriptionStatus] { snapshot?.wireSubscriptions ?? [] }
+    var logicalInterests: [LogicalInterestStatus] { typedEnvelope?.logicalInterests ?? snapshot?.logicalInterests ?? [] }
+    var wireSubscriptions: [WireSubscriptionStatus] { typedEnvelope?.wireSubscriptions ?? snapshot?.wireSubscriptions ?? [] }
     // V6 Stage 4 (Wave B batch #3): typed-first with JSON fallback, mirroring
     // `accounts`'s `typedAccounts ?? snapshot?.accounts`. The typed `KRDG` /
     // `KALC` sidecars win when present; the generic JSON projection is the
@@ -61,9 +70,15 @@ extension KernelModel {
     // added for parity so the registry-declared `NDRL` key is read typed-first if
     // a consumer lands. `nil` ⇒ generic `projections["nmp.nip17.dm_relay_list"]`.
     var dmRelayList: DmRelayListSnapshot? { typedDmRelayList ?? snapshot?.projections?.dmRelayList }
-    var logs: [String] { snapshot?.logs ?? [] }
-    var bunkerHandshake: BunkerHandshake? { snapshot?.bunkerHandshake }
-    var nip46Onboarding: Nip46Onboarding? { snapshot?.nip46Onboarding }
+    var logs: [String] { typedEnvelope?.logs ?? snapshot?.logs ?? [] }
+    // NIP-46 cluster: typed-first with JSON fallback, mirroring `accounts`'s
+    // `typedAccounts ?? snapshot?.accounts`. The typed `KBHS` / `KN46` sidecars
+    // win when present; the generic JSON projection is the fallback (ADR-0037
+    // Commitment 4). `bunker_handshake`'s typed closure emits no sidecar while
+    // idle, so `typedBunkerHandshake` is nil in the steady state and the generic
+    // JSON `null` (→ `nil`) is read — parity-preserving.
+    var bunkerHandshake: BunkerHandshake? { typedBunkerHandshake ?? snapshot?.bunkerHandshake }
+    var nip46Onboarding: Nip46Onboarding? { typedNip46Onboarding ?? snapshot?.nip46Onboarding }
     var actionLifecycle: ActionLifecycleSnapshot? { typedActionLifecycle ?? snapshot?.actionLifecycle }
 
     var mentionProfiles: [String: MentionProfile] {

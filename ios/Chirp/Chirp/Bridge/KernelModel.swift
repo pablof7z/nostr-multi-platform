@@ -114,6 +114,23 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published private(set) var typedDmRelayList: DmRelayListSnapshot?
     @Published private(set) var typedClaimedEvents: [String: ClaimedEventDto]?
 
+    /// NIP-46 cluster typed sidecars (`bunker_handshake` / `nip46_onboarding`).
+    /// `nil` ⇒ the generic JSON path applies, read through the `bunkerHandshake`
+    /// / `nip46Onboarding` accessors (`typed<Key> ?? snapshot?.<key>`).
+    @Published private(set) var typedBunkerHandshake: BunkerHandshake?
+    @Published private(set) var typedNip46Onboarding: Nip46Onboarding?
+
+    /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
+    /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
+    /// `logs`). Non-nil when the frame carried the typed envelope (gated on
+    /// `metrics`); `nil` ⇒ the generic JSON `payload` top-level scalars apply.
+    /// Read through the `KernelModel+Projections` envelope accessors
+    /// (`isRunning` / `rev` / `metrics` / `relayStatuses` / `logicalInterests` /
+    /// `wireSubscriptions` / `logs`), each `typedEnvelope?.<field> ??
+    /// snapshot?.<field>`. This is the LAST consumer of `payload`'s top-level
+    /// scalars.
+    @Published private(set) var typedEnvelope: TypedSnapshotEnvelope?
+
     /// Dynamic flat feeds opened per profile/thread screen. Keys are
     /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
     @Published private(set) var flatFeeds: [String: ChirpTimelineSnapshot] = [:]
@@ -774,6 +791,18 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedDmInbox = result.typedDmInbox
         typedDmRelayList = result.typedDmRelayList
         typedClaimedEvents = result.typedClaimedEvents
+        // NIP-46 cluster: store the typed bunker-handshake / onboarding decodes.
+        // Nil ⇒ the generic JSON projection fallback applies for this tick (read
+        // through the `bunkerHandshake` / `nip46Onboarding` accessors).
+        typedBunkerHandshake = result.typedBunkerHandshake
+        typedNip46Onboarding = result.typedNip46Onboarding
+        // ADR-0044 Tier-3: store the typed `SnapshotFrame` envelope decode. Nil
+        // ⇒ the generic JSON `payload` top-level scalars apply for this tick
+        // (read through the `KernelModel+Projections` envelope accessors). The
+        // staleness guard above stays on raw `update.rev` (a guaranteed mirror
+        // per ADR-0032, so effective-rev ≡ update.rev) — flipping it would add
+        // risk with no behavior change.
+        typedEnvelope = result.typedEnvelope
         flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 

@@ -151,7 +151,7 @@ final class OpFeedDecoderTests: XCTestCase {
         let eventID = hex32(0x34)
         let data = dynamicFlatFeedUpdateFrame(pubkey: pubkey, eventID: eventID)
 
-        guard case let .snapshot(schemaVersion, update, _, flatFeeds) =
+        guard case let .snapshot(schemaVersion, update, _, flatFeeds, _) =
             try KernelUpdateFrameDecoder.decode(data) else {
             return XCTFail("expected snapshot frame")
         }

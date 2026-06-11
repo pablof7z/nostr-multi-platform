@@ -608,7 +608,7 @@ final class KernelHandle {
         let data = Data(bytes: bytes, count: count)
         do {
             let frame = try KernelUpdateFrameDecoder.decode(data)
-            guard case let .snapshot(frameSchemaVersion, update, envelopes, flatFeeds) = frame else {
+            guard case let .snapshot(frameSchemaVersion, update, envelopes, flatFeeds, typedEnvelope) = frame else {
                 if case let .panic(message) = frame {
                     kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(data.count) msg=\(message, privacy: .public)")
                     return .panic(message)
@@ -680,6 +680,14 @@ final class KernelHandle {
             let typedDmInbox = TypedDmInboxDecoder.decode(from: envelopes)
             let typedDmRelayList = TypedDmRelayListDecoder.decode(from: envelopes)
             let typedClaimedEvents = TypedClaimedEventsDecoder.decode(from: envelopes)
+            // NIP-46 cluster (`bunker_handshake` / `nip46_onboarding`). Each
+            // returns nil when its sidecar is absent/malformed → the generic
+            // `projections.<field>` JSON path stays active (ADR-0037 Commitment
+            // 4), mirroring `typedAccounts` above. `bunker_handshake`'s typed
+            // closure emits NO sidecar while idle (slot is `None`), so nil there
+            // is the steady-state — the generic JSON `null` is the fallback.
+            let typedBunkerHandshake = TypedBunkerHandshakeDecoder.decode(from: envelopes)
+            let typedNip46Onboarding = TypedNip46OnboardingDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
@@ -705,6 +713,9 @@ final class KernelHandle {
                     typedDmInbox: typedDmInbox,
                     typedDmRelayList: typedDmRelayList,
                     typedClaimedEvents: typedClaimedEvents,
+                    typedBunkerHandshake: typedBunkerHandshake,
+                    typedNip46Onboarding: typedNip46Onboarding,
+                    typedEnvelope: typedEnvelope,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
@@ -778,6 +789,36 @@ private let nmpUpdateCallback: NmpUpdateCallback = { context, bytes, count in
     case .panic:
         sink.onPanic()
     }
+}
+
+// ─── Typed SnapshotFrame envelope (ADR-0044 Tier-3) ───────────────────────
+
+/// The typed `SnapshotFrame` envelope fields, read DIRECTLY off the
+/// `SnapshotFrame` table (ADR-0044) — distinct from the `typed_projections`
+/// sidecar list every other `typed*` decode walks. PR #1034 added these
+/// first-class fields (`rev`, `running`, `metrics`, the relay/interest/wire
+/// vectors, `logs`) on the frame so a migrated host reads them instead of
+/// re-walking the generic JSON `payload` tree.
+///
+/// All seven fields are written by the producer as a UNIT
+/// (`encode_snapshot_with_envelope`, `kernel/update.rs`) whenever the frame
+/// carries metrics, so this whole struct is gated on the one field whose
+/// FlatBuffers accessor reports presence (`SnapshotFrame.metrics != nil`). When
+/// the gate is open the host prefers these typed values; when it is closed (a
+/// legacy frame, or the test-only `encode_snapshot_with_typed` path) the value
+/// is `nil` and every accessor falls through to the generic JSON `payload`
+/// (`snapshot?.<field>`) — ADR-0037 Commitment 4. Every value is a raw mirror
+/// of the top-level `KernelSnapshot` fields (ADR-0032), field-identical to the
+/// JSON decode. This is the LAST consumer of the generic `payload`'s top-level
+/// scalars.
+struct TypedSnapshotEnvelope: Equatable {
+    let rev: UInt64
+    let running: Bool
+    let metrics: KernelMetrics
+    let relayStatuses: [RelayStatus]
+    let logicalInterests: [LogicalInterestStatus]
+    let wireSubscriptions: [WireSubscriptionStatus]
+    let logs: [String]
 }
 
 // ─── Swift-side timing wrapper ────────────────────────────────────────────
@@ -856,6 +897,21 @@ struct KernelUpdateResult {
     /// `projections.claimedEvents` JSON fallback. Routed to `EmbedHost.update`
     /// (typed-first effective value) in `KernelModel.apply`.
     let typedClaimedEvents: [String: ClaimedEventDto]?
+    /// Typed `bunker_handshake` projection decode (`KBHS`). `nil` ⇒ generic
+    /// `projections["bunker_handshake"]` JSON fallback. The producer emits no
+    /// sidecar while the handshake slot is idle, so nil is the steady state.
+    let typedBunkerHandshake: BunkerHandshake?
+    /// Typed `nip46_onboarding` projection decode (`KN46`). `nil` ⇒ generic
+    /// `projections["nip46_onboarding"]` JSON fallback. Always present from a
+    /// current kernel (the static signer-app table is emitted every tick).
+    let typedNip46Onboarding: Nip46Onboarding?
+    /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
+    /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
+    /// `logs`), read directly off the `SnapshotFrame` table. Non-nil when the
+    /// frame carried the typed envelope (gated on `metrics`); `nil` ⇒ the
+    /// generic JSON `payload` top-level scalars apply (read through the
+    /// `KernelModel+Projections` accessors).
+    let typedEnvelope: TypedSnapshotEnvelope?
     /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
     /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
     /// target, so they cannot be codegen'd as fixed projection fields.
