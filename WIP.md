@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **fix(nmp-store,nmp-core): budget gc_step honestly + disable LRU ceiling until claims wired** (closes #1085). Worktree: agent-a5d61234132541ea2. Branch: `fix/gc-step-budget-lru-ceiling`. Items: Phase-1 resumable cursor + duration gate, Phase-2 O(1) count via LMDB stat, Phase-3/3b hourly tombstone purge gate, LRU ceiling disabled in production budget, gc-step duration assertion test.
+
 - 2026-06-11 — **PR-B FINAL: stop emitting payload:Value** (closes #991/#979). Worktree: agent-a329ca748cf7215bc. Branch: `pr-b-final-zero-payload-emission` (PR #1082, review round 2). Done: gallery TUI+desktop on typed sidecars; emission zeroed; Rust flatc bindings REGENERATED (deprecated `payload` accessors gone) + `ci/check-rust-flatc-drift.sh` gate wired into codegen-drift.yml; `decode_snapshot_payload`/`decode_snapshot_with_typed`/`encode_snapshot_value` DELETED with all ~20 workspace readers migrated to `SnapshotEnvelope` + typed sidecars (`UpdateEnvelope::Snapshot` now carries `SnapshotEnvelope`); chirp-tui/chirp-desktop real-encoder round-trip tests added; nmp-wasm emits Tier-3 typed frames.
 
 - 2026-06-11 — **F-02 closure-gate** (issue #977). Branch: `feat/f02-cold-start-real-kernel-fix`. Worktree: agent-aa07b090a7b004806. Fix: `on_dm_relays_changed` enqueues `DmRelayListChanged` trigger in wildcard ingest arm when `DmInboxRelayLookup` cache transitions. Integration test: `real_relay_nip17_cold_start_kernel` passes against `wss://relay.primal.net` in 1.71s.
