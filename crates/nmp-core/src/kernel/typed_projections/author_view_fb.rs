@@ -38,6 +38,14 @@ use flatbuffers::{FlatBufferBuilder, WIPOffset};
 
 use super::{ProfileCardModel, TimelineItemModel};
 use generated::nmp::kernel as fb;
+// Shared `ProfileCard` row type: `author_view.fbs` `include`s `profile_card.fbs`,
+// so `ProfileCard` / `ProfileCardArgs` live in the crate-root
+// `profile_card_generated` wrapper (NOT in `fb` after the include refactor).
+use crate::profile_card_generated as pc;
+// Shared `TimelineItem` row type: `author_view.fbs` `include`s `timeline_item.fbs`,
+// so `TimelineItem` / `TimelineItemArgs` live in the crate-root
+// `timeline_item_generated` wrapper (NOT in `fb` after the include refactor).
+use crate::timeline_item_generated as ti;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
@@ -82,13 +90,13 @@ pub(crate) struct AuthorViewModel {
 
 // --- encode ---------------------------------------------------------------
 
-/// Encode a [`ProfileCardModel`] into THIS module's generated `ProfileCard`
-/// table. Mirrors `profile_fb::create_profile_card` against the `author_view`
-/// bindings (a distinct generated type).
+/// Encode a [`ProfileCardModel`] into the shared `ProfileCard` table (from
+/// `profile_card.fbs`). Uses `pc::ProfileCard` from the crate-root
+/// `profile_card_generated` wrapper (shared with `profile_fb`).
 fn create_profile_card<'a>(
     fbb: &mut FlatBufferBuilder<'a>,
     card: &ProfileCardModel,
-) -> WIPOffset<fb::ProfileCard<'a>> {
+) -> WIPOffset<pc::ProfileCard<'a>> {
     let pubkey = fbb.create_string(&card.pubkey);
     let npub = fbb.create_string(&card.npub);
     let display_name = card
@@ -102,9 +110,9 @@ fn create_profile_card<'a>(
     let nip05 = fbb.create_string(&card.nip05);
     let about = fbb.create_string(&card.about);
     let lnurl = card.lnurl.as_ref().map(|value| fbb.create_string(value));
-    fb::ProfileCard::create(
+    pc::ProfileCard::create(
         fbb,
-        &fb::ProfileCardArgs {
+        &pc::ProfileCardArgs {
             pubkey: Some(pubkey),
             npub: Some(npub),
             has_display_name: card.display_name.is_some(),
@@ -120,13 +128,14 @@ fn create_profile_card<'a>(
     )
 }
 
-/// Encode a `[TimelineItemModel]` slice into THIS module's generated
-/// `TimelineItem` table offsets.
+/// Encode a `[TimelineItemModel]` slice into the shared `TimelineItem` table
+/// offsets (from `timeline_item.fbs`). Uses `ti::TimelineItem` from the
+/// crate-root `timeline_item_generated` wrapper.
 fn create_timeline_items<'a>(
     fbb: &mut FlatBufferBuilder<'a>,
     items: &[TimelineItemModel],
-) -> WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<fb::TimelineItem<'a>>>> {
-    let offsets: Vec<WIPOffset<fb::TimelineItem<'a>>> = items
+) -> WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<ti::TimelineItem<'a>>>> {
+    let offsets: Vec<WIPOffset<ti::TimelineItem<'a>>> = items
         .iter()
         .map(|item| {
             let id = fbb.create_string(&item.id);
@@ -147,9 +156,9 @@ fn create_timeline_items<'a>(
             let content_preview = fbb.create_string(&item.content_preview);
             let nav_target_id = fbb.create_string(&item.nav_target_id);
             let repost_inner_content = fbb.create_string(&item.repost_inner_content);
-            fb::TimelineItem::create(
+            ti::TimelineItem::create(
                 fbb,
-                &fb::TimelineItemArgs {
+                &ti::TimelineItemArgs {
                     id: Some(id),
                     author_pubkey: Some(author_pubkey),
                     has_author_picture_url: item.author_picture_url.is_some(),
@@ -303,7 +312,7 @@ pub(crate) fn decode_author_view(bytes: &[u8]) -> Result<AuthorViewModel, String
 /// [`ProfileCardModel`] (mirrors `profile_fb::profile_card_from_fb` against the
 /// author_view bindings).
 #[cfg(test)]
-fn profile_card_from_fb(card: fb::ProfileCard<'_>) -> ProfileCardModel {
+fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey().unwrap_or_default().to_string(),
         npub: card.npub().unwrap_or_default().to_string(),
@@ -325,7 +334,7 @@ fn profile_card_from_fb(card: fb::ProfileCard<'_>) -> ProfileCardModel {
 /// Decode THIS module's generated `TimelineItem` table into a
 /// [`TimelineItemModel`] (mirrors `thread_view_fb::timeline_item_from_fb`).
 #[cfg(test)]
-fn timeline_item_from_fb(item: fb::TimelineItem<'_>) -> TimelineItemModel {
+fn timeline_item_from_fb(item: ti::TimelineItem<'_>) -> TimelineItemModel {
     TimelineItemModel {
         id: item.id().unwrap_or_default().to_string(),
         author_pubkey: item.author_pubkey().unwrap_or_default().to_string(),
