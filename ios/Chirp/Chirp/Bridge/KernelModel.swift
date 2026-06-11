@@ -98,6 +98,12 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published private(set) var typedZaps: ZapsAggregateSnapshot?
     @Published private(set) var typedGroupChat: GroupChatSnapshot?
     @Published private(set) var typedDiscoveredGroups: DiscoveredGroupsSnapshot?
+    /// Typed profile-cluster sidecars (`KPRF` / `KCPR` / `KRPR`). `nil` ⇒ the
+    /// `KernelModel+Projections` accessor falls back to the generic JSON
+    /// `snapshot?.profile` / `.claimedProfiles` / `.resolvedProfiles`.
+    @Published private(set) var typedProfile: ProfileCard?
+    @Published private(set) var typedClaimedProfiles: [String: ProfileCard]?
+    @Published private(set) var typedResolvedProfiles: [String: ProfileCard]?
 
     /// Dynamic flat feeds opened per profile/thread screen. Keys are
     /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
@@ -740,6 +746,9 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedZaps = result.typedZaps
         typedGroupChat = result.typedGroupChat
         typedDiscoveredGroups = result.typedDiscoveredGroups
+        typedProfile = result.typedProfile
+        typedClaimedProfiles = result.typedClaimedProfiles
+        typedResolvedProfiles = result.typedResolvedProfiles
         flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 

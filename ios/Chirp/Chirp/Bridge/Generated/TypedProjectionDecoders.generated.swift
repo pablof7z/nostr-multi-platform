@@ -337,6 +337,45 @@ enum TypedActionLifecycleDecoder {
     }
 }
 
+// MARK: - TypedProfileDecoder
+// Projection `profile` → typed sidecar `profile` (KPRF). Domain type: `ProfileCard?`.
+enum TypedProfileDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "profile"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "profile"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_ProfileSnapshot`.
+    static let fileIdentifier = "KPRF"
+
+    /// Decode the typed `profile` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> ProfileCard? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `KPRF` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> ProfileCard? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_kernel_ProfileSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.profile`.
+        return TypedProjectionGlue.profile(reader)
+    }
+}
+
 // MARK: - TypedGroupChatDecoder
 // Projection `nmp.nip29.group_chat` → typed sidecar `nmp.nip29.group_chat` (NGCS). Domain type: `GroupChatSnapshot?`.
 enum TypedGroupChatDecoder {
@@ -529,5 +568,83 @@ enum TypedRelayDiagnosticsDecoder {
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.relayDiagnostics`.
         return TypedProjectionGlue.relayDiagnostics(reader)
+    }
+}
+
+// MARK: - TypedResolvedProfilesDecoder
+// Projection `resolved_profiles` → typed sidecar `resolved_profiles` (KRPR). Domain type: `[String: ProfileCard]?`.
+enum TypedResolvedProfilesDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "resolved_profiles"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "resolved_profiles"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_ResolvedProfilesSnapshot`.
+    static let fileIdentifier = "KRPR"
+
+    /// Decode the typed `resolved_profiles` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> [String: ProfileCard]? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `KRPR` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> [String: ProfileCard]? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_kernel_ResolvedProfilesSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.resolvedProfiles`.
+        return TypedProjectionGlue.resolvedProfiles(reader)
+    }
+}
+
+// MARK: - TypedClaimedProfilesDecoder
+// Projection `claimed_profiles` → typed sidecar `claimed_profiles` (KCPR). Domain type: `[String: ProfileCard]?`.
+enum TypedClaimedProfilesDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "claimed_profiles"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "claimed_profiles"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_ClaimedProfilesSnapshot`.
+    static let fileIdentifier = "KCPR"
+
+    /// Decode the typed `claimed_profiles` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> [String: ProfileCard]? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `KCPR` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> [String: ProfileCard]? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_kernel_ClaimedProfilesSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.claimedProfiles`.
+        return TypedProjectionGlue.claimedProfiles(reader)
     }
 }

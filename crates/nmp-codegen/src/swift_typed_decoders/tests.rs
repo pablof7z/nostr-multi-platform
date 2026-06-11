@@ -167,6 +167,11 @@ fn real_registry_emits_exactly_the_proof_keys() {
     assert!(out.contains("enum TypedZapsDecoder {"));
     assert!(out.contains("enum TypedGroupChatDecoder {"));
     assert!(out.contains("enum TypedDiscoveredGroupsDecoder {"));
+    // Profile-cluster keys — all three share the `nmp_kernel_ProfileCard` reader
+    // (defined once via the shared `profile_card.fbs` include).
+    assert!(out.contains("enum TypedProfileDecoder {"));
+    assert!(out.contains("enum TypedClaimedProfilesDecoder {"));
+    assert!(out.contains("enum TypedResolvedProfilesDecoder {"));
     let emitted = SNAPSHOT_PROJECTIONS
         .iter()
         .filter(|e| {
@@ -177,14 +182,15 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 13,
-        "exactly thirteen keys have a checked-in flatc --swift reader binding \
+        emitted, 16,
+        "exactly sixteen keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
-         relay_diagnostics, action_lifecycle; plus the Wave B Tier-1 #4: \
+         relay_diagnostics, action_lifecycle; the Wave B Tier-1 #4: \
          nmp.follow_list, nmp.nip57.zaps, nmp.nip29.group_chat, \
-         nmp.nip29.discovered_groups); if this changed, regenerate \
+         nmp.nip29.discovered_groups; plus the profile cluster: profile, \
+         claimed_profiles, resolved_profiles); if this changed, regenerate \
          TypedProjectionDecoders.generated.swift and update this test"
     );
 }

@@ -662,6 +662,15 @@ final class KernelHandle {
             let typedZaps = TypedZapsDecoder.decode(from: envelopes)
             let typedGroupChat = TypedGroupChatDecoder.decode(from: envelopes)
             let typedDiscoveredGroups = TypedDiscoveredGroupsDecoder.decode(from: envelopes)
+            // Profile-cluster typed sidecars (`profile` / `claimed_profiles` /
+            // `resolved_profiles`). All three share the `nmp_kernel_ProfileCard`
+            // reader (defined once in `ProfileCard.generated.swift`). Each returns
+            // nil when its sidecar is absent/malformed → the generic
+            // `projections.<field>` JSON path stays active (ADR-0037 Commitment 4),
+            // mirroring `typedAccounts` above.
+            let typedProfile = TypedProfileDecoder.decode(from: envelopes)
+            let typedClaimedProfiles = TypedClaimedProfilesDecoder.decode(from: envelopes)
+            let typedResolvedProfiles = TypedResolvedProfilesDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
@@ -681,6 +690,9 @@ final class KernelHandle {
                     typedZaps: typedZaps,
                     typedGroupChat: typedGroupChat,
                     typedDiscoveredGroups: typedDiscoveredGroups,
+                    typedProfile: typedProfile,
+                    typedClaimedProfiles: typedClaimedProfiles,
+                    typedResolvedProfiles: typedResolvedProfiles,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
@@ -811,6 +823,15 @@ struct KernelUpdateResult {
     /// Typed `nmp.nip29.discovered_groups` projection decode (`NDGS`). `nil` ⇒
     /// generic `projections["nmp.nip29.discovered_groups"]` JSON fallback.
     let typedDiscoveredGroups: DiscoveredGroupsSnapshot?
+    /// Typed `profile` projection decode (`KPRF`). `nil` ⇒ generic
+    /// `projections["profile"]` JSON fallback.
+    let typedProfile: ProfileCard?
+    /// Typed `claimed_profiles` projection decode (`KCPR`). `nil` ⇒ generic
+    /// `projections["claimed_profiles"]` JSON fallback.
+    let typedClaimedProfiles: [String: ProfileCard]?
+    /// Typed `resolved_profiles` projection decode (`KRPR`). `nil` ⇒ generic
+    /// `projections["resolved_profiles"]` JSON fallback.
+    let typedResolvedProfiles: [String: ProfileCard]?
     /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
     /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
     /// target, so they cannot be codegen'd as fixed projection fields.

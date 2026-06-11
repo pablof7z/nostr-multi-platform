@@ -411,7 +411,12 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "profile",
             schema_id: "profile",
             file_identifier: "KPRF",
-            swift_reader_type: None,
+            // Profile-cluster batch: the `flatc --swift` reader
+            // (`nmp_kernel_ProfileSnapshot`, wrapping the SHARED
+            // `nmp_kernel_ProfileCard` from `ProfileCard.generated.swift`) ships
+            // with this batch. Single-card copy with `has_*`→`String?` companion
+            // mapping. See `TypedProjectionGlue.profile`.
+            swift_reader_type: Some("nmp_kernel_ProfileSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
@@ -631,7 +636,13 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "resolved_profiles",
             schema_id: "resolved_profiles",
             file_identifier: "KRPR",
-            swift_reader_type: None,
+            // Profile-cluster batch: the `flatc --swift` reader
+            // (`nmp_kernel_ResolvedProfilesSnapshot`, entries each carrying the
+            // SHARED `nmp_kernel_ProfileCard`) ships with this batch. Flattened
+            // `[{key,value}]` → `[String: ProfileCard]` with the same `has_*`
+            // companion mapping as `claimed_profiles`. See
+            // `TypedProjectionGlue.resolvedProfiles`.
+            swift_reader_type: Some("nmp_kernel_ResolvedProfilesSnapshot"),
         }),
     },
     // Reference-first claimed-profile map — keyed by pubkey, one
@@ -649,7 +660,12 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "claimed_profiles",
             schema_id: "claimed_profiles",
             file_identifier: "KCPR",
-            swift_reader_type: None,
+            // Profile-cluster batch: the `flatc --swift` reader
+            // (`nmp_kernel_ClaimedProfilesSnapshot`, entries each carrying the
+            // SHARED `nmp_kernel_ProfileCard`) ships with this batch. Flattened
+            // `[{key,value}]` → `[String: ProfileCard]` with `has_*`→`String?`
+            // companion mapping. See `TypedProjectionGlue.claimedProfiles`.
+            swift_reader_type: Some("nmp_kernel_ClaimedProfilesSnapshot"),
         }),
     },
     // Reference-first claimed-event map (ADR-0034 / F-CR-06) — keyed by
