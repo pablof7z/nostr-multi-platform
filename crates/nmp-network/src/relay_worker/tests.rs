@@ -517,6 +517,65 @@ fn t130_frames_sent_before_connect_arrive_after_open() {
     assert!(connected.is_some(), "worker must report Connected");
 }
 
+// ─── Finding 1 — ControlDrain::Disconnected must emit a terminal event ───────
+
+/// When the control-sender is dropped mid-session (caller tore down the Pool
+/// slot without sending Shutdown), the worker must emit a terminal
+/// `RelayEvent::Closed` so consumers tracking slot health see a definitive
+/// terminal state rather than being stuck at the last non-terminal event.
+///
+/// ## Invariant being pinned
+///
+/// Every exit path of `run_connected_relay` → `run_relay_worker` must end with
+/// either `RelayEvent::Closed` (clean shutdown / control-sender-dropped) or
+/// `RelayEvent::Failed` (transport or keepalive error) so the relay-event
+/// stream is always terminated.
+#[test]
+fn disconnected_control_sender_emits_terminal_closed_event() {
+    let server = LocalServer::start_auto_pong();
+
+    let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
+    let control_tx = spawn_relay_worker_with_keepalive(
+        RelayRole::Content,
+        server.url.clone(),
+        42,
+        relay_tx,
+        Duration::from_secs(30), // long keepalive — must not interfere
+        Duration::from_secs(30),
+    );
+
+    // Wait for Connected before dropping the sender so we're mid-session.
+    let connected = drain_until(
+        &relay_rx,
+        |ev| matches!(ev, RelayEvent::Connected { .. }),
+        Duration::from_secs(2),
+    );
+    assert!(connected.is_some(), "worker must report Connected before test can proceed");
+
+    // Drop the control sender — simulates Pool slot teardown without Shutdown.
+    // The `ControlInbox` internal forwarding thread will observe the disconnect
+    // on the next recv(), which will cause `drain_pending` to return
+    // `ControlDrain::Disconnected` on the next tick of `run_connected_relay`.
+    drop(control_tx);
+
+    // The worker MUST emit a terminal event. We accept both Closed (correct)
+    // and — defensively — Failed (would still be honest), but NOT absence.
+    let terminal = drain_until(
+        &relay_rx,
+        |ev| matches!(ev, RelayEvent::Closed { generation: 42, .. } | RelayEvent::Failed { generation: 42, .. }),
+        Duration::from_secs(2),
+    );
+    assert!(
+        terminal.is_some(),
+        "dropping the control sender must produce a terminal RelayEvent::Closed; got none within 2s"
+    );
+    // Specifically it must be Closed (not Failed) — the disconnect is not an error.
+    assert!(
+        matches!(terminal.unwrap(), RelayEvent::Closed { .. }),
+        "control-sender drop is a clean teardown; event must be Closed, not Failed"
+    );
+}
+
 // ─── T116c / G12 — jittered_backoff unit tests ──────────────────────────────
 
 /// Same URL → same jitter offset (deterministic per URL).

@@ -300,7 +300,18 @@ fn run_connected_relay(
                 });
                 return RelayWorkerResult::Shutdown;
             }
-            io_ready::ControlDrain::Disconnected => return RelayWorkerResult::Shutdown,
+            io_ready::ControlDrain::Disconnected => {
+                // The control sender was dropped (caller tore down the Pool slot without
+                // sending Shutdown). Emit an honest Closed event so consumers tracking
+                // slot health see a terminal state rather than being left at the last
+                // non-terminal event forever.
+                let _ = relay_tx.send(RelayEvent::Closed {
+                    role,
+                    relay_url: relay_url.to_string(),
+                    generation,
+                });
+                return RelayWorkerResult::Shutdown;
+            }
         }
 
         let mut wants_write =
