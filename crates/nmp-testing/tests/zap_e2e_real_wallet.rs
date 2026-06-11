@@ -62,10 +62,18 @@ use zap_e2e_common::{
 fn real_wallet_zap_e2e() {
     install_rustls_provider();
 
-    let nwc_uri_str = std::env::var("NWC_URI")
-        .expect("set NWC_URI to a real nostr+walletconnect:// connection string");
-    let ln_address = std::env::var("ZAP_LN_ADDRESS")
-        .expect("set ZAP_LN_ADDRESS to a real lightning address (e.g. you@getalby.com)");
+    // SKIP (not panic) when the owner-supplied env vars are absent: the
+    // nightly real-relay workflow runs `-- --ignored` with no name filter,
+    // so this test executes unattended. The repo convention for real_relay_*
+    // tests is eprintln + early return, never a red nightly.
+    let Ok(nwc_uri_str) = std::env::var("NWC_URI") else {
+        eprintln!("SKIP real_wallet_zap_e2e: NWC_URI not set (owner-supplied last mile)");
+        return;
+    };
+    let Ok(ln_address) = std::env::var("ZAP_LN_ADDRESS") else {
+        eprintln!("SKIP real_wallet_zap_e2e: ZAP_LN_ADDRESS not set (owner-supplied last mile)");
+        return;
+    };
     let amount_msats: u64 = std::env::var("ZAP_AMOUNT_MSATS")
         .ok()
         .and_then(|s| s.parse().ok())
