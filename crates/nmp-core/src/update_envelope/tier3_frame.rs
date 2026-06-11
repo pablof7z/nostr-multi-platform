@@ -11,9 +11,13 @@
 //! generic JSON Value tree is no longer emitted. Every Rust shell (chirp-tui,
 //! chirp-desktop, nmp-gallery TUI, nmp-gallery desktop) reads typed-first from
 //! the Tier-3 `SnapshotEnvelope` + per-projection typed sidecars.
-//! iOS, Android, and web/TS are unaffected — the `(deprecated)` field reads as
-//! absent (FlatBuffers vtable default) when unset, which their existing
-//! typed-first readers already handle per ADR-0037 Commitment 4.
+//! iOS is unaffected — `KernelUpdateFrameDecoder.swift` already reads the Tier-3
+//! envelope fields and never read `payload`.
+//! Android was BROKEN by PR-B (#1084): `KernelUpdateFrameDecoder.kt` gated its
+//! entire decode on `snapshot.payload ?: return null`; the fix rebuilds the
+//! Android spine from the Tier-3 fields (same as iOS) in the same PR.
+//! Web/TS still reads `payload` on the generic path and is unaffected until
+//! its typed-first port (#1007, post-v1).
 
 use super::{
     encode_typed_projections, TypedProjectionData, UpdateFrameBytes,

@@ -4,103 +4,117 @@ import com.google.flatbuffers.FlatBufferBuilder
 import nmp.kernel.RelayRoleOption as FbRelayRoleOption
 import nmp.kernel.RelayRoleOptionsSnapshot
 import nmp.transport.FrameKind
-import nmp.transport.Pair as TransportPair
+import nmp.transport.Metrics
 import nmp.transport.SnapshotFrame
 import nmp.transport.TypedPayload
 import nmp.transport.TypedProjection
 import nmp.transport.UpdateFrame
-import nmp.transport.Value
-import nmp.transport.ValueKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Integration tests for the F-05 typed-first projection wiring in
- * [KernelUpdateFrameDecoder.decodeProjections] (#979): verify that
+ * Integration tests for the PR-B typed-first projection wiring in
+ * [KernelUpdateFrameDecoder.decodeProjections] (#979 / #1084): verify that
  *
- *  1. when NO typed sidecar is present, the generic `payload:Value` path still
- *     populates each projection (ADR-0037 Commitment 4 — permanent fallback);
- *  2. when a typed sidecar IS present, it wins over the generic subtree.
+ *  1. when NO typed sidecar is present, each projection is absent (empty/null) —
+ *     the generic `payload:Value` path is gone (PR-B #991/#979); absence of a
+ *     sidecar means no data;
+ *  2. when a typed sidecar IS present, it populates the projection correctly;
+ *  3. when a typed sidecar is garbled / undecodable, the projection is absent
+ *     (no crash, fails closed per D1).
  *
- * Built end-to-end through `KernelUpdateFrameDecoder.decode(bytes)` so the whole
- * snapshot → typed-projection-lift → projection-decode path is exercised.
+ * Built end-to-end through `KernelUpdateFrameDecoder.decode(bytes)` so the full
+ * snapshot → Tier-3 envelope → typed-projection-lift → projection-decode path
+ * is exercised. Frames are assembled via the Tier-3 SnapshotFrame builder
+ * (ADR-0044; #1084 regression guard).
  */
 @OptIn(ExperimentalUnsignedTypes::class)
 class TypedProjectionFallbackTest {
 
     @Test
-    fun genericRelayRoleOptionsSurviveWithoutTypedSidecar() {
-        val frame = frame(
-            rev = 5L,
-            projections = { b ->
-                valueMap(
-                    b,
-                    "relay_role_options" to valueList(
-                        b,
-                        relayRoleOptionEntry(b, "both", "Both", "accent", true),
-                        relayRoleOptionEntry(b, "read", "Read", "info", false),
-                    ),
-                )
-            },
-            typedSidecars = emptyList(),
-        )
+    fun noTypedSidecarYieldsEmptyRelayRoleOptions() {
+        // PR-B: without a typed sidecar, relay_role_options is empty (no generic
+        // payload fallback exists any more).
+        val frame = frame(rev = 5L, typedSidecars = emptyList())
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
         val opts = decoded.update.projections?.relayRoleOptions.orEmpty()
-        // Generic path survived (no typed sidecar present).
-        assertEquals(listOf("both", "read"), opts.map { it.value })
-        assertTrue(opts[0].isDefault)
+        assertTrue("no typed sidecar → relay_role_options must be empty", opts.isEmpty())
     }
 
     @Test
-    fun typedRelayRoleOptionsWinOverGeneric() {
-        // Generic carries ONE option; typed sidecar carries TWO. Typed must win.
+    fun typedRelayRoleOptionsAreDecoded() {
         val typedBytes = relayRoleSidecarBytes()
         val frame = frame(
             rev = 6L,
-            projections = { b ->
-                valueMap(
-                    b,
-                    "relay_role_options" to valueList(
-                        b,
-                        relayRoleOptionEntry(b, "generic-only", "Generic", "neutral", false),
-                    ),
-                )
-            },
             typedSidecars = listOf(
                 Triple("relay_role_options", "relay_role_options", typedBytes),
             ),
         )
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
         val opts = decoded.update.projections?.relayRoleOptions.orEmpty()
-        // Typed sidecar (two options) replaced the single-entry generic subtree.
         assertEquals(listOf("both", "read"), opts.map { it.value })
+        assertTrue(opts[0].isDefault)
     }
 
     @Test
-    fun malformedTypedSidecarFallsBackToGeneric() {
+    fun malformedTypedSidecarYieldsEmptyRelayRoleOptions() {
+        // A garbled sidecar must not crash and must yield an empty list.
         val garbled = relayRoleSidecarBytes().copyOf()
         garbled[4] = 'X'.code.toByte() // clobber KRRO identifier → undecodable
         val frame = frame(
             rev = 7L,
-            projections = { b ->
-                valueMap(
-                    b,
-                    "relay_role_options" to valueList(
-                        b,
-                        relayRoleOptionEntry(b, "fallback", "Fallback", "neutral", true),
-                    ),
-                )
-            },
             typedSidecars = listOf(
                 Triple("relay_role_options", "relay_role_options", garbled),
             ),
         )
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
         val opts = decoded.update.projections?.relayRoleOptions.orEmpty()
-        // Undecodable typed sidecar → generic subtree wins (single entry).
-        assertEquals(listOf("fallback"), opts.map { it.value })
+        // Undecodable typed sidecar → fails closed, no crash, empty result.
+        assertTrue("garbled sidecar must yield empty relay_role_options", opts.isEmpty())
+    }
+
+    @Test
+    fun tier3RevAndRunningAreReadFromEnvelopeNotPayload() {
+        // Regression test for #1084: rev and running come from the Tier-3
+        // SnapshotFrame fields, not from the (gone) `payload:Value` root map.
+        val frame = frame(rev = 42L, running = true, typedSidecars = emptyList())
+        val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
+        assertEquals("rev must come from Tier-3 envelope", 42L, decoded.update.rev)
+        assertTrue("running must come from Tier-3 envelope", decoded.update.running)
+    }
+
+    @Test
+    fun tier3MetricsAreDecoded() {
+        val frame = frame(
+            rev = 1L,
+            storedEvents = 999UL,
+            visibleItems = 42UL,
+            eventsRx = 7UL,
+            updateSequence = 11UL,
+            typedSidecars = emptyList(),
+        )
+        val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
+        val metrics = decoded.update.metrics
+        assertEquals("storedEvents from Tier-3 metrics", 999L, metrics?.storedEvents)
+        assertEquals("visibleItems from Tier-3 metrics", 42L, metrics?.visibleItems)
+        assertEquals("eventsRx from Tier-3 metrics", 7L, metrics?.eventsRx)
+        assertEquals("updateSequence from Tier-3 metrics", 11L, metrics?.updateSequence)
+    }
+
+    @Test
+    fun tier3LastErrorToastIsDecoded() {
+        val frame = frame(rev = 1L, lastErrorToast = "boom", typedSidecars = emptyList())
+        val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
+        assertEquals("boom", decoded.update.lastErrorToast)
+    }
+
+    @Test
+    fun tier3AbsentLastErrorToastIsNull() {
+        val frame = frame(rev = 1L, typedSidecars = emptyList())
+        val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
+        assertNull(decoded.update.lastErrorToast)
     }
 
     // ── builders ─────────────────────────────────────────────────────────────
@@ -119,42 +133,77 @@ class TypedProjectionFallbackTest {
         return b.sizedByteArray()
     }
 
-    /** One generic `RelayRoleOption` as a `Value` map (snake_case keys). */
-    private fun relayRoleOptionEntry(
-        b: FlatBufferBuilder,
-        value: String,
-        label: String,
-        tint: String,
-        isDefault: Boolean,
-    ): Int = valueMap(
-        b,
-        "value" to valueString(b, value),
-        "label" to valueString(b, label),
-        "tint" to valueString(b, tint),
-        "is_default" to valueBool(b, isDefault),
-    )
-
+    /**
+     * Build a minimal Tier-3 snapshot frame. `rev` and `running` go directly
+     * into the SnapshotFrame envelope (ADR-0044). `typedSidecars` are embedded in
+     * the `typed_projections` vector. The metrics table is always written (the
+     * iOS `extractTypedEnvelope` gates on `metrics != nil`; mirrored here).
+     */
     private fun frame(
-        rev: Long,
-        projections: (FlatBufferBuilder) -> Int,
+        rev: Long = 1L,
+        running: Boolean = false,
+        storedEvents: ULong = 0UL,
+        visibleItems: ULong = 0UL,
+        eventsRx: ULong = 0UL,
+        updateSequence: ULong = 0UL,
+        lastErrorToast: String? = null,
         typedSidecars: List<Triple<String, String, ByteArray>>,
     ): ByteArray {
         val b = FlatBufferBuilder(2048)
-        val payload = valueMap(
-            b,
-            "rev" to valueInt(b, rev),
-            "running" to valueBool(b, true),
-            "relay_url" to valueString(b, ""),
-            "projections" to projections(b),
-        )
+        // Build typed sidecars first (must precede table construction per FlatBuffers ordering).
         val sidecarOffsets = typedSidecars.map { (key, schemaId, bytes) ->
             typedProjection(b, key, schemaId, bytes)
         }.toIntArray()
         val typedVec = SnapshotFrame.createTypedProjectionsVector(b, sidecarOffsets)
-        val snapshot = SnapshotFrame.createSnapshotFrame(b, 1u, payload, typedVec)
+
+        // Metrics table — always present (mirrors production frames).
+        val metricsOffset = buildMetrics(b,
+            storedEvents = storedEvents,
+            visibleItems = visibleItems,
+            eventsRx = eventsRx,
+            updateSequence = updateSequence,
+        )
+        val lastErrorToastOffset = lastErrorToast?.let { b.createString(it) } ?: 0
+
+        val snapshot = SnapshotFrame.createSnapshotFrame(
+            b,
+            /* schemaVersion = */ 1u,
+            /* typedProjectionsOffset = */ typedVec,
+            /* rev = */ rev.toULong(),
+            /* kernelSchemaVersion = */ 0u,
+            /* lastTickMs = */ 0UL,
+            /* updateKindOffset = */ 0,
+            /* running = */ running,
+            /* metricsOffset = */ metricsOffset,
+            /* relayStatusOffset = */ 0,
+            /* relayStatusesOffset = */ 0,
+            /* logicalInterestsOffset = */ 0,
+            /* wireSubscriptionsOffset = */ 0,
+            /* logsOffset = */ 0,
+            /* lastErrorToastOffset = */ lastErrorToastOffset,
+            /* lastErrorCategoryOffset = */ 0,
+            /* lastPlannerErrorOffset = */ 0,
+            /* storeOpenFailureOffset = */ 0,
+            /* noConfiguredRelays = */ null,
+        )
         val frame = UpdateFrame.createUpdateFrame(b, FrameKind.Snapshot, snapshot, 0)
         UpdateFrame.finishUpdateFrameBuffer(b, frame)
         return b.sizedByteArray()
+    }
+
+    private fun buildMetrics(
+        b: FlatBufferBuilder,
+        storedEvents: ULong,
+        visibleItems: ULong,
+        eventsRx: ULong,
+        updateSequence: ULong,
+    ): Int {
+        Metrics.startMetrics(b)
+        Metrics.addStoredEvents(b, storedEvents)
+        Metrics.addVisibleItems(b, visibleItems)
+        Metrics.addEventsRx(b, eventsRx)
+        Metrics.addUpdateSequence(b, updateSequence)
+        return Metrics.endMetrics(b)
     }
 
     private fun typedProjection(b: FlatBufferBuilder, key: String, schemaId: String, bytes: ByteArray): Int {
@@ -164,29 +213,5 @@ class TypedProjectionFallbackTest {
         val payloadVec = TypedPayload.createPayloadVector(b, bytes.toUByteArray())
         val typedPayload = TypedPayload.createTypedPayload(b, schemaIdOffset, 1u, fileIdOffset, payloadVec)
         return TypedProjection.createTypedProjection(b, keyOffset, typedPayload)
-    }
-
-    private fun valueString(b: FlatBufferBuilder, value: String): Int {
-        val s = b.createString(value)
-        return Value.createValue(b, ValueKind.String, false, 0L, 0UL, 0.0, s, 0, 0)
-    }
-
-    private fun valueInt(b: FlatBufferBuilder, value: Long): Int =
-        Value.createValue(b, ValueKind.Int, false, value, 0UL, 0.0, 0, 0, 0)
-
-    private fun valueBool(b: FlatBufferBuilder, value: Boolean): Int =
-        Value.createValue(b, ValueKind.Bool, value, 0L, 0UL, 0.0, 0, 0, 0)
-
-    private fun valueList(b: FlatBufferBuilder, vararg values: Int): Int {
-        val list = Value.createListVector(b, values)
-        return Value.createValue(b, ValueKind.List, false, 0L, 0UL, 0.0, 0, list, 0)
-    }
-
-    private fun valueMap(b: FlatBufferBuilder, vararg entries: Pair<String, Int>): Int {
-        val pairs = entries.map { (key, value) ->
-            TransportPair.createPair(b, b.createString(key), value)
-        }.toIntArray()
-        val map = Value.createMapVector(b, pairs)
-        return Value.createValue(b, ValueKind.Map, false, 0L, 0UL, 0.0, 0, 0, map)
     }
 }
