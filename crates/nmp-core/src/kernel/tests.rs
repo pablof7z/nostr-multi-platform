@@ -1160,6 +1160,83 @@ fn timeline_item_kind6_malformed_inner_event_falls_back_cleanly() {
         item.repost_inner_content, "",
         "malformed JSON: empty content"
     );
+    // NIP-18 bug guard: malformed/non-JSON content must NOT ship raw text as
+    // the preview. "Repost" is the correct fallback when no inner content is
+    // recoverable.
+    assert_eq!(
+        item.content_preview, "Repost",
+        "malformed kind:6 content must fall back to 'Repost', not raw non-JSON text"
+    );
+}
+
+/// NIP-18 kind:6 content_preview must derive from the inner event's
+/// `content` field, not from the outer stringified-JSON `content`. The
+/// outer `content` is valid JSON (non-empty), so the old code's
+/// `!is_empty()` guard let it through and shipped `{"id":"...` as the
+/// preview. This test pins the correct behaviour: the inner text, flat-
+/// ened and truncated, is what consumers (TypedHomeFeedDecoder, etc.) see.
+#[test]
+fn timeline_item_kind6_well_formed_content_preview_derives_from_inner_content() {
+    let inner_json = format!(
+        r#"{{"id":"{}","pubkey":"{}","kind":1,"content":"hello world","tags":[]}}"#,
+        REPOST_INNER_ID, REPOST_PK
+    );
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    ingest_kind6(&mut kernel, &inner_json);
+
+    let event = kernel.events.get(REPOST_ID).expect("event cached");
+    let item = kernel.timeline_item(event);
+    assert!(item.is_repost);
+    assert_eq!(
+        item.content_preview, "hello world",
+        "kind:6 content_preview must be derived from the inner event content, \
+         not the raw outer JSON string"
+    );
+    // Verify the outer JSON is definitely not leaking through.
+    assert!(
+        !item.content_preview.starts_with('{'),
+        "content_preview must not begin with '{{' (raw JSON leak)"
+    );
+}
+
+/// kind:6 whose inner event content has embedded newlines: they must be
+/// flattened before truncation, matching the same treatment applied to
+/// kind:1 content_preview.
+#[test]
+fn timeline_item_kind6_content_preview_flattens_newlines() {
+    let inner_json = format!(
+        r#"{{"id":"{}","pubkey":"{}","kind":1,"content":"line one\nline two","tags":[]}}"#,
+        REPOST_INNER_ID, REPOST_PK
+    );
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    ingest_kind6(&mut kernel, &inner_json);
+
+    let event = kernel.events.get(REPOST_ID).expect("event cached");
+    let item = kernel.timeline_item(event);
+    assert_eq!(
+        item.content_preview, "line one line two",
+        "kind:6 preview must flatten inner-content newlines to spaces"
+    );
+}
+
+/// kind:6 whose inner event has an empty `content` field: the preview
+/// must still be "Repost", not an empty string, so the consumer always
+/// has a meaningful placeholder.
+#[test]
+fn timeline_item_kind6_empty_inner_content_falls_back_to_repost_label() {
+    let inner_json = format!(
+        r#"{{"id":"{}","pubkey":"{}","kind":1,"content":"","tags":[]}}"#,
+        REPOST_INNER_ID, REPOST_PK
+    );
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    ingest_kind6(&mut kernel, &inner_json);
+
+    let event = kernel.events.get(REPOST_ID).expect("event cached");
+    let item = kernel.timeline_item(event);
+    assert_eq!(
+        item.content_preview, "Repost",
+        "kind:6 with empty inner content must show 'Repost' not empty string"
+    );
 }
 
 /// V-26 — `Kernel::accounts_enriched` must recompute `avatar_initials` whenever
