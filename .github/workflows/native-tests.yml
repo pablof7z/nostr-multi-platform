@@ -1,0 +1,86 @@
+name: native-tests
+
+# Consumer-side native test gate (issue #973, audit Finding 2).
+#
+# The native test suites are the consumer half of the Rust→Swift/Kotlin codegen
+# contract: `codegen-drift.yml` catches a diff in the *generated* decoder files,
+# but only these tests prove the *hand-written* native decode/render code still
+# works against the new projection shape. This workflow gates the Android JUnit
+# suite — the one suite that is unblocked (JVM-only, no emulator, no Rust
+# cross-compile, ubuntu runner).
+#
+# Phase staging (see #973):
+#   Phase 1 (this file): Android JUnit on every PR, ubuntu, path-filtered.
+#   Phase 2 (blocked):   ChirpTests (XCTest unit) on macOS — gated on proving the
+#                        Chirp scheme builds green on a CI macOS runner without
+#                        the Apple-only `apple-native-keyring-store` entitlement
+#                        and without a booted app / NMP_SMOKE. Tracked in #973.
+#   Phase 3 (blocked):   ChirpUITests (XCUITest) nightly on macOS + simulator.
+#
+# Why path-filtered: `android/**` and `crates/nmp-android-ffi/**` are the obvious
+# triggers; `crates/nmp-codegen/**` and `crates/nmp-core/**` are included because
+# the nmp-core projection types are the single source of truth the Kotlin
+# decoders mirror — a change there is precisely when the consumer tests must run.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/native-tests.yml"
+      - "android/**"
+      - "crates/nmp-android-ffi/**"
+      - "crates/nmp-codegen/**"
+      - "crates/nmp-core/**"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/native-tests.yml"
+      - "android/**"
+      - "crates/nmp-android-ffi/**"
+      - "crates/nmp-codegen/**"
+      - "crates/nmp-core/**"
+
+jobs:
+  android-junit:
+    name: Android JUnit (JVM unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # AGP 8.5.2 + Kotlin 1.9.24 require JDK 17 (the app's compileOptions pin
+      # sourceCompatibility/targetCompatibility = VERSION_17). Temurin 17 matches
+      # the local toolchain used to validate this suite.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Caches ~/.gradle (wrapper dist + module metadata + build cache) keyed on
+      # the gradle wrapper + build script hashes, the same shape the Rust jobs use
+      # for ~/.cargo.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Pure-JVM unit tests only. We explicitly exclude `cargoNdk` so the runner
+      # never invokes `cargo ndk` to cross-compile the JNI `.so`:
+      # `android/app/build.gradle.kts` wires `preBuild dependsOn cargoNdk`, but
+      # `testDebugUnitTest` does not load the native library — the decoder /
+      # dispatch / model tests are hermetic FlatBuffers/JSON contract tests. This
+      # keeps the job Rust-free, fast (~15s cold), and emulator-free. Verified
+      # locally: 5 suites / 22 tests green with `-x cargoNdk`.
+      - name: Run Android JVM unit tests
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest -x cargoNdk --stacktrace
+
+      # Surface the JUnit XML/HTML report on failure so a red run is debuggable
+      # without re-running locally.
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-junit-report
+          path: |
+            android/app/build/reports/tests/testDebugUnitTest
+            android/app/build/test-results/testDebugUnitTest
+          if-no-files-found: ignore
