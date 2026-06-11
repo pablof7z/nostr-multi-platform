@@ -1,12 +1,15 @@
-//! #1088 / PR #1096 review — open-view pin invariant tests.
+//! #1088 / PR #1096 review — open-interest pin invariant tests.
 //!
-//! `open_thread` / `open_author` set refcounted `ViewInterest`s
-//! (`thread_view.selected_thread` / `author_view.selected_author`) and write
-//! NOTHING to `event_claims` — claims are the embed mechanism, views are a
-//! separate stack.  `thread_items()` / `author_items()` /
-//! `profile_for_pubkey()` read `self.events` / `self.profiles` with NO store
-//! fallback, so RAM eviction must pin the open-view working set directly
-//! (derived from live view state in `Kernel::open_view_pins`).
+//! V-112 (ADR-0042) deleted the legacy `AuthorViewState`/`ThreadViewState`
+//! stack; open views are now per-app FlatFeeds backed by the generic
+//! `open_interest` seam.  `open_interest` registers a refcounted
+//! `LogicalInterest` in the planner registry and writes NOTHING to
+//! `event_claims` — claims are the embed mechanism, interests are a separate
+//! stack.  The feed-engine read path reads `self.events` / `self.profiles`
+//! with NO store fallback, so RAM eviction must pin the open-interest working
+//! set directly (derived from `lifecycle.registry().iter_active()` in
+//! `Kernel::open_view_pins`, using the same `matches_event_with_id`
+//! predicate `should_store_event`'s admission clause uses).
 //!
 //! Each test makes the pinned entries the OLDEST in the map (lowest
 //! `created_at` → first eviction candidates without the pin) so the
@@ -22,6 +25,27 @@ use super::*;
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::store::{RawEvent, VerifiedEvent};
 
+/// Register a generic `open_interest` on the kernel from a verbatim NIP-01
+/// filter — the exact body of the `ActorCommand::OpenInterest` dispatch arm
+/// (`actor/dispatch.rs::build_open_interest` + `Kernel::open_interest_sub`),
+/// reproduced here because the dispatch helper is private to the actor
+/// module and these tests exercise the kernel-level pin invariant directly.
+fn open_interest(kernel: &mut Kernel, filter_json: &str, consumer_id: &str) {
+    use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
+    use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
+
+    let shape = crate::planner::InterestShape::from_filter_json(filter_json)
+        .expect("test filter must be a valid NIP-01 filter object");
+    let key = SubKey::builder("open-interest").with(&shape).with(1u32).finish();
+    let identity = SubIdentity::new(SubOwnerKey::new(consumer_id), key, SubScope::Global);
+    let interest = LogicalInterest {
+        scope: InterestScope::Global,
+        shape,
+        lifecycle: InterestLifecycle::Tailing,
+        ..LogicalInterest::default()
+    };
+    let _ = kernel.open_interest_sub(identity, interest);
+}
 
 /// Inject one kind:1 event with explicit NIP-10 `e` tags through the real
 /// test ingest path.  Used to build thread structures (root + replies).
@@ -45,15 +69,18 @@ fn inject_tagged_note(
     kernel.ingest_pre_verified_event(RelayRole::Content, "", verified);
 }
 
-/// An OPEN thread view's root + focused + reply events must survive eviction
-/// even though `open_thread` writes nothing to `event_claims`, and
-/// `thread_items()` must still return the full set afterwards.
+/// An OPEN thread feed's root + focused + reply events must survive eviction
+/// even though `open_interest` writes nothing to `event_claims`.
+///
+/// The thread feed is composed exactly the way an app-side thread FlatFeed
+/// composes its hydration (ADR-0042): one `ids` interest for the root +
+/// focused (+ hydrated-ancestor) notes, one `#e` interest for the replies.
 ///
 /// The thread events are deliberately the OLDEST entries (lowest
-/// `created_at`) so that, without the open-view pin, they would be the very
-/// first eviction candidates — making the assertion sharp.
+/// `created_at`) so that, without the open-interest pin, they would be the
+/// very first eviction candidates — making the assertion sharp.
 #[test]
-fn open_thread_view_events_survive_eviction() {
+fn open_thread_interest_events_survive_eviction() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS);
 
@@ -89,21 +116,25 @@ fn open_thread_view_events_survive_eviction() {
         reply_ids.push(reply_id);
     }
 
-    // Open the thread through the REAL view path (refcounted ViewInterest;
-    // can_send=false defers the wire requests — irrelevant here).
-    kernel.open_thread(
-        focused_id.clone(),
-        std::collections::BTreeSet::from([1u32]),
-        false,
-    );
-
-    // A hydration-requested ancestor id: present in `requested_ids` (dedup
-    // set) AND cached in `self.events`. Without the pin, eviction would
-    // remove it and the dedup check would block the re-fetch (broken
-    // recovery — the reviewer's second finding).
+    // A hydration-fetched ancestor id, cached in `self.events`.  App-side
+    // thread hydration keeps it in the `ids` interest while the view stays
+    // open; without the pin, eviction would remove it from under the open
+    // feed (the read path has no store fallback).
     let hydrated_id = format!("{:0>64x}", 0xA00099u64);
     inject_tagged_note(&mut kernel, &hydrated_id, &make_pubkey(5_099), T0_SECS + 7, vec![]);
-    kernel.thread_view.requested_ids.insert(hydrated_id.clone());
+
+    // Open the thread through the REAL generic seam: an `ids` interest for
+    // the root/focused/hydrated notes + a `#e` interest for the replies.
+    open_interest(
+        &mut kernel,
+        &format!(r#"{{"ids":["{root_id}","{focused_id}","{hydrated_id}"]}}"#),
+        "thread-feed-test",
+    );
+    open_interest(
+        &mut kernel,
+        &format!(r##"{{"kinds":[1],"#e":["{root_id}"]}}"##),
+        "thread-feed-test",
+    );
 
     // Flood with NEWER unrelated events to push the map over the HWM.
     let over = EVENTS_RAM_HWM + 74;
@@ -129,26 +160,16 @@ fn open_thread_view_events_survive_eviction() {
     {
         assert!(
             kernel.events.contains_key(id),
-            "open-thread event {id} must survive eviction"
+            "open-thread-interest event {id} must survive eviction"
         );
-    }
-
-    // The view read path must still return the full set.
-    let items = kernel.thread_items(&focused_id, &root_id);
-    let item_ids: std::collections::HashSet<&str> =
-        items.iter().map(|i| i.id.as_str()).collect();
-    assert!(item_ids.contains(root_id.as_str()), "root must render");
-    assert!(item_ids.contains(focused_id.as_str()), "focused must render");
-    for id in &reply_ids {
-        assert!(item_ids.contains(id.as_str()), "reply {id} must render");
     }
 }
 
-/// An OPEN author view's notes (a NON-followed author — not in
-/// `timeline_authors`, not in `timeline`) must survive eviction, and
-/// `author_items()` must still return all of them.
+/// An OPEN author feed's notes (a NON-followed author — not in
+/// `timeline_authors`, not in `timeline`) must survive eviction while the
+/// `authors` interest stays registered.
 #[test]
-fn open_author_view_events_survive_eviction() {
+fn open_author_interest_events_survive_eviction() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS);
 
@@ -165,11 +186,11 @@ fn open_author_view_events_survive_eviction() {
         "precondition: author must NOT be followed"
     );
 
-    // Open the author view through the REAL view path.
-    kernel.open_author(
-        author.clone(),
-        std::collections::BTreeSet::from([1u32]),
-        false,
+    // Open the author feed through the REAL generic seam.
+    open_interest(
+        &mut kernel,
+        &format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#),
+        "author-feed-test",
     );
 
     // Flood with newer unrelated events.
@@ -186,22 +207,16 @@ fn open_author_view_events_survive_eviction() {
     for id in &note_ids {
         assert!(
             kernel.events.contains_key(id),
-            "open-author note {id} must survive eviction"
+            "open-author-interest note {id} must survive eviction"
         );
     }
-
-    let items = kernel.author_items(&author);
-    assert_eq!(
-        items.len(),
-        note_ids.len(),
-        "author_items must still return every note after eviction"
-    );
 }
 
-/// The OPEN author view's profile (a non-followed, non-claimed author) must
-/// survive profile eviction — `profile_for_pubkey()` has no store fallback.
+/// The OPEN author feed's profile (a non-followed, non-claimed author whose
+/// notes are pinned by the interest) must survive profile eviction —
+/// `profile_for_pubkey()` has no store fallback.
 #[test]
-fn open_author_view_profile_survives_eviction() {
+fn open_author_interest_profile_survives_eviction() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS);
 
@@ -211,10 +226,16 @@ fn open_author_view_profile_survives_eviction() {
     let pubkeys = inject_profiles(&mut kernel, over, T0_SECS);
     let viewed_author = pubkeys[0].clone();
 
-    kernel.open_author(
-        viewed_author.clone(),
-        std::collections::BTreeSet::from([1u32]),
-        false,
+    // One cached note by the viewed author — the open feed renders it, and
+    // its author pubkey is what pins the profile (`open_view_pins` derives
+    // profile pins from the pinned events' authors).
+    let note_id = format!("{:0>64x}", 0xB10000u64);
+    inject_tagged_note(&mut kernel, &note_id, &viewed_author, T0_SECS, vec![]);
+
+    open_interest(
+        &mut kernel,
+        &format!(r#"{{"kinds":[1],"authors":["{viewed_author}"]}}"#),
+        "author-feed-test",
     );
 
     kernel.evict_ram_caches();
@@ -226,15 +247,15 @@ fn open_author_view_profile_survives_eviction() {
     );
     assert!(
         kernel.profiles.contains_key(&viewed_author),
-        "open author view's profile must survive eviction"
+        "open author feed's profile must survive eviction"
     );
 }
 
-/// Thread PARTICIPANT profiles (authors of the open thread's replies) must
-/// survive profile eviction — they feed `mention_profiles` /
-/// `timeline_item()` for the open view.
+/// Thread PARTICIPANT profiles (authors of the open thread feed's events)
+/// must survive profile eviction — they feed `timeline_item()` enrichment
+/// for the open feed via `profile_for_pubkey()`.
 #[test]
-fn open_thread_participant_profiles_survive_eviction() {
+fn open_thread_interest_participant_profiles_survive_eviction() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
     pin_clock(&mut kernel, T0_SECS);
 
@@ -256,10 +277,15 @@ fn open_thread_participant_profiles_survive_eviction() {
         vec![vec!["e".to_string(), root_id.clone()]],
     );
 
-    kernel.open_thread(
-        root_id.clone(),
-        std::collections::BTreeSet::from([1u32]),
-        false,
+    open_interest(
+        &mut kernel,
+        &format!(r#"{{"ids":["{root_id}"]}}"#),
+        "thread-feed-test",
+    );
+    open_interest(
+        &mut kernel,
+        &format!(r##"{{"kinds":[1],"#e":["{root_id}"]}}"##),
+        "thread-feed-test",
     );
 
     kernel.evict_ram_caches();

@@ -59,8 +59,9 @@
 //! unit tests below pin the drop-newest semantics for the pathological cases.
 //!
 //! Production paths that DO populate `wire_subs` (post-`Start`) are bounded
-//! by the interest-close paths (`close_subscriptions_with_prefixes`) and
-//! the interest registry refcount.
+//! by the planner CLOSE diff (`drain_lifecycle_tick` behind `close_interest`)
+//! and the interest registry refcount. (V-112: the legacy
+//! `close_subscriptions_with_prefixes` view-close path was deleted.)
 //!
 //! ## T133 — `wire_subs` row eviction
 //!
@@ -73,7 +74,6 @@
 //!
 //! | Trigger                          | Action                          |
 //! |----------------------------------|---------------------------------|
-//! | `close_subscriptions_with_prefixes` (view-close) | `HashMap::remove` after CLOSE outbound |
 //! | EOSE for non-keep sub (oneshot)  | `HashMap::remove` after CLOSE outbound |
 //! | CLOSED (relay-initiated)         | `HashMap::remove` (no outbound)        |
 //! | `relay_closed` (per-URL socket teardown) | `wire_subs.retain(relay_url != …)` |

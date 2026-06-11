@@ -327,22 +327,9 @@ impl Kernel {
         }
     }
 
-    pub(super) fn author_interest_relays(&self, pubkey: &str) -> Vec<String> {
-        let mut relays = self.bootstrap_discovery_relays();
-        if let Some(parsed) = self.mailbox_cache().snapshot(&pubkey.to_string()) {
-            for relay in parsed
-                .write
-                .iter()
-                .chain(parsed.both.iter())
-                .chain(parsed.read.iter())
-            {
-                if !relays.contains(relay) {
-                    relays.push(relay.clone());
-                }
-            }
-        }
-        relays
-    }
+    // V-112 (ADR-0042): `author_interest_relays` deleted — its only caller was
+    // the retired author_view status block. Interest relay routing is the
+    // planner's job now (per-NIP-65 routing in the compile pass).
 
     /// Compute estimated store bytes by scanning all events, profiles, and seed
     /// contacts. This is the O(store) function; use `estimated_store_bytes()`

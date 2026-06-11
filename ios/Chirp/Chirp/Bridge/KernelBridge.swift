@@ -1589,23 +1589,11 @@ struct Nip46Onboarding: Decodable, Equatable {
 
 // ─── Domain types shared across the UI ───────────────────────────────────
 
-struct ThreadView: Decodable, Equatable {
-    let focusedEventId: String
-    let rootEventId: String
-    let state: String
-    let items: [TimelineItem]
-    let previousCount: Int
-    let nextCount: Int
-    /// Pre-formatted "Show N earlier note(s)" string. Empty when `previousCount == 0`.
-    /// Rust owns pluralization — host renders verbatim (aim.md §6 anti-pattern #1).
-    /// Optional for forward-compatibility with older kernel builds that predate
-    /// the field; the host treats `nil` as the empty string (D1 — never branch on
-    /// missing protocol output, render placeholder instead).
-    let previousCountLabel: String?
-    /// Pre-formatted "N more repl{y,ies}" string. Empty when `nextCount == 0`.
-    /// Same rationale as `previousCountLabel`.
-    let nextCountLabel: String?
-}
+// V-112 (ADR-0042): `ThreadView` Decodable deleted — the `thread_view`
+// projection (and its `threadView` field on the generated
+// `SnapshotProjections`) was removed with the kernel author/thread view
+// stack. Thread rendering reads the per-app FlatFeed
+// (`nmp_app_chirp_open_thread_feed`).
 
 // `AccountSummary` moved to `Generated/KernelTypes.generated.swift` (V6
 // Stage 1, plan §6b). Rust source: `nmp-core/src/kernel/identity_state.rs`
@@ -2041,17 +2029,12 @@ struct ProfileAction: Decodable, Equatable {
     let dispatch: ProfileDispatchSpec?
 }
 
-struct AuthorProfileSnapshot: Decodable, Equatable {
-    let pubkey: String
-    let state: String
-    let profile: ProfileCard
-    let items: [TimelineItem]
-    let noteCount: Int
-    /// Compatibility count token from the author projection. New presentation
-    /// code should prefer `noteCount` for localized/pluralized labels.
-    let noteCountDisplay: String
-    let primaryAction: ProfileAction?
-}
+// V-112 (ADR-0042): `AuthorProfileSnapshot` Decodable deleted — the
+// `author_view` projection (and its `authorView` field on the generated
+// `SnapshotProjections`) was removed with the kernel author/thread view
+// stack. Author rendering reads the per-app FlatFeed
+// (`nmp_app_chirp_open_author_feed`); `ProfileAction` /
+// `ProfileDispatchSpec` above stay (used by `ProfileView`).
 
 // `TimelineItem` moved to `Generated/KernelTypes.generated.swift` (V6
 // Stage 3 partial, plan §6d — F-05). Rust source:

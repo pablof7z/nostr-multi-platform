@@ -172,13 +172,10 @@ impl LiveKernelSink {
         nmp_ffi::nmp_app_release_profile(self.app, pk.as_ptr(), cid.as_ptr());
     }
 
-    /// Open the author view for `pubkey`, driving the richer author-view
-    /// projection and item list. User-avatar hydration does not depend on this
-    /// path; it uses component-owned `claim_profile`.
-    pub fn open_author(&self, pubkey: &str) {
-        let Ok(pk) = CString::new(pubkey) else { return };
-        nmp_ffi::nmp_app_open_author(self.app, pk.as_ptr());
-    }
+    // V-112 (ADR-0042): `open_author` deleted — it wrapped the retired
+    // `nmp_app_open_author` C-ABI symbol and had zero callers. Author feeds
+    // go through the generic `nmp_app_open_interest` seam; user-avatar
+    // hydration uses component-owned `claim_profile` above.
 }
 
 impl EventClaimSink for LiveKernelSink {

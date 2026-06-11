@@ -115,15 +115,17 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_open_author` | `(app, pubkey: *const c_char)` | Register interest in an author's notes feed. Validates hex pubkey. | Chirp | non-hex → early return | n/a |
-| `nmp_app_open_thread` | `(app, event_id: *const c_char)` | Register interest in an event thread. Validates hex event ID. | Chirp | non-hex → early return | n/a |
 | `nmp_app_open_interest` | `(app, filter_json: *const c_char, consumer_id: *const c_char, scope: uint32_t)` | M2 (ADR-0042). Register (or attach an owner to) a generic tailing feed interest from a verbatim NIP-01 REQ filter. App owns the kind set (D0). `scope`: 0 = ActiveAccount, 1 = Global. Replaces `open_firehose_tag` (hashtag feed = `{"kinds":[1],"#t":["<tag>"]}`, scope 1). | chirp-tui (`open_tag`); Chirp via `openInterest` | malformed filter → toast + no-op | n/a |
 | `nmp_app_close_interest` | `(app, filter_json: *const c_char, consumer_id: *const c_char, scope: uint32_t)` | M2 (ADR-0042). Detach one owner from a feed interest opened with `open_interest`; drops the live sub on the last owner's close. Same filter/consumer/scope as the open. | chirp-tui; Chirp via `closeInterest` | malformed filter → no-op | n/a |
 | `nmp_app_open_uri` | `(app, uri: *const c_char)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | declared in `NmpCore.h`; no Chirp UI caller today | null/invalid → silent no-op | D7-clean: kernel decides routing |
 | `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char)` | Increment refcount for a profile interest. Kernel fetches and emits profile metadata while any consumer holds a claim. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
 | `nmp_app_release_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char)` | Decrement refcount. When refcount reaches zero, kernel stops fetching. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
-| `nmp_app_close_author` | `(app, pubkey: *const c_char)` | Deregister author interest. Declared in `NmpCore.h` but not called from `KernelBridge.swift` — header-declared, unwired in Swift bridge layer. | declared, not wired in Chirp | non-hex → early return | n/a |
-| `nmp_app_close_thread` | `(app, event_id: *const c_char)` | Deregister thread interest. Same status as `close_author`. | declared, not wired in Chirp | non-hex → early return | n/a |
+
+V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
+`nmp_app_open_thread`, and `nmp_app_close_thread` were **removed** (BREAKING,
+v0.3.1). Author/thread feeds go through the generic `nmp_app_open_interest` /
+`nmp_app_close_interest` pair (per-app FlatFeeds compose the view); profile
+hydration uses `nmp_app_claim_profile`.
 
 ---
 
@@ -262,15 +264,11 @@ policy (when to reconcile NIP-77, how to route relays, which identity signs).
 | `nmp_app_add_relay` | PASS | PASS | |
 | `nmp_app_remove_relay` | PASS | PASS | |
 | `nmp_app_open_timeline` | PASS | PASS | |
-| `nmp_app_open_author` | PASS | PASS | |
-| `nmp_app_open_thread` | PASS | PASS | |
-| `nmp_app_open_interest` | PASS | PASS | M2 (ADR-0042) — generic feed-subscription replacement for `open_firehose_tag` |
+| `nmp_app_open_interest` | PASS | PASS | M2 (ADR-0042) — generic feed-subscription replacement for `open_firehose_tag` and the removed `open_author`/`open_thread` |
 | `nmp_app_close_interest` | PASS | PASS | M2 (ADR-0042) |
 | `nmp_app_open_uri` | PASS | PASS | |
 | `nmp_app_claim_profile` | PASS | PASS | |
 | `nmp_app_release_profile` | PASS | PASS | |
-| `nmp_app_close_author` | PASS | PASS | |
-| `nmp_app_close_thread` | PASS | PASS | |
 | `nmp_app_wallet_connect` | PASS | PASS | |
 | `nmp_app_wallet_disconnect` | PASS | PASS | |
 | `nmp_app_wallet_pay_invoice` | PASS | PASS | |
@@ -290,9 +288,9 @@ policy (when to reconcile NIP-77, how to route relays, which identity signs).
    Marmot, event observer, raw tap, action dispatch, and snapshot projection
    helpers.
 
-3. **`nmp_app_close_author` and `nmp_app_close_thread` are declared in
-   `NmpCore.h` but not called from `KernelBridge.swift`.** The Chirp Swift
-   bridge exposes `openAuthor`/`openThread` but provides no close path. Views
-   that open an author or thread feed never deregister their interest —
-   potential subscription leak on navigation-away. Tracked as a gap for the
-   next Chirp bridge audit.
+3. **RESOLVED (V-68 / V-112, ADR-0042):** `nmp_app_open_author`,
+   `nmp_app_close_author`, `nmp_app_open_thread`, and `nmp_app_close_thread`
+   were removed in v0.3.1. The prior open-without-close subscription-leak gap
+   is structurally closed: the generic `nmp_app_open_interest` /
+   `nmp_app_close_interest` pair is symmetric and refcounted in the planner's
+   interest registry.

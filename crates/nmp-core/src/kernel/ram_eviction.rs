@@ -19,25 +19,18 @@
 //! - The event id is a key in `self.event_claims` (a UI component is
 //!   currently holding a claim on it — evicting would make the next
 //!   snapshot emit an empty `claimed_events` entry).
-//! - **Open thread view** (`thread_view.selected_thread = Some`):
-//!   `open_thread` writes NOTHING to `event_claims` (claims are the embed
-//!   mechanism, views are refcounted `ViewInterest`s), and `thread_items()`
-//!   / `thread_root_id()` read `self.events` with NO store fallback — so the
-//!   open thread's working set must be pinned directly:
-//!   - the focused id + derived root id + every id the focused event
-//!     references (`referenced_event_ids`);
-//!   - the hydration bookkeeping sets (`pending_ids`, `requested_ids`,
-//!     `pending_reply_targets`, `requested_reply_targets`) — evicting an id
-//!     that is in `requested_*` would also break recovery: the dedup check
-//!     in `requests/thread.rs` blocks a re-fetch while the view stays open;
-//!   - every cached event matching the exact `thread_items()` membership
-//!     predicate (`event_references(e, root) || event_references(e,
-//!     focused)`), i.e. the replies currently rendered on screen.
-//! - **Open author view** (`author_view.selected_author = Some`): every
-//!   cached event authored by the selected pubkey.  `author_items()` scans
-//!   `self.events.values()` with no store fallback, and a *non-followed*
-//!   author's notes are not in `timeline`/`timeline_authors`, so they would
-//!   otherwise be eviction candidates while on screen.
+//! - **Active open interest** (V-112 / ADR-0042): every cached event that
+//!   matches the wire-filter shape of any active `LogicalInterest` in the
+//!   planner registry (`self.lifecycle.registry().iter_active()` +
+//!   `shape.matches_event_with_id(..)` — the exact predicate
+//!   `should_store_event`'s `matches_active_open_interest` clause uses for
+//!   admission).  Open views are per-app FlatFeeds backed by
+//!   `open_interest`; the feed engine fan-out reads `self.events` with no
+//!   store fallback, so an open interest's working set (a non-followed
+//!   author's notes, an arbitrary thread, a `#t` feed) would otherwise be
+//!   eviction candidates while on screen.  Thread-hydration bookkeeping
+//!   moved app-side with the legacy view stack and is no longer a kernel
+//!   pin source.
 //!
 //! ### `profiles` pin set (pubkey → Profile)
 //! - The pubkey is in `self.timeline_authors` (current follow set — each
@@ -45,9 +38,8 @@
 //!   from this cache on every snapshot tick via `timeline_item()`).
 //! - The pubkey is in `self.profile_claims` (a UI component is claiming it).
 //! - The pubkey is the active account's own key (`self.active_account`).
-//! - **Open-view authors**: the selected author-view pubkey plus the author
-//!   of every pinned open-view event (thread participants).  These feed
-//!   `mention_profiles` and `timeline_item()` for the open views via
+//! - **Open-interest authors**: the author of every pinned open-interest
+//!   event.  These feed `timeline_item()` enrichment for the open feeds via
 //!   `profile_for_pubkey()`, which has no store fallback.
 //!
 //! ### `seed_contacts` pin set (pubkey → Vec<String> follow list)
@@ -67,7 +59,7 @@
 //! ## Eviction strategy
 //!
 //! Eviction is **oldest-created_at-first** per map.  On every GC pass:
-//! 1. Derive the open-view pins from the live view state
+//! 1. Derive the open-interest pins from the live planner registry
 //!    ([`Kernel::open_view_pins`]) — computed once, BEFORE any eviction, so
 //!    the profile pins see the pre-eviction event set.
 //! 2. Collect all non-pinned keys (owned copies — no borrow-split conflicts).
@@ -93,11 +85,12 @@
 //! *separate* call site (`evict_ram_caches`) that `run_gc_step` calls before
 //! the store GC pass.  The two paths are additive and do not touch each
 //! other's code paths.  #957 (retire the legacy author/thread view stack)
-//! is still open: when `AuthorViewState`/`ThreadViewState` are deleted,
-//! [`Kernel::open_view_pins`] must be re-derived from whatever read path
-//! replaces `thread_items()`/`author_items()`.
+//! is DONE (V-112 / ADR-0042): `AuthorViewState`/`ThreadViewState` were
+//! deleted, and [`Kernel::open_view_pins`] is derived from the planner's
+//! active-interest registry — the read path that replaced
+//! `thread_items()`/`author_items()`.
 
-use super::{event_references, referenced_event_ids, Kernel};
+use super::Kernel;
 use std::collections::HashSet;
 
 /// High-watermark for `self.events`.  2 × `TIMELINE_CACHE_LIMIT` (500).
@@ -128,17 +121,17 @@ pub(crate) struct RamEvictionReport {
     pub seed_contacts_evicted: usize,
 }
 
-/// Pins derived from the live open-view state at eviction time.  Computed
-/// once per [`Kernel::evict_ram_caches`] pass, BEFORE any eviction, so the
-/// profile pins are derived from the pre-eviction event set.
+/// Pins derived from the live active-interest registry at eviction time.
+/// Computed once per [`Kernel::evict_ram_caches`] pass, BEFORE any eviction,
+/// so the profile pins are derived from the pre-eviction event set.
 #[derive(Default)]
 struct OpenViewPins {
-    /// Event ids the open thread/author views currently read from
-    /// `self.events` (no store fallback exists on those read paths).
+    /// Event ids the open-interest feeds currently read from `self.events`
+    /// (no store fallback exists on the feed-engine read path).
     event_ids: HashSet<String>,
-    /// Authors of the pinned open-view events + the selected author-view
-    /// pubkey — read by `profile_for_pubkey()` for `mention_profiles` and
-    /// `timeline_item()` enrichment of the open views.
+    /// Authors of the pinned open-interest events — read by
+    /// `profile_for_pubkey()` for `timeline_item()` enrichment of the open
+    /// feeds.
     profile_pubkeys: HashSet<String>,
 }
 
@@ -157,9 +150,9 @@ impl Kernel {
     pub(crate) fn evict_ram_caches(&mut self) -> RamEvictionReport {
         let mut report = RamEvictionReport::default();
 
-        // Derive the open-view pins ONCE, before any eviction, so the
-        // profile pins see the full pre-eviction event set (a thread
-        // participant's profile pin must not depend on eviction order).
+        // Derive the open-interest pins ONCE, before any eviction, so the
+        // profile pins see the full pre-eviction event set (a pinned
+        // event author's profile pin must not depend on eviction order).
         let view_pins = self.open_view_pins();
 
         report.events_evicted = self.evict_events_cache(&view_pins);
@@ -174,73 +167,43 @@ impl Kernel {
         report
     }
 
-    // ─── open-view pin derivation ──────────────────────────────────────────
+    // ─── open-interest pin derivation ──────────────────────────────────────
 
-    /// Compute the open thread/author view working set from the live view
-    /// state.  Mirrors the read paths exactly:
+    /// Compute the open-interest working set from the planner's active
+    /// `LogicalInterest` registry (V-112 / ADR-0042 — the legacy
+    /// `AuthorViewState`/`ThreadViewState` pin sources were deleted; open
+    /// views are now per-app FlatFeeds backed by generic `open_interest`).
     ///
-    /// - Thread: `thread_items()` membership predicate (`update/views.rs`) —
-    ///   base ids (focused + root + refs-of-focused) plus every event that
-    ///   `event_references` the root or focused id — and the hydration
-    ///   bookkeeping sets whose dedup semantics break if their targets are
-    ///   evicted while the view stays open.
-    /// - Author: `author_items()` scan — every cached event by the selected
-    ///   pubkey.
+    /// Mirrors the admission path exactly: an event is pinned iff it matches
+    /// the wire-filter shape of any active interest — the same
+    /// `shape.matches_event_with_id(..)` predicate `should_store_event`'s
+    /// `matches_active_open_interest` clause uses in `ingest/timeline.rs`.
+    /// Whatever the feed engine would re-admit on arrival must not be
+    /// evicted while the interest stays open (the feed-engine read path has
+    /// no store fallback).
     ///
-    /// Cost: one O(events) scan per open view per GC pass; zero when no
-    /// view is open.
+    /// Cost: one O(events × active-interests) scan per GC pass; zero-cost
+    /// inner predicate when no interest is active.
     fn open_view_pins(&self) -> OpenViewPins {
         let mut pins = OpenViewPins::default();
 
-        if let Some(interest) = self.thread_view.selected_thread.as_ref() {
-            let focused_id = interest.key.clone();
-            let root_id = self
-                .thread_root_id(&focused_id)
-                .unwrap_or_else(|| focused_id.clone());
-
-            // Base id set — identical to the one `thread_items()` builds.
-            let mut base: HashSet<String> = HashSet::new();
-            base.insert(focused_id.clone());
-            base.insert(root_id.clone());
-            if let Some(focused) = self.events.get(&focused_id) {
-                base.extend(referenced_event_ids(focused));
-            }
-
-            // Hydration bookkeeping: ids in `requested_*` are dedup-blocked
-            // from re-fetch while the view is open; `pending_*` are queued
-            // fetches whose results would race an eviction.  Pin them all.
-            pins.event_ids.extend(self.thread_view.pending_ids.iter().cloned());
-            pins.event_ids
-                .extend(self.thread_view.requested_ids.iter().cloned());
-            pins.event_ids
-                .extend(self.thread_view.pending_reply_targets.iter().cloned());
-            pins.event_ids
-                .extend(self.thread_view.requested_reply_targets.iter().cloned());
-
-            // Full thread membership — the exact `thread_items()` predicate.
-            for event in self.events.values() {
-                if base.contains(&event.id)
-                    || event_references(event, &root_id)
-                    || event_references(event, &focused_id)
-                {
-                    pins.event_ids.insert(event.id.clone());
-                    pins.profile_pubkeys.insert(event.author.clone());
-                }
-            }
-            pins.event_ids.extend(base);
+        let active = self.lifecycle.registry().iter_active();
+        if active.is_empty() {
+            return pins;
         }
 
-        if let Some(interest) = self.author_view.selected_author.as_ref() {
-            let author = interest.key.clone();
-            // The selected author's profile feeds the view header card.
-            pins.profile_pubkeys.insert(author.clone());
-            // Every cached event by this author — `author_items()` scans all
-            // kinds then filters 1|6; pinning all kinds by the author is the
-            // conservative superset (negligible extra pin volume).
-            for event in self.events.values() {
-                if event.author == author {
-                    pins.event_ids.insert(event.id.clone());
-                }
+        for event in self.events.values() {
+            if active.iter().any(|interest| {
+                interest.shape.matches_event_with_id(
+                    &event.id,
+                    &event.author,
+                    event.kind,
+                    event.created_at,
+                    &event.tags,
+                )
+            }) {
+                pins.event_ids.insert(event.id.clone());
+                pins.profile_pubkeys.insert(event.author.clone());
             }
         }
 
@@ -256,7 +219,7 @@ impl Kernel {
         }
 
         // Build the pin set: timeline ids + currently-claimed event ids +
-        // the open-view working set.
+        // the open-interest working set.
         let pinned: HashSet<String> = self
             .timeline
             .iter()
@@ -304,7 +267,7 @@ impl Kernel {
         }
 
         // Build the pin set: followed authors + claimed profiles + active
-        // account + open-view authors (selected author + thread participants).
+        // account + open-interest authors.
         let pinned: HashSet<String> = self
             .timeline_authors
             .iter()

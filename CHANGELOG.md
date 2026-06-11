@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## Unreleased (nmp-v0.3.1)
+
+### Removed (BREAKING)
+
+- **Legacy author/thread C-ABI open surfaces deleted** (V-68 / V-112, ADR-0042;
+  closes #958, #957). The following `nmp_app_*` symbols are **removed** from
+  `nmp-ffi` and `NmpCore.h`:
+  - `nmp_app_open_author`
+  - `nmp_app_close_author`
+  - `nmp_app_open_thread`
+  - `nmp_app_close_thread`
+
+  These carried the hardcoded Chirp social-kind default `{1,6}` inside the
+  generic FFI layer (a D0 violation) and drove the kernel-resident
+  `AuthorViewState` / `ThreadViewState` machine, which is also deleted along
+  with the `author_view` (KAVW) and `thread_view` (KTVW) typed projections,
+  their FlatBuffers schemas (`author_view.fbs`, `thread_view.fbs`,
+  `timeline_item.fbs`), and the generated Swift readers.
+
+  **Migration**: open author/thread feeds through the generic seam —
+  `nmp_app_open_interest(filter_json, consumer_id, scope)` with a verbatim
+  NIP-01 filter (author feed: `{"kinds":[…],"authors":["<pk>"]}`; thread:
+  `{"ids":[…]}` + `{"kinds":[…],"#e":["<root>"]}`), paired with
+  `nmp_app_close_interest`. The app composes the view from the feed engine
+  (see `nmp_app_chirp_open_author_feed` / `nmp_app_chirp_open_thread_feed`
+  for the per-app FlatFeed pattern). Profile hydration is component-owned via
+  `nmp_app_claim_profile` / `nmp_app_release_profile`.
+
+---
+
 ## nmp-v0.3.0 — 2026-06-11
 
 **BREAKING.** `nmp_app_*` C-ABI symbols are **unchanged** — shell call-sites compile

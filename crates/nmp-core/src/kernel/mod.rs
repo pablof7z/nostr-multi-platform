@@ -341,10 +341,7 @@ pub mod public_typed_projections {
     };
 }
 
-use nostr::{
-    event_references, first_event_ref, parse_profile, parse_relay_list, ratio,
-    referenced_event_ids, root_event_id, short_hex, truncate, NostrEvent,
-};
+use nostr::{parse_profile, parse_relay_list, ratio, short_hex, truncate, NostrEvent};
 // V-01 Phase 1c follow-up: `format_timestamp` / `now_hms` are
 // `#[cfg(feature = "native")]` in `kernel/nostr.rs` (they read the OS
 // wall clock via `chrono::Local`). Importing them unconditionally breaks
@@ -499,7 +496,7 @@ use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
     MentionProfilePayload, Metrics, OutboxSummarySnapshot, Profile, ProfileCard,
     ProfileRequestState, PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus,
-    StoredEvent, TimelineItem, TimingMilestones, ViewInterest, WireSub, WireSubscriptionState,
+    StoredEvent, TimelineItem, TimingMilestones, WireSub, WireSubscriptionState,
     WireSubscriptionStatus,
 };
 

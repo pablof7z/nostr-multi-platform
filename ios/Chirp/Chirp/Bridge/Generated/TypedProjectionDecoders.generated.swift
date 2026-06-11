@@ -610,11 +610,6 @@ enum TypedProfileDecoder {
     }
 }
 
-// V-112 (ADR-0042): TypedAuthorViewDecoder (KAVW) and TypedThreadViewDecoder (KTVW)
-// deleted — author_view / thread_view typed sidecars removed with the kernel
-// projection builders. AuthorView.generated.swift and ThreadView.generated.swift
-// deleted. TypedProjectionGlue.authorView / threadView deleted.
-
 // MARK: - TypedGroupChatDecoder
 // Projection `nmp.nip29.group_chat` → typed sidecar `nmp.nip29.group_chat` (NGCS). Domain type: `GroupChatSnapshot?`.
 enum TypedGroupChatDecoder {

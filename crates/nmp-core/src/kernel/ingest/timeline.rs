@@ -1,12 +1,10 @@
 //! Host-declared follow-feed timeline ingest.
 //!
-//! Covers event storage, deduplication, timeline ordering, thread hydration
-//! queue management, and the seed-timeline open gate.
+//! Covers event storage, deduplication, timeline ordering, and the
+//! seed-timeline open gate. (V-112: thread hydration queue management moved
+//! app-side with the legacy thread view stack.)
 
-use super::super::{
-    event_references, referenced_event_ids, Instant, Kernel, NostrEvent, OutboundMessage,
-    RelayRole, StoredEvent,
-};
+use super::super::{Instant, Kernel, NostrEvent, OutboundMessage, RelayRole, StoredEvent};
 use super::{event_short_id, raw_event_from_nostr, raw_tap_should_fire};
 
 impl Kernel {

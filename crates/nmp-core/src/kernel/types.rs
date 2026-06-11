@@ -512,19 +512,9 @@ pub(super) struct AuthorRelayList {
     pub(super) both_relays: Vec<String>,
 }
 
-// ── View interest (refcounted) ────────────────────────────────────────────────
-/// Tracks an open view (author, thread, firehose) with a refcount.
-///
-/// Refcounting allows multiple view instances to share the same relay
-/// subscription.  The subscription is closed only when the last claimant calls
-/// `close_*`.
-#[derive(Clone, Debug)]
-pub(super) struct ViewInterest {
-    pub(super) key: String,
-    pub(super) refcount: u32,
-}
-
-// V-68 / V-112 (ADR-0042): AuthorViewState / ThreadViewState deleted here.
+// V-68 / V-112 (ADR-0042): ViewInterest + AuthorViewState / ThreadViewState
+// deleted here. View refcounting now lives in the planner's InterestRegistry
+// (multi-owner `(scope, key)` slots) behind the generic open_interest seam.
 // Author and thread view state now lives inside the per-app FlatFeed registered
 // by nmp_app_chirp_open_author_feed / nmp_app_chirp_open_thread_feed.
 

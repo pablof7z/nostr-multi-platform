@@ -79,46 +79,11 @@ impl Kernel {
         requests
     }
 
-    /// Close every wire-sub whose id matches one of `prefixes`, returning the
-    /// CLOSE frames to dispatch.
-    ///
-    /// T133: rows are evicted from `wire_subs` (`HashMap::remove`) once the
-    /// CLOSE outbound is constructed. Pre-T133 the row stayed with
-    /// `state="closed"` for diagnostic surfacing — under long-running sessions
-    /// this let the row table grow unbounded (every profile-claim, thread, or
-    /// author view adds rows; close cycles never reclaimed them). Eviction is
-    /// O(1) per row (`HashMap::remove`); no per-event alloc on the hot path
-    /// (D8 invariant — the close path is cold relative to EVENT ingest).
-    pub(crate) fn close_subscriptions_with_prefixes(
-        &mut self,
-        prefixes: &[&str],
-    ) -> Vec<OutboundMessage> {
-        // Two-pass: can't `remove` while holding a `&mut` iterator on the map.
-        let mut closes = Vec::new();
-        // #170: evict by the full `(relay_url, sub_id)` key — the same sub_id
-        // may be live on multiple relays; a sub_id-only evict would drop a
-        // sibling relay's row that no prefix targeted.
-        let mut to_evict: Vec<(CanonicalRelayUrl, String)> = Vec::new();
-        for sub in self.wire.subs.values() {
-            if prefixes.iter().any(|prefix| sub.id.starts_with(prefix))
-                && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
-            {
-                closes.push(OutboundMessage {
-                    role: sub.role,
-                    relay_url: sub.relay_url.to_string(),
-                    text: json!(["CLOSE", sub.id]).to_string(),
-                });
-                to_evict.push((sub.relay_url.clone(), sub.id.clone()));
-            }
-        }
-        for key in to_evict {
-            self.wire.subs.remove(&key);
-        }
-        if !closes.is_empty() {
-            self.changed_since_emit = true;
-        }
-        closes
-    }
+    // V-112 (ADR-0042): `close_subscriptions_with_prefixes` deleted — its only
+    // callers were the retired close_author / close_thread view-close paths.
+    // T133 wire-sub eviction on view close is carried by the planner CLOSE
+    // diff (`drain_lifecycle_tick`) behind the generic close_interest seam,
+    // plus the oneshot-EOSE / CLOSED-frame eviction paths.
 
     /// Build a single REQ frame addressed to `relay_url` on transport lane `role`.
     ///
