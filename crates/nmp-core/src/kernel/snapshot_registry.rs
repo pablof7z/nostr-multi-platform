@@ -136,19 +136,23 @@ impl ProjectionEntry {
 
     /// Produce this entry's value for the current tick.
     ///
+    /// Returns `Some(value)` on success; `None` when the closure panicked (D15:
+    /// every host-supplied closure invocation is wrapped in [`catch_unwind`] so
+    /// a panicking projection can never unwind the actor thread). The caller
+    /// ([`SnapshotRegistry::run`]) omits the key from the snapshot when `None`
+    /// is returned, exactly as if the key had never been registered.
+    ///
     /// Ungated: always invokes the closure (legacy semantics, unchanged).
     /// Gated: if the gate value matches the memoized value, clones and returns
     /// the cached value WITHOUT invoking the closure; otherwise invokes the
-    /// closure, caches `(gate_value, value)`, and returns it.
-    ///
-    /// D6: the closure invocation is wrapped in [`catch_unwind`] by the caller
-    /// ([`SnapshotRegistry::run`]). The closure runs OUTSIDE the memo lock, so a
-    /// panic neither poisons the memo nor pins a stale value — any prior memo is
-    /// left intact and the key is simply omitted this tick.
-    fn value_for_tick(&self) -> serde_json::Value {
+    /// closure, caches `(gate_value, value)`, and returns it. A panicking
+    /// gated closure leaves the prior memo intact (not overwritten), so the
+    /// next clean gate still serves the last good cached value.
+    fn value_for_tick(&self) -> Option<serde_json::Value> {
         let Some(gate) = self.gate.as_ref() else {
             // Ungated: the default always-run path — never touches the memo.
-            return (self.f)();
+            // D15: host-supplied closure invocation wrapped in catch_unwind.
+            return catch_unwind(AssertUnwindSafe(|| (self.f)())).ok();
         };
 
         let gate_value = gate.current();
@@ -160,19 +164,23 @@ impl ProjectionEntry {
         if let Ok(memo) = self.memo.lock() {
             if let Some((cached_gate, cached_value)) = memo.as_ref() {
                 if *cached_gate == gate_value {
-                    return cached_value.clone();
+                    return Some(cached_value.clone());
                 }
             }
         }
 
-        // Dirty (or never run): invoke `f`, then memoize for the next tick. `f`
-        // runs OUTSIDE the memo lock so a slow/panicking closure never holds the
-        // memo mutex.
-        let value = (self.f)();
+        // Dirty (or never run): invoke `f` inside catch_unwind (D15), then
+        // memoize for the next tick on success. `f` runs OUTSIDE the memo lock
+        // so a slow/panicking closure never holds the memo mutex. On panic,
+        // return `None` (key omitted this tick) and leave the prior memo intact.
+        let value = match catch_unwind(AssertUnwindSafe(|| (self.f)())) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
         if let Ok(mut memo) = self.memo.lock() {
             *memo = Some((gate_value, value.clone()));
         }
-        value
+        Some(value)
     }
 }
 
@@ -293,33 +301,25 @@ impl SnapshotRegistry {
     /// closure must be non-blocking. Empty when nothing is registered — the
     /// snapshot then `skip_serializing_if`s the `projections` key entirely.
     ///
-    /// D6: each host closure is invoked inside [`catch_unwind`] — a host
-    /// projection is untrusted plugin code, and this runs on the actor
-    /// thread *inside* the snapshot tick. An unguarded panic would unwind
-    /// the actor thread; the actor's outer `catch_unwind` would then catch a
-    /// terminal `Panic` frame and the kernel would be permanently dead. A
-    /// panicking projection MUST never be able to kill the kernel: its key
-    /// is omitted from the map (the same shape as an unregistered
-    /// namespace), and every sibling projection in the same tick still
-    /// produces its value.
+    /// D6/D15: each host closure is invoked inside [`catch_unwind`] inside
+    /// [`ProjectionEntry::value_for_tick`] — a host projection is untrusted
+    /// plugin code, and this runs on the actor thread *inside* the snapshot
+    /// tick. An unguarded panic would unwind the actor thread; the actor's
+    /// outer `catch_unwind` would then catch a terminal `Panic` frame and the
+    /// kernel would be permanently dead. A panicking projection MUST never be
+    /// able to kill the kernel: its key is omitted from the map (the same
+    /// shape as an unregistered namespace), and every sibling projection in
+    /// the same tick still produces its value.
     pub fn run(&self) -> HashMap<String, serde_json::Value> {
         let mut out = HashMap::with_capacity(self.projections.len());
         for (key, entry) in &self.projections {
-            // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`,
-            // but a panic here is fully contained — nothing the closure
-            // touched is observed again after it unwinds, so there is no
-            // broken-invariant hazard. `value_for_tick` runs the gate check
-            // and either serves the cached value (gated, clean) or invokes the
-            // closure; the panic boundary wraps the whole thing so a panic in
-            // the closure leaves the per-key memo untouched and omits the key.
-            match catch_unwind(AssertUnwindSafe(|| entry.value_for_tick())) {
-                Ok(value) => {
-                    out.insert(key.clone(), value);
-                }
-                // The panic is swallowed: the namespace is omitted, exactly
-                // as if the host had never registered it. The default panic
-                // hook still prints the payload, so the bug stays visible.
-                Err(_) => continue,
+            // `value_for_tick` wraps every host-closure invocation in
+            // `catch_unwind` (D15) and returns `None` when the closure
+            // panicked. The panic is swallowed: the namespace is omitted,
+            // exactly as if the host had never registered it. The default
+            // panic hook still prints the payload, so the bug stays visible.
+            if let Some(value) = entry.value_for_tick() {
+                out.insert(key.clone(), value);
             }
         }
         out
