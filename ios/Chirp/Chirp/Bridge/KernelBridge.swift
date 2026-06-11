@@ -635,6 +635,15 @@ final class KernelHandle {
             // exactly mirroring `typedHomeFeed` above.
             let typedAccounts = TypedAccountsDecoder.decode(from: envelopes)
             let typedActiveAccount = TypedActiveAccountDecoder.decode(from: envelopes)
+            // V6 Stage 4 (Wave B batch #2): the relay-settings + publish-cluster
+            // thin-glue keys. Each returns nil when its sidecar is absent or
+            // malformed → the generic `projections.<field>` JSON path stays
+            // active (ADR-0037 Commitment 4), mirroring `typedAccounts` above.
+            let typedConfiguredRelays = TypedConfiguredRelaysDecoder.decode(from: envelopes)
+            let typedRelayRoleOptions = TypedRelayRoleOptionsDecoder.decode(from: envelopes)
+            let typedOutboxSummary = TypedOutboxSummaryDecoder.decode(from: envelopes)
+            let typedPublishOutbox = TypedPublishOutboxDecoder.decode(from: envelopes)
+            let typedPublishQueue = TypedPublishQueueDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
@@ -643,6 +652,11 @@ final class KernelHandle {
                     typedHomeFeed: typedHomeFeed,
                     typedAccounts: typedAccounts,
                     typedActiveAccount: typedActiveAccount,
+                    typedConfiguredRelays: typedConfiguredRelays,
+                    typedRelayRoleOptions: typedRelayRoleOptions,
+                    typedOutboxSummary: typedOutboxSummary,
+                    typedPublishOutbox: typedPublishOutbox,
+                    typedPublishQueue: typedPublishQueue,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
@@ -737,6 +751,23 @@ struct KernelUpdateResult {
     /// sidecar OR no active account — both defer to the generic
     /// `projections.active_account` JSON fallback (parity-preserving).
     let typedActiveAccount: String?
+    /// Typed `configured_relays` projection decode (V6 Stage 4 / Wave B `KCRL`
+    /// sidecar). `nil` ⇒ the generic `projections.configured_relays` JSON
+    /// fallback applies.
+    let typedConfiguredRelays: [AppRelay]?
+    /// Typed `relay_role_options` projection decode (`KRRO`). `nil` ⇒ generic
+    /// `projections.relay_role_options` JSON fallback.
+    let typedRelayRoleOptions: [RelayRoleOption]?
+    /// Typed `outbox_summary` projection decode (`KOXS`). `nil` ⇒ generic
+    /// `projections.outbox_summary` JSON fallback.
+    let typedOutboxSummary: OutboxSummary?
+    /// Typed `publish_outbox` projection decode (`KPBO`). `nil` ⇒ generic
+    /// `projections.publish_outbox` JSON fallback.
+    let typedPublishOutbox: [PublishOutboxItem]?
+    /// Typed `publish_queue` projection decode (`KPBQ`). The domain type is a
+    /// field-subset of the wire. `nil` ⇒ generic `projections.publish_queue`
+    /// JSON fallback.
+    let typedPublishQueue: [PublishQueueEntry]?
     /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
     /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
     /// target, so they cannot be codegen'd as fixed projection fields.
@@ -1768,6 +1799,28 @@ struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
         attemptLabel = try c.decode(String.self, forKey: .attemptLabel)
         message = try c.decode(String.self, forKey: .message)
         relayReason = try c.decodeIfPresent(String.self, forKey: .relayReason) ?? ""
+    }
+
+    /// Memberwise initializer. The custom `init(from:)` above suppresses Swift's
+    /// synthesized memberwise init, so the V6 Stage 4 typed-sidecar glue
+    /// (`TypedProjectionGlue.publishOutbox`) needs this explicit one to build a
+    /// row from the `flatc --swift` reader struct.
+    init(
+        relayUrl: String,
+        status: String,
+        statusLabel: String,
+        attempt: UInt32,
+        attemptLabel: String,
+        message: String,
+        relayReason: String
+    ) {
+        self.relayUrl = relayUrl
+        self.status = status
+        self.statusLabel = statusLabel
+        self.attempt = attempt
+        self.attemptLabel = attemptLabel
+        self.message = message
+        self.relayReason = relayReason
     }
 }
 

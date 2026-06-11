@@ -226,7 +226,12 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "publish_queue",
             schema_id: "publish_queue",
             file_identifier: "KPBQ",
-            swift_reader_type: None,
+            // Wave B batch #2: the `flatc --swift` reader
+            // (`nmp_kernel_PublishQueueSnapshot`) ships in this PR. The Chirp
+            // domain `[PublishQueueEntry]` is a field-SUBSET of the wire
+            // (eventId/kind/targetRelays/status only); the glue maps the
+            // subset (see `TypedProjectionGlue.publishQueue`).
+            swift_reader_type: Some("nmp_kernel_PublishQueueSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
@@ -237,7 +242,12 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "publish_outbox",
             schema_id: "publish_outbox",
             file_identifier: "KPBO",
-            swift_reader_type: None,
+            // Wave B batch #2: the `flatc --swift` reader
+            // (`nmp_kernel_PublishOutboxSnapshot`) ships in this PR. Field-for-
+            // field copy of each item + nested `[PublishOutboxRelay]` rows; the
+            // glue widens `targetRelays` (uint → Int). See
+            // `TypedProjectionGlue.publishOutbox`.
+            swift_reader_type: Some("nmp_kernel_PublishOutboxSnapshot"),
         }),
     },
     // §6/AP1 pre-formatted outbox header — kernel-owned strings the shell
@@ -250,7 +260,11 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "outbox_summary",
             schema_id: "outbox_summary",
             file_identifier: "KOXS",
-            swift_reader_type: None,
+            // Wave B batch #2: the `flatc --swift` reader
+            // (`nmp_kernel_OutboxSummarySnapshot`) ships in this PR. Single-table
+            // field-for-field copy (kernel owns title/subtitle strings). See
+            // `TypedProjectionGlue.outboxSummary`.
+            swift_reader_type: Some("nmp_kernel_OutboxSummarySnapshot"),
         }),
     },
     // Relay-edit settings cluster — pre-rolled rows + role pick options.
@@ -262,7 +276,10 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "configured_relays",
             schema_id: "configured_relays",
             file_identifier: "KCRL",
-            swift_reader_type: None,
+            // Wave B batch #2: the `flatc --swift` reader
+            // (`nmp_kernel_ConfiguredRelaysSnapshot`) ships in this PR. Two-field
+            // (url/role) copy. See `TypedProjectionGlue.configuredRelays`.
+            swift_reader_type: Some("nmp_kernel_ConfiguredRelaysSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
@@ -273,7 +290,11 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "relay_role_options",
             schema_id: "relay_role_options",
             file_identifier: "KRRO",
-            swift_reader_type: None,
+            // Wave B batch #2: the `flatc --swift` reader
+            // (`nmp_kernel_RelayRoleOptionsSnapshot`) ships in this PR. Four-field
+            // (value/label/tint/isDefault) copy. See
+            // `TypedProjectionGlue.relayRoleOptions`.
+            swift_reader_type: Some("nmp_kernel_RelayRoleOptionsSnapshot"),
         }),
     },
     // D0 identity output. `accounts` enriches AccountSummary rows with

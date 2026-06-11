@@ -67,6 +67,18 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// to the generic JSON path — parity-preserving.
     @Published private(set) var typedActiveAccount: String?
 
+    /// V6 Stage 4 (Wave B batch #2) typed overrides for the relay-settings +
+    /// publish-cluster thin-glue keys. Each is non-nil only on ticks where the
+    /// corresponding sidecar (`KCRL` / `KRRO` / `KOXS` / `KPBO` / `KPBQ`)
+    /// decoded; `nil` defers to the generic JSON path through the accessor
+    /// (`KernelModel+Projections`). Preferred over the matching
+    /// `snapshot?.<field>` in the accessor.
+    @Published private(set) var typedConfiguredRelays: [AppRelay]?
+    @Published private(set) var typedRelayRoleOptions: [RelayRoleOption]?
+    @Published private(set) var typedOutboxSummary: OutboxSummary?
+    @Published private(set) var typedPublishOutbox: [PublishOutboxItem]?
+    @Published private(set) var typedPublishQueue: [PublishQueueEntry]?
+
     /// Dynamic flat feeds opened per profile/thread screen. Keys are
     /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
     @Published private(set) var flatFeeds: [String: ChirpTimelineSnapshot] = [:]
@@ -686,6 +698,14 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // JSON fallback applies for this tick (read through the accessors).
         typedAccounts = result.typedAccounts
         typedActiveAccount = result.typedActiveAccount
+        // V6 Stage 4 (Wave B batch #2): store the relay-settings + publish-cluster
+        // typed decodes. Nil ⇒ the generic JSON projection fallback applies for
+        // this tick (read through the `KernelModel+Projections` accessors).
+        typedConfiguredRelays = result.typedConfiguredRelays
+        typedRelayRoleOptions = result.typedRelayRoleOptions
+        typedOutboxSummary = result.typedOutboxSummary
+        typedPublishOutbox = result.typedPublishOutbox
+        typedPublishQueue = result.typedPublishQueue
         flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 
