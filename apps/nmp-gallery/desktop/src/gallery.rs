@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 use iced::widget::image::Handle as ImageHandle;
 use iced::widget::{button, column, container, row, rule, scrollable, text, Space};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length, Subscription};
-use serde_json::Value;
 use tokio::sync::mpsc;
 
 use nmp_content::embed_projection::EmbedKindProjection;
@@ -14,7 +13,7 @@ use nmp_gallery_tui::content_tree_wire::{WireNode, WireUri};
 use nmp_gallery_tui::data::{GalleryData, LiveProfileMap};
 use nmp_gallery_tui::embed_host::EmbedHostState;
 use nmp_gallery_tui::gallery::{component_at, component_index, ComponentSpec, REGISTRY_SECTIONS};
-use nmp_gallery_tui::live::primary_pubkey;
+use nmp_gallery_tui::live::{GalleryTypedSnapshot, primary_pubkey};
 
 use crate::bridge::GalleryBridge;
 use crate::components::embed_article::ArticleCard;
@@ -81,7 +80,7 @@ pub struct GalleryApp {
     // diffs the subscription set, sees the recipe vanish, and tears the stream
     // down — which froze the UI after the first ~7 snapshots. The recipe shares
     // this Arc and takes the receiver exactly once inside `stream()`.
-    snapshot_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<Value>>>>,
+    snapshot_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<GalleryTypedSnapshot>>>>,
 }
 
 impl GalleryApp {
@@ -116,7 +115,7 @@ impl GalleryApp {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    Snapshot(Value),
+    Snapshot(Arc<GalleryTypedSnapshot>),
     Select(usize),
 }
 
@@ -124,7 +123,7 @@ pub enum Message {
 
 /// Custom subscription recipe: drives iced redraws from the kernel's push
 /// channel without any timer poll (D8 — no polling).
-struct SnapshotRecipe(Arc<Mutex<Option<mpsc::UnboundedReceiver<Value>>>>);
+struct SnapshotRecipe(Arc<Mutex<Option<mpsc::UnboundedReceiver<GalleryTypedSnapshot>>>>);
 
 impl iced::advanced::subscription::Recipe for SnapshotRecipe {
     type Output = Message;
@@ -150,7 +149,7 @@ impl iced::advanced::subscription::Recipe for SnapshotRecipe {
             .take()
             .expect("receiver present exactly once for the stream's lifetime");
         Box::pin(iced::futures::stream::unfold(rx, |mut rx| async move {
-            rx.recv().await.map(|v| (Message::Snapshot(v), rx))
+            rx.recv().await.map(|v| (Message::Snapshot(Arc::new(v)), rx))
         }))
     }
 }
@@ -169,7 +168,7 @@ pub fn subscription(app: &GalleryApp) -> Subscription<Message> {
 pub fn update(app: &mut GalleryApp, message: Message) {
     match message {
         Message::Snapshot(snap) => {
-            // 1. Update profiles and embed host from the kernel snapshot.
+            // 1. Update profiles and embed host from the typed kernel snapshot.
             //    The embed host rebuilds its envelope map; we deliberately
             //    ignore its `authors_needing_profile` return value now.
             //    Embed-author kind:0 claiming is component-owned (iOS #833):
@@ -181,8 +180,8 @@ pub fn update(app: &mut GalleryApp, message: Message) {
             //    violation. NO event triggers a reactive kernel kind:0 fetch;
             //    fetching kind:0 is the presentation layer's concern, owned by
             //    the component that displays the author.
-            app.profiles.update_from_snapshot(&snap);
-            let _ = app.embed_host.update_from_snapshot(&snap);
+            app.profiles.update_from_typed(&snap);
+            let _ = app.embed_host.update_from_typed(&snap);
 
             // 2. Claim the primary pubkey so the kind:0 fetch proceeds. This
             //    is the app's own identity bootstrap for the user-* showcase

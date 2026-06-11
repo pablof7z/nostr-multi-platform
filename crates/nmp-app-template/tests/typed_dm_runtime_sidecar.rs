@@ -1,14 +1,13 @@
 //! NIP-17 DM-runtime typed-projection sidecar proof (Wave A producer-typing).
 //!
-//! Proves `nmp_app_template::runtimes::register_dm_runtime` now emits typed
-//! FlatBuffers sidecars (ADR-0037) ALONGSIDE the existing generic
-//! `serde_json::Value` projections for BOTH DM keys:
+//! Proves `nmp_app_template::runtimes::register_dm_runtime` emits typed
+//! FlatBuffers sidecars (ADR-0037) for BOTH DM keys:
 //!
 //! - `"nmp.nip17.dm_inbox"` (`NDMI`) — `nmp_nip17::DmInboxSnapshot`.
 //! - `"nmp.nip17.dm_relay_list"` (`NDRL`) — `nmp_nip17::DmRelayList`.
 //!
 //! Drives the full FFI snapshot path (boot an `NmpApp`, run the actor, collect
-//! every emitted frame, decode each with `decode_snapshot_with_typed`), then
+//! every emitted frame, decode each with `decode_snapshot_typed_projections`), then
 //! asserts the typed payload bytes land in the `typed_projections` sidecar and
 //! round-trip back through the generated bindings. No events are injected — both
 //! projections emit a decodable buffer every tick (empty inbox / not-signed-in
@@ -18,7 +17,7 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use nmp_core::{decode_snapshot_with_typed, TypedProjectionData};
+use nmp_core::{decode_snapshot_typed_projections, TypedProjectionData};
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, NmpApp};
 use nmp_nip17::{
     decode_dm_inbox_snapshot, decode_dm_relay_list, DM_INBOX_FILE_IDENTIFIER, DM_INBOX_SCHEMA_ID,
@@ -66,7 +65,7 @@ fn wait_for_typed(
         {
             let frames = FRAMES.lock().unwrap_or_else(|p| p.into_inner());
             for frame in frames.iter() {
-                let Ok((_value, typed)) = decode_snapshot_with_typed(frame) else {
+                let Ok(typed) = decode_snapshot_typed_projections(frame) else {
                     continue;
                 };
                 if let Some(entry) = typed.into_iter().find(|t| t.key == key && predicate(t)) {

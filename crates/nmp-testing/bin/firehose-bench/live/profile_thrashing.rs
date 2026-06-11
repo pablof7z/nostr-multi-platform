@@ -14,7 +14,7 @@
 //! to the platform debounce layer, deferred to M14 per T22.  This scenario
 //! verifies the kernel-side dedup invariant only.
 
-use super::{drain, drain_until, metric, open_sub_count, wait_connected, wait_update, Scenario};
+use super::{drain, drain_until, open_sub_count, visible_items, wait_connected, wait_update, Scenario};
 use crate::report::ScenarioMetrics;
 use crate::scenarios::{finish_scenario, gate_eq, gate_max, gate_min};
 use nmp_core::testing::{spawn_actor, ActorCommand};
@@ -50,7 +50,7 @@ pub(crate) fn profile_thrashing() -> Scenario {
             let Some(update) = wait_update(&rx, warmup_deadline) else {
                 break;
             };
-            let visible = metric(&update, "visible_items").unwrap_or(0.0) as usize;
+            let visible = visible_items(&update).unwrap_or(0) as usize;
             if visible >= 1 {
                 baseline_subs = open_sub_count(&update);
                 break;
@@ -106,7 +106,7 @@ pub(crate) fn profile_thrashing() -> Scenario {
     // than silently saturating-sub to zero (false-pass risk per codex T23/P3).
     let snapshot_valid = final_update
         .as_deref()
-        .map(|bytes| nmp_core::decode_snapshot_payload(bytes).is_ok())
+        .map(|bytes| nmp_core::decode_snapshot_envelope(bytes).is_ok())
         .unwrap_or(false);
     let final_subs = if snapshot_valid {
         open_sub_count(final_update.as_deref().unwrap_or(&[]))

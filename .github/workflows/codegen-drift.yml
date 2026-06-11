@@ -49,3 +49,31 @@ jobs:
       # decoders cannot drift from the registry.
       - name: Check typed-decoder codegen is up to date
         run: cargo run --quiet -p nmp-codegen -- gen typed-decoders --check
+
+  # PR-B (#991/#979) — Rust flatc transport-binding drift gate. The checked-in
+  # bindings at crates/nmp-core/src/transport/generated/nmp_update_generated.rs
+  # must be byte-identical to a fresh `flatc --rust` run (rustfmt'd) over
+  # crates/nmp-core/schema/nmp_update.fbs, with the flatc version pinned to the
+  # `flatbuffers` Rust runtime pin (25.12.19). Catches the gap that let a
+  # `(deprecated)` schema field keep stale accessors in the checked-in
+  # bindings. Regenerate locally per the instructions the script prints.
+  rust-flatc-drift:
+    name: Rust flatc drift (nmp_update_generated.rs vs nmp_update.fbs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install pinned flatc 25.12.19
+        run: |
+          curl -fsSL -o /tmp/flatc.zip \
+            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.clang++-18.zip
+          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
+          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
+          flatc --version
+
+      - name: Check Rust transport bindings are in sync with the schema
+        run: bash ci/check-rust-flatc-drift.sh

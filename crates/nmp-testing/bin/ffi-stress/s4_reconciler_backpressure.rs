@@ -17,7 +17,9 @@
 //! D1 (best-effort rendering): on stall release, emit order is monotonic.
 //! Bible #1 (monotonic rev): enforced via rev extraction in callback.
 
-use crate::common::{extract_rev, inject_signed_events, revs_strictly_increasing, snapshot_value};
+use crate::common::{
+    extract_rev, inject_signed_events, revs_strictly_increasing, snapshot_envelope,
+};
 use crate::ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, NmpApp,
 };
@@ -49,10 +51,7 @@ struct StallState {
 }
 
 fn extract_actor_queue_depth(bytes: &[u8]) -> Option<u64> {
-    snapshot_value(bytes)?
-        .get("metrics")?
-        .get("actor_queue_depth")?
-        .as_u64()
+    Some(u64::from(snapshot_envelope(bytes)?.actor_queue_depth))
 }
 
 extern "C" fn stall_cb(ctx: *mut c_void, payload: *const u8, payload_len: usize) {

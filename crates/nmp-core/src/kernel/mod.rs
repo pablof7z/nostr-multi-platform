@@ -327,6 +327,12 @@ pub mod public_typed_projections {
         // re-used from the profile cluster above)
         decode_resolved_profiles, ResolvedProfilesModel, RESOLVED_PROFILES_FILE_IDENTIFIER,
         RESOLVED_PROFILES_SCHEMA_ID, RESOLVED_PROFILES_SCHEMA_VERSION,
+        // claimed_events (nmp-gallery typed-sidecar migration — PR-B final zeroing)
+        decode_claimed_events, ClaimedEventRow, ClaimedEventsModel,
+        CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
+        // signed_events (nmp-ffi sign_event_for_return typed migration — PR-B final zeroing)
+        decode_signed_events, SignedEventRow, SignedEventsModel, SIGNED_EVENTS_FILE_IDENTIFIER,
+        SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
     };
 }
 

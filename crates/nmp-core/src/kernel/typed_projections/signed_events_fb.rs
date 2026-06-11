@@ -45,27 +45,27 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const SIGNED_EVENTS_SCHEMA_ID: &str = "signed_events";
+pub const SIGNED_EVENTS_SCHEMA_ID: &str = "signed_events";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const SIGNED_EVENTS_FILE_IDENTIFIER: &[u8; 4] = b"KSEV";
+pub const SIGNED_EVENTS_FILE_IDENTIFIER: &[u8; 4] = b"KSEV";
 /// Wire schema version. Bump on any breaking change to `signed_events.fbs`.
-pub(crate) const SIGNED_EVENTS_SCHEMA_VERSION: u32 = 1;
+pub const SIGNED_EVENTS_SCHEMA_VERSION: u32 = 1;
 
 /// A field-for-field mirror of one SERIALISED `signed_events` map value.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SignedEventRow {
-    pub(crate) correlation_id: String,
-    pub(crate) ok: bool,
-    pub(crate) signed_json: Option<String>,
-    pub(crate) error: Option<String>,
+pub struct SignedEventRow {
+    pub correlation_id: String,
+    pub ok: bool,
+    pub signed_json: Option<String>,
+    pub error: Option<String>,
 }
 
 /// The `"signed_events"` read model — the `correlation_id -> value` map
 /// flattened to a key-sorted vector of `(key, value)` entries.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SignedEventsModel {
+pub struct SignedEventsModel {
     /// `(key, value)` entries, sorted by `key` (matches the BTree-ordered JSON).
-    pub(crate) entries: Vec<(String, SignedEventRow)>,
+    pub entries: Vec<(String, SignedEventRow)>,
 }
 
 /// Build a [`SignedEventsModel`] by PARSING the captured `signed_events`
@@ -166,8 +166,11 @@ pub(crate) fn encode_signed_events(model: &SignedEventsModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_signed_events`]) back
 /// into a [`SignedEventsModel`]. Returns an error string on any malformed input.
-#[cfg(test)]
-pub(crate) fn decode_signed_events(bytes: &[u8]) -> Result<SignedEventsModel, String> {
+///
+/// PR-B final: unconditionally compiled (no longer `#[cfg(test)]`) — promoted
+/// to the public typed-decode surface so out-of-crate consumers read the
+/// typed sidecar instead of the deleted JSON payload.
+pub fn decode_signed_events(bytes: &[u8]) -> Result<SignedEventsModel, String> {
     if bytes.len() < 8 || !fb::signed_events_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KSEV file identifier".to_string());
     }
@@ -187,7 +190,6 @@ pub(crate) fn decode_signed_events(bytes: &[u8]) -> Result<SignedEventsModel, St
 }
 
 /// Decode this module's generated `SignedEvent` table into a [`SignedEventRow`].
-#[cfg(test)]
 fn signed_event_from_fb(row: fb::SignedEvent<'_>) -> SignedEventRow {
     SignedEventRow {
         correlation_id: row.correlation_id().unwrap_or_default().to_string(),

@@ -252,7 +252,10 @@ fn c8_subscriptions_coalesce_and_buffer() {
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_core::store::RawEvent;
     use nmp_core::testing::{spawn_actor, ActorCommand};
-    use nmp_core::{decode_update_frame, UpdateEnvelope};
+    use nmp_core::typed_projections::{decode_author_view, AUTHOR_VIEW_SCHEMA_ID};
+    use nmp_core::{
+        decode_snapshot_typed_projections, decode_update_frame, UpdateEnvelope,
+    };
     use std::time::Duration;
 
     // A fixed nsec used only in tests (same key as in actor/commands/tests.rs).
@@ -310,13 +313,15 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     })
     .expect("send OpenAuthor");
 
-    // Drain envelopes until we find a `Snapshot` carrying our event in
-    // `author_view.items`. Every frame on the channel is a FlatBuffers update
-    // frame per ADR-0001 (T103); decoding through `UpdateEnvelope` here proves
-    // the snapshot is delivered with the canonical discriminator. Non-snapshot
-    // frames are skipped on the typed tag, never by key sniffing.
-    let snapshot = {
-        let mut found: Option<serde_json::Value> = None;
+    // Drain envelopes until we find a `Snapshot` carrying our event in the
+    // typed `author_view` sidecar. Every frame on the channel is a FlatBuffers
+    // update frame per ADR-0001 (T103); decoding through `UpdateEnvelope`
+    // first proves the snapshot is delivered with the canonical discriminator
+    // — non-snapshot frames are skipped on the typed tag, never by key
+    // sniffing. PR-B (#991/#979): view payloads travel in the typed
+    // FlatBuffers sidecar; the generic JSON payload no longer exists.
+    let author_view = {
+        let mut found = None;
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while std::time::Instant::now() < deadline {
             match rx.recv_timeout(Duration::from_millis(100)) {
@@ -325,15 +330,19 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
                         .unwrap_or_else(|e| {
                             panic!("every channel frame must decode as UpdateEnvelope (ADR-0001 / T103) — got error {e} on frame bytes: {frame:?}")
                         });
-                    if let UpdateEnvelope::Snapshot(snapshot) = envelope {
-                        let items = snapshot["projections"]["author_view"]["items"].as_array();
-                        if let Some(items) = items {
-                            if items.iter().any(|item| {
-                                item.get("id").and_then(|id| id.as_str()) == Some(event_id)
-                            }) {
-                                found = Some(snapshot);
-                                break;
-                            }
+                    if !matches!(envelope, UpdateEnvelope::Snapshot(_)) {
+                        continue;
+                    }
+                    let typed = decode_snapshot_typed_projections(&frame)
+                        .expect("snapshot frame must carry a decodable typed sidecar");
+                    let view = typed
+                        .iter()
+                        .find(|t| t.key == AUTHOR_VIEW_SCHEMA_ID)
+                        .and_then(|t| decode_author_view(&t.payload).ok());
+                    if let Some(view) = view {
+                        if view.items.iter().any(|item| item.id == event_id) {
+                            found = Some(view);
+                            break;
                         }
                     }
                 }
@@ -341,35 +350,28 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
             }
         }
         found.expect(
-            "actor must emit a `snapshot` envelope whose `projections.author_view.items` contains our event within 5 s",
+            "actor must emit a `snapshot` envelope whose typed author_view sidecar contains our event within 5 s",
         )
     };
 
-    // The snapshot's `projections.author_view.items` field is the projection of
-    // the kernel's open author view — D0: view payloads are in the projections
-    // map, not typed KernelSnapshot fields.
-    let items = snapshot["projections"]["author_view"]["items"]
-        .as_array()
-        .expect("snapshot must have a projections.author_view.items array (Kernel::make_update contract)");
-    let our_item = items
+    // The typed `author_view` sidecar carries the projection of the kernel's
+    // open author view — D0: view payloads are in the projection sidecar, not
+    // typed KernelSnapshot fields.
+    let our_item = author_view
+        .items
         .iter()
-        .find(|item| item["id"].as_str() == Some(event_id))
+        .find(|item| item.id == event_id)
         .expect("our event must appear in items");
 
     // C13 core assertion: aim.md §2 — NMP ships raw data; the presentation
     // layer owns the placeholder/identicon strategy. author_picture_url is
-    // null until a kind:0 event is received for this author (ADR-0032).
+    // None until a kind:0 event is received for this author (ADR-0032).
+    // (author_avatar_source was removed by ADR-0032's display-separation
+    // sweep — the typed `TimelineItemModel` has no such field, so its absence
+    // is a compile-time guarantee.)
     assert!(
-        our_item["author_picture_url"].is_null(),
-        "author_picture_url must be null before kind:0 arrives (aim.md §2)"
-    );
-    // author_avatar_source was removed by ADR-0032 display separation sweep;
-    // the presentation layer tracks placeholder vs authoritative state itself.
-    assert!(
-        our_item
-            .get("author_avatar_source")
-            .map_or(true, |v| v.is_null()),
-        "author_avatar_source must not be present after ADR-0032"
+        our_item.author_picture_url.is_none(),
+        "author_picture_url must be None before kind:0 arrives (aim.md §2)"
     );
 
     tx.send(ActorCommand::Shutdown).ok();

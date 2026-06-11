@@ -7,20 +7,18 @@
 //! (`LiveKernelSink`) forwards to `nmp_app_claim_event` — the kernel
 //! registers a `OneshotApi` interest (D4 single writer), fetches the event
 //! from relays *or* short-circuits when it's already in the local store
-//! (cache hit, sub-tick latency), and surfaces the resolved event in the
-//! snapshot's `projections.claimed_events[primary_id]` map.
+//! (cache hit, sub-tick latency), and surfaces the resolved event in the typed
+//! `claimed_events` sidecar (ADR-0037).
 //!
 //! `EmbedHostState` is the gallery's read-side cache of that projection.
-//! Each snapshot push calls `update_from_snapshot`; on the next redraw the
+//! Each snapshot push calls `update_from_typed`; on the next redraw the
 //! renderer's `embedded_events(...)` builder method reads from
 //! `current_envelopes()` and the kind registry dispatches to the right
 //! handler (`ArticleProjection`, `ShortNoteProjection`, etc.).
 //!
 //! Cache-agnostic: whether the kernel returned the event from local store
 //! or after a relay round-trip, the host sees the same DTO shape and the
-//! renderer sees the same envelope. (See the cache-investigation report
-//! that landed before this module — `changed_since_emit` is set BEFORE the
-//! cache-hit short-circuit so the next snapshot tick fires immediately.)
+//! renderer sees the same envelope.
 //!
 //! Doctrine:
 //! - **D8** — no polling. Updates are push-driven by the snapshot callback;
@@ -33,7 +31,9 @@ use nmp_content::{
     resolve_embed_projection, RenderContext,
 };
 use nmp_core::substrate::KernelEvent;
-use serde_json::Value;
+use nmp_core::typed_projections::ClaimedEventRow;
+
+use crate::live::GalleryTypedSnapshot;
 
 /// Gallery-side cache of resolved embed envelopes. Reset on every snapshot
 /// (latest wins — the kernel's projection is the source of truth).
@@ -49,51 +49,45 @@ impl EmbedHostState {
     }
 
     /// Rebuild the in-memory envelope map from a freshly pushed kernel
-    /// snapshot. The kernel emits `projections.claimed_events[primary_id]
-    /// → ClaimedEventDto`. We turn each entry into a `KernelEvent`, route
-    /// it through the canonical `resolve_embed_projection` dispatch point
-    /// (the same function ADR-0034 mandates for ALL embed kind decisions),
-    /// and store the resulting envelope under `primary_id`. The renderer's
-    /// `envelope_for` lookup tries `primary_id` first, then `uri` — so
-    /// keying under `primary_id` is sufficient for the standard NIP-19
-    /// shapes (`nevent` → event-id hex; `naddr` → coordinate string).
+    /// snapshot (typed path — reads the `claimed_events` typed sidecar from
+    /// `GalleryTypedSnapshot`). Each entry is a `ClaimedEventRow`; we turn it
+    /// into a `KernelEvent`, route it through the canonical
+    /// `resolve_embed_projection` dispatch point (the same function ADR-0034
+    /// mandates for ALL embed kind decisions), and store the resulting envelope
+    /// under `primary_id`.
     ///
-    /// Non-fatal: malformed entries are silently skipped (D6 — the
-    /// renderer falls back to a loading placeholder until a well-formed
-    /// snapshot lands).
-    pub fn update_from_snapshot(&mut self, snapshot: &Value) -> Vec<String> {
-        let Some(claimed) = snapshot
-            .get("projections")
-            .and_then(|p| p.get("claimed_events"))
-            .and_then(Value::as_object)
-        else {
+    /// Non-fatal: malformed entries are silently skipped (D6 — the renderer
+    /// falls back to a loading placeholder until a well-formed snapshot lands).
+    ///
+    /// Returns the pubkeys of authors whose `author_display_name` is absent
+    /// so the caller can issue `claim_profile` and the next snapshot tick
+    /// brings their kind:0 metadata.
+    pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) -> Vec<String> {
+        // An absent (empty) claimed_events model is a no-op — do not wipe
+        // existing envelopes when no events are claimed yet (mirrors the
+        // previous JSON behaviour where a missing "claimed_events" key left
+        // the host untouched). Once the model has at least one entry the
+        // full replacement fires, keeping latest-wins semantics.
+        if snapshot.claimed_events.entries.is_empty() {
             return Vec::new();
-        };
+        }
 
         let mut next: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
         let mut authors_needing_profile: Vec<String> = Vec::new();
         let ctx = RenderContext::new();
 
-        for (primary_id, dto) in claimed {
-            let Some(event) = kernel_event_from_dto(primary_id, dto) else {
+        for (primary_id, row) in &snapshot.claimed_events.entries {
+            let Some(event) = kernel_event_from_row(row) else {
                 continue;
             };
 
-            // Read the author's profile fields from the kernel's enriched
-            // ClaimedEventDto. None when no kind:0 has been ingested yet —
-            // we return the author pubkey to the caller so the main loop
-            // can trigger a `claim_profile` and the next snapshot tick
-            // brings the claimed profile projection.
-            let author_display_name = dto
-                .get("author_display_name")
-                .and_then(Value::as_str)
+            let author_display_name = row.author_display_name.as_deref()
                 .filter(|s| !s.trim().is_empty())
                 .map(str::to_string);
-            let author_picture_url = dto
-                .get("author_picture_url")
-                .and_then(Value::as_str)
+            let author_picture_url = row.author_picture_url.as_deref()
                 .filter(|s| !s.trim().is_empty())
                 .map(str::to_string);
+
             if author_display_name.is_none() && !event.author.is_empty() {
                 authors_needing_profile.push(event.author.clone());
             }
@@ -101,7 +95,7 @@ impl EmbedHostState {
             let mut projection = resolve_embed_projection(&event, &ctx);
             apply_author_profile(&mut projection, author_display_name, author_picture_url);
             let envelope = EmbeddedEventEnvelope {
-                uri: String::new(), // The renderer falls back from primary_id; URI keying happens at claim time, not here.
+                uri: String::new(), // The renderer falls back from primary_id; URI keying happens at claim time.
                 primary_id: primary_id.clone(),
                 render_context: RenderContextWire {
                     depth: 0,
@@ -141,46 +135,17 @@ impl EmbedHostState {
     }
 }
 
-fn kernel_event_from_dto(primary_id: &str, dto: &Value) -> Option<KernelEvent> {
-    let id = dto.get("id").and_then(Value::as_str)?.to_string();
-    let author = dto
-        .get("author_pubkey")
-        .and_then(Value::as_str)?
-        .to_string();
-    let kind = dto.get("kind").and_then(Value::as_u64)? as u32;
-    let created_at = dto.get("created_at").and_then(Value::as_u64).unwrap_or(0);
-    let content = dto
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let tags = dto
-        .get("tags")
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(Value::as_array)
-                .map(|row| {
-                    row.iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_string)
-                        .collect::<Vec<String>>()
-                })
-                .collect::<Vec<Vec<String>>>()
-        })
-        .unwrap_or_default();
-    // `primary_id` is the snapshot key; for hex64-form (nevent/note) it equals
-    // `event.id`. For coordinate-form (naddr) the renderer's `envelope_for`
-    // lookup keys on `primary_id`, so we don't need to back-fill anything
-    // here. The KernelEvent only needs the protocol fields.
-    let _ = primary_id;
+fn kernel_event_from_row(row: &ClaimedEventRow) -> Option<KernelEvent> {
+    if row.author_pubkey.is_empty() {
+        return None;
+    }
     Some(KernelEvent {
-        id,
-        author,
-        kind,
-        created_at,
-        tags,
-        content,
+        id: row.id.clone(),
+        author: row.author_pubkey.clone(),
+        kind: row.kind,
+        created_at: row.created_at,
+        tags: row.tags.clone(),
+        content: row.content.clone(),
     })
 }
 
@@ -188,7 +153,7 @@ fn kernel_event_from_dto(primary_id: &str, dto: &Value) -> Option<KernelEvent> {
 /// projection variant carries those fields. `resolve_embed_projection`
 /// initializes them as `None` since it only sees the raw `KernelEvent`;
 /// this helper folds in the kernel's profile-cache enrichment delivered
-/// via `ClaimedEventDto.author_display_name` / `_picture_url`. The
+/// via `ClaimedEventRow.author_display_name` / `_picture_url`. The
 /// `Highlight` variant carries `author_display_name` only (no picture);
 /// `Unknown` follows the same shape. All variants degrade gracefully
 /// when both fields are `None` — renderers compose with
@@ -228,51 +193,68 @@ mod tests {
         showcase_pubkey,
     };
     use nmp_content::embed_projection::EmbedKindProjection;
-    use serde_json::json;
+    use nmp_core::typed_projections::{
+        ClaimedEventRow, ClaimedEventsModel,
+        ResolvedProfilesModel,
+    };
 
-    fn snapshot_with(events: Vec<(&str, Value)>) -> Value {
-        let mut claimed = serde_json::Map::new();
-        for (key, dto) in events {
-            claimed.insert(key.to_string(), dto);
+    fn snapshot_with(entries: Vec<(String, ClaimedEventRow)>) -> GalleryTypedSnapshot {
+        GalleryTypedSnapshot {
+            claimed_events: ClaimedEventsModel { entries },
+            resolved_profiles: ResolvedProfilesModel::default(),
+            relay_statuses: Vec::new(),
         }
-        json!({
-            "projections": {
-                "claimed_events": Value::Object(claimed),
-            }
-        })
     }
 
-    fn article_dto() -> Value {
-        json!({
-            "id": article_primary_id(),
-            "author_pubkey": "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93",
-            "kind": 30023,
-            "created_at": 1716000000_u64,
-            "tags": [["d", "the-internet-left-me"], ["title", article_expected_title()]],
-            "content": "Long-form article body."
-        })
+    fn article_row() -> (String, ClaimedEventRow) {
+        let primary = article_primary_id().to_string();
+        let row = ClaimedEventRow {
+            primary_id: primary.clone(),
+            id: primary.clone(),
+            author_pubkey: "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93".to_string(),
+            author_display_name: None,
+            author_picture_url: None,
+            kind: 30023,
+            created_at: 1716000000,
+            tags: vec![
+                vec!["d".to_string(), "the-internet-left-me".to_string()],
+                vec!["title".to_string(), article_expected_title().unwrap_or("").to_string()],
+            ],
+            content: "Long-form article body.".to_string(),
+        };
+        (primary, row)
     }
 
-    fn short_note_dto() -> Value {
-        json!({
-            "id": note_event_id(),
-            "author_pubkey": showcase_pubkey(),
-            "kind": 1,
-            "created_at": 1716000001_u64,
-            "tags": [],
-            "content": "Relay-backed pablof7z note."
-        })
+    fn short_note_row() -> (String, ClaimedEventRow) {
+        let primary = note_event_id().to_string();
+        let row = ClaimedEventRow {
+            primary_id: primary.clone(),
+            id: primary.clone(),
+            author_pubkey: showcase_pubkey().to_string(),
+            author_display_name: None,
+            author_picture_url: None,
+            kind: 1,
+            created_at: 1716000001,
+            tags: vec![],
+            content: "Relay-backed pablof7z note.".to_string(),
+        };
+        (primary, row)
     }
 
-    fn highlight_dto() -> Value {
-        json!({
-            "id": highlight_event_id(),
-            "author_pubkey": showcase_pubkey(),
-            "kind": 9802,
-            "created_at": 1716000002_u64,
-            "tags": [["r", "https://pablof7z.com"]],
-            "content": "Vibe-coding is what brought me back to programming."
-        })
+    fn highlight_row() -> (String, ClaimedEventRow) {
+        let primary = highlight_event_id().to_string();
+        let row = ClaimedEventRow {
+            primary_id: primary.clone(),
+            id: primary.clone(),
+            author_pubkey: showcase_pubkey().to_string(),
+            author_display_name: None,
+            author_picture_url: None,
+            kind: 9802,
+            created_at: 1716000002,
+            tags: vec![vec!["r".to_string(), "https://pablof7z.com".to_string()]],
+            content: "Vibe-coding is what brought me back to programming.".to_string(),
+        };
+        (primary, row)
     }
 
     #[test]
@@ -282,16 +264,16 @@ mod tests {
     }
 
     #[test]
-    fn article_dto_resolves_to_article_projection() {
-        let primary = article_primary_id();
-        let snap = snapshot_with(vec![(primary, article_dto())]);
+    fn article_row_resolves_to_article_projection() {
+        let (primary, row) = article_row();
+        let snap = snapshot_with(vec![(primary.clone(), row)]);
 
         let mut host = EmbedHostState::new();
-        host.update_from_snapshot(&snap);
+        host.update_from_typed(&snap);
 
         let env = host
             .current_envelopes()
-            .get(primary)
+            .get(&primary)
             .expect("article envelope should be present");
         match &env.projection {
             EmbedKindProjection::Article(a) => {
@@ -304,79 +286,87 @@ mod tests {
     }
 
     #[test]
-    fn short_note_dto_resolves_to_short_note_projection() {
-        let primary = note_event_id();
-        let snap = snapshot_with(vec![(primary, short_note_dto())]);
+    fn short_note_row_resolves_to_short_note_projection() {
+        let (primary, row) = short_note_row();
+        let snap = snapshot_with(vec![(primary.clone(), row)]);
 
         let mut host = EmbedHostState::new();
-        host.update_from_snapshot(&snap);
+        host.update_from_typed(&snap);
 
         let env = host
             .current_envelopes()
-            .get(primary)
+            .get(&primary)
             .expect("short note envelope should be present");
         assert!(matches!(env.projection, EmbedKindProjection::ShortNote(_)));
     }
 
     #[test]
-    fn highlight_dto_resolves_to_highlight_projection() {
-        let primary = highlight_event_id();
-        let snap = snapshot_with(vec![(primary, highlight_dto())]);
+    fn highlight_row_resolves_to_highlight_projection() {
+        let (primary, row) = highlight_row();
+        let snap = snapshot_with(vec![(primary.clone(), row)]);
 
         let mut host = EmbedHostState::new();
-        host.update_from_snapshot(&snap);
+        host.update_from_typed(&snap);
 
         let env = host
             .current_envelopes()
-            .get(primary)
+            .get(&primary)
             .expect("highlight envelope should be present");
         assert!(matches!(env.projection, EmbedKindProjection::Highlight(_)));
     }
 
     #[test]
-    fn malformed_dto_skipped_without_panic() {
-        let primary = note_event_id();
-        let snap = snapshot_with(vec![(
-            primary,
-            json!({"id": "x", "author_pubkey": null, "kind": 1, "created_at": 0, "tags": [], "content": ""}),
-        )]);
+    fn malformed_row_skipped_without_panic() {
+        // A row with an empty author_pubkey is considered malformed and is skipped.
+        let primary = note_event_id().to_string();
+        let row = ClaimedEventRow {
+            primary_id: primary.clone(),
+            id: primary.clone(),
+            author_pubkey: String::new(), // empty → skipped
+            author_display_name: None,
+            author_picture_url: None,
+            kind: 1,
+            created_at: 0,
+            tags: vec![],
+            content: String::new(),
+        };
+        let snap = snapshot_with(vec![(primary, row)]);
 
         let mut host = EmbedHostState::new();
-        host.update_from_snapshot(&snap);
+        host.update_from_typed(&snap);
 
         assert!(
             host.is_empty(),
-            "malformed dto must be silently skipped (D6)"
+            "malformed row must be silently skipped (D6)"
         );
     }
 
     #[test]
-    fn snapshot_without_claimed_events_leaves_host_untouched() {
+    fn empty_model_leaves_host_untouched() {
         let mut host = EmbedHostState::new();
         // First load a real entry.
-        let primary = note_event_id();
-        host.update_from_snapshot(&snapshot_with(vec![(primary, short_note_dto())]));
+        let (primary, row) = short_note_row();
+        host.update_from_typed(&snapshot_with(vec![(primary.clone(), row)]));
         assert_eq!(host.len(), 1);
 
-        // A snapshot without the projection key should NOT clear existing entries
-        // — only an empty projections.claimed_events object would.
-        host.update_from_snapshot(&json!({"projections": {}}));
-        assert_eq!(host.len(), 1, "missing projection must not wipe state");
+        // An empty model (no claimed_events entries) should NOT wipe state.
+        host.update_from_typed(&GalleryTypedSnapshot::default());
+        assert_eq!(host.len(), 1, "empty model must not wipe state");
     }
 
     #[test]
     fn replacement_snapshot_replaces_state() {
         let mut host = EmbedHostState::new();
-        let primary_a = note_event_id();
-        let primary_b = article_primary_id();
+        let (primary_a, row_a) = short_note_row();
+        let (primary_b, row_b) = article_row();
 
-        host.update_from_snapshot(&snapshot_with(vec![(primary_a, short_note_dto())]));
-        assert!(host.current_envelopes().contains_key(primary_a));
+        host.update_from_typed(&snapshot_with(vec![(primary_a.clone(), row_a)]));
+        assert!(host.current_envelopes().contains_key(&primary_a));
 
         // Second snapshot drops A and has B — latest wins.
-        host.update_from_snapshot(&snapshot_with(vec![(primary_b, article_dto())]));
-        assert!(!host.current_envelopes().contains_key(primary_a));
-        assert!(host.current_envelopes().contains_key(primary_b));
+        host.update_from_typed(&snapshot_with(vec![(primary_b.clone(), row_b)]));
+        assert!(!host.current_envelopes().contains_key(&primary_a));
+        assert!(host.current_envelopes().contains_key(&primary_b));
     }
 }
 

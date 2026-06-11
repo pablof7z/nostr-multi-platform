@@ -37,11 +37,10 @@ use nmp_gallery_tui::{
     data::{GalleryData, LiveProfileMap},
     embed_host::EmbedHostState,
     gallery,
-    live::{parse_snapshot, primary_pubkey, LiveGallerySource, LiveKernel, LiveKernelSink},
+    live::{primary_pubkey, GalleryTypedSnapshot, LiveGallerySource, LiveKernel, LiveKernelSink},
     render::{self, EmbedFrameContext},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use serde_json::Value;
 
 const EMBED_CONSUMER_ID: &str = "nmp-gallery-tui.embed";
 
@@ -61,7 +60,7 @@ struct Args {
 
 enum GalleryEvent {
     Input(Event),
-    Snapshot(Box<Value>),
+    Snapshot(Box<GalleryTypedSnapshot>),
     Quit,
 }
 
@@ -174,7 +173,7 @@ fn main() -> io::Result<()> {
 fn run_smoke(
     sink: &Arc<LiveKernelSink>,
     host: &mut EmbedHostState,
-    snapshot_rx: std::sync::mpsc::Receiver<String>,
+    snapshot_rx: std::sync::mpsc::Receiver<Vec<u8>>,
     timeout: Duration,
 ) -> i32 {
     use nmp_core::nip19::{decode_naddr, decode_nevent, decode_note};
@@ -258,19 +257,17 @@ fn run_smoke(
     while started.elapsed() < timeout && resolved_ids.len() < targets.len() {
         let remaining = timeout - started.elapsed();
         match snapshot_rx.recv_timeout(remaining) {
-            Ok(payload) => {
-                let Some(value) = parse_snapshot(&payload) else {
-                    continue;
-                };
+            Ok(frame_bytes) => {
+                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes);
                 snapshot_tick += 1;
-                host.update_from_snapshot(&value);
+                host.update_from_typed(&snap);
 
                 // Re-claim on EVERY snapshot tick until claims_issued.
                 // The kernel's claim_event no-ops when !relays_ready
                 // (W1 open-Q #3), so we keep trying until at least one
                 // relay is connected — at which point the OneshotApi
                 // interest registers and the planner compiles a wire REQ.
-                if !claims_issued && any_relay_connected(&value) {
+                if !claims_issued && snap.any_relay_connected() {
                     println!("  + relay connected — claims firing on tick #{snapshot_tick}");
                     for t in &targets {
                         println!("    claim: {}", t.uri);
@@ -322,14 +319,14 @@ fn run_smoke(
     println!();
     if unresolved.is_empty() {
         println!(
-            "✅ ALL {} embed targets resolved in {:.2}s",
+            "ALL {} embed targets resolved in {:.2}s",
             targets.len(),
             started.elapsed().as_secs_f32()
         );
         0
     } else {
         println!(
-            "❌ {}/{} targets unresolved after {:.2}s:",
+            "{}/{} targets unresolved after {:.2}s:",
             unresolved.len(),
             targets.len(),
             started.elapsed().as_secs_f32()
@@ -354,30 +351,6 @@ fn run_smoke(
         }
         1
     }
-}
-
-fn any_relay_connected(snapshot: &Value) -> bool {
-    relay_status_array(snapshot)
-        .map(|relays| {
-            relays
-                .iter()
-                .any(|r| r.get("connection").and_then(Value::as_str) == Some("connected"))
-        })
-        .unwrap_or(false)
-}
-
-fn relay_status_array(snapshot: &Value) -> Option<&Vec<Value>> {
-    snapshot
-        .get("relay_statuses")
-        .and_then(Value::as_array)
-        .or_else(|| {
-            snapshot
-                .get("projections")
-                .and_then(|p| p.get("relay_diagnostics"))
-                .and_then(|d| d.get("relays"))
-                .and_then(Value::as_array)
-        })
-        .or_else(|| snapshot.get("relay_status").and_then(Value::as_array))
 }
 
 fn projection_label(p: &nmp_content::embed_projection::EmbedKindProjection) -> &'static str {
@@ -487,7 +460,7 @@ fn run_terminal(
     sink: &Arc<LiveKernelSink>,
     host: &mut EmbedHostState,
     live_profiles: &mut LiveProfileMap,
-    snapshot_rx: std::sync::mpsc::Receiver<String>,
+    snapshot_rx: std::sync::mpsc::Receiver<Vec<u8>>,
 ) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -519,7 +492,7 @@ fn drive(
     sink: &Arc<LiveKernelSink>,
     host: &mut EmbedHostState,
     live_profiles: &mut LiveProfileMap,
-    snapshot_rx: std::sync::mpsc::Receiver<String>,
+    snapshot_rx: std::sync::mpsc::Receiver<Vec<u8>>,
 ) -> io::Result<()> {
     let mut selected_index = gallery::component_index(&args.component);
     let mut profile_claims = VisibleProfileClaims::default();
@@ -586,8 +559,8 @@ fn drive(
                 // Other input events (mouse, etc.) — ignore.
             }
             Ok(GalleryEvent::Snapshot(snapshot)) => {
-                let new_authors = host.update_from_snapshot(&snapshot);
-                live_profiles.update_from_snapshot(&snapshot);
+                let new_authors = host.update_from_typed(&snapshot);
+                live_profiles.update_from_typed(&snapshot);
                 claim_profiles_for(sink, &new_authors);
                 // Coalesce any additional snapshots that have already piled
                 // up so we don't redraw N times for N quick ticks. Latest
@@ -595,8 +568,8 @@ fn drive(
                 while let Ok(extra) = rx.try_recv() {
                     match extra {
                         GalleryEvent::Snapshot(next) => {
-                            let more = host.update_from_snapshot(&next);
-                            live_profiles.update_from_snapshot(&next);
+                            let more = host.update_from_typed(&next);
+                            live_profiles.update_from_typed(&next);
                             claim_profiles_for(sink, &more);
                         }
                         other => {
@@ -667,7 +640,7 @@ fn handle_input_after_snapshot(ev: Event, selected_index: &mut usize) {
 }
 
 /// Fire `claim_profile` for each author whose kind:0 hasn't arrived in
-/// `claimed_events.author_display_name` yet. `update_from_snapshot`
+/// `claimed_events.author_display_name` yet. `update_from_typed`
 /// returns the deduped pubkey list each tick; we let the kernel's
 /// per-(pubkey, consumer_id) refcounting dedup across ticks — re-claiming
 /// the same author on every snapshot is a near-no-op once kind:0 is
@@ -717,13 +690,14 @@ fn spawn_input_thread(tx: Sender<GalleryEvent>) {
     });
 }
 
-fn spawn_snapshot_thread(tx: Sender<GalleryEvent>, rx: std::sync::mpsc::Receiver<String>) {
+fn spawn_snapshot_thread(tx: Sender<GalleryEvent>, rx: std::sync::mpsc::Receiver<Vec<u8>>) {
     thread::spawn(move || {
-        for payload in rx {
-            let Some(value) = parse_snapshot(&payload) else {
-                continue;
-            };
-            if tx.send(GalleryEvent::Snapshot(Box::new(value))).is_err() {
+        for frame_bytes in rx {
+            let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes);
+            if tx
+                .send(GalleryEvent::Snapshot(Box::new(snap)))
+                .is_err()
+            {
                 break;
             }
         }

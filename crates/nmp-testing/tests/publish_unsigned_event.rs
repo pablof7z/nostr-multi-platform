@@ -29,7 +29,7 @@
 //!    file's coverage of that primitive is independent of which FFI door
 //!    sends the toast.
 
-use nmp_core::decode_snapshot_payload;
+use nmp_core::decode_snapshot_envelope;
 use nmp_core::testing::ActorCommand;
 use nmp_nip01::Note;
 use std::time::Duration;
@@ -107,19 +107,17 @@ fn unsigned_event_serde_round_trips_for_action_payload() {
 /// Drain `upd_rx` until either a snapshot containing `last_error_toast` with
 /// the given expected string appears, or the deadline passes.
 ///
-/// V-105: uses typed JSON field navigation via `snapshot_last_error_toast`
+/// V-105 / PR-B: uses the typed Tier-3 `last_error_toast` envelope field
 /// instead of `snapshot.to_string().contains(expected)`.
 fn find_toast_in_updates(rx: &std::sync::mpsc::Receiver<Vec<u8>>, expected: &str) -> bool {
-    use nmp_core::testing::snapshot_last_error_toast;
-
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     while std::time::Instant::now() < deadline {
         match rx.recv_timeout(Duration::from_millis(200)) {
             Ok(frame) => {
-                if let Ok(snapshot) = decode_snapshot_payload(&frame) {
-                    // Typed field access: read `last_error_toast` as a string
-                    // rather than scanning the raw JSON bytes for a substring.
-                    if let Some(toast) = snapshot_last_error_toast(&snapshot) {
+                // PR-B: `last_error_toast` is a typed Tier-3 envelope field —
+                // no JSON payload exists on the wire any more.
+                if let Ok(envelope) = decode_snapshot_envelope(&frame) {
+                    if let Some(toast) = envelope.last_error_toast {
                         if toast.contains(expected) {
                             return true;
                         }

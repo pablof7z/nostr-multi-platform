@@ -212,8 +212,14 @@ fn nofs_projection(snapshot: &Value) -> nmp_core::TypedProjectionData {
     }
 }
 
-fn flatbuffer_payload(snapshot: Value, typed: &[nmp_core::TypedProjectionData]) -> UpdatePayload {
-    UpdatePayload::FlatBuffers(nmp_core::encode_snapshot_with_typed(snapshot, typed))
+fn flatbuffer_payload(typed: &[nmp_core::TypedProjectionData]) -> UpdatePayload {
+    // PR-B: frames carry the typed Tier-3 envelope + typed sidecar only — the
+    // generic `payload:Value` slot no longer exists in the encoder, so "the
+    // generic subtree must not win" is now a compile-time impossibility.
+    UpdatePayload::FlatBuffers(nmp_core::encode_snapshot_frame(
+        &nmp_core::SnapshotEnvelope::default(),
+        typed,
+    ))
 }
 
 /// ADR-0038 Commitment 4: when a typed `NOFS` sidecar is present for
@@ -226,16 +232,8 @@ fn flatbuffer_payload(snapshot: Value, typed: &[nmp_core::TypedProjectionData]) 
 fn prefers_typed_home_feed_sidecar_over_generic_projection() {
     let source = op_feed_snapshot_value();
     let typed = vec![nofs_projection(&source)];
-    // The generic projection carries an unmistakable sentinel so we can
-    // prove it was overridden by the typed path.
-    let generic = serde_json::json!({
-        "metrics": { "events_rx": 1 },
-        "projections": {
-            "nmp.feed.home": { "sentinel": "generic-must-not-win" }
-        }
-    });
 
-    let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(generic, &typed));
+    let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&typed));
 
     // The home feed must equal the typed source re-serialized (the typed decode
     // round-trips losslessly through `OpFeedSnapshot` serde), not the generic
@@ -268,18 +266,9 @@ fn prefers_typed_home_feed_sidecar_over_generic_projection() {
 fn typed_home_feed_sidecar_produces_feed_rows() {
     let source = op_feed_snapshot_value();
 
-    // Typed path: NOFS sidecar present, generic subtree is a sentinel that must
-    // be ignored.
-    let typed_only = serde_json::json!({
-        "metrics": { "events_rx": 1 },
-        "projections": {
-            "nmp.feed.home": { "sentinel": "generic-must-not-win" }
-        }
-    });
-    let typed_snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(
-        typed_only,
-        &[nofs_projection(&source)],
-    ));
+    // Typed path: NOFS sidecar present (PR-B: no generic subtree exists).
+    let typed_snapshot =
+        SharedSnapshot::from_transport_payload(&flatbuffer_payload(&[nofs_projection(&source)]));
 
     let typed_rows = TimelineRow::from_snapshot(
         typed_snapshot.home_feed.as_ref().expect("typed home feed"),
@@ -292,14 +281,7 @@ fn typed_home_feed_sidecar_produces_feed_rows() {
 /// window (generic fallback) is closed.
 #[test]
 fn no_typed_sidecar_yields_none_home_feed() {
-    let generic = serde_json::json!({
-        "metrics": { "events_rx": 1 },
-        "projections": {
-            "nmp.feed.home": { "cards": [], "legacy": true }
-        }
-    });
-
-    let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(generic, &[]));
+    let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&[]));
 
     assert_eq!(
         snapshot.home_feed,
@@ -320,14 +302,8 @@ fn ignores_typed_projection_with_wrong_schema_id() {
         file_identifier: "NFTS".to_string(),
         payload: vec![0x00, 0x01, 0x02],
     }];
-    let generic = serde_json::json!({
-        "metrics": { "events_rx": 1 },
-        "projections": {
-            "nmp.feed.home": { "kept": "generic" }
-        }
-    });
 
-    let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(generic, &typed));
+    let snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(&typed));
 
     assert_eq!(
         snapshot.home_feed,

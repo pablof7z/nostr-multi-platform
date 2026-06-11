@@ -1,47 +1,50 @@
-//! ADR-0044 — the dual-emit `SnapshotFrame` encoder that carries the typed
-//! Tier-3 envelope fields alongside the generic JSON `payload`.
+//! ADR-0044 — the Tier-3 `SnapshotFrame` encoder that carries the typed
+//! projection sidecar and the typed Tier-3 envelope fields.
 //!
 //! Split out of `update_envelope.rs` to keep that file under the LOC ceiling.
 //! The actual per-field offset population lives in
 //! `crate::kernel::KernelSnapshot::encode_tier3` (where the struct fields are
 //! visible); this module owns only the assembly of the final `SnapshotFrame`
 //! table — the transport layer's `SnapshotFrame` shape.
+//!
+//! PR-B (#991/#979): the `payload:Value` slot is now set to `None`. The
+//! generic JSON Value tree is no longer emitted. Every Rust shell (chirp-tui,
+//! chirp-desktop, nmp-gallery TUI, nmp-gallery desktop) reads typed-first from
+//! the Tier-3 `SnapshotEnvelope` + per-projection typed sidecars.
+//! iOS, Android, and web/TS are unaffected — the `(deprecated)` field reads as
+//! absent (FlatBuffers vtable default) when unset, which their existing
+//! typed-first readers already handle per ADR-0037 Commitment 4.
 
 use super::{
-    encode_typed_projections, encode_value, TypedProjectionData, UpdateFrameBytes,
+    encode_typed_projections, TypedProjectionData, UpdateFrameBytes,
     SNAPSHOT_SCHEMA_VERSION,
 };
 use crate::transport::wire as fb;
 use flatbuffers::FlatBufferBuilder;
-use serde_json::Value;
 
 /// Encode a snapshot with the typed projection sidecar AND the typed Tier-3
-/// envelope fields (ADR-0044).
+/// envelope fields (ADR-0044). The generic `payload:Value` slot is intentionally
+/// left absent (PR-B #991/#979: emission zeroed).
 ///
-/// Additive over [`super::encode_snapshot_with_typed`]: it writes the same
-/// generic `payload` Value and `typed_projections` sidecar, then *also*
-/// populates the first-class typed `SnapshotFrame` envelope fields (`rev`,
-/// `running`, `metrics`, `relay_statuses`, …) directly from the
-/// `KernelSnapshot` struct — not by re-walking the JSON tree. The two
-/// representations are emitted in parallel (dual-emit, per ADR-0037 Commitment
-/// 4 applied to Tier-3): an un-migrated host keeps reading `payload`; a
-/// migrated host prefers the typed fields. The kernel is the only caller; the
-/// `KernelSnapshot` type is crate-private.
+/// All Rust shells read typed-first; the deprecated `payload` field is absent in
+/// the wire bytes. The `snapshot: Value` parameter has been removed — the kernel
+/// no longer needs to serialise the full JSON snapshot for transport. The field
+/// is retained in the `.fbs` schema (marked `deprecated`) for schema
+/// compatibility with old pre-PR-B binaries; new readers never read it.
 #[must_use]
 pub(crate) fn encode_snapshot_with_envelope(
-    snapshot: Value,
     typed: &[TypedProjectionData],
     envelope: &crate::kernel::KernelSnapshot,
 ) -> UpdateFrameBytes {
     let mut builder = FlatBufferBuilder::new();
-    let payload = encode_value(&mut builder, &snapshot);
     let typed_projections = encode_typed_projections(&mut builder, typed);
     let tier3 = envelope.encode_tier3(&mut builder);
     let snapshot = fb::SnapshotFrame::create(
         &mut builder,
         &fb::SnapshotFrameArgs {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
-            payload: Some(payload),
+            // PR-B: the deprecated `payload:Value` slot no longer exists in
+            // the regenerated bindings — zeroing is compile-time guaranteed.
             typed_projections,
             rev: tier3.rev,
             kernel_schema_version: tier3.kernel_schema_version,

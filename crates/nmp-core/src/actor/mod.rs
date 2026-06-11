@@ -1489,7 +1489,7 @@ pub fn run_actor_with_observers(
     // (with the correct storage path) is still built below, after `recv()`.
     //
     // tick.rs `emit_now` is intentionally used here rather than an inline
-    // `encode_snapshot_value` so the frame travels the same code path as
+    // `encode_snapshot_frame` so the frame travels the same code path as
     // every other snapshot (FlatBuffers envelope, `SNAPSHOT_SCHEMA_VERSION`,
     // `running=false` field).  The `last_emit` instant is not available yet
     // (it is initialised after kernel construction below); we pass the

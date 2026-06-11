@@ -482,13 +482,6 @@ impl WasmRuntime {
         self.reducer.borrow().recent_routing_decisions_json()
     }
 
-    /// Build the inner snapshot `v` payload. Used by tests that want to
-    /// inspect the snapshot without unwrapping the envelope.
-    #[cfg(test)]
-    pub(crate) fn snapshot_value(&self) -> serde_json::Value {
-        crate::snapshot::build_snapshot_value(&self.reducer.borrow(), &self.meta.borrow())
-    }
-
     /// V-01 Stage 3c — start an async publish for an `AppAction`. Wasm32-only.
     ///
     /// Returns a [`std::future::Future`] resolving to the [`WorkerEvent`] the

@@ -3401,7 +3401,6 @@ pub mod nmp {
 
         impl<'a> SnapshotFrame<'a> {
             pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-            pub const VT_PAYLOAD: ::flatbuffers::VOffsetT = 6;
             pub const VT_TYPED_PROJECTIONS: ::flatbuffers::VOffsetT = 8;
             pub const VT_REV: ::flatbuffers::VOffsetT = 10;
             pub const VT_KERNEL_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 12;
@@ -3474,9 +3473,6 @@ pub mod nmp {
                 if let Some(x) = args.typed_projections {
                     builder.add_typed_projections(x);
                 }
-                if let Some(x) = args.payload {
-                    builder.add_payload(x);
-                }
                 builder.add_schema_version(args.schema_version);
                 if let Some(x) = args.no_configured_relays {
                     builder.add_no_configured_relays(x);
@@ -3494,18 +3490,6 @@ pub mod nmp {
                     self._tab
                         .get::<u32>(SnapshotFrame::VT_SCHEMA_VERSION, Some(1))
                         .unwrap()
-                }
-            }
-            #[inline]
-            pub fn payload(&self) -> Option<Value<'a>> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<Value>>(
-                        SnapshotFrame::VT_PAYLOAD,
-                        None,
-                    )
                 }
             }
             #[inline]
@@ -3742,11 +3726,6 @@ pub mod nmp {
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
                     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<Value>>(
-                        "payload",
-                        Self::VT_PAYLOAD,
-                        false,
-                    )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TypedProjection>>,
                     >>("typed_projections", Self::VT_TYPED_PROJECTIONS, false)?
@@ -3822,7 +3801,6 @@ pub mod nmp {
         }
         pub struct SnapshotFrameArgs<'a> {
             pub schema_version: u32,
-            pub payload: Option<::flatbuffers::WIPOffset<Value<'a>>>,
             pub typed_projections: Option<
                 ::flatbuffers::WIPOffset<
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TypedProjection<'a>>>,
@@ -3872,7 +3850,6 @@ pub mod nmp {
             fn default() -> Self {
                 SnapshotFrameArgs {
                     schema_version: 1,
-                    payload: None,
                     typed_projections: None,
                     rev: 0,
                     kernel_schema_version: 0,
@@ -3903,14 +3880,6 @@ pub mod nmp {
             pub fn add_schema_version(&mut self, schema_version: u32) {
                 self.fbb_
                     .push_slot::<u32>(SnapshotFrame::VT_SCHEMA_VERSION, schema_version, 1);
-            }
-            #[inline]
-            pub fn add_payload(&mut self, payload: ::flatbuffers::WIPOffset<Value<'b>>) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<Value>>(
-                        SnapshotFrame::VT_PAYLOAD,
-                        payload,
-                    );
             }
             #[inline]
             pub fn add_typed_projections(
@@ -4092,7 +4061,6 @@ pub mod nmp {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("SnapshotFrame");
                 ds.field("schema_version", &self.schema_version());
-                ds.field("payload", &self.payload());
                 ds.field("typed_projections", &self.typed_projections());
                 ds.field("rev", &self.rev());
                 ds.field("kernel_schema_version", &self.kernel_schema_version());

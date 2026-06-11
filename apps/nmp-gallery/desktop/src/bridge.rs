@@ -1,11 +1,11 @@
 //! Live kernel bridge — wraps `LiveKernel` (nmp_ffi path + relay connections)
-//! and exposes a push-driven snapshot channel to the iced subscription.
+//! and exposes a push-driven typed-snapshot channel to the iced subscription.
 //!
 //! Uses the same kernel flows as `nmp-gallery-tui`: `LiveKernel::new()` boots
 //! the actor, registers `nmp_app_gallery` defaults via `register_defaults`,
-//! adds the gallery relays, and installs the JSON push callback. The reader
-//! thread parses inbound JSON snapshots via `parse_snapshot` and sends them
-//! on a tokio mpsc channel.
+//! adds the gallery relays, and installs the raw-bytes push callback. The reader
+//! thread decodes inbound FlatBuffers frames via `GalleryTypedSnapshot::from_frame_bytes`
+//! and sends them on a tokio mpsc channel.
 //!
 //! Doctrine: D8 — no polling. The reader thread blocks on the kernel's
 //! snapshot channel, and the iced subscription receives directly from the
@@ -13,23 +13,22 @@
 
 use std::thread;
 
-use nmp_gallery_tui::live::{LiveKernel, LiveKernelSink, parse_snapshot};
-use serde_json::Value;
+use nmp_gallery_tui::live::{GalleryTypedSnapshot, LiveKernel, LiveKernelSink};
 use tokio::sync::mpsc;
 
 pub struct GalleryBridge {
     pub sink: LiveKernelSink,
     // Keep the kernel alive — its Drop frees the NmpApp the sink points into.
     _kernel: LiveKernel,
-    /// Receiver for push-driven snapshots. Owned by bridge; the reader thread
+    /// Receiver for push-driven typed snapshots. Owned by bridge; the reader thread
     /// sends on the corresponding sender. Unbounded channel keeps the latest
     /// snapshot flowing; receiver is taken by the iced subscription.
-    snapshot_rx: Option<mpsc::UnboundedReceiver<Value>>,
+    snapshot_rx: Option<mpsc::UnboundedReceiver<GalleryTypedSnapshot>>,
 }
 
 impl GalleryBridge {
     /// Boot the live kernel, register gallery defaults, seed relays, and
-    /// start the reader thread with a push-driven snapshot channel.
+    /// start the reader thread with a push-driven typed-snapshot channel.
     /// Panics on kernel boot failure (gallery is a dev tool; a failed boot
     /// is a hard error).
     pub fn start() -> Self {
@@ -43,13 +42,11 @@ impl GalleryBridge {
             .expect("snapshot receiver available immediately after LiveKernel::new");
 
         thread::spawn(move || {
-            for payload in rx {
-                let Some(v) = parse_snapshot(&payload) else {
-                    continue;
-                };
+            for frame_bytes in rx {
+                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes);
                 // Send on the tokio channel. Ignore send error (subscription
                 // dropped); the loop exits gracefully.
-                let _ = snapshot_tx.send(v);
+                let _ = snapshot_tx.send(snap);
             }
         });
 
@@ -76,7 +73,9 @@ impl GalleryBridge {
 
     /// Take the snapshot receiver for use in the iced subscription. Called
     /// once at startup; subsequent calls return None.
-    pub fn take_snapshot_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<Value>> {
+    pub fn take_snapshot_receiver(
+        &mut self,
+    ) -> Option<mpsc::UnboundedReceiver<GalleryTypedSnapshot>> {
         self.snapshot_rx.take()
     }
 }

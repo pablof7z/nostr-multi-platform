@@ -161,10 +161,11 @@ pub(crate) use thread_view_fb::encode_thread_view;
 // (from `profile_fb`, reused by `claimed_profiles` / `resolved_profiles`) are
 // named in the inline mappings in `builtins_profiles.rs`, so they are
 // re-exported here alongside their `Model` + encode entry points.
-pub(crate) use claimed_events_fb::{
-    encode_claimed_events, ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER,
+pub use claimed_events_fb::{
+    ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER,
     CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
 };
+pub(crate) use claimed_events_fb::encode_claimed_events;
 pub(crate) use claimed_profiles_fb::{
     encode_claimed_profiles, ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER,
     CLAIMED_PROFILES_SCHEMA_ID, CLAIMED_PROFILES_SCHEMA_VERSION,
@@ -198,28 +199,30 @@ pub(crate) use action_results_fb::encode_action_results;
 // Only the internal encoder symbols stay as `pub(crate)`.
 pub(crate) use action_stages_fb::encode_action_stages;
 pub(crate) use relay_diagnostics_fb::encode_relay_diagnostics;
-pub(crate) use signed_events_fb::{
-    encode_signed_events, SignedEventsModel, SIGNED_EVENTS_FILE_IDENTIFIER, SIGNED_EVENTS_SCHEMA_ID,
-    SIGNED_EVENTS_SCHEMA_VERSION,
+pub(crate) use signed_events_fb::encode_signed_events;
+// PR-B final: the signed_events decode surface is promoted to `pub` so
+// out-of-crate consumers (e.g. nmp-ffi's sign_event_for_return tests) can
+// read the typed sidecar instead of the deleted JSON payload.
+pub use signed_events_fb::{
+    decode_signed_events, SignedEventRow, SignedEventsModel, SIGNED_EVENTS_FILE_IDENTIFIER,
+    SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
 };
 
 #[cfg(test)]
 pub(crate) use relay_role_options_fb::decode_relay_role_options;
-// Wave C profile/event cluster test-only decoders.
-#[cfg(test)]
-pub(crate) use claimed_events_fb::decode_claimed_events;
+// Wave C profile/event cluster — `decode_claimed_events` promoted to unconditional
+// pub (nmp-gallery typed-sidecar migration); the others remain test-only.
+pub use claimed_events_fb::decode_claimed_events;
 #[cfg(test)]
 pub(crate) use claimed_profiles_fb::decode_claimed_profiles;
 #[cfg(test)]
 pub(crate) use mention_profiles_fb::decode_mention_profiles;
 pub use resolved_profiles_fb::decode_resolved_profiles;
-// Wave C action-lifecycle + relay-diagnostics cluster — action_lifecycle and
-// signed_events remain test-only; action_stages and relay_diagnostics are now
-// public (promoted for chirp-tui/chirp-desktop typed-first migration, PR-B).
+// Wave C action-lifecycle + relay-diagnostics cluster — action_lifecycle
+// remains test-only; action_stages, relay_diagnostics, and signed_events are
+// public (promoted for the typed-first migration, PR-B).
 #[cfg(test)]
 pub(crate) use action_lifecycle_fb::decode_action_lifecycle;
-#[cfg(test)]
-pub(crate) use signed_events_fb::decode_signed_events;
 
 // --- PUBLIC typed-projection decode surface --------------------------------
 //

@@ -317,3 +317,7 @@ fn publish_history_from_queue(
         .collect()
 }
 
+
+#[cfg(test)]
+#[path = "feature_snapshot_typed_roundtrip_tests.rs"]
+mod roundtrip_tests;

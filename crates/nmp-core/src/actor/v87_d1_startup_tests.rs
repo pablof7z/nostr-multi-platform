@@ -26,7 +26,7 @@ mod tests {
 
     use crate::actor::{run_actor, ActorCommand};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
-    use crate::update_envelope::{decode_update_frame, UpdateEnvelope};
+    use crate::update_envelope::{decode_snapshot_envelope, SnapshotEnvelope};
 
     // ─── helper ─────────────────────────────────────────────────────────────
 
@@ -41,12 +41,13 @@ mod tests {
         (cmd_tx, upd_rx)
     }
 
-    /// Drain all frames currently in `upd_rx` and decode them to
-    /// `UpdateEnvelope::Snapshot` values.  Returns all snapshots received.
+    /// PR-B (#991/#979): drain frames from `upd_rx` and decode them via the
+    /// typed `SnapshotEnvelope` path (payload is no longer emitted on the wire).
+    /// Returns the typed `SnapshotEnvelope` for every snapshot frame received.
     fn drain_snapshots(
         upd_rx: &mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
         timeout: Duration,
-    ) -> Vec<serde_json::Value> {
+    ) -> Vec<SnapshotEnvelope> {
         let deadline = std::time::Instant::now() + timeout;
         let mut snapshots = Vec::new();
         loop {
@@ -56,9 +57,12 @@ mod tests {
             }
             match upd_rx.recv_timeout(remaining) {
                 Ok(frame) => {
-                    if let Ok(UpdateEnvelope::Snapshot(v)) = decode_update_frame(&frame) {
-                        snapshots.push(v);
+                    if let Ok(env) = decode_snapshot_envelope(&frame) {
+                        snapshots.push(env);
                     }
+                    // Panic frames or malformed bytes are ignored (no payload on
+                    // the channel in a healthy test run; a panic would surface as
+                    // a decode error on the typed path).
                 }
                 Err(_) => break,
             }
@@ -90,14 +94,13 @@ mod tests {
              the host sends any command; offline-first.md §3 requires the \
              first snapshot to be unconditional (got 0 frames in 500 ms)"
         );
-        // The pre-flight frame is emitted with `running=false`; the snapshot's
-        // `running` field should be `false` (or absent).
+        // The pre-flight frame is emitted with `running=false`; the typed
+        // envelope's `running` field should be false.
         let first = &snapshots[0];
         assert!(
-            first["running"].is_null() || first["running"] == serde_json::json!(false),
+            !first.running,
             "V-87 #601: pre-flight snapshot must carry running=false, \
-             got running={:?}",
-            first["running"]
+             got running=true"
         );
     }
 
@@ -134,9 +137,7 @@ mod tests {
         // without needing any relay to connect first.
         let snapshots = drain_snapshots(&upd_rx, Duration::from_millis(500));
 
-        let running_snapshot = snapshots
-            .iter()
-            .find(|s| s["running"] == serde_json::json!(true));
+        let running_snapshot = snapshots.iter().find(|s| s.running);
 
         assert!(
             running_snapshot.is_some(),
@@ -181,13 +182,9 @@ mod tests {
              a snapshot-first host"
         );
 
-        // Extract the pre-flight frame's rev.  The `rev` field MUST be present
-        // and > 0; if it reads as null the host guard is a no-op and this test
-        // would pass vacuously — catch that here.
-        let preflight_rev = pre_snapshots[0]["rev"].as_u64().expect(
-            "V-87: pre-flight snapshot must carry a non-null numeric `rev` field; \
-                     got null — the host guard simulation would be a no-op",
-        );
+        // Extract the pre-flight frame's rev.  The `rev` field MUST be > 0;
+        // if it reads as 0 the host guard is a no-op and this test would pass vacuously.
+        let preflight_rev = pre_snapshots[0].rev;
         assert!(
             preflight_rev > 0,
             "V-87: pre-flight rev must be ≥ 1 (got {preflight_rev})"
@@ -223,9 +220,7 @@ mod tests {
         let first_post_start = post_snapshots
             .first()
             .expect("V-87 #601-rev: no post-Start frames received at all within 500 ms");
-        let first_post_start_rev = first_post_start["rev"]
-            .as_u64()
-            .expect("V-87 #601-rev: first post-Start snapshot missing `rev` field");
+        let first_post_start_rev = first_post_start.rev;
 
         assert!(
             first_post_start_rev > preflight_rev,
@@ -241,12 +236,10 @@ mod tests {
         );
 
         // Belt-and-suspenders: also verify the first accepted frame carries running=true.
-        assert_eq!(
-            first_post_start["running"],
-            serde_json::json!(true),
+        assert!(
+            first_post_start.running,
             "V-87 #601-rev: first post-Start frame has rev={first_post_start_rev} > \
-             preflight_rev={preflight_rev} (guard passes) but running is not true: {:?}",
-            first_post_start["running"]
+             preflight_rev={preflight_rev} (guard passes) but running is not true"
         );
 
         let _ = cmd_tx.send(ActorCommand::Shutdown);

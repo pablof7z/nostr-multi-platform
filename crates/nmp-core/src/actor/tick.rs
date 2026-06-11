@@ -93,10 +93,31 @@ mod tests {
     use crate::actor::{run_actor, ActorCommand};
     use crate::app::KernelAction;
     use crate::kernel::Kernel;
-    use crate::update_envelope::{decode_update_frame, UpdateEnvelope, UpdateFrameBytes};
+    use crate::transport::wire as fb;
+    use crate::update_envelope::{
+        decode_snapshot_envelope, decode_snapshot_typed_projections, UpdateFrameBytes,
+    };
     use std::sync::mpsc;
     use std::thread;
     use std::time::{Duration, Instant};
+
+    /// PR-B (#991/#979): decode a frame as a snapshot envelope (Tier-3 typed fields).
+    /// Returns `Some(envelope)` for snapshot frames; panics on malformed input;
+    /// returns `None` for panic frames (so callers can test for unexpected panics).
+    fn decode_as_snapshot(frame: &[u8]) -> Option<crate::update_envelope::SnapshotEnvelope> {
+        assert!(
+            fb::update_frame_buffer_has_identifier(frame),
+            "frame must carry the NMPU identifier"
+        );
+        let root = fb::root_as_update_frame(frame).expect("valid UpdateFrame");
+        match root.kind() {
+            k if k == fb::FrameKind::Panic => None,
+            k if k == fb::FrameKind::Snapshot => {
+                Some(decode_snapshot_envelope(frame).expect("snapshot envelope decode"))
+            }
+            other => panic!("unknown frame kind {}", other.0),
+        }
+    }
 
     /// Verifies that idle ticks do not emit snapshots when kernel state has not
     /// changed (D8: zero false-wakeup allocations after warmup — codex T23 P2).
@@ -166,28 +187,24 @@ mod tests {
 
         let mut snapshots = 0usize;
         while let Ok(frame) = upd_rx.try_recv() {
-            // Every frame MUST decode as the single discriminated type — this
-            // is exactly what each host does.
-            match decode_update_frame(&frame)
-                .unwrap_or_else(|e| panic!("undecodable frame on channel: {e}"))
-            {
-                UpdateEnvelope::Snapshot(v) => {
-                    // Every snapshot MUST carry a schema version so a shell can
-                    // detect a kernel-vs-shell mismatch and degrade (D1). This
-                    // pins the contract as a CI gate — removing the field can
-                    // no longer slip past `serde_json::Value`'s tolerance.
+            // Every frame MUST decode as a valid typed-envelope (PR-B: payload
+            // zeroed, so we use the Tier-3 typed decoder instead of the JSON one).
+            match decode_as_snapshot(&frame) {
+                Some(envelope) => {
+                    // Every snapshot MUST carry a non-zero kernel_schema_version
+                    // so a shell can detect a mismatch and degrade (D1). The
+                    // `SNAPSHOT_SCHEMA_VERSION` constant is 1; check the Tier-3
+                    // typed field (the source of truth after PR-B).
                     assert_eq!(
-                        v["schema_version"],
-                        serde_json::json!(1),
-                        "snapshot frame must carry schema_version=1: {v}"
+                        envelope.kernel_schema_version,
+                        crate::update_envelope::SNAPSHOT_SCHEMA_VERSION,
+                        "snapshot frame must carry kernel_schema_version=1"
                     );
                     snapshots += 1;
                 }
                 // D7 — no panic is induced in this happy-path test; a panic
                 // frame here would be an actor-death regression.
-                UpdateEnvelope::Panic(p) => {
-                    panic!("unexpected actor-death frame on the channel: {}", p.msg)
-                }
+                None => panic!("unexpected actor-death (Panic) frame on the channel"),
             }
         }
 
@@ -244,12 +261,19 @@ mod tests {
 
         let mut snapshots = 0usize;
         while let Ok(frame) = upd_rx.try_recv() {
-            match decode_update_frame(&frame) {
-                Ok(UpdateEnvelope::Snapshot(_)) => snapshots += 1,
-                Ok(UpdateEnvelope::Panic(p)) => {
-                    panic!("unexpected actor-death frame on the channel: {}", p.msg)
+            // PR-B: decode via Tier-3 envelope (payload zeroed).
+            if !fb::update_frame_buffer_has_identifier(&frame) {
+                continue; // malformed — skip
+            }
+            if let Ok(root) = fb::root_as_update_frame(&frame) {
+                match root.kind() {
+                    k if k == fb::FrameKind::Snapshot => snapshots += 1,
+                    k if k == fb::FrameKind::Panic => {
+                        let msg = root.panic().map(|p| p.msg().to_string()).unwrap_or_default();
+                        panic!("unexpected actor-death frame on the channel: {msg}")
+                    }
+                    _ => {}
                 }
-                Err(_) => {}
             }
         }
 
@@ -283,8 +307,9 @@ mod tests {
         let frame = upd_rx
             .recv_timeout(Duration::from_millis(50))
             .expect("running=true view dispatch must emit a snapshot");
+        // PR-B: use Tier-3 typed decoder (payload is no longer emitted on the wire).
         assert!(
-            matches!(decode_update_frame(&frame), Ok(UpdateEnvelope::Snapshot(_))),
+            decode_as_snapshot(&frame).is_some(),
             "regression: running=true + view dispatch emitted a non-snapshot frame"
         );
     }
@@ -323,19 +348,25 @@ mod tests {
         thread::sleep(Duration::from_millis(500));
         let _ = cmd_tx.send(ActorCommand::Shutdown);
 
-        // Drain all snapshots and find the one with activeAccount.
-        // D0: `active_account` is no longer a top-level snapshot field — it is
-        // surfaced through the host-extensible `projections` map under the
-        // built-in key `"active_account"`.
+        // Drain all snapshots and find the one with active_account set.
+        // PR-B (#991/#979): `active_account` is now a Tier-2 built-in typed
+        // projection (KACT file identifier) in the `typed_projections` sidecar —
+        // no longer in the JSON `payload` (which is zeroed). Decode the typed
+        // sidecar and check for a non-None pubkey.
         let mut found_active = false;
         while let Ok(frame) = upd_rx.try_recv() {
-            if let Ok(UpdateEnvelope::Snapshot(snap)) = decode_update_frame(&frame) {
-                if let Some(active) = snap
-                    .get("projections")
-                    .and_then(|projections| projections.get("active_account"))
-                {
-                    if !active.is_null() {
-                        found_active = true;
+            if decode_as_snapshot(&frame).is_none() {
+                continue; // panic frame — already checked above
+            }
+            if let Ok(typed) = decode_snapshot_typed_projections(&frame) {
+                let active_entry = typed
+                    .iter()
+                    .find(|p| p.key == crate::kernel::public_typed_projections::ACTIVE_ACCOUNT_SCHEMA_ID);
+                if let Some(entry) = active_entry {
+                    if let Ok(model) = crate::kernel::public_typed_projections::decode_active_account(&entry.payload) {
+                        if model.pubkey.is_some() {
+                            found_active = true;
+                        }
                     }
                 }
             }

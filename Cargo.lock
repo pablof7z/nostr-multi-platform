@@ -1008,6 +1008,7 @@ dependencies = [
  "serde_json",
  "ureq",
  "vt100",
+ "zeroize",
 ]
 
 [[package]]

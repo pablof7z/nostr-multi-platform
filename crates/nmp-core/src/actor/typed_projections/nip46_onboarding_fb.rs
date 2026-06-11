@@ -119,7 +119,8 @@ pub(crate) fn encode_nip46_onboarding(model: &Nip46OnboardingModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_nip46_onboarding`])
 /// back into a [`Nip46OnboardingModel`]. Returns an error string on any
-/// malformed input.
+/// malformed input. In-crate tests decode the typed sidecar (PR-B: the JSON
+/// payload is no longer emitted).
 #[cfg(test)]
 pub(crate) fn decode_nip46_onboarding(bytes: &[u8]) -> Result<Nip46OnboardingModel, String> {
     if bytes.len() < 8 || !fb::nip_46_onboarding_buffer_has_identifier(bytes) {

@@ -33,8 +33,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nmp_core::{encode_snapshot_value, KernelReducer, SNAPSHOT_SCHEMA_VERSION};
-use serde_json::Value;
+use nmp_core::{
+    encode_snapshot_frame, KernelReducer, RelayStatusEntry, SnapshotEnvelope,
+    SNAPSHOT_SCHEMA_VERSION,
+};
 
 use crate::protocol::RelayBootstrapEntry;
 
@@ -80,45 +82,47 @@ impl RuntimeMeta {
     }
 }
 
-/// Build the test-only JSON view from the kernel + runtime metadata. Runtime
-/// hosts consume [`build_snapshot_bytes`] instead.
-#[cfg(test)]
-pub(crate) fn build_snapshot_value(_reducer: &KernelReducer, meta: &RuntimeMeta) -> Value {
-    let snapshot = build_snapshot_payload_value(meta);
-
-    serde_json::json!({
-        "t": "snapshot",
-        "v": snapshot,
-    })
-}
-
+/// Encode the current kernel + runtime metadata as one FlatBuffers update
+/// frame, using the typed Tier-3 envelope (PR-B #991/#979: the generic
+/// `payload:Value` JSON tree no longer exists on the wire).
+///
+/// The relay bootstrap captured at `Start` surfaces on the Tier-3
+/// `relay_statuses` vector (role + url + `"configured"` connection state —
+/// the only state the wasm runtime can honestly claim until Stage 3b wires
+/// per-relay connection-state observation). `database_name` is a
+/// start-handshake echo with no Tier-3 slot; hosts verify the handshake via
+/// the synchronous `runtime_status` worker event instead.
 pub(crate) fn build_snapshot_bytes(_reducer: &KernelReducer, meta: &RuntimeMeta) -> Vec<u8> {
-    let snapshot = build_snapshot_payload_value(meta);
-    encode_snapshot_value(snapshot)
+    encode_snapshot_frame(&build_snapshot_envelope(meta), &[])
 }
 
-fn build_snapshot_payload_value(meta: &RuntimeMeta) -> Value {
-    serde_json::json!({
-        "schema_version": SNAPSHOT_SCHEMA_VERSION,
-        "rev": meta.rev,
-        "running": meta.started,
-        "database_name": meta.database_name,
-        "projections": {
-            "relay_diagnostics": meta.relay_bootstrap.iter().map(|relay| {
-                serde_json::json!({
-                    "url": relay.url,
-                    "role": relay.role,
-                    // "configured" is the only status the wasm runtime can
-                    // honestly claim until Stage 3b wires per-relay
-                    // connection-state observation through the kernel's
-                    // `RelayHealth` snapshot projection. The native runtime
-                    // surfaces "connected" / "degraded" / "permanent_failure"
-                    // here once the equivalent observer is exposed.
-                    "status": "configured",
-                })
-            }).collect::<Vec<_>>()
-        }
-    })
+/// Build the typed [`SnapshotEnvelope`] from the runtime metadata. Shared by
+/// [`build_snapshot_bytes`] and the native unit tests (which assert on the
+/// envelope struct directly — same fields, no wire hop).
+pub(crate) fn build_snapshot_envelope(meta: &RuntimeMeta) -> SnapshotEnvelope {
+    SnapshotEnvelope {
+        rev: meta.rev,
+        kernel_schema_version: SNAPSHOT_SCHEMA_VERSION,
+        running: meta.started,
+        update_kind: "ViewBatch".to_string(),
+        relay_statuses: meta
+            .relay_bootstrap
+            .iter()
+            .map(|relay| RelayStatusEntry {
+                role: relay.role.clone(),
+                relay_url: relay.url.clone(),
+                // "configured" is the only status the wasm runtime can
+                // honestly claim until Stage 3b wires per-relay
+                // connection-state observation through the kernel's
+                // `RelayHealth` snapshot projection. The native runtime
+                // surfaces "connected" / "degraded" / "permanent_failure"
+                // here once the equivalent observer is exposed.
+                connection: "configured".to_string(),
+                ..Default::default()
+            })
+            .collect(),
+        ..Default::default()
+    }
 }
 
 /// Push a snapshot envelope through the JS callback the host registered via
