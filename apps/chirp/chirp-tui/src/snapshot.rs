@@ -19,10 +19,17 @@ pub struct SharedSnapshot {
 impl SharedSnapshot {
     #[must_use]
     pub fn from_transport_payload(payload: &UpdatePayload) -> Self {
-        value_from_transport_payload(payload)
-            .as_ref()
-            .map(Self::from_value)
-            .unwrap_or_default()
+        match payload {
+            UpdatePayload::FlatBuffers(bytes) => decode_flatbuffer_snapshot(bytes),
+            UpdatePayload::JsonFixture(json) => {
+                let Ok(value) = serde_json::from_str::<Value>(json) else {
+                    return Self::default();
+                };
+                // JSON fixtures may be wrapped as `{"t":"snapshot","v":<snapshot>}`.
+                let root = value.get("v").unwrap_or(&value);
+                Self::from_value(root)
+            }
+        }
     }
 
     #[must_use]
@@ -51,78 +58,279 @@ impl SharedSnapshot {
     }
 }
 
-pub(crate) fn value_from_transport_payload(payload: &UpdatePayload) -> Option<Value> {
+/// Decode a FlatBuffers snapshot frame using typed-first paths (ADR-0044 PR-B).
+///
+/// All data comes from typed channels:
+///
+/// - Tier-3 envelope (`decode_snapshot_envelope`) supplies the runtime metrics
+///   fields (`events_rx`, `visible_items`, `actor_queue_depth`,
+///   `update_sequence`).
+/// - The `typed_projections` sidecar supplies `relay_diagnostics`,
+///   `action_results`, `action_stages`, and `nmp.feed.home`.
+///
+/// When a typed sidecar entry is absent or fails to decode (e.g. the slot was
+/// not yet emitted, or a schema mismatch — ADR-0037 Commitment 4), the
+/// corresponding field returns its zero value instead of falling back through
+/// the generic `payload:Value` tree. The producer still dual-emits
+/// `payload:Value` (kernel/update.rs `encode_snapshot_with_envelope`); this
+/// decoder simply no longer reads it. The slot gets `(deprecated)` + emission
+/// stops in the PR-B follow-up (#991) once the remaining Rust-shell read
+/// sites (chirp-tui `FeatureSnapshot`, chirp-desktop `Snapshot`) flip to the
+/// typed channels that already exist kernel-side.
+fn decode_flatbuffer_snapshot(bytes: &[u8]) -> SharedSnapshot {
+    // Tier-3 envelope — metrics and status fields live on SnapshotFrame directly.
+    let envelope = nmp_core::decode_snapshot_envelope(bytes)
+        .unwrap_or_default();
+    let metrics = RuntimeMetrics {
+        events_rx: envelope.events_rx,
+        visible_items: envelope.visible_items,
+        actor_queue_depth: envelope.actor_queue_depth as u64,
+        update_sequence: envelope.update_sequence,
+    };
+
+    // Typed sidecar — one entry per built-in projection key.
+    let typed_projections = nmp_core::decode_snapshot_typed_projections(bytes)
+        .unwrap_or_default();
+
+    let relays = typed_relay_rows(&typed_projections);
+    let interests = typed_interest_rows(&typed_projections);
+    let action_results = typed_action_results(&typed_projections);
+    let action_stages = typed_action_stages(&typed_projections);
+    let home_feed = typed_home_feed(&typed_projections);
+
+    SharedSnapshot {
+        metrics,
+        relays,
+        interests,
+        action_results,
+        action_stages,
+        home_feed,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Typed sidecar decoders
+// ---------------------------------------------------------------------------
+
+/// Decode the `relay_diagnostics` typed sidecar and map to chirp relay rows.
+///
+/// Returns an empty vec if the sidecar is absent or fails to decode.
+fn typed_relay_rows(
+    projections: &[nmp_core::TypedProjectionData],
+) -> Vec<RelayRow> {
+    let Some(entry) = projections
+        .iter()
+        .find(|p| p.key == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID
+              && p.schema_id == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID)
+    else {
+        return Vec::new();
+    };
+    let Ok(model) = nmp_core::typed_projections::decode_relay_diagnostics(&entry.payload) else {
+        return Vec::new();
+    };
+    model.relays.into_iter().map(relay_row_from_typed).collect()
+}
+
+/// Decode the `relay_diagnostics` typed sidecar and map to chirp interest rows.
+///
+/// Returns an empty vec if the sidecar is absent or fails to decode.
+fn typed_interest_rows(
+    projections: &[nmp_core::TypedProjectionData],
+) -> Vec<InterestRow> {
+    let Some(entry) = projections
+        .iter()
+        .find(|p| p.key == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID
+              && p.schema_id == nmp_core::typed_projections::RELAY_DIAGNOSTICS_SCHEMA_ID)
+    else {
+        return Vec::new();
+    };
+    let Ok(model) = nmp_core::typed_projections::decode_relay_diagnostics(&entry.payload) else {
+        return Vec::new();
+    };
+    model
+        .interests
+        .into_iter()
+        .map(interest_row_from_typed)
+        .collect()
+}
+
+/// Decode the `action_results` typed sidecar and map to chirp action result rows.
+///
+/// Returns an empty vec if the sidecar is absent or fails to decode.
+fn typed_action_results(
+    projections: &[nmp_core::TypedProjectionData],
+) -> Vec<ActionResult> {
+    let Some(entry) = projections
+        .iter()
+        .find(|p| p.key == nmp_core::typed_projections::ACTION_RESULTS_SCHEMA_ID
+              && p.schema_id == nmp_core::typed_projections::ACTION_RESULTS_SCHEMA_ID)
+    else {
+        return Vec::new();
+    };
+    let Ok(model) = nmp_core::typed_projections::decode_action_results(&entry.payload) else {
+        return Vec::new();
+    };
+    model
+        .results
+        .into_iter()
+        .filter(|r| !r.correlation_id.is_empty())
+        .map(action_result_from_typed)
+        .collect()
+}
+
+/// Decode the `action_stages` typed sidecar and map to chirp action stage rows
+/// (last-stage-per-correlation-id).
+///
+/// Returns an empty vec if the sidecar is absent or fails to decode.
+fn typed_action_stages(
+    projections: &[nmp_core::TypedProjectionData],
+) -> Vec<ActionStageRow> {
+    let Some(entry) = projections
+        .iter()
+        .find(|p| p.key == nmp_core::typed_projections::ACTION_STAGES_SCHEMA_ID
+              && p.schema_id == nmp_core::typed_projections::ACTION_STAGES_SCHEMA_ID)
+    else {
+        return Vec::new();
+    };
+    let Ok(model) = nmp_core::typed_projections::decode_action_stages(&entry.payload) else {
+        return Vec::new();
+    };
+    model
+        .entries
+        .into_iter()
+        .filter_map(
+            |(correlation_id, history): (String, Vec<nmp_core::typed_projections::ActionStageEntryRow>)| {
+                let last = history.into_iter().last()?;
+                Some(ActionStageRow {
+                    correlation_id,
+                    stage: last.stage,
+                    reason: last.reason,
+                })
+            },
+        )
+        .collect()
+}
+
+/// Decode the `nmp.feed.home` typed NOFS sidecar.
+///
+/// When the sidecar is absent, wrong schema, or fails to decode, returns
+/// `None` — preserving ADR-0037 Commitment 4.  After PR-B the generic
+/// `payload:Value` fallback is gone; `None` means "not yet available".
+fn typed_home_feed(
+    projections: &[nmp_core::TypedProjectionData],
+) -> Option<Value> {
+    let proj = projections
+        .iter()
+        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)?;
+    let decoded = nmp_nip01::decode_op_feed_snapshot(&proj.payload).ok()?;
+    serde_json::to_value(&decoded).ok()
+}
+
+// ---------------------------------------------------------------------------
+// Type-mapping helpers: nmp_core typed_projections DTOs → nmp_app_chirp types
+// ---------------------------------------------------------------------------
+
+fn relay_row_from_typed(
+    row: nmp_core::typed_projections::RelayRow,
+) -> RelayRow {
+    RelayRow {
+        relay_url: row.relay_url,
+        short_url: row.short_url,
+        role_label: row.role_label,
+        role_tone: row.role_tone,
+        connection_label: row.connection_label,
+        connection_tone: row.connection_tone,
+        auth_label: row.auth_label,
+        auth_tone: row.auth_tone,
+        total_sub_count: row.total_sub_count as u64,
+        active_sub_count: row.active_sub_count as u64,
+        eosed_sub_count: row.eosed_sub_count as u64,
+        total_events_rx: row.total_events_rx,
+        total_events_display: row.total_events_display,
+        reconnect_count: row.reconnect_count as u64,
+        bytes_rx_display: row.bytes_rx_display,
+        bytes_tx_display: row.bytes_tx_display,
+        last_connected_display: row.last_connected_display,
+        last_event_display: row.last_event_display,
+        last_notice: row.last_notice,
+        last_error: row.last_error,
+        wire_subs: row
+            .wire_subs
+            .into_iter()
+            .map(wire_sub_from_typed)
+            .collect(),
+    }
+}
+
+fn wire_sub_from_typed(
+    sub: nmp_core::typed_projections::WireSubRow,
+) -> RelayWireSubRow {
+    RelayWireSubRow {
+        wire_id: sub.wire_id,
+        short_wire_id: sub.short_wire_id,
+        relay_url: sub.relay_url,
+        filter_summary: sub.filter_summary,
+        state_label: sub.state_label,
+        state_tone: sub.state_tone,
+        consumer_count_label: sub.consumer_count_label,
+        events_rx_display: sub.events_rx_display,
+        eose_observed: sub.eose_observed,
+        opened_display: sub.opened_display,
+        last_event_display: sub.last_event_display,
+        eose_display: sub.eose_display,
+        close_reason: sub.close_reason,
+    }
+}
+
+fn interest_row_from_typed(
+    row: nmp_core::typed_projections::InterestRow,
+) -> InterestRow {
+    InterestRow {
+        key: row.key,
+        state: row.state,
+        refcount: row.refcount as u64,
+        cache_coverage: row.cache_coverage,
+    }
+}
+
+fn action_result_from_typed(
+    row: nmp_core::typed_projections::ActionResultRow,
+) -> ActionResult {
+    ActionResult {
+        correlation_id: row.correlation_id,
+        status: row.status,
+        error: row.error,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy generic-Value decode helper (still used by `feature_snapshot.rs`)
+//
+// `feature_snapshot.rs` reads kernel-produced projections (`accounts`,
+// `active_account`, `configured_relays`, `settings_hub`, profile views, etc.)
+// that do NOT yet have typed FlatBuffers sidecars.  Until those projections are
+// typed, `FeatureSnapshot::from_transport_payload` must continue to decode the
+// generic `payload:Value` tree.
+//
+// This function is `pub(crate)` so `feature_snapshot.rs` can call it without
+// going through the public `SharedSnapshot` API.  It will be deleted once all
+// `feature_snapshot.rs` read sites are ported to typed sidecars.
+// ---------------------------------------------------------------------------
+
+pub(crate) fn value_from_transport_payload(payload: &UpdatePayload) -> Option<serde_json::Value> {
     match payload {
-        UpdatePayload::FlatBuffers(bytes) => decode_flatbuffer_snapshot_value(bytes),
-        UpdatePayload::JsonFixture(json) => serde_json::from_str::<Value>(json)
+        UpdatePayload::FlatBuffers(bytes) => {
+            nmp_core::decode_snapshot_with_typed(bytes).ok().map(|(v, _)| v)
+        }
+        UpdatePayload::JsonFixture(json) => serde_json::from_str::<serde_json::Value>(json)
             .ok()
             .map(|value| value.get("v").cloned().unwrap_or(value)),
     }
 }
 
-/// Decode a FlatBuffers snapshot frame into the generic `Value` tree, preferring
-/// the typed OP-feed `nmp.feed.home` sidecar (ADR-0038, descriptor `NOFS`) when
-/// present.
-///
-/// During the compatibility window the host still renders from the generic
-/// `Value`-based code path. When the typed `NOFS` sidecar decodes successfully we
-/// re-serialize the decoded [`nmp_nip01::OpFeedSnapshot`] back into the generic
-/// projection slot. Both sources carry the same type (`RootFeedSnapshot` /
-/// `OpFeedSnapshot`) with the same serde derives, so every *structured* field of
-/// the rendered `TimelineRow` is identical. The two `Value`s are NOT byte-shape
-/// identical, though: the generic projection rides through `nmp-core`'s snapshot
-/// codec, whose `encode_value` sorts object keys alphabetically, while this
-/// re-serialized typed value stays in struct-field order (`preserve_order`). The
-/// only render field that echoes raw key order is `TimelineRow::raw_card`, which
-/// is normalized to a canonical key order at construction (see
-/// `timeline::canonical_pretty`) so the rendered rows are identical regardless of
-/// transport. This proves the typed decode is lossless without a render refactor.
-///
-/// When no typed payload is present (a pre-sidecar frame, or an unrecognized
-/// descriptor such as the retired NFTS schema — ADR-0037 Commitment 4), the
-/// generic `Value` projection is used verbatim, preserving the fallback.
-fn decode_flatbuffer_snapshot_value(bytes: &[u8]) -> Option<Value> {
-    let (mut value, typed_projections) = nmp_core::decode_snapshot_with_typed(bytes).ok()?;
-    if let Some(typed_home_feed) = typed_home_feed_from_projections(&typed_projections) {
-        if let Ok(typed_value) = serde_json::to_value(&typed_home_feed) {
-            merge_home_feed_projection(&mut value, typed_value);
-        }
-    }
-    Some(value)
-}
-
-/// Locate the typed OP-feed `nmp.feed.home` sidecar entry and decode it into an
-/// owned [`nmp_nip01::OpFeedSnapshot`].
-///
-/// Returns `None` when the projection is absent or the schema id does not match
-/// the NIP-01 OP-feed schema (`nmp.nip01.opfeed`) — either case falls back to
-/// the generic `Value` (ADR-0037 Commitment 4). The prior NFTS descriptor
-/// (`nmp.nip01.timeline`) is no longer preferred here; an `NFTS`-tagged entry is
-/// treated as unrecognized and falls through to the generic projection.
-fn typed_home_feed_from_projections(
-    projections: &[nmp_core::TypedProjectionData],
-) -> Option<nmp_nip01::OpFeedSnapshot> {
-    let proj = projections
-        .iter()
-        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)?;
-    nmp_nip01::decode_op_feed_snapshot(&proj.payload).ok()
-}
-
-/// Overwrite `value["projections"]["nmp.feed.home"]` with the typed-derived
-/// snapshot value. No-op if the snapshot has no `projections` object.
-///
-/// Mirrors [`SharedSnapshot::from_value`], which reaches through an optional
-/// `"v"` envelope before reading `projections`, so the typed value lands in the
-/// same slot the render path reads from.
-fn merge_home_feed_projection(value: &mut Value, typed_home_feed: Value) {
-    let snapshot = match value.get_mut("v") {
-        Some(inner) => inner,
-        None => value,
-    };
-    if let Some(Value::Object(projections)) = snapshot.get_mut("projections") {
-        projections.insert("nmp.feed.home".to_string(), typed_home_feed);
-    }
-}
+// ---------------------------------------------------------------------------
+// JSON fixture decode helpers (used by `from_json_fixture` only)
+// ---------------------------------------------------------------------------
 
 fn runtime_metrics_from(metrics: Option<&Value>) -> RuntimeMetrics {
     let Some(metrics) = metrics else {

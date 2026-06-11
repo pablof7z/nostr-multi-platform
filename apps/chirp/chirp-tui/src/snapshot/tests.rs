@@ -257,12 +257,15 @@ fn prefers_typed_home_feed_sidecar_over_generic_projection() {
     );
 }
 
-/// Typed/generic render parity: a `NOFS` sidecar and the equivalent generic
-/// `Value` `RootFeedSnapshot` MUST produce byte-identical `TimelineRow`s. This
-/// is the load-bearing contract of Stage T2 — the typed decode is only the
-/// render *source*; the render output may not diverge by encoding.
+/// Typed render round-trip: a `NOFS` sidecar present in the FlatBuffers frame
+/// produces `home_feed` from the typed decode path. The generic sentinel in the
+/// `payload:Value` slot is ignored (the slot is `(deprecated)` in PR-B — the
+/// producer no longer emits it, and the TUI shell no longer reads it).
+///
+/// This replaces the former "typed/generic parity" test: after PR-B there is
+/// only ONE render path (typed), so the generic comparison is removed.
 #[test]
-fn typed_and_generic_home_feed_produce_identical_rows() {
+fn typed_home_feed_sidecar_produces_feed_rows() {
     let source = op_feed_snapshot_value();
 
     // Typed path: NOFS sidecar present, generic subtree is a sentinel that must
@@ -278,31 +281,17 @@ fn typed_and_generic_home_feed_produce_identical_rows() {
         &[nofs_projection(&source)],
     ));
 
-    // Generic path: no typed sidecar, the source value rides the generic slot.
-    let generic = serde_json::json!({
-        "metrics": { "events_rx": 1 },
-        "projections": { "nmp.feed.home": source }
-    });
-    let generic_snapshot = SharedSnapshot::from_transport_payload(&flatbuffer_payload(generic, &[]));
-
     let typed_rows = TimelineRow::from_snapshot(
         typed_snapshot.home_feed.as_ref().expect("typed home feed"),
     );
-    let generic_rows = TimelineRow::from_snapshot(
-        generic_snapshot.home_feed.as_ref().expect("generic home feed"),
-    );
-
-    assert!(!typed_rows.is_empty(), "fixture must yield at least one row");
-    assert_eq!(
-        typed_rows, generic_rows,
-        "typed NOFS decode must render identical rows to the generic Value path"
-    );
+    assert!(!typed_rows.is_empty(), "typed NOFS sidecar must yield at least one row");
 }
 
-/// Compatibility window: a pre-sidecar frame (no typed projections) must
-/// fall back to the generic `nmp.feed.home` Value verbatim.
+/// PR-B: after `payload:Value` is `(deprecated)`, a FlatBuffers frame with no
+/// typed `nmp.feed.home` sidecar produces `home_feed = None`. The compatibility
+/// window (generic fallback) is closed.
 #[test]
-fn falls_back_to_generic_home_feed_when_no_typed_sidecar() {
+fn no_typed_sidecar_yields_none_home_feed() {
     let generic = serde_json::json!({
         "metrics": { "events_rx": 1 },
         "projections": {
@@ -314,14 +303,14 @@ fn falls_back_to_generic_home_feed_when_no_typed_sidecar() {
 
     assert_eq!(
         snapshot.home_feed,
-        Some(serde_json::json!({ "cards": [], "legacy": true })),
-        "absent typed sidecar must preserve the generic projection unchanged"
+        None,
+        "PR-B: no typed sidecar → home_feed must be None (generic fallback removed)"
     );
 }
 
-/// A typed projection with a mismatched `schema_id` (e.g. the retired NFTS
-/// descriptor, or any non-`NOFS` schema) must not be consumed — the host falls
-/// back to the generic Value rather than mis-decoding (ADR-0037 Commitment 4).
+/// PR-B: a typed projection with a mismatched `schema_id` (e.g. the retired
+/// NFTS descriptor) is rejected, and `home_feed` is `None` — no generic
+/// fallback (ADR-0037 Commitment 4, PR-B revision).
 #[test]
 fn ignores_typed_projection_with_wrong_schema_id() {
     let typed = vec![nmp_core::TypedProjectionData {
@@ -342,7 +331,7 @@ fn ignores_typed_projection_with_wrong_schema_id() {
 
     assert_eq!(
         snapshot.home_feed,
-        Some(serde_json::json!({ "kept": "generic" })),
-        "schema-id mismatch must not override the generic projection"
+        None,
+        "PR-B: schema-id mismatch → home_feed must be None (generic fallback removed)"
     );
 }

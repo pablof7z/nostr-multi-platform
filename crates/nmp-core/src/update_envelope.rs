@@ -29,6 +29,128 @@ pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 /// Owned bytes for one FlatBuffers `nmp.transport.UpdateFrame`.
 pub type UpdateFrameBytes = Vec<u8>;
 
+/// Typed Tier-3 snapshot envelope — the strongly-typed `SnapshotFrame` fields
+/// that Rust consumers (chirp-tui, chirp-desktop) read instead of walking the
+/// generic `payload:Value` tree.
+///
+/// Mirrors the fields written by `encode_snapshot_with_envelope` (ADR-0044).
+/// Fields absent from the wire (never-written or default-zero) are returned as
+/// `0` / `false` / `None` — same semantics as FlatBuffers native defaults.
+#[derive(Clone, Debug, Default)]
+pub struct SnapshotEnvelope {
+    /// Monotonically-increasing frame revision (from `KernelSnapshot.rev`).
+    pub rev: u64,
+    /// Kernel schema version (`KERNEL_SCHEMA_VERSION`). Distinct from the
+    /// transport `schema_version` field.
+    pub kernel_schema_version: u32,
+    /// Wall-clock timestamp of this tick (ms since Unix epoch). Actor-liveness
+    /// signal (ADR-0028).
+    pub last_tick_ms: u64,
+    /// Whether the kernel actor is in the running state.
+    pub running: bool,
+    /// Run-state label (always `"ViewBatch"` today).
+    pub update_kind: String,
+    // --- Metrics (selected fields used by Rust shells) ---
+    /// Total relay events received.
+    pub events_rx: u64,
+    /// Approximate number of visible timeline items.
+    pub visible_items: u64,
+    /// Current actor command-queue depth.
+    pub actor_queue_depth: u32,
+    /// Monotonically-increasing update sequence counter.
+    pub update_sequence: u64,
+    // --- Error / diagnostic flags ---
+    /// Last error toast message, if any.
+    pub last_error_toast: Option<String>,
+    /// Last error category, if any.
+    pub last_error_category: Option<String>,
+    /// Last planner error message, if any.
+    pub last_planner_error: Option<String>,
+}
+
+/// Decode the Tier-3 typed `SnapshotFrame` envelope from a FlatBuffers update
+/// frame (as produced by `encode_snapshot_with_envelope`).
+///
+/// Returns `Ok(SnapshotEnvelope)` with whatever tier-3 fields are present in
+/// the frame. Fields absent (zero/null by FlatBuffers default) are returned as
+/// their Rust zero-value. Returns an error only on a malformed frame that cannot
+/// be parsed at all.
+///
+/// This is the Rust counterpart to iOS's `TypedSnapshotEnvelope` (used by
+/// `KernelUpdateFrameDecoder.extractTypedEnvelope`). Rust shells that complete
+/// the PR-B typed-first migration use this function instead of decoding
+/// `payload:Value`.
+pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, UpdateFrameDecodeError> {
+    if !fb::update_frame_buffer_has_identifier(bytes) {
+        return Err(UpdateFrameDecodeError::InvalidFlatbuffer(
+            "missing NMPU file identifier".to_string(),
+        ));
+    }
+    let frame = fb::root_as_update_frame(bytes)
+        .map_err(|err| UpdateFrameDecodeError::InvalidFlatbuffer(format!("{err:?}")))?;
+    if frame.kind() != fb::FrameKind::Snapshot {
+        return Err(UpdateFrameDecodeError::MissingSnapshotPayload);
+    }
+    let snapshot = frame
+        .snapshot()
+        .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
+
+    let (events_rx, visible_items, actor_queue_depth, update_sequence) =
+        if let Some(metrics) = snapshot.metrics() {
+            (
+                metrics.events_rx(),
+                metrics.visible_items(),
+                metrics.actor_queue_depth(),
+                metrics.update_sequence(),
+            )
+        } else {
+            (0, 0, 0, 0)
+        };
+
+    Ok(SnapshotEnvelope {
+        rev: snapshot.rev(),
+        kernel_schema_version: snapshot.kernel_schema_version(),
+        last_tick_ms: snapshot.last_tick_ms(),
+        running: snapshot.running(),
+        update_kind: snapshot.update_kind().unwrap_or("").to_string(),
+        events_rx,
+        visible_items,
+        actor_queue_depth,
+        update_sequence,
+        last_error_toast: snapshot.last_error_toast().map(str::to_string),
+        last_error_category: snapshot.last_error_category().map(str::to_string),
+        last_planner_error: snapshot.last_planner_error().map(str::to_string),
+    })
+}
+
+/// Decode only the typed-projection sidecar from a FlatBuffers update frame,
+/// without touching `payload:Value`.
+///
+/// After the PR-B `(deprecated)` migration the generic `payload:Value` slot
+/// emits no bytes; calling [`decode_snapshot_with_typed`] (which tries to
+/// decode that slot) would panic / return an error. Shells that complete the
+/// typed-first migration use this function instead: it parses the frame once
+/// and returns only the sidecar entries, paired with
+/// [`decode_snapshot_envelope`] for the Tier-3 envelope fields.
+pub fn decode_snapshot_typed_projections(
+    bytes: &[u8],
+) -> Result<Vec<TypedProjectionData>, UpdateFrameDecodeError> {
+    if !fb::update_frame_buffer_has_identifier(bytes) {
+        return Err(UpdateFrameDecodeError::InvalidFlatbuffer(
+            "missing NMPU file identifier".to_string(),
+        ));
+    }
+    let frame = fb::root_as_update_frame(bytes)
+        .map_err(|err| UpdateFrameDecodeError::InvalidFlatbuffer(format!("{err:?}")))?;
+    if frame.kind() != fb::FrameKind::Snapshot {
+        return Err(UpdateFrameDecodeError::MissingSnapshotPayload);
+    }
+    let snapshot = frame
+        .snapshot()
+        .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
+    decode_typed_projections(&snapshot)
+}
+
 /// Actor-thread death payload. Terminal: hosts must stop sending commands.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PanicFrame {
