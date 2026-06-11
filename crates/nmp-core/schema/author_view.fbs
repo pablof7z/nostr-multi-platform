@@ -1,3 +1,6 @@
+include "profile_card.fbs";
+include "timeline_item.fbs";
+
 namespace nmp.kernel;
 
 // Typed FlatBuffers wire for the kernel-owned `author_view` snapshot projection
@@ -17,47 +20,19 @@ namespace nmp.kernel;
 // (Wave C).
 //
 // Field-for-field mirror of `AuthorViewPayload`. The nested `ProfileCard` and
-// `TimelineItem` tables mirror the same Rust DTOs (see `profile.fbs` /
-// `thread_view.fbs`); each codec's `#[path]` generated module is independent,
-// so duplicate table names across the view schemas do not collide.
+// `TimelineItem` tables are shared definitions `include`d from `profile_card.fbs`
+// and `timeline_item.fbs` respectively (run WITHOUT `--gen-all` so flatc emits
+// each type only once across the Swift module). The Rust codec continues to
+// decode through `#[path]` modules; no change to wire format.
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
 // pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
 //   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
 //         crates/nmp-core/schema/author_view.fbs
-
-table ProfileCard {
-  pubkey:string;
-  npub:string;
-  has_display_name:bool;
-  display_name:string;
-  has_picture_url:bool;
-  picture_url:string;
-  nip05:string;
-  about:string;
-  has_profile:bool;
-  has_lnurl:bool;
-  lnurl:string;
-}
-
-table TimelineItem {
-  id:string;
-  author_pubkey:string;
-  has_author_picture_url:bool;
-  author_picture_url:string;
-  has_author_lnurl:bool;
-  author_lnurl:string;
-  has_author_display_name:bool;
-  author_display_name:string;
-  kind:uint;
-  content:string;
-  content_preview:string;
-  created_at:ulong;
-  relay_count:uint;
-  is_repost:bool;
-  nav_target_id:string;
-  repost_inner_content:string;
-}
+//
+// For the Swift binding (run from the repo root):
+//   flatc --swift -o ios/Chirp/Chirp/Bridge/Generated \
+//         crates/nmp-core/schema/author_view.fbs
 
 // Mirror of `ProfileDispatchSpec`. Present only when the action is a write.
 table ProfileDispatchSpec {

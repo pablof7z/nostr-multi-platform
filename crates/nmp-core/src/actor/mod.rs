@@ -251,6 +251,7 @@ use std::time::{Duration, Instant};
 /// clock (`Kernel::run_gc_step` → `now_secs`); this gate only paces how often
 /// the pass fires. Piggy-backs the existing ≤250 ms `compute_wait` loop wake —
 /// no new sleep loop, no timer thread (D8 / AGENTS.md "no polling").
+#[cfg(feature = "native")]
 pub(crate) const GC_TICK_INTERVAL: Duration = Duration::from_secs(60);
 
 // `has_role` is reached by `nmp-ffi` through

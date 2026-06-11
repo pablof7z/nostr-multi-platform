@@ -187,6 +187,12 @@ fn real_registry_emits_exactly_the_proof_keys() {
     // enum name derives from `swift_field` (`wallet` / `settingsHub`).
     assert!(out.contains("enum TypedWalletDecoder {"));
     assert!(out.contains("enum TypedSettingsHubDecoder {"));
+    // Wave C: action_results, action_stages, author_view, thread_view.
+    // Enum names derive from `swift_field`.
+    assert!(out.contains("enum TypedActionResultsDecoder {"));
+    assert!(out.contains("enum TypedActionStagesDecoder {"));
+    assert!(out.contains("enum TypedAuthorViewDecoder {"));
+    assert!(out.contains("enum TypedThreadViewDecoder {"));
     let emitted = SNAPSHOT_PROJECTIONS
         .iter()
         .filter(|e| {
@@ -197,8 +203,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 25,
-        "exactly twenty-five keys have a checked-in flatc --swift reader binding \
+        emitted, 29,
+        "exactly twenty-nine keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
@@ -210,7 +216,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
          NIP-46 cluster: bunker_handshake, nip46_onboarding; the Marmot \
          push-projection cluster: nmp.marmot.snapshot, nmp.marmot.messages; \
          plus the wallet (producer field-add) + settings_hub (kernel built-in) \
-         flips); if this changed, regenerate TypedProjectionDecoders.generated\
-         .swift and update this test"
+         flips; Wave C: action_results, action_stages, author_view, \
+         thread_view); if this changed, regenerate \
+         TypedProjectionDecoders.generated.swift and update this test"
     );
 }

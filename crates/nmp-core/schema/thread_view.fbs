@@ -1,3 +1,5 @@
+include "timeline_item.fbs";
+
 namespace nmp.kernel;
 
 // Typed FlatBuffers wire for the kernel-owned `thread_view` snapshot projection
@@ -17,33 +19,19 @@ namespace nmp.kernel;
 // (Wave C).
 //
 // Field-for-field mirror of `ThreadViewPayload`. The nested `TimelineItem`
-// table mirrors the same Rust DTO (see `author_view.fbs`); each codec's
-// `#[path]` generated module is independent, so the duplicate table name does
-// not collide.
+// table is the shared definition `include`d from `timeline_item.fbs`; run
+// WITHOUT `--gen-all` so flatc emits `TimelineItem` only once across the Swift
+// module (see `timeline_item.fbs` header). This mirrors the established
+// `profile_card.fbs` pattern.
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
 // pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
 //   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
 //         crates/nmp-core/schema/thread_view.fbs
-
-table TimelineItem {
-  id:string;
-  author_pubkey:string;
-  has_author_picture_url:bool;
-  author_picture_url:string;
-  has_author_lnurl:bool;
-  author_lnurl:string;
-  has_author_display_name:bool;
-  author_display_name:string;
-  kind:uint;
-  content:string;
-  content_preview:string;
-  created_at:ulong;
-  relay_count:uint;
-  is_repost:bool;
-  nav_target_id:string;
-  repost_inner_content:string;
-}
+//
+// For the Swift binding (run from the repo root):
+//   flatc --swift -o ios/Chirp/Chirp/Bridge/Generated \
+//         crates/nmp-core/schema/thread_view.fbs
 
 table ThreadViewSnapshot {
   focused_event_id:string;

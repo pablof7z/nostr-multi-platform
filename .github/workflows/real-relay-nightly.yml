@@ -75,7 +75,6 @@ jobs:
         if: steps.relay_check.outputs.relay_up == 'true'
         run: |
           cargo test -p nmp-testing \
-            --features test-support \
             -- --ignored --nocapture 2>&1 | tee real_relay_output.txt
         timeout-minutes: 15
         env:
