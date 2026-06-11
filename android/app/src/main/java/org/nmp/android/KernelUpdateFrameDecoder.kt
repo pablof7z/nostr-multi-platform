@@ -105,12 +105,19 @@ object KernelUpdateFrameDecoder {
             Log.e(TAG, "snapshot.payload is null bytes=$byteCount")
             return null
         }
-        val update = decodeKernelUpdate(payload) ?: return null
-        val projections = extractTypedProjections(snapshot)
-        return KernelDecodedUpdateFrame.Snapshot(update, projections)
+        // Lift the typed FlatBuffers sidecars FIRST so the projection decode can
+        // read author/thread flat feeds typed-first (F-05). The same envelope
+        // list is also returned to the caller for the `nmp.feed.home` decode in
+        // `KernelModel.decodeUpdate` — extracted once, used by both paths.
+        val typedProjections = extractTypedProjections(snapshot)
+        val update = decodeKernelUpdate(payload, typedProjections) ?: return null
+        return KernelDecodedUpdateFrame.Snapshot(update, typedProjections)
     }
 
-    private fun decodeKernelUpdate(root: Value): KernelUpdate? {
+    private fun decodeKernelUpdate(
+        root: Value,
+        typedProjections: List<TypedProjectionEnvelope>,
+    ): KernelUpdate? {
         if (root.kind != ValueKind.Map) {
             Log.e(TAG, "root value is not a map (kind=${root.kind})")
             return null
@@ -125,7 +132,7 @@ object KernelUpdateFrameDecoder {
                 metrics = map["metrics"]?.let { decodeMetricsLite(it) },
                 relayStatuses = map["relayStatuses"]?.listOf { decodeRelayStatus(it) } ?: emptyList(),
                 lastErrorToast = map["lastErrorToast"]?.stringOrNull(),
-                projections = map["projections"]?.let { decodeProjections(it) },
+                projections = map["projections"]?.let { decodeProjections(it, typedProjections) },
             )
         } catch (e: Exception) {
             Log.e(TAG, "KernelUpdate reconstruction failed: ${e.message}")
@@ -170,26 +177,73 @@ object KernelUpdateFrameDecoder {
         )
     }
 
-    private fun decodeProjections(v: Value): SnapshotProjections? {
+    private fun decodeProjections(
+        v: Value,
+        typedProjections: List<TypedProjectionEnvelope>,
+    ): SnapshotProjections? {
         if (v.kind != ValueKind.Map) return null
         val m = buildValueMap(v)
+        // F-05 (#979): each rendered projection key is decoded TYPED-FIRST from
+        // its FlatBuffers sidecar, falling back to the generic `payload:Value`
+        // subtree whenever the typed sidecar is absent / wrong-schema /
+        // undecodable (ADR-0037 Commitment 4 — the generic path is a permanent
+        // fallback, never removed). Each typed decoder returns `null` on any
+        // miss, so the `?:` chains to the pre-existing generic decode. Mirrors
+        // iOS `KernelBridge.decodeFlatBuffer` + `TypedProjectionGlue`.
+        //
+        // `wallet` is special: the typed `NWST` buffer carries both the status
+        // and the balance-display string, so a single typed decode feeds both
+        // `walletStatus` and `walletBalance` (preserving the generic split).
+        val typedWallet = TypedWalletDecoder.decode(typedProjections)
+        // `active_account` (KACT) is, like `wallet`, decoded into a presence
+        // wrapper: a typed `null` pubkey means "no account active" (authoritative,
+        // NOT fall-back), so the presence check is on the whole result, never the
+        // inner `String?`. A null wrapper means "no typed sidecar, fall back".
+        val typedActiveAccount = TypedAccountsDecoder.decodeActiveAccount(typedProjections)
         return SnapshotProjections(
-            activeAccount = m["activeAccount"]?.stringOrNull(),
-            accounts = m["accounts"]?.listOf { decodeAccountSummary(it) } ?: emptyList(),
-            claimedProfiles = m["claimedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
+            activeAccount = if (typedActiveAccount != null) typedActiveAccount.pubkey
+            else m["activeAccount"]?.stringOrNull(),
+            // `accounts` (KACC) is a plain list — a typed `null` means "no typed
+            // sidecar", so `?:` chains to the generic decode (ADR-0037 Commitment
+            // 4). The typed list carries the full `npub`; Compose abbreviates.
+            accounts = TypedAccountsDecoder.decodeAccounts(typedProjections)
+                ?: m["accounts"]?.listOf { decodeAccountSummary(it) } ?: emptyList(),
+            claimedProfiles = TypedProfilesDecoder.decodeClaimed(typedProjections)
+                ?: m["claimedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
             mentionProfiles = m["mentionProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
-            resolvedProfiles = m["resolvedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
-            flatFeeds = FlatFeedProjectionDecoder.decode(m),
-            dmInbox = m["nmp.nip17.dmInbox"]?.let { decodeDmInboxSnapshot(it) },
-            walletStatus = m["wallet"]?.let { decodeWalletStatusString(it) },
-            walletBalance = m["wallet"]?.let { decodeWalletBalanceString(it) },
-            relayRoleOptions = m["relayRoleOptions"]?.listOf { decodeRelayRoleOption(it) } ?: emptyList(),
+            resolvedProfiles = TypedProfilesDecoder.decodeResolved(typedProjections)
+                ?: m["resolvedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
+            // F-05: author/thread flat feeds typed-first. The typed NOFS
+            // sidecars (`nmp.feed.author.*` / `nmp.feed.thread.*`) are decoded
+            // via TypedHomeFeedDecoder (byte-identical shape to nmp.feed.home),
+            // overlaid onto the generic `payload:Value` map so any key whose
+            // typed sidecar is absent/undecodable still falls back to the
+            // generic decode (ADR-0037 Commitment 4: the generic path is a
+            // permanent fallback, never removed). Mirrors iOS
+            // KernelUpdateFrameDecoder.overlayTypedFlatFeeds(json:typed:).
+            flatFeeds = FlatFeedProjectionDecoder.decode(m) +
+                TypedHomeFeedDecoder.decodeFlatFeeds(typedProjections),
+            dmInbox = TypedDmInboxDecoder.decode(typedProjections)
+                ?: m["nmp.nip17.dmInbox"]?.let { decodeDmInboxSnapshot(it) },
+            // When the typed `NWST` sidecar is present it is authoritative for
+            // BOTH wallet strings: a typed null balance means "no balance yet",
+            // NOT "fall back to generic" — so the presence check is on the whole
+            // `typedWallet`, never per-field (avoids a typed-status/generic-balance
+            // split).
+            walletStatus = if (typedWallet != null) typedWallet.status
+            else m["wallet"]?.let { decodeWalletStatusString(it) },
+            walletBalance = if (typedWallet != null) typedWallet.balanceDisplay
+            else m["wallet"]?.let { decodeWalletBalanceString(it) },
+            relayRoleOptions = TypedRelayRoleOptionsDecoder.decode(typedProjections)
+                ?: m["relayRoleOptions"]?.listOf { decodeRelayRoleOption(it) } ?: emptyList(),
             // Marmot push projections (V-107 / ADR-0039). The keys
             // "nmp.marmot.snapshot" / "nmp.marmot.messages" carry dots but no
             // underscores, so convertFromSnakeCase leaves them unchanged.
-            marmotSnapshot = m["nmp.marmot.snapshot"]?.let { decodeMarmotSnapshot(it) },
-            marmotMessages = m["nmp.marmot.messages"]
-                ?.mapOf { groupMessages -> groupMessages.listOf { decodeMarmotMessage(it) } }
+            marmotSnapshot = TypedMarmotDecoder.decodeSnapshot(typedProjections)
+                ?: m["nmp.marmot.snapshot"]?.let { decodeMarmotSnapshot(it) },
+            marmotMessages = TypedMarmotDecoder.decodeMessages(typedProjections)
+                ?: m["nmp.marmot.messages"]
+                    ?.mapOf { groupMessages -> groupMessages.listOf { decodeMarmotMessage(it) } }
                 ?: emptyMap(),
         )
     }
@@ -325,7 +379,11 @@ object KernelUpdateFrameDecoder {
         val m = buildValueMap(v)
         return AccountSummary(
             id = m["id"]?.stringOr("") ?: "",
-            npubShort = m["npubShort"]?.stringOr("") ?: "",
+            // The kernel emits the full `npub` (bech32). `npub_short` was never
+            // emitted (aim.md §2), so the prior `npubShort` read was always
+            // empty — read `npub` and let Compose abbreviate. Keeps the generic
+            // fallback byte-identical to the typed `KACC` path (#979).
+            npub = m["npub"]?.stringOr("") ?: "",
             displayName = m["displayName"]?.stringOr("") ?: "",
             status = m["status"]?.stringOr("") ?: "",
             signerLabel = m["signerLabel"]?.stringOr("") ?: "",

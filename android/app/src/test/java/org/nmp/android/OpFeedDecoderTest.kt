@@ -320,6 +320,65 @@ class OpFeedDecoderTest {
         assertEquals(hex32(0x56), feed.cards[0].attribution[0].replyEventId)
     }
 
+    // ── F-05: typed author/thread flat-feed sidecars ────────────────────────
+
+    /**
+     * The typed `NOFS` sidecar path (F-05): when the producer ships an
+     * `nmp.feed.author.<pk>` typed sidecar (the same wire `nmp.feed.home` uses),
+     * the decoder must surface it in `projections.flatFeeds` keyed by the
+     * dynamic key — WITHOUT the generic `payload:Value` projection carrying that
+     * feed. Mirrors the iOS `OpFeedDecoderTests` typed-sidecar overlay test.
+     */
+    @Test
+    fun typedSidecarPopulatesAuthorFlatFeed() {
+        val pubkey = hex32(0x12)
+        val key = "nmp.feed.author.$pubkey"
+        val frame = typedSidecarUpdateFrame(
+            rev = 9L,
+            sidecarKey = key,
+            nofsBytes = bytesFromHex(POPULATED_HEX),
+        )
+        val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
+
+        assertEquals(9L, decoded.update.rev)
+        val feed = requireNotNull(decoded.update.projections?.flatFeeds?.get(key)) {
+            "typed NOFS sidecar must populate flatFeeds[$key]"
+        }
+        // The populated golden NOFS carries two root cards (see
+        // populatedFixtureDecodesToParityModel) — proves the typed decode ran,
+        // not the generic path (the generic projection map carried no feed).
+        assertEquals(2, feed.cards.size)
+        assertEquals(hex32(0x03), feed.cards[0].card.id)
+        // V-85: the typed path fills contentTree (the generic flat-feed path
+        // leaves it null), so a non-null tree proves the TYPED decoder ran.
+        assertNotNull(feed.cards[0].card.contentTree)
+    }
+
+    /**
+     * A thread-keyed typed sidecar is surfaced too (the second dynamic prefix),
+     * and the home-feed exact key is NOT swept into flatFeeds by the prefix
+     * match (it is consumed separately as `modularTimeline`).
+     */
+    @Test
+    fun typedSidecarPopulatesThreadFeedAndIgnoresHomeKey() {
+        val eventId = hex32(0x34)
+        val threadKey = "nmp.feed.thread.$eventId"
+        val frame = typedSidecarUpdateFrame(
+            rev = 3L,
+            sidecarKey = threadKey,
+            nofsBytes = bytesFromHex(EMPTY_HEX),
+            extraHomeSidecar = bytesFromHex(POPULATED_HEX),
+        )
+        val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
+
+        val feeds = decoded.update.projections?.flatFeeds.orEmpty()
+        // thread key present (empty NOFS → zero cards, but the key is keyed in).
+        assertNotNull(feeds[threadKey])
+        assertTrue(feeds[threadKey]!!.cards.isEmpty())
+        // home key is NOT a flat-feed prefix; it never lands in flatFeeds.
+        assertNull(feeds["nmp.feed.home"])
+    }
+
     // ── Empty fixture ───────────────────────────────────────────────────────
 
     @Test
@@ -403,6 +462,62 @@ class OpFeedDecoderTest {
         val frame = UpdateFrame.createUpdateFrame(builder, FrameKind.Snapshot, snapshot, 0)
         UpdateFrame.finishUpdateFrameBuffer(builder, frame)
         return builder.sizedByteArray()
+    }
+
+    /**
+     * Build a complete `NMPU` UpdateFrame carrying an EMPTY generic `projections`
+     * map (no flat feed on the generic path) plus one — or two — typed `NOFS`
+     * sidecars on `SnapshotFrame.typed_projections`. Proves the typed path is the
+     * sole source of the surfaced flat feed.
+     */
+    private fun typedSidecarUpdateFrame(
+        rev: Long,
+        sidecarKey: String,
+        nofsBytes: ByteArray,
+        extraHomeSidecar: ByteArray? = null,
+    ): ByteArray {
+        val builder = FlatBufferBuilder(2048)
+
+        // Generic payload: rev/running + an EMPTY projections map.
+        val emptyProjections = valueMap(builder)
+        val payload = valueMap(
+            builder,
+            "rev" to valueInt(builder, rev),
+            "running" to valueBool(builder, true),
+            "relay_url" to valueString(builder, ""),
+            "projections" to emptyProjections,
+        )
+
+        // Typed sidecars: one keyed by the dynamic author/thread key, plus an
+        // optional `nmp.feed.home` sidecar to prove the home key is not swept in.
+        val sidecarOffsets = ArrayList<Int>()
+        sidecarOffsets.add(typedProjection(builder, sidecarKey, nofsBytes))
+        if (extraHomeSidecar != null) {
+            sidecarOffsets.add(typedProjection(builder, "nmp.feed.home", extraHomeSidecar))
+        }
+        val typedVec = SnapshotFrame.createTypedProjectionsVector(builder, sidecarOffsets.toIntArray())
+
+        val snapshot = SnapshotFrame.createSnapshotFrame(builder, 1u, payload, typedVec)
+        val frame = UpdateFrame.createUpdateFrame(builder, FrameKind.Snapshot, snapshot, 0)
+        UpdateFrame.finishUpdateFrameBuffer(builder, frame)
+        return builder.sizedByteArray()
+    }
+
+    @OptIn(ExperimentalUnsignedTypes::class)
+    private fun typedProjection(builder: FlatBufferBuilder, key: String, nofsBytes: ByteArray): Int {
+        val keyOffset = builder.createString(key)
+        val schemaIdOffset = builder.createString(TypedHomeFeedDecoder.SCHEMA_ID)
+        val fileIdOffset = builder.createString(TypedHomeFeedDecoder.FILE_IDENTIFIER)
+        val payloadVec = nmp.transport.TypedPayload.createPayloadVector(builder, nofsBytes.toUByteArray())
+        val typedPayload = nmp.transport.TypedPayload.createTypedPayload(
+            builder,
+            schemaIdOffset,
+            // schema_version 1 — the only version TypedHomeFeedDecoder accepts.
+            1u,
+            fileIdOffset,
+            payloadVec,
+        )
+        return nmp.transport.TypedProjection.createTypedProjection(builder, keyOffset, typedPayload)
     }
 
     private fun valueString(builder: FlatBufferBuilder, value: String): Int {

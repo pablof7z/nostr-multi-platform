@@ -70,6 +70,20 @@ object TypedHomeFeedDecoder {
     const val FILE_IDENTIFIER = "NOFS"
 
     /**
+     * Dynamic per-view feed key prefixes the producer registers a typed `NOFS`
+     * op-feed sidecar under (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`) —
+     * the SAME shape as `nmp.feed.home`. The producer is
+     * `apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs::register_typed_feed_sidecar`
+     * (commit 3dddcd1: "Type transient author/thread interest feeds onto
+     * typed_projections sidecar"), which keys each transient feed's NOFS sidecar
+     * by the SAME dynamic key the screen reads. `nmp.feed.home` is matched by
+     * exact key in [decode]; it is NOT a prefix here, so it never collides.
+     *
+     * Mirrors iOS `KernelUpdateFrameDecoder.flatFeedKeyPrefixes`.
+     */
+    private val FLAT_FEED_KEY_PREFIXES = listOf("nmp.feed.author.", "nmp.feed.thread.")
+
+    /**
      * Extract and decode the `nmp.feed.home` typed payload from a list of
      * [TypedProjectionEnvelope]s lifted off a snapshot frame.
      *
@@ -83,6 +97,35 @@ object TypedHomeFeedDecoder {
         if (projection.schemaVersion != SUPPORTED_SCHEMA_VERSION) return null
         if (projection.payload.isEmpty()) return null
         return decode(projection.payload)
+    }
+
+    /**
+     * Resolve the per-view author/thread flat feeds from the typed `NOFS`
+     * op-feed sidecars ONLY — the typed peer of the legacy
+     * [FlatFeedProjectionDecoder] generic `payload:Value` path. Each typed
+     * envelope whose key carries an author/thread prefix AND whose `schemaId`
+     * is the op-feed descriptor is decoded through [decode] (the dynamic feeds
+     * are byte-identical in shape to `nmp.feed.home`).
+     *
+     * Mirrors iOS `KernelUpdateFrameDecoder.overlayTypedFlatFeeds(json:typed:)`
+     * after #1062 made the producer emit a typed sidecar for every dynamic feed
+     * key, so the typed path is authoritative. Undecodable or non-matching
+     * envelopes are skipped (F-05 / ADR-0037 Commitment 4: a malformed sidecar
+     * yields no entry; the screen renders its empty-state, never a stale value).
+     * Returns an empty map when no author/thread sidecar is present.
+     */
+    fun decodeFlatFeeds(
+        projections: List<TypedProjectionEnvelope>,
+    ): Map<String, ChirpOpFeedSnapshot> {
+        val result = HashMap<String, ChirpOpFeedSnapshot>()
+        for (envelope in projections) {
+            if (FLAT_FEED_KEY_PREFIXES.none { envelope.key.startsWith(it) }) continue
+            if (envelope.schemaId != SCHEMA_ID) continue
+            if (envelope.schemaVersion != SUPPORTED_SCHEMA_VERSION) continue
+            if (envelope.payload.isEmpty()) continue
+            decode(envelope.payload)?.let { result[envelope.key] = it }
+        }
+        return result
     }
 
     /**

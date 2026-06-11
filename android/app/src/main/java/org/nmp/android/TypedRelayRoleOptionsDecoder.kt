@@ -1,0 +1,69 @@
+package org.nmp.android
+
+import android.util.Log
+import nmp.kernel.RelayRoleOption as FbRelayRoleOption
+import nmp.kernel.RelayRoleOptionsSnapshot
+import org.nmp.android.model.RelayRoleOption
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+private const val TAG = "TypedRelayRoleOptionsDecoder"
+
+/**
+ * Typed-first decoder for the kernel-owned `relay_role_options` snapshot
+ * projection (`KRRO` / `RelayRoleOptionsSnapshot`) — the Android peer of iOS
+ * `TypedRelayRoleOptionsDecoder` (`TypedProjectionDecoders.generated.swift`) +
+ * `TypedProjectionGlue.relayRoleOptions`.
+ *
+ * Field-for-field mirror of `RelayRoleOption { value, label, tint, is_default }`
+ * preserving producer (picker render) order. No `has_*` companion bools — all
+ * three strings are always present.
+ *
+ * ADR-0037 Commitment 4: typed-FIRST with permanent generic fallback. Returns
+ * `null` when the `KRRO` sidecar is absent / wrong schema / unverifiable, so the
+ * caller keeps the generic `payload:Value` `relay_role_options` subtree. Fail
+ * closed (D1/D6) on a malformed buffer.
+ */
+object TypedRelayRoleOptionsDecoder {
+
+    const val KEY = "relay_role_options"
+    const val SCHEMA_ID = "relay_role_options"
+    const val FILE_IDENTIFIER = "KRRO"
+
+    fun decode(projections: List<TypedProjectionEnvelope>): List<RelayRoleOption>? {
+        val projection = projections.firstOrNull {
+            it.key == KEY && it.schemaId == SCHEMA_ID
+        } ?: return null
+        if (projection.payload.isEmpty()) return null
+        return decode(projection.payload)
+    }
+
+    /** Decode a raw `KRRO` buffer; `null` on any parse failure. */
+    fun decode(bytes: ByteArray): List<RelayRoleOption>? {
+        if (bytes.isEmpty()) return null
+        return try {
+            val bb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+            if (!RelayRoleOptionsSnapshot.RelayRoleOptionsSnapshotBufferHasIdentifier(bb)) {
+                Log.e(TAG, "KRRO file_identifier missing (${bytes.size} bytes)")
+                return null
+            }
+            val snapshot = RelayRoleOptionsSnapshot.getRootAsRelayRoleOptionsSnapshot(bb)
+            buildList {
+                for (i in 0 until snapshot.optionsLength) {
+                    val opt = snapshot.options(i) ?: continue
+                    add(mapOption(opt))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "KRRO decode error: ${e.message} bytes=${bytes.size}")
+            null
+        }
+    }
+
+    private fun mapOption(opt: FbRelayRoleOption): RelayRoleOption = RelayRoleOption(
+        value = opt.value ?: "",
+        label = opt.label ?: "",
+        tint = opt.tint ?: "",
+        isDefault = opt.isDefault,
+    )
+}
