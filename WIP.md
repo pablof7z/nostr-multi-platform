@@ -19,7 +19,6 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-12 — **fix(nmp-store,nmp-core): budget gc_step honestly + disable LRU ceiling until claims wired** (closes #1085). Worktree: agent-a5d61234132541ea2. Branch: `fix/gc-step-budget-lru-ceiling`. Items: Phase-1 resumable cursor + duration gate, Phase-2 O(1) count via LMDB stat, Phase-3/3b hourly tombstone purge gate, LRU ceiling disabled in production budget, gc-step duration assertion test.
 
 - 2026-06-11 — **PR-B FINAL: stop emitting payload:Value** (closes #991/#979). Worktree: agent-a329ca748cf7215bc. Branch: `pr-b-final-zero-payload-emission` (PR #1082, review round 2). Done: gallery TUI+desktop on typed sidecars; emission zeroed; Rust flatc bindings REGENERATED (deprecated `payload` accessors gone) + `ci/check-rust-flatc-drift.sh` gate wired into codegen-drift.yml; `decode_snapshot_payload`/`decode_snapshot_with_typed`/`encode_snapshot_value` DELETED with all ~20 workspace readers migrated to `SnapshotEnvelope` + typed sidecars (`UpdateEnvelope::Snapshot` now carries `SnapshotEnvelope`); chirp-tui/chirp-desktop real-encoder round-trip tests added; nmp-wasm emits Tier-3 typed frames.
 
