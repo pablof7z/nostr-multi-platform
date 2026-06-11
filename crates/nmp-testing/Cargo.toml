@@ -39,6 +39,11 @@ nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-nip59 = { path = "../nmp-nip59" }
+# F-04 zap E2E harness (zap_e2e_nwc_roundtrip.rs) — the fake NIP-47 wallet
+# service reuses the canonical NWC NIP-04 crypto (`nmp_nwc::crypto`) to
+# decrypt kind:23194 requests and encrypt kind:23195 responses, so the wire
+# bytes match exactly what `nmp_nip47::handle_nwc_text` parses.
+nmp-nwc = { path = "../nmp-nwc" }
 # V-51 phase 4 validation harness — `routing_trace_real_nostr` test
 # constructs `GenericOutboxRouter` + `InMemoryMailboxCache` + the
 # `Kind10002Parser` directly to seed the cache from a live kind:10002
