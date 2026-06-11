@@ -27,6 +27,11 @@ serde_json = "1.0"
 
 [dev-dependencies]
 nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp" }
+# real_relay_nip17_cold_start_kernel.rs — drives the canonical NMP composition
+# (`register_defaults`) through a real `NmpApp`/Kernel so the F-02 closure-gate
+# scenario (kind:10050 → DmRelayCache → planner-compiled kind:1059 #p REQ →
+# verify+store gate → DmInboxProjection) runs end-to-end against a live relay.
+nmp-app-template = { path = "../nmp-app-template" }
 nmp-core = { path = "../nmp-core" }
 # longform_projection_supersession.rs — drives the typed NIP-23
 # `LongformProjection` against the real event store to prove kernel-resolved
@@ -151,6 +156,18 @@ path = "tests/real_relay_nip17_roundtrip.rs"
 [[test]]
 name = "real_relay_nip17_cold_start"
 path = "tests/real_relay_nip17_cold_start.rs"
+
+# F-02 CLOSURE GATE (issue #977) — cold-start DM receive driven through a REAL
+# `NmpApp`/Kernel. Unlike `real_relay_nip17_cold_start` (which drives the
+# projection directly), this test makes the kernel itself compile and emit the
+# kind:1059 #p REQ via the kind:10050 → DmRelayCache routing path, ingest the
+# relay backfill through its Schnorr-verify + store gate, and surface the DM in
+# the `nmp.nip17.dm_inbox` snapshot. `#[ignore]` (needs `nak` on $PATH):
+#   cargo test -p nmp-testing --test real_relay_nip17_cold_start_kernel \
+#     -- nip17_cold_start_receive_through_real_kernel --ignored --nocapture
+[[test]]
+name = "real_relay_nip17_cold_start_kernel"
+path = "tests/real_relay_nip17_cold_start_kernel.rs"
 
 # PR #631 verification — Marmot kind:445 group-message round-trip over a real
 # relay (Alice publishes the encrypted MLS message; Bob's socket receives and

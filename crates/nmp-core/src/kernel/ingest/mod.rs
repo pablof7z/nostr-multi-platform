@@ -493,11 +493,24 @@ impl Kernel {
                 // enqueue the `Nip65Arrived` recompile trigger (A1) so M2
                 // re-plans the author. Both calls are kind-agnostic: the
                 // kernel only knows "this author's mailbox changed".
+                //
+                // F-02 — symmetric snapshot for the substrate
+                // `DmInboxRelayLookup` (NIP-17 kind:10050 DM-relay list).
+                // The `Kind10050Parser` writes this cache inside
+                // `verify_and_persist`; without detecting the transition the
+                // kernel would never enqueue the `DmRelayListChanged` recompile
+                // trigger, so a cold-start gift-wrap inbox interest
+                // (kind:1059 `#p`, `PTagRouting::Nip17DmRelays`) pushed before
+                // the kind:10050 round-trip closed would stay compiled to
+                // "no subscription" forever (fail-closed routing in
+                // `active_giftwrap_inbox_interest`). Kind-agnostic: the kernel
+                // only knows "this author's DM-relay list may have changed".
                 use crate::store::InsertOutcome;
                 let author = event.pubkey.clone();
                 let event_id_for_trace = event.id.clone();
                 let created_at_for_trigger = event.created_at;
                 let before = self.mailbox_cache().snapshot(&author);
+                let dm_before = self.recipient_dm_relays(&author);
                 let outcome = self.verify_and_persist(relay_url, &event);
                 if matches!(
                     outcome,
@@ -522,6 +535,15 @@ impl Kernel {
                             &event_id_for_trace,
                             created_at_for_trigger,
                         );
+                    }
+                    // F-02 — DM-relay-list transition: enqueue the
+                    // `DmRelayListChanged` recompile trigger so the planner
+                    // re-routes `PTagRouting::Nip17DmRelays` interests against
+                    // the freshly-populated cache on the next
+                    // `drain_lifecycle_tick`.
+                    let dm_after = self.recipient_dm_relays(&author);
+                    if dm_before != dm_after {
+                        self.on_dm_relays_changed(&author, created_at_for_trigger);
                     }
                 }
                 self.changed_since_emit = true;
@@ -727,6 +749,37 @@ impl Kernel {
                 created_at,
             });
         self.refresh_profile_after_mailbox(author);
+    }
+
+    /// F-02 — substrate-honest DM-relay-list-change observer.
+    ///
+    /// Called from the wildcard ingest arm when the substrate
+    /// [`crate::substrate::DmInboxRelayLookup`] transitioned for `author`
+    /// (a NIP-17 kind:10050 was added / removed / replaced by the
+    /// `Kind10050Parser` the [`crate::substrate::EventIngestDispatcher`]
+    /// fanned). The kernel does not name the kind — it only observes that
+    /// the substrate DM-relay cache mutated for this author.
+    ///
+    /// Enqueues [`crate::subs::CompileTrigger::DmRelayListChanged`] so the
+    /// planner re-routes every interest whose `#p` routing mode is
+    /// [`crate::planner::PTagRouting::Nip17DmRelays`] (today: the
+    /// gift-wrap inbox interest from `nmp_nip17::active_giftwrap_inbox_interest`)
+    /// against the freshly-populated cache on the next `drain_lifecycle_tick`.
+    ///
+    /// This is the production seam the V-40 migration left as a follow-up
+    /// (see `kernel/test_support.rs::seed_kind10050_for_test`, which drives
+    /// the equivalent trigger inline for `nmp-core`-internal tests). Its
+    /// absence was the F-02 cold-start defect: a returning user with a
+    /// kind:10050 on a prior device fetched that list on sign-in, but the
+    /// gift-wrap inbox interest — pushed by the host DM runtime before the
+    /// fetch closed — never recompiled, so the kind:1059 `#p` REQ never went
+    /// out and the DM inbox stayed empty.
+    pub(super) fn on_dm_relays_changed(&mut self, author: &str, created_at: u64) {
+        self.lifecycle
+            .enqueue_trigger(crate::subs::CompileTrigger::DmRelayListChanged {
+                pubkey: author.to_string(),
+                created_at,
+            });
     }
 }
 
