@@ -167,6 +167,79 @@ final class OpFeedDecoderTests: XCTestCase {
         XCTAssertEqual(feed.cards[0].attribution.first?.replyEventId, hex32(0x56))
     }
 
+    // ── Typed-first dynamic feed overlay (author/thread sidecars) ────────────
+
+    /// A typed `nmp.feed.author.<id>` NOFS sidecar is preferred over the JSON
+    /// projection for that key: the overlay decodes the golden bytes and
+    /// replaces the JSON entry. Keys present only in JSON are preserved.
+    func testTypedAuthorFeedSidecarOverlaysJsonFeed() {
+        let authorKey = "nmp.feed.author.\(hex32(0xAB))"
+        let threadKey = "nmp.feed.thread.\(hex32(0xCD))"
+
+        // JSON-derived dict: a placeholder author feed (1 dummy card) + a
+        // thread feed that has NO typed sidecar (must survive untouched).
+        let jsonAuthor = ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-author")], page: nil)
+        let jsonThread = ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-thread")], page: nil)
+        let json: [String: ChirpTimelineSnapshot] = [authorKey: jsonAuthor, threadKey: jsonThread]
+
+        let typedEnvelope = TypedProjectionEnvelope(
+            key: authorKey,
+            schemaId: TypedHomeFeedDecoder.schemaId,
+            schemaVersion: 1,
+            fileIdentifier: TypedHomeFeedDecoder.fileIdentifier,
+            payload: data(fromHex: Self.populatedHex))
+
+        let merged = KernelUpdateFrameDecoder.overlayTypedFlatFeeds(json: json, typed: [typedEnvelope])
+
+        // Author feed now comes from the typed golden bytes (2 cards), not the
+        // 1-card JSON placeholder.
+        XCTAssertEqual(merged[authorKey]?.cards.count, 2)
+        XCTAssertEqual(merged[authorKey]?.cards.first?.card.id, hex32(0x03))
+        // Thread feed, with no typed sidecar, stays the JSON value.
+        XCTAssertEqual(merged[threadKey]?.cards.count, 1)
+        XCTAssertEqual(merged[threadKey]?.cards.first?.card.id, "json-thread")
+    }
+
+    /// No typed sidecar for the key (wrong schema id / non-feed key / malformed
+    /// bytes) → the JSON entry is the fallback, untouched.
+    func testAbsentOrMalformedTypedSidecarFallsBackToJson() {
+        let authorKey = "nmp.feed.author.\(hex32(0x01))"
+        let json: [String: ChirpTimelineSnapshot] = [
+            authorKey: ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-only")], page: nil)
+        ]
+
+        // (a) right key, WRONG schema id → ignored.
+        let wrongSchema = TypedProjectionEnvelope(
+            key: authorKey, schemaId: "nmp.nip01.timeline", schemaVersion: 1,
+            fileIdentifier: "NFTS", payload: data(fromHex: Self.populatedHex))
+        // (b) right schema id, NON-feed key (home) → not a dynamic feed, ignored.
+        let homeKey = TypedProjectionEnvelope(
+            key: "nmp.feed.home", schemaId: TypedHomeFeedDecoder.schemaId, schemaVersion: 1,
+            fileIdentifier: TypedHomeFeedDecoder.fileIdentifier, payload: data(fromHex: Self.populatedHex))
+        // (c) right key + schema id, MALFORMED bytes → decode nil, JSON kept.
+        let malformed = TypedProjectionEnvelope(
+            key: authorKey, schemaId: TypedHomeFeedDecoder.schemaId, schemaVersion: 1,
+            fileIdentifier: TypedHomeFeedDecoder.fileIdentifier, payload: Data([0x00, 0x01, 0x02]))
+
+        let merged = KernelUpdateFrameDecoder.overlayTypedFlatFeeds(
+            json: json, typed: [wrongSchema, homeKey, malformed])
+
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[authorKey]?.cards.count, 1)
+        XCTAssertEqual(merged[authorKey]?.cards.first?.card.id, "json-only")
+    }
+
+    /// Minimal `ChirpRootCard` with a known id, for distinguishing JSON-vs-typed
+    /// provenance in the overlay tests.
+    private func dummyRootCard(id: String) -> ChirpRootCard {
+        ChirpRootCard(
+            card: ChirpEventCard(
+                id: id, authorPubkey: "", kind: 1, createdAt: 0, content: "",
+                contentTree: nil, relationCounts: nil,
+                authorDisplayName: nil, authorPictureUrl: nil, contentPreview: ""),
+            attribution: [])
+    }
+
     // ── NFCT per-variant round-trip ──────────────────────────────────────────
     //
     // Constructs a ContentTreeWire FlatBuffers buffer in Swift using the

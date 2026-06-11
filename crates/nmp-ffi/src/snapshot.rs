@@ -55,6 +55,24 @@ impl NmpApp {
         }
     }
 
+    /// Run every registered typed projection closure and collect the emitted
+    /// [`TypedProjectionData`](nmp_core::TypedProjectionData) sidecars — the
+    /// read counterpart to [`Self::register_typed_snapshot_projection`].
+    ///
+    /// This is the same vector the actor folds into a snapshot frame's
+    /// `typed_projections` sidecar on every tick; exposing it as a `&self`
+    /// accessor lets a host (or an app-crate test) introspect what its
+    /// registrations actually emit without driving a full snapshot tick. A
+    /// closure returning `None` contributes nothing. A poisoned registry mutex
+    /// degrades to an empty vector (D6).
+    #[must_use]
+    pub fn run_typed_snapshot_projections(&self) -> Vec<nmp_core::TypedProjectionData> {
+        self.snapshot_projections
+            .lock()
+            .map(|registry| registry.run_typed())
+            .unwrap_or_default()
+    }
+
     /// Register a per-tick observer — a no-result callback fired once on every
     /// snapshot tick. The generic, projection-free counterpart to
     /// [`Self::register_snapshot_projection`]: it contributes no snapshot key,
