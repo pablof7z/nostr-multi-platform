@@ -14,11 +14,18 @@ extension KernelModel {
     // is the fallback (ADR-0037 Commitment 4).
     var accounts: [AccountSummary] { typedAccounts ?? snapshot?.accounts ?? [] }
     var activeAccount: String? { typedActiveAccount ?? snapshot?.activeAccount }
-    var publishQueue: [PublishQueueEntry] { snapshot?.publishQueue ?? [] }
-    var publishOutbox: [PublishOutboxItem] { snapshot?.publishOutbox ?? [] }
-    var outboxSummary: OutboxSummary { snapshot?.outboxSummary ?? .empty }
-    var configuredRelays: [AppRelay] { snapshot?.configuredRelays ?? [] }
-    var relayRoleOptions: [RelayRoleOption] { snapshot?.relayRoleOptions ?? [] }
+    // V6 Stage 4 (Wave B batch #2): typed-first with JSON fallback, mirroring
+    // `accounts`'s `typedAccounts ?? snapshot?.accounts`. The typed `KCRL` /
+    // `KRRO` / `KOXS` / `KPBO` / `KPBQ` sidecars win when present; the generic
+    // JSON projection is the fallback (ADR-0037 Commitment 4). These five keys
+    // are consumed ONLY through these accessors (no raw `update.<field>` /
+    // `snapshot.<field>` side-effect consumers), so the accessor flip is the
+    // single effective-value seam — no split-brain to route.
+    var publishQueue: [PublishQueueEntry] { typedPublishQueue ?? snapshot?.publishQueue ?? [] }
+    var publishOutbox: [PublishOutboxItem] { typedPublishOutbox ?? snapshot?.publishOutbox ?? [] }
+    var outboxSummary: OutboxSummary { typedOutboxSummary ?? snapshot?.outboxSummary ?? .empty }
+    var configuredRelays: [AppRelay] { typedConfiguredRelays ?? snapshot?.configuredRelays ?? [] }
+    var relayRoleOptions: [RelayRoleOption] { typedRelayRoleOptions ?? snapshot?.relayRoleOptions ?? [] }
     var settingsHub: SettingsHubSummary { snapshot?.settingsHub ?? .empty }
     var walletStatus: WalletStatusData? { snapshot?.walletStatus }
     var logicalInterests: [LogicalInterestStatus] { snapshot?.logicalInterests ?? [] }

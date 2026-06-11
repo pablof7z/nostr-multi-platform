@@ -136,16 +136,25 @@ fn decoder_enum_name_capitalizes_first_letter() {
     assert_eq!(decoder_enum_name("wallet"), "TypedWalletDecoder");
 }
 
-/// The real registry must emit decoders for EXACTLY the proof keys whose
-/// `flatc --swift` binding is checked into the Chirp target this PR
-/// (`accounts`, `active_account`). If a future PR adds a reader binding to
+/// The real registry must emit decoders for EXACTLY the keys whose `flatc
+/// --swift` binding is checked into the Chirp target today: the two proof keys
+/// (`accounts`, `active_account`, PR #1039) plus the Wave B batch #2 thin-glue
+/// keys (`configured_relays`, `relay_role_options`, `outbox_summary`,
+/// `publish_outbox`, `publish_queue`). If a future PR adds a reader binding to
 /// another entry, this test fails loudly — a reminder to regenerate the Swift
 /// and update this expectation.
 #[test]
 fn real_registry_emits_exactly_the_proof_keys() {
     let out = render_typed_decoders(SNAPSHOT_PROJECTIONS);
+    // PR #1039 proof keys.
     assert!(out.contains("enum TypedAccountsDecoder {"));
     assert!(out.contains("enum TypedActiveAccountDecoder {"));
+    // Wave B batch #2 thin-glue keys.
+    assert!(out.contains("enum TypedConfiguredRelaysDecoder {"));
+    assert!(out.contains("enum TypedRelayRoleOptionsDecoder {"));
+    assert!(out.contains("enum TypedOutboxSummaryDecoder {"));
+    assert!(out.contains("enum TypedPublishOutboxDecoder {"));
+    assert!(out.contains("enum TypedPublishQueueDecoder {"));
     let emitted = SNAPSHOT_PROJECTIONS
         .iter()
         .filter(|e| {
@@ -156,9 +165,11 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 2,
-        "exactly two proof keys (accounts, active_account) have a checked-in \
-         flatc --swift reader binding this PR; if this changed, regenerate \
+        emitted, 7,
+        "exactly seven keys have a checked-in flatc --swift reader binding \
+         today (accounts + active_account from PR #1039, plus the Wave B \
+         batch: configured_relays, relay_role_options, outbox_summary, \
+         publish_outbox, publish_queue); if this changed, regenerate \
          TypedProjectionDecoders.generated.swift and update this test"
     );
 }
