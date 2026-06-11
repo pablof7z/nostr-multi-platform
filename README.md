@@ -1,7 +1,7 @@
 # NMP — Nostr Multi-Platform
 
 A Rust framework for building Nostr apps. One Rust core, native shells for v1
-(iOS SwiftUI, Android Compose, desktop iced), and web/wasm as a post-v1 target.
+(iOS SwiftUI, Android Compose, desktop egui), and web/wasm as a post-v1 target.
 The core owns everything that touches the protocol — relays, state,
 subscriptions, signing, decryption, replaceable-event resolution, time. The
 shells render. That's it.

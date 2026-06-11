@@ -35,7 +35,7 @@ production fallback. Track under [F-10 issue #991](https://github.com/pablof7z/n
 **What does not work yet** (v1 blockers):
 1. **F-02** — DM cold-start receive-side not yet verified against live relays (Rust pipeline test passes).
 2. **F-04** — Zap E2E round-trip (NWC `pay_invoice` → kind:9735 → `ZapsAggregateProjection`) not verified against a live wallet.
-3. **F-05** — `nmp-codegen` Swift `Decodable` pilot for `TimelineBlock` + `KernelUpdate`. Targets the hand-written `Decodable` block of `KernelBridge.swift` (1,900 LOC today; the ~740-LOC C-ABI/dispatch glue at the top is permanent, not a codegen target). Stage 1+2 generate 9 of ~52 Decodable types (≈17%); the tagged-enum sweep is the remainder.
+3. **F-05** — Full typed-projection coverage: ~28 remaining `flatc --swift` bindings + PR-B (`payload:Value` deletion from `nmp_update.fbs`). Android/Kotlin decoders are prioritized first (they gate the PR-B rollout order); the `flatc --swift` sweep follows. See [#979](https://github.com/pablof7z/nostr-multi-platform/issues/979).
 
 **Web/wasm scope moved post-v1 (2026-06-11).** `nmp-wasm` stages 2–3c
 landed (PRs #372/#375/#378/#385), but browser persistence, IndexedDB/OPFS
@@ -44,7 +44,7 @@ platform contract is iOS, Android, and desktop. Web/wasm resumes in the
 post-v1 web milestone tracked by [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007)
 and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008).
 
-**Framework thesis — RE-OPENED AS BUILDABLE (2026-05-29, ADR-0039):** the push projection seam already satisfies every property a second app needs — kernel-owned projection (no shell-side D5 parsing), handshake-gated sign-in via `projections["bunker_handshake"]`, and D3 outbox routing read off the pushed frame. No new affordances are required. The **podcast player** is the live candidate, to be built on the push seam (deleting its bespoke `nmp_app_podcast_snapshot` pull symbol + 500 ms poll). The thesis is therefore unblocked but not yet *demonstrated* — no second app has been built against the seam yet. See [PD-033-A issue #975](https://github.com/pablof7z/nostr-multi-platform/issues/975) and ADR-0039.
+**Framework thesis — CLOSED (2026-06-11, Decision B):** the second-app gate is satisfied by external consumer apps. Owner-verified evidence: `~/Work/podcast-player` is an external workspace pinning `nmp-app-template`/`nmp-core`/`nmp-ffi`/`nmp-signer-broker` at git rev `104c3f76`, with `apps/nmp-app-podcast` (~56k LOC Rust composing `ffi/register.rs`, `nmp_dispatch.rs`, `android.rs`) and a ~100k-LOC Swift iOS app; the owner also operates `win-the-day` and `hl` as NMP apps. The external-consumer relationship is documented in [`docs/architecture/external-consumers.md`](architecture/external-consumers.md). See [PD-033-A issue #975](https://github.com/pablof7z/nostr-multi-platform/issues/975) (closed).
 
 **C-ABI surface — legitimate API, not debt** *(updated 2026-06-11)*: the named `nmp_app_*` C-ABI symbols (59 today across `crates/nmp-ffi/src/`; `lib.rs` is 2,496 LOC) are framework API — lifecycle, callbacks, capability sockets, observer + projection registration, identity/relay ops, and the generic `nmp_app_dispatch_action` path. They are **not** migration debt to schedule away. The former freeze gate (`ci/check-ffi-surface-freeze.sh`, frozen at 54) was deliberately deleted in PR #933; net-new symbols are now governed by review + ADR convention rather than a CI gate. The generic `nmp_app_open_interest(filter_json, consumer_id, scope)` landed in the M2 migration (PR #923); retiring the legacy `open_author`/`open_thread` stack (which still hardcodes Chirp's social kinds `{1,6}`) is tracked in [#958](https://github.com/pablof7z/nostr-multi-platform/issues/958) (V-68 Stage 2) and [#957](https://github.com/pablof7z/nostr-multi-platform/issues/957) (V-112).
 
@@ -105,7 +105,7 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | ~~M12~~ Wallet (NWC + zaps + Cashu) | deferred post-v1 | 🟡 NWC + NIP-57 built; **F-04 E2E pending**; Cashu/nutzaps post-v1 |
 | M13 Web-of-Trust | pending | ❌ Not built (post-v1) |
 | M14 UniFFI migration | pending | ❌ Not started (post-v1) |
-| M15 Native cross-platform | pending | 🟡 Desktop + Android shells; wasm Stages 2–3c are merged but web persistence/parity is post-v1 |
+| M15 Native cross-platform | pending | 🟡 Desktop (egui) + Android shells; wasm Stages 2–3c are merged but web persistence/parity is post-v1; v1 platform contract = iOS + Android + desktop (egui) |
 | M16 CLI + starter | pending | 🟡 `nmp-cli` exists; starter recipes not; component-registry/content-kit plan added in [`plan/m16-component-registry.md`](plan/m16-component-registry.md) |
 | M17 v1 release | pending | ❌ Pending |
 
@@ -119,12 +119,12 @@ pending decisions, and queued feature work live in GitHub Issues.
 v1 ships when **all of the following** hold:
 
 1. **No open `category:violation` issue blocks v1** (or every such issue has a `status:staged` plan that crosses the v1 line with progress per sprint).
-2. **Every `phase:v1-blocker` feature issue is closed.** Today: F-02 [#977](https://github.com/pablof7z/nostr-multi-platform/issues/977), F-04 [#978](https://github.com/pablof7z/nostr-multi-platform/issues/978), F-05 [#979](https://github.com/pablof7z/nostr-multi-platform/issues/979). Web/wasm issues [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008) are post-v1.
-3. **Every pending `category:decision` issue that blocks v1 is resolved** (today: PD-033-C, PD-037 closed; PD-033-A [#975](https://github.com/pablof7z/nostr-multi-platform/issues/975) **re-opened as buildable 2026-05-29, ADR-0039** — the push seam satisfies the second-app properties; the podcast player is the live candidate).
-4. **Stateful second-app spike is run** — the `apps/notes` spike was deleted (2026-05-28); PD-033-A is re-opened as buildable on the push projection seam (ADR-0039), with the podcast player as the live candidate. The seam is proven sufficient; an actual second app has not yet been built against it. See [PD-033-A issue #975](https://github.com/pablof7z/nostr-multi-platform/issues/975).
-5. **The v1 platform claim is honest.** v1 claims iOS, Android, and desktop. Browser/web/wasm is explicitly post-v1 in `aim.md`, product specs, and GitHub Issues.
-6. **Native cross-platform consistency is proven.** The same scripted scenario produces byte-identical decoded snapshots on iOS, Android, and desktop. Web joins this gate after the post-v1 web milestone.
-7. **The C-ABI surface is frozen: no net-new `nmp_app_*` symbol without a merged ADR.** ✅ Enforcement: `ci/check-ffi-surface-freeze.sh` (`.github/workflows/ffi-surface-freeze.yml`) rejects net-additions by default; ADR override is required (precedent: `nmp_app_is_alive` / ADR-0028). The sole open item on the existing surface is V-68 Stage 2: the three `open_timeline`/`open_author`/`open_thread` symbols that hardcode kinds `{1,6}` — tracked in [#958](https://github.com/pablof7z/nostr-multi-platform/issues/958) and blocked on an ADR for the `nmp_app_open_interest` replacement.
+2. **Every `phase:v1-blocker` feature issue is closed.** Today: F-02 [#977](https://github.com/pablof7z/nostr-multi-platform/issues/977), F-04 [#978](https://github.com/pablof7z/nostr-multi-platform/issues/978), F-05 [#979](https://github.com/pablof7z/nostr-multi-platform/issues/979), gc_step wiring [#1069](https://github.com/pablof7z/nostr-multi-platform/issues/1069). Web/wasm issues [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008) are post-v1.
+3. **Every pending `category:decision` issue that blocks v1 is resolved** (today: PD-033-C, PD-037 closed; PD-033-A [#975](https://github.com/pablof7z/nostr-multi-platform/issues/975) **CLOSED 2026-06-11** — second-app gate met via external consumer apps per owner decision; see [`docs/architecture/external-consumers.md`](architecture/external-consumers.md)).
+4. **Second-app gate** — ✅ MET (2026-06-11, Decision B): external consumer apps (`podcast-player`, `win-the-day`, `hl`) pin NMP by git rev and compose framework seams. See [PD-033-A issue #975](https://github.com/pablof7z/nostr-multi-platform/issues/975) (closed) and [`docs/architecture/external-consumers.md`](architecture/external-consumers.md).
+5. **The v1 platform claim is honest.** v1 claims iOS, Android, and desktop (egui). Browser/web/wasm is a non-persistent preview until IndexedDB and the NmpApp-actor-in-Worker port land (both post-v1, tracked by [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008)).
+6. **Native cross-platform consistency is proven** — RESOLVED by re-scoping (2026-06-11, Decision A): the v1 cross-platform gate covers iOS + Android + desktop (egui). Web is a non-persistent preview and does not gate v1. See [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008).
+7. **The C-ABI surface governance is enforced: no net-new `nmp_app_*` symbol without a merged ADR.** The former CI freeze gate (`ci/check-ffi-surface-freeze.sh`, `.github/workflows/ffi-surface-freeze.yml`) was deleted in PR #933; governance is now via `ffi-drift.yml` (header-vs-Rust diff gate) plus review + ADR convention for net-new symbols. The sole open item on the existing surface is V-68 Stage 2: the three `open_timeline`/`open_author`/`open_thread` symbols that hardcode kinds `{1,6}` — tracked in [#958](https://github.com/pablof7z/nostr-multi-platform/issues/958) and blocked on an ADR for the `nmp_app_open_interest` replacement.
 8. **Snapshot serialization has a CI regression gate.** ✅ done — `make_update_us` + `serialize_us` instrumented in `crates/nmp-core/src/kernel/update.rs`. Gate: `snapshot_perf_firehose_gate` in `crates/nmp-core/src/kernel/perf_tests.rs` asserts `make_update_us < 250_000` μs and `serialize_us < 150_000` μs over a 1k-event firehose with `visible_limit = 500`. Thresholds = ≈ 10 × the observed dev-hardware debug baseline (~25 ms / ~15 ms, 5-run variance < 5 %); sized to catch a 10 × regression on `ubuntu-latest` debug CI without flaking on shared-runner jitter. The `NMP_PERF` log line in `kernel::update` remains the live monitoring signal in production. Test runs on every PR via `test.yml` (no new workflow required).
 9. **All M0–M8 + M10.5 milestones gates are met against the current code** (the table above is honest; no silent endings).
 10. **Doctrine D0–D14 enforced by lint** (doctrine-lint scoped run is part of CI on master).
@@ -135,13 +135,11 @@ v1 ships when **all of the following** hold:
 
 Deliberately deferred. See GitHub Issues labeled `phase:post-v1` and [`plan/post-v1.md`](plan/post-v1.md).
 
-- Web/wasm browser support: IndexedDB/OPFS persistence, browser parity, and the honest web cross-platform claim ([#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007), [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008))
+- Web/wasm browser support: IndexedDB/OPFS persistence, NmpApp-actor-in-Worker port, and the honest web cross-platform claim ([#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007), [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008))
 - Blossom uploads/downloads (M10)
 - Web-of-Trust (M13)
 - UniFFI migration (M14)
 - Cashu / nutzaps (NIP-60/61)
-- `nmp-codegen` full Swift bridge (pilot F-05 must land first)
-- Second non-social app **as a product** (the v1 spike is a thesis test, not a shipped product)
 - V-06 NIP-42+NIP-46 Stages 2-3 (broker `sign_auth_challenge` RPC)
 - V-08 NIP-17 DM bunker support Stage 3 (`unwrap_gift_wrap` via remote signer RPC)
 - ADR-0025 Marmot C-ABI cluster relocation out of Chirp binary
