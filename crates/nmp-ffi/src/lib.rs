@@ -6,6 +6,13 @@
 //! open/close + profile claim/release wrappers; `testing` carries the
 //! cfg-gated injectors (split to keep each file under the 300-LOC soft cap).
 
+// Quiescence contract for `nmp_app_set_update_callback`: after the setter
+// returns, the old `(callback, context)` pair is guaranteed not to be
+// mid-invocation. Tests exercise `UpdateCallbackGate` directly (no full app
+// stack) via the `pub(crate)` gate fields.
+#[cfg(test)]
+#[path = "update_callback_quiescence_tests.rs"]
+mod update_callback_quiescence_tests;
 // V-82 — `NmpApp::active_account_handle()` single-source-of-truth tests
 // (real sign-in / switch / Reset driven through the actor thread).
 #[cfg(test)]
@@ -201,17 +208,17 @@ use nmp_core::{
 use std::ffi::{c_char, c_uint, c_void, CStr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use zeroize::Zeroizing;
 
-type UpdateCallback = extern "C" fn(*mut c_void, *const u8, usize);
+pub(crate) type UpdateCallback = extern "C" fn(*mut c_void, *const u8, usize);
 
 #[derive(Clone, Copy)]
-struct UpdateCallbackRegistration {
-    context: usize,
-    callback: UpdateCallback,
+pub(crate) struct UpdateCallbackRegistration {
+    pub(crate) context: usize,
+    pub(crate) callback: UpdateCallback,
 }
 
 // Step 11 final — the slot type aliases + constructors that used to live
@@ -223,6 +230,65 @@ struct UpdateCallbackRegistration {
 // are imported through the `use nmp_core::slots::*` block at the top of
 // this file.
 
+/// Inner mutable state for the update-callback quiescence gate.
+///
+/// Invariant: `in_flight > 0` only while the listener thread is actively
+/// executing a foreign callback. The listener increments `in_flight` while
+/// holding the mutex (so a concurrent `set_update_callback` cannot observe
+/// `in_flight == 0` and return while a callback is still running), then
+/// releases the mutex before invoking the foreign code. When the callback
+/// returns the listener re-acquires the mutex, decrements `in_flight`, and
+/// notifies `UpdateCallbackGate::drained` — which wakes any
+/// `set_update_callback` call that is waiting for the old registration to
+/// quiesce.
+pub(crate) struct UpdateCallbackGateInner {
+    pub(crate) registration: Option<UpdateCallbackRegistration>,
+    pub(crate) in_flight: u32,
+}
+
+/// Quiescence-safe slot for the C-ABI update-callback registration.
+///
+/// Provides the contract: after [`nmp_app_set_update_callback`] returns, the
+/// previously-registered `(callback, context)` pair is guaranteed to be
+/// neither registered nor mid-invocation. Hosts may safely free the context
+/// allocation once the setter returns.
+///
+/// **Design (option b — Condvar drain, no foreign code under lock):**
+/// The listener thread increments `inner.in_flight` while holding the mutex,
+/// drops the lock, calls the foreign function, then re-acquires the mutex to
+/// decrement `in_flight` and signal `drained`. The setter waits on `drained`
+/// until `in_flight` reaches zero before returning. This keeps all foreign
+/// callback invocations outside any Rust mutex, avoiding deadlock even if a
+/// host callback re-enters another NMP FFI entry point — the only
+/// re-entrancy hazard that option (a) (invoke-under-lock) cannot tolerate.
+///
+/// **Re-entrancy note:** a host callback MUST NOT call
+/// `nmp_app_set_update_callback` from within the callback itself — that
+/// would deadlock because the setter waits for `in_flight` to reach zero,
+/// which cannot happen while the callback is blocking.  No existing host
+/// callback (iOS `nmpUpdateCallback`, Android `on_update`) calls back into
+/// the setter, so this is not a live concern; it is documented here so
+/// future implementors know the invariant.
+///
+/// Lives in this crate (not `nmp-core::slots`) because `UpdateCallback` is
+/// a C-ABI function pointer type — a structurally-FFI surface concern.
+pub(crate) struct UpdateCallbackGate {
+    pub(crate) inner: Mutex<UpdateCallbackGateInner>,
+    pub(crate) drained: Condvar,
+}
+
+impl UpdateCallbackGate {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(UpdateCallbackGateInner {
+                registration: None,
+                in_flight: 0,
+            }),
+            drained: Condvar::new(),
+        }
+    }
+}
+
 /// Typed slot for the C-ABI update callback registration.
 ///
 /// Written by [`nmp_app_set_update_callback`]; read by the actor thread's
@@ -232,10 +298,10 @@ struct UpdateCallbackRegistration {
 /// pointer type is a structurally-FFI shape; the actor reads through this
 /// slot but the type itself is a C-ABI surface concern. The byte pointer is
 /// borrowed only for the callback duration; hosts must copy before returning.
-type UpdateCallbackSlot = Arc<Mutex<Option<UpdateCallbackRegistration>>>;
+type UpdateCallbackSlot = Arc<UpdateCallbackGate>;
 
 fn new_update_callback_slot() -> UpdateCallbackSlot {
-    Arc::new(Mutex::new(None))
+    Arc::new(UpdateCallbackGate::new())
 }
 
 type IdentityChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
@@ -656,8 +722,8 @@ pub struct NmpApp {
 
 impl Drop for NmpApp {
     fn drop(&mut self) {
-        if let Ok(mut callback) = self.update_callback.lock() {
-            *callback = None;
+        if let Ok(mut inner) = self.update_callback.inner.lock() {
+            inner.registration = None;
         }
         // Route through `send_cmd` so the G-S4 queue-depth counter stays
         // consistent: the actor decrements it as it dequeues `Shutdown`.
@@ -1015,8 +1081,32 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 &listener_last_active_account,
                 &listener_identity_change_observers,
             );
-            let callback = listener_callback.lock().ok().and_then(|guard| *guard);
-            if let Some(registration) = callback {
+            // Quiescence-safe callback invocation (option b — Condvar drain).
+            //
+            // 1. Lock the gate, copy the registration, increment `in_flight`
+            //    while still holding the lock. Incrementing under lock is the
+            //    critical ordering: it ensures that a concurrent
+            //    `nmp_app_set_update_callback` that is waiting for `in_flight
+            //    == 0` cannot sneak past before we have committed to one more
+            //    invocation.
+            // 2. Drop the lock. The foreign callback runs outside the mutex so
+            //    that the setter never holds a Rust lock while foreign code
+            //    executes (avoids deadlock if a host re-enters another NMP FFI
+            //    entry point, though the current hosts do not).
+            // 3. After the callback returns, re-acquire the lock, decrement
+            //    `in_flight`, and signal `drained` so a waiting setter can
+            //    make progress.
+            let registration = {
+                let Ok(mut guard) = listener_callback.inner.lock() else {
+                    continue;
+                };
+                let reg = guard.registration;
+                if reg.is_some() {
+                    guard.in_flight += 1;
+                }
+                reg
+            };
+            if let Some(registration) = registration {
                 // UB guard: the foreign update callback may panic / raise.
                 // This listener thread has no outer `catch_unwind` (unlike
                 // the actor thread above), so an unguarded unwind here is
@@ -1028,6 +1118,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                         update.len(),
                     );
                 });
+                // Decrement in_flight and wake any waiting setter.
+                if let Ok(mut guard) = listener_callback.inner.lock() {
+                    guard.in_flight = guard.in_flight.saturating_sub(1);
+                    if guard.in_flight == 0 {
+                        listener_callback.drained.notify_all();
+                    }
+                }
             }
         }
     });
@@ -2366,6 +2463,31 @@ pub extern "C" fn nmp_app_free(app: *mut NmpApp) {
     }
 }
 
+/// Register (or clear) the update callback on `app`.
+///
+/// # Quiescence contract
+///
+/// After this function returns, the previous `(callback, context)` pair is
+/// guaranteed to be **neither registered nor mid-invocation**. Hosts may
+/// safely free or release `context` once this call returns — no further
+/// invocations of the old callback will occur, and any in-flight invocation
+/// has completed before this function returns.
+///
+/// Pass `callback = None` (or `None` for the function pointer) to clear the
+/// registration entirely. Passing a new `(context, callback)` pair replaces
+/// the old one atomically from the perspective of the quiescence guarantee:
+/// when this returns, the old registration is drained and the new one is
+/// installed.
+///
+/// # Re-entrancy
+///
+/// A host callback **must not** call `nmp_app_set_update_callback` from
+/// within the callback itself. The setter waits for in-flight invocations to
+/// drain (via a `Condvar`), which cannot happen while the callback is
+/// running on the listener thread — this would deadlock. No existing host
+/// (iOS `nmpUpdateCallback`, Android `on_update`) calls back into the setter,
+/// so this is not a live concern; it is documented so future implementors
+/// know the invariant.
 #[no_mangle]
 pub extern "C" fn nmp_app_set_update_callback(
     app: *mut NmpApp,
@@ -2375,13 +2497,32 @@ pub extern "C" fn nmp_app_set_update_callback(
     let Some(app) = app_ref(app) else {
         return;
     };
-    let Ok(mut slot) = app.update_callback.lock() else {
-        return;
-    };
-    *slot = callback.map(|callback| UpdateCallbackRegistration {
+    let new_registration = callback.map(|callback| UpdateCallbackRegistration {
         context: context as usize,
         callback,
     });
+    // Install the new registration (or clear) and then wait until any
+    // in-flight invocation of the OLD registration has finished.
+    //
+    // The `Condvar::wait_while` loop re-acquires the mutex on each wakeup
+    // and re-checks `in_flight == 0`, guarding against spurious wakeups.
+    // The listener increments `in_flight` while holding this same mutex
+    // before invoking the callback, so the wait condition is safe: if we
+    // observe `in_flight == 0` under the lock, the listener has either not
+    // yet incremented (and will see our cleared registration, so will not
+    // increment) or has already decremented (and the callback has returned).
+    let Ok(guard) = app.update_callback.inner.lock() else {
+        return;
+    };
+    let mut guard = guard;
+    guard.registration = new_registration;
+    let _guard = app
+        .update_callback
+        .drained
+        .wait_while(guard, |inner| inner.in_flight > 0);
+    // When `wait_while` returns, `in_flight == 0` under the lock. The old
+    // registration has been replaced and no invocation of it is in flight.
+    // Dropping `_guard` releases the lock.
 }
 
 #[no_mangle]
