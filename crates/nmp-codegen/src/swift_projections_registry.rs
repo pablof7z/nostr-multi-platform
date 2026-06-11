@@ -374,7 +374,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             file_identifier: "KARS",
             // Wave C: `flatc --swift` reader (`nmp_kernel_ActionResultsSnapshot`)
             // generated in this PR. Each `ActionResult` row maps
-            // `correlation_id`, `success`, `has_error`/`error` to the existing
+            // `correlation_id`, `status`, `has_error`/`error` to the existing
             // `LastActionResult` Swift type. See `TypedProjectionGlue.actionResults`.
             swift_reader_type: Some("nmp_kernel_ActionResultsSnapshot"),
         }),
