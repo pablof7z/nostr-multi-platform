@@ -2139,8 +2139,10 @@ impl Kernel {
     /// purge) was dead on every device (audit Finding 1).
     ///
     /// - **Budget**: [`GcBudget::production`] — `2000` events / `50 ms` scan
-    ///   bounds plus the finite `HOT_EVENT_CEILING` LRU ceiling so Phase-2
-    ///   eviction actually runs (`gc.md` §3).
+    ///   bounds with the LRU ceiling **disabled** (`max_total_events =
+    ///   usize::MAX`): store-claims have no production callers yet, so a finite
+    ///   ceiling would silently evict live events (V-117). GitHub issue #1090
+    ///   tracks wiring claims and re-enabling `HOT_EVENT_CEILING` (`gc.md` §3).
     /// - **`now_secs`**: read through the injected [`Clock`] via
     ///   [`Self::now_secs`] (D7/D9 — the store never reads the clock; the kernel
     ///   threads it in, so replay/tests stay deterministic).
