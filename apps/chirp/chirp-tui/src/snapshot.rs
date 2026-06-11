@@ -71,8 +71,12 @@ impl SharedSnapshot {
 /// When a typed sidecar entry is absent or fails to decode (e.g. the slot was
 /// not yet emitted, or a schema mismatch — ADR-0037 Commitment 4), the
 /// corresponding field returns its zero value instead of falling back through
-/// the generic `payload:Value` tree. The `payload:Value` slot is marked
-/// `(deprecated)` in the schema (PR-B); the producer no longer emits it.
+/// the generic `payload:Value` tree. The producer still dual-emits
+/// `payload:Value` (kernel/update.rs `encode_snapshot_with_envelope`); this
+/// decoder simply no longer reads it. The slot gets `(deprecated)` + emission
+/// stops in the PR-B follow-up (#991) once the remaining Rust-shell read
+/// sites (chirp-tui `FeatureSnapshot`, chirp-desktop `Snapshot`) flip to the
+/// typed channels that already exist kernel-side.
 fn decode_flatbuffer_snapshot(bytes: &[u8]) -> SharedSnapshot {
     // Tier-3 envelope — metrics and status fields live on SnapshotFrame directly.
     let envelope = nmp_core::decode_snapshot_envelope(bytes)

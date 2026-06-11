@@ -157,13 +157,16 @@ table WireSubscriptionStatus {
 
 table SnapshotFrame {
   schema_version:uint = 1;
-  // TODO(PR-B / #991): mark (deprecated) and regenerate bindings once every
-  // Rust-shell consumer has migrated to typed-first reads.  Remaining
-  // blockers: kernel-built-in projections without typed schemas (accounts,
-  // active_account, profile, configured_relays, settings_hub) consumed by
-  // chirp-tui `FeatureSnapshot` and chirp-desktop `Snapshot`.  web/chirp is
-  // post-v1 per ADR-0037 §5.  The `(deprecated)` attribute will be added in
-  // the follow-on PR that types those remaining projections.
+  // TODO(PR-B / #991): mark (deprecated), stop emitting, and regenerate
+  // bindings once every Rust-shell consumer has migrated to typed-first
+  // reads.  NOTE: every kernel-built-in projection ALREADY has a typed
+  // codec and is dual-emitted each tick (accounts/active_account/profile/
+  // configured_relays/settings_hub in kernel/typed_projections/;
+  // relay_statuses is an ADR-0044 Tier-3 envelope field).  The only
+  // remaining blockers are CONSUMER read sites that still walk this Value:
+  // chirp-tui `FeatureSnapshot::from_projections` and chirp-desktop
+  // `Snapshot` (snapshot.rs serde decode + app.rs `.projection()` reads).
+  // web/chirp is post-v1 per ADR-0037 §5.
   payload:Value;                          // compatibility during migration
   typed_projections:[TypedProjection];    // new: typed sidecar
 

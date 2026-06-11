@@ -139,11 +139,11 @@ pub extern "C" fn nmp_app_chirp_register(
     // logout, and reset proactively clear stale OP-feed state.
     let defaults = nmp_app_template::register_op_feed_defaults(app_ref, viewer);
 
-    // ADR-0037 typed sidecar for nmp.feed.home is intentionally NOT re-wired
-    // here. The old sidecar was bound to `ModularTimelineSnapshot`; the new
-    // producer emits `RootFeedSnapshot` and has no typed-FB encoder yet. iOS
-    // `TypedHomeFeedDecoder` falls back gracefully to JSON when no sidecar
-    // arrives. A follow-up PR will add the `RootFeedSnapshot` typed-FB schema.
+    // ADR-0037 typed sidecar for nmp.feed.home IS wired:
+    // `register_op_feed_defaults` step 5b (nmp-app-template
+    // op_feed_defaults.rs) registers the NOFS typed-FB encoder alongside the
+    // JSON projection, and iOS `TypedHomeFeedDecoder` consumes it typed-first
+    // (JSON remains the ADR-0037 Commitment-4 fallback).
     Box::into_raw(Box::new(ChirpHandle {
         engine: defaults.engine,
         app,
