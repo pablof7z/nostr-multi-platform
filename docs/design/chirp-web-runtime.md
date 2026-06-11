@@ -1,5 +1,7 @@
 # Chirp Web Runtime
 
+Status: post-v1 design surface; not a v1 exit gate.
+
 Chirp Web is a browser host for the same Rust-owned application model as iOS,
 Android, desktop, and TUI. TypeScript renders state and executes browser
 capabilities. Rust owns policy, routing, replay, Nostr protocol behavior, and

@@ -48,12 +48,12 @@ The full signer catalog at `subsystems.md` §7.4 lists five kinds:
 - Local key (raw nsec, encrypted at rest) — **covered by C11 sub-path 2**.
 - NIP-49 (password-encrypted) — **subsumed by C11 sub-path 2** (the NIP-49 encryption is the persistence step of the local-key creation, not a separate flow).
 - NIP-46 bunker — **covered by C11 sub-path 1**.
-- NIP-07 (web only) — wired via the web bindings shim; not a v1-ladder contract bullet because the web target is M15.
+- NIP-07 (web only) — wired via the web bindings shim after the post-v1 web/wasm milestone; not a v1-ladder contract bullet.
 - External Android Amber via NIP-55 — wired via the `ExternalSignerCapability` (`kernel-substrate.md` §5); not a v1-ladder contract bullet because Android is M15.
 
 C11 covers the two paths the user explicitly named for signer onboarding: *"NIP-46 bunker:// URL parsing + connection flow"* and *"Create new nsec flow. Generate, encrypt (NIP-49), and store via Keychain capability."* The other three signer kinds inherit the same atomicity guarantees by virtue of going through the same `IdentityModule` + `KeyringCapability` plumbing, but their onboarding flows have platform-specific surfaces that the v1 contract does not assert at this level.
 
-A potential C11.b sibling bullet covering NIP-07 + NIP-55 may be added in the M15 framework-magic delta.
+A potential C11.b sibling bullet covering NIP-55 may be added in the M15 framework-magic delta. NIP-07 belongs to the post-v1 web/wasm milestone.
 
 ## The capability boundary
 

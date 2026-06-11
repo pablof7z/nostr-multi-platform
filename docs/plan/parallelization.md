@@ -9,7 +9,7 @@ The ladder above is the **dependency order** — what must precede what — not 
 - **[M6](m6-signers-write.md) (signer + write path) is a serialization point** — most downstream milestones ([M7](m7-interaction-loop.md), [M8](m8-multi-account.md), [M9](m9-messaging.md), [M10](m10-blossom.md), [M12](m12-wallet.md)) depend on it. Land this fast.
 - **FFI hardening** is itself parallelizable when active: the stress harness, device perf rerun, UI-script fleet, and FFI surface audit are independent workstreams. Durable evidence belongs under `docs/perf/m10.5/`.
 - **Future non-Chirp app proofs** start only after Chirp is complete. Their internal parallelism can split the app-owned Rust crates, generated FFI, and platform view-wiring batches across agents.
-- **[M15](m15-cross-platform.md) (Android + Desktop + Web)** is three parallel tracks once [M14](m14-uniffi.md) (UniFFI) lands.
+- **[M15](m15-cross-platform.md) (Android + Desktop)** is two native-shell tracks once [M14](m14-uniffi.md) (UniFFI) lands. Web/wasm is a post-v1 milestone with its own persistence, signer, and browser-consistency work.
 
 A team of two could run M5 alongside the M2–M4 sequence with no integration risk. With parallel-agent execution (this session's mode), the practical limit is conflict surface: independent crates, independent docs, and independent platform shells fan out cleanly; shared mutable files (e.g. `nmp.toml`, the codegen output, `Cargo.toml`) serialize.
 

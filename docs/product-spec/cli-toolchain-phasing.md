@@ -8,7 +8,8 @@
 
 ```
 nmp init [<path>]                  Scaffold a new project (interactive prompts).
-nmp add ios | android | desktop | web   Add a platform to an existing project.
+nmp add ios | android | desktop         Add a v1 platform to an existing project.
+nmp add web                             Post-v1: add the wasm web shell.
 nmp add module <crate>             Add a protocol/app module to nmp.toml.
 nmp gen modules                    Generate nmp-app-<name> concrete enums/wrappers.
 nmp gen bindings [swift|kotlin|typescript]  Regenerate bindings.
@@ -45,8 +46,8 @@ The scaffold produces a ready-to-build Rust workspace, adapted for Nostr:
 ├── ios/                           # SwiftUI shell, XcodeGen project
 ├── android/                       # Compose shell, Gradle project
 ├── desktop/                       # iced shell
-├── web/                           # vite + wasm-bindgen shell
-├── bindings/{swift,kotlin,typescript}/   # generated from nmp-app-<name>, checked in
+├── web/                           # post-v1: vite + wasm-bindgen shell
+├── bindings/{swift,kotlin}/        # generated from nmp-app-<name>, checked in
 ├── examples/                      # empty placeholder
 ├── justfile                       # full build orchestration
 ├── flake.nix                      # if --nix
@@ -62,11 +63,11 @@ The starter app's feature set is fixed:
 - Conversation list + conversation
 - Settings (relay config, account switcher, debug diagnostics)
 
-The starter is the canonical demonstration of the framework. It is also the foundation of the cross-platform consistency test (§3.5).
+The starter is the canonical demonstration of the framework. It is also the foundation of the v1 native-platform consistency test (§3.5). Web joins this scaffold after the post-v1 web milestone.
 
 ### 8.3 `nmp doctor`
 
-Checks: Rust toolchain version, cross-compilation targets installed, Xcode (macOS only), Android SDK + NDK, JDK 17, `cargo-ndk`, `xcodegen`, `just`, `node`, `wasm-pack`. Reports per-platform readiness and prints exact install commands for what is missing.
+Checks: Rust toolchain version, cross-compilation targets installed, Xcode (macOS only), Android SDK + NDK, JDK 17, `cargo-ndk`, `xcodegen`, and `just`. Reports per-platform readiness and prints exact install commands for what is missing. Node and `wasm-pack` move to the post-v1 web milestone.
 
 ---
 
@@ -78,14 +79,14 @@ The build pipeline:
 - iOS: cross-compile, build `Nmp.xcframework`, link as non-embedded static framework via XcodeGen.
 - Android: `cargo-ndk` produces per-ABI `.so` into `jniLibs/`; JNA loads at runtime.
 - Desktop: direct path dependency; no FFI.
-- Web: `wasm-pack build` with `nmp-wasm`; output consumed by a vite shell.
+- Web: post-v1 `wasm-pack build` with `nmp-wasm`; output consumed by a vite shell.
 - `just` is the entry point for every build, gen, and run.
 - A Nix flake provisions the entire toolchain.
 
 CI lanes (GitHub Actions):
 
-- `pre-merge` — `cargo check --workspace`, `cargo test --workspace`, `nmp gen modules --check`, `just gen bindings` + diff check, all four platform builds.
-- `nightly` — examples build, cross-platform consistency tests, binary size budgets, NIP support matrix regeneration.
+- `pre-merge` — `cargo check --workspace`, `cargo test --workspace`, `nmp gen modules --check`, `just gen bindings` + diff check, and v1 native platform builds.
+- `nightly` — examples build, native-platform consistency tests, binary size budgets, NIP support matrix regeneration.
 
 ---
 
@@ -150,7 +151,7 @@ Three-arc plan: **kernel infrastructure first, product modules second, then scaf
 | Phase | Scope | Exit gate |
 |---|---|---|
 | 15. CLI + starter app + docs | `nmp init`, `nmp doctor`, `nmp gen *`, minimal starter app polish, recipe book, NIP support matrix, generated examples metadata | §3 success criteria reproducible from published docs alone |
-| 16. Proof app | Build `nmp-proof` (§4.5) on all four platforms; performance overlay; scripted scenarios for cross-platform consistency tests | Proof app launches and exercises every subsystem on every platform; consistency tests pass |
+| 16. Proof app | Build `nmp-proof` (§4.5) on the v1 native platforms; performance overlay; scripted scenarios for native-platform consistency tests | Proof app launches and exercises every subsystem on each v1 platform; consistency tests pass |
 | 17. Performance pass | Run proof app on real devices; collect counters; address budget regressions; tune planner, ViewBatch deltas, marshaling | All §7.16 budgets met on reference devices; performance report published |
 | 18. Product release | Tagged release on crates.io and npm; bindings published; example apps deployed; app upgrade fixture green | Public availability plus reproducible `nmp upgrade` path |
 
@@ -164,7 +165,7 @@ Each phase ends with a regression test added to `nmp-testing` that locks in the 
 
 These are not resolved in this spec and require further design before implementation:
 
-1. **Web persistence implementation.** OPFS vs IndexedDB tradeoffs, COOP/COEP requirements for SQLite-style WASM deployments, Safari fallback behavior, and how the CLI exposes those choices.
+1. **Post-v1 web persistence implementation.** OPFS vs IndexedDB tradeoffs, COOP/COEP requirements for SQLite-style WASM deployments, Safari fallback behavior, and how the CLI exposes those choices.
 2. **Wallet UI contract for NIP-60.** Cashu mint trust / proof state visibility in `WalletState`.
 3. **Signer policy for sub-actions.** When an action composes multiple sub-actions each requiring signing (e.g., publishing a note and a relay-list update in one user step), how is the bunker prompted — one prompt or N?
 4. **Migration story between minor versions.** AppState shape evolution: schema-versioned snapshots, or schemaless / additive only? The release train and `nmp upgrade` command are fixed; the unresolved part is per-schema compatibility policy.

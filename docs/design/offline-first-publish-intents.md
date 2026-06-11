@@ -149,9 +149,9 @@ ids.
 - `nmp-testing`: foreground trigger drains all pending publishes against
   `MockRelay`; network-online capability reports a fact and Rust chooses the
   retry; no test uses `sleep` loops or wall-clock polling.
-- Cross-platform consistency: the same offline-compose scenario emits
-  byte-equivalent `AppState` on iOS, Android, desktop, and web once M15
-  harnesses are active.
+- Native cross-platform consistency: the same offline-compose scenario emits
+  byte-equivalent `AppState` on iOS, Android, and desktop once M15 harnesses
+  are active. Web joins after the post-v1 web/wasm milestone.
 - Live smoke: opt-in real-relay run proves airplane-mode compose, app kill,
   relaunch, foreground, relay reconnect, and eventual OK/mixed/failed status.
 

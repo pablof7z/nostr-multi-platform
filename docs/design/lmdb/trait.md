@@ -236,7 +236,7 @@ No `StoreError` ever crosses FFI (D6). The `AppUpdate` carries only successful s
 ## 5. Two backends in v1
 
 ```rust
-// In-memory backend, kept for tests + web-pre-M15.
+// In-memory backend, kept for tests + post-v1 web fallback.
 pub struct MemEventStore { /* HashMap-backed; preserves the current kernel state */ }
 
 // Production backend on iOS / Android / Desktop.

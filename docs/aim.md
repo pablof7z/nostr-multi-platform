@@ -8,11 +8,11 @@ This document is the cold-start context for a brand-new working session. Read it
 
 ## 1. The north star
 
-We are designing a **Rust multiplatform framework for building Nostr applications** that ships a single Rust core consumed identically by iOS (SwiftUI), Android (Jetpack Compose), desktop (iced or Tauri), and web (wasm). The core owns all protocol logic, all state, all caching, all relay management, all signing orchestration, all derived views. Platform code is a thin rendering shell.
+We are designing a **Rust multiplatform framework for building Nostr applications** that ships a single Rust core consumed identically by iOS (SwiftUI), Android (Jetpack Compose), desktop (iced or Tauri), and eventually web (wasm). The v1 platform contract is native first: iOS, Android, and desktop. Web/wasm remains a long-term target, but it is explicitly post-v1. The core owns all protocol logic, all state, all caching, all relay management, all signing orchestration, all derived views. Platform code is a thin rendering shell.
 
 The framing concern is one sentence: **make it nearly impossible to build a broken Nostr application.** Today, building a Nostr client involves dozens of subtle correctness pitfalls — stale replaceable events, lost subscriptions, wrong relays for wrong events, race conditions between local state and relay state, leaked signing operations, multi-account state desync. The framework's job is to make each of those classes of bug structurally impossible through the safe app-kernel and FFI API: not merely documented as a footgun or caught by a linter, but ruled out by the type system, actor ownership, and public API surface. Lower-level Rust escape hatches, when they exist for internal subsystems or tests, must be explicitly named, instrumented, and covered by regression tests. The framework guards the kernel; FFI callers can bypass its guarantees by registering raw event taps or injecting synthetic events — see [`docs/escape-hatches.md`](escape-hatches.md) for the full catalogue of the four escape hatches and when each is appropriate.
 
-The success criterion is qualitative: **a developer should be able to one-shot a working Nostr application** — login, timeline, compose, profile, DMs, wallet — using the framework's CLI scaffold and a few hundred lines of platform UI code, and have it ship with sane defaults on all four platforms without the developer ever touching relay routing, cache invalidation, replaceable-event semantics, or subscription lifecycle. If they don't go out of their way to defeat the framework, the app will be correct.
+The success criterion is qualitative: **a developer should be able to one-shot a working Nostr application** — login, timeline, compose, profile, DMs, wallet — using the framework's CLI scaffold and a few hundred lines of platform UI code, and have it ship with sane defaults on the v1 native platforms without the developer ever touching relay routing, cache invalidation, replaceable-event semantics, or subscription lifecycle. Web/wasm earns that same claim in the post-v1 web milestone. If they don't go out of their way to defeat the framework, the app will be correct.
 
 ---
 
@@ -166,7 +166,7 @@ The framework ships **test utilities**: a mock relay (already provided by the re
 
 ### 4.14 Scaffolding CLI
 
-A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the binding layer (today: hand-rolled C-ABI, CI-frozen at 71 symbols; UniFFI migration deferred to M14 when the write surface stabilizes — see **ADR-0030** (`docs/decisions/0030-uniffi-vs-c-abi.md`)), an iOS SwiftUI app, an Android Compose app, an iced desktop app, a web wasm shell, the `justfile` build orchestrator, an optional Nix flake. The starter app implements login, a timeline, compose, a profile screen, and DMs. It builds and runs on all four platforms immediately. This is modeled directly on RMP's `rmp init`.
+A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the binding layer (today: hand-rolled C-ABI, CI-frozen at 71 symbols; UniFFI migration deferred to M14 when the write surface stabilizes — see **ADR-0030** (`docs/decisions/0030-uniffi-vs-c-abi.md`)), an iOS SwiftUI app, an Android Compose app, an iced desktop app, the `justfile` build orchestrator, and an optional Nix flake. A web wasm shell is a post-v1 scaffold target, not part of the v1 starter contract. The starter app implements login, a timeline, compose, a profile screen, and DMs. It builds and runs on the v1 native platforms immediately. This is modeled directly on RMP's `rmp init`.
 
 ---
 
@@ -219,7 +219,7 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 └── flake.nix
 ```
 
-The core crate compiles as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web compiles to wasm32-unknown-unknown via the wasm crate. **One source of truth, four delivery paths.**
+The core crate compiles as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web compiles to wasm32-unknown-unknown via the wasm crate after the post-v1 web milestone. **One source of truth, native v1 delivery paths first, web delivery later.**
 
 ---
 

@@ -26,7 +26,7 @@ matrix. It distills the design docs — it does not restate them.
 `open_event_store(&StorageBackend) -> Result<Box<dyn EventStore>,
 StoreError>` (`crates/nmp-core/src/store/mod.rs:36-51`). The actor holds
 `Box<dyn EventStore>`; backends are substitutable. `MemEventStore` is
-always compiled (tests + pre-M15 web); `LmdbEventStore` is always
+always compiled (tests + post-v1 web); `LmdbEventStore` is always
 compiled but only *functional* with `--features lmdb-backend` once the
 implementation lands (`store/mod.rs:10-15`).
 

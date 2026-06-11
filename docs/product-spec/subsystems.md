@@ -24,7 +24,7 @@ Behaviors guaranteed at insert time:
 | Provenance | Every event records typed sidecar provenance: relay URL, first seen, last seen, source, and deterministic primary relay. |
 | Query matching | Storage backends may return candidates; every result is re-run through the canonical matcher before it affects state or views. |
 
-Storage backend is configurable via `AppConfig.storage_backend` (LMDB or SQLite-style native backend, IndexedDB/OPFS strategy for web, final choice resolved before v1). The store wraps the Rust Nostr SDK protocol types, but NMP owns the application-kernel storage traits because the app kernel needs typed provenance, action ledger rows, relay metadata, domain records, and bounded-view indexes in addition to raw events.
+Storage backend is configurable via `AppConfig.storage_backend` (LMDB or SQLite-style native backend for v1; IndexedDB/OPFS strategy for web resolved in the post-v1 web milestone). The store wraps the Rust Nostr SDK protocol types, but NMP owns the application-kernel storage traits because the app kernel needs typed provenance, action ledger rows, relay metadata, domain records, and bounded-view indexes in addition to raw events.
 
 GC: a claim-based collector tracks `view_id → Vec<event_id>` references. View close drops claims. A periodic `prune()` removes events with zero claims that are also absent from declared "pinned" sets (sessions' contact-list events, sessions' relay-list events).
 
@@ -354,7 +354,7 @@ Violations produce a structured `DebugDiagnostics` entry in `AppState.debug` plu
 - `snapshot_state(app)` returning a normalized JSON `AppState` for diffing.
 - `script(actions)` for replaying action sequences against a headless `FfiApp` and asserting on emitted updates.
 
-The core actor is testable without networking. Every action variant has a corresponding unit test. Cross-platform consistency tests (§3.5) run the same `script` on all four targets and diff the JSON.
+The core actor is testable without networking. Every action variant has a corresponding unit test. Cross-platform consistency tests (§3.5) run the same `script` on the v1 native targets and diff the JSON; web joins the same harness after the post-v1 web milestone.
 
 ### 7.14 Background notification decryption
 

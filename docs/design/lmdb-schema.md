@@ -30,13 +30,13 @@ The competing options were (1) use `nostr-lmdb` directly via its concrete `Nostr
 | Migrations versioned per namespace | Out of scope | `kernel-substrate.md` §2: `DomainModule::migrations() -> Vec<DomainMigration>` |
 | `nmp dump` deterministic export | Out of scope | M3 exit criteria; M11 cross-app proof |
 
-**Therefore.** `EventStore` is a NMP-owned trait, with one production impl `LmdbEventStore` that holds (a) a `NostrLMDB` for the canonical event store and Nostr-shaped queries, and (b) NMP-owned secondary LMDB sub-databases under the same `lmdb::Environment` for the gap rows. The in-memory backend (`MemEventStore`) remains, both for tests and as the web-pre-M15 fallback. See [`lmdb/trait.md`](lmdb/trait.md) for the exact trait shape and the relayed-vs-owned method split.
+**Therefore.** `EventStore` is a NMP-owned trait, with one production impl `LmdbEventStore` that holds (a) a `NostrLMDB` for the canonical event store and Nostr-shaped queries, and (b) NMP-owned secondary LMDB sub-databases under the same `lmdb::Environment` for the gap rows. The in-memory backend (`MemEventStore`) remains, both for tests and as the post-v1 web fallback until a browser store lands. See [`lmdb/trait.md`](lmdb/trait.md) for the exact trait shape and the relayed-vs-owned method split.
 
 **Rejected alternatives.**
 
 - *Use `NostrLMDB` directly, no wrapper.* Loses every gap row above. Forces the kernel actor to know about LMDB transactions and a non-NMP concrete type, breaking the `Box<dyn EventStore>` substitutability M3 requires.
 - *Roll our own.* Reinvents NIP-09 / replaceable handling that `nostr-lmdb` already gets right. ~2,000 LOC of avoidable code with a worse bug surface than upstream.
-- *SQLite-backed `nostr-sdk` store.* Larger memory footprint at our 10k-event hot working set; iOS-disk-WAL fsync cost not justified for this access pattern. Held in reserve for the web port (M15) if IndexedDB OPFS proves unworkable.
+- *SQLite-backed `nostr-sdk` store.* Larger memory footprint at our 10k-event hot working set; iOS-disk-WAL fsync cost not justified for this access pattern. Held in reserve for the post-v1 web port if IndexedDB/OPFS proves unworkable.
 
 ## 2. Subsystem ownership map
 

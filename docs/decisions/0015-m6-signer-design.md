@@ -205,7 +205,7 @@ Where they diverge, this section names the divergence + rationale.
   forward-compatible with the `AccountRecord` shape — adding ULID id +
   metadata fields is additive.
 
-- **NIP-07 wasm-stub** — synthesis §1.8 explicitly defers web to M15.
+- **NIP-07 wasm-stub** — synthesis §1.8 explicitly defers web post-v1.
   Our impl agrees and provides a compile-correct stub today so the
   identifying type + payload shape are already stable.
 

@@ -12,6 +12,10 @@ See [`m9-messaging.md`](m9-messaging.md) for the full milestone spec (scope, sub
 
 See [`m12-wallet.md`](m12-wallet.md) for the full milestone spec. **Deferred reason:** Wallet is large surface area (NWC, NIP-47, NIP-57, NIP-60, NIP-61) and not load-bearing for v1 kernel-boundary proofs. When wallet lands post-v1, NIP-57 ships with it. LUD-16 zaps remain possible via an extension before this milestone.
 
+## Post-v1 Web/WASM — Browser host + wasm parity
+
+See [`m15-cross-platform.md`](m15-cross-platform.md) for the post-v1 web follow-on list. **Deferred reason:** v1 proves the Rust-owned kernel across the native platform contract: iOS, Android, and desktop. Browser delivery needs a production `nmp-wasm` host, IndexedDB/OPFS persistence, NIP-07 signer wiring, browser consistency fixtures, and honest degraded-mode behavior before the framework claims web support. The tactical queue lives in [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008).
+
 ## Post-v1 Marmot — MLS-over-Nostr Encrypted Groups
 
 See [`marmot-mls.md`](marmot-mls.md) for the full milestone spec. **Deferred reason:** M11.5 explicitly excludes encrypted groups; Marmot is the resolution path. Depends on M11.5's `RelayPinned` routing lane (ADR-0012), M6 signers, M5 NIP-42, and M3 persistence — all v1 deliverables — so the crate shape is clear but the implementation slot is post-v1. **Implementation note:** wraps [`marmot-protocol/mdk`](https://github.com/marmot-protocol/mdk) (v0.7.1+) as `nmp-marmot`; MLS ratchet state uses `mdk-sqlite-storage` alongside NMP's LMDB event store. **Relationship to deferred M9:** coexists — different interop requirements, different threat models. Marmot `Welcome` messages share the NIP-59 gift-wrap transport with NIP-17; the Marmot milestone either follows post-v1 M9 or ships a standalone `nmp-nip59` crate as its Step 0.

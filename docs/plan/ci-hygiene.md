@@ -13,8 +13,8 @@ Required CI target state (apply from the milestone they become possible):
 - iOS UI test (`xcrun simctl test`) from [M1](m1-twitter-slice.md).
 - Android build from [M15](m15-cross-platform.md).
 - Desktop build from [M15](m15-cross-platform.md).
-- Web build from [M15](m15-cross-platform.md).
-- Cross-platform consistency test from [M15](m15-cross-platform.md).
+- Native cross-platform consistency test from [M15](m15-cross-platform.md).
+- Web build and browser consistency tests from the post-v1 web/wasm milestone.
 
 Live firehose runs are not in pre-merge CI (would block on relay flakes); they run nightly on a dedicated runner and produce reports tagged `live` in `docs/perf/m<N>/`.
 
