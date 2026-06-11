@@ -101,38 +101,34 @@ object KernelUpdateFrameDecoder {
             Log.e(TAG, "snapshot frame missing bytes=$byteCount")
             return null
         }
-        val payload = snapshot.payload ?: run {
-            Log.e(TAG, "snapshot.payload is null bytes=$byteCount")
-            return null
-        }
-        // Lift the typed FlatBuffers sidecars FIRST so the projection decode can
-        // read author/thread flat feeds typed-first (F-05). The same envelope
-        // list is also returned to the caller for the `nmp.feed.home` decode in
-        // `KernelModel.decodeUpdate` — extracted once, used by both paths.
+        // PR-B (#991/#979): the generic `payload:Value` slot is no longer emitted.
+        // The decode spine is rebuilt entirely from:
+        //   - Tier-3 `SnapshotFrame` envelope fields: rev, running, metrics,
+        //     relay_statuses, last_error_toast (ADR-0044)
+        //   - Typed projection sidecars for every named projection key (ADR-0037)
+        // iOS `KernelUpdateFrameDecoder.swift` follows the same approach and was
+        // unaffected by PR-B because it never read `payload` (#1084).
         val typedProjections = extractTypedProjections(snapshot)
-        val update = decodeKernelUpdate(payload, typedProjections) ?: return null
+        val update = decodeKernelUpdate(snapshot, typedProjections) ?: return null
         return KernelDecodedUpdateFrame.Snapshot(update, typedProjections)
     }
 
     private fun decodeKernelUpdate(
-        root: Value,
+        snapshot: SnapshotFrame,
         typedProjections: List<TypedProjectionEnvelope>,
     ): KernelUpdate? {
-        if (root.kind != ValueKind.Map) {
-            Log.e(TAG, "root value is not a map (kind=${root.kind})")
-            return null
-        }
-        val map = buildValueMap(root)
         return try {
             KernelUpdate(
-                rev = map["rev"]?.longOr(0L) ?: 0L,
-                running = map["running"]?.boolOr(false) ?: false,
-                relayUrl = map["relayUrl"]?.stringOr("") ?: "",
-                legacyItems = map["items"]?.listOf { decodeTimelineItem(it) } ?: emptyList(),
-                metrics = map["metrics"]?.let { decodeMetricsLite(it) },
-                relayStatuses = map["relayStatuses"]?.listOf { decodeRelayStatus(it) } ?: emptyList(),
-                lastErrorToast = map["lastErrorToast"]?.stringOrNull(),
-                projections = map["projections"]?.let { decodeProjections(it, typedProjections) },
+                // rev, running, metrics, relayStatuses, lastErrorToast all come
+                // from the Tier-3 SnapshotFrame envelope (ADR-0044). The generic
+                // `payload:Value` root map is no longer present (PR-B #991/#979).
+                rev = snapshot.rev.toLong(),
+                running = snapshot.running,
+                relayUrl = "",  // legacy field — no Tier-3 equivalent; never used by UI
+                metrics = decodeMetricsFromTier3(snapshot),
+                relayStatuses = decodeRelayStatusesFromTier3(snapshot),
+                lastErrorToast = snapshot.lastErrorToast,
+                projections = decodeProjections(typedProjections),
             )
         } catch (e: Exception) {
             Log.e(TAG, "KernelUpdate reconstruction failed: ${e.message}")
@@ -140,264 +136,60 @@ object KernelUpdateFrameDecoder {
         }
     }
 
-    private fun decodeTimelineItem(v: Value): TimelineItem? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return TimelineItem(
-            id = m["id"]?.stringOr("") ?: "",
-            authorPubkey = m["authorPubkey"]?.stringOr("") ?: "",
-            content = m["content"]?.stringOr("") ?: "",
-            contentPreview = m["contentPreview"]?.stringOr("") ?: "",
-            createdAt = m["createdAt"]?.longOr(0L) ?: 0L,
-            relayCount = m["relayCount"]?.longOr(0L) ?: 0L,
-        )
-    }
-
-    private fun decodeMetricsLite(v: Value): KernelMetricsLite? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
+    private fun decodeMetricsFromTier3(snapshot: SnapshotFrame): KernelMetricsLite? {
+        val m = snapshot.metrics ?: return null
         return KernelMetricsLite(
-            storedEvents = m["storedEvents"]?.longOr(0L) ?: 0L,
-            visibleItems = m["visibleItems"]?.longOr(0L) ?: 0L,
-            eventsRx = m["eventsRx"]?.longOr(0L) ?: 0L,
-            updateSequence = m["updateSequence"]?.longOr(0L) ?: 0L,
+            storedEvents = m.storedEvents.toLong(),
+            visibleItems = m.visibleItems.toLong(),
+            eventsRx = m.eventsRx.toLong(),
+            updateSequence = m.updateSequence.toLong(),
         )
     }
 
-    private fun decodeRelayStatus(v: Value): RelayStatus? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return RelayStatus(
-            role = m["role"]?.stringOr("") ?: "",
-            relayUrl = m["relayUrl"]?.stringOr("") ?: "",
-            connection = m["connection"]?.stringOr("") ?: "",
-            auth = m["auth"]?.stringOr("") ?: "",
-            activeWireSubscriptions = m["activeWireSubscriptions"]?.intOr(0) ?: 0,
-            reconnectCount = m["reconnectCount"]?.longOr(0L) ?: 0L,
-        )
+    private fun decodeRelayStatusesFromTier3(snapshot: SnapshotFrame): List<RelayStatus> {
+        val count = snapshot.relayStatusesLength
+        if (count == 0) return emptyList()
+        val result = ArrayList<RelayStatus>(count)
+        for (i in 0 until count) {
+            val rs = snapshot.relayStatuses(i) ?: continue
+            result.add(
+                RelayStatus(
+                    role = rs.role ?: "",
+                    relayUrl = rs.relayUrl ?: "",
+                    connection = rs.connection ?: "",
+                    auth = rs.auth ?: "",
+                    activeWireSubscriptions = rs.activeWireSubscriptions.toInt(),
+                    reconnectCount = rs.reconnectCount.toLong(),
+                )
+            )
+        }
+        return result
     }
 
     private fun decodeProjections(
-        v: Value,
         typedProjections: List<TypedProjectionEnvelope>,
-    ): SnapshotProjections? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        // F-05 (#979): each rendered projection key is decoded TYPED-FIRST from
-        // its FlatBuffers sidecar, falling back to the generic `payload:Value`
-        // subtree whenever the typed sidecar is absent / wrong-schema /
-        // undecodable (ADR-0037 Commitment 4 — the generic path is a permanent
-        // fallback, never removed). Each typed decoder returns `null` on any
-        // miss, so the `?:` chains to the pre-existing generic decode. Mirrors
-        // iOS `KernelBridge.decodeFlatBuffer` + `TypedProjectionGlue`.
-        //
-        // `wallet` is special: the typed `NWST` buffer carries both the status
-        // and the balance-display string, so a single typed decode feeds both
-        // `walletStatus` and `walletBalance` (preserving the generic split).
+    ): SnapshotProjections {
+        // PR-B (#991/#979): the generic `payload:Value` projections sub-map is no
+        // longer present on the wire. Every projection is typed-first via its
+        // FlatBuffers sidecar. The `?: emptyList()` / `?: emptyMap()` chains below
+        // handle the case where a typed sidecar is absent (ADR-0037 Commitment 4:
+        // the generic fallback path is retained structurally but its Value source
+        // is gone; the effective behaviour is: absent typed sidecar → empty/null).
         val typedWallet = TypedWalletDecoder.decode(typedProjections)
-        // `active_account` (KACT) is, like `wallet`, decoded into a presence
-        // wrapper: a typed `null` pubkey means "no account active" (authoritative,
-        // NOT fall-back), so the presence check is on the whole result, never the
-        // inner `String?`. A null wrapper means "no typed sidecar, fall back".
         val typedActiveAccount = TypedAccountsDecoder.decodeActiveAccount(typedProjections)
         return SnapshotProjections(
-            activeAccount = if (typedActiveAccount != null) typedActiveAccount.pubkey
-            else m["activeAccount"]?.stringOrNull(),
-            // `accounts` (KACC) is a plain list — a typed `null` means "no typed
-            // sidecar", so `?:` chains to the generic decode (ADR-0037 Commitment
-            // 4). The typed list carries the full `npub`; Compose abbreviates.
-            accounts = TypedAccountsDecoder.decodeAccounts(typedProjections)
-                ?: m["accounts"]?.listOf { decodeAccountSummary(it) } ?: emptyList(),
-            claimedProfiles = TypedProfilesDecoder.decodeClaimed(typedProjections)
-                ?: m["claimedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
-            mentionProfiles = m["mentionProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
-            resolvedProfiles = TypedProfilesDecoder.decodeResolved(typedProjections)
-                ?: m["resolvedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
-            // F-05: author/thread flat feeds typed-first. The typed NOFS
-            // sidecars (`nmp.feed.author.*` / `nmp.feed.thread.*`) are decoded
-            // via TypedHomeFeedDecoder (byte-identical shape to nmp.feed.home),
-            // overlaid onto the generic `payload:Value` map so any key whose
-            // typed sidecar is absent/undecodable still falls back to the
-            // generic decode (ADR-0037 Commitment 4: the generic path is a
-            // permanent fallback, never removed). Mirrors iOS
-            // KernelUpdateFrameDecoder.overlayTypedFlatFeeds(json:typed:).
-            flatFeeds = FlatFeedProjectionDecoder.decode(m) +
-                TypedHomeFeedDecoder.decodeFlatFeeds(typedProjections),
-            dmInbox = TypedDmInboxDecoder.decode(typedProjections)
-                ?: m["nmp.nip17.dmInbox"]?.let { decodeDmInboxSnapshot(it) },
-            // When the typed `NWST` sidecar is present it is authoritative for
-            // BOTH wallet strings: a typed null balance means "no balance yet",
-            // NOT "fall back to generic" — so the presence check is on the whole
-            // `typedWallet`, never per-field (avoids a typed-status/generic-balance
-            // split).
-            walletStatus = if (typedWallet != null) typedWallet.status
-            else m["wallet"]?.let { decodeWalletStatusString(it) },
-            walletBalance = if (typedWallet != null) typedWallet.balanceDisplay
-            else m["wallet"]?.let { decodeWalletBalanceString(it) },
-            relayRoleOptions = TypedRelayRoleOptionsDecoder.decode(typedProjections)
-                ?: m["relayRoleOptions"]?.listOf { decodeRelayRoleOption(it) } ?: emptyList(),
-            // Marmot push projections (V-107 / ADR-0039). The keys
-            // "nmp.marmot.snapshot" / "nmp.marmot.messages" carry dots but no
-            // underscores, so convertFromSnakeCase leaves them unchanged.
-            marmotSnapshot = TypedMarmotDecoder.decodeSnapshot(typedProjections)
-                ?: m["nmp.marmot.snapshot"]?.let { decodeMarmotSnapshot(it) },
-            marmotMessages = TypedMarmotDecoder.decodeMessages(typedProjections)
-                ?: m["nmp.marmot.messages"]
-                    ?.mapOf { groupMessages -> groupMessages.listOf { decodeMarmotMessage(it) } }
-                ?: emptyMap(),
-        )
-    }
-
-    private fun decodeMarmotSnapshot(v: Value): MarmotSnapshot? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return MarmotSnapshot(
-            groups = m["groups"]?.listOf { decodeMarmotGroup(it) } ?: emptyList(),
-            pendingWelcomes = m["pendingWelcomes"]?.listOf { decodeMarmotPendingWelcome(it) } ?: emptyList(),
-            keyPackage = m["keyPackage"]?.let { decodeMarmotKeyPackage(it) } ?: MarmotKeyPackage(),
-            cachedKpPubkeys = m["cachedKpPubkeys"]?.listOf { it.stringOrNull() } ?: emptyList(),
-            invitesChipLabel = m["invitesChipLabel"]?.stringOrNull(),
-            isRegistered = m["isRegistered"]?.boolOr(false) ?: false,
-            orphanedCommitCount = m["orphanedCommitCount"]?.intOr(0) ?: 0,
-            keyringUnavailable = m["keyringUnavailable"]?.boolOr(false) ?: false,
-        )
-    }
-
-    private fun decodeMarmotGroup(v: Value): MarmotGroup? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return MarmotGroup(
-            idHex = m["idHex"]?.stringOr("") ?: "",
-            name = m["name"]?.stringOr("") ?: "",
-            displayName = m["displayName"]?.stringOr("") ?: "",
-            initials = m["initials"]?.stringOr("") ?: "",
-            members = m["members"]?.listOf { it.stringOrNull() } ?: emptyList(),
-            memberCount = m["memberCount"]?.intOr(0) ?: 0,
-            unreadCount = m["unreadCount"]?.let { if (it.kind == ValueKind.Null) null else it.intOr(0) },
-            lastMsgAt = m["lastMsgAt"]?.let { if (it.kind == ValueKind.Null) null else it.longOr(0L) },
-        )
-    }
-
-    private fun decodeMarmotPendingWelcome(v: Value): MarmotPendingWelcome? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return MarmotPendingWelcome(
-            idHex = m["idHex"]?.stringOr("") ?: "",
-            groupName = m["groupName"]?.stringOr("") ?: "",
-            displayName = m["displayName"]?.stringOr("") ?: "",
-            inviterNpub = m["inviterNpub"]?.stringOr("") ?: "",
-        )
-    }
-
-    private fun decodeMarmotKeyPackage(v: Value): MarmotKeyPackage? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return MarmotKeyPackage(
-            published = m["published"]?.boolOr(false) ?: false,
-            dTag = m["dTag"]?.stringOrNull(),
-            ageSecs = m["ageSecs"]?.let { if (it.kind == ValueKind.Null) null else it.longOr(0L) },
-            stale = m["stale"]?.boolOr(false) ?: false,
-            ageDisplay = m["ageDisplay"]?.stringOrNull(),
-            subtitle = m["subtitle"]?.stringOr("") ?: "",
-            actionLabel = m["actionLabel"]?.stringOr("") ?: "",
-        )
-    }
-
-    private fun decodeMarmotMessage(v: Value): MarmotMessage? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return MarmotMessage(
-            id = m["id"]?.stringOr("") ?: "",
-            senderPubkeyHex = m["senderPubkeyHex"]?.stringOr("") ?: "",
-            content = m["content"]?.stringOr("") ?: "",
-            createdAt = m["createdAt"]?.longOr(0L) ?: 0L,
-            epoch = m["epoch"]?.let { if (it.kind == ValueKind.Null) null else it.longOr(0L) },
-        )
-    }
-
-    private fun decodeProfileCard(v: Value): ProfileCard? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return ProfileCard(
-            pubkey = m["pubkey"]?.stringOr("") ?: "",
-            npub = m["npub"]?.stringOr("") ?: "",
-            displayName = m["displayName"]?.stringOrNull(),
-            pictureUrl = m["pictureUrl"]?.stringOrNull(),
-            nip05 = m["nip05"]?.stringOr("") ?: "",
-            about = m["about"]?.stringOr("") ?: "",
-            hasProfile = m["hasProfile"]?.boolOr(false) ?: false,
-            lnurl = m["lnurl"]?.stringOrNull(),
-        )
-    }
-
-    private fun decodeDmInboxSnapshot(v: Value): DmInboxSnapshot? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return DmInboxSnapshot(
-            conversations = m["conversations"]?.listOf { decodeDmConversation(it) } ?: emptyList(),
-            remoteSignerUnsupported = m["remoteSignerUnsupported"]?.boolOr(false) ?: false,
-        )
-    }
-
-    private fun decodeDmConversation(v: Value): DmConversation? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return DmConversation(
-            peerPubkey = m["peerPubkey"]?.stringOr("") ?: "",
-            messages = m["messages"]?.listOf { decodeDmMessage(it) } ?: emptyList(),
-        )
-    }
-
-    private fun decodeDmMessage(v: Value): DmMessage? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return DmMessage(
-            id = m["id"]?.stringOr("") ?: "",
-            senderPubkey = m["senderPubkey"]?.stringOr("") ?: "",
-            content = m["content"]?.stringOr("") ?: "",
-            createdAt = m["createdAt"]?.longOr(0L) ?: 0L,
-            replyTo = m["replyTo"]?.stringOrNull(),
-            isOutgoing = m["isOutgoing"]?.boolOr(false) ?: false,
-            sourceRelays = m["sourceRelays"]?.listOf { relay -> relay.stringOrNull() },
-        )
-    }
-
-    private fun decodeWalletStatusString(v: Value): String? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return m["status"]?.stringOrNull()
-    }
-
-    private fun decodeWalletBalanceString(v: Value): String? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return m["balanceSatsDisplay"]?.stringOrNull()
-    }
-
-    private fun decodeAccountSummary(v: Value): AccountSummary? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return AccountSummary(
-            id = m["id"]?.stringOr("") ?: "",
-            // The kernel emits the full `npub` (bech32). `npub_short` was never
-            // emitted (aim.md §2), so the prior `npubShort` read was always
-            // empty — read `npub` and let Compose abbreviate. Keeps the generic
-            // fallback byte-identical to the typed `KACC` path (#979).
-            npub = m["npub"]?.stringOr("") ?: "",
-            displayName = m["displayName"]?.stringOr("") ?: "",
-            status = m["status"]?.stringOr("") ?: "",
-            signerLabel = m["signerLabel"]?.stringOr("") ?: "",
-        )
-    }
-
-    private fun decodeRelayRoleOption(v: Value): RelayRoleOption? {
-        if (v.kind != ValueKind.Map) return null
-        val m = buildValueMap(v)
-        return RelayRoleOption(
-            value = m["value"]?.stringOr("") ?: "",
-            label = m["label"]?.stringOr("") ?: "",
-            tint = m["tint"]?.stringOr("") ?: "",
-            isDefault = m["isDefault"]?.boolOr(false) ?: false,
+            activeAccount = typedActiveAccount?.pubkey,
+            accounts = TypedAccountsDecoder.decodeAccounts(typedProjections) ?: emptyList(),
+            claimedProfiles = TypedProfilesDecoder.decodeClaimed(typedProjections) ?: emptyMap(),
+            mentionProfiles = emptyMap(),
+            resolvedProfiles = TypedProfilesDecoder.decodeResolved(typedProjections) ?: emptyMap(),
+            flatFeeds = TypedHomeFeedDecoder.decodeFlatFeeds(typedProjections),
+            dmInbox = TypedDmInboxDecoder.decode(typedProjections),
+            walletStatus = typedWallet?.status,
+            walletBalance = typedWallet?.balanceDisplay,
+            relayRoleOptions = TypedRelayRoleOptionsDecoder.decode(typedProjections) ?: emptyList(),
+            marmotSnapshot = TypedMarmotDecoder.decodeSnapshot(typedProjections),
+            marmotMessages = TypedMarmotDecoder.decodeMessages(typedProjections) ?: emptyMap(),
         )
     }
 
@@ -431,6 +223,13 @@ object KernelUpdateFrameDecoder {
         }
         return result
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Generic Value-map helpers — retained for legacy path compatibility.
+    // These are no longer used by the main decode spine (PR-B #991/#979) but
+    // remain available for any test or future projection that still needs to
+    // walk a generic Value tree.
+    // ─────────────────────────────────────────────────────────────────────────
 
     private fun buildValueMap(v: Value): Map<String, Value> {
         val len = v.mapLength

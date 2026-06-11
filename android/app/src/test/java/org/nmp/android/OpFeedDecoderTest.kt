@@ -2,6 +2,7 @@ package org.nmp.android
 
 import com.google.flatbuffers.FlatBufferBuilder
 import nmp.transport.FrameKind
+import nmp.transport.Metrics
 import nmp.transport.SnapshotFrame
 import nmp.transport.Pair as TransportPair
 import nmp.transport.UpdateFrame
@@ -301,23 +302,32 @@ class OpFeedDecoderTest {
         assertEquals("aabbcc", decoded.page!!.nextCursor?.id)
     }
 
+    /**
+     * PR-B regression (#1084): the generic `payload:Value` projection path is
+     * gone. Author flat-feeds now arrive ONLY via typed `NOFS` sidecars.
+     * This test verifies that a typed sidecar under `nmp.feed.author.<pk>` is
+     * correctly surfaced in `projections.flatFeeds` (the test was previously
+     * named `genericUpdateFrameDecodesDynamicFlatFeedProjection` and relied on
+     * the now-removed generic Value path).
+     */
     @Test
-    fun genericUpdateFrameDecodesDynamicFlatFeedProjection() {
+    fun typedAuthorFlatFeedSidecarIsDecodedFromTier3Frame() {
         val pubkey = hex32(0x12)
-        val eventId = hex32(0x34)
-        val frame = dynamicFlatFeedUpdateFrame(pubkey = pubkey, eventId = eventId)
+        val key = "nmp.feed.author.$pubkey"
+        // Use POPULATED_HEX as the typed NOFS payload (two cards).
+        val frame = typedSidecarUpdateFrame(
+            rev = 7L,
+            sidecarKey = key,
+            nofsBytes = bytesFromHex(POPULATED_HEX),
+        )
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
+        assertEquals("rev from Tier-3 envelope", 7L, decoded.update.rev)
         val feeds = decoded.update.projections?.flatFeeds.orEmpty()
-        val feed = requireNotNull(feeds["nmp.feed.author.$pubkey"])
-
-        assertEquals(7L, decoded.update.rev)
-        assertEquals(1, feed.cards.size)
-        assertEquals(eventId, feed.cards[0].card.id)
-        assertEquals(pubkey, feed.cards[0].card.authorPubkey)
-        assertEquals("Alice", feed.cards[0].card.authorDisplayName)
-        assertEquals("hello dynamic feed", feed.cards[0].card.content)
-        assertEquals(1, feed.cards[0].attribution.size)
-        assertEquals(hex32(0x56), feed.cards[0].attribution[0].replyEventId)
+        val feed = requireNotNull(feeds[key]) { "typed NOFS sidecar must populate flatFeeds[$key]" }
+        // POPULATED_HEX carries 2 root cards (see populatedFixtureDecodesToParityModel).
+        assertEquals(2, feed.cards.size)
+        assertEquals(hex32(0x03), feed.cards[0].card.id)
+        assertNotNull("typed path must populate contentTree", feed.cards[0].card.contentTree)
     }
 
     // ── F-05: typed author/thread flat-feed sidecars ────────────────────────
@@ -420,56 +430,16 @@ class OpFeedDecoderTest {
         assertNull(TypedHomeFeedDecoder.decode(ByteArray(0)))
     }
 
-    private fun dynamicFlatFeedUpdateFrame(pubkey: String, eventId: String): ByteArray {
-        val builder = FlatBufferBuilder(1024)
-        val card = valueMap(
-            builder,
-            "id" to valueString(builder, eventId),
-            "author_pubkey" to valueString(builder, pubkey),
-            "kind" to valueInt(builder, 1),
-            "created_at" to valueInt(builder, 1_700_000_000L),
-            "content" to valueString(builder, "hello dynamic feed"),
-            "content_preview" to valueString(builder, "hello dynamic feed"),
-            "author_display_name" to valueString(builder, "Alice"),
-        )
-        val attribution = valueMap(
-            builder,
-            "author_pubkey" to valueString(builder, hex32(0x78)),
-            "reply_event_id" to valueString(builder, hex32(0x56)),
-            "reply_created_at" to valueInt(builder, 1_700_000_001L),
-        )
-        val root = valueMap(
-            builder,
-            "card" to card,
-            "attribution" to valueList(builder, attribution),
-        )
-        val feed = valueMap(
-            builder,
-            "cards" to valueList(builder, root),
-        )
-        val projections = valueMap(
-            builder,
-            "nmp.feed.author.$pubkey" to feed,
-        )
-        val payload = valueMap(
-            builder,
-            "rev" to valueInt(builder, 7),
-            "running" to valueBool(builder, true),
-            "relay_url" to valueString(builder, ""),
-            "projections" to projections,
-        )
-        val snapshot = SnapshotFrame.createSnapshotFrame(builder, 1u, payload, 0)
-        val frame = UpdateFrame.createUpdateFrame(builder, FrameKind.Snapshot, snapshot, 0)
-        UpdateFrame.finishUpdateFrameBuffer(builder, frame)
-        return builder.sizedByteArray()
-    }
-
     /**
-     * Build a complete `NMPU` UpdateFrame carrying an EMPTY generic `projections`
-     * map (no flat feed on the generic path) plus one — or two — typed `NOFS`
-     * sidecars on `SnapshotFrame.typed_projections`. Proves the typed path is the
-     * sole source of the surfaced flat feed.
+     * Build a complete `NMPU` Tier-3 `UpdateFrame` carrying a typed `NOFS`
+     * sidecar under [sidecarKey], with [rev] in the Tier-3 envelope. An optional
+     * second sidecar (extraHomeSidecar) lets callers verify the `nmp.feed.home`
+     * key is NOT swept into flatFeeds by the prefix match.
+     *
+     * PR-B (#991/#979 / #1084): the generic `payload:Value` slot is gone; the
+     * Tier-3 SnapshotFrame fields carry rev/running/metrics instead.
      */
+    @OptIn(ExperimentalUnsignedTypes::class)
     private fun typedSidecarUpdateFrame(
         rev: Long,
         sidecarKey: String,
@@ -478,18 +448,7 @@ class OpFeedDecoderTest {
     ): ByteArray {
         val builder = FlatBufferBuilder(2048)
 
-        // Generic payload: rev/running + an EMPTY projections map.
-        val emptyProjections = valueMap(builder)
-        val payload = valueMap(
-            builder,
-            "rev" to valueInt(builder, rev),
-            "running" to valueBool(builder, true),
-            "relay_url" to valueString(builder, ""),
-            "projections" to emptyProjections,
-        )
-
-        // Typed sidecars: one keyed by the dynamic author/thread key, plus an
-        // optional `nmp.feed.home` sidecar to prove the home key is not swept in.
+        // Typed sidecars must be built before the SnapshotFrame table.
         val sidecarOffsets = ArrayList<Int>()
         sidecarOffsets.add(typedProjection(builder, sidecarKey, nofsBytes))
         if (extraHomeSidecar != null) {
@@ -497,7 +456,32 @@ class OpFeedDecoderTest {
         }
         val typedVec = SnapshotFrame.createTypedProjectionsVector(builder, sidecarOffsets.toIntArray())
 
-        val snapshot = SnapshotFrame.createSnapshotFrame(builder, 1u, payload, typedVec)
+        // Metrics table — always present (mirrors production frames; iOS gates
+        // `extractTypedEnvelope` on `metrics != nil`).
+        Metrics.startMetrics(builder)
+        val metricsOffset = Metrics.endMetrics(builder)
+
+        val snapshot = SnapshotFrame.createSnapshotFrame(
+            builder,
+            /* schemaVersion = */ 1u,
+            /* typedProjectionsOffset = */ typedVec,
+            /* rev = */ rev.toULong(),
+            /* kernelSchemaVersion = */ 0u,
+            /* lastTickMs = */ 0UL,
+            /* updateKindOffset = */ 0,
+            /* running = */ true,
+            /* metricsOffset = */ metricsOffset,
+            /* relayStatusOffset = */ 0,
+            /* relayStatusesOffset = */ 0,
+            /* logicalInterestsOffset = */ 0,
+            /* wireSubscriptionsOffset = */ 0,
+            /* logsOffset = */ 0,
+            /* lastErrorToastOffset = */ 0,
+            /* lastErrorCategoryOffset = */ 0,
+            /* lastPlannerErrorOffset = */ 0,
+            /* storeOpenFailureOffset = */ 0,
+            /* noConfiguredRelays = */ null,
+        )
         val frame = UpdateFrame.createUpdateFrame(builder, FrameKind.Snapshot, snapshot, 0)
         UpdateFrame.finishUpdateFrameBuffer(builder, frame)
         return builder.sizedByteArray()
