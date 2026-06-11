@@ -1767,6 +1767,11 @@ pub fn run_actor_with_observers(
     // D0: relay-layer connection state for a remote signer session is an app noun.
     {
         let projection_slot = Arc::clone(&bunker_connection_state);
+        // Typed sidecar (ADR-0037) registered ALONGSIDE the generic projection,
+        // reading the SAME slot. Returns `None` while the slot is `None` (no
+        // active bunker session) — mirroring the JSON closure's `null` output.
+        // V-14 step b closes #963.
+        let typed_slot = Arc::clone(&bunker_connection_state);
         if let Ok(mut registry) = snapshot_projections.lock() {
             registry.register("bunker_connection_state", move || {
                 let slot = projection_slot
@@ -1775,6 +1780,9 @@ pub fn run_actor_with_observers(
                 slot.as_ref().map_or(serde_json::Value::Null, |dto| {
                     serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
                 })
+            });
+            registry.register_typed("bunker_connection_state", move || {
+                typed_projections::bunker_connection_state_typed(&typed_slot)
             });
         }
     }

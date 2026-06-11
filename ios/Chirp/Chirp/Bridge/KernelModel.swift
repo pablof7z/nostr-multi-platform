@@ -107,6 +107,12 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// `nil` ⇒ the `bunkerHandshake` / `nip46Onboarding` accessors return nil.
     @Published private(set) var typedBunkerHandshake: BunkerHandshake?
     @Published private(set) var typedNip46Onboarding: Nip46Onboarding?
+    /// Typed `bunker_connection_state` sidecar (`KBCS`, V-14 / #963). `nil`
+    /// while no bunker session is active — the steady state for local-key
+    /// accounts. Read through the `bunkerConnectionState` accessor in
+    /// `KernelModel+Projections`. `isConnected`/`isReconnecting`/`isFailed`
+    /// drive the three-state status badge in `AccountsView`.
+    @Published private(set) var typedBunkerConnectionState: BunkerConnectionState?
 
     /// Typed `wallet` (`NWST`) + `settings_hub` (`KSHB`) sidecars. `typedWallet`
     /// emits no sidecar while the wallet is disconnected, so nil is the steady
@@ -782,6 +788,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // NIP-46 cluster: typed bunker-handshake / onboarding slots.
         typedBunkerHandshake = result.typedBunkerHandshake
         typedNip46Onboarding = result.typedNip46Onboarding
+        // V-14: relay-layer bunker connection health (`bunker_connection_state`).
+        // Nil while no bunker session is active; the three flag fields drive the
+        // status badge rendered in `AccountsView.BunkerConnectionStateRow`.
+        typedBunkerConnectionState = result.typedBunkerConnectionState
         // `wallet` (NWST) + `settings_hub` (KSHB) typed slots.
         typedWallet = result.typedWallet
         typedSettingsHub = result.typedSettingsHub
@@ -925,6 +935,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedClaimedEvents = nil
         typedBunkerHandshake = nil
         typedNip46Onboarding = nil
+        typedBunkerConnectionState = nil
         typedWallet = nil
         typedSettingsHub = nil
         typedEnvelope = nil

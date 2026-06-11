@@ -19,6 +19,7 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **V-14: surface bunker_connection_state in iOS+Android** (closes #963). Branch: `feat/v14-bunker-connection-state-ui`. Worktree: agent-a610e944fe64642c0. Adding `bunker_connection_state` to the Swift projections registry + `SnapshotProjections` Android data class + decoder + Compose read site + `BunkerConnectionStateRow` in Accounts/Settings; JSON decode (no typed sidecar — per registry comment).
 
 - 2026-06-11 — **PR-B FINAL: stop emitting payload:Value** (closes #991/#979). Worktree: agent-a329ca748cf7215bc. Branch: `pr-b-final-zero-payload-emission` (PR #1082, review round 2). Done: gallery TUI+desktop on typed sidecars; emission zeroed; Rust flatc bindings REGENERATED (deprecated `payload` accessors gone) + `ci/check-rust-flatc-drift.sh` gate wired into codegen-drift.yml; `decode_snapshot_payload`/`decode_snapshot_with_typed`/`encode_snapshot_value` DELETED with all ~20 workspace readers migrated to `SnapshotEnvelope` + typed sidecars (`UpdateEnvelope::Snapshot` now carries `SnapshotEnvelope`); chirp-tui/chirp-desktop real-encoder round-trip tests added; nmp-wasm emits Tier-3 typed frames.
 
