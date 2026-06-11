@@ -39,6 +39,14 @@ extension KernelModel {
     // raw `update.<field>` / `snapshot.<field>` side-effect consumers, so the
     // accessor flip is the single effective-value seam.
     var relayDiagnostics: RelayDiagnosticsSnapshot { typedRelayDiagnostics ?? snapshot?.relayDiagnostics ?? .empty }
+    // V6 Stage 4 (Wave B Tier-1 #4): typed-first with JSON fallback. The typed
+    // `NZAP` sidecar wins when present; the generic JSON projection is the
+    // fallback (ADR-0037 Commitment 4). `zaps` is accessor-only — its sole read
+    // surface is this accessor (the timeline's per-note `RelationCount.zaps` in
+    // `NoteRowView` is the unrelated `nmp.feed.home` op-feed field, NOT this
+    // `nmp.nip57.zaps` aggregate), so the accessor flip is the single
+    // effective-value seam — no store to route. `nil` ⇒ generic JSON path.
+    var zaps: ZapsAggregateSnapshot? { typedZaps ?? snapshot?.zaps }
     var logs: [String] { snapshot?.logs ?? [] }
     var bunkerHandshake: BunkerHandshake? { snapshot?.bunkerHandshake }
     var nip46Onboarding: Nip46Onboarding? { snapshot?.nip46Onboarding }

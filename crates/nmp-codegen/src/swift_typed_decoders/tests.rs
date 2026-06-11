@@ -140,10 +140,12 @@ fn decoder_enum_name_capitalizes_first_letter() {
 /// --swift` binding is checked into the Chirp target today: the two proof keys
 /// (`accounts`, `active_account`, PR #1039), the Wave B batch #2 thin-glue
 /// keys (`configured_relays`, `relay_role_options`, `outbox_summary`,
-/// `publish_outbox`, `publish_queue`), plus the Wave B batch #3 diagnostics +
-/// action-lifecycle keys (`relay_diagnostics`, `action_lifecycle`). If a future
-/// PR adds a reader binding to another entry, this test fails loudly — a
-/// reminder to regenerate the Swift and update this expectation.
+/// `publish_outbox`, `publish_queue`), the Wave B batch #3 diagnostics +
+/// action-lifecycle keys (`relay_diagnostics`, `action_lifecycle`), plus the
+/// Wave B Tier-1 #4 app-projection keys (`nmp.follow_list`, `nmp.nip57.zaps`,
+/// `nmp.nip29.group_chat`, `nmp.nip29.discovered_groups`). If a future PR adds a
+/// reader binding to another entry, this test fails loudly — a reminder to
+/// regenerate the Swift and update this expectation.
 #[test]
 fn real_registry_emits_exactly_the_proof_keys() {
     let out = render_typed_decoders(SNAPSHOT_PROJECTIONS);
@@ -159,6 +161,12 @@ fn real_registry_emits_exactly_the_proof_keys() {
     // Wave B batch #3 diagnostics + action-lifecycle keys.
     assert!(out.contains("enum TypedRelayDiagnosticsDecoder {"));
     assert!(out.contains("enum TypedActionLifecycleDecoder {"));
+    // Wave B Tier-1 #4 app-projection keys (dotted producer keys; the enum name
+    // derives from `swift_field`, so `followList` → `TypedFollowListDecoder`).
+    assert!(out.contains("enum TypedFollowListDecoder {"));
+    assert!(out.contains("enum TypedZapsDecoder {"));
+    assert!(out.contains("enum TypedGroupChatDecoder {"));
+    assert!(out.contains("enum TypedDiscoveredGroupsDecoder {"));
     let emitted = SNAPSHOT_PROJECTIONS
         .iter()
         .filter(|e| {
@@ -169,12 +177,14 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 9,
-        "exactly nine keys have a checked-in flatc --swift reader binding \
+        emitted, 13,
+        "exactly thirteen keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
-         publish_outbox, publish_queue; plus the Wave B batch #3: \
-         relay_diagnostics, action_lifecycle); if this changed, regenerate \
+         publish_outbox, publish_queue; the Wave B batch #3: \
+         relay_diagnostics, action_lifecycle; plus the Wave B Tier-1 #4: \
+         nmp.follow_list, nmp.nip57.zaps, nmp.nip29.group_chat, \
+         nmp.nip29.discovered_groups); if this changed, regenerate \
          TypedProjectionDecoders.generated.swift and update this test"
     );
 }
