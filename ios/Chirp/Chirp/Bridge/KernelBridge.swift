@@ -688,6 +688,16 @@ final class KernelHandle {
             // is the steady-state — the generic JSON `null` is the fallback.
             let typedBunkerHandshake = TypedBunkerHandshakeDecoder.decode(from: envelopes)
             let typedNip46Onboarding = TypedNip46OnboardingDecoder.decode(from: envelopes)
+            // Marmot push-projection cluster (`nmp.marmot.snapshot` /
+            // `nmp.marmot.messages`, V-107 / ADR-0039). Each returns nil when its
+            // sidecar is absent/malformed → the generic `projections.<field>` JSON
+            // path stays active (ADR-0037 Commitment 4), mirroring `typedAccounts`
+            // above. The typed closures emit NO sidecar while signed-out (slot is
+            // `None`), so nil there is the steady-state — the generic JSON
+            // empty-object fallback applies and `MarmotStore.apply` maps it to
+            // `.empty` / `[:]`.
+            let typedMarmotSnapshot = TypedMarmotSnapshotDecoder.decode(from: envelopes)
+            let typedMarmotMessages = TypedMarmotMessagesDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
@@ -715,6 +725,8 @@ final class KernelHandle {
                     typedClaimedEvents: typedClaimedEvents,
                     typedBunkerHandshake: typedBunkerHandshake,
                     typedNip46Onboarding: typedNip46Onboarding,
+                    typedMarmotSnapshot: typedMarmotSnapshot,
+                    typedMarmotMessages: typedMarmotMessages,
                     typedEnvelope: typedEnvelope,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
@@ -905,6 +917,17 @@ struct KernelUpdateResult {
     /// `projections["nip46_onboarding"]` JSON fallback. Always present from a
     /// current kernel (the static signer-app table is emitted every tick).
     let typedNip46Onboarding: Nip46Onboarding?
+    /// Typed `nmp.marmot.snapshot` projection decode (`NMMS`, V-107 / ADR-0039).
+    /// `nil` ⇒ generic `projections["nmp.marmot.snapshot"]` JSON fallback. Routed
+    /// to `MarmotStore.apply` (typed-first effective value) in `KernelModel.apply`.
+    /// The producer emits no sidecar while signed-out, so nil is the steady state.
+    let typedMarmotSnapshot: MarmotSnapshot?
+    /// Typed `nmp.marmot.messages` projection decode (`NMMG`, V-107 / ADR-0039).
+    /// `nil` ⇒ generic `projections["nmp.marmot.messages"]` JSON fallback. The
+    /// flattened-vector wire rebuilds the `group_id_hex -> [MarmotMessage]` map.
+    /// Routed to `MarmotStore.apply` (typed-first effective value) in
+    /// `KernelModel.apply`.
+    let typedMarmotMessages: [String: [MarmotMessage]]?
     /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
     /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
     /// `logs`), read directly off the `SnapshotFrame` table. Non-nil when the

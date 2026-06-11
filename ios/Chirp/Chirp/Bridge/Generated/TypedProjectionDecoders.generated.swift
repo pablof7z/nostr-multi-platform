@@ -843,3 +843,81 @@ enum TypedClaimedEventsDecoder {
         return TypedProjectionGlue.claimedEvents(reader)
     }
 }
+
+// MARK: - TypedMarmotSnapshotDecoder
+// Projection `nmp.marmot.snapshot` → typed sidecar `nmp.marmot.snapshot` (NMMS). Domain type: `MarmotSnapshot?`.
+enum TypedMarmotSnapshotDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "nmp.marmot.snapshot"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "nmp.marmot.snapshot"
+    /// FlatBuffers `file_identifier` for `nmp_marmot_MarmotSnapshot`.
+    static let fileIdentifier = "NMMS"
+
+    /// Decode the typed `nmp.marmot.snapshot` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> MarmotSnapshot? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `NMMS` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> MarmotSnapshot? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_marmot_MarmotSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.marmotSnapshot`.
+        return TypedProjectionGlue.marmotSnapshot(reader)
+    }
+}
+
+// MARK: - TypedMarmotMessagesDecoder
+// Projection `nmp.marmot.messages` → typed sidecar `nmp.marmot.messages` (NMMG). Domain type: `[String: [MarmotMessage]]?`.
+enum TypedMarmotMessagesDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "nmp.marmot.messages"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "nmp.marmot.messages"
+    /// FlatBuffers `file_identifier` for `nmp_marmot_MarmotMessages`.
+    static let fileIdentifier = "NMMG"
+
+    /// Decode the typed `nmp.marmot.messages` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> [String: [MarmotMessage]]? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `NMMG` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> [String: [MarmotMessage]]? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_marmot_MarmotMessages = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.marmotMessages`.
+        return TypedProjectionGlue.marmotMessages(reader)
+    }
+}

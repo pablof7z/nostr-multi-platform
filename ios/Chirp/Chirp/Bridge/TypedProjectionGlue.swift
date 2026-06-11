@@ -745,4 +745,94 @@ enum TypedProjectionGlue {
             wireId: w.wireId ?? ""
         )
     }
+
+    // MARK: nmp.marmot.snapshot → MarmotSnapshot
+
+    /// Map the typed `nmp.marmot.snapshot` sidecar (`NMMS` /
+    /// `nmp_marmot_MarmotSnapshot`) to the `MarmotSnapshot` the JSON
+    /// `projections["nmp.marmot.snapshot"]` path yields (V-107 / ADR-0039).
+    /// Nested-vector copy: `groups` → `[MarmotGroup]`, `pendingWelcomes` →
+    /// `[MarmotPendingWelcome]`, plus the `keyPackage` sub-table → `MarmotKeyPackage`.
+    /// The Rust projection owns ALL ordering and the pre-rendered §6/AP1 display
+    /// fields (`displayName`/`initials`/`subtitle`/`actionLabel`/`ageDisplay`/
+    /// `invitesChipLabel`) — the shell copies them verbatim and re-derives NOTHING
+    /// (thin-shell rule, ADR-0032). Every `has_*` companion bool reproduces the
+    /// JSON `null`-when-`None` semantics: `unreadCount`/`lastMsgAt` (`UInt32?`/
+    /// `UInt64?`), `dTag`/`ageSecs`/`ageDisplay` (`String?`/`UInt64?`),
+    /// `invitesChipLabel` (`String?`) are `nil` when the companion is `false`,
+    /// byte-identical to the JSON path. The wire's `orphanedCommitCount` /
+    /// `keyringUnavailable` diagnostics are NOT carried by the Chirp domain type;
+    /// the JSON `Decodable` drops them too (field-subset, not divergence). A
+    /// missing `keyPackage` sub-table (defensive — the producer always emits it)
+    /// falls back to `.empty`, matching the JSON decode of an absent object.
+    static func marmotSnapshot(_ reader: nmp_marmot_MarmotSnapshot) -> MarmotSnapshot {
+        let keyPackage: MarmotKeyPackage = reader.keyPackage.map { kp in
+            MarmotKeyPackage(
+                published: kp.published,
+                dTag: kp.hasDTag ? (kp.dTag ?? "") : nil,
+                ageSecs: kp.hasAgeSecs ? kp.ageSecs : nil,
+                stale: kp.stale,
+                ageDisplay: kp.hasAgeDisplay ? (kp.ageDisplay ?? "") : nil,
+                subtitle: kp.subtitle ?? "",
+                actionLabel: kp.actionLabel ?? ""
+            )
+        } ?? .empty
+
+        return MarmotSnapshot(
+            groups: reader.groups.map { g in
+                MarmotGroup(
+                    idHex: g.idHex ?? "",
+                    name: g.name ?? "",
+                    displayName: g.displayName ?? "",
+                    initials: g.initials ?? "",
+                    members: g.members.map { $0 ?? "" },
+                    memberCount: g.memberCount,
+                    unreadCount: g.hasUnreadCount ? g.unreadCount : nil,
+                    lastMsgAt: g.hasLastMsgAt ? g.lastMsgAt : nil
+                )
+            },
+            pendingWelcomes: reader.pendingWelcomes.map { w in
+                MarmotPendingWelcome(
+                    idHex: w.idHex ?? "",
+                    groupName: w.groupName ?? "",
+                    displayName: w.displayName ?? "",
+                    inviterNpub: w.inviterNpub ?? ""
+                )
+            },
+            keyPackage: keyPackage,
+            cachedKpPubkeys: reader.cachedKpPubkeys.map { $0 ?? "" },
+            invitesChipLabel: reader.hasInvitesChipLabel ? (reader.invitesChipLabel ?? "") : nil,
+            isRegistered: reader.isRegistered
+        )
+    }
+
+    // MARK: nmp.marmot.messages → [String: [MarmotMessage]]
+
+    /// Map the typed `nmp.marmot.messages` sidecar (`NMMG` /
+    /// `nmp_marmot_MarmotMessages`) to the `[String: [MarmotMessage]]` the JSON
+    /// `projections["nmp.marmot.messages"]` path yields (V-107 / ADR-0039).
+    /// FlatBuffers has no map type, so the producer flattens the
+    /// `group_id_hex -> [MarmotMessageRow]` map to a `group_id_hex`-sorted
+    /// `[MarmotGroupMessages]` vector; this rebuilds the dictionary keyed by
+    /// `groupIdHex`, mirroring the `claimed_profiles`/`zaps` flattened-map
+    /// precedent. Each group's `messages` order is preserved verbatim (newest-N
+    /// rows; Rust owns the order — the shell re-sorts NOTHING). `epoch` carries a
+    /// `has_epoch` companion → `UInt64?` (`nil` when absent, byte-identical to the
+    /// JSON path's `null`).
+    static func marmotMessages(
+        _ reader: nmp_marmot_MarmotMessages
+    ) -> [String: [MarmotMessage]] {
+        reader.groups.reduce(into: [String: [MarmotMessage]]()) { out, group in
+            guard let key = group.groupIdHex else { return }
+            out[key] = group.messages.map { msg in
+                MarmotMessage(
+                    id: msg.id ?? "",
+                    senderPubkeyHex: msg.senderPubkeyHex ?? "",
+                    content: msg.content ?? "",
+                    createdAt: msg.createdAt,
+                    epoch: msg.hasEpoch ? msg.epoch : nil
+                )
+            }
+        }
+    }
 }
