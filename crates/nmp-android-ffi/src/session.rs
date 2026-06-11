@@ -146,6 +146,15 @@ impl Session {
             return;
         }
         if !state.app.is_null() {
+            // Quiescence contract (nmp-ffi ADR — UpdateCallbackGate):
+            // `nmp_app_set_update_callback(…, None)` does NOT return until any
+            // in-flight `on_update` invocation has completed.  After this call
+            // returns, `context` (the raw `*const CallbackState` pointer baked
+            // into the registration) will never be dereferenced again by the
+            // listener thread.  It is therefore safe for `Session::drop` to
+            // `drop(Arc::from_raw(self.callback_context))` immediately after
+            // `free_native()` returns — the quiescence guarantee prevents the
+            // use-after-free race that existed before the gate was introduced.
             nmp_app_set_update_callback(state.app, std::ptr::null_mut(), None);
         }
         self.callback_state.close();
