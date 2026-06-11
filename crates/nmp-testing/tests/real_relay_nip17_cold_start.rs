@@ -22,17 +22,23 @@
 //! stored event via backfill / EOSE replay. This is the path a new user
 //! experiences on first login.
 //!
-//! ## Architectural note
+//! ## Architectural note — coverage boundaries
 //!
-//! The test drives `DmInboxProjection` directly (the real ingest seam) rather
-//! than through the full actor stack. This is architecturally correct because:
+//! The test drives `DmInboxProjection` directly (its production ingest
+//! method) rather than through the full actor stack:
 //!   - The relay transport layer is already tested by `real_relay_nip17_roundtrip.rs`.
-//!   - The kernel/actor wiring of `DmInboxProjection` is tested by the FFI
-//!     test `dm_inbox_full_round_trip_through_ffi` (PR #344).
+//!   - The kernel ingest → `notify_raw_event_observers` → projection →
+//!     snapshot half is tested by `dm_inbox_full_round_trip_through_ffi`
+//!     (PR #344, apps/chirp/nmp-app-chirp/tests/dm_inbox_round_trip.rs).
 //!   - The cold-start scenario's unique risk is in the *subscription timing*
-//!     (publish-before-subscribe) and *projection decryption*. Both are
-//!     exercised here by driving the projection directly from the raw relay
-//!     EVENT frames.
+//!     (publish-before-subscribe + EOSE backfill) and *projection
+//!     decryption*. Both are exercised here from raw relay EVENT frames.
+//!
+//! NOT covered by this test (or any other executing test as of 2026-06-11):
+//! a live-relay REQ driven through a real kernel's planner-compiled
+//! kind:1059 `#p` subscription (kind:10050 → `DmRelayCache` → planner
+//! routing) with the Schnorr-verify + store-insert gate in the loop. That
+//! junction is the F-02 closure-gate follow-up tracked on issue #977.
 //!
 //! Run both:
 //! ```bash
@@ -324,9 +330,13 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     // ── PHASE 4: Projection decryption ─────────────────────────────────────
     //
     // Feed the raw EVENT JSON directly into Bob's fresh `DmInboxProjection`
-    // via the public `RawEventObserver::on_raw_event_with_source` seam.
-    // This is exactly how the kernel delivers events to the projection in
-    // production (via `notify_raw_event_observers`).
+    // via `RawEventObserver::on_raw_event_with_source` — the projection's
+    // production ingest method. Note: this drives the projection directly;
+    // the full production path additionally traverses the kernel's
+    // Schnorr-verify + store-insert gate before `notify_raw_event_observers`
+    // fires (covered independently by `dm_inbox_full_round_trip_through_ffi`).
+    // The planner-compiled REQ + kind:10050 routing junction is NOT covered
+    // here — see the F-02 closure-gate follow-up on issue #977.
     //
     // We snapshot before and after to detect whether the ingest mutated the
     // projection (the public API does not return a bool).
