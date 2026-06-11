@@ -184,14 +184,11 @@ pub(crate) use action_lifecycle_fb::{
 // (`ActionResultsModel` + the envelope constants) live in the PUBLIC block
 // below so they are not declared twice in this module's namespace.
 pub(crate) use action_results_fb::encode_action_results;
-pub(crate) use action_stages_fb::{
-    encode_action_stages, ActionStagesModel, ACTION_STAGES_FILE_IDENTIFIER, ACTION_STAGES_SCHEMA_ID,
-    ACTION_STAGES_SCHEMA_VERSION,
-};
-pub(crate) use relay_diagnostics_fb::{
-    encode_relay_diagnostics, InterestRow, RelayDiagnosticsModel, RelayRow, WireSubRow,
-    RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID, RELAY_DIAGNOSTICS_SCHEMA_VERSION,
-};
+// The types from action_stages_fb and relay_diagnostics_fb are promoted to
+// `pub` in the PUBLIC block below so they are accessible out-of-crate.
+// Only the internal encoder symbols stay as `pub(crate)`.
+pub(crate) use action_stages_fb::encode_action_stages;
+pub(crate) use relay_diagnostics_fb::encode_relay_diagnostics;
 pub(crate) use signed_events_fb::{
     encode_signed_events, SignedEventsModel, SIGNED_EVENTS_FILE_IDENTIFIER, SIGNED_EVENTS_SCHEMA_ID,
     SIGNED_EVENTS_SCHEMA_VERSION,
@@ -226,13 +223,11 @@ pub(crate) use claimed_profiles_fb::decode_claimed_profiles;
 pub(crate) use mention_profiles_fb::decode_mention_profiles;
 #[cfg(test)]
 pub(crate) use resolved_profiles_fb::decode_resolved_profiles;
-// Wave C action-lifecycle + relay-diagnostics cluster test-only decoders.
+// Wave C action-lifecycle + relay-diagnostics cluster — action_lifecycle and
+// signed_events remain test-only; action_stages and relay_diagnostics are now
+// public (promoted for chirp-tui/chirp-desktop typed-first migration, PR-B).
 #[cfg(test)]
 pub(crate) use action_lifecycle_fb::decode_action_lifecycle;
-#[cfg(test)]
-pub(crate) use action_stages_fb::decode_action_stages;
-#[cfg(test)]
-pub(crate) use relay_diagnostics_fb::decode_relay_diagnostics;
 #[cfg(test)]
 pub(crate) use signed_events_fb::decode_signed_events;
 
@@ -240,8 +235,8 @@ pub(crate) use signed_events_fb::decode_signed_events;
 //
 // The reachable, out-of-tree Rust API (re-exported through `kernel/mod.rs` ->
 // `lib.rs` as `nmp_core::typed_projections`). External consumers (e.g.
-// `tenex-off`) decode the typed sidecar instead of string-keying the generic
-// JSON `payload`.
+// `tenex-off`, chirp-tui, chirp-desktop) decode the typed sidecar instead of
+// string-keying the generic JSON `payload`.
 //
 // Return-type decision: we re-export the EXISTING internal DTOs verbatim rather
 // than mirroring them into a parallel public type. These structs are already
@@ -250,18 +245,24 @@ pub(crate) use signed_events_fb::decode_signed_events;
 // abstraction doctrine forbids, and would need its own `From` glue. The single
 // source of truth is the codec module's DTO.
 //
-// Scope: only the two keys an external consumer needs NOW (`action_results`,
-// `publish_queue`). The Tier-2 cluster has ~18 more keys; each is exposed by
-// adding one `pub use` line below (the codec modules already follow the uniform
-// `decode_*` / `*Model` / `*_SCHEMA_ID` shape), so this is the documented
-// extension point — no new plumbing required.
+// Scope: the Tier-2 cluster exposes keys here by adding one `pub use` line per
+// codec module (the documented extension point — no new plumbing required).
 pub use action_results_fb::{
     decode_action_results, ActionResultRow, ActionResultsModel, ACTION_RESULTS_FILE_IDENTIFIER,
     ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION,
 };
+pub use action_stages_fb::{
+    decode_action_stages, ActionStageEntryRow, ActionStagesModel, ACTION_STAGES_FILE_IDENTIFIER,
+    ACTION_STAGES_SCHEMA_ID, ACTION_STAGES_SCHEMA_VERSION,
+};
 pub use publish_queue_fb::{
     decode_publish_queue, PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow,
     PUBLISH_QUEUE_FILE_IDENTIFIER, PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
+};
+pub use relay_diagnostics_fb::{
+    decode_relay_diagnostics, InterestRow, RelayDiagnosticsModel, RelayRow, WireSubRow,
+    RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID,
+    RELAY_DIAGNOSTICS_SCHEMA_VERSION,
 };
 
 use crate::update_envelope::TypedProjectionData;

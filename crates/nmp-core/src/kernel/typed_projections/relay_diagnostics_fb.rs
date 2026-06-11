@@ -45,72 +45,72 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const RELAY_DIAGNOSTICS_SCHEMA_ID: &str = "relay_diagnostics";
+pub const RELAY_DIAGNOSTICS_SCHEMA_ID: &str = "relay_diagnostics";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const RELAY_DIAGNOSTICS_FILE_IDENTIFIER: &[u8; 4] = b"KRDG";
+pub const RELAY_DIAGNOSTICS_FILE_IDENTIFIER: &[u8; 4] = b"KRDG";
 /// Wire schema version. Bump on any breaking change to `relay_diagnostics.fbs`.
-pub(crate) const RELAY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 1;
+pub const RELAY_DIAGNOSTICS_SCHEMA_VERSION: u32 = 1;
 
 /// A field-for-field mirror of one SERIALISED `RelayDiagnosticsWireSub` row.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct WireSubRow {
-    pub(crate) wire_id: String,
-    pub(crate) short_wire_id: String,
-    pub(crate) relay_url: String,
-    pub(crate) filter_summary: String,
-    pub(crate) state_label: String,
-    pub(crate) state_tone: String,
-    pub(crate) consumer_count_label: String,
-    pub(crate) events_rx_display: Option<String>,
-    pub(crate) eose_observed: bool,
-    pub(crate) opened_display: String,
-    pub(crate) last_event_display: Option<String>,
-    pub(crate) eose_display: Option<String>,
-    pub(crate) close_reason: Option<String>,
+pub struct WireSubRow {
+    pub wire_id: String,
+    pub short_wire_id: String,
+    pub relay_url: String,
+    pub filter_summary: String,
+    pub state_label: String,
+    pub state_tone: String,
+    pub consumer_count_label: String,
+    pub events_rx_display: Option<String>,
+    pub eose_observed: bool,
+    pub opened_display: String,
+    pub last_event_display: Option<String>,
+    pub eose_display: Option<String>,
+    pub close_reason: Option<String>,
 }
 
 /// A field-for-field mirror of one SERIALISED `RelayDiagnosticsRow`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct RelayRow {
-    pub(crate) relay_url: String,
-    pub(crate) short_url: String,
-    pub(crate) role_label: String,
-    pub(crate) role_tone: String,
-    pub(crate) connection_label: String,
-    pub(crate) connection_tone: String,
-    pub(crate) auth_label: String,
-    pub(crate) auth_tone: String,
-    pub(crate) total_sub_count: u32,
-    pub(crate) active_sub_count: u32,
-    pub(crate) eosed_sub_count: u32,
-    pub(crate) total_events_rx: u64,
-    pub(crate) total_events_display: String,
-    pub(crate) reconnect_count: u32,
-    pub(crate) bytes_rx_display: Option<String>,
-    pub(crate) bytes_tx_display: Option<String>,
-    pub(crate) last_connected_display: Option<String>,
-    pub(crate) last_event_display: Option<String>,
-    pub(crate) last_notice: Option<String>,
-    pub(crate) last_error: Option<String>,
-    pub(crate) wire_subs: Vec<WireSubRow>,
+pub struct RelayRow {
+    pub relay_url: String,
+    pub short_url: String,
+    pub role_label: String,
+    pub role_tone: String,
+    pub connection_label: String,
+    pub connection_tone: String,
+    pub auth_label: String,
+    pub auth_tone: String,
+    pub total_sub_count: u32,
+    pub active_sub_count: u32,
+    pub eosed_sub_count: u32,
+    pub total_events_rx: u64,
+    pub total_events_display: String,
+    pub reconnect_count: u32,
+    pub bytes_rx_display: Option<String>,
+    pub bytes_tx_display: Option<String>,
+    pub last_connected_display: Option<String>,
+    pub last_event_display: Option<String>,
+    pub last_notice: Option<String>,
+    pub last_error: Option<String>,
+    pub wire_subs: Vec<WireSubRow>,
 }
 
 /// A field-for-field mirror of one SERIALISED `RelayDiagnosticsInterest` row.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct InterestRow {
-    pub(crate) key: String,
-    pub(crate) state: String,
-    pub(crate) state_tone: String,
-    pub(crate) refcount: u32,
-    pub(crate) cache_coverage: String,
-    pub(crate) relay_urls: Vec<String>,
+pub struct InterestRow {
+    pub key: String,
+    pub state: String,
+    pub state_tone: String,
+    pub refcount: u32,
+    pub cache_coverage: String,
+    pub relay_urls: Vec<String>,
 }
 
 /// The `"relay_diagnostics"` read model — `{ relays, interests }`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct RelayDiagnosticsModel {
-    pub(crate) relays: Vec<RelayRow>,
-    pub(crate) interests: Vec<InterestRow>,
+pub struct RelayDiagnosticsModel {
+    pub relays: Vec<RelayRow>,
+    pub interests: Vec<InterestRow>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -274,8 +274,7 @@ pub(crate) fn encode_relay_diagnostics(model: &RelayDiagnosticsModel) -> Vec<u8>
 /// Decode typed FlatBuffers bytes (as produced by [`encode_relay_diagnostics`])
 /// back into a [`RelayDiagnosticsModel`]. Returns an error string on any
 /// malformed input.
-#[cfg(test)]
-pub(crate) fn decode_relay_diagnostics(bytes: &[u8]) -> Result<RelayDiagnosticsModel, String> {
+pub fn decode_relay_diagnostics(bytes: &[u8]) -> Result<RelayDiagnosticsModel, String> {
     if bytes.len() < 8 || !fb::relay_diagnostics_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KRDG file identifier".to_string());
     }
@@ -299,12 +298,10 @@ pub(crate) fn decode_relay_diagnostics(bytes: &[u8]) -> Result<RelayDiagnosticsM
     Ok(RelayDiagnosticsModel { relays, interests })
 }
 
-#[cfg(test)]
 fn opt(s: Option<&str>) -> Option<String> {
     s.map(str::to_string)
 }
 
-#[cfg(test)]
 fn wire_sub_from_fb(row: fb::RelayDiagnosticsWireSub<'_>) -> WireSubRow {
     WireSubRow {
         wire_id: row.wire_id().unwrap_or_default().to_string(),
@@ -323,7 +320,6 @@ fn wire_sub_from_fb(row: fb::RelayDiagnosticsWireSub<'_>) -> WireSubRow {
     }
 }
 
-#[cfg(test)]
 fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
     let mut wire_subs = Vec::new();
     if let Some(fb_subs) = row.wire_subs() {
@@ -357,7 +353,6 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
     }
 }
 
-#[cfg(test)]
 fn interest_from_fb(row: fb::RelayDiagnosticsInterest<'_>) -> InterestRow {
     let mut relay_urls = Vec::new();
     if let Some(urls) = row.relay_urls() {

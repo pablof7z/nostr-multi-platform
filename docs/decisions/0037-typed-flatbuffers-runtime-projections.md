@@ -1,6 +1,6 @@
 # ADR-0037 — Typed FlatBuffers sidecar for high-volume runtime projections
 
-- **Status:** Proposed (2026-05-28)
+- **Status:** Accepted / Partially implemented (2026-05-28; PR-B in progress 2026-06-11)
 - **Relates to:** the FlatBuffers update-transport envelope (commits `021ba295`
   "Replace update transport with FlatBuffers" and `716eac9c` "Address FlatBuffers
   transport review feedback"), ADR-0032 (raw-data projection doctrine), ADR-0033

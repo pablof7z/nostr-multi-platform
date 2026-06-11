@@ -47,29 +47,29 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const ACTION_STAGES_SCHEMA_ID: &str = "action_stages";
+pub const ACTION_STAGES_SCHEMA_ID: &str = "action_stages";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const ACTION_STAGES_FILE_IDENTIFIER: &[u8; 4] = b"KAST";
+pub const ACTION_STAGES_FILE_IDENTIFIER: &[u8; 4] = b"KAST";
 /// Wire schema version. Bump on any breaking change to `action_stages.fbs`.
-pub(crate) const ACTION_STAGES_SCHEMA_VERSION: u32 = 1;
+pub const ACTION_STAGES_SCHEMA_VERSION: u32 = 1;
 
 /// A field-for-field mirror of one SERIALISED `StageEntry` row.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ActionStageEntryRow {
-    pub(crate) stage: String,
+pub struct ActionStageEntryRow {
+    pub stage: String,
     /// `Failed { reason }`'s reason, lifted as a sibling of `stage`.
-    pub(crate) reason: Option<String>,
-    pub(crate) at_ms: u64,
+    pub reason: Option<String>,
+    pub at_ms: u64,
     /// Opaque per-stage detail, carried as its SERIALISED JSON string.
-    pub(crate) detail: Option<String>,
+    pub detail: Option<String>,
 }
 
 /// The `"action_stages"` read model — the `correlation_id -> [StageEntry]` map
 /// flattened to a key-sorted vector of `(key, history)` entries.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ActionStagesModel {
+pub struct ActionStagesModel {
     /// `(key, history)` entries, sorted by `key` (matches the BTree JSON).
-    pub(crate) entries: Vec<(String, Vec<ActionStageEntryRow>)>,
+    pub entries: Vec<(String, Vec<ActionStageEntryRow>)>,
 }
 
 /// Build an [`ActionStagesModel`] by PARSING the captured `action_stages`
@@ -184,8 +184,7 @@ pub(crate) fn encode_action_stages(model: &ActionStagesModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_action_stages`]) back
 /// into an [`ActionStagesModel`]. Returns an error string on any malformed input.
-#[cfg(test)]
-pub(crate) fn decode_action_stages(bytes: &[u8]) -> Result<ActionStagesModel, String> {
+pub fn decode_action_stages(bytes: &[u8]) -> Result<ActionStagesModel, String> {
     if bytes.len() < 8 || !fb::action_stages_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KAST file identifier".to_string());
     }
@@ -212,7 +211,6 @@ pub(crate) fn decode_action_stages(bytes: &[u8]) -> Result<ActionStagesModel, St
 
 /// Decode this module's generated `ActionStageEntry` table into an
 /// [`ActionStageEntryRow`].
-#[cfg(test)]
 fn stage_entry_from_fb(row: fb::ActionStageEntry<'_>) -> ActionStageEntryRow {
     ActionStageEntryRow {
         stage: row.stage().unwrap_or_default().to_string(),

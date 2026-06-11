@@ -278,10 +278,10 @@ pub use relay::canonical_relay_url;
 pub use relay::{OutboundMessage, RelayRole};
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
-    decode_snapshot_payload, decode_snapshot_with_typed, decode_update_frame, encode_panic,
-    encode_snapshot_value, encode_snapshot_with_typed, panic_message, PanicFrame,
-    TypedProjectionData, UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError,
-    SNAPSHOT_SCHEMA_VERSION,
+    decode_snapshot_envelope, decode_snapshot_payload, decode_snapshot_typed_projections,
+    decode_snapshot_with_typed, decode_update_frame, encode_panic, encode_snapshot_value,
+    encode_snapshot_with_typed, panic_message, PanicFrame, SnapshotEnvelope, TypedProjectionData,
+    UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError, SNAPSHOT_SCHEMA_VERSION,
 };
 
 /// Public decode surface for the kernel-owned (Tier-2) typed-projection

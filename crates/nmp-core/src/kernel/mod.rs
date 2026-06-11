@@ -284,10 +284,15 @@ pub use relay_frame::RelayFrame;
 /// doc for the return-type / scope rationale.
 pub mod public_typed_projections {
     pub use super::typed_projections::{
-        decode_action_results, decode_publish_queue, ActionResultRow, ActionResultsModel,
-        PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow, ACTION_RESULTS_FILE_IDENTIFIER,
-        ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION, PUBLISH_QUEUE_FILE_IDENTIFIER,
+        decode_action_results, decode_action_stages, decode_publish_queue,
+        decode_relay_diagnostics, ActionResultRow, ActionResultsModel, ActionStageEntryRow,
+        ActionStagesModel, InterestRow, PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow,
+        RelayDiagnosticsModel, RelayRow, WireSubRow, ACTION_RESULTS_FILE_IDENTIFIER,
+        ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION, ACTION_STAGES_FILE_IDENTIFIER,
+        ACTION_STAGES_SCHEMA_ID, ACTION_STAGES_SCHEMA_VERSION, PUBLISH_QUEUE_FILE_IDENTIFIER,
         PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
+        RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID,
+        RELAY_DIAGNOSTICS_SCHEMA_VERSION,
     };
 }
 

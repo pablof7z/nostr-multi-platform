@@ -19,6 +19,7 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-11 — **PR-B: typed-first migration step** (toward #991/#979). Branch: `feat/pr-b-delete-payload-value`. Worktree: agent-a07dd3b0c5a2269b5. Completed: chirp-tui `SharedSnapshot` migrated to typed-first (envelope + typed sidecars); new public APIs (`decode_snapshot_envelope`, `decode_snapshot_typed_projections`, relay_diagnostics/action_stages public decoders). Blocked on: kernel-built-in projections without typed schemas (accounts, active_account, profile, configured_relays, settings_hub) consumed by chirp-tui `FeatureSnapshot` and chirp-desktop. Full payload:Value removal deferred to follow-up PR.
 - 2026-06-11 — **Codebase audit session** (`nmp-codebase-audit-2026-06` tenex proposal).
   MERGED: #1040 (executor flake → TOCTOU fix), #1041 (NIP-59 independent wrap timestamp),
   #1042 (planner 64-bit filter hash), #1046 (router fail-closed on empty NIP-65 write set),
