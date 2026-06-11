@@ -650,6 +650,18 @@ final class KernelHandle {
             // (ADR-0037 Commitment 4), mirroring `typedAccounts` above.
             let typedRelayDiagnostics = TypedRelayDiagnosticsDecoder.decode(from: envelopes)
             let typedActionLifecycle = TypedActionLifecycleDecoder.decode(from: envelopes)
+            // V6 Stage 4 (Wave B Tier-1 #4): the app-projection keys
+            // (`nmp.follow_list` / `nmp.nip57.zaps` / `nmp.nip29.group_chat` /
+            // `nmp.nip29.discovered_groups`). Each returns nil when its sidecar is
+            // absent or malformed → the generic `projections.<field>` JSON path
+            // stays active (ADR-0037 Commitment 4), mirroring `typedAccounts`
+            // above. `nmp.follow_list`'s envelope KEY (`nmp.follow_list`) differs
+            // from its payload SCHEMA_ID (`nmp.nip02.follow_list`); the generated
+            // decoder matches on both.
+            let typedFollowList = TypedFollowListDecoder.decode(from: envelopes)
+            let typedZaps = TypedZapsDecoder.decode(from: envelopes)
+            let typedGroupChat = TypedGroupChatDecoder.decode(from: envelopes)
+            let typedDiscoveredGroups = TypedDiscoveredGroupsDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
@@ -665,6 +677,10 @@ final class KernelHandle {
                     typedPublishQueue: typedPublishQueue,
                     typedRelayDiagnostics: typedRelayDiagnostics,
                     typedActionLifecycle: typedActionLifecycle,
+                    typedFollowList: typedFollowList,
+                    typedZaps: typedZaps,
+                    typedGroupChat: typedGroupChat,
+                    typedDiscoveredGroups: typedDiscoveredGroups,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
@@ -782,6 +798,19 @@ struct KernelUpdateResult {
     /// Typed `action_lifecycle` projection decode (`KALC`). `nil` ⇒ generic
     /// `projections.action_lifecycle` JSON fallback.
     let typedActionLifecycle: ActionLifecycleSnapshot?
+    /// Typed `nmp.follow_list` projection decode (`NF02`; envelope key
+    /// `nmp.follow_list`, schema_id `nmp.nip02.follow_list`). `nil` ⇒ generic
+    /// `projections["nmp.follow_list"]` JSON fallback.
+    let typedFollowList: FollowListSnapshot?
+    /// Typed `nmp.nip57.zaps` projection decode (`NZAP`). `nil` ⇒ generic
+    /// `projections["nmp.nip57.zaps"]` JSON fallback.
+    let typedZaps: ZapsAggregateSnapshot?
+    /// Typed `nmp.nip29.group_chat` projection decode (`NGCS`). `nil` ⇒ generic
+    /// `projections["nmp.nip29.group_chat"]` JSON fallback.
+    let typedGroupChat: GroupChatSnapshot?
+    /// Typed `nmp.nip29.discovered_groups` projection decode (`NDGS`). `nil` ⇒
+    /// generic `projections["nmp.nip29.discovered_groups"]` JSON fallback.
+    let typedDiscoveredGroups: DiscoveredGroupsSnapshot?
     /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
     /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
     /// target, so they cannot be codegen'd as fixed projection fields.

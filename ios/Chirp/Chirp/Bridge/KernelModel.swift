@@ -86,6 +86,19 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published private(set) var typedRelayDiagnostics: RelayDiagnosticsSnapshot?
     @Published private(set) var typedActionLifecycle: ActionLifecycleSnapshot?
 
+    /// V6 Stage 4 (Wave B Tier-1 #4) typed overrides for the app-projection
+    /// keys. Each is non-nil only on ticks where the corresponding sidecar
+    /// (`NF02` / `NZAP` / `NGCS` / `NDGS`) decoded; `nil` defers to the generic
+    /// JSON path. `typedZaps` is read through the `KernelModel+Projections`
+    /// accessor (`zaps`); the other three feed their dedicated stores
+    /// (`FollowListStore` / `GroupChatStore` / `DiscoveredGroupsStore`) through
+    /// the SAME typed-first effective value in `apply(result:)` so the store and
+    /// any accessor never split-brain (typed vs JSON).
+    @Published private(set) var typedFollowList: FollowListSnapshot?
+    @Published private(set) var typedZaps: ZapsAggregateSnapshot?
+    @Published private(set) var typedGroupChat: GroupChatSnapshot?
+    @Published private(set) var typedDiscoveredGroups: DiscoveredGroupsSnapshot?
+
     /// Dynamic flat feeds opened per profile/thread screen. Keys are
     /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
     @Published private(set) var flatFeeds: [String: ChirpTimelineSnapshot] = [:]
@@ -718,6 +731,15 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // this tick (read through the `KernelModel+Projections` accessors).
         typedRelayDiagnostics = result.typedRelayDiagnostics
         typedActionLifecycle = result.typedActionLifecycle
+        // V6 Stage 4 (Wave B Tier-1 #4): store the app-projection typed decodes.
+        // Nil ⇒ the generic JSON projection fallback applies for this tick.
+        // `typedZaps` is read through the `zaps` accessor; the other three are
+        // consumed below via the effective `typed<Key> ?? update.<key>` value
+        // fed to their stores (no split-brain).
+        typedFollowList = result.typedFollowList
+        typedZaps = result.typedZaps
+        typedGroupChat = result.typedGroupChat
+        typedDiscoveredGroups = result.typedDiscoveredGroups
         flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 
@@ -755,7 +777,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // NIP-29 + NIP-17 stores — pushed every tick so their lazy init fires
         // on the first snapshot (registering the read projections in the
         // process). Rust owns the DM inbox interest lifecycle.
-        groupChat.apply(snapshot: update.groupChat)
+        // V6 Stage 4 (Wave B Tier-1 #4): feed the store the typed-first effective
+        // value (`typedGroupChat ?? update.groupChat`). The `NGCS` sidecar wins
+        // when present; the generic JSON projection is the fallback — the SAME
+        // effective value the accessor would yield, so the store never diverges.
+        groupChat.apply(snapshot: result.typedGroupChat ?? update.groupChat)
         dmInbox.apply(snapshot: update.dmInbox)
         // NIP-02 follow list projection mirror. Push every tick so the store
         // tracks `projections["nmp.follow_list"]`. Touching `followList`
@@ -763,7 +789,15 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // which registers the read projection (`nmp_app_chirp_register_follow_list`).
         // The active-account pubkey is forwarded so the store can re-invoke
         // the FFI to update the projection's active-pubkey slot after sign-in.
-        followList.apply(snapshot: update.followList, activePubkey: newActiveAccount)
+        // V6 Stage 4 (Wave B Tier-1 #4): typed-first effective value
+        // (`typedFollowList ?? update.followList`). `NF02` wins when present; the
+        // generic JSON projection is the fallback. `DmListView` reads
+        // `model.followList.follows` off this same store, so routing here keeps
+        // the picker typed-first too — no split-brain.
+        followList.apply(
+            snapshot: result.typedFollowList ?? update.followList,
+            activePubkey: newActiveAccount
+        )
 
         // NIP-29 group-discovery projection mirror. Push every tick so the
         // store tracks `projections["nmp.nip29.discovered_groups"]`. The store
@@ -771,7 +805,12 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // (`searchGroups`); the snapshot key is `nil` until then, and the
         // store ignores stale snapshots from a previously-registered
         // relay during a switch.
-        discoveredGroups.apply(snapshot: update.discoveredGroups)
+        // V6 Stage 4 (Wave B Tier-1 #4): typed-first effective value
+        // (`typedDiscoveredGroups ?? update.discoveredGroups`). `NDGS` wins when
+        // present; the generic JSON projection is the fallback.
+        discoveredGroups.apply(
+            snapshot: result.typedDiscoveredGroups ?? update.discoveredGroups
+        )
 
         // V5 thin-shell: action lifecycle tracking is fully Rust-owned.
         // The kernel emits `projections["action_lifecycle"]` with `inFlight`

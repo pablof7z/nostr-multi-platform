@@ -288,4 +288,99 @@ enum TypedProjectionGlue {
             relayUrls: interest.relayUrls.map { $0 ?? "" }
         )
     }
+
+    // MARK: nmp.follow_list → FollowListSnapshot
+
+    /// Map the typed `nmp.follow_list` sidecar (`NF02` /
+    /// `nmp_nip02_FollowListSnapshot`) to the `FollowListSnapshot` the JSON
+    /// `projections["nmp.follow_list"]` path yields. Flat field-for-field copy:
+    /// one ordered `[FollowEntry]` vector, each row a single raw hex `pubkey`
+    /// (presentation formatting is a host concern — aim.md §2). Producer order is
+    /// preserved verbatim (parity with the JSON array).
+    static func followList(_ reader: nmp_nip02_FollowListSnapshot) -> FollowListSnapshot {
+        FollowListSnapshot(
+            follows: reader.follows.map { FollowEntry(pubkey: $0.pubkey ?? "") }
+        )
+    }
+
+    // MARK: nmp.nip57.zaps → ZapsAggregateSnapshot
+
+    /// Map the typed `nmp.nip57.zaps` sidecar (`NZAP` / `nmp_nip57_ZapsSnapshot`)
+    /// to the `ZapsAggregateSnapshot` the JSON `projections["nmp.nip57.zaps"]`
+    /// path yields. FlatBuffers has no map type, so the wire flattens the Rust
+    /// `totals: HashMap<EventId, ZapCount>` into a `[ZapTotal]` vector — this
+    /// glue rebuilds the dict keyed by `target_event_id` (hex), mirroring the
+    /// serde shape. A duplicate target id would collide, but the producer emits
+    /// one row per map entry, so keys are unique by construction.
+    static func zaps(_ reader: nmp_nip57_ZapsSnapshot) -> ZapsAggregateSnapshot {
+        var totals: [String: ZapCount] = [:]
+        totals.reserveCapacity(reader.totals.count)
+        for row in reader.totals {
+            totals[row.targetEventId ?? ""] = ZapCount(
+                totalMsats: row.totalMsats,
+                count: row.count
+            )
+        }
+        return ZapsAggregateSnapshot(totals: totals)
+    }
+
+    // MARK: nmp.nip29.group_chat → GroupChatSnapshot
+
+    /// Map the typed `nmp.nip29.group_chat` sidecar (`NGCS` /
+    /// `nmp_nip29_GroupChatSnapshot`) to the `GroupChatSnapshot` the JSON
+    /// `projections["nmp.nip29.group_chat"]` path yields. Flat field-for-field
+    /// copy: one ordered `[GroupChatMessage]` vector (newest-first; the Rust
+    /// projection owns the order, Swift does not re-sort), each row carrying raw
+    /// protocol values (`id`/`pubkey` hex, verbatim `content`, Unix-second
+    /// `createdAt`, raw `kind`).
+    static func groupChat(_ reader: nmp_nip29_GroupChatSnapshot) -> GroupChatSnapshot {
+        GroupChatSnapshot(
+            messages: reader.messages.map { row in
+                GroupChatMessage(
+                    id: row.id ?? "",
+                    pubkey: row.pubkey ?? "",
+                    content: row.content ?? "",
+                    createdAt: row.createdAt,
+                    kind: row.kind
+                )
+            }
+        )
+    }
+
+    // MARK: nmp.nip29.discovered_groups → DiscoveredGroupsSnapshot
+
+    /// Map the typed `nmp.nip29.discovered_groups` sidecar (`NDGS` /
+    /// `nmp_nip29_DiscoveredGroupsSnapshot`) to the `DiscoveredGroupsSnapshot`
+    /// the JSON `projections["nmp.nip29.discovered_groups"]` path yields. Flat
+    /// field-for-field copy: a top-level `hostRelayUrl` plus one ordered
+    /// `[DiscoveredGroup]` vector (alphabetical by `groupId`; Rust owns the
+    /// order). `name`/`picture`/`about` are tag-derived `Option<String>` on the
+    /// wire — bare FlatBuffers strings where absent decodes to `nil`; the glue
+    /// preserves that `nil` (NOT `?? ""`) so the typed value is byte-identical to
+    /// the JSON path's `null`. The V-24 thin-shell display fields
+    /// (`initials`/`displayName`/`subtitle`) travel pre-computed and are copied
+    /// verbatim (never re-derived host-side, ADR-0032).
+    static func discoveredGroups(
+        _ reader: nmp_nip29_DiscoveredGroupsSnapshot
+    ) -> DiscoveredGroupsSnapshot {
+        DiscoveredGroupsSnapshot(
+            hostRelayUrl: reader.hostRelayUrl ?? "",
+            groups: reader.groups.map { row in
+                DiscoveredGroup(
+                    groupId: row.groupId ?? "",
+                    hostRelayUrl: row.hostRelayUrl ?? "",
+                    name: row.name,
+                    picture: row.picture,
+                    about: row.about,
+                    memberCount: row.memberCount,
+                    adminCount: row.adminCount,
+                    public: row.public_,
+                    open: row.open_,
+                    initials: row.initials ?? "",
+                    displayName: row.displayName ?? "",
+                    subtitle: row.subtitle ?? ""
+                )
+            }
+        )
+    }
 }

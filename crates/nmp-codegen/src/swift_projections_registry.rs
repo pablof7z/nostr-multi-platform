@@ -170,11 +170,26 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         json_key: "wallet",
         swift_field: "wallet",
         swift_type: "WalletStatusData",
-        // NOTE: the kernel does NOT yet emit a `wallet` typed sidecar — the
-        // `encode_wallet_status` codec exists (`nmp-nip47`) but has no producer
-        // call site in `builtin_typed_projections`. Recorded as the schema
-        // identity it WILL use once wired, with `swift_reader_type: None` so the
-        // generator never emits a decoder for an absent sidecar.
+        // DEFERRED (Wave B Tier-1): a live typed `wallet` producer DOES exist
+        // (`apps/chirp/.../wallet_runtime.rs`:
+        // `register_typed_snapshot_projection("wallet", …)` →
+        // `wallet_typed_projection`), but the read-flip is BLOCKED by a domain
+        // mismatch the read-side PR cannot fix additively:
+        //   * the Swift `WalletStatusData` has a non-optional `walletPubkeyHex`
+        //     (`WalletView.swift:98`) that NEITHER the JSON projection
+        //     (`serde_json::to_value(WalletStatus)`) NOR the `wallet_status.fbs`
+        //     wire carries — there is no producer for it. A typed flip would
+        //     have to fabricate it (npub→hex = thin-shell violation; or `""` =
+        //     divergence from the JSON path), breaking the additive parity
+        //     contract.
+        //   * also the producer publishes ENVELOPE key `"wallet"` (not
+        //     `"nmp.nip47.wallet"` recorded below); the decoder's `key` is
+        //     sourced from this `TypedSidecar.key`, so it must be corrected to
+        //     `"wallet"` when wallet is wired.
+        // The fix is producer-side (add `wallet_pubkey_hex` to the Rust
+        // `WalletStatus` struct + `.fbs`, then flip key→`"wallet"` and
+        // `swift_reader_type`). Tracked as a scoped follow-up; left `None` here
+        // so the generator emits no decoder for the absent-field sidecar.
         typed_sidecar: Some(TypedSidecar {
             key: "nmp.nip47.wallet",
             schema_id: "nmp.nip47.wallet",
@@ -480,7 +495,14 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "nmp.nip29.group_chat",
             schema_id: "nmp.nip29.group_chat",
             file_identifier: "NGCS",
-            swift_reader_type: None,
+            // Wave B Tier-1 #4: the `flatc --swift` reader
+            // (`nmp_nip29_GroupChatSnapshot`) ships in this PR. Host-registered
+            // producer in `apps/chirp/.../crates/nmp-nip29/src/register.rs`
+            // (`register_typed_snapshot_projection("nmp.nip29.group_chat", …)`).
+            // Flat field-for-field copy: `{ messages: [GroupChatMessage] }`,
+            // each row `{ id, pubkey, content, created_at, kind }`. See
+            // `TypedProjectionGlue.groupChat`.
+            swift_reader_type: Some("nmp_nip29_GroupChatSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
@@ -505,7 +527,17 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "nmp.follow_list",
             schema_id: "nmp.nip02.follow_list",
             file_identifier: "NF02",
-            swift_reader_type: None,
+            // Wave B Tier-1 #4: the `flatc --swift` reader
+            // (`nmp_nip02_FollowListSnapshot`) ships in this PR. Host-registered
+            // producer in `apps/chirp/.../ffi/register.rs`
+            // (`register_typed_snapshot_projection("nmp.follow_list", …)` →
+            // `follow_list_typed_projection`). Note the deliberate key/schema_id
+            // split: the envelope KEY is `nmp.follow_list`, the payload
+            // SCHEMA_ID is `nmp.nip02.follow_list` — the generated decoder
+            // matches on BOTH (verified against the producer). Flat copy:
+            // `{ follows: [FollowEntry{pubkey}] }`. See
+            // `TypedProjectionGlue.followList`.
+            swift_reader_type: Some("nmp_nip02_FollowListSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
@@ -516,7 +548,16 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "nmp.nip29.discovered_groups",
             schema_id: "nmp.nip29.discovered_groups",
             file_identifier: "NDGS",
-            swift_reader_type: None,
+            // Wave B Tier-1 #4: the `flatc --swift` reader
+            // (`nmp_nip29_DiscoveredGroupsSnapshot`) ships in this PR.
+            // Host-registered producer in `crates/nmp-nip29/src/register.rs`
+            // (`register_typed_snapshot_projection("nmp.nip29.discovered_groups", …)`).
+            // Flat copy: `{ host_relay_url, groups: [DiscoveredGroup] }`. The
+            // `name`/`picture`/`about` wire strings are bare (absent == None) and
+            // map to the domain's `String?` preserving nil — NOT `?? ""` — so
+            // typed and JSON are byte-identical. See
+            // `TypedProjectionGlue.discoveredGroups`.
+            swift_reader_type: Some("nmp_nip29_DiscoveredGroupsSnapshot"),
         }),
     },
     // `nmp.nip57.zaps` has no `_`, so the post-transform key is identical
@@ -530,7 +571,15 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "nmp.nip57.zaps",
             schema_id: "nmp.nip57.zaps",
             file_identifier: "NZAP",
-            swift_reader_type: None,
+            // Wave B Tier-1 #4: the `flatc --swift` reader
+            // (`nmp_nip57_ZapsSnapshot`) ships in this PR. Host-registered
+            // producer in `apps/chirp/.../ffi/register.rs`
+            // (`register_typed_snapshot_projection("nmp.nip57.zaps", …)` →
+            // `zaps_typed_projection`). FlatBuffers has no map type, so the wire
+            // is a flattened `[ZapTotal{target_event_id, total_msats, count}]`
+            // vector; the glue rebuilds the domain `totals: [String: ZapCount]`
+            // dict. See `TypedProjectionGlue.zaps`.
+            swift_reader_type: Some("nmp_nip57_ZapsSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
