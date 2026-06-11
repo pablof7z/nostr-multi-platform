@@ -54,6 +54,9 @@ mod tests_kind5;
 // W2 TDD gate-tests for `relay_scores`.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod relay_scores_tests;
+// V-117 GC budget / resumable-cursor / tombstone-gate tests.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_gc;
 
 use std::path::{Path, PathBuf};
 
@@ -80,6 +83,7 @@ pub(crate) use inner::Inner;
 #[cfg(feature = "lmdb-backend")]
 mod inner {
     use std::sync::atomic::AtomicU64;
+    use std::sync::Mutex;
 
     use heed::types::Bytes;
     use heed::{Database, Env};
@@ -132,6 +136,36 @@ mod inner {
         /// each store op holds the `heed::RwTxn` lock so there is no concurrent
         /// writer.
         pub(crate) lru_seq: AtomicU64,
+
+        // ── GC scan state (V-117 fixes) ───────────────────────────────────────
+
+        /// Phase-1 resumable cursor: the `created_at` (unix seconds) of the last
+        /// event scanned for NIP-40 expiry in the previous pass.
+        ///
+        /// `None` = start from the most-recent event (top of the ci_index).
+        /// On budget exhaustion the cursor is set to `Some(last_created_at)` so
+        /// the next pass resumes with `Filter::new().until(last_created_at)`,
+        /// skipping all events newer than the cursor.  Events sharing the cursor
+        /// timestamp may be re-checked (idempotent).
+        ///
+        /// After a full sweep (we reach the bottom of the store without hitting
+        /// the budget), the cursor resets to `None` so the next pass re-starts
+        /// from the top, covering newly inserted events.
+        ///
+        /// GC runs on the actor thread (single writer) so this Mutex is
+        /// uncontested in practice.
+        pub(crate) gc_phase1_cursor: Mutex<Option<u64>>,
+
+        /// Phase-3/3b tombstone-purge gate: unix_secs of the last pass that
+        /// actually ran the tombstone scan.  The Phase-3 scan iterates and
+        /// serde-decodes every tombstone row inside a WRITE txn — budget-bound
+        /// on count but still O(tombstones) per call.  Throttle to at most once
+        /// per `GC_TOMBSTONE_PURGE_INTERVAL_SECS` (1 h) so the 60-second gc tick
+        /// does not iterate the full tombstone db every minute.
+        ///
+        /// Value 0 means "never run" (correct: a 90-day tombstone age threshold
+        /// means nothing is purgeable in the first hour anyway).
+        pub(crate) gc_last_tombstone_purge_secs: AtomicU64,
     }
 
     impl std::fmt::Debug for Inner {

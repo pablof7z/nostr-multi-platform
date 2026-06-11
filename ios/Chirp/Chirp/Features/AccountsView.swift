@@ -29,6 +29,17 @@ struct AccountsView: View {
                 }
             }
 
+            // V-14 / #963: bunker relay-connection health row. Only rendered
+            // when a bunker session is active (`bunkerConnectionState` is nil
+            // for local-key-only accounts). `isConnected` is the happy path;
+            // `isReconnecting` prompts the user to wait; `isFailed` prompts
+            // re-authentication. Rust pre-computes every flag (ADR-0032 pattern).
+            if let connState = model.bunkerConnectionState {
+                Section("Signer relay") {
+                    BunkerConnectionStateRow(connectionState: connState)
+                }
+            }
+
             Section {
                 Button {
                     showAddSheet = true
@@ -291,6 +302,79 @@ private struct AddAccountSheet: View {
         } header: {
             Text("Fresh start")
         }
+    }
+}
+
+// MARK: - BunkerConnectionStateRow (V-14 / #963)
+
+/// Shows the live relay-layer health of the active bunker session.
+///
+/// Only rendered when `model.bunkerConnectionState` is non-nil (i.e. an NIP-46
+/// remote signer is active). Rust pre-computes `isConnected` / `isReconnecting`
+/// / `isFailed` from the relay socket state (`nmp-signer-broker`). Swift renders
+/// verbatim (ADR-0032 / relay_diagnostics pattern): no string-compare on `state`.
+///
+/// Three states drive distinct UX:
+/// - `isConnected` → green `circle.fill` + "Connected" label.
+/// - `isReconnecting` → amber `arrow.clockwise.circle` + "Reconnecting…". The
+///   user should wait; auto-reconnect is in progress. `reason` surfaced as
+///   secondary text when present.
+/// - `isFailed` → red `exclamationmark.triangle.fill` + "Connection failed". The
+///   session is bricked; the user should re-authenticate. `reason` surfaced as
+///   secondary text when present.
+private struct BunkerConnectionStateRow: View {
+    let connectionState: BunkerConnectionState
+
+    private var statusIcon: String {
+        if connectionState.isFailed { return "exclamationmark.triangle.fill" }
+        if connectionState.isReconnecting { return "arrow.clockwise.circle.fill" }
+        return "circle.fill"
+    }
+
+    private var statusColor: Color {
+        if connectionState.isFailed { return ChirpColor.danger }
+        if connectionState.isReconnecting { return ChirpColor.warning }
+        return ChirpColor.success
+    }
+
+    private var statusLabel: String {
+        if connectionState.isFailed { return "Connection failed" }
+        if connectionState.isReconnecting { return "Reconnecting…" }
+        return "Connected"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                if connectionState.isReconnecting {
+                    // Use an animated spinner for the transient reconnecting
+                    // state so the user can see live progress.
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(statusColor)
+                } else {
+                    Image(systemName: statusIcon)
+                        .foregroundStyle(statusColor)
+                        .imageScale(.small)
+                }
+                Text(statusLabel)
+                    .foregroundStyle(connectionState.isFailed
+                                     ? ChirpColor.danger
+                                     : ChirpColor.textPrimary)
+            }
+            if let reason = connectionState.reason, !reason.isEmpty {
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(connectionState.isFailed
+                                     ? ChirpColor.danger
+                                     : ChirpColor.textSecondary)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Bunker relay: \(statusLabel)")
+        .accessibilityIdentifier("bunker-connection-state-row")
     }
 }
 

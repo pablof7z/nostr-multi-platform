@@ -15,26 +15,35 @@
 //! `kernel::update`. This test exercises the hot path against a 1k-event
 //! firehose and asserts both timings stay under a conservative ceiling.
 //!
-//! ## Threshold rationale
+//! ## Threshold rationale (V-117 tightening, 2026-06-12)
 //!
 //! Observed baseline on developer hardware (Apple M-series, debug build,
-//! 1k-event firehose, `visible_limit = 500`, 5-run average):
-//! - `make_update_us` ≈ 25 ms
-//! - `serialize_us`   ≈ 15 ms
-//! - run-to-run variance < 5 %
+//! 1k-event firehose, `visible_limit = 500`):
+//! - `make_update_us` ≈ 323–600 µs idle; **1 330–1 342 µs measured under
+//!   parallel-build contention** (max cold-cache ~1 600 µs)
+//! - `serialize_us`   ≈ 271–299 µs idle; ~630 µs under contention
+//! - idle run-to-run variance < 10 %; contention pushes 2–4 × above idle
 //!
 //! `cargo test` in `test.yml` runs **debug** mode on `ubuntu-latest` shared
-//! runners — typically 2–3 × slower than dev hardware, plus neighbor-noise
-//! jitter. Ceilings are set at ≈ 10 × observed so a real 10 × regression
-//! (the kind that breaks 4 Hz iOS cadence) fails the build while ordinary
-//! CI variance does not flake:
-//! - `MAX_MAKE_UPDATE_US = 250_000` (250 ms)
-//! - `MAX_SERIALIZE_US   = 150_000` (150 ms)
+//! runners. The snapshot path is memory-bandwidth-bound; shared runners show
+//! 2–3 × p99 jitter on a noisy-neighbor tick on top of the baseline debug
+//! slowdown. Taking the measured under-contention value (~1 340 µs / ~630 µs)
+//! as the CI-relevant baseline, ceilings are set at ~10 × that value so a
+//! noisy p99 tick cannot flake the gate — a flaky perf gate gets deleted,
+//! which is strictly worse than a slightly looser one:
+//! - `MAX_MAKE_UPDATE_US = 15_000` (15 ms, ~11 × measured contention value)
+//! - `MAX_SERIALIZE_US   = 8_000`  (8 ms,  ~12 × measured contention value)
+//!
+//! Still 17 × / 19 × tighter than the prior 250 ms / 150 ms ceilings, which
+//! were based on a stale pre-FlatBuffers ~25 ms / ~15 ms estimate (420 × /
+//! 500 × above actual). The 4 Hz-cadence argument holds: a real regression
+//! that threatens the 250 ms/tick budget lands at ~60 000 µs and fails the
+//! 15 000 µs gate by 4 ×.
 //!
 //! The real monitoring signal is the `NMP_PERF` log line emitted on every
 //! tick in production; this gate is the coarse net that catches a snapshot
-//! path that has clearly broken. Tighten the ceiling only if a follow-up
-//! perf budget is documented in `docs/plan.md` or GitHub Issues.
+//! path that has clearly broken. Tighten the ceiling further only if a
+//! follow-up perf budget is documented in `docs/plan.md` or GitHub Issues.
 //!
 //! See `docs/plan.md` v1 exit criterion #8 for the contract.
 //!
@@ -66,18 +75,32 @@ const EVENT_COUNT: usize = 1_000;
 const VISIBLE_LIMIT: usize = 500;
 
 /// Upper bound for `make_update_us` (total snapshot build + serialize).
-/// 250 ms = ≈ 10 × the observed dev-hardware baseline (~25 ms debug). Picked
-/// to catch a 10 × regression on shared CI runners while leaving headroom
-/// for the typical 2–3 × debug + ubuntu-latest slowdown plus normal
-/// neighbor-noise jitter. See the module-level threshold rationale.
-const MAX_MAKE_UPDATE_US: u128 = 250_000;
+///
+/// ## Threshold rationale (tightened V-117, calibrated per PR #1094 review)
+///
+/// Measured local dev-hardware (Apple M-series, debug build, 1k-event firehose,
+/// `visible_limit = 500`): **~323–600 µs idle**, **~1 330–1 342 µs under
+/// parallel-build contention** (max cold-cache ~1 600 µs). The snapshot path is
+/// memory-bandwidth-bound; ubuntu-latest shared runners add 2–3 × p99 jitter on
+/// noisy-neighbor ticks. Ceiling = ~10 × the measured contention value
+/// (~1 340 µs) = **15 000 µs**, so a bad p99 tick cannot flake the gate.
+/// A real 4 Hz-budget regression (~250 ms/tick threatened) lands at
+/// ~60 000 µs and fails by 4 ×.
+///
+/// Prior ceiling was 250 000 µs (≈ 420 × local) — a stale ~25 ms estimate
+/// from a pre-FlatBuffers code path. 15 000 µs is 17 × tighter.
+const MAX_MAKE_UPDATE_US: u128 = 15_000;
 
-/// Upper bound for `serialize_us` (the FlatBuffers encode tail alone). 150 ms
-/// = ≈ 10 × the observed pre-FlatBuffers dev-hardware JSON baseline (~15 ms
-/// debug). Same rationale as `MAX_MAKE_UPDATE_US`: a 150 ms encode on a
-/// 1k-event snapshot indicates the projections map or `KernelSnapshot` shape
-/// has regressed past acceptable steady-state.
-const MAX_SERIALIZE_US: u128 = 150_000;
+/// Upper bound for `serialize_us` (the FlatBuffers encode tail alone).
+///
+/// ## Threshold rationale (tightened V-117, calibrated per PR #1094 review)
+///
+/// Measured local dev-hardware: **~271–299 µs idle**, **~630 µs under
+/// contention** (max cold-cache ~600 µs). Ceiling = ~12 × the measured
+/// contention value = **8 000 µs**. Same p99-jitter headroom logic as
+/// `MAX_MAKE_UPDATE_US`. Prior ceiling was 150 000 µs (≈ 500 × local);
+/// 8 000 µs is 19 × tighter.
+const MAX_SERIALIZE_US: u128 = 8_000;
 
 /// Pre-generate `count` signed kind:1 events under a single throwaway
 /// keypair. Mirrors `kernel::timeline_perf_tests::make_events` so the two

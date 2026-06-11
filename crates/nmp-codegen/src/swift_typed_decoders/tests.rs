@@ -203,8 +203,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 27,
-        "exactly twenty-seven keys have a checked-in flatc --swift reader binding \
+        emitted, 28,
+        "exactly twenty-eight keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
@@ -216,9 +216,9 @@ fn real_registry_emits_exactly_the_proof_keys() {
          NIP-46 cluster: bunker_handshake, nip46_onboarding; the Marmot \
          push-projection cluster: nmp.marmot.snapshot, nmp.marmot.messages; \
          plus the wallet (producer field-add) + settings_hub (kernel built-in) \
-         flips; Wave C: action_results, action_stages; \
-         V-112 author_view + thread_view deleted = 29 - 2 = 27); \
-         if this changed, regenerate \
+         flips; Wave C: action_results, action_stages; V-14 \
+         bunker_connection_state; V-112 author_view + thread_view deleted \
+         = 30 - 2 = 28); if this changed, regenerate \
          TypedProjectionDecoders.generated.swift and update this test"
     );
 }

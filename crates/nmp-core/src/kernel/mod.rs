@@ -41,6 +41,11 @@ mod clock;
 mod clock_injection_tests;
 #[cfg(test)]
 mod gc_step_tests;
+mod ram_eviction;
+#[cfg(test)]
+mod ram_eviction_tests;
+#[cfg(test)]
+mod ram_eviction_view_pin_tests;
 #[cfg(test)]
 mod closed_classifier_tests;
 // `pub(crate)` so the typed FFI error-category constants (`ERR_*`) are
@@ -2132,8 +2137,10 @@ impl Kernel {
     /// purge) was dead on every device (audit Finding 1).
     ///
     /// - **Budget**: [`GcBudget::production`] — `2000` events / `50 ms` scan
-    ///   bounds plus the finite `HOT_EVENT_CEILING` LRU ceiling so Phase-2
-    ///   eviction actually runs (`gc.md` §3).
+    ///   bounds with the LRU ceiling **disabled** (`max_total_events =
+    ///   usize::MAX`): store-claims have no production callers yet, so a finite
+    ///   ceiling would silently evict live events (V-117). GitHub issue #1090
+    ///   tracks wiring claims and re-enabling `HOT_EVENT_CEILING` (`gc.md` §3).
     /// - **`now_secs`**: read through the injected [`Clock`] via
     ///   [`Self::now_secs`] (D7/D9 — the store never reads the clock; the kernel
     ///   threads it in, so replay/tests stay deterministic).
@@ -2145,6 +2152,21 @@ impl Kernel {
     /// tick retries. The result (or the prior one on error) stays in `last_gc`.
     pub fn run_gc_step(&mut self) -> Option<crate::store::GcReport> {
         let now_secs = self.now_secs();
+        // #1088 — RAM-tier eviction runs on every GC pass regardless of
+        // whether the store pass succeeds.  This is a separate call site from
+        // the LMDB-tier gc_step (#1085) so the two paths stay independent and
+        // merge-clean.
+        let ram_report = self.evict_ram_caches();
+        if ram_report.events_evicted + ram_report.profiles_evicted + ram_report.seed_contacts_evicted
+            > 0
+        {
+            tracing::debug!(
+                events_evicted = ram_report.events_evicted,
+                profiles_evicted = ram_report.profiles_evicted,
+                seed_contacts_evicted = ram_report.seed_contacts_evicted,
+                "ram cache eviction pass",
+            );
+        }
         match self.store.gc_step(crate::store::GcBudget::production(), now_secs) {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());

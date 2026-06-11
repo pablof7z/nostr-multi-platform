@@ -203,6 +203,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let wallet: WalletStatusData?
     let bunkerHandshake: BunkerHandshake?
     let nip46Onboarding: Nip46Onboarding?
+    let bunkerConnectionState: BunkerConnectionState?
     let publishQueue: [PublishQueueEntry]?
     let publishOutbox: [PublishOutboxItem]?
     let outboxSummary: OutboxSummary?
@@ -240,6 +241,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case wallet
         case bunkerHandshake
         case nip46Onboarding
+        case bunkerConnectionState
         case publishQueue
         case publishOutbox
         case outboxSummary

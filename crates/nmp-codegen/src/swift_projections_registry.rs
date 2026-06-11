@@ -161,7 +161,7 @@ pub struct TypedSidecar {
 /// order. Order is load-bearing (the generated file is byte-diffed against
 /// the committed copy by the `codegen-drift` CI gate).
 ///
-/// This slice has 33 entries (locked by `registry_size_is_locked`). Adding or
+/// This slice has 34 entries (locked by `registry_size_is_locked`). Adding or
 /// removing a member here changes the generated Swift — the CI gate will refuse
 /// stale output until the regenerated file is committed.
 pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
@@ -238,12 +238,30 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_Nip46Onboarding"),
         }),
     },
-    // NOTE: `bunker_connection_state` (V-14 step b) is emitted by the kernel
-    // but deliberately absent from this registry until the iOS/Android follow-up
-    // PR adds the Swift Decodable stub and regenerates KernelTypes.generated.swift.
-    // The kernel emits the key regardless; shells that have not yet added the
-    // field simply ignore it (D1 forward-compat). Mirrors the precedent set by
-    // `mention_profiles` (emitted, not registered here).
+    // NIP-46 relay-layer connection state (V-14 step b, closes #963).
+    // `projections["bunker_connection_state"]` — null when no bunker session is
+    // active; `{ state, reason, is_connected, is_reconnecting, is_failed }` when
+    // a session is live. Shells surface this as a status badge on the active
+    // bunker account row and as a non-blocking alert banner when degraded.
+    // Tier-1 actor projection: producer sets `key == schema_id`.
+    SnapshotProjectionEntry {
+        json_key: "bunker_connection_state",
+        swift_field: "bunkerConnectionState",
+        swift_type: "BunkerConnectionState",
+        // Typed FlatBuffers sidecar (KBCS, V-14 step b). The `flatc --swift`
+        // reader (`nmp_kernel_BunkerConnectionState`) ships with this PR from
+        // `crates/nmp-core/schema/bunker_connection_state.fbs`. Field-for-field
+        // copy: `{ state, reason, has_reason, is_connected, is_reconnecting,
+        // is_failed }`. Only emitted when a bunker session is active (the slot
+        // is `Some`) — mirrors the JSON closure's `null`-while-idle behaviour.
+        // See `TypedProjectionGlue.bunkerConnectionState`.
+        typed_sidecar: Some(TypedSidecar {
+            key: "bunker_connection_state",
+            schema_id: "bunker_connection_state",
+            file_identifier: "KBCS",
+            swift_reader_type: Some("nmp_kernel_BunkerConnectionState"),
+        }),
+    },
     // Publish-cluster outbox feeds — kernel-owned `publish_queue` and
     // `publish_outbox` arrays driven by the actor publish path.
     SnapshotProjectionEntry {
@@ -817,16 +835,14 @@ mod tests {
     /// silent.
     #[test]
     fn registry_size_is_locked() {
-        // 33 entries: was 35; V-112 (ADR-0042) removed `author_view` (KAVW)
-        // and `thread_view` (KTVW) from the registry.
+        // 34 entries: 36 (incl. `bunker_connection_state`, V-14 step b, #963)
+        // minus `author_view` (KAVW) and `thread_view` (KTVW), removed by
+        // V-112 (ADR-0042).
         // Bump this (and add a new SnapshotProjectionEntry above) when a new
         // projection is wired.
-        // `bunker_connection_state` (V-14 step b) is intentionally absent —
-        // the follow-up iOS PR adds it alongside the Swift Decodable stub and
-        // the KernelTypes.generated.swift regen to avoid a codegen-drift CI failure.
         assert_eq!(
             SNAPSHOT_PROJECTIONS.len(),
-            33,
+            34,
             "registry size changed — regenerate KernelTypes.generated.swift and update this test"
         );
     }

@@ -5,6 +5,7 @@ import nmp.kernel.AccountSummaryRow
 import nmp.kernel.AccountsSnapshot
 import nmp.kernel.ActiveAccountSnapshot
 import nmp.transport.FrameKind
+import nmp.transport.Metrics
 import nmp.transport.Pair as TransportPair
 import nmp.transport.SnapshotFrame
 import nmp.transport.TypedPayload
@@ -134,43 +135,25 @@ class TypedAccountsDecoderTest {
     // ── integration: fallback + typed-wins through the full frame path ─────────
 
     @Test
-    fun genericAccountsSurviveWithoutTypedSidecarReadingNpub() {
-        // No typed sidecar; generic `accounts` carries `npub` (NOT npub_short).
+    fun noTypedSidecarYieldsEmptyAccounts() {
+        // PR-B (#991/#979): the generic `payload:Value` fallback is gone.
+        // Without a typed sidecar, accounts and activeAccount are empty/null.
         val frame = frame(
-            projections = { b ->
-                valueMap(
-                    b,
-                    "accounts" to valueList(
-                        b,
-                        accountEntry(b, "idhex-g", npubFull, "Gen", "active", "nsec"),
-                    ),
-                    "active_account" to valueString(b, "idhex-g"),
-                )
-            },
+            projections = { b -> valueMap(b) },
             typedSidecars = emptyList(),
         )
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
         val accounts = decoded.update.projections?.accounts.orEmpty()
-        assertEquals(1, accounts.size)
-        // The generic fallback now reads the full `npub`, proving the
-        // `npub_short` bug is fixed on the fallback path too.
-        assertEquals(npubFull, accounts[0].npub)
-        assertEquals("idhex-g", decoded.update.projections?.activeAccount)
+        assertTrue("no typed sidecar → accounts must be empty", accounts.isEmpty())
+        assertNull("no typed sidecar → activeAccount must be null",
+            decoded.update.projections?.activeAccount)
     }
 
     @Test
-    fun typedAccountsAndActiveAccountWinOverGeneric() {
+    fun typedAccountsAndActiveAccountAreDecoded() {
+        // PR-B: typed sidecars are the sole source of accounts/activeAccount.
         val frame = frame(
-            projections = { b ->
-                valueMap(
-                    b,
-                    "accounts" to valueList(
-                        b,
-                        accountEntry(b, "generic-only", "npub1generic", "Gen", "idle", "nsec"),
-                    ),
-                    "active_account" to valueString(b, "generic-active"),
-                )
-            },
+            projections = { b -> valueMap(b) }, // lambda ignored post-PR-B
             typedSidecars = listOf(
                 Triple("accounts", "accounts", accountsBuffer()),
                 Triple("active_account", "active_account", activeAccountBuffer("idhex-active")),
@@ -178,31 +161,24 @@ class TypedAccountsDecoderTest {
         )
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
         val accounts = decoded.update.projections?.accounts.orEmpty()
-        // Typed sidecar (two accounts, full npub) replaced the single generic entry.
+        // Typed sidecar carries two accounts with full npub.
         assertEquals(2, accounts.size)
         assertEquals(npubFull, accounts[0].npub)
-        // Typed active_account wins.
+        // Typed active_account is populated.
         assertEquals("idhex-active", decoded.update.projections?.activeAccount)
     }
 
     @Test
-    fun typedActiveAccountNullPubkeyOverridesGenericNotFallsBack() {
-        // Typed `has_active_account == false` is AUTHORITATIVE null — it must NOT
-        // fall back to the generic non-null value.
+    fun typedActiveAccountNullPubkeyIsAuthoritative() {
+        // Typed `has_active_account == false` is AUTHORITATIVE null (not absent).
         val frame = frame(
-            projections = { b ->
-                valueMap(
-                    b,
-                    "accounts" to valueList(b),
-                    "active_account" to valueString(b, "generic-active"),
-                )
-            },
+            projections = { b -> valueMap(b) }, // lambda ignored post-PR-B
             typedSidecars = listOf(
                 Triple("active_account", "active_account", activeAccountBuffer(null)),
             ),
         )
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
-        // Authoritative typed null — generic "generic-active" is NOT used.
+        // Authoritative typed null → activeAccount is null.
         assertNull(decoded.update.projections?.activeAccount)
     }
 
@@ -227,10 +203,8 @@ class TypedAccountsDecoderTest {
         )
         val decoded = KernelUpdateFrameDecoder.decode(frame) as KernelDecodedUpdateFrame.Snapshot
         val accounts = decoded.update.projections?.accounts.orEmpty()
-        // Undecodable typed sidecar → generic subtree wins (single entry, full npub).
-        assertEquals(1, accounts.size)
-        assertEquals("fallback", accounts[0].id)
-        assertEquals(npubFull, accounts[0].npub)
+        // PR-B: undecodable typed sidecar → no generic path; accounts is empty (fails closed).
+        assertTrue("garbled sidecar must yield empty accounts (no generic fallback in PR-B)", accounts.isEmpty())
     }
 
     // ── builders ───────────────────────────────────────────────────────────────
@@ -302,23 +276,45 @@ class TypedAccountsDecoderTest {
         "signer_label" to valueString(b, signerLabel),
     )
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     private fun frame(
         projections: (FlatBufferBuilder) -> Int,
         typedSidecars: List<Triple<String, String, ByteArray>>,
     ): ByteArray {
+        // `projections` lambda is unused post-PR-B (the generic `payload:Value`
+        // slot is gone; typed sidecars are the only projection source). The
+        // parameter is retained so existing callers compile unchanged — the
+        // lambda result is simply discarded. If a test relied on the generic path
+        // it must add a typed sidecar instead.
         val b = FlatBufferBuilder(2048)
-        val payload = valueMap(
-            b,
-            "rev" to valueInt(b, 1L),
-            "running" to valueBool(b, true),
-            "relay_url" to valueString(b, ""),
-            "projections" to projections(b),
-        )
         val sidecarOffsets = typedSidecars.map { (key, schemaId, bytes) ->
             typedProjection(b, key, schemaId, bytes)
         }.toIntArray()
         val typedVec = SnapshotFrame.createTypedProjectionsVector(b, sidecarOffsets)
-        val snapshot = SnapshotFrame.createSnapshotFrame(b, 1u, payload, typedVec)
+        // Metrics table — always present to mirror production frames.
+        Metrics.startMetrics(b)
+        val metricsOffset = Metrics.endMetrics(b)
+        val snapshot = SnapshotFrame.createSnapshotFrame(
+            b,
+            /* schemaVersion = */ 1u,
+            /* typedProjectionsOffset = */ typedVec,
+            /* rev = */ 1UL,
+            /* kernelSchemaVersion = */ 0u,
+            /* lastTickMs = */ 0UL,
+            /* updateKindOffset = */ 0,
+            /* running = */ true,
+            /* metricsOffset = */ metricsOffset,
+            /* relayStatusOffset = */ 0,
+            /* relayStatusesOffset = */ 0,
+            /* logicalInterestsOffset = */ 0,
+            /* wireSubscriptionsOffset = */ 0,
+            /* logsOffset = */ 0,
+            /* lastErrorToastOffset = */ 0,
+            /* lastErrorCategoryOffset = */ 0,
+            /* lastPlannerErrorOffset = */ 0,
+            /* storeOpenFailureOffset = */ 0,
+            /* noConfiguredRelays = */ null,
+        )
         val frame = UpdateFrame.createUpdateFrame(b, FrameKind.Snapshot, snapshot, 0)
         UpdateFrame.finishUpdateFrameBuffer(b, frame)
         return b.sizedByteArray()
