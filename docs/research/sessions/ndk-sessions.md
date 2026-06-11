@@ -171,7 +171,7 @@ Wraps `window.nostr`. Three things to copy:
 - **Encryption queue** (`encryptionQueue` line 34, `processEncryptionQueue` line 169) — serializes encrypt/decrypt calls and retries on `"call already executing"` with backoff. Without this, two concurrent encrypts to a NIP-07 extension race.
 - `toPayload` (line 253) stores only `{"type":"nip07","payload":""}` — there's nothing to persist; on restore a fresh `NDKNip07Signer` is constructed and re-prompts.
 
-**Applies to NMP:** on web (post-M15), the NMP wasm shim needs the same queue behavior. The wasm/JS bridge runs in the same single-threaded event loop, so a queue at the JS bridge layer (analogous to applesauce's `BaseAccount.operation()`) handles the same race.
+**Applies to NMP:** on web (post-v1), the NMP wasm shim needs the same queue behavior. The wasm/JS bridge runs in the same single-threaded event loop, so a queue at the JS bridge layer (analogous to applesauce's `BaseAccount.operation()`) handles the same race.
 
 ### 6.3 `NDKNip46Signer` (`core/src/signers/nip46/index.ts`, 614 LOC)
 

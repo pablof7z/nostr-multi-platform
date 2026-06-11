@@ -2,7 +2,7 @@
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 3 — WoT + cross-platform + release (M12 Wallet deferred post-v1).
 
-**Demo product:** A developer with no prior framework knowledge runs `nmp init my-app`, follows recipes, ships a working hashtag-feed app on all four platforms in ≤ 2 hours.
+**Demo product:** A developer with no prior framework knowledge runs `nmp init my-app`, follows recipes, ships a working hashtag-feed app on the v1 native platforms (iOS, Android, desktop) in ≤ 2 hours. Web/wasm starter delivery is post-v1.
 
 **Scope.**
 

@@ -15,7 +15,7 @@ the tier map: [`docs/plan/test-pyramid.md`](../plan/test-pyramid.md).
    firehose-bench   │ replay (CI) · live (real iOS)  │  bin/firehose-bench/
    reactivity-bench │ composite index · alloc gates  │  bin/reactivity-bench/
                     ├───────────────────────────────┤
-   cross-platform   │ same scenario, AppState byte=  │  (post-M15)
+   native x-platform│ same scenario, AppState byte=  │  (post-M15)
    cross-FFI        │ binding round-trip             │  (post-M14)
                     ├───────────────────────────────┤
    subsystem        │ store+planner+sync vs MockRelay│  nmp-testing/tests/

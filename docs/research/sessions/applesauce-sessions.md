@@ -268,7 +268,7 @@ Covered in `docs/research/applesauce/signers.md:105-109`. Important detail (line
 
 ### 6.8 `ExtensionSigner` — pubkey caching (36 LOC)
 
-Lines 17, 22-28: pubkey cached after first `getPublicKey()` call (commit `0867a502`). The cache is **per-instance**, not per-pubkey — a fresh `new ExtensionSigner()` re-prompts. **Applies to NMP:** the wasm/web bridge (post-M15) should similarly cache; pubkey is `O(1)` to compute server-side but `O(user-attention)` if the extension prompts for confirmation.
+Lines 17, 22-28: pubkey cached after first `getPublicKey()` call (commit `0867a502`). The cache is **per-instance**, not per-pubkey — a fresh `new ExtensionSigner()` re-prompts. **Applies to NMP:** the wasm/web bridge (post-v1) should similarly cache; pubkey is `O(1)` to compute server-side but `O(user-attention)` if the extension prompts for confirmation.
 
 ## 7. Persistence — applesauce vs NDK
 

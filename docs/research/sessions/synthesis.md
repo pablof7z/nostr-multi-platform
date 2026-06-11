@@ -162,7 +162,7 @@ NDK (`core/src/signers/nip07/index.ts`): polls for `window.nostr` with bounded t
 
 Applesauce (`packages/signers/src/signers/extension-signer.ts`, 37 LOC): caches pubkey after first call (line 17); no queue at the signer level (uses account-level queue).
 
-**Recommendation for NMP** (deferred to M15 cross-platform, not M6 critical path):
+**Recommendation for NMP** (deferred to the post-v1 web/wasm milestone, not M6 critical path):
 
 - Wasm-side bridge exposes a `WebSignerCapability` (analog to `ExternalSignerCapability` in `api-surface.md:212-215`) that calls `window.nostr.*` from a JS shim.
 - The Rust side treats this exactly like `IdentityScopeKind::ExternalSigner` — no special case.
@@ -170,7 +170,7 @@ Applesauce (`packages/signers/src/signers/extension-signer.ts`, 37 LOC): caches 
 - Encryption serialization happens at the per-account queue (actor inbox), not in the bridge.
 - Timeout: 5s for any single call; surface `IdentityError::Timeout("extension call", 5000)`.
 
-**Not in M6 scope.** Web is M15. But mention the parallel here so the M6 design doesn't accidentally close the door.
+**Not in M6 scope.** Web is post-v1. But mention the parallel here so the M6 design doesn't accidentally close the door.
 
 ### 1.9 Multi-account UX surface for M6 vs deferred
 
@@ -181,7 +181,7 @@ M6 deliverables per `docs/plan/m6-signers-write.md:11-19`:
 | Paste nsec (raw + ncryptsec) | `nostrconnect://` (client-initiated reverse handshake) |
 | Generate new nsec + NIP-49 encrypt + keyring store | Multi-account switcher UI (M8 per `docs/plan/m8-multi-account.md`) |
 | Paste `bunker://` URL → live signer | Hardware signers (Coldcard, Krux, etc.) — analogous to applesauce's SerialPortSigner |
-| `KeychainCapability` real impl on iOS | NIP-07 web extension (M15) |
+| `KeychainCapability` real impl on iOS | NIP-07 web extension (post-v1 web/wasm milestone) |
 | Active account binding (one at a time) | Account metadata (color, display name editing) |
 | Action ledger w/ atomic publish + store | Account-rotation / signer migration UX |
 | Compose flow on iOS | NIP-55 / Amber-style iOS-app deeplink signers |

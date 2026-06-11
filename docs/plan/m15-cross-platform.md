@@ -1,8 +1,8 @@
-# M15 — Cross-platform: Android + Desktop + Web
+# M15 — Native cross-platform: Android + Desktop
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 3 — WoT + cross-platform + release (M12 Wallet deferred post-v1).
 
-**Demo product:** Chirp and (where capabilities allow) podcast slice running on Android (Compose), Desktop (iced), and Web (wasm + React/Solid TBD). Cross-platform consistency test passes — same scripted scenario produces byte-identical `AppState` JSON on all four platforms.
+**Demo product:** Chirp and (where capabilities allow) podcast slice running on Android (Compose) and Desktop (iced), alongside the existing iOS shell. Cross-platform consistency test passes — same scripted scenario produces byte-identical `AppState` JSON on the v1 native platforms. Web/wasm moved post-v1 on 2026-06-11.
 
 **Scope.**
 
@@ -20,22 +20,25 @@
 - macOS + Linux + Windows.
 - `KeychainCapability` impls per OS (macOS Keychain, Secret Service, Windows Credential Manager — already exists in `nostr-keyring`).
 
-**Web port (~3 weeks):**
-
-- `nmp-wasm` mature.
-- IndexedDB storage backend; OPFS where supported.
-- `nmp-nip07` browser-signer capability module.
-- Web shell stack TBD (React + signals / Solid / Svelte — pick at start of milestone).
-
 **Subsystem deliverables.**
 
-- Cross-platform consistency test in `nmp-testing` — drives same scripted action sequence on all four targets, snapshots `AppState` JSON at checkpoints, asserts byte-equal.
+- Cross-platform consistency test in `nmp-testing` — drives same scripted action sequence on iOS, Android, and desktop, snapshots `AppState` JSON at checkpoints, asserts byte-equal.
 - Per-platform performance reports.
 
 **Exit gate.**
 
-- Twitter clone identical scripted scenario produces byte-identical `AppState` snapshots on iOS / Android / Desktop / Web.
-- All §7.16 performance budgets met on reference devices (iPhone 12, Pixel 6a, M1 mini, modern browsers).
-- Web works in incognito mode by falling back to in-memory store with a visible warning.
+- Twitter clone identical scripted scenario produces byte-identical `AppState` snapshots on iOS / Android / Desktop.
+- All §7.16 performance budgets met on reference devices (iPhone 12, Pixel 6a, M1 mini).
 
-**Runnable artifact.** Four-platform demo. Report in `docs/perf/m15/cross-platform.md`.
+**Runnable artifact.** Native-platform demo. Report in `docs/perf/m15/cross-platform.md`.
+
+## Post-v1 web milestone
+
+Moved out of v1 on 2026-06-11. The web port resumes after v1 and owns:
+
+- `nmp-wasm` production parity.
+- IndexedDB storage backend; OPFS where supported.
+- `nmp-nip07` browser-signer capability module.
+- Web shell stack TBD (React + signals / Solid / Svelte — pick at start of milestone).
+- Browser consistency coverage added to the native consistency harness.
+- Incognito fallback to in-memory store with a visible warning.

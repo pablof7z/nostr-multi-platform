@@ -1,6 +1,10 @@
 # NMP — Nostr Multi-Platform
 
-A Rust framework for building Nostr apps. One core, four shells: iOS (SwiftUI), Android (Compose), desktop (iced), web (wasm). The core is Rust and owns everything that touches the protocol — relays, state, subscriptions, signing, decryption, replaceable-event resolution, time. The shells render. That's it.
+A Rust framework for building Nostr apps. One Rust core, native shells for v1
+(iOS SwiftUI, Android Compose, desktop iced), and web/wasm as a post-v1 target.
+The core owns everything that touches the protocol — relays, state,
+subscriptions, signing, decryption, replaceable-event resolution, time. The
+shells render. That's it.
 
 Most cross-platform Nostr clients fragment into incompatible bugs because protocol logic gets reimplemented per platform. Three times. Badly. NMP writes it once, tests it once, and ships it everywhere. The division between protocol and presentation is absolute. That's not a guideline. That's the framework.
 

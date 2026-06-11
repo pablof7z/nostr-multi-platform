@@ -216,10 +216,11 @@ methods, so adding one more generic method changes no object-safety property.
 
 Removal of a piloted key's generic `Value` subtree is **per key**, never global.
 For each piloted projection key, the emitter emits both the typed sidecar and the
-generic subtree until **every** platform host ships a decoder for that key's
-current descriptor. When all four hosts (iOS, TUI, web, Android) have shipped the
-decoder, the emitter may stop emitting the generic subtree for that key. Until then,
-both are emitted. No global flag day; each key migrates on its own schedule.
+generic subtree until every in-scope platform host ships a decoder for that key's
+current descriptor. For v1, the native removal window covers iOS, TUI/desktop,
+and Android. Web participates in the same per-key removal rule after the
+post-v1 web/wasm milestone. Until then, both are emitted. No global flag day;
+each key migrates on its own schedule.
 
 ### Legacy diagnostics path
 
@@ -262,13 +263,15 @@ on the 4 Hz tick.
 
 ## Rollout order
 
-Typed-read adoption proceeds **iOS → TUI → web → Android**:
+Typed-read adoption proceeds **iOS → TUI → Android** for the v1 native surface,
+then **web/TypeScript** after the post-v1 web/wasm milestone:
 
 1. **iOS** (Chirp) — primary showcase, newest FlatBuffers runtime (`25.12.19`).
 2. **TUI** (chirp-tui) — same Rust-side runtime line, no separate codegen toolchain.
-3. **Web/TypeScript** — runtime `25.9.23`.
-4. **Android/Kotlin** — runtime `25.2.10`, the oldest pin, so it ships last after
+3. **Android/Kotlin** — runtime `25.2.10`, the oldest pin, so it ships after
    the typed schema has stabilized on the platforms with newer runtimes.
+4. **Web/TypeScript** — post-v1 runtime lane; current pin remains documented in
+   `nmp_update.fbs` when the web milestone resumes.
 
-The generic `Value` subtree for `nmp.feed.home` is only retired once **all four**
-have shipped the `nmp.feed.home` v1 decoder.
+The generic `Value` subtree for `nmp.feed.home` is only retired for a platform
+scope once every host in that scope has shipped the `nmp.feed.home` v1 decoder.
