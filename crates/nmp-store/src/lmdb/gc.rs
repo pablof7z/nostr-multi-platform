@@ -292,6 +292,45 @@ pub(super) fn gc_step(
             .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
     }
 
+    // ── Phase 3b: Purge old address tombstones ─────────────────────────────
+    //
+    // addr_tombstones guard param-replaceable re-inserts when an event arrives
+    // after the kind:5 `a`-tag delete that covered its coordinate.  The gate is
+    // `tomb.deleted_at >= event.created_at` — so any new version with a HIGHER
+    // created_at bypasses the gate regardless of whether the tombstone is present.
+    // A purged addr tombstone therefore only allows stale copies (created_at <=
+    // the original delete timestamp) to re-enter, which is identical to the
+    // class of stale re-deliveries the per-id tombstone policy already accepts
+    // after 90 days.  Safety: same retention argument as id-tombstones.
+    {
+        let mut txn = inner
+            .env
+            .write_txn()
+            .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
+        let mut stale_addr_keys: Vec<Vec<u8>> = Vec::new();
+        for entry in inner
+            .addr_tombstones
+            .iter(&txn)
+            .map_err(|e| StoreError::Io(format!("addr-tomb iter: {e}")))?
+        {
+            let (k, v) =
+                entry.map_err(|e| StoreError::Io(format!("addr-tomb step: {e}")))?;
+            let row = decode_row(v)?;
+            if now_secs.saturating_sub(row.deleted_at) > TOMBSTONE_MAX_AGE_SECS {
+                stale_addr_keys.push(k.to_vec());
+            }
+        }
+        report.addr_tombstones_purged = stale_addr_keys.len();
+        for k in stale_addr_keys {
+            inner
+                .addr_tombstones
+                .delete(&mut txn, &k)
+                .map_err(|e| StoreError::Io(format!("addr-tomb del: {e}")))?;
+        }
+        txn.commit()
+            .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
+    }
+
     finish(start, report)
 }
 
