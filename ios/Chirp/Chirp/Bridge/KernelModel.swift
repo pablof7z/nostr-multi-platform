@@ -832,9 +832,18 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // no more pull calls to `nmp_marmot_snapshot` / `nmp_marmot_group_messages`.
         // `isMarmotRegistered` still reads the handle slot (unchanged — it is NOT
         // a deleted symbol; it just checks whether the handle is non-nil).
+        //
+        // Typed-first effective values (`typedMarmotSnapshot ?? update.projections?.marmotSnapshot`,
+        // `typedMarmotMessages ?? update.projections?.marmotMessages`). The `NMMS`/`NMMG`
+        // sidecars win when present; the generic JSON projections are the fallback —
+        // the SAME effective value either path yields. `MarmotGroupChatView` /
+        // `MarmotGroupsView` read off this same `marmot` store, so routing here keeps
+        // every Marmot consumer typed-first with no split-brain. A signed-out tick
+        // yields nil from both the typed decode and the JSON path → `apply` maps it
+        // to `.empty` / `[:]` (parity preserved).
         marmot.apply(
-            snapshot: update.projections?.marmotSnapshot,
-            messages: update.projections?.marmotMessages,
+            snapshot: result.typedMarmotSnapshot ?? update.projections?.marmotSnapshot,
+            messages: result.typedMarmotMessages ?? update.projections?.marmotMessages,
             isRegistered: kernel.isMarmotRegistered
         )
         // NIP-29 + NIP-17 stores — pushed every tick so their lazy init fires

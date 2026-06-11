@@ -761,7 +761,23 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "nmp.marmot.snapshot",
             schema_id: "nmp.marmot.snapshot",
             file_identifier: "NMMS",
-            swift_reader_type: None,
+            // Marmot push-projection batch: the `flatc --swift` reader
+            // (`nmp_marmot_MarmotSnapshot`, wrapping `nmp_marmot_MarmotGroupRow` /
+            // `nmp_marmot_PendingWelcomeRow` / `nmp_marmot_KeyPackageStatus`) ships
+            // with this batch from `crates/nmp-marmot/schema/marmot_snapshot.fbs`.
+            // Host-registered typed producer in `crates/nmp-marmot/src/ffi.rs`
+            // (`register_typed_snapshot_projection("nmp.marmot.snapshot", …)` →
+            // `crate::wire::snapshot_fb::typed_projection`). Nested-vector copy of
+            // `groups`/`pendingWelcomes` plus the `keyPackage` sub-table; every
+            // `has_*` companion bool maps the optional `String?`/`UInt32?`/`UInt64?`
+            // (nil when absent) so the typed value is byte-identical to the JSON
+            // path's `null`. The wire's `orphanedCommitCount`/`keyringUnavailable`
+            // diagnostics are NOT carried by the Chirp `MarmotSnapshot` domain type
+            // — the JSON `Decodable` drops them too (field-subset, not divergence).
+            // Consumed by `MarmotStore.apply` via the `KernelModel.swift` fan-out
+            // (`result.typedMarmotSnapshot ?? update.projections?.marmotSnapshot`).
+            // See `TypedProjectionGlue.marmotSnapshot`.
+            swift_reader_type: Some("nmp_marmot_MarmotSnapshot"),
         }),
     },
     // `nmp.marmot.messages` projects a JSON object keyed by `group_id_hex`
@@ -775,7 +791,22 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "nmp.marmot.messages",
             schema_id: "nmp.marmot.messages",
             file_identifier: "NMMG",
-            swift_reader_type: None,
+            // Marmot push-projection batch: the `flatc --swift` reader
+            // (`nmp_marmot_MarmotMessages`, wrapping `nmp_marmot_MarmotGroupMessages`
+            // / `nmp_marmot_MarmotMessageRow`) ships with this batch from
+            // `crates/nmp-marmot/schema/marmot_messages.fbs`. Host-registered typed
+            // producer in `crates/nmp-marmot/src/ffi.rs`
+            // (`register_typed_snapshot_projection("nmp.marmot.messages", …)` →
+            // `crate::wire::messages_fb::typed_projection`). FlatBuffers has no map
+            // type, so the producer flattens the `group_id_hex -> [MarmotMessageRow]`
+            // JSON map to a `group_id_hex`-sorted `[MarmotGroupMessages]` vector;
+            // the glue rebuilds the domain `[String: [MarmotMessage]]` dict
+            // (mirroring the `claimed_profiles`/`zaps` flattened-map precedent).
+            // `epoch` carries a `has_epoch` companion → `UInt64?` (nil when absent).
+            // Consumed by `MarmotStore.apply` via the `KernelModel.swift` fan-out
+            // (`result.typedMarmotMessages ?? update.projections?.marmotMessages`).
+            // See `TypedProjectionGlue.marmotMessages`.
+            swift_reader_type: Some("nmp_marmot_MarmotMessages"),
         }),
     },
 ];
