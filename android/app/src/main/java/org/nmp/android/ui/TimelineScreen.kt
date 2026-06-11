@@ -177,7 +177,11 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
                 HorizontalDivider()
                 if (!hasOpFeed) {
                     Placeholder(
-                        activeAccountLabel = activeAccount?.npubShort ?: s.activeAccount,
+                        // aim.md §2 / #979: the kernel ships the full `npub`; the
+                        // Compose layer abbreviates for display via `shortHex`,
+                        // exactly as iOS does (`account.npub.shortHex`, PR #1064).
+                        activeAccountLabel = activeAccount?.npub?.let { shortHex(it) }
+                            ?: s.activeAccount,
                         hasAccount = s.activeAccount.isNotEmpty(),
                         hasSnapshot = snapshotCount > 0,
                         lastErrorToast = s.lastErrorToast,

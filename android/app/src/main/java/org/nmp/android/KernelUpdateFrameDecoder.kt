@@ -195,9 +195,19 @@ object KernelUpdateFrameDecoder {
         // and the balance-display string, so a single typed decode feeds both
         // `walletStatus` and `walletBalance` (preserving the generic split).
         val typedWallet = TypedWalletDecoder.decode(typedProjections)
+        // `active_account` (KACT) is, like `wallet`, decoded into a presence
+        // wrapper: a typed `null` pubkey means "no account active" (authoritative,
+        // NOT fall-back), so the presence check is on the whole result, never the
+        // inner `String?`. A null wrapper means "no typed sidecar, fall back".
+        val typedActiveAccount = TypedAccountsDecoder.decodeActiveAccount(typedProjections)
         return SnapshotProjections(
-            activeAccount = m["activeAccount"]?.stringOrNull(),
-            accounts = m["accounts"]?.listOf { decodeAccountSummary(it) } ?: emptyList(),
+            activeAccount = if (typedActiveAccount != null) typedActiveAccount.pubkey
+            else m["activeAccount"]?.stringOrNull(),
+            // `accounts` (KACC) is a plain list — a typed `null` means "no typed
+            // sidecar", so `?:` chains to the generic decode (ADR-0037 Commitment
+            // 4). The typed list carries the full `npub`; Compose abbreviates.
+            accounts = TypedAccountsDecoder.decodeAccounts(typedProjections)
+                ?: m["accounts"]?.listOf { decodeAccountSummary(it) } ?: emptyList(),
             claimedProfiles = TypedProfilesDecoder.decodeClaimed(typedProjections)
                 ?: m["claimedProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
             mentionProfiles = m["mentionProfiles"]?.mapOf { decodeProfileCard(it) } ?: emptyMap(),
@@ -369,7 +379,11 @@ object KernelUpdateFrameDecoder {
         val m = buildValueMap(v)
         return AccountSummary(
             id = m["id"]?.stringOr("") ?: "",
-            npubShort = m["npubShort"]?.stringOr("") ?: "",
+            // The kernel emits the full `npub` (bech32). `npub_short` was never
+            // emitted (aim.md §2), so the prior `npubShort` read was always
+            // empty — read `npub` and let Compose abbreviate. Keeps the generic
+            // fallback byte-identical to the typed `KACC` path (#979).
+            npub = m["npub"]?.stringOr("") ?: "",
             displayName = m["displayName"]?.stringOr("") ?: "",
             status = m["status"]?.stringOr("") ?: "",
             signerLabel = m["signerLabel"]?.stringOr("") ?: "",

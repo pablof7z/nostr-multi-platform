@@ -1383,3 +1383,24 @@ not a finished feature — frame it that way to avoid the "registered-but-inert"
   of the rootless-thread `#e`-only edge flagged above — file both together.
 - **D. Delete-cascade** (unchanged from the session-1 plan above) — only after C-Swift
   lands AND #935 + #934/0.2.4 are on master.
+
+---
+
+### PD-AUTO (2026-06-11) — Android `accounts.npubShort` → `npub`: kernel never emits `npub_short`; carry full npub, abbreviate in Compose (matches iOS)
+
+**Decision:** The Android `AccountSummary.npubShort` field read the JSON key `npub_short`, which
+the kernel **never emits** — `npub_short` was removed per `docs/aim.md` §2 (the backend ships the
+canonical identifier; abbreviation is a presentation concern). The field was therefore always
+empty/broken on the generic `payload:Value` path. Resolution: the Android model now carries the
+full `npub` straight from the kernel (typed `KACC` sidecar and the generic fallback both read
+`npub`), and the Compose UI abbreviates for display via the existing `shortHex` helper
+(`take(8)…takeLast(8)`), exactly as iOS does (`account.npub.shortHex` → `prefix(8)…suffix(8)`,
+PR #1064). This is a **bug fix + iOS-parity change, not a product change.**
+
+**Why made autonomously:** Required to complete the F-05 Android typed-decoder track (#979) and
+unblock PR-B (#991, the `payload:Value` deletion). The two remaining Android-rendered keys
+(`accounts`/KACC, `active_account`/KACT) could not move to typed-first while the model carried a
+field that maps to a nonexistent kernel key; fixing the model to match the kernel + iOS is the
+only architecturally correct path (no "keep the broken field for compat" option exists, since it
+was already broken). Logged here per the autonomous-mode protocol; revert/amend the owning commit
+if the user disagrees.

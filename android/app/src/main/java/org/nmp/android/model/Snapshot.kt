@@ -114,7 +114,13 @@ data class ActionLifecycleSnapshot(
 @Serializable
 data class AccountSummary(
     val id: String = "",
-    val npubShort: String = "",
+    // Full bech32 `npub1…` from the kernel. The kernel never emits `npub_short`
+    // (removed per aim.md §2 — the backend ships the canonical identifier, and
+    // any abbreviation is a presentation concern). The Compose layer abbreviates
+    // for display via `shortHex`, exactly as iOS does (`account.npub.shortHex`,
+    // PR #1064). Previously this field read the nonexistent JSON key
+    // `npub_short`, so it was always empty — this restores parity (#979).
+    val npub: String = "",
     val displayName: String = "",
     val status: String = "",
     val signerLabel: String = "",
