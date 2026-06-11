@@ -101,14 +101,10 @@ fn drain_until_or_timeout(
 }
 
 fn relay_is_connected(frame: &[u8]) -> bool {
-    nmp_core::decode_snapshot_payload(frame)
+    nmp_core::decode_snapshot_envelope(frame)
         .ok()
-        .and_then(|v| {
-            v.get("relay_status")
-                .and_then(|r| r.get("connection"))
-                .and_then(|c| c.as_str())
-                .map(|s| s == "connected")
-        })
+        .and_then(|envelope| envelope.relay_status)
+        .map(|aggregate| aggregate.connection == "connected")
         .unwrap_or(false)
 }
 

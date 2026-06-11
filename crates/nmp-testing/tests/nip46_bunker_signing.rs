@@ -44,7 +44,11 @@ mod common;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use nmp_core::{decode_snapshot_payload, ActorCommand, RemoteSignerHandle};
+use nmp_core::typed_projections::{
+    decode_accounts, decode_active_account, decode_publish_queue, ACCOUNTS_SCHEMA_ID,
+    ACTIVE_ACCOUNT_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_ID,
+};
+use nmp_core::{decode_snapshot_typed_projections, ActorCommand, RemoteSignerHandle};
 use nmp_signer_iface::SignerError;
 use nostr::{Event, Keys};
 
@@ -153,7 +157,7 @@ fn bunker_sign_event_round_trip_on_the_wire() {
 fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     use std::sync::mpsc;
 
-    use nmp_core::testing::{run_actor, snapshot_projection, ActorCommand};
+    use nmp_core::testing::{run_actor, ActorCommand};
 
     let bunker_keys = Keys::generate();
     let user_keys = Keys::generate();
@@ -228,38 +232,31 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     // echo); instead we assert on the queue entry itself and the mock methods
     // to prove that bunker signing flowed correctly.
     //
-    // V-105: typed JSON navigation replaces `frame.contains(...)` probes.
-    // `publish_queue` is an array under `projections["publish_queue"]`; a
-    // non-empty array means sign + enqueue completed successfully. We check
-    // `target_relays` exists on the first entry (typed field access) instead
-    // of a substring scan.
-    let last_snap = wait_for_publish_queue_entry(&upd_rx, Duration::from_secs(15))
+    // PR-B: typed FlatBuffers sidecar decode replaces the JSON payload walk.
+    // A non-empty `publish_queue` model means sign + enqueue completed
+    // successfully (each row carries the typed `target_relays` routing count).
+    let last_typed = wait_for_publish_queue_entry(&upd_rx, Duration::from_secs(15))
         .expect("publish_queue must include a kind:1 entry — sign flowed through bunker");
 
-    // Spot-check: the `accounts` projection must still show `signer_kind:nip46`
-    // after the publish (typed field lookup, no string scanning).
-    let accounts_json = snapshot_projection(&last_snap, "accounts")
-        .expect("snapshot must contain accounts projection");
-    let has_nip46 = accounts_json
-        .as_array()
-        .map(|arr| arr.iter().any(|a| {
-            a.get("signer_kind")
-                .and_then(serde_json::Value::as_str)
-                == Some("nip46")
-        }))
-        .unwrap_or(false);
+    // Spot-check: the `accounts` sidecar must still show `signer_kind:nip46`
+    // after the publish (typed model lookup, no string scanning).
+    let accounts_model = last_typed
+        .iter()
+        .find(|t| t.key == ACCOUNTS_SCHEMA_ID)
+        .and_then(|t| decode_accounts(&t.payload).ok())
+        .expect("snapshot must carry the typed accounts sidecar");
     assert!(
-        has_nip46,
-        "accounts projection must still contain a nip46 entry after publish: {accounts_json}"
+        accounts_model.accounts.iter().any(|a| a.signer_kind == "nip46"),
+        "accounts sidecar must still contain a nip46 entry after publish: {accounts_model:?}"
     );
 
-    // Confirm `active_account` projection still points to our user pubkey
-    // (typed string field — the slot is `Option<String>`, so it serializes
-    // as a plain string, never as `{"pubkey":"..."}`).
-    let active_account = snapshot_projection(&last_snap, "active_account")
-        .and_then(|v| v.as_str().map(str::to_owned));
-    let active_account = active_account.as_deref();
-    if let Some(active_pk) = active_account {
+    // Confirm the `active_account` sidecar still points to our user pubkey.
+    let active_account = last_typed
+        .iter()
+        .find(|t| t.key == ACTIVE_ACCOUNT_SCHEMA_ID)
+        .and_then(|t| decode_active_account(&t.payload).ok())
+        .and_then(|model| model.pubkey);
+    if let Some(active_pk) = active_account.as_deref() {
         assert_eq!(
             active_pk, &user_pubkey_hex,
             "active_account must still be the bunker user pubkey"
@@ -307,11 +304,13 @@ fn wait_for_add_remote_signer(
 }
 
 /// Drain `upd_rx` until a snapshot confirms a NIP-46 account with `expected_pubkey`
-/// is active, or timeout. Uses typed JSON navigation (V-105) — no substring scanning.
+/// is active, or timeout. PR-B (#991/#979): reads the typed `accounts` +
+/// `active_account` FlatBuffers sidecars — the generic JSON payload no longer
+/// exists on the wire.
 ///
 /// Strategy: after the broker posts `AddRemoteSigner`, the actor processes it and
-/// emits a snapshot. We drain update frames, decode each as a snapshot, and check
-/// the `accounts` projection for a NIP-46 entry matching `expected_pubkey`.
+/// emits a snapshot. We drain update frames, decode each frame's typed sidecar,
+/// and check the `accounts` model for a NIP-46 entry matching `expected_pubkey`.
 fn wait_for_nip46_account_active(
     upd_rx: &mpsc::Receiver<Vec<u8>>,
     expected_pubkey: &str,
@@ -322,38 +321,31 @@ fn wait_for_nip46_account_active(
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;
         match upd_rx.recv_timeout(remaining.min(Duration::from_millis(200))) {
             Ok(frame) => {
-                let Ok(snapshot) = decode_snapshot_payload(&frame) else {
+                let Ok(typed) = decode_snapshot_typed_projections(&frame) else {
                     continue;
                 };
-                // Typed check: `projections.accounts` is an array of account
-                // summaries; find one whose `signer_kind == "nip46"` AND
-                // whose `id` matches the expected pubkey.
-                let has_active_nip46 = snapshot
-                    .get("projections")
-                    .and_then(|p| p.get("accounts"))
-                    .and_then(serde_json::Value::as_array)
-                    .map(|arr| {
-                        arr.iter().any(|a| {
-                            let kind_matches = a
-                                .get("signer_kind")
-                                .and_then(serde_json::Value::as_str)
-                                == Some("nip46");
-                            let pubkey_matches = a
-                                .get("id")
-                                .and_then(serde_json::Value::as_str)
-                                == Some(expected_pubkey);
-                            kind_matches && pubkey_matches
-                        })
+                // Typed check: the `accounts` sidecar carries account summary
+                // rows; find one whose `signer_kind == "nip46"` AND whose
+                // `id` matches the expected pubkey.
+                let has_active_nip46 = typed
+                    .iter()
+                    .find(|t| t.key == ACCOUNTS_SCHEMA_ID)
+                    .and_then(|t| decode_accounts(&t.payload).ok())
+                    .map(|model| {
+                        model
+                            .accounts
+                            .iter()
+                            .any(|a| a.signer_kind == "nip46" && a.id == expected_pubkey)
                     })
                     .unwrap_or(false);
 
-                // Also verify `active_account` projection contains the pubkey.
-                // The slot is `Option<String>` so it always serializes as a
-                // plain string — never as `{"pubkey":"..."}`.
-                let active_proj = snapshot.get("projections").and_then(|p| p.get("active_account"));
-                let active_matches = active_proj
-                    .and_then(serde_json::Value::as_str)
-                    .map(|s| s == expected_pubkey)
+                // Also verify the `active_account` sidecar carries the pubkey.
+                let active_matches = typed
+                    .iter()
+                    .find(|t| t.key == ACTIVE_ACCOUNT_SCHEMA_ID)
+                    .and_then(|t| decode_active_account(&t.payload).ok())
+                    .and_then(|model| model.pubkey)
+                    .map(|pk| pk == expected_pubkey)
                     .unwrap_or(false);
 
                 if has_active_nip46 && active_matches {
@@ -366,35 +358,34 @@ fn wait_for_nip46_account_active(
     }
 }
 
-/// Drain `upd_rx` until a snapshot whose `publish_queue` projection is a
-/// non-empty array with at least one entry containing a `target_relays` field.
-/// Returns the matching decoded snapshot for further field inspection.
-/// Uses typed JSON navigation (V-105).
+/// Drain `upd_rx` until a frame whose typed `publish_queue` sidecar carries a
+/// non-empty entry vector. Returns the matching frame's full typed sidecar
+/// for further field inspection. PR-B (#991/#979): reads the typed
+/// FlatBuffers sidecar — the generic JSON payload no longer exists.
 fn wait_for_publish_queue_entry(
     upd_rx: &mpsc::Receiver<Vec<u8>>,
     timeout: Duration,
-) -> Option<serde_json::Value> {
+) -> Option<Vec<nmp_core::TypedProjectionData>> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;
         match upd_rx.recv_timeout(remaining.min(Duration::from_millis(200))) {
             Ok(frame) => {
-                let Ok(snapshot) = decode_snapshot_payload(&frame) else {
+                let Ok(typed) = decode_snapshot_typed_projections(&frame) else {
                     continue;
                 };
-                // Typed check: `projections.publish_queue` is an array;
-                // non-empty means sign + enqueue succeeded. We additionally
-                // verify that the first entry has a `target_relays` field
-                // (proving the publish engine populated routing metadata).
-                let has_entry = snapshot
-                    .get("projections")
-                    .and_then(|p| p.get("publish_queue"))
-                    .and_then(serde_json::Value::as_array)
-                    .and_then(|arr| arr.first())
-                    .map(|entry| entry.get("target_relays").is_some())
+                // Typed check: a non-empty `publish_queue` model means sign +
+                // enqueue succeeded. The typed `target_relays` count field
+                // (routing metadata populated by the publish engine) is a
+                // plain `u32` on every row — presence is structural.
+                let has_entry = typed
+                    .iter()
+                    .find(|t| t.key == PUBLISH_QUEUE_SCHEMA_ID)
+                    .and_then(|t| decode_publish_queue(&t.payload).ok())
+                    .map(|model| !model.entries.is_empty())
                     .unwrap_or(false);
                 if has_entry {
-                    return Some(snapshot);
+                    return Some(typed);
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => continue,

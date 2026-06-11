@@ -304,17 +304,6 @@ impl Kernel {
         encoded
     }
 
-    /// ADR-0044 proof seam — drive `make_update` and return the raw
-    /// `UpdateFrameBytes`, so a test can decode the typed Tier-3
-    /// `SnapshotFrame` envelope fields off the frame and assert them.
-    #[cfg(test)]
-    pub(crate) fn make_update_frame_for_test(
-        &mut self,
-        running: bool,
-    ) -> crate::update_envelope::UpdateFrameBytes {
-        self.make_update(running)
-    }
-
     /// PR-B (#991/#979): drive `make_update` for one tick and return BOTH the
     /// raw `UpdateFrameBytes` AND a `serde_json::Value` serialized from the same
     /// tick's `KernelSnapshot` struct (without a wire roundtrip).
@@ -364,9 +353,9 @@ impl Kernel {
     /// `merge_builtin_typed_projections`), then serialize the `KernelSnapshot`
     /// struct to `serde_json::Value` for test assertions.
     ///
-    /// The `payload:Value` slot is no longer emitted on the wire, so the old
-    /// `decode_snapshot_payload(make_update(...))` pattern would always error.
-    /// Test helpers now serialize the struct directly — equivalent coverage,
+    /// The `payload:Value` slot is no longer emitted on the wire (the decoder
+    /// itself is deleted), so JSON-shaped assertions cannot come off the frame.
+    /// Test helpers serialize the struct directly — equivalent coverage,
     /// no wire roundtrip.
     ///
     /// `run_tick_observers()` is called, matching production semantics (tests

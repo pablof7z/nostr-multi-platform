@@ -2,7 +2,7 @@
 //! (`typed_group_chat_sidecar.rs`, `typed_discovered_groups_sidecar.rs`).
 //!
 //! Drives the full FFI snapshot path — boot an `NmpApp`, run the actor, collect
-//! every emitted `UpdateFrame`, decode each with `decode_snapshot_with_typed`,
+//! every emitted `UpdateFrame`, decode each with `decode_snapshot_typed_projections`,
 //! and surface the typed sidecar entry for a key once a predicate accepts it.
 //! This is the same path any host shell reads from; the projections are wired by
 //! `nmp_nip29::register::{wire_group_chat, wire_group_discovery}`, which now emit
@@ -16,7 +16,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_core::store::{RawEvent, VerifiedEvent};
-use nmp_core::{decode_snapshot_with_typed, ActorCommand, TypedProjectionData};
+use nmp_core::{decode_snapshot_typed_projections, ActorCommand, TypedProjectionData};
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, NmpApp};
 
 /// NmpApp instances spawn global actor threads that do not cleanly isolate
@@ -77,7 +77,7 @@ pub fn inject(app: *mut NmpApp, events: Vec<VerifiedEvent>) {
         .expect("actor command channel must be open");
 }
 
-/// Poll collected frames, decoding each with `decode_snapshot_with_typed`, until
+/// Poll collected frames, decoding each with `decode_snapshot_typed_projections`, until
 /// a tick carries a typed sidecar entry under `key` that `predicate` accepts (or
 /// the 3-second deadline passes). Returns the matching typed entry.
 pub fn wait_for_typed(
@@ -89,7 +89,7 @@ pub fn wait_for_typed(
         {
             let frames = FRAMES.lock().unwrap_or_else(|p| p.into_inner());
             for frame in frames.iter() {
-                let Ok((_value, typed)) = decode_snapshot_with_typed(frame) else {
+                let Ok(typed) = decode_snapshot_typed_projections(frame) else {
                     continue;
                 };
                 if let Some(entry) = typed.into_iter().find(|t| t.key == key && predicate(t)) {

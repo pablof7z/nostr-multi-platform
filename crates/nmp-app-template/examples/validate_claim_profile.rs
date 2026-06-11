@@ -24,7 +24,8 @@
 //! fallback; the snapshot can't tell which leg delivered first.
 //!
 //! Runtime wire frame: FlatBuffers `nmp.transport.UpdateFrame`. The example
-//! converts the decoded snapshot to JSON only for its local CLI assertions.
+//! decodes the typed `author_view` sidecar for its local CLI assertions
+//! (PR-B #991/#979: the generic JSON payload no longer exists on the wire).
 
 use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_free, nmp_app_new, nmp_app_open_author,
@@ -43,68 +44,64 @@ extern "C" fn update_cb(context: *mut c_void, payload: *const u8, len: usize) {
         return;
     }
     // SAFETY: `payload` is borrowed for the callback lifetime; `context` is
-    // the leaked `Box<Sender<String>>` from `main` and stays valid program-wide.
+    // the leaked `Box<Sender<Vec<u8>>>` from `main` and stays valid
+    // program-wide. The raw frame bytes are copied out and decoded lazily on
+    // the receiving side (typed sidecar — no JSON payload exists on the wire).
     let bytes = unsafe { std::slice::from_raw_parts(payload, len) };
-    let Ok(snapshot) = nmp_core::decode_snapshot_payload(bytes) else {
-        return;
-    };
-    let tx = unsafe { &*(context as *const Sender<String>) };
-    let envelope = serde_json::json!({ "t": "snapshot", "v": snapshot });
-    let _ = tx.send(envelope.to_string());
+    let tx = unsafe { &*(context as *const Sender<Vec<u8>>) };
+    let _ = tx.send(bytes.to_vec());
 }
 
-fn find_display_name(payload: &str, pubkey: &str) -> Option<String> {
-    let envelope: serde_json::Value = serde_json::from_str(payload).ok()?;
-    if envelope.get("t").and_then(|v| v.as_str()) != Some("snapshot") {
+/// Decode the typed `author_view` sidecar off a raw frame and return the
+/// claimed profile's non-empty display name, if present for `pubkey`.
+fn find_display_name(frame: &[u8], pubkey: &str) -> Option<String> {
+    use nmp_core::typed_projections::{decode_author_view, AUTHOR_VIEW_SCHEMA_ID};
+
+    let typed = nmp_core::decode_snapshot_typed_projections(frame).ok()?;
+    let view = typed
+        .iter()
+        .find(|t| t.key == AUTHOR_VIEW_SCHEMA_ID)
+        .and_then(|t| decode_author_view(&t.payload).ok())?;
+    if view.profile.pubkey != pubkey {
         return None;
     }
-    let profile = envelope
-        .get("v")?
-        .get("projections")?
-        .get("author_view")?
-        .get("profile")?;
-    if profile.get("pubkey").and_then(|v| v.as_str()) != Some(pubkey) {
-        return None;
-    }
-    profile
-        .get("display_name")
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
+    view.profile.display_name.filter(|s| !s.is_empty())
 }
 
-fn dump_last_snapshot(payload: &str) {
-    if payload.is_empty() {
+fn dump_last_snapshot(frame: &[u8]) {
+    use nmp_core::typed_projections::{decode_author_view, AUTHOR_VIEW_SCHEMA_ID};
+
+    if frame.is_empty() {
         eprintln!("  (no snapshot ticks observed)");
         return;
     }
-    let Ok(envelope) = serde_json::from_str::<serde_json::Value>(payload) else {
-        eprintln!("  (last frame was not valid JSON; {} bytes)", payload.len());
+    let Ok(envelope) = nmp_core::decode_snapshot_envelope(frame) else {
+        eprintln!(
+            "  (last frame was not a decodable snapshot; {} bytes)",
+            frame.len()
+        );
         return;
     };
-    let snapshot = envelope.get("v").unwrap_or(&envelope);
-    if let Some(m) = snapshot.get("metrics") {
-        eprintln!(
-            "  metrics: profile_events={}, generated_events={}, frames_rx={}",
-            m.get("profile_events").unwrap_or(&serde_json::Value::Null),
-            m.get("generated_events")
-                .unwrap_or(&serde_json::Value::Null),
-            m.get("frames_rx").unwrap_or(&serde_json::Value::Null),
-        );
-    }
-    if let Some(statuses) = snapshot.get("relay_statuses") {
-        eprintln!("  relay_statuses = {statuses}");
-    }
-    if let Some(av) = snapshot
-        .get("projections")
-        .and_then(|p| p.get("author_view"))
+    eprintln!(
+        "  envelope: rev={}, events_rx={}, visible_items={}",
+        envelope.rev, envelope.events_rx, envelope.visible_items
+    );
+    eprintln!("  relay_statuses = {:?}", envelope.relay_statuses);
+    if let Some(view) = nmp_core::decode_snapshot_typed_projections(frame)
+        .ok()
+        .and_then(|typed| {
+            typed
+                .iter()
+                .find(|t| t.key == AUTHOR_VIEW_SCHEMA_ID)
+                .and_then(|t| decode_author_view(&t.payload).ok())
+        })
     {
-        eprintln!("  projections.author_view = {av}");
+        eprintln!("  typed author_view = {view:?}");
     }
 }
 
 fn main() -> std::process::ExitCode {
-    let (tx, rx): (Sender<String>, Receiver<String>) = mpsc::channel();
+    let (tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel();
     let ctx = Box::into_raw(Box::new(tx)) as *mut c_void;
 
     let app = nmp_app_new();
@@ -126,7 +123,7 @@ fn main() -> std::process::ExitCode {
 
     let started = Instant::now();
     let mut ticks = 0usize;
-    let mut last_payload = String::new();
+    let mut last_payload: Vec<u8> = Vec::new();
     let mut exit_code = std::process::ExitCode::from(1);
 
     loop {
@@ -173,7 +170,7 @@ fn main() -> std::process::ExitCode {
     }
 
     // `nmp_app_free` joins the actor + listener threads. The leaked
-    // `Sender<String>` we passed as `context` is intentionally not
+    // `Sender<Vec<u8>>` we passed as `context` is intentionally not
     // reclaimed — callbacks may still fire during shutdown drain.
     nmp_app_free(app);
     exit_code

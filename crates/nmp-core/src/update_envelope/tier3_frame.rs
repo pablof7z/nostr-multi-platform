@@ -43,7 +43,8 @@ pub(crate) fn encode_snapshot_with_envelope(
         &mut builder,
         &fb::SnapshotFrameArgs {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
-            payload: None, // PR-B: zeroed — no generic Value emitted
+            // PR-B: the deprecated `payload:Value` slot no longer exists in
+            // the regenerated bindings — zeroing is compile-time guaranteed.
             typed_projections,
             rev: tier3.rev,
             kernel_schema_version: tier3.kernel_schema_version,

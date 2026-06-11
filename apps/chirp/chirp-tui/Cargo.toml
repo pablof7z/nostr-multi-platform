@@ -51,5 +51,9 @@ ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }
+# PR-B round-trip test: drives a REAL kernel actor (nmp_core::testing::spawn_actor)
+# and signs in with a local nsec, so the frame under test comes from the
+# production encoder (`encode_snapshot_with_envelope`).
+zeroize = { workspace = true }
 rexpect = "0.7.1"
 vt100 = "0.16.2"

@@ -297,3 +297,7 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
         projections,
     })
 }
+
+#[cfg(test)]
+#[path = "snapshot_decode_roundtrip_tests.rs"]
+mod roundtrip_tests;

@@ -1,11 +1,11 @@
 //! External proof that `nmp-core` exposes a PUBLIC, reachable API for decoding
 //! the typed-projection sidecar — the unblock for out-of-tree Rust consumers
-//! (e.g. `tenex-off`) that today must string-key the generic JSON `payload`.
+//! (e.g. `tenex-off`) — the generic JSON `payload` no longer exists (PR-B).
 //!
 //! This test lives OUTSIDE the `nmp-core` crate on purpose: it exercises the
 //! API exactly as an external dependent would, so it fails to compile if any
-//! piece of the surface (`decode_snapshot_with_typed`, the per-key decoders,
-//! the DTO structs, or their fields) is not truly `pub`.
+//! piece of the surface (`decode_snapshot_typed_projections`, the per-key
+//! decoders, the DTO structs, or their fields) is not truly `pub`.
 //!
 //! The proof drives a real kernel actor through the public
 //! `nmp_core::testing::spawn_actor` harness (a local-key sign-in + a kind:1
@@ -23,13 +23,13 @@ use nmp_core::typed_projections::{
     ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION, PUBLISH_QUEUE_FILE_IDENTIFIER,
     PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
 };
-use nmp_core::{decode_snapshot_with_typed, SignerSource, TypedProjectionData};
+use nmp_core::{decode_snapshot_typed_projections, SignerSource, TypedProjectionData};
 
 /// A fixed nsec used only in tests (same key the e2e pipeline test uses).
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
 /// Find a typed sidecar entry by key, using only the public `TypedProjectionData`
-/// surface that `decode_snapshot_with_typed` returns.
+/// surface that `decode_snapshot_typed_projections` returns.
 fn find_entry<'a>(typed: &'a [TypedProjectionData], key: &str) -> Option<&'a TypedProjectionData> {
     typed.iter().find(|t| t.key == key)
 }
@@ -94,8 +94,9 @@ fn external_consumer_decodes_publish_queue_and_action_results_via_public_api() {
     tx.send(ActorCommand::MarkChangedSinceEmit)
         .expect("send MarkChangedSinceEmit");
 
-    // Drain frames via the PUBLIC `decode_snapshot_with_typed`, accumulating the
-    // first typed `publish_queue` and `action_results` payloads we observe.
+    // Drain frames via the PUBLIC `decode_snapshot_typed_projections`,
+    // accumulating the first typed `publish_queue` and `action_results`
+    // payloads we observe.
     // `action_results` is drain-on-emit (present only on the tick it settles),
     // so we capture it the moment it appears rather than requiring it in the
     // same frame as `publish_queue`.
@@ -107,8 +108,8 @@ fn external_consumer_decodes_publish_queue_and_action_results_via_public_api() {
         let Ok(frame) = rx.recv_timeout(Duration::from_millis(200)) else {
             continue;
         };
-        // The PUBLIC entry point: generic Value + typed sidecar entries.
-        let Ok((_value, typed)) = decode_snapshot_with_typed(&frame) else {
+        // The PUBLIC entry point: the typed sidecar entries.
+        let Ok(typed) = decode_snapshot_typed_projections(&frame) else {
             continue;
         };
 

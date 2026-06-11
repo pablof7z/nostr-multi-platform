@@ -3,9 +3,9 @@
 //! generic JSON `payload` tree and the source `KernelSnapshot` state.
 //!
 //! These tests decode a *real* frame produced by `make_update` (via the
-//! `make_update_frame_for_test` seam): they read the JSON `payload` through the
-//! existing generic decoder AND the typed `SnapshotFrame` accessors off the same
-//! bytes, then assert the two encodings agree. They cover both the present and
+//! `make_update_frame_and_json_for_test` seam): they read the struct-serialized
+//! JSON view AND the typed `SnapshotFrame` accessors off the same tick, then
+//! assert the two encodings agree. They cover both the present and
 //! the absent case for the optional diagnostic fields (`store_open_failure`,
 //! `no_configured_relays`) — the pair most likely to expose an encode bug.
 
@@ -232,14 +232,27 @@ fn prb_frame_size_no_payload() {
     let (bytes, json) = kernel.make_update_frame_and_json_for_test(true);
     let json_str = serde_json::to_string(&json).expect("json serializable");
     let json_snapshot_bytes = json_str.len();
-    let has_payload = with_snapshot_frame(&bytes, |frame| frame.payload().is_some());
     println!(
-        "PRB_FRAME_SIZE total_frame={} json_snapshot_bytes={} payload_present={}",
+        "PRB_FRAME_SIZE total_frame={} json_snapshot_bytes_not_on_wire={}",
         bytes.len(),
         json_snapshot_bytes,
-        has_payload,
     );
-    assert!(!has_payload, "payload:Value must NOT be emitted after PR-B zeroing");
+    // Payload absence is now a COMPILE-TIME guarantee: the regenerated
+    // transport bindings (`payload:Value (deprecated)`) expose no `payload()`
+    // / `add_payload` accessor, so no Rust code can write or read the slot.
+    // The runtime assertion left here is the size envelope: the old
+    // empty-kernel frame (payload emitted) was 14 504 B, of which the JSON
+    // blob alone was 4 457 B. With the blob gone the frame must stay well
+    // under the old floor — hard failure if a generic blob ever sneaks back.
+    assert!(
+        bytes.len() < 10_000,
+        "empty-kernel frame ballooned to {} bytes — did the generic payload return?",
+        bytes.len()
+    );
+    // And the frame still decodes through both typed paths.
+    let envelope = crate::update_envelope::decode_snapshot_envelope(&bytes).expect("envelope");
+    assert!(envelope.running);
+    crate::update_envelope::decode_snapshot_typed_projections(&bytes).expect("typed sidecar");
 }
 
 /// JSON `Option<u128>` field: a number when `Some`, absent/null when `None`.

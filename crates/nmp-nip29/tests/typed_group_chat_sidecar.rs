@@ -3,7 +3,7 @@
 //! Proves `nmp_nip29::register::wire_group_chat` now emits a typed FlatBuffers
 //! sidecar (ADR-0037, `NGCS`) ALONGSIDE the existing generic `serde_json::Value`
 //! projection under `"nmp.nip29.group_chat"`. Drives the full FFI snapshot path,
-//! decodes the frame with `decode_snapshot_with_typed`, and asserts the typed
+//! decodes the frame with `decode_snapshot_typed_projections`, and asserts the typed
 //! payload bytes land in the `typed_projections` sidecar (not only
 //! `payload:Value`), round-tripping back through the generated bindings.
 

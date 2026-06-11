@@ -15,7 +15,8 @@
 
 use super::*;
 use crate::{nmp_app_free, nmp_app_new, nmp_app_start};
-use nmp_core::decode_snapshot_payload;
+use nmp_core::decode_snapshot_typed_projections;
+use nmp_core::typed_projections::{decode_signed_events, SignedEventRow, SIGNED_EVENTS_SCHEMA_ID};
 use nostr::prelude::*;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Mutex, OnceLock};
@@ -63,25 +64,32 @@ fn hex_pubkey(nsec: &str) -> String {
     Keys::new(sk).public_key().to_hex()
 }
 
-/// Drain emitted frames until one carries `projections.signed_events[correlation_id]`,
-/// returning that entry. Errors on timeout so a hung actor is not mistaken for a
-/// legitimately-absent key.
+/// Drain emitted frames until the typed `signed_events` sidecar carries an
+/// entry for `correlation_id`, returning that typed row. Errors on timeout so
+/// a hung actor is not mistaken for a legitimately-absent key.
+///
+/// PR-B (#991/#979): reads the typed FlatBuffers sidecar via
+/// `decode_signed_events` — the generic JSON payload no longer exists.
 fn wait_for_signed_event(
     rx: &std::sync::mpsc::Receiver<Vec<u8>>,
     correlation_id: &str,
-) -> Result<serde_json::Value, ()> {
+) -> Result<SignedEventRow, ()> {
     loop {
         match rx.recv_timeout(Duration::from_secs(5)) {
             Ok(bytes) => {
-                let Ok(snapshot) = decode_snapshot_payload(&bytes) else {
+                let Ok(typed) = decode_snapshot_typed_projections(&bytes) else {
                     continue;
                 };
-                if let Some(entry) = snapshot
-                    .get("projections")
-                    .and_then(|p| p.get("signed_events"))
-                    .and_then(|s| s.get(correlation_id))
+                let Some(sidecar) = typed.iter().find(|t| t.key == SIGNED_EVENTS_SCHEMA_ID) else {
+                    continue;
+                };
+                let Ok(model) = decode_signed_events(&sidecar.payload) else {
+                    continue;
+                };
+                if let Some((_, row)) =
+                    model.entries.into_iter().find(|(key, _)| key == correlation_id)
                 {
-                    return Ok(entry.clone());
+                    return Ok(row);
                 }
             }
             Err(_) => return Err(()),
@@ -120,15 +128,8 @@ fn sign_event_for_return_signs_with_active_local_key_and_returns_flat_json() {
     let entry =
         wait_for_signed_event(&rx, &correlation_id).expect("the signed event must surface in time");
 
-    assert_eq!(
-        entry.get("ok").and_then(serde_json::Value::as_bool),
-        Some(true),
-        "a local-key sign succeeds"
-    );
-    let signed_json = entry
-        .get("signed_json")
-        .and_then(serde_json::Value::as_str)
-        .expect("signed_json present on success");
+    assert!(entry.ok, "a local-key sign succeeds");
+    let signed_json = entry.signed_json.as_deref().expect("signed_json present on success");
     let event: serde_json::Value =
         serde_json::from_str(signed_json).expect("signed_json is valid JSON");
 
@@ -182,13 +183,9 @@ fn sign_event_for_return_without_account_returns_error_verdict() {
 
     let entry = wait_for_signed_event(&rx, &correlation_id)
         .expect("the error verdict must surface in time");
-    assert_eq!(
-        entry.get("ok").and_then(serde_json::Value::as_bool),
-        Some(false),
-        "signing with no active account fails"
-    );
+    assert!(!entry.ok, "signing with no active account fails");
     assert!(
-        entry.get("error").and_then(serde_json::Value::as_str).is_some(),
+        entry.error.is_some(),
         "a human-readable error reason is carried for the host's continuation to throw"
     );
 
@@ -224,12 +221,8 @@ fn sign_by_explicit_pubkey_uses_named_signer() {
 
     let entry = wait_for_signed_event(&rx, &correlation_id)
         .expect("signing by explicit pubkey must produce a result");
-    assert_eq!(
-        entry.get("ok").and_then(serde_json::Value::as_bool),
-        Some(true),
-        "sign_event_for_return must succeed when the named account is registered"
-    );
-    let signed_json = entry.get("signed_json").and_then(serde_json::Value::as_str).unwrap();
+    assert!(entry.ok, "sign_event_for_return must succeed when the named account is registered");
+    let signed_json = entry.signed_json.as_deref().unwrap();
     let event: serde_json::Value = serde_json::from_str(signed_json).unwrap();
     assert_eq!(
         event.get("pubkey").and_then(serde_json::Value::as_str),

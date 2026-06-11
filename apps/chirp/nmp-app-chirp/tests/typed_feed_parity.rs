@@ -13,7 +13,10 @@
 //! the real content-tree / render-data shape without naming `nmp-content`.
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{decode_snapshot_with_typed, encode_snapshot_with_typed, TypedProjectionData};
+use nmp_core::{
+    decode_snapshot_typed_projections, encode_snapshot_frame, SnapshotEnvelope,
+    TypedProjectionData,
+};
 use nmp_feed::{FeedCursor, FeedPage, RootCard, RootFeedSnapshot};
 use nmp_nip01::op_feed::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER,
@@ -91,8 +94,14 @@ fn typed_entry(snapshot: &OpFeedSnapshot) -> (Vec<u8>, TypedProjectionData) {
 fn empty_snapshot_carries_through_envelope() {
     let snapshot = empty_snapshot();
     let (bytes, entry) = typed_entry(&snapshot);
-    let envelope = encode_snapshot_with_typed(serde_json::json!({"rev": 1}), &[entry]);
-    let (_, recovered) = decode_snapshot_with_typed(&envelope).expect("decode");
+    let envelope = encode_snapshot_frame(
+        &SnapshotEnvelope {
+            rev: 1,
+            ..Default::default()
+        },
+        &[entry],
+    );
+    let recovered = decode_snapshot_typed_projections(&envelope).expect("decode");
     assert_eq!(recovered.len(), 1);
     assert_eq!(recovered[0].key, "nmp.feed.home");
     assert_eq!(recovered[0].schema_id, OP_FEED_SCHEMA_ID);
@@ -103,8 +112,14 @@ fn empty_snapshot_carries_through_envelope() {
 fn populated_snapshot_carries_through_envelope() {
     let snapshot = populated_snapshot();
     let (bytes, entry) = typed_entry(&snapshot);
-    let envelope = encode_snapshot_with_typed(serde_json::json!({"rev": 2}), &[entry]);
-    let (_, recovered) = decode_snapshot_with_typed(&envelope).expect("decode");
+    let envelope = encode_snapshot_frame(
+        &SnapshotEnvelope {
+            rev: 2,
+            ..Default::default()
+        },
+        &[entry],
+    );
+    let recovered = decode_snapshot_typed_projections(&envelope).expect("decode");
     assert_eq!(recovered.len(), 1);
     assert_eq!(recovered[0].payload, bytes);
     // The recovered opaque payload decodes back to the original projection.

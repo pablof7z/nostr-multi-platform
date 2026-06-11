@@ -55,8 +55,8 @@ const PER_TEST_TIMEOUT_SECS: u64 = 5;
 //        for the active account's profile card — the same path a relay echo
 //        of the published kind:0 would eventually update via `ingest_profile`.
 //   4. Force a snapshot emit (MarkChangedSinceEmit).
-//   5. Drain the update channel; assert snapshot["projections"]["profile"]
-//      ["display_name"] == "Alice".
+//   5. Drain the update channel; assert the typed `profile` sidecar's
+//      display_name == "Alice".
 //
 // `profile` (not `claimed_profiles`) is the correct projection key here:
 // it is the active account's own profile card, always present in every
@@ -64,8 +64,9 @@ const PER_TEST_TIMEOUT_SECS: u64 = 5;
 // active account publishes its kind:0.
 #[test]
 fn cold_open_profile_view_full_pipeline() {
+    use nmp_core::decode_snapshot_typed_projections;
     use nmp_core::testing::{spawn_actor, ActorCommand};
-    use nmp_core::{decode_update_frame, UpdateEnvelope};
+    use nmp_core::typed_projections::{decode_profile, PROFILE_SCHEMA_ID};
     use std::time::Duration;
 
     // A fixed nsec used only in tests (same key as in c13).
@@ -109,22 +110,26 @@ fn cold_open_profile_view_full_pipeline() {
     tx.send(ActorCommand::MarkChangedSinceEmit)
         .expect("send MarkChangedSinceEmit");
 
-    // Drain snapshots until projections["profile"]["display_name"] == "Alice".
+    // Drain snapshots until the typed `profile` sidecar carries
+    // display_name == "Alice" (PR-B: the JSON payload no longer exists).
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     let mut found = false;
-    let mut last_profile: Option<serde_json::Value> = None;
+    let mut last_profile = None;
     while std::time::Instant::now() < deadline {
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(frame) => {
-                let envelope = decode_update_frame(&frame).expect("decode frame");
-                if let UpdateEnvelope::Snapshot(snap) = envelope {
-                    let display_name =
-                        snap["projections"]["profile"]["display_name"].as_str();
-                    if display_name == Some("Alice") {
+                let typed =
+                    decode_snapshot_typed_projections(&frame).expect("decode frame sidecar");
+                let profile = typed
+                    .iter()
+                    .find(|t| t.key == PROFILE_SCHEMA_ID)
+                    .and_then(|t| decode_profile(&t.payload).ok());
+                if let Some(profile) = profile {
+                    if profile.display_name.as_deref() == Some("Alice") {
                         found = true;
                         break;
                     }
-                    last_profile = Some(snap["projections"]["profile"].clone());
+                    last_profile = Some(profile);
                 }
             }
             Err(_) => continue,
@@ -133,8 +138,8 @@ fn cold_open_profile_view_full_pipeline() {
 
     assert!(
         found,
-        "snapshot[projections][profile][display_name] must equal 'Alice' after PublishProfile; \
-         last profile projection: {:?}",
+        "the typed profile sidecar's display_name must equal 'Alice' after PublishProfile; \
+         last profile model: {:?}",
         last_profile
     );
 
@@ -597,6 +602,8 @@ fn monotonic_rev_under_concurrent_dispatch() {
     use nmp_core::{decode_update_frame, UpdateEnvelope};
     use std::sync::Arc;
     use std::time::Duration;
+    // PR-B: `UpdateEnvelope::Snapshot` carries the typed `SnapshotEnvelope`
+    // (rev is a typed Tier-3 field, no JSON indexing).
 
     let (tx, rx) = spawn_actor();
     // emit_hz = 60 so the actor ticks frequently.
@@ -645,9 +652,7 @@ fn monotonic_rev_under_concurrent_dispatch() {
             Ok(frame) => {
                 let envelope = decode_update_frame(&frame).expect("decode frame");
                 if let UpdateEnvelope::Snapshot(snap) = envelope {
-                    if let Some(rev) = snap["rev"].as_u64() {
-                        revs.push(rev);
-                    }
+                    revs.push(snap.rev);
                 }
             }
             Err(_) => break,
@@ -706,16 +711,16 @@ fn wait_for_error_toast(
     needle: &str,
     deadline_secs: u64,
 ) -> bool {
-    use nmp_core::decode_snapshot_payload;
-    use nmp_core::testing::snapshot_last_error_toast;
+    use nmp_core::decode_snapshot_envelope;
     use std::time::{Duration, Instant};
 
     let deadline = Instant::now() + Duration::from_secs(deadline_secs);
     while Instant::now() < deadline {
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(frame) => {
-                if let Ok(snapshot) = decode_snapshot_payload(&frame) {
-                    if let Some(toast) = snapshot_last_error_toast(&snapshot) {
+                // PR-B: `last_error_toast` is a typed Tier-3 envelope field.
+                if let Ok(envelope) = decode_snapshot_envelope(&frame) {
+                    if let Some(toast) = envelope.last_error_toast {
                         if toast.contains(needle) {
                             return true;
                         }

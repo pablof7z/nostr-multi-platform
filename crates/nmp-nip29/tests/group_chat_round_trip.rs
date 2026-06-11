@@ -48,8 +48,9 @@ use nmp_nip29::register::{register_actions, wire_group_chat};
 // actor threads that do not cleanly isolate across parallel test processes.
 static SERIAL: Mutex<()> = Mutex::new(());
 
-// Kernel snapshot JSON payloads collected by the update callback.
-static SNAPSHOTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+// Raw FlatBuffers frames collected by the update callback (decoded lazily by
+// the poll helper — PR-B: the generic JSON payload no longer exists).
+static SNAPSHOTS: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
 
 extern "C" fn collect_snapshot(_ctx: *mut c_void, bytes: *const u8, len: usize) {
     if bytes.is_null() {
@@ -57,13 +58,10 @@ extern "C" fn collect_snapshot(_ctx: *mut c_void, bytes: *const u8, len: usize) 
     }
     // SAFETY: the FFI listener owns `bytes` for the duration of this call.
     let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
-    let Ok(snapshot) = nmp_core::decode_snapshot_payload(frame) else {
-        return;
-    };
     SNAPSHOTS
         .lock()
         .unwrap_or_else(|p| p.into_inner())
-        .push(snapshot.to_string());
+        .push(frame.to_vec());
 }
 
 /// Build a minimal kind:9 group-chat event for injection.
@@ -88,23 +86,29 @@ fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
         .expect("actor command channel must be open");
 }
 
-/// Poll `SNAPSHOTS` until a snapshot tick contains a group-chat message with
-/// `content` under `projections["nmp.nip29.group_chat"]["messages"]`, or the
-/// 3-second deadline passes.
+/// Poll `SNAPSHOTS` until a snapshot tick's typed `"nmp.nip29.group_chat"`
+/// sidecar contains a group-chat message with `content`, or the 3-second
+/// deadline passes. PR-B: decodes the typed FlatBuffers sidecar via
+/// `decode_group_chat_snapshot` — the generic JSON payload no longer exists.
 fn wait_for_group_message(content: &str) -> bool {
+    use nmp_nip29::{decode_group_chat_snapshot, GROUP_CHAT_SCHEMA_ID};
+
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     while std::time::Instant::now() < deadline {
         {
             let snaps = SNAPSHOTS.lock().unwrap_or_else(|p| p.into_inner());
-            for json in snaps.iter() {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
-                    if let Some(msgs) =
-                        v["projections"]["nmp.nip29.group_chat"]["messages"].as_array()
-                    {
-                        if msgs.iter().any(|m| m["content"].as_str() == Some(content)) {
-                            return true;
-                        }
-                    }
+            for frame in snaps.iter() {
+                let Ok(typed) = nmp_core::decode_snapshot_typed_projections(frame) else {
+                    continue;
+                };
+                let found = typed
+                    .iter()
+                    .find(|t| t.key == GROUP_CHAT_SCHEMA_ID)
+                    .and_then(|t| decode_group_chat_snapshot(&t.payload).ok())
+                    .map(|snapshot| snapshot.messages.iter().any(|m| m.content == content))
+                    .unwrap_or(false);
+                if found {
+                    return true;
                 }
             }
         }
@@ -223,23 +227,27 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
     // Wait up to 3 s for the snapshot to carry the target message.
     assert!(
         wait_for_group_message("hello from TUI"),
-        "kind:9 event for 'test-room' must appear in projections[\"nmp.nip29.group_chat\"][\"messages\"] within 3 s"
+        "kind:9 event for 'test-room' must appear in the typed nmp.nip29.group_chat sidecar within 3 s"
     );
 
-    // Verify the decoy did NOT leak into the projection.
+    // Verify the decoy did NOT leak into the typed projection sidecar.
     {
+        use nmp_nip29::{decode_group_chat_snapshot, GROUP_CHAT_SCHEMA_ID};
+
         let snaps = SNAPSHOTS.lock().unwrap_or_else(|p| p.into_inner());
-        for json in snaps.iter() {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
-                if let Some(msgs) = v["projections"]["nmp.nip29.group_chat"]["messages"].as_array()
-                {
-                    assert!(
-                        !msgs
-                            .iter()
-                            .any(|m| m["content"].as_str() == Some("should not appear")),
-                        "decoy event for 'other-room' must not appear in 'test-room' projection"
-                    );
-                }
+        for frame in snaps.iter() {
+            let Ok(typed) = nmp_core::decode_snapshot_typed_projections(frame) else {
+                continue;
+            };
+            if let Some(snapshot) = typed
+                .iter()
+                .find(|t| t.key == GROUP_CHAT_SCHEMA_ID)
+                .and_then(|t| decode_group_chat_snapshot(&t.payload).ok())
+            {
+                assert!(
+                    !snapshot.messages.iter().any(|m| m.content == "should not appear"),
+                    "decoy event for 'other-room' must not appear in 'test-room' projection"
+                );
             }
         }
     }

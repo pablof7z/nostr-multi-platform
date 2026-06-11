@@ -27,17 +27,15 @@ pub(crate) fn configure_and_settle(app: *mut NmpApp, settle_ms: u64) {
     std::thread::sleep(Duration::from_millis(settle_ms));
 }
 
-/// Extract the `rev` field from a FlatBuffers update frame.
+/// Extract the `rev` field from a FlatBuffers update frame (typed Tier-3
+/// envelope field — PR-B: the generic JSON payload no longer exists).
 pub(crate) fn extract_rev(bytes: &[u8]) -> Option<u64> {
-    nmp_core::decode_snapshot_payload(bytes)
-        .ok()?
-        .get("rev")?
-        .as_u64()
+    Some(nmp_core::decode_snapshot_envelope(bytes).ok()?.rev)
 }
 
-/// Decode an update frame into the JSON-like value tree used by stress gates.
-pub(crate) fn snapshot_value(bytes: &[u8]) -> Option<serde_json::Value> {
-    nmp_core::decode_snapshot_payload(bytes).ok()
+/// Decode an update frame into the typed Tier-3 envelope used by stress gates.
+pub(crate) fn snapshot_envelope(bytes: &[u8]) -> Option<nmp_core::SnapshotEnvelope> {
+    nmp_core::decode_snapshot_envelope(bytes).ok()
 }
 
 /// Return `true` if the non-zero elements of `revs` are strictly increasing.

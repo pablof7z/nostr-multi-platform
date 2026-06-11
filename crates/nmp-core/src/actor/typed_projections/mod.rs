@@ -39,16 +39,20 @@ mod nip46_onboarding_fb;
 use crate::actor::commands::{build_nip46_onboarding_dto, BunkerHandshakeSlot};
 use crate::update_envelope::TypedProjectionData;
 
-// Re-exported: decode functions + schema ID constants + model types, available
-// to integration tests and consumers that decode the typed sidecar (PR-B).
+// Re-exported: encoders + schema ID constants + model types (production), and
+// the decode functions (in-crate tests decode the typed sidecar — PR-B).
 pub(crate) use bunker_handshake_fb::{
-    decode_bunker_handshake, encode_bunker_handshake, BunkerHandshakeModel,
-    BUNKER_HANDSHAKE_FILE_IDENTIFIER, BUNKER_HANDSHAKE_SCHEMA_ID, BUNKER_HANDSHAKE_SCHEMA_VERSION,
+    encode_bunker_handshake, BunkerHandshakeModel, BUNKER_HANDSHAKE_FILE_IDENTIFIER,
+    BUNKER_HANDSHAKE_SCHEMA_ID, BUNKER_HANDSHAKE_SCHEMA_VERSION,
 };
 pub(crate) use nip46_onboarding_fb::{
-    decode_nip46_onboarding, encode_nip46_onboarding, Nip46OnboardingModel, SignerAppRow,
-    NIP46_ONBOARDING_FILE_IDENTIFIER, NIP46_ONBOARDING_SCHEMA_ID, NIP46_ONBOARDING_SCHEMA_VERSION,
+    encode_nip46_onboarding, Nip46OnboardingModel, SignerAppRow, NIP46_ONBOARDING_FILE_IDENTIFIER,
+    NIP46_ONBOARDING_SCHEMA_ID, NIP46_ONBOARDING_SCHEMA_VERSION,
 };
+#[cfg(test)]
+pub(crate) use bunker_handshake_fb::decode_bunker_handshake;
+#[cfg(test)]
+pub(crate) use nip46_onboarding_fb::decode_nip46_onboarding;
 
 /// Build the typed `"bunker_handshake"` sidecar entry from the shared slot.
 ///

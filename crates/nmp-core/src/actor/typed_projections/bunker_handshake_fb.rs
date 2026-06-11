@@ -88,8 +88,9 @@ pub(crate) fn encode_bunker_handshake(model: &BunkerHandshakeModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_bunker_handshake`])
 /// back into a [`BunkerHandshakeModel`]. Returns an error string on any
-/// malformed input. Available outside tests so integration tests and shell
-/// consumers can decode the typed sidecar (PR-B: payload is no longer emitted).
+/// malformed input. In-crate tests decode the typed sidecar (PR-B: the JSON
+/// payload is no longer emitted).
+#[cfg(test)]
 pub(crate) fn decode_bunker_handshake(bytes: &[u8]) -> Result<BunkerHandshakeModel, String> {
     if bytes.len() < 8 || !fb::bunker_handshake_buffer_has_identifier(bytes) {
         return Err("missing KBHS file identifier".to_string());

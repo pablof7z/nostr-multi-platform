@@ -1,12 +1,45 @@
 use super::*;
 
-fn golden_snapshot_payload() -> Value {
-    serde_json::json!({
-        "schema_version": SNAPSHOT_SCHEMA_VERSION,
-        "rev": 42,
-        "running": true,
-        "projections": { "timeline": [{ "id": "a", "score": 1.5 }] }
-    })
+/// A representative typed envelope for round-trip tests — every
+/// [`SnapshotEnvelope`] field populated with a non-default value so a
+/// transposed/forgotten field in either codec direction fails the equality
+/// assertion.
+fn golden_envelope() -> SnapshotEnvelope {
+    SnapshotEnvelope {
+        rev: 42,
+        kernel_schema_version: 1,
+        last_tick_ms: 1_700_000_123_456,
+        running: true,
+        update_kind: "ViewBatch".to_string(),
+        events_rx: 7,
+        visible_items: 3,
+        actor_queue_depth: 2,
+        update_sequence: 11,
+        relay_statuses: vec![RelayStatusEntry {
+            role: "both".to_string(),
+            relay_url: "wss://relay.example".to_string(),
+            connection: "connected".to_string(),
+            auth: "accepted".to_string(),
+            events_rx: 7,
+            denied: false,
+        }],
+        relay_status: Some(RelayStatusEntry {
+            role: "aggregate".to_string(),
+            relay_url: String::new(),
+            connection: "connected".to_string(),
+            auth: String::new(),
+            events_rx: 7,
+            denied: false,
+        }),
+        wire_subscriptions: vec![WireSubscriptionEntry {
+            wire_id: "sub-1".to_string(),
+            relay_url: "wss://relay.example".to_string(),
+            state: "open".to_string(),
+        }],
+        last_error_toast: Some("boom".to_string()),
+        last_error_category: Some("publish".to_string()),
+        last_planner_error: None,
+    }
 }
 
 fn decode_hex_fixture(input: &str) -> Vec<u8> {
@@ -22,32 +55,34 @@ fn decode_hex_fixture(input: &str) -> Vec<u8> {
         .collect()
 }
 
-fn encode_hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
 #[test]
 fn snapshot_frame_has_flatbuffer_identifier_and_round_trips() {
-    let payload = golden_snapshot_payload();
-    let wire = encode_snapshot_value(payload.clone());
+    let envelope = golden_envelope();
+    let wire = encode_snapshot_frame(&envelope, &[]);
     assert!(fb::update_frame_buffer_has_identifier(&wire));
-    assert_eq!(decode_snapshot_payload(&wire).expect("decode"), payload);
-}
-
-#[test]
-fn empty_typed_sidecar_is_byte_identical_to_legacy_encoder() {
-    let payload = golden_snapshot_payload();
-    let legacy = encode_snapshot_value(payload.clone());
-    let with_empty = encode_snapshot_with_typed(payload, &[]);
     assert_eq!(
-        legacy, with_empty,
-        "an empty typed sidecar must not change the wire bytes"
+        decode_snapshot_envelope(&wire).expect("decode"),
+        envelope,
+        "every SnapshotEnvelope field must survive the encode/decode round trip"
     );
 }
 
 #[test]
-fn typed_sidecar_round_trips_opaque_payloads_alongside_value() {
-    let payload = golden_snapshot_payload();
+fn decode_update_frame_carries_the_same_envelope_as_decode_snapshot_envelope() {
+    let envelope = golden_envelope();
+    let wire = encode_snapshot_frame(&envelope, &[]);
+    match decode_update_frame(&wire).expect("decode") {
+        UpdateEnvelope::Snapshot(decoded) => assert_eq!(
+            decoded, envelope,
+            "the UpdateEnvelope::Snapshot arm and decode_snapshot_envelope must agree"
+        ),
+        other => panic!("expected snapshot frame, got {other:?}"),
+    }
+}
+
+#[test]
+fn typed_sidecar_round_trips_opaque_payloads_alongside_envelope() {
+    let envelope = golden_envelope();
     let typed = vec![
         TypedProjectionData {
             key: "timeline".to_string(),
@@ -65,29 +100,21 @@ fn typed_sidecar_round_trips_opaque_payloads_alongside_value() {
         },
     ];
 
-    let wire = encode_snapshot_with_typed(payload.clone(), &typed);
+    let wire = encode_snapshot_frame(&envelope, &typed);
     assert!(fb::update_frame_buffer_has_identifier(&wire));
 
-    let (decoded_value, decoded_typed) =
-        decode_snapshot_with_typed(&wire).expect("decode with typed");
-    assert_eq!(decoded_value, payload, "generic value must survive");
+    let decoded_typed = decode_snapshot_typed_projections(&wire).expect("decode typed sidecar");
     assert_eq!(decoded_typed, typed, "typed sidecar must survive verbatim");
 
-    // The generic-only decoder must still see the same Value, ignoring the
+    // The envelope decoder must still see the same envelope, ignoring the
     // typed sidecar entirely.
-    assert_eq!(
-        decode_snapshot_payload(&wire).expect("legacy decode"),
-        payload
-    );
+    assert_eq!(decode_snapshot_envelope(&wire).expect("decode envelope"), envelope);
 }
 
 #[test]
-fn legacy_frame_decodes_with_empty_typed_sidecar() {
-    let payload = golden_snapshot_payload();
-    let wire = encode_snapshot_value(payload.clone());
-    let (decoded_value, decoded_typed) =
-        decode_snapshot_with_typed(&wire).expect("decode legacy frame");
-    assert_eq!(decoded_value, payload);
+fn frame_without_sidecar_decodes_with_empty_typed_vector() {
+    let wire = encode_snapshot_frame(&golden_envelope(), &[]);
+    let decoded_typed = decode_snapshot_typed_projections(&wire).expect("decode");
     assert!(
         decoded_typed.is_empty(),
         "a frame without the sidecar must decode to zero typed projections"
@@ -95,62 +122,42 @@ fn legacy_frame_decodes_with_empty_typed_sidecar() {
 }
 
 #[test]
-fn decode_snapshot_with_typed_rejects_panic_frame() {
+fn decode_snapshot_envelope_rejects_panic_frame() {
     let wire = encode_panic("boom");
-    let err = decode_snapshot_with_typed(&wire).expect_err("panic must not decode as snapshot");
-    assert!(matches!(
-        err,
-        UpdateFrameDecodeError::UnexpectedPanicFrame(_)
-    ));
+    let err = decode_snapshot_envelope(&wire).expect_err("panic must not decode as snapshot");
+    assert!(matches!(err, UpdateFrameDecodeError::MissingSnapshotPayload));
+    let err =
+        decode_snapshot_typed_projections(&wire).expect_err("panic must not decode as snapshot");
+    assert!(matches!(err, UpdateFrameDecodeError::MissingSnapshotPayload));
 }
 
+/// Forward-compat proof for the PR-B zeroing: a pre-PR-B v1 frame (generic
+/// JSON `payload:Value` written, NO Tier-3 fields) must still PARSE as a
+/// `Snapshot` frame on the new reader. The deprecated `payload` slot is
+/// invisible to the regenerated bindings, so the Tier-3 fields all read as
+/// FlatBuffers defaults — the frame is structurally valid, just empty.
+///
+/// The same fixture bytes are decoded by web/chirp's TS tests
+/// (`web/chirp/src/nmp/runtime.test.ts`), which still carry the generic-value
+/// decoder — the fixture freezes the v1 wire format for BOTH readers.
 #[test]
-fn snapshot_v1_wire_fixture_is_stable() {
-    let wire = encode_snapshot_value(golden_snapshot_payload());
-    let expected = decode_hex_fixture(include_str!(
+fn pre_prb_v1_fixture_still_parses_as_snapshot_frame() {
+    let wire = decode_hex_fixture(include_str!(
         "../../tests/fixtures/update_frame_snapshot_v1.fb.hex"
     ));
-    if wire != expected {
-        eprintln!("actual snapshot_v1 fixture hex:\n{}", encode_hex(&wire));
+    match decode_update_frame(&wire).expect("v1 fixture must remain parseable") {
+        UpdateEnvelope::Snapshot(envelope) => {
+            // The v1 fixture predates the Tier-3 fields — everything reads as
+            // the FlatBuffers default. `rev` lived only inside the (now
+            // unread) JSON payload.
+            assert_eq!(envelope.rev, 0, "v1 fixture has no Tier-3 rev field");
+            assert!(!envelope.running, "v1 fixture has no Tier-3 running field");
+            assert!(envelope.relay_statuses.is_empty());
+        }
+        other => panic!("expected snapshot frame, got {other:?}"),
     }
-    assert_eq!(
-        wire, expected,
-        "snapshot v1 FlatBuffers wire fixture drifted"
-    );
-}
-
-#[test]
-fn non_finite_float_fails_decode_instead_of_degrading_to_null() {
-    let mut builder = FlatBufferBuilder::new();
-    let payload = fb::Value::create(
-        &mut builder,
-        &fb::ValueArgs {
-            kind: fb::ValueKind::Float,
-            float_value: f64::NAN,
-            ..Default::default()
-        },
-    );
-    let snapshot = fb::SnapshotFrame::create(
-        &mut builder,
-        &fb::SnapshotFrameArgs {
-            schema_version: SNAPSHOT_SCHEMA_VERSION,
-            payload: Some(payload),
-            typed_projections: None,
-            ..Default::default()
-        },
-    );
-    let root = fb::UpdateFrame::create(
-        &mut builder,
-        &fb::UpdateFrameArgs {
-            kind: fb::FrameKind::Snapshot,
-            snapshot: Some(snapshot),
-            panic: None,
-        },
-    );
-    fb::finish_update_frame_buffer(&mut builder, root);
-
-    let err = decode_snapshot_payload(builder.finished_data()).expect_err("must reject NaN");
-    assert!(matches!(err, UpdateFrameDecodeError::InvalidValue(_)));
+    let typed = decode_snapshot_typed_projections(&wire).expect("typed decode succeeds");
+    assert!(typed.is_empty(), "v1 fixture carries no typed sidecar");
 }
 
 #[test]

@@ -3,17 +3,20 @@
 //! Every runtime frame is a binary `nmp.transport.UpdateFrame` with file
 //! identifier `NMPU`. The frame has exactly two variants:
 //!
-//! - `Snapshot`: carries the full `KernelSnapshot` as a FlatBuffers value tree.
+//! - `Snapshot`: carries the typed Tier-3 envelope fields (ADR-0044) plus the
+//!   per-projection typed FlatBuffers sidecar (ADR-0037).
 //! - `Panic`: terminal actor-thread death signal.
 //!
-//! The payload is deliberately not a JSON string embedded in a binary wrapper.
-//! Host-extensible projections still need a generic value representation, so
-//! the schema models JSON-like primitives as FlatBuffers tables instead of
-//! pinning every app projection into `nmp-core`.
+//! PR-B (#991/#979): the generic `payload:Value` JSON tree is no longer
+//! emitted or decoded — the schema field is `(deprecated)` and the generated
+//! bindings expose no accessor for it. Consumers read the typed
+//! [`SnapshotEnvelope`] (via [`decode_snapshot_envelope`] /
+//! [`decode_update_frame`]) and the typed sidecar entries (via
+//! [`decode_snapshot_typed_projections`] paired with the per-key decoders in
+//! `nmp_core::typed_projections`).
 
 use crate::transport::wire as fb;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
-use serde_json::{Map, Number, Value};
 use std::fmt;
 
 // ADR-0044 — the typed Tier-3 dual-emit `SnapshotFrame` encoder lives in a
@@ -21,7 +24,7 @@ use std::fmt;
 // kernel's `make_update` calls `crate::update_envelope::encode_snapshot_with_envelope`.
 mod relay_status;
 mod tier3_frame;
-pub use relay_status::RelayStatusEntry;
+pub use relay_status::{RelayStatusEntry, WireSubscriptionEntry};
 pub(crate) use tier3_frame::encode_snapshot_with_envelope;
 
 /// Schema version of the periodic snapshot payload. Bump on any breaking
@@ -38,7 +41,7 @@ pub type UpdateFrameBytes = Vec<u8>;
 /// Mirrors the fields written by `encode_snapshot_with_envelope` (ADR-0044).
 /// Fields absent from the wire (never-written or default-zero) are returned as
 /// `0` / `false` / `None` — same semantics as FlatBuffers native defaults.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SnapshotEnvelope {
     /// Monotonically-increasing frame revision (from `KernelSnapshot.rev`).
     pub rev: u64,
@@ -64,6 +67,12 @@ pub struct SnapshotEnvelope {
     // --- Relay statuses (PR-B: extended for chirp-desktop typed-first migration) ---
     /// Per-relay connection status rows. Empty when no relays are configured.
     pub relay_statuses: Vec<RelayStatusEntry>,
+    /// The singular aggregate connection summary (`relay_status` on the wire).
+    /// `None` when the producer wrote no aggregate.
+    pub relay_status: Option<RelayStatusEntry>,
+    /// Open/closed wire-subscription rows (`wire_subscriptions` on the wire).
+    /// Empty when the producer wrote none.
+    pub wire_subscriptions: Vec<WireSubscriptionEntry>,
     // --- Error / diagnostic flags ---
     /// Last error toast message, if any.
     pub last_error_toast: Option<String>,
@@ -99,7 +108,13 @@ pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, Update
     let snapshot = frame
         .snapshot()
         .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
+    Ok(envelope_from_snapshot_frame(&snapshot))
+}
 
+/// Build an owned [`SnapshotEnvelope`] from a decoded `SnapshotFrame` table.
+/// Shared by [`decode_snapshot_envelope`] and [`decode_update_frame`] so the
+/// two public decode paths cannot drift.
+fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnvelope {
     let (events_rx, visible_items, actor_queue_depth, update_sequence) =
         if let Some(metrics) = snapshot.metrics() {
             (
@@ -112,9 +127,7 @@ pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, Update
             (0, 0, 0, 0)
         };
 
-    let relay_statuses = relay_status::decode_relay_statuses(&snapshot);
-
-    Ok(SnapshotEnvelope {
+    SnapshotEnvelope {
         rev: snapshot.rev(),
         kernel_schema_version: snapshot.kernel_schema_version(),
         last_tick_ms: snapshot.last_tick_ms(),
@@ -124,22 +137,20 @@ pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, Update
         visible_items,
         actor_queue_depth,
         update_sequence,
-        relay_statuses,
+        relay_statuses: relay_status::decode_relay_statuses(snapshot),
+        relay_status: relay_status::decode_relay_status_aggregate(snapshot),
+        wire_subscriptions: relay_status::decode_wire_subscriptions(snapshot),
         last_error_toast: snapshot.last_error_toast().map(str::to_string),
         last_error_category: snapshot.last_error_category().map(str::to_string),
         last_planner_error: snapshot.last_planner_error().map(str::to_string),
-    })
+    }
 }
 
-/// Decode only the typed-projection sidecar from a FlatBuffers update frame,
-/// without touching `payload:Value`.
+/// Decode only the typed-projection sidecar from a FlatBuffers update frame.
 ///
-/// After the PR-B `(deprecated)` migration the generic `payload:Value` slot
-/// emits no bytes; calling [`decode_snapshot_with_typed`] (which tries to
-/// decode that slot) would panic / return an error. Shells that complete the
-/// typed-first migration use this function instead: it parses the frame once
-/// and returns only the sidecar entries, paired with
-/// [`decode_snapshot_envelope`] for the Tier-3 envelope fields.
+/// Pair with [`decode_snapshot_envelope`] for the Tier-3 envelope fields and
+/// with the per-key decoders in `nmp_core::typed_projections` to interpret
+/// each entry's opaque payload bytes.
 pub fn decode_snapshot_typed_projections(
     bytes: &[u8],
 ) -> Result<Vec<TypedProjectionData>, UpdateFrameDecodeError> {
@@ -167,9 +178,14 @@ pub struct PanicFrame {
 
 /// Decoded view used by Rust consumers and tests. Runtime transport remains
 /// FlatBuffers bytes; this enum is not the wire shape.
+///
+/// PR-B (#991/#979): `Snapshot` carries the typed [`SnapshotEnvelope`]
+/// (Tier-3 fields) instead of the deleted generic JSON `Value` payload.
+/// Projection data travels in the typed sidecar — pair with
+/// [`decode_snapshot_typed_projections`].
 #[derive(Clone, Debug, PartialEq)]
 pub enum UpdateEnvelope {
-    Snapshot(Value),
+    Snapshot(SnapshotEnvelope),
     Panic(PanicFrame),
 }
 
@@ -216,37 +232,68 @@ impl fmt::Display for UpdateFrameDecodeError {
 
 impl std::error::Error for UpdateFrameDecodeError {}
 
-/// Encode a full snapshot payload as one FlatBuffers update frame.
+/// Encode a snapshot frame from a typed [`SnapshotEnvelope`] plus an optional
+/// typed-projection sidecar.
 ///
-/// Backward-compatible: equivalent to [`encode_snapshot_with_typed`] with an
-/// empty typed-projection sidecar. Because no `typed_projections` slot is
-/// written, the wire bytes are byte-identical to the pre-sidecar format.
-#[must_use]
-pub fn encode_snapshot_value(snapshot: Value) -> UpdateFrameBytes {
-    encode_snapshot_with_typed(snapshot, &[])
-}
-
-/// Encode a snapshot with an optional typed projection sidecar.
+/// This is the auxiliary-producer encoder: non-kernel producers (`nmp-wasm`'s
+/// browser runtime, test fixtures, benches) build a [`SnapshotEnvelope`] and
+/// encode it here. The production kernel path is
+/// `encode_snapshot_with_envelope` (tier3_frame.rs), which writes the FULL
+/// Tier-3 field set straight off `KernelSnapshot`; this function writes the
+/// [`SnapshotEnvelope`] subset (the documented Rust consumer surface), so a
+/// frame round-trips losslessly through [`decode_snapshot_envelope`].
 ///
-/// When `typed` is empty, the result is byte-identical to
-/// [`encode_snapshot_value`] (the optional `typed_projections` vector is never
-/// added to the FlatBuffers table, so no new vtable slot appears). Each entry's
-/// `payload` is carried verbatim as opaque `[ubyte]`; the transport layer never
-/// interprets typed payload bytes.
+/// No generic `payload:Value` is written — the field is `(deprecated)` in the
+/// schema and the generated bindings expose no writer for it (PR-B #991/#979).
 #[must_use]
-pub fn encode_snapshot_with_typed(
-    snapshot: Value,
+pub fn encode_snapshot_frame(
+    envelope: &SnapshotEnvelope,
     typed: &[TypedProjectionData],
 ) -> UpdateFrameBytes {
     let mut builder = FlatBufferBuilder::new();
-    let payload = encode_value(&mut builder, &snapshot);
     let typed_projections = encode_typed_projections(&mut builder, typed);
+    let update_kind = builder.create_string(&envelope.update_kind);
+    let relay_status = envelope
+        .relay_status
+        .as_ref()
+        .map(|entry| relay_status::encode_relay_status_entry(&mut builder, entry));
+    let relay_statuses =
+        relay_status::encode_relay_statuses(&mut builder, &envelope.relay_statuses);
+    let wire_subscriptions =
+        relay_status::encode_wire_subscriptions(&mut builder, &envelope.wire_subscriptions);
+    let metrics = fb::Metrics::create(
+        &mut builder,
+        &fb::MetricsArgs {
+            events_rx: envelope.events_rx,
+            visible_items: envelope.visible_items,
+            actor_queue_depth: envelope.actor_queue_depth,
+            update_sequence: envelope.update_sequence,
+            ..Default::default()
+        },
+    );
+    let last_error_toast =
+        envelope.last_error_toast.as_deref().map(|s| builder.create_string(s));
+    let last_error_category =
+        envelope.last_error_category.as_deref().map(|s| builder.create_string(s));
+    let last_planner_error =
+        envelope.last_planner_error.as_deref().map(|s| builder.create_string(s));
     let snapshot = fb::SnapshotFrame::create(
         &mut builder,
         &fb::SnapshotFrameArgs {
             schema_version: SNAPSHOT_SCHEMA_VERSION,
-            payload: Some(payload),
             typed_projections,
+            rev: envelope.rev,
+            kernel_schema_version: envelope.kernel_schema_version,
+            last_tick_ms: envelope.last_tick_ms,
+            update_kind: Some(update_kind),
+            running: envelope.running,
+            metrics: Some(metrics),
+            relay_status,
+            relay_statuses,
+            wire_subscriptions,
+            last_error_toast,
+            last_error_category,
+            last_planner_error,
             ..Default::default()
         },
     );
@@ -319,6 +366,13 @@ pub fn encode_panic(msg: impl Into<String>) -> UpdateFrameBytes {
     builder.finished_data().to_vec()
 }
 
+/// Decode one update frame into the canonical discriminated envelope
+/// (ADR-0001 / T103): the FlatBuffers `FrameKind` tag IS the discriminant.
+///
+/// PR-B (#991/#979): the `Snapshot` arm carries the typed
+/// [`SnapshotEnvelope`]; the generic JSON payload no longer exists on the
+/// wire. Pre-PR-B frames (payload-only, no Tier-3 fields) still parse — their
+/// Tier-3 fields read as FlatBuffers defaults (zero/empty).
 pub fn decode_update_frame(bytes: &[u8]) -> Result<UpdateEnvelope, UpdateFrameDecodeError> {
     if !fb::update_frame_buffer_has_identifier(bytes) {
         return Err(UpdateFrameDecodeError::InvalidFlatbuffer(
@@ -332,10 +386,9 @@ pub fn decode_update_frame(bytes: &[u8]) -> Result<UpdateEnvelope, UpdateFrameDe
             let snapshot = frame
                 .snapshot()
                 .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
-            let payload = snapshot
-                .payload()
-                .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
-            Ok(UpdateEnvelope::Snapshot(decode_value(payload)?))
+            Ok(UpdateEnvelope::Snapshot(envelope_from_snapshot_frame(
+                &snapshot,
+            )))
         }
         kind if kind == fb::FrameKind::Panic => {
             let panic = frame
@@ -344,59 +397,6 @@ pub fn decode_update_frame(bytes: &[u8]) -> Result<UpdateEnvelope, UpdateFrameDe
             Ok(UpdateEnvelope::Panic(PanicFrame {
                 msg: panic.msg().to_string(),
             }))
-        }
-        other => Err(UpdateFrameDecodeError::InvalidFlatbuffer(format!(
-            "unknown frame kind {}",
-            other.0
-        ))),
-    }
-}
-
-pub fn decode_snapshot_payload(bytes: &[u8]) -> Result<Value, UpdateFrameDecodeError> {
-    match decode_update_frame(bytes)? {
-        UpdateEnvelope::Snapshot(value) => Ok(value),
-        UpdateEnvelope::Panic(panic) => {
-            Err(UpdateFrameDecodeError::UnexpectedPanicFrame(panic.msg))
-        }
-    }
-}
-
-/// Decode a snapshot frame, returning both the generic `Value` payload and the
-/// typed projection sidecar (as opaque [`TypedProjectionData`] entries).
-///
-/// Frames produced before the sidecar existed — or by
-/// [`encode_snapshot_value`] — decode with an empty typed vector, so this is a
-/// strict superset of [`decode_snapshot_payload`]. The typed payload bytes are
-/// returned verbatim; `nmp-core` never interprets them.
-pub fn decode_snapshot_with_typed(
-    bytes: &[u8],
-) -> Result<(Value, Vec<TypedProjectionData>), UpdateFrameDecodeError> {
-    if !fb::update_frame_buffer_has_identifier(bytes) {
-        return Err(UpdateFrameDecodeError::InvalidFlatbuffer(
-            "missing NMPU file identifier".to_string(),
-        ));
-    }
-    let frame = fb::root_as_update_frame(bytes)
-        .map_err(|err| UpdateFrameDecodeError::InvalidFlatbuffer(format!("{err:?}")))?;
-    match frame.kind() {
-        kind if kind == fb::FrameKind::Snapshot => {
-            let snapshot = frame
-                .snapshot()
-                .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
-            let payload = snapshot
-                .payload()
-                .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
-            let value = decode_value(payload)?;
-            let typed = decode_typed_projections(&snapshot)?;
-            Ok((value, typed))
-        }
-        kind if kind == fb::FrameKind::Panic => {
-            let panic = frame
-                .panic()
-                .ok_or(UpdateFrameDecodeError::MissingPanicPayload)?;
-            Err(UpdateFrameDecodeError::UnexpectedPanicFrame(
-                panic.msg().to_string(),
-            ))
         }
         other => Err(UpdateFrameDecodeError::InvalidFlatbuffer(format!(
             "unknown frame kind {}",
@@ -442,173 +442,6 @@ fn decode_typed_projections(
     Ok(out)
 }
 
-fn encode_value<'bldr>(
-    builder: &mut FlatBufferBuilder<'bldr>,
-    value: &Value,
-) -> WIPOffset<fb::Value<'bldr>> {
-    match value {
-        Value::Null => fb::Value::create(
-            builder,
-            &fb::ValueArgs {
-                kind: fb::ValueKind::Null,
-                ..Default::default()
-            },
-        ),
-        Value::Bool(v) => fb::Value::create(
-            builder,
-            &fb::ValueArgs {
-                kind: fb::ValueKind::Bool,
-                bool_value: *v,
-                ..Default::default()
-            },
-        ),
-        Value::Number(v) => encode_number(builder, v),
-        Value::String(v) => {
-            let string = builder.create_string(v);
-            fb::Value::create(
-                builder,
-                &fb::ValueArgs {
-                    kind: fb::ValueKind::String,
-                    string_value: Some(string),
-                    ..Default::default()
-                },
-            )
-        }
-        Value::Array(values) => {
-            let offsets: Vec<_> = values
-                .iter()
-                .map(|value| encode_value(builder, value))
-                .collect();
-            let list = builder.create_vector(&offsets);
-            fb::Value::create(
-                builder,
-                &fb::ValueArgs {
-                    kind: fb::ValueKind::List,
-                    list: Some(list),
-                    ..Default::default()
-                },
-            )
-        }
-        Value::Object(values) => {
-            let mut entries: Vec<_> = values.iter().collect();
-            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-            let offsets: Vec<_> = entries
-                .iter()
-                .map(|(key, value)| {
-                    let key = builder.create_string(key);
-                    let value = encode_value(builder, value);
-                    fb::Pair::create(
-                        builder,
-                        &fb::PairArgs {
-                            key: Some(key),
-                            value: Some(value),
-                        },
-                    )
-                })
-                .collect();
-            let map = builder.create_vector(&offsets);
-            fb::Value::create(
-                builder,
-                &fb::ValueArgs {
-                    kind: fb::ValueKind::Map,
-                    map: Some(map),
-                    ..Default::default()
-                },
-            )
-        }
-    }
-}
-
-fn encode_number<'bldr>(
-    builder: &mut FlatBufferBuilder<'bldr>,
-    value: &Number,
-) -> WIPOffset<fb::Value<'bldr>> {
-    if let Some(v) = value.as_i64() {
-        fb::Value::create(
-            builder,
-            &fb::ValueArgs {
-                kind: fb::ValueKind::Int,
-                int_value: v,
-                ..Default::default()
-            },
-        )
-    } else if let Some(v) = value.as_u64() {
-        fb::Value::create(
-            builder,
-            &fb::ValueArgs {
-                kind: fb::ValueKind::UInt,
-                uint_value: v,
-                ..Default::default()
-            },
-        )
-    } else {
-        fb::Value::create(
-            builder,
-            &fb::ValueArgs {
-                kind: fb::ValueKind::Float,
-                float_value: value.as_f64().unwrap_or_default(),
-                ..Default::default()
-            },
-        )
-    }
-}
-
-fn decode_value(value: fb::Value<'_>) -> Result<Value, UpdateFrameDecodeError> {
-    match value.kind() {
-        kind if kind == fb::ValueKind::Null => Ok(Value::Null),
-        kind if kind == fb::ValueKind::Bool => Ok(Value::Bool(value.bool_value())),
-        kind if kind == fb::ValueKind::Int => Ok(Value::Number(Number::from(value.int_value()))),
-        kind if kind == fb::ValueKind::UInt => Ok(Value::Number(Number::from(value.uint_value()))),
-        kind if kind == fb::ValueKind::Float => {
-            let float = value.float_value();
-            if !float.is_finite() {
-                return Err(UpdateFrameDecodeError::InvalidValue(
-                    "non-finite float value".to_string(),
-                ));
-            }
-            Number::from_f64(float)
-                .map(Value::Number)
-                .ok_or_else(|| UpdateFrameDecodeError::InvalidValue("invalid float".to_string()))
-        }
-        kind if kind == fb::ValueKind::String => {
-            let string = value.string_value().ok_or_else(|| {
-                UpdateFrameDecodeError::InvalidValue(
-                    "string value missing string_value".to_string(),
-                )
-            })?;
-            Ok(Value::String(string.to_string()))
-        }
-        kind if kind == fb::ValueKind::List => {
-            let list = value.list().ok_or_else(|| {
-                UpdateFrameDecodeError::InvalidValue("list value missing list".to_string())
-            })?;
-            let values = (0..list.len())
-                .map(|index| decode_value(list.get(index)))
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(Value::Array(values))
-        }
-        kind if kind == fb::ValueKind::Map => {
-            let mut values = Map::new();
-            let map = value.map().ok_or_else(|| {
-                UpdateFrameDecodeError::InvalidValue("map value missing map".to_string())
-            })?;
-            for index in 0..map.len() {
-                let pair = map.get(index);
-                let value = pair.value().ok_or_else(|| {
-                    UpdateFrameDecodeError::InvalidValue(format!(
-                        "map pair at index {index} missing value"
-                    ))
-                })?;
-                values.insert(pair.key().to_string(), decode_value(value)?);
-            }
-            Ok(Value::Object(values))
-        }
-        other => Err(UpdateFrameDecodeError::InvalidValue(format!(
-            "unknown value kind {}",
-            other.0
-        ))),
-    }
-}
 
 /// Best-effort message extraction from a `catch_unwind` payload.
 pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {

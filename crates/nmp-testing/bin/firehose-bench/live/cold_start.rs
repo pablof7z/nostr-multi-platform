@@ -10,7 +10,7 @@
 //! - first-item ≤ 800 ms (p99 on developer hardware)
 //! - filled-timeline ≤ 5 000 ms
 
-use super::{drain, metric, round2, wait_connected, wait_update, Scenario};
+use super::{drain, round2, visible_items, wait_connected, wait_update, Scenario};
 use crate::report::ScenarioMetrics;
 use crate::scenarios::{finish_scenario, gate_max};
 use nmp_core::testing::{spawn_actor, ActorCommand};
@@ -62,7 +62,7 @@ pub(crate) fn cold_start() -> Scenario {
                 }
                 break;
             };
-            let visible = metric(&update, "visible_items").unwrap_or(0.0) as usize;
+            let visible = visible_items(&update).unwrap_or(0) as usize;
             peak_visible = peak_visible.max(visible);
 
             if first_item_ms.is_none() && visible >= 1 {

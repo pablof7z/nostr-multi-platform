@@ -11,8 +11,7 @@ pub(crate) use cold_start::cold_start;
 pub(crate) use profile_thrashing::profile_thrashing;
 
 use crate::report::ScenarioResult;
-use nmp_core::decode_snapshot_payload;
-use serde_json::Value;
+use nmp_core::decode_snapshot_envelope;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
@@ -76,51 +75,36 @@ pub(super) fn wait_update(rx: &Receiver<Vec<u8>>, deadline: Instant) -> Option<V
     }
 }
 
-/// Extract a `f64` from `update["metrics"][field]`.
-pub(super) fn metric(update: &[u8], field: &str) -> Option<f64> {
-    let value: Value = decode_snapshot_payload(update).ok()?;
-    value.get("metrics")?.get(field)?.as_f64()
+/// Extract the typed `visible_items` metric off the Tier-3 envelope
+/// (PR-B: the generic JSON payload no longer exists on the wire).
+pub(super) fn visible_items(update: &[u8]) -> Option<u64> {
+    Some(decode_snapshot_envelope(update).ok()?.visible_items)
 }
 
-/// Count open (non-closed) wire subscriptions in the update payload.
+/// Count open (non-closed) wire subscriptions in the typed Tier-3 envelope.
 pub(super) fn open_sub_count(update: &[u8]) -> usize {
-    let Ok(value) = decode_snapshot_payload(update) else {
+    let Ok(envelope) = decode_snapshot_envelope(update) else {
         return 0;
     };
-    value
-        .get("wire_subscriptions")
-        .and_then(Value::as_array)
-        .map(|subs| {
-            subs.iter()
-                .filter(|sub| {
-                    !matches!(
-                        sub.get("state").and_then(Value::as_str),
-                        Some("closed") | Some("closed_by_relay")
-                    )
-                })
-                .count()
-        })
-        .unwrap_or(0)
+    envelope
+        .wire_subscriptions
+        .iter()
+        .filter(|sub| !matches!(sub.state.as_str(), "closed" | "closed_by_relay"))
+        .count()
 }
 
-/// Wait for the relay connection field to read "connected".
+/// Wait for the typed `relay_status` aggregate to read "connected".
 pub(super) fn wait_connected(rx: &Receiver<Vec<u8>>) -> bool {
     let deadline = Instant::now() + WARMUP_TIMEOUT;
     loop {
         let Some(update) = wait_update(rx, deadline) else {
             return false;
         };
-        if decode_snapshot_payload(&update)
+        if decode_snapshot_envelope(&update)
             .ok()
-            .and_then(|value| {
-                value
-                    .get("relay_status")
-                    .and_then(|relay| relay.get("connection"))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-            })
-            .as_deref()
-            == Some("connected")
+            .and_then(|envelope| envelope.relay_status)
+            .map(|aggregate| aggregate.connection == "connected")
+            .unwrap_or(false)
         {
             return true;
         }
@@ -140,12 +124,20 @@ pub(super) type Scenario = ScenarioResult;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::encode_snapshot_value;
+    use nmp_core::{encode_snapshot_frame, SnapshotEnvelope};
     use std::sync::mpsc;
     use std::thread;
 
-    fn update_fixture(value: Value) -> Vec<u8> {
-        encode_snapshot_value(value)
+    /// Encode a minimal typed frame whose `rev` marks the fixture's identity
+    /// (PR-B: arbitrary JSON trees no longer exist on the wire).
+    fn update_fixture(rev: u64) -> Vec<u8> {
+        encode_snapshot_frame(
+            &SnapshotEnvelope {
+                rev,
+                ..Default::default()
+            },
+            &[],
+        )
     }
 
     /// Regression: sender arrives after 500 ms (past the old 300 ms sleep window).
@@ -155,10 +147,7 @@ mod tests {
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
         thread::spawn(move || {
             thread::sleep(Duration::from_millis(500));
-            tx.send(update_fixture(
-                serde_json::json!({ "wire_subscriptions": [] }),
-            ))
-            .unwrap();
+            tx.send(update_fixture(1)).unwrap();
         });
         let result = drain_until(&rx, Duration::from_secs(2));
         assert!(
@@ -184,20 +173,16 @@ mod tests {
     fn drain_until_returns_latest_when_multiple_updates_queued() {
         let (tx, rx) = mpsc::channel::<Vec<u8>>();
         // Pre-fill the channel before calling drain_until.
-        tx.send(update_fixture(serde_json::json!({ "seq": "first" })))
-            .unwrap();
-        tx.send(update_fixture(serde_json::json!({ "seq": "second" })))
-            .unwrap();
-        tx.send(update_fixture(serde_json::json!({ "seq": "third" })))
-            .unwrap();
+        tx.send(update_fixture(1)).unwrap();
+        tx.send(update_fixture(2)).unwrap();
+        tx.send(update_fixture(3)).unwrap();
         let result = drain_until(&rx, Duration::from_secs(1));
         assert_eq!(
             result
                 .as_deref()
-                .and_then(|bytes| decode_snapshot_payload(bytes).ok())
-                .and_then(|value| value.get("seq").and_then(Value::as_str).map(str::to_owned))
-                .as_deref(),
-            Some("third"),
+                .and_then(|bytes| decode_snapshot_envelope(bytes).ok())
+                .map(|envelope| envelope.rev),
+            Some(3),
             "drain_until must return the newest update"
         );
     }

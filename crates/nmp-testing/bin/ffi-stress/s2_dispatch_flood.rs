@@ -39,7 +39,8 @@ extern "C" fn sink_cb(_ctx: *mut c_void, payload: *const u8, payload_len: usize)
     // SAFETY: the callback receives a borrowed FlatBuffers frame whose lifetime
     // ends when the callback returns; copy/parse before storing anything.
     let bytes = unsafe { std::slice::from_raw_parts(payload, payload_len) };
-    let Some(s) = crate::common::snapshot_value(bytes).map(|value| value.to_string()) else {
+    let Some(s) = crate::common::snapshot_envelope(bytes).map(|envelope| format!("{envelope:?}"))
+    else {
         return;
     };
     if let Ok(mut slot) = LAST_PAYLOAD.lock() {

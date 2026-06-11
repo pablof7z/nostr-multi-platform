@@ -3,7 +3,7 @@
 //! Proves `nmp_nip29::register::wire_group_discovery` now emits a typed
 //! FlatBuffers sidecar (ADR-0037, `NDGS`) ALONGSIDE the existing generic
 //! `serde_json::Value` projection under `"nmp.nip29.discovered_groups"`. Drives
-//! the full FFI snapshot path, decodes the frame with `decode_snapshot_with_typed`,
+//! the full FFI snapshot path, decodes the frame with `decode_snapshot_typed_projections`,
 //! and asserts the typed payload bytes land in the `typed_projections` sidecar,
 //! round-tripping back through the generated bindings.
 

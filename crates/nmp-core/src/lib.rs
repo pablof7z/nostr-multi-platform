@@ -278,25 +278,24 @@ pub use relay::canonical_relay_url;
 pub use relay::{OutboundMessage, RelayRole};
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
-    decode_snapshot_envelope, decode_snapshot_payload, decode_snapshot_typed_projections,
-    decode_snapshot_with_typed, decode_update_frame, encode_panic, encode_snapshot_value,
-    encode_snapshot_with_typed, panic_message, PanicFrame, RelayStatusEntry, SnapshotEnvelope,
-    TypedProjectionData, UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError,
-    SNAPSHOT_SCHEMA_VERSION,
+    decode_snapshot_envelope, decode_snapshot_typed_projections, decode_update_frame,
+    encode_panic, encode_snapshot_frame, panic_message, PanicFrame, RelayStatusEntry,
+    SnapshotEnvelope, TypedProjectionData, UpdateEnvelope, UpdateFrameBytes,
+    UpdateFrameDecodeError, WireSubscriptionEntry, SNAPSHOT_SCHEMA_VERSION,
 };
 
 /// Public decode surface for the kernel-owned (Tier-2) typed-projection
-/// sidecar carried alongside the generic `Value` snapshot (ADR-0037).
+/// sidecar (ADR-0037).
 ///
-/// Pair these per-key decoders with [`decode_snapshot_with_typed`], which
-/// returns the snapshot's [`TypedProjectionData`] entries: look an entry up by
-/// `key` (e.g. [`typed_projections::PUBLISH_QUEUE_SCHEMA_ID`]) and pass its
-/// `payload` to the matching `decode_*` function to get a typed Rust struct —
-/// no string-keying of the JSON payload required.
+/// Pair these per-key decoders with [`decode_snapshot_typed_projections`],
+/// which returns the snapshot's [`TypedProjectionData`] entries: look an entry
+/// up by `key` (e.g. [`typed_projections::PUBLISH_QUEUE_SCHEMA_ID`]) and pass
+/// its `payload` to the matching `decode_*` function to get a typed Rust
+/// struct. The Tier-3 envelope fields (rev/running/metrics/relay status)
+/// travel separately — read them via [`decode_snapshot_envelope`].
 ///
-/// Today this exposes the two keys external consumers need (`action_results`,
-/// `publish_queue`); the module is the documented extension point for the rest
-/// of the Tier-2 cluster (one `pub use` line per key).
+/// The module is the documented extension point for the Tier-2 cluster (one
+/// `pub use` line per key).
 pub mod typed_projections {
     pub use crate::kernel::public_typed_projections::*;
 }
@@ -591,44 +590,4 @@ pub mod testing {
         ack_rx.recv_timeout(timeout).is_ok()
     }
 
-    /// Walk a decoded snapshot `serde_json::Value` produced by
-    /// [`crate::decode_snapshot_payload`] and return the string value at
-    /// `projections.<projection_key>.<field_key>`, or `None` if any component
-    /// is absent.
-    ///
-    /// Replaces `snapshot.to_string().contains(...)` probes in tests with a
-    /// typed field access so tests are resilient to field reordering and
-    /// whitespace changes in the JSON serializer (V-105).
-    pub fn snapshot_projection_str<'a>(
-        snapshot: &'a serde_json::Value,
-        projection_key: &str,
-        field_key: &str,
-    ) -> Option<&'a str> {
-        snapshot
-            .get("projections")
-            .and_then(|p| p.get(projection_key))
-            .and_then(|proj| proj.get(field_key))
-            .and_then(serde_json::Value::as_str)
-    }
-
-    /// Walk a decoded snapshot and return the `projections.<projection_key>`
-    /// value directly (as a `&serde_json::Value`). Convenience accessor for
-    /// projections that serialize as arrays or nested objects.
-    pub fn snapshot_projection<'a>(
-        snapshot: &'a serde_json::Value,
-        projection_key: &str,
-    ) -> Option<&'a serde_json::Value> {
-        snapshot
-            .get("projections")
-            .and_then(|p| p.get(projection_key))
-    }
-
-    /// Return the `last_error_toast` string from a decoded snapshot, or `None`
-    /// when absent. Replaces `snapshot.to_string().contains(expected)` probes
-    /// against the toast field (V-105).
-    pub fn snapshot_last_error_toast(snapshot: &serde_json::Value) -> Option<&str> {
-        snapshot
-            .get("last_error_toast")
-            .and_then(serde_json::Value::as_str)
-    }
 }

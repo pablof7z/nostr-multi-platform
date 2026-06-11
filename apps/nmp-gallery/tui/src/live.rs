@@ -268,9 +268,8 @@ impl Drop for LiveKernel {
 
 /// Raw kernel update callback. Sends frame bytes verbatim on the channel —
 /// zero decoding here (the decode happens where the data is consumed, in the
-/// snapshot thread / smoke loop). Avoids a `decode_snapshot_payload` call in
-/// the hot path and removes the last reference to `payload:Value` in the
-/// gallery.
+/// snapshot thread / smoke loop). PR-B: the gallery reads only the typed
+/// Tier-3 envelope + typed sidecars; `payload:Value` no longer exists.
 extern "C" fn on_update(context: *mut c_void, payload: *const u8, len: usize) {
     if context.is_null() || payload.is_null() {
         return;
