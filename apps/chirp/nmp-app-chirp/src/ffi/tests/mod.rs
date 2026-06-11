@@ -9,6 +9,7 @@ mod identity;
 mod nip17;
 mod nip29;
 mod nip57;
+mod producer_completeness;
 mod register;
 mod social;
 mod typed_actions;
