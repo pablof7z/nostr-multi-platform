@@ -54,6 +54,13 @@ extension KernelModel {
     // `nmp.nip57.zaps` aggregate), so the accessor flip is the single
     // effective-value seam — no store to route. `nil` ⇒ generic JSON path.
     var zaps: ZapsAggregateSnapshot? { typedZaps ?? snapshot?.zaps }
+    // NIP-17 DM cluster: typed-first with JSON fallback. The `dmInbox` store and
+    // `EmbedHost` (claimed_events) are routed at their effective value in
+    // `apply(result:)`, so they need no accessor here. `dmRelayList` has NO Swift
+    // read consumer today — this accessor is the single effective-value seam,
+    // added for parity so the registry-declared `NDRL` key is read typed-first if
+    // a consumer lands. `nil` ⇒ generic `projections["nmp.nip17.dm_relay_list"]`.
+    var dmRelayList: DmRelayListSnapshot? { typedDmRelayList ?? snapshot?.projections?.dmRelayList }
     var logs: [String] { snapshot?.logs ?? [] }
     var bunkerHandshake: BunkerHandshake? { snapshot?.bunkerHandshake }
     var nip46Onboarding: Nip46Onboarding? { snapshot?.nip46Onboarding }

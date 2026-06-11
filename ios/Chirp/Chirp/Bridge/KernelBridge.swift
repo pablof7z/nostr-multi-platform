@@ -671,6 +671,15 @@ final class KernelHandle {
             let typedProfile = TypedProfileDecoder.decode(from: envelopes)
             let typedClaimedProfiles = TypedClaimedProfilesDecoder.decode(from: envelopes)
             let typedResolvedProfiles = TypedResolvedProfilesDecoder.decode(from: envelopes)
+            // NIP-17 DM cluster + claimed-event map (`nmp.nip17.dm_inbox` /
+            // `nmp.nip17.dm_relay_list` / `claimed_events`). Each returns nil when
+            // its sidecar is absent/malformed → the generic `projections.<field>`
+            // JSON path stays active (ADR-0037 Commitment 4), mirroring
+            // `typedAccounts` above. `dm_relay_list` has no Swift read consumer
+            // yet — the decode is wired for parity and unit-tested.
+            let typedDmInbox = TypedDmInboxDecoder.decode(from: envelopes)
+            let typedDmRelayList = TypedDmRelayListDecoder.decode(from: envelopes)
+            let typedClaimedEvents = TypedClaimedEventsDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
@@ -693,6 +702,9 @@ final class KernelHandle {
                     typedProfile: typedProfile,
                     typedClaimedProfiles: typedClaimedProfiles,
                     typedResolvedProfiles: typedResolvedProfiles,
+                    typedDmInbox: typedDmInbox,
+                    typedDmRelayList: typedDmRelayList,
+                    typedClaimedEvents: typedClaimedEvents,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
@@ -832,6 +844,18 @@ struct KernelUpdateResult {
     /// Typed `resolved_profiles` projection decode (`KRPR`). `nil` ⇒ generic
     /// `projections["resolved_profiles"]` JSON fallback.
     let typedResolvedProfiles: [String: ProfileCard]?
+    /// Typed `nmp.nip17.dm_inbox` projection decode (`NDMI`). `nil` ⇒ generic
+    /// `projections["nmp.nip17.dm_inbox"]` JSON fallback. Routed to the
+    /// `dmInbox` store (typed-first effective value) in `KernelModel.apply`.
+    let typedDmInbox: DmInboxSnapshot?
+    /// Typed `nmp.nip17.dm_relay_list` projection decode (`NDRL`). `nil` ⇒ generic
+    /// `projections["nmp.nip17.dm_relay_list"]` JSON fallback. No Swift read
+    /// consumer yet — read through the `dmRelayList` accessor (added for parity).
+    let typedDmRelayList: DmRelayListSnapshot?
+    /// Typed `claimed_events` projection decode (`KCEV`). `nil` ⇒ generic
+    /// `projections.claimedEvents` JSON fallback. Routed to `EmbedHost.update`
+    /// (typed-first effective value) in `KernelModel.apply`.
+    let typedClaimedEvents: [String: ClaimedEventDto]?
     /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
     /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
     /// target, so they cannot be codegen'd as fixed projection fields.

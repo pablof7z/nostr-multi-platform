@@ -172,6 +172,11 @@ fn real_registry_emits_exactly_the_proof_keys() {
     assert!(out.contains("enum TypedProfileDecoder {"));
     assert!(out.contains("enum TypedClaimedProfilesDecoder {"));
     assert!(out.contains("enum TypedResolvedProfilesDecoder {"));
+    // NIP-17 DM cluster + claimed-event map. The enum name derives from
+    // `swift_field`, so the dotted producer keys map to camelCase decoders.
+    assert!(out.contains("enum TypedDmInboxDecoder {"));
+    assert!(out.contains("enum TypedDmRelayListDecoder {"));
+    assert!(out.contains("enum TypedClaimedEventsDecoder {"));
     let emitted = SNAPSHOT_PROJECTIONS
         .iter()
         .filter(|e| {
@@ -182,15 +187,17 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 16,
-        "exactly sixteen keys have a checked-in flatc --swift reader binding \
+        emitted, 19,
+        "exactly nineteen keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
          relay_diagnostics, action_lifecycle; the Wave B Tier-1 #4: \
          nmp.follow_list, nmp.nip57.zaps, nmp.nip29.group_chat, \
-         nmp.nip29.discovered_groups; plus the profile cluster: profile, \
-         claimed_profiles, resolved_profiles); if this changed, regenerate \
-         TypedProjectionDecoders.generated.swift and update this test"
+         nmp.nip29.discovered_groups; the profile cluster: profile, \
+         claimed_profiles, resolved_profiles; plus the NIP-17 DM cluster: \
+         nmp.nip17.dm_inbox, nmp.nip17.dm_relay_list, claimed_events); if this \
+         changed, regenerate TypedProjectionDecoders.generated.swift and update \
+         this test"
     );
 }
