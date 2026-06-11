@@ -242,6 +242,17 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "native")]
 use std::time::{Duration, Instant};
 
+/// #1069 — interval between bounded GC passes on the actor idle tick.
+///
+/// `gc.md` §3: "Every 60 seconds." Gated with an `Instant`-based `last_gc`
+/// local in `run_actor_with_observers` — a pure performance-timing read (like
+/// `last_emit` / `TEMPORARY_RELAY_IDLE_GRACE`), never a business-logic clock,
+/// so it stays D9-clean. The *event* time fed to `gc_step` is still the kernel
+/// clock (`Kernel::run_gc_step` → `now_secs`); this gate only paces how often
+/// the pass fires. Piggy-backs the existing ≤250 ms `compute_wait` loop wake —
+/// no new sleep loop, no timer thread (D8 / AGENTS.md "no polling").
+pub(crate) const GC_TICK_INTERVAL: Duration = Duration::from_secs(60);
+
 // `has_role` is reached by `nmp-ffi` through
 // `nmp_core::__ffi_internal::has_role` (the FFI surface filters relay-edit
 // rows by role when computing the write-relay slice for the per-app crate's
@@ -1801,6 +1812,11 @@ pub fn run_actor_with_observers(
     let mut last_emit = Instant::now()
         .checked_sub(Duration::from_secs(1))
         .unwrap_or_else(Instant::now);
+    // #1069 — wall-clock gate for the bounded GC pass. Initialised to "now" so
+    // the first pass fires one `GC_TICK_INTERVAL` after the actor starts, not
+    // on the cold-start burst (the store is empty then anyway). An `Instant`
+    // (performance-timing) read, never the business clock — D9-clean.
+    let mut last_gc = Instant::now();
     let mut startup_sent = false;
     // Remote (NIP-46) sign ops parked off the blocking path. `dispatch_command`
     // pushes a `PendingSign` when a publish-command sign goes `Pending`; the
@@ -2172,6 +2188,23 @@ pub fn run_actor_with_observers(
                 Instant::now(),
                 TEMPORARY_RELAY_IDLE_GRACE,
             );
+        }
+        // #1069 — bounded GC pass on the actor idle tick (audit Finding 1:
+        // `gc_step` was never called in production, so on-device store growth,
+        // NIP-40 expiry, and LRU eviction were all dead). Mirrors the T127
+        // publish tick above: piggy-backs the existing ≤250 ms `compute_wait`
+        // loop wake with a wall-clock gate so it fires at most once per
+        // `GC_TICK_INTERVAL` (60 s, `gc.md` §3) — no new sleep loop, no timer
+        // thread (D8 / "no polling"). When the gate has not elapsed this is a
+        // single `Instant::elapsed()` compare — heap-free, no false wakeups.
+        //
+        // `Kernel::run_gc_step` derives `now_secs` from the injected kernel
+        // clock (D7/D9 — deterministic under replay/`FixedClock`); the store's
+        // own `gc.rs` budget loops bound the worst-case latency to ~50 ms so the
+        // mailbox is never blocked (`gc.md` §3, §8).
+        if running && last_gc.elapsed() >= GC_TICK_INTERVAL {
+            kernel.run_gc_step();
+            last_gc = Instant::now();
         }
         // ── Poll parked NIP-46 remote sign ops ───────────────────────────
         // Non-blocking per D8: `SignerOp::poll` is a `try_recv`. Each parked

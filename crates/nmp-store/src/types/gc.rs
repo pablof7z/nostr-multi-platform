@@ -11,10 +11,32 @@ pub struct ClaimerId(pub u64);
 
 // ─── GcBudget / GcReport ─────────────────────────────────────────────────────
 
+/// Production hot-set event ceiling (`docs/design/lmdb/gc.md` §2: default 10,000).
+///
+/// Wired into [`GcBudget::production`] as `max_total_events` so on-device LRU
+/// eviction is actually enabled. Without a finite ceiling Phase 2 of
+/// `gc_step` is a permanent no-op (`st.events.len() > usize::MAX` is never true)
+/// and the working set grows unbounded — the D8 "working-set bounded" doctrine
+/// would stay unenforced even after gc starts running.
+pub const HOT_EVENT_CEILING: usize = 10_000;
+
+/// Production per-step event budget (`docs/design/lmdb/gc.md` §3).
+pub const GC_MAX_EVENTS_PER_STEP: usize = 2_000;
+
+/// Production per-step wall-time budget in milliseconds (`docs/design/lmdb/gc.md` §3).
+///
+/// The Phase-1/2 loops check `start.elapsed() >= max_duration_ms` between events
+/// and break early; remaining work is picked up on the next tick (every reap is
+/// its own transaction, so no state corruption — `gc.md` §6).
+pub const GC_MAX_DURATION_MS: u32 = 50;
+
 /// Budget for one `gc_step()` call.
 ///
-/// Defaults: `max_events_per_step = 2000`, `max_duration_ms = 50`.
-/// `max_total_events = usize::MAX` (no ceiling — backward-compatible default).
+/// [`GcBudget::default`] uses the design-doc schedule values
+/// (`max_events_per_step = 2000`, `max_duration_ms = 50`) with
+/// `max_total_events = usize::MAX` (LRU eviction disabled — backward-compatible).
+/// [`GcBudget::production`] is the on-device call-site budget: identical scan
+/// bounds but with `max_total_events = HOT_EVENT_CEILING` so LRU eviction runs.
 /// See `docs/design/lmdb/gc.md` §3.
 #[derive(Clone, Copy, Debug)]
 pub struct GcBudget {
@@ -24,8 +46,39 @@ pub struct GcBudget {
     /// `gc_step` evicts least-recently-accessed events (by access-sequence counter)
     /// down to this ceiling.  Only un-pinned (unclaimed) events are eligible.
     ///
-    /// Default: `usize::MAX` (disabled).  Set to a finite value to cap store size.
+    /// `GcBudget::default()` leaves this `usize::MAX` (disabled);
+    /// [`GcBudget::production`] sets it to [`HOT_EVENT_CEILING`] to cap store size.
     pub max_total_events: usize,
+}
+
+impl Default for GcBudget {
+    /// Design-doc schedule values (`gc.md` §3) with LRU eviction left disabled.
+    ///
+    /// This is the single source of truth for the `2000 / 50ms` scan bounds the
+    /// doc quotes. The production call site uses [`GcBudget::production`], which
+    /// reuses these bounds and adds the finite LRU ceiling.
+    fn default() -> Self {
+        Self {
+            max_events_per_step: GC_MAX_EVENTS_PER_STEP,
+            max_duration_ms: GC_MAX_DURATION_MS,
+            max_total_events: usize::MAX,
+        }
+    }
+}
+
+impl GcBudget {
+    /// The on-device production budget: doc-default scan bounds plus the finite
+    /// [`HOT_EVENT_CEILING`] LRU ceiling so Phase-2 eviction actually runs.
+    ///
+    /// This is the budget the actor's 60-second idle-tick gc pass uses. The
+    /// finite `max_total_events` is load-bearing: with the default `usize::MAX`
+    /// ceiling, LRU growth stays unbounded even once gc is wired (`gc.md` §3).
+    pub fn production() -> Self {
+        Self {
+            max_total_events: HOT_EVENT_CEILING,
+            ..Self::default()
+        }
+    }
 }
 
 /// Report produced by `gc_step()`.
