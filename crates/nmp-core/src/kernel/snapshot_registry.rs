@@ -43,6 +43,7 @@
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::Kernel;
@@ -55,6 +56,133 @@ use crate::update_envelope::TypedProjectionData;
 /// because the box lives behind an `Arc<Mutex<…>>` shared with the actor
 /// thread (D8: the closure itself must also be non-blocking).
 pub type ProjectionFn = Box<dyn Fn() -> serde_json::Value + Send + Sync + 'static>;
+
+/// A monotonic **change gate** for a snapshot projection.
+///
+/// The defect this exists to fix: [`SnapshotRegistry::run`] previously called
+/// *every* registered projection closure on *every* `make_update`, with no
+/// per-projection change tracking. A multi-MB library serializer therefore
+/// re-ran on every unrelated kernel emit (an incoming relay event, a tick),
+/// pegging the actor thread on JSON serialization it could have skipped.
+///
+/// A gate lets a host declare "my inputs only changed when this counter
+/// advanced." The host bumps the counter (via its own shared `Arc<AtomicU64>`
+/// rev) whenever the projection's source data mutates. The registry remembers
+/// the last gate value it witnessed per key alongside the last value the closure
+/// produced; on the next `run`, if the gate value is unchanged, the registry
+/// returns the cached value WITHOUT invoking the closure (see
+/// [`SnapshotRegistry::register_gated`]).
+///
+/// The canonical gate is an [`AtomicU64`] rev counter — most consuming apps
+/// already maintain exactly such a rev — so [`AtomicU64`] implements this trait
+/// directly and an `Arc<AtomicU64>` can be passed as the gate. Custom gates
+/// (e.g. a content hash collapsed into a `u64`) implement the trait themselves.
+///
+/// `Send + Sync` because the gate is shared between the host (which bumps it)
+/// and the actor thread (which reads it through the registry).
+pub trait ChangeGate: Send + Sync + 'static {
+    /// The current gate value. A change in this value (relative to the value
+    /// witnessed on the previous `run`) marks the projection dirty; an
+    /// unchanged value lets the registry serve the cached projection output.
+    fn current(&self) -> u64;
+}
+
+impl ChangeGate for AtomicU64 {
+    fn current(&self) -> u64 {
+        self.load(Ordering::Acquire)
+    }
+}
+
+/// A registered generic projection: the closure plus the optional change-gate
+/// memo that lets `run` skip re-invoking the closure when the gate is unchanged.
+///
+/// - `f` — the host projection closure (always present).
+/// - `gate` — `None` for the default always-run registration
+///   ([`SnapshotRegistry::register`]); `Some` for the gated variant
+///   ([`SnapshotRegistry::register_gated`]).
+/// - `memo` — interior-mutable per-key cache of `(last witnessed gate value,
+///   last produced value)`. Interior mutability (a `Mutex`) is required because
+///   [`SnapshotRegistry::run`] takes `&self` (it is driven from `make_update`
+///   through a shared `&self` kernel path); threading `&mut` all the way through
+///   `make_update` would ripple a borrow change across the whole emit path. The
+///   `Mutex` is contended only by the single actor thread that drives `run`, so
+///   it is effectively uncontended in production. `None` until the first run
+///   populates it; ignored entirely when `gate` is `None`.
+struct ProjectionEntry {
+    f: ProjectionFn,
+    gate: Option<Arc<dyn ChangeGate>>,
+    memo: Mutex<Option<(u64, serde_json::Value)>>,
+}
+
+impl ProjectionEntry {
+    /// An ungated (always-run) entry — the default registration semantics.
+    fn ungated(f: ProjectionFn) -> Self {
+        Self {
+            f,
+            gate: None,
+            memo: Mutex::new(None),
+        }
+    }
+
+    /// A gated entry — `run` consults `gate` and may serve `memo` instead of
+    /// invoking `f`.
+    fn gated(gate: Arc<dyn ChangeGate>, f: ProjectionFn) -> Self {
+        Self {
+            f,
+            gate: Some(gate),
+            memo: Mutex::new(None),
+        }
+    }
+
+    /// Produce this entry's value for the current tick.
+    ///
+    /// Returns `Some(value)` on success; `None` when the closure panicked (D15:
+    /// every host-supplied closure invocation is wrapped in [`catch_unwind`] so
+    /// a panicking projection can never unwind the actor thread). The caller
+    /// ([`SnapshotRegistry::run`]) omits the key from the snapshot when `None`
+    /// is returned, exactly as if the key had never been registered.
+    ///
+    /// Ungated: always invokes the closure (legacy semantics, unchanged).
+    /// Gated: if the gate value matches the memoized value, clones and returns
+    /// the cached value WITHOUT invoking the closure; otherwise invokes the
+    /// closure, caches `(gate_value, value)`, and returns it. A panicking
+    /// gated closure leaves the prior memo intact (not overwritten), so the
+    /// next clean gate still serves the last good cached value.
+    fn value_for_tick(&self) -> Option<serde_json::Value> {
+        let Some(gate) = self.gate.as_ref() else {
+            // Ungated: the default always-run path — never touches the memo.
+            // D15: host-supplied closure invocation wrapped in catch_unwind.
+            return catch_unwind(AssertUnwindSafe(|| (self.f)())).ok();
+        };
+
+        let gate_value = gate.current();
+        // Fast path: a clean gate serves the cached value without invoking `f`.
+        // The memo mutex is contended only by the single actor thread, so this
+        // lock is effectively uncontended. A poisoned memo (defensive — the lock
+        // is always released before `f` runs, so a closure panic can never
+        // poison it) collapses to a fresh run.
+        if let Ok(memo) = self.memo.lock() {
+            if let Some((cached_gate, cached_value)) = memo.as_ref() {
+                if *cached_gate == gate_value {
+                    return Some(cached_value.clone());
+                }
+            }
+        }
+
+        // Dirty (or never run): invoke `f` inside catch_unwind (D15), then
+        // memoize for the next tick on success. `f` runs OUTSIDE the memo lock
+        // so a slow/panicking closure never holds the memo mutex. On panic,
+        // return `None` (key omitted this tick) and leave the prior memo intact.
+        let value = match catch_unwind(AssertUnwindSafe(|| (self.f)())) {
+            Ok(v) => v,
+            Err(_) => return None,
+        };
+        if let Ok(mut memo) = self.memo.lock() {
+            *memo = Some((gate_value, value.clone()));
+        }
+        Some(value)
+    }
+}
 
 /// A host-registered **typed** projection closure — the FlatBuffers-sidecar
 /// counterpart to [`ProjectionFn`].
@@ -101,7 +229,7 @@ pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
 /// snapshot tick, with only the last result surfacing in the output.
 #[derive(Default)]
 pub struct SnapshotRegistry {
-    projections: HashMap<String, ProjectionFn>,
+    projections: HashMap<String, ProjectionEntry>,
     typed_projections: HashMap<String, TypedProjectionFn>,
     /// Per-tick observers — no-result callbacks fired once per snapshot tick.
     ///
@@ -120,17 +248,50 @@ impl SnapshotRegistry {
         Self::default()
     }
 
-    /// Register a projection closure under `key`.
+    /// Register an **always-run** projection closure under `key`.
     ///
     /// `key` is the host-chosen snapshot namespace (e.g. `"market.listings"`).
     /// Registering the same key twice replaces the first — last-writer-wins,
     /// with no duplicate-closure CPU cost on subsequent ticks.
+    ///
+    /// The closure runs on **every** `run` (every `make_update` tick). When the
+    /// projection serializes a large structure that rarely changes, prefer
+    /// [`Self::register_gated`] to skip re-running it on ticks where its inputs
+    /// did not change.
     pub fn register(
         &mut self,
         key: impl Into<String>,
         f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
     ) {
-        self.projections.insert(key.into(), Box::new(f));
+        self.projections
+            .insert(key.into(), ProjectionEntry::ungated(Box::new(f)));
+    }
+
+    /// Register a **change-gated** projection closure under `key`.
+    ///
+    /// Identical to [`Self::register`] except the closure is only re-invoked
+    /// when `gate`'s value has advanced since the previous `run` for this key.
+    /// On a tick where the gate is unchanged, `run` returns the value the
+    /// closure last produced — cloned from a per-key memo — WITHOUT calling the
+    /// closure. This is the fix for the "re-serialize the whole library on every
+    /// emit" hot path (see [`ChangeGate`]).
+    ///
+    /// The natural `gate` is an `Arc<AtomicU64>` rev counter the host already
+    /// maintains, bumped whenever the projection's source data mutates
+    /// ([`AtomicU64`] implements [`ChangeGate`]). The first `run` always invokes
+    /// the closure (no memo yet) and records the gate value; thereafter an
+    /// unchanged gate serves the cache.
+    ///
+    /// Last-writer-wins by `key`, exactly like [`Self::register`]; re-registering
+    /// (gated or ungated) replaces the entry and discards any prior memo.
+    pub fn register_gated(
+        &mut self,
+        key: impl Into<String>,
+        gate: Arc<dyn ChangeGate>,
+        f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
+    ) {
+        self.projections
+            .insert(key.into(), ProjectionEntry::gated(gate, Box::new(f)));
     }
 
     /// Run every registered projection and collect the results into the map
@@ -140,30 +301,25 @@ impl SnapshotRegistry {
     /// closure must be non-blocking. Empty when nothing is registered — the
     /// snapshot then `skip_serializing_if`s the `projections` key entirely.
     ///
-    /// D6: each host closure is invoked inside [`catch_unwind`] — a host
-    /// projection is untrusted plugin code, and this runs on the actor
-    /// thread *inside* the snapshot tick. An unguarded panic would unwind
-    /// the actor thread; the actor's outer `catch_unwind` would then catch a
-    /// terminal `Panic` frame and the kernel would be permanently dead. A
-    /// panicking projection MUST never be able to kill the kernel: its key
-    /// is omitted from the map (the same shape as an unregistered
-    /// namespace), and every sibling projection in the same tick still
-    /// produces its value.
+    /// D6/D15: each host closure is invoked inside [`catch_unwind`] inside
+    /// [`ProjectionEntry::value_for_tick`] — a host projection is untrusted
+    /// plugin code, and this runs on the actor thread *inside* the snapshot
+    /// tick. An unguarded panic would unwind the actor thread; the actor's
+    /// outer `catch_unwind` would then catch a terminal `Panic` frame and the
+    /// kernel would be permanently dead. A panicking projection MUST never be
+    /// able to kill the kernel: its key is omitted from the map (the same
+    /// shape as an unregistered namespace), and every sibling projection in
+    /// the same tick still produces its value.
     pub fn run(&self) -> HashMap<String, serde_json::Value> {
         let mut out = HashMap::with_capacity(self.projections.len());
-        for (key, projection) in &self.projections {
-            // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`,
-            // but a panic here is fully contained — nothing the closure
-            // touched is observed again after it unwinds, so there is no
-            // broken-invariant hazard.
-            match catch_unwind(AssertUnwindSafe(projection)) {
-                Ok(value) => {
-                    out.insert(key.clone(), value);
-                }
-                // The panic is swallowed: the namespace is omitted, exactly
-                // as if the host had never registered it. The default panic
-                // hook still prints the payload, so the bug stays visible.
-                Err(_) => continue,
+        for (key, entry) in &self.projections {
+            // `value_for_tick` wraps every host-closure invocation in
+            // `catch_unwind` (D15) and returns `None` when the closure
+            // panicked. The panic is swallowed: the namespace is omitted,
+            // exactly as if the host had never registered it. The default
+            // panic hook still prints the payload, so the bug stays visible.
+            if let Some(value) = entry.value_for_tick() {
+                out.insert(key.clone(), value);
             }
         }
         out

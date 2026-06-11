@@ -362,6 +362,206 @@ fn remove_drops_generic_and_typed_for_one_key_only() {
     assert!(!registry.remove("nmp.feed.thread.never"));
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// Per-projection change-gating (perf): the opt-in seam that lets a projection
+// whose inputs did not change be served from cache instead of re-invoking
+// (and re-serializing) on every emit. The ungated `register` path keeps its
+// always-run semantics; `register_gated` consults an `Arc<AtomicU64>` rev.
+// ───────────────────────────────────────────────────────────────────────
+
+/// A gated projection whose gate value is UNCHANGED between runs is NOT
+/// re-invoked: the registry serves the value the closure last produced from its
+/// per-key memo. This is the load-bearing perf proof — the multi-MB serializer
+/// must not re-run on a clean tick.
+#[test]
+fn gated_projection_with_unchanged_gate_is_not_reinvoked() {
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let gate = Arc::new(AtomicU64::new(0));
+    let calls = Arc::new(AtomicUsize::new(0));
+
+    let mut registry = SnapshotRegistry::new();
+    let calls_for_closure = Arc::clone(&calls);
+    registry.register_gated("gated.heavy", Arc::clone(&gate) as _, move || {
+        calls_for_closure.fetch_add(1, Ordering::SeqCst);
+        serde_json::json!({ "n": 1 })
+    });
+
+    // First run: no memo yet, so the closure fires and produces its value.
+    let first = registry.run();
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "the first run must invoke the gated closure (cold memo)"
+    );
+    assert_eq!(
+        first.get("gated.heavy"),
+        Some(&serde_json::json!({ "n": 1 }))
+    );
+
+    // Second + third run with the gate UNCHANGED: the closure must NOT fire
+    // again — the cached value is served instead.
+    let second = registry.run();
+    let third = registry.run();
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "an unchanged gate must serve the cache, never re-invoke the closure"
+    );
+    assert_eq!(
+        second.get("gated.heavy"),
+        Some(&serde_json::json!({ "n": 1 })),
+        "the cached value is returned verbatim on a clean tick"
+    );
+    assert_eq!(
+        third.get("gated.heavy"),
+        Some(&serde_json::json!({ "n": 1 }))
+    );
+}
+
+/// Bumping the gate marks the projection dirty: the next run re-invokes the
+/// closure and returns the NEW value, then caches it again until the next bump.
+#[test]
+fn bumping_the_gate_reinvokes_and_returns_the_new_value() {
+    use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let gate = Arc::new(AtomicU64::new(0));
+    let calls = Arc::new(AtomicUsize::new(0));
+
+    let mut registry = SnapshotRegistry::new();
+    let calls_for_closure = Arc::clone(&calls);
+    let gate_for_closure = Arc::clone(&gate);
+    registry.register_gated("gated.value", Arc::clone(&gate) as _, move || {
+        calls_for_closure.fetch_add(1, Ordering::SeqCst);
+        // The value reflects the current rev so we can prove freshness.
+        serde_json::json!({ "rev": gate_for_closure.load(Ordering::SeqCst) })
+    });
+
+    let first = registry.run();
+    assert_eq!(
+        first.get("gated.value"),
+        Some(&serde_json::json!({ "rev": 0 }))
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+    // Clean tick — cached.
+    let _ = registry.run();
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "clean tick served from cache"
+    );
+
+    // Bump the gate: the next run must re-invoke and return the fresh value.
+    gate.store(1, Ordering::SeqCst);
+    let after_bump = registry.run();
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        2,
+        "a bumped gate must re-invoke the closure exactly once"
+    );
+    assert_eq!(
+        after_bump.get("gated.value"),
+        Some(&serde_json::json!({ "rev": 1 })),
+        "the re-invoked closure must return the new value, not the stale cache"
+    );
+
+    // And it caches the new value again until the next bump.
+    let _ = registry.run();
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        2,
+        "after a bump-driven run the new value is cached again"
+    );
+}
+
+/// D6 — a panicking GATED projection is isolated exactly like the ungated path:
+/// its key is omitted, the memo is not poisoned (a later clean run still works),
+/// and sibling projections in the same tick are unaffected.
+#[test]
+fn panicking_gated_projection_is_isolated_and_does_not_poison_the_registry() {
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    let gate = Arc::new(AtomicU64::new(0));
+    // A flag that flips the gated closure from "panic" to "succeed" so we can
+    // prove the registry is not poisoned by an earlier panic.
+    let should_panic = Arc::new(AtomicBool::new(true));
+
+    let mut registry = SnapshotRegistry::new();
+    // A well-behaved gated sibling.
+    let sibling_gate = Arc::new(AtomicU64::new(0));
+    registry.register_gated(
+        "gated.good",
+        Arc::clone(&sibling_gate) as _,
+        || serde_json::json!({ "ok": true }),
+    );
+    let should_panic_for_closure = Arc::clone(&should_panic);
+    registry.register_gated("gated.bad", Arc::clone(&gate) as _, move || {
+        if should_panic_for_closure.load(Ordering::SeqCst) {
+            panic!("buggy gated projection");
+        }
+        serde_json::json!({ "recovered": true })
+    });
+
+    // First run: the bad projection panics, its key is omitted, the sibling
+    // still produces its value.
+    let first = registry.run();
+    assert_eq!(
+        first.get("gated.good"),
+        Some(&serde_json::json!({ "ok": true })),
+        "a panicking gated sibling must not poison the other projections",
+    );
+    assert!(
+        first.get("gated.bad").is_none(),
+        "a panicking gated projection's key must be omitted, got: {first:?}",
+    );
+
+    // The registry is NOT poisoned: flip the closure to succeed and bump the
+    // gate; a subsequent run produces the value normally.
+    should_panic.store(false, Ordering::SeqCst);
+    gate.store(1, Ordering::SeqCst);
+    let second = registry.run();
+    assert_eq!(
+        second.get("gated.bad"),
+        Some(&serde_json::json!({ "recovered": true })),
+        "the registry must keep working after an earlier gated panic",
+    );
+}
+
+/// The ungated default (`register`) keeps its always-run semantics: it fires on
+/// EVERY run, with no gate and no memo — the gated path is strictly opt-in and
+/// must never change the behavior of existing call sites.
+#[test]
+fn ungated_default_projection_runs_every_time() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut registry = SnapshotRegistry::new();
+    let calls_for_closure = Arc::clone(&calls);
+    registry.register("ungated.value", move || {
+        let n = calls_for_closure.fetch_add(1, Ordering::SeqCst) + 1;
+        serde_json::json!({ "calls": n })
+    });
+
+    let _ = registry.run();
+    let _ = registry.run();
+    let third = registry.run();
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        3,
+        "the ungated default must run on every tick (no gating)"
+    );
+    assert_eq!(
+        third.get("ungated.value"),
+        Some(&serde_json::json!({ "calls": 3 })),
+        "the ungated projection produces a fresh value every run"
+    );
+}
+
 /// `run_typed_projections` with no slot bound yields an empty vector — D6: a
 /// kernel constructed outside the actor never panics on the typed path.
 #[test]

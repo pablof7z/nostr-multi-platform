@@ -1302,6 +1302,35 @@ impl NmpApp {
         }
     }
 
+    /// Register a **change-gated** snapshot projection — the perf-aware
+    /// counterpart to [`Self::register_snapshot_projection`].
+    ///
+    /// The closure is only re-invoked when `gate`'s value has advanced since the
+    /// previous snapshot tick for this `key`; on an unchanged-gate tick the
+    /// registry serves the value the closure last produced from a per-key memo
+    /// WITHOUT calling the closure. This is the fix for the "re-serialize the
+    /// whole library on every emit" hot path — the registry otherwise runs every
+    /// projection on every `make_update`, so any unrelated kernel emit forces a
+    /// multi-MB serializer to re-run.
+    ///
+    /// `gate` is any [`nmp_core::ChangeGate`]; an `Arc<AtomicU64>` rev counter
+    /// the host already bumps on data mutation is the canonical choice
+    /// (`AtomicU64` implements `ChangeGate`). Like
+    /// [`Self::register_snapshot_projection`] this takes `&self` (the mutation is
+    /// a lock-and-insert) and is intended as a host-init call. D8 — the closure
+    /// runs on the actor thread inside the snapshot tick; it MUST be non-blocking.
+    /// A poisoned registry mutex is a silent no-op (D6).
+    pub fn register_snapshot_projection_gated(
+        &self,
+        key: impl Into<String>,
+        gate: std::sync::Arc<dyn nmp_core::ChangeGate>,
+        f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
+    ) {
+        if let Ok(mut registry) = self.snapshot_projections.lock() {
+            registry.register_gated(key, gate, f);
+        }
+    }
+
     /// Register a reusable feed surface. The controller owns ordering,
     /// viewport state, paging, and render payload selection; native shells
     /// only render the emitted projection and report viewport intent.
@@ -2302,6 +2331,18 @@ impl nmp_core::substrate::AppHost for NmpApp {
         F: Fn() -> serde_json::Value + Send + Sync + 'static,
     {
         NmpApp::register_snapshot_projection(self, key, f);
+    }
+
+    fn register_snapshot_projection_gated<K, F>(
+        &self,
+        key: K,
+        gate: Arc<dyn nmp_core::ChangeGate>,
+        f: F,
+    ) where
+        K: Into<String>,
+        F: Fn() -> serde_json::Value + Send + Sync + 'static,
+    {
+        NmpApp::register_snapshot_projection_gated(self, key, gate, f);
     }
 
     fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)

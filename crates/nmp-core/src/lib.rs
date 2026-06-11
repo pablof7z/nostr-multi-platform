@@ -187,6 +187,11 @@ pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.
 pub use kernel::{read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel};
+// Opt-in per-projection change gate (perf): a host names this to pass its rev
+// `Arc<AtomicU64>` as the gate to `register_snapshot_projection_gated`, so an
+// unchanged projection is served from cache instead of being re-serialized on
+// every emit.
+pub use kernel::ChangeGate;
 // W2 — relay-author-score types. Re-exported so nmp-testing integration tests
 // and downstream crates (W4, W5) can access `ClaimOutcome`, `RelayAuthorScore`,
 // and `RelayAuthorScoreMap` without reaching into the private `kernel` module.
@@ -348,7 +353,7 @@ pub mod __ffi_internal {
     };
     pub use crate::kernel::{
         default_registry, is_hex_id, is_hex_pubkey, new_app_relay_slot,
-        new_snapshot_projection_slot, routing_trace, ActionRegistry, LifecyclePhase,
+        new_snapshot_projection_slot, routing_trace, ActionRegistry, ChangeGate, LifecyclePhase,
         SnapshotProjectionSlot,
     };
     // ADR-0037: the typed-projection closure type lives alongside the generic
