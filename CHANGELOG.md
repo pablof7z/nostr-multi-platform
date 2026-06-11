@@ -5,6 +5,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.2.10 — 2026-06-11
+
+**No `nmp_app_*` C-ABI symbol change.** Existing FFI callers do not need call-site
+changes.
+
+### Added
+
+- **Per-projection change-gating for the snapshot registry.** `SnapshotRegistry::register_gated(key, gate, f)` and `NmpApp::register_snapshot_projection_gated` / `AppHost::register_snapshot_projection_gated` / `NmpAppBuilder::register_snapshot_projection_gated` let a host pass an `Arc<AtomicU64>` rev counter as a `ChangeGate`; the registry skips re-invoking the closure and serves the cached value when the gate is unchanged. The ungated `register` / `register_snapshot_projection` path is unaffected. Fixes the "re-serialize the entire library on every kernel emit" CPU peg (measured: ~57% actor-thread time on a 3.6k-episode library). `ChangeGate` is re-exported as `nmp_core::ChangeGate`.
+
+---
+
 ## nmp-v0.2.9 — 2026-06-11
 
 **No `nmp_app_*` C-ABI symbol change.** Existing FFI callers do not need call-site
