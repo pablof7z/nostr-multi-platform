@@ -2,7 +2,11 @@
 
 ## E2E testing requirement
 
-Every new feature or user-visible behavior change MUST include an end-to-end test using `rexpect` against a real relay before the PR is opened. No exceptions. Render snapshot tests and unit tests on `AppState` are complementary but do not replace this requirement.
+Every new feature or user-visible behavior change MUST include an end-to-end
+test using `rexpect` before the PR is opened. Render snapshot tests and unit
+tests on `AppState` are complementary but do not replace this requirement.
+Default CI e2e tests must be deterministic: do not make ordinary workspace
+tests depend on public-relay publish settlement.
 
 ## How e2e tests work here
 
@@ -59,14 +63,24 @@ Match on these strings with `p.exp_string("compose note:")` or `p.exp_regex(r"re
 
 ## Relay setup for tests
 
-Use a real public relay. `wss://relay.damus.io` works and was verified live. Wait for the first snapshot update before asserting on note content — content arrives asynchronously:
+Use a deterministic relay fixture, local relay, or state/render harness for
+default CI paths. Public relays are acceptable only for ignored opt-in/nightly
+tests because publish settlement can stay in active/backoff state long enough
+to flake ordinary workspace runs.
+
+For public-relay smoke tests, `wss://relay.damus.io` works and was verified
+live. Wait for the first snapshot update before asserting on note content —
+content arrives asynchronously:
 
 ```rust
 // Wait up to 8 s for the first relay snapshot
 p.exp_regex(r"received update #\d+")?;
 ```
 
-For CI or deterministic content tests, run a local `strfry` or `nostr-rs-relay` instance and seed it with known fixture events before the test. There is currently no local relay in this repo — add one under `tests/fixtures/` if you need deterministic content.
+For deterministic content tests, run a local `strfry` or `nostr-rs-relay`
+instance and seed it with known fixture events before the test. There is
+currently no local relay in this repo — add one under `tests/fixtures/` if you
+need deterministic wire content.
 
 ### Why real relays and not mocks
 
@@ -94,6 +108,7 @@ chirp  [home][mentions][dms][groups]
 |---|---|---|---|
 | State unit tests | `#[test]` in `app.rs` | navigation, compose, selection logic | no |
 | Render snapshots | `ratatui::backend::TestBackend` + `insta` | layout, cell content | no |
-| E2E (REQUIRED) | `rexpect` + real relay | full round-trip through NMP FFI | yes |
+| E2E (REQUIRED) | `rexpect` + deterministic relay when the flow depends on relay settlement | full round-trip through NMP FFI | yes |
+| Live smoke (opt-in) | ignored `rexpect` + public relay | public relay compatibility | yes |
 
 Unit and snapshot tests live alongside the source. E2E tests live in `tests/e2e.rs`.

@@ -36,7 +36,7 @@ fn tui_boots_and_quits_cleanly() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-#[ignore = "public relay publish settlement is nondeterministic in default CI; see issue #1013"]
+#[ignore = "live public-relay publish settlement is opt-in; deterministic coverage lives in published_outbox.rs"]
 fn published_history_row_opens_detail() -> Result<(), Box<dyn std::error::Error>> {
     let bin = env!("CARGO_BIN_EXE_chirp-tui");
     let home = isolated_home("published-detail")?;
