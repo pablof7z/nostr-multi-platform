@@ -410,9 +410,11 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
     assert!(rec.toasts.borrow().is_empty(), "happy path — no toasts: {:?}", rec.toasts.borrow());
     assert!(rec.failures.borrow().is_empty(), "happy path — no Failed terminals");
 
-    // Collect the per-envelope target relay sets and assert they match
-    // the seeded receivers' kind:10050 lists exactly.
-    let mut explicit_targets: Vec<Vec<String>> = Vec::new();
+    // Collect the per-envelope relay sets and correlation_id values.
+    // Assert D10 (PublishTarget::Explicit), kind:1059, and the
+    // single-terminal invariant: recipient envelope carries correlation_id,
+    // self-copy carries None.
+    let mut explicit_targets: Vec<(Vec<String>, Option<String>)> = Vec::new();
     for cmd in sent.iter() {
         match cmd {
             ActorCommand::PublishSignedEvent {
@@ -425,14 +427,9 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
                     "the gift-wrap envelope is kind:1059, got {}",
                     raw.kind
                 );
-                assert_eq!(
-                    correlation_id.as_deref(),
-                    Some("cid-happy"),
-                    "correlation_id threads through to the publish engine for spinner clearance"
-                );
                 match target {
                     nmp_core::publish::PublishTarget::Explicit { relays } => {
-                        explicit_targets.push(relays.clone());
+                        explicit_targets.push((relays.clone(), correlation_id.clone()));
                     }
                     other => {
                         panic!("D10 — gift-wrap MUST route via PublishTarget::Explicit, got {other:?}")
@@ -443,8 +440,11 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
         }
     }
 
-    let mut all_relays: Vec<String> =
-        explicit_targets.into_iter().flatten().collect();
+    // Relay sets must cover both receiver kind:10050 lists.
+    let mut all_relays: Vec<String> = explicit_targets
+        .iter()
+        .flat_map(|(relays, _)| relays.clone())
+        .collect();
     all_relays.sort();
     assert_eq!(
         all_relays,
@@ -453,6 +453,25 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
             "wss://sender-dm.example".to_string(),
         ],
         "recipient envelope pins to recipient's kind:10050; self-copy pins to sender's"
+    );
+
+    // Single-terminal invariant: exactly one envelope carries the
+    // correlation_id (the recipient), the self-copy carries None.
+    let recipient_entry = explicit_targets
+        .iter()
+        .find(|(relays, _)| relays.contains(&"wss://recipient-dm.example".to_string()));
+    let self_copy_entry = explicit_targets
+        .iter()
+        .find(|(relays, _)| relays.contains(&"wss://sender-dm.example".to_string()));
+    assert_eq!(
+        recipient_entry.map(|(_, cid)| cid.as_deref()),
+        Some(Some("cid-happy")),
+        "recipient envelope must carry the correlation_id for the action terminal"
+    );
+    assert_eq!(
+        self_copy_entry.map(|(_, cid)| cid.as_deref()),
+        Some(None),
+        "self-copy envelope must carry None — its relay ack must not produce a second terminal"
     );
 }
 
@@ -578,17 +597,122 @@ fn run_returns_immediately_with_pending_signer_actor_does_not_block() {
     );
     for cmd in sent.iter() {
         match cmd {
-            ActorCommand::PublishSignedEvent { raw, correlation_id, .. } => {
+            ActorCommand::PublishSignedEvent { raw, .. } => {
                 assert_eq!(raw.kind, 1059, "gift-wrap envelope must be kind:1059");
-                assert_eq!(
-                    correlation_id.as_deref(),
-                    Some("cid-nonblock"),
-                    "correlation_id threads through"
-                );
             }
             other => panic!("unexpected command from worker: {other:?}"),
         }
     }
+    // Single-terminal invariant: exactly one of the two envelopes carries
+    // the correlation_id (the recipient), the self-copy carries None.
+    let cids: Vec<_> = sent
+        .iter()
+        .filter_map(|c| match c {
+            ActorCommand::PublishSignedEvent { correlation_id, .. } => {
+                Some(correlation_id.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    let with_cid = cids.iter().filter(|c| c.is_some()).count();
+    assert_eq!(with_cid, 1, "exactly one envelope carries the correlation_id: {cids:?}");
+}
+
+/// Single-terminal invariant: exactly ONE of the two `PublishSignedEvent`
+/// commands carries the action `correlation_id` — the recipient envelope.
+///
+/// The DM-send action's contract with the host is: "the message reached
+/// the recipient". The self-copy is an implementation detail (NIP-17 §2
+/// client-sync). If both envelopes carry the same `correlation_id` the
+/// publish engine records TWO terminals for one action — nondeterministic
+/// "ok" + "failed" depending on relay behaviour. The host's action_lifecycle
+/// tracker (latest-stage-wins) would show the wrong verdict; `action_results`
+/// would emit two rows for the same `correlation_id`.
+///
+/// The fix: only the recipient envelope carries `correlation_id`. The
+/// self-copy uses `correlation_id: None` so its relay verdict surfaces only
+/// through the normal publish-outbox projection, never through the action
+/// terminal that drives the host spinner.
+#[test]
+fn only_recipient_envelope_carries_correlation_id() {
+    let keys = nostr::Keys::generate();
+    let sender_hex = keys.public_key().to_hex();
+    let recipient_keys = nostr::Keys::generate();
+    let recipient_hex = recipient_keys.public_key().to_hex();
+
+    let cache = Arc::new(DmRelayCache::new());
+    cache.upsert(sender_hex.clone(), vec!["wss://sender-dm.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), vec!["wss://recipient-dm.example".to_string()]);
+
+    let cmd = SendGiftWrappedDmCommand {
+        rumor: sample_rumor(&sender_hex, &recipient_hex),
+        recipient_pubkey: recipient_hex.clone(),
+        correlation_id: Some("cid-single-terminal".to_string()),
+    };
+    let (rec, rx) = run_cmd(cmd, Some(keys), cache.as_ref(), 1_700_000_000);
+    drain_worker(&rec, rx, 2, Duration::from_secs(15));
+
+    let sent = rec.sent.borrow();
+    assert_eq!(sent.len(), 2, "both envelopes produced");
+
+    // Partition by relay target to identify which is recipient vs self-copy.
+    // Collect correlation_id presence: exactly ONE must have Some("cid-single-terminal"),
+    // the other must have None.
+    let cids: Vec<Option<String>> = sent
+        .iter()
+        .map(|cmd| match cmd {
+            ActorCommand::PublishSignedEvent { correlation_id, .. } => correlation_id.clone(),
+            other => panic!("expected PublishSignedEvent, got {other:?}"),
+        })
+        .collect();
+
+    let with_cid: Vec<_> = cids.iter().filter(|c| c.as_deref() == Some("cid-single-terminal")).collect();
+    let without_cid: Vec<_> = cids.iter().filter(|c| c.is_none()).collect();
+
+    assert_eq!(
+        with_cid.len(), 1,
+        "exactly ONE envelope must carry the correlation_id (the recipient envelope); \
+         both carrying it produces double-terminal action verdict. Got cids: {cids:?}"
+    );
+    assert_eq!(
+        without_cid.len(), 1,
+        "exactly ONE envelope must carry None (the self-copy); \
+         self-copy failure must not clobber the action verdict. Got cids: {cids:?}"
+    );
+
+    // Additionally: the envelope routed to the RECIPIENT's relays is the one
+    // with the correlation_id; the self-copy (routed to sender's relays) has None.
+    let recipient_relay_cid = sent.iter().find_map(|cmd| match cmd {
+        ActorCommand::PublishSignedEvent {
+            target: nmp_core::publish::PublishTarget::Explicit { relays },
+            correlation_id,
+            ..
+        } if relays.contains(&"wss://recipient-dm.example".to_string()) => {
+            Some(correlation_id.clone())
+        }
+        _ => None,
+    });
+    assert_eq!(
+        recipient_relay_cid,
+        Some(Some("cid-single-terminal".to_string())),
+        "the envelope targeting the recipient's relay must carry the correlation_id"
+    );
+
+    let self_copy_relay_cid = sent.iter().find_map(|cmd| match cmd {
+        ActorCommand::PublishSignedEvent {
+            target: nmp_core::publish::PublishTarget::Explicit { relays },
+            correlation_id,
+            ..
+        } if relays.contains(&"wss://sender-dm.example".to_string()) => {
+            Some(correlation_id.clone())
+        }
+        _ => None,
+    });
+    assert_eq!(
+        self_copy_relay_cid,
+        Some(None),
+        "the self-copy envelope (sender's relay) must carry correlation_id: None"
+    );
 }
 
 /// ADR-0040 Site 1 — gift-wrap timeout surfaces D6 error via worker.

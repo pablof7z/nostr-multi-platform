@@ -227,15 +227,53 @@ impl ProtocolCommand for SendGiftWrappedDmCommand {
         // `SignerOp` is named in `nmp-signer-iface`; we avoid adding that
         // direct dep by letting the compiler infer the Vec element type from
         // the `gift_wrap_with_signer` return.
-        let mut envelopes = Vec::with_capacity(2);
-        for (label, receiver_pk, relays) in [
-            ("recipient" as &'static str, &recipient, recipient_relays),
-            ("self-copy" as &'static str, &sender, self_relays),
+        //
+        // Single-terminal invariant: ONE action ⇒ ONE terminal verdict.
+        //
+        // The action semantics are "send a DM to the recipient". The
+        // self-copy is a NIP-17 §2 client-sync envelope — an
+        // implementation detail, not the observable outcome the host
+        // dispatched the action for. If both envelopes carry the same
+        // `correlation_id`, the publish engine records TWO terminals for
+        // one action (once per relay ack, one per envelope settling),
+        // and the host's `action_lifecycle` tracker — which uses
+        // latest-stage-wins per `correlation_id` — resolves to whichever
+        // settled last: nondeterministic "ok" or "failed" with no
+        // relation to whether the recipient actually got the message.
+        //
+        // Fix: only the recipient envelope carries `correlation_id`. The
+        // self-copy rides with `envelope_correlation_id: None` so its
+        // relay outcome flows through the normal publish-outbox projection
+        // only, never through the action terminal that clears the host
+        // spinner. If the self-copy gift-wrap step fails (signer error /
+        // timeout), we still surface a toast (D6 visibility) but do NOT
+        // record a `RecordActionFailure` for the action — the recipient
+        // already got the message, so the action contract is satisfied.
+        type EnvelopeRow<T> = (&'static str, T, Vec<String>, Option<String>);
+        let mut envelopes: Vec<EnvelopeRow<_>> = Vec::with_capacity(2);
+        for (label, receiver_pk, relays, envelope_correlation_id) in [
+            (
+                "recipient" as &'static str,
+                &recipient,
+                recipient_relays,
+                // Recipient envelope carries the action correlation_id.
+                // Its relay ack produces the ONE terminal verdict the
+                // host waits for.
+                correlation_id.clone(),
+            ),
+            (
+                "self-copy" as &'static str,
+                &sender,
+                self_relays,
+                // Self-copy carries None: its relay outcome is
+                // background delivery — never the action verdict.
+                None,
+            ),
         ] {
             let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
             let op =
                 nmp_nip59::gift_wrap_with_signer(&signer, receiver_pk, &nostr_rumor, tweaked);
-            envelopes.push((label, op, relays));
+            envelopes.push((label, op, relays, envelope_correlation_id));
         }
 
         // Clone the command sender; the worker moves it into its closure.
@@ -252,7 +290,7 @@ impl ProtocolCommand for SendGiftWrappedDmCommand {
         let spawn_result = std::thread::Builder::new()
             .name("nmp-nip17-gift-wrap-worker".to_string())
             .spawn(move || {
-                for (label, op, relays) in envelopes {
+                for (label, op, relays, envelope_correlation_id) in envelopes {
                     // D8: blocking `recv_timeout` is called HERE, off the
                     // actor thread, never in the actor loop.
                     let envelope = match op.wait(GIFT_WRAP_TOTAL_TIMEOUT) {
@@ -262,7 +300,11 @@ impl ProtocolCommand for SendGiftWrappedDmCommand {
                                 format!("cannot send DM: gift-wrap ({label}) failed: {e}");
                             let _ = worker_tx
                                 .send(ActorCommand::ShowToast { message: toast.clone() });
-                            if let Some(ref id) = correlation_id {
+                            // Only report the action failure if this envelope
+                            // carries a correlation_id (i.e. only the recipient
+                            // envelope). The self-copy failure is background —
+                            // the action promise was to deliver to the recipient.
+                            if let Some(ref id) = envelope_correlation_id {
                                 let _ = worker_tx.send(ActorCommand::RecordActionFailure {
                                     correlation_id: id.clone(),
                                     reason: toast,
@@ -283,7 +325,7 @@ impl ProtocolCommand for SendGiftWrappedDmCommand {
                     let _ = worker_tx.send(ActorCommand::PublishSignedEvent {
                         raw,
                         target: PublishTarget::Explicit { relays },
-                        correlation_id: correlation_id.clone(),
+                        correlation_id: envelope_correlation_id,
                     });
                 }
             });
