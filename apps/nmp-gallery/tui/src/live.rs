@@ -13,10 +13,10 @@
 //! 3. `LiveKernelSink::claim` forwards to `nmp_app_claim_event` — the
 //!    kernel registers a `OneshotApi` interest (D4 single writer), short-
 //!    circuits on cache hit, or compiles a wire REQ on cache miss.
-//! 4. The event arrives (cache or relay), gets surfaced in
-//!    `snapshot.projections.claimed_events[primary_id]`, the gallery's
-//!    snapshot thread sends a `GalleryEvent::Snapshot` to the main loop,
-//!    `EmbedHostState::update_from_snapshot` decodes it, and the next
+//! 4. The event arrives (cache or relay), gets surfaced in the typed
+//!    `claimed_events` sidecar, the gallery's snapshot thread sends a
+//!    `GalleryEvent::Snapshot` to the main loop,
+//!    `EmbedHostState::update_from_typed` decodes it, and the next
 //!    redraw shows the resolved article (or short-note / highlight / ...).
 //!
 //! `LiveKernel` is `pub` so `main.rs` can keep it alive for the program
@@ -30,7 +30,10 @@ use std::{
 };
 
 use nmp_content::EventClaimSink;
-use serde_json::Value;
+use nmp_core::typed_projections::{
+    ClaimedEventsModel, CLAIMED_EVENTS_SCHEMA_ID,
+    ResolvedProfilesModel, RESOLVED_PROFILES_SCHEMA_ID,
+};
 
 use crate::data::showcase_pubkey;
 
@@ -44,6 +47,75 @@ pub fn primary_pubkey() -> &'static str {
 }
 
 pub struct LiveGallerySource;
+
+/// Decoded typed snapshot data — the gallery's view of one kernel tick.
+///
+/// Built from the FlatBuffers typed-sidecar payload that the kernel emits on
+/// every actor tick (ADR-0037). The gallery reads two projection keys:
+/// - `claimed_events` — resolved embed events (embed host, EmbedHostState).
+/// - `resolved_profiles` — pre-merged pubkey→ProfileCard map (LiveProfileMap).
+///
+/// Both fields degrade gracefully to empty when their respective typed sidecar
+/// entry is absent or fails to decode (D6 — no panic, no blank-render reset).
+///
+/// The `relay_statuses` field carries the Tier-3 relay-connection vector (from
+/// the typed `SnapshotEnvelope`), used by the smoke-mode relay-wait loop.
+#[derive(Debug, Default)]
+pub struct GalleryTypedSnapshot {
+    /// Resolved embed events. Empty when no claims have been issued yet or
+    /// while relay round-trips are in flight.
+    pub claimed_events: ClaimedEventsModel,
+    /// Pre-merged pubkey→ProfileCard map. Empty until the kernel has ingested
+    /// at least one kind:0 for a claimed pubkey.
+    pub resolved_profiles: ResolvedProfilesModel,
+    /// Per-relay connection statuses (Tier-3 envelope field). Used by the
+    /// smoke mode to detect when at least one relay is connected.
+    pub relay_statuses: Vec<nmp_core::RelayStatusEntry>,
+}
+
+impl GalleryTypedSnapshot {
+    /// Decode a raw FlatBuffers frame (as produced by `nmp_app_set_update_callback`)
+    /// into a `GalleryTypedSnapshot`. Tolerant: if any projection fails to decode
+    /// its field is left at the default (empty). Panics never occur (D6).
+    pub fn from_frame_bytes(bytes: &[u8]) -> Self {
+        // Tier-3 envelope: relay_statuses.
+        let relay_statuses = nmp_core::decode_snapshot_envelope(bytes)
+            .map(|env| env.relay_statuses)
+            .unwrap_or_default();
+
+        // Typed sidecar entries.
+        let typed = nmp_core::decode_snapshot_typed_projections(bytes).unwrap_or_default();
+
+        let find = |key: &str| -> Option<&[u8]> {
+            typed
+                .iter()
+                .find(|p| p.key == key)
+                .map(|p| p.payload.as_slice())
+        };
+
+        let claimed_events = find(CLAIMED_EVENTS_SCHEMA_ID)
+            .and_then(|b| nmp_core::typed_projections::decode_claimed_events(b).ok())
+            .unwrap_or_default();
+
+        let resolved_profiles = find(RESOLVED_PROFILES_SCHEMA_ID)
+            .and_then(|b| nmp_core::typed_projections::decode_resolved_profiles(b).ok())
+            .unwrap_or_default();
+
+        Self {
+            claimed_events,
+            resolved_profiles,
+            relay_statuses,
+        }
+    }
+
+    /// True when at least one relay reports a "connected" connection state.
+    /// Used by the smoke loop to gate the first claim issuance.
+    pub fn any_relay_connected(&self) -> bool {
+        self.relay_statuses
+            .iter()
+            .any(|r| r.connection == "connected")
+    }
+}
 
 /// Persistent kernel handle. Owned by the gallery's main loop for the
 /// entire process lifetime. The actor thread keeps running; snapshot pushes
@@ -59,11 +131,11 @@ pub struct LiveKernel {
     bridge: Option<Box<UpdateBridge>>,
     /// Snapshot stream — taken once by `take_receiver` so the main loop
     /// can hand it to its snapshot-thread aggregator.
-    rx: Option<Receiver<String>>,
+    rx: Option<Receiver<Vec<u8>>>,
 }
 
 struct UpdateBridge {
-    tx: Sender<String>,
+    tx: Sender<Vec<u8>>,
 }
 
 /// `EventClaimSink` impl wrapping a live kernel's app pointer. The
@@ -171,7 +243,7 @@ impl LiveKernel {
     /// Take ownership of the snapshot receiver. After this call, the kernel
     /// can no longer poll its own snapshots — the main loop owns the stream.
     /// Idempotent: a second call returns `None`.
-    pub fn take_receiver(&mut self) -> Option<Receiver<String>> {
+    pub fn take_receiver(&mut self) -> Option<Receiver<Vec<u8>>> {
         self.rx.take()
     }
 
@@ -194,26 +266,16 @@ impl Drop for LiveKernel {
     }
 }
 
+/// Raw kernel update callback. Sends frame bytes verbatim on the channel —
+/// zero decoding here (the decode happens where the data is consumed, in the
+/// snapshot thread / smoke loop). Avoids a `decode_snapshot_payload` call in
+/// the hot path and removes the last reference to `payload:Value` in the
+/// gallery.
 extern "C" fn on_update(context: *mut c_void, payload: *const u8, len: usize) {
     if context.is_null() || payload.is_null() {
         return;
     }
     let bytes = unsafe { std::slice::from_raw_parts(payload, len) };
-    let Ok(snapshot) = nmp_core::decode_snapshot_payload(bytes) else {
-        return;
-    };
     let bridge = unsafe { &*(context as *const UpdateBridge) };
-    let _ = bridge.tx.send(snapshot.to_string());
-}
-
-/// Parse a kernel update payload (envelope or bare snapshot). Public so
-/// the main loop's snapshot aggregator can decode pushed frames into the
-/// `serde_json::Value` shape `EmbedHostState::update_from_snapshot` reads.
-pub fn parse_snapshot(payload: &str) -> Option<Value> {
-    let envelope: Value = serde_json::from_str(payload).ok()?;
-    if envelope.get("t").and_then(Value::as_str) == Some("snapshot") {
-        envelope.get("v").cloned()
-    } else {
-        Some(envelope)
-    }
+    let _ = bridge.tx.send(bytes.to_vec());
 }

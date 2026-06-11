@@ -26,20 +26,14 @@ fn with_snapshot_frame<R>(bytes: &[u8], f: impl FnOnce(fb::SnapshotFrame<'_>) ->
     f(snapshot)
 }
 
-/// Decode the generic JSON `payload` from the same frame, through the existing
-/// generic decoder — the half a host reads today.
-fn json_payload(bytes: &[u8]) -> serde_json::Value {
-    crate::update_envelope::decode_snapshot_payload(bytes).expect("decode JSON payload")
-}
-
 /// On a healthy kernel, the typed Tier-3 scalars/nested fields agree with the
-/// JSON `payload`, and the optional diagnostic fields are absent in BOTH
-/// encodings (absent = healthy).
+/// JSON obtained by serialising the `KernelSnapshot` struct directly (PR-B:
+/// `payload:Value` is no longer emitted on the wire). The optional diagnostic
+/// fields are absent in BOTH representations (absent = healthy).
 #[test]
 fn adr0044_typed_envelope_agrees_with_json_on_healthy_kernel() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let bytes = kernel.make_update_frame_for_test(true);
-    let json = json_payload(&bytes);
+    let (bytes, json) = kernel.make_update_frame_and_json_for_test(true);
 
     with_snapshot_frame(&bytes, |frame| {
         // Scalars: typed == JSON.
@@ -145,15 +139,14 @@ fn adr0044_typed_envelope_agrees_with_json_on_healthy_kernel() {
 }
 
 /// When `store_open_failure` is set, the typed field carries the exact same
-/// string the JSON `payload` does — the present case for an `Option<String>`.
+/// string the struct-serialized JSON does — the present case for an `Option<String>`.
 #[test]
 fn adr0044_typed_store_open_failure_agrees_with_json_when_present() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let reason = "LMDB open failed: No such file or directory (os error 2)";
     kernel.set_store_open_failure_for_test(reason);
 
-    let bytes = kernel.make_update_frame_for_test(true);
-    let json = json_payload(&bytes);
+    let (bytes, json) = kernel.make_update_frame_and_json_for_test(true);
 
     assert_eq!(
         json["store_open_failure"].as_str(),
@@ -187,8 +180,7 @@ fn adr0044_typed_wire_subscriptions_agree_with_json_when_populated() {
     }];
     kernel.register_wire_frames_for_test(&frames);
 
-    let bytes = kernel.make_update_frame_for_test(true);
-    let json = json_payload(&bytes);
+    let (bytes, json) = kernel.make_update_frame_and_json_for_test(true);
     let json_subs = json["wire_subscriptions"].as_array().expect("wire_subscriptions array");
     assert!(
         !json_subs.is_empty(),
@@ -228,6 +220,26 @@ fn adr0044_typed_wire_subscriptions_agree_with_json_when_populated() {
             );
         }
     });
+}
+
+/// Measure the wire frame size produced by an empty kernel (no payload:Value emitted).
+/// Prints `PRB_FRAME_SIZE total_frame=NNN json_payload_absent=true` for CI logs.
+/// This is the final zeroing proof: frame should be much smaller than the old 14 504 B
+/// (which included a 4 457 B JSON blob = ~31% overhead).
+#[test]
+fn prb_frame_size_no_payload() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let (bytes, json) = kernel.make_update_frame_and_json_for_test(true);
+    let json_str = serde_json::to_string(&json).expect("json serializable");
+    let json_snapshot_bytes = json_str.len();
+    let has_payload = with_snapshot_frame(&bytes, |frame| frame.payload().is_some());
+    println!(
+        "PRB_FRAME_SIZE total_frame={} json_snapshot_bytes={} payload_present={}",
+        bytes.len(),
+        json_snapshot_bytes,
+        has_payload,
+    );
+    assert!(!has_payload, "payload:Value must NOT be emitted after PR-B zeroing");
 }
 
 /// JSON `Option<u128>` field: a number when `Some`, absent/null when `None`.

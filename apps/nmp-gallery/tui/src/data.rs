@@ -18,10 +18,10 @@ use nmp_app_gallery::showcase;
 use nmp_content::{tokenize_with_kind, RenderMode};
 use nmp_core::display::{short_npub, to_npub};
 use ratatui_image::protocol::Protocol;
-use serde_json::Value;
 
 use crate::{
     content_render_data::ContentRenderData, content_tree_wire::ContentTreeWire,
+    live::GalleryTypedSnapshot,
     profile_wire::ProfileWire,
 };
 
@@ -122,29 +122,22 @@ impl LiveProfileMap {
         Self::default()
     }
 
-    /// Ingest a kernel snapshot, updating the resolved-profile map.
+    /// Ingest a typed kernel snapshot, updating the resolved-profile map.
     ///
-    /// Reads the kernel's canonical `projections.resolved_profiles`
-    /// projection (added in PR #812): `{ pubkey: ProfileCard }`, where each
-    /// `ProfileCard` is the pre-merged result of `claimed_profiles`,
-    /// `author_view.profile`, and `mention_profiles` resolved once in Rust
-    /// with the kernel's precedence rules. The app no longer re-implements
-    /// that three-source merge — it decodes the finished card directly.
-    pub fn update_from_snapshot(&mut self, snapshot: &Value) {
-        let Some(projections) = snapshot.get("projections") else {
-            return;
-        };
-        let Some(resolved) = projections
-            .get("resolved_profiles")
-            .and_then(Value::as_object)
-        else {
-            return;
-        };
-        for (pubkey, card) in resolved {
-            let display_name = string_field(card, "display_name");
-            let picture_url = string_field(card, "picture_url");
-            let nip05 = string_field(card, "nip05");
-            let about = string_field(card, "about");
+    /// Reads the kernel's canonical `resolved_profiles` typed sidecar (PR-B
+    /// typed-first migration): a pre-merged pubkey→ProfileCard map produced
+    /// once in Rust with the kernel's precedence rules. The app no longer
+    /// re-implements that three-source merge — it decodes the finished card
+    /// directly from the `ClaimedEventsModel`.
+    ///
+    /// Absent or empty resolved_profiles is a no-op (the map retains any
+    /// profiles it already holds from previous ticks).
+    pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) {
+        for (pubkey, card) in &snapshot.resolved_profiles.entries {
+            let display_name = non_empty(card.display_name.as_deref());
+            let picture_url = non_empty(card.picture_url.as_deref());
+            let nip05 = non_empty(Some(card.nip05.as_str()));
+            let about = non_empty(Some(card.about.as_str()));
             let wire = self.entry_for(pubkey);
             wire.display_name = display_name;
             wire.picture_url = picture_url;
@@ -191,17 +184,10 @@ pub fn profile_wire_for_pubkey(pubkey: &str) -> ProfileWire {
     }
 }
 
-/// Read a string field from a JSON object, treating empty strings and
-/// missing/null as `None`. The kernel emits `nip05`/`about` as plain
-/// (possibly empty) strings and `display_name`/`picture_url` as nullable —
-/// this normalises both to `Option<String>`.
-fn string_field(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+/// Normalise an optional string: `None` and empty/whitespace-only strings
+/// all become `None`; non-empty trimmed values become `Some`.
+fn non_empty(s: Option<&str>) -> Option<String> {
+    s.map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
 }
 
 impl GalleryData {
@@ -283,31 +269,39 @@ fn tree_for_content(content: &str) -> Result<ContentTreeWire, String> {
 #[cfg(test)]
 mod live_profile_map_tests {
     use super::*;
-    use serde_json::json;
+    use nmp_core::typed_projections::{ClaimedEventsModel, ProfileCardModel, ResolvedProfilesModel};
+    use crate::live::GalleryTypedSnapshot;
 
-    /// A snapshot carrying the canonical `resolved_profiles` projection
-    /// (PR #812) populates the map with the kernel's pre-merged card —
-    /// `resolve(pubkey)` returns those fields verbatim, no app-side merge.
+    fn typed_snapshot_with_profile(pubkey: &str, card: ProfileCardModel) -> GalleryTypedSnapshot {
+        GalleryTypedSnapshot {
+            claimed_events: ClaimedEventsModel::default(),
+            resolved_profiles: ResolvedProfilesModel {
+                entries: vec![(pubkey.to_string(), card)],
+            },
+            relay_statuses: Vec::new(),
+        }
+    }
+
+    /// A typed snapshot carrying the `resolved_profiles` sidecar populates
+    /// the map with the kernel's pre-merged card — `resolve(pubkey)` returns
+    /// those fields verbatim, no app-side merge.
     #[test]
-    fn reads_resolved_profiles_projection() {
+    fn reads_resolved_profiles_typed() {
         let pubkey = showcase_pubkey();
-        let snapshot = json!({
-            "projections": {
-                "resolved_profiles": {
-                    pubkey: {
-                        "pubkey": pubkey,
-                        "display_name": "Resolved Name",
-                        "picture_url": "https://example.com/a.png",
-                        "nip05": "name@example.com",
-                        "about": "merged once in the kernel",
-                        "has_profile": true,
-                    }
-                }
-            }
-        });
+        let card = ProfileCardModel {
+            pubkey: pubkey.to_string(),
+            npub: String::new(),
+            display_name: Some("Resolved Name".to_string()),
+            picture_url: Some("https://example.com/a.png".to_string()),
+            nip05: "name@example.com".to_string(),
+            about: "merged once in the kernel".to_string(),
+            has_profile: true,
+            lnurl: None,
+        };
+        let snapshot = typed_snapshot_with_profile(pubkey, card);
 
         let mut map = LiveProfileMap::new();
-        map.update_from_snapshot(&snapshot);
+        map.update_from_typed(&snapshot);
 
         let wire = map.resolve(pubkey);
         assert_eq!(wire.display_name.as_deref(), Some("Resolved Name"));
@@ -316,17 +310,16 @@ mod live_profile_map_tests {
         assert_eq!(wire.about.as_deref(), Some("merged once in the kernel"));
     }
 
-    /// Graceful degradation: a snapshot without `resolved_profiles` (an older
-    /// kernel, or before PR #812 lands) is a no-op. `resolve(pubkey)` falls
-    /// back to the identity-only wire — the honest "no profile yet" state,
-    /// never a fabricated name.
+    /// Graceful degradation: a typed snapshot with an empty `resolved_profiles`
+    /// model is a no-op. `resolve(pubkey)` falls back to the identity-only wire
+    /// — the honest "no profile yet" state, never a fabricated name.
     #[test]
-    fn absent_resolved_profiles_is_a_noop() {
+    fn empty_resolved_profiles_is_a_noop() {
         let pubkey = showcase_pubkey();
-        let snapshot = json!({ "projections": {} });
+        let snapshot = GalleryTypedSnapshot::default();
 
         let mut map = LiveProfileMap::new();
-        map.update_from_snapshot(&snapshot);
+        map.update_from_typed(&snapshot);
 
         let wire = map.resolve(pubkey);
         assert_eq!(wire.display_name, None);

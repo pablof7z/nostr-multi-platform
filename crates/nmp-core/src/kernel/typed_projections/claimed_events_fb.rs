@@ -39,34 +39,34 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const CLAIMED_EVENTS_SCHEMA_ID: &str = "claimed_events";
+pub const CLAIMED_EVENTS_SCHEMA_ID: &str = "claimed_events";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const CLAIMED_EVENTS_FILE_IDENTIFIER: &[u8; 4] = b"KCEV";
+pub const CLAIMED_EVENTS_FILE_IDENTIFIER: &[u8; 4] = b"KCEV";
 /// Wire schema version. Bump on any breaking change to `claimed_events.fbs`.
-pub(crate) const CLAIMED_EVENTS_SCHEMA_VERSION: u32 = 1;
+pub const CLAIMED_EVENTS_SCHEMA_VERSION: u32 = 1;
 
 /// A field-for-field mirror of the SERIALISED `ClaimedEventDto` — one resolved
 /// event value in the `claimed_events` map.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ClaimedEventRow {
-    pub(crate) primary_id: String,
-    pub(crate) id: String,
-    pub(crate) author_pubkey: String,
-    pub(crate) author_display_name: Option<String>,
-    pub(crate) author_picture_url: Option<String>,
-    pub(crate) kind: u32,
-    pub(crate) created_at: u64,
+pub struct ClaimedEventRow {
+    pub primary_id: String,
+    pub id: String,
+    pub author_pubkey: String,
+    pub author_display_name: Option<String>,
+    pub author_picture_url: Option<String>,
+    pub kind: u32,
+    pub created_at: u64,
     /// Raw event tags — an array of tag rows, each a list of strings.
-    pub(crate) tags: Vec<Vec<String>>,
-    pub(crate) content: String,
+    pub tags: Vec<Vec<String>>,
+    pub content: String,
 }
 
 /// The `"claimed_events"` read model — the `primary_id -> ClaimedEventDto` map
 /// flattened to a key-sorted vector of `(key, value)` entries.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ClaimedEventsModel {
+pub struct ClaimedEventsModel {
     /// `(key, value)` entries, sorted by `key` (BTreeMap order, matches JSON).
-    pub(crate) entries: Vec<(String, ClaimedEventRow)>,
+    pub entries: Vec<(String, ClaimedEventRow)>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -162,7 +162,6 @@ pub(crate) fn encode_claimed_events(model: &ClaimedEventsModel) -> Vec<u8> {
 
 /// Decode this module's generated `ClaimedEvent` table into a
 /// [`ClaimedEventRow`].
-#[cfg(test)]
 fn claimed_event_from_fb(row: fb::ClaimedEvent<'_>) -> ClaimedEventRow {
     let tags = row
         .tags()
@@ -197,8 +196,7 @@ fn claimed_event_from_fb(row: fb::ClaimedEvent<'_>) -> ClaimedEventRow {
 /// Decode typed FlatBuffers bytes (as produced by [`encode_claimed_events`])
 /// back into a [`ClaimedEventsModel`]. Returns an error string on any malformed
 /// input.
-#[cfg(test)]
-pub(crate) fn decode_claimed_events(bytes: &[u8]) -> Result<ClaimedEventsModel, String> {
+pub fn decode_claimed_events(bytes: &[u8]) -> Result<ClaimedEventsModel, String> {
     if bytes.len() < 8 || !fb::claimed_events_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KCEV file identifier".to_string());
     }

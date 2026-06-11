@@ -119,8 +119,8 @@ pub(crate) fn encode_nip46_onboarding(model: &Nip46OnboardingModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_nip46_onboarding`])
 /// back into a [`Nip46OnboardingModel`]. Returns an error string on any
-/// malformed input.
-#[cfg(test)]
+/// malformed input. Available outside tests so integration tests and shell
+/// consumers can decode the typed sidecar (PR-B: payload is no longer emitted).
 pub(crate) fn decode_nip46_onboarding(bytes: &[u8]) -> Result<Nip46OnboardingModel, String> {
     if bytes.len() < 8 || !fb::nip_46_onboarding_buffer_has_identifier(bytes) {
         return Err("missing KN46 file identifier".to_string());

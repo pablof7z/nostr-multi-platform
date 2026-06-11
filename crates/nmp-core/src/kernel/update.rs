@@ -38,31 +38,24 @@ mod views;
 pub const KERNEL_SCHEMA_VERSION: u32 = crate::update_envelope::SNAPSHOT_SCHEMA_VERSION;
 
 impl Kernel {
-    pub(crate) fn make_update(&mut self, running: bool) -> UpdateFrameBytes {
-        let emit_started = Instant::now();
-        // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
-        // above is monotonic and cannot be compared to a shell-side clock, so
-        // a separate wall-clock reading is required. D7 / D9: the kernel owns
-        // time — route through the injected `Clock` via `now_ms()` so
-        // deterministic replay and tests observe the same `last_tick_ms` the
-        // production tick emitted. `now_ms()` already collapses a pre-epoch
-        // clock to `0` (D6: no panic at the public boundary).
-        let last_tick_ms = self.now_ms();
-        self.rev = self.rev.saturating_add(1);
-        self.update_sequence = self.update_sequence.saturating_add(1);
-
-        let batch_events = self.events_since_last_update;
-        self.max_events_per_update = self.max_events_per_update.max(batch_events);
-        let last_event_to_emit_ms = self
-            .timing
-            .last_event_at
-            .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
-        if let Some(value) = last_event_to_emit_ms {
-            self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
-        }
-
+    /// Build the `KernelSnapshot` struct for the current tick. Called by both
+    /// `make_update` (production) and the `#[cfg(test)]` helpers so the two
+    /// paths never drift. Does NOT mutate `rev` / `update_sequence` / timing
+    /// accumulators — those are updated by `make_update` before calling here.
+    ///
+    /// `emit_started` is the `Instant` captured at the start of the tick;
+    /// it is passed in rather than re-captured so the production and test
+    /// paths both see a consistent value without a second `Instant::now()`.
+    #[allow(clippy::too_many_lines)] // struct literal — intentionally dense
+    fn build_snapshot_struct(
+        &mut self,
+        running: bool,
+        last_tick_ms: u64,
+        emit_started: Instant,
+        last_event_to_emit_ms: Option<u128>,
+    ) -> KernelSnapshot {
         let counters = self.total_counters();
-        let update = KernelSnapshot {
+        KernelSnapshot {
             rev: self.rev,
             schema_version: KERNEL_SCHEMA_VERSION,
             last_tick_ms,
@@ -213,45 +206,38 @@ impl Kernel {
             // Step 3A (#920): the follow-feed cluster (`timeline` / `inserted` /
             // `updated` / `removed`) is no longer produced here.
             projections: self.snapshot_projections_with_publish_cluster(),
-        };
+        }
+    }
 
-        // Encode the snapshot exactly once. The on-wire `payload_bytes`
-        // metric above already reflects the previous tick's size; the perf log
-        // below uses this tick's true length so the diagnostic stays accurate.
+    pub(crate) fn make_update(&mut self, running: bool) -> UpdateFrameBytes {
+        let emit_started = Instant::now();
+        // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
+        // above is monotonic and cannot be compared to a shell-side clock, so
+        // a separate wall-clock reading is required. D7 / D9: the kernel owns
+        // time — route through the injected `Clock` via `now_ms()` so
+        // deterministic replay and tests observe the same `last_tick_ms` the
+        // production tick emitted. `now_ms()` already collapses a pre-epoch
+        // clock to `0` (D6: no panic at the public boundary).
+        let last_tick_ms = self.now_ms();
+        self.rev = self.rev.saturating_add(1);
+        self.update_sequence = self.update_sequence.saturating_add(1);
+
+        let batch_events = self.events_since_last_update;
+        self.max_events_per_update = self.max_events_per_update.max(batch_events);
+        let last_event_to_emit_ms = self
+            .timing
+            .last_event_at
+            .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
+        if let Some(value) = last_event_to_emit_ms {
+            self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
+        }
+
+        let update = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
+
         // Capture the encode start so we can report "build" vs "encode" time.
         let before_serialize = Instant::now();
-        let snapshot = match serde_json::to_value(&update) {
-            Ok(snapshot) => snapshot,
-            Err(error) => {
-                self.update_frame_degradations_total =
-                    self.update_frame_degradations_total.saturating_add(1);
-                self.log(format!(
-                    "NMP_DEGRADATION update_snapshot_to_value_failed rev={} error={error}",
-                    self.rev
-                ));
-                serde_json::json!({
-                    "schema_version": KERNEL_SCHEMA_VERSION,
-                    "rev": self.rev,
-                    "last_tick_ms": last_tick_ms,
-                    "update_kind": "ViewBatch",
-                    "running": running,
-                    "metrics": {
-                        "update_frame_degradations_total": self.update_frame_degradations_total
-                    },
-                    "last_error_category": "transport",
-                    "last_error_toast": "Update transport degraded"
-                })
-            }
-        };
         // ADR-0037: run every host-registered typed projection and carry its
-        // opaque FlatBuffers bytes in the frame's `typed_projections` sidecar,
-        // alongside the generic `Value` snapshot. During migration both
-        // representations are emitted for a piloted key (e.g. `"nmp.feed.home"`):
-        // an un-migrated host keeps reading the generic subtree, a migrated host
-        // prefers the typed sidecar. `nmp-core` never interprets the bytes — the
-        // closures live in app/protocol crates. Empty when nothing is
-        // registered, in which case `encode_snapshot_with_typed` produces wire
-        // bytes byte-identical to the legacy `encode_snapshot_value`.
+        // opaque FlatBuffers bytes in the frame's `typed_projections` sidecar.
         // D8: these closures run on this actor thread inside the tick;
         // `run_typed_projections` documents the non-blocking contract.
         let typed = self.run_typed_projections();
@@ -278,13 +264,15 @@ impl Kernel {
         // so a colliding host entry must be dropped — not merely appended — or it
         // would shadow the built-in and silently contradict the JSON contract.
         let typed = self.merge_builtin_typed_projections(typed);
-        // ADR-0044: dual-emit — write the typed Tier-3 envelope fields directly
-        // from the `KernelSnapshot` struct (`&update`) alongside the unchanged
-        // generic `payload` Value built above. `update` is still owned here
-        // (`to_value` only borrowed it), including across the degradation
-        // fallback, so the typed envelope is emitted regardless of whether the
-        // JSON serialization degraded.
-        let encoded = encode_snapshot_with_envelope(snapshot, &typed, &update);
+        // ADR-0044 / PR-B (#991/#979): emit only the typed Tier-3 envelope +
+        // typed-projection sidecar. The generic `payload:Value` slot is
+        // intentionally absent from the wire (set to `None` in
+        // `encode_snapshot_with_envelope`). No JSON serialization of the
+        // `KernelSnapshot` struct occurs on the production path — the struct
+        // is encoded directly into the Tier-3 FlatBuffers fields. For Rust
+        // test helpers that still need a JSON view, use `make_update_value_for_test`
+        // which serializes the struct directly (no wire roundtrip needed).
+        let encoded = encode_snapshot_with_envelope(&typed, &update);
         // Compute this tick's timing immediately after encode; the log below
         // uses these current values while the snapshot above carries the previous
         // tick's values (one-tick lag, same pattern as `payload_bytes`).
@@ -317,9 +305,8 @@ impl Kernel {
     }
 
     /// ADR-0044 proof seam — drive `make_update` and return the raw
-    /// `UpdateFrameBytes`, so a test can decode BOTH the generic JSON `payload`
-    /// AND the typed Tier-3 `SnapshotFrame` envelope fields off the one frame
-    /// and assert they agree field-for-field.
+    /// `UpdateFrameBytes`, so a test can decode the typed Tier-3
+    /// `SnapshotFrame` envelope fields off the frame and assert them.
     #[cfg(test)]
     pub(crate) fn make_update_frame_for_test(
         &mut self,
@@ -328,10 +315,80 @@ impl Kernel {
         self.make_update(running)
     }
 
+    /// PR-B (#991/#979): drive `make_update` for one tick and return BOTH the
+    /// raw `UpdateFrameBytes` AND a `serde_json::Value` serialized from the same
+    /// tick's `KernelSnapshot` struct (without a wire roundtrip).
+    ///
+    /// Used by `tier3_envelope_tests` to compare typed Tier-3 FlatBuffers fields
+    /// against the struct-serialized JSON on the SAME tick — the two were
+    /// previously both decoded from the same frame bytes (before payload zeroing).
+    /// Now JSON comes from the struct and the typed fields come from the wire.
+    /// Rev and all other fields still agree because both come from the same tick.
+    #[cfg(test)]
+    pub(crate) fn make_update_frame_and_json_for_test(
+        &mut self,
+        running: bool,
+    ) -> (crate::update_envelope::UpdateFrameBytes, serde_json::Value) {
+        let emit_started = Instant::now();
+        let last_tick_ms = self.now_ms();
+        self.rev = self.rev.saturating_add(1);
+        self.update_sequence = self.update_sequence.saturating_add(1);
+        let batch_events = self.events_since_last_update;
+        self.max_events_per_update = self.max_events_per_update.max(batch_events);
+        let last_event_to_emit_ms = self
+            .timing
+            .last_event_at
+            .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
+        if let Some(value) = last_event_to_emit_ms {
+            self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
+        }
+        let update = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
+        let json = serde_json::to_value(&update).unwrap_or(serde_json::Value::Null);
+        let before_serialize = Instant::now();
+        let typed = self.run_typed_projections();
+        self.run_tick_observers();
+        let typed = self.merge_builtin_typed_projections(typed);
+        let frame = encode_snapshot_with_envelope(&typed, &update);
+        let this_serialize_us = before_serialize.elapsed().as_micros();
+        let this_make_update_us = emit_started.elapsed().as_micros();
+        self.events_since_last_update = 0;
+        self.changed_since_emit = false;
+        self.last_serialize_us = this_serialize_us;
+        self.last_make_update_us = this_make_update_us;
+        self.last_payload_bytes = frame.len();
+        (frame, json)
+    }
+
+    /// PR-B (#991/#979): run a full tick (identical to `make_update`, including
+    /// `run_tick_observers`, `run_typed_projections`, and
+    /// `merge_builtin_typed_projections`), then serialize the `KernelSnapshot`
+    /// struct to `serde_json::Value` for test assertions.
+    ///
+    /// The `payload:Value` slot is no longer emitted on the wire, so the old
+    /// `decode_snapshot_payload(make_update(...))` pattern would always error.
+    /// Test helpers now serialize the struct directly — equivalent coverage,
+    /// no wire roundtrip.
+    ///
+    /// `run_tick_observers()` is called, matching production semantics (tests
+    /// that count observer invocations get exact per-tick counts).
     #[cfg(test)]
     pub(crate) fn make_update_value_for_test(&mut self, running: bool) -> serde_json::Value {
-        crate::update_envelope::decode_snapshot_payload(&self.make_update(running))
-            .unwrap_or(serde_json::Value::Null)
+        let emit_started = Instant::now();
+        let last_tick_ms = self.now_ms();
+        self.rev = self.rev.saturating_add(1);
+        self.update_sequence = self.update_sequence.saturating_add(1);
+        let last_event_to_emit_ms = self
+            .timing
+            .last_event_at
+            .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
+        let snapshot = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
+        // Run the same side-effect hooks that `make_update` runs, so tests
+        // observing tick observers / typed projection closures see the same
+        // per-tick semantics.
+        let _typed_host = self.run_typed_projections();
+        self.run_tick_observers();
+        let _typed_merged = self.merge_builtin_typed_projections(_typed_host);
+        serde_json::to_value(&snapshot).unwrap_or(serde_json::Value::Null)
     }
 
     #[cfg(test)]
@@ -339,11 +396,16 @@ impl Kernel {
         serde_json::to_string(&self.make_update_value_for_test(running)).unwrap_or_default()
     }
 
-    /// Drive `make_update` and decode BOTH halves of the resulting frame: the
-    /// generic `Value` snapshot AND the typed-projection sidecar. The Tier-2
-    /// proof asserts a built-in projection lands in BOTH (additivity), so it
-    /// needs the real frame, not `run_typed_projections()` (which sees only the
-    /// host registry, never the kernel-owned built-ins).
+    /// Drive a single tick and return BOTH the JSON view of the `KernelSnapshot`
+    /// struct AND the typed-projection sidecar from the SAME tick.
+    ///
+    /// Uses `make_update_frame_and_json_for_test` internally so draining
+    /// projections (e.g. `action_results`, which is `take_*` / drain-on-emit)
+    /// are captured in both the JSON struct serialisation and the typed sidecar
+    /// in the same tick — no second tick, no double-drain.
+    ///
+    /// All current callers that only use the typed sidecar ignore `_value`;
+    /// callers that assert BOTH channels can use both fields.
     #[cfg(test)]
     pub(crate) fn make_update_typed_for_test(
         &mut self,
@@ -352,7 +414,9 @@ impl Kernel {
         serde_json::Value,
         Vec<crate::update_envelope::TypedProjectionData>,
     ) {
-        crate::update_envelope::decode_snapshot_with_typed(&self.make_update(running))
-            .unwrap_or((serde_json::Value::Null, Vec::new()))
+        let (frame, value) = self.make_update_frame_and_json_for_test(running);
+        let typed = crate::update_envelope::decode_snapshot_typed_projections(&frame)
+            .unwrap_or_default();
+        (value, typed)
     }
 }

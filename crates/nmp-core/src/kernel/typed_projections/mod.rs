@@ -161,10 +161,11 @@ pub(crate) use thread_view_fb::encode_thread_view;
 // (from `profile_fb`, reused by `claimed_profiles` / `resolved_profiles`) are
 // named in the inline mappings in `builtins_profiles.rs`, so they are
 // re-exported here alongside their `Model` + encode entry points.
-pub(crate) use claimed_events_fb::{
-    encode_claimed_events, ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER,
+pub use claimed_events_fb::{
+    ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER,
     CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
 };
+pub(crate) use claimed_events_fb::encode_claimed_events;
 pub(crate) use claimed_profiles_fb::{
     encode_claimed_profiles, ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER,
     CLAIMED_PROFILES_SCHEMA_ID, CLAIMED_PROFILES_SCHEMA_VERSION,
@@ -205,9 +206,9 @@ pub(crate) use signed_events_fb::{
 
 #[cfg(test)]
 pub(crate) use relay_role_options_fb::decode_relay_role_options;
-// Wave C profile/event cluster test-only decoders.
-#[cfg(test)]
-pub(crate) use claimed_events_fb::decode_claimed_events;
+// Wave C profile/event cluster — `decode_claimed_events` promoted to unconditional
+// pub (nmp-gallery typed-sidecar migration); the others remain test-only.
+pub use claimed_events_fb::decode_claimed_events;
 #[cfg(test)]
 pub(crate) use claimed_profiles_fb::decode_claimed_profiles;
 #[cfg(test)]

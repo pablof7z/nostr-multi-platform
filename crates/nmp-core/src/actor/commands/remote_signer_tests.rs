@@ -802,6 +802,22 @@ fn bunker_connection_state_slot_reflects_direct_write() {
 // the command-handler functions they wrap).
 // ──────────────────────────────────────────────────────────────────────────
 
+/// PR-B (#991/#979): drain snapshot frames from the channel and return the typed
+/// sidecar entries of the LAST snapshot frame received. The generic JSON `payload`
+/// is no longer emitted on the wire after payload zeroing; callers must use the
+/// typed sidecar decoders.
+fn last_typed_sidecars(
+    upd_rx: &std::sync::mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
+) -> Vec<crate::update_envelope::TypedProjectionData> {
+    let mut last: Vec<crate::update_envelope::TypedProjectionData> = Vec::new();
+    while let Ok(frame) = upd_rx.try_recv() {
+        if let Ok(typed) = crate::update_envelope::decode_snapshot_typed_projections(&frame) {
+            last = typed;
+        }
+    }
+    last
+}
+
 #[test]
 fn snapshot_carries_nip46_onboarding_projection() {
     // The built-in `"nip46_onboarding"` projection is wired alongside
@@ -930,38 +946,32 @@ fn snapshot_carries_nip46_onboarding_projection() {
     thread::sleep(Duration::from_millis(300));
     let _ = cmd_tx.send(ActorCommand::Shutdown);
 
-    let mut last_snapshot = None;
-    while let Ok(frame) = upd_rx.try_recv() {
-        if let Ok(crate::update_envelope::UpdateEnvelope::Snapshot(snapshot)) =
-            crate::update_envelope::decode_update_frame(&frame)
-        {
-            last_snapshot = Some(snapshot);
-        }
-    }
-    let last_snapshot = last_snapshot.expect("actor produced no snapshot frames");
-    // Both NIP-46 projection keys must appear and the typed projection's
-    // `stage_kind` + `is_in_flight` must reflect the same broker progress.
-    assert!(
-        last_snapshot["projections"]
-            .get("nip46_onboarding")
-            .is_some(),
-        "snapshot missing nip46_onboarding projection: {last_snapshot}"
-    );
+    // PR-B (#991/#979): payload is zeroed — read from the typed sidecar instead.
+    let sidecars = last_typed_sidecars(&upd_rx);
+    assert!(!sidecars.is_empty(), "actor produced no snapshot frames");
+
+    // Decode the nip46_onboarding typed sidecar.
+    let onboarding_entry = sidecars
+        .iter()
+        .find(|p| p.key == crate::actor::typed_projections::NIP46_ONBOARDING_SCHEMA_ID)
+        .expect("snapshot missing nip46_onboarding typed sidecar");
+    let onboarding = crate::actor::typed_projections::decode_nip46_onboarding(&onboarding_entry.payload)
+        .expect("nip46_onboarding sidecar must decode");
+
+    // The typed projection's `stage_kind` + `is_in_flight` must reflect the
+    // same broker progress as the prior JSON path.
     assert_eq!(
-        last_snapshot["projections"]["nip46_onboarding"]["stage_kind"],
-        serde_json::json!("connecting"),
-        "nip46_onboarding must carry typed stage_kind: {last_snapshot}"
-    );
-    assert_eq!(
-        last_snapshot["projections"]["nip46_onboarding"]["is_in_flight"],
-        serde_json::json!(true),
-        "nip46_onboarding must pre-compute is_in_flight=true for connecting: {last_snapshot}"
+        onboarding.stage_kind.as_deref(),
+        Some("connecting"),
+        "nip46_onboarding must carry stage_kind=connecting"
     );
     assert!(
-        last_snapshot["projections"]["nip46_onboarding"]
-            .get("signer_apps")
-            .is_some(),
-        "nip46_onboarding must carry signer_apps table: {last_snapshot}"
+        onboarding.is_in_flight,
+        "nip46_onboarding must pre-compute is_in_flight=true for connecting"
+    );
+    assert!(
+        !onboarding.signer_apps.is_empty(),
+        "nip46_onboarding must carry non-empty signer_apps table"
     );
 }
 
@@ -1005,31 +1015,37 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
     thread::sleep(Duration::from_millis(300));
     let _ = cmd_tx.send(ActorCommand::Shutdown);
 
-    let mut last_snapshot = None;
-    while let Ok(frame) = upd_rx.try_recv() {
-        if let Ok(crate::update_envelope::UpdateEnvelope::Snapshot(snapshot)) =
-            crate::update_envelope::decode_update_frame(&frame)
-        {
-            last_snapshot = Some(snapshot);
-        }
-    }
-    let last_snapshot = last_snapshot.expect("actor produced no snapshot frames");
+    // PR-B (#991/#979): payload zeroed — read from the typed sidecar instead.
+    let sidecars = last_typed_sidecars(&upd_rx);
+    assert!(!sidecars.is_empty(), "actor produced no snapshot frames");
+
+    // Decode the `accounts` typed sidecar and assert the remote-signer pubkey
+    // is present and the signer_kind is "nip46".
+    let accounts_entry = sidecars
+        .iter()
+        .find(|p| p.key == crate::kernel::public_typed_projections::ACCOUNTS_SCHEMA_ID)
+        .expect("snapshot missing accounts typed sidecar");
+    let accounts = crate::kernel::public_typed_projections::decode_accounts(&accounts_entry.payload)
+        .expect("accounts sidecar must decode");
     assert!(
-        last_snapshot.to_string().contains(&pk),
-        "snapshot missing remote-signer pubkey: {last_snapshot}"
+        accounts.accounts.iter().any(|row| row.id == pk || row.npub.contains(&pk)),
+        "snapshot missing remote-signer pubkey {pk} in accounts sidecar"
     );
     assert!(
-        last_snapshot["projections"]["accounts"]
-            .as_array()
-            .is_some_and(|accounts| accounts
-                .iter()
-                .any(|account| account["signer_kind"] == serde_json::json!("nip46"))),
-        "snapshot missing nip46 signer_kind: {last_snapshot}"
+        accounts.accounts.iter().any(|row| row.signer_kind == "nip46"),
+        "snapshot missing nip46 signer_kind in accounts sidecar"
     );
+
+    // Decode the `bunker_handshake` typed sidecar and assert stage=ready.
+    let bhs_entry = sidecars
+        .iter()
+        .find(|p| p.key == crate::actor::typed_projections::BUNKER_HANDSHAKE_SCHEMA_ID)
+        .expect("snapshot missing bunker_handshake typed sidecar");
+    let handshake = crate::actor::typed_projections::decode_bunker_handshake(&bhs_entry.payload)
+        .expect("bunker_handshake sidecar must decode");
     assert_eq!(
-        last_snapshot["projections"]["bunker_handshake"]["stage"],
-        serde_json::json!("ready"),
-        "snapshot missing handshake stage=ready: {last_snapshot}"
+        handshake.stage, "ready",
+        "snapshot missing handshake stage=ready"
     );
 }
 
