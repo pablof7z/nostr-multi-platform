@@ -34,6 +34,10 @@ pub mod generated;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 
 use generated::nmp::kernel as fb;
+// Shared `TimelineItem` row type: `thread_view.fbs` `include`s `timeline_item.fbs`,
+// so `TimelineItem` / `TimelineItemArgs` live in the crate-root
+// `timeline_item_generated` wrapper (NOT in `fb` after the include refactor).
+use crate::timeline_item_generated as ti;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
@@ -86,8 +90,8 @@ pub(crate) struct ThreadViewModel {
 pub(crate) fn create_timeline_items<'a>(
     fbb: &mut FlatBufferBuilder<'a>,
     items: &[TimelineItemModel],
-) -> WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<fb::TimelineItem<'a>>>> {
-    let offsets: Vec<WIPOffset<fb::TimelineItem<'a>>> = items
+) -> WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<ti::TimelineItem<'a>>>> {
+    let offsets: Vec<WIPOffset<ti::TimelineItem<'a>>> = items
         .iter()
         .map(|item| {
             let id = fbb.create_string(&item.id);
@@ -108,9 +112,9 @@ pub(crate) fn create_timeline_items<'a>(
             let content_preview = fbb.create_string(&item.content_preview);
             let nav_target_id = fbb.create_string(&item.nav_target_id);
             let repost_inner_content = fbb.create_string(&item.repost_inner_content);
-            fb::TimelineItem::create(
+            ti::TimelineItem::create(
                 fbb,
-                &fb::TimelineItemArgs {
+                &ti::TimelineItemArgs {
                     id: Some(id),
                     author_pubkey: Some(author_pubkey),
                     has_author_picture_url: item.author_picture_url.is_some(),
@@ -168,7 +172,7 @@ pub(crate) fn encode_thread_view(model: &ThreadViewModel) -> Vec<u8> {
 /// [`TimelineItemModel`]. Shared logic the `author_view` test decoder mirrors
 /// against its own bindings.
 #[cfg(test)]
-pub(crate) fn timeline_item_from_fb(item: fb::TimelineItem<'_>) -> TimelineItemModel {
+pub(crate) fn timeline_item_from_fb(item: ti::TimelineItem<'_>) -> TimelineItemModel {
     TimelineItemModel {
         id: item.id().unwrap_or_default().to_string(),
         author_pubkey: item.author_pubkey().unwrap_or_default().to_string(),

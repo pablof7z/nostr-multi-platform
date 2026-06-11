@@ -878,4 +878,137 @@ enum TypedProjectionGlue {
     static func settingsHub(_ reader: nmp_kernel_SettingsHubSnapshot) -> [String: Int] {
         ["relay_count": Int(reader.relayCount)]
     }
+
+    // MARK: action_results → [LastActionResult]
+
+    /// Map the typed `action_results` sidecar (`KARS` /
+    /// `nmp_kernel_ActionResultsSnapshot`) to the `[LastActionResult]` the JSON
+    /// `projections.action_results` path yields. Per-tick drain array — maps each
+    /// `ActionResult` row to `LastActionResult` field-for-field. The two `has_*`
+    /// companion bools (`has_error`, `has_result`) preserve the JSON
+    /// `null`-when-`None` semantics: `error` is `nil` when `has_error == false`,
+    /// byte-identical to the JSON path. `result` is not part of the Chirp
+    /// `LastActionResult` domain type (field-subset), so it is ignored here.
+    static func actionResults(_ reader: nmp_kernel_ActionResultsSnapshot) -> [LastActionResult] {
+        reader.results.map { row in
+            LastActionResult(
+                correlationId: row.correlationId ?? "",
+                status: row.status ?? "",
+                error: row.hasError ? (row.error ?? "") : nil
+            )
+        }
+    }
+
+    // MARK: action_stages → [String: [ActionStageEntry]]
+
+    /// Map the typed `action_stages` sidecar (`KAST` /
+    /// `nmp_kernel_ActionStagesSnapshot`) to the `[String: [ActionStageEntry]]` the
+    /// JSON `projections.action_stages` path yields. The FlatBuffers wire uses a
+    /// flat vector of `ActionStagesEntry` rows (one per correlation_id with its own
+    /// `stages` vector) instead of a JSON object; this rebuilds the dictionary.
+    /// Each stage reconstructs the `ActionStage` enum mirroring the JSON
+    /// `init(from:)` switch (snake_case tags; `failed` lifts `has_reason`/`reason`;
+    /// unknown tags collapse to `.unknown(raw:)` for D1 forward-compat).
+    static func actionStages(
+        _ reader: nmp_kernel_ActionStagesSnapshot
+    ) -> [String: [ActionStageEntry]] {
+        reader.entries.reduce(into: [String: [ActionStageEntry]]()) { out, entry in
+            guard let key = entry.key else { return }
+            out[key] = entry.stages.map(actionStageEntry)
+        }
+    }
+
+    private static func actionStageEntry(_ row: nmp_kernel_ActionStageEntry) -> ActionStageEntry {
+        let stage: ActionStage
+        switch row.stage ?? "" {
+        case "requested": stage = .requested
+        case "awaiting_capability", "awaitingCapability": stage = .awaitingCapability
+        case "publishing": stage = .publishing
+        case "accepted": stage = .accepted
+        case "failed": stage = .failed(reason: row.hasReason ? (row.reason ?? "") : "")
+        case let raw: stage = .unknown(raw: raw)
+        }
+        return ActionStageEntry(stage: stage, atMs: row.atMs)
+    }
+
+    // MARK: author_view → AuthorProfileSnapshot
+
+    /// Map the typed `author_view` sidecar (`KAVW` /
+    /// `nmp_kernel_AuthorViewSnapshot`) to the `AuthorProfileSnapshot` the JSON
+    /// `projections.author_view` path yields. Nested composition: `profile` uses
+    /// the SHARED `nmp_kernel_ProfileCard` reader (from `ProfileCard.generated.swift`
+    /// via the `profile_card.fbs` include); `items` uses the SHARED
+    /// `nmp_kernel_TimelineItem` reader (from `TimelineItem.generated.swift` via the
+    /// `timeline_item.fbs` include). `primaryAction` is `nil` when
+    /// `has_primary_action == false` (mirrors JSON `null` / absent). NOTE: this
+    /// binding becomes deletable when V-68 Stage 2 ships.
+    static func authorView(_ reader: nmp_kernel_AuthorViewSnapshot) -> AuthorProfileSnapshot {
+        let primaryAction = reader.hasPrimaryAction ? reader.primaryAction.map(profileAction) : nil
+        return AuthorProfileSnapshot(
+            pubkey: reader.pubkey ?? "",
+            state: reader.state ?? "",
+            profile: reader.profile.map(profileCard) ?? ProfileCard(
+                pubkey: "", npub: "", displayName: nil, pictureUrl: nil,
+                nip05: "", about: "", hasProfile: false, lnurl: nil
+            ),
+            items: reader.items.map(timelineItem),
+            noteCount: Int(reader.noteCount),
+            noteCountDisplay: reader.noteCountDisplay ?? "",
+            primaryAction: primaryAction
+        )
+    }
+
+    private static func profileAction(_ row: nmp_kernel_ProfileAction) -> ProfileAction {
+        let dispatch = row.hasDispatch ? row.dispatch.map { spec in
+            ProfileDispatchSpec(namespace: spec.namespace ?? "", bodyJson: spec.bodyJson ?? "")
+        } : nil
+        return ProfileAction(
+            kind: row.kind ?? "",
+            label: row.label ?? "",
+            targetPubkey: row.targetPubkey ?? "",
+            iconName: row.iconName ?? "",
+            dispatch: dispatch
+        )
+    }
+
+    private static func timelineItem(_ row: nmp_kernel_TimelineItem) -> TimelineItem {
+        TimelineItem(
+            authorDisplayName: row.hasAuthorDisplayName ? (row.authorDisplayName ?? "") : nil,
+            authorLnurl: row.hasAuthorLnurl ? (row.authorLnurl ?? "") : nil,
+            authorPictureUrl: row.hasAuthorPictureUrl ? (row.authorPictureUrl ?? "") : nil,
+            authorPubkey: row.authorPubkey ?? "",
+            content: row.content ?? "",
+            contentPreview: row.contentPreview ?? "",
+            createdAt: row.createdAt,
+            id: row.id ?? "",
+            isRepost: row.isRepost,
+            kind: row.kind,
+            navTargetId: row.navTargetId ?? "",
+            relayCount: row.relayCount,
+            repostInnerContent: row.repostInnerContent ?? ""
+        )
+    }
+
+    // MARK: thread_view → ThreadView
+
+    /// Map the typed `thread_view` sidecar (`KTVW` /
+    /// `nmp_kernel_ThreadViewSnapshot`) to the `ThreadView` the JSON
+    /// `projections.thread_view` path yields. Field-for-field copy; `items` uses
+    /// the SHARED `nmp_kernel_TimelineItem` reader (from
+    /// `TimelineItem.generated.swift`). `previousCountLabel` / `nextCountLabel`
+    /// are D1 optional (`nil` = absent for older kernels); the typed wire always
+    /// carries them so the optional is preserved for symmetry. NOTE: this binding
+    /// becomes deletable when V-68 Stage 2 ships.
+    static func threadView(_ reader: nmp_kernel_ThreadViewSnapshot) -> ThreadView {
+        ThreadView(
+            focusedEventId: reader.focusedEventId ?? "",
+            rootEventId: reader.rootEventId ?? "",
+            state: reader.state ?? "",
+            items: reader.items.map(timelineItem),
+            previousCount: Int(reader.previousCount),
+            nextCount: Int(reader.nextCount),
+            previousCountLabel: reader.previousCountLabel,
+            nextCountLabel: reader.nextCountLabel
+        )
+    }
 }
