@@ -45,6 +45,8 @@ mod ram_eviction;
 #[cfg(test)]
 mod ram_eviction_tests;
 #[cfg(test)]
+mod ram_eviction_view_pin_tests;
+#[cfg(test)]
 mod closed_classifier_tests;
 // `pub(crate)` so the typed FFI error-category constants (`ERR_*`) are
 // reachable from the `actor` module's command handlers, not just kernel-

@@ -10,6 +10,12 @@
 //! 5. `metric_stored_events` is decremented for every evicted `events` entry.
 //! 6. Maps that are already under the HWM are not touched.
 //! 7. `run_gc_step` drives `evict_ram_caches` (integration path).
+//! 8. **Open-view invariant** (Opus review on PR #1096) — an open thread
+//!    view's root + replies + hydration-requested ids, an open author view's
+//!    notes (non-followed author), and the open views' author profiles all
+//!    survive eviction, and `thread_items()`/`author_items()` still return
+//!    the full set afterwards.  `open_thread`/`open_author` write NOTHING to
+//!    `event_claims`, so these pins must derive from the live view state.
 //!
 //! Test strategy: insert events/profiles/seed_contacts through the real
 //! ingest path (using `ingest_pre_verified_event` / `inject_replaceable_event`
@@ -24,25 +30,25 @@ use crate::store::{RawEvent, VerifiedEvent};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-const RELAY_A: &str = "wss://a.example/";
-const T0_SECS: u64 = 1_700_000_000;
+pub(super) const RELAY_A: &str = "wss://a.example/";
+pub(super) const T0_SECS: u64 = 1_700_000_000;
 
-fn pin_clock(kernel: &mut Kernel, secs: u64) {
+pub(super) fn pin_clock(kernel: &mut Kernel, secs: u64) {
     let fixed = SystemTime::UNIX_EPOCH + Duration::from_secs(secs);
     kernel.set_clock(Arc::new(FixedClock(fixed)));
 }
 
-fn make_event_id(n: usize) -> String {
+pub(super) fn make_event_id(n: usize) -> String {
     format!("{:0>64}", n)
 }
 
-fn make_pubkey(n: usize) -> String {
+pub(super) fn make_pubkey(n: usize) -> String {
     format!("{:0>64x}", n)
 }
 
 /// Insert `count` unique kind:1 events via `ingest_pre_verified_event` so
 /// they land in `self.events`.  Returns the list of inserted event ids.
-fn inject_events(kernel: &mut Kernel, count: usize, base_created_at: u64) -> Vec<String> {
+pub(super) fn inject_events(kernel: &mut Kernel, count: usize, base_created_at: u64) -> Vec<String> {
     let mut ids = Vec::with_capacity(count);
     for i in 0..count {
         let id = make_event_id(i + 1);
@@ -66,7 +72,7 @@ fn inject_events(kernel: &mut Kernel, count: usize, base_created_at: u64) -> Vec
 }
 
 /// Insert `count` unique kind:0 profile events via `inject_replaceable_event`.
-fn inject_profiles(kernel: &mut Kernel, count: usize, base_created_at: u64) -> Vec<String> {
+pub(super) fn inject_profiles(kernel: &mut Kernel, count: usize, base_created_at: u64) -> Vec<String> {
     let mut pubkeys = Vec::with_capacity(count);
     for i in 0..count {
         let pubkey = make_pubkey(1_000 + i + 1); // distinct from event authors
