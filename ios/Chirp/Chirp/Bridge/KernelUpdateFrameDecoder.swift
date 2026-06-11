@@ -5,7 +5,6 @@ enum KernelUpdateFrameDecoderError: LocalizedError {
     case emptyPayload
     case missingSnapshotPayload
     case missingPanicPayload
-    case unexpectedValueKind(String)
 
     var errorDescription: String? {
         switch self {
@@ -15,8 +14,6 @@ enum KernelUpdateFrameDecoderError: LocalizedError {
             return "snapshot frame missing payload"
         case .missingPanicPayload:
             return "panic frame missing payload"
-        case let .unexpectedValueKind(kind):
-            return "unexpected FlatBuffers value kind \(kind)"
         }
     }
 }
