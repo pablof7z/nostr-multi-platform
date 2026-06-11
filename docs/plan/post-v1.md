@@ -10,7 +10,18 @@ See [`m9-messaging.md`](m9-messaging.md) for the full milestone spec (scope, sub
 
 ## Post-v1 M12 — Wallet (NWC + zaps + Cashu + nutzaps)
 
-See [`m12-wallet.md`](m12-wallet.md) for the full milestone spec. **Deferred reason:** Wallet is large surface area (NWC, NIP-47, NIP-57, NIP-60, NIP-61) and not load-bearing for v1 kernel-boundary proofs. When wallet lands post-v1, NIP-57 ships with it. LUD-16 zaps remain possible via an extension before this milestone.
+See [`m12-wallet.md`](m12-wallet.md) for the full milestone spec.
+
+**What v1 ships (owner decision 2026-06-12):** the current zap capability is sufficient for v1 — send via NWC (`nmp-nip47`), LUD-16 LNURL fetch (`nmp-nip57`), kind:9735 ingest + `ZapsAggregateProjection`, E2E runtime harness verified (PR #1076, F-04 #978 closed). No further zap work is required before v1.
+
+**Explicitly post-v1 (same owner decision):**
+- Receipt `nostrPubkey` author verification — [#1043](https://github.com/pablof7z/nostr-multi-platform/issues/1043) (V-113; already labeled `phase:post-v1`)
+- `ZapRequestBuilder` sentinel-value API fix — [#610](https://github.com/pablof7z/nostr-multi-platform/issues/610)
+- `zap_subscription` typed-sidecar shape decision — [#1022](https://github.com/pablof7z/nostr-multi-platform/issues/1022)
+- Any zap UX hardening
+- Cashu / nutzaps (NIP-60/61) — [#1001](https://github.com/pablof7z/nostr-multi-platform/issues/1001)
+
+**Deferred reason for remainder:** wallet is large surface area and the unbuilt portions (Cashu, NIP-60, NIP-61, receipt verification design) are not load-bearing for v1 kernel-boundary proofs.
 
 ## Post-v1 Web/WASM — Browser host + wasm parity
 

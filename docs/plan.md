@@ -34,7 +34,6 @@ production fallback. Track under [F-10 issue #991](https://github.com/pablof7z/n
 
 **What does not work yet** (v1 blockers):
 1. **F-02** — DM cold-start receive-side not yet verified against live relays (Rust pipeline test passes).
-2. **F-04** — Zap E2E round-trip (NWC `pay_invoice` → kind:9735 → `ZapsAggregateProjection`) not verified against a live wallet.
 3. **F-05 / F-10 — DONE** — Full typed-projection coverage + `payload:Value` deletion complete. All consumers (chirp-tui, chirp-desktop, nmp-gallery TUI + desktop) decode typed-first; `encode_snapshot_with_envelope` no longer emits `payload:Value`; `decode_snapshot_payload` has zero callers. Frame-size delta: 14,504 B → 3,384 B (−76.7%) for an empty frame (the 4,457 B JSON blob = 31% overhead is now gone). See [#979](https://github.com/pablof7z/nostr-multi-platform/issues/979), [#991](https://github.com/pablof7z/nostr-multi-platform/issues/991) (both closed).
 
 **Web/wasm scope moved post-v1 (2026-06-11).** `nmp-wasm` stages 2–3c
@@ -102,7 +101,7 @@ The original M0–M17 ladder predates the current codebase by a wide margin. Mos
 | M10.5 FFI hardening | design done | ✅ S2/S3/S4/S5 gates closed; native CI coverage still a gap |
 | ~~M11~~ Podcast rebuild | deferred | Skipped — see `nmp-only-two-agents` memory |
 | ~~M11.5~~ Highlighter app proof | deferred | `nmp-nip29` retained as generic infra; app shell removed |
-| ~~M12~~ Wallet (NWC + zaps + Cashu) | deferred post-v1 | 🟡 NWC + NIP-57 built; **F-04 E2E pending**; Cashu/nutzaps post-v1 |
+| ~~M12~~ Wallet (NWC + zaps + Cashu) | deferred post-v1 | ✅ NWC + NIP-57 shipped; zap send (NWC `pay_invoice` → kind:9735 → `ZapsAggregateProjection`) E2E-harness-verified (PR #1076, F-04 closed); **further zap work post-v1 by owner decision 2026-06-12**; Cashu/nutzaps post-v1 |
 | M13 Web-of-Trust | pending | ❌ Not built (post-v1) |
 | M14 UniFFI migration | pending | ❌ Not started (post-v1) |
 | M15 Native cross-platform | pending | 🟡 Desktop (egui) + Android shells; wasm Stages 2–3c are merged but web persistence/parity is post-v1; v1 platform contract = iOS + Android + desktop (egui) |
@@ -119,7 +118,7 @@ pending decisions, and queued feature work live in GitHub Issues.
 v1 ships when **all of the following** hold:
 
 1. **No open `category:violation` issue blocks v1** (or every such issue has a `status:staged` plan that crosses the v1 line with progress per sprint).
-2. **Every `phase:v1-blocker` feature issue is closed.** Open today: F-02 [#977](https://github.com/pablof7z/nostr-multi-platform/issues/977), F-04 [#978](https://github.com/pablof7z/nostr-multi-platform/issues/978), gc_step wiring [#1069](https://github.com/pablof7z/nostr-multi-platform/issues/1069). F-05 [#979](https://github.com/pablof7z/nostr-multi-platform/issues/979) and F-10 [#991](https://github.com/pablof7z/nostr-multi-platform/issues/991) **CLOSED** — payload:Value zeroing complete. Web/wasm issues [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008) are post-v1.
+2. **Every `phase:v1-blocker` feature issue is closed.** Open today: F-02 [#977](https://github.com/pablof7z/nostr-multi-platform/issues/977), gc_step wiring [#1069](https://github.com/pablof7z/nostr-multi-platform/issues/1069). F-04 [#978](https://github.com/pablof7z/nostr-multi-platform/issues/978) **CLOSED** — zap E2E harness verified (PR #1076). F-05 [#979](https://github.com/pablof7z/nostr-multi-platform/issues/979) and F-10 [#991](https://github.com/pablof7z/nostr-multi-platform/issues/991) **CLOSED** — payload:Value zeroing complete. Web/wasm issues [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008) are post-v1.
 3. **Every pending `category:decision` issue that blocks v1 is resolved** (today: PD-033-C, PD-037 closed; PD-033-A [#975](https://github.com/pablof7z/nostr-multi-platform/issues/975) **CLOSED 2026-06-11** — second-app gate met via external consumer apps per owner decision; see [`docs/architecture/external-consumers.md`](architecture/external-consumers.md)).
 4. **Second-app gate** — ✅ MET (2026-06-11, Decision B): external consumer apps (`podcast-player`, `win-the-day`, `hl`) pin NMP by git rev and compose framework seams. See [PD-033-A issue #975](https://github.com/pablof7z/nostr-multi-platform/issues/975) (closed) and [`docs/architecture/external-consumers.md`](architecture/external-consumers.md).
 5. **The v1 platform claim is honest.** v1 claims iOS, Android, and desktop (egui). Browser/web/wasm is a non-persistent preview until IndexedDB and the NmpApp-actor-in-Worker port land (both post-v1, tracked by [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008)).
@@ -139,6 +138,7 @@ Deliberately deferred. See GitHub Issues labeled `phase:post-v1` and [`plan/post
 - Blossom uploads/downloads (M10)
 - Web-of-Trust (M13)
 - UniFFI migration (M14)
+- Further zap work: receipt `nostrPubkey` author verification (#1043), `ZapRequestBuilder` sentinel-value API fix (#610), `zap_subscription` typed-sidecar shape decision (#1022), any zap UX hardening — owner decision 2026-06-12; v1 ships current capability: send via NWC, kind:9735 ingest + `ZapsAggregateProjection`, E2E-harness-verified
 - Cashu / nutzaps (NIP-60/61)
 - V-06 NIP-42+NIP-46 Stages 2-3 (broker `sign_auth_challenge` RPC)
 - V-08 NIP-17 DM bunker support Stage 3 (`unwrap_gift_wrap` via remote signer RPC)
