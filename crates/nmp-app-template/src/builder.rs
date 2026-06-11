@@ -420,6 +420,21 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.register_snapshot_projection(key, f);
     }
 
+    fn register_snapshot_projection_gated<K, F>(
+        &self,
+        key: K,
+        gate: Arc<dyn nmp_core::ChangeGate>,
+        f: F,
+    ) where
+        K: Into<String>,
+        F: Fn() -> serde_json::Value + Send + Sync + 'static,
+    {
+        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
+        // `&self` is safe — all AppHost methods take `&self`.
+        let app: &NmpApp = unsafe { &*self.app };
+        app.register_snapshot_projection_gated(key, gate, f);
+    }
+
     fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
     where
         K: Into<String>,
