@@ -44,18 +44,18 @@ use crate::profile_card_generated as pc;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const RESOLVED_PROFILES_SCHEMA_ID: &str = "resolved_profiles";
+pub const RESOLVED_PROFILES_SCHEMA_ID: &str = "resolved_profiles";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const RESOLVED_PROFILES_FILE_IDENTIFIER: &[u8; 4] = b"KRPR";
+pub const RESOLVED_PROFILES_FILE_IDENTIFIER: &[u8; 4] = b"KRPR";
 /// Wire schema version. Bump on any breaking change to `resolved_profiles.fbs`.
-pub(crate) const RESOLVED_PROFILES_SCHEMA_VERSION: u32 = 1;
+pub const RESOLVED_PROFILES_SCHEMA_VERSION: u32 = 1;
 
 /// The `"resolved_profiles"` read model — the `pubkey -> ProfileCard` map
 /// flattened to a key-sorted vector of `(key, value)` entries.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ResolvedProfilesModel {
+pub struct ResolvedProfilesModel {
     /// `(key, value)` entries, sorted by `key` (BTreeMap order, matches JSON).
-    pub(crate) entries: Vec<(String, ProfileCardModel)>,
+    pub entries: Vec<(String, ProfileCardModel)>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -127,7 +127,6 @@ pub(crate) fn encode_resolved_profiles(model: &ResolvedProfilesModel) -> Vec<u8>
 
 /// Decode the SHARED generated `ProfileCard` table (`include`d from
 /// `profile_card.fbs`) into a [`ProfileCardModel`].
-#[cfg(test)]
 fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey().unwrap_or_default().to_string(),
@@ -150,8 +149,7 @@ fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
 /// Decode typed FlatBuffers bytes (as produced by [`encode_resolved_profiles`])
 /// back into a [`ResolvedProfilesModel`]. Returns an error string on any
 /// malformed input.
-#[cfg(test)]
-pub(crate) fn decode_resolved_profiles(bytes: &[u8]) -> Result<ResolvedProfilesModel, String> {
+pub fn decode_resolved_profiles(bytes: &[u8]) -> Result<ResolvedProfilesModel, String> {
     if bytes.len() < 8 || !fb::resolved_profiles_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KRPR file identifier".to_string());
     }

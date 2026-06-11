@@ -49,43 +49,43 @@ use crate::timeline_item_generated as ti;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const AUTHOR_VIEW_SCHEMA_ID: &str = "author_view";
+pub const AUTHOR_VIEW_SCHEMA_ID: &str = "author_view";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const AUTHOR_VIEW_FILE_IDENTIFIER: &[u8; 4] = b"KAVW";
+pub const AUTHOR_VIEW_FILE_IDENTIFIER: &[u8; 4] = b"KAVW";
 /// Wire schema version. Bump on any breaking change to `author_view.fbs`.
-pub(crate) const AUTHOR_VIEW_SCHEMA_VERSION: u32 = 1;
+pub const AUTHOR_VIEW_SCHEMA_VERSION: u32 = 1;
 
 /// A field-for-field mirror of `ProfileDispatchSpec` — the optional write-action
 /// dispatch carried inside a [`ProfileActionModel`].
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ProfileDispatchSpecModel {
-    pub(crate) namespace: String,
-    pub(crate) body_json: String,
+pub struct ProfileDispatchSpecModel {
+    pub namespace: String,
+    pub body_json: String,
 }
 
 /// A field-for-field mirror of `ProfileAction` — `author_view`'s optional
 /// `primary_action`. `dispatch` is `Some` for write verbs (follow / unfollow),
 /// `None` for local-UI intents (edit sheet).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ProfileActionModel {
-    pub(crate) kind: String,
-    pub(crate) label: String,
-    pub(crate) target_pubkey: String,
-    pub(crate) icon_name: String,
-    pub(crate) dispatch: Option<ProfileDispatchSpecModel>,
+pub struct ProfileActionModel {
+    pub kind: String,
+    pub label: String,
+    pub target_pubkey: String,
+    pub icon_name: String,
+    pub dispatch: Option<ProfileDispatchSpecModel>,
 }
 
 /// The `"author_view"` read model — a field-for-field mirror of
 /// `AuthorViewPayload`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct AuthorViewModel {
-    pub(crate) pubkey: String,
-    pub(crate) state: String,
-    pub(crate) profile: ProfileCardModel,
-    pub(crate) items: Vec<TimelineItemModel>,
-    pub(crate) note_count: u64,
-    pub(crate) note_count_display: String,
-    pub(crate) primary_action: Option<ProfileActionModel>,
+pub struct AuthorViewModel {
+    pub pubkey: String,
+    pub state: String,
+    pub profile: ProfileCardModel,
+    pub items: Vec<TimelineItemModel>,
+    pub note_count: u64,
+    pub note_count_display: String,
+    pub primary_action: Option<ProfileActionModel>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -251,8 +251,7 @@ pub(crate) fn encode_author_view(model: &AuthorViewModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_author_view`]) back
 /// into an [`AuthorViewModel`]. Returns an error string on any malformed input.
-#[cfg(test)]
-pub(crate) fn decode_author_view(bytes: &[u8]) -> Result<AuthorViewModel, String> {
+pub fn decode_author_view(bytes: &[u8]) -> Result<AuthorViewModel, String> {
     if bytes.len() < 8 || !fb::author_view_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KAVW file identifier".to_string());
     }
@@ -311,7 +310,6 @@ pub(crate) fn decode_author_view(bytes: &[u8]) -> Result<AuthorViewModel, String
 /// Decode THIS module's generated `ProfileCard` table into a
 /// [`ProfileCardModel`] (mirrors `profile_fb::profile_card_from_fb` against the
 /// author_view bindings).
-#[cfg(test)]
 fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey().unwrap_or_default().to_string(),
@@ -333,7 +331,6 @@ fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
 
 /// Decode THIS module's generated `TimelineItem` table into a
 /// [`TimelineItemModel`] (mirrors `thread_view_fb::timeline_item_from_fb`).
-#[cfg(test)]
 fn timeline_item_from_fb(item: ti::TimelineItem<'_>) -> TimelineItemModel {
     TimelineItemModel {
         id: item.id().unwrap_or_default().to_string(),

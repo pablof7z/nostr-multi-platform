@@ -41,33 +41,33 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const ACCOUNTS_SCHEMA_ID: &str = "accounts";
+pub const ACCOUNTS_SCHEMA_ID: &str = "accounts";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const ACCOUNTS_FILE_IDENTIFIER: &[u8; 4] = b"KACC";
+pub const ACCOUNTS_FILE_IDENTIFIER: &[u8; 4] = b"KACC";
 /// Wire schema version. Bump on any breaking change to `accounts.fbs`.
-pub(crate) const ACCOUNTS_SCHEMA_VERSION: u32 = 1;
+pub const ACCOUNTS_SCHEMA_VERSION: u32 = 1;
 
 /// One account row — a field-for-field mirror of one
 /// [`AccountSummary`](crate::kernel::AccountSummary). `Option<String>` fields
 /// are flattened to `Option<String>` here and encoded as `has_x` + value.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct AccountSummaryRow {
-    pub(crate) id: String,
-    pub(crate) npub: String,
-    pub(crate) display_name: Option<String>,
-    pub(crate) signer_kind: String,
-    pub(crate) status: String,
-    pub(crate) signer_label: String,
-    pub(crate) signer_is_remote: bool,
-    pub(crate) is_active: bool,
-    pub(crate) picture_url: Option<String>,
+pub struct AccountSummaryRow {
+    pub id: String,
+    pub npub: String,
+    pub display_name: Option<String>,
+    pub signer_kind: String,
+    pub status: String,
+    pub signer_label: String,
+    pub signer_is_remote: bool,
+    pub is_active: bool,
+    pub picture_url: Option<String>,
 }
 
 /// The `"accounts"` read model — the ordered account rows. Built from the same
 /// `accounts_enriched()` vector the JSON projection serialises.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct AccountsModel {
-    pub(crate) accounts: Vec<AccountSummaryRow>,
+pub struct AccountsModel {
+    pub accounts: Vec<AccountSummaryRow>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -129,8 +129,7 @@ pub(crate) fn encode_accounts(model: &AccountsModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_accounts`]) back
 /// into an [`AccountsModel`]. Returns an error string on any malformed input.
-#[cfg(test)]
-pub(crate) fn decode_accounts(bytes: &[u8]) -> Result<AccountsModel, String> {
+pub fn decode_accounts(bytes: &[u8]) -> Result<AccountsModel, String> {
     if bytes.len() < 8 || !fb::accounts_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KACC file identifier".to_string());
     }

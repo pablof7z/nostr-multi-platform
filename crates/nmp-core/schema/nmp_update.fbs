@@ -157,17 +157,25 @@ table WireSubscriptionStatus {
 
 table SnapshotFrame {
   schema_version:uint = 1;
-  // TODO(PR-B / #991): mark (deprecated), stop emitting, and regenerate
-  // bindings once every Rust-shell consumer has migrated to typed-first
-  // reads.  NOTE: every kernel-built-in projection ALREADY has a typed
-  // codec and is dual-emitted each tick (accounts/active_account/profile/
-  // configured_relays/settings_hub in kernel/typed_projections/;
-  // relay_statuses is an ADR-0044 Tier-3 envelope field).  The only
-  // remaining blockers are CONSUMER read sites that still walk this Value:
-  // chirp-tui `FeatureSnapshot::from_projections` and chirp-desktop
-  // `Snapshot` (snapshot.rs serde decode + app.rs `.projection()` reads).
+  // PR-B (#991/#979): DEPRECATED. Every kernel-built-in projection has a
+  // typed codec and is dual-emitted each tick (accounts/active_account/
+  // profile/configured_relays/settings_hub/publish_outbox/outbox_summary/
+  // author_view/thread_view/resolved_profiles in kernel/typed_projections/;
+  // relay_statuses + metrics are ADR-0044 Tier-3 envelope fields). The
+  // primary Rust shells now read typed-first and NEVER touch this Value:
+  //   - chirp-tui  `FeatureSnapshot::from_flatbuffer` (feature_snapshot.rs)
+  //   - chirp-tui  `SharedSnapshot::decode_flatbuffer_snapshot` (snapshot.rs)
+  //   - chirp-desktop `decode_snapshot_typed` (app.rs)
+  // REMAINING EMISSION BLOCKER (do NOT zero-out payload until cleared): the
+  // nmp-gallery TUI + desktop shells (apps/nmp-gallery/) decode this Value
+  // via `decode_snapshot_payload` and read `projections.resolved_profiles`
+  // and `projections.claimed_events` with NO typed-projection path yet.
+  // Zeroing the payload now silently blanks the gallery embed host. The
+  // emission stop ships in a follow-up once gallery migrates to the typed
+  // resolved_profiles + claimed_events sidecars (both already exist kernel-
+  // side; resolved_profiles is now `pub`, claimed_events needs promotion).
   // web/chirp is post-v1 per ADR-0037 §5.
-  payload:Value;                          // compatibility during migration
+  payload:Value (deprecated);             // PR-B: typed sidecars are authoritative; gallery still reads this
   typed_projections:[TypedProjection];    // new: typed sidecar
 
   // ADR-0044 Tier-3 envelope fields. APPENDED at the tail so existing

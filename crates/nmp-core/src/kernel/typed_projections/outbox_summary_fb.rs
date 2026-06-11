@@ -39,23 +39,23 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const OUTBOX_SUMMARY_SCHEMA_ID: &str = "outbox_summary";
+pub const OUTBOX_SUMMARY_SCHEMA_ID: &str = "outbox_summary";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const OUTBOX_SUMMARY_FILE_IDENTIFIER: &[u8; 4] = b"KOXS";
+pub const OUTBOX_SUMMARY_FILE_IDENTIFIER: &[u8; 4] = b"KOXS";
 /// Wire schema version. Bump on any breaking change to `outbox_summary.fbs`.
-pub(crate) const OUTBOX_SUMMARY_SCHEMA_VERSION: u32 = 1;
+pub const OUTBOX_SUMMARY_SCHEMA_VERSION: u32 = 1;
 
 /// The `"outbox_summary"` read model — a field-for-field mirror of the
 /// SERIALISED [`OutboxSummarySnapshot`](crate::kernel::OutboxSummarySnapshot).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct OutboxSummaryModel {
-    pub(crate) title: String,
-    pub(crate) subtitle: String,
-    pub(crate) total: u32,
-    pub(crate) sending: u32,
-    pub(crate) retrying: u32,
-    pub(crate) queued: u32,
-    pub(crate) failed: u32,
+pub struct OutboxSummaryModel {
+    pub title: String,
+    pub subtitle: String,
+    pub total: u32,
+    pub sending: u32,
+    pub retrying: u32,
+    pub queued: u32,
+    pub failed: u32,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -88,8 +88,7 @@ pub(crate) fn encode_outbox_summary(model: &OutboxSummaryModel) -> Vec<u8> {
 /// Decode typed FlatBuffers bytes (as produced by [`encode_outbox_summary`])
 /// back into an [`OutboxSummaryModel`]. Returns an error string on any
 /// malformed input.
-#[cfg(test)]
-pub(crate) fn decode_outbox_summary(bytes: &[u8]) -> Result<OutboxSummaryModel, String> {
+pub fn decode_outbox_summary(bytes: &[u8]) -> Result<OutboxSummaryModel, String> {
     if bytes.len() < 8 || !fb::outbox_summary_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KOXS file identifier".to_string());
     }
