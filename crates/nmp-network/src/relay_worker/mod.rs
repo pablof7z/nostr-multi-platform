@@ -375,15 +375,21 @@ fn run_connected_relay(
                 return RelayWorkerResult::Reconnect;
             }
         };
-        if ready.control || ready.writable {
-            continue;
-        }
+        // On edge-triggered platforms (kqueue on macOS uses EV_CLEAR), a readable
+        // event that arrives in the same kevent() batch as a control or writable
+        // event is not re-delivered on the next poll call — the edge transition was
+        // already consumed. Drain reads unconditionally before looping back for
+        // command/write processing so an EOF or inbound frame is never silently
+        // dropped when a waker fires simultaneously with a socket readable signal.
         if ready.readable {
             if let Some(result) =
                 drain_relay_reads(role, relay_url, generation, relay_tx, socket, keepalive)
             {
                 return result;
             }
+        }
+        if ready.control || ready.writable {
+            continue;
         }
     }
 }
