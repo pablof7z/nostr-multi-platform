@@ -2,6 +2,7 @@ package org.nmp.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,7 +14,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -24,10 +27,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.model.BunkerConnectionState
 
 /**
  * Sign-in screen for Android Chirp app. Provides two authentication paths:
@@ -44,6 +53,9 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
     var displayName by remember { mutableStateOf("") }
     var bunkerUri by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
+    // V-14 / #963: relay-layer bunker connection health. Null while no bunker
+    // session is active (local-key accounts — the steady state).
+    val bunkerConnectionState by model.bunkerConnectionState.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
@@ -190,6 +202,17 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
             }
         }
 
+        // V-14 / #963: signer relay health badge — only shown when a bunker
+        // session is active. `isConnected` → green; `isReconnecting` → amber
+        // spinner; `isFailed` → red. Rust pre-computes all flags (ADR-0032).
+        bunkerConnectionState?.let { connState ->
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            BunkerConnectionStateRow(
+                connectionState = connState,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
         Spacer(Modifier.size(16.dp))
 
         // Error Message Display
@@ -210,5 +233,86 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.size(32.dp))
+    }
+}
+
+/**
+ * V-14 / #963: inline signer-relay health indicator.
+ *
+ * Rendered only when `bunkerConnectionState` is non-null (i.e. an NIP-46 bunker
+ * session is active). Three visual states:
+ *  - `isConnected` → green dot + "Signer relay: Connected"
+ *  - `isReconnecting` → amber spinner + "Signer relay: Reconnecting…" (wait)
+ *  - `isFailed` → red warning + "Signer relay: Connection failed" (re-auth)
+ *
+ * Rust pre-computes every flag (ADR-0032 relay_diagnostics pattern); Compose
+ * renders verbatim — no string-compare on `connectionState.state`.
+ */
+@Composable
+private fun BunkerConnectionStateRow(
+    connectionState: BunkerConnectionState,
+    modifier: Modifier = Modifier,
+) {
+    val statusLabel = when {
+        connectionState.isFailed -> "Connection failed"
+        connectionState.isReconnecting -> "Reconnecting…"
+        else -> "Connected"
+    }
+    val statusColor: Color = when {
+        connectionState.isFailed -> MaterialTheme.colorScheme.error
+        connectionState.isReconnecting -> Color(0xFFF59E0B) // amber-400
+        else -> Color(0xFF22C55E) // green-500
+    }
+
+    Card(
+        modifier = modifier.semantics {
+            contentDescription = "Bunker relay: $statusLabel"
+        },
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (connectionState.isReconnecting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = statusColor,
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    // Use a filled circle indicator via MaterialTheme icon
+                    Text(
+                        text = "●", // BULLET / filled circle
+                        color = statusColor,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                Text(
+                    text = "Signer relay: $statusLabel",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (connectionState.isFailed) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
+            }
+            connectionState.reason?.takeIf { it.isNotEmpty() }?.let { reason ->
+                Text(
+                    text = reason,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (connectionState.isFailed) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+        }
     }
 }

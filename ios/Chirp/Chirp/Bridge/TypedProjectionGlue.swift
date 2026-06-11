@@ -560,6 +560,26 @@ enum TypedProjectionGlue {
         )
     }
 
+    // MARK: bunker_connection_state → BunkerConnectionState (V-14 / #963)
+
+    /// Map the typed `bunker_connection_state` sidecar (`KBCS` /
+    /// `nmp_kernel_BunkerConnectionState`) to the `BunkerConnectionState` value
+    /// consumed by `AccountsView` and `KernelModel`. Mirrors `bunkerHandshake`
+    /// above: Rust pre-computes every flag; Swift renders verbatim. The `reason`
+    /// field uses a `has_reason` companion (FlatBuffers optional-string pattern)
+    /// so a missing reason is `nil`, not an empty string.
+    static func bunkerConnectionState(
+        _ reader: nmp_kernel_BunkerConnectionState
+    ) -> BunkerConnectionState {
+        BunkerConnectionState(
+            state: reader.state ?? "",
+            reason: reader.hasReason ? (reader.reason ?? "") : nil,
+            isConnected: reader.isConnected,
+            isReconnecting: reader.isReconnecting,
+            isFailed: reader.isFailed
+        )
+    }
+
     // MARK: nip46_onboarding → Nip46Onboarding
 
     /// Map the typed `nip46_onboarding` sidecar (`KN46` /

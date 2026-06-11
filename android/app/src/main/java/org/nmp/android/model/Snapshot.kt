@@ -62,6 +62,13 @@ data class SnapshotProjections(
     // no underscores, so convertFromSnakeCase leaves them unchanged.
     @SerialName("nmp.marmot.snapshot") val marmotSnapshot: MarmotSnapshot? = null,
     @SerialName("nmp.marmot.messages") val marmotMessages: Map<String, List<MarmotMessage>> = emptyMap(),
+    // V-14 / #963: relay-layer bunker connection health. Null when no bunker
+    // session is active (local-key accounts). Drives the signer relay badge
+    // in the accounts screen. Rust pre-computes every flag (ADR-0032 pattern):
+    // isConnected = green, isReconnecting = amber (wait), isFailed = red
+    // (re-auth required). No typed sidecar needed on Android — JSON fallback
+    // is the primary path here.
+    @SerialName("bunker_connection_state") val bunkerConnectionState: BunkerConnectionState? = null,
 )
 
 /**
@@ -178,4 +185,29 @@ data class DmConversation(
 data class DmInboxSnapshot(
     val conversations: List<DmConversation> = emptyList(),
     val remoteSignerUnsupported: Boolean = false,
+)
+
+/**
+ * NIP-46 relay-layer connection health — `projections["bunker_connection_state"]`.
+ * V-14 / #963. Null when no bunker session is active (local-key accounts).
+ *
+ * Rust pre-computes every flag from the relay-socket state in
+ * `nmp-signer-broker` so the UI never string-compares `state` (ADR-0032
+ * relay_diagnostics pattern). Three states drive distinct presentation:
+ *  - `isConnected` → green badge ("Connected")
+ *  - `isReconnecting` → amber badge ("Reconnecting…") — wait, do not re-auth
+ *  - `isFailed` → red badge ("Connection failed") — re-authenticate
+ *
+ * `reason` carries an optional human-readable error message on
+ * `isReconnecting` / `isFailed` transitions.
+ */
+@Serializable
+data class BunkerConnectionState(
+    /** Raw state token: `"connected"` | `"reconnecting"` | `"failed"`. */
+    val state: String = "",
+    /** Optional human-readable error/reason text; null when absent. */
+    val reason: String? = null,
+    @SerialName("is_connected") val isConnected: Boolean = false,
+    @SerialName("is_reconnecting") val isReconnecting: Boolean = false,
+    @SerialName("is_failed") val isFailed: Boolean = false,
 )

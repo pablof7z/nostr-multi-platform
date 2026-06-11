@@ -1,5 +1,6 @@
 //! Tier-1 (closure-path) typed-projection codecs for the actor-owned NIP-46
-//! built-in projections `"bunker_handshake"` and `"nip46_onboarding"`.
+//! built-in projections `"bunker_handshake"`, `"nip46_onboarding"`, and
+//! `"bunker_connection_state"` (V-14 step b, closes #963).
 //!
 //! ## Why these live under `actor/` (not `kernel/typed_projections/`)
 //!
@@ -33,14 +34,22 @@
 //! typed here ALONGSIDE their generic `Value`. D6: every `decode_*` returns
 //! `Err(String)` on malformed input; the encode path never panics.
 
+mod bunker_connection_state_fb;
 mod bunker_handshake_fb;
 mod nip46_onboarding_fb;
 
-use crate::actor::commands::{build_nip46_onboarding_dto, BunkerHandshakeSlot};
+use crate::actor::commands::{
+    build_nip46_onboarding_dto, BunkerConnectionStateSlot, BunkerHandshakeSlot,
+};
 use crate::update_envelope::TypedProjectionData;
 
 // Re-exported: encoders + schema ID constants + model types (production), and
 // the decode functions (in-crate tests decode the typed sidecar — PR-B).
+pub(crate) use bunker_connection_state_fb::{
+    encode_bunker_connection_state, BunkerConnectionStateModel,
+    BUNKER_CONNECTION_STATE_FILE_IDENTIFIER, BUNKER_CONNECTION_STATE_SCHEMA_ID,
+    BUNKER_CONNECTION_STATE_SCHEMA_VERSION,
+};
 pub(crate) use bunker_handshake_fb::{
     encode_bunker_handshake, BunkerHandshakeModel, BUNKER_HANDSHAKE_FILE_IDENTIFIER,
     BUNKER_HANDSHAKE_SCHEMA_ID, BUNKER_HANDSHAKE_SCHEMA_VERSION,
@@ -50,9 +59,44 @@ pub(crate) use nip46_onboarding_fb::{
     NIP46_ONBOARDING_SCHEMA_ID, NIP46_ONBOARDING_SCHEMA_VERSION,
 };
 #[cfg(test)]
+pub(crate) use bunker_connection_state_fb::decode_bunker_connection_state;
+#[cfg(test)]
 pub(crate) use bunker_handshake_fb::decode_bunker_handshake;
 #[cfg(test)]
 pub(crate) use nip46_onboarding_fb::decode_nip46_onboarding;
+
+/// Build the typed `"bunker_connection_state"` sidecar entry from the shared
+/// slot. V-14 step b — closes #963.
+///
+/// Returns `Some(envelope)` ONLY when the slot holds `Some` (mirroring the JSON
+/// closure, which emits `null` — and thus no typed sidecar entry — while no
+/// bunker session is active). Registered via
+/// `registry.register_typed("bunker_connection_state", …)` ALONGSIDE the generic
+/// closure in [`crate::actor`]. Reads the SAME slot, so the typed and JSON forms
+/// cannot diverge. D8: a single lock-and-clone, non-blocking.
+pub(crate) fn bunker_connection_state_typed(
+    slot: &BunkerConnectionStateSlot,
+) -> Option<TypedProjectionData> {
+    let dto = slot
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()?;
+    let model = BunkerConnectionStateModel {
+        state: dto.state,
+        reason: dto.reason,
+        is_connected: dto.is_connected,
+        is_reconnecting: dto.is_reconnecting,
+        is_failed: dto.is_failed,
+    };
+    Some(TypedProjectionData {
+        key: BUNKER_CONNECTION_STATE_SCHEMA_ID.to_string(),
+        schema_id: BUNKER_CONNECTION_STATE_SCHEMA_ID.to_string(),
+        schema_version: BUNKER_CONNECTION_STATE_SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(BUNKER_CONNECTION_STATE_FILE_IDENTIFIER)
+            .into_owned(),
+        payload: encode_bunker_connection_state(&model),
+    })
+}
 
 /// Build the typed `"bunker_handshake"` sidecar entry from the shared slot.
 ///

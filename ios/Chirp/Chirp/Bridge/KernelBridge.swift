@@ -690,6 +690,12 @@ final class KernelHandle {
             // is the steady-state — the generic JSON `null` is the fallback.
             let typedBunkerHandshake = TypedBunkerHandshakeDecoder.decode(from: envelopes)
             let typedNip46Onboarding = TypedNip46OnboardingDecoder.decode(from: envelopes)
+            // V-14: relay-layer bunker connection health (`bunker_connection_state`,
+            // KBCS). Nil while no bunker session is active (slot is `None`) — the
+            // steady state for local-key accounts. `isConnected`/`isReconnecting`/
+            // `isFailed` drive status badges; no generic JSON fallback needed
+            // because iOS has always needed the sidecar (ADR-0037 §4).
+            let typedBunkerConnectionState = TypedBunkerConnectionStateDecoder.decode(from: envelopes)
             // Marmot push-projection cluster (`nmp.marmot.snapshot` /
             // `nmp.marmot.messages`, V-107 / ADR-0039). Each returns nil when its
             // sidecar is absent/malformed → the generic `projections.<field>` JSON
@@ -742,6 +748,7 @@ final class KernelHandle {
                     typedClaimedEvents: typedClaimedEvents,
                     typedBunkerHandshake: typedBunkerHandshake,
                     typedNip46Onboarding: typedNip46Onboarding,
+                    typedBunkerConnectionState: typedBunkerConnectionState,
                     typedMarmotSnapshot: typedMarmotSnapshot,
                     typedMarmotMessages: typedMarmotMessages,
                     typedWallet: typedWallet,
@@ -946,6 +953,13 @@ struct KernelUpdateResult {
     /// `projections["nip46_onboarding"]` JSON fallback. Always present from a
     /// current kernel (the static signer-app table is emitted every tick).
     let typedNip46Onboarding: Nip46Onboarding?
+    /// Typed `bunker_connection_state` projection decode (`KBCS`). V-14 / #963.
+    /// `nil` while no bunker session is active (relay socket not yet opened).
+    /// `nil` is the steady state for local-key accounts — no JSON fallback
+    /// available because iOS is typed-sidecar-only (ADR-0037 §4). When non-nil,
+    /// `isConnected` drives the green dot, `isReconnecting` the amber badge, and
+    /// `isFailed` the red re-auth prompt (ADR-0032 / relay_diagnostics pattern).
+    let typedBunkerConnectionState: BunkerConnectionState?
     /// Typed `nmp.marmot.snapshot` projection decode (`NMMS`, V-107 / ADR-0039).
     /// `nil` ⇒ generic `projections["nmp.marmot.snapshot"]` JSON fallback. Routed
     /// to `MarmotStore.apply` (typed-first effective value) in `KernelModel.apply`.
@@ -1508,6 +1522,35 @@ struct BunkerHandshake: Decodable, Equatable {
     /// Always non-empty when emitted by a current kernel; legacy kernels
     /// (pre-projection) leave it `nil` — call sites fall back on `stage`.
     let stageLabel: String?
+}
+
+/// NIP-46 bunker relay-layer connection state — `projections["bunker_connection_state"]`.
+///
+/// Tracks the health of the relay socket that the established bunker session
+/// rides on. Distinct from `BunkerHandshake` (which tracks the NIP-46
+/// connect / get_public_key handshake progress). Nil when no bunker session is
+/// active (the projection contributes JSON `null`).
+///
+/// Rust pre-computes every flag so shells never string-compare `state`
+/// (aim.md §6 / AP1). `isConnected` drives the green indicator; `isReconnecting`
+/// drives an amber reconnecting badge; `isFailed` drives a red re-auth prompt.
+///
+/// `Decodable` for the JSON fallback path; `Equatable` for `@Published` diffing
+/// so SwiftUI re-renders only on real state changes.
+struct BunkerConnectionState: Decodable, Equatable {
+    /// `"connected"` | `"reconnecting"` | `"failed"`. Carried verbatim from
+    /// `BunkerConnectionStateDto::state`. Prefer the typed flag fields below.
+    let state: String
+    /// Optional human-readable reason (error message on `reconnecting`/`failed`).
+    let reason: String?
+    /// `state == "connected"`. Green indicator.
+    let isConnected: Bool
+    /// `state == "reconnecting"` — transient flap, auto-reconnect in progress.
+    /// Amber badge; do NOT prompt re-auth yet.
+    let isReconnecting: Bool
+    /// `state == "failed"` — permanent error, session bricked.
+    /// Red badge; prompt re-auth.
+    let isFailed: Bool
 }
 
 /// NIP-46 onboarding read model — `projections["nip46_onboarding"]`.

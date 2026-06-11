@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import org.nmp.android.model.AccountSummary
+import org.nmp.android.model.BunkerConnectionState
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
 import org.nmp.android.model.RelayStatus
@@ -67,6 +68,18 @@ class KernelModel : ViewModel() {
     val relays: StateFlow<List<RelayStatus>> =
         state.map { it.relayStatuses }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /**
+     * V-14 / #963: NIP-46 relay-layer connection health. Null while no bunker
+     * session is active (local-key accounts — the steady state). Collected from
+     * `projections.bunkerConnectionState`; decoded via the JSON fallback path
+     * (Android does not use a typed FlatBuffers sidecar for this projection).
+     * `isConnected` = green, `isReconnecting` = amber (wait), `isFailed` = red
+     * (re-auth). Drives `BunkerConnectionStateRow` in the accounts screen.
+     */
+    val bunkerConnectionState: StateFlow<BunkerConnectionState?> =
+        state.map { it.projections?.bunkerConnectionState }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var started = false
     private var readerJob: Job? = null
