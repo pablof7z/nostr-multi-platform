@@ -372,7 +372,11 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "action_results",
             schema_id: "action_results",
             file_identifier: "KARS",
-            swift_reader_type: None,
+            // Wave C: `flatc --swift` reader (`nmp_kernel_ActionResultsSnapshot`)
+            // generated in this PR. Each `ActionResult` row maps
+            // `correlation_id`, `success`, `has_error`/`error` to the existing
+            // `LastActionResult` Swift type. See `TypedProjectionGlue.actionResults`.
+            swift_reader_type: Some("nmp_kernel_ActionResultsSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
@@ -392,7 +396,11 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "action_stages",
             schema_id: "action_stages",
             file_identifier: "KAST",
-            swift_reader_type: None,
+            // Wave C: `flatc --swift` reader (`nmp_kernel_ActionStagesSnapshot`)
+            // generated in this PR. The outer snapshot carries a vector of
+            // `ActionStagesEntry` (one per correlation_id), each with its own
+            // `ActionStageEntry` vector. See `TypedProjectionGlue.actionStages`.
+            swift_reader_type: Some("nmp_kernel_ActionStagesSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
@@ -466,7 +474,14 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "author_view",
             schema_id: "author_view",
             file_identifier: "KAVW",
-            swift_reader_type: None,
+            // Wave C (V-68 stage 1): `flatc --swift` reader
+            // (`nmp_kernel_AuthorViewSnapshot`) generated in this PR. Uses shared
+            // `nmp_kernel_ProfileCard` (from `ProfileCard.generated.swift`) and
+            // `nmp_kernel_TimelineItem` (from `TimelineItem.generated.swift`).
+            // NOTE: this binding becomes deletable when V-68 Stage 2 ships (the
+            // dedicated `author_view` projection is removed in favour of composing
+            // existing projections). See `TypedProjectionGlue.authorView`.
+            swift_reader_type: Some("nmp_kernel_AuthorViewSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
@@ -477,7 +492,12 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "thread_view",
             schema_id: "thread_view",
             file_identifier: "KTVW",
-            swift_reader_type: None,
+            // Wave C (V-68 stage 1): `flatc --swift` reader
+            // (`nmp_kernel_ThreadViewSnapshot`) generated in this PR. Uses shared
+            // `nmp_kernel_TimelineItem` (from `TimelineItem.generated.swift`).
+            // NOTE: this binding becomes deletable when V-68 Stage 2 ships.
+            // See `TypedProjectionGlue.threadView`.
+            swift_reader_type: Some("nmp_kernel_ThreadViewSnapshot"),
         }),
     },
     SnapshotProjectionEntry {

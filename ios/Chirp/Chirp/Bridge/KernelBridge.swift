@@ -708,6 +708,14 @@ final class KernelHandle {
             // there is the steady-state — the generic JSON `null` fallback applies.
             let typedWallet = TypedWalletDecoder.decode(from: envelopes)
             let typedSettingsHub = TypedSettingsHubDecoder.decode(from: envelopes)
+            // Wave C: action_results, action_stages, author_view, thread_view.
+            // Each returns nil when its sidecar is absent/malformed → the generic
+            // `projections.<field>` JSON path stays active (ADR-0037 Commitment 4).
+            // No read sites wired yet — foundation only.
+            let typedActionResults = TypedActionResultsDecoder.decode(from: envelopes)
+            let typedActionStages = TypedActionStagesDecoder.decode(from: envelopes)
+            let typedAuthorView = TypedAuthorViewDecoder.decode(from: envelopes)
+            let typedThreadView = TypedThreadViewDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(typedEnvelope?.rev ?? 0) activeAccount=\(typedActiveAccount ?? "nil")")
             return .snapshot(
@@ -738,6 +746,10 @@ final class KernelHandle {
                     typedMarmotMessages: typedMarmotMessages,
                     typedWallet: typedWallet,
                     typedSettingsHub: typedSettingsHub,
+                    typedActionResults: typedActionResults,
+                    typedActionStages: typedActionStages,
+                    typedAuthorView: typedAuthorView,
+                    typedThreadView: typedThreadView,
                     typedEnvelope: typedEnvelope,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
@@ -957,6 +969,29 @@ struct KernelUpdateResult {
     /// `["relay_count": Int]` dict is read typed-first through the `settingsHub`
     /// accessor in `KernelModel+Projections` and wrapped into `SettingsHubSummary`.
     let typedSettingsHub: [String: Int]?
+    /// Wave C: Typed `action_results` projection decode (`KARS`). `nil` ⇒ generic
+    /// `projections.action_results` JSON fallback. The per-tick drain array; maps
+    /// each `ActionResult` row to `LastActionResult`. NOTE: no read site wired yet
+    /// (foundation only; wire typed-first in `KernelModel.apply` as follow-up).
+    let typedActionResults: [LastActionResult]?
+    /// Wave C: Typed `action_stages` projection decode (`KAST`). `nil` ⇒ generic
+    /// `projections.action_stages` JSON fallback. The flat-vector wire rebuilds
+    /// the `[correlation_id: [ActionStageEntry]]` dictionary. NOTE: no read site
+    /// wired yet (foundation only; wire typed-first in `KernelModel.apply` as
+    /// follow-up).
+    let typedActionStages: [String: [ActionStageEntry]]?
+    /// Wave C (V-68 stage 1): Typed `author_view` projection decode (`KAVW`).
+    /// `nil` ⇒ generic `projections.author_view` JSON fallback. Uses shared
+    /// `nmp_kernel_ProfileCard` + `nmp_kernel_TimelineItem` readers. NOTE: no read
+    /// site wired yet (foundation only; wire typed-first in `KernelModel.apply` as
+    /// follow-up). Binding becomes deletable when V-68 Stage 2 ships.
+    let typedAuthorView: AuthorProfileSnapshot?
+    /// Wave C (V-68 stage 1): Typed `thread_view` projection decode (`KTVW`).
+    /// `nil` ⇒ generic `projections.thread_view` JSON fallback. Uses shared
+    /// `nmp_kernel_TimelineItem` reader. NOTE: no read site wired yet (foundation
+    /// only; wire typed-first in `KernelModel.apply` as follow-up). Binding
+    /// becomes deletable when V-68 Stage 2 ships.
+    let typedThreadView: ThreadView?
     /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
     /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
     /// `logs`), read directly off the `SnapshotFrame` table. Non-nil when the
@@ -1651,6 +1686,15 @@ struct ActionStageEntry: Decodable, Equatable {
         default:
             stage = .unknown(raw: raw)
         }
+    }
+
+    /// Memberwise initializer. The custom `init(from:)` above suppresses
+    /// Swift's synthesized memberwise init, so the Wave C typed-sidecar glue
+    /// (`TypedProjectionGlue.actionStages`) needs this explicit one to build a
+    /// row from the `flatc --swift` reader struct.
+    init(stage: ActionStage, atMs: UInt64) {
+        self.stage = stage
+        self.atMs = atMs
     }
 }
 
