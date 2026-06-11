@@ -183,6 +183,10 @@ fn real_registry_emits_exactly_the_proof_keys() {
     // Marmot push-projection cluster. The enum name derives from `swift_field`.
     assert!(out.contains("enum TypedMarmotSnapshotDecoder {"));
     assert!(out.contains("enum TypedMarmotMessagesDecoder {"));
+    // Wallet (producer field-add) + settings-hub (kernel built-in) flips. The
+    // enum name derives from `swift_field` (`wallet` / `settingsHub`).
+    assert!(out.contains("enum TypedWalletDecoder {"));
+    assert!(out.contains("enum TypedSettingsHubDecoder {"));
     let emitted = SNAPSHOT_PROJECTIONS
         .iter()
         .filter(|e| {
@@ -193,8 +197,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 23,
-        "exactly twenty-three keys have a checked-in flatc --swift reader binding \
+        emitted, 25,
+        "exactly twenty-five keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
@@ -203,9 +207,10 @@ fn real_registry_emits_exactly_the_proof_keys() {
          nmp.nip29.discovered_groups; the profile cluster: profile, \
          claimed_profiles, resolved_profiles; the NIP-17 DM cluster: \
          nmp.nip17.dm_inbox, nmp.nip17.dm_relay_list, claimed_events; the \
-         NIP-46 cluster: bunker_handshake, nip46_onboarding; plus the Marmot \
-         push-projection cluster: nmp.marmot.snapshot, nmp.marmot.messages); if \
-         this changed, regenerate TypedProjectionDecoders.generated.swift and \
-         update this test"
+         NIP-46 cluster: bunker_handshake, nip46_onboarding; the Marmot \
+         push-projection cluster: nmp.marmot.snapshot, nmp.marmot.messages; \
+         plus the wallet (producer field-add) + settings_hub (kernel built-in) \
+         flips); if this changed, regenerate TypedProjectionDecoders.generated\
+         .swift and update this test"
     );
 }

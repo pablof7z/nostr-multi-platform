@@ -81,6 +81,7 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
         .as_ref()
         .map(|s| fbb.create_string(s));
     let wallet_npub_short = fbb.create_string(&status.wallet_npub_short);
+    let wallet_pubkey_hex = fbb.create_string(&status.wallet_pubkey_hex);
 
     let root = fb::WalletStatus::create(
         &mut fbb,
@@ -103,6 +104,7 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
                 .as_ref()
                 .map(|s| connection_state_to_fb(s.clone()))
                 .unwrap_or(fb::NwcConnectionState::Connected),
+            wallet_pubkey_hex: Some(wallet_pubkey_hex),
         },
     );
     fb::finish_wallet_status_buffer(&mut fbb, root);
@@ -132,6 +134,10 @@ pub fn decode_wallet_status(bytes: &[u8]) -> Result<WalletStatus, String> {
             root.balance_sats_display(),
         ),
         wallet_npub_short: str_field(root.wallet_npub_short(), "WalletStatus.wallet_npub_short")?,
+        wallet_pubkey_hex: str_field(
+            root.wallet_pubkey_hex(),
+            "WalletStatus.wallet_pubkey_hex",
+        )?,
         is_ready: root.is_ready(),
         is_connected: root.is_connected(),
         connection_state: if root.has_connection_state() {

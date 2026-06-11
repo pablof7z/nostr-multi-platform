@@ -835,4 +835,45 @@ enum TypedProjectionGlue {
             }
         }
     }
+
+    // MARK: wallet → WalletStatusData
+
+    /// Map the typed `wallet` sidecar (`NWST` / `nmp_nip47_WalletStatus`) to the
+    /// `WalletStatusData` the JSON `projections["wallet"]` path yields. The
+    /// `wallet_pubkey_hex` field is the producer field-add that unblocked this
+    /// flip — it now ships on BOTH the JSON projection and this wire, so the
+    /// typed value is byte-identical to the JSON path. `WalletStatusData` is a
+    /// field-SUBSET of the wire: it carries no `walletNpubShort` /
+    /// `balanceSatsDisplay` / `connectionState` (the JSON `Decodable` drops them
+    /// too — field-subset, not divergence; ADR-0032 leaves bech32/abbreviation/
+    /// liveness to other surfaces). The two `has_*` companion bools reproduce
+    /// the JSON `null`-when-`None` semantics: `balanceMsats` (`UInt64?`) and
+    /// `balanceSats` (`Int?`, widened from the wire `uint64`) are `nil` when
+    /// their companion is `false`, byte-identical to the JSON path.
+    static func wallet(_ reader: nmp_nip47_WalletStatus) -> WalletStatusData {
+        WalletStatusData(
+            status: reader.status ?? "",
+            relayUrl: reader.relayUrl ?? "",
+            walletPubkeyHex: reader.walletPubkeyHex ?? "",
+            walletNpub: reader.walletNpub ?? "",
+            balanceMsats: reader.hasBalanceMsats ? reader.balanceMsats : nil,
+            balanceSats: reader.hasBalanceSats ? Int(reader.balanceSats) : nil,
+            isReady: reader.isReady,
+            isConnected: reader.isConnected
+        )
+    }
+
+    // MARK: settings_hub → [String: Int]
+
+    /// Map the typed `settings_hub` sidecar (`KSHB` /
+    /// `nmp_kernel_SettingsHubSnapshot`) to the `[String: Int]` the JSON
+    /// `projections["settings_hub"]` path yields. The kernel built-in emits a
+    /// single `relay_count:uint`; this rebuilds the SAME one-key dict
+    /// (`["relay_count": Int(reader.relayCount)]`) the JSON object decodes to —
+    /// byte-identical, no fabrication. The downstream `SettingsHubSummary
+    /// (relayCount:)` wrap (`KernelBridge`) reads `dict["relay_count"]`, so this
+    /// dict shape preserves every consumer unchanged.
+    static func settingsHub(_ reader: nmp_kernel_SettingsHubSnapshot) -> [String: Int] {
+        ["relay_count": Int(reader.relayCount)]
+    }
 }

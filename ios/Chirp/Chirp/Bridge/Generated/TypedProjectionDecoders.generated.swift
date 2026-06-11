@@ -25,6 +25,45 @@
 import FlatBuffers
 import Foundation
 
+// MARK: - TypedWalletDecoder
+// Projection `wallet` → typed sidecar `nmp.nip47.wallet` (NWST). Domain type: `WalletStatusData?`.
+enum TypedWalletDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "wallet"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "nmp.nip47.wallet"
+    /// FlatBuffers `file_identifier` for `nmp_nip47_WalletStatus`.
+    static let fileIdentifier = "NWST"
+
+    /// Decode the typed `wallet` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> WalletStatusData? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `NWST` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> WalletStatusData? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_nip47_WalletStatus = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.wallet`.
+        return TypedProjectionGlue.wallet(reader)
+    }
+}
+
 // MARK: - TypedBunkerHandshakeDecoder
 // Projection `bunker_handshake` → typed sidecar `bunker_handshake` (KBHS). Domain type: `BunkerHandshake?`.
 enum TypedBunkerHandshakeDecoder {
@@ -841,6 +880,45 @@ enum TypedClaimedEventsDecoder {
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.claimedEvents`.
         return TypedProjectionGlue.claimedEvents(reader)
+    }
+}
+
+// MARK: - TypedSettingsHubDecoder
+// Projection `settings_hub` → typed sidecar `settings_hub` (KSHB). Domain type: `[String: Int]?`.
+enum TypedSettingsHubDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "settings_hub"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "settings_hub"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_SettingsHubSnapshot`.
+    static let fileIdentifier = "KSHB"
+
+    /// Decode the typed `settings_hub` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> [String: Int]? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `KSHB` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> [String: Int]? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_kernel_SettingsHubSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.settingsHub`.
+        return TypedProjectionGlue.settingsHub(reader)
     }
 }
 

@@ -120,6 +120,14 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published private(set) var typedBunkerHandshake: BunkerHandshake?
     @Published private(set) var typedNip46Onboarding: Nip46Onboarding?
 
+    /// Typed `wallet` (`NWST`) + `settings_hub` (`KSHB`) sidecars. Each is
+    /// non-nil only on ticks where the corresponding sidecar decoded; `nil` ⇒
+    /// the generic JSON path applies, read through the `walletStatus` /
+    /// `settingsHub` accessors (`KernelModel+Projections`). `typedWallet` emits
+    /// no sidecar while the wallet is disconnected, so nil is the steady state.
+    @Published private(set) var typedWallet: WalletStatusData?
+    @Published private(set) var typedSettingsHub: [String: Int]?
+
     /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
     /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
     /// `logs`). Non-nil when the frame carried the typed envelope (gated on
@@ -796,6 +804,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // through the `bunkerHandshake` / `nip46Onboarding` accessors).
         typedBunkerHandshake = result.typedBunkerHandshake
         typedNip46Onboarding = result.typedNip46Onboarding
+        // `wallet` (NWST) + `settings_hub` (KSHB): store the typed decodes. Nil ⇒
+        // the generic JSON projection fallback applies for this tick (read through
+        // the `walletStatus` / `settingsHub` accessors in `KernelModel+Projections`).
+        typedWallet = result.typedWallet
+        typedSettingsHub = result.typedSettingsHub
         // ADR-0044 Tier-3: store the typed `SnapshotFrame` envelope decode. Nil
         // ⇒ the generic JSON `payload` top-level scalars apply for this tick
         // (read through the `KernelModel+Projections` envelope accessors). The

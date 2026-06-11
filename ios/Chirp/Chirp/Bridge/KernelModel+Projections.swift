@@ -42,8 +42,26 @@ extension KernelModel {
     var outboxSummary: OutboxSummary { typedOutboxSummary ?? snapshot?.outboxSummary ?? .empty }
     var configuredRelays: [AppRelay] { typedConfiguredRelays ?? snapshot?.configuredRelays ?? [] }
     var relayRoleOptions: [RelayRoleOption] { typedRelayRoleOptions ?? snapshot?.relayRoleOptions ?? [] }
-    var settingsHub: SettingsHubSummary { snapshot?.settingsHub ?? .empty }
-    var walletStatus: WalletStatusData? { snapshot?.walletStatus }
+    // V6 Stage 4: typed-first with JSON fallback, mirroring `accounts`'s
+    // `typedAccounts ?? snapshot?.accounts`. The typed `KSHB` sidecar (a
+    // single-key `["relay_count": Int]` dict, the SAME shape the JSON
+    // `projections["settings_hub"]` yields) wins when present; the generic JSON
+    // projection is the fallback (ADR-0037 Commitment 4). Both the typed dict
+    // and the JSON `snapshot?.settingsHub` wrap into the SAME `SettingsHubSummary`
+    // — `settingsHub` is accessor-only (its sole read is `SettingsHubView` via
+    // `model.settingsHub`), so this is the single effective-value seam.
+    var settingsHub: SettingsHubSummary {
+        if let typed = typedSettingsHub {
+            return SettingsHubSummary(relayCount: typed["relay_count"] ?? 0)
+        }
+        return snapshot?.settingsHub ?? .empty
+    }
+    // V6 Stage 4: typed-first with JSON fallback. The typed `NWST` sidecar wins
+    // when present; the generic JSON `projections["wallet"]` is the fallback
+    // (ADR-0037 Commitment 4). `walletStatus` is accessor-only (its sole read is
+    // `WalletView` via `model.walletStatus`), so this is the single
+    // effective-value seam. `nil` (wallet disconnected) ⇒ generic JSON path.
+    var walletStatus: WalletStatusData? { typedWallet ?? snapshot?.walletStatus }
     var logicalInterests: [LogicalInterestStatus] { typedEnvelope?.logicalInterests ?? snapshot?.logicalInterests ?? [] }
     var wireSubscriptions: [WireSubscriptionStatus] { typedEnvelope?.wireSubscriptions ?? snapshot?.wireSubscriptions ?? [] }
     // V6 Stage 4 (Wave B batch #3): typed-first with JSON fallback, mirroring

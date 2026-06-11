@@ -698,6 +698,14 @@ final class KernelHandle {
             // `.empty` / `[:]`.
             let typedMarmotSnapshot = TypedMarmotSnapshotDecoder.decode(from: envelopes)
             let typedMarmotMessages = TypedMarmotMessagesDecoder.decode(from: envelopes)
+            // `wallet` (NWST, producer field-add) + `settings_hub` (KSHB, kernel
+            // built-in). Each returns nil when its sidecar is absent/malformed →
+            // the generic `projections.<field>` JSON path stays active (ADR-0037
+            // Commitment 4), mirroring `typedAccounts` above. The wallet typed
+            // closure emits NO sidecar while disconnected (slot is `None`), so nil
+            // there is the steady-state — the generic JSON `null` fallback applies.
+            let typedWallet = TypedWalletDecoder.decode(from: envelopes)
+            let typedSettingsHub = TypedSettingsHubDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
@@ -727,6 +735,8 @@ final class KernelHandle {
                     typedNip46Onboarding: typedNip46Onboarding,
                     typedMarmotSnapshot: typedMarmotSnapshot,
                     typedMarmotMessages: typedMarmotMessages,
+                    typedWallet: typedWallet,
+                    typedSettingsHub: typedSettingsHub,
                     typedEnvelope: typedEnvelope,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
@@ -928,6 +938,18 @@ struct KernelUpdateResult {
     /// Routed to `MarmotStore.apply` (typed-first effective value) in
     /// `KernelModel.apply`.
     let typedMarmotMessages: [String: [MarmotMessage]]?
+    /// Typed `wallet` projection decode (`NWST`). `nil` ⇒ generic
+    /// `projections["wallet"]` JSON fallback. Read typed-first through the
+    /// `walletStatus` accessor (`typedWallet ?? snapshot?.walletStatus`) in
+    /// `KernelModel+Projections`. The producer emits no sidecar while the wallet
+    /// is disconnected (slot is `None`), so nil is the steady state. The
+    /// `wallet_pubkey_hex` producer field-add unblocked this flip.
+    let typedWallet: WalletStatusData?
+    /// Typed `settings_hub` projection decode (`KSHB`, kernel built-in). `nil` ⇒
+    /// generic `projections["settings_hub"]` JSON fallback. The single-key
+    /// `["relay_count": Int]` dict is read typed-first through the `settingsHub`
+    /// accessor in `KernelModel+Projections` and wrapped into `SettingsHubSummary`.
+    let typedSettingsHub: [String: Int]?
     /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
     /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
     /// `logs`), read directly off the `SnapshotFrame` table. Non-nil when the

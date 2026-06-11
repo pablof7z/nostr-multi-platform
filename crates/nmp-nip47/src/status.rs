@@ -46,6 +46,11 @@ pub struct WalletStatus {
     pub relay_url: String,
     /// The wallet service pubkey in bech32 npub form.
     pub wallet_npub: String,
+    /// The wallet service pubkey in raw hex form (64 chars). The shell formats
+    /// it for display (bech32 / abbreviation are presentation concerns —
+    /// ADR-0032). Sourced from the same NWC connection the `wallet_npub` is
+    /// derived from (`WalletConnection.wallet_pubkey_hex`).
+    pub wallet_pubkey_hex: String,
     /// Balance in millisatoshis, if the wallet has responded to `get_balance`.
     pub balance_msats: Option<u64>,
     /// Satoshi balance (= `balance_msats / 1000`). `None` until the wallet
