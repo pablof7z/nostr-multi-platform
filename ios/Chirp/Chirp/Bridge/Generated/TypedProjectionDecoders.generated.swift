@@ -415,6 +415,45 @@ enum TypedGroupChatDecoder {
     }
 }
 
+// MARK: - TypedDmInboxDecoder
+// Projection `nmp.nip17.dm_inbox` → typed sidecar `nmp.nip17.dm_inbox` (NDMI). Domain type: `DmInboxSnapshot?`.
+enum TypedDmInboxDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "nmp.nip17.dm_inbox"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "nmp.nip17.dm_inbox"
+    /// FlatBuffers `file_identifier` for `nmp_nip17_DmInboxSnapshot`.
+    static let fileIdentifier = "NDMI"
+
+    /// Decode the typed `nmp.nip17.dm_inbox` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> DmInboxSnapshot? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `NDMI` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> DmInboxSnapshot? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_nip17_DmInboxSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.dmInbox`.
+        return TypedProjectionGlue.dmInbox(reader)
+    }
+}
+
 // MARK: - TypedFollowListDecoder
 // Projection `nmp.follow_list` → typed sidecar `nmp.nip02.follow_list` (NF02). Domain type: `FollowListSnapshot?`.
 enum TypedFollowListDecoder {
@@ -532,6 +571,45 @@ enum TypedZapsDecoder {
     }
 }
 
+// MARK: - TypedDmRelayListDecoder
+// Projection `nmp.nip17.dm_relay_list` → typed sidecar `nmp.nip17.dm_relay_list` (NDRL). Domain type: `DmRelayListSnapshot?`.
+enum TypedDmRelayListDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "nmp.nip17.dm_relay_list"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "nmp.nip17.dm_relay_list"
+    /// FlatBuffers `file_identifier` for `nmp_nip17_DmRelayListSnapshot`.
+    static let fileIdentifier = "NDRL"
+
+    /// Decode the typed `nmp.nip17.dm_relay_list` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> DmRelayListSnapshot? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `NDRL` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> DmRelayListSnapshot? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_nip17_DmRelayListSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.dmRelayList`.
+        return TypedProjectionGlue.dmRelayList(reader)
+    }
+}
+
 // MARK: - TypedRelayDiagnosticsDecoder
 // Projection `relay_diagnostics` → typed sidecar `relay_diagnostics` (KRDG). Domain type: `RelayDiagnosticsSnapshot?`.
 enum TypedRelayDiagnosticsDecoder {
@@ -646,5 +724,44 @@ enum TypedClaimedProfilesDecoder {
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.claimedProfiles`.
         return TypedProjectionGlue.claimedProfiles(reader)
+    }
+}
+
+// MARK: - TypedClaimedEventsDecoder
+// Projection `claimed_events` → typed sidecar `claimed_events` (KCEV). Domain type: `[String: ClaimedEventDto]?`.
+enum TypedClaimedEventsDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "claimed_events"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "claimed_events"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_ClaimedEventsSnapshot`.
+    static let fileIdentifier = "KCEV"
+
+    /// Decode the typed `claimed_events` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> [String: ClaimedEventDto]? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `KCEV` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> [String: ClaimedEventDto]? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_kernel_ClaimedEventsSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.claimedEvents`.
+        return TypedProjectionGlue.claimedEvents(reader)
     }
 }

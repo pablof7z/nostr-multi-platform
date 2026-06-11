@@ -518,7 +518,13 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "nmp.nip17.dm_inbox",
             schema_id: "nmp.nip17.dm_inbox",
             file_identifier: "NDMI",
-            swift_reader_type: None,
+            // NIP-17 DM cluster batch: the `flatc --swift` reader
+            // (`nmp_nip17_DmInboxSnapshot`, wrapping `nmp_nip17_DmConversation` /
+            // `nmp_nip17_DmMessage`) ships with this batch from
+            // `crates/nmp-nip17/schema/dm_inbox.fbs`. Conversations/messages
+            // nested-vector copy preserving the Rust newest-first order. See
+            // `TypedProjectionGlue.dmInbox`.
+            swift_reader_type: Some("nmp_nip17_DmInboxSnapshot"),
         }),
     },
     SnapshotProjectionEntry {
@@ -595,7 +601,14 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "nmp.nip17.dm_relay_list",
             schema_id: "nmp.nip17.dm_relay_list",
             file_identifier: "NDRL",
-            swift_reader_type: None,
+            // NIP-17 DM cluster batch: the `flatc --swift` reader
+            // (`nmp_nip17_DmRelayListSnapshot`) ships with this batch from
+            // `crates/nmp-nip17/schema/dm_relay_list.fbs`. Flat field-for-field
+            // copy with `has_active_pubkey`→`String?` companion mapping. This key
+            // has NO current Swift read consumer (the `dmRelayList` accessor is
+            // the only seam, added for parity); flipping it is purely additive.
+            // See `TypedProjectionGlue.dmRelayList`.
+            swift_reader_type: Some("nmp_nip17_DmRelayListSnapshot"),
         }),
     },
     // Diagnostics roll-up + pre-merged resolved-profile map + settings hub
@@ -687,7 +700,16 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "claimed_events",
             schema_id: "claimed_events",
             file_identifier: "KCEV",
-            swift_reader_type: None,
+            // NIP-17 DM cluster batch (claimed-event map): the `flatc --swift`
+            // reader (`nmp_kernel_ClaimedEventsSnapshot`, entries each carrying
+            // `nmp_kernel_ClaimedEvent` + `nmp_kernel_TagRow`) ships with this
+            // batch from `crates/nmp-core/schema/claimed_events.fbs`. Flattened
+            // `[{key,value}]` → `[String: ClaimedEventDto]` map, mirroring the
+            // `claimed_profiles` precedent; the wire's author display/picture
+            // fields are NOT mapped (the hand-declared `ClaimedEventDto` in
+            // `EmbedHost.swift` ignores them — field-aligned, not thick). See
+            // `TypedProjectionGlue.claimedEvents`.
+            swift_reader_type: Some("nmp_kernel_ClaimedEventsSnapshot"),
         }),
     },
     SnapshotProjectionEntry {

@@ -445,4 +445,93 @@ enum TypedProjectionGlue {
             out[key] = profileCard(value)
         }
     }
+
+    // MARK: nmp.nip17.dm_inbox → DmInboxSnapshot
+
+    /// Map the typed `nmp.nip17.dm_inbox` sidecar (`NDMI` /
+    /// `nmp_nip17_DmInboxSnapshot`) to the `DmInboxSnapshot` the JSON
+    /// `projections["nmp.nip17.dm_inbox"]` path yields. Nested-vector copy:
+    /// `conversations` → `[DmConversation]`, each carrying its `messages` →
+    /// `[DmMessage]`. The Rust projection owns ALL ordering (conversations
+    /// newest-thread-first, messages oldest-first) and the `isOutgoing` /
+    /// `remoteSignerUnsupported` classification — the shell re-sorts NOTHING
+    /// (thin-shell rule). `replyTo` is an `Option<String>` on the wire
+    /// (`has_reply_to` companion bool); preserved as `nil` when absent so the
+    /// typed value is byte-identical to the JSON path's `null`. `sourceRelays`
+    /// maps the wire's always-present vector to the DTO's `[String]?` (never nil
+    /// from the typed path — an empty buffer yields `[]`, matching the JSON
+    /// array; the optional exists only for the older-build JSON decode).
+    static func dmInbox(_ reader: nmp_nip17_DmInboxSnapshot) -> DmInboxSnapshot {
+        DmInboxSnapshot(
+            conversations: reader.conversations.map { convo in
+                DmConversation(
+                    peerPubkey: convo.peerPubkey ?? "",
+                    messages: convo.messages.map { msg in
+                        DmMessage(
+                            id: msg.id ?? "",
+                            senderPubkey: msg.senderPubkey ?? "",
+                            content: msg.content ?? "",
+                            createdAt: msg.createdAt,
+                            replyTo: msg.hasReplyTo ? (msg.replyTo ?? "") : nil,
+                            isOutgoing: msg.isOutgoing,
+                            sourceRelays: msg.sourceRelays.map { $0 ?? "" }
+                        )
+                    }
+                )
+            },
+            remoteSignerUnsupported: reader.remoteSignerUnsupported
+        )
+    }
+
+    // MARK: nmp.nip17.dm_relay_list → DmRelayListSnapshot
+
+    /// Map the typed `nmp.nip17.dm_relay_list` sidecar (`NDRL` /
+    /// `nmp_nip17_DmRelayListSnapshot`) to the `DmRelayListSnapshot` the JSON
+    /// `projections["nmp.nip17.dm_relay_list"]` path yields. Flat field-for-field
+    /// copy: `activePubkey` is an `Option<String>` on the wire
+    /// (`has_active_pubkey` companion bool) — preserved as `nil` when absent so
+    /// the typed value is byte-identical to the JSON path's `null`. `readRelayUrls`
+    /// is the kind:10050 read-eligible relay set, order preserved verbatim (Rust
+    /// owns it). This key currently has NO Swift read consumer — the glue exists
+    /// for parity so the registry-declared seam is complete and the decoder is
+    /// unit-tested.
+    static func dmRelayList(_ reader: nmp_nip17_DmRelayListSnapshot) -> DmRelayListSnapshot {
+        DmRelayListSnapshot(
+            activePubkey: reader.hasActivePubkey ? (reader.activePubkey ?? "") : nil,
+            readRelayUrls: reader.readRelayUrls.map { $0 ?? "" }
+        )
+    }
+
+    // MARK: claimed_events → [String: ClaimedEventDto]
+
+    /// Map the typed `claimed_events` sidecar (`KCEV` /
+    /// `nmp_kernel_ClaimedEventsSnapshot`) to the `[String: ClaimedEventDto]` the
+    /// JSON `projections.claimedEvents` path yields. FlatBuffers has no map type,
+    /// so the producer flattens the `primary_id -> ClaimedEvent` map to a
+    /// key-sorted `[{key, value}]` vector; this rebuilds the dictionary keyed by
+    /// `primary_id`, mirroring the `claimed_profiles` precedent.
+    ///
+    /// `ClaimedEventDto` (hand-declared in `EmbedHost.swift`) carries only the six
+    /// fields the embed resolver reads — `id`, `authorPubkey`, `kind`, `createdAt`,
+    /// `content`, `tags` — so the wire's `author_display_name` / `author_picture_url`
+    /// (and the redundant `primary_id` body copy) are deliberately NOT mapped; the
+    /// JSON decode drops them too, so the typed value is field-identical. `kind`
+    /// (`UInt32`) and `createdAt` (`UInt64`) narrow to the DTO's `Int` exactly as
+    /// the JSON `Int` decode does. `tags` rebuilds `[[String]]` from the nested
+    /// `[TagRow]` / `[String]` vectors.
+    static func claimedEvents(
+        _ reader: nmp_kernel_ClaimedEventsSnapshot
+    ) -> [String: ClaimedEventDto] {
+        reader.entries.reduce(into: [String: ClaimedEventDto]()) { out, entry in
+            guard let key = entry.key, let event = entry.value else { return }
+            out[key] = ClaimedEventDto(
+                id: event.id ?? "",
+                authorPubkey: event.authorPubkey ?? "",
+                kind: Int(event.kind),
+                createdAt: Int(event.createdAt),
+                content: event.content ?? "",
+                tags: event.tags.map { row in row.values.map { $0 ?? "" } }
+            )
+        }
+    }
 }

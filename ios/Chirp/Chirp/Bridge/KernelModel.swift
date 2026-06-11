@@ -104,6 +104,15 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published private(set) var typedProfile: ProfileCard?
     @Published private(set) var typedClaimedProfiles: [String: ProfileCard]?
     @Published private(set) var typedResolvedProfiles: [String: ProfileCard]?
+    /// Typed NIP-17 DM cluster + claimed-event map sidecars (`NDMI` / `NDRL` /
+    /// `KCEV`). `nil` ⇒ the generic JSON path applies. `typedDmInbox` feeds the
+    /// `dmInbox` store and `typedClaimedEvents` feeds `EmbedHost` through the
+    /// SAME typed-first effective value in `apply(result:)` (no split-brain);
+    /// `typedDmRelayList` is read through the `dmRelayList` accessor (no consumer
+    /// yet — wired for parity).
+    @Published private(set) var typedDmInbox: DmInboxSnapshot?
+    @Published private(set) var typedDmRelayList: DmRelayListSnapshot?
+    @Published private(set) var typedClaimedEvents: [String: ClaimedEventDto]?
 
     /// Dynamic flat feeds opened per profile/thread screen. Keys are
     /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
@@ -715,7 +724,14 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // reads through this slot. `lastErrorToast` stays distinct because
         // tap-to-dismiss has nowhere else to land.
         snapshot = update
-        embedHost.update(from: update.projections)
+        // Claimed-event map: typed-first effective value
+        // (`typedClaimedEvents ?? update.projections?.claimedEvents`). The `KCEV`
+        // sidecar wins when present; the generic JSON projection is the fallback.
+        // `EmbedHost` rebuilds the embed envelope map from the same effective
+        // value either path yields — no split-brain.
+        embedHost.update(
+            claimedEvents: result.typedClaimedEvents ?? update.projections?.claimedEvents
+        )
         // ADR-0038: store the typed home-feed result. Nil means the generic
         // projections.homeFeed fallback applies for this tick.
         typedHomeFeed = result.typedHomeFeed
@@ -749,6 +765,15 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedProfile = result.typedProfile
         typedClaimedProfiles = result.typedClaimedProfiles
         typedResolvedProfiles = result.typedResolvedProfiles
+        // NIP-17 DM cluster + claimed-event map. Nil ⇒ the generic JSON
+        // projection fallback applies for this tick. `typedDmInbox` is consumed
+        // below via the effective `typedDmInbox ?? update.dmInbox` value fed to
+        // the `dmInbox` store; `typedClaimedEvents` via the effective map fed to
+        // `EmbedHost.update`; `typedDmRelayList` is read through the `dmRelayList`
+        // accessor (no consumer yet).
+        typedDmInbox = result.typedDmInbox
+        typedDmRelayList = result.typedDmRelayList
+        typedClaimedEvents = result.typedClaimedEvents
         flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 
@@ -791,7 +816,12 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         // when present; the generic JSON projection is the fallback — the SAME
         // effective value the accessor would yield, so the store never diverges.
         groupChat.apply(snapshot: result.typedGroupChat ?? update.groupChat)
-        dmInbox.apply(snapshot: update.dmInbox)
+        // NIP-17 DM cluster: typed-first effective value
+        // (`typedDmInbox ?? update.dmInbox`). The `NDMI` sidecar wins when
+        // present; the generic JSON projection is the fallback. `DmListView` /
+        // `DmThreadView` read off this same `dmInbox` store, so routing here
+        // keeps every DM consumer typed-first — no split-brain.
+        dmInbox.apply(snapshot: result.typedDmInbox ?? update.dmInbox)
         // NIP-02 follow list projection mirror. Push every tick so the store
         // tracks `projections["nmp.follow_list"]`. Touching `followList`
         // here forces the lazy `FollowListStore` init on the first snapshot,

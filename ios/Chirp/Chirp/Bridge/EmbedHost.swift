@@ -32,10 +32,14 @@ final class EmbedHost {
     private(set) var envelopesByPrimaryID: [String: EmbeddedEventEnvelope] = [:]
     var count: Int { envelopesByPrimaryID.count }
 
-    /// Called on every snapshot tick. Rebuilds the envelope map from
-    /// projections.claimedEvents (snake_case decoded by FlatBufferValueDecoder).
-    func update(from projections: SnapshotProjections?) {
-        guard let claimed = projections?.claimedEvents, !claimed.isEmpty else { return }
+    /// Called on every snapshot tick. Rebuilds the envelope map from the
+    /// EFFECTIVE claimed-event map. The caller passes the typed-first value
+    /// (`typedClaimedEvents ?? projections.claimedEvents`) so the `KCEV` sidecar
+    /// wins when present and the generic JSON projection is the fallback
+    /// (ADR-0037 Commitment 4) — the resolver logic is identical either way
+    /// (both yield the same `ClaimedEventDto`).
+    func update(claimedEvents: [String: ClaimedEventDto]?) {
+        guard let claimed = claimedEvents, !claimed.isEmpty else { return }
         var next: [String: EmbeddedEventEnvelope] = [:]
         for (primaryID, dto) in claimed {
             guard let envelope = envelope(primaryID: primaryID, dto: dto) else { continue }
