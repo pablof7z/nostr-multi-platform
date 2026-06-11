@@ -19,7 +19,6 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-12 — **fix(android): rebuild frame decode from typed channels — closes #1084**. Worktree: agent-a30737f864b58ef8c. Branch: `fix/android-dark-frame-decode-1084`. Regen Kotlin FlatBuffers bindings with Tier-3 fields; rebuild KernelUpdateFrameDecoder spine from typed channels; add golden fixture JUnit test.
 
 - 2026-06-11 — **PR-B FINAL: stop emitting payload:Value** (closes #991/#979). Worktree: agent-a329ca748cf7215bc. Branch: `pr-b-final-zero-payload-emission` (PR #1082, review round 2). Done: gallery TUI+desktop on typed sidecars; emission zeroed; Rust flatc bindings REGENERATED (deprecated `payload` accessors gone) + `ci/check-rust-flatc-drift.sh` gate wired into codegen-drift.yml; `decode_snapshot_payload`/`decode_snapshot_with_typed`/`encode_snapshot_value` DELETED with all ~20 workspace readers migrated to `SnapshotEnvelope` + typed sidecars (`UpdateEnvelope::Snapshot` now carries `SnapshotEnvelope`); chirp-tui/chirp-desktop real-encoder round-trip tests added; nmp-wasm emits Tier-3 typed frames.
 

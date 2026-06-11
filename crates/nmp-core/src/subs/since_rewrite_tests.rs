@@ -202,6 +202,132 @@ fn ephemeral_kinds_skip_since_rewrite() {
     }
 }
 
+// ─── V-118: author-blind KindTime regression guard ───────────────────────────
+//
+// These tests use mock watermark fns that mimic what the corrected kernel
+// watermark_fn produces for multi-author shapes. They pin `apply_watermark_rewrite`
+// behaviour (not the kernel-level fn — those live in watermark_author_tests.rs).
+
+/// A two-author timeline interest for testing.
+fn two_author_interest(id: u64, author_a: &str, author_b: &str) -> LogicalInterest {
+    LogicalInterest {
+        id: InterestId(id),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors: [pubkey(author_a), pubkey(author_b)]
+                .into_iter()
+                .collect(),
+            kinds: [1u32].into_iter().collect(),
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: false,
+    }
+}
+
+/// Build a mailbox cache with two authors BOTH on the same relay.
+///
+/// This is required for a multi-author `SubShape` to appear in the compiled
+/// plan — the planner groups authors per relay, so two authors with different
+/// write relays produce separate single-author shapes, never a merged one.
+fn lifecycle_with_two_authors_shared_relay(
+    author_a: &str,
+    author_b: &str,
+) -> (SubscriptionLifecycle, InMemoryMailboxCache) {
+    let mut lifecycle = SubscriptionLifecycle::new();
+    // Disable selection budget so neither author is pruned.
+    lifecycle.set_selection_budget(usize::MAX, usize::MAX);
+    let mut mailboxes = InMemoryMailboxCache::new();
+    for author in [author_a, author_b] {
+        mailboxes.put(
+            pubkey(author),
+            MailboxSnapshot {
+                write_relays: vec!["wss://shared1".to_string()],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+    }
+    (lifecycle, mailboxes)
+}
+
+/// When the watermark fn returns None for a multi-author shape (because one
+/// author has no stored events), the rewrite must NOT add a `since`.
+///
+/// Uses a shared-relay mailbox so the planner emits a merged `{authors:[A,B]}`
+/// sub-shape. With separate relays the planner produces two single-author
+/// shapes and this test would exercise the single-author path instead.
+#[test]
+fn multi_author_no_since_when_watermark_fn_returns_none() {
+    let (mut l, mailboxes) = lifecycle_with_two_authors_shared_relay("a", "b");
+    // Watermark fn returns None for any multi-author shape (simulating the
+    // Option-B behaviour when B has no stored events).
+    l.set_watermark_fn(Arc::new(|shape: &InterestShape| {
+        if shape.authors.len() > 1 {
+            None
+        } else {
+            Some(1700)
+        }
+    }));
+    l.registry_mut().push(two_author_interest(10, "a", "b"));
+
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let filters = req_filters(&frames);
+
+    assert!(!filters.is_empty(), "expected REQ frames");
+    // Find the merged shape (has both pubkeys in the authors array).
+    let multi_author: Vec<&String> = filters
+        .iter()
+        .filter(|f| f.contains(&pubkey("a")[..8]) && f.contains(&pubkey("b")[..8]))
+        .collect();
+    assert!(
+        !multi_author.is_empty(),
+        "expected a merged 2-author REQ; got {filters:?}"
+    );
+    for f in &multi_author {
+        assert!(
+            !f.contains("\"since\""),
+            "multi-author shape with watermark=None must not carry `since`; got {f}"
+        );
+    }
+}
+
+/// When the watermark fn returns the minimum of per-author watermarks, the
+/// rewrite must use that minimum (not a higher value).
+#[test]
+fn multi_author_since_is_min_watermark_plus_one() {
+    let (mut l, mailboxes) = lifecycle_with_two_authors_shared_relay("a", "b");
+    // Watermark fn returns the min(100, 50) = 50 for multi-author shapes.
+    l.set_watermark_fn(Arc::new(|shape: &InterestShape| {
+        if shape.authors.len() > 1 {
+            Some(50) // min of per-author watermarks
+        } else {
+            Some(1700) // single-author path unchanged
+        }
+    }));
+    l.registry_mut().push(two_author_interest(11, "a", "b"));
+
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let filters = req_filters(&frames);
+
+    assert!(!filters.is_empty(), "expected REQ frames");
+    let multi_author: Vec<&String> = filters
+        .iter()
+        .filter(|f| f.contains(&pubkey("a")[..8]) && f.contains(&pubkey("b")[..8]))
+        .collect();
+    assert!(
+        !multi_author.is_empty(),
+        "expected a merged 2-author REQ; got {filters:?}"
+    );
+    for f in &multi_author {
+        assert!(
+            f.contains("\"since\":51"),
+            "multi-author watermark+1 must be 51; got {f}"
+        );
+    }
+}
+
 // ─── 5) Multi-relay consistency — all REQs share the rewritten since ─────────
 
 #[test]

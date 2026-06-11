@@ -171,6 +171,8 @@ mod replaceable_ttl_gate_tests;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
+#[cfg(test)]
+mod watermark_author_tests;
 mod requests;
 #[cfg(test)]
 mod retention_tests;
@@ -1852,44 +1854,59 @@ impl Kernel {
         // `created_at` matching that shape, so the relay does not re-emit
         // events already on disk. The closure captures a clone of the
         // `EventStore` handle and translates the `InterestShape` into a
-        // `StoreQuery`: `AuthorKind` when the shape is scoped to exactly one
-        // author with ≥1 kind, `KindTime` when there are no authors but ≥1
-        // kind, and `None` (no rewrite) otherwise. `query_visit` with
-        // `limit = 1` early-stops at the newest stored match on the relevant
-        // secondary index (D8: no per-emit allocation).
+        // per-author minimum watermark:
+        //
+        // - Exactly-one-author + ≥1 kind  → single `AuthorKind` scan.
+        // - Multi-author + ≥1 kind         → per-author `AuthorKind` scan for
+        //   every author; returns min(per-author newest) so the floor is safe
+        //   for the entire shape. Any author with zero stored events forces
+        //   `None` (no rewrite) — their history must be fetched in full.
+        //   (V-118 fix: the old KindTime path returned newest-from-anyone,
+        //   which could floor a newly-followed author above all their past
+        //   events.)
+        // - Zero authors + ≥1 kind         → `None` (no rewrite) — we cannot
+        //   safely floor a global-kind scan without risking missing events.
+        // - No kinds                        → `None`.
+        //
+        // `query_visit` with `limit = 1` early-stops at the newest stored
+        // match on the `idx_author_kind` index per author (D8: no per-emit
+        // allocation beyond one u64 per author in the shape).
         let watermark_store = Arc::clone(&store);
         let watermark_fn: crate::subs::WatermarkFn =
             Arc::new(move |shape: &crate::planner::InterestShape| {
-                // `InterestShape::{authors,kinds}` are `BTreeSet`s; the
-                // `StoreQuery` variants take `Vec<u32>`.
+                // `InterestShape::{authors,kinds}` are `BTreeSet`s.
                 let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
-                let query = if shape.authors.len() == 1 && !kinds.is_empty() {
-                    // Exactly one author + ≥1 kind → `idx_author_kind` scan.
-                    // Malformed hex → no watermark (never query the zero pubkey).
-                    let author_hex = shape.authors.iter().next()?;
-                    let author = hex_to_pubkey_bytes(author_hex)?;
-                    crate::store::StoreQuery::AuthorKind {
-                        author,
-                        kinds,
-                        since: None,
-                        until: None,
-                    }
-                } else if !kinds.is_empty() {
-                    // No (or multi-) author + ≥1 kind → `idx_kind_time` scan.
-                    crate::store::StoreQuery::KindTime {
-                        kinds,
-                        since: None,
-                        until: None,
-                    }
-                } else {
+                if kinds.is_empty() {
                     return None;
-                };
-                let mut ts: Option<u64> = None;
-                let _ = watermark_store.query_visit(&query, 1, &mut |ev| {
-                    ts = Some(ev.raw.created_at);
-                    std::ops::ControlFlow::Break(())
-                });
-                ts
+                }
+                // Zero-author shapes: no safe per-author floor exists.
+                if shape.authors.is_empty() {
+                    return None;
+                }
+                // One or more authors: compute min over per-author newest.
+                // Any author with no stored events → None (must backfill).
+                let mut min_ts: Option<u64> = None;
+                for author_hex in &shape.authors {
+                    let author = hex_to_pubkey_bytes(author_hex)?;
+                    let query = crate::store::StoreQuery::AuthorKind {
+                        author,
+                        kinds: kinds.clone(),
+                        since: None,
+                        until: None,
+                    };
+                    let mut ts: Option<u64> = None;
+                    let _ = watermark_store.query_visit(&query, 1, &mut |ev| {
+                        ts = Some(ev.raw.created_at);
+                        std::ops::ControlFlow::Break(())
+                    });
+                    // Author has no stored events → floor is unsafe; abort.
+                    let author_ts = ts?;
+                    min_ts = Some(match min_ts {
+                        None => author_ts,
+                        Some(prev) => prev.min(author_ts),
+                    });
+                }
+                min_ts
             });
         let mut lifecycle = SubscriptionLifecycle::new();
         lifecycle.set_watermark_fn(watermark_fn);
