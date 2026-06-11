@@ -1,5 +1,25 @@
 use super::*;
 
+/// Hex string for the `update_frame_tier3_golden_v1.fb.hex` Android fixture.
+/// Run `cargo test -p nmp-core -- print_tier3_golden_frame_hex --nocapture`
+/// to regenerate when the Tier-3 schema or golden_envelope() changes; then
+/// check the printed hex into
+/// `android/app/src/test/resources/fixtures/update_frame_tier3_golden_v1.fb.hex`.
+///
+/// The golden frame uses the SAME `golden_envelope()` as the round-trip tests
+/// (a non-default value in every Tier-3 field) so any missed field in the
+/// Android decoder fails the field-level assertions.
+#[test]
+fn print_tier3_golden_frame_hex() {
+    let wire = encode_snapshot_frame(&golden_envelope(), &[]);
+    let hex: String = wire.iter().map(|b| format!("{b:02x}")).collect();
+    println!("\n{hex}");
+    // Golden sanity: the frame must carry the NMPU identifier.
+    assert!(fb::update_frame_buffer_has_identifier(&wire));
+    // Round-trip: the decoded envelope must equal golden_envelope().
+    assert_eq!(decode_snapshot_envelope(&wire).expect("decode"), golden_envelope());
+}
+
 /// A representative typed envelope for round-trip tests — every
 /// [`SnapshotEnvelope`] field populated with a non-default value so a
 /// transposed/forgotten field in either codec direction fails the equality
