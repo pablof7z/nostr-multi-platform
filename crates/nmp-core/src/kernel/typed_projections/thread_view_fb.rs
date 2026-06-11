@@ -41,45 +41,45 @@ use crate::timeline_item_generated as ti;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const THREAD_VIEW_SCHEMA_ID: &str = "thread_view";
+pub const THREAD_VIEW_SCHEMA_ID: &str = "thread_view";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const THREAD_VIEW_FILE_IDENTIFIER: &[u8; 4] = b"KTVW";
+pub const THREAD_VIEW_FILE_IDENTIFIER: &[u8; 4] = b"KTVW";
 /// Wire schema version. Bump on any breaking change to `thread_view.fbs`.
-pub(crate) const THREAD_VIEW_SCHEMA_VERSION: u32 = 1;
+pub const THREAD_VIEW_SCHEMA_VERSION: u32 = 1;
 
 /// A field-for-field mirror of one [`TimelineItem`](crate::kernel) — the shared
 /// row type the `thread_view` and `author_view` codecs both encode (into their
 /// own generated `TimelineItem` table). `Option<String>` fields are encoded as
 /// `has_x` + value.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct TimelineItemModel {
-    pub(crate) id: String,
-    pub(crate) author_pubkey: String,
-    pub(crate) author_picture_url: Option<String>,
-    pub(crate) author_lnurl: Option<String>,
-    pub(crate) author_display_name: Option<String>,
-    pub(crate) kind: u32,
-    pub(crate) content: String,
-    pub(crate) content_preview: String,
-    pub(crate) created_at: u64,
-    pub(crate) relay_count: u32,
-    pub(crate) is_repost: bool,
-    pub(crate) nav_target_id: String,
-    pub(crate) repost_inner_content: String,
+pub struct TimelineItemModel {
+    pub id: String,
+    pub author_pubkey: String,
+    pub author_picture_url: Option<String>,
+    pub author_lnurl: Option<String>,
+    pub author_display_name: Option<String>,
+    pub kind: u32,
+    pub content: String,
+    pub content_preview: String,
+    pub created_at: u64,
+    pub relay_count: u32,
+    pub is_repost: bool,
+    pub nav_target_id: String,
+    pub repost_inner_content: String,
 }
 
 /// The `"thread_view"` read model — a field-for-field mirror of
 /// `ThreadViewPayload`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ThreadViewModel {
-    pub(crate) focused_event_id: String,
-    pub(crate) root_event_id: String,
-    pub(crate) state: String,
-    pub(crate) items: Vec<TimelineItemModel>,
-    pub(crate) previous_count: u64,
-    pub(crate) next_count: u64,
-    pub(crate) previous_count_label: String,
-    pub(crate) next_count_label: String,
+pub struct ThreadViewModel {
+    pub focused_event_id: String,
+    pub root_event_id: String,
+    pub state: String,
+    pub items: Vec<TimelineItemModel>,
+    pub previous_count: u64,
+    pub next_count: u64,
+    pub previous_count_label: String,
+    pub next_count_label: String,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -171,8 +171,7 @@ pub(crate) fn encode_thread_view(model: &ThreadViewModel) -> Vec<u8> {
 /// Decode this module's generated `TimelineItem` table back into a
 /// [`TimelineItemModel`]. Shared logic the `author_view` test decoder mirrors
 /// against its own bindings.
-#[cfg(test)]
-pub(crate) fn timeline_item_from_fb(item: ti::TimelineItem<'_>) -> TimelineItemModel {
+pub fn timeline_item_from_fb(item: ti::TimelineItem<'_>) -> TimelineItemModel {
     TimelineItemModel {
         id: item.id().unwrap_or_default().to_string(),
         author_pubkey: item.author_pubkey().unwrap_or_default().to_string(),
@@ -198,8 +197,7 @@ pub(crate) fn timeline_item_from_fb(item: ti::TimelineItem<'_>) -> TimelineItemM
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_thread_view`]) back
 /// into a [`ThreadViewModel`]. Returns an error string on any malformed input.
-#[cfg(test)]
-pub(crate) fn decode_thread_view(bytes: &[u8]) -> Result<ThreadViewModel, String> {
+pub fn decode_thread_view(bytes: &[u8]) -> Result<ThreadViewModel, String> {
     if bytes.len() < 8 || !fb::thread_view_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KTVW file identifier".to_string());
     }

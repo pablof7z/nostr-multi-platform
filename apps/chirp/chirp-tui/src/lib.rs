@@ -4,6 +4,8 @@ pub mod app;
 pub mod bridge;
 pub mod commands;
 pub mod feature_snapshot;
+pub mod feature_snapshot_json;
+pub mod feature_snapshot_typed;
 pub mod features;
 pub mod input;
 pub(crate) mod keyring;

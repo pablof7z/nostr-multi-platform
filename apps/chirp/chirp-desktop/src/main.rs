@@ -11,6 +11,7 @@ mod bridge;
 mod keyring;
 mod render;
 mod snapshot;
+mod snapshot_decode;
 
 use app::DesktopApp;
 

@@ -19,7 +19,9 @@ use std::fmt;
 // ADR-0044 — the typed Tier-3 dual-emit `SnapshotFrame` encoder lives in a
 // submodule so this file stays under the LOC ceiling. Re-exported so the
 // kernel's `make_update` calls `crate::update_envelope::encode_snapshot_with_envelope`.
+mod relay_status;
 mod tier3_frame;
+pub use relay_status::RelayStatusEntry;
 pub(crate) use tier3_frame::encode_snapshot_with_envelope;
 
 /// Schema version of the periodic snapshot payload. Bump on any breaking
@@ -59,6 +61,9 @@ pub struct SnapshotEnvelope {
     pub actor_queue_depth: u32,
     /// Monotonically-increasing update sequence counter.
     pub update_sequence: u64,
+    // --- Relay statuses (PR-B: extended for chirp-desktop typed-first migration) ---
+    /// Per-relay connection status rows. Empty when no relays are configured.
+    pub relay_statuses: Vec<RelayStatusEntry>,
     // --- Error / diagnostic flags ---
     /// Last error toast message, if any.
     pub last_error_toast: Option<String>,
@@ -107,6 +112,8 @@ pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, Update
             (0, 0, 0, 0)
         };
 
+    let relay_statuses = relay_status::decode_relay_statuses(&snapshot);
+
     Ok(SnapshotEnvelope {
         rev: snapshot.rev(),
         kernel_schema_version: snapshot.kernel_schema_version(),
@@ -117,6 +124,7 @@ pub fn decode_snapshot_envelope(bytes: &[u8]) -> Result<SnapshotEnvelope, Update
         visible_items,
         actor_queue_depth,
         update_sequence,
+        relay_statuses,
         last_error_toast: snapshot.last_error_toast().map(str::to_string),
         last_error_category: snapshot.last_error_category().map(str::to_string),
         last_planner_error: snapshot.last_planner_error().map(str::to_string),

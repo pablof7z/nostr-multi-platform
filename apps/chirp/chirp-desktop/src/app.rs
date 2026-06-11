@@ -23,28 +23,6 @@ use crate::snapshot::{
 use nmp_chirp_config;
 
 // ---------------------------------------------------------------------------
-// Helper functions — typed OP-feed decode (mirrors chirp-tui approach)
-// ---------------------------------------------------------------------------
-
-/// Extract the typed OP-feed `nmp.feed.home` sidecar and re-serialize it as a
-/// generic `Value` for insertion into the snapshot projections map.
-///
-/// Returns `None` when the projection is absent, the schema id does not match
-/// [`nmp_nip01::OP_FEED_SCHEMA_ID`], or the FlatBuffers payload is corrupt.
-/// Both of these cases fall back to the generic `Value` projection that the
-/// snapshot already carries.
-fn extract_home_feed_from_typed(
-    projections: &[nmp_core::TypedProjectionData],
-) -> Option<serde_json::Value> {
-    let proj = projections
-        .iter()
-        .find(|p| p.key == "nmp.feed.home" && p.schema_id == nmp_nip01::OP_FEED_SCHEMA_ID)?;
-    nmp_nip01::decode_op_feed_snapshot(&proj.payload)
-        .ok()
-        .and_then(|snapshot| serde_json::to_value(&snapshot).ok())
-}
-
-// ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
 
@@ -88,29 +66,18 @@ impl DesktopApp {
         let egui_ctx = cc.egui_ctx.clone();
         std::thread::spawn(move || {
             for event in rx {
-                let Ok((value, typed)) = nmp_core::decode_snapshot_with_typed(&event.payload)
-                else {
+                // PR-B (#991/#979): typed-first decode. The `payload:Value`
+                // blob is no longer emitted; every field is read from the
+                // strongly-typed `SnapshotEnvelope` (rev / running / metrics /
+                // relay_statuses / last_error_toast) and the per-projection
+                // typed sidecars. Each projection the shell renders is decoded
+                // from its sidecar and re-materialised as a `serde_json::Value`
+                // (built via `serde_json::json!`, since the `snapshot::*`
+                // payload structs are `Deserialize`-only) so the existing
+                // `snap.projection::<T>(key)` read sites keep working unchanged.
+                let Some(snap) = crate::snapshot_decode::decode_snapshot_typed(&event.payload) else {
                     continue;
                 };
-                let mut snap: Snapshot = match serde_json::from_value(value) {
-                    Ok(s) => s,
-                    Err(_) => continue,
-                };
-                // Backfill fields the kernel emits in projections, not as top-level JSON.
-                if let Some(v) = snap.projection::<Option<String>>("active_account") {
-                    snap.active_account = v;
-                }
-                if let Some(v) = snap.projection::<crate::snapshot::ProfileCard>("profile") {
-                    snap.profile = v;
-                }
-                if let Some(v) = snap.projection::<Vec<crate::snapshot::AccountSummary>>("accounts")
-                {
-                    snap.accounts = v;
-                }
-                // Prefer the typed OP-feed sidecar when present (same as TUI).
-                if let Some(feed) = extract_home_feed_from_typed(&typed) {
-                    snap.projections.insert("nmp.feed.home".to_string(), feed);
-                }
                 if let Ok(mut slot) = reader_latest.lock() {
                     *slot = Some(snap);
                 }

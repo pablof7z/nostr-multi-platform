@@ -87,10 +87,11 @@ mod builtins_diagnostics;
 mod relay_diagnostics_fb;
 mod signed_events_fb;
 
-pub(crate) use configured_relays_fb::{
-    encode_configured_relays, ConfiguredRelaysModel, CONFIGURED_RELAYS_FILE_IDENTIFIER,
+pub use configured_relays_fb::{
+    ConfiguredRelayRow, ConfiguredRelaysModel, CONFIGURED_RELAYS_FILE_IDENTIFIER,
     CONFIGURED_RELAYS_SCHEMA_ID, CONFIGURED_RELAYS_SCHEMA_VERSION,
 };
+pub(crate) use configured_relays_fb::encode_configured_relays;
 // `RelayRoleOptionRow` is named in the inline mapping in
 // `builtin_typed_projections` below; `ConfiguredRelayRow` is named only inside
 // its own codec module + tests (so it is not re-exported here).
@@ -99,23 +100,26 @@ pub(crate) use relay_role_options_fb::{
     RELAY_ROLE_OPTIONS_FILE_IDENTIFIER, RELAY_ROLE_OPTIONS_SCHEMA_ID,
     RELAY_ROLE_OPTIONS_SCHEMA_VERSION,
 };
-pub(crate) use settings_hub_fb::{
-    encode_settings_hub, SettingsHubModel, SETTINGS_HUB_FILE_IDENTIFIER, SETTINGS_HUB_SCHEMA_ID,
+pub use settings_hub_fb::{
+    SettingsHubModel, SETTINGS_HUB_FILE_IDENTIFIER, SETTINGS_HUB_SCHEMA_ID,
     SETTINGS_HUB_SCHEMA_VERSION,
 };
+pub(crate) use settings_hub_fb::encode_settings_hub;
 // Wave C publish/outbox cluster. The nested-row types (`PublishQueueEntryRow`,
 // `RelayAckOutcomeRow`, `PublishOutboxItemRow`, `PublishOutboxRelayRow`) are
 // named in the inline mappings in `builtin_typed_projections` below — where the
 // `pub(super)`/`pub(crate)` DTO types are reachable — so they are re-exported
 // here alongside their `Model` + encode entry points.
-pub(crate) use outbox_summary_fb::{
-    encode_outbox_summary, OutboxSummaryModel, OUTBOX_SUMMARY_FILE_IDENTIFIER,
-    OUTBOX_SUMMARY_SCHEMA_ID, OUTBOX_SUMMARY_SCHEMA_VERSION,
+pub use outbox_summary_fb::{
+    OutboxSummaryModel, OUTBOX_SUMMARY_FILE_IDENTIFIER, OUTBOX_SUMMARY_SCHEMA_ID,
+    OUTBOX_SUMMARY_SCHEMA_VERSION,
 };
-pub(crate) use publish_outbox_fb::{
-    encode_publish_outbox, PublishOutboxItemRow, PublishOutboxModel, PublishOutboxRelayRow,
+pub(crate) use outbox_summary_fb::encode_outbox_summary;
+pub use publish_outbox_fb::{
+    PublishOutboxItemRow, PublishOutboxModel, PublishOutboxRelayRow,
     PUBLISH_OUTBOX_FILE_IDENTIFIER, PUBLISH_OUTBOX_SCHEMA_ID, PUBLISH_OUTBOX_SCHEMA_VERSION,
 };
+pub(crate) use publish_outbox_fb::encode_publish_outbox;
 // Internal-only encoder; the publicly re-exported `publish_queue` names
 // (`PublishQueueModel` / `PublishQueueEntryRow` / `RelayAckOutcomeRow` / the
 // envelope constants) live in the PUBLIC block below so they are not declared
@@ -127,26 +131,30 @@ pub(crate) use publish_queue_fb::encode_publish_queue;
 // where the `pub(super)`/`pub(crate)` DTO types are reachable. `ProfileCardModel`
 // (from `profile_fb`) and `TimelineItemModel` (from `thread_view_fb`) are the
 // shared row shapes the `author_view` codec reuses.
-pub(crate) use accounts_fb::{
-    encode_accounts, AccountSummaryRow, AccountsModel, ACCOUNTS_FILE_IDENTIFIER,
-    ACCOUNTS_SCHEMA_ID, ACCOUNTS_SCHEMA_VERSION,
+pub use accounts_fb::{
+    AccountSummaryRow, AccountsModel, ACCOUNTS_FILE_IDENTIFIER, ACCOUNTS_SCHEMA_ID,
+    ACCOUNTS_SCHEMA_VERSION,
 };
-pub(crate) use active_account_fb::{
-    encode_active_account, ActiveAccountModel, ACTIVE_ACCOUNT_FILE_IDENTIFIER,
-    ACTIVE_ACCOUNT_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_VERSION,
+pub(crate) use accounts_fb::encode_accounts;
+pub use active_account_fb::{
+    ActiveAccountModel, ACTIVE_ACCOUNT_FILE_IDENTIFIER, ACTIVE_ACCOUNT_SCHEMA_ID,
+    ACTIVE_ACCOUNT_SCHEMA_VERSION,
 };
-pub(crate) use author_view_fb::{
-    encode_author_view, AuthorViewModel, ProfileActionModel, ProfileDispatchSpecModel,
-    AUTHOR_VIEW_FILE_IDENTIFIER, AUTHOR_VIEW_SCHEMA_ID, AUTHOR_VIEW_SCHEMA_VERSION,
+pub(crate) use active_account_fb::encode_active_account;
+pub use author_view_fb::{
+    AuthorViewModel, ProfileActionModel, ProfileDispatchSpecModel, AUTHOR_VIEW_FILE_IDENTIFIER,
+    AUTHOR_VIEW_SCHEMA_ID, AUTHOR_VIEW_SCHEMA_VERSION,
 };
-pub(crate) use profile_fb::{
-    encode_profile, ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID,
-    PROFILE_SCHEMA_VERSION,
+pub(crate) use author_view_fb::encode_author_view;
+pub use profile_fb::{
+    ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
 };
-pub(crate) use thread_view_fb::{
-    encode_thread_view, ThreadViewModel, TimelineItemModel, THREAD_VIEW_FILE_IDENTIFIER,
-    THREAD_VIEW_SCHEMA_ID, THREAD_VIEW_SCHEMA_VERSION,
+pub(crate) use profile_fb::encode_profile;
+pub use thread_view_fb::{
+    ThreadViewModel, TimelineItemModel, THREAD_VIEW_FILE_IDENTIFIER, THREAD_VIEW_SCHEMA_ID,
+    THREAD_VIEW_SCHEMA_VERSION,
 };
+pub(crate) use thread_view_fb::encode_thread_view;
 // Wave C profile/event cluster (`mention_profiles` / `claimed_profiles` /
 // `claimed_events` / `resolved_profiles`). The map-entry / row types
 // (`MentionProfileRow`, `ClaimedEventRow`) and the shared `ProfileCardModel`
@@ -165,10 +173,11 @@ pub(crate) use mention_profiles_fb::{
     encode_mention_profiles, MentionProfileRow, MentionProfilesModel,
     MENTION_PROFILES_FILE_IDENTIFIER, MENTION_PROFILES_SCHEMA_ID, MENTION_PROFILES_SCHEMA_VERSION,
 };
-pub(crate) use resolved_profiles_fb::{
-    encode_resolved_profiles, ResolvedProfilesModel, RESOLVED_PROFILES_FILE_IDENTIFIER,
-    RESOLVED_PROFILES_SCHEMA_ID, RESOLVED_PROFILES_SCHEMA_VERSION,
+pub use resolved_profiles_fb::{
+    ResolvedProfilesModel, RESOLVED_PROFILES_FILE_IDENTIFIER, RESOLVED_PROFILES_SCHEMA_ID,
+    RESOLVED_PROFILES_SCHEMA_VERSION,
 };
+pub(crate) use resolved_profiles_fb::encode_resolved_profiles;
 // Wave C action-lifecycle + relay-diagnostics cluster (`action_results` /
 // `signed_events` / `action_stages` / `action_lifecycle` / `relay_diagnostics`).
 // The codec Models + row types are named in the cluster's struct->Model /
@@ -195,25 +204,7 @@ pub(crate) use signed_events_fb::{
 };
 
 #[cfg(test)]
-pub(crate) use accounts_fb::decode_accounts;
-#[cfg(test)]
-pub(crate) use active_account_fb::decode_active_account;
-#[cfg(test)]
-pub(crate) use author_view_fb::decode_author_view;
-#[cfg(test)]
-pub(crate) use configured_relays_fb::decode_configured_relays;
-#[cfg(test)]
-pub(crate) use outbox_summary_fb::decode_outbox_summary;
-#[cfg(test)]
-pub(crate) use profile_fb::decode_profile;
-#[cfg(test)]
-pub(crate) use publish_outbox_fb::decode_publish_outbox;
-#[cfg(test)]
 pub(crate) use relay_role_options_fb::decode_relay_role_options;
-#[cfg(test)]
-pub(crate) use settings_hub_fb::decode_settings_hub;
-#[cfg(test)]
-pub(crate) use thread_view_fb::decode_thread_view;
 // Wave C profile/event cluster test-only decoders.
 #[cfg(test)]
 pub(crate) use claimed_events_fb::decode_claimed_events;
@@ -221,8 +212,7 @@ pub(crate) use claimed_events_fb::decode_claimed_events;
 pub(crate) use claimed_profiles_fb::decode_claimed_profiles;
 #[cfg(test)]
 pub(crate) use mention_profiles_fb::decode_mention_profiles;
-#[cfg(test)]
-pub(crate) use resolved_profiles_fb::decode_resolved_profiles;
+pub use resolved_profiles_fb::decode_resolved_profiles;
 // Wave C action-lifecycle + relay-diagnostics cluster — action_lifecycle and
 // signed_events remain test-only; action_stages and relay_diagnostics are now
 // public (promoted for chirp-tui/chirp-desktop typed-first migration, PR-B).
@@ -264,6 +254,18 @@ pub use relay_diagnostics_fb::{
     RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID,
     RELAY_DIAGNOSTICS_SCHEMA_VERSION,
 };
+// PR-B: newly-promoted decode functions for the identity/views/outbox cluster.
+// These replace the last remaining `payload:Value` read sites in chirp-tui
+// `FeatureSnapshot` and chirp-desktop `Snapshot`.
+pub use accounts_fb::decode_accounts;
+pub use active_account_fb::decode_active_account;
+pub use configured_relays_fb::decode_configured_relays;
+pub use settings_hub_fb::decode_settings_hub;
+pub use profile_fb::decode_profile;
+pub use author_view_fb::decode_author_view;
+pub use thread_view_fb::decode_thread_view;
+pub use publish_outbox_fb::decode_publish_outbox;
+pub use outbox_summary_fb::decode_outbox_summary;
 
 use crate::update_envelope::TypedProjectionData;
 

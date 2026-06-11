@@ -36,18 +36,18 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const ACTIVE_ACCOUNT_SCHEMA_ID: &str = "active_account";
+pub const ACTIVE_ACCOUNT_SCHEMA_ID: &str = "active_account";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const ACTIVE_ACCOUNT_FILE_IDENTIFIER: &[u8; 4] = b"KACT";
+pub const ACTIVE_ACCOUNT_FILE_IDENTIFIER: &[u8; 4] = b"KACT";
 /// Wire schema version. Bump on any breaking change to `active_account.fbs`.
-pub(crate) const ACTIVE_ACCOUNT_SCHEMA_VERSION: u32 = 1;
+pub const ACTIVE_ACCOUNT_SCHEMA_VERSION: u32 = 1;
 
 /// The `"active_account"` read model — the active account pubkey, `None` when no
 /// account is active. Built from the same `account_snapshot().1` the JSON
 /// projection reads.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ActiveAccountModel {
-    pub(crate) pubkey: Option<String>,
+pub struct ActiveAccountModel {
+    pub pubkey: Option<String>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -74,8 +74,7 @@ pub(crate) fn encode_active_account(model: &ActiveAccountModel) -> Vec<u8> {
 /// Decode typed FlatBuffers bytes (as produced by [`encode_active_account`])
 /// back into an [`ActiveAccountModel`]. Returns an error string on any malformed
 /// input.
-#[cfg(test)]
-pub(crate) fn decode_active_account(bytes: &[u8]) -> Result<ActiveAccountModel, String> {
+pub fn decode_active_account(bytes: &[u8]) -> Result<ActiveAccountModel, String> {
     if bytes.len() < 8 || !fb::active_account_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KACT file identifier".to_string());
     }

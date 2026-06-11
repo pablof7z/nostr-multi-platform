@@ -36,26 +36,26 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const CONFIGURED_RELAYS_SCHEMA_ID: &str = "configured_relays";
+pub const CONFIGURED_RELAYS_SCHEMA_ID: &str = "configured_relays";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const CONFIGURED_RELAYS_FILE_IDENTIFIER: &[u8; 4] = b"KCRL";
+pub const CONFIGURED_RELAYS_FILE_IDENTIFIER: &[u8; 4] = b"KCRL";
 /// Wire schema version. Bump on any breaking change to `configured_relays.fbs`.
-pub(crate) const CONFIGURED_RELAYS_SCHEMA_VERSION: u32 = 1;
+pub const CONFIGURED_RELAYS_SCHEMA_VERSION: u32 = 1;
 
 /// One configured relay row — a field-for-field mirror of one
 /// [`AppRelay`](crate::kernel::AppRelay) (`url` + canonicalised `role`).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ConfiguredRelayRow {
-    pub(crate) url: String,
-    pub(crate) role: String,
+pub struct ConfiguredRelayRow {
+    pub url: String,
+    pub role: String,
 }
 
 /// The `"configured_relays"` read model — the ordered relay rows. Built from the
 /// same `AppRelay` slice the JSON projection serialises (see
 /// [`From<&[crate::kernel::AppRelay]>`]).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ConfiguredRelaysModel {
-    pub(crate) relays: Vec<ConfiguredRelayRow>,
+pub struct ConfiguredRelaysModel {
+    pub relays: Vec<ConfiguredRelayRow>,
 }
 
 impl From<&[crate::kernel::AppRelay]> for ConfiguredRelaysModel {
@@ -112,8 +112,7 @@ pub(crate) fn encode_configured_relays(model: &ConfiguredRelaysModel) -> Vec<u8>
 /// Decode typed FlatBuffers bytes (as produced by [`encode_configured_relays`])
 /// back into a [`ConfiguredRelaysModel`]. Returns an error string on any
 /// malformed input.
-#[cfg(test)]
-pub(crate) fn decode_configured_relays(bytes: &[u8]) -> Result<ConfiguredRelaysModel, String> {
+pub fn decode_configured_relays(bytes: &[u8]) -> Result<ConfiguredRelaysModel, String> {
     if bytes.len() < 8 || !fb::configured_relays_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KCRL file identifier".to_string());
     }

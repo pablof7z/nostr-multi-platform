@@ -23,6 +23,13 @@ nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 # The host prefers the typed `NOFS` payload when present and falls back to the
 # generic `Value` tree otherwise (ADR-0037 Commitment 4).
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
+# PR-B: typed sidecar decoders for host-registered projections. Direct imports
+# needed so `FeatureSnapshot::from_flatbuffer` can decode the typed sidecars
+# without going through the generic `payload:Value` tree.
+nmp-nip02 = { path = "../../../crates/nmp-nip02" }
+nmp-nip17 = { path = "../../../crates/nmp-nip17" }
+nmp-nip29 = { path = "../../../crates/nmp-nip29" }
+nmp-nip47 = { path = "../../../crates/nmp-nip47" }
 # C-ABI surface (`NmpApp`, `nmp_app_*` symbols) — extracted from
 # `nmp-core::ffi` in step 11-final.
 # V-38: nmp-core no longer has a `wallet` feature; nmp-ffi exposes wallet

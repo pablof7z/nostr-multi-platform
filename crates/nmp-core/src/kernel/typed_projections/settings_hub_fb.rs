@@ -35,17 +35,17 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const SETTINGS_HUB_SCHEMA_ID: &str = "settings_hub";
+pub const SETTINGS_HUB_SCHEMA_ID: &str = "settings_hub";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const SETTINGS_HUB_FILE_IDENTIFIER: &[u8; 4] = b"KSHB";
+pub const SETTINGS_HUB_FILE_IDENTIFIER: &[u8; 4] = b"KSHB";
 /// Wire schema version. Bump on any breaking change to `settings_hub.fbs`.
-pub(crate) const SETTINGS_HUB_SCHEMA_VERSION: u32 = 1;
+pub const SETTINGS_HUB_SCHEMA_VERSION: u32 = 1;
 
 /// The `"settings_hub"` read model — the configured relay count. Built from the
 /// same `configured_relays_snapshot().len()` the JSON projection reads.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SettingsHubModel {
-    pub(crate) relay_count: u32,
+pub struct SettingsHubModel {
+    pub relay_count: u32,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -69,8 +69,7 @@ pub(crate) fn encode_settings_hub(model: &SettingsHubModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_settings_hub`]) back
 /// into a [`SettingsHubModel`]. Returns an error string on any malformed input.
-#[cfg(test)]
-pub(crate) fn decode_settings_hub(bytes: &[u8]) -> Result<SettingsHubModel, String> {
+pub fn decode_settings_hub(bytes: &[u8]) -> Result<SettingsHubModel, String> {
     if bytes.len() < 8 || !fb::settings_hub_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KSHB file identifier".to_string());
     }

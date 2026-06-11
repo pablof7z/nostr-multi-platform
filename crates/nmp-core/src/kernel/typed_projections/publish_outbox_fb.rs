@@ -38,50 +38,50 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const PUBLISH_OUTBOX_SCHEMA_ID: &str = "publish_outbox";
+pub const PUBLISH_OUTBOX_SCHEMA_ID: &str = "publish_outbox";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const PUBLISH_OUTBOX_FILE_IDENTIFIER: &[u8; 4] = b"KPBO";
+pub const PUBLISH_OUTBOX_FILE_IDENTIFIER: &[u8; 4] = b"KPBO";
 /// Wire schema version. Bump on any breaking change to `publish_outbox.fbs`.
-pub(crate) const PUBLISH_OUTBOX_SCHEMA_VERSION: u32 = 1;
+pub const PUBLISH_OUTBOX_SCHEMA_VERSION: u32 = 1;
 
 /// One target relay of an in-flight publish — a field-for-field mirror of the
 /// SERIALISED [`PublishOutboxRelay`](crate::kernel::PublishOutboxRelay).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct PublishOutboxRelayRow {
-    pub(crate) relay_url: String,
-    pub(crate) status: String,
-    pub(crate) status_label: String,
-    pub(crate) attempt: u32,
-    pub(crate) attempt_label: String,
-    pub(crate) message: String,
-    pub(crate) relay_reason: String,
+pub struct PublishOutboxRelayRow {
+    pub relay_url: String,
+    pub status: String,
+    pub status_label: String,
+    pub attempt: u32,
+    pub attempt_label: String,
+    pub message: String,
+    pub relay_reason: String,
 }
 
 /// One in-flight publish — a field-for-field mirror of the SERIALISED
 /// [`PublishOutboxItem`](crate::kernel::PublishOutboxItem).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct PublishOutboxItemRow {
-    pub(crate) handle: String,
-    pub(crate) event_id: String,
-    pub(crate) kind: u32,
-    pub(crate) title: String,
-    pub(crate) preview: String,
-    pub(crate) created_at_display: String,
-    pub(crate) status: String,
-    pub(crate) status_label: String,
-    pub(crate) system_image: String,
-    pub(crate) can_retry: bool,
-    pub(crate) target_relays: u32,
-    pub(crate) target_summary: String,
-    pub(crate) relays: Vec<PublishOutboxRelayRow>,
+pub struct PublishOutboxItemRow {
+    pub handle: String,
+    pub event_id: String,
+    pub kind: u32,
+    pub title: String,
+    pub preview: String,
+    pub created_at_display: String,
+    pub status: String,
+    pub status_label: String,
+    pub system_image: String,
+    pub can_retry: bool,
+    pub target_relays: u32,
+    pub target_summary: String,
+    pub relays: Vec<PublishOutboxRelayRow>,
 }
 
 /// The `"publish_outbox"` read model — the ordered in-flight items. Built from
 /// the same `PublishOutboxItem` vector the JSON projection serialises (mapped
 /// inline in [`Kernel::builtin_typed_projections`](crate::kernel::Kernel)).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct PublishOutboxModel {
-    pub(crate) items: Vec<PublishOutboxItemRow>,
+pub struct PublishOutboxModel {
+    pub items: Vec<PublishOutboxItemRow>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -166,8 +166,7 @@ pub(crate) fn encode_publish_outbox(model: &PublishOutboxModel) -> Vec<u8> {
 /// Decode typed FlatBuffers bytes (as produced by [`encode_publish_outbox`])
 /// back into a [`PublishOutboxModel`]. Returns an error string on any malformed
 /// input.
-#[cfg(test)]
-pub(crate) fn decode_publish_outbox(bytes: &[u8]) -> Result<PublishOutboxModel, String> {
+pub fn decode_publish_outbox(bytes: &[u8]) -> Result<PublishOutboxModel, String> {
     if bytes.len() < 8 || !fb::publish_outbox_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KPBO file identifier".to_string());
     }

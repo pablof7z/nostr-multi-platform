@@ -43,26 +43,26 @@ use crate::profile_card_generated as pc;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const PROFILE_SCHEMA_ID: &str = "profile";
+pub const PROFILE_SCHEMA_ID: &str = "profile";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const PROFILE_FILE_IDENTIFIER: &[u8; 4] = b"KPRF";
+pub const PROFILE_FILE_IDENTIFIER: &[u8; 4] = b"KPRF";
 /// Wire schema version. Bump on any breaking change to `profile.fbs`.
-pub(crate) const PROFILE_SCHEMA_VERSION: u32 = 1;
+pub const PROFILE_SCHEMA_VERSION: u32 = 1;
 
 /// A field-for-field mirror of one [`ProfileCard`](crate::kernel) — the shared
 /// row type the `profile` and `author_view` codecs both encode (into their own
 /// generated `ProfileCard` table). `Option<String>` fields are encoded as
 /// `has_x` + value.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ProfileCardModel {
-    pub(crate) pubkey: String,
-    pub(crate) npub: String,
-    pub(crate) display_name: Option<String>,
-    pub(crate) picture_url: Option<String>,
-    pub(crate) nip05: String,
-    pub(crate) about: String,
-    pub(crate) has_profile: bool,
-    pub(crate) lnurl: Option<String>,
+pub struct ProfileCardModel {
+    pub pubkey: String,
+    pub npub: String,
+    pub display_name: Option<String>,
+    pub picture_url: Option<String>,
+    pub nip05: String,
+    pub about: String,
+    pub has_profile: bool,
+    pub lnurl: Option<String>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -122,8 +122,7 @@ pub(crate) fn encode_profile(model: &ProfileCardModel) -> Vec<u8> {
 /// [`ProfileCardModel`]. Shared with the `author_view` test decoder shape, but
 /// each codec reads its OWN generated `ProfileCard` type (hence not a free
 /// function here — `author_view` mirrors this logic against its own bindings).
-#[cfg(test)]
-pub(crate) fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
+pub fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey().unwrap_or_default().to_string(),
         npub: card.npub().unwrap_or_default().to_string(),
@@ -144,8 +143,7 @@ pub(crate) fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardMode
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_profile`]) back into
 /// a [`ProfileCardModel`]. Returns an error string on any malformed input.
-#[cfg(test)]
-pub(crate) fn decode_profile(bytes: &[u8]) -> Result<ProfileCardModel, String> {
+pub fn decode_profile(bytes: &[u8]) -> Result<ProfileCardModel, String> {
     if bytes.len() < 8 || !fb::profile_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KPRF file identifier".to_string());
     }

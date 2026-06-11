@@ -70,13 +70,11 @@ impl SharedSnapshot {
 ///
 /// When a typed sidecar entry is absent or fails to decode (e.g. the slot was
 /// not yet emitted, or a schema mismatch — ADR-0037 Commitment 4), the
-/// corresponding field returns its zero value instead of falling back through
-/// the generic `payload:Value` tree. The producer still dual-emits
-/// `payload:Value` (kernel/update.rs `encode_snapshot_with_envelope`); this
-/// decoder simply no longer reads it. The slot gets `(deprecated)` + emission
-/// stops in the PR-B follow-up (#991) once the remaining Rust-shell read
-/// sites (chirp-tui `FeatureSnapshot`, chirp-desktop `Snapshot`) flip to the
-/// typed channels that already exist kernel-side.
+/// corresponding field returns its zero value — no `payload:Value` fallback.
+/// PR-B completes the typed-first migration: `FeatureSnapshot` and
+/// chirp-desktop `Snapshot` also read from typed sidecars; `payload:Value`
+/// emission is stopped in `encode_snapshot_with_envelope` once all read sites
+/// are flipped (this PR, closes #991/#979).
 fn decode_flatbuffer_snapshot(bytes: &[u8]) -> SharedSnapshot {
     // Tier-3 envelope — metrics and status fields live on SnapshotFrame directly.
     let envelope = nmp_core::decode_snapshot_envelope(bytes)
@@ -303,30 +301,10 @@ fn action_result_from_typed(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Legacy generic-Value decode helper (still used by `feature_snapshot.rs`)
-//
-// `feature_snapshot.rs` reads kernel-produced projections (`accounts`,
-// `active_account`, `configured_relays`, `settings_hub`, profile views, etc.)
-// that do NOT yet have typed FlatBuffers sidecars.  Until those projections are
-// typed, `FeatureSnapshot::from_transport_payload` must continue to decode the
-// generic `payload:Value` tree.
-//
-// This function is `pub(crate)` so `feature_snapshot.rs` can call it without
-// going through the public `SharedSnapshot` API.  It will be deleted once all
-// `feature_snapshot.rs` read sites are ported to typed sidecars.
-// ---------------------------------------------------------------------------
-
-pub(crate) fn value_from_transport_payload(payload: &UpdatePayload) -> Option<serde_json::Value> {
-    match payload {
-        UpdatePayload::FlatBuffers(bytes) => {
-            nmp_core::decode_snapshot_with_typed(bytes).ok().map(|(v, _)| v)
-        }
-        UpdatePayload::JsonFixture(json) => serde_json::from_str::<serde_json::Value>(json)
-            .ok()
-            .map(|value| value.get("v").cloned().unwrap_or(value)),
-    }
-}
+// `value_from_transport_payload` was removed in PR-B.
+// `FeatureSnapshot::from_transport_payload` now decodes typed sidecars
+// directly via `nmp_core::decode_snapshot_typed_projections`; the
+// generic `payload:Value` tree is no longer read by any Rust shell.
 
 // ---------------------------------------------------------------------------
 // JSON fixture decode helpers (used by `from_json_fixture` only)
