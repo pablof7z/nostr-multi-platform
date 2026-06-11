@@ -1,0 +1,64 @@
+namespace nmp.kernel;
+
+// SHARED `ProfileCard` row type for the kernel-owned profile-cluster snapshot
+// projections (`profile`, `claimed_profiles`, `resolved_profiles`).
+//
+// Before this file existed, each of those three schemas re-declared `ProfileCard`
+// verbatim. That duplication was harmless for `flatc --rust` (each `*_generated.rs`
+// lives in its own `#[path]` module, so the duplicate Rust `ProfileCard` types do
+// not collide — the #1029 convention) but FATAL for `flatc --swift`: every
+// `.generated.swift` lands in ONE flat Swift module, so three files each declaring
+// `public struct nmp_kernel_ProfileCard` is a redeclaration error. The profile
+// cluster therefore could not ship a Swift typed-sidecar binding until the table
+// was defined exactly ONCE.
+//
+// This file is the single definition. The three consumer schemas `include` it (an
+// `include` must precede the `namespace`), so `flatc` (run WITHOUT `--gen-all`)
+// emits `ProfileCard` only in `profile_card_generated.{rs,swift}` and the per-key
+// files merely REFERENCE it. This mirrors the established `op_feed.fbs` →
+// `timeline_snapshot.fbs` include precedent in `crates/nmp-nip01/`.
+//
+// Wire format: this is a PURE schema reorganization. `ProfileCard`'s field order
+// and types are byte-identical to the prior inlined copies, so every encoded
+// buffer is unchanged. The Rust encode tests in `nmp-core` are the empirical proof.
+//
+// `ProfileCard` carries NO serde `skip_serializing_if`, so its `Option<String>`
+// fields serialise as JSON `null`-when-`None` (key always present); the typed
+// buffer carries each presence as an explicit `has_*` flag.
+//
+// D0: a profile card is a generic derived view of raw kind:0 profile fields — it
+// carries no protocol-specific (NIP-NN) semantics, so it is kernel-owned and typed
+// here. D6: decoders return `Err(String)` on malformed input, never panic.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers pin
+// (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
+//         crates/nmp-core/schema/profile_card.fbs
+//
+// NOTE: `author_view.fbs` still declares its OWN `ProfileCard` (it has no Swift
+// binding yet — `swift_reader_type: None` — so it does not collide). It is the
+// next consumer to migrate onto this shared definition when its Swift binding
+// lands; deliberately out of scope for this batch.
+
+table ProfileCard {
+  // Hex pubkey.
+  pubkey:string;
+  // Bech32 `npub1…` encoding.
+  npub:string;
+  // Display name from kind:0; `has_display_name == false` mirrors JSON `null`.
+  has_display_name:bool;
+  display_name:string;
+  // Picture URL from kind:0; `has_picture_url == false` mirrors JSON `null`.
+  has_picture_url:bool;
+  picture_url:string;
+  // NIP-05 identifier (always present, empty when unknown).
+  nip05:string;
+  // About text (always present, empty/placeholder when no kind:0).
+  about:string;
+  // True when a kind:0 metadata event has been received for this pubkey.
+  has_profile:bool;
+  // Pre-extracted lightning address (lud16) / LNURL (lud06);
+  // `has_lnurl == false` mirrors JSON `null`.
+  has_lnurl:bool;
+  lnurl:string;
+}
