@@ -52,6 +52,9 @@ use nmp_core::store::{EventStore, StoreQuery, StoredEvent};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_ffi::{nmp_app_close_interest, nmp_app_open_interest, NmpApp};
+use nmp_nip01::op_feed::{
+    encode_op_feed_snapshot, OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
+};
 use nmp_nip01::{author_feed_predicate, thread_feed_predicate, FlatFeed};
 
 use super::helpers::c_string_opt;
@@ -82,6 +85,45 @@ fn author_feed_key(pubkey_hex: &str) -> String {
 #[must_use]
 fn thread_feed_key(event_id_hex: &str) -> String {
     format!("nmp.feed.thread.{event_id_hex}")
+}
+
+/// Register the typed `NOFS` op-feed sidecar for a dynamic author/thread feed
+/// ALONGSIDE the generic `Value` projection that `register_feed_with_observer`
+/// already installed.
+///
+/// A [`FlatFeed`] snapshot is a
+/// [`RootFeedSnapshot`](nmp_feed::RootFeedSnapshot)`<TimelineEventCard,
+/// Nip10ReplyAttribution>` — the SAME wire shape the home feed emits
+/// (`nmp_nip01::OpFeedSnapshot`), so it encodes through the existing
+/// [`encode_op_feed_snapshot`] with NO new `.fbs` schema. The sidecar is keyed
+/// by the SAME dynamic key (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`)
+/// under the op-feed schema id (`nmp.nip01.opfeed`), exactly as
+/// [`nmp_app_template::register_op_feed_defaults`] does for `nmp.feed.home`. A
+/// host with a `NOFS` decoder prefers this typed payload; an un-updated host
+/// falls back to the generic `Value` subtree (ADR-0037 Commitment 4). Additive.
+///
+/// Teardown: [`NmpApp::unregister_feed`] removes the generic AND the typed
+/// projection by key, so [`nmp_app_chirp_close_author_feed`] /
+/// [`nmp_app_chirp_close_thread_feed`] need no extra step.
+///
+/// Known waste, deferred (mirrors `register_op_feed_defaults`): this closure
+/// snapshots the feed again on the same tick the generic `FeedController` path
+/// snapshots it (two window materializations per 4 Hz tick). Not load-bearing
+/// for correctness; the feed is bounded by D5 retention.
+fn register_typed_feed_sidecar(app: &NmpApp, key: String, feed: Arc<FlatFeed>) {
+    app.register_typed_snapshot_projection(key.clone(), move || {
+        // `FeedRequest::default()` is the SAME window `FlatFeed::snapshot_json`
+        // (the generic projection) uses, so the typed and JSON payloads are
+        // byte-for-byte the same feed — typed-first reads never diverge.
+        let snapshot = feed.snapshot(&nmp_feed::FeedRequest::default());
+        Some(nmp_core::TypedProjectionData {
+            key: key.clone(),
+            schema_id: OP_FEED_SCHEMA_ID.to_string(),
+            schema_version: OP_FEED_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(OP_FEED_FILE_IDENTIFIER).into_owned(),
+            payload: encode_op_feed_snapshot(&snapshot),
+        })
+    });
 }
 
 /// Build the `open_interest` filter JSON for [`FEED_KINDS`] over one tag
@@ -122,7 +164,9 @@ pub extern "C" fn nmp_app_chirp_open_author_feed(app: *mut NmpApp, pubkey_hex: *
 
     let feed = FlatFeed::new(author_feed_predicate(pubkey.clone(), FEED_KINDS.to_vec()));
     seed_author_feed_from_store(app_ref, &feed, &pubkey);
-    app_ref.register_feed_with_observer(author_feed_key(&pubkey), feed.clone(), feed);
+    let key = author_feed_key(&pubkey);
+    app_ref.register_feed_with_observer(key.clone(), feed.clone(), feed.clone());
+    register_typed_feed_sidecar(app_ref, key, feed);
 
     open_interest_for(
         app,
@@ -179,7 +223,9 @@ pub extern "C" fn nmp_app_chirp_open_thread_feed(app: *mut NmpApp, event_id_hex:
 
     let feed = FlatFeed::new(thread_feed_predicate(root_id.clone(), FEED_KINDS.to_vec()));
     seed_thread_feed_from_store(app_ref, &feed, &root_id);
-    app_ref.register_feed_with_observer(thread_feed_key(&root_id), feed.clone(), feed);
+    let key = thread_feed_key(&root_id);
+    app_ref.register_feed_with_observer(key.clone(), feed.clone(), feed.clone());
+    register_typed_feed_sidecar(app_ref, key, feed);
 
     open_interest_for(
         app,
@@ -455,6 +501,72 @@ mod tests {
 
         nmp_app_chirp_close_thread_feed(app, root_c.as_ptr());
         assert!(read_projection(app, &thread_feed_key(&root_id)).is_none());
+        nmp_app_free(app);
+    }
+
+    #[test]
+    fn author_feed_open_emits_typed_op_feed_sidecar_and_close_removes_it() {
+        let app = nmp_app_new();
+        assert!(!app.is_null());
+        let store = Arc::new(MemEventStore::new());
+        let pubkey = "11".repeat(32);
+        insert_raw(
+            &store,
+            RawEvent {
+                id: "a1".repeat(32),
+                pubkey: pubkey.clone(),
+                created_at: 10,
+                kind: 1,
+                tags: vec![],
+                content: "older".into(),
+                sig: "a".repeat(128),
+            },
+        );
+        insert_raw(
+            &store,
+            RawEvent {
+                id: "a2".repeat(32),
+                pubkey: pubkey.clone(),
+                created_at: 20,
+                kind: 1,
+                tags: vec![],
+                content: "newer".into(),
+                sig: "a".repeat(128),
+            },
+        );
+        install_store(app, store);
+
+        let pubkey_c = CString::new(pubkey.clone()).unwrap();
+        nmp_app_chirp_open_author_feed(app, pubkey_c.as_ptr());
+
+        let key = author_feed_key(&pubkey);
+        let app_ref = unsafe { &*app };
+        let typed = app_ref.run_typed_snapshot_projections();
+        let entry = typed
+            .iter()
+            .find(|p| p.key == key)
+            .expect("typed sidecar registered under the dynamic author key");
+
+        // Same op-feed schema identity the home feed (`nmp.feed.home`) uses —
+        // no new .fbs; the host's NOFS decoder is reused verbatim.
+        assert_eq!(entry.schema_id, OP_FEED_SCHEMA_ID);
+        assert_eq!(entry.schema_version, OP_FEED_SCHEMA_VERSION);
+        assert_eq!(entry.file_identifier, "NOFS");
+
+        // The typed payload decodes to the SAME seeded cards (newest-first) the
+        // generic JSON projection carries — typed and JSON never diverge.
+        let snapshot = nmp_nip01::op_feed::decode_op_feed_snapshot(&entry.payload)
+            .expect("typed payload decodes as a NOFS op-feed snapshot");
+        let ids: Vec<String> = snapshot.cards.iter().map(|c| c.card.id.clone()).collect();
+        assert_eq!(ids, vec!["a2".repeat(32), "a1".repeat(32)]);
+
+        // unregister_feed (close) tears down the typed sidecar by key too.
+        nmp_app_chirp_close_author_feed(app, pubkey_c.as_ptr());
+        let typed_after = app_ref.run_typed_snapshot_projections();
+        assert!(
+            typed_after.iter().all(|p| p.key != key),
+            "close must remove the typed sidecar for the dynamic key"
+        );
         nmp_app_free(app);
     }
 

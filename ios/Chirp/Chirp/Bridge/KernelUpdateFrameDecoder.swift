@@ -60,7 +60,7 @@ enum KernelUpdateFrameDecoder {
             }
             let update = try KernelUpdate(from: FlatBufferValueDecoder(value: payload, codingPath: []))
             let envelopes = extractTypedProjections(from: snapshot)
-            let flatFeeds = extractFlatFeeds(from: payload)
+            let flatFeeds = extractFlatFeeds(typed: envelopes, payload: payload)
             let typedEnvelope = extractTypedEnvelope(from: snapshot)
             return .snapshot(snapshot.schemaVersion, update, envelopes, flatFeeds, typedEnvelope)
         case .panic:
@@ -123,6 +123,55 @@ enum KernelUpdateFrameDecoder {
         )
     }
 
+    /// Dynamic per-view feed key prefixes the producer registers a typed `NOFS`
+    /// op-feed sidecar under (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`),
+    /// the SAME shape as `nmp.feed.home`. `nmp.feed.home` itself is matched by
+    /// exact key elsewhere (`TypedHomeFeedDecoder`), so it is NOT a prefix here
+    /// and never collides.
+    private static let flatFeedKeyPrefixes = ["nmp.feed.author.", "nmp.feed.thread."]
+
+    /// Resolve the per-view author/thread feeds, preferring the typed `NOFS`
+    /// op-feed sidecar over the generic JSON `payload` projection per key.
+    ///
+    /// JSON-first-then-overlay (ADR-0037 Commitment 4): the generic dict is
+    /// built first, then each typed envelope whose key carries an author/thread
+    /// prefix AND whose `schemaId` is the op-feed descriptor is decoded through
+    /// the existing `TypedHomeFeedDecoder` (the dynamic feeds are byte-identical
+    /// in shape to `nmp.feed.home`) and OVERLAID. A typed decode that returns
+    /// `nil` (malformed sidecar) leaves the JSON entry untouched, so a per-key
+    /// fallback is automatic; a key present only typed is added.
+    private static func extractFlatFeeds(
+        typed envelopes: [TypedProjectionEnvelope],
+        payload root: nmp_transport_Value
+    ) -> [String: ChirpTimelineSnapshot] {
+        let jsonFeeds = extractFlatFeeds(from: root)
+        return overlayTypedFlatFeeds(json: jsonFeeds, typed: envelopes)
+    }
+
+    /// Pure merge step (no FlatBuffers frame plumbing) so it is unit-testable
+    /// with hand-built envelopes. Overlays typed-decoded author/thread feeds
+    /// onto the JSON-derived dictionary; non-matching or undecodable envelopes
+    /// leave the JSON entry in place.
+    static func overlayTypedFlatFeeds(
+        json: [String: ChirpTimelineSnapshot],
+        typed envelopes: [TypedProjectionEnvelope]
+    ) -> [String: ChirpTimelineSnapshot] {
+        var feeds = json
+        for envelope in envelopes {
+            guard flatFeedKeyPrefixes.contains(where: { envelope.key.hasPrefix($0) }),
+                  envelope.schemaId == TypedHomeFeedDecoder.schemaId,
+                  let typedFeed = TypedHomeFeedDecoder.decode(bytes: envelope.payload) else {
+                continue
+            }
+            feeds[envelope.key] = typedFeed
+        }
+        return feeds
+    }
+
+    /// The JSON-only fallback: scan the generic `payload` projection map for the
+    /// `nmp.feed.author.`/`nmp.feed.thread.` keys and decode each reflectively.
+    /// Retained verbatim as the per-key fallback for any feed not present (or
+    /// not decodable) in the typed sidecar.
     private static func extractFlatFeeds(from root: nmp_transport_Value) -> [String: ChirpTimelineSnapshot] {
         guard root.kind == .map else { return [:] }
         guard let projections = root.map.first(where: { $0.key == "projections" })?.value,
@@ -132,7 +181,7 @@ enum KernelUpdateFrameDecoder {
         var feeds: [String: ChirpTimelineSnapshot] = [:]
         for pair in projections.map {
             guard let key = pair.key,
-                  key.hasPrefix("nmp.feed.author.") || key.hasPrefix("nmp.feed.thread.") else {
+                  flatFeedKeyPrefixes.contains(where: { key.hasPrefix($0) }) else {
                 continue
             }
             guard let feed = try? ChirpTimelineSnapshot(
