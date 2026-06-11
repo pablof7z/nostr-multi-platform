@@ -4954,6 +4954,7 @@ dependencies = [
  "nmp-nip42",
  "nmp-nip57",
  "nmp-nip59",
+ "nmp-nwc",
  "nmp-router",
  "nmp-signer-broker",
  "nmp-signer-iface",
