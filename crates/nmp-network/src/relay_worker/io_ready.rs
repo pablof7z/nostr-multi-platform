@@ -49,6 +49,15 @@ fn forward_commands(
             }
         }
     }
+    // The upstream control sender was dropped. Wake the poller so the worker
+    // can drain the now-disconnected internal channel and see
+    // `ControlDrain::Disconnected` on its next `drain_pending` call, rather
+    // than blocking in `poller.wait()` until the keepalive deadline fires.
+    if let Ok(slot) = wake.lock() {
+        if let Some(waker) = slot.as_ref() {
+            let _ = waker.wake();
+        }
+    }
 }
 
 impl ControlInbox {

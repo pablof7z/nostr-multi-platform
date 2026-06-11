@@ -96,8 +96,13 @@ impl KeepaliveState {
         }
 
         // No ping outstanding. Have we been silent long enough to emit one?
+        // NOTE: we do NOT stamp `ping_sent_at` here. The pong-timeout clock
+        // only starts once the caller confirms the ping actually reached the
+        // wire via `on_ping_flushed`. If the write is `Blocked`, this branch
+        // fires again on the next tick, retrying the write without advancing
+        // the pong-timeout window. Prevents spurious disconnects under write
+        // congestion.
         if now.saturating_duration_since(self.last_inbound_at) >= self.idle_threshold {
-            self.ping_sent_at = Some(now);
             return KeepaliveAction::EmitPing;
         }
 
@@ -111,6 +116,27 @@ impl KeepaliveState {
             sent_at + self.pong_timeout
         } else {
             self.last_inbound_at + self.idle_threshold
+        }
+    }
+
+    /// Called by the worker after a `Message::Ping` was accepted by
+    /// `flush_socket_message` with `FlushResult::Flushed`.
+    ///
+    /// Stamps `ping_sent_at` to mark the moment the ping actually reached the
+    /// wire. The pong-timeout clock starts from this instant, **not** from when
+    /// `step` decided to emit the ping. This prevents a spurious disconnect
+    /// under write congestion (where the ping write is `Blocked` for one or
+    /// more ticks before it finally flushes).
+    ///
+    /// If the flush was `Blocked` the caller does NOT call this; `step` will
+    /// return `EmitPing` again on the next tick (idle threshold still exceeded,
+    /// no ping in flight), causing the worker to retry the write.
+    pub fn on_ping_flushed(&mut self, now: Instant) {
+        // Only stamp if no ping is already in flight (guards against duplicate
+        // calls from a confused caller, which could reset the pong window
+        // forward and delay Dead detection).
+        if self.ping_sent_at.is_none() {
+            self.ping_sent_at = Some(now);
         }
     }
 
@@ -140,9 +166,13 @@ mod tests {
         // Just before threshold — nothing.
         assert_eq!(k.step(t0 + s(29)), KeepaliveAction::Idle);
         assert!(!k.ping_in_flight());
-        // At threshold — emit.
+        // At threshold — step returns EmitPing but ping is NOT yet in-flight
+        // (no ping has reached the wire yet).
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
-        assert!(k.ping_in_flight());
+        assert!(!k.ping_in_flight(), "ping not in-flight until on_ping_flushed is called");
+        // Caller flushes the ping to the wire and confirms:
+        k.on_ping_flushed(t0 + s(30));
+        assert!(k.ping_in_flight(), "ping is in-flight after on_ping_flushed");
     }
 
     #[test]
@@ -159,15 +189,46 @@ mod tests {
     fn ping_in_flight_does_not_re_emit() {
         let (t0, mut k) = fresh();
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
+        // Caller confirms the ping reached the wire.
+        k.on_ping_flushed(t0 + s(30));
         // Five seconds later, still waiting for pong — idle, not another ping.
         assert_eq!(k.step(t0 + s(35)), KeepaliveAction::Idle);
         assert!(k.ping_in_flight());
+    }
+
+    /// Finding 2 — When the ping write is blocked, `step` keeps returning
+    /// `EmitPing` on successive ticks (idle threshold still exceeded, no ping
+    /// in flight), allowing the worker to retry the write without advancing the
+    /// pong-timeout window. Only after the flush succeeds and the caller calls
+    /// `on_ping_flushed` does the pong-timeout clock start.
+    #[test]
+    fn blocked_ping_does_not_advance_pong_timeout_clock() {
+        let (t0, mut k) = fresh();
+
+        // Idle threshold elapsed — FSM says "emit ping".
+        assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
+        // Worker's flush was Blocked: caller does NOT call on_ping_flushed.
+        assert!(!k.ping_in_flight(), "clock must not start until ping is on the wire");
+
+        // One more tick: idle threshold STILL exceeded, still no ping in flight
+        // → FSM should return EmitPing again so the worker retries the write.
+        assert_eq!(k.step(t0 + s(31)), KeepaliveAction::EmitPing);
+        assert!(!k.ping_in_flight());
+
+        // Now the flush succeeds at t0+32. Pong-timeout window starts here.
+        k.on_ping_flushed(t0 + s(32));
+        assert!(k.ping_in_flight());
+
+        // 30s after the ping hit the wire = t0+62 → Dead.
+        assert_eq!(k.step(t0 + s(61)), KeepaliveAction::Idle);
+        assert_eq!(k.step(t0 + s(62)), KeepaliveAction::Dead);
     }
 
     #[test]
     fn pong_clears_in_flight_and_resets_idle() {
         let (t0, mut k) = fresh();
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
+        k.on_ping_flushed(t0 + s(30));
         // Pong arrives 5s later — `on_inbound` is the signal.
         k.on_inbound(t0 + s(35));
         assert!(!k.ping_in_flight());
@@ -180,6 +241,7 @@ mod tests {
     fn pong_timeout_marks_dead() {
         let (t0, mut k) = fresh();
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
+        k.on_ping_flushed(t0 + s(30));
         // 30s after ping with no inbound — dead.
         assert_eq!(k.step(t0 + s(60)), KeepaliveAction::Dead);
     }
@@ -188,6 +250,7 @@ mod tests {
     fn inbound_just_before_pong_timeout_saves_socket() {
         let (t0, mut k) = fresh();
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
+        k.on_ping_flushed(t0 + s(30));
         // Pong arrives at the very edge of the window.
         k.on_inbound(t0 + s(59));
         assert_eq!(k.step(t0 + s(60)), KeepaliveAction::Idle);
@@ -201,6 +264,7 @@ mod tests {
         // "30s of inbound idleness" spec wording in T120b.
         let (t0, mut k) = fresh();
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
+        k.on_ping_flushed(t0 + s(30));
         k.on_inbound(t0 + s(40)); // any frame, not necessarily Pong
         assert!(!k.ping_in_flight());
         assert_eq!(k.step(t0 + s(40)), KeepaliveAction::Idle);
@@ -212,6 +276,7 @@ mod tests {
         // tear down. We don't auto-recover (that's reconnect's job).
         let (t0, mut k) = fresh();
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
+        k.on_ping_flushed(t0 + s(30));
         assert_eq!(k.step(t0 + s(60)), KeepaliveAction::Dead);
         // Subsequent step is still Dead (or at least non-EmitPing) — caller
         // must reset by destroying this state on reconnect.
@@ -224,5 +289,22 @@ mod tests {
         // We treat the equality case as the firing edge.
         let (t0, mut k) = fresh();
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
+    }
+
+    #[test]
+    fn on_ping_flushed_is_idempotent() {
+        // Calling on_ping_flushed twice must not reset the pong-timeout window
+        // forward (which could delay Dead detection). The guard in
+        // on_ping_flushed ensures the first stamp wins.
+        let (t0, mut k) = fresh();
+        assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
+        k.on_ping_flushed(t0 + s(30));
+        // Second call with a later instant — must not overwrite the first.
+        k.on_ping_flushed(t0 + s(35));
+        // Pong timeout is from t0+30 (first flush), not t0+35.
+        // At t0+59 (29s since first flush) we should still be Idle.
+        assert_eq!(k.step(t0 + s(59)), KeepaliveAction::Idle);
+        // At t0+60 (30s since first flush) → Dead.
+        assert_eq!(k.step(t0 + s(60)), KeepaliveAction::Dead);
     }
 }
