@@ -15,7 +15,10 @@ mod watermark;
 
 pub use errors::{StoreError, VerifyError};
 pub use events::{RawEvent, StoredEvent, VerifiedEvent};
-pub use gc::{ClaimerId, DeleteFilter, DumpFormat, DumpStats, GcBudget, GcReport};
+pub use gc::{
+    ClaimerId, DeleteFilter, DumpFormat, DumpStats, GcBudget, GcReport, GC_MAX_DURATION_MS,
+    GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
+};
 pub use ids::{EventId, PubKey, RelayUrl};
 pub(crate) use ids::hex_to_event_id;
 pub use outcomes::{InsertOutcome, ProvenanceEntry, RejectReason, TombstoneOrigin, TombstoneRow};

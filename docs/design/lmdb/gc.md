@@ -172,13 +172,18 @@ pub fn gc_step(&self, budget: GcBudget) -> Result<GcReport, StoreError> {
 }
 ```
 
-Single `gc_step()` is bounded by `GcBudget { max_events_per_step, max_duration_ms }`. Defaults: `max_events_per_step = 2000`, `max_duration_ms = 50`. The actor calls `gc_step()`:
+Single `gc_step()` is bounded by `GcBudget { max_events_per_step, max_duration_ms, max_total_events }`. The budget constructors are the single source of truth for these numbers (`crates/nmp-store/src/types/gc.rs`):
 
-- Every 60 seconds (cooperative; runs on the actor thread between mailbox messages).
-- On `MemoryWarningCapability::Pressure` (iOS / Android low-memory signals).
-- On any single `insert()` that observes `hot.lru.len() > 2 * target_hot_size` (safety net).
+- `GcBudget::default()` — the doc-schedule scan bounds `max_events_per_step = 2000` (`GC_MAX_EVENTS_PER_STEP`), `max_duration_ms = 50` (`GC_MAX_DURATION_MS`), with `max_total_events = usize::MAX` (LRU eviction disabled; backward-compatible).
+- `GcBudget::production()` — the on-device budget: the same scan bounds **plus** `max_total_events = HOT_EVENT_CEILING` (10,000) so Phase-2 LRU eviction actually runs. The finite ceiling is load-bearing: with `usize::MAX`, `st.events.len() > max_total_events` is never true and LRU growth stays unbounded.
 
-`gc_step()` is **never** invoked from an FFI call path — it runs on the actor's own schedule so any latency it introduces is invisible to the platform.
+The actor calls `gc_step()` (via `Kernel::run_gc_step`, which threads the kernel clock's `now_secs` into the store — D7/D9):
+
+- **Every 60 seconds (shipped, #1069)** — cooperative; runs on the actor thread between mailbox messages, gated by an `Instant`-based `last_gc` in `run_actor_with_observers` (`GC_TICK_INTERVAL`). Piggy-backs the existing ≤250 ms `compute_wait` loop wake — no sleep loop, no timer thread (D8 / "no polling").
+- On `MemoryWarningCapability::Pressure` (iOS / Android low-memory signals) — **staged, not yet wired**: `MemoryWarningCapability` does not yet exist; building the capability seam (iOS `didReceiveMemoryWarning` → typed event → actor) is a follow-up.
+- On any single `insert()` that observes `hot.lru.len() > 2 * target_hot_size` (safety net) — **staged, not yet wired** (internal to the store).
+
+`gc_step()` is **never** invoked from an FFI call path — it runs on the actor's own schedule so any latency it introduces is invisible to the platform. The last run's `GcReport` and its wall-clock time are recorded on the kernel (`Kernel::last_gc` / `last_gc_at_ms`) so the schedule is observable rather than a silent ending — see §7.
 
 ## 4. Claim / release wiring
 

@@ -40,6 +40,8 @@ mod clock;
 #[cfg(test)]
 mod clock_injection_tests;
 #[cfg(test)]
+mod gc_step_tests;
+#[cfg(test)]
 mod closed_classifier_tests;
 // `pub(crate)` so the typed FFI error-category constants (`ERR_*`) are
 // reachable from the `actor` module's command handlers, not just kernel-
@@ -1144,6 +1146,16 @@ pub struct Kernel {
     /// D6: no stderr writes; diagnostic flows through the normal snapshot
     /// channel. D0: generic name ("store", not an LMDB/NIP noun).
     store_open_failure: Option<String>,
+    /// #1069 — last bounded GC pass result + the kernel-clock wall-time it ran.
+    /// Populated by [`Kernel::run_gc_step`] (the actor's 60-second idle-tick gc
+    /// pass). `None` until the first pass runs. Observable so the GC schedule is
+    /// not a silent ending — surfaced for diagnostics (`gc.md` §7 `StoreHealth`).
+    ///
+    /// D4: the actor is the single writer (gc runs only on the actor thread).
+    /// D9: `last_gc_at_ms` is read from the injected [`Clock`], not a bare
+    /// `SystemTime::now()`, so replay/tests stay deterministic.
+    last_gc: Option<crate::store::GcReport>,
+    last_gc_at_ms: Option<u64>,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -2002,6 +2014,8 @@ impl Kernel {
             pending_reverify: VecDeque::new(),
             reverify_subs: HashMap::new(),
             store_open_failure,
+            last_gc: None,
+            last_gc_at_ms: None,
             _not_send: PhantomData,
         };
         if let Some(store) = store_bundle.relay_score_store {
@@ -2052,6 +2066,54 @@ impl Kernel {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0)
+    }
+
+    /// #1069 — run one bounded GC pass against the store on the production
+    /// budget, recording the result so the schedule is observable.
+    ///
+    /// Called from the actor's 60-second idle-tick gate (`actor/mod.rs`). This
+    /// is the sole production caller of [`EventStore::gc_step`] — before this,
+    /// the store's GC machinery (NIP-40 expiry reaping, LRU eviction, tombstone
+    /// purge) was dead on every device (audit Finding 1).
+    ///
+    /// - **Budget**: [`GcBudget::production`] — `2000` events / `50 ms` scan
+    ///   bounds plus the finite `HOT_EVENT_CEILING` LRU ceiling so Phase-2
+    ///   eviction actually runs (`gc.md` §3).
+    /// - **`now_secs`**: read through the injected [`Clock`] via
+    ///   [`Self::now_secs`] (D7/D9 — the store never reads the clock; the kernel
+    ///   threads it in, so replay/tests stay deterministic).
+    /// - **Cooperative**: runs on the actor thread between mailbox messages; the
+    ///   budget bounds the worst-case latency, never an FFI call path (`gc.md` §3).
+    ///
+    /// A store error is surfaced as `tracing::warn!` and the pass is skipped —
+    /// gc is best-effort maintenance (D1), never a correctness gate; the next
+    /// tick retries. The result (or the prior one on error) stays in `last_gc`.
+    pub fn run_gc_step(&mut self) -> Option<crate::store::GcReport> {
+        let now_secs = self.now_secs();
+        match self.store.gc_step(crate::store::GcBudget::production(), now_secs) {
+            Ok(report) => {
+                self.last_gc_at_ms = Some(self.now_ms());
+                self.last_gc = Some(report.clone());
+                Some(report)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "gc_step failed; skipping this pass");
+                None
+            }
+        }
+    }
+
+    /// #1069 — the last [`GcReport`](crate::store::GcReport) produced by
+    /// [`Self::run_gc_step`], or `None` if no gc pass has run yet. Read by
+    /// diagnostics so the GC schedule is observable (`gc.md` §7).
+    pub fn last_gc(&self) -> Option<&crate::store::GcReport> {
+        self.last_gc.as_ref()
+    }
+
+    /// #1069 — wall-clock time (Unix ms, from the injected [`Clock`]) of the
+    /// last [`Self::run_gc_step`], or `None` if no gc pass has run yet.
+    pub fn last_gc_at_ms(&self) -> Option<u64> {
+        self.last_gc_at_ms
     }
 
     /// Resolve the configured relay URLs for a given `RelayRole` from the
