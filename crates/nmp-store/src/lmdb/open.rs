@@ -5,7 +5,7 @@
 
 use std::path::Path;
 use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use heed::types::Bytes;
 use nmp_nostr_lmdb::Lmdb;
@@ -97,6 +97,8 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
             relay_author_scores,
             lru_access,
             lru_seq: AtomicU64::new(lru_seq_init),
+            gc_phase1_cursor: Mutex::new(None),
+            gc_last_tombstone_purge_secs: AtomicU64::new(0),
         }),
     })
 }

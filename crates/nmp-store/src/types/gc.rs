@@ -13,11 +13,14 @@ pub struct ClaimerId(pub u64);
 
 /// Production hot-set event ceiling (`docs/design/lmdb/gc.md` §2: default 10,000).
 ///
-/// Wired into [`GcBudget::production`] as `max_total_events` so on-device LRU
-/// eviction is actually enabled. Without a finite ceiling Phase 2 of
-/// `gc_step` is a permanent no-op (`st.events.len() > usize::MAX` is never true)
-/// and the working set grows unbounded — the D8 "working-set bounded" doctrine
-/// would stay unenforced even after gc starts running.
+/// NOTE: `GcBudget::production()` intentionally does NOT use this constant yet.
+/// `EventStore::claim/release` have zero production callers as of v0.3.0, so the
+/// LRU ceiling would evict events live projections reference (V-117).  Once
+/// store-claims are wired from the actor (see GitHub issue #1090), restore
+/// `production().max_total_events = HOT_EVENT_CEILING`.
+///
+/// The constant is retained so the eviction CODE and its tests continue to
+/// compile and remain exercisable.
 pub const HOT_EVENT_CEILING: usize = 10_000;
 
 /// Production per-step event budget (`docs/design/lmdb/gc.md` §3).
@@ -35,8 +38,9 @@ pub const GC_MAX_DURATION_MS: u32 = 50;
 /// [`GcBudget::default`] uses the design-doc schedule values
 /// (`max_events_per_step = 2000`, `max_duration_ms = 50`) with
 /// `max_total_events = usize::MAX` (LRU eviction disabled — backward-compatible).
-/// [`GcBudget::production`] is the on-device call-site budget: identical scan
-/// bounds but with `max_total_events = HOT_EVENT_CEILING` so LRU eviction runs.
+/// [`GcBudget::production`] is the on-device call-site budget — currently
+/// identical to `default()`: the LRU ceiling is **disabled** until store-claims
+/// have production callers (V-117, see GitHub issue #1090).
 /// See `docs/design/lmdb/gc.md` §3.
 #[derive(Clone, Copy, Debug)]
 pub struct GcBudget {
@@ -46,8 +50,10 @@ pub struct GcBudget {
     /// `gc_step` evicts least-recently-accessed events (by access-sequence counter)
     /// down to this ceiling.  Only un-pinned (unclaimed) events are eligible.
     ///
-    /// `GcBudget::default()` leaves this `usize::MAX` (disabled);
-    /// [`GcBudget::production`] sets it to [`HOT_EVENT_CEILING`] to cap store size.
+    /// Both `GcBudget::default()` and [`GcBudget::production`] currently leave
+    /// this `usize::MAX` (eviction disabled) — pinning has no production callers
+    /// yet, so a finite ceiling would silently delete live events (V-117).
+    /// Issue #1090 tracks re-enabling [`HOT_EVENT_CEILING`] once claims are wired.
     pub max_total_events: usize,
 }
 
@@ -56,7 +62,8 @@ impl Default for GcBudget {
     ///
     /// This is the single source of truth for the `2000 / 50ms` scan bounds the
     /// doc quotes. The production call site uses [`GcBudget::production`], which
-    /// reuses these bounds and adds the finite LRU ceiling.
+    /// currently delegates to these exact values (LRU ceiling disabled pending
+    /// #1090).
     fn default() -> Self {
         Self {
             max_events_per_step: GC_MAX_EVENTS_PER_STEP,
@@ -67,17 +74,20 @@ impl Default for GcBudget {
 }
 
 impl GcBudget {
-    /// The on-device production budget: doc-default scan bounds plus the finite
-    /// [`HOT_EVENT_CEILING`] LRU ceiling so Phase-2 eviction actually runs.
+    /// The on-device production budget used by the actor's 60-second idle-tick gc pass.
     ///
-    /// This is the budget the actor's 60-second idle-tick gc pass uses. The
-    /// finite `max_total_events` is load-bearing: with the default `usize::MAX`
-    /// ceiling, LRU growth stays unbounded even once gc is wired (`gc.md` §3).
+    /// LRU ceiling is intentionally **disabled** (`max_total_events = usize::MAX`) until
+    /// `EventStore::claim/release` have production callers.  Without claims wired, a
+    /// finite ceiling silently evicts events that live projections reference (V-117).
+    /// See GitHub issue #1090 for the wiring work that re-enables the ceiling.
+    ///
+    /// The eviction code (Phase 2 in `lmdb/gc.rs`) is kept and tested via unit tests
+    /// that pass an explicit finite ceiling — it is only the production budget that
+    /// is temporarily reverted here.
     pub fn production() -> Self {
-        Self {
-            max_total_events: HOT_EVENT_CEILING,
-            ..Self::default()
-        }
+        // max_total_events = usize::MAX disables Phase-2 LRU eviction.
+        // Re-enable with `max_total_events: HOT_EVENT_CEILING` once #1090 is done.
+        Self::default()
     }
 }
 
