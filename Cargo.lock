@@ -4839,6 +4839,7 @@ dependencies = [
 name = "nmp-nwc"
 version = "0.2.9"
 dependencies = [
+ "base64",
  "nostr",
  "rustls",
  "serde",

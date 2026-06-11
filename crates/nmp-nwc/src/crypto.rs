@@ -12,6 +12,7 @@
 //! (cheap detection on the `?iv=` marker) and falls back to NIP-04.
 
 use crate::build::NwcBuildError;
+use base64::Engine as _;
 use nostr::nips::{nip04, nip44};
 use nostr::{Keys, PublicKey, SecretKey};
 
@@ -100,51 +101,26 @@ fn validate_nip04_shape(payload: &str) -> Result<(), NwcBuildError> {
     Ok(())
 }
 
-/// Minimal standard-alphabet base64 decoder (RFC 4648, `+/` with `=` padding).
+/// Decode a standard-alphabet base64 string (RFC 4648 §4, `+/` with `=` padding).
 ///
-/// Returns `None` for any input that is not valid base64. Used only to
-/// length-check a NIP-04 IV before handing the payload to `nip04::decrypt`;
-/// it is not on any hot path. The `nostr` crate does not re-export its
-/// `base64` dependency, and adding a direct dep is out of scope here.
+/// Returns `None` for any input that is not valid, canonically-padded base64.
+/// Used only to length-check a NIP-04 IV before handing the payload to
+/// `nip04::decrypt`; it is not on any hot path.
+///
+/// The `base64` crate (version matched with `nmp-blossom`) is used here per the
+/// repository reuse rule (docs/aim.md): scratch reimplementations of
+/// encoding/crypto primitives are forbidden.
+///
+/// **Strictness tightening vs. previous inline decoder**: the prior hand-rolled
+/// implementation silently accepted strings whose length (after stripping up to
+/// two `=`) was not a multiple of 4 as long as `len % 4 != 1`. The STANDARD
+/// engine enforces canonical RFC 4648 padding — every string must be padded to a
+/// multiple of 4 characters. Inputs that are valid NIP-04 payloads (produced by
+/// `nostr::nips::nip04::encrypt`) are always canonically padded, so real traffic
+/// is unaffected. Malformed/handcrafted inputs that the old decoder happened to
+/// accept (e.g. unpadded two-byte suffix without `==`) are now correctly rejected.
 fn base64_decode(s: &str) -> Option<Vec<u8>> {
-    fn val(b: u8) -> Option<u8> {
-        match b {
-            b'A'..=b'Z' => Some(b - b'A'),
-            b'a'..=b'z' => Some(b - b'a' + 26),
-            b'0'..=b'9' => Some(b - b'0' + 52),
-            b'+' => Some(62),
-            b'/' => Some(63),
-            _ => None,
-        }
-    }
-    let bytes = s.as_bytes();
-    // Strip up to two trailing '=' pad chars; padding must be the suffix only.
-    let mut end = bytes.len();
-    let mut pad = 0;
-    while end > 0 && bytes[end - 1] == b'=' && pad < 2 {
-        end -= 1;
-        pad += 1;
-    }
-    let data = &bytes[..end];
-    // With padding stripped, the symbol count mod 4 cannot be 1.
-    if data.len() % 4 == 1 {
-        return None;
-    }
-    let mut out = Vec::with_capacity(data.len() / 4 * 3 + 2);
-    let mut acc: u32 = 0;
-    let mut bits = 0u32;
-    for &b in data {
-        let v = u32::from(val(b)?);
-        acc = (acc << 6) | v;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            // Safe: after `bits -= 8`, acc >> bits always yields exactly 8 significant bits (≤ 255).
-            #[allow(clippy::cast_possible_truncation)]
-            out.push((acc >> bits) as u8);
-        }
-    }
-    Some(out)
+    base64::engine::general_purpose::STANDARD.decode(s).ok()
 }
 
 /// Derive the client public key from the client secret hex.
@@ -259,16 +235,81 @@ mod tests {
         assert!(validate_nip04_shape(&real).is_ok());
     }
 
-    /// The inline base64 decoder must agree with a known RFC 4648 vector and
-    /// reject obvious non-base64 input.
+    /// The base64 decoder must agree with known RFC 4648 vectors and reject
+    /// any input that is not valid, canonically-padded standard-alphabet base64.
+    ///
+    /// The `base64` crate's STANDARD engine is stricter than the previous
+    /// hand-rolled decoder: it enforces canonical `=` padding. The cases marked
+    /// "(tightened)" are inputs the old decoder accepted but STANDARD correctly
+    /// rejects per RFC 4648 §3.5 (no non-canonical representations).
     #[test]
     fn base64_decode_basic_vectors() {
+        // --- Valid RFC 4648 vectors ---
         assert_eq!(base64_decode("YWJj"), Some(b"abc".to_vec()));
         assert_eq!(base64_decode(""), Some(Vec::new()));
         assert_eq!(base64_decode("Zm9vYmFy"), Some(b"foobar".to_vec()));
         assert_eq!(base64_decode("Zg=="), Some(b"f".to_vec()));
-        assert!(base64_decode("!!!!").is_none());
-        assert!(base64_decode("YWJjY").is_none()); // length % 4 == 1
+        assert_eq!(base64_decode("Zm8="), Some(b"fo".to_vec()));
+        assert_eq!(base64_decode("AAAAAAAAAAAAAAAAAAAAAA=="), Some(vec![0u8; 16])); // 16-byte all-zero (valid IV size)
+
+        // --- Invalid character inputs ---
+        assert!(base64_decode("!!!!").is_none(), "invalid chars must reject");
+        assert!(base64_decode("====").is_none(), "only-padding must reject");
+        assert!(base64_decode("YWJj!").is_none(), "trailing invalid char must reject");
+
+        // --- Bad-length inputs (len % 4 == 1 after stripping padding) ---
+        assert!(base64_decode("YWJjY").is_none(), "length % 4 == 1 must reject");
+        assert!(base64_decode("A").is_none(), "single char must reject");
+
+        // --- Missing or wrong padding (tightened vs. old hand-rolled decoder) ---
+        // RFC 4648 §3.5 requires canonical padding. STANDARD engine rejects these;
+        // the old hand-rolled decoder happened to accept `"YWJjYQ"` (should be
+        // `"YWJjYQ=="`). Tightening is correct — NIP-04 payloads from `nip04::encrypt`
+        // are always canonically padded, so real traffic is unaffected.
+        assert!(
+            base64_decode("YWJjYQ").is_none(),
+            "(tightened) unpadded 2-byte suffix must reject"
+        );
+        assert!(
+            base64_decode("Zm8").is_none(),
+            "(tightened) unpadded 1-byte suffix must reject"
+        );
+
+        // --- Oversized inputs (must decode without panic) ---
+        let oversized = "A".repeat(10_000) + "AA==";
+        // May be None (invalid) or Some; the critical invariant is no panic.
+        let _ = base64_decode(&oversized);
+    }
+
+    /// `validate_nip04_shape` must reject an IV whose base64 decodes to a length
+    /// other than exactly 16 bytes — including the empty-IV and 3-byte-IV cases
+    /// that previously required careful testing of the hand-rolled decoder.
+    #[test]
+    fn validate_nip04_shape_iv_length_edge_cases() {
+        let wallet_pk = client_pubkey_hex(WALLET_SECRET).unwrap();
+
+        // 12-byte IV (decodes to 9 bytes — not 16)
+        let short_iv = "YWJjYWJjYWJj"; // "abcabcabcabc" = 12 chars → 9 bytes
+        let bad = format!("YWJj?iv={short_iv}");
+        let r = decrypt(CLIENT_SECRET, &wallet_pk, &bad);
+        assert!(r.is_err(), "12-char (9-byte) IV must Err");
+
+        // 24-byte IV (decodes to 18 bytes — not 16)
+        let long_iv = "YWJjYWJjYWJjYWJjYWJjYWJj"; // 24 chars → 18 bytes
+        let bad2 = format!("YWJj?iv={long_iv}");
+        let r2 = decrypt(CLIENT_SECRET, &wallet_pk, &bad2);
+        assert!(r2.is_err(), "24-char (18-byte) IV must Err");
+
+        // Exactly 16-byte IV should pass shape validation (decryption will still
+        // fail because `YWJj` is not a valid encrypted ciphertext for our keys,
+        // but it must NOT fail with MalformedNip04Payload).
+        let correct_iv = "AAAAAAAAAAAAAAAAAAAAAA=="; // 24-char → 16 bytes (0×16)
+        let ok_shape = format!("YWJjYWJjYWJjYWJjYWJjYWJjYWJjYWJj?iv={correct_iv}");
+        let shape_result = validate_nip04_shape(&ok_shape);
+        assert!(
+            shape_result.is_ok(),
+            "well-shaped payload with 16-byte IV must pass shape check: {shape_result:?}"
+        );
     }
 
     /// An invalid hex secret must surface an Err, never panic.

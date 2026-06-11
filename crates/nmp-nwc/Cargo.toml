@@ -13,6 +13,10 @@ description = "NIP-47 Nostr Wallet Connect client — URI parsing, NIP-44 encryp
 # client must accept (case-insensitive scheme, hand-copy whitespace) and exposes
 # wallet-spending key material un-zeroized. See `parse.rs` for the full rationale.
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
+# RFC 4648 base64 — used to decode and length-check NIP-04 IV bytes before
+# delegating to `nip04::decrypt`. Same version as nmp-blossom; must not
+# be reimplemented inline (docs/aim.md § "use rust-nostr, not scratch crypto").
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zeroize = { version = "1", features = ["alloc"] }
