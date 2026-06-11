@@ -79,6 +79,13 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published private(set) var typedPublishOutbox: [PublishOutboxItem]?
     @Published private(set) var typedPublishQueue: [PublishQueueEntry]?
 
+    /// V6 Stage 4 (Wave B batch #3) typed overrides for the diagnostics +
+    /// action-lifecycle keys. Each is non-nil only on ticks where the
+    /// corresponding sidecar (`KRDG` / `KALC`) decoded; `nil` defers to the
+    /// generic JSON path through the accessor (`KernelModel+Projections`).
+    @Published private(set) var typedRelayDiagnostics: RelayDiagnosticsSnapshot?
+    @Published private(set) var typedActionLifecycle: ActionLifecycleSnapshot?
+
     /// Dynamic flat feeds opened per profile/thread screen. Keys are
     /// `nmp.feed.author.<pubkey>` and `nmp.feed.thread.<event_id>`.
     @Published private(set) var flatFeeds: [String: ChirpTimelineSnapshot] = [:]
@@ -706,6 +713,11 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedOutboxSummary = result.typedOutboxSummary
         typedPublishOutbox = result.typedPublishOutbox
         typedPublishQueue = result.typedPublishQueue
+        // V6 Stage 4 (Wave B batch #3): store the diagnostics + action-lifecycle
+        // typed decodes. Nil ⇒ the generic JSON projection fallback applies for
+        // this tick (read through the `KernelModel+Projections` accessors).
+        typedRelayDiagnostics = result.typedRelayDiagnostics
+        typedActionLifecycle = result.typedActionLifecycle
         flatFeeds = result.flatFeeds
         lastErrorToast = update.lastErrorToast
 

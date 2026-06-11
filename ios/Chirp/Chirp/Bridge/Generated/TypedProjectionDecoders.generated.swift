@@ -297,3 +297,81 @@ enum TypedActiveAccountDecoder {
         return TypedProjectionGlue.activeAccount(reader)
     }
 }
+
+// MARK: - TypedActionLifecycleDecoder
+// Projection `action_lifecycle` → typed sidecar `action_lifecycle` (KALC). Domain type: `ActionLifecycleSnapshot?`.
+enum TypedActionLifecycleDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "action_lifecycle"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "action_lifecycle"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_ActionLifecycleSnapshot`.
+    static let fileIdentifier = "KALC"
+
+    /// Decode the typed `action_lifecycle` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> ActionLifecycleSnapshot? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `KALC` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> ActionLifecycleSnapshot? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_kernel_ActionLifecycleSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.actionLifecycle`.
+        return TypedProjectionGlue.actionLifecycle(reader)
+    }
+}
+
+// MARK: - TypedRelayDiagnosticsDecoder
+// Projection `relay_diagnostics` → typed sidecar `relay_diagnostics` (KRDG). Domain type: `RelayDiagnosticsSnapshot?`.
+enum TypedRelayDiagnosticsDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "relay_diagnostics"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "relay_diagnostics"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_RelayDiagnosticsSnapshot`.
+    static let fileIdentifier = "KRDG"
+
+    /// Decode the typed `relay_diagnostics` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> RelayDiagnosticsSnapshot? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `KRDG` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> RelayDiagnosticsSnapshot? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_kernel_RelayDiagnosticsSnapshot = try? getCheckedRoot(
+            byteBuffer: &buffer,
+            fileId: fileIdentifier
+        ) else {
+            return nil
+        }
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.relayDiagnostics`.
+        return TypedProjectionGlue.relayDiagnostics(reader)
+    }
+}
