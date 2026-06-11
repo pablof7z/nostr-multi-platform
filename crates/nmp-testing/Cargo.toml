@@ -137,6 +137,16 @@ path = "tests/real_relay_smoke.rs"
 name = "real_relay_nip17_roundtrip"
 path = "tests/real_relay_nip17_roundtrip.rs"
 
+# F-02 cold-start DM receive-side verification (issue #977).
+# Alice publishes a kind:1059 gift-wrap while Bob is offline; Bob cold-starts a
+# fresh DmInboxProjection and must receive the stored event via EOSE backfill.
+# Two variants: nak-serve (deterministic) and relay.damus.io (live).
+# `#[ignore]` by default; run explicitly:
+#   cargo test -p nmp-testing --test real_relay_nip17_cold_start -- --ignored --nocapture
+[[test]]
+name = "real_relay_nip17_cold_start"
+path = "tests/real_relay_nip17_cold_start.rs"
+
 # PR #631 verification — Marmot kind:445 group-message round-trip over a real
 # relay (Alice publishes the encrypted MLS message; Bob's socket receives and
 # decrypts via MarmotService). Two in-process MarmotService instances share
