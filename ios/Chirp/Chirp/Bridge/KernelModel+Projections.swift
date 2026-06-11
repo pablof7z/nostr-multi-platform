@@ -30,11 +30,19 @@ extension KernelModel {
     var walletStatus: WalletStatusData? { snapshot?.walletStatus }
     var logicalInterests: [LogicalInterestStatus] { snapshot?.logicalInterests ?? [] }
     var wireSubscriptions: [WireSubscriptionStatus] { snapshot?.wireSubscriptions ?? [] }
-    var relayDiagnostics: RelayDiagnosticsSnapshot { snapshot?.relayDiagnostics ?? .empty }
+    // V6 Stage 4 (Wave B batch #3): typed-first with JSON fallback, mirroring
+    // `accounts`'s `typedAccounts ?? snapshot?.accounts`. The typed `KRDG` /
+    // `KALC` sidecars win when present; the generic JSON projection is the
+    // fallback (ADR-0037 Commitment 4). Both keys are consumed ONLY through
+    // these accessors (DiagnosticsView reads `relayDiagnostics`; HomeFeedView +
+    // the `terminalStage`/`inFlightStage` helpers read `actionLifecycle`) — no
+    // raw `update.<field>` / `snapshot.<field>` side-effect consumers, so the
+    // accessor flip is the single effective-value seam.
+    var relayDiagnostics: RelayDiagnosticsSnapshot { typedRelayDiagnostics ?? snapshot?.relayDiagnostics ?? .empty }
     var logs: [String] { snapshot?.logs ?? [] }
     var bunkerHandshake: BunkerHandshake? { snapshot?.bunkerHandshake }
     var nip46Onboarding: Nip46Onboarding? { snapshot?.nip46Onboarding }
-    var actionLifecycle: ActionLifecycleSnapshot? { snapshot?.actionLifecycle }
+    var actionLifecycle: ActionLifecycleSnapshot? { typedActionLifecycle ?? snapshot?.actionLifecycle }
 
     var mentionProfiles: [String: MentionProfile] {
         guard let cards = snapshot?.resolvedProfiles else { return [:] }

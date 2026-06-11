@@ -644,6 +644,12 @@ final class KernelHandle {
             let typedOutboxSummary = TypedOutboxSummaryDecoder.decode(from: envelopes)
             let typedPublishOutbox = TypedPublishOutboxDecoder.decode(from: envelopes)
             let typedPublishQueue = TypedPublishQueueDecoder.decode(from: envelopes)
+            // V6 Stage 4 (Wave B batch #3): the diagnostics + action-lifecycle
+            // keys. Each returns nil when its sidecar is absent or malformed →
+            // the generic `projections.<field>` JSON path stays active
+            // (ADR-0037 Commitment 4), mirroring `typedAccounts` above.
+            let typedRelayDiagnostics = TypedRelayDiagnosticsDecoder.decode(from: envelopes)
+            let typedActionLifecycle = TypedActionLifecycleDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return .snapshot(
@@ -657,6 +663,8 @@ final class KernelHandle {
                     typedOutboxSummary: typedOutboxSummary,
                     typedPublishOutbox: typedPublishOutbox,
                     typedPublishQueue: typedPublishQueue,
+                    typedRelayDiagnostics: typedRelayDiagnostics,
+                    typedActionLifecycle: typedActionLifecycle,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
                     callbackReceivedAt: start,
@@ -768,6 +776,12 @@ struct KernelUpdateResult {
     /// field-subset of the wire. `nil` ⇒ generic `projections.publish_queue`
     /// JSON fallback.
     let typedPublishQueue: [PublishQueueEntry]?
+    /// Typed `relay_diagnostics` projection decode (`KRDG`). `nil` ⇒ generic
+    /// `projections.relay_diagnostics` JSON fallback.
+    let typedRelayDiagnostics: RelayDiagnosticsSnapshot?
+    /// Typed `action_lifecycle` projection decode (`KALC`). `nil` ⇒ generic
+    /// `projections.action_lifecycle` JSON fallback.
+    let typedActionLifecycle: ActionLifecycleSnapshot?
     /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
     /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
     /// target, so they cannot be codegen'd as fixed projection fields.
@@ -1714,6 +1728,16 @@ struct ActionLifecycleEntry: Decodable, Equatable, Identifiable {
         default:
             stage = .unknown(raw: raw)
         }
+    }
+
+    /// Memberwise initializer. The custom `init(from:)` above suppresses
+    /// Swift's synthesized memberwise init, so the V6 Stage 4 typed-sidecar glue
+    /// (`TypedProjectionGlue.actionLifecycle`) needs this explicit one to build a
+    /// row from the `flatc --swift` reader struct (mirroring the
+    /// `PublishOutboxRelay` precedent in PR #1053).
+    init(correlationId: String, stage: ActionLifecycleStage) {
+        self.correlationId = correlationId
+        self.stage = stage
     }
 }
 

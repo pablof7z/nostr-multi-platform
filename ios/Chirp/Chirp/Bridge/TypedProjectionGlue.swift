@@ -169,4 +169,123 @@ enum TypedProjectionGlue {
             )
         }
     }
+
+    // MARK: action_lifecycle → ActionLifecycleSnapshot
+
+    /// Reconstruct the `ActionLifecycleStage` enum from one `flatc --swift`
+    /// `LifecycleEntry` reader row. Mirrors the JSON path's `init(from:)` switch
+    /// in `ActionLifecycleEntry` (KernelBridge.swift): the closed snake_case
+    /// vocabulary maps to the typed cases; `failed` lifts the `reason` sibling
+    /// (carried with `has_reason`); any unrecognised wire stage collapses to
+    /// `.unknown(raw:)` for forward-compat (D1).
+    private static func lifecycleStage(_ row: nmp_kernel_LifecycleEntry) -> ActionLifecycleStage {
+        switch row.stage ?? "" {
+        case "requested": return .requested
+        case "awaiting_capability", "awaitingCapability": return .awaitingCapability
+        case "publishing": return .publishing
+        case "accepted": return .accepted
+        case "failed": return .failed(reason: row.hasReason ? (row.reason ?? "") : "")
+        case let raw: return .unknown(raw: raw)
+        }
+    }
+
+    private static func lifecycleEntry(_ row: nmp_kernel_LifecycleEntry) -> ActionLifecycleEntry {
+        ActionLifecycleEntry(
+            correlationId: row.correlationId ?? "",
+            stage: lifecycleStage(row)
+        )
+    }
+
+    /// Map the typed `action_lifecycle` sidecar (`KALC` /
+    /// `nmp_kernel_ActionLifecycleSnapshot`) to the `ActionLifecycleSnapshot` the
+    /// JSON `projections.action_lifecycle` path yields. Two ordered arrays
+    /// (`in_flight` / `recent_terminal`); each `LifecycleEntry` row reconstructs
+    /// the `ActionLifecycleStage` enum (see `lifecycleStage`). Producer order is
+    /// preserved verbatim (parity with the JSON arrays).
+    static func actionLifecycle(_ reader: nmp_kernel_ActionLifecycleSnapshot) -> ActionLifecycleSnapshot {
+        ActionLifecycleSnapshot(
+            inFlight: reader.inFlight.map(lifecycleEntry),
+            recentTerminal: reader.recentTerminal.map(lifecycleEntry)
+        )
+    }
+
+    // MARK: relay_diagnostics → RelayDiagnosticsSnapshot
+
+    /// Map the typed `relay_diagnostics` sidecar (`KRDG` /
+    /// `nmp_kernel_RelayDiagnosticsSnapshot`) to the `RelayDiagnosticsSnapshot`
+    /// the JSON `projections.relay_diagnostics` path yields. Pure field-for-field
+    /// copy of the rolled-up relay rows (each with nested wire-sub rows) plus the
+    /// logical-interest rows, in producer order. Every `Option<String>` on the
+    /// wire carries a `has_*` companion bool: `has_* == false` maps to the
+    /// domain's `nil` (the JSON path's `null`/absent), `true` to the carried
+    /// string — so the typed and JSON forms are byte-identical by construction
+    /// (the #1031 convention; the kernel captures the produced struct once per
+    /// tick so the wall-clock-relative labels never straddle a one-second bucket).
+    static func relayDiagnostics(_ reader: nmp_kernel_RelayDiagnosticsSnapshot) -> RelayDiagnosticsSnapshot {
+        RelayDiagnosticsSnapshot(
+            relays: reader.relays.map(relayDiagnosticsRow),
+            interests: reader.interests.map(relayDiagnosticsInterest)
+        )
+    }
+
+    private static func relayDiagnosticsRow(
+        _ row: nmp_kernel_RelayDiagnosticsRow
+    ) -> RelayDiagnosticsRow {
+        RelayDiagnosticsRow(
+            relayUrl: row.relayUrl ?? "",
+            shortUrl: row.shortUrl ?? "",
+            roleLabel: row.roleLabel ?? "",
+            roleTone: row.roleTone ?? "",
+            connectionLabel: row.connectionLabel ?? "",
+            connectionTone: row.connectionTone ?? "",
+            authLabel: row.authLabel ?? "",
+            authTone: row.authTone ?? "",
+            totalSubCount: row.totalSubCount,
+            activeSubCount: row.activeSubCount,
+            eosedSubCount: row.eosedSubCount,
+            totalEventsRx: row.totalEventsRx,
+            totalEventsDisplay: row.totalEventsDisplay ?? "",
+            reconnectCount: row.reconnectCount,
+            bytesRxDisplay: row.hasBytesRxDisplay ? (row.bytesRxDisplay ?? "") : nil,
+            bytesTxDisplay: row.hasBytesTxDisplay ? (row.bytesTxDisplay ?? "") : nil,
+            lastConnectedDisplay: row.hasLastConnectedDisplay ? (row.lastConnectedDisplay ?? "") : nil,
+            lastEventDisplay: row.hasLastEventDisplay ? (row.lastEventDisplay ?? "") : nil,
+            lastNotice: row.hasLastNotice ? (row.lastNotice ?? "") : nil,
+            lastError: row.hasLastError ? (row.lastError ?? "") : nil,
+            wireSubs: row.wireSubs.map(relayDiagnosticsWireSub)
+        )
+    }
+
+    private static func relayDiagnosticsWireSub(
+        _ sub: nmp_kernel_RelayDiagnosticsWireSub
+    ) -> RelayDiagnosticsWireSub {
+        RelayDiagnosticsWireSub(
+            wireId: sub.wireId ?? "",
+            shortWireId: sub.shortWireId ?? "",
+            relayUrl: sub.relayUrl ?? "",
+            filterSummary: sub.filterSummary ?? "",
+            stateLabel: sub.stateLabel ?? "",
+            stateTone: sub.stateTone ?? "",
+            consumerCountLabel: sub.consumerCountLabel ?? "",
+            eventsRxDisplay: sub.hasEventsRxDisplay ? (sub.eventsRxDisplay ?? "") : nil,
+            eoseObserved: sub.eoseObserved,
+            openedDisplay: sub.openedDisplay ?? "",
+            lastEventDisplay: sub.hasLastEventDisplay ? (sub.lastEventDisplay ?? "") : nil,
+            eoseDisplay: sub.hasEoseDisplay ? (sub.eoseDisplay ?? "") : nil,
+            closeReason: sub.hasCloseReason ? (sub.closeReason ?? "") : nil
+        )
+    }
+
+    private static func relayDiagnosticsInterest(
+        _ interest: nmp_kernel_RelayDiagnosticsInterest
+    ) -> RelayDiagnosticsInterest {
+        RelayDiagnosticsInterest(
+            key: interest.key ?? "",
+            state: interest.state ?? "",
+            stateTone: interest.stateTone ?? "",
+            refcount: interest.refcount,
+            cacheCoverage: interest.cacheCoverage ?? "",
+            relayUrls: interest.relayUrls.map { $0 ?? "" }
+        )
+    }
 }

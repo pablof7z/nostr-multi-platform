@@ -375,7 +375,14 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "action_lifecycle",
             schema_id: "action_lifecycle",
             file_identifier: "KALC",
-            swift_reader_type: None,
+            // Wave B batch #3: the `flatc --swift` reader
+            // (`nmp_kernel_ActionLifecycleSnapshot`) ships in this PR. The
+            // `{ in_flight, recent_terminal }` struct maps field-for-field to
+            // the Chirp `ActionLifecycleSnapshot`; each `LifecycleEntry` row
+            // reconstructs the `ActionLifecycleStage` enum from
+            // `stage` + `has_reason`/`reason`. See
+            // `TypedProjectionGlue.actionLifecycle`.
+            swift_reader_type: Some("nmp_kernel_ActionLifecycleSnapshot"),
         }),
     },
     // D0 views cluster — `profile`, `timeline`, `author_view`,
@@ -548,7 +555,13 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             key: "relay_diagnostics",
             schema_id: "relay_diagnostics",
             file_identifier: "KRDG",
-            swift_reader_type: None,
+            // Wave B batch #3: the `flatc --swift` reader
+            // (`nmp_kernel_RelayDiagnosticsSnapshot`) ships in this PR. Pure
+            // field-for-field copy of the rolled-up relay rows + nested
+            // wire-sub rows + logical-interest rows; every `has_*` companion
+            // bool maps the optional `String?` (nil when absent). See
+            // `TypedProjectionGlue.relayDiagnostics`.
+            swift_reader_type: Some("nmp_kernel_RelayDiagnosticsSnapshot"),
         }),
     },
     // Pre-merged profile map (PR #812) — replaces the per-shell merge of
