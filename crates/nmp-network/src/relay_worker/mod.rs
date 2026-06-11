@@ -336,8 +336,24 @@ fn run_connected_relay(
         match keepalive.step(Instant::now()) {
             KeepaliveAction::Idle => {}
             KeepaliveAction::EmitPing => {
+                // T120b: flush the ping frame. The pong-timeout clock starts
+                // only when the ping actually reaches the wire — not when the
+                // FSM decides to emit it. `on_ping_flushed` stamps the timer;
+                // if the write is Blocked the timer stays unset and the FSM
+                // will return EmitPing again on the next tick, retrying the
+                // write without advancing the pong-timeout window.
+                //
+                // INVARIANT: only OR-in `true` here; never unconditionally
+                // set `wants_write = false`. If `flush_relay_writes` above
+                // returned Blocked (wants_write is already true because
+                // `pending` is non-empty), the ping's own flush succeeding
+                // must not clear write interest for the still-pending frames.
                 match flush_socket_message(socket, Message::Ping(Vec::new())) {
-                    FlushResult::Flushed => wants_write = false,
+                    FlushResult::Flushed => {
+                        keepalive.on_ping_flushed(Instant::now());
+                        // Do not reset wants_write to false — pending frames
+                        // from flush_relay_writes may still need write interest.
+                    }
                     FlushResult::Blocked => wants_write = true,
                     FlushResult::Reconnect => {
                         let _ = relay_tx.send(RelayEvent::Failed {
