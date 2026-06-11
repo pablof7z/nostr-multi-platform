@@ -170,31 +170,30 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         json_key: "wallet",
         swift_field: "wallet",
         swift_type: "WalletStatusData",
-        // DEFERRED (Wave B Tier-1): a live typed `wallet` producer DOES exist
+        // FLIPPED (Wave B Tier-1): the live typed `wallet` producer
         // (`apps/chirp/.../wallet_runtime.rs`:
         // `register_typed_snapshot_projection("wallet", …)` →
-        // `wallet_typed_projection`), but the read-flip is BLOCKED by a domain
-        // mismatch the read-side PR cannot fix additively:
-        //   * the Swift `WalletStatusData` has a non-optional `walletPubkeyHex`
-        //     (`WalletView.swift:98`) that NEITHER the JSON projection
-        //     (`serde_json::to_value(WalletStatus)`) NOR the `wallet_status.fbs`
-        //     wire carries — there is no producer for it. A typed flip would
-        //     have to fabricate it (npub→hex = thin-shell violation; or `""` =
-        //     divergence from the JSON path), breaking the additive parity
-        //     contract.
-        //   * also the producer publishes ENVELOPE key `"wallet"` (not
-        //     `"nmp.nip47.wallet"` recorded below); the decoder's `key` is
-        //     sourced from this `TypedSidecar.key`, so it must be corrected to
-        //     `"wallet"` when wallet is wired.
-        // The fix is producer-side (add `wallet_pubkey_hex` to the Rust
-        // `WalletStatus` struct + `.fbs`, then flip key→`"wallet"` and
-        // `swift_reader_type`). Tracked as a scoped follow-up; left `None` here
-        // so the generator emits no decoder for the absent-field sidecar.
+        // `wallet_typed_projection`) now carries the `wallet_pubkey_hex` field the
+        // Swift `WalletStatusData.walletPubkeyHex` (`WalletView.swift:98`)
+        // requires. The producer field-add landed it on BOTH the Rust
+        // `WalletStatus` struct + the JSON projection
+        // (`serde_json::to_value(WalletStatus)`) AND the `wallet_status.fbs`
+        // wire (tail-appended, wire-compatible), so JSON + typed stay byte-
+        // identical (no fabrication, additive parity preserved).
+        //
+        // NOTE on identity: the producer publishes ENVELOPE key `"wallet"`
+        // (NOT `schema_id`); the decoder matches on `key == "wallet"` AND
+        // `schema_id == "nmp.nip47.wallet"`. So `key` here is `"wallet"`
+        // (the envelope key the producer emits) while `schema_id` stays
+        // `"nmp.nip47.wallet"` — key ≠ schema_id for this entry.
+        // `TypedProjectionGlue.wallet` maps the `NWST` reader to
+        // `WalletStatusData`; consumed typed-first in `KernelModel.apply`
+        // (`typedWallet ?? snapshot?.walletStatus`).
         typed_sidecar: Some(TypedSidecar {
-            key: "nmp.nip47.wallet",
+            key: "wallet",
             schema_id: "nmp.nip47.wallet",
             file_identifier: "NWST",
-            swift_reader_type: None,
+            swift_reader_type: Some("nmp_nip47_WalletStatus"),
         }),
     },
     // NIP-46 bunker handshake projection. `projections["bunker_handshake"]`.
@@ -730,15 +729,22 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         json_key: "settings_hub",
         swift_field: "settingsHub",
         swift_type: "[String: Int]",
-        // Sidecar IS emitted, but the FB table (`{ relay_count: uint }`) does
-        // NOT field-align with the Chirp domain type (`[String: Int]`) — an
-        // outlier shape that needs bespoke glue. Recorded for completeness;
-        // `swift_reader_type: None` keeps it out of generated scope.
+        // FLIPPED: the kernel-built-in typed sidecar (`KSHB` /
+        // `nmp_kernel_SettingsHubSnapshot`, Tier-2 `builtin_typed_projections`)
+        // carries `relay_count:uint`, encoded from the SAME
+        // `configured_relays_snapshot().len()` the JSON path reads. The FB table
+        // (`{ relay_count }`) does not literally equal the Chirp domain type
+        // (`[String: Int]`), so `TypedProjectionGlue.settingsHub` rebuilds the
+        // single-key map `["relay_count": Int(reader.relayCount)]` — the EXACT
+        // dict the JSON `projections["settings_hub"]` yields (byte-identical, no
+        // fabrication). Consumed typed-first in `KernelModel.apply`
+        // (`typedSettingsHub ?? update.projections?.settingsHub`); the existing
+        // `SettingsHubSummary(relayCount:)` wrap (KernelBridge) stays untouched.
         typed_sidecar: Some(TypedSidecar {
             key: "settings_hub",
             schema_id: "settings_hub",
             file_identifier: "KSHB",
-            swift_reader_type: None,
+            swift_reader_type: Some("nmp_kernel_SettingsHubSnapshot"),
         }),
     },
     // V-107 / ADR-0039: Marmot (MLS-over-Nostr) push projections. Both are

@@ -128,6 +128,7 @@ impl<'a> WalletStatus<'a> {
   pub const VT_IS_CONNECTED: ::flatbuffers::VOffsetT = 26;
   pub const VT_HAS_CONNECTION_STATE: ::flatbuffers::VOffsetT = 28;
   pub const VT_CONNECTION_STATE: ::flatbuffers::VOffsetT = 30;
+  pub const VT_WALLET_PUBKEY_HEX: ::flatbuffers::VOffsetT = 32;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -141,6 +142,7 @@ impl<'a> WalletStatus<'a> {
     let mut builder = WalletStatusBuilder::new(_fbb);
     builder.add_balance_sats(args.balance_sats);
     builder.add_balance_msats(args.balance_msats);
+    if let Some(x) = args.wallet_pubkey_hex { builder.add_wallet_pubkey_hex(x); }
     if let Some(x) = args.wallet_npub_short { builder.add_wallet_npub_short(x); }
     if let Some(x) = args.balance_sats_display { builder.add_balance_sats_display(x); }
     if let Some(x) = args.wallet_npub { builder.add_wallet_npub(x); }
@@ -255,6 +257,13 @@ impl<'a> WalletStatus<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<NwcConnectionState>(WalletStatus::VT_CONNECTION_STATE, Some(NwcConnectionState::Connected)).unwrap()}
   }
+  #[inline]
+  pub fn wallet_pubkey_hex(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(WalletStatus::VT_WALLET_PUBKEY_HEX, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for WalletStatus<'_> {
@@ -277,6 +286,7 @@ impl ::flatbuffers::Verifiable for WalletStatus<'_> {
      .visit_field::<bool>("is_connected", Self::VT_IS_CONNECTED, false)?
      .visit_field::<bool>("has_connection_state", Self::VT_HAS_CONNECTION_STATE, false)?
      .visit_field::<NwcConnectionState>("connection_state", Self::VT_CONNECTION_STATE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("wallet_pubkey_hex", Self::VT_WALLET_PUBKEY_HEX, false)?
      .finish();
     Ok(())
   }
@@ -296,6 +306,7 @@ pub struct WalletStatusArgs<'a> {
     pub is_connected: bool,
     pub has_connection_state: bool,
     pub connection_state: NwcConnectionState,
+    pub wallet_pubkey_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for WalletStatusArgs<'a> {
   #[inline]
@@ -315,6 +326,7 @@ impl<'a> Default for WalletStatusArgs<'a> {
       is_connected: false,
       has_connection_state: false,
       connection_state: NwcConnectionState::Connected,
+      wallet_pubkey_hex: None,
     }
   }
 }
@@ -381,6 +393,10 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WalletStatusBuilder<'a, 'b, A
     self.fbb_.push_slot::<NwcConnectionState>(WalletStatus::VT_CONNECTION_STATE, connection_state, NwcConnectionState::Connected);
   }
   #[inline]
+  pub fn add_wallet_pubkey_hex(&mut self, wallet_pubkey_hex: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(WalletStatus::VT_WALLET_PUBKEY_HEX, wallet_pubkey_hex);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WalletStatusBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     WalletStatusBuilder {
@@ -412,6 +428,7 @@ impl ::core::fmt::Debug for WalletStatus<'_> {
       ds.field("is_connected", &self.is_connected());
       ds.field("has_connection_state", &self.has_connection_state());
       ds.field("connection_state", &self.connection_state());
+      ds.field("wallet_pubkey_hex", &self.wallet_pubkey_hex());
       ds.finish()
   }
 }

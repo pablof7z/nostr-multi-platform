@@ -52,6 +52,10 @@ table WalletStatus {
   // connection_state: Option<NwcConnectionState>
   has_connection_state:bool;
   connection_state:NwcConnectionState;
+  // The wallet service pubkey in raw hex form (64 chars). Required (non-optional
+  // in the serde struct). Tail-appended (wire-compatible additive field) so an
+  // older host that predates it still decodes every prior field.
+  wallet_pubkey_hex:string;
 }
 
 file_identifier "NWST";

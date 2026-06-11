@@ -20,6 +20,7 @@ fn sample_status() -> WalletStatus {
         status: "ready".to_string(),
         relay_url: "wss://relay.example/nwc".to_string(),
         wallet_npub: "npub1walletservicepubkeybech32".to_string(),
+        wallet_pubkey_hex: "ab".repeat(32),
         balance_msats: Some(7_000_000),
         balance_sats: Some(7_000),
         balance_sats_display: Some("7,000".to_string()),
