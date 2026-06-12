@@ -219,3 +219,67 @@ is sequenced as a follow-up sprint (see GitHub Issues).
   binaries) migrate to `open_interest`/`close_interest`.
 - `ffi-surface.md` and the codegen Swift projection registry are updated;
   generated Swift types are regenerated.
+
+## Amendment — retire `nmp_app_open_timeline` via generic `open_contact_feed` (2026-06-12)
+
+### Why `scope`-2-on-`open_interest` was rejected
+
+`open_interest` (ADR-0042 §2) is the M2 seam for **static filter shapes** —
+a caller supplies a complete NIP-01 REQ filter and the kernel registers a
+tailing `InterestShape`-hash-keyed interest. The follow feed is fundamentally
+different: its author set is **dynamic kernel-owned state** (derived from the
+active account's kind:3, re-evaluated on every `FollowListChanged` trigger, and
+re-routed on account switch). Overloading it via a magic-integer scope would:
+
+1. Violate `InterestScope`'s semantic contract — `Scope` is a mailbox
+   **resolution** hint (Active vs. Global in `planner/interest.rs:426`), not
+   an author-expansion directive.
+2. Conflate `filter_json`/`consumer_id`/`close` contracts: a filter of
+   `{"kinds":[1,6]}` without an `authors` field is not a valid follow-feed
+   shape; the planner would register a global wildcard, not an outbox-routed
+   per-follow subscription.
+3. Reproduce the §5.1 anti-pattern the first five deletions were designed to
+   cure: the host encoding app-specific magic numbers into a substrate seam.
+
+### Decision: two dedicated verbs, kinds-only input
+
+```c
+void nmp_app_open_contact_feed(NmpApp *app, const char *kinds_json);
+void nmp_app_close_contact_feed(NmpApp *app);
+```
+
+The kernel keeps the author-expansion logic, re-routing, and refcount-of-one.
+The host supplies only the event-kind set (e.g. `"[1,6]"`). An empty array
+`[]` is a legitimate clear (same as close). A Chirp-specific wrapper
+(`nmp_app_chirp_open_home_feed` / `nmp_app_chirp_close_home_feed`) hard-codes
+`HOME_FEED_KINDS_JSON = "[1,6]"` in ONE place
+(`apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs`) so the `{1, 6}` literal
+is unreachable from `nmp-core`.
+
+### New `ActorCommand` variants
+
+- `OpenContactFeed { kinds: BTreeSet<u32> }` — replaces `OpenContactListSubscription`.
+- `CloseContactFeed` — the missing symmetric close that forced callers to
+  open with an empty set or rely on account-switch side-effects.
+
+### Net symbol delta
+
+−1 (`nmp_app_open_timeline`) + 2 (`nmp_app_open_contact_feed` +
+`nmp_app_close_contact_feed`) = **+1** justified by the previously-absent
+close path (D5 cluster was never symmetric before this change).
+
+### Consequences
+
+- D5 cluster gating is now **symmetric**: the home-feed projection cluster
+  (`timeline`, `inserted`, `updated`, `removed`) appears only when
+  `follow_feed_kinds` is non-empty, and disappears when the host calls close
+  or passes an empty kinds set.
+- The `timeline_requested` milestone is unaffected: it is flipped by ingest at
+  `kernel/ingest/timeline.rs:309-337`, not by the open/close verb.
+- All Chirp shells (iOS, Android, TUI, desktop) call the Chirp wrapper
+  (`nmp_app_chirp_open_home_feed`) so the `{1, 6}` policy moves to exactly
+  one location with one test asserting the constant value.
+- `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`; the
+  JNI export name `nativeOpenTimeline` is preserved (Kotlin-facing name
+  stability); the JNI body now calls `nmp_app_chirp_open_home_feed`.
+- Completes V-68 Stage 2 (#911).

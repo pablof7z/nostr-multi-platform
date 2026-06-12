@@ -248,3 +248,162 @@ pub extern "C" fn nmp_app_release_event(
 // Apps use their per-app seam (nmp_app_chirp_close_author_feed etc.) which
 // releases the FlatFeed and calls nmp_app_close_interest for kernel cleanup.
 
+/// Parse a `kinds_json` string (e.g. `"[1,6]"`) into a `BTreeSet<u32>`.
+///
+/// Returns `None` on the first invalid element (negative integer, float,
+/// string, null, or a value > u32::MAX). An empty array `[]` is a legitimate
+/// clear and returns `Some(BTreeSet::new())` without further validation.
+/// A non-array top-level value also returns `None`.
+///
+/// Duplicates within a valid array are silently deduplicated by the set
+/// semantics — this is intentional and consistent with the kernel's registry.
+pub(crate) fn parse_kinds_json(
+    s: &str,
+) -> Option<std::collections::BTreeSet<u32>> {
+    let arr = serde_json::from_str::<serde_json::Value>(s)
+        .ok()
+        .and_then(|v| v.as_array().cloned())?;
+    if arr.is_empty() {
+        // Legitimate clear — skip element validation.
+        return Some(std::collections::BTreeSet::new());
+    }
+    let mut set = std::collections::BTreeSet::new();
+    for element in &arr {
+        match element.as_u64().and_then(|n| u32::try_from(n).ok()) {
+            Some(k) => {
+                set.insert(k);
+            }
+            None => return None, // first invalid element → bail
+        }
+    }
+    Some(set)
+}
+
+/// ADR-0042 amendment (2026-06-12) — open the contact-feed subscription.
+///
+/// `kinds_json` is a JSON array of unsigned 32-bit integers identifying the
+/// event kinds the follow-set REQ should carry, e.g. `"[1,6]"`. The host
+/// (e.g. a Chirp wrapper) owns the policy; the substrate carries it verbatim
+/// (D0). An empty array `"[]"` is a legitimate clear — same effect as
+/// `nmp_app_close_contact_feed`. A malformed or non-array value, or any
+/// element that is not a non-negative integer fitting in u32, surfaces a
+/// diagnostic toast rather than a panic or silent registration (D6).
+///
+/// D8: fire-and-forget; the actor processes the command asynchronously.
+#[no_mangle]
+pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, kinds_json: *const c_char) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(kinds_str) = c_string_argument(kinds_json) else {
+        return;
+    };
+
+    let kinds = match parse_kinds_json(&kinds_str) {
+        Some(set) => set,
+        None => {
+            app.send_cmd(nmp_core::ActorCommand::ShowToast {
+                message: "open_contact_feed: malformed kinds JSON".to_string(),
+            });
+            return;
+        }
+    };
+
+    app.send_cmd(nmp_core::ActorCommand::OpenContactFeed { kinds });
+}
+
+#[cfg(test)]
+mod kinds_parse_tests {
+    use super::parse_kinds_json;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn valid_kinds_parsed_and_deduped() {
+        let result = parse_kinds_json("[1, 6, 1]");
+        assert_eq!(
+            result,
+            Some(BTreeSet::from([1u32, 6u32])),
+            "duplicate elements must be deduped by BTreeSet"
+        );
+    }
+
+    #[test]
+    fn empty_array_is_legitimate_clear() {
+        let result = parse_kinds_json("[]");
+        assert_eq!(
+            result,
+            Some(BTreeSet::new()),
+            "empty array must yield an empty set (legitimate clear)"
+        );
+    }
+
+    #[test]
+    fn negative_element_is_rejected() {
+        let result = parse_kinds_json("[1, -1, 6]");
+        assert!(
+            result.is_none(),
+            "a negative element must cause parse_kinds_json to return None"
+        );
+    }
+
+    #[test]
+    fn float_element_is_rejected() {
+        let result = parse_kinds_json("[1, 1.5, 6]");
+        assert!(
+            result.is_none(),
+            "a float element must cause parse_kinds_json to return None"
+        );
+    }
+
+    #[test]
+    fn string_element_is_rejected() {
+        let result = parse_kinds_json(r#"[1, "six", 6]"#);
+        assert!(
+            result.is_none(),
+            "a string element must cause parse_kinds_json to return None"
+        );
+    }
+
+    #[test]
+    fn null_element_is_rejected() {
+        let result = parse_kinds_json("[1, null, 6]");
+        assert!(
+            result.is_none(),
+            "a null element must cause parse_kinds_json to return None"
+        );
+    }
+
+    #[test]
+    fn value_above_u32_max_is_rejected() {
+        // 4_294_967_296 = u32::MAX + 1. The old `n as u32` cast would have
+        // wrapped this to 0 (kind 0), silently registering it.
+        let result = parse_kinds_json("[1, 4294967296, 6]");
+        assert!(
+            result.is_none(),
+            "a value > u32::MAX must cause parse_kinds_json to return None (was silently wrapping)"
+        );
+    }
+
+    #[test]
+    fn non_array_top_level_is_rejected() {
+        assert!(parse_kinds_json(r#"{"kinds":[1,6]}"#).is_none());
+        assert!(parse_kinds_json("1").is_none());
+        assert!(parse_kinds_json("null").is_none());
+    }
+}
+
+/// ADR-0042 amendment (2026-06-12) — close the contact-feed subscription.
+///
+/// Withdraws all follow-feed M2 interests from the lifecycle registry;
+/// `drain_lifecycle_tick` emits CLOSE frames for any live REQs on the next
+/// idle tick. D6: a null `app` is a silent no-op.
+///
+/// D8: fire-and-forget; the actor processes the command asynchronously.
+#[no_mangle]
+pub extern "C" fn nmp_app_close_contact_feed(app: *mut NmpApp) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    app.send_cmd(nmp_core::ActorCommand::CloseContactFeed);
+}
+

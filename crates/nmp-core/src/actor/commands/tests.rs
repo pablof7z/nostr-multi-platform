@@ -1935,25 +1935,25 @@ fn snapshot_json_carries_new_projections() {
     // field set — all are kernel-owned built-in entries in the same `projections`
     // map. D5: `timeline`, `inserted`, `updated`, `removed` are present only
     // when `follow_feed_kinds` is non-empty (the shell has called
-    // `nmp_app_open_timeline`). `profile` is always present.
+    // `nmp_app_chirp_open_home_feed`). `profile` is always present.
     // V-112 (ADR-0042): `author_view` / `thread_view` deleted from projections.
     assert!(projections.get("profile").is_some());
-    // `timeline` and deltas are absent — no `nmp_app_open_timeline` call above.
+    // `timeline` and deltas are absent — no open_contact_feed call above.
     assert!(
         projections.get("timeline").is_none(),
-        "D5: timeline must be absent before nmp_app_open_timeline"
+        "D5: timeline must be absent before open_contact_feed"
     );
     assert!(
         projections.get("inserted").is_none(),
-        "D5: inserted must be absent before nmp_app_open_timeline"
+        "D5: inserted must be absent before open_contact_feed"
     );
     assert!(
         projections.get("updated").is_none(),
-        "D5: updated must be absent before nmp_app_open_timeline"
+        "D5: updated must be absent before open_contact_feed"
     );
     assert!(
         projections.get("removed").is_none(),
-        "D5: removed must be absent before nmp_app_open_timeline"
+        "D5: removed must be absent before open_contact_feed"
     );
     // V-112 (ADR-0042): `author_view` / `thread_view` deleted from snapshot.
     // `retarget_timeline` no longer calls `kernel.open_author()`.
@@ -2046,14 +2046,14 @@ fn remove_relay_canonical_matches_add_form() {
 /// `LogicalInterest`s in the lifecycle registry (for the active account's
 /// follow set) so that `drain_lifecycle_tick()` emits follow-feed REQ frames.
 ///
-/// Pre-T140: `open_timeline` → `open_author` → no follow-feed interests in
+/// Pre-T140: `open_contact_feed` → `open_author` → no follow-feed interests in
 /// registry → `drain_lifecycle_tick` returns `Vec::new()`. FAILS.
 ///
-/// Post-T140: `open_timeline` pushes per-follow `LogicalInterest`s → the M2
-/// planner compiles them → `drain_lifecycle_tick` returns REQ frame(s) for the
-/// followed author's NIP-65 write relay. PASSES.
+/// Post-T140: `open_contact_feed` pushes per-follow `LogicalInterest`s → the
+/// M2 planner compiles them → `drain_lifecycle_tick` returns REQ frame(s) for
+/// the followed author's NIP-65 write relay. PASSES.
 #[test]
-fn t140_open_timeline_registers_m2_interests_drain_emits_req() {
+fn t140_open_contact_feed_registers_m2_interests_drain_emits_req() {
     const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     let (mut id, mut kernel) = fresh();
@@ -2083,13 +2083,12 @@ fn t140_open_timeline_registers_m2_interests_drain_emits_req() {
         .lifecycle_mut()
         .set_selection_budget(usize::MAX, usize::MAX);
 
-    // Call the actor command under test. `open_contact_list_sub` declares the
-    // host kinds {1, 6} (Chirp's social timeline) via `set_follow_feed_kinds`,
+    // Call the actor command under test. `open_contact_feed` declares the
+    // host kinds {1, 6} (Chirp's home feed) via `set_follow_feed_kinds`,
     // which re-registers the active account's M2 follow-feed interests.
-    let _outbound = open_contact_list_sub(
+    let _outbound = open_contact_feed(
         &id,
         &mut kernel,
-        true,
         std::collections::BTreeSet::from([1u32, 6u32]),
     );
 
@@ -2105,13 +2104,167 @@ fn t140_open_timeline_registers_m2_interests_drain_emits_req() {
 
     assert!(
         !req_urls.is_empty(),
-        "T140: open_timeline must register follow-feed M2 interests so \
+        "T140: open_contact_feed must register follow-feed M2 interests so \
          drain_lifecycle_tick emits REQ frames (got {} total frames, 0 REQs)",
         frames.len(),
     );
     assert!(
         req_urls.iter().any(|u| u == "wss://alice-t140.relay/"),
-        "T140: open_timeline REQ must target ALICE's resolved write relay \
+        "T140: open_contact_feed REQ must target ALICE's resolved write relay \
          wss://alice-t140.relay/; got urls: {req_urls:?}"
+    );
+}
+
+// ── open_contact_feed / close_contact_feed (RED tests — Step 1 of TDD) ──────
+
+/// After `open_contact_feed({1,6})` the follow-feed interests are registered;
+/// after `close_contact_feed()` they are withdrawn, a CLOSE frame is emitted,
+/// `follow_feed_interest_ids` is empty, and `timeline_authors` is empty.
+///
+/// Verifies the full symmetric lifecycle required by the design: D5 cluster is
+/// present after open, absent after close.
+#[test]
+fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
+    const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    let (mut id, mut kernel) = fresh();
+
+    // Sign in so `open_contact_feed` has an active pubkey.
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let active_pk = id.active_pubkey().expect("active account after sign_in");
+
+    // ALICE has a resolved write relay.
+    kernel.seed_kind10002_for_test(ALICE, &["wss://alice-close-test.relay/"]);
+
+    // Inject kind:3 for the active account listing ALICE as a follow.
+    let follow_tags = vec![vec!["p".to_string(), ALICE.to_string()]];
+    kernel.inject_replaceable_event(
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        &active_pk,
+        2_000,
+        3,
+        follow_tags,
+        "wss://seed.relay/",
+        2_000_000,
+    );
+
+    // Force the lifecycle selection budget so the compiler routes freely.
+    kernel
+        .lifecycle_mut()
+        .set_selection_budget(usize::MAX, usize::MAX);
+
+    // Open with kinds {1, 6}: interests should be registered.
+    let _outbound = open_contact_feed(
+        &id,
+        &mut kernel,
+        std::collections::BTreeSet::from([1u32, 6u32]),
+    );
+
+    // Drain — must emit REQ frames for ALICE after open.
+    let open_frames = kernel.drain_lifecycle_tick();
+    let req_count_after_open = open_frames
+        .iter()
+        .filter(|f| matches!(f, crate::subs::WireFrame::Req { .. }))
+        .count();
+    assert!(
+        req_count_after_open > 0,
+        "open_contact_feed must register follow-feed interests (got 0 REQs after open)"
+    );
+
+    // Close: interests should be withdrawn, CLOSE frames emitted.
+    let _close_out = close_contact_feed(&id, &mut kernel);
+
+    let close_frames = kernel.drain_lifecycle_tick();
+    let close_count = close_frames
+        .iter()
+        .filter(|f| matches!(f, crate::subs::WireFrame::Close { .. }))
+        .count();
+    assert!(
+        close_count > 0,
+        "close_contact_feed must emit CLOSE frames (got 0 CLOSEs after close)"
+    );
+
+    // After close the follow-feed interest registry must be empty.
+    assert!(
+        kernel.follow_feed_interest_ids.is_empty(),
+        "close_contact_feed must clear follow_feed_interest_ids"
+    );
+
+    // timeline_authors must be cleared as well (the kernel CLEAR branch).
+    assert!(
+        kernel.timeline_authors.is_empty(),
+        "close_contact_feed must clear timeline_authors"
+    );
+
+    // D5 symmetry: take a snapshot after close and assert that the timeline /
+    // delta-projection cluster is absent — mirroring the pre-open assertions
+    // at tests.rs:1932-1950.  The headline design claim is that D5 gating is
+    // symmetric: the cluster appears on open and disappears again on close.
+    let post_close_json = kernel.make_update_json_for_test(true);
+    let post_close: serde_json::Value =
+        serde_json::from_str(&post_close_json).expect("post-close snapshot must be valid JSON");
+    let post_projections = post_close
+        .get("projections")
+        .expect("snapshot must carry the projections map");
+    assert!(
+        post_projections.get("timeline").is_none(),
+        "D5: timeline must be absent after close_contact_feed"
+    );
+    assert!(
+        post_projections.get("inserted").is_none(),
+        "D5: inserted must be absent after close_contact_feed"
+    );
+    assert!(
+        post_projections.get("updated").is_none(),
+        "D5: updated must be absent after close_contact_feed"
+    );
+    assert!(
+        post_projections.get("removed").is_none(),
+        "D5: removed must be absent after close_contact_feed"
+    );
+}
+
+/// `open_contact_feed` with an empty kinds set acts as a clear (same as close):
+/// any previously registered follow-feed interests are withdrawn.
+#[test]
+fn open_contact_feed_empty_kinds_is_clear() {
+    const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let active_pk = id.active_pubkey().expect("active account after sign_in");
+
+    kernel.seed_kind10002_for_test(BOB, &["wss://bob-empty-test.relay/"]);
+
+    let follow_tags = vec![vec!["p".to_string(), BOB.to_string()]];
+    kernel.inject_replaceable_event(
+        "0000000000000000000000000000000000000000000000000000000000000002",
+        &active_pk,
+        2_000,
+        3,
+        follow_tags,
+        "wss://seed.relay/",
+        2_000_000,
+    );
+
+    kernel
+        .lifecycle_mut()
+        .set_selection_budget(usize::MAX, usize::MAX);
+
+    // First open with non-empty kinds so there is something to clear.
+    let _ = open_contact_feed(
+        &id,
+        &mut kernel,
+        std::collections::BTreeSet::from([1u32, 6u32]),
+    );
+    let _ = kernel.drain_lifecycle_tick();
+
+    // Now open with empty kinds set — behaves as clear.
+    let _ = open_contact_feed(&id, &mut kernel, std::collections::BTreeSet::new());
+    let _ = kernel.drain_lifecycle_tick();
+
+    assert!(
+        kernel.follow_feed_interest_ids.is_empty(),
+        "open_contact_feed with empty kinds must clear follow_feed_interest_ids"
     );
 }

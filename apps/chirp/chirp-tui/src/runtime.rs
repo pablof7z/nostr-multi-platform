@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
     follow_spec, nmp_app_chirp_close_author_feed, nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_identity_restore, nmp_app_chirp_open_author_feed,
+    nmp_app_chirp_identity_restore, nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
     nmp_app_chirp_open_thread_feed, nmp_app_chirp_register, nmp_app_chirp_unregister,
     nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, react_spec, unfollow_spec,
     ChirpHandle, MarmotHandle, NmpRegisterStatus,
@@ -20,8 +20,7 @@ use nmp_nip01::NoteRecord;
 use crate::app::ReplyTarget;
 use nmp_ffi::{
     nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string,
-    nmp_app_load_older_feed, nmp_app_open_timeline, nmp_app_release_profile, nmp_app_start,
-    NmpApp,
+    nmp_app_load_older_feed, nmp_app_release_profile, nmp_app_start, NmpApp,
 };
 use serde_json::{json, Value};
 
@@ -118,7 +117,7 @@ impl AppRuntime {
         let initial_marmot = marmot.unwrap_or(ptr::null_mut());
 
         nmp_app_start(app, 0, 200, 10);
-        nmp_app_open_timeline(app);
+        nmp_app_chirp_open_home_feed(app);
 
         Ok((
             Self {

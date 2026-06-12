@@ -57,7 +57,13 @@ void nmp_app_remove_relay(void *app, const char *url);
 
 // Sync / sub control
 void nmp_app_trigger_sync(void *app, const char *filter_json, const char *relay_url);
-void nmp_app_open_timeline(void *app);  // opens FollowingTimeline for active account
+// ADR-0042 amendment 2026-06-12: nmp_app_open_timeline REMOVED.
+// Use the Chirp home-feed wrappers (or the generic verbs below for non-Chirp apps):
+void nmp_app_open_contact_feed(void *app, const char *kinds_json);  // e.g. "[1,6]"
+void nmp_app_close_contact_feed(void *app);
+// Chirp-specific wrappers (kinds=[1,6] defined in nmp-app-chirp):
+// void nmp_app_chirp_open_home_feed(void *app);
+// void nmp_app_chirp_close_home_feed(void *app);
 ```
 
 ### 1.2 AppState update extensions
