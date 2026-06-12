@@ -93,6 +93,24 @@ pub struct RelayRow {
     pub last_notice: Option<String>,
     pub last_error: Option<String>,
     pub wire_subs: Vec<WireSubRow>,
+    /// ADR-0051 — the relay's NIP-11 information document; `None` until fetched.
+    pub info: Option<InfoRow>,
+}
+
+/// A field-for-field mirror of one SERIALISED `RelayDiagnosticsInfo` (ADR-0051).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct InfoRow {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub pubkey: Option<String>,
+    pub contact: Option<String>,
+    pub software: Option<String>,
+    pub version: Option<String>,
+    pub supported_nips: Vec<u32>,
+    pub payment_required: Option<bool>,
+    pub auth_required: Option<bool>,
+    pub restricted_writes: Option<bool>,
 }
 
 /// A field-for-field mirror of one SERIALISED `RelayDiagnosticsInterest` row.
@@ -155,6 +173,46 @@ fn create_wire_sub<'a>(
     )
 }
 
+fn create_info<'a>(
+    fbb: &mut FlatBufferBuilder<'a>,
+    info: &InfoRow,
+) -> WIPOffset<fb::RelayDiagnosticsInfo<'a>> {
+    let name = info.name.as_ref().map(|v| fbb.create_string(v));
+    let description = info.description.as_ref().map(|v| fbb.create_string(v));
+    let icon = info.icon.as_ref().map(|v| fbb.create_string(v));
+    let pubkey = info.pubkey.as_ref().map(|v| fbb.create_string(v));
+    let contact = info.contact.as_ref().map(|v| fbb.create_string(v));
+    let software = info.software.as_ref().map(|v| fbb.create_string(v));
+    let version = info.version.as_ref().map(|v| fbb.create_string(v));
+    let supported_nips = fbb.create_vector(&info.supported_nips);
+    fb::RelayDiagnosticsInfo::create(
+        fbb,
+        &fb::RelayDiagnosticsInfoArgs {
+            has_name: info.name.is_some(),
+            name,
+            has_description: info.description.is_some(),
+            description,
+            has_icon: info.icon.is_some(),
+            icon,
+            has_pubkey: info.pubkey.is_some(),
+            pubkey,
+            has_contact: info.contact.is_some(),
+            contact,
+            has_software: info.software.is_some(),
+            software,
+            has_version: info.version.is_some(),
+            version,
+            supported_nips: Some(supported_nips),
+            has_payment_required: info.payment_required.is_some(),
+            payment_required: info.payment_required.unwrap_or(false),
+            has_auth_required: info.auth_required.is_some(),
+            auth_required: info.auth_required.unwrap_or(false),
+            has_restricted_writes: info.restricted_writes.is_some(),
+            restricted_writes: info.restricted_writes.unwrap_or(false),
+        },
+    )
+}
+
 fn create_relay_row<'a>(
     fbb: &mut FlatBufferBuilder<'a>,
     row: &RelayRow,
@@ -165,6 +223,7 @@ fn create_relay_row<'a>(
         .map(|w| create_wire_sub(fbb, w))
         .collect();
     let wire_subs = fbb.create_vector(&wire_offsets);
+    let info = row.info.as_ref().map(|i| create_info(fbb, i));
     let relay_url = fbb.create_string(&row.relay_url);
     let short_url = fbb.create_string(&row.short_url);
     let role_label = fbb.create_string(&row.role_label);
@@ -213,6 +272,7 @@ fn create_relay_row<'a>(
             has_last_error: row.last_error.is_some(),
             last_error,
             wire_subs: Some(wire_subs),
+            info,
         },
     )
 }
@@ -350,6 +410,30 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
         last_notice: row.has_last_notice().then(|| opt(row.last_notice())).flatten(),
         last_error: row.has_last_error().then(|| opt(row.last_error())).flatten(),
         wire_subs,
+        info: row.info().map(info_from_fb),
+    }
+}
+
+fn info_from_fb(info: fb::RelayDiagnosticsInfo<'_>) -> InfoRow {
+    let mut supported_nips = Vec::new();
+    if let Some(nips) = info.supported_nips() {
+        supported_nips.reserve(nips.len());
+        for n in nips.iter() {
+            supported_nips.push(n);
+        }
+    }
+    InfoRow {
+        name: info.has_name().then(|| opt(info.name())).flatten(),
+        description: info.has_description().then(|| opt(info.description())).flatten(),
+        icon: info.has_icon().then(|| opt(info.icon())).flatten(),
+        pubkey: info.has_pubkey().then(|| opt(info.pubkey())).flatten(),
+        contact: info.has_contact().then(|| opt(info.contact())).flatten(),
+        software: info.has_software().then(|| opt(info.software())).flatten(),
+        version: info.has_version().then(|| opt(info.version())).flatten(),
+        supported_nips,
+        payment_required: info.has_payment_required().then(|| info.payment_required()),
+        auth_required: info.has_auth_required().then(|| info.auth_required()),
+        restricted_writes: info.has_restricted_writes().then(|| info.restricted_writes()),
     }
 }
 

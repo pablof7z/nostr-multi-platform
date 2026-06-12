@@ -114,6 +114,12 @@ impl AppHost for GateSpy {
         *self.relay_interceptors.lock().unwrap() += 1;
     }
 
+    fn add_relay_connected_hook(
+        &self,
+        _hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>,
+    ) {
+    }
+
     fn register_ingest_parser(&self, _kind: u32, _parser: Arc<dyn IngestParser>) {
         // kind:10002 parser — recorded as a no-op; not under test here.
     }

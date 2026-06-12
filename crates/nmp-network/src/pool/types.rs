@@ -171,9 +171,15 @@ pub struct TransportError {
 /// kernel actor reads this on demand via [`super::Pool::health`] (or
 /// receives it pushed on a [`super::PoolEvent::Health`]).
 ///
-/// Phase B keeps this minimal — V-13's per-relay latency histogram and
-/// the NIP-11 capability map are deferred to phases C/D where the
-/// signer-broker migration motivates the wider surface.
+/// Phase B keeps this minimal — V-13's per-relay latency histogram is
+/// deferred to phases C/D where the signer-broker migration motivates the
+/// wider surface.
+///
+/// NIP-11 relay information is NO LONGER a pool concern: per ADR-0051 it is
+/// fetched by the `nmp-nip11` protocol crate on connect and surfaced through
+/// the kernel's `relay_diagnostics` projection (a D7 capability *report*), not
+/// stored in a pool-internal capability map. The pool stays substrate-grade
+/// and wasm-clean (no HTTP).
 #[derive(Clone, Debug, Default)]
 pub struct RelayHealth {
     /// Most recently observed connection state.
@@ -210,10 +216,10 @@ pub enum HealthState {
 /// Pool configuration knobs.
 ///
 /// Phase B ships the substrate; the storm-protection knobs
-/// (`per_relay_reconnect_rate`, `socket_budget`, NIP-11 capability hook)
-/// land in phases C/D when the wasm driver and signer-broker migration
-/// motivate them. Defaults preserve today's `relay_worker` behaviour
-/// bit-for-bit.
+/// (`per_relay_reconnect_rate`, `socket_budget`) land in phases C/D when the
+/// wasm driver and signer-broker migration motivate them. (NIP-11 is handled
+/// out-of-band by `nmp-nip11` per ADR-0051, not a pool config knob.) Defaults
+/// preserve today's `relay_worker` behaviour bit-for-bit.
 #[derive(Clone, Debug)]
 pub struct PoolConfig {
     /// Default diagnostic lane to tag workers spawned by

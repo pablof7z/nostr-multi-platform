@@ -294,4 +294,15 @@ pub fn register_substrate(app: &mut impl AppHost, gate: CoverageGate) {
             plan.per_relay.retain(|k, _| keep.contains(k));
         }
     }));
+
+    // ── NIP-11 relay information (ADR-0051) ─────────────────────────────
+    //
+    // Relay metadata (name / icon / supported_nips) is generic transport
+    // infrastructure, not a social-feature preference — it belongs in the
+    // always-on substrate tier. `nmp_nip11::register` installs a
+    // `RelayConnectedHook` that fetches each relay's NIP-11 document the first
+    // time it connects (per-URL TTL) and surfaces it on the `relay_diagnostics`
+    // projection. Apps get relay metadata with zero work; `nmp-core` names no
+    // NIP-11 noun (D0).
+    nmp_nip11::register(app);
 }
