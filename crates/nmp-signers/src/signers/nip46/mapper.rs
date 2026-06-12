@@ -161,7 +161,6 @@ fn parse_tag_rows(v: &serde_json::Value) -> Result<Vec<Vec<String>>, SignerError
     Ok(out)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn build_event_for_verify(
     id_hex: &str,
     pubkey: PublicKey,
