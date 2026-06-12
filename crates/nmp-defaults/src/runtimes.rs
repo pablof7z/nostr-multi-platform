@@ -43,7 +43,8 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::AppHost;
-use nmp_core::{read_eligible_relay_urls, ActorCommand, AppRelaySlot};
+use nmp_core::{read_eligible_relay_urls, ActorCommand, AppRelaySlot, KernelEventObserver};
+use nmp_nip51::MuteListProjection;
 use nmp_nip17::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
     DmRuntimeEffect, DmRuntimeState,
@@ -312,6 +313,119 @@ impl ZapReceiptsRuntimeController {
             .ok()
             .and_then(|slot| slot.as_ref().map(|keys| keys.public_key().to_hex()))
     }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// NIP-51 mute-list runtime
+// ───────────────────────────────────────────────────────────────────────
+
+/// Wire the NIP-51 mute-list observer into `app` and return the
+/// [`MuteListProjection`] so the caller can connect it to a timeline
+/// projection via [`nmp_nip01::ModularTimelineProjection::set_suppression`].
+///
+/// # What this function does
+///
+/// 1. **Pubkey slot bridge** — creates a `Arc<Mutex<Option<String>>>` hex-pubkey
+///    slot and registers a per-tick observer that derives the live hex pubkey from
+///    `active_local_keys` on every snapshot tick. `MuteListProjection` reads the
+///    slot at event-ingest time and at query time, so it is always consistent with
+///    the active account.
+/// 2. **Ingest observer** — registers `MuteListProjection` as a
+///    [`KernelEventObserver`] so the kernel fan-out delivers kind:10000 events.
+///    The projection filters for the active account's author and ignores all other
+///    kind:10000 events (account-switch safety is enforced at read time by the
+///    owner-pubkey gate inside the projection — no explicit reset call needed).
+/// 3. **Diagnostic snapshot** — registers `"nmp.nip51.mute_list"` as a generic
+///    JSON projection so the active account's muted pubkeys and muted event ids
+///    are visible in the kernel snapshot (useful for diagnostics and the
+///    `chirp-repl` snapshot viewer). The projection key carries no NIP-51 nouns
+///    through `nmp-core` — the composition root (this crate) is entitled to name
+///    NIP constants directly per ADR-0046.
+/// 4. **Returns the `Arc<MuteListProjection>`** — the caller wires `set_suppression`
+///    on whichever `ModularTimelineProjection` it owns. The split between observer
+///    registration (here) and suppression wiring (caller-side) is intentional:
+///    `AppHost` has no `set_suppression` seam, and nmp-defaults must not
+///    depend on any concrete timeline instance (it is composition-root neutral).
+///
+/// # Account-switch safety
+///
+/// `MuteListProjection` is self-contained: the read path (`is_suppressed_author`,
+/// `is_suppressed_event`) re-reads the live `active_pubkey` slot on every call and
+/// gates against the `owner_pubkey` stored inside the `MuteSet`. If the active
+/// account changed between the last kind:10000 ingest and the read, the methods
+/// return `false` — stale data from the prior account is invisible. No explicit
+/// reset call or identity-change observer is required. This is the same read-time
+/// owner-gate pattern documented in `nmp-nip51/src/projection.rs`.
+///
+/// # D0 hygiene
+///
+/// This function names `kind:10000` only as a numeric literal. The term "mute"
+/// enters `nmp-core` nowhere: `SuppressionLookup` is the substrate-generic trait;
+/// `"nmp.nip51.mute_list"` is a projection key string owned by this composition
+/// crate. `nmp-core` sees `KernelEventObserver` + `SuppressionLookup` only.
+///
+/// Called by [`super::register_defaults`]; exposed `pub` so an app crate that opts
+/// out of the wholesale defaults can still wire just the mute runtime by itself.
+///
+/// # Ordering
+///
+/// Like [`crate::register_defaults`], call before `nmp_app_start`. The
+/// `KernelEventObserver` must be registered before the first event arrives.
+pub fn register_mute_runtime(app: &impl AppHost) -> Arc<MuteListProjection> {
+    // ── 1. Pubkey slot bridge ────────────────────────────────────────────
+    //
+    // `MuteListProjection` takes `Arc<Mutex<Option<String>>>` (a hex pubkey
+    // string slot). `AppHost::active_local_keys()` returns
+    // `Arc<Mutex<Option<nostr::Keys>>>`. A per-tick observer bridges the two:
+    // it derives the hex pubkey on every snapshot tick and writes it into the
+    // shared hex slot. The tick runs on the actor thread between relay frames
+    // (D8), so the lock hold is bounded and non-blocking.
+    //
+    // The mute projection reads the slot at ingest time AND at
+    // `is_suppressed_*` query time, so both paths see the live active account.
+    let active_keys = app.active_local_keys();
+    let hex_pubkey_slot: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let hex_slot_for_tick = Arc::clone(&hex_pubkey_slot);
+    app.register_snapshot_tick_observer(move || {
+        // Derive the active hex pubkey from the keys slot (same pattern as
+        // `WotBootstrapRuntime::active_pubkey`).
+        let current_hex = active_keys
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|keys| keys.public_key().to_hex()));
+        // Write into the hex slot only when the value changed — avoids a
+        // write-then-read contention cycle on every tick when stable.
+        // Poisoned hex slot → silent no-op (D6).
+        if let Ok(mut slot) = hex_slot_for_tick.lock() {
+            if *slot != current_hex {
+                *slot = current_hex;
+            }
+        }
+    });
+
+    // ── 2. Construct the projection ──────────────────────────────────────
+    let mute = Arc::new(MuteListProjection::new(Arc::clone(&hex_pubkey_slot)));
+
+    // ── 3. Register as ingest observer ───────────────────────────────────
+    //
+    // The WOT bootstrap interest already includes kind:10000 in its
+    // `WOT_BOOTSTRAP_KINDS` filter (see `nmp-wot/src/interest.rs`), so the
+    // active account's kind:10000 will arrive via the existing subscription.
+    // No separate interest push is needed.
+    app.register_event_observer(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
+
+    // ── 4. Diagnostic snapshot projection ────────────────────────────────
+    //
+    // Emits `{"muted_pubkeys":[…],"muted_event_ids":[…]}` on every tick so
+    // the active account's mute list is visible in the kernel snapshot. This
+    // key is NOT a typed sidecar (no FlatBuffers schema for mute lists in v1)
+    // — the generic JSON path is sufficient for diagnostics.
+    let mute_for_proj = Arc::clone(&mute);
+    app.register_snapshot_projection("nmp.nip51.mute_list", move || {
+        mute_for_proj.snapshot_json()
+    });
+
+    mute
 }
 
 // Co-located zap-reconciler unit tests live in a sibling file (kept out of this
