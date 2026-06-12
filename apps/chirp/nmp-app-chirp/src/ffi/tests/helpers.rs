@@ -1,8 +1,8 @@
 //! Shared test helpers for the per-domain FFI test sub-modules.
 //!
 //! Kept `pub(super)` so sibling test modules can reach them via
-//! `super::helpers::{dispatch, run_module_execute}` without exposing the
-//! helpers beyond the test tree.
+//! `super::helpers::{dispatch, run_module_execute, register_app}` without
+//! exposing the helpers beyond the test tree.
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
@@ -10,6 +10,8 @@ use std::ffi::{CStr, CString};
 use nmp_core::substrate::ActionModule;
 use nmp_core::ActorCommand;
 use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free_string, NmpApp};
+
+use super::super::{nmp_app_chirp_register, ChirpHandle, NmpRegisterStatus};
 
 /// Run an `ActionModule`'s typed executor once and capture **every**
 /// `ActorCommand` it sends, in order. Mirrors `nmp_nip17::dm_relay_list`'s
@@ -29,6 +31,24 @@ pub(super) fn run_module_execute<M: ActionModule>(
         captured.borrow_mut().push(cmd);
     })?;
     Ok(captured.into_inner())
+}
+
+/// Call `nmp_app_chirp_register` with a null viewer_pubkey (the "no viewer"
+/// case used by most tests that are testing things other than pubkey
+/// validation). Panics if registration fails — that would indicate an
+/// unrelated infrastructure problem in the test environment.
+pub(super) fn register_app(app: *mut NmpApp) -> *mut ChirpHandle {
+    let mut handle: *mut ChirpHandle = std::ptr::null_mut();
+    // SAFETY: `app` is a valid pointer from `nmp_app_new`; null viewer_pubkey
+    // is explicitly permitted ("no viewer set").
+    let status = nmp_app_chirp_register(app, std::ptr::null(), &mut handle);
+    assert_eq!(
+        status,
+        NmpRegisterStatus::Ok as u32,
+        "register_app: nmp_app_chirp_register failed with status={status}"
+    );
+    assert!(!handle.is_null(), "register_app: handle is null after Ok status");
+    handle
 }
 
 /// Drive `nmp_app_dispatch_action` for `namespace`/`action_json` and

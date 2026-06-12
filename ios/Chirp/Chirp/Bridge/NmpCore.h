@@ -364,9 +364,11 @@ void nmp_broker_free_string(char *ptr);
 // shell link one Rust archive.
 //
 // Flow:
-// 1. Call `nmp_app_chirp_register(app, viewer_pubkey)` once after
-//    `nmp_app_new()` succeeds. Returns an opaque handle (or NULL on
-//    failure). `viewer_pubkey` may be NULL (treated as "no viewer set").
+// 1. Call `nmp_app_chirp_register(app, viewer_pubkey, &handle)` once after
+//    `nmp_app_new()` succeeds. Returns NmpRegisterStatus (0 = Ok). On Ok,
+//    `handle` is written with a non-null opaque pointer.
+//    `viewer_pubkey` may be NULL (treated as "no viewer set").
+//    A non-null viewer_pubkey MUST be a 64-char case-insensitive hex string.
 // 2. Read the standard `projections["nmp.feed.home"]` value from the normal
 //    NMP update stream. It carries
 //    `{ "blocks": [...], "cards": [...], "page": {...}, "metrics": {...} }`.
@@ -376,10 +378,26 @@ void nmp_broker_free_string(char *ptr);
 // 4. On teardown, call `nmp_app_chirp_unregister(handle)` BEFORE
 //    `nmp_app_free(app)`.
 //
-// Fire-and-forget: every entry point degrades silently on null pointers,
-// poisoned mutexes, or serialization failure (D6).
+// V-73 (D6 fix): a non-null viewer_pubkey that is not a valid 64-char hex
+// pubkey returns NmpRegisterStatus_InvalidViewerPubkey (2) and leaves
+// *handle_out as NULL. Callers must check the status before using the handle.
+//
+// D6 null handle_out guard: if handle_out itself is NULL, the function returns
+// NmpRegisterStatus_NullApp (1) without writing through the pointer or leaking
+// any allocation. Passing a null handle_out is a programmer-error contract
+// violation (same as passing a null app).
 
-void *nmp_app_chirp_register(void *app, const char *viewer_pubkey_or_null);
+// Status codes returned by `nmp_app_chirp_register`.
+// Discriminants are stable — do not renumber.
+typedef enum : uint32_t {
+    NmpRegisterStatus_Ok                  = 0,
+    NmpRegisterStatus_NullApp             = 1,
+    NmpRegisterStatus_InvalidViewerPubkey = 2,
+} NmpRegisterStatus;
+
+uint32_t nmp_app_chirp_register(void *app,
+                                const char *viewer_pubkey_or_null,
+                                void **handle_out);
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 void nmp_app_chirp_register_dm_inbox(void *app);
 // Build a Rust-authored Chirp action dispatch spec from typed user intent JSON.

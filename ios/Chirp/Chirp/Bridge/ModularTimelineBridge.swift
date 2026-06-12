@@ -28,10 +28,23 @@ extension KernelHandle {
     /// (`Spec.viewer` is currently only used for future personalization
     /// keys; the grouper accepts every kind:1 the kernel ingests
     /// regardless). Idempotent.
+    ///
+    /// V-73 (D6 fix): the underlying `nmp_app_chirp_register` now returns
+    /// an `NmpRegisterStatus` code and writes the handle through an
+    /// out-parameter.  The host checks the status and surfaces an error log
+    /// on any non-Ok result.  The common startup call passes a nil
+    /// viewer_pubkey (always Ok); callers that pass a non-nil pubkey must
+    /// ensure it is a valid 64-char hex string before calling.
     func registerChirpProjection() {
-        chirpHandle = nmp_app_chirp_register(raw, nil)
-        if chirpHandle == nil {
-            kbLog.error("nmp_app_chirp_register returned NULL — projection unavailable")
+        var handle: UnsafeMutableRawPointer? = nil
+        let status = nmp_app_chirp_register(raw, nil, &handle)
+        if status == NmpRegisterStatus_Ok.rawValue, let h = handle {
+            chirpHandle = h
+        } else {
+            chirpHandle = nil
+            kbLog.error(
+                "nmp_app_chirp_register failed — projection unavailable (status=\(status))"
+            )
         }
     }
 

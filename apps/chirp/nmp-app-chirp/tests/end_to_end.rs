@@ -22,7 +22,24 @@ use std::ffi::{CStr, CString};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpTimelineSnapshot};
+use nmp_app_chirp::{
+    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, ChirpTimelineSnapshot,
+    NmpRegisterStatus,
+};
+
+/// Convenience wrapper: register with no viewer pubkey (the common case in
+/// these tests) and panic on failure.
+fn register_app(app: *mut nmp_ffi::NmpApp) -> *mut ChirpHandle {
+    let mut handle: *mut ChirpHandle = std::ptr::null_mut();
+    let status = nmp_app_chirp_register(app, std::ptr::null(), &mut handle);
+    assert_eq!(
+        status,
+        NmpRegisterStatus::Ok as u32,
+        "register_app: unexpected status {status}"
+    );
+    assert!(!handle.is_null());
+    handle
+}
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
 use nmp_ffi::{
@@ -75,8 +92,7 @@ fn root_surfaces_and_unfollowed_reply_is_dropped() {
     let app = nmp_app_new();
     nmp_app_start(app, 0, 80, 4);
 
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
-    assert!(!handle.is_null(), "register returned null");
+    let handle = register_app(app);
 
     // Root + one NIP-10-marked reply pointing at the root. With no signed-in
     // account the follow predicate is universally false, so the reply is
@@ -124,7 +140,7 @@ fn standalone_note_renders_as_root_card() {
 
     let app = nmp_app_new();
     nmp_app_start(app, 0, 80, 4);
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
+    let handle = register_app(app);
 
     let id = "3".repeat(64);
     let author = "b".repeat(64);
@@ -147,7 +163,7 @@ fn snapshot_returns_default_window() {
 
     let app = nmp_app_new();
     nmp_app_start(app, 0, 80, 4);
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
+    let handle = register_app(app);
 
     let author = "c".repeat(64);
     let total = DEFAULT_TIMELINE_WINDOW_LIMIT + 2;
