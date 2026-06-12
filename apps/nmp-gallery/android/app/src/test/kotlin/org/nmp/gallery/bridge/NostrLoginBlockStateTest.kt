@@ -6,19 +6,19 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.nmp.gallery.registry.LoginBlockSignerState
+import org.nmp.gallery.registry.SignerCardTone
+import org.nmp.gallery.registry.signerCardUi
 
 /**
  * ADR-0048 Stage 2 — state rendering contract tests for the `NostrLoginBlock`
  * Compose component.
  *
- * The NostrLoginBlock renders different visual states based on the
- * `LoginBlockSignerState` projection from Rust. These tests verify the
- * state model mirrors `SignerStateDto` correctly so the UI never
- * string-compares `state` (it reads pre-computed bool flags, ADR-0032).
+ * These assert on the PRODUCTION `signerCardUi` presentation function — the
+ * exact pure function `SignerCard` renders from (no test-side mirror of the
+ * render rule). The UI never string-compares `state`: presentation derives
+ * only from the pre-computed bool flags (ADR-0032 / D6).
  *
- * They are pure JVM tests — no Compose runtime, no Activity. State
- * presentation logic is tested by asserting on the data model that drives
- * rendering, not the rendered pixels.
+ * Pure JVM tests — no Compose runtime, no Activity.
  */
 class NostrLoginBlockStateTest {
 
@@ -35,107 +35,119 @@ class NostrLoginBlockStateTest {
         assertNull(state.reason)
         assertEquals("", state.signerKind)
         assertEquals("", state.state)
+
+        val ui = signerCardUi(state)
+        assertEquals(SignerCardTone.Default, ui.tone)
+        assertNull(ui.statusLabel)
+        assertFalse(ui.showSpinner)
     }
 
     // ── NIP-55 awaiting approval ───────────────────────────────────────────
 
     @Test
     fun awaitingApprovalStateIsInProgress() {
-        val state = LoginBlockSignerState(
-            signerKind = "nip55",
-            state = "awaiting_approval",
-            isAwaitingApproval = true,
+        val ui = signerCardUi(
+            LoginBlockSignerState(
+                signerKind = "nip55",
+                state = "awaiting_approval",
+                isAwaitingApproval = true,
+            ),
         )
-        assertTrue(isInProgress(state))
-        assertFalse(isDegraded(state))
-        assertEquals("Waiting for approval…", statusLabel(state))
+        assertEquals(SignerCardTone.InProgress, ui.tone)
+        assertEquals("Waiting for approval…", ui.statusLabel)
+        assertTrue(ui.showSpinner)
     }
 
     // ── NIP-55 ready ───────────────────────────────────────────────────────
 
     @Test
     fun readyStateIsReady() {
-        val state = LoginBlockSignerState(
-            signerKind = "nip55",
-            state = "ready",
-            isReady = true,
+        val ui = signerCardUi(
+            LoginBlockSignerState(
+                signerKind = "nip55",
+                state = "ready",
+                isReady = true,
+            ),
         )
-        assertFalse(isInProgress(state))
-        assertFalse(isDegraded(state))
-        assertEquals("Connected", statusLabel(state))
+        assertEquals(SignerCardTone.Ready, ui.tone)
+        assertEquals("Connected", ui.statusLabel)
+        assertFalse(ui.showSpinner)
     }
 
     // ── NIP-55 unavailable ─────────────────────────────────────────────────
 
     @Test
     fun unavailableStateIsDegraded() {
-        val state = LoginBlockSignerState(
-            signerKind = "nip55",
-            state = "unavailable",
-            reason = "signer app not installed",
-            isUnavailable = true,
+        val ui = signerCardUi(
+            LoginBlockSignerState(
+                signerKind = "nip55",
+                state = "unavailable",
+                reason = "signer app not installed",
+                isUnavailable = true,
+            ),
         )
-        assertTrue(isDegraded(state))
-        assertFalse(isInProgress(state))
-        assertEquals("Signer unavailable", statusLabel(state))
+        assertEquals(SignerCardTone.Degraded, ui.tone)
+        assertEquals("Signer unavailable", ui.statusLabel)
+        assertFalse(ui.showSpinner)
     }
 
     // ── NIP-55 failed ─────────────────────────────────────────────────────
 
     @Test
     fun failedStateIsDegraded() {
-        val state = LoginBlockSignerState(
-            signerKind = "nip55",
-            state = "failed",
-            reason = "key mismatch",
-            isFailed = true,
+        val ui = signerCardUi(
+            LoginBlockSignerState(
+                signerKind = "nip55",
+                state = "failed",
+                reason = "key mismatch",
+                isFailed = true,
+            ),
         )
-        assertTrue(isDegraded(state))
-        assertFalse(isInProgress(state))
-        assertEquals("Connection failed", statusLabel(state))
+        assertEquals(SignerCardTone.Degraded, ui.tone)
+        assertEquals("Connection failed", ui.statusLabel)
+        assertFalse(ui.showSpinner)
     }
 
-    // ── Reconnecting ──────────────────────────────────────────────────────
+    // ── Reconnecting (NIP-46 — same unified projection) ───────────────────
 
     @Test
     fun reconnectingStateIsInProgress() {
-        val state = LoginBlockSignerState(
-            signerKind = "nip46",
-            state = "reconnecting",
-            isReconnecting = true,
+        val ui = signerCardUi(
+            LoginBlockSignerState(
+                signerKind = "nip46",
+                state = "reconnecting",
+                isReconnecting = true,
+            ),
         )
-        assertTrue(isInProgress(state))
-        assertFalse(isDegraded(state))
-        assertEquals("Reconnecting…", statusLabel(state))
+        assertEquals(SignerCardTone.InProgress, ui.tone)
+        assertEquals("Reconnecting…", ui.statusLabel)
+        assertTrue(ui.showSpinner)
+    }
+
+    // ── Degraded wins over in-progress (defensive ordering) ───────────────
+
+    @Test
+    fun degradedTakesPrecedenceOverInProgress() {
+        val ui = signerCardUi(
+            LoginBlockSignerState(
+                signerKind = "nip55",
+                state = "failed",
+                isFailed = true,
+                isAwaitingApproval = true, // contradictory flags — degraded wins
+            ),
+        )
+        assertEquals(SignerCardTone.Degraded, ui.tone)
     }
 
     // ── null state (no signer session active) ─────────────────────────────
 
     @Test
     fun nullStateShowsDefaultSubtitle() {
-        // When signerState is null the login-block shows the default
-        // "Sign in with Amber" label, not a status indicator.
-        val state: LoginBlockSignerState? = null
-        assertEquals("Sign in with Amber", statusLabelForSigner(state, "Amber"))
+        // When signerState is null the card falls back to the default
+        // "Sign in with …" subtitle (statusLabel == null) with no spinner.
+        val ui = signerCardUi(null)
+        assertEquals(SignerCardTone.Default, ui.tone)
+        assertNull(ui.statusLabel)
+        assertFalse(ui.showSpinner)
     }
-
-    // ── Helpers mirroring the render logic in NostrLoginBlock ─────────────
-
-    private fun isInProgress(s: LoginBlockSignerState): Boolean =
-        s.isAwaitingApproval || s.isReconnecting
-
-    private fun isDegraded(s: LoginBlockSignerState): Boolean =
-        s.isFailed || s.isUnavailable
-
-    private fun statusLabel(s: LoginBlockSignerState): String = when {
-        s.isUnavailable -> "Signer unavailable"
-        s.isFailed -> "Connection failed"
-        s.isAwaitingApproval -> "Waiting for approval…"
-        s.isReconnecting -> "Reconnecting…"
-        s.isReady -> "Connected"
-        else -> "Sign in"
-    }
-
-    private fun statusLabelForSigner(s: LoginBlockSignerState?, displayName: String): String =
-        if (s == null) "Sign in with $displayName" else statusLabel(s)
 }

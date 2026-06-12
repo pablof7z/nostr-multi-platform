@@ -172,6 +172,24 @@ private val bridgeJson = Json {
 }
 
 /**
+ * THE transport-selection rule (ADR-0048 D2) — a mechanical consequence of
+ * fields Rust set on the request, never host policy (D7):
+ *
+ * | Condition | Mechanism |
+ * |---|---|
+ * | `forceInteractive == true` | Intent |
+ * | `signerPackage` known AND method's permission in the request batch | ContentResolver |
+ * | otherwise | Intent |
+ *
+ * Extracted as a pure top-level function so unit tests exercise the SAME
+ * predicate `handle()` executes (no test-side copies).
+ */
+internal fun shouldUseContentResolver(request: ExternalSignerRequest): Boolean =
+    !request.forceInteractive &&
+        request.signerPackage != null &&
+        request.permissions.any { p -> p.kind.startsWith(request.method.toPermissionKind()) }
+
+/**
  * D7 host adapter for the `external_signer` capability namespace.
  *
  * Receives fully-built `ExternalSignerRequest` objects from Rust, fires
@@ -305,11 +323,7 @@ class ExternalSignerCapabilityBridge(
      * `nativeDeliverSignerResponse` (see `KernelBridge`).
      */
     fun handle(request: ExternalSignerRequest) {
-        val useContentResolver = !request.forceInteractive
-            && request.signerPackage != null
-            && request.permissions.any { p -> p.kind.startsWith(request.method.toPermissionKind()) }
-
-        if (useContentResolver) {
+        if (shouldUseContentResolver(request)) {
             dispatchContentResolver(request)
         } else {
             dispatchIntent(request)

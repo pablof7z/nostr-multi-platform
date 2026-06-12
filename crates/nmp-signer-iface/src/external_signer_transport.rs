@@ -37,6 +37,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::SignerError;
 
+/// Capability namespace for the NIP-55 external-signer bridge (ADR-0048 D2).
+///
+/// `ExternalSignerRequest` rides the existing `CapabilityRequest` carrier as
+/// `payload_json` under this namespace; the host adapter recognises it and
+/// dispatches the Intent / `ContentResolver` round-trip.
+pub const EXTERNAL_SIGNER_NAMESPACE: &str = "external_signer";
+
 /// Default per-op deadline budget for remote signer operations.
 ///
 /// 5s — long enough for a fast / auto-approving NIP-46 bunker, short enough

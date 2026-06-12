@@ -10,6 +10,7 @@ import org.nmp.gallery.registry.ExternalSignerOutcome
 import org.nmp.gallery.registry.ExternalSignerRequest
 import org.nmp.gallery.registry.ExternalSignerResponse
 import org.nmp.gallery.registry.Nip55Permission
+import org.nmp.gallery.registry.shouldUseContentResolver
 
 /**
  * ADR-0048 Stage 2 — D7 contract tests for [ExternalSignerCapabilityBridge].
@@ -143,11 +144,12 @@ class ExternalSignerCapabilityBridgeTest {
 
     // ── Transport-path selection logic ────────────────────────────────────
     //
-    // These tests verify the mechanical transport-selection rule (D7):
-    //   ContentResolver iff NOT forceInteractive AND signerPackage!=null
-    //   AND method is in granted_permissions.
-    // They do NOT use a real Activity; the selection is tested via the
-    // public helper `shouldUseContentResolver` (see companion object).
+    // These tests exercise the PRODUCTION `shouldUseContentResolver`
+    // predicate — the exact function `ExternalSignerCapabilityBridge.handle()`
+    // branches on (extracted as an internal pure function so no test-side
+    // mirror exists). Rule (D7, mechanical):
+    //   ContentResolver iff NOT forceInteractive AND signerPackage != null
+    //   AND the method's permission kind is in the request's batch.
 
     @Test
     fun contentResolverSelectedWhenPermissionGrantedAndNotForced() {
@@ -227,28 +229,5 @@ class ExternalSignerCapabilityBridgeTest {
         }
         assertNotNull("Amber must be in KNOWN_NOSTR_SIGNERS", amber)
         assertEquals("com.greenart7c3.nostrsigner", amber!!.contentAuthority)
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────
-
-    /**
-     * Mirrors the private `shouldUseContentResolver` logic in the bridge
-     * for unit-testability without a real Activity.
-     */
-    private fun shouldUseContentResolver(request: ExternalSignerRequest): Boolean {
-        return !request.forceInteractive
-            && request.signerPackage != null
-            && request.permissions.any { p ->
-                p.kind.startsWith(
-                    when (request.method) {
-                        "sign_event" -> "sign_event:"
-                        "nip44_encrypt" -> "nip44_encrypt"
-                        "nip44_decrypt" -> "nip44_decrypt"
-                        "nip04_encrypt" -> "nip04_encrypt"
-                        "nip04_decrypt" -> "nip04_decrypt"
-                        else -> request.method
-                    }
-                )
-            }
     }
 }

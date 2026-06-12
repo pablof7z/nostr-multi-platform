@@ -529,6 +529,22 @@ pub enum ActorCommand {
         /// Optional human-readable reason (error message on reconnect/failed).
         reason: Option<String>,
     },
+    /// ADR-0048 D6 — NIP-55 external-signer health update for the unified
+    /// `signer_state` projection. Emitted by the `nmp-ffi` NIP-55 driver when
+    /// the host capability bridge reports an outcome that affects long-lived
+    /// signer health (awaiting approval, ready, rejected, unavailable).
+    ///
+    /// D4: the actor is the sole writer of the `SignerStateSlot` — the driver
+    /// routes through this command (not directly to the slot) so the write
+    /// happens on the actor thread. Mirrors `BunkerConnectionStateChanged`.
+    #[allow(dead_code)]
+    // live cross-crate caller in nmp-ffi — per-crate lint false positive
+    Nip55SignerStateChanged {
+        /// `"ready"` | `"awaiting_approval"` | `"unavailable"` | `"failed"`.
+        state: String,
+        /// Optional human-readable reason (rejection/unavailable detail).
+        reason: Option<String>,
+    },
     /// Sign-and-publish an arbitrary event kind for the active account.
     /// The actor fills `pubkey` from the active signer, stamps `created_at`
     /// (D7), signs, and routes through the NIP-65 outbox per `target`.

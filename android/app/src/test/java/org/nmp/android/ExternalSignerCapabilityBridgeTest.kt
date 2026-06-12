@@ -107,6 +107,10 @@ class ExternalSignerCapabilityBridgeTest {
     }
 
     // ── Transport-path selection ──────────────────────────────────────────
+    //
+    // Exercises the PRODUCTION `shouldUseContentResolver` predicate — the
+    // exact internal pure function `ExternalSignerCapabilityBridge.handle()`
+    // branches on. No test-side mirror exists.
 
     @Test
     fun contentResolverSelectedWhenAllConditionsMet() {
@@ -173,21 +177,4 @@ class ExternalSignerCapabilityBridgeTest {
     // ── Helpers ───────────────────────────────────────────────────────────
 
     private fun assertFalse(value: Boolean) = assertTrue(!value)
-
-    private fun shouldUseContentResolver(request: ExternalSignerRequest): Boolean {
-        return !request.forceInteractive
-            && request.signerPackage != null
-            && request.permissions.any { p ->
-                p.kind.startsWith(
-                    when (request.method) {
-                        "sign_event" -> "sign_event:"
-                        "nip44_encrypt" -> "nip44_encrypt"
-                        "nip44_decrypt" -> "nip44_decrypt"
-                        "nip04_encrypt" -> "nip04_encrypt"
-                        "nip04_decrypt" -> "nip04_decrypt"
-                        else -> request.method
-                    }
-                )
-            }
-    }
 }

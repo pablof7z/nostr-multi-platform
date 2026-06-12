@@ -68,16 +68,58 @@ import androidx.compose.ui.unit.dp
  * login-block self-contained (the gallery does not depend on the Chirp app
  * module). Both shapes must match the Rust `SignerStateDto` wire.
  */
+@kotlinx.serialization.Serializable
 data class LoginBlockSignerState(
-    val signerKind: String = "",
+    @kotlinx.serialization.SerialName("signer_kind") val signerKind: String = "",
     val state: String = "",
     val reason: String? = null,
-    val isReady: Boolean = false,
-    val isAwaitingApproval: Boolean = false,
-    val isReconnecting: Boolean = false,
-    val isUnavailable: Boolean = false,
-    val isFailed: Boolean = false,
+    @kotlinx.serialization.SerialName("is_ready") val isReady: Boolean = false,
+    @kotlinx.serialization.SerialName("is_awaiting_approval") val isAwaitingApproval: Boolean = false,
+    @kotlinx.serialization.SerialName("is_reconnecting") val isReconnecting: Boolean = false,
+    @kotlinx.serialization.SerialName("is_unavailable") val isUnavailable: Boolean = false,
+    @kotlinx.serialization.SerialName("is_failed") val isFailed: Boolean = false,
 )
+
+// ── Presentation state (pure — unit-testable without Compose) ────────────────
+
+/** Visual tone of a signer card. Derived ONLY from the pre-computed `is*`
+ *  flags (ADR-0032 D6 — the shell never re-derives state from strings). */
+enum class SignerCardTone { Default, InProgress, Ready, Degraded }
+
+/**
+ * Pure presentation state for one signer card. [SignerCard] renders exactly
+ * this; the unit tests assert on exactly this — one source of truth for the
+ * render rule, no test-side mirrors.
+ */
+data class SignerCardUi(
+    val tone: SignerCardTone,
+    /** Status line under the signer name; null = default "Sign in with …". */
+    val statusLabel: String?,
+    /** Replace the trailing chevron with a spinner. */
+    val showSpinner: Boolean,
+)
+
+/** Map a signer-state projection value onto card presentation. */
+internal fun signerCardUi(state: LoginBlockSignerState?): SignerCardUi {
+    val isInProgress = state?.isAwaitingApproval == true || state?.isReconnecting == true
+    val isDegraded = state?.isFailed == true || state?.isUnavailable == true
+    val isReady = state?.isReady == true
+    val tone = when {
+        isDegraded -> SignerCardTone.Degraded
+        isInProgress -> SignerCardTone.InProgress
+        isReady -> SignerCardTone.Ready
+        else -> SignerCardTone.Default
+    }
+    val statusLabel = when {
+        state?.isUnavailable == true -> "Signer unavailable"
+        state?.isFailed == true -> "Connection failed"
+        state?.isAwaitingApproval == true -> "Waiting for approval…"
+        state?.isReconnecting == true -> "Reconnecting…"
+        isReady -> "Connected"
+        else -> null
+    }
+    return SignerCardUi(tone = tone, statusLabel = statusLabel, showSpinner = isInProgress)
+}
 
 // ── NostrLoginBlock ───────────────────────────────────────────────────────────
 
@@ -182,24 +224,14 @@ private fun SignerCard(
     signerState: LoginBlockSignerState?,
     onClick: () -> Unit,
 ) {
-    val isInProgress = signerState?.isAwaitingApproval == true || signerState?.isReconnecting == true
-    val isDegraded = signerState?.isFailed == true || signerState?.isUnavailable == true
-    val isReady = signerState?.isReady == true
+    // ONE render rule — the same pure function the unit tests assert on.
+    val ui = signerCardUi(signerState)
 
-    val borderColor: Color = when {
-        isDegraded -> MaterialTheme.colorScheme.error
-        isInProgress -> Color(0xFFF59E0B) // amber-400
-        isReady -> Color(0xFF22C55E) // green-500
-        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-    }
-
-    val statusLabel: String? = when {
-        signerState?.isUnavailable == true -> "Signer unavailable"
-        signerState?.isFailed == true -> "Connection failed"
-        signerState?.isAwaitingApproval == true -> "Waiting for approval…"
-        signerState?.isReconnecting == true -> "Reconnecting…"
-        isReady -> "Connected"
-        else -> null
+    val borderColor: Color = when (ui.tone) {
+        SignerCardTone.Degraded -> MaterialTheme.colorScheme.error
+        SignerCardTone.InProgress -> Color(0xFFF59E0B) // amber-400
+        SignerCardTone.Ready -> Color(0xFF22C55E) // green-500
+        SignerCardTone.Default -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
     }
 
     OutlinedCard(
@@ -243,19 +275,19 @@ private fun SignerCard(
                     ),
                 )
                 Text(
-                    text = statusLabel ?: "Sign in with ${signer.displayName}",
+                    text = ui.statusLabel ?: "Sign in with ${signer.displayName}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = when {
-                        isDegraded -> MaterialTheme.colorScheme.error
-                        isInProgress -> Color(0xFFF59E0B)
-                        isReady -> Color(0xFF22C55E)
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    color = when (ui.tone) {
+                        SignerCardTone.Degraded -> MaterialTheme.colorScheme.error
+                        SignerCardTone.InProgress -> Color(0xFFF59E0B)
+                        SignerCardTone.Ready -> Color(0xFF22C55E)
+                        SignerCardTone.Default -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
             }
 
             // Trailing: spinner when pending, chevron otherwise.
-            if (isInProgress) {
+            if (ui.showSpinner) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(18.dp),
                     color = Color(0xFFF59E0B),

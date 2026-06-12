@@ -209,6 +209,35 @@ class KernelBridge {
     }
 
     /**
+     * ADR-0048 Stage 2 — begin a NIP-55 sign-in routed to `signerPackage`
+     * (null = let the OS resolver pick). Rust builds the `get_public_key` +
+     * permission-batch request and dispatches it through the capability
+     * socket; the request surfaces on [nextSignerRequest].
+     */
+    fun signInNip55(signerPackage: String?) {
+        if (handle != 0L) nativeSignInNip55(handle, signerPackage)
+    }
+
+    /**
+     * ADR-0048 Stage 2 — blocking timed drain of the outbound NIP-55
+     * capability-request channel (the signer twin of [nextUpdate]):
+     * * `null` — idle tick; loop back in.
+     * * non-null — one `ExternalSignerRequest` JSON for
+     *   `ExternalSignerCapabilityBridge.handleJson`.
+     * * throws [IllegalStateException] — channel closed; STOP polling.
+     */
+    fun nextSignerRequest(): String? =
+        if (handle != 0L) nativeNextSignerRequest(handle) else null
+
+    /**
+     * ADR-0048 Stage 2 — report a raw `ExternalSignerResponse` JSON back to
+     * the Rust NIP-55 driver (D7: verbatim, Kotlin decides nothing).
+     */
+    fun deliverSignerResponse(responseJson: String) {
+        if (handle != 0L) nativeDeliverSignerResponse(handle, responseJson)
+    }
+
+    /**
      * Generate a fresh `nostrconnect://` URI. Rust chooses relay/session
      * details; Android supplies only optional platform callback information.
      */
@@ -314,6 +343,9 @@ class KernelBridge {
     private external fun nativeSignInNsec(handle: Long, secret: String)
     private external fun nativeSignInBunker(handle: Long, uri: String)
     private external fun nativeCancelBunkerHandshake(handle: Long)
+    private external fun nativeSignInNip55(handle: Long, signerPackage: String?)
+    private external fun nativeNextSignerRequest(handle: Long): String?
+    private external fun nativeDeliverSignerResponse(handle: Long, responseJson: String)
     private external fun nativeNostrConnectUri(handle: Long, relayUrl: String?, callbackScheme: String?): String?
     private external fun nativeSwitchAccount(handle: Long, pubkey: String)
     private external fun nativeRemoveAccount(handle: Long, pubkey: String)

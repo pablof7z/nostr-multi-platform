@@ -29,6 +29,7 @@ import org.nmp.android.ui.DiagnosticsScreen
 import org.nmp.android.ui.DmScreen
 import org.nmp.android.ui.GroupsScreen
 import org.nmp.android.ui.RelayScreen
+import org.nmp.android.ui.SignInAmberDelegate
 import org.nmp.android.ui.SignInScreen
 import org.nmp.android.ui.TimelineScreen
 import org.nmp.android.ui.WalletScreen
@@ -40,15 +41,30 @@ import java.io.File
  * Chirp's shared default relays, and the Timeline tab explicitly opens the
  * Rust-owned timeline view.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), SignInAmberDelegate {
     private val model: KernelModel by viewModels()
+
+    /**
+     * ADR-0048 Stage 2 — the D7 host adapter for the `external_signer`
+     * capability. Owns the Activity Result launcher (must be registered in
+     * `onCreate`, before first `onStart`); raw results route back to Rust
+     * via `KernelModel.deliverSignerResponse`.
+     */
+    private lateinit var signerBridge: ExternalSignerCapabilityBridge
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        signerBridge = ExternalSignerCapabilityBridge(this) { responseJson ->
+            model.deliverSignerResponse(responseJson)
+        }
+        signerBridge.register()
+        model.registerExternalSignerHandler { requestJson ->
+            signerBridge.handleJson(requestJson)
+        }
         model.start(storagePath = kernelStoragePath())
         setContent {
             MaterialTheme {
-                RootTabs(model)
+                RootTabs(model, amberDelegate = this)
             }
         }
     }
@@ -64,6 +80,17 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
+    override fun onDestroy() {
+        model.unregisterExternalSignerHandler()
+        signerBridge.unregister()
+        super.onDestroy()
+    }
+
+    /** [SignInAmberDelegate] — user tapped a detected signer card. */
+    override fun signInWithAmber(signer: NostrSignerInfo) {
+        model.signInWithAmber(signer)
+    }
+
     private fun kernelStoragePath(): String? {
         val dir = File(filesDir, "NMP")
         return if (dir.exists() || dir.mkdirs()) dir.absolutePath else null
@@ -71,7 +98,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun RootTabs(model: KernelModel) {
+private fun RootTabs(model: KernelModel, amberDelegate: SignInAmberDelegate? = null) {
     var tab by remember { mutableIntStateOf(0) }
     Scaffold(
         bottomBar = {
@@ -126,7 +153,7 @@ private fun RootTabs(model: KernelModel) {
             1 -> DmScreen(model, Modifier.padding(inner))
             2 -> GroupsScreen(model, Modifier.padding(inner))
             3 -> RelayScreen(model, Modifier.padding(inner))
-            4 -> SignInScreen(model, modifier = Modifier.padding(inner))
+            4 -> SignInScreen(model, amberDelegate = amberDelegate, modifier = Modifier.padding(inner))
             5 -> WalletScreen(model, Modifier.padding(inner))
             else -> DiagnosticsScreen(model, Modifier.padding(inner))
         }

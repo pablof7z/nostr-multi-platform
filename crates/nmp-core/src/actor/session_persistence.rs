@@ -96,13 +96,14 @@ pub(super) fn restore_active_session(
             &identity_id,
         );
     }
-    if kind == "nip46" {
-        return restore_remote_bunker(
+    if kind == "nip46" || kind == "nip55" {
+        return restore_remote_signer(
             identity,
             kernel,
             capability_callback,
             capability_work_tx,
             &identity_id,
+            &kind,
         );
     }
     enqueue_forget_active_pointer(capability_work_tx, ACTIVE_ACCOUNT_ID);
@@ -154,12 +155,13 @@ fn restore_local(
     outbound
 }
 
-fn restore_remote_bunker(
+fn restore_remote_signer(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     capability_callback: &CapabilityCallbackSlot,
     capability_work_tx: &CapabilityWorkSender,
     identity_id: &str,
+    kind: &str,
 ) -> Vec<OutboundMessage> {
     let payload = run_keyring(
         capability_callback,
@@ -177,7 +179,14 @@ fn restore_remote_bunker(
         enqueue_forget_active_pointer(capability_work_tx, identity_id);
         return Vec::new();
     };
-    commands::restore_bunker_session(identity, kernel, &payload);
+    // Both restores route through opaque payloads + registered hooks (D0):
+    // NIP-46 re-handshakes via the broker; NIP-55 reconstructs synchronously
+    // via the external-signer driver (ADR-0048 D4 — pubkey-only payload).
+    if kind == "nip55" {
+        commands::restore_nip55_session(identity, kernel, &payload);
+    } else {
+        commands::restore_bunker_session(identity, kernel, &payload);
+    }
     Vec::new()
 }
 
@@ -204,7 +213,9 @@ pub(super) fn enqueue_persist_current_active_session(
     };
     match identity.active_signer_kind() {
         Some("local") => enqueue_persist_active_local(identity, capability_work_tx, &identity_id),
-        Some("nip46") => enqueue_persist_active_pointer(capability_work_tx, &identity_id, "nip46"),
+        Some(kind @ ("nip46" | "nip55")) => {
+            enqueue_persist_active_pointer(capability_work_tx, &identity_id, kind)
+        }
         _ => enqueue_forget_active_pointer(capability_work_tx, ACTIVE_ACCOUNT_ID),
     }
 }

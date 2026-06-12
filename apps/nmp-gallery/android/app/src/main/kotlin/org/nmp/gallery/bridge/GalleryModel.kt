@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -17,6 +18,8 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import org.nmp.gallery.gallery.REGISTRY_SECTIONS
 import org.nmp.gallery.gallery.RegistrySection
 import org.nmp.gallery.gallery.parseRegistryJson
+import org.nmp.gallery.registry.LoginBlockSignerState
+import org.nmp.gallery.registry.NostrSignerInfo
 import org.nmp.gallery.registry.ProfileWire
 
 /**
@@ -49,17 +52,61 @@ class GalleryModel : ViewModel() {
     private val _claimedEvents = MutableStateFlow<Map<String, ClaimedEventWire>>(emptyMap())
     val claimedEvents: StateFlow<Map<String, ClaimedEventWire>> = _claimedEvents.asStateFlow()
 
+    /**
+     * ADR-0048 D6 — unified remote-signer health (`projections.signer_state`).
+     * Null while no remote-signer session is active. Drives the login-block
+     * showcase's inline status indicators.
+     */
+    private val _signerState = MutableStateFlow<LoginBlockSignerState?>(null)
+    val signerState: StateFlow<LoginBlockSignerState?> = _signerState.asStateFlow()
+
     private val json: Json = Json {
         ignoreUnknownKeys = true
         isLenient = true
     }
 
     private var pollJob: Job? = null
+    private var signerJob: Job? = null
+
+    /**
+     * ADR-0048 Stage 2 — the activity-owned NIP-55 host adapter
+     * (`ExternalSignerCapabilityBridge.handleJson`). The signer drain loop
+     * hands each Rust-built request to this handler on Main (Intent launches
+     * require the main thread). Null = no activity registered; the request
+     * is dropped and degrades to a Rust-side timeout (D6).
+     */
+    @Volatile
+    private var externalSignerHandler: ((requestJson: String) -> Unit)? = null
 
     init {
         bridge.galleryRegister()
         bridge.start(eventsPerSec = 0, visibleLimit = 80, emitHz = 4)
         startPolling()
+        startSignerDrain()
+    }
+
+    /** Register the activity-owned NIP-55 request handler. */
+    fun registerExternalSignerHandler(handler: (requestJson: String) -> Unit) {
+        externalSignerHandler = handler
+    }
+
+    /** Unregister on activity teardown (the launcher is being released). */
+    fun unregisterExternalSignerHandler() {
+        externalSignerHandler = null
+    }
+
+    /**
+     * Begin a NIP-55 sign-in with the given detected signer. Kotlin reports
+     * user intent only; Rust builds the `get_public_key` + permission-batch
+     * request (D7) and routes it back through the registered bridge.
+     */
+    fun signInWithAmber(signer: NostrSignerInfo) {
+        bridge.signInNip55(signer.contentAuthority)
+    }
+
+    /** Route a raw `ExternalSignerResponse` JSON back to the Rust driver. */
+    fun deliverSignerResponse(responseJson: String) {
+        bridge.deliverSignerResponse(responseJson)
     }
 
     /**
@@ -102,6 +149,33 @@ class GalleryModel : ViewModel() {
                     break
                 } ?: continue
                 applyFrame(raw)
+            }
+        }
+    }
+
+    /**
+     * ADR-0048 Stage 2 — drain Rust-built NIP-55 capability requests and
+     * hand them to the activity-registered bridge on Main. Same blocking
+     * timed-drain shape as [startPolling] (D8 — no busy polling).
+     */
+    private fun startSignerDrain() {
+        signerJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                val requestJson = try {
+                    bridge.nextSignerRequest(timeoutMs = 30_000L)
+                } catch (e: IllegalStateException) {
+                    android.util.Log.i("GalleryModel", "signer channel closed: ${e.message}")
+                    break
+                } ?: continue
+                val handler = externalSignerHandler
+                if (handler == null) {
+                    android.util.Log.w(
+                        "GalleryModel",
+                        "NIP-55 request dropped: no capability bridge registered",
+                    )
+                    continue
+                }
+                withContext(Dispatchers.Main) { handler(requestJson) }
             }
         }
     }
@@ -152,11 +226,19 @@ class GalleryModel : ViewModel() {
         if (events.isNotEmpty()) {
             _claimedEvents.value = _claimedEvents.value + events
         }
+
+        // ADR-0048 D6 — the unified remote-signer health slot. Absent =
+        // no remote-signer session active (clears any prior state).
+        _signerState.value = (projections["signer_state"] as? JsonObject)?.let { el ->
+            runCatching { json.decodeFromJsonElement<LoginBlockSignerState>(el) }.getOrNull()
+        }
     }
 
     override fun onCleared() {
         pollJob?.cancel()
         pollJob = null
+        signerJob?.cancel()
+        signerJob = null
         bridge.stop()
         bridge.free()
         super.onCleared()
