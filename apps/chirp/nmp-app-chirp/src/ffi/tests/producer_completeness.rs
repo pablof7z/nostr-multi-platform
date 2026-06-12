@@ -47,7 +47,13 @@ fn every_generic_projection_key_has_a_typed_sidecar() {
     assert!(!app.is_null());
 
     let viewer = CString::new("aa".repeat(32)).unwrap();
-    let handle = nmp_app_chirp_register(app, viewer.as_ptr());
+    let mut handle = std::ptr::null_mut();
+    let status = nmp_app_chirp_register(app, viewer.as_ptr(), &mut handle);
+    assert_eq!(
+        status,
+        super::super::NmpRegisterStatus::Ok as u32,
+        "register with valid viewer_pubkey must succeed"
+    );
     assert!(!handle.is_null());
 
     // Install every projection-bearing subsystem so the shared registry holds
