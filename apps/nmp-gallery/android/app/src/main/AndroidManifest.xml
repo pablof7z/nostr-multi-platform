@@ -21,6 +21,13 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="nostrsigner" />
         </intent>
+        <!-- Primal (net.primal.android) registers the `primal://` scheme and
+             supports NIP-55 sign-in. Without this entry PackageManager returns
+             an empty result on Android 11+ even when Primal is installed. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="primal" />
+        </intent>
     </queries>
 
     <application
