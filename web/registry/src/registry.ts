@@ -9,6 +9,7 @@
 
 import type { Component, Section } from "./registry/types";
 import { contentComponents } from "./registry/content";
+import { authComponents } from "./registry/auth";
 import { userComponents } from "./registry/user";
 import { relayComponents } from "./registry/relay";
 import { embedComponents } from "./registry/embeds";
@@ -18,6 +19,7 @@ export { PLATFORM_LABELS, PLATFORM_ORDER } from "./registry/types";
 
 export const COMPONENTS: Component[] = [
   ...contentComponents,
+  ...authComponents,
   ...userComponents,
   ...relayComponents,
   ...embedComponents,
@@ -25,6 +27,7 @@ export const COMPONENTS: Component[] = [
 
 export const SECTIONS: Section[] = [
   { label: "Content", components: contentComponents },
+  { label: "Auth", components: authComponents },
   { label: "User", components: userComponents },
   { label: "Relay", components: relayComponents },
   { label: "Embeds & Kinds", components: embedComponents },

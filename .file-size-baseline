@@ -22,7 +22,6 @@ apps/nmp-gallery/tui/src/main.rs	748
 apps/nmp-gallery/tui/src/render.rs	532
 crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	617
 crates/nmp-cli/registry/compose/login-block/ExternalSignerCapabilityBridge.kt	529
-crates/nmp-cli/registry/registry.toml	659
 crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	826
 crates/nmp-cli/tests/component.rs	528
 crates/nmp-codegen/src/swift_projections_registry.rs	921
@@ -133,4 +132,4 @@ ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift	961
 ios/Chirp/ChirpTests/OpFeedDecoderTests.swift	552
 ios/Chirp/ChirpUITests/ChirpUITests.swift	611
 web/chirp/src/nmp/runtime.test.ts	533
-web/registry/src/registry/content.ts	589
+web/registry/src/registry/content.ts	521

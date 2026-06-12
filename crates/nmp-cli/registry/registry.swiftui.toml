@@ -1,0 +1,253 @@
+# Split from registry.toml by platform target (file-size rule: 500 LOC hard
+# ceiling). This file holds ONLY [[components]] blocks; schema_version and
+# registry_id live in registry.toml. The loader merges registry.toml with
+# every registry.<target>.toml in this directory (see REGISTRY_SECTION_FILES).
+
+[[components]]
+id = "swiftui/content-core"
+version = "0.2.0"
+target = "swiftui"
+description = "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components."
+[[components.files]]
+source = "swiftui/content-core/NostrContentRenderer.swift"
+target = "Components/NostrContent/NostrContentRenderer.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-core/ContentTreeWire.swift"
+target = "Components/NostrContent/ContentTreeWire.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/render-identity"
+version = "0.1.0"
+target = "swiftui"
+description = "RenderIdentifiable protocol and EquatableRow helper for SwiftUI row equatability optimization."
+[[components.files]]
+source = "swiftui/render-identity/RenderIdentifiable.swift"
+target = "Components/SwiftUI/RenderIdentifiable.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-minimal"
+version = "0.2.0"
+target = "swiftui"
+description = "Minimal SwiftUI Nostr content renderer with inline text, mentions, links, and hashtags."
+dependencies = ["swiftui/content-core", "swiftui/render-identity"]
+[[components.files]]
+source = "swiftui/content-minimal/NostrMinimalContentView.swift"
+target = "Components/NostrContent/NostrMinimalContentView.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift"
+target = "Components/NostrContent/Examples/NostrMinimalContentPreview.swift"
+role = "example"
+
+[[components]]
+id = "swiftui/content-mention-chip"
+version = "0.1.0"
+target = "swiftui"
+description = "Tappable profile mention chip with optional avatar and identicon fallback."
+dependencies = ["swiftui/content-core"]
+[[components.files]]
+source = "swiftui/content-mention-chip/NostrMentionChip.swift"
+target = "Components/NostrContent/NostrMentionChip.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-media-grid"
+version = "0.1.0"
+target = "swiftui"
+description = "Photo-style media grid with 1/2/3/4+ layouts and +N more overlay."
+dependencies = ["swiftui/content-core"]
+[[components.files]]
+source = "swiftui/content-media-grid/NostrMediaGrid.swift"
+target = "Components/NostrContent/NostrMediaGrid.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-quote-card"
+version = "0.1.1"
+target = "swiftui"
+description = "Reusable quote/embed card with collapsed, compact, rich, and missing variants."
+dependencies = ["swiftui/content-core"]
+[[components.files]]
+source = "swiftui/content-quote-card/NostrQuoteCard.swift"
+target = "Components/NostrContent/NostrQuoteCard.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-view"
+version = "0.1.1"
+target = "swiftui"
+description = "Full SwiftUI ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, event refs, and typed placeholders."
+dependencies = [
+    "swiftui/content-core",
+    "swiftui/content-media-grid",
+    "swiftui/content-quote-card",
+]
+[[components.files]]
+source = "swiftui/content-view/NostrContentView.swift"
+target = "Components/NostrContent/NostrContentView.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-view/NostrContentGrouping.swift"
+target = "Components/NostrContent/NostrContentGrouping.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-view/Examples/NostrContentViewPreview.swift"
+target = "Components/NostrContent/Examples/NostrContentViewPreview.swift"
+role = "example"
+
+[[components]]
+id = "swiftui/content-kind-registry"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI kind-dispatch registry for embedded Nostr events, including the embed chrome container and embedded-event view."
+dependencies = [
+    "swiftui/content-core",
+    "swiftui/user-avatar",
+]
+[[components.files]]
+source = "swiftui/content-kind-registry/EmbedKindProjection.swift"
+target = "Components/NostrContent/EmbedKindProjection.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-kind-registry/EmbedChromeContainer.swift"
+target = "Components/NostrContent/EmbedChromeContainer.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-kind-registry/NostrKindRegistry.swift"
+target = "Components/NostrContent/NostrKindRegistry.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/content-kind-registry/EmbeddedEvent.swift"
+target = "Components/NostrContent/EmbeddedEvent.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-kind-30023"
+version = "0.1.0"
+target = "swiftui"
+description = "Long-form article (NIP-23, kind:30023) embed renderer — hero image, title, summary, author chip."
+dependencies = [
+    "swiftui/content-kind-registry",
+    "swiftui/user-avatar",
+]
+[[components.files]]
+source = "swiftui/content-kind-30023/ArticleEmbed.swift"
+target = "Components/NostrContent/ArticleEmbed.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/content-kind-9802"
+version = "0.1.0"
+target = "swiftui"
+description = "Highlight (NIP-84, kind:9802) embed renderer — pull-quote, optional context line, source footer."
+dependencies = ["swiftui/content-kind-registry"]
+[[components.files]]
+source = "swiftui/content-kind-9802/HighlightEmbed.swift"
+target = "Components/NostrContent/HighlightEmbed.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/login-block"
+version = "0.1.0"
+target = "swiftui"
+description = "Login UI with local Nostr signer detection (Amber, Primal, nostrconnect) and manual key entry fallback."
+dependencies = ["swiftui/content-core"]
+[[components.files]]
+source = "swiftui/login-block/NostrLoginBlock.swift"
+target = "Components/Auth/NostrLoginBlock.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/relay-list"
+version = "0.2.0"
+target = "swiftui"
+description = "Relay list component showing relay URLs with role badges and connection status dots."
+dependencies = ["swiftui/render-identity"]
+[[components.files]]
+source = "swiftui/relay-list/NostrRelayList.swift"
+target = "Components/NostrRelays/NostrRelayList.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/relay-list/Examples/NostrRelayListPreview.swift"
+target = "Components/NostrRelays/Examples/NostrRelayListPreview.swift"
+role = "example"
+# -----------------------------------------------------------------------------
+# SwiftUI user profile components. `swiftui/user-avatar` owns `ProfileWire`,
+# so the smaller name / NIP-05 / npub / card components all depend on it.
+# -----------------------------------------------------------------------------
+
+[[components]]
+id = "swiftui/user-avatar"
+version = "0.1.0"
+target = "swiftui"
+description = "Reference-first Nostr avatar that claims its own profile projection and falls back to a deterministic identicon."
+[[components.files]]
+source = "swiftui/user-avatar/ProfileWire.swift"
+target = "Components/NostrUser/ProfileWire.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/user-avatar/NostrProfileHost.swift"
+target = "Components/NostrUser/NostrProfileHost.swift"
+role = "source"
+[[components.files]]
+source = "swiftui/user-avatar/NostrAvatar.swift"
+target = "Components/NostrUser/NostrAvatar.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/user-name"
+version = "0.1.0"
+target = "swiftui"
+description = "Inline SwiftUI profile display-name text with Rust-formatted npub fallback."
+dependencies = ["swiftui/user-avatar"]
+[[components.files]]
+source = "swiftui/user-name/NostrProfileName.swift"
+target = "Components/NostrUser/NostrProfileName.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/user-nip05"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI NIP-05 verified identity badge that hides itself when no identifier is present."
+dependencies = ["swiftui/user-avatar"]
+[[components.files]]
+source = "swiftui/user-nip05/NostrNip05Badge.swift"
+target = "Components/NostrUser/NostrNip05Badge.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/user-npub"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI npub chip that displays the Rust-truncated npub and copies the full npub to the clipboard."
+dependencies = ["swiftui/user-avatar"]
+[[components.files]]
+source = "swiftui/user-npub/NostrNpubChip.swift"
+target = "Components/NostrUser/NostrNpubChip.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/user-card"
+version = "0.1.0"
+target = "swiftui"
+description = "Compact SwiftUI author card composed from avatar, profile name, and optional NIP-05 badge."
+dependencies = [
+    "swiftui/user-avatar",
+    "swiftui/user-name",
+    "swiftui/user-nip05",
+]
+[[components.files]]
+source = "swiftui/user-card/NostrUserCard.swift"
+target = "Components/NostrUser/NostrUserCard.swift"
+role = "source"
+# -----------------------------------------------------------------------------
+# Android / Jetpack Compose components (M16-C4). Mirror the SwiftUI components
+# above in behavior and wire format. Install target paths mirror the SwiftUI
+# layout (Components/NostrContent/…) so cross-platform projects keep a
+# consistent local file tree; users on a strict Android Gradle layout can
+# move them after install.
+# -----------------------------------------------------------------------------

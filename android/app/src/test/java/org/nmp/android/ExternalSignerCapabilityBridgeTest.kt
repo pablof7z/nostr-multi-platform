@@ -165,6 +165,72 @@ class ExternalSignerCapabilityBridgeTest {
         assertFalse(shouldUseContentResolver(req))
     }
 
+    // ── buildAmberPermissionsJsonInternal — Stage-4 regression ───────────
+
+    @Test
+    fun buildAmberPermissionsJson_signEvent_kindSplit() {
+        val result = buildAmberPermissionsJsonInternal(listOf(Nip55Permission("sign_event:1")))
+        assertEquals("""[{"type":"sign_event","kind":1}]""", result)
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_noColonMethod() {
+        val result = buildAmberPermissionsJsonInternal(listOf(Nip55Permission("nip44_encrypt")))
+        assertEquals("""[{"type":"nip44_encrypt"}]""", result)
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_multiplePermissions() {
+        val perms = listOf(
+            Nip55Permission("sign_event:1"),
+            Nip55Permission("nip44_encrypt"),
+            Nip55Permission("nip44_decrypt"),
+        )
+        val result = buildAmberPermissionsJsonInternal(perms)
+        assertEquals(
+            """[{"type":"sign_event","kind":1},{"type":"nip44_encrypt"},{"type":"nip44_decrypt"}]""",
+            result,
+        )
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_emptyList() {
+        val result = buildAmberPermissionsJsonInternal(emptyList())
+        assertEquals("[]", result)
+    }
+
+    // ── selectAmberResultValue — Stage-4 sign_event regression ───────────
+
+    @Test
+    fun signEventPrefersEventExtra() {
+        val signedJson = """{"id":"abc","pubkey":"def","sig":"012"}"""
+        assertEquals(
+            signedJson,
+            selectAmberResultValue("sign_event", eventExtra = signedJson, resultExtra = "sighex"),
+        )
+    }
+
+    @Test
+    fun signEventFallsBackToResultWhenEventBlank() {
+        assertEquals(
+            "sighex",
+            selectAmberResultValue("sign_event", eventExtra = "", resultExtra = "sighex"),
+        )
+    }
+
+    @Test
+    fun getPublicKeyUsesResultExtra() {
+        assertEquals(
+            "pubkeyhex",
+            selectAmberResultValue("get_public_key", eventExtra = null, resultExtra = "pubkeyhex"),
+        )
+    }
+
+    @Test
+    fun missingExtrasYieldNull() {
+        assertNull(selectAmberResultValue("sign_event", eventExtra = null, resultExtra = null))
+    }
+
     // ── KNOWN_NOSTR_SIGNERS ───────────────────────────────────────────────
 
     @Test
