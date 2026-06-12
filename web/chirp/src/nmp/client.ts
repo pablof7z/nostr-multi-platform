@@ -8,7 +8,7 @@ import {
   type ChirpAction,
 } from "./protocol";
 import type { RuntimeCommand } from "./actions";
-import { decodeUpdateFrameBytes, SNAPSHOT_SCHEMA_VERSION, UpdateFrameDecodeError } from "./updateFrame";
+import { decodeUpdateFrameBytes, SNAPSHOT_SCHEMA_VERSION, UpdateFrameDecodeError, type DecodedRelayStatus } from "./updateFrame";
 
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
@@ -21,6 +21,11 @@ export type RuntimeSnapshot = {
   events: WorkerEvent[];
   latestUpdate?: unknown;
   latestUpdateBytes?: Uint8Array;
+  /** Per-relay status rows decoded from the Tier-3 relay_statuses field of the
+   *  most recent SnapshotFrame. Populated after the first successful decode;
+   *  undefined before any snapshot arrives. Empty array means the kernel
+   *  has no relays configured yet. */
+  latestRelayStatuses?: DecodedRelayStatus[];
 };
 
 export type RuntimeConnection = {
@@ -68,6 +73,7 @@ abstract class BaseClient implements NmpClient {
   private events: WorkerEvent[] = [];
   private latestUpdate: unknown;
   private latestUpdateBytes: Uint8Array | undefined;
+  private latestRelayStatuses: DecodedRelayStatus[] | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -80,6 +86,7 @@ abstract class BaseClient implements NmpClient {
       events: [...this.events],
       latestUpdate: this.latestUpdate,
       latestUpdateBytes: this.latestUpdateBytes,
+      latestRelayStatuses: this.latestRelayStatuses,
     };
   }
 
@@ -99,24 +106,21 @@ abstract class BaseClient implements NmpClient {
       try {
         const decoded = decodeUpdateFrameBytes(bytes);
         if (decoded.type === "snapshot") {
-          // Mirror iOS (KernelBridge.swift:525-528): a mismatch on either the
-          // frame envelope or the inner payload `schema_version` means the
-          // kernel's wire layout moved under us; binding renamed/retyped
-          // fields would silently misrender. Keep the last good snapshot so
-          // the UI degrades without flashing empty.
-          const payloadVersion =
-            decoded.payload &&
-            typeof decoded.payload === "object" &&
-            !Array.isArray(decoded.payload)
-              ? (decoded.payload as Record<string, unknown>).schema_version
-              : undefined;
-          if (
-            decoded.schemaVersion !== SNAPSHOT_SCHEMA_VERSION ||
-            payloadVersion !== SNAPSHOT_SCHEMA_VERSION
-          ) {
+          // Envelope schema version mismatch: the kernel's wire layout moved
+          // under us. Mirror iOS (KernelBridge.swift:525-528): keep the last
+          // good snapshot so the UI degrades without flashing empty.
+          if (decoded.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
             this.status = { degraded: "protocol_mismatch" };
           } else {
-            this.latestUpdate = { t: "snapshot", v: decoded.payload };
+            // Tier-3 relay statuses: surfaced directly from the FlatBuffers
+            // envelope without going through the typed-projection sidecar.
+            this.latestRelayStatuses = decoded.relayStatuses;
+            // running() mirrors the kernel's run-state; prefer the explicit
+            // Tier-3 field over waiting for a separate runtime_status event
+            // so the UI reflects live kernel state on every frame.
+            if (decoded.running) {
+              this.status = "running";
+            }
           }
         } else {
           this.status = { degraded: "browser_actor_driver_missing" };

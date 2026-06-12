@@ -24,10 +24,8 @@ export function RuntimePanel(props: {
       </Show>
       <section class="runtime-card connection-card">
         <div class="card-heading"><Settings size={19} /><h2>Connection</h2></div>
-        {/* nmp-runtime-status testid is intentionally unasserted in boot.spec.ts
-            pre-bindings-regen: decodeUpdateFrameBytes throws on zeroed payload
-            so status shows degraded even when real wasm runs. Post-#1209 the
-            Playwright assertion will check for a non-degraded value here. */}
+        {/* nmp-runtime-status testid: asserted by boot.spec.ts post-#1209
+            (TS bindings regenerated, decode reads Tier-3 running field). */}
         <StatusLine icon={<Signal size={17} />} label="Runtime" value={labelRuntimeStatus(props.snapshot.status)} testId="nmp-runtime-status" />
         <StatusLine icon={<Database size={17} />} label="Database" value={runtimeConnection.databaseName} />
         <StatusLine
@@ -43,7 +41,7 @@ export function RuntimePanel(props: {
       </section>
       <section class="runtime-card">
         <div class="card-heading"><Radio size={18} /><h2>Relays</h2></div>
-        <Show when={props.feature.relayDiagnostics.length > 0} fallback={<p>Waiting for Rust relay diagnostics.</p>}>
+        <Show when={props.feature.relayDiagnostics.length > 0} fallback={<p>Waiting for relay data.</p>}>
           <For each={props.feature.relayDiagnostics}>
             {(relay) => <div class="relay-row" data-testid="relay-row"><span>{relay.url}</span><small>{relay.role} · {relay.status}</small></div>}
           </For>

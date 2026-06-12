@@ -21,7 +21,18 @@ export default function App() {
   const unsubscribe = client.subscribe(setSnapshot);
   const kernel = createMemo(() => kernelSnapshotFromEnvelope(snapshot().latestUpdate));
   const chirp = createMemo(() => chirpTimelineFromEnvelope(snapshot().latestUpdate));
-  const feature = createMemo(() => featureSnapshotFromEnvelope(snapshot().latestUpdate));
+  const feature = createMemo(() => {
+    const snap = snapshot();
+    const base = featureSnapshotFromEnvelope(snap.latestUpdate);
+    // Tier-3 relay_statuses are decoded directly from the FlatBuffers
+    // envelope (PR-B: the deprecated payload:Value is zeroed). Prefer them
+    // over the empty relay_diagnostics the old Value-tree path would yield.
+    const tierThreeRelays = snap.latestRelayStatuses;
+    if (tierThreeRelays && tierThreeRelays.length > 0) {
+      return { ...base, relayDiagnostics: tierThreeRelays };
+    }
+    return base;
+  });
   const rows = createMemo(() => displayRows(kernel(), chirp()));
 
   onCleanup(unsubscribe);

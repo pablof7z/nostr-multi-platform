@@ -1,13 +1,11 @@
 import * as flatbuffers from "flatbuffers";
 
-import { FrameKind, UpdateFrame, Value, ValueKind } from "./generated/nmp/transport";
+import { FrameKind, RelayStatus, UpdateFrame } from "./generated/nmp/transport";
 
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 
 export type UpdateFrameDecodeErrorKind =
   | "invalid_flatbuffer"
-  | "invalid_value"
-  | "missing_snapshot_payload"
   | "missing_panic_payload"
   | "unexpected_panic_frame"
   | "schema_version_mismatch";
@@ -22,8 +20,25 @@ export class UpdateFrameDecodeError extends Error {
   }
 }
 
+/** Relay status decoded from the SnapshotFrame Tier-3 `relay_statuses` field. */
+export type DecodedRelayStatus = {
+  /** WebSocket URL of the relay, e.g. `wss://relay.example`. */
+  url: string;
+  /** Role string as emitted by the kernel, e.g. `"both"`, `"read"`, `"write"`. */
+  role: string;
+  /** Connection state string, e.g. `"Connected"`, `"Connecting"`, `"Disconnected"`. */
+  status: string;
+};
+
 export type DecodedUpdateFrame =
-  | { type: "snapshot"; schemaVersion: number; payload: unknown }
+  | {
+      type: "snapshot";
+      schemaVersion: number;
+      /** True when the kernel's run state is Running. */
+      running: boolean;
+      /** Per-relay status rows decoded from the Tier-3 `relay_statuses` field. */
+      relayStatuses: DecodedRelayStatus[];
+    }
   | { type: "panic"; message: string };
 
 export function decodeUpdateFrameBytes(bytes: Uint8Array): DecodedUpdateFrame {
@@ -43,21 +58,26 @@ export function decodeUpdateFrameBytes(bytes: Uint8Array): DecodedUpdateFrame {
       const snapshot = frame.snapshot();
       if (!snapshot) {
         throw new UpdateFrameDecodeError(
-          "missing_snapshot_payload",
-          "snapshot frame missing payload",
+          "invalid_flatbuffer",
+          "snapshot frame table is absent",
         );
       }
-      const payload = snapshot.payload();
-      if (!payload) {
-        throw new UpdateFrameDecodeError(
-          "missing_snapshot_payload",
-          "snapshot frame missing payload",
-        );
+      const relayStatuses: DecodedRelayStatus[] = [];
+      for (let i = 0; i < snapshot.relayStatusesLength(); i += 1) {
+        const relay = snapshot.relayStatuses(i, new RelayStatus());
+        if (relay) {
+          relayStatuses.push({
+            url: relay.relayUrl() ?? "",
+            role: relay.role() ?? "",
+            status: relay.connection() ?? "",
+          });
+        }
       }
       return {
         type: "snapshot",
         schemaVersion: snapshot.schemaVersion(),
-        payload: valueFromFlatBuffer(payload),
+        running: snapshot.running(),
+        relayStatuses,
       };
     }
     case FrameKind.Panic: {
@@ -83,101 +103,4 @@ export function decodeUpdateFrameBytes(bytes: Uint8Array): DecodedUpdateFrame {
         `unknown frame kind ${frame.kind()}`,
       );
   }
-}
-
-function valueFromFlatBuffer(value: Value): unknown {
-  switch (value.kind()) {
-    case ValueKind.Null:
-      return null;
-    case ValueKind.Bool:
-      return value.boolValue();
-    case ValueKind.Int:
-      return narrowBigInt(value.intValue());
-    case ValueKind.UInt:
-      return narrowBigInt(value.uintValue());
-    case ValueKind.Float: {
-      const float = value.floatValue();
-      if (!Number.isFinite(float)) {
-        throw new UpdateFrameDecodeError("invalid_value", "non-finite float value");
-      }
-      return float;
-    }
-    case ValueKind.String: {
-      const string = value.stringValue();
-      if (string === null) {
-        throw new UpdateFrameDecodeError(
-          "invalid_value",
-          "string value missing string_value",
-        );
-      }
-      return string;
-    }
-    case ValueKind.List:
-      return listFromFlatBuffer(value);
-    case ValueKind.Map:
-      return mapFromFlatBuffer(value);
-    default:
-      throw new UpdateFrameDecodeError(
-        "invalid_value",
-        `unknown value kind ${value.kind()}`,
-      );
-  }
-}
-
-function listFromFlatBuffer(value: Value): unknown[] {
-  const items: unknown[] = [];
-  for (let index = 0; index < value.listLength(); index += 1) {
-    const item = value.list(index);
-    if (!item) {
-      throw new UpdateFrameDecodeError(
-        "invalid_value",
-        `list item at index ${index} missing value`,
-      );
-    }
-    items.push(valueFromFlatBuffer(item));
-  }
-  return items;
-}
-
-function mapFromFlatBuffer(value: Value): Record<string, unknown> {
-  const record: Record<string, unknown> = {};
-  for (let index = 0; index < value.mapLength(); index += 1) {
-    const pair = value.map(index);
-    if (!pair) {
-      throw new UpdateFrameDecodeError(
-        "invalid_value",
-        `map pair at index ${index} missing pair`,
-      );
-    }
-    const key = pair.key();
-    if (key === null) {
-      throw new UpdateFrameDecodeError(
-        "invalid_value",
-        `map pair at index ${index} missing key`,
-      );
-    }
-    const nested = pair.value();
-    if (!nested) {
-      throw new UpdateFrameDecodeError(
-        "invalid_value",
-        `map pair at index ${index} missing value`,
-      );
-    }
-    record[key] = valueFromFlatBuffer(nested);
-  }
-  return record;
-}
-
-// Stay in `number` while the value fits IEEE-754 integer precision; promote
-// to BigInt only past 2^53 to preserve precision for u64 counters
-// (`bytes_rx`, ms-since-epoch) without forcing every small integer consumer
-// onto BigInt.
-function narrowBigInt(value: bigint): number | bigint {
-  if (
-    value >= BigInt(Number.MIN_SAFE_INTEGER) &&
-    value <= BigInt(Number.MAX_SAFE_INTEGER)
-  ) {
-    return Number(value);
-  }
-  return value;
 }

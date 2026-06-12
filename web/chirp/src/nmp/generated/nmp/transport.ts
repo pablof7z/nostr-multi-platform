@@ -3,9 +3,15 @@
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
 export { FrameKind } from './transport/frame-kind.js';
+export { LogicalInterestStatus } from './transport/logical-interest-status.js';
+export { Metrics } from './transport/metrics.js';
 export { Pair } from './transport/pair.js';
 export { PanicFrame } from './transport/panic-frame.js';
+export { RelayStatus } from './transport/relay-status.js';
 export { SnapshotFrame } from './transport/snapshot-frame.js';
+export { TypedPayload } from './transport/typed-payload.js';
+export { TypedProjection } from './transport/typed-projection.js';
 export { UpdateFrame } from './transport/update-frame.js';
 export { Value } from './transport/value.js';
 export { ValueKind } from './transport/value-kind.js';
+export { WireSubscriptionStatus } from './transport/wire-subscription-status.js';
