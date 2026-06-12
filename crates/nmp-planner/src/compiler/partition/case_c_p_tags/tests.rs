@@ -113,9 +113,9 @@ fn pd033c_p_tag_tailing_global_no_inbox_routes_to_bootstrap_content() {
     // Exactly one relay served the REQ — none of the other configured
     // relays may carry it (the gate is exclusive, not additive).
     assert_eq!(plan.per_relay.len(), 1);
-    assert!(plan.per_relay.get("wss://purplepag.es").is_none());
-    assert!(plan.per_relay.get("wss://user-read.example").is_none());
-    assert!(plan.per_relay.get("wss://user-app.example").is_none());
+    assert!(!plan.per_relay.contains_key("wss://purplepag.es"));
+    assert!(!plan.per_relay.contains_key("wss://user-read.example"));
+    assert!(!plan.per_relay.contains_key("wss://user-app.example"));
 }
 
 /// Once kind:10002 arrives for the tagged pubkey, the next recompile re-
@@ -170,7 +170,7 @@ fn pd033c_p_tag_routes_off_bootstrap_when_inbox_arrives() {
         "phase 2: real inbox carries the #p REQ once kind:10002 lands"
     );
     assert!(
-        after.per_relay.get("wss://bootstrap.example").is_none(),
+        !after.per_relay.contains_key("wss://bootstrap.example"),
         "phase 2: bootstrap lane MUST be retired when an inbox is cached \
          (gate evaluates false)"
     );
@@ -231,7 +231,7 @@ fn pd033c_p_tag_oneshot_does_not_trigger_gate() {
 
     let plan = compiler.compile(&[interest]).expect("compile");
     assert!(
-        plan.per_relay.get("wss://bootstrap.example").is_none(),
+        !plan.per_relay.contains_key("wss://bootstrap.example"),
         "OneShot + #p must NOT trigger the bootstrap inbox gate (the gate \
          is scoped to the Tailing self-zap-receipts shape)"
     );
@@ -267,7 +267,7 @@ fn pd033c_p_tag_account_scoped_does_not_trigger_gate() {
 
     let plan = compiler.compile(&[interest]).expect("compile");
     assert!(
-        plan.per_relay.get("wss://bootstrap.example").is_none(),
+        !plan.per_relay.contains_key("wss://bootstrap.example"),
         "Account-scoped #p must NOT divert to the bootstrap content lane"
     );
 }
@@ -344,14 +344,14 @@ fn pd033c_p_tag_partial_inbox_cache_does_not_trigger_gate() {
     let plan = compiler.compile(&[interest]).expect("compile");
     // Bob's inbox carries his #p shard via the regular Case C body.
     assert!(
-        plan.per_relay.get("wss://bob-read.example").is_some(),
+        plan.per_relay.contains_key("wss://bob-read.example"),
         "Bob's NIP-65 inbox must carry his #p shard via the regular \
          Case C body"
     );
     // Bootstrap content MUST NOT be touched — partial cache disables
     // the gate so the regular fail-closed semantics apply to Carol.
     assert!(
-        plan.per_relay.get("wss://bootstrap.example").is_none(),
+        !plan.per_relay.contains_key("wss://bootstrap.example"),
         "partial inbox cache must DISABLE the bootstrap fallback (the \
          gate is all-or-nothing); got per_relay = {:?}",
         plan.per_relay.keys().collect::<Vec<_>>()
