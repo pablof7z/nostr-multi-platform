@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "apps/chirp/nmp-app-chirp",
+    "apps/chirp/nmp-app-chirp-web",
     "apps/chirp/chirp-tui",
     "apps/chirp/nmp-chirp-config",
     "apps/nmp-gallery/tui",

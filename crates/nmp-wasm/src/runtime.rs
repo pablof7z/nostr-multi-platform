@@ -123,6 +123,15 @@ pub struct WasmRuntime {
     /// warning the symmetric struct layout otherwise triggers there.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     snapshot_callback: Rc<RefCell<Option<SnapshotCallback>>>,
+    /// PR-4 — post-tick drain hook. Called by the 1 Hz timer AFTER
+    /// `tick_once` returns and its `borrow_mut` is fully released. The
+    /// wasm32 composition root installs a closure here that drains the
+    /// pending-claim queue and calls `reducer.borrow_mut().claim_event`.
+    /// The borrow safety invariant: `tick_once` owns a scoped `borrow_mut`
+    /// that drops before it returns; the drain closure runs after that
+    /// point, so no RefCell panic is possible.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    post_tick_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
     /// Live `web_sys::WebSocket` drivers — one per relay URL in the bootstrap.
     /// `wasm32`-only: native tests never construct drivers.
     #[cfg(target_arch = "wasm32")]
@@ -140,6 +149,7 @@ impl Default for WasmRuntime {
             meta: Rc::new(RefCell::new(RuntimeMeta::new())),
             signer: None,
             snapshot_callback: Rc::new(RefCell::new(None)),
+            post_tick_drain: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
             relays: Rc::new(RefCell::new(Vec::new())),
             #[cfg(target_arch = "wasm32")]
@@ -152,6 +162,32 @@ impl WasmRuntime {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// PR-4 — install a post-tick drain hook.
+    ///
+    /// The supplied closure is called by the 1 Hz tick timer AFTER
+    /// [`crate::tick::tick_once`] returns — i.e., after the tick's
+    /// `KernelReducer::borrow_mut()` is fully released. This makes it safe
+    /// for the closure to call `reducer.borrow_mut().claim_event(…)` without
+    /// triggering a RefCell panic.
+    ///
+    /// The wasm32 composition root calls this to wire its pending-claim drain
+    /// into the tick cadence. Subsequent calls replace the prior drain.
+    pub fn install_post_tick_drain(&self, drain: Rc<dyn Fn()>) {
+        *self.post_tick_drain.borrow_mut() = Some(drain);
+    }
+
+    /// Return a clone of the reducer `Rc` so a composition root can build
+    /// closures that borrow the reducer without holding a reference to the
+    /// whole runtime.
+    ///
+    /// Callers MUST NOT borrow the reducer across a drain hook invocation —
+    /// `install_post_tick_drain`'s contract requires that no borrow is active
+    /// when the drain fires.
+    #[must_use]
+    pub fn reducer_handle(&self) -> Rc<RefCell<KernelReducer>> {
+        Rc::clone(&self.reducer)
     }
 
     /// Install (or clear, with `None`) the snapshot push callback. Wasm32
@@ -283,6 +319,7 @@ impl WasmRuntime {
                 Rc::clone(&self.relays),
                 Rc::clone(&self.snapshot_callback),
                 Rc::clone(&self.meta),
+                Rc::clone(&self.post_tick_drain),
             ));
         }
 

@@ -42,7 +42,7 @@
 //! This is the NMP-145 follow-up: T-NMP-145-FF.
 
 use crate::app::{KernelAction, KernelUpdate};
-use crate::kernel::{Kernel, RelayFrame};
+use crate::kernel::{Kernel, RelayFrame, SnapshotProjectionSlot};
 use crate::kernel_action::dispatch_kernel_action;
 use crate::relay::{OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
 
@@ -50,18 +50,39 @@ use crate::relay::{OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
 ///
 /// Owns the [`Kernel`] privately so codegen-driven `FfiApp`s can reduce
 /// [`KernelAction`] values to [`KernelUpdate`] values without depending on
-/// crate-internal types.
+/// crate-internal types. Two shared slots (`observer_slot`, `snapshot_slot`)
+/// support the PR-4 wasm32 composition seams in `composition_seams.rs`.
 pub struct KernelReducer {
     kernel: Kernel,
+    /// Headless event-observer slot (no drain thread — wasm32 safe).
+    observer_slot: crate::actor::KernelEventObserverSlot,
+    /// Typed snapshot-projection slot.
+    snapshot_slot: SnapshotProjectionSlot,
 }
 
 impl KernelReducer {
     /// Construct a fresh reducer with the default visible-limit. Equivalent
     /// to what the actor loop uses at startup.
+    ///
+    /// On all targets (including wasm32) this binds a headless
+    /// [`KernelEventObserverSlot`] and a [`SnapshotProjectionSlot`] into the
+    /// kernel so that composition roots can register event observers and typed
+    /// projections without spawning background threads.
     #[must_use]
     pub fn new() -> Self {
+        use crate::actor::new_event_observer_slot_headless;
+        use crate::kernel::new_snapshot_projection_slot;
+        use std::sync::Arc;
+
+        let observer_slot = new_event_observer_slot_headless();
+        let snapshot_slot = new_snapshot_projection_slot();
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        kernel.set_event_observers_handle(Arc::clone(&observer_slot));
+        kernel.set_snapshot_projection_handle(Arc::clone(&snapshot_slot));
         Self {
-            kernel: Kernel::new(DEFAULT_VISIBLE_LIMIT),
+            kernel,
+            observer_slot,
+            snapshot_slot,
         }
     }
 
@@ -404,6 +425,7 @@ impl KernelReducer {
 
 }
 
+mod composition_seams;
 mod feed_verbs;
 mod reply;
 

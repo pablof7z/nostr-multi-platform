@@ -7,6 +7,6 @@ repository.workspace = true
 description = "NIP-18 repost decoding primitives for NMP protocol projections."
 
 [dependencies]
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
