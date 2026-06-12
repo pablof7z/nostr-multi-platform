@@ -225,6 +225,25 @@ pub trait AppHost: ActionRegistrar {
 
     fn active_local_keys(&self) -> ActiveLocalKeysSlot;
 
+    /// Pubkey-only identity accessor — least-privilege sibling of
+    /// [`Self::active_local_keys`].
+    ///
+    /// Returns the SAME shared [`ActiveAccountSlot`] (`Arc<Mutex<Option<String>>>`,
+    /// hex pubkey) the kernel actor writes on every identity mutation. Unlike
+    /// [`Self::active_local_keys`] — which exposes the full `nostr::Keys` and is
+    /// therefore `None` for remote-signer (NIP-46 bunker) accounts whose secret
+    /// material lives outside the kernel — this slot is populated for **every**
+    /// backend, including bunker. Identity-only consumers (WOT bootstrap, the
+    /// DM relay-list runtime, self-zap-receipt and mute-list reconcilers) MUST
+    /// read this so they activate for bunker accounts; only consumers that
+    /// genuinely need secret key material (signing, NIP-44 unseal) stay on
+    /// `active_local_keys()`.
+    ///
+    /// Single source of truth (D4): this is the exact slot the actor populates
+    /// in `kernel::identity_state` — it is not a second mirror of the active
+    /// account. `None` means no account is signed in.
+    fn active_pubkey(&self) -> ActiveAccountSlot;
+
     fn actor_sender(&self) -> Sender<ActorCommand>;
 
     fn register_event_observer(

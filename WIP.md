@@ -62,6 +62,11 @@ the spec itself; this file no longer mirrors it.
   was verified patch-equivalent to master (`git cherry` "-") and removed.
 - PR **#1014** — nmp-conformance scanner skill + catalog (v0 seed). **Draft** (author-gated);
   all checks green after the 2026-06-11 re-run cleared the v58 flake.
+- Finding C — pubkey-only identity accessor (`AppHost::active_pubkey()`); migrate
+  WOT bootstrap + DM-relay-list + self-zap-receipt + mute-list runtimes off
+  `active_local_keys()` so bunker (remote-signer) accounts activate them.
+  Worktree: `.claude/worktrees/agent-ad121a552456be13d`
+  (branch `worktree-agent-ad121a552456be13d`). Started 2026-06-12.
 
 ## Stale-entry purge log
 
