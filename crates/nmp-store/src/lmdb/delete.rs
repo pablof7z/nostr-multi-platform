@@ -66,6 +66,7 @@ fn by_ids(
                 .map_err(|e| StoreError::Io(format!("del: {e}")))?;
             provenance::delete(inner.provenance, txn, &id)?;
             gc::lru_delete(inner, txn, &id)?;
+            gc::expiry_index_delete_id(inner, txn, &id)?;
             n += 1;
         }
     }
@@ -93,6 +94,7 @@ fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<u
     for id in ids {
         provenance::delete(inner.provenance, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
+        gc::expiry_index_delete_id(inner, txn, &id)?;
     }
     Ok(n)
 }
@@ -123,6 +125,7 @@ fn by_kind_range(
     for id in ids {
         provenance::delete(inner.provenance, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
+        gc::expiry_index_delete_id(inner, txn, &id)?;
     }
     Ok(n)
 }
@@ -159,6 +162,7 @@ fn by_relay_only(
             .map_err(|e| StoreError::Io(format!("del: {e}")))?;
         provenance::delete(inner.provenance, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
+        gc::expiry_index_delete_id(inner, txn, &id)?;
     }
     Ok(n)
 }

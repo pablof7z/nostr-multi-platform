@@ -144,10 +144,16 @@ pub(super) fn insert(
             )?;
             // Stamp LRU access for the newly stored event.
             gc::lru_stamp(inner, &mut txn, &id_bytes)?;
+            // V-118: index this event's expiry if it carries an expiration tag.
+            if let Some(exp) = event.expiration() {
+                gc::expiry_index_put(inner, &mut txn, exp, &id_bytes)?;
+            }
             if let Some(replaced_id) = pre_existing_id {
                 // Replaced — also drop the replaced event's provenance + LRU entry.
                 provenance::delete(inner.provenance, &mut txn, &replaced_id)?;
                 gc::lru_delete(inner, &mut txn, &replaced_id)?;
+                // V-118: drop any expiry-index entry for the superseded event.
+                gc::expiry_index_delete_id(inner, &mut txn, &replaced_id)?;
                 InsertOutcome::Replaced {
                     new_id: id_bytes,
                     replaced_id,
@@ -358,6 +364,8 @@ fn handle_kind5(
             // Also drop NMP-side provenance and LRU entry.
             provenance::delete(inner.provenance, txn, &target_id_bytes)?;
             gc::lru_delete(inner, txn, &target_id_bytes)?;
+            // V-118: drop any expiry-index entry for the deleted target.
+            gc::expiry_index_delete_id(inner, txn, &target_id_bytes)?;
         }
     }
 
@@ -449,6 +457,11 @@ fn handle_kind5(
     )?;
     // Stamp LRU access for the newly stored kind:5 event.
     gc::lru_stamp(inner, txn, &kind5_id)?;
+    // V-118: index the kind:5's own expiry if present (defensive — kind:5
+    // events do not normally carry expiration tags, but keep the index honest).
+    if let Some(exp) = event.expiration() {
+        gc::expiry_index_put(inner, txn, exp, &kind5_id)?;
+    }
     Ok(InsertOutcome::Inserted {
         id: kind5_id,
         sources_after: count,

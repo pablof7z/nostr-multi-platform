@@ -83,7 +83,6 @@ pub(crate) use inner::Inner;
 #[cfg(feature = "lmdb-backend")]
 mod inner {
     use std::sync::atomic::AtomicU64;
-    use std::sync::Mutex;
 
     use heed::types::Bytes;
     use heed::{Database, Env};
@@ -137,24 +136,21 @@ mod inner {
         /// writer.
         pub(crate) lru_seq: AtomicU64,
 
-        // ── GC scan state (V-117 fixes) ───────────────────────────────────────
+        /// V-118 expiration index: expiry_ts_be(8) || event_id(32) → empty.
+        ///
+        /// Key encoding: expiry timestamp as 8-byte big-endian u64 (NOT inverted,
+        /// so lower timestamps sort first — range scan for entries ≤ now_secs is
+        /// a simple prefix scan up to `[now_secs+1; 0..0]`).
+        ///
+        /// Maintained by: insert (if event has expiration tag), all delete paths.
+        /// Backfilled on store open for existing databases (V-118).
+        ///
+        /// This replaces the V-117 `gc_phase1_cursor` heuristic: Phase 1 now does
+        /// an O(expired) range scan on this index rather than an O(store) scan of
+        /// all events, eliminating the same-`created_at`-block stall (#1097).
+        pub(crate) expiry_index: Database<Bytes, Bytes>,
 
-        /// Phase-1 resumable cursor: the `created_at` (unix seconds) of the last
-        /// event scanned for NIP-40 expiry in the previous pass.
-        ///
-        /// `None` = start from the most-recent event (top of the ci_index).
-        /// On budget exhaustion the cursor is set to `Some(last_created_at)` so
-        /// the next pass resumes with `Filter::new().until(last_created_at)`,
-        /// skipping all events newer than the cursor.  Events sharing the cursor
-        /// timestamp may be re-checked (idempotent).
-        ///
-        /// After a full sweep (we reach the bottom of the store without hitting
-        /// the budget), the cursor resets to `None` so the next pass re-starts
-        /// from the top, covering newly inserted events.
-        ///
-        /// GC runs on the actor thread (single writer) so this Mutex is
-        /// uncontested in practice.
-        pub(crate) gc_phase1_cursor: Mutex<Option<u64>>,
+        // ── GC scan state (V-117 fixes) ───────────────────────────────────────
 
         /// Phase-3/3b tombstone-purge gate: unix_secs of the last pass that
         /// actually ran the tombstone scan.  The Phase-3 scan iterates and
