@@ -2,8 +2,8 @@
 //!
 //! Requirement (owner-decided, issue #1086): populate a store with feed events
 //! + a DM gift-wrap + a thread reply + a long-form article; fresh kernel, zero
-//! relay connectivity; open the standard interests; assert feed, DM (raw
-//! observer), thread, and long-form projections ALL render from the store.
+//! relay connectivity; open the standard interests; assert feed, DM (IngestParser),
+//! thread, and long-form projections ALL render from the store.
 //!
 //! This is the v1 exit criterion for ADR-0045 §8: one test that falsifies the
 //! complete seam. If any engineering increment (E1 feed, E2 DM, E3 thread /
@@ -13,12 +13,10 @@
 //!
 //! - **Phase 1 (seed)**: events are ingested through the live ingest path
 //!   (`handle_event` — Schnorr-verify + store + observer fan-out) to populate
-//!   the persistent store exactly as production does. A `CapturingRawObserver`
-//!   is wired for kind:1059 to confirm receipt during seeding.
+//!   the persistent store exactly as production does.
 //!
 //! - **Phase 2 (cold restart)**: the in-memory caches (`events`, `timeline`)
-//!   are cleared and the `CapturingRawObserver`'s seen list is reset to empty
-//!   — simulating a process restart that discards all in-memory state.
+//!   are cleared — simulating a process restart that discards all in-memory state.
 //!
 //! - **Phase 3 (serve)**: cache-serve interests are enqueued for each shape
 //!   and drained under the aggregate budget. Each interest is opened without
@@ -26,18 +24,17 @@
 //!
 //! - **Phase 4 (assert)**: every projection path is asserted non-empty.
 //!
-//! ## Why the raw observer AND IngestParser, not DmInboxProjection directly
+//! ## Why IngestParser, not DmInboxProjection directly
 //!
 //! `DmInboxProjection` lives in `nmp-nip17`, which depends on `nmp-core`,
 //! creating a circular compile dependency if we imported it here. This test
-//! instead verifies the two seams that `DmInboxProjection` rides:
+//! instead verifies the seam that `DmInboxProjection` and `MarmotIngestParser`
+//! both ride:
 //!
-//! - **Raw observer** (`notify_raw_event_observers`): Marmot and other raw-tap
-//!   consumers still receive kind:1059 via this path (dual fan-out, preserved
-//!   until raw-tap PR-2).
-//! - **IngestParser** (`ingest_dispatcher.dispatch()`): `DmInboxProjection` is
-//!   registered as an `IngestParser` (not a raw observer) since raw-tap PR-1.
-//!   `CapturingIngestParser` stands in for it here to avoid the circular dep.
+//! - **IngestParser** (`ingest_dispatcher.dispatch()`): all former raw-tap
+//!   consumers (NIP-17 DM inbox since PR-1, Marmot since PR-2) now ride this
+//!   seam exclusively. `CapturingIngestParser` stands in here to avoid the
+//!   circular dep on `nmp-nip17`.
 //!
 //! The decrypt path itself is exercised by
 //! `nmp-nip17::inbox::tests::received_dm_surfaces_in_the_conversation`.
@@ -220,8 +217,9 @@ fn open_interest(kernel: &mut Kernel, seed: u64, shape: InterestShape) -> bool {
 
 /// ADR-0045 §8 / issue #1086 — v1 exit criterion.
 ///
-/// Proves that ALL four projection paths (feed, DM raw tap, thread, long-form)
-/// render from a warm store with ZERO relay connectivity after a cold restart.
+/// Proves that ALL four projection paths (feed, DM IngestParser, thread,
+/// long-form) render from a warm store with ZERO relay connectivity after a
+/// cold restart.
 ///
 /// Verbatim output from the failing case: each projection path asserts a
 /// distinct error message so a regression is immediately attributable to the
@@ -243,11 +241,18 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     // ── Long-form d_tag ───────────────────────────────────────────────────────
     let d_tag = "universal-test-article";
 
-    // ── Phase 1: kernel with wired raw observer ───────────────────────────────
+    // ── Phase 1: kernel with wired IngestParser for kind:1059 (E2) ───────────
+    // A raw observer is also wired so the Phase-1 sanity check (live ingest
+    // fires raw observers) can still run — the raw-observer path is NOT touched
+    // by this PR (it remains for chirp-tui / hl mirror on live relay delivery).
+    // The cache-serve E2 assertion uses the IngestParser seam exclusively
+    // (raw-tap PR-2 removed the dual fan-out from cache-serve).
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let dm_ingest_parser = CapturingIngestParser::new();
+    kernel.register_ingest_parser(1059, dm_ingest_parser.clone());
     let slot = new_raw_event_observer_slot();
     let observer = CapturingRawObserver::new();
-    // kind:1059 only — DM gift-wrap raw tap (E2).
+    // kind:1059 only — confirms the live ingest raw tap still fires during seeding.
     register_rust_raw_observer(&slot, KindFilter::from_kinds([1059u32]), observer.clone());
     kernel.set_raw_event_observers_handle(slot);
 
@@ -348,12 +353,13 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
         kernel.events.contains_key(thread_id.as_str()),
         "Phase 1: thread reply must be in events cache (admitted via open interest)"
     );
-    // Raw observer received kind:1059 during seeding (sanity check for the
-    // gift-wrap path — confirms the observer wiring is live before the restart).
+    // Raw observer received kind:1059 during seeding — sanity check that the
+    // live ingest raw tap still fires (chirp-tui / hl mirror path, NOT touched
+    // by this PR). The E2 cache-serve assertion uses the IngestParser seam.
     let seen_on_seed = observer.seen();
     assert!(
         seen_on_seed.contains(&1059),
-        "Phase 1: raw observer must see kind:1059 on seed ingest; got {seen_on_seed:?}"
+        "Phase 1: raw observer must see kind:1059 on live seed ingest; got {seen_on_seed:?}"
     );
     // Long-form (kind:30023) goes through wildcard arm → store only (not events cache).
     // Verify it is NOT in the cache yet to make the Phase 4 assertion non-vacuous.
@@ -365,13 +371,18 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
 
     // ── Phase 2: cold restart ─────────────────────────────────────────────────
     // Clear in-memory caches (store persists — same in-process Arc<dyn EventStore>).
-    // Reset the observer's seen list so Phase 3's assertion is clean.
+    // Reset seen lists so Phase 4 assertions reflect only cache-serve delivery.
     simulate_cold_restart(&mut kernel);
     observer.clear();
+    dm_ingest_parser.clear();
 
     assert!(kernel.events.is_empty(), "Phase 2: events cache must be empty after restart");
     assert!(kernel.timeline.is_empty(), "Phase 2: timeline must be empty after restart");
     assert!(observer.seen().is_empty(), "Phase 2: observer must be cleared before serve");
+    assert!(
+        dm_ingest_parser.seen().is_empty(),
+        "Phase 2: IngestParser seen list must be cleared before serve"
+    );
 
     // ── Phase 3: open interests and drain cache-serves (ZERO relay) ───────────
     //
@@ -479,13 +490,16 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
          KindDtag cache-serve"
     );
 
-    // E2 — DM gift-wrap reached the raw observer (proving the #1080 decrypt seam
-    // fires from store just as it does from live relay delivery).
-    let seen_after_serve = observer.seen();
+    // E2 — DM gift-wrap reached the IngestParser seam (proving the decrypt seam
+    // fires from store just as it does from live relay delivery). After raw-tap
+    // PR-2, cache-serve emits ONLY via `ingest_dispatcher.dispatch()` — no
+    // raw-observer fan-out from the store path.
+    let dm_ingest_seen = dm_ingest_parser.seen();
     assert!(
-        seen_after_serve.contains(&1059),
-        "E2 FAIL: raw observer must receive kind:1059 after cold-restart Ptag cache-serve; \
-         got {seen_after_serve:?} — the DmInboxProjection decrypt seam would not fire"
+        dm_ingest_seen.contains(&1059),
+        "E2 FAIL: IngestParser must receive kind:1059 after cold-restart Ptag cache-serve; \
+         got {dm_ingest_seen:?} — the DmInboxProjection / MarmotIngestParser decrypt seam \
+         would not fire after restart"
     );
     let gift_wrap_in_cache = kernel.events.contains_key(gift_wrap_id.as_str());
     assert!(
@@ -494,12 +508,13 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     );
 }
 
-/// PR-1 rawtap retirement — cache-serve feeds kind:1059 to the IngestParser seam.
+/// PR-2 rawtap retirement — cache-serve feeds kind:1059 exclusively via IngestParser.
 ///
-/// Extends the E2 acceptance test: verifies that `feed_served_event` dispatches
-/// kind:1059 events to the `EventIngestDispatcher` (in addition to the raw-observer
-/// tap that stays in place for Marmot until PR-2). Uses a `CapturingIngestParser`
-/// to avoid the circular dependency on `nmp-nip17::DmInboxProjection`.
+/// Verifies that `feed_served_event` dispatches kind:1059 events ONLY through the
+/// `EventIngestDispatcher` seam after PR-2 removes the transitional dual fan-out.
+/// No raw-observer delivery from cache-serve — all former raw-tap consumers
+/// (NIP-17 DM inbox since PR-1, Marmot since PR-2) now ride `IngestParser`.
+/// Uses a `CapturingIngestParser` to avoid the circular dep on `nmp-nip17`.
 #[test]
 fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
     let base_ts: u64 = 1_700_000_000;
@@ -513,13 +528,6 @@ fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
     // Wire the capturing IngestParser into the kernel's shared dispatcher slot.
     let ingest_parser = CapturingIngestParser::new();
     kernel.register_ingest_parser(1059, ingest_parser.clone());
-
-    // Also wire a raw observer to confirm dual fan-out (raw tap preserved for
-    // Marmot during the PR-1/PR-2 transition window).
-    let slot = new_raw_event_observer_slot();
-    let raw_observer = CapturingRawObserver::new();
-    register_rust_raw_observer(&slot, KindFilter::from_kinds([1059u32]), raw_observer.clone());
-    kernel.set_raw_event_observers_handle(slot);
 
     kernel.active_account = Some(receiver_hex.clone());
 
@@ -546,15 +554,10 @@ fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
     // ── Phase 2: cold restart — clear caches + reset counters ─────────────────
     simulate_cold_restart(&mut kernel);
     ingest_parser.clear();
-    raw_observer.clear();
 
     assert!(
         ingest_parser.seen().is_empty(),
         "Phase 2: IngestParser seen list must be cleared before cache-serve"
-    );
-    assert!(
-        raw_observer.seen().is_empty(),
-        "Phase 2: raw observer seen list must be cleared before cache-serve"
     );
 
     // ── Phase 3: enqueue and drain cache-serve for kind:1059 ──────────────────
@@ -573,23 +576,19 @@ fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
     }
     drain_cache_serves(&mut kernel, 10);
 
-    // ── Phase 4: both fan-outs must fire ──────────────────────────────────────
+    // ── Phase 4: IngestParser must receive kind:1059 from cache-serve ─────────
+    // No raw-observer assertion: raw-tap PR-2 removed the dual fan-out from
+    // cache-serve. Cache-serve now delivers exclusively via IngestParser.
     let ingest_seen = ingest_parser.seen();
     assert!(
         ingest_seen.contains(&1059),
-        "E2/PR-1 FAIL: IngestParser must receive kind:1059 after cold-restart cache-serve; \
-         got {ingest_seen:?} — the DmInboxProjection would not decrypt after restart"
-    );
-
-    let raw_seen = raw_observer.seen();
-    assert!(
-        raw_seen.contains(&1059),
-        "E2/PR-1 FAIL: raw observer must ALSO receive kind:1059 after cache-serve \
-         (dual fan-out preserved for Marmot until PR-2); got {raw_seen:?}"
+        "E2/PR-2 FAIL: IngestParser must receive kind:1059 after cold-restart cache-serve; \
+         got {ingest_seen:?} — the DmInboxProjection / MarmotIngestParser would not decrypt \
+         after restart"
     );
 
     assert!(
         kernel.events.contains_key(gift_wrap_id.as_str()),
-        "E2/PR-1 FAIL: gift-wrap must be in events cache after cache-serve"
+        "E2/PR-2 FAIL: gift-wrap must be in events cache after cache-serve"
     );
 }
