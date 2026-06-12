@@ -6,12 +6,14 @@
 //!    `{"pending":true}` when a `correlation_id` is provided.
 //! 2. After the missing KP arrives via `ingest_signed_event_core`, the parked
 //!    op executes and the terminal verdict is recorded under the ORIGINAL
-//!    `correlation_id` (via `push_actor_command`, which in tests is a no-op
-//!    since `app` is null — we verify the retry happens by checking the
-//!    snapshot state).
+//!    `correlation_id`. The verdict is pushed via `push_actor_command`; in
+//!    tests `app` is null so the live channel send is a no-op, but the
+//!    `#[cfg(test)]` capture seam (`drain_captured_commands`) records a
+//!    `(verdict, correlation_id)` projection of the stream so we can assert
+//!    EXACTLY ONE terminal verdict per correlation_id.
 //! 3. Expiry: after `PENDING_OP_EXPIRY_SECS` have elapsed without the KP
-//!    arriving, the next KP ingest (or any wall-clock–gated edge) evicts the
-//!    op with a terminal failure.
+//!    arriving, the next wall-clock edge (a KP ingest OR a snapshot) evicts
+//!    the op with a terminal failure.
 
 use crate::projection::ops::{self, ingest_signed_event_core};
 use crate::projection::pending::PENDING_OP_EXPIRY_SECS;
@@ -329,4 +331,170 @@ fn create_group_without_correlation_id_returns_terminal_soft_fail() {
         None,
         "no pending flag in terminal response: {r}"
     );
+}
+
+/// MAJOR review fix: a parked op whose KP NEVER arrives must still expire —
+/// the snapshot edge (not just the KP-ingest edge) drives `check_expired`.
+/// Here NO further KP event is ever ingested; the op ages out purely because
+/// a later snapshot is taken past the deadline.
+#[test]
+fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
+    let alice_keys = Keys::generate();
+    let bob_keys = Keys::generate();
+
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    proj.with_inner(|h| {
+        ops::dispatch(
+            h,
+            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            1_000,
+            None,
+        )
+    })
+    .unwrap();
+
+    // Park the op at t=1_001.
+    let r = proj
+        .with_inner(|h| {
+            ops::dispatch(
+                h,
+                &json!({
+                    "op": "create_group",
+                    "name": "Snapshot Expiry",
+                    "relays": ["wss://t.relay"],
+                    "invitee_npubs": [bob_keys.public_key().to_hex()],
+                }),
+                1_001,
+                Some("corr-snap-expiry"),
+            )
+        })
+        .unwrap();
+    assert_eq!(r["pending"], json!(true), "must park: {r}");
+
+    // A snapshot BEFORE the deadline keeps the op pending. (PR-1 surfaces
+    // pending ops via `pending_op_summaries`; PR-2 adds `snapshot.pending_ops`.)
+    let _ = proj.snapshot(1_002);
+    let summaries = proj.with_inner(|h| h.pending_op_summaries()).unwrap();
+    assert_eq!(
+        summaries.len(),
+        1,
+        "op must still be pending before deadline: {summaries:?}"
+    );
+
+    // A snapshot PAST the deadline evicts it — NO KP was ever ingested.
+    let expired_now = 1_001 + PENDING_OP_EXPIRY_SECS + 1;
+    let snap = proj.snapshot(expired_now);
+    let summaries = proj.with_inner(|h| h.pending_op_summaries()).unwrap();
+    assert!(
+        summaries.is_empty(),
+        "op must expire on the snapshot edge with no further ingest: {summaries:?}"
+    );
+    assert!(snap.groups.is_empty(), "no group must be created: {snap:?}");
+
+    // Exactly one terminal FAILURE was recorded under the original id.
+    let cmds = proj.with_inner(|h| h.drain_captured_commands()).unwrap();
+    assert_eq!(cmds.len(), 1, "exactly one terminal command: {cmds:?}");
+    assert_eq!(cmds[0].0, "failure", "verdict must be failure: {cmds:?}");
+    assert_eq!(
+        cmds[0].1, "corr-snap-expiry",
+        "under the original correlation_id: {cmds:?}"
+    );
+}
+
+/// MINOR review fix: assert EXACTLY ONE terminal command per correlation_id
+/// across the three deferred-op outcomes, using the `#[cfg(test)]` capture
+/// seam (no live `NmpApp` actor channel needed):
+///   * retry-success — KP arrives, op completes → one `success`
+///   * expiry — KP never arrives, op ages out on an edge → one `failure`
+///   * expiry-then-late-KP — op already expired; a late KP must NOT produce a
+///     second terminal verdict for the same id.
+#[test]
+fn exactly_one_terminal_command_per_correlation_id() {
+    let alice_keys = Keys::generate();
+    let bob_keys = Keys::generate(); // retry-success peer
+    let carol_keys = Keys::generate(); // expiry peer (KP never arrives in time)
+
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    proj.with_inner(|h| {
+        ops::dispatch(
+            h,
+            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            1_000,
+            None,
+        )
+    })
+    .unwrap();
+
+    // (A) retry-success op blocked on Bob.
+    proj.with_inner(|h| {
+        ops::dispatch(
+            h,
+            &json!({
+                "op": "create_group",
+                "name": "Retry Success",
+                "relays": ["wss://t.relay"],
+                "invitee_npubs": [bob_keys.public_key().to_hex()],
+            }),
+            1_001,
+            Some("corr-success"),
+        )
+    })
+    .unwrap();
+
+    // (B) expiry op blocked on Carol.
+    proj.with_inner(|h| {
+        ops::dispatch(
+            h,
+            &json!({
+                "op": "create_group",
+                "name": "Will Expire",
+                "relays": ["wss://t.relay"],
+                "invitee_npubs": [carol_keys.public_key().to_hex()],
+            }),
+            1_001,
+            Some("corr-expire"),
+        )
+    })
+    .unwrap();
+
+    // Bob's KP arrives in-window → corr-success completes (one `success`).
+    let bob_kp = make_kp_event(&bob_keys);
+    proj.with_inner(|h| ingest_signed_event_core(h, &bob_kp, 1_002))
+        .unwrap()
+        .unwrap();
+
+    // A snapshot past Carol's deadline expires corr-expire (one `failure`).
+    let expired_now = 1_001 + PENDING_OP_EXPIRY_SECS + 1;
+    let _ = proj.snapshot(expired_now);
+
+    // (C) expiry-then-late-KP: Carol's KP finally arrives AFTER expiry. It
+    // must NOT produce a second terminal verdict for corr-expire (the op is
+    // already gone from the store).
+    let carol_kp = make_kp_event(&carol_keys);
+    proj.with_inner(|h| ingest_signed_event_core(h, &carol_kp, expired_now + 1))
+        .unwrap()
+        .unwrap();
+
+    // Drain and assert: exactly one terminal per correlation_id, no duplicates.
+    let cmds = proj.with_inner(|h| h.drain_captured_commands()).unwrap();
+    assert_eq!(
+        cmds.len(),
+        2,
+        "exactly two terminal commands total (one per op): {cmds:?}"
+    );
+    let success_count = cmds
+        .iter()
+        .filter(|(v, c)| *v == "success" && c == "corr-success")
+        .count();
+    let failure_count = cmds
+        .iter()
+        .filter(|(v, c)| *v == "failure" && c == "corr-expire")
+        .count();
+    assert_eq!(success_count, 1, "exactly one success for corr-success: {cmds:?}");
+    assert_eq!(failure_count, 1, "exactly one failure for corr-expire: {cmds:?}");
+    // No correlation_id appears twice.
+    let mut ids: Vec<&String> = cmds.iter().map(|(_, c)| c).collect();
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), 2, "no correlation_id may receive two terminals: {cmds:?}");
 }

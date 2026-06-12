@@ -22,12 +22,29 @@
 //!
 //! ## Expiry
 //!
-//! Wall-clock gated on ingest/snapshot edges (NO timers, NO polling,
+//! Wall-clock gated on **KP-ingest + snapshot edges** (NO timers, NO polling,
 //! compliant with doctrine D8). Any pending op older than
 //! [`PENDING_OP_EXPIRY_SECS`] is evicted with a terminal
 //! `key_package_unavailable` failure on the next edge that provides a
 //! `now_secs` reference. The `check_expired` helper is the single eviction
-//! gate.
+//! mechanism; it is driven from two call sites:
+//!   * the kind:443/30443 ingest arm of `ops::ingest_signed_event_core`
+//!     (so an arriving KP for *another* peer still ages out stale ops), and
+//!   * the top of `MarmotProjection::snapshot` (so an op whose KP NEVER
+//!     arrives still expires within a tick of its deadline — snapshots are
+//!     emitted on every frame-producing actor tick, a dense wall-clock edge).
+//! Without the snapshot edge a parked op could hang forever if no further KP
+//! events were ever ingested.
+//!
+//! ## Lifetime / durability
+//!
+//! The store is **in-memory only** (it lives in `MarmotProjection`'s `Inner`,
+//! rebuilt fresh on each process launch). On app relaunch any parked ops
+//! vanish silently — there is no terminal `last_op_error` write and no
+//! re-park. This is an accepted deferral: a deferred `create_group`/`invite`
+//! that was still pending when the process died is simply lost, and the user
+//! re-initiates it. Persisting parked ops across launches would require a
+//! durable queue keyed by `correlation_id` and is out of scope here.
 //!
 //! ## Single-flight
 //!

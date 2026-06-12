@@ -162,6 +162,16 @@ struct Inner {
     /// Pending ops deferred because invitee KPs were not yet in the cache.
     /// Re-tried on every KP ingest; expired via wall-clock gate (D8).
     pending_ops: PendingOpsStore,
+    /// Test-only capture of every terminal verdict routed through
+    /// [`InnerHandle::push_actor_command`], as `(verdict, correlation_id)`
+    /// where `verdict` is `"success"` or `"failure"`. In production the
+    /// deferred verdict goes to the live actor channel (which needs a full
+    /// `NmpApp`); `ActorCommand` is not `Clone`, so this buffer records a
+    /// lightweight projection that still lets unit tests assert the EXACT
+    /// command stream — one terminal per correlation_id — without standing
+    /// up the actor.
+    #[cfg(test)]
+    captured_commands: Vec<(&'static str, String)>,
 }
 
 /// Owned Marmot projection. `Mutex` because `on_kernel_event` takes `&self`
@@ -224,6 +234,8 @@ impl MarmotProjection {
                 app: std::ptr::null_mut(),
                 keyring_unavailable,
                 pending_ops: PendingOpsStore::new(),
+                #[cfg(test)]
+                captured_commands: Vec::new(),
             }),
         }
     }
@@ -330,9 +342,22 @@ impl MarmotProjection {
     /// Build the JSON snapshot. D6 — poisoned mutex → empty snapshot.
     #[must_use]
     pub fn snapshot(&self, now_secs: u64) -> MarmotSnapshot {
-        let Ok(inner) = self.inner.lock() else {
+        let Ok(mut guard) = self.inner.lock() else {
             return MarmotSnapshot::empty();
         };
+
+        // Expiry is wall-clock gated on snapshot edges as well as KP-ingest
+        // edges (D8 — no timers, no polling). Snapshots are frequent (every
+        // actor tick that produces a frame), so a parked op that never
+        // receives its KP still expires within a tick of its 60 s deadline
+        // even if no further KP events ever arrive. Construct a transient
+        // `InnerHandle` so the same `evict_expired_pending` path (which pushes
+        // `RecordActionFailure` for each expired op) runs here too.
+        {
+            let mut h = InnerHandle { inner: &mut guard };
+            h.evict_expired_pending(now_secs);
+        }
+        let inner = guard;
 
         let groups: Vec<MarmotGroupRow> = match inner.service.get_groups() {
             Ok(gs) => gs
@@ -606,7 +631,12 @@ impl<'a> InnerHandle<'a> {
     }
 
     /// Evict expired pending ops and push terminal failure commands for each.
-    /// No-op when the actor channel is absent (test path).
+    /// Driven from BOTH wall-clock edges — the KP-ingest arm (via
+    /// [`Self::handle_key_package_cached`]) and the top of
+    /// [`MarmotProjection::snapshot`] — so an op whose KP never arrives still
+    /// ages out within a tick of its deadline. No live actor channel (test
+    /// path) → the `RecordActionFailure` send is a no-op, but the verdict is
+    /// still recorded in the `#[cfg(test)]` capture seam.
     fn evict_expired_pending(&mut self, now_secs: u64) {
         let expired: Vec<PendingOp> = self.inner.pending_ops.check_expired(now_secs);
         for op in expired {
@@ -624,7 +654,30 @@ impl<'a> InnerHandle<'a> {
     /// channel; the actor drains it on the next iteration.
     ///
     /// No-op when `app` is null (the test projection — no actor channel).
-    pub(crate) fn push_actor_command(&self, cmd: nmp_core::ActorCommand) {
+    pub(crate) fn push_actor_command(&mut self, cmd: nmp_core::ActorCommand) {
+        // Test capture seam: record a lightweight `(verdict, correlation_id)`
+        // projection of the command stream so unit tests can assert EXACTLY
+        // ONE terminal verdict per correlation_id without a live `NmpApp`.
+        // `ActorCommand` is not `Clone`, so we project the two fields the
+        // test cares about before the move-by-value send below. Production
+        // builds compile this branch out entirely.
+        #[cfg(test)]
+        {
+            match &cmd {
+                nmp_core::ActorCommand::RecordActionSuccess { correlation_id, .. } => {
+                    self.inner
+                        .captured_commands
+                        .push(("success", correlation_id.clone()));
+                }
+                nmp_core::ActorCommand::RecordActionFailure { correlation_id, .. } => {
+                    self.inner
+                        .captured_commands
+                        .push(("failure", correlation_id.clone()));
+                }
+                _ => {}
+            }
+        }
+
         let Some(app) = self.app() else {
             return;
         };
@@ -654,6 +707,16 @@ impl<'a> InnerHandle<'a> {
                 )
             })
             .collect()
+    }
+
+    /// Test-only: drain the captured `(verdict, correlation_id)` command
+    /// stream recorded by [`Self::push_actor_command`]. Lets a test assert the
+    /// EXACT terminal-verdict sequence (one per correlation_id) across
+    /// retry-success / expiry / expiry-then-late-KP flows without a live
+    /// `NmpApp` actor channel.
+    #[cfg(test)]
+    pub(crate) fn drain_captured_commands(&mut self) -> Vec<(&'static str, String)> {
+        std::mem::take(&mut self.inner.captured_commands)
     }
 
     /// Cache an incoming gift-wrap as a pending Welcome (no MLS type held).
