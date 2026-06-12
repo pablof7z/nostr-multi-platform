@@ -59,6 +59,9 @@ pub struct PublishOutboxRelayRow {
 
 /// One in-flight publish — a field-for-field mirror of the SERIALISED
 /// [`PublishOutboxItem`](crate::kernel::PublishOutboxItem).
+///
+/// V-115 / ADR-0032: `created_at_display` and `target_summary` removed;
+/// `created_at` (raw Unix-seconds u64) added. Shells format for display.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PublishOutboxItemRow {
     pub handle: String,
@@ -66,13 +69,14 @@ pub struct PublishOutboxItemRow {
     pub kind: u32,
     pub title: String,
     pub preview: String,
-    pub created_at_display: String,
+    /// Raw Unix-seconds creation timestamp (ADR-0032). Replaces
+    /// `created_at_display`; shells format with their own locale + TZ.
+    pub created_at: u64,
     pub status: String,
     pub status_label: String,
     pub system_image: String,
     pub can_retry: bool,
     pub target_relays: u32,
-    pub target_summary: String,
     pub relays: Vec<PublishOutboxRelayRow>,
 }
 
@@ -126,11 +130,13 @@ pub(crate) fn encode_publish_outbox(model: &PublishOutboxModel) -> Vec<u8> {
             let event_id = fbb.create_string(&item.event_id);
             let title = fbb.create_string(&item.title);
             let preview = fbb.create_string(&item.preview);
-            let created_at_display = fbb.create_string(&item.created_at_display);
             let status = fbb.create_string(&item.status);
             let status_label = fbb.create_string(&item.status_label);
             let system_image = fbb.create_string(&item.system_image);
-            let target_summary = fbb.create_string(&item.target_summary);
+            // ADR-0032 / V-115: `created_at_display` and `target_summary`
+            // are deprecated in the schema; flatc removes them from
+            // `PublishOutboxItemArgs`. Pass raw `created_at` in the new
+            // uint64 field; the deprecated vtable slots stay 0/null.
             fb::PublishOutboxItem::create(
                 &mut fbb,
                 &fb::PublishOutboxItemArgs {
@@ -139,14 +145,13 @@ pub(crate) fn encode_publish_outbox(model: &PublishOutboxModel) -> Vec<u8> {
                     kind: item.kind,
                     title: Some(title),
                     preview: Some(preview),
-                    created_at_display: Some(created_at_display),
                     status: Some(status),
                     status_label: Some(status_label),
                     system_image: Some(system_image),
                     can_retry: item.can_retry,
                     target_relays: item.target_relays,
-                    target_summary: Some(target_summary),
                     relays: Some(relays),
+                    created_at: item.created_at,
                 },
             )
         })
@@ -192,19 +197,20 @@ pub fn decode_publish_outbox(bytes: &[u8]) -> Result<PublishOutboxModel, String>
                     });
                 }
             }
+            // ADR-0032 / V-115: `created_at_display` and `target_summary`
+            // deprecated; decode `created_at` (raw uint64) from the new slot.
             items.push(PublishOutboxItemRow {
                 handle: item.handle().unwrap_or_default().to_string(),
                 event_id: item.event_id().unwrap_or_default().to_string(),
                 kind: item.kind(),
                 title: item.title().unwrap_or_default().to_string(),
                 preview: item.preview().unwrap_or_default().to_string(),
-                created_at_display: item.created_at_display().unwrap_or_default().to_string(),
+                created_at: item.created_at(),
                 status: item.status().unwrap_or_default().to_string(),
                 status_label: item.status_label().unwrap_or_default().to_string(),
                 system_image: item.system_image().unwrap_or_default().to_string(),
                 can_retry: item.can_retry(),
                 target_relays: item.target_relays(),
-                target_summary: item.target_summary().unwrap_or_default().to_string(),
                 relays,
             });
         }

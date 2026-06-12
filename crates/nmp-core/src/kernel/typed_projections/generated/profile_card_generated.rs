@@ -27,7 +27,6 @@ impl<'a> ::flatbuffers::Follow<'a> for ProfileCard<'a> {
 
 impl<'a> ProfileCard<'a> {
   pub const VT_PUBKEY: ::flatbuffers::VOffsetT = 4;
-  pub const VT_NPUB: ::flatbuffers::VOffsetT = 6;
   pub const VT_HAS_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
   pub const VT_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
   pub const VT_HAS_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
@@ -53,7 +52,6 @@ impl<'a> ProfileCard<'a> {
     if let Some(x) = args.nip05 { builder.add_nip05(x); }
     if let Some(x) = args.picture_url { builder.add_picture_url(x); }
     if let Some(x) = args.display_name { builder.add_display_name(x); }
-    if let Some(x) = args.npub { builder.add_npub(x); }
     if let Some(x) = args.pubkey { builder.add_pubkey(x); }
     builder.add_has_lnurl(args.has_lnurl);
     builder.add_has_profile(args.has_profile);
@@ -69,13 +67,6 @@ impl<'a> ProfileCard<'a> {
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn npub(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_NPUB, None)}
   }
   #[inline]
   pub fn has_display_name(&self) -> bool {
@@ -149,7 +140,6 @@ impl ::flatbuffers::Verifiable for ProfileCard<'_> {
   ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
     v.visit_table(pos)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("pubkey", Self::VT_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("npub", Self::VT_NPUB, false)?
      .visit_field::<bool>("has_display_name", Self::VT_HAS_DISPLAY_NAME, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("display_name", Self::VT_DISPLAY_NAME, false)?
      .visit_field::<bool>("has_picture_url", Self::VT_HAS_PICTURE_URL, false)?
@@ -165,7 +155,6 @@ impl ::flatbuffers::Verifiable for ProfileCard<'_> {
 }
 pub struct ProfileCardArgs<'a> {
     pub pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub npub: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub has_display_name: bool,
     pub display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub has_picture_url: bool,
@@ -181,7 +170,6 @@ impl<'a> Default for ProfileCardArgs<'a> {
   fn default() -> Self {
     ProfileCardArgs {
       pubkey: None,
-      npub: None,
       has_display_name: false,
       display_name: None,
       has_picture_url: false,
@@ -203,10 +191,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ProfileCardBuilder<'a, 'b, A>
   #[inline]
   pub fn add_pubkey(&mut self, pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_PUBKEY, pubkey);
-  }
-  #[inline]
-  pub fn add_npub(&mut self, npub: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_NPUB, npub);
   }
   #[inline]
   pub fn add_has_display_name(&mut self, has_display_name: bool) {
@@ -263,7 +247,6 @@ impl ::core::fmt::Debug for ProfileCard<'_> {
   fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
     let mut ds = f.debug_struct("ProfileCard");
       ds.field("pubkey", &self.pubkey());
-      ds.field("npub", &self.npub());
       ds.field("has_display_name", &self.has_display_name());
       ds.field("display_name", &self.display_name());
       ds.field("has_picture_url", &self.has_picture_url());

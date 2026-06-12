@@ -11,11 +11,6 @@ use crate::relay::{OutboundMessage, RelayRole};
 
 use super::publish_engine_wire::{describe_engine_error, now_epoch_ms};
 use super::{truncate, Kernel, OutboxSummarySnapshot, PublishOutboxItem, PublishOutboxRelay};
-// `format_timestamp` is `#[cfg(feature = "native")]` (reads OS wall clock).
-// The single use site is already gated below; the import has to match so
-// `--no-default-features` (wasm32) compiles.
-#[cfg(feature = "native")]
-use super::format_timestamp;
 
 impl Kernel {
     pub(super) fn publish_outbox_items(&self) -> Vec<PublishOutboxItem> {
@@ -54,30 +49,24 @@ impl Kernel {
                 // shell renders `can_retry` directly instead of branching on
                 // `status != "sending"` to decide whether to enable a button.
                 let can_retry = status != "sending";
-                // `format_timestamp` is `#[cfg(feature = "native")]` (it reads
-                // the OS-local wall clock via `chrono::Local`). Under
-                // `--no-default-features` fall back to the raw epoch seconds
-                // — the snapshot still emits a stable string; only the
-                // human-readable formatting drops on non-native builds.
-                #[cfg(feature = "native")]
-                let created_at_display = format_timestamp(row.created_at);
-                #[cfg(not(feature = "native"))]
-                let created_at_display = row.created_at.to_string();
-                let target_summary =
-                    publish_outbox_target_summary(relays.len(), &created_at_display);
+                // ADR-0032 / V-115: emit raw Unix-seconds `created_at` so
+                // shells can format the timestamp in their own locale + TZ.
+                // `format_timestamp` (chrono::Local, OS wall clock) and
+                // `publish_outbox_target_summary` ("N relays · <time>") are
+                // removed; shells compose the relay-count + time label
+                // themselves from `target_relays` + `created_at`.
                 PublishOutboxItem {
                     handle: row.handle,
                     event_id: row.event_id,
                     kind: row.kind,
                     title: publish_event_title(row.kind),
                     preview: publish_event_preview(row.kind, &row.content),
-                    created_at_display,
+                    created_at: row.created_at,
                     status,
                     status_label,
                     system_image: publish_event_system_image(row.kind),
                     can_retry,
                     target_relays: relays.len(),
-                    target_summary,
                     relays,
                 }
             })
@@ -288,18 +277,6 @@ fn publish_outbox_status_label(status: &str) -> String {
         other => other,
     }
     .to_string()
-}
-
-/// Pre-formatted "N relays · <`created_at`>" header line for a single outbox
-/// row. Server-side pluralization keeps the shell free of the
-/// `count == 1 ? "" : "s"` ternary (§6 anti-pattern #1).
-fn publish_outbox_target_summary(target_relays: usize, created_at_display: &str) -> String {
-    let noun = if target_relays == 1 {
-        "relay"
-    } else {
-        "relays"
-    };
-    format!("{target_relays} {noun} · {created_at_display}")
 }
 
 /// Pre-formatted outbox-summary title. Empty outbox → `"Nothing waiting"`;

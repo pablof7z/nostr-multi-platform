@@ -291,10 +291,11 @@ impl Kernel {
         let mut claimed_profiles: std::collections::BTreeMap<String, ProfileCard> =
             std::collections::BTreeMap::new();
         for pubkey in self.profile_claims.keys() {
-            let npub = crate::display::to_npub(pubkey);
+            // ADR-0032 / V-115: raw hex pubkey only; shells encode bech32
+            // host-side. `to_npub` call removed.
             claimed_profiles.insert(
                 pubkey.clone(),
-                self.profile_card_for(pubkey, Some(&npub), ""),
+                self.profile_card_for(pubkey, ""),
             );
         }
         claimed_profiles

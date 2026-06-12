@@ -371,7 +371,7 @@ fn picture_url_is_none_when_profile_omits_picture() {
             "profile without picture must surface None ({picture:?})"
         );
 
-        let card = kernel.profile_card_for(C13_PK, None, "about");
+        let card = kernel.profile_card_for(C13_PK, "about");
         assert_eq!(
             card.picture_url, None,
             "ProfileCard without picture must surface None ({picture:?})"
