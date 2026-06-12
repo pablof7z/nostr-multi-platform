@@ -78,16 +78,19 @@ pub(crate) fn write_path_not_wired_for_kind_reason(action_type: &str) -> String 
 }
 
 /// Stable error-code prefix returned when the `reply_to_id` supplied to
-/// `PublishNote` is not found in the kernel's local event store.
+/// `PublishNote` is not a repliable event in the kernel's local store.
 ///
-/// The wasm path fails closed on unknown parents — silently dropping the
-/// reply marker would produce a malformed NIP-10 thread. The prefix is
-/// pinned by the test below so the JS host can pattern-match it.
+/// "Not repliable" covers two cases: the event is absent from the store, or
+/// it is present but not a kind:1 note (kind:0 profiles, kind:6 reposts, etc.
+/// are not valid NIP-10 reply targets). The wasm path fails closed in both
+/// cases — silently dropping the reply marker would produce a malformed
+/// NIP-10 thread. The prefix is pinned by the test below.
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(crate) fn reply_target_unknown_reason(reply_to_id: &str) -> String {
     format!(
-        "reply_target_unknown: event {reply_to_id:?} not found in the kernel's local store. \
-         The parent note must be in the feed before a reply can be composed."
+        "reply_target_unknown: event {reply_to_id:?} is not a repliable note in the \
+         kernel's local store (absent or not kind:1). The parent must be a kind:1 \
+         note in the local feed before a reply can be composed."
     )
 }
 

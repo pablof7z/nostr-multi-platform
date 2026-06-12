@@ -431,15 +431,12 @@ impl KernelReducer {
 
     /// Build NIP-10 marked-form reply tags for a reply to `reply_to_id` (hex).
     ///
-    /// Looks up the event from the kernel's store, parses its NIP-10 refs,
-    /// and delegates to [`crate::tags::reply_tags`] — the canonical builder
-    /// shared by both native and wasm paths.
-    ///
-    /// Returns `None` if `reply_to_id` is not valid hex or the event is not
-    /// in the local store. Callers must fail closed on `None`
-    /// (`reply_target_unknown:` reason prefix in the wasm publish path).
-    /// Takes `&self` — safe to call before a sign `.await`; the borrow drops
-    /// before the async boundary (wasm `RefCell` borrow discipline).
+    /// Delegates to [`crate::tags::reply_tags`] after looking up the event
+    /// from the kernel store and parsing its NIP-10 refs. Returns `None` on
+    /// invalid hex, missing event, or non-kind-1 parent (fail-closed; matches
+    /// native `NoteRecord`-only domain). Callers: use `reply_target_unknown:`
+    /// reason. Takes `&self` — the borrow drops before any async boundary
+    /// (wasm `RefCell` borrow discipline).
     #[must_use]
     pub fn build_reply_tags(&self, reply_to_id: &str) -> Option<Vec<Vec<String>>> {
         use crate::kernel::hex_to_pubkey_bytes;
@@ -448,6 +445,9 @@ impl KernelReducer {
         let id_bytes = hex_to_pubkey_bytes(reply_to_id)?;
         let store = self.kernel.event_store_handle();
         let stored = store.get_by_id(&id_bytes).ok()??;
+        if stored.raw.kind != 1 {
+            return None;
+        }
         let refs = parse_nip10(&stored.raw.tags);
         Some(reply_tags(reply_to_id, &stored.raw.pubkey, &refs, None))
     }

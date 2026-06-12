@@ -28,17 +28,18 @@ const ALICE_PK: &str =
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-fn seed_event(
+fn seed_event_with_kind(
     r: &KernelReducer,
     id: &str,
     pubkey: &str,
+    kind: u32,
     tags: Vec<Vec<String>>,
 ) {
     let raw = RawEvent {
         id: id.to_string(),
         pubkey: pubkey.to_string(),
         created_at: 1_700_000_000,
-        kind: 1,
+        kind,
         tags,
         content: "test".into(),
         sig: "0".repeat(128),
@@ -48,6 +49,10 @@ fn seed_event(
         .event_store_handle()
         .insert(verified, &"wss://seed".to_string(), 0)
         .expect("seed insert");
+}
+
+fn seed_event(r: &KernelReducer, id: &str, pubkey: &str, tags: Vec<Vec<String>>) {
+    seed_event_with_kind(r, id, pubkey, 1, tags);
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -107,4 +112,17 @@ fn build_reply_tags_for_mid_thread_event_inherits_root_ref() {
     // p-tags: parent author first, then alice
     assert_eq!(tags[2][1], PARENT_MID_AUTHOR);
     assert_eq!(tags[3][1], ALICE_PK);
+}
+
+#[test]
+fn build_reply_tags_returns_none_for_non_note_parent() {
+    // kind:0 (profile metadata) is in the store but is not a valid reply
+    // target. build_reply_tags must fail closed, matching native NoteRecord
+    // domain which is kind:1-only.
+    let r = KernelReducer::new();
+    seed_event_with_kind(&r, PARENT_ROOT_ID, PARENT_ROOT_AUTHOR, 0, vec![]);
+    assert!(
+        r.build_reply_tags(PARENT_ROOT_ID).is_none(),
+        "replying to a kind:0 event must fail closed"
+    );
 }
