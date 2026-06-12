@@ -5,6 +5,7 @@ on:
     branches: ["**"]
     paths:
       - ".github/workflows/chirp-web.yml"
+      - "apps/chirp/nmp-app-chirp-web/**"
       - "crates/nmp-wasm/**"
       - "web/chirp/**"
       - "Cargo.toml"
@@ -13,6 +14,7 @@ on:
     branches: ["**"]
     paths:
       - ".github/workflows/chirp-web.yml"
+      - "apps/chirp/nmp-app-chirp-web/**"
       - "crates/nmp-wasm/**"
       - "web/chirp/**"
       - "Cargo.toml"
@@ -53,6 +55,14 @@ jobs:
         env:
           CC_wasm32_unknown_unknown: clang
         run: cargo check -p nmp-wasm --target wasm32-unknown-unknown
+
+      - name: Check nmp-app-chirp-web wasm32 target
+        env:
+          CC_wasm32_unknown_unknown: clang
+        run: cargo check -p nmp-app-chirp-web --target wasm32-unknown-unknown
+
+      - name: Test nmp-app-chirp-web native
+        run: cargo test -p nmp-app-chirp-web
 
       # W1 — the first test that actually EXECUTES wasm in a browser.
       # `wasm-pack test --headless --chrome` compiles nmp-wasm to wasm32,

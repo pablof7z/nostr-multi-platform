@@ -224,3 +224,8 @@ reason = "NIP-60 wallet proof-of-concept application"
 name = "chirp-desktop"
 path = "apps/chirp/chirp-desktop"
 reason = "Chirp reference desktop (egui) application"
+
+[[private_packages]]
+name = "nmp-app-chirp-web"
+path = "apps/chirp/nmp-app-chirp-web"
+reason = "wasm32 composition root for the Chirp web client"

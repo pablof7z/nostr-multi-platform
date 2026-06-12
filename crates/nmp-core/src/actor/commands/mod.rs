@@ -179,10 +179,18 @@ pub use event_observer::KernelEventObserverSlot;
 // `nmp_core::__ffi_internal::register_c_observer`.
 #[cfg(feature = "native")]
 pub use event_observer::register_c_observer;
-// Slot constructor + Rust-side register/unregister helpers reach `nmp-ffi`
-// through `nmp_core::__ffi_internal::*`.
+// Headless slot constructor — safe on wasm32 (no background thread).
+// Used by `KernelReducer::new` on all targets.
+pub(crate) use event_observer::new_event_observer_slot_headless;
+// `register_rust_observer` is a pure-Rust helper with no native deps; it is
+// available on all targets so wasm32 composition roots can register
+// KernelEventObservers. `new_event_observer_slot` and `unregister_observer`
+// remain native-only (used by the FFI / actor-thread shutdown path).
+pub use event_observer::register_rust_observer;
+// Slot constructor + unregister helper reach `nmp-ffi` through
+// `nmp_core::__ffi_internal::*`.
 #[cfg(feature = "native")]
-pub use event_observer::{new_event_observer_slot, register_rust_observer, unregister_observer};
+pub use event_observer::{new_event_observer_slot, unregister_observer};
 // `KernelEventObserver` / `KernelEventObserverFn` / `KernelEventObserverId`
 // are the typed observer surface re-exported unconditionally from `lib.rs`
 // (per-app Rust crates and the C-ABI wire shape). `KernelEventObserverRegistration`
