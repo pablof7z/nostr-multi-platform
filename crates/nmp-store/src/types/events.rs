@@ -202,10 +202,14 @@ impl VerifiedEvent {
     /// alternative for that call-site only. Do NOT use this constructor for
     /// externally-sourced events.
     ///
-    /// This is intentionally a long, specific name so grep + code review can
-    /// easily audit every call-site.
+    /// ## Visibility
+    ///
+    /// `pub(crate)` — the only cross-crate consumer is `nmp-core`, which
+    /// reaches this via `nmp_store::__nmp_core_internal::from_store_verified_unchecked`.
+    /// App crates MUST NOT call this; the `__nmp_core_internal` module name is
+    /// the explicit signal that it is an extraction seam, not a public API.
     #[must_use]
-    pub fn from_store_verified_unchecked(raw: RawEvent) -> Self {
+    pub(crate) fn from_store_verified_unchecked(raw: RawEvent) -> Self {
         VerifiedEvent(raw)
     }
 

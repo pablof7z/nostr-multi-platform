@@ -18,6 +18,7 @@ use super::PendingCacheServe;
 use super::super::Kernel;
 use super::super::types::StoredEvent;
 use crate::store::{RawEvent, VerifiedEvent};
+use nmp_store::__nmp_core_internal;
 use crate::substrate::KernelEvent;
 
 /// One store-served event collected during the immutable-borrow phase of
@@ -263,7 +264,7 @@ impl Kernel {
             // ingest; re-running Schnorr verify on every cache-serve step would
             // be O(events × sessions) overhead. `from_store_verified_unchecked`
             // documents this trust boundary explicitly.
-            let verified = VerifiedEvent::from_store_verified_unchecked(raw);
+            let verified = __nmp_core_internal::from_store_verified_unchecked(raw);
             if let Ok(d) = self.ingest_dispatcher.read() {
                 d.dispatch(&verified);
             }

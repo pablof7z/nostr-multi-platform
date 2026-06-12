@@ -68,6 +68,17 @@ impl EventIngestDispatcher {
     ///
     /// Distinct from [`Self::register_kind`] which appends; this method is a
     /// single-slot write — only one parser for `kind` survives the call.
+    ///
+    /// ## PR-2 forward-compatibility warning
+    ///
+    /// This method uses **replace-ALL-for-kind** semantics: every existing parser
+    /// for `kind` is evicted and replaced by the single `parser` argument. A
+    /// second lifecycle-managed parser for the same kind (e.g. Marmot's kind-1059
+    /// parser arriving in raw-tap PR-2) MUST NOT use this method — calling it a
+    /// second time would silently evict the first parser, breaking the peer
+    /// registration. PR-2 converts this seam to slot-keyed replace (each caller
+    /// owns a named slot; only that slot is swapped). Until that migration lands,
+    /// each kind MUST have at most one `replace_kind_parser` caller.
     pub fn replace_kind_parser(
         &mut self,
         kind: u32,

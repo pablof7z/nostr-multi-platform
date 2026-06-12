@@ -26,14 +26,20 @@
 //!
 //! - **Phase 4 (assert)**: every projection path is asserted non-empty.
 //!
-//! ## Why the raw observer, not the DmInboxProjection
+//! ## Why the raw observer AND IngestParser, not DmInboxProjection directly
 //!
 //! `DmInboxProjection` lives in `nmp-nip17`, which depends on `nmp-core`,
-//! creating a circular compile dependency if we imported it here. The raw
-//! observer path IS the seam (`notify_raw_event_observers`) — verifying that
-//! the kind:1059 event reaches the raw observer directly confirms that
-//! `DmInboxProjection` (which is registered as a raw observer) would also
-//! receive and decrypt it. The decrypt path itself is exercised by
+//! creating a circular compile dependency if we imported it here. This test
+//! instead verifies the two seams that `DmInboxProjection` rides:
+//!
+//! - **Raw observer** (`notify_raw_event_observers`): Marmot and other raw-tap
+//!   consumers still receive kind:1059 via this path (dual fan-out, preserved
+//!   until raw-tap PR-2).
+//! - **IngestParser** (`ingest_dispatcher.dispatch()`): `DmInboxProjection` is
+//!   registered as an `IngestParser` (not a raw observer) since raw-tap PR-1.
+//!   `CapturingIngestParser` stands in for it here to avoid the circular dep.
+//!
+//! The decrypt path itself is exercised by
 //! `nmp-nip17::inbox::tests::received_dm_surfaces_in_the_conversation`.
 
 use super::cache_serve_tests::{drain_cache_serves, hex_pk, simulate_cold_restart};
