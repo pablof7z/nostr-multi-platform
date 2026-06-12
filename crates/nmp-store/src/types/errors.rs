@@ -4,8 +4,6 @@
 //! the actor boundary to a tagged-union toast payload. They are never surfaced
 //! as panics or C exceptions.
 
-use super::gc::ClaimerId;
-
 // ─── VerifyError ─────────────────────────────────────────────────────────────
 
 /// Error returned by `VerifiedEvent::try_from_raw()` when an event fails
@@ -51,13 +49,6 @@ pub enum StoreError {
         reason: String,
     },
     UnknownNamespace(String),
-    /// Returned by `claim()` when the per-view or global pinned ceiling is exceeded.
-    /// D8 / GC ceiling invariant — see `docs/design/lmdb/gc.md` §2.
-    OverPinned {
-        claimer: ClaimerId,
-        requested: usize,
-        ceiling: usize,
-    },
     /// The operation is not implemented by this backend.
     ///
     /// V-52: `list_events_seen_on` returns this for the LMDB backend until a
@@ -76,8 +67,6 @@ impl std::fmt::Display for StoreError {
             Self::MigrationFailed { namespace, from, to, reason } =>
                 write!(f, "schema migration failed: {namespace} v{from}->{to}: {reason}"),
             Self::UnknownNamespace(s) => write!(f, "unknown namespace: {s}"),
-            Self::OverPinned { claimer, requested, ceiling } =>
-                write!(f, "claim ceiling exceeded: claimer={claimer:?} requested={requested} ceiling={ceiling}"),
             Self::NotSupported(s) => write!(f, "operation not supported by this backend: {s}"),
         }
     }

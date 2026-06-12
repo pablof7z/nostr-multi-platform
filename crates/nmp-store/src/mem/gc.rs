@@ -1,18 +1,19 @@
-//! Claim / release / `gc_step` for `MemEventStore`.
-//!
-//! Implements the `HotSet` semantics from `docs/design/lmdb/gc.md` §2:
-//!   - per-view ceiling: `DEFAULT_VIEW_CEILING` (1000 events).
-//!   - global pinned ceiling: `MAX_PINNED_TOTAL` (20000 events).
-//!   - `BTreeSet` idempotency per T25: re-claiming a known id is a no-op.
-//!   - `StoreError::OverPinned` on breach (D8).
+//! `gc_step` for `MemEventStore`.
 //!
 //! V-60: LRU eviction — when the store exceeds `budget.max_total_events`,
 //! `gc_step` evicts the least-recently-accessed (by `access_seq`) events that
-//! are not currently pinned (claimed), until the store is at or under the
+//! are not in the caller-supplied pin set, until the store is at or under the
 //! ceiling.  No tombstone is created for LRU-evicted events (they are still
 //! valid; the caller may re-fetch them from a relay).
+//!
+//! #1090 Stage 1: the persisted-claims machinery
+//! (`register_view_cover`/`claim`/`release`, the per-claimer `BTreeSet` pin
+//! map, the per-view + global ceilings, `StoreError::OverPinned`) is deleted.
+//! The pin set is now supplied per call by the kernel (`pins: &HashSet`),
+//! derived from `timeline`, `event_claims`, and the active open-interest
+//! registry.
 
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 
 // D20 — use the wasm-safe Instant shim rather than std::time::Instant
 // directly. On wasm32-unknown-unknown `std::time::Instant::now()` panics;
@@ -20,86 +21,15 @@ use std::collections::BTreeSet;
 // on wasm32 and to `std::time::Instant` on native (zero-cost re-export).
 use crate::time::Instant;
 
-use super::{
-    access_remove, bytes_to_hex, relay_index_remove, MemEventStore, DEFAULT_VIEW_CEILING,
-    MAX_PINNED_TOTAL, TOMBSTONE_MAX_AGE_SECS,
-};
-use crate::types::{ClaimerId, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
+use super::{access_remove, bytes_to_hex, relay_index_remove, MemEventStore, TOMBSTONE_MAX_AGE_SECS};
+use crate::types::{EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
 
-pub(super) fn register_view_cover(
-    store: &MemEventStore,
-    claimer: ClaimerId,
-    cover_budget: usize,
-) -> Result<(), StoreError> {
-    let mut st = store.lock()?;
-    st.claim_budgets.insert(claimer, cover_budget);
-    Ok(())
-}
-
-pub(super) fn claim(
-    store: &MemEventStore,
-    claimer: ClaimerId,
-    ids: &[EventId],
-) -> Result<(), StoreError> {
-    let mut st = store.lock()?;
-    let ceiling = *st
-        .claim_budgets
-        .get(&claimer)
-        .unwrap_or(&DEFAULT_VIEW_CEILING);
-
-    let existing_set = st.claims.entry(claimer).or_default();
-    // Use BTreeSet for intra-call deduplication so repeated ids in the same
-    // batch do not count multiple times toward the per-view ceiling (T25).
-    let new_ids: BTreeSet<String> = ids
-        .iter()
-        .map(|id| bytes_to_hex(id))
-        .filter(|hex| !existing_set.contains(hex))
-        .collect();
-
-    let current_for_claimer = existing_set.len();
-    let requested_for_claimer = current_for_claimer + new_ids.len();
-    if requested_for_claimer > ceiling {
-        return Err(StoreError::OverPinned {
-            claimer,
-            requested: requested_for_claimer,
-            ceiling,
-        });
-    }
-
-    // Global pinned ceiling uses UNION of all claim sets, not SUM, to avoid
-    // double-counting ids pinned by multiple claimers (D8 / gc.md §2).
-    let current_global: BTreeSet<&str> =
-        st.claims.values().flatten().map(String::as_str).collect();
-    let global_new = new_ids
-        .iter()
-        .filter(|hex| !current_global.contains(hex.as_str()))
-        .count();
-    let requested_global = current_global.len() + global_new;
-    if requested_global > MAX_PINNED_TOTAL {
-        return Err(StoreError::OverPinned {
-            claimer,
-            requested: requested_global,
-            ceiling: MAX_PINNED_TOTAL,
-        });
-    }
-
-    // Apply the claims.
-    let set = st.claims.entry(claimer).or_default();
-    for hex in new_ids {
-        set.insert(hex);
-    }
-    Ok(())
-}
-
-pub(super) fn release(store: &MemEventStore, claimer: ClaimerId) -> Result<(), StoreError> {
-    let mut st = store.lock()?;
-    st.claims.remove(&claimer);
-    st.claim_budgets.remove(&claimer);
-    Ok(())
-}
-
-/// One bounded GC pass.
+/// One bounded GC pass with an explicit derived pin set.
+///
+/// `pins` is the set of event ids to protect from Phase-2 LRU eviction (#1090
+/// Stage 1 — derived by the kernel from `timeline`, `event_claims`, and the
+/// active open-interest registry).
 ///
 /// `now_secs` is the kernel clock as Unix seconds (D7 — caller-supplied, never
 /// read from `SystemTime::now()` here).
@@ -108,10 +38,11 @@ pub(super) fn release(store: &MemEventStore, claimer: ClaimerId) -> Result<(), S
 /// 1. Reap NIP-40 expired events (up to `budget.max_events_per_step`).
 /// 2. LRU-evict un-pinned events when store size exceeds `budget.max_total_events`.
 /// 3. Purge tombstone rows older than `TOMBSTONE_MAX_AGE_SECS`.
-pub(super) fn gc_step(
+pub(super) fn gc_step_with_pins(
     store: &MemEventStore,
     budget: GcBudget,
     now_secs: u64,
+    pins: &HashSet<EventId>,
 ) -> Result<GcReport, StoreError> {
     let start = Instant::now();
     let mut st = store.lock()?;
@@ -156,15 +87,15 @@ pub(super) fn gc_step(
     // with the LOWEST access sequence numbers (oldest reads) until we are at or
     // under the ceiling or we exhaust the per-step budget.
     //
-    // Pinned events (union of all `claims` sets) are never evicted — that would
-    // violate the `claim`/`release` contract.
+    // Pinned events (the caller-supplied `pins` set) are never evicted — the
+    // kernel derives them from the live snapshot working set (#1090 Stage 1).
     //
     // No tombstone is created for LRU-evicted events: they are still valid Nostr
     // events; tombstoning them would permanently block legitimate re-insertion.
     if st.events.len() > budget.max_total_events {
-        // Build the pinned set once.
-        let pinned: BTreeSet<&str> =
-            st.claims.values().flatten().map(String::as_str).collect();
+        // Convert the caller's pin set (byte ids) to the hex keying the maps,
+        // once, before scanning candidates.
+        let pinned: HashSet<String> = pins.iter().map(|id| bytes_to_hex(id)).collect();
 
         // Collect eviction candidates sorted ascending by access_seq (oldest first).
         // Only include events that exist in both maps and are not pinned.
@@ -239,92 +170,7 @@ fn finish(start: Instant, mut report: GcReport) -> Result<GcReport, StoreError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::EventId;
-    use crate::{EventStore, MemEventStore};
-
-    fn make_id(b: u8) -> EventId {
-        let mut id = [0u8; 32];
-        id[0] = b;
-        id
-    }
-
-    #[test]
-    fn claim_idempotent_reclaim_does_not_count() {
-        let store = MemEventStore::new();
-        let c = ClaimerId(1);
-        store.register_view_cover(c, 5).unwrap();
-        let id = make_id(1);
-        store.claim(c, &[id]).unwrap();
-        // Re-claiming the same id must not count toward the ceiling.
-        store.claim(c, &[id]).unwrap();
-        let st = store.lock().unwrap();
-        assert_eq!(
-            st.claims[&c].len(),
-            1,
-            "idempotent: re-claim must not add entry"
-        );
-    }
-
-    #[test]
-    fn claim_over_per_view_ceiling_returns_err() {
-        let store = MemEventStore::new();
-        let c = ClaimerId(2);
-        store.register_view_cover(c, 2).unwrap();
-        store.claim(c, &[make_id(1), make_id(2)]).unwrap();
-        let result = store.claim(c, &[make_id(3)]);
-        assert!(
-            matches!(result, Err(StoreError::OverPinned { .. })),
-            "must return OverPinned when per-view ceiling exceeded"
-        );
-    }
-
-    #[test]
-    fn release_clears_all_pins() {
-        let store = MemEventStore::new();
-        let c = ClaimerId(3);
-        store.register_view_cover(c, 100).unwrap();
-        store.claim(c, &[make_id(1), make_id(2)]).unwrap();
-        store.release(c).unwrap();
-        let st = store.lock().unwrap();
-        assert!(
-            !st.claims.contains_key(&c),
-            "release must clear claimer's pins"
-        );
-    }
-
-    #[test]
-    fn claim_intra_call_dedup_counts_once() {
-        // Passing the same id three times in one batch must increment the
-        // per-view ceiling by exactly 1, not 3.
-        let store = MemEventStore::new();
-        let c = ClaimerId(4);
-        store.register_view_cover(c, 2).unwrap();
-        let id = make_id(42);
-        // Ceiling is 2; passing the same id three times should only consume 1 slot.
-        store.claim(c, &[id, id, id]).unwrap();
-        let st = store.lock().unwrap();
-        assert_eq!(
-            st.claims[&c].len(),
-            1,
-            "intra-call dup ids must count as one"
-        );
-    }
-
-    #[test]
-    fn release_also_clears_budget() {
-        // After release(), claim_budgets must not retain the stale entry.
-        let store = MemEventStore::new();
-        let c = ClaimerId(5);
-        store.register_view_cover(c, 10).unwrap();
-        store.claim(c, &[make_id(7)]).unwrap();
-        store.release(c).unwrap();
-        let st = store.lock().unwrap();
-        assert!(!st.claims.contains_key(&c), "release must clear pins");
-        assert!(
-            !st.claim_budgets.contains_key(&c),
-            "release must clear budget entry"
-        );
-    }
+    use crate::MemEventStore;
 
     // ── addr_tombstone GC tests (S-2 fix) ────────────────────────────────────
 
@@ -374,7 +220,8 @@ mod tests {
             max_duration_ms: 10_000,
             max_total_events: usize::MAX,
         };
-        let report = gc_step(&store, budget, now_secs).unwrap();
+        let report =
+            gc_step_with_pins(&store, budget, now_secs, &HashSet::new()).unwrap();
 
         let st = store.lock().unwrap();
         assert!(
@@ -405,7 +252,8 @@ mod tests {
             max_duration_ms: 10_000,
             max_total_events: usize::MAX,
         };
-        let report = gc_step(&store, budget, now_secs).unwrap();
+        let report =
+            gc_step_with_pins(&store, budget, now_secs, &HashSet::new()).unwrap();
 
         let st = store.lock().unwrap();
         assert!(

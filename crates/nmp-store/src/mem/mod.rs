@@ -43,7 +43,7 @@
 //!   `store_impl.rs` — `EventStore` trait impl (delegation to sub-modules)
 //!   insert.rs     — §7.1 insert invariants (replaceable, kind:5, normal)
 //!   query.rs      — read / scan methods
-//!   gc.rs         — claim / release / prune
+//!   gc.rs         — gc_step / LRU eviction / tombstone purge
 //!   domain.rs     — domain rows + migrations
 
 pub(super) mod domain;
@@ -57,16 +57,10 @@ mod tests;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
-use super::types::{ClaimerId, EventId, ProvenanceEntry, RelayUrl, StoredEvent, TombstoneRow, WatermarkRow};
+use super::types::{EventId, ProvenanceEntry, RelayUrl, StoredEvent, TombstoneRow, WatermarkRow};
 use super::StoreError;
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-
-/// Default maximum pinned events per view (D8 / gc.md §2).
-pub(super) const DEFAULT_VIEW_CEILING: usize = 1_000;
-
-/// Hard global pinned ceiling (D8 / gc.md §2).
-pub(super) const MAX_PINNED_TOTAL: usize = 20_000;
 
 /// Maximum provenance entries kept per event.
 pub(super) const MAX_PROVENANCE_ENTRIES: usize = 32;
@@ -124,13 +118,6 @@ pub(super) struct MemState {
     /// Domain schema versions.
     pub(super) domain_versions: HashMap<&'static str, u32>,
 
-    /// Claim budgets: claimer → max pinned.
-    pub(super) claim_budgets: HashMap<ClaimerId, usize>,
-
-    /// Current claims: claimer → `BTreeSet` of hex event ids.
-    /// `BTreeSet` gives idempotency per T25 — re-claiming a known id is a no-op.
-    pub(super) claims: HashMap<ClaimerId, BTreeSet<String>>,
-
     // ─── LRU access tracking (V-60) ──────────────────────────────────────────
 
     /// Monotonically-increasing counter.  Incremented by one on every insert
@@ -159,8 +146,6 @@ impl MemState {
             replaceable_freshness: HashMap::new(),
             domain_data: HashMap::new(),
             domain_versions: HashMap::new(),
-            claim_budgets: HashMap::new(),
-            claims: HashMap::new(),
             access_seq: 0,
             access_index: HashMap::new(),
         }

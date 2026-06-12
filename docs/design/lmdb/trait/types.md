@@ -118,6 +118,12 @@ pub enum SyncMethod { Negentropy, ReqScan, Manual }
 
 ## GC / hot-set
 
+> **REMOVED (#1090 Stage 1):** `ClaimerId` and `StoreError::OverPinned` no
+> longer exist. The persisted-claims API had zero production callers (V-117);
+> GC eviction protection is now a kernel-derived ephemeral pin set passed to
+> `gc_step_with_pins(budget, now_secs, &HashSet<EventId>)`. The `ClaimerId`
+> block below is retained only as historical context.
+
 ```rust
 /// Opaque view-handle id assigned by the actor (monotonically increasing u64).
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]

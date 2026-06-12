@@ -45,7 +45,7 @@ crates/nmp-core/src/kernel/event_claim_tests.rs	560
 crates/nmp-core/src/kernel/ingest_tests.rs	952
 crates/nmp-core/src/kernel/ingest/mod.rs	748
 crates/nmp-core/src/kernel/mailboxes.rs	506
-crates/nmp-core/src/kernel/mod.rs	2907
+crates/nmp-core/src/kernel/mod.rs	2797
 crates/nmp-core/src/kernel/publish_engine_tests.rs	852
 crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	840
 crates/nmp-core/src/kernel/retention_tests.rs	546

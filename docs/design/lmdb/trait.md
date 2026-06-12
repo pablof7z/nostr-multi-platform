@@ -146,31 +146,27 @@ pub trait EventStore: Send + Sync {
 
     // ─────── Hot-set / claims (GC) ───────
 
-    /// Register the maximum number of events this view is allowed to pin at once.
-    /// Must be called before `claim()` for a given `claimer`. If not called,
-    /// the store applies a default per-view ceiling of `max_claim_per_view` events
-    /// (see [`gc.md`](gc.md) §2 — default 1 000).
-    ///
-    /// Enforcement: `claim()` counts the current per-claimer set size; if adding
-    /// `ids` would exceed this budget OR the global `max_pinned_total` ceiling,
-    /// it returns `Err(StoreError::OverPinned { ... })` without modifying state.
-    /// The caller is responsible for releasing stale claims first.
-    ///
-    /// Rationale: D8 (reactivity contract) requires that the kernel's working-set
-    /// is bounded at all times. An unbounded pin overlay would let a misbehaving
-    /// view module inflate memory without limit (ADR-0001..0004).
-    fn register_view_cover(&self, claimer: ClaimerId, cover_budget: usize) -> Result<(), StoreError>;
-
-    /// Pin `ids` against eviction until `release()`. Returns `StoreError::OverPinned`
-    /// if adding `ids` would exceed the per-claimer budget or the global ceiling.
-    fn claim(&self, claimer: ClaimerId, ids: &[EventId]) -> Result<(), StoreError>;
-    fn release(&self, claimer: ClaimerId) -> Result<(), StoreError>;
+    // NOTE (#1090 Stage 1): the persisted-claims API
+    // (`register_view_cover`/`claim`/`release`/`claim_guarded`, `ClaimerId`,
+    // `StoreError::OverPinned`, the `nmp-claims`/`nmp-claims-budget` sub-dbs) was
+    // DELETED — it had zero production callers (V-117). Eviction protection is
+    // now a kernel-derived ephemeral pin set passed to `gc_step_with_pins`; see
+    // [`gc.md`](gc.md) §4. The block below is retained only as historical context
+    // for the original design and no longer reflects the trait surface.
 
     /// Soft hint: keep these in hot LRU on a best-effort basis.
     fn hot_set_hint(&self, ids: &[EventId]) -> Result<(), StoreError>;
 
-    /// One bounded GC pass — reap expired, trim LRU, purge old tombstones.
-    fn gc_step(&self, budget: GcBudget) -> Result<GcReport, StoreError>;
+    /// One bounded GC pass with an explicit derived pin set — reap expired,
+    /// trim LRU (skipping `pins`), purge old tombstones. `gc_step` is a
+    /// convenience wrapper that passes an empty pin set. See [`gc.md`](gc.md) §4.
+    fn gc_step_with_pins(
+        &self,
+        budget: GcBudget,
+        now_secs: u64,
+        pins: &HashSet<EventId>,
+    ) -> Result<GcReport, StoreError>;
+    fn gc_step(&self, budget: GcBudget, now_secs: u64) -> Result<GcReport, StoreError>;
 
     // ─────── Domain rows (per-DomainModule typed namespace) ───────
 

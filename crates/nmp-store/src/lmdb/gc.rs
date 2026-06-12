@@ -18,9 +18,12 @@
 //! do NOT stamp, limiting write-amplification).  The alternative — wall-clock in
 //! a read-txn — would reintroduce a D7 violation.
 //!
-//! Eviction skips pinned events (the union of all `claims` sub-db entries).
-//! No tombstone is written for LRU-evicted events: they remain valid Nostr
-//! events and may be re-fetched from a relay.
+//! Eviction skips pinned events.  The pin set is supplied by the caller
+//! (`pins: &HashSet<EventId>`) — the kernel derives it on every GC pass from
+//! `timeline`, `event_claims`, and the active open-interest registry (#1090
+//! Stage 1).  No persisted claims sub-db exists any more; pins are ephemeral
+//! per pass.  No tombstone is written for LRU-evicted events: they remain valid
+//! Nostr events and may be re-fetched from a relay.
 //!
 //! V-118 Phase-1 expiration index (replaces the V-117 cursor):
 //!
@@ -38,7 +41,7 @@
 //! still apply, and lowest-expiry-first key order means the next pass continues
 //! from where the previous stopped — no cursor state to persist.
 
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::ops::Bound;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -153,14 +156,20 @@ pub(super) fn expiry_index_delete_exact(
 
 // ─── gc_step ─────────────────────────────────────────────────────────────────
 
-/// One bounded GC pass.
+/// One bounded GC pass with an explicit derived pin set.
 ///
 /// `now_secs` is the kernel clock as Unix seconds (D7 — caller-supplied, the
 /// store never calls `SystemTime::now()` directly).
+///
+/// `pins` is the set of event ids to protect from Phase-2 LRU eviction.  The
+/// kernel derives it on each call from `timeline`, `event_claims`, and the
+/// active open-interest registry (#1090 Stage 1).  The store holds no persisted
+/// claim state any more.
 pub(super) fn gc_step(
     inner: &Arc<Inner>,
     budget: GcBudget,
     now_secs: u64,
+    pins: &HashSet<EventId>,
 ) -> Result<GcReport, StoreError> {
     let start = std::time::Instant::now();
     let mut report = GcReport::default();
@@ -260,7 +269,7 @@ pub(super) fn gc_step(
     // ── Phase 2: LRU eviction ─────────────────────────────────────────────
     //
     // Only runs when a finite ceiling is configured (max_total_events < usize::MAX).
-    // Pinned events (union of all `claims` sub-db keys) are never evicted.
+    // Pinned events (the caller-supplied `pins` set) are never evicted.
     // No tombstone is written for LRU-evicted events.
     //
     // V-117 fix: replace the O(N) `query(Filter::new()).count()` with an O(1)
@@ -281,29 +290,9 @@ pub(super) fn gc_step(
         };
 
         if event_count > budget.max_total_events {
-            // Collect pinned event ids from the claims sub-db.
-            // Key layout per lmdb/claims.rs: claimer_u64(8 BE) || event_id(32) = 40 bytes.
-            let pinned: BTreeSet<EventId> = {
-                let txn = inner
-                    .env
-                    .read_txn()
-                    .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
-                let mut set = BTreeSet::new();
-                for entry in inner
-                    .claims
-                    .iter(&txn)
-                    .map_err(|e| StoreError::Io(format!("claims iter: {e}")))?
-                {
-                    let (k, _) =
-                        entry.map_err(|e| StoreError::Io(format!("claims entry: {e}")))?;
-                    if k.len() == 40 {
-                        let mut id = [0u8; 32];
-                        id.copy_from_slice(&k[8..40]);
-                        set.insert(id);
-                    }
-                }
-                set
-            };
+            // Pinned set is the caller-derived `pins` (#1090 Stage 1) — no
+            // persisted claims sub-db is consulted any more.
+            let pinned = pins;
 
             // Read lru_access, filter out pinned, sort ascending by seq (oldest first).
             let mut candidates: Vec<(u64, EventId)> = {

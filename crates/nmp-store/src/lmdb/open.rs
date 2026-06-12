@@ -23,11 +23,15 @@ use crate::StoreError;
 /// so all writes are atomic.
 pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     // 32 GB on 64-bit; the upstream default. The fork's `with_env` wraps the
-    // 11 internal sub-dbs; we reserve 11 additional for NMP-side data.
+    // 11 internal sub-dbs; we reserve 9 additional for NMP-side data.
     const MAP_SIZE: usize = 1024 * 1024 * 1024 * 32;
     const MAX_READERS: u32 = 126;
-    // +1 for nmp-lru-access (V-60), +1 for nmp-expiry-index (V-118).
-    const NMP_ADDITIONAL_DBS: u32 = 11;
+    // NMP sub-dbs: provenance, tombstones, addr-tombstones, watermarks,
+    // domain-versions, domain-data, relay-author-scores, lru-access (V-60),
+    // expiry-index (V-118).  The nmp-claims / nmp-claims-budget sub-dbs were
+    // removed in #1090 Stage 1 (persisted claims deleted in favour of a
+    // kernel-derived ephemeral pin set passed to `gc_step_with_pins`).
+    const NMP_ADDITIONAL_DBS: u32 = 9;
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -52,8 +56,6 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     let tombstones = open("nmp-tombstones", &mut txn)?;
     let addr_tombstones = open("nmp-addr-tombstones", &mut txn)?;
     let watermarks = open("nmp-watermarks", &mut txn)?;
-    let claims_budget = open("nmp-claims-budget", &mut txn)?;
-    let claims = open("nmp-claims", &mut txn)?;
     let domain_versions = open("nmp-domain-versions", &mut txn)?;
     let domain_data = open("nmp-domain-data", &mut txn)?;
     // W2 — relay-author-scores sub-db.
@@ -99,8 +101,6 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
             tombstones,
             addr_tombstones,
             watermarks,
-            claims_budget,
-            claims,
             domain_versions,
             domain_data,
             relay_author_scores,
