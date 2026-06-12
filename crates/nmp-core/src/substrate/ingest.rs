@@ -58,6 +58,26 @@ impl EventIngestDispatcher {
         self.by_kind.entry(kind).or_default().push(parser);
     }
 
+    /// Replace **all** parsers registered for `kind` with a single new one.
+    ///
+    /// Used by lifecycle-managed singleton seams (e.g. the NIP-17 DM inbox
+    /// parser, which must be swapped to a fresh projection instance on account
+    /// switch so accumulated in-memory messages are cleared). Returns the
+    /// previous parsers for that kind, if any, so callers can confirm whether
+    /// a replacement actually happened (useful in tests).
+    ///
+    /// Distinct from [`Self::register_kind`] which appends; this method is a
+    /// single-slot write — only one parser for `kind` survives the call.
+    pub fn replace_kind_parser(
+        &mut self,
+        kind: u32,
+        parser: Arc<dyn IngestParser>,
+    ) -> Vec<Arc<dyn IngestParser>> {
+        let prev = self.by_kind.remove(&kind).unwrap_or_default();
+        self.by_kind.insert(kind, vec![parser]);
+        prev
+    }
+
     pub fn register_range(&mut self, range: Range<u32>, parser: Arc<dyn IngestParser>) {
         self.by_range.push((range, parser));
     }
@@ -197,5 +217,37 @@ mod tests {
         d.register_kind(1, p.clone());
         d.register_range(30_000..40_000, p.clone());
         assert_eq!(d.registration_count(), 3);
+    }
+
+    #[test]
+    fn replace_kind_parser_swaps_single_slot() {
+        let mut d = EventIngestDispatcher::new();
+        let old = CapturingParser::new();
+        let new = CapturingParser::new();
+
+        // Register two old parsers for kind 42.
+        d.register_kind(42, old.clone());
+        d.register_kind(42, old.clone());
+        assert_eq!(d.registration_count(), 2);
+
+        // Replace: only the new parser survives.
+        let prev = d.replace_kind_parser(42, new.clone());
+        assert_eq!(prev.len(), 2, "both old parsers returned as previous");
+        assert_eq!(d.registration_count(), 1, "exactly one parser remains after replace");
+
+        d.dispatch(&evt(42));
+        assert_eq!(old.kinds(), Vec::<u32>::new(), "old parsers must NOT fire after replace");
+        assert_eq!(new.kinds(), vec![42], "new parser must fire after replace");
+    }
+
+    #[test]
+    fn replace_kind_parser_on_empty_slot_returns_empty() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        let prev = d.replace_kind_parser(9999, p.clone());
+        assert!(prev.is_empty(), "replacing an absent kind returns empty vec");
+        assert_eq!(d.registration_count(), 1);
+        d.dispatch(&evt(9999));
+        assert_eq!(p.kinds(), vec![9999]);
     }
 }

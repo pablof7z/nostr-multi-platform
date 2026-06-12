@@ -43,11 +43,42 @@ use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
 };
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::store::VerifiedEvent;
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
+use crate::substrate::IngestParser;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
+
+/// An `IngestParser` that records the kind of every event it receives.
+/// Used to verify kind:1059 events reach the IngestParser seam after cache-serve
+/// (PR-1 of the raw-tap retirement ladder).
+struct CapturingIngestParser {
+    seen_kinds: Mutex<Vec<u32>>,
+}
+
+impl CapturingIngestParser {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            seen_kinds: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn seen(&self) -> Vec<u32> {
+        self.seen_kinds.lock().unwrap().clone()
+    }
+
+    fn clear(&self) {
+        self.seen_kinds.lock().unwrap().clear();
+    }
+}
+
+impl IngestParser for CapturingIngestParser {
+    fn parse(&self, evt: &VerifiedEvent) {
+        self.seen_kinds.lock().unwrap().push(evt.raw().kind);
+    }
+}
 
 /// A raw observer that records the kind of every event it receives.
 /// Used to verify kind:1059 events reach the raw tap after cache-serve.
@@ -454,5 +485,105 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     assert!(
         gift_wrap_in_cache,
         "E2 FAIL: gift-wrap ({gift_wrap_id}) must be in events cache after cold-restart serve"
+    );
+}
+
+/// PR-1 rawtap retirement — cache-serve feeds kind:1059 to the IngestParser seam.
+///
+/// Extends the E2 acceptance test: verifies that `feed_served_event` dispatches
+/// kind:1059 events to the `EventIngestDispatcher` (in addition to the raw-observer
+/// tap that stays in place for Marmot until PR-2). Uses a `CapturingIngestParser`
+/// to avoid the circular dependency on `nmp-nip17::DmInboxProjection`.
+#[test]
+fn e2_cache_serve_feeds_ingest_parser_for_kind_1059() {
+    let base_ts: u64 = 1_700_000_000;
+    let receiver_keys = ::nostr::Keys::generate();
+    let receiver_hex = receiver_keys.public_key().to_hex();
+    let sender_keys = ::nostr::Keys::generate();
+
+    // ── Kernel with wired IngestParser for kind:1059 ──────────────────────────
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Wire the capturing IngestParser into the kernel's shared dispatcher slot.
+    let ingest_parser = CapturingIngestParser::new();
+    kernel.register_ingest_parser(1059, ingest_parser.clone());
+
+    // Also wire a raw observer to confirm dual fan-out (raw tap preserved for
+    // Marmot during the PR-1/PR-2 transition window).
+    let slot = new_raw_event_observer_slot();
+    let raw_observer = CapturingRawObserver::new();
+    register_rust_raw_observer(&slot, KindFilter::from_kinds([1059u32]), raw_observer.clone());
+    kernel.set_raw_event_observers_handle(slot);
+
+    kernel.active_account = Some(receiver_hex.clone());
+
+    // ── Phase 1: seed a kind:1059 gift-wrap into the store ────────────────────
+    let (gift_wrap_json_val, gift_wrap_id) = gift_wrap_json(
+        &sender_keys,
+        &receiver_keys.public_key(),
+        "parser cache-serve test",
+        base_ts,
+    );
+    kernel.handle_event(
+        RelayRole::Content,
+        "wss://relay.test/",
+        "dm",
+        &gift_wrap_json_val,
+    );
+
+    // Confirm the parser received it on ingest (live path).
+    assert!(
+        ingest_parser.seen().contains(&1059),
+        "Phase 1: IngestParser must see kind:1059 on live ingest"
+    );
+
+    // ── Phase 2: cold restart — clear caches + reset counters ─────────────────
+    simulate_cold_restart(&mut kernel);
+    ingest_parser.clear();
+    raw_observer.clear();
+
+    assert!(
+        ingest_parser.seen().is_empty(),
+        "Phase 2: IngestParser seen list must be cleared before cache-serve"
+    );
+    assert!(
+        raw_observer.seen().is_empty(),
+        "Phase 2: raw observer seen list must be cleared before cache-serve"
+    );
+
+    // ── Phase 3: enqueue and drain cache-serve for kind:1059 ──────────────────
+    {
+        let mut dm_shape = InterestShape {
+            kinds: BTreeSet::from([1059u32]),
+            ..Default::default()
+        };
+        dm_shape
+            .tags
+            .insert("p".to_string(), BTreeSet::from([receiver_hex.clone()]));
+        let dm_key = crate::subs::SubKey::new(("ingest-parser-test", &receiver_hex));
+        let completion_key =
+            crate::kernel::cache_serve::completion_key_for_interest(&dm_key, &dm_shape);
+        kernel.enqueue_cache_serve(&dm_shape, completion_key);
+    }
+    drain_cache_serves(&mut kernel, 10);
+
+    // ── Phase 4: both fan-outs must fire ──────────────────────────────────────
+    let ingest_seen = ingest_parser.seen();
+    assert!(
+        ingest_seen.contains(&1059),
+        "E2/PR-1 FAIL: IngestParser must receive kind:1059 after cold-restart cache-serve; \
+         got {ingest_seen:?} — the DmInboxProjection would not decrypt after restart"
+    );
+
+    let raw_seen = raw_observer.seen();
+    assert!(
+        raw_seen.contains(&1059),
+        "E2/PR-1 FAIL: raw observer must ALSO receive kind:1059 after cache-serve \
+         (dual fan-out preserved for Marmot until PR-2); got {raw_seen:?}"
+    );
+
+    assert!(
+        kernel.events.contains_key(gift_wrap_id.as_str()),
+        "E2/PR-1 FAIL: gift-wrap must be in events cache after cache-serve"
     );
 }
