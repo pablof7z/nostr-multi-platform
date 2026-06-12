@@ -50,11 +50,11 @@ fn clamp_emit_hz_enforces_ceiling() {
 /// catching a regression that removes the clamp.
 #[test]
 fn high_emit_hz_is_clamped_to_ceiling_end_to_end() {
-    let (inbox_tx, inbox_rx) = mpsc::channel::<ActorMail>();
+    let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
     let cmd_tx = CommandSender::new(inbox_tx);
     let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
     let actor_self_tx = cmd_tx.clone();
-    thread::spawn(move || run_actor(inbox_rx, actor_self_tx, upd_tx));
+    thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
     // Request an absurdly high rate (100× the ceiling).
     cmd_tx

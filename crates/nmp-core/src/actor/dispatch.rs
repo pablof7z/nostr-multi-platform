@@ -285,18 +285,18 @@ pub(super) struct ActorContext<'a> {
     /// projection instead of the publish engine. Local-key signs resolve
     /// inline in the dispatch arm and never reach this vec.
     pub(super) pending_sign_returns: &'a mut Vec<PendingSignReturn>,
-    /// Self-feedback `Sender<ActorCommand>` — the actor's own command channel
-    /// from the perspective of code running on the actor thread.
-    /// `dispatch.rs` arms that spawn background workers (the LNURL-pay
-    /// HTTP round-trip dispatched via `ActorCommand::Protocol` carries an
-    /// owned clone through `ProtocolCommandContext::command_sender_clone`)
-    /// clone this and hand the clone to the worker; the worker then sends
-    /// a follow-up `ActorCommand` (e.g. `ShowToast` with the bolt11
-    /// invoice) back into the actor loop without needing access to the
-    /// `NmpApp`.
+    /// Self-feedback [`crate::actor::CommandSender`] — the actor's own waking
+    /// inbox handle (ADR-0050 §D3a) from the perspective of code running on
+    /// the actor thread. `dispatch.rs` arms that spawn background workers
+    /// (the LNURL-pay HTTP round-trip dispatched via `ActorCommand::Protocol`
+    /// carries an owned clone through
+    /// `ProtocolCommandContext::command_sender_clone`) clone this and hand
+    /// the clone to the worker; the worker then sends a follow-up
+    /// `ActorCommand` (e.g. `ShowToast` with the bolt11 invoice) back into
+    /// the actor loop — waking it — without needing access to the `NmpApp`.
     ///
     /// D8 — the actor never `recv`s on this sender; it only hands clones
-    /// out. The matching receiver is `command_rx` in `run_actor_with_observers`.
+    /// out. The matching receiver is the inbox in `run_actor_with_observers`.
     /// A disconnected sender (post-Shutdown) is a benign send-failure on
     /// the worker side; the worker swallows it as a no-op (D6).
     pub(super) command_tx_self: &'a crate::actor::CommandSender,
@@ -1842,8 +1842,8 @@ pub(super) fn handle_relay_event(
     // before the kernel drops them as unknown kinds.
     relay_text_interceptor: &crate::substrate::RelayTextInterceptorSlot,
     // ADR-0051: relay-connected hook slot fanned on `PoolEvent::Opened`, plus
-    // the actor's self-sender so a spawned nmp-nip11 fetch can post
-    // `ActorCommand::SetRelayInfo` back into the loop.
+    // the actor's waking self-sender (ADR-0050 §D3a) so a spawned nmp-nip11
+    // fetch can post `ActorCommand::SetRelayInfo` back and wake the loop.
     relay_connected_hook: &crate::substrate::RelayConnectedHookSlot,
     command_tx_self: &crate::actor::CommandSender,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
