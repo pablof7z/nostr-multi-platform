@@ -173,15 +173,6 @@ impl MuteListProjection {
             .map(|g| g.pubkeys.len())
             .unwrap_or(0)
     }
-
-    /// Number of muted event ids currently held. Test-only inspector.
-    #[cfg(test)]
-    pub(crate) fn muted_event_id_count(&self) -> usize {
-        self.mute_set
-            .lock()
-            .map(|g| g.event_ids.len())
-            .unwrap_or(0)
-    }
 }
 
 impl KernelEventObserver for MuteListProjection {
