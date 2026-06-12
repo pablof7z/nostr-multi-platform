@@ -18,7 +18,7 @@ use super::{
     decode_marmot_snapshot, typed_projection, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION,
 };
 use crate::projection::payload::{
-    KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
+    KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingOpRow, PendingWelcomeRow,
 };
 
 /// A fully-populated snapshot exercising every nested vector and `Option`
@@ -69,6 +69,13 @@ fn populated() -> MarmotSnapshot {
         is_registered: true,
         orphaned_commit_count: 3,
         keyring_unavailable: false,
+        pending_ops: vec![PendingOpRow {
+            correlation_id: "corr-test-1".to_string(),
+            op_tag: "create_group".to_string(),
+            missing_count: 2,
+            display_label: "Waiting for key packages (2)\u{2026}".to_string(),
+        }],
+        last_op_error: Some("key_package_unavailable".to_string()),
     }
 }
 
@@ -165,4 +172,71 @@ fn decode_rejects_bytes_without_the_nmms_identifier() {
     // A valid NMMG (messages) buffer must be rejected by the NMMS decoder.
     let nmmg = super::super::messages_fb::encode_marmot_messages(&[]);
     assert!(decode_marmot_snapshot(&nmmg).is_err());
+}
+
+#[test]
+fn pending_ops_round_trip_and_absent_last_op_error_is_none() {
+    // Two pending ops, no last_op_error.
+    let mut snapshot = populated();
+    snapshot.pending_ops = vec![
+        PendingOpRow {
+            correlation_id: "cid-a".to_string(),
+            op_tag: "create_group".to_string(),
+            missing_count: 1,
+            display_label: "Waiting for key packages (1)\u{2026}".to_string(),
+        },
+        PendingOpRow {
+            correlation_id: "cid-b".to_string(),
+            op_tag: "invite".to_string(),
+            missing_count: 3,
+            display_label: "Waiting for key packages (3)\u{2026}".to_string(),
+        },
+    ];
+    snapshot.last_op_error = None;
+
+    let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
+        .expect("pending_ops snapshot must decode");
+    assert_eq!(decoded.pending_ops.len(), 2, "both pending ops must survive round-trip");
+    assert_eq!(decoded.pending_ops[0].correlation_id, "cid-a");
+    assert_eq!(decoded.pending_ops[0].op_tag, "create_group");
+    assert_eq!(decoded.pending_ops[0].missing_count, 1);
+    assert_eq!(
+        decoded.pending_ops[0].display_label,
+        "Waiting for key packages (1)\u{2026}"
+    );
+    assert_eq!(decoded.pending_ops[1].correlation_id, "cid-b");
+    assert_eq!(decoded.pending_ops[1].missing_count, 3);
+    assert_eq!(decoded.last_op_error, None, "None last_op_error must remain None");
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn empty_pending_ops_and_present_last_op_error_round_trip() {
+    let mut snapshot = populated();
+    snapshot.pending_ops = Vec::new();
+    snapshot.last_op_error = Some("key_package_unavailable".to_string());
+
+    let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
+        .expect("snapshot with last_op_error must decode");
+    assert!(decoded.pending_ops.is_empty(), "empty pending_ops must round-trip as empty");
+    assert_eq!(
+        decoded.last_op_error,
+        Some("key_package_unavailable".to_string()),
+        "present last_op_error must survive round-trip"
+    );
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn present_empty_string_last_op_error_is_distinct_from_absent() {
+    let mut snapshot = populated();
+    snapshot.last_op_error = Some(String::new());
+
+    let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
+        .expect("must decode");
+    assert_eq!(
+        decoded.last_op_error,
+        Some(String::new()),
+        "Some(\"\") last_op_error must NOT collapse to None"
+    );
 }

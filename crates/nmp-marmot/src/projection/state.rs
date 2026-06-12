@@ -76,7 +76,7 @@ use crate::service::MarmotService;
 
 use crate::projection::display;
 use crate::projection::payload::{
-    KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
+    KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingOpRow, PendingWelcomeRow,
 };
 use crate::projection::pending::PendingOpsStore;
 
@@ -378,6 +378,24 @@ impl MarmotProjection {
         let cached_kp_pubkeys = inner.service.cached_kp_pubkeys();
         let orphaned_commit_count = inner.service.orphaned_commit_count();
         let keyring_unavailable = inner.keyring_unavailable;
+        let pending_ops: Vec<PendingOpRow> = inner
+            .pending_ops
+            .iter()
+            .map(|op| {
+                let op_tag = serde_json::from_str::<serde_json::Value>(&op.action_json)
+                    .ok()
+                    .and_then(|v| v.get("op").and_then(serde_json::Value::as_str).map(str::to_string))
+                    .unwrap_or_else(|| "unknown".to_string());
+                let missing_count = u32::try_from(op.missing_pubkeys.len()).unwrap_or(u32::MAX);
+                let display_label = format!("Waiting for key packages ({missing_count})\u{2026}");
+                PendingOpRow {
+                    correlation_id: op.correlation_id.clone(),
+                    op_tag,
+                    missing_count,
+                    display_label,
+                }
+            })
+            .collect();
         MarmotSnapshot {
             groups,
             pending_welcomes,
@@ -387,6 +405,8 @@ impl MarmotProjection {
             is_registered: true,
             orphaned_commit_count,
             keyring_unavailable,
+            pending_ops,
+            last_op_error: None,
         }
     }
 }

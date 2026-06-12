@@ -37,8 +37,8 @@ class PendingWelcomeRow : Table() {
                 null
             }
         }
-    val idHexAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
-    fun idHexInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
+    val idHexAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
+    fun idHexInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
     val groupName : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class PendingWelcomeRow : Table() {
                 null
             }
         }
-    val groupNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
-    fun groupNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
+    val groupNameAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
+    fun groupNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
     val displayName : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class PendingWelcomeRow : Table() {
                 null
             }
         }
-    val displayNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
+    val displayNameAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
+    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
     val inviterNpub : String?
         get() {
             val o = __offset(10)
@@ -70,10 +70,10 @@ class PendingWelcomeRow : Table() {
                 null
             }
         }
-    val inviterNpubAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
-    fun inviterNpubInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
+    val inviterNpubAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
+    fun inviterNpubInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
+        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
         fun getRootAsPendingWelcomeRow(_bb: ByteBuffer): PendingWelcomeRow = getRootAsPendingWelcomeRow(_bb, PendingWelcomeRow())
         fun getRootAsPendingWelcomeRow(_bb: ByteBuffer, obj: PendingWelcomeRow): PendingWelcomeRow {
             _bb.order(ByteOrder.LITTLE_ENDIAN)

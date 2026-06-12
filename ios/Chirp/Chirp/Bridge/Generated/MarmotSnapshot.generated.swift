@@ -264,6 +264,67 @@ public struct nmp_marmot_KeyPackageStatus: FlatBufferTable, FlatbuffersVectorIni
   }
 }
 
+///  One parked (deferred) op waiting for a peer's KP to arrive.
+///  Mirrors `(correlation_id, op_tag, missing_count)` from
+///  `crate::projection::state::InnerHandle::pending_op_summaries`.
+public struct nmp_marmot_PendingOpRow: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "NMMS" } 
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_marmot_PendingOpRow.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case correlationId = 4
+    case opTag = 6
+    case missingCount = 8
+    case displayLabel = 10
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var correlationId: String? { let o = _accessor.offset(VTOFFSET.correlationId.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var correlationIdSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.correlationId.v) }
+  public var opTag: String? { let o = _accessor.offset(VTOFFSET.opTag.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var opTagSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.opTag.v) }
+  public var missingCount: UInt32 { let o = _accessor.offset(VTOFFSET.missingCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
+  public var displayLabel: String? { let o = _accessor.offset(VTOFFSET.displayLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var displayLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.displayLabel.v) }
+  public static func startPendingOpRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
+  public static func add(correlationId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: correlationId, at: VTOFFSET.correlationId.p) }
+  public static func add(opTag: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: opTag, at: VTOFFSET.opTag.p) }
+  public static func add(missingCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: missingCount, def: 0, at: VTOFFSET.missingCount.p) }
+  public static func add(displayLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: displayLabel, at: VTOFFSET.displayLabel.p) }
+  public static func endPendingOpRow(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createPendingOpRow(
+    _ fbb: inout FlatBufferBuilder,
+    correlationIdOffset correlationId: Offset = Offset(),
+    opTagOffset opTag: Offset = Offset(),
+    missingCount: UInt32 = 0,
+    displayLabelOffset displayLabel: Offset = Offset()
+  ) -> Offset {
+    let __start = nmp_marmot_PendingOpRow.startPendingOpRow(&fbb)
+    nmp_marmot_PendingOpRow.add(correlationId: correlationId, &fbb)
+    nmp_marmot_PendingOpRow.add(opTag: opTag, &fbb)
+    nmp_marmot_PendingOpRow.add(missingCount: missingCount, &fbb)
+    nmp_marmot_PendingOpRow.add(displayLabel: displayLabel, &fbb)
+    return nmp_marmot_PendingOpRow.endPendingOpRow(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.correlationId.p, fieldName: "correlationId", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.opTag.p, fieldName: "opTag", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.missingCount.p, fieldName: "missingCount", required: false, type: UInt32.self)
+    try _v.visit(field: VTOFFSET.displayLabel.p, fieldName: "displayLabel", required: false, type: ForwardOffset<String>.self)
+    _v.finish()
+  }
+}
+
 public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
@@ -286,11 +347,14 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
     case isRegistered = 18
     case orphanedCommitCount = 20
     case keyringUnavailable = 22
+    case pendingOps = 24
+    case hasLastOpError = 26
+    case lastOpError = 28
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
 
-  public var schemaVersion: UInt32 { let o = _accessor.offset(VTOFFSET.schemaVersion.v); return o == 0 ? 1 : _accessor.readBuffer(of: UInt32.self, at: o) }
+  public var schemaVersion: UInt32 { let o = _accessor.offset(VTOFFSET.schemaVersion.v); return o == 0 ? 2 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var groups: FlatbufferVector<nmp_marmot_MarmotGroupRow> { return _accessor.vector(at: VTOFFSET.groups.v, byteSize: 4) }
   public var pendingWelcomes: FlatbufferVector<nmp_marmot_PendingWelcomeRow> { return _accessor.vector(at: VTOFFSET.pendingWelcomes.v, byteSize: 4) }
   public var keyPackage: nmp_marmot_KeyPackageStatus? { let o = _accessor.offset(VTOFFSET.keyPackage.v); return o == 0 ? nil : nmp_marmot_KeyPackageStatus(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
@@ -301,8 +365,12 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
   public var isRegistered: Bool { let o = _accessor.offset(VTOFFSET.isRegistered.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var orphanedCommitCount: UInt32 { let o = _accessor.offset(VTOFFSET.orphanedCommitCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var keyringUnavailable: Bool { let o = _accessor.offset(VTOFFSET.keyringUnavailable.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public static func startMarmotSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 10) }
-  public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 1, at: VTOFFSET.schemaVersion.p) }
+  public var pendingOps: FlatbufferVector<nmp_marmot_PendingOpRow> { return _accessor.vector(at: VTOFFSET.pendingOps.v, byteSize: 4) }
+  public var hasLastOpError: Bool { let o = _accessor.offset(VTOFFSET.hasLastOpError.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var lastOpError: String? { let o = _accessor.offset(VTOFFSET.lastOpError.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var lastOpErrorSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastOpError.v) }
+  public static func startMarmotSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 13) }
+  public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 2, at: VTOFFSET.schemaVersion.p) }
   public static func addVectorOf(groups: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: groups, at: VTOFFSET.groups.p) }
   public static func addVectorOf(pendingWelcomes: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pendingWelcomes, at: VTOFFSET.pendingWelcomes.p) }
   public static func add(keyPackage: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: keyPackage, at: VTOFFSET.keyPackage.p) }
@@ -315,10 +383,14 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
   public static func add(orphanedCommitCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: orphanedCommitCount, def: 0, at: VTOFFSET.orphanedCommitCount.p) }
   public static func add(keyringUnavailable: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: keyringUnavailable, def: false,
    at: VTOFFSET.keyringUnavailable.p) }
+  public static func addVectorOf(pendingOps: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pendingOps, at: VTOFFSET.pendingOps.p) }
+  public static func add(hasLastOpError: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasLastOpError, def: false,
+   at: VTOFFSET.hasLastOpError.p) }
+  public static func add(lastOpError: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastOpError, at: VTOFFSET.lastOpError.p) }
   public static func endMarmotSnapshot(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createMarmotSnapshot(
     _ fbb: inout FlatBufferBuilder,
-    schemaVersion: UInt32 = 1,
+    schemaVersion: UInt32 = 2,
     groupsVectorOffset groups: Offset = Offset(),
     pendingWelcomesVectorOffset pendingWelcomes: Offset = Offset(),
     keyPackageOffset keyPackage: Offset = Offset(),
@@ -327,7 +399,10 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
     invitesChipLabelOffset invitesChipLabel: Offset = Offset(),
     isRegistered: Bool = false,
     orphanedCommitCount: UInt32 = 0,
-    keyringUnavailable: Bool = false
+    keyringUnavailable: Bool = false,
+    pendingOpsVectorOffset pendingOps: Offset = Offset(),
+    hasLastOpError: Bool = false,
+    lastOpErrorOffset lastOpError: Offset = Offset()
   ) -> Offset {
     let __start = nmp_marmot_MarmotSnapshot.startMarmotSnapshot(&fbb)
     nmp_marmot_MarmotSnapshot.add(schemaVersion: schemaVersion, &fbb)
@@ -340,6 +415,9 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
     nmp_marmot_MarmotSnapshot.add(isRegistered: isRegistered, &fbb)
     nmp_marmot_MarmotSnapshot.add(orphanedCommitCount: orphanedCommitCount, &fbb)
     nmp_marmot_MarmotSnapshot.add(keyringUnavailable: keyringUnavailable, &fbb)
+    nmp_marmot_MarmotSnapshot.addVectorOf(pendingOps: pendingOps, &fbb)
+    nmp_marmot_MarmotSnapshot.add(hasLastOpError: hasLastOpError, &fbb)
+    nmp_marmot_MarmotSnapshot.add(lastOpError: lastOpError, &fbb)
     return nmp_marmot_MarmotSnapshot.endMarmotSnapshot(&fbb, start: __start)
   }
 
@@ -355,6 +433,9 @@ public struct nmp_marmot_MarmotSnapshot: FlatBufferTable, FlatbuffersVectorIniti
     try _v.visit(field: VTOFFSET.isRegistered.p, fieldName: "isRegistered", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.orphanedCommitCount.p, fieldName: "orphanedCommitCount", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.keyringUnavailable.p, fieldName: "keyringUnavailable", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.pendingOps.p, fieldName: "pendingOps", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_marmot_PendingOpRow>, nmp_marmot_PendingOpRow>>.self)
+    try _v.visit(field: VTOFFSET.hasLastOpError.p, fieldName: "hasLastOpError", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.lastOpError.p, fieldName: "lastOpError", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

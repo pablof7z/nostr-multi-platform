@@ -37,8 +37,8 @@ class MarmotGroupRow : Table() {
                 null
             }
         }
-    val idHexAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
-    fun idHexInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
+    val idHexAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
+    fun idHexInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
     val name : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class MarmotGroupRow : Table() {
                 null
             }
         }
-    val nameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
-    fun nameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
+    val nameAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
+    fun nameInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
     val displayName : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class MarmotGroupRow : Table() {
                 null
             }
         }
-    val displayNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
+    val displayNameAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
+    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
     val initials : String?
         get() {
             val o = __offset(10)
@@ -70,8 +70,8 @@ class MarmotGroupRow : Table() {
                 null
             }
         }
-    val initialsAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
-    fun initialsInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
+    val initialsAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
+    fun initialsInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
     fun members(j: Int) : String? {
         val o = __offset(12)
         return if (o != 0) {
@@ -110,7 +110,7 @@ class MarmotGroupRow : Table() {
             return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
+        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
         fun getRootAsMarmotGroupRow(_bb: ByteBuffer): MarmotGroupRow = getRootAsMarmotGroupRow(_bb, MarmotGroupRow())
         fun getRootAsMarmotGroupRow(_bb: ByteBuffer, obj: MarmotGroupRow): MarmotGroupRow {
             _bb.order(ByteOrder.LITTLE_ENDIAN)

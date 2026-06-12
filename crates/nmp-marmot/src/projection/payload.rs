@@ -172,6 +172,22 @@ impl KeyPackageStatus {
     }
 }
 
+/// Summary of one pending (deferred) op waiting for a peer's KP to arrive.
+/// Surfaced in the snapshot so native can render "Waiting for key packages…"
+/// state without polling. Rust owns the `display_label` string.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct PendingOpRow {
+    /// Original action correlation_id minted when the op was dispatched.
+    pub correlation_id: String,
+    /// Op tag ("create_group" | "invite") for display branching.
+    pub op_tag: String,
+    /// Number of peer KPs still missing.
+    pub missing_count: u32,
+    /// Rust-owned display string (e.g. "Waiting for key packages (1)…"). The
+    /// projection owns formatting; native renders verbatim.
+    pub display_label: String,
+}
+
 /// Complete snapshot hosts consume via the `nmp.marmot.snapshot` push projection.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MarmotSnapshot {
@@ -221,6 +237,18 @@ pub struct MarmotSnapshot {
     /// gracefully.
     #[serde(default)]
     pub keyring_unavailable: bool,
+    /// Ops parked in the deferred-completion store, waiting for peer KPs.
+    /// Empty when no ops are pending. Native renders each row's `display_label`
+    /// verbatim alongside the relevant group action's spinner. Additive —
+    /// older hosts that do not read this field degrade gracefully.
+    #[serde(default)]
+    pub pending_ops: Vec<PendingOpRow>,
+    /// Most recent terminal op failure reason, or `None` when no op has
+    /// failed this session. The projection clears this when a successful
+    /// op completes (TBD in a follow-up). Additive — older hosts degrade
+    /// gracefully.
+    #[serde(default)]
+    pub last_op_error: Option<String>,
 }
 
 impl MarmotSnapshot {
@@ -243,6 +271,8 @@ impl MarmotSnapshot {
             is_registered: false,
             orphaned_commit_count: 0,
             keyring_unavailable: false,
+            pending_ops: Vec::new(),
+            last_op_error: None,
         }
     }
 }

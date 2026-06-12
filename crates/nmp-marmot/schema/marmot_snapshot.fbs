@@ -76,9 +76,19 @@ table KeyPackageStatus {
   action_label:string;      // "Publish key package" / "Rotate key package"
 }
 
+/// One parked (deferred) op waiting for a peer's KP to arrive.
+/// Mirrors `(correlation_id, op_tag, missing_count)` from
+/// `crate::projection::state::InnerHandle::pending_op_summaries`.
+table PendingOpRow {
+  correlation_id:string;    // original action correlation_id
+  op_tag:string;            // "create_group" | "invite"
+  missing_count:uint32;     // remaining missing KP count
+  display_label:string;     // Rust-owned display string (e.g. "Waiting for key packages (1)…")
+}
+
 // The complete snapshot. Mirrors `crate::projection::payload::MarmotSnapshot`.
 table MarmotSnapshot {
-  schema_version:uint32 = 1;       // mirrors SCHEMA_VERSION
+  schema_version:uint32 = 2;       // mirrors SCHEMA_VERSION; bumped for pending_ops addition
   groups:[MarmotGroupRow];
   pending_welcomes:[PendingWelcomeRow];
   key_package:KeyPackageStatus;
@@ -88,6 +98,9 @@ table MarmotSnapshot {
   is_registered:bool;              // built against a registered signing identity
   orphaned_commit_count:uint32;    // V-61 dropped-handle diagnostic
   keyring_unavailable:bool;        // V-62 in-memory-credential-store diagnostic
+  pending_ops:[PendingOpRow];      // ops parked waiting for peer KPs (deferred completion)
+  has_last_op_error:bool;          // Option<String> presence
+  last_op_error:string;            // most recent terminal op failure reason, if any
 }
 
 root_type MarmotSnapshot;

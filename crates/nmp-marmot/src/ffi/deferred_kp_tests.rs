@@ -293,6 +293,73 @@ fn duplicate_create_group_while_pending_is_rejected_as_duplicate() {
     assert_eq!(summaries[0].0, "corr-first");
 }
 
+/// While a create_group op is parked waiting for a KP, the snapshot must
+/// surface a `pending_ops` row with a `display_label` so native can render
+/// progress state without polling. Once the KP arrives and the op completes,
+/// `pending_ops` must be empty.
+#[test]
+fn pending_op_appears_in_snapshot_and_clears_after_retry() {
+    let alice_keys = Keys::generate();
+    let bob_keys = Keys::generate();
+
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+
+    proj.with_inner(|h| {
+        ops::dispatch(
+            h,
+            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            1_000,
+            None,
+        )
+    })
+    .unwrap();
+
+    // Park the op.
+    proj.with_inner(|h| {
+        ops::dispatch(
+            h,
+            &json!({
+                "op": "create_group",
+                "name": "Snapshot Test",
+                "relays": ["wss://t.relay"],
+                "invitee_npubs": [bob_keys.public_key().to_hex()],
+            }),
+            1_001,
+            Some("corr-snap-1"),
+        )
+    })
+    .unwrap();
+
+    // Snapshot while pending: must show one pending_op row.
+    let snap = proj.snapshot(1_001);
+    assert_eq!(
+        snap.pending_ops.len(),
+        1,
+        "pending op must appear in snapshot while parked: {snap:?}"
+    );
+    let row = &snap.pending_ops[0];
+    assert_eq!(row.correlation_id, "corr-snap-1");
+    assert_eq!(row.op_tag, "create_group");
+    assert_eq!(row.missing_count, 1);
+    assert!(
+        row.display_label.contains("(1)"),
+        "display_label must include the missing count: {}", row.display_label
+    );
+
+    // Ingest Bob's KP → retry fires → pending_ops must clear.
+    let bob_kp = make_kp_event(&bob_keys);
+    proj.with_inner(|h| ingest_signed_event_core(h, &bob_kp, 1_002))
+        .unwrap()
+        .unwrap();
+
+    let snap = proj.snapshot(1_002);
+    assert!(
+        snap.pending_ops.is_empty(),
+        "pending_ops must be empty after retry: {snap:?}"
+    );
+    assert_eq!(snap.groups.len(), 1, "group must appear after retry: {snap:?}");
+}
+
 /// When `create_group` is called WITHOUT a `correlation_id` (REPL / tests /
 /// `MarmotHandle::dispatch`) and the KP is missing, the old terminal
 /// `{"ok":false,"error":"key_package_unavailable"}` response is returned

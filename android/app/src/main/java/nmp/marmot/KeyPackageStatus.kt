@@ -47,8 +47,8 @@ class KeyPackageStatus : Table() {
                 null
             }
         }
-    val dTagAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun dTagInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
+    val dTagAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
+    fun dTagInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
     val hasAgeSecs : Boolean
         get() {
             val o = __offset(10)
@@ -78,8 +78,8 @@ class KeyPackageStatus : Table() {
                 null
             }
         }
-    val ageDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
-    fun ageDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
+    val ageDisplayAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(18, 1)
+    fun ageDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 18, 1)
     val subtitle : String?
         get() {
             val o = __offset(20)
@@ -89,8 +89,8 @@ class KeyPackageStatus : Table() {
                 null
             }
         }
-    val subtitleAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(20, 1)
-    fun subtitleInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 20, 1)
+    val subtitleAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(20, 1)
+    fun subtitleInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 20, 1)
     val actionLabel : String?
         get() {
             val o = __offset(22)
@@ -100,10 +100,10 @@ class KeyPackageStatus : Table() {
                 null
             }
         }
-    val actionLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(22, 1)
-    fun actionLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 22, 1)
+    val actionLabelAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(22, 1)
+    fun actionLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 22, 1)
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
+        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
         fun getRootAsKeyPackageStatus(_bb: ByteBuffer): KeyPackageStatus = getRootAsKeyPackageStatus(_bb, KeyPackageStatus())
         fun getRootAsKeyPackageStatus(_bb: ByteBuffer, obj: KeyPackageStatus): KeyPackageStatus {
             _bb.order(ByteOrder.LITTLE_ENDIAN)

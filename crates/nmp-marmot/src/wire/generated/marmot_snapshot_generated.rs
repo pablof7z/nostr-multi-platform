@@ -655,6 +655,156 @@ impl ::core::fmt::Debug for KeyPackageStatus<'_> {
       ds.finish()
   }
 }
+pub enum PendingOpRowOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+/// One parked (deferred) op waiting for a peer's KP to arrive.
+/// Mirrors `(correlation_id, op_tag, missing_count)` from
+/// `crate::projection::state::InnerHandle::pending_op_summaries`.
+pub struct PendingOpRow<'a> {
+  pub _tab: ::flatbuffers::Table<'a>,
+}
+
+impl<'a> ::flatbuffers::Follow<'a> for PendingOpRow<'a> {
+  type Inner = PendingOpRow<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> PendingOpRow<'a> {
+  pub const VT_CORRELATION_ID: ::flatbuffers::VOffsetT = 4;
+  pub const VT_OP_TAG: ::flatbuffers::VOffsetT = 6;
+  pub const VT_MISSING_COUNT: ::flatbuffers::VOffsetT = 8;
+  pub const VT_DISPLAY_LABEL: ::flatbuffers::VOffsetT = 10;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+    PendingOpRow { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args PendingOpRowArgs<'args>
+  ) -> ::flatbuffers::WIPOffset<PendingOpRow<'bldr>> {
+    let mut builder = PendingOpRowBuilder::new(_fbb);
+    if let Some(x) = args.display_label { builder.add_display_label(x); }
+    builder.add_missing_count(args.missing_count);
+    if let Some(x) = args.op_tag { builder.add_op_tag(x); }
+    if let Some(x) = args.correlation_id { builder.add_correlation_id(x); }
+    builder.finish()
+  }
+
+
+  #[inline]
+  pub fn correlation_id(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PendingOpRow::VT_CORRELATION_ID, None)}
+  }
+  #[inline]
+  pub fn op_tag(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PendingOpRow::VT_OP_TAG, None)}
+  }
+  #[inline]
+  pub fn missing_count(&self) -> u32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u32>(PendingOpRow::VT_MISSING_COUNT, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn display_label(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PendingOpRow::VT_DISPLAY_LABEL, None)}
+  }
+}
+
+impl ::flatbuffers::Verifiable for PendingOpRow<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut ::flatbuffers::Verifier, pos: usize
+  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+    v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("correlation_id", Self::VT_CORRELATION_ID, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("op_tag", Self::VT_OP_TAG, false)?
+     .visit_field::<u32>("missing_count", Self::VT_MISSING_COUNT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("display_label", Self::VT_DISPLAY_LABEL, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct PendingOpRowArgs<'a> {
+    pub correlation_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub op_tag: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub missing_count: u32,
+    pub display_label: Option<::flatbuffers::WIPOffset<&'a str>>,
+}
+impl<'a> Default for PendingOpRowArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    PendingOpRowArgs {
+      correlation_id: None,
+      op_tag: None,
+      missing_count: 0,
+      display_label: None,
+    }
+  }
+}
+
+pub struct PendingOpRowBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PendingOpRowBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_correlation_id(&mut self, correlation_id: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PendingOpRow::VT_CORRELATION_ID, correlation_id);
+  }
+  #[inline]
+  pub fn add_op_tag(&mut self, op_tag: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PendingOpRow::VT_OP_TAG, op_tag);
+  }
+  #[inline]
+  pub fn add_missing_count(&mut self, missing_count: u32) {
+    self.fbb_.push_slot::<u32>(PendingOpRow::VT_MISSING_COUNT, missing_count, 0);
+  }
+  #[inline]
+  pub fn add_display_label(&mut self, display_label: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PendingOpRow::VT_DISPLAY_LABEL, display_label);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PendingOpRowBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    PendingOpRowBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> ::flatbuffers::WIPOffset<PendingOpRow<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    ::flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl ::core::fmt::Debug for PendingOpRow<'_> {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+    let mut ds = f.debug_struct("PendingOpRow");
+      ds.field("correlation_id", &self.correlation_id());
+      ds.field("op_tag", &self.op_tag());
+      ds.field("missing_count", &self.missing_count());
+      ds.field("display_label", &self.display_label());
+      ds.finish()
+  }
+}
 pub enum MarmotSnapshotOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -681,6 +831,9 @@ impl<'a> MarmotSnapshot<'a> {
   pub const VT_IS_REGISTERED: ::flatbuffers::VOffsetT = 18;
   pub const VT_ORPHANED_COMMIT_COUNT: ::flatbuffers::VOffsetT = 20;
   pub const VT_KEYRING_UNAVAILABLE: ::flatbuffers::VOffsetT = 22;
+  pub const VT_PENDING_OPS: ::flatbuffers::VOffsetT = 24;
+  pub const VT_HAS_LAST_OP_ERROR: ::flatbuffers::VOffsetT = 26;
+  pub const VT_LAST_OP_ERROR: ::flatbuffers::VOffsetT = 28;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -692,6 +845,8 @@ impl<'a> MarmotSnapshot<'a> {
     args: &'args MarmotSnapshotArgs<'args>
   ) -> ::flatbuffers::WIPOffset<MarmotSnapshot<'bldr>> {
     let mut builder = MarmotSnapshotBuilder::new(_fbb);
+    if let Some(x) = args.last_op_error { builder.add_last_op_error(x); }
+    if let Some(x) = args.pending_ops { builder.add_pending_ops(x); }
     builder.add_orphaned_commit_count(args.orphaned_commit_count);
     if let Some(x) = args.invites_chip_label { builder.add_invites_chip_label(x); }
     if let Some(x) = args.cached_kp_pubkeys { builder.add_cached_kp_pubkeys(x); }
@@ -699,6 +854,7 @@ impl<'a> MarmotSnapshot<'a> {
     if let Some(x) = args.pending_welcomes { builder.add_pending_welcomes(x); }
     if let Some(x) = args.groups { builder.add_groups(x); }
     builder.add_schema_version(args.schema_version);
+    builder.add_has_last_op_error(args.has_last_op_error);
     builder.add_keyring_unavailable(args.keyring_unavailable);
     builder.add_is_registered(args.is_registered);
     builder.add_has_invites_chip_label(args.has_invites_chip_label);
@@ -711,7 +867,7 @@ impl<'a> MarmotSnapshot<'a> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(MarmotSnapshot::VT_SCHEMA_VERSION, Some(1)).unwrap()}
+    unsafe { self._tab.get::<u32>(MarmotSnapshot::VT_SCHEMA_VERSION, Some(2)).unwrap()}
   }
   #[inline]
   pub fn groups(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotGroupRow<'a>>>> {
@@ -776,6 +932,27 @@ impl<'a> MarmotSnapshot<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<bool>(MarmotSnapshot::VT_KEYRING_UNAVAILABLE, Some(false)).unwrap()}
   }
+  #[inline]
+  pub fn pending_ops(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PendingOpRow<'a>>>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PendingOpRow>>>>(MarmotSnapshot::VT_PENDING_OPS, None)}
+  }
+  #[inline]
+  pub fn has_last_op_error(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(MarmotSnapshot::VT_HAS_LAST_OP_ERROR, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn last_op_error(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(MarmotSnapshot::VT_LAST_OP_ERROR, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for MarmotSnapshot<'_> {
@@ -794,6 +971,9 @@ impl ::flatbuffers::Verifiable for MarmotSnapshot<'_> {
      .visit_field::<bool>("is_registered", Self::VT_IS_REGISTERED, false)?
      .visit_field::<u32>("orphaned_commit_count", Self::VT_ORPHANED_COMMIT_COUNT, false)?
      .visit_field::<bool>("keyring_unavailable", Self::VT_KEYRING_UNAVAILABLE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PendingOpRow>>>>("pending_ops", Self::VT_PENDING_OPS, false)?
+     .visit_field::<bool>("has_last_op_error", Self::VT_HAS_LAST_OP_ERROR, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("last_op_error", Self::VT_LAST_OP_ERROR, false)?
      .finish();
     Ok(())
   }
@@ -809,12 +989,15 @@ pub struct MarmotSnapshotArgs<'a> {
     pub is_registered: bool,
     pub orphaned_commit_count: u32,
     pub keyring_unavailable: bool,
+    pub pending_ops: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PendingOpRow<'a>>>>>,
+    pub has_last_op_error: bool,
+    pub last_op_error: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for MarmotSnapshotArgs<'a> {
   #[inline]
   fn default() -> Self {
     MarmotSnapshotArgs {
-      schema_version: 1,
+      schema_version: 2,
       groups: None,
       pending_welcomes: None,
       key_package: None,
@@ -824,6 +1007,9 @@ impl<'a> Default for MarmotSnapshotArgs<'a> {
       is_registered: false,
       orphaned_commit_count: 0,
       keyring_unavailable: false,
+      pending_ops: None,
+      has_last_op_error: false,
+      last_op_error: None,
     }
   }
 }
@@ -835,7 +1021,7 @@ pub struct MarmotSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
 impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotSnapshotBuilder<'a, 'b, A> {
   #[inline]
   pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(MarmotSnapshot::VT_SCHEMA_VERSION, schema_version, 1);
+    self.fbb_.push_slot::<u32>(MarmotSnapshot::VT_SCHEMA_VERSION, schema_version, 2);
   }
   #[inline]
   pub fn add_groups(&mut self, groups: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<MarmotGroupRow<'b >>>>) {
@@ -874,6 +1060,18 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotSnapshotBuilder<'a, 'b,
     self.fbb_.push_slot::<bool>(MarmotSnapshot::VT_KEYRING_UNAVAILABLE, keyring_unavailable, false);
   }
   #[inline]
+  pub fn add_pending_ops(&mut self, pending_ops: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<PendingOpRow<'b >>>>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotSnapshot::VT_PENDING_OPS, pending_ops);
+  }
+  #[inline]
+  pub fn add_has_last_op_error(&mut self, has_last_op_error: bool) {
+    self.fbb_.push_slot::<bool>(MarmotSnapshot::VT_HAS_LAST_OP_ERROR, has_last_op_error, false);
+  }
+  #[inline]
+  pub fn add_last_op_error(&mut self, last_op_error: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotSnapshot::VT_LAST_OP_ERROR, last_op_error);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MarmotSnapshotBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     MarmotSnapshotBuilder {
@@ -901,6 +1099,9 @@ impl ::core::fmt::Debug for MarmotSnapshot<'_> {
       ds.field("is_registered", &self.is_registered());
       ds.field("orphaned_commit_count", &self.orphaned_commit_count());
       ds.field("keyring_unavailable", &self.keyring_unavailable());
+      ds.field("pending_ops", &self.pending_ops());
+      ds.field("has_last_op_error", &self.has_last_op_error());
+      ds.field("last_op_error", &self.last_op_error());
       ds.finish()
   }
 }
