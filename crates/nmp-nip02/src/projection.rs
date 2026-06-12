@@ -46,6 +46,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::kinds::KIND_CONTACT_LIST;
+use nmp_core::tags::capped_contact_follows;
 use nmp_core::KernelEventObserver;
 use serde::Serialize;
 
@@ -209,17 +210,14 @@ impl KernelEventObserver for FollowListProjection {
             return;
         }
 
-        let followed: Vec<String> = event
-            .tags
-            .iter()
-            .filter_map(|tag| {
-                if tag.first().is_some_and(|t| t == "p") {
-                    tag.get(1).cloned()
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // Apply the kernel's follow cap through the one shared pure function
+        // (`capped_contact_follows`): first-`TIMELINE_AUTHOR_LIMIT` valid-hex
+        // `p`-tags in document order — the IDENTICAL set the router subscribes
+        // to in `Kernel::ingest_contacts` and the sibling `ActiveFollowSet`
+        // predicate qualifies. Before this the projection advertised an
+        // UNCAPPED follow list, so a >500-follow account surfaced follows the
+        // feed can never serve (the router only REQs the first 500).
+        let followed: Vec<String> = capped_contact_follows(&event.tags);
 
         let Ok(mut follows) = self.follows.lock() else {
             return;
@@ -228,6 +226,13 @@ impl KernelEventObserver for FollowListProjection {
         // account. Clear first so stale entries from a previous active
         // account (e.g. after account switch) don't linger — the map's
         // invariant is `len() <= 1`, always the current active account.
+        //
+        // Lifecycle divergence (intentional, see `ActiveFollowSet` module
+        // docs): this clear is LAZY — it only fires when the next
+        // active-account kind:3 arrives. The sibling `ActiveFollowSet` clears
+        // EAGERLY via `notify_account_changed`. The two therefore briefly
+        // report different sets across an account switch. Unifying the
+        // lifecycles is out of scope for the cap fix.
         follows.clear();
         follows.insert(event.author.clone(), followed);
     }

@@ -85,8 +85,32 @@
 //!   NIP token leaks into `nmp-core`. The predicate is a std closure; no
 //!   `nmp-feed` type appears in this crate's surface.
 //! * **D5** — the set is bounded by the kernel's `TIMELINE_AUTHOR_LIMIT`
-//!   applied upstream in `ingest_contacts` (the observer only ever sees an
-//!   already-capped follow list); the `BTreeSet` here mirrors that capped set.
+//!   (500). The bound is **not** applied upstream: the kernel fans the *raw*
+//!   kind:3 event (all `p` tags) to every `KernelEventObserver`, so this
+//!   observer must apply the cap itself. It does so by routing the event's
+//!   tags through the one shared pure function
+//!   [`nmp_core::tags::capped_contact_follows`] — the IDENTICAL recipe
+//!   `Kernel::ingest_contacts` uses (first-500-valid-hex-`p`-tags in document
+//!   order). This is the single source of truth for the cap; the sibling
+//!   [`crate::projection::FollowListProjection`] applies the very same function
+//!   so the predicate producer and the snapshot can never disagree on which
+//!   500 follows count.
+//!
+//! # Sibling lifecycle divergence (NOT unified here)
+//!
+//! `ActiveFollowSet` and `FollowListProjection` derive the *same* capped
+//! membership but clear stale state on *different* triggers:
+//!
+//! * `ActiveFollowSet` clears eagerly via [`Self::notify_account_changed`]
+//!   (the explicit account-change seam the composition root drives).
+//! * `FollowListProjection` clears **lazily** — its `on_kernel_event` clears
+//!   the map only when the *next* active-account kind:3 arrives.
+//!
+//! So between an account switch and the new account's kind:3 landing, the two
+//! can momentarily report different sets (predicate already empty; snapshot
+//! still showing the prior account until its kind:3 clears it). Unifying these
+//! lifecycles is deliberately out of scope for the cap fix — it is a separate
+//! account-switch-consistency change and is tracked as such.
 //! * **D6** — poisoned locks and a `None` active account degrade to an empty
 //!   set / a `false` predicate, never a panic.
 //! * **D8** — `on_kernel_event` does bounded work (one kind check, one lock,
@@ -101,6 +125,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use nmp_core::kinds::KIND_CONTACT_LIST;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::KernelEvent;
+use nmp_core::tags::capped_contact_follows;
 use nmp_core::KernelEventObserver;
 
 /// A registered change callback. Fires on every follow-set transition
@@ -299,16 +324,17 @@ impl KernelEventObserver for ActiveFollowSet {
             return;
         }
 
-        let mut rebuilt: BTreeSet<String> = event
-            .tags
-            .iter()
-            .filter_map(|tag| {
-                if tag.first().is_some_and(|t| t == "p") {
-                    tag.get(1).cloned()
-                } else {
-                    None
-                }
-            })
+        // Apply the kernel's follow cap through the one shared pure function
+        // (`capped_contact_follows`): first-`TIMELINE_AUTHOR_LIMIT`
+        // valid-hex `p`-tags in document order — the IDENTICAL set the router
+        // subscribes to in `Kernel::ingest_contacts`. Before this the observer
+        // rebuilt an UNCAPPED set, so the predicate qualified authors the
+        // router never REQs (>500-follow accounts). The shared function dedups
+        // nothing and preserves order; the `BTreeSet` here additionally
+        // de-duplicates and sorts, which only ever *shrinks* membership — it
+        // can never re-admit a capped-out follow.
+        let mut rebuilt: BTreeSet<String> = capped_contact_follows(&event.tags)
+            .into_iter()
             .collect();
         // Self-inclusion: the active account's own pubkey is always a member.
         rebuilt.insert(active);

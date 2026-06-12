@@ -1,0 +1,67 @@
+//! JNI push listener for kernel update frames (issue #614 — D8 no-polling).
+//!
+//! Extracted from `session.rs` to keep that file under the 500-LOC ceiling.
+//! Mirrors the synchronous [`crate::capability::SyncCapabilityHandler`]
+//! JNI-upcall pattern and the gallery's `android_push::GalleryUpdateListener`.
+
+use std::sync::Mutex;
+
+use jni::objects::GlobalRef;
+use jni::JavaVM;
+
+/// JNI push listener for kernel update frames.
+///
+/// Registered by `nativeSetUpdateListener`; invoked from the `on_update`
+/// trampoline (`session.rs`) on the kernel's listener thread; cleared in
+/// `Session::close_updates_locked` AFTER the update-callback quiescence gate
+/// guarantees no further `on_update` invocations can run.
+///
+/// UAF safety: the load-bearing guard is the quiescence call
+/// `nmp_app_set_update_callback(…, None)` in `close_updates_locked`, which does
+/// NOT return until any in-flight `on_update` has completed. After it returns,
+/// `on_update` can never touch the listener slot again, so dropping this
+/// `GlobalRef` afterwards cannot race a live upcall.
+pub(crate) struct UpdatePushListener {
+    vm: JavaVM,
+    handler: GlobalRef,
+}
+
+// SAFETY: `JavaVM` is `Send + Sync`. `GlobalRef` is safe to send across threads
+// because the JVM tracks it; we only dereference it under `attach_current_thread`.
+unsafe impl Send for UpdatePushListener {}
+unsafe impl Sync for UpdatePushListener {}
+
+impl UpdatePushListener {
+    pub(crate) fn new(vm: JavaVM, handler: GlobalRef) -> Self {
+        Self { vm, handler }
+    }
+
+    /// Invoke `listener.onUpdate(frame: ByteArray)` on the Kotlin listener.
+    ///
+    /// Runs inside `with_local_frame` so the JNI local-reference table is
+    /// reclaimed on every push (dispatches on an already-attached thread never
+    /// detach, which would otherwise leak the `ByteArray` local each call). D6:
+    /// every failure (detached VM, JNI error/exception) is swallowed — this
+    /// callback never panics across the JNI seam.
+    pub(crate) fn push(&self, bytes: &[u8]) {
+        let mut env = match self.vm.attach_current_thread() {
+            Ok(env) => env,
+            Err(_) => return,
+        };
+        let _ = env.with_local_frame(8, |env| -> Result<(), jni::errors::Error> {
+            let array = env.byte_array_from_slice(bytes)?;
+            env.call_method(
+                &self.handler,
+                "onUpdate",
+                "([B)V",
+                &[jni::objects::JValueGen::Object(array.as_ref())],
+            )?;
+            Ok(())
+        });
+        // Clear any pending JNI exception so the thread isn't left poisoned (D6).
+        let _ = env.exception_clear();
+    }
+}
+
+/// Session-owned slot for the JNI push update listener.
+pub(crate) type UpdateListenerSlot = Mutex<Option<UpdatePushListener>>;

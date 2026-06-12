@@ -51,6 +51,17 @@ impl RelayHandle {
     pub fn generation(self) -> u64 {
         self.generation
     }
+
+    /// Test-support constructor. The fields are pool-private so production
+    /// callers can only obtain a `RelayHandle` from the pool itself; this
+    /// `#[doc(hidden)]` seam lets out-of-crate tests (e.g. the actor inbox
+    /// lane tests in `nmp-core`) synthesize a handle to build `PoolEvent`
+    /// fixtures without standing up a live pool.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn for_test(slot: u32, generation: u64) -> Self {
+        Self { slot, generation }
+    }
 }
 
 /// One outbound frame to push at a specific [`RelayHandle`].

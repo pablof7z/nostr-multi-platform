@@ -89,6 +89,35 @@ pub use crate::relay_protocol::BackoffClass;
 
 use inner::{wire_frame_to_command, PoolInner};
 
+/// Narrow event-delivery seam the pool's translator thread pushes
+/// [`PoolEvent`]s into (ADR-0050 §D3a).
+///
+/// Historically the pool delivered events through a bare
+/// `std::sync::mpsc::Sender<PoolEvent>`. The actor now needs relay events to
+/// land on the *same* channel it blocks on for commands (so a command send
+/// wakes a relay-blocked actor); this trait lets it pass an adapter that wraps
+/// each `PoolEvent` into the actor's mail type, while every other consumer
+/// keeps handing in a plain `Sender<PoolEvent>` via the blanket impl below.
+///
+/// `send_event` returns `()`: a gone consumer means the receiver was dropped,
+/// which is already the terminal "actor gone" condition under the old
+/// `Sender::send().is_err()` break. The translator's worker→pool channel still
+/// closes when the workers exit on pool shutdown, so it does not spin.
+pub trait PoolEventSink: Send + 'static {
+    /// Deliver one event to the consumer. Errors are intentionally swallowed.
+    fn send_event(&self, event: PoolEvent);
+}
+
+/// Blanket impl so every existing `Pool::new(cfg, mpsc::Sender<PoolEvent>)`
+/// call site compiles unchanged. A failed `send` (receiver dropped) is
+/// ignored — identical to the prior break-on-`is_err` behaviour from the
+/// consumer's perspective (no further events matter once it's gone).
+impl PoolEventSink for std::sync::mpsc::Sender<PoolEvent> {
+    fn send_event(&self, event: PoolEvent) {
+        let _ = self.send(event);
+    }
+}
+
 /// The push-model relay-connection pool. Cheap to clone (`Arc` inside).
 ///
 /// See module documentation for the full surface contract.
@@ -99,12 +128,16 @@ pub struct Pool {
 
 impl Pool {
     /// Construct a new pool. The translator thread is spawned eagerly;
-    /// `events` is the channel `PoolEvent`s land on until the receiver
-    /// is dropped.
+    /// `events` is the [`PoolEventSink`] `PoolEvent`s are delivered to until
+    /// the consumer goes away.
+    ///
+    /// Accepts any [`PoolEventSink`]; a plain `std::sync::mpsc::Sender<PoolEvent>`
+    /// satisfies the bound via the blanket impl, so existing callers are
+    /// unchanged.
     #[must_use]
-    pub fn new(cfg: PoolConfig, events: std::sync::mpsc::Sender<PoolEvent>) -> Self {
+    pub fn new(cfg: PoolConfig, events: impl PoolEventSink) -> Self {
         Self {
-            inner: PoolInner::new(cfg, events),
+            inner: PoolInner::new(cfg, Box::new(events)),
         }
     }
 

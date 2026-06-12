@@ -86,7 +86,7 @@ pub(crate) type CapabilityWorkSender = Sender<CapabilityWorkItem>;
 /// (D3/D4 — the actor is the sole writer of kernel state).
 pub(crate) fn spawn_capability_worker(
     capability_callback: CapabilityCallbackSlot,
-    command_tx: Sender<super::ActorCommand>,
+    command_tx: super::CommandSender,
 ) -> CapabilityWorkSender {
     let (work_tx, work_rx): (Sender<CapabilityWorkItem>, Receiver<CapabilityWorkItem>) = channel();
 
@@ -105,7 +105,7 @@ pub(crate) fn spawn_capability_worker(
 fn run_worker(
     work_rx: Receiver<CapabilityWorkItem>,
     capability_callback: CapabilityCallbackSlot,
-    command_tx: Sender<super::ActorCommand>,
+    command_tx: super::CommandSender,
 ) {
     loop {
         // D8 — blocking recv. No sleep, no spin, no recv_timeout poll.
@@ -175,10 +175,28 @@ mod tests {
     use crate::substrate::{
         CapabilityEnvelope, CapabilityModule, KeyringCapability, KeyringIdentityWiring,
     };
+    use crate::actor::{ActorMail, CommandSender};
     use std::collections::HashMap;
     use std::ffi::{c_char, c_void, CStr, CString};
+    use std::sync::mpsc::Receiver;
     use std::sync::Mutex;
     use std::time::Duration;
+
+    /// ADR-0050 §D3a — the worker now takes a [`CommandSender`] over an
+    /// [`ActorMail`] inbox. This helper builds the pair and returns the
+    /// `ActorMail` receiver so tests can assert the posted command.
+    fn cap_channel() -> (CommandSender, Receiver<ActorMail>) {
+        let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
+        (CommandSender::new(tx), rx)
+    }
+
+    /// Unwrap an `ActorMail::Command` posted by the worker.
+    fn unwrap_cmd(mail: ActorMail) -> super::super::ActorCommand {
+        match mail {
+            ActorMail::Command(cmd) => cmd,
+            other => panic!("expected ActorMail::Command, got {other:?}"),
+        }
+    }
 
     // ──────────────────────────────────────────────────────────────────────
     // Mock native handler (mirrors nmp-ffi/src/capability.rs tests)
@@ -279,7 +297,7 @@ mod tests {
             context: 0,
             callback: slow_handler,
         });
-        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<super::super::ActorCommand>();
+        let (cmd_tx, cmd_rx) = cap_channel();
         let work_tx = spawn_capability_worker(slot, cmd_tx);
 
         let req = KeyringIdentityWiring::persist_secret("c1", "acct-1", "nsec1secret");
@@ -295,9 +313,11 @@ mod tests {
         );
 
         // The result arrives asynchronously (within the slow handler's 200ms + margin).
-        let cmd = cmd_rx
-            .recv_timeout(Duration::from_millis(600))
-            .expect("CapabilityResultReady not received in time");
+        let cmd = unwrap_cmd(
+            cmd_rx
+                .recv_timeout(Duration::from_millis(600))
+                .expect("CapabilityResultReady not received in time"),
+        );
         match cmd {
             super::super::ActorCommand::CapabilityResultReady { account_id, .. } => {
                 assert_eq!(account_id, "acct-1");
@@ -319,7 +339,7 @@ mod tests {
         *STORE.lock().unwrap() = Some(HashMap::new());
 
         let slot = registered_slot();
-        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<super::super::ActorCommand>();
+        let (cmd_tx, cmd_rx) = cap_channel();
         let work_tx = spawn_capability_worker(slot, cmd_tx);
 
         // Enqueue persist then forget in order.
@@ -334,12 +354,16 @@ mod tests {
             .unwrap();
 
         // Collect two results; order must match submission order.
-        let r1 = cmd_rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("first result");
-        let r2 = cmd_rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("second result");
+        let r1 = unwrap_cmd(
+            cmd_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("first result"),
+        );
+        let r2 = unwrap_cmd(
+            cmd_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("second result"),
+        );
 
         let correlation_ids: Vec<String> = [r1, r2]
             .into_iter()
@@ -387,7 +411,7 @@ mod tests {
     #[test]
     fn worker_emits_error_on_expired_deadline() {
         let slot = registered_slot();
-        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<super::super::ActorCommand>();
+        let (cmd_tx, cmd_rx) = cap_channel();
         let work_tx = spawn_capability_worker(slot, cmd_tx);
 
         let req = KeyringIdentityWiring::persist_secret("c-timeout", "acct-timeout", "secret");
@@ -397,9 +421,11 @@ mod tests {
 
         work_tx.send(item).unwrap();
 
-        let cmd = cmd_rx
-            .recv_timeout(Duration::from_secs(2))
-            .expect("timed-out item result not received");
+        let cmd = unwrap_cmd(
+            cmd_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("timed-out item result not received"),
+        );
         match cmd {
             super::super::ActorCommand::CapabilityResultReady { result_json, account_id } => {
                 assert_eq!(account_id, "acct-timeout");
@@ -425,7 +451,7 @@ mod tests {
     #[test]
     fn worker_exits_on_sender_drop() {
         let slot = new_capability_callback_slot();
-        let (cmd_tx, _cmd_rx) = std::sync::mpsc::channel::<super::super::ActorCommand>();
+        let (cmd_tx, _cmd_rx) = cap_channel();
         let work_tx = spawn_capability_worker(slot, cmd_tx);
         // Drop the sender — the worker should unblock and exit.
         drop(work_tx);

@@ -78,7 +78,6 @@ class KernelModel : ViewModel() {
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var started = false
-    private var readerJob: Job? = null
     private var signerReaderJob: Job? = null
     private var lastLoadMoreCursor: TimelineWindowCursor? = null
 
@@ -147,22 +146,18 @@ class KernelModel : ViewModel() {
         }
         bridge.start(visibleLimit = 80, emitHz = 4)
         bridge.seedRelays(testRelays)
-        readerJob = viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                val bytes = try {
-                    bridge.nextUpdate()
-                } catch (e: IllegalStateException) {
-                    // Disconnect (channel closed) surfaces as IllegalStateException (PR #644).
-                    Log.i(TAG, "update channel closed: ${e.message}")
-                    break
-                } ?: continue
-
-                val decoded = decodeUpdate(bytes) ?: continue
-                if (decoded.rev <= _state.value.rev) continue  // mirror only
-                _state.value = decoded
-                _snapshotCount.value += 1
-                _lastSnapshotAtMs.value = System.currentTimeMillis()
-            }
+        // Issue #614 — push model (D8 no-polling): the kernel invokes this
+        // callback on its update-listener thread for every frame, replacing the
+        // former blocking-drain coroutine. The kernel is the single writer, so
+        // the rev-monotonicity read/write below stays correct. `MutableStateFlow`
+        // value assignment is thread-safe; UI collectors observe on their own
+        // dispatcher.
+        bridge.setUpdateListener { bytes ->
+            val decoded = decodeUpdate(bytes) ?: return@setUpdateListener
+            if (decoded.rev <= _state.value.rev) return@setUpdateListener  // mirror only
+            _state.value = decoded
+            _snapshotCount.value += 1
+            _lastSnapshotAtMs.value = System.currentTimeMillis()
         }
         // ADR-0048 Stage 2 — drain NIP-55 requests; dispatch on Main (Intent requires it).
         signerReaderJob = viewModelScope.launch(Dispatchers.IO) {
@@ -463,15 +458,14 @@ class KernelModel : ViewModel() {
     }
 
     override fun onCleared() {
-        val job = readerJob
-        readerJob = null
         val signerJob = signerReaderJob
         signerReaderJob = null
         started = false
         bridge.stop()
+        // `closeUpdates` quiesces the kernel update callback and drops the push
+        // listener (issue #614) — no reader coroutine to join anymore.
         bridge.closeUpdates()
         runBlocking {
-            job?.cancelAndJoin()
             signerJob?.cancelAndJoin()
         }
         bridge.free()

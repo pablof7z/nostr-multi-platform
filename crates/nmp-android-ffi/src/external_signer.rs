@@ -116,8 +116,9 @@ fn to_c_string(value: String) -> *mut c_char {
 
 /// Blocking timed drain of the outbound NIP-55 request channel.
 ///
-/// Same return contract as `nativeNextUpdate` (V-57 P5 — the two timeout
-/// arms must not be conflated):
+/// V-57 P5 return contract (the two timeout arms must not be conflated; the
+/// signer channel keeps this poll shape — only the update path moved to a JNI
+/// push callback in issue #614):
 /// * `null` — idle tick; the Kotlin reader loops back in.
 /// * non-null `String` — one `ExternalSignerRequest` JSON.
 /// * throws `IllegalStateException` — channel closed; the reader MUST stop.

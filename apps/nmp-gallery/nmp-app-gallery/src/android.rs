@@ -12,8 +12,8 @@ use std::ffi::{c_void, CStr, CString};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
-use jni::objects::{JClass, JString};
-use jni::sys::{jbyteArray, jint, jlong, jstring};
+use jni::objects::{JClass, JObject, JString};
+use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
 use nmp_ffi::{
@@ -26,33 +26,37 @@ use nmp_ffi::{
 
 use nmp_core::__ffi_internal::capability_error_envelope;
 
-/// Owns the kernel handle, snapshot receiver, and boxed sender held by the
-/// kernel callback. Freed exactly once in `nativeFree`.
+use crate::android_push::{GalleryUpdateCtx, GalleryUpdateListener};
+
+/// Owns the kernel handle, the boxed update-callback context (which holds the
+/// JNI push listener), and the boxed signer-request sender. Freed exactly once
+/// in `nativeFree`.
 pub(crate) struct GallerySession {
     pub(crate) app: *mut NmpApp,
-    rx: Receiver<Vec<u8>>,
-    tx: *mut Sender<Vec<u8>>,
+    /// Boxed [`GalleryUpdateCtx`] passed as the `nmp_app_set_update_callback`
+    /// context. Owns the JNI push listener slot (issue #614 — D8 no-polling).
+    update_ctx: *mut GalleryUpdateCtx,
     /// ADR-0048 Stage 2 — outbound NIP-55 `ExternalSignerRequest` JSON
     /// payloads, pushed by the capability trampoline and drained by Kotlin
-    /// via `nativeNextSignerRequest` (same channel shape as updates).
+    /// via `nativeNextSignerRequest`.
     signer_rx: Receiver<String>,
     signer_tx: *mut Sender<String>,
 }
 
 // SAFETY: GallerySession is transferred to Kotlin as a jlong handle; access
-// is serialised by the Kotlin caller (nativeNew → nativeFree lifecycle;
-// nativeNextUpdate on one reader thread).
+// is serialised by the Kotlin caller (nativeNew → nativeFree lifecycle).
 unsafe impl Send for GallerySession {}
 
-/// Callback — runs on the kernel's listener thread. Copies the borrowed
-/// FlatBuffers frame before handing it to the channel.
+/// Update callback — runs on the kernel's listener thread. Forwards the
+/// borrowed FlatBuffers frame straight to the registered JNI push listener
+/// (issue #614 — D8 no-polling).
 extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
     if context.is_null() || bytes.is_null() {
         return;
     }
-    let tx = unsafe { &*(context as *const Sender<Vec<u8>>) };
-    let owned = unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec();
-    let _ = tx.send(owned);
+    let ctx = unsafe { &*(context as *const GalleryUpdateCtx) };
+    let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
+    ctx.push(frame);
 }
 
 /// Capability trampoline (ADR-0048 Stage 2). `external_signer` requests are
@@ -122,9 +126,9 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
     if app.is_null() {
         return 0;
     }
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    let tx = Box::into_raw(Box::new(tx));
-    nmp_app_set_update_callback(app, tx as *mut c_void, Some(on_update));
+    // Issue #614 — the update-callback context owns the JNI push listener slot.
+    let update_ctx = Box::into_raw(Box::new(GalleryUpdateCtx::new()));
+    nmp_app_set_update_callback(app, update_ctx as *mut c_void, Some(on_update));
     // ADR-0048 Stage 2 — external-signer capability trampoline + NIP-55
     // driver init (gallery hosts the canonical login-block component).
     let (signer_tx, signer_rx) = std::sync::mpsc::channel::<String>();
@@ -133,8 +137,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
     nmp_external_signer_init(app);
     let session = Box::new(GallerySession {
         app,
-        rx,
-        tx,
+        update_ctx,
         signer_rx,
         signer_tx,
     });
@@ -152,10 +155,13 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeFree(
     }
     let s = unsafe { Box::from_raw(handle as *mut GallerySession) };
     unsafe {
+        // Quiescence gate: `set_update_callback(None)` blocks until any
+        // in-flight `on_update` returns, so the `GalleryUpdateCtx` (and its JNI
+        // listener `GlobalRef`) can be dropped below without a UAF (issue #614).
         nmp_app_set_update_callback(s.app, std::ptr::null_mut(), None);
         nmp_app_set_capability_callback(s.app, std::ptr::null_mut(), None);
         nmp_app_free(s.app);
-        drop(Box::from_raw(s.tx));
+        drop(Box::from_raw(s.update_ctx));
         drop(Box::from_raw(s.signer_tx));
     }
 }
@@ -310,58 +316,47 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEve
     nmp_app_release_event(s.app, uri.as_ptr(), consumer_id.as_ptr());
 }
 
-/// Drain one FlatBuffers update frame from the kernel callback channel.
+/// Register (or clear) the JNI push listener for kernel update frames
+/// (issue #614 — D8 no-polling; replaces the deleted `nativeNextUpdate`
+/// blocking drain). Mirrors the Chirp `nativeSetUpdateListener`.
 ///
-/// V-57 P5: the two `recv_timeout` error arms have distinct meanings and must
-/// not be conflated — earlier revisions returned `null` for both, which made
-/// the Kotlin polling coroutine spin (the `?: continue` arm in
-/// `GalleryModel.startPolling`) once the channel had closed.
-///
-/// * [`RecvTimeoutError::Timeout`] — normal idle tick. Return `null`; the
-///   Kotlin caller loops back into `nextUpdate`. This is the steady state
-///   between snapshot emits at `emit_hz`.
-/// * [`RecvTimeoutError::Disconnected`] — the boxed [`Sender`] inside this
-///   [`GallerySession`] has been dropped. The only drop site is
-///   [`Java_org_nmp_gallery_bridge_KernelBridge_nativeFree`], which calls
-///   `nmp_app_free` (joining the actor thread) before dropping the boxed
-///   sender. The Kotlin coroutine MUST stop polling — we surface this as an
-///   `IllegalStateException` so the `viewModelScope` reader breaks out of its
-///   `while (isActive)` loop instead of busy-spinning on a dead channel.
-///
-/// Reachability note: in the current architecture, `Disconnected` is only
-/// observable in the narrow window between sender-drop and session-drop
-/// inside `nativeFree`. This fix is defensive hardening matching the V-57 P5
-/// BACKLOG entry's intent, not a reproduced spin from production logs.
+/// `listener` must implement `fun onUpdate(frame: ByteArray)`. Frames are
+/// pushed from the kernel's update-listener thread; pass `null` to deregister.
+/// D6: a null/dead handle or any JNI failure is a silent no-op.
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNextUpdate<'l>(
-    mut env: JNIEnv<'l>,
-    _class: JClass<'l>,
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeSetUpdateListener(
+    env: JNIEnv,
+    _class: JClass,
     handle: jlong,
-    timeout_ms: jlong,
-) -> jbyteArray {
-    let null = std::ptr::null_mut();
+    listener: JObject,
+) {
     let Some(s) = session_ref(handle) else {
-        return null;
+        return;
     };
-    let timeout = Duration::from_millis(timeout_ms.max(0) as u64);
-    match s.rx.recv_timeout(timeout) {
-        Ok(bytes) => match env.byte_array_from_slice(&bytes) {
-            Ok(array) => array.into_raw(),
-            Err(_) => null,
-        },
-        // Normal idle tick — Kotlin caller loops back into `nextUpdate`.
-        Err(RecvTimeoutError::Timeout) => null,
-        // Sender dropped: signal Kotlin to stop polling by raising a JNI
-        // exception. Per the JNI contract, no further env calls are issued
-        // after `throw_new`; we return null which the JVM ignores in favour
-        // of the pending exception on the Rust → Java return.
-        Err(RecvTimeoutError::Disconnected) => {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "gallery snapshot channel disconnected",
-            );
-            null
-        }
+    let ctx = unsafe { &*s.update_ctx };
+    if listener.is_null() {
+        ctx.clear_listener();
+        return;
+    }
+    let Ok(vm) = env.get_java_vm() else {
+        return;
+    };
+    let Ok(global) = env.new_global_ref(&listener) else {
+        return;
+    };
+    ctx.set_listener(GalleryUpdateListener::new(vm, global));
+}
+
+/// Clear the JNI push listener without freeing the session (issue #614).
+/// D6: a null/dead handle is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClearUpdateListener(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if let Some(s) = session_ref(handle) {
+        unsafe { &*s.update_ctx }.clear_listener();
     }
 }
 

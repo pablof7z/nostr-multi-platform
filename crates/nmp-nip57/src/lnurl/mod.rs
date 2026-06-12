@@ -268,7 +268,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
 /// posts a `ShowToast` + `RecordActionFailure` so the host spinner resolves with
 /// a clear reason instead of hanging.
 fn spawn_lnurl_worker(
-    worker_tx: std::sync::mpsc::Sender<ActorCommand>,
+    worker_tx: nmp_core::CommandSender,
     lnurl_or_address: String,
     amount_msats: u64,
     signed_json: String,

@@ -68,6 +68,10 @@ pub mod active_follow_set;
 pub mod projection;
 pub mod wire;
 
+#[cfg(test)]
+#[path = "cap_divergence_tests.rs"]
+mod cap_divergence_tests;
+
 pub use active_follow_set::ActiveFollowSet;
 pub use projection::{FollowEntry, FollowListProjection, FollowListSnapshot};
 pub use wire::typed_fb::{

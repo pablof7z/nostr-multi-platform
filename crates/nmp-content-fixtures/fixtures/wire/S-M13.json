@@ -1,0 +1,26 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "old irc-style channel: "
+    },
+    {
+      "kind": "event_ref",
+      "uri": {
+        "uri": "nostr:nevent1qqs94xud8d5v3l6l8kc49cr2cjz9xq30qmrxasvsd0w6nap9kusp4zqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzpeynm0cuzrvq7dvpujgyjv93gpxvdsfeqrhqwkz8f755405vfngnqvzqqqqq9q3dg9ms",
+        "kind": "event",
+        "primary_id": "5a9b8d3b68c8ff5f3db152e06ac48453022f06c66ec1906bdda9f425b7201a88",
+        "relays": [
+          "wss://relay.nmp.test"
+        ],
+        "author": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+        "event_kind": 40
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}

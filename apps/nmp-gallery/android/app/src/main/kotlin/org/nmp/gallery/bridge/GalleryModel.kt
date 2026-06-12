@@ -24,8 +24,9 @@ import org.nmp.gallery.registry.ProfileWire
 
 /**
  * Tiny ViewModel that owns the [KernelBridge] for the gallery's lifetime,
- * drains the kernel's FlatBuffers push-callback channel via `nextUpdate`, and
- * republishes the decoded profile slice as a [StateFlow] for Compose.
+ * receives the kernel's FlatBuffers update frames via a JNI push callback
+ * (issue #614 — D8 no-polling), and republishes the decoded profile slice as a
+ * [StateFlow] for Compose.
  *
  * D5/D8: the kernel is the single source of truth. Profile data arrives via
  * the push callback only. Registry components claim pubkeys while visible and
@@ -65,7 +66,6 @@ class GalleryModel : ViewModel() {
         isLenient = true
     }
 
-    private var pollJob: Job? = null
     private var signerJob: Job? = null
 
     /**
@@ -81,7 +81,9 @@ class GalleryModel : ViewModel() {
     init {
         bridge.galleryRegister()
         bridge.start(eventsPerSec = 0, visibleLimit = 80, emitHz = 4)
-        startPolling()
+        // Issue #614 — push model (D8 no-polling): the kernel invokes this
+        // callback on its update-listener thread for every snapshot frame.
+        bridge.setUpdateListener { raw -> applyFrame(raw) }
         startSignerDrain()
     }
 
@@ -137,31 +139,11 @@ class GalleryModel : ViewModel() {
     fun dispatchAction(action: String, payload: String): String? =
         bridge.dispatchAction(action, payload)
 
-    private fun startPolling() {
-        pollJob = viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                val raw = try {
-                    // Block until a snapshot arrives (D8 — no polling).
-                    // Kernel emits at ~4 Hz; 30s timeout is defensive.
-                    bridge.nextUpdate(timeoutMs = 30_000L)
-                } catch (e: IllegalStateException) {
-                    // V-57 P5: Rust JNI distinguishes RecvTimeoutError::Disconnected
-                    // (channel closed — sender dropped) from RecvTimeoutError::Timeout
-                    // (idle tick — keep polling). A disconnect surfaces as this
-                    // exception. Break out of the loop instead of spinning on a
-                    // dead channel.
-                    android.util.Log.i("GalleryModel", "snapshot channel closed: ${e.message}")
-                    break
-                } ?: continue
-                applyFrame(raw)
-            }
-        }
-    }
-
     /**
      * ADR-0048 Stage 2 — drain Rust-built NIP-55 capability requests and
-     * hand them to the activity-registered bridge on Main. Same blocking
-     * timed-drain shape as [startPolling] (D8 — no busy polling).
+     * hand them to the activity-registered bridge on Main. Blocking timed
+     * drain (D8 — no busy polling); the update-frame path is now a push
+     * callback (issue #614).
      */
     private fun startSignerDrain() {
         signerJob = viewModelScope.launch(Dispatchers.IO) {
@@ -240,8 +222,10 @@ class GalleryModel : ViewModel() {
     }
 
     override fun onCleared() {
-        pollJob?.cancel()
-        pollJob = null
+        // Issue #614 — deregister the push listener before freeing so no frame
+        // is delivered into a torn-down ViewModel. `free()` also quiesces and
+        // clears the listener Rust-side; this is the explicit-ownership step.
+        bridge.clearUpdateListener()
         signerJob?.cancel()
         signerJob = null
         bridge.stop()

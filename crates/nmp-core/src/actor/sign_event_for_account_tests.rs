@@ -33,7 +33,7 @@ use nostr::{EventBuilder, Keys, SecretKey, Timestamp};
 use super::commands::{self, IdentityRuntime};
 use super::dispatch::{dispatch_command, ActorContext};
 use super::pending_sign::{resolve_pending_sign_return, PendingSign, PendingSignReturn};
-use super::{ActorCommand, SignContinuation};
+use super::{ActorCommand, ActorMail, CommandSender, SignContinuation};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::remote_signer::RemoteSignerHandle;
@@ -160,7 +160,8 @@ fn dispatch_one(
     use std::time::Instant;
 
     let (update_tx, _update_rx) = channel::<crate::update_envelope::UpdateFrameBytes>();
-    let (command_tx, _command_rx) = channel::<ActorCommand>();
+    let (command_inbox_tx, _command_rx) = channel::<ActorMail>();
+    let command_tx = CommandSender::new(command_inbox_tx);
     let lifecycle_observer = commands::new_observer_slot();
     let mls_local_nsec = Arc::new(Mutex::new(None));
     let active_local_keys = Arc::new(Mutex::new(None));
@@ -181,10 +182,10 @@ fn dispatch_one(
     let mut pending_sign_returns: Vec<PendingSignReturn> = Vec::new();
     let capability_callback: crate::capability_socket::CapabilityCallbackSlot =
         Arc::new(Mutex::new(None));
-    let (capability_work_inner_tx, _capability_work_rx) = channel::<ActorCommand>();
+    let (capability_work_inner_tx, _capability_work_rx) = channel::<ActorMail>();
     let capability_work_tx = crate::actor::capability_worker::spawn_capability_worker(
         Arc::clone(&capability_callback),
-        capability_work_inner_tx,
+        CommandSender::new(capability_work_inner_tx),
     );
     let coverage_hook = Arc::new(Mutex::new(None::<crate::subs::PlanCoverageHook>));
     let req_frame_interceptor = Arc::new(Mutex::new(None));

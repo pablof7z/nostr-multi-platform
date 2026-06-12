@@ -64,7 +64,6 @@
 //! [`send`](ProtocolCommandContext::send)'s drop-on-panic is benign.
 
 use std::fmt;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use crate::kernel::Kernel;
@@ -260,8 +259,10 @@ pub struct ProtocolCommandContextParts<'a> {
     /// Re-enter the actor loop. Called from [`ProtocolCommandContext::send`].
     pub send: &'a dyn Fn(ActorCommand),
     /// Owned actor-command sender clone the command's `run` body can hand
-    /// to a spawned worker thread (the LNURL fetcher pattern).
-    pub command_sender: Sender<ActorCommand>,
+    /// to a spawned worker thread (the LNURL fetcher pattern). A
+    /// [`CommandSender`](crate::actor::CommandSender) — sends through it now
+    /// wake the actor (ADR-0050 §D3a).
+    pub command_sender: crate::actor::CommandSender,
     /// D7 wall-clock seam.
     pub clock: &'a dyn KernelClock,
     /// Active-account local signing material (incl. `SignerForSeal`).
@@ -289,10 +290,11 @@ pub struct ProtocolCommandContextParts<'a> {
 /// `MailboxCache` directly — every operation goes through this context.
 pub struct ProtocolCommandContext<'a> {
     send: &'a dyn Fn(ActorCommand),
-    /// Owned `Sender<ActorCommand>` clone for handing to a spawned worker
-    /// thread; the test-only `with_send_only` ctor installs a sender whose
-    /// receiver is dropped (sends become benign no-ops, matching D6).
-    command_sender: Sender<ActorCommand>,
+    /// Owned [`CommandSender`](crate::actor::CommandSender) clone for handing
+    /// to a spawned worker thread; the test-only `with_send_only` ctor installs
+    /// a sender whose receiver is dropped (sends become benign no-ops,
+    /// matching D6).
+    command_sender: crate::actor::CommandSender,
     clock: &'a dyn KernelClock,
     signers: &'a dyn LocalSignerAccess,
     dms: &'a dyn DmInboxLookup,
@@ -381,7 +383,8 @@ impl<'a> ProtocolCommandContext<'a> {
         static ERRORS: NoopErrorSurface = NoopErrorSurface;
         static STAGES: NoopActionStageTracker = NoopActionStageTracker;
         static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
-        let (command_sender, _rx) = std::sync::mpsc::channel::<ActorCommand>();
+        let (command_sender, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
+        let command_sender = crate::actor::CommandSender::new(command_sender);
         Self::new(ProtocolCommandContextParts {
             send,
             command_sender,
@@ -394,15 +397,15 @@ impl<'a> ProtocolCommandContext<'a> {
         })
     }
 
-    /// Return an owned [`Sender<ActorCommand>`] clone for handing to a
-    /// spawned worker thread that posts follow-up `ActorCommand`s back
-    /// into the actor loop after the dispatch arm (and therefore this
+    /// Return an owned [`CommandSender`](crate::actor::CommandSender) clone for
+    /// handing to a spawned worker thread that posts follow-up `ActorCommand`s
+    /// back into the actor loop after the dispatch arm (and therefore this
     /// `ProtocolCommandContext`) has returned — the LNURL fetcher pattern
     /// (`nmp_nip57::lnurl::FetchLnurlInvoiceCommand`). The test-only
     /// `with_send_only` ctor installs a sender whose receiver is dropped
     /// (sends become benign no-ops, matching D6).
     #[must_use]
-    pub fn command_sender_clone(&self) -> Sender<ActorCommand> {
+    pub fn command_sender_clone(&self) -> crate::actor::CommandSender {
         self.command_sender.clone()
     }
 
@@ -607,8 +610,9 @@ impl<'a> ProtocolCommandContext<'a> {
 /// generic, backend-transparent sign-account port.
 ///
 /// This free function lets a spawned worker thread — which holds only a
-/// [`Sender<ActorCommand>`] (via [`ProtocolCommandContext::command_sender_clone`]),
-/// not the actor-thread `ctx` — construct the command and `send` it itself.
+/// [`CommandSender`](crate::actor::CommandSender) (via
+/// [`ProtocolCommandContext::command_sender_clone`]), not the actor-thread
+/// `ctx` — construct the command and `send` it itself.
 /// The actor's dispatch arm signs (active account when `signer_pubkey` is
 /// `None`, else the named roster key) and invokes `continuation` with the
 /// resolved [`crate::substrate::SignedEvent`] or an error string — inline for a
