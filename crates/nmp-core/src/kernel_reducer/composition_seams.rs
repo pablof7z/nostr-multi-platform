@@ -1,13 +1,17 @@
 //! PR-4 composition seams for `KernelReducer`.
 //!
-//! These four methods (plus the `event_by_id` read helper) let a wasm32
-//! composition root wire the OP-feed engine into the kernel without
-//! depending on `NmpApp` (which lives in `nmp-ffi`, not available on
-//! wasm32) or the native actor thread.
+//! These four methods let a wasm32 composition root wire the OP-feed engine
+//! into the kernel without depending on `NmpApp` (which lives in `nmp-ffi`,
+//! not available on wasm32) or the native actor thread:
+//!
+//! * `register_event_observer` — wire a `KernelEventObserver` into the fan-out slot.
+//! * `register_typed_snapshot_projection` — wire a typed FlatBuffers projection.
+//! * `active_account_handle` — read the active-account pubkey slot.
+//! * `event_store_handle` — read the kernel event-store `Arc`.
 //!
 //! All methods delegate either to `self.kernel` (for slot handles that are
 //! already `pub` there) or to `self.observer_slot` / `self.snapshot_slot`
-//! (the new per-reducer slots initialised in `KernelReducer::new`).
+//! (the per-reducer slots initialised in `KernelReducer::new`).
 //!
 //! # Doctrine
 //!
@@ -20,11 +24,9 @@
 
 use std::sync::Arc;
 
-use crate::actor::{register_rust_observer, KernelEventObserverSlot};
-use crate::kernel::SnapshotProjectionSlot;
+use crate::actor::register_rust_observer;
 use crate::slots::ActiveAccountSlot;
 use crate::store::EventStore;
-use crate::substrate::KernelEvent;
 use crate::{KernelEventObserver, KernelEventObserverId, TypedProjectionData};
 
 impl super::KernelReducer {
@@ -95,53 +97,4 @@ impl super::KernelReducer {
         self.kernel.event_store_handle()
     }
 
-    // ── Event-by-id read helper ───────────────────────────────────────────
-
-    /// Look up a stored event by its 64-hex-char event id.
-    ///
-    /// Returns `None` when: `id` is not valid 64-char hex, the event is not
-    /// in the store, or the store returns an error (D6 — a missing lookup
-    /// degrades gracefully; it never panics).
-    ///
-    /// This is the substrate-clean path for the `EventLookup` closure in
-    /// `register_op_feed`; see `nmp_core::slots::event_by_id_from_store` for
-    /// the analogous native-slot version.
-    #[must_use]
-    pub fn event_by_id(&self, id: &str) -> Option<KernelEvent> {
-        use crate::kernel::hex_to_pubkey_bytes as hex_to_id_bytes;
-        let key = hex_to_id_bytes(id)?;
-        let store = self.kernel.event_store_handle();
-        let stored = store.get_by_id(&key).ok()??;
-        let raw = &stored.raw;
-        Some(KernelEvent {
-            id: raw.id.clone(),
-            author: raw.pubkey.clone(),
-            kind: raw.kind,
-            created_at: raw.created_at,
-            tags: raw.tags.clone(),
-            content: raw.content.clone(),
-        })
-    }
-
-    // ── Slot handle access (for drain wiring) ─────────────────────────────
-
-    /// Return a clone of the observer slot.
-    ///
-    /// The composition root needs this to bind the `ActiveFollowSet` as a
-    /// `KernelEventObserver` directly against the same slot that the kernel
-    /// fires on ingest. Not for general use.
-    #[must_use]
-    pub fn observer_slot_handle(&self) -> KernelEventObserverSlot {
-        Arc::clone(&self.observer_slot)
-    }
-
-    /// Return a clone of the snapshot-projection slot.
-    ///
-    /// Exposed so the composition root can register additional projections
-    /// after initial wiring without going through `register_typed_snapshot_projection`.
-    /// Not for general use.
-    #[must_use]
-    pub fn snapshot_slot_handle(&self) -> SnapshotProjectionSlot {
-        Arc::clone(&self.snapshot_slot)
-    }
 }

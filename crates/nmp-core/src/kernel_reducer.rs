@@ -425,6 +425,23 @@ impl KernelReducer {
 
 }
 
+/// Test-support seam: fire the observer slot directly with a `KernelEvent`.
+///
+/// This is the substrate-clean path for wasm32 integration tests that cannot
+/// go through `ingest_pre_verified_event` (a `pub(crate)` kernel method).
+/// It mirrors exactly what `Kernel::notify_event_observers` does on the
+/// production ingest path: snapshot observers under the lock and fire each
+/// synchronously.
+///
+/// Only available under `cfg(any(test, feature = "test-support"))`. Never
+/// call from production code — use `handle_relay_frame` for real ingest.
+#[cfg(any(test, feature = "test-support"))]
+impl KernelReducer {
+    pub fn fire_event_observers_for_test(&self, event: &crate::substrate::KernelEvent) {
+        crate::actor::notify_observers(&self.observer_slot, event);
+    }
+}
+
 mod composition_seams;
 mod feed_verbs;
 mod reply;

@@ -24,10 +24,9 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
 use nmp_core::KernelReducer;
+use nmp_nip01::op_feed::pointer_to_uri;
 use nmp_feed::{ClaimRequest, ClaimSink};
-use nmp_threading::pointer::ThreadPointer;
 
 /// Shared queue of pending claim/release requests from the feed engine.
 /// `Arc<Mutex<…>>` so the `ClaimSink` closure (which is `Send + Sync`) and
@@ -98,46 +97,4 @@ pub fn drain_pending_claims(queue: &PendingClaimQueue, reducer: &std::rc::Rc<std
     }
 }
 
-/// Encode a [`ThreadPointer`] as a `nostr:`-prefixed NIP-19 URI.
-///
-/// Returns `None` on any encode failure (malformed coord, non-hex id).
-/// Mirrors the private `pointer_to_uri` in `nmp-nip01/src/op_feed/wiring.rs`.
-fn pointer_to_uri(pointer: &ThreadPointer, extra_relays: &[String]) -> Option<String> {
-    match pointer {
-        ThreadPointer::Event { id, relay, kind } => {
-            let mut relays: Vec<String> = relay.iter().cloned().collect();
-            for r in extra_relays {
-                if !relays.contains(r) {
-                    relays.push(r.clone());
-                }
-            }
-            let data = NeventData {
-                event_id: id.clone(),
-                relays,
-                author: None,
-                kind: *kind,
-            };
-            encode_nevent(&data).ok().map(|b| format!("nostr:{b}"))
-        }
-        ThreadPointer::Address { coord, relay, .. } => {
-            let mut parts = coord.splitn(3, ':');
-            let kind = parts.next()?.parse::<u32>().ok()?;
-            let pubkey = parts.next()?.to_string();
-            let identifier = parts.next()?.to_string();
-            let mut relays: Vec<String> = relay.iter().cloned().collect();
-            for r in extra_relays {
-                if !relays.contains(r) {
-                    relays.push(r.clone());
-                }
-            }
-            let data = NaddrData {
-                identifier,
-                pubkey,
-                kind,
-                relays,
-            };
-            encode_naddr(&data).ok().map(|b| format!("nostr:{b}"))
-        }
-        ThreadPointer::External { .. } => None,
-    }
-}
+

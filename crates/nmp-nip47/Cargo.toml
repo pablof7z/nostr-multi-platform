@@ -7,7 +7,7 @@ repository.workspace = true
 description = "NIP-47 Nostr Wallet Connect — Layer-4 NIP crate. Owns the actor-side `WalletRuntime`, the `nmp.wallet.pay_invoice` `ActionModule`, and the three `ProtocolCommand` impls that replace the pre-V-38 `Wallet*` `ActorCommand` variants. After V-38 `nmp-core → nmp-nwc` is deleted — the dep direction inverts here."
 
 [dependencies]
-nmp-core = { path = "../nmp-core", default-features = false }
+nmp-core = { path = "../nmp-core" }
 nmp-nwc = { path = "../nmp-nwc" }
 flatbuffers = { workspace = true }
 nostr = { version = "0.44", features = ["std"] }
