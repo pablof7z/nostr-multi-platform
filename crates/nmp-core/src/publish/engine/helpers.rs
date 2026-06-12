@@ -66,19 +66,28 @@ pub(super) fn dispatch_due(
     acks
 }
 
+/// Fold a verdict into the per-relay state. Returns `true` when the verdict is
+/// `ParkAwaitingAuth` — the caller (`engine::on_ack`) must then route the relay
+/// through the availability gate (`mark_relay_unavailable`), which owns
+/// `unavailable_relays` and performs the InFlight→Pending demotion. The park
+/// is deliberately NOT handled here: this free fn only sees `&mut InFlight` and
+/// has no access to the engine's `unavailable_relays` set, and the single
+/// availability-gate mechanism must own every "this relay can't take a publish
+/// right now" transition (D4: one writer per fact, no parallel auth-park path).
 pub(super) fn apply_verdict(
     in_flight: &mut InFlight,
     relay_url: &str,
     verdict: RetryVerdict,
     now_ms: u64,
-) {
+) -> bool {
     let Some(state) = in_flight.per_relay.get_mut(relay_url) else {
-        return;
+        return false;
     };
     match verdict {
         RetryVerdict::Settled(next) => {
             *state = next;
             in_flight.dirty = true;
+            false
         }
         RetryVerdict::ScheduleRetry {
             delay_ms,
@@ -93,26 +102,14 @@ pub(super) fn apply_verdict(
                 .pending_retries
                 .insert(relay_url.to_string(), now_ms.saturating_add(delay_ms));
             in_flight.dirty = true;
+            false
         }
-        RetryVerdict::Reauth {
-            delay_ms,
-            next_attempt,
-        } => {
-            // M6 signer integration: the engine will call sign_auth, dispatch
-            // AUTH, then re-dispatch the original publish on success. Until M6
-            // lands the auth-required path is modelled as a transient retry —
-            // the test in tests.rs exercises this by re-feeding the original
-            // event on the next dispatch tick.
-            *state = PerRelayState::RelayError {
-                message: format!("auth-required, reauth attempt {next_attempt}"),
-                attempt: next_attempt - 1,
-                last_at_ms: now_ms,
-            };
-            in_flight
-                .pending_retries
-                .insert(relay_url.to_string(), now_ms.saturating_add(delay_ms));
-            in_flight.dirty = true;
-        }
+        // The relay refused the EVENT pending NIP-42 auth. Leave the state for
+        // the availability gate to demote (InFlight→Pending) and signal the
+        // park up to the caller; never schedule a retry (D8: the re-dispatch is
+        // event-driven off `mark_relay_available`, fired when the socket
+        // reaches `Authenticated`).
+        RetryVerdict::ParkAwaitingAuth { .. } => true,
     }
 }
 

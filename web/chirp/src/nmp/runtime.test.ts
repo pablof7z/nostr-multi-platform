@@ -14,7 +14,7 @@ import * as flatbuffers from "flatbuffers";
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 import { eventCorrelationId, protocolVersion } from "./protocol";
 import { chirpTimelineFromEnvelope, displayRows, featureSnapshotFromEnvelope, kernelSnapshotFromEnvelope } from "./snapshot";
-import { FrameKind, Pair, PanicFrame, SnapshotFrame, UpdateFrame, Value, ValueKind } from "./generated/nmp/transport";
+import { FrameKind, PanicFrame, RelayStatus, SnapshotFrame, UpdateFrame } from "./generated/nmp/transport";
 import { decodeUpdateFrameBytes, UpdateFrameDecodeError } from "./updateFrame";
 
 type WorkerHarness = {
@@ -123,18 +123,37 @@ describe("shared Chirp web semantics", () => {
     expect(eventCorrelationId({ type: "update_bytes", bytes: new Uint8Array([1, 2, 3]) })).toBeUndefined();
   });
 
-  it("decodes generated FlatBuffers snapshot updates without JSON fallback", () => {
-    const bytes = makeSnapshotBytes({ rev: 7, running: true });
+  it("decodes Tier-3 running and relayStatuses from a snapshot frame", () => {
+    const bytes = makeSnapshotBytes({
+      running: true,
+      relayStatuses: [{ url: "wss://relay.example", role: "both", connection: "Connected" }],
+    });
     const decoded = decodeUpdateFrameBytes(bytes);
 
     expect(decoded).toEqual({
       type: "snapshot",
       schemaVersion: 1,
-      payload: { rev: 7, running: true },
+      running: true,
+      relayStatuses: [{ url: "wss://relay.example", role: "both", status: "Connected" }],
     });
   });
 
-  it("matches the Rust golden snapshot v1 fixture byte-for-byte", () => {
+  it("decodes a snapshot frame with no relay rows", () => {
+    const bytes = makeSnapshotBytes({ running: false });
+    const decoded = decodeUpdateFrameBytes(bytes);
+
+    expect(decoded).toEqual({
+      type: "snapshot",
+      schemaVersion: 1,
+      running: false,
+      relayStatuses: [],
+    });
+  });
+
+  it("matches the Rust golden snapshot v1 fixture (pre-Tier3: relay_statuses absent, defaults)", () => {
+    // The v1 golden fixture was built before Tier-3 fields were added (PR-B).
+    // FlatBuffers vtable lookup returns defaults for absent fields, so decoding
+    // this old wire format must succeed and report zero relay rows.
     const hex = goldenSnapshotV1Hex.replace(/\s+/g, "");
     if (hex.length % 2 !== 0) {
       throw new Error("hex fixture must contain full bytes");
@@ -148,63 +167,9 @@ describe("shared Chirp web semantics", () => {
     expect(decoded).toEqual({
       type: "snapshot",
       schemaVersion: 1,
-      payload: {
-        schema_version: 1,
-        rev: 42,
-        running: true,
-        projections: { timeline: [{ id: "a", score: 1.5 }] },
-      },
+      running: false, // Tier-3 `running` field absent in v1 fixture → default false
+      relayStatuses: [], // Tier-3 `relay_statuses` absent in v1 fixture → empty
     });
-  });
-
-  it("promotes integers above Number.MAX_SAFE_INTEGER to BigInt", () => {
-    const huge = BigInt(Number.MAX_SAFE_INTEGER) + 10n;
-    const bytes = encodeRawValue((builder) =>
-      Value.createValue(builder, ValueKind.UInt, false, BigInt(0), huge, 0, 0, 0, 0),
-    );
-
-    const decoded = decodeUpdateFrameBytes(bytes);
-    expect(decoded).toEqual({ type: "snapshot", schemaVersion: 1, payload: huge });
-  });
-
-  it("rejects NaN floats instead of degrading to null", () => {
-    const bytes = encodeRawValue((builder) =>
-      Value.createValue(
-        builder,
-        ValueKind.Float,
-        false,
-        BigInt(0),
-        BigInt(0),
-        Number.NaN,
-        0,
-        0,
-        0,
-      ),
-    );
-
-    let caught: unknown;
-    try {
-      decodeUpdateFrameBytes(bytes);
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(UpdateFrameDecodeError);
-    expect((caught as UpdateFrameDecodeError).kind).toBe("invalid_value");
-  });
-
-  it("throws on unknown value kinds instead of returning null", () => {
-    const bytes = encodeRawValue((builder) =>
-      Value.createValue(builder, 99 as ValueKind, false, BigInt(0), BigInt(0), 0, 0, 0, 0),
-    );
-
-    let caught: unknown;
-    try {
-      decodeUpdateFrameBytes(bytes);
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(UpdateFrameDecodeError);
-    expect((caught as UpdateFrameDecodeError).kind).toBe("invalid_value");
   });
 
   it("throws on buffers missing the NMPU identifier", () => {
@@ -349,7 +314,7 @@ describe("shared Chirp web semantics", () => {
 });
 
 describe("client schema enforcement", () => {
-  it("degrades to protocol_mismatch when the frame schema version diverges", async () => {
+  it("degrades to protocol_mismatch when the envelope schema version diverges", async () => {
     const stub = new StubWorker();
     vi.stubGlobal("Worker", StubWorker.factory(stub));
 
@@ -359,15 +324,14 @@ describe("client schema enforcement", () => {
 
     stub.emit({
       type: "update_bytes",
-      bytes: makeSnapshotBytes({ schema_version: 1, rev: 1 }, 2),
+      bytes: makeSnapshotBytes({ running: false }, 2),
     });
 
     unsubscribe();
     expect(snapshots[snapshots.length - 1]!.status).toEqual({ degraded: "protocol_mismatch" });
-    expect(snapshots[snapshots.length - 1]!.latestUpdate).toBeUndefined();
   });
 
-  it("degrades to protocol_mismatch when the payload schema_version diverges", async () => {
+  it("advances status to running when the Tier-3 running field is true", async () => {
     const stub = new StubWorker();
     vi.stubGlobal("Worker", StubWorker.factory(stub));
 
@@ -377,11 +341,33 @@ describe("client schema enforcement", () => {
 
     stub.emit({
       type: "update_bytes",
-      bytes: makeSnapshotBytes({ schema_version: 2, rev: 1 }, 1),
+      bytes: makeSnapshotBytes({ running: true }),
     });
 
     unsubscribe();
-    expect(snapshots[snapshots.length - 1]!.status).toEqual({ degraded: "protocol_mismatch" });
+    expect(snapshots[snapshots.length - 1]!.status).toBe("running");
+  });
+
+  it("populates latestRelayStatuses from the Tier-3 relay_statuses field", async () => {
+    const stub = new StubWorker();
+    vi.stubGlobal("Worker", StubWorker.factory(stub));
+
+    const client = createNmpClient();
+    const snapshots: RuntimeSnapshot[] = [];
+    const unsubscribe = client.subscribe((snapshot) => snapshots.push(snapshot));
+
+    stub.emit({
+      type: "update_bytes",
+      bytes: makeSnapshotBytes({
+        running: true,
+        relayStatuses: [{ url: "wss://r.example", role: "both", connection: "Connected" }],
+      }),
+    });
+
+    unsubscribe();
+    expect(snapshots[snapshots.length - 1]!.latestRelayStatuses).toEqual([
+      { url: "wss://r.example", role: "both", status: "Connected" },
+    ]);
   });
 
   it("degrades to browser_actor_driver_missing on malformed update bytes", async () => {
@@ -459,61 +445,54 @@ async function sendWorkerRequest(harness: WorkerHarness, request: WorkerRequest)
   await harness.onmessage({ data: request } as MessageEvent<WorkerRequest>);
 }
 
+type SnapshotBytesOptions = {
+  running?: boolean;
+  relayStatuses?: Array<{ url: string; role: string; connection: string }>;
+};
+
+/** Build a minimal UpdateFrame binary for unit tests using Tier-3 fields.
+ *  The deprecated `payload:Value` field (PR-B #991/#979) is intentionally
+ *  omitted — the kernel zeroes it and the TS decoder no longer reads it. */
 function makeSnapshotBytes(
-  payload: Record<string, unknown>,
+  options: SnapshotBytesOptions = {},
   schemaVersion = 1,
 ): Uint8Array {
-  const builder = new flatbuffers.Builder(128);
-  const payloadOffset = buildValue(builder, payload);
+  const builder = new flatbuffers.Builder(256);
+
+  // Build relay status offsets first (nested objects must precede parent).
+  let relayStatusesVecOffset: flatbuffers.Offset | undefined;
+  if (options.relayStatuses && options.relayStatuses.length > 0) {
+    const offsets = options.relayStatuses.map(({ url, role, connection }) => {
+      const urlOff = builder.createString(url);
+      const roleOff = builder.createString(role);
+      const connOff = builder.createString(connection);
+      return RelayStatus.createRelayStatus(
+        builder,
+        roleOff,
+        urlOff,
+        connOff,
+        0, 0, BigInt(0), 0, null, null, 0, 0, 0, BigInt(0), BigInt(0), BigInt(0), false, 0,
+      );
+    });
+    relayStatusesVecOffset = SnapshotFrame.createRelayStatusesVector(builder, offsets);
+  }
+
   SnapshotFrame.startSnapshotFrame(builder);
   SnapshotFrame.addSchemaVersion(builder, schemaVersion);
-  SnapshotFrame.addPayload(builder, payloadOffset);
+  if (options.running !== undefined) {
+    SnapshotFrame.addRunning(builder, options.running);
+  }
+  if (relayStatusesVecOffset !== undefined) {
+    SnapshotFrame.addRelayStatuses(builder, relayStatusesVecOffset);
+  }
   const snapshotOffset = SnapshotFrame.endSnapshotFrame(builder);
+
   UpdateFrame.startUpdateFrame(builder);
   UpdateFrame.addKind(builder, FrameKind.Snapshot);
   UpdateFrame.addSnapshot(builder, snapshotOffset);
   const frameOffset = UpdateFrame.endUpdateFrame(builder);
   UpdateFrame.finishUpdateFrameBuffer(builder, frameOffset);
   return builder.asUint8Array();
-}
-
-function encodeRawValue(
-  build: (builder: flatbuffers.Builder) => flatbuffers.Offset,
-): Uint8Array {
-  const builder = new flatbuffers.Builder(64);
-  const payloadOffset = build(builder);
-  SnapshotFrame.startSnapshotFrame(builder);
-  SnapshotFrame.addSchemaVersion(builder, 1);
-  SnapshotFrame.addPayload(builder, payloadOffset);
-  const snapshotOffset = SnapshotFrame.endSnapshotFrame(builder);
-  UpdateFrame.startUpdateFrame(builder);
-  UpdateFrame.addKind(builder, FrameKind.Snapshot);
-  UpdateFrame.addSnapshot(builder, snapshotOffset);
-  const frameOffset = UpdateFrame.endUpdateFrame(builder);
-  UpdateFrame.finishUpdateFrameBuffer(builder, frameOffset);
-  return builder.asUint8Array();
-}
-
-function buildValue(builder: flatbuffers.Builder, value: unknown): flatbuffers.Offset {
-  if (typeof value === "boolean") {
-    return Value.createValue(builder, ValueKind.Bool, value, BigInt(0), BigInt(0), 0, 0, 0, 0);
-  }
-  if (typeof value === "number") {
-    return Value.createValue(builder, ValueKind.UInt, false, BigInt(0), BigInt(value), 0, 0, 0, 0);
-  }
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    const pairs = Object.entries(value).map(([key, nested]) => {
-      const nestedOffset = buildValue(builder, nested);
-      const keyOffset = builder.createString(key);
-      Pair.startPair(builder);
-      Pair.addKey(builder, keyOffset);
-      Pair.addValue(builder, nestedOffset);
-      return Pair.endPair(builder);
-    });
-    const mapOffset = Value.createMapVector(builder, pairs);
-    return Value.createValue(builder, ValueKind.Map, false, BigInt(0), BigInt(0), 0, 0, 0, mapOffset);
-  }
-  return Value.createValue(builder, ValueKind.Null, false, BigInt(0), BigInt(0), 0, 0, 0, 0);
 }
 
 class StubWorker {

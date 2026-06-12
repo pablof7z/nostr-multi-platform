@@ -1,0 +1,180 @@
+# Split from registry.toml by platform target (file-size rule: 500 LOC hard
+# ceiling). This file holds ONLY [[components]] blocks; schema_version and
+# registry_id live in registry.toml. The loader merges registry.toml with
+# every registry.<target>.toml in this directory (see REGISTRY_SECTION_FILES).
+
+[[components]]
+id = "compose/content-core"
+version = "0.1.0"
+target = "compose"
+description = "Shared Compose renderer configuration + ContentTreeWire kotlinx.serialization mirror for app-owned Nostr content components."
+[[components.files]]
+source = "compose/content-core/NostrContentRenderer.kt"
+target = "Components/NostrContent/NostrContentRenderer.kt"
+role = "source"
+[[components.files]]
+source = "compose/content-core/ContentTreeWire.kt"
+target = "Components/NostrContent/ContentTreeWire.kt"
+role = "source"
+
+[[components]]
+id = "compose/content-mention-chip"
+version = "0.1.0"
+target = "compose"
+description = "Tappable Compose profile mention chip with optional avatar and identicon fallback."
+dependencies = ["compose/content-core"]
+[[components.files]]
+source = "compose/content-mention-chip/NostrMentionChip.kt"
+target = "Components/NostrContent/NostrMentionChip.kt"
+role = "source"
+
+[[components]]
+id = "compose/content-media-grid"
+version = "0.1.0"
+target = "compose"
+description = "Compose photo-style media grid with 1/2/3/4+ layouts and +N more overlay."
+dependencies = ["compose/content-core"]
+[[components.files]]
+source = "compose/content-media-grid/NostrMediaGrid.kt"
+target = "Components/NostrContent/NostrMediaGrid.kt"
+role = "source"
+
+[[components]]
+id = "compose/content-quote-card"
+version = "0.1.1"
+target = "compose"
+description = "Reusable Compose quote/embed card with collapsed, compact, rich, and missing variants."
+dependencies = ["compose/content-core"]
+[[components.files]]
+source = "compose/content-quote-card/NostrQuoteCard.kt"
+target = "Components/NostrContent/NostrQuoteCard.kt"
+role = "source"
+
+[[components]]
+id = "compose/content-view"
+version = "0.1.0"
+target = "compose"
+description = "Full Compose ContentTreeWire renderer covering all WireNode variants: inline runs (text/mention/hashtag/url/emoji/emphasis/strong/inline-code/link/soft+hard breaks), blocks (paragraph/heading/code/list/quote/rule/image), media, event refs, and typed placeholders."
+dependencies = [
+    "compose/content-core",
+    "compose/content-media-grid",
+    "compose/content-quote-card",
+]
+[[components.files]]
+source = "compose/content-view/NostrContentView.kt"
+target = "Components/NostrContent/NostrContentView.kt"
+role = "source"
+[[components.files]]
+source = "compose/content-view/NostrContentGrouping.kt"
+target = "Components/NostrContent/NostrContentGrouping.kt"
+role = "source"
+
+[[components]]
+id = "compose/content-kind-30023"
+version = "0.1.0"
+target = "compose"
+description = "Long-form article (NIP-23, kind:30023) embed renderer — hero image, title, summary, author byline."
+dependencies = ["compose/content-core"]
+[[components.files]]
+source = "compose/content-kind-30023/NostrArticleCard.kt"
+target = "Components/NostrContent/NostrArticleCard.kt"
+role = "source"
+# -----------------------------------------------------------------------------
+# Ratatui content widgets. These consume the Rust-owned ContentTreeWire
+# projection and stay render-only: host apps own navigation, image protocol
+# negotiation, clipboard, and network capabilities.
+# -----------------------------------------------------------------------------
+
+[[components]]
+id = "compose/user-avatar"
+version = "0.1.0"
+target = "compose"
+description = "Reference-first Compose Nostr avatar that claims its own profile projection and falls back to a deterministic identicon."
+[[components.files]]
+source = "compose/user-avatar/ProfileWire.kt"
+target = "Components/NostrUser/ProfileWire.kt"
+role = "source"
+[[components.files]]
+source = "compose/user-avatar/NostrProfileHost.kt"
+target = "Components/NostrUser/NostrProfileHost.kt"
+role = "source"
+[[components.files]]
+source = "compose/user-avatar/NostrAvatar.kt"
+target = "Components/NostrUser/NostrAvatar.kt"
+role = "source"
+
+[[components]]
+id = "compose/user-name"
+version = "0.1.0"
+target = "compose"
+description = "Inline Compose profile display-name text with Rust-formatted npub fallback."
+dependencies = ["compose/user-avatar"]
+[[components.files]]
+source = "compose/user-name/NostrProfileName.kt"
+target = "Components/NostrUser/NostrProfileName.kt"
+role = "source"
+
+[[components]]
+id = "compose/user-nip05"
+version = "0.1.0"
+target = "compose"
+description = "Compose NIP-05 verified identity badge that renders nothing when no identifier is present."
+dependencies = ["compose/user-avatar"]
+[[components.files]]
+source = "compose/user-nip05/NostrNip05Badge.kt"
+target = "Components/NostrUser/NostrNip05Badge.kt"
+role = "source"
+
+[[components]]
+id = "compose/user-npub"
+version = "0.1.0"
+target = "compose"
+description = "Compose npub chip that displays the Rust-truncated npub and copies the full npub to the clipboard."
+dependencies = ["compose/user-avatar"]
+[[components.files]]
+source = "compose/user-npub/NostrNpubChip.kt"
+target = "Components/NostrUser/NostrNpubChip.kt"
+role = "source"
+
+[[components]]
+id = "compose/user-card"
+version = "0.1.0"
+target = "compose"
+description = "Compact Compose author card composed from avatar, profile name, and optional NIP-05 badge."
+dependencies = [
+    "compose/user-avatar",
+    "compose/user-name",
+    "compose/user-nip05",
+]
+[[components.files]]
+source = "compose/user-card/NostrUserCard.kt"
+target = "Components/NostrUser/NostrUserCard.kt"
+role = "source"
+
+[[components]]
+id = "compose/login-block"
+version = "0.1.0"
+target = "compose"
+description = "Login UI with Amber (NIP-55) signer detection, one-tap sign-in cards, and manual key entry fallback (ADR-0048 Stage 2)."
+[[components.files]]
+source = "compose/login-block/NostrLoginBlock.kt"
+target = "Components/Auth/NostrLoginBlock.kt"
+role = "source"
+[[components.files]]
+source = "compose/login-block/ExternalSignerCapabilityBridge.kt"
+target = "Components/Auth/ExternalSignerCapabilityBridge.kt"
+role = "source"
+[[components.files]]
+source = "compose/login-block/ExternalSignerWire.kt"
+target = "Components/Auth/ExternalSignerWire.kt"
+role = "source"
+[[components.files]]
+source = "compose/login-block/AmberIntentCodec.kt"
+target = "Components/Auth/AmberIntentCodec.kt"
+role = "source"
+# -----------------------------------------------------------------------------
+# Ratatui user profile widgets. `tui/user-avatar` accepts pubkeys through a
+# `NostrProfileHost` adapter and owns the visible profile claim; host apps own
+# keyboard actions, clipboard writes, terminal image protocols, and navigation.
+# `tui/user-core` owns the shared `ProfileWire` mirror.
+# -----------------------------------------------------------------------------

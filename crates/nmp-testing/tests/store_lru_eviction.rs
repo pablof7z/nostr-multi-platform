@@ -10,7 +10,9 @@
 //!    deterministic behaviour (clock test / D7 verification).
 //! 7. Parity: mem and lmdb evict the same events given the same access order.
 
-use nmp_core::store::{ClaimerId, GcBudget};
+use std::collections::HashSet;
+
+use nmp_core::store::GcBudget;
 use nmp_testing::for_each_backend;
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX};
 
@@ -147,22 +149,22 @@ for_each_backend!(lru_pinned_events_survive, |h: &mut StoreHarness| {
         })
         .collect();
 
-    // Pin the first two events.  Do NOT read them (so their LRU seq stays old).
-    let claimer = ClaimerId(99);
-    h.store.register_view_cover(claimer, 10).unwrap();
-    h.store.claim(claimer, &[ids[0], ids[1]]).unwrap();
+    // Pin the first two events via the derived pin set (#1090 Stage 1).
+    // Do NOT read them (so their LRU seq stays old).
+    let pins: HashSet<_> = [ids[0], ids[1]].into_iter().collect();
 
     // Ceiling = 1 → would normally evict 3, but pinned events can't be evicted.
     // Only the 2 un-pinned events are candidates; both should be evicted.
     let report = h
         .store
-        .gc_step(
+        .gc_step_with_pins(
             GcBudget {
                 max_events_per_step: 100,
                 max_duration_ms: 5_000,
                 max_total_events: 1,
             },
             NOW_SECS,
+            &pins,
         )
         .unwrap();
 

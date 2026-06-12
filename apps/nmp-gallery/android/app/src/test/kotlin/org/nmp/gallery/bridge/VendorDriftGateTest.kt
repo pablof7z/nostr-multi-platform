@@ -58,43 +58,37 @@ class VendorDriftGateTest {
         }
     }
 
-    @Test
-    fun chirpBridgeCopyMatchesGalleryCanonical() {
-        assertIdenticalExceptPackage(
-            "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/ExternalSignerCapabilityBridge.kt",
-            "android/app/src/main/java/org/nmp/android/ExternalSignerCapabilityBridge.kt",
-        )
+    private val canonicalDir =
+        "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry"
+
+    /**
+     * Every file of the vendored login-block unit. The bridge was split into
+     * three files (file-size gate, PR #1183): wire types, Amber codec, bridge
+     * core. ALL of them are vendored together — adding a canonical file
+     * without adding it here (and to every copy location) is itself drift.
+     */
+    private val vendoredFiles = listOf(
+        "ExternalSignerCapabilityBridge.kt",
+        "ExternalSignerWire.kt",
+        "AmberIntentCodec.kt",
+        "NostrLoginBlock.kt",
+    )
+
+    /** Copy locations. Chirp does not vendor the Compose UI (it has its own screens). */
+    private fun copyPaths(file: String): List<String> = buildList {
+        if (file != "NostrLoginBlock.kt") {
+            add("android/app/src/main/java/org/nmp/android/$file")
+        }
+        add("web/registry/src/vendor/compose/login-block/$file")
+        add("crates/nmp-cli/registry/compose/login-block/$file")
     }
 
     @Test
-    fun webVendorBridgeCopyMatchesGalleryCanonical() {
-        assertIdenticalExceptPackage(
-            "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/ExternalSignerCapabilityBridge.kt",
-            "web/registry/src/vendor/compose/login-block/ExternalSignerCapabilityBridge.kt",
-        )
-    }
-
-    @Test
-    fun cliRegistryBridgeCopyMatchesGalleryCanonical() {
-        assertIdenticalExceptPackage(
-            "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/ExternalSignerCapabilityBridge.kt",
-            "crates/nmp-cli/registry/compose/login-block/ExternalSignerCapabilityBridge.kt",
-        )
-    }
-
-    @Test
-    fun webVendorLoginBlockCopyMatchesGalleryCanonical() {
-        assertIdenticalExceptPackage(
-            "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/NostrLoginBlock.kt",
-            "web/registry/src/vendor/compose/login-block/NostrLoginBlock.kt",
-        )
-    }
-
-    @Test
-    fun cliRegistryLoginBlockCopyMatchesGalleryCanonical() {
-        assertIdenticalExceptPackage(
-            "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/NostrLoginBlock.kt",
-            "crates/nmp-cli/registry/compose/login-block/NostrLoginBlock.kt",
-        )
+    fun allVendoredCopiesMatchGalleryCanonical() {
+        for (file in vendoredFiles) {
+            for (copy in copyPaths(file)) {
+                assertIdenticalExceptPackage("$canonicalDir/$file", copy)
+            }
+        }
     }
 }

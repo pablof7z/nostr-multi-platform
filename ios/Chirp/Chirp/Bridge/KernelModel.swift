@@ -323,14 +323,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         guard !startedKernel else { return }
         startedKernel = true
         capabilities.start()
-        // Seed Chirp's default relays before start. nmp-core no longer carries
-        // a hardcoded relay fallback — the app owns its default relay set. These
-        // pre-start `addRelay` calls populate `configured_relays` so the kernel
-        // has discovery/content relays on a fresh install; the actor dedups
-        // them against any session-restored relay list, so re-seeding existing
-        // rows is a no-op. (Mirrors the Rust `NmpAppBuilder` default-relay path.)
-        kernel.addRelay(url: "wss://r.f7z.io", role: "both")
-        kernel.addRelay(url: "wss://purplepag.es", role: "indexer")
+        seedChirpRelays(into: kernel)  // relay bootstrap + NMP_TEST_RELAYS seam (RelaySeeding.swift)
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         // Cold-launch Marmot fallback. The kernel actor owns identity
         // restoration through its `nmp.identity.local_nsec.<pubkey>` slot (see

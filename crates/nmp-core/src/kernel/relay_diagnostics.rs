@@ -105,6 +105,60 @@ pub(super) struct RelayDiagnosticsRow {
     /// Per-wire-subscription detail rows (newest by sort id last — the
     /// kernel already sorts deterministically by `wire_id`).
     pub(super) wire_subs: Vec<RelayDiagnosticsWireSub>,
+    /// ADR-0051 — the relay's NIP-11 information document, once `nmp-nip11`
+    /// has fetched it. `None` until the fetch resolves (or the relay serves
+    /// no document). Apps read `info.name` / `info.icon` / … directly — no
+    /// HTTP, no JSON, no awareness of NIP-11.
+    pub(super) info: Option<RelayDiagnosticsInfo>,
+}
+
+/// Relay-information document, projected for the diagnostics surface (ADR-0051).
+///
+/// A field-for-field surface of the substrate-generic
+/// [`crate::substrate::RelayInfoDoc`]. Carried on [`RelayDiagnosticsRow::info`]
+/// so the shell renders relay name / icon / capabilities directly.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(super) struct RelayDiagnosticsInfo {
+    /// Operator-chosen display name, when advertised.
+    pub(super) name: Option<String>,
+    /// Human-readable description / "about" text.
+    pub(super) description: Option<String>,
+    /// Relay icon URL.
+    pub(super) icon: Option<String>,
+    /// Operator administrative public key (hex).
+    pub(super) pubkey: Option<String>,
+    /// Operator contact (email / URL / nostr address).
+    pub(super) contact: Option<String>,
+    /// Relay software identifier.
+    pub(super) software: Option<String>,
+    /// Relay software version.
+    pub(super) version: Option<String>,
+    /// Protocol (NIP) numbers the relay advertises support for.
+    pub(super) supported_nips: Vec<u32>,
+    /// `limitation.payment_required`.
+    pub(super) payment_required: Option<bool>,
+    /// `limitation.auth_required`.
+    pub(super) auth_required: Option<bool>,
+    /// `limitation.restricted_writes`.
+    pub(super) restricted_writes: Option<bool>,
+}
+
+impl RelayDiagnosticsInfo {
+    fn from_doc(doc: &crate::substrate::RelayInfoDoc) -> Self {
+        Self {
+            name: doc.name.clone(),
+            description: doc.description.clone(),
+            icon: doc.icon.clone(),
+            pubkey: doc.pubkey.clone(),
+            contact: doc.contact.clone(),
+            software: doc.software.clone(),
+            version: doc.version.clone(),
+            supported_nips: doc.supported_nips.clone(),
+            payment_required: doc.limitation_payment_required,
+            auth_required: doc.limitation_auth_required,
+            restricted_writes: doc.limitation_restricted_writes,
+        }
+    }
 }
 
 /// Enriched per-subscription view for `WireSubscriptionDetailView` and the
@@ -276,8 +330,10 @@ fn build_relay_row(
             0,
             subs,
             now_ms,
+            None,
         );
     };
+    let info = s.info.as_ref().map(RelayDiagnosticsInfo::from_doc);
     let (
         role,
         connection,
@@ -318,6 +374,7 @@ fn build_relay_row(
         bytes_tx,
         subs,
         now_ms,
+        info,
     )
 }
 
@@ -337,6 +394,7 @@ fn finish_row(
     bytes_tx: u64,
     subs: Vec<WireSubscriptionStatus>,
     now_ms: u128,
+    info: Option<RelayDiagnosticsInfo>,
 ) -> RelayDiagnosticsRow {
     let total_sub_count = subs.len() as u32;
     let active_sub_count = subs.iter().filter(|s| is_active_state(&s.state)).count() as u32;
@@ -378,6 +436,7 @@ fn finish_row(
         last_notice,
         last_error,
         wire_subs,
+        info,
     }
 }
 

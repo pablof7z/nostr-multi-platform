@@ -17,9 +17,23 @@
 use super::{app_ref, NmpApp};
 use nmp_core::__ffi_internal::{
     capability_error_envelope, dispatch_capability, CapabilityCallback,
-    CapabilityCallbackRegistration,
+    CapabilityCallbackRegistration, CapabilityCallbackSlot,
 };
 use std::ffi::{c_char, c_void, CString};
+use std::sync::Arc;
+
+impl NmpApp {
+    /// Arc clone of the per-app capability callback slot (crate-family only;
+    /// lets `nmp-marmot` reuse the kernel's native capability handler — the
+    /// process-global vs per-app reconciliation is documented in
+    /// `nmp-marmot::credential_store`). Defined here beside the rest of the
+    /// capability-socket surface rather than in `lib.rs`.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn capability_callback_slot(&self) -> CapabilityCallbackSlot {
+        Arc::clone(&self.capability_callback)
+    }
+}
 
 /// Register the native capability handler. The kernel routes every
 /// `CapabilityRequest` JSON through this seam (e.g. Swift's

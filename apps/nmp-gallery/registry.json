@@ -2,6 +2,17 @@
   "schema": "nmp.gallery.registry/1",
   "sections": [
     {
+      "id": "auth",
+      "label": "Auth",
+      "components": [
+        {
+          "id": "login-block",
+          "label": "NostrLoginBlock",
+          "description": "Login UI with Amber and other local Nostr signer detection, plus a manual key entry fallback"
+        }
+      ]
+    },
+    {
       "id": "relay",
       "label": "Relay",
       "components": [

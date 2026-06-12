@@ -63,10 +63,12 @@ use zeroize::Zeroizing;
 
 use nmp_nwc::decode::{try_decode_relay_message_with_id, try_decode_response_for_request};
 use nmp_nwc::parse::NwcUri;
-use nmp_nwc::types::PayInvoiceParams;
+use nmp_nwc::types::{LookupInvoiceParams, PayInvoiceParams};
 use nmp_nwc::NwcMethod;
 
 use crate::crypto::{build_event_json, sign_nwc_request, sign_with};
+use crate::payment_store::{FsPaymentStore, PaymentRecord, PaymentState};
+use crate::reconcile::{correct_unresolved_record, settle_payment_failure, settle_payment_success};
 use crate::status::{format_sats_display, NwcConnectionState, WalletStatus, WalletStatusSlot};
 
 /// TTL for inflight `pay_invoice` requests. Entries older than this are
@@ -109,6 +111,12 @@ struct PendingPayment {
     /// `kernel.now_secs()`). Used by the idle-tick sweep to detect TTL
     /// expiry without a dedicated timer — D8 compliant.
     inserted_at_secs: u64,
+    /// The bolt11 invoice this payment is settling. Carried so the durable
+    /// store record (and `lookup_invoice` reconciliation) can be written
+    /// without re-deriving the invoice from the encrypted request content.
+    bolt11: String,
+    /// Amount in millisatoshis, if the dispatch carried an explicit amount.
+    amount_msats: Option<u64>,
 }
 
 /// Actor-local NWC connection state. Cleared on `wallet_disconnect`.
@@ -128,6 +136,12 @@ struct WalletConnection {
     /// serialized (V-63 fix) and removed on the matching kind:23195 response
     /// or on TTL expiry (V-64 sweep).
     pending_payments: HashMap<String, PendingPayment>,
+    /// In-flight `lookup_invoice` reconciliation requests, keyed by the
+    /// kind:23194 lookup-request event id, mapping back to the ORIGINAL
+    /// `pay_invoice` request event id whose outcome we are reconciling. The
+    /// `lookup_invoice` kind:23195 reply's `e` tag points at the lookup
+    /// request — this map bridges it back to the payment record.
+    pending_lookups: HashMap<String, String>,
     /// Sub-id used for the kind:23195 subscription on the NWC relay.
     sub_id: String,
     /// Count of kind:23195 responses that arrived with no matching
@@ -155,6 +169,11 @@ pub struct WalletRuntime {
     /// Shared output slot for the wallet projection. The actor (this runtime)
     /// is the sole writer (D4); the `"wallet"` snapshot projection reads it.
     status_slot: WalletStatusSlot,
+    /// Durable per-payment record store. `None` means in-memory-only (used in
+    /// unit tests and pre-startup); `Some` activates the double-pay-safe
+    /// write-before-enqueue + tri-state reconciliation path. The host installs
+    /// it via [`WalletRuntime::set_payment_store`] using its storage path.
+    payment_store: Option<FsPaymentStore>,
 }
 
 impl std::fmt::Debug for WalletRuntime {
@@ -223,7 +242,15 @@ impl WalletRuntime {
         Self {
             connection: None,
             status_slot,
+            payment_store: None,
         }
+    }
+
+    /// Install the durable payment store. The host calls this once at
+    /// construction using its storage path so in-flight payments survive a
+    /// process kill and can be reconciled via `lookup_invoice` on reconnect.
+    pub fn set_payment_store(&mut self, store: FsPaymentStore) {
+        self.payment_store = Some(store);
     }
 
     /// True if `relay_url` is the currently connected NWC relay. Used by
@@ -251,12 +278,20 @@ impl WalletRuntime {
 
     /// Sweep `pending_payments` entries older than `now_secs` by `ttl_secs`.
     ///
-    /// Returns the expired correlation_ids that must be recorded as failed
-    /// by the caller (via `kernel.record_action_failure`). This design keeps
-    /// the sweep Kernel-free so it can be tested without a live `Kernel`.
+    /// ## Double-pay safety (the core fix)
     ///
-    /// The caller (host-side `RelayTextInterceptor::on_idle_tick`) records the
-    /// returned failures — see `nmp-app-chirp::WalletInterceptor::on_idle_tick`.
+    /// A TTL elapsing does NOT mean the payment failed — a lightning HTLC can
+    /// stay in-flight for hours, and the kind:23195 response can arrive long
+    /// after our 90 s sweep window. Recording a `Failed` terminal here would
+    /// let a host show "payment failed", inviting the user to mint a fresh
+    /// invoice and pay twice.
+    ///
+    /// So instead of returning failures, this sweep transitions each expired
+    /// entry to the durable `Unknown` state (written to the payment store) and
+    /// removes it from the in-memory map. The action stays in-flight from the
+    /// host's perspective; reconciliation via `lookup_invoice` on the next
+    /// reconnect resolves it to Succeeded or Failed. The returned outcomes are
+    /// purely observational — the caller no longer calls `record_action_failure`.
     ///
     /// D8 — no sleep/loop: pure wall-clock compare of `now_secs` against the
     /// per-entry `inserted_at_secs` field.
@@ -264,7 +299,8 @@ impl WalletRuntime {
         &mut self,
         now_secs: u64,
         ttl_secs: u64,
-    ) -> Vec<(String, String)> {
+    ) -> Vec<ExpiredPaymentOutcome> {
+        let store = self.payment_store.as_ref();
         let conn = match self.connection.as_mut() {
             Some(c) => c,
             None => return Vec::new(),
@@ -275,7 +311,7 @@ impl WalletRuntime {
             .filter(|(_, e)| now_secs.saturating_sub(e.inserted_at_secs) >= ttl_secs)
             .map(|(k, _)| k.clone())
             .collect();
-        let mut failures: Vec<(String, String)> = Vec::new();
+        let mut outcomes: Vec<ExpiredPaymentOutcome> = Vec::new();
         for event_id in expired_ids {
             if let Some(entry) = conn.pending_payments.remove(&event_id) {
                 tracing::warn!(
@@ -283,14 +319,34 @@ impl WalletRuntime {
                     inserted_at_secs = entry.inserted_at_secs,
                     now_secs = now_secs,
                     ttl_secs = ttl_secs,
-                    "nwc: pay_invoice timed out — no kind:23195 response within TTL"
+                    "nwc: pay_invoice TTL elapsed with no response — transitioning to \
+                     Unknown for lookup_invoice reconciliation (NOT recording failure)"
                 );
-                if let Some(cid) = entry.correlation_id {
-                    failures.push((cid, format!("wallet timeout (>{ttl_secs}s)")));
+                // Transition the durable record to Unknown. The HTLC may still
+                // settle; we must be able to reconcile, never declare failure.
+                if let Some(store) = store {
+                    let record = PaymentRecord {
+                        request_event_id: event_id.clone(),
+                        bolt11: entry.bolt11.clone(),
+                        correlation_id: entry.correlation_id.clone(),
+                        amount_msats: entry.amount_msats,
+                        state: PaymentState::Unknown,
+                        preimage: None,
+                    };
+                    if let Err(e) = store.upsert(&record) {
+                        tracing::warn!(
+                            event_id = %event_id,
+                            "nwc: failed to persist Unknown payment record on TTL sweep: {e}"
+                        );
+                    }
                 }
+                outcomes.push(ExpiredPaymentOutcome {
+                    request_event_id: event_id,
+                    correlation_id: entry.correlation_id,
+                });
             }
         }
-        failures
+        outcomes
     }
 
     /// Heartbeat tick — called from the host-side `on_idle_tick` on every
@@ -432,7 +488,7 @@ impl WalletRuntime {
         kernel: &mut Kernel,
     ) -> Option<OutboundMessage> {
         let relay = self.connection.as_ref()?.relay_url.clone();
-        build_request(self, kernel, &relay, NwcMethod::GetInfo, json!({}), None)
+        build_request(self, kernel, &relay, NwcMethod::GetInfo, json!({}), None).map(|(msg, _id)| msg)
     }
 
     /// Push the current `connection_state` into the `status_slot` and mark the
@@ -441,6 +497,22 @@ impl WalletRuntime {
     pub fn sync_connection_state(&self, kernel: &mut Kernel) {
         sync_wallet_status(self, kernel);
     }
+}
+
+/// Observational outcome of a TTL-expired `pay_invoice` entry swept by
+/// [`WalletRuntime::sweep_expired_payments`].
+///
+/// The sweep has ALREADY transitioned the durable record to `Unknown` and
+/// removed the in-memory entry. The caller MUST NOT call
+/// `record_action_failure` on `correlation_id` — the payment may still settle
+/// and is reconciled via `lookup_invoice`. These fields exist for logging and
+/// future host-side diagnostics only.
+pub struct ExpiredPaymentOutcome {
+    /// The kind:23194 request event id of the expired payment.
+    pub request_event_id: String,
+    /// The dispatched action correlation id, if any. `None` for actor-internal
+    /// auto-dispatched payments with no host spinner.
+    pub correlation_id: Option<String>,
 }
 
 /// Result of a [`WalletRuntime::tick_heartbeat`] call.
@@ -517,6 +589,7 @@ pub(crate) fn wallet_connect(
         balance_msats: None,
         pending: HashMap::new(),
         pending_payments: HashMap::new(),
+        pending_lookups: HashMap::new(),
         sub_id: sub_id.clone(),
         orphan_responses: 0,
         last_probe_sent_secs: 0,
@@ -555,14 +628,21 @@ pub(crate) fn wallet_connect(
         }
     }
 
-    if let Some(msg) = build_request(wallet, kernel, &relay, NwcMethod::GetInfo, json!({}), None) {
+    if let Some((msg, _id)) =
+        build_request(wallet, kernel, &relay, NwcMethod::GetInfo, json!({}), None)
+    {
         out.push(msg);
     }
-    if let Some(msg) =
+    if let Some((msg, _id)) =
         build_request(wallet, kernel, &relay, NwcMethod::GetBalance, json!({}), None)
     {
         out.push(msg);
     }
+
+    // Reconcile any payments left in PaySent/Unknown from a prior session or a
+    // disconnect — issue a `lookup_invoice` per unresolved record so a payment
+    // that settled while we were offline is corrected (never shown as failed).
+    out.extend(reconcile_unresolved_payments(wallet, kernel, &relay));
 
     out
 }
@@ -582,14 +662,31 @@ fn wallet_disconnect_inner(
     let Some(conn) = wallet.connection.take() else {
         return Vec::new();
     };
-    // Drain inflight dispatched `pay_invoice` correlation_ids BEFORE the
-    // connection state is dropped — the kind:23195 response that would
-    // have closed each dispatched action will never arrive once the
-    // subscription is gone.
-    for (_request_id, entry) in conn.pending_payments.iter() {
-        if let Some(cid) = &entry.correlation_id {
-            kernel.record_action_failure(cid.clone(), "wallet disconnected".to_string());
+    // Double-pay safety: a disconnect does NOT mean inflight payments failed.
+    // The payment may settle on the wallet side after the subscription is gone;
+    // the kind:23195 response simply won't reach us until we reconnect. So we
+    // transition each inflight payment to the durable `Unknown` state (for
+    // `lookup_invoice` reconciliation on reconnect) instead of recording a
+    // failure that would let the user double-pay.
+    for (request_id, entry) in conn.pending_payments.iter() {
+        if let Some(store) = wallet.payment_store.as_ref() {
+            let record = PaymentRecord {
+                request_event_id: request_id.clone(),
+                bolt11: entry.bolt11.clone(),
+                correlation_id: entry.correlation_id.clone(),
+                amount_msats: entry.amount_msats,
+                state: PaymentState::Unknown,
+                preimage: None,
+            };
+            if let Err(e) = store.upsert(&record) {
+                tracing::warn!(
+                    request_event_id = %request_id,
+                    "nwc: failed to persist Unknown payment record on disconnect: {e}"
+                );
+            }
         }
+        // Deliberately NOT calling record_action_failure — the action stays
+        // in-flight until reconciliation settles it on reconnect.
     }
     kernel.unregister_persistent_sub(&conn.relay_url, &conn.sub_id);
     kernel.clear_relay_auth_signer(RelayRole::Wallet);
@@ -665,16 +762,20 @@ pub(crate) fn wallet_pay_invoice(
         invoice: bolt11.to_string(),
         amount: amount_msats,
     });
-    let msg = build_request(
+    let msg = build_request_with_meta(
         wallet,
         kernel,
         &relay,
         NwcMethod::PayInvoice,
         params,
         correlation_id.clone(),
+        Some(PayMeta {
+            bolt11: bolt11.to_string(),
+            amount_msats,
+        }),
     );
     match msg {
-        Some(m) => vec![m],
+        Some((m, _id)) => vec![m],
         None => {
             if let Some(id) = correlation_id {
                 kernel.record_action_failure(id, "NWC request build failed".to_string());
@@ -693,10 +794,18 @@ pub(crate) fn handle_nwc_text(
     relay_text: &str,
     kernel: &mut Kernel,
 ) -> Vec<OutboundMessage> {
-    let conn = match wallet.connection.as_mut() {
+    // Split-borrow the two distinct fields so the payment-correlation arms can
+    // touch the durable store while `conn` is mutably borrowed.
+    let WalletRuntime {
+        connection,
+        payment_store,
+        ..
+    } = wallet;
+    let conn = match connection.as_mut() {
         Some(c) => c,
         None => return Vec::new(),
     };
+    let payment_store = payment_store.as_ref();
 
     let Some((_response_event_id, response)) = try_decode_relay_message_with_id(
         relay_text,
@@ -705,6 +814,20 @@ pub(crate) fn handle_nwc_text(
     ) else {
         return Vec::new();
     };
+
+    // Drain `conn.pending` for ANY matched response (V-79 heartbeat probes,
+    // get_balance, etc. — not just pay_invoice). The map is keyed by the
+    // kind:23194 request id, which is the `e`-tag value the response carries,
+    // NOT the response wrapper id. Without this drain `conn.pending` grew
+    // unbounded (~2880 entries/day from 30 s heartbeats).
+    let matched_request = try_decode_response_for_request(
+        relay_text,
+        &conn.wallet_pubkey_hex,
+        conn.client_secret_hex.as_str(),
+    );
+    if let Some((req_id, _)) = &matched_request {
+        conn.pending.remove(req_id);
+    }
 
     if let Some(balance) = response.balance_msats() {
         conn.balance_msats = Some(balance);
@@ -725,38 +848,91 @@ pub(crate) fn handle_nwc_text(
     }
 
     if response.result_type == "pay_invoice" {
-        let matched = try_decode_response_for_request(
-            relay_text,
-            &conn.wallet_pubkey_hex,
-            conn.client_secret_hex.as_str(),
-        );
-        if let Some((request_event_id, _response2)) = matched {
-            let entry_opt = conn.pending_payments.remove(&request_event_id);
+        if let Some((request_event_id, _response2)) = &matched_request {
+            let entry_opt = conn.pending_payments.remove(request_event_id);
             match (&response.error, entry_opt) {
                 (None, Some(entry)) => {
-                    if let Some(cid) = entry.correlation_id {
-                        // NWC pay-invoice carries no structured result body
-                        // (the preimage lands via the wallet projection, not
-                        // the action_results `result` field).
-                        kernel.record_action_success(cid, None);
-                    }
-                }
-                (Some(err), Some(entry)) => {
-                    if let Some(cid) = entry.correlation_id {
-                        let reason = format!("{}: {}", err.code, err.message);
-                        kernel.record_action_failure(cid, reason);
-                    }
-                }
-                // V-64: make orphan responses observable instead of silent.
-                (_, None) => {
-                    conn.orphan_responses += 1;
-                    tracing::warn!(
-                        request_event_id = %request_event_id,
-                        orphan_count = conn.orphan_responses,
-                        "nwc: pay_invoice response arrived with no matching \
-                         pending_payments entry (orphan response)"
+                    settle_payment_success(
+                        payment_store,
+                        request_event_id,
+                        entry.correlation_id,
+                        response.pay_preimage(),
+                        kernel,
                     );
                 }
+                (Some(err), Some(entry)) => {
+                    settle_payment_failure(
+                        payment_store,
+                        request_event_id,
+                        entry.correlation_id,
+                        &format!("{}: {}", err.code, err.message),
+                        kernel,
+                    );
+                }
+                // No live in-memory entry. This is NOT necessarily an orphan:
+                // the entry may have been transitioned to `Unknown` by a TTL
+                // sweep or a disconnect, or lost to a process restart. Correct
+                // the durable record so a payment shown "in-flight" resolves to
+                // its true outcome — preventing the double-pay vector.
+                (err, None) => {
+                    let corrected = correct_unresolved_record(
+                        payment_store,
+                        request_event_id,
+                        err.is_none(),
+                        response.pay_preimage(),
+                        err.as_ref().map(|e| format!("{}: {}", e.code, e.message)),
+                        kernel,
+                    );
+                    if !corrected {
+                        conn.orphan_responses += 1;
+                        tracing::warn!(
+                            request_event_id = %request_event_id,
+                            orphan_count = conn.orphan_responses,
+                            "nwc: pay_invoice response arrived with no matching \
+                             pending_payments entry and no durable record (orphan response)"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Reconciliation: a `lookup_invoice` reply correlates back to the ORIGINAL
+    // payment via `pending_lookups` (its own `e` tag points at the lookup
+    // request, not the payment request).
+    if response.result_type == "lookup_invoice" {
+        if let Some((lookup_request_id, _)) = &matched_request {
+            if let Some(original_pay_id) = conn.pending_lookups.remove(lookup_request_id) {
+                let lookup = response.lookup_invoice_result();
+                let settled = lookup
+                    .as_ref()
+                    .and_then(|r| r.state.as_deref())
+                    .map(|s| s == "settled")
+                    .unwrap_or(false);
+                let preimage = lookup.as_ref().and_then(|r| r.preimage.clone());
+                if response.error.is_some() {
+                    // The wallet has no record of this invoice → it was never
+                    // paid. Safe to record a definitive failure now.
+                    correct_unresolved_record(
+                        payment_store,
+                        &original_pay_id,
+                        false,
+                        None,
+                        Some("lookup_invoice: not found".to_string()),
+                        kernel,
+                    );
+                } else if settled {
+                    correct_unresolved_record(
+                        payment_store,
+                        &original_pay_id,
+                        true,
+                        preimage,
+                        None,
+                        kernel,
+                    );
+                }
+                // Not settled and not error → still pending on the wallet side;
+                // leave the Unknown record in place to retry on a later reconnect.
             }
         }
     }
@@ -777,6 +953,45 @@ pub(crate) fn handle_nwc_text(
     Vec::new()
 }
 
+/// Issue a `lookup_invoice` for every unresolved (`PaySent`/`Unknown`) durable
+/// record so payments whose outcome we missed (TTL, disconnect, restart) are
+/// reconciled. Returns the outbound `lookup_invoice` frames; registers each in
+/// `pending_lookups` so the reply maps back to the original payment.
+fn reconcile_unresolved_payments(
+    wallet: &mut WalletRuntime,
+    kernel: &mut Kernel,
+    relay: &str,
+) -> Vec<OutboundMessage> {
+    let Some(store) = wallet.payment_store.as_ref() else {
+        return Vec::new();
+    };
+    let records = match store.load_unresolved() {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("nwc: failed to load unresolved payments for reconciliation: {e}");
+            return Vec::new();
+        }
+    };
+    let mut out = Vec::new();
+    for record in records {
+        let params = json!(LookupInvoiceParams {
+            payment_hash: None,
+            invoice: Some(record.bolt11.clone()),
+        });
+        // A reconciliation lookup is not itself a payment — no correlation id.
+        if let Some((msg, lookup_request_id)) =
+            build_request(wallet, kernel, relay, NwcMethod::LookupInvoice, params, None)
+        {
+            if let Some(conn) = wallet.connection.as_mut() {
+                conn.pending_lookups
+                    .insert(lookup_request_id, record.request_event_id.clone());
+            }
+            out.push(msg);
+        }
+    }
+    out
+}
+
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 /// Serialize a JSON value to a string for the outbound wire queue.
@@ -788,6 +1003,18 @@ fn encode_frame(value: &serde_json::Value) -> Result<String, serde_json::Error> 
     serde_json::to_string(value)
 }
 
+/// Build a signed NWC request frame and register it in the inflight maps.
+///
+/// Returns `Some((outbound, request_event_id))` on success — the second tuple
+/// element is the signed kind:23194 event id, which the `pay_invoice` caller
+/// needs to correlate the durable [`PaymentRecord`] and (later) the
+/// `lookup_invoice` reconciliation. Non-payment callers ignore it.
+///
+/// For `pay_invoice`, the durable record is written with state `PaySent`
+/// BEFORE this returns (the record was already written by the caller; this fn
+/// only registers the in-memory tracking). The bolt11/amount carried in
+/// `pay_meta` are threaded into [`PendingPayment`] so a later TTL/disconnect
+/// transition can write the `Unknown` record without re-deriving the invoice.
 fn build_request(
     wallet: &mut WalletRuntime,
     kernel: &mut Kernel,
@@ -795,7 +1022,25 @@ fn build_request(
     method: NwcMethod,
     params: serde_json::Value,
     correlation_id: Option<String>,
-) -> Option<OutboundMessage> {
+) -> Option<(OutboundMessage, String)> {
+    build_request_with_meta(wallet, kernel, relay_url, method, params, correlation_id, None)
+}
+
+/// Metadata threaded into the `pay_invoice` tracking record.
+struct PayMeta {
+    bolt11: String,
+    amount_msats: Option<u64>,
+}
+
+fn build_request_with_meta(
+    wallet: &mut WalletRuntime,
+    kernel: &mut Kernel,
+    relay_url: &str,
+    method: NwcMethod,
+    params: serde_json::Value,
+    correlation_id: Option<String>,
+    pay_meta: Option<PayMeta>,
+) -> Option<(OutboundMessage, String)> {
     let conn = wallet.connection.as_mut()?;
 
     let content = match nmp_nwc::build::request_content(
@@ -840,22 +1085,49 @@ fn build_request(
     };
 
     // Insert into tracking maps only after successful encoding (V-63).
+    let request_event_id = signed.id.clone();
     let method_name = method.as_str().to_string();
-    conn.pending.insert(signed.id.clone(), method_name);
+    conn.pending.insert(request_event_id.clone(), method_name);
     if matches!(method, NwcMethod::PayInvoice) {
+        let meta = pay_meta.unwrap_or(PayMeta {
+            bolt11: String::new(),
+            amount_msats: None,
+        });
         conn.pending_payments.insert(
-            signed.id.clone(),
+            request_event_id.clone(),
             PendingPayment {
-                correlation_id,
+                correlation_id: correlation_id.clone(),
                 inserted_at_secs: created_at,
+                bolt11: meta.bolt11.clone(),
+                amount_msats: meta.amount_msats,
             },
         );
+        // Double-pay safety: persist the record with state PaySent BEFORE the
+        // frame leaves this function (the caller enqueues the returned
+        // OutboundMessage afterwards). On error we log but do NOT fail the
+        // payment (D6) — losing durability is strictly safer than refusing a
+        // legitimate payment, and the in-memory map still tracks it.
+        if let Some(store) = wallet.payment_store.as_ref() {
+            let record = PaymentRecord {
+                request_event_id: request_event_id.clone(),
+                bolt11: meta.bolt11,
+                correlation_id,
+                amount_msats: meta.amount_msats,
+                state: PaymentState::PaySent,
+                preimage: None,
+            };
+            if let Err(e) = store.upsert(&record) {
+                tracing::warn!(
+                    request_event_id = %request_event_id,
+                    "nwc: failed to persist PaySent payment record: {e}"
+                );
+            }
+        }
     }
 
-    Some(OutboundMessage::new(
-        RelayRole::Wallet,
-        relay_url.to_string(),
-        text,
+    Some((
+        OutboundMessage::new(RelayRole::Wallet, relay_url.to_string(), text),
+        request_event_id,
     ))
 }
 
@@ -891,356 +1163,5 @@ fn pubkey_to_npub(hex: &str) -> Result<String, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::status::new_wallet_status_slot;
-
-    // ── V-63: encode-before-register ─────────────────────────────────────────
-
-    /// Verify that `encode_frame` propagates a serialization error.
-    ///
-    /// `serde_json::to_string` of a plain `json!([...])` is effectively
-    /// infallible, so we test via a `HashMap<Vec<u8>, ()>` whose
-    /// non-string keys cause serde_json to reject serialization.
-    #[test]
-    fn encode_frame_returns_err_for_non_string_key_map() {
-        let mut bad: std::collections::HashMap<Vec<u8>, ()> = std::collections::HashMap::new();
-        bad.insert(vec![0u8], ());
-        let result = serde_json::to_string(&bad);
-        assert!(
-            result.is_err(),
-            "serde_json must reject a map with non-string keys — \
-             this is the error class encode_frame is designed to catch"
-        );
-    }
-
-    /// V-63: verify that a successful encode_frame call returns a non-empty
-    /// JSON string (the REQ/EVENT/CLOSE frame shape).
-    #[test]
-    fn encode_frame_succeeds_for_valid_json_array() {
-        let frame = json!(["REQ", "sub-id-1", {"kinds": [23195u32]}]);
-        let result = encode_frame(&frame);
-        assert!(result.is_ok(), "valid json array must encode without error");
-        let text = result.unwrap();
-        assert!(!text.is_empty(), "encoded frame must not be empty");
-        assert!(text.starts_with('['), "encoded frame must be a JSON array");
-    }
-
-    // ── V-64: orphan response counter ─────────────────────────────────────────
-
-    /// V-64: `orphan_response_count` starts at zero for a freshly created
-    /// runtime.
-    #[test]
-    fn orphan_response_count_starts_at_zero() {
-        let slot = new_wallet_status_slot();
-        let rt = WalletRuntime::new(slot);
-        // No connection installed — count must be zero.
-        assert_eq!(
-            rt.orphan_response_count(),
-            0,
-            "fresh runtime must report zero orphan responses"
-        );
-    }
-
-    // ── V-64: sweep_expired_payments ─────────────────────────────────────────
-
-    fn make_connection(pending_payments: HashMap<String, PendingPayment>) -> WalletConnection {
-        WalletConnection {
-            wallet_pubkey_hex: "aaaa".repeat(16),
-            wallet_npub: "npub1test".to_string(),
-            relay_url: "wss://test.relay".to_string(),
-            client_secret_hex: Zeroizing::new("bb".repeat(32)),
-            client_pubkey_hex: "cccc".repeat(16),
-            status: "ready".to_string(),
-            balance_msats: None,
-            pending: HashMap::new(),
-            pending_payments,
-            sub_id: "nwc-aaaa".to_string(),
-            orphan_responses: 0,
-            last_probe_sent_secs: 0,
-            probe_outstanding: false,
-            consecutive_failures: 0,
-            connection_state: None,
-        }
-    }
-
-    /// V-64 (test b): an aged pending entry is swept to a timeout failure on
-    /// the next driven tick; a fresh entry is retained.
-    ///
-    /// `sweep_expired_payments` returns `(correlation_id, reason)` pairs so
-    /// the caller (not the sweep) records failures via `kernel` — allowing
-    /// this test to drive the production code without a live `Kernel`.
-    #[test]
-    fn sweep_removes_expired_entry_and_leaves_fresh_entry() {
-        let slot = new_wallet_status_slot();
-        let mut rt = WalletRuntime::new(slot);
-        let now_secs: u64 = 1_000_000;
-        let ttl_secs: u64 = 90;
-
-        let mut payments = HashMap::new();
-        // Expired: inserted 200 s ago (past the 90 s TTL).
-        payments.insert(
-            "expired-event-id".to_string(),
-            PendingPayment {
-                correlation_id: Some("cid-expired".to_string()),
-                inserted_at_secs: now_secs - 200,
-            },
-        );
-        // Fresh: inserted 10 s ago (within TTL).
-        payments.insert(
-            "fresh-event-id".to_string(),
-            PendingPayment {
-                correlation_id: Some("cid-fresh".to_string()),
-                inserted_at_secs: now_secs - 10,
-            },
-        );
-        rt.connection = Some(make_connection(payments));
-
-        // Call the real production function.
-        let failures = rt.sweep_expired_payments(now_secs, ttl_secs);
-
-        // Only the expired entry returns a failure cid.
-        assert_eq!(failures.len(), 1, "exactly one failure must be returned");
-        let (cid, reason) = &failures[0];
-        assert_eq!(cid, "cid-expired", "returned cid must be the expired one");
-        assert!(
-            reason.contains("timeout"),
-            "reason must mention timeout: {reason}"
-        );
-
-        // The expired entry must be removed from the map.
-        let conn = rt.connection.as_ref().unwrap();
-        assert!(
-            !conn.pending_payments.contains_key("expired-event-id"),
-            "expired entry must be removed"
-        );
-
-        // The fresh entry must remain.
-        assert!(
-            conn.pending_payments.contains_key("fresh-event-id"),
-            "fresh entry must be retained"
-        );
-    }
-
-    /// V-64: a `PendingPayment` with `correlation_id = None` (actor-internal
-    /// auto-dispatch) must be swept and removed but must NOT produce a failure
-    /// entry (nothing is waiting on it).
-    #[test]
-    fn sweep_removes_no_correlation_entry_without_failure() {
-        let slot = new_wallet_status_slot();
-        let mut rt = WalletRuntime::new(slot);
-        let now_secs: u64 = 1_000_000;
-        let ttl_secs: u64 = 90;
-
-        let mut payments = HashMap::new();
-        payments.insert(
-            "actor-internal-event-id".to_string(),
-            PendingPayment {
-                correlation_id: None,
-                inserted_at_secs: now_secs - 200,
-            },
-        );
-        rt.connection = Some(make_connection(payments));
-
-        let failures = rt.sweep_expired_payments(now_secs, ttl_secs);
-
-        // No correlation_id → no failure emitted.
-        assert!(
-            failures.is_empty(),
-            "actor-internal (no cid) sweep must return no failure pairs"
-        );
-
-        // The entry must still have been removed from the map.
-        let conn = rt.connection.as_ref().unwrap();
-        assert!(
-            !conn.pending_payments.contains_key("actor-internal-event-id"),
-            "actor-internal entry must be removed from the map"
-        );
-    }
-
-    /// V-64: fresh entries (within TTL) must NOT be swept.
-    #[test]
-    fn sweep_leaves_fresh_entry_untouched() {
-        let slot = new_wallet_status_slot();
-        let mut rt = WalletRuntime::new(slot);
-        let now_secs: u64 = 1_000_000;
-        let ttl_secs: u64 = 90;
-
-        let mut payments = HashMap::new();
-        payments.insert(
-            "fresh-event-id".to_string(),
-            PendingPayment {
-                correlation_id: Some("cid-fresh".to_string()),
-                inserted_at_secs: now_secs - 10,
-            },
-        );
-        rt.connection = Some(make_connection(payments));
-
-        let failures = rt.sweep_expired_payments(now_secs, ttl_secs);
-
-        assert!(failures.is_empty(), "fresh entry must not produce a failure");
-        let conn = rt.connection.as_ref().unwrap();
-        assert!(
-            conn.pending_payments.contains_key("fresh-event-id"),
-            "fresh entry must still be present"
-        );
-    }
-
-    // ── V-79: tick_heartbeat ──────────────────────────────────────────────────
-
-    fn make_runtime_ready() -> WalletRuntime {
-        let slot = new_wallet_status_slot();
-        let mut rt = WalletRuntime::new(slot);
-        rt.connection = Some(make_connection(HashMap::new()));
-        // Mark ready + arm probe baseline so the first cadence window works.
-        if let Some(c) = rt.connection.as_mut() {
-            c.status = "ready".to_string();
-        }
-        rt
-    }
-
-    /// V-79: within the cadence window, `tick_heartbeat` must be a no-op
-    /// (no probe, no state change).
-    #[test]
-    fn heartbeat_no_op_within_cadence_window() {
-        let mut rt = make_runtime_ready();
-        let now_secs: u64 = 1_000_000;
-        // Arm the baseline timestamp.
-        let result = rt.tick_heartbeat(now_secs, 30, 3);
-        // baseline-arm call returns no probe.
-        assert!(!result.needs_probe, "baseline-arm must not request a probe");
-        assert!(!result.state_changed, "baseline-arm must not report state change");
-
-        // 10 s later — still within the 30 s window.
-        let result2 = rt.tick_heartbeat(now_secs + 10, 30, 3);
-        assert!(!result2.needs_probe, "within cadence window must not probe");
-    }
-
-    /// V-79: when `cadence_secs` have elapsed, `tick_heartbeat` requests a
-    /// probe and the previous outstanding probe (if any) counts as a failure.
-    #[test]
-    fn heartbeat_requests_probe_after_cadence_window() {
-        let mut rt = make_runtime_ready();
-        let now_secs: u64 = 1_000_000;
-        // Arm baseline.
-        rt.tick_heartbeat(now_secs, 30, 3);
-
-        // 30 s later — a full cadence window has elapsed.
-        let result = rt.tick_heartbeat(now_secs + 30, 30, 3);
-        assert!(result.needs_probe, "after cadence window must request probe");
-    }
-
-    /// V-79: `consecutive_failures` increments when a probe is outstanding
-    /// at the next window boundary (= timed out).
-    #[test]
-    fn heartbeat_increments_failures_for_unanswered_probe() {
-        let mut rt = make_runtime_ready();
-        let now_secs: u64 = 1_000_000;
-        // Arm baseline.
-        rt.tick_heartbeat(now_secs, 30, 3);
-        // First probe sent (no failure yet — no previous probe was outstanding).
-        rt.tick_heartbeat(now_secs + 30, 30, 3);
-        // probe_outstanding is now true; no response arrived.
-        // Second window opens → previous probe counts as failure 1.
-        rt.tick_heartbeat(now_secs + 60, 30, 3);
-        let failures = rt
-            .connection
-            .as_ref()
-            .unwrap()
-            .consecutive_failures;
-        assert_eq!(failures, 1, "one unanswered probe = failure count 1");
-    }
-
-    /// V-79: after `max_failures` consecutive failures, `connection_state`
-    /// transitions to `Reconnecting` and a REQ frame is included.
-    #[test]
-    fn heartbeat_transitions_to_reconnecting_after_max_failures() {
-        let mut rt = make_runtime_ready();
-        let now_secs: u64 = 1_000_000;
-        let cadence: u64 = 30;
-        let max: u32 = 3;
-
-        // Arm baseline.
-        rt.tick_heartbeat(now_secs, cadence, max);
-
-        // Drive 3 missed probe windows to accumulate max_failures.
-        for i in 1..=max as u64 {
-            rt.tick_heartbeat(now_secs + cadence * i, cadence, max);
-        }
-        // Next window opens after all 3 failures are counted.
-        let result = rt.tick_heartbeat(now_secs + cadence * (max as u64 + 1), cadence, max);
-        let conn = rt.connection.as_ref().unwrap();
-        assert_eq!(
-            conn.connection_state,
-            Some(NwcConnectionState::Reconnecting),
-            "after max_failures the state must be Reconnecting"
-        );
-        // At least one ready frame (the REQ resubscription) must be present.
-        assert!(
-            !result.ready_frames.is_empty(),
-            "Reconnecting transition must include a REQ frame"
-        );
-    }
-
-    /// V-79: after `2 * max_failures` consecutive failures, `connection_state`
-    /// transitions to `TransportLost` and no further REQ frames are emitted.
-    #[test]
-    fn heartbeat_transitions_to_transport_lost_after_double_max_failures() {
-        let mut rt = make_runtime_ready();
-        let now_secs: u64 = 1_000_000;
-        let cadence: u64 = 30;
-        let max: u32 = 3;
-
-        // Arm baseline.
-        rt.tick_heartbeat(now_secs, cadence, max);
-
-        // Drive 2 × max_failures missed windows.
-        for i in 1..=(max as u64 * 2) {
-            rt.tick_heartbeat(now_secs + cadence * i, cadence, max);
-        }
-        let result = rt.tick_heartbeat(now_secs + cadence * (max as u64 * 2 + 1), cadence, max);
-        let conn = rt.connection.as_ref().unwrap();
-        assert_eq!(
-            conn.connection_state,
-            Some(NwcConnectionState::TransportLost),
-            "after 2×max_failures the state must be TransportLost"
-        );
-        // Past TransportLost we must NOT keep emitting REQ frames.
-        assert!(
-            result.ready_frames.is_empty(),
-            "TransportLost must not emit further REQ frames"
-        );
-    }
-
-    /// V-79: a successful kind:23195 response (via handle_nwc_text) resets
-    /// `consecutive_failures` to 0 and advances `connection_state` to Connected.
-    /// Simulated by directly resetting the fields (handle_nwc_text needs
-    /// crypto infra not available in unit tests).
-    #[test]
-    fn heartbeat_resets_on_successful_response() {
-        let mut rt = make_runtime_ready();
-        let now_secs: u64 = 1_000_000;
-        let cadence: u64 = 30;
-        let max: u32 = 3;
-
-        // Arm baseline then drive into Reconnecting.
-        rt.tick_heartbeat(now_secs, cadence, max);
-        for i in 1..=(max as u64 + 1) {
-            rt.tick_heartbeat(now_secs + cadence * i, cadence, max);
-        }
-        // Manually simulate what handle_nwc_text does on a successful response.
-        {
-            let conn = rt.connection.as_mut().unwrap();
-            conn.probe_outstanding = false;
-            conn.consecutive_failures = 0;
-            conn.connection_state = Some(NwcConnectionState::Connected);
-        }
-        let conn = rt.connection.as_ref().unwrap();
-        assert_eq!(conn.consecutive_failures, 0, "reset to 0 after success");
-        assert_eq!(
-            conn.connection_state,
-            Some(NwcConnectionState::Connected),
-            "state must be Connected after a successful response"
-        );
-    }
-}
+#[path = "runtime_tests.rs"]
+mod tests;

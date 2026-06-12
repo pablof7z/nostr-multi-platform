@@ -41,7 +41,7 @@ mod active_timeline_authors;
 #[cfg(test)]
 mod active_timeline_authors_tests;
 mod auth;
-mod clock;
+pub(crate) mod clock;
 #[cfg(test)]
 mod clock_injection_tests;
 #[cfg(test)]
@@ -82,6 +82,7 @@ mod cache_serve_tests;
 #[cfg(test)]
 mod cache_serve_universal_tests;
 pub(crate) mod closed_reason;
+mod diagnostic_counters;
 mod discovery;
 #[cfg(test)]
 mod discovery_tests;
@@ -351,7 +352,18 @@ use crate::store::{EventStore, MemEventStore};
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::AuthDriverState;
 pub use auth::AuthSignerFn;
-use clock::{Clock, SystemClock};
+use clock::SystemClock;
+// Re-export `Clock` at `crate::kernel::Clock` so the always-compiled
+// `crate::slots::KernelClockSlot` (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) can
+// name the trait across crates, and so this module's own `use` of it stays
+// valid. Only the trait NAME is public; the swap-in setter (`set_clock`) stays
+// `pub(crate)`, so downstream crates cannot replace the kernel clock except
+// through the test-support `NmpApp::set_kernel_clock_for_test` seam.
+pub use clock::Clock;
+// Test-support: the advanceable clock external e2e tests install through the
+// FFI `set_kernel_clock_for_test` seam.
+#[cfg(any(test, feature = "test-support"))]
+pub use clock::MonotonicSecondClock;
 // M6 — action-dispatch runtime, reachable from the `ffi` module for the
 // `nmp_app_dispatch_action` entry point. V-01 Phase 1c: native FFI only.
 // `default_registry` / `ActionRegistry` are reached by `nmp-ffi` through
@@ -409,12 +421,11 @@ pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
 // `SnapshotProjectionSlot` is a Kernel struct field type (always-compiled);
-// `new_snapshot_projection_slot` is only called from native-only callers.
+// `new_snapshot_projection_slot` is called from `KernelReducer::new` on all
+// targets (PR-4) and from `nmp_app_new` on native.
 // `SnapshotProjectionSlot` is reached by `nmp-ffi` through
 // `nmp_core::__ffi_internal::SnapshotProjectionSlot` (the NmpApp struct
-// field type); `new_snapshot_projection_slot` is called once from
-// `nmp_app_new`.
-#[cfg(feature = "native")]
+// field type).
 pub use snapshot_registry::new_snapshot_projection_slot;
 pub use snapshot_registry::SnapshotProjectionSlot;
 // `ChangeGate`: the opt-in per-projection change-gate trait. A host
@@ -2032,8 +2043,12 @@ impl Kernel {
     /// external crate integration tests call this seam without `cfg(test)`.
     // `allow(dead_code)`: called from `#[cfg(test)]` code only in nmp-core;
     // external crate integration tests reach it via the `test-support` feature.
-    #[cfg_attr(not(test), allow(dead_code))]
-    #[cfg(any(test, feature = "test-support"))]
+    // Always compiled: the test-support kernel-clock injection seam
+    // (`NmpApp::set_kernel_clock_for_test` → actor → here) is the production
+    // code path that calls this, even though production never installs a
+    // non-default clock. `allow(dead_code)` covers builds with neither the
+    // `test` cfg nor any clock-injecting consumer linked.
+    #[allow(dead_code)]
     pub(crate) fn set_clock(&mut self, clock: Arc<dyn Clock>) {
         self.clock = clock;
     }
@@ -2108,10 +2123,10 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        match self
-            .store
-            .gc_step(crate::store::GcBudget::production(), now_secs)
-        {
+        // #1090 Stage 1 — derive the ephemeral store-tier pin set (see
+        // `derive_store_pin_set`) and thread it into Phase-2 LRU eviction.
+        let pins = self.derive_store_pin_set();
+        match self.store.gc_step_with_pins(crate::store::GcBudget::production(), now_secs, &pins) {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
@@ -2220,117 +2235,6 @@ impl Kernel {
     /// onto the fresh kernel via `set_dispatch_drops_handle`.
     pub(crate) fn take_dispatch_drops_handle_for_reset(&mut self) -> Option<Arc<AtomicU64>> {
         self.dispatch_drops.take()
-    }
-
-    /// T114b — diagnostic counter; always 0 under the current unbounded
-    /// dual-channel design. Retained for API compatibility. Also returns 0
-    /// when the kernel was constructed outside the actor (tests, codegen)
-    /// and no handle is bound.
-    pub(crate) fn dispatch_drops_total(&self) -> u64 {
-        self.dispatch_drops
-            .as_ref()
-            .map_or(0, |c| c.load(Ordering::Relaxed))
-    }
-
-    /// G-S4 — install the actor's command-channel depth counter so the
-    /// diagnostic snapshot surfaces it as `actor_queue_depth`. Idempotent:
-    /// re-binding replaces the prior handle. `None`-on-construction is fine —
-    /// the snapshot reports zero when unbound (tests, codegen). Called once by
-    /// `run_actor_with_observers` immediately after the kernel is built.
-    pub(crate) fn set_queue_depth_handle(&mut self, handle: Arc<AtomicU64>) {
-        self.queue_depth = Some(handle);
-    }
-
-    /// G-S4 — extract the queue-depth counter handle before a `Reset` replaces
-    /// the kernel. The counter is process-lifetime (shared with `NmpApp`'s
-    /// `send_cmd`) so the Reset path moves it onto the fresh kernel via
-    /// `set_queue_depth_handle`.
-    pub(crate) fn take_queue_depth_handle_for_reset(&mut self) -> Option<Arc<AtomicU64>> {
-        self.queue_depth.take()
-    }
-
-    /// G-S4 — current actor command-channel depth (`send_cmd` increments,
-    /// the actor loop decrements per dequeued command). Returns 0 when the
-    /// kernel was constructed outside the actor and no handle is bound.
-    /// Saturates at `u32::MAX` because `Metrics::actor_queue_depth` is `u32`.
-    pub(crate) fn actor_queue_depth(&self) -> u32 {
-        let depth = self
-            .queue_depth
-            .as_ref()
-            .map_or(0, |c| c.load(Ordering::Relaxed));
-        depth.min(u64::from(u32::MAX)) as u32
-    }
-
-    /// T114b — number of `claim_profile` requests dropped because a pubkey's
-    /// `consumer_id` set hit `MAX_CLAIMS_PER_PUBKEY`. Read-only accessor; the
-    /// counter is owned by the kernel and mutated only by `claim_profile`.
-    pub(crate) fn claim_drops_total(&self) -> u64 {
-        self.claim_drops_total
-    }
-
-    #[cfg(test)]
-    pub(crate) fn claim_drops_total_test(&self) -> u64 {
-        self.claim_drops_total
-    }
-
-    /// Return the lightning address / LNURL from the author's cached kind:0
-    /// profile, or `None` if the profile hasn't arrived yet or has no
-    /// lightning address. Used by `ProtocolCommandContext::lnurl_for_pubkey`
-    /// so `FetchLnurlInvoiceCommand` can resolve the destination without
-    /// the shell having to carry or know about LNURL.
-    pub(crate) fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String> {
-        self.profiles.get(pubkey)?.lnurl.clone()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn profile_claims_len_for_test(&self, pubkey: &str) -> usize {
-        self.profile_claims
-            .get(pubkey)
-            .map(|consumers| consumers.len())
-            .unwrap_or(0)
-    }
-
-    /// Test-only: number of consumers currently holding a `claim_event`
-    /// on `primary_id`. Mirrors `profile_claims_len_for_test`.
-    #[cfg(test)]
-    pub(crate) fn event_claims_len_for_test(&self, primary_id: &str) -> usize {
-        self.event_claims
-            .get(primary_id)
-            .map(|consumers| consumers.len())
-            .unwrap_or(0)
-    }
-
-    /// Test-only: `claim_event` requests dropped because a single
-    /// `primary_id`'s consumer set hit `MAX_EVENT_CLAIMS_PER_KEY`.
-    #[cfg(test)]
-    pub(crate) fn event_claim_drops_total_for_test(&self) -> u64 {
-        self.event_claim_drops_total
-    }
-
-    /// Test-only: `true` when `primary_id` is on the
-    /// `event_claim_requested` set (an interest has been registered with
-    /// the OneshotApi but not yet released by `complete_unknown_oneshot`).
-    #[cfg(test)]
-    pub(crate) fn event_claim_is_requested_for_test(&self, primary_id: &str) -> bool {
-        self.event_claim_requested.contains(primary_id)
-    }
-
-    /// Test-only: number of `(uri, consumer_id)` pairs currently parked in
-    /// `pending_event_claims` — i.e. claims that hit the cold-start
-    /// `!can_send` branch and registered NO OneshotApi interest. A non-zero
-    /// count means the claim is stuck waiting for `pending_event_claim_requests`
-    /// to drain it once the send-gate flips.
-    #[cfg(test)]
-    pub(crate) fn pending_event_claims_len_for_test(&self) -> usize {
-        self.pending_event_claims.len()
-    }
-
-    /// T133 retention-test accessor — total `wire_subs` row count, evicted or
-    /// not. The whole point of T133 is that this stabilises rather than
-    /// growing with close-cycle count.
-    #[cfg(test)]
-    pub(crate) fn wire_subs_len_for_test(&self) -> usize {
-        self.wire.subs.len()
     }
 
     /// Bind a per-role signer callback used by the NIP-42 handshake on `role`,

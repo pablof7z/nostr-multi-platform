@@ -185,22 +185,62 @@ The actor calls `gc_step()` (via `Kernel::run_gc_step`, which threads the kernel
 
 `gc_step()` is **never** invoked from an FFI call path — it runs on the actor's own schedule so any latency it introduces is invisible to the platform. The last run's `GcReport` and its wall-clock time are recorded on the kernel (`Kernel::last_gc` / `last_gc_at_ms`) so the schedule is observable rather than a silent ending — see §7.
 
-## 4. Claim / release wiring
+## 4. Pin-set wiring (derived, ephemeral — #1090 Stage 1)
 
-The kernel actor holds `view_claims: HashMap<ViewId, ClaimerId>`. On `open_view(spec)`:
+The earlier design persisted per-`ClaimerId` claim sets in dedicated LMDB
+sub-dbs (`nmp-claims` / `nmp-claims-budget`) and exposed
+`register_view_cover` / `claim` / `release` on `EventStore`. That machinery had
+**zero production callers** (V-117) — no actor path ever issued a `claim`, so
+the persisted state was dead weight and the protected-set was always empty.
+#1090 Stage 1 **deletes** it: the sub-dbs, the `ClaimerId` type, the
+`StoreError::OverPinned` variant, the `ClaimGuard` RAII helper, and the four
+trait methods are gone (a hard break — downstream pins by git rev, no compat
+shims).
 
-1. The view module's `dependencies(spec)` is consulted (per `kernel-substrate.md` §3).
-2. The composite reverse-index resolves the dependency set to a (small, bounded) set of currently-known event ids — the *view cover*.
-3. `store.register_view_cover(claimer_id, cover_budget)` registers the budget ceiling for this view. `cover_budget` is `spec.max_cover_size()` (a per-view-module constant; defaults to 200 if unspecified).
-4. `store.claim(claimer_id, &cover_ids)` pins those events in hot. Returns `StoreError::OverPinned` if the registered budget is exceeded; the actor releases the claim and surfaces `Effect::ViewOverPinned`.
-5. As events arrive matching the dependency, the actor calls `store.claim(claimer_id, &[new_id])` incrementally. Because `by_claimer` uses `BTreeSet<EventId>`, re-claiming an already-pinned id is a no-op — the refcount in `pinned` is not double-incremented.
+In its place, the pin set is **derived from live kernel state on every GC pass
+and passed straight into the store** — never persisted:
 
-On `close_view(view_id)`:
+```rust
+fn gc_step_with_pins(
+    &self,
+    budget: GcBudget,
+    now_secs: u64,
+    pins: &HashSet<EventId>,   // ← caller-derived, ephemeral
+) -> Result<GcReport, StoreError>;
+```
 
-1. `store.release(claimer_id)` drops every pin in one call.
-2. The view module's `state` is dropped; its claim refcounts decay; the next `gc_step()` evicts any newly-unpinned cold from LRU.
+`gc_step(budget, now_secs)` remains as a convenience wrapper that calls
+`gc_step_with_pins` with an empty set — used by tests and any context that
+protects no events.
 
-Restart recovery: `claims_meta` sub-db ([`keys.md`](keys.md) §1) holds the persisted per-`ClaimerId` pin set. On startup the actor rebuilds active views first (per the diagnostics replay sequence), then re-claims; entries in `claims_meta` whose `ClaimerId` is not associated with a re-opened view are dropped from the persisted map. This means the cold-start path always re-derives claims from open-view state, but the persistence is what lets the store survive an actor restart without losing hot-set protection mid-shutdown.
+### How the kernel derives the pin set
+
+`Kernel::run_gc_step` calls `Kernel::derive_store_pin_set()` immediately before
+`gc_step_with_pins`. The derivation (`crates/nmp-core/src/kernel/ram_eviction.rs`)
+unions three live sources, exactly mirroring the RAM-tier `events` pin set, and
+converts each hex id to a 32-byte store `EventId`:
+
+1. **`self.timeline`** — the bounded visible feed (≤ `TIMELINE_CACHE_LIMIT`).
+2. **`self.event_claims`** — keys for which a UI component currently holds a
+   claim. (These keys are `kind:pubkey:d_tag` coordinates for naddr URIs and
+   hex64 ids for nevent/note URIs; only the hex64 keys parse to a store
+   `EventId` — coordinate keys have no store row and are skipped.)
+3. **Active open interest** — every event matching the wire-filter shape of any
+   active `LogicalInterest` in the planner registry
+   (`self.lifecycle.registry().iter_active()` + `shape.matches_event_with_id`),
+   the same predicate `should_store_event`'s `matches_active_open_interest`
+   clause uses for admission.
+
+Because the set is recomputed each pass, there is **no restart-recovery
+problem** and **no persisted-claims drift**: the cold-start path naturally
+re-derives the pin set from whatever timeline / claims / interests are live at
+the first GC tick after restart. There is nothing to reconcile on disk.
+
+> **Ceiling still disabled.** `GcBudget::production()` keeps
+> `max_total_events = usize::MAX` (Phase-2 eviction off) through Stage 1.
+> Re-enabling the finite `HOT_EVENT_CEILING` is Stage 3, gated on the Stage-2
+> watermark-coherence decision: a finite ceiling is only safe once we are
+> confident the derived pin set fully covers the live snapshot working set.
 
 ## 5. Memory accounting (the ADR-0003 gate)
 

@@ -17,8 +17,6 @@
 //! `#[cfg(feature = "lmdb-backend")]` gated.
 
 #[cfg(feature = "lmdb-backend")]
-mod claims;
-#[cfg(feature = "lmdb-backend")]
 mod conv;
 #[cfg(feature = "lmdb-backend")]
 mod delete;
@@ -57,6 +55,9 @@ mod relay_scores_tests;
 // V-117 GC budget / resumable-cursor / tombstone-gate tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_gc;
+// #1090 Stage-1 — derived pin set for gc_step.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_gc_stage1;
 
 use std::path::{Path, PathBuf};
 
@@ -66,10 +67,12 @@ use super::StoreError;
 use super::events::{DomainHandle, EventIter, EventStore};
 #[cfg(not(feature = "lmdb-backend"))]
 use super::types::{
-    ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow,
-    VerifiedEvent, WatermarkKey, WatermarkRow,
+    Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
+    WatermarkKey, WatermarkRow,
 };
+#[cfg(not(feature = "lmdb-backend"))]
+use std::collections::HashSet;
 #[cfg(not(feature = "lmdb-backend"))]
 use crate::DomainMigration;
 #[cfg(not(feature = "lmdb-backend"))]
@@ -106,10 +109,6 @@ mod inner {
         pub(crate) addr_tombstones: Database<Bytes, Bytes>,
         /// Watermarks: filter_hash(32) || relay_url bytes → bincode(WatermarkRow).
         pub(crate) watermarks: Database<Bytes, Bytes>,
-        /// Claim budgets: claimer_u64 (8 bytes BE) → usize (8 bytes BE).
-        pub(crate) claims_budget: Database<Bytes, Bytes>,
-        /// Claims: claimer_u64 (8 bytes BE) || event_id(32) → empty value.
-        pub(crate) claims: Database<Bytes, Bytes>,
         /// Domain schema versions: namespace bytes → u32 BE.
         pub(crate) domain_versions: Database<Bytes, Bytes>,
         /// Domain data: namespace bytes || 0x00 || key bytes → value bytes.
@@ -314,23 +313,15 @@ impl EventStore for LmdbEventStore {
     {
         Err(Self::not_enabled())
     }
-    fn register_view_cover(
-        &self,
-        _claimer: ClaimerId,
-        _cover_budget: usize,
-    ) -> Result<(), StoreError> {
-        Err(Self::not_enabled())
-    }
-    fn claim(&self, _claimer: ClaimerId, _ids: &[EventId]) -> Result<(), StoreError> {
-        Err(Self::not_enabled())
-    }
-    fn release(&self, _claimer: ClaimerId) -> Result<(), StoreError> {
-        Err(Self::not_enabled())
-    }
     fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> {
         Ok(())
     }
-    fn gc_step(&self, _budget: GcBudget, _now_secs: u64) -> Result<GcReport, StoreError> {
+    fn gc_step_with_pins(
+        &self,
+        _budget: GcBudget,
+        _now_secs: u64,
+        _pins: &HashSet<EventId>,
+    ) -> Result<GcReport, StoreError> {
         Err(Self::not_enabled())
     }
     fn domain_open(&self, _namespace: &'static str) -> Result<DomainHandle, StoreError> {

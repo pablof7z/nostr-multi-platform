@@ -29,6 +29,7 @@ mod flat_feed;
 mod identity;
 mod marmot;
 mod platform;
+mod relay_seeding;
 mod session;
 mod signer;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
@@ -36,7 +37,7 @@ use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
     nmp_app_encode_profile, nmp_app_new, nmp_app_release_profile, nmp_app_remove_account,
     nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
-    nmp_app_switch_active, nmp_free_string, NmpApp,
+    nmp_app_switch_active, nmp_free_string,
 };
 use session::{insert_session, remove_session, NextUpdate};
 pub(crate) use session::{session_arc, Session};
@@ -84,9 +85,51 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStart(
     if let Some(s) = session_arc(handle) {
         s.with_app(|app| {
             nmp_app_start(app, 0, visible_limit as u32, emit_hz as u32);
-            seed_chirp_reference_relays(app);
         });
     }
+}
+
+/// Seed the relay list from a JSON string override or the Chirp defaults.
+///
+/// `relays_json` is an optional JSON array of `["url", "role"]` pairs
+/// (e.g. `[["ws://127.0.0.1:10547","both"]]`). When `null` (normal
+/// production path) the Chirp reference relays are seeded instead.
+/// When non-null the supplied list REPLACES the defaults entirely —
+/// no merging is performed.
+///
+/// Parsing and policy live in Rust (D7). Kotlin ferries the raw string
+/// provided by the test harness unchanged (thin-shell principle).
+///
+/// D6: null/dead handle, a null relays_json, or a relays_json that fails
+/// to parse falls back to the Chirp reference relay set so the kernel is
+/// never left without any relay.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSeedRelays(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    relays_json: JString,
+) {
+    let Some(s) = session_arc(handle) else { return };
+    let override_json: Option<String> = {
+        let obj: &jni::objects::JObject = AsRef::<jni::objects::JObject>::as_ref(&relays_json);
+        if obj.as_raw().is_null() {
+            None
+        } else {
+            env.get_string(&relays_json)
+                .ok()
+                .map(|s| s.to_string_lossy().into_owned())
+        }
+    };
+    s.with_app(|app| {
+        if let Some(json) = override_json.as_deref() {
+            if relay_seeding::seed_relays_from_json(app, json) {
+                return; // successfully seeded from override
+            }
+            // Malformed JSON: fall through to defaults (D6).
+        }
+        relay_seeding::seed_default_relays(app);
+    });
 }
 
 #[no_mangle]
@@ -135,7 +178,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCreateLocalAccoun
     //   profile_json = {"name":"…"}
     //   relays_json  = [["url","role"],…]  (Vec<(String,String)> serde shape)
     let profile_json = format!(r#"{{"name":"{}"}}"#, name.replace('"', ""));
-    let relays_json = default_chirp_relays_json_array();
+    let relays_json = relay_seeding::default_relays_json_array();
     let (Ok(profile_c), Ok(relays_c)) = (CString::new(profile_json), CString::new(relays_json))
     else {
         return;
@@ -331,16 +374,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeBuildActionSpec(
         .into_raw()
 }
 
-fn default_chirp_relays_json_array() -> String {
-    // nmp_app_create_new_account deserialises relays_json as Vec<(String,String)>,
-    // so the wire shape must be [["url","role"],…], NOT [{"url":"…","role":"…"},…].
-    let relays: Vec<[&str; 2]> = nmp_chirp_config::chirp_default_relay_bootstrap()
-        .iter()
-        .map(|e| [e.url, e.role])
-        .collect();
-    serde_json::to_string(&relays).unwrap_or_else(|_| "[]".to_string())
-}
-
 /// Add a relay by URL and role string ("read", "write", or "both").
 ///
 /// D6: null handle, null URL, or null role is a silent no-op.
@@ -464,14 +497,3 @@ pub(crate) fn jstring_to_cstring(env: &mut JNIEnv, value: &JString) -> Option<CS
     CString::new(owned).ok()
 }
 
-fn seed_chirp_reference_relays(app: *mut NmpApp) {
-    for entry in nmp_chirp_config::chirp_default_relay_bootstrap() {
-        let Ok(url) = CString::new(entry.url) else {
-            continue;
-        };
-        let Ok(role) = CString::new(entry.role) else {
-            continue;
-        };
-        nmp_app_add_relay(app, url.as_ptr(), role.as_ptr());
-    }
-}

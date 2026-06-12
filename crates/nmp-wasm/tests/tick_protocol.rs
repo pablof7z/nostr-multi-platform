@@ -60,6 +60,41 @@ fn idle_tick_does_not_signal_snapshot_push() {
     );
 }
 
+// Issue #1143 fix 1 — tick() claim-expansion drain does not panic on native.
+//
+// `KernelReducer::tick()` now calls `poll_claim_expansion(crate::time::Instant::now())`
+// between the lifecycle drain and the publish pump. On native CI this resolves to
+// `std::time::Instant::now()` (never panics). On wasm32 the shim resolves to
+// `web_time::Instant::now()` (performance.now() backed — never panics in a
+// JS Worker). This test exercises the path on native CI.
+#[test]
+fn tick_with_both_role_relay_claims_expansion_does_not_panic() {
+    // Use a "both"-role relay (two drivers at the same URL). This exercises
+    // the claim-expansion drain AND the fan-out's `.filter()` path
+    // (fix 2 — all matching drivers receive the frame, not just the first).
+    let mut runtime = WasmRuntime::new();
+    runtime
+        .handle(WorkerRequest::Start(StartConfig {
+            app_id: "chirp".to_string(),
+            relays: vec![RELAY_URL.to_string()],
+            relay_bootstrap: vec![RelayBootstrapEntry {
+                url: RELAY_URL.to_string(),
+                role: "both".to_string(),
+            }],
+            database_name: "tick-parity-test".to_string(),
+            correlation_id: "start-parity".to_string(),
+        }))
+        .expect("Start must succeed");
+
+    // Connect the relay so claims would be immediately sendable.
+    runtime.inject_relay_connected_for_test(RelayRole::Content, RELAY_URL);
+
+    // Tick must not panic even with the claim-expansion drain active.
+    let (_outbound, _dirty) = runtime.tick_for_test();
+    // Pass: no panic is the primary assertion (claim-expansion drain fires
+    // without a pre-existing Phase-1 claim → D8 no-op, no allocation).
+}
+
 #[test]
 fn tick_after_relay_event_signals_push_then_coalesces() {
     let mut rt = started_runtime();

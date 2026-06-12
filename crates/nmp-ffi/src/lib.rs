@@ -549,6 +549,14 @@ pub struct NmpApp {
     /// (fail-closed). Mirrors `routing_substrate` exactly so the actor
     /// pair-applies both factories in one block.
     publish_resolver: PublishResolverSlot,
+    /// Test-support kernel-clock injection slot. Default `None` — the kernel
+    /// keeps its `SystemClock`. Only [`Self::set_kernel_clock_for_test`]
+    /// (compiled under `test` / `test-support`) ever writes it; the actor
+    /// reads it once after kernel construction and applies it via
+    /// `Kernel::set_clock`. Lets deterministic e2e tests stamp
+    /// strictly-increasing `created_at` on replaceable publishes without a
+    /// wall-clock sleep (D8).
+    kernel_clock: nmp_core::slots::KernelClockSlot,
     /// Raw signed-event forwarding policy factory slot. The actor owns the
     /// native pool send and reads this slot to install policy objects that
     /// decide which accepted inbound signed events should be forwarded.
@@ -675,6 +683,10 @@ pub struct NmpApp {
     /// actor — the install side mutates through this clone, the actor reads
     /// through the matching clone in `handle_relay_event`.
     relay_text_interceptor: nmp_core::substrate::RelayTextInterceptorSlot,
+    /// ADR-0051 — relay-connected hook slot (twin of `relay_text_interceptor`
+    /// above): `nmp-nip11` installs its fetch hook, the actor fans it on
+    /// `PoolEvent::Opened`.
+    relay_connected_hook: nmp_core::substrate::RelayConnectedHookSlot,
     /// V-40 — shared [`nmp_core::substrate::EventIngestDispatcher`] slot.
     /// Per-NIP crates register a parser through
     /// [`Self::register_ingest_parser`] which mutates this slot under a
@@ -817,6 +829,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // slot.
     let relay_text_interceptor = nmp_core::substrate::new_relay_text_interceptor_slot();
     let actor_relay_text_interceptor = Arc::clone(&relay_text_interceptor);
+    // ADR-0051: relay-connected hook slot (actor clone + `NmpApp` clone).
+    let relay_connected_hook = nmp_core::substrate::new_relay_connected_hook_slot();
+    let actor_relay_connected_hook = Arc::clone(&relay_connected_hook);
     // D0: NIP-46 remote signing is an app noun. The shared bunker-handshake
     // slot is handed to the actor: `run_actor_with_observers` both gives one
     // `Arc` clone to the actor's `IdentityRuntime` (the sole writer, D4) and
@@ -912,6 +927,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // applies the produced resolver via `Kernel::set_publish_resolver`.
     let publish_resolver: PublishResolverSlot = new_publish_resolver_slot();
     let actor_publish_resolver = Arc::clone(&publish_resolver);
+    // Test-support kernel-clock injection slot. Default `None`; the kernel
+    // keeps its `SystemClock`. Only the `#[cfg(test-support)]`
+    // `NmpApp::set_kernel_clock_for_test` setter ever writes it. The actor
+    // reads its clone once after kernel construction and applies it via
+    // `Kernel::set_clock`.
+    let kernel_clock: nmp_core::slots::KernelClockSlot =
+        nmp_core::slots::new_kernel_clock_slot();
+    let actor_kernel_clock = Arc::clone(&kernel_clock);
     // Raw signed-event forwarding policy factory slot. Default `None`; the
     // app template installs the indexer-republish policy through this seam.
     let raw_event_forward_policy: RawEventForwardPolicySlot = new_raw_event_forward_policy_slot();
@@ -1018,6 +1041,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // the actor calls `interceptor.on_relay_text(...)` for every
                 // inbound text frame.
                 actor_relay_text_interceptor,
+                // ADR-0051: fanned on `PoolEvent::Opened` (nmp-nip11 fetch).
+                actor_relay_connected_hook,
                 // D0: NIP-46 remote signing is an app noun — the
                 // bunker-handshake slot the actor's `IdentityRuntime` writes;
                 // the `"bunker_handshake"` projection (registered below) reads
@@ -1092,6 +1117,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // kernel construction (and re-publishes on `Reset`) so
                 // `NmpApp::event_by_id` reads the live kernel store.
                 actor_event_store,
+                // Test-support kernel-clock slot. Production never writes it
+                // (the kernel keeps its `SystemClock`); the
+                // `NmpApp::set_kernel_clock_for_test` seam writes an
+                // `Arc<dyn Clock>` the actor applies at construction so
+                // deterministic e2e tests stamp strictly-increasing
+                // `created_at` without a wall-clock sleep (D8).
+                actor_kernel_clock,
             );
         }));
         if let Err(e) = result {
@@ -1179,6 +1211,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         routing_trace,
         routing_substrate,
         publish_resolver,
+        kernel_clock,
         raw_event_forward_policy,
         pending_mls_autopublish,
         actor: Mutex::new(Some(actor)),
@@ -1230,6 +1263,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // V-38: the same Arc clone the actor holds — `nmp-nip47` installs
         // its NWC runtime here.
         relay_text_interceptor,
+        relay_connected_hook,
         // V-40 — the `NmpApp`'s clones of the substrate `IngestParser`
         // dispatcher slot and the DM-inbox relay-lookup slot. Per-NIP
         // crates mutate these through
@@ -1673,6 +1707,15 @@ impl NmpApp {
         }
     }
 
+    /// ADR-0051 — install a [`nmp_core::substrate::RelayConnectedHook`]
+    /// (today `nmp-nip11`); the actor fans it on `PoolEvent::Opened`. Additive.
+    pub fn add_relay_connected_hook(
+        &self,
+        hook: std::sync::Arc<dyn nmp_core::substrate::RelayConnectedHook>,
+    ) {
+        nmp_core::substrate::install_relay_connected_hook(&self.relay_connected_hook, hook);
+    }
+
     /// V-40 — register a [`nmp_core::substrate::IngestParser`] for `kind`
     /// against the shared `EventIngestDispatcher` slot. The same `Arc`
     /// the actor binds onto the kernel, so a registration is visible to
@@ -1947,6 +1990,24 @@ impl NmpApp {
     {
         if let Ok(mut slot) = self.publish_resolver.lock() {
             *slot = Some(std::sync::Arc::new(factory));
+        }
+    }
+
+    /// Test-support: install a deterministic kernel clock BEFORE
+    /// `nmp_app_start`. The actor applies it via `Kernel::set_clock` at
+    /// construction, so every event the kernel stamps thereafter reads its
+    /// `created_at` from this clock. Tests that publish two replaceable events
+    /// (e.g. a kind:3 follow then unfollow) advance the shared clock between
+    /// dispatches so the second event wins the NIP-01 replaceable supersession
+    /// deterministically — no wall-clock sleep (D8). Production never calls
+    /// this (the slot stays `None`; the kernel keeps its `SystemClock`).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_kernel_clock_for_test(
+        &self,
+        clock: std::sync::Arc<nmp_core::MonotonicSecondClock>,
+    ) {
+        if let Ok(mut slot) = self.kernel_clock.lock() {
+            *slot = Some(nmp_core::slots::erase_kernel_clock(clock));
         }
     }
 
@@ -2547,6 +2608,13 @@ impl nmp_core::substrate::AppHost for NmpApp {
         interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
     ) {
         NmpApp::add_relay_text_interceptor(self, interceptor);
+    }
+
+    fn add_relay_connected_hook(
+        &self,
+        hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>,
+    ) {
+        NmpApp::add_relay_connected_hook(self, hook);
     }
 
     fn register_ingest_parser(

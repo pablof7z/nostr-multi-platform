@@ -199,8 +199,7 @@ fn load_manifest(path: Option<PathBuf>) -> Result<(String, PathBuf), String> {
         .parent()
         .unwrap_or(Path::new("."))
         .to_path_buf();
-    let content = fs::read_to_string(&manifest_path)
-        .map_err(|e| format!("{}: {e}", manifest_path.display()))?;
+    let content = crate::registry_manifest::read_manifest_with_sections(&manifest_path)?;
     Ok((content, root))
 }
 

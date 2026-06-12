@@ -6,10 +6,19 @@
 
 use serde::Deserialize;
 
-const CLI_REGISTRY: &str = include_str!("../registry/registry.toml");
+// The CLI catalog is split by platform target (file-size rule); concatenation
+// mirrors REGISTRY_SECTION_FILES in src/registry_manifest.rs.
+const CLI_REGISTRY_SECTIONS: &[&str] = &[
+    include_str!("../registry/registry.toml"),
+    include_str!("../registry/registry.swiftui.toml"),
+    include_str!("../registry/registry.compose.toml"),
+    include_str!("../registry/registry.tui.toml"),
+    include_str!("../registry/registry.desktop.toml"),
+];
 const WEB_REGISTRY_INDEX: &str = include_str!("../../../web/registry/src/registry.ts");
 const WEB_REGISTRY_TYPES: &str = include_str!("../../../web/registry/src/registry/types.ts");
 const WEB_REGISTRY_CONTENT: &str = include_str!("../../../web/registry/src/registry/content.ts");
+const WEB_REGISTRY_AUTH: &str = include_str!("../../../web/registry/src/registry/auth.ts");
 const WEB_REGISTRY_USER: &str = include_str!("../../../web/registry/src/registry/user.ts");
 const WEB_REGISTRY_RELAY: &str = include_str!("../../../web/registry/src/registry/relay.ts");
 
@@ -37,7 +46,7 @@ struct RegistryFile {
 
 #[test]
 fn web_registry_install_metadata_mirrors_cli_manifest() {
-    let manifest = toml::from_str::<RegistryManifest>(CLI_REGISTRY).unwrap();
+    let manifest = toml::from_str::<RegistryManifest>(&CLI_REGISTRY_SECTIONS.join("\n")).unwrap();
     let web_registry = web_registry_source();
     let mut cli_ids = manifest
         .components
@@ -86,6 +95,7 @@ fn web_registry_source() -> String {
         WEB_REGISTRY_INDEX,
         WEB_REGISTRY_TYPES,
         WEB_REGISTRY_CONTENT,
+        WEB_REGISTRY_AUTH,
         WEB_REGISTRY_USER,
         WEB_REGISTRY_RELAY,
     ]

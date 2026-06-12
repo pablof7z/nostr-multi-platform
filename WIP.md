@@ -21,6 +21,12 @@ the spec itself; this file no longer mirrors it.
 
 - 2026-06-12 — **K1 signer-session capability port (ADR-0050 + staged implementation)** (advances #961/#960). Stage 1 branch: `adr-0050-signer-session-port` (ADR only). Worktree: agent-a397f0e0f6f51909e. Subsequent stages (port verbs + mailbox completions + drain unification, gift-wrap chain, gift-unwrap, decrypt policy) land as separate PRs per the ADR's staged plan; this entry covers the whole arc and is removed when the final stage merges.
 
+- 2026-06-12 — **PR 2 of 4: MLS DB key rides host keyring capability; drop apple-native-keyring-store** (Marmot keyring ladder). PR #1187. Branch: `refactor/marmot-capability-credential-store`. Worktree: agent-marmot-keyring. Implements `CapabilityCredentialStore` + `CapabilityCredential` (keyring-core traits over the capability socket); removes `apple-native-keyring-store` dep; rewrites `credential_store::initialize` to probe the capability handler on all platforms (no `cfg(target_os)` branches); exposes `NmpApp::capability_callback_slot()` accessor. Dispatches to the Android Keystore capability handler landed by #1188.
+
+- 2026-06-12 — **E2E relay + nsec seams: NMP_TEST_RELAYS + Android nmp.test_relay intent (PR 4 of Marmot-keyring ladder)**. Branch: `test/e2e-relay-and-nsec-seams`. Worktree: agent-ab8386e8b5050d9a3. New `relay_seeding.rs` module in nmp-android-ffi; `nativeSeedRelays` JNI + `KernelBridge.seedRelays`; `KernelModel.start(testRelays)` + `startWithContext(testRelays)`; `MainActivity` reads `nmp.test_nsec`/`nmp.test_relays` intent extras (debug-only); iOS `KernelModel.start()` reads `NMP_TEST_RELAYS` env var. 5 new unit tests in relay_seeding::tests.
+
+- 2026-06-12 — **fix(nmp-core): publish to AUTH relays parks until Authenticated instead of failing** (Finding B). PR #1192. Branch: `worktree-agent-a039795a01fd62ea8`. Worktree: agent-a039795a01fd62ea8. Auth-required ack now PARKS the publish via the existing `unavailable_relays` + InFlight→Pending machinery (new `RetryVerdict::ParkAwaitingAuth`, no reauth-budget consumed); on `RelayAuthState::Authenticated` the auth handler calls `mark_publish_relay_available` exactly like reconnect, re-dispatching the parked publish. Removes stale M6 comment + dead `Reauth`/`auth_required_max_retries`.
+
 - 2026-06-12 — **Android Keystore keyring capability + synchronous capability routing + identity restore (PR 1 of Marmot-keyring ladder)**. PR #1188. Branch: `feat/android-keyring-capability`. Worktree: agent-a432ddceb0cd2757c. New `capability.rs` + `identity.rs` modules in nmp-android-ffi; `session.rs` `capability_handler` slot; external_signer trampoline namespace router; `KeystoreKeyringCapability.kt` (AES-256-GCM AndroidKeyStore); `KernelBridge.setCapabilityHandler` + `identityRestore`; `KernelModel.startWithContext`.
 
 - 2026-06-12 — **PR-W2: build and deploy real nmp-wasm in Chirp Web** (follows PR-W1 / #1150). Branch: `feat/chirp-web-build-real-wasm`. Worktree: agent-a73fab19a44acce01. Deletes stale checked-in wasm artifact; gitignores generated output; wires wasm-pack build into chirp-web.yml CI and Vercel deploy command.
@@ -64,11 +70,6 @@ the spec itself; this file no longer mirrors it.
   was verified patch-equivalent to master (`git cherry` "-") and removed.
 - PR **#1014** — nmp-conformance scanner skill + catalog (v0 seed). **Draft** (author-gated);
   all checks green after the 2026-06-11 re-run cleared the v58 flake.
-- Finding C — pubkey-only identity accessor (`AppHost::active_pubkey()`); migrate
-  WOT bootstrap + DM-relay-list + self-zap-receipt + mute-list runtimes off
-  `active_local_keys()` so bunker (remote-signer) accounts activate them.
-  Worktree: `.claude/worktrees/agent-ad121a552456be13d`
-  (branch `worktree-agent-ad121a552456be13d`). Started 2026-06-12.
 
 ## Stale-entry purge log
 

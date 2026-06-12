@@ -339,8 +339,10 @@ impl Kernel {
         // the publish — apply the terminal verdict to the queue entry before
         // any retry frame drain so the iOS snapshot reflects the new status.
         self.apply_engine_completions();
-        // Any retry the engine scheduled (after `Reauth` / transient backoff
-        // that is already due) was pushed into the queue dispatcher; drain it.
+        // Any retry the engine scheduled (transient backoff that is already
+        // due) was pushed into the queue dispatcher; drain it. An auth-required
+        // ack parks the relay instead (no synchronous frame here — the
+        // re-dispatch fires later off the `Authenticated` availability gate).
         let drained = self.publish_dispatcher.drain();
         if !drained.is_empty() {
             self.changed_since_emit = true;

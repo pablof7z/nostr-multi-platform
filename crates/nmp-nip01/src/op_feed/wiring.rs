@@ -215,7 +215,7 @@ pub fn build_actor_claim_sink(dispatch: ActorCommandDispatch) -> ClaimSink {
 /// Returns `None` on any encode failure (e.g. a malformed coord or non-hex id);
 /// the caller treats a `None` as "skip this claim" rather than surfacing an
 /// error (D6).
-fn pointer_to_uri(pointer: &ThreadPointer, extra_relays: &[String]) -> Option<String> {
+pub fn pointer_to_uri(pointer: &ThreadPointer, extra_relays: &[String]) -> Option<String> {
     match pointer {
         ThreadPointer::Event { id, relay, kind } => {
             let mut relays: Vec<String> = relay.iter().cloned().collect();

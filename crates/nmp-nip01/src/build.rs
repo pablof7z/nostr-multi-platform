@@ -7,7 +7,7 @@
 //! protocol crates.
 
 use nmp_core::substrate::UnsignedEvent;
-use nmp_core::tags::{e_tag, p_tag};
+use nmp_core::tags::reply_tags;
 use serde::{Deserialize, Serialize};
 
 use crate::decode::NoteRecord;
@@ -31,18 +31,6 @@ impl core::fmt::Display for NoteBuildError {
 
 impl std::error::Error for NoteBuildError {}
 
-/// What the builder is replying to, set by [`NoteBuilder::reply_to`].
-#[derive(Clone, Debug)]
-struct ReplyContext {
-    root_id: String,
-    root_relay: Option<String>,
-    reply_id: String,
-    reply_relay: Option<String>,
-    /// Pubkeys to notify per NIP-10 — parent author first, then anyone the
-    /// parent was already replying to.
-    pubkeys: Vec<String>,
-}
-
 /// Entry-point namespace — `Note::new(content)` returns a [`NoteBuilder`].
 ///
 /// `Note` intentionally has no fields. The design's "no shared mutable
@@ -57,7 +45,7 @@ impl Note {
     pub fn new(content: impl Into<String>) -> NoteBuilder {
         NoteBuilder {
             content: content.into(),
-            reply: None,
+            reply_tags: None,
             relay_hint: None,
         }
     }
@@ -68,7 +56,9 @@ impl Note {
 #[derive(Clone, Debug)]
 pub struct NoteBuilder {
     content: String,
-    reply: Option<ReplyContext>,
+    /// Pre-computed NIP-10 reply tags from [`Self::reply_to`], delegated to
+    /// [`nmp_core::tags::reply_tags`] — the single canonical implementation.
+    reply_tags: Option<Vec<Vec<String>>>,
     relay_hint: Option<String>,
 }
 
@@ -91,30 +81,18 @@ impl NoteBuilder {
     ///
     /// Per NIP-10: when `parent` already has a `root` reference, the new
     /// root tag carries that id; otherwise `parent` itself is the root.
+    ///
+    /// Tag construction is delegated to [`nmp_core::tags::reply_tags`] —
+    /// the single canonical NIP-10 reply-tag builder shared by native and
+    /// wasm paths.
     #[must_use]
     pub fn reply_to(mut self, parent: &NoteRecord) -> Self {
-        let (root_id, root_relay) = match parent.refs.root.as_ref() {
-            Some(root) => (root.id.clone(), root.relay.clone()),
-            None => (parent.event_id.clone(), self.relay_hint.clone()),
-        };
-
-        // Build the p-tag set: parent author first, then anyone parent was
-        // already notifying, de-duplicated, stable order.
-        let mut pubkeys = Vec::with_capacity(1 + parent.refs.mentioned_pubkeys.len());
-        pubkeys.push(parent.author.clone());
-        for pk in &parent.refs.mentioned_pubkeys {
-            if !pubkeys.iter().any(|p| p == pk) {
-                pubkeys.push(pk.clone());
-            }
-        }
-
-        self.reply = Some(ReplyContext {
-            root_id,
-            root_relay,
-            reply_id: parent.event_id.clone(),
-            reply_relay: self.relay_hint.clone(),
-            pubkeys,
-        });
+        self.reply_tags = Some(reply_tags(
+            &parent.event_id,
+            &parent.author,
+            &parent.refs,
+            self.relay_hint.as_deref(),
+        ));
         self
     }
 
@@ -133,22 +111,7 @@ impl NoteBuilder {
             return Err(NoteBuildError::EmptyContent);
         }
 
-        let mut tags: Vec<Vec<String>> = Vec::new();
-        if let Some(reply) = self.reply {
-            tags.push(e_tag(
-                &reply.root_id,
-                reply.root_relay.as_deref(),
-                Some("root"),
-            ));
-            tags.push(e_tag(
-                &reply.reply_id,
-                reply.reply_relay.as_deref(),
-                Some("reply"),
-            ));
-            for pk in reply.pubkeys {
-                tags.push(p_tag(&pk, self.relay_hint.as_deref()));
-            }
-        }
+        let tags: Vec<Vec<String>> = self.reply_tags.unwrap_or_default();
 
         Ok(UnsignedEvent {
             pubkey: author.into(),

@@ -11,7 +11,7 @@ name = "nmp_content"
 
 [dependencies]
 flatbuffers = { workspace = true }
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", default-features = false }
 pulldown-cmark = { version = "0.13", default-features = false }
 regex = "1.11"
 serde = { version = "1.0", features = ["derive"] }

@@ -3,14 +3,15 @@
 //! Pure delegation to per-subsystem modules. This file exists so `mod.rs`
 //! stays focused on the open() + Inner shape.
 
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 
-use super::{claims, delete, domain, dump as dump_mod, gc, insert, query, LmdbEventStore};
+use super::{delete, domain, dump as dump_mod, gc, insert, query, LmdbEventStore};
 use crate::events::{DomainHandle, EventIter, EventStore};
 use crate::types::{
-    ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow,
-    VerifiedEvent, WatermarkKey, WatermarkRow,
+    Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
+    WatermarkKey, WatermarkRow,
 };
 use crate::DomainMigration;
 use crate::StoreError;
@@ -146,29 +147,18 @@ impl EventStore for LmdbEventStore {
         Ok(Box::new(rows.into_iter().map(Ok)))
     }
 
-    fn register_view_cover(
-        &self,
-        claimer: ClaimerId,
-        cover_budget: usize,
-    ) -> Result<(), StoreError> {
-        claims::register_view_cover(&self.inner, claimer, cover_budget)
-    }
-
-    fn claim(&self, claimer: ClaimerId, ids: &[EventId]) -> Result<(), StoreError> {
-        claims::claim(&self.inner, claimer, ids)
-    }
-
-    fn release(&self, claimer: ClaimerId) -> Result<(), StoreError> {
-        claims::release(&self.inner, claimer)
-    }
-
     fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> {
         // No LRU yet — same as Mem.
         Ok(())
     }
 
-    fn gc_step(&self, budget: GcBudget, now_secs: u64) -> Result<GcReport, StoreError> {
-        gc::gc_step(&self.inner, budget, now_secs)
+    fn gc_step_with_pins(
+        &self,
+        budget: GcBudget,
+        now_secs: u64,
+        pins: &HashSet<EventId>,
+    ) -> Result<GcReport, StoreError> {
+        gc::gc_step(&self.inner, budget, now_secs, pins)
     }
 
     fn domain_open(&self, namespace: &'static str) -> Result<DomainHandle, StoreError> {

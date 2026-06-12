@@ -82,17 +82,16 @@ use commands::IdentityRuntime;
 // unconditionally — keep them always-compiled. The slot constructors, registration helpers,
 // and lifecycle observer types are only consumed by the native FFI and actor runtime.
 pub(crate) use commands::notify_observers;
-// `KernelEventObserverSlot`, the slot constructors, registration helpers,
-// and lifecycle observer types are reached by `nmp-ffi` through
-// `nmp_core::__ffi_internal::*` — promoted to `pub` for the extracted
-// crate; `register_c_observer` stays `pub(crate)` because the C-ABI bridge
-// is in `nmp-ffi` and goes through `register_rust_observer` for the typed
-// path.
-pub use commands::KernelEventObserverSlot;
+// `KernelEventObserverSlot` and `register_rust_observer` are `pub`
+// unconditionally so `nmp-ffi` and wasm32 composition roots can register
+// observers. `new_event_observer_slot_headless` is `pub(crate)` — wasm32-safe
+// (no drain thread); used by `KernelReducer::new` on all targets.
+pub use commands::{KernelEventObserverSlot, register_rust_observer};
+pub(crate) use commands::new_event_observer_slot_headless;
 #[cfg(feature = "native")]
 pub use commands::{
     new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot,
-    register_rust_observer, unregister_observer, LifecycleObserverSlot,
+    unregister_observer, LifecycleObserverSlot,
 };
 // `register_c_observer` + `LifecycleObserverRegistration` reach `nmp-ffi`
 // through `nmp_core::__ffi_internal::*` so the C-ABI bridge in
@@ -848,6 +847,18 @@ pub enum ActorCommand {
         correlation_id: String,
         reason: String,
     },
+    /// Store a fetched relay-information document on the kernel's per-URL
+    /// transport row (ADR-0051). Posted by the `nmp-nip11` fetch worker; the
+    /// dispatch arm folds the parsed `RelayInfoDoc` via
+    /// [`Kernel::set_relay_info`] so the `relay_diagnostics` projection
+    /// surfaces it. `nmp-core` names no NIP-11 noun — it carries the
+    /// substrate-generic `RelayInfoDoc` (D0); malformed JSON is a no-op (D6).
+    SetRelayInfo {
+        /// The relay URL the document was fetched for (canonicalised on store).
+        relay_url: String,
+        /// `RelayInfoDoc` serialised via `RelayInfoDoc::to_json`.
+        doc_json: String,
+    },
     /// Record a terminal `Accepted` stage for `correlation_id` on
     /// behalf of an off-thread worker whose success outcome is observed
     /// outside the publish engine. The symmetric counterpart to
@@ -1142,6 +1153,8 @@ pub fn run_actor(
         // V-38: the wallet runtime + status slot moved to `nmp-nip47`. The
         // actor only carries a substrate-generic relay-text interceptor slot.
         crate::substrate::new_relay_text_interceptor_slot(),
+        // ADR-0051: throwaway relay-connected hook slot (no FFI surface here).
+        crate::substrate::new_relay_connected_hook_slot(),
         // D0: NIP-46 remote signing is an app noun — likewise a private
         // throwaway bunker-handshake slot (no FFI surface to register the
         // `"bunker_handshake"` projection here).
@@ -1217,6 +1230,9 @@ pub fn run_actor(
         // throwaway. The actor still publishes its kernel's store into it;
         // nothing outside the actor reads it on this path.
         crate::slots::new_event_store_slot(),
+        // Test-support kernel-clock slot — no `NmpApp` here, so it's a private
+        // throwaway (`None` → the kernel keeps its `SystemClock`).
+        crate::slots::new_kernel_clock_slot(),
     );
 }
 
@@ -1245,6 +1261,8 @@ pub fn run_actor_with_lifecycle_observer(
         // V-38: wallet moved to `nmp-nip47`; backwards-compat shim threads a
         // throwaway substrate relay-text interceptor slot.
         crate::substrate::new_relay_text_interceptor_slot(),
+        // ADR-0051: throwaway relay-connected hook slot (no FFI surface here).
+        crate::substrate::new_relay_connected_hook_slot(),
         // D0: NIP-46 remote signing is an app noun — private throwaway
         // bunker-handshake slot (no FFI surface here).
         new_bunker_handshake_slot(),
@@ -1294,6 +1312,8 @@ pub fn run_actor_with_lifecycle_observer(
         crate::slots::new_active_account_slot(),
         // V-83 — same private-throwaway pattern for the event-store slot.
         crate::slots::new_event_store_slot(),
+        // Test-support kernel-clock slot — private throwaway here.
+        crate::slots::new_kernel_clock_slot(),
     );
 }
 
@@ -1339,6 +1359,11 @@ pub fn run_actor_with_observers(
     // actor calls `interceptor.on_relay_text(...)` for every inbound text
     // frame. `None` (the default) is a no-op.
     relay_text_interceptor: crate::substrate::RelayTextInterceptorSlot,
+    // ADR-0051: relay-connected hook slot. Protocol-crate runtimes (today
+    // `nmp-nip11`) install here at host init; the actor calls
+    // `fan_relay_connected(...)` on every `PoolEvent::Opened`. Empty = no-op;
+    // `nmp-core` names no NIP-11 noun (D0).
+    relay_connected_hook: crate::substrate::RelayConnectedHookSlot,
     // D0: NIP-46 remote signing is an app noun — the shared bunker-handshake
     // slot. One `Arc` clone is captured by the built-in `"bunker_handshake"`
     // snapshot-projection closure on the `NmpApp`; this one is handed to the
@@ -1459,6 +1484,13 @@ pub fn run_actor_with_observers(
     // store). Mirrors `routing_trace_slot`'s publish-back — NOT V-82's
     // hand-down — because the store is kernel-built, not host-built.
     event_store_slot: crate::slots::EventStoreSlot,
+    // Test-support kernel-clock slot. Production never writes it (the kernel
+    // keeps its `SystemClock`); the `NmpApp::set_kernel_clock_for_test` seam
+    // writes an `Arc<dyn Clock>` here so deterministic e2e tests can stamp
+    // strictly-increasing `created_at` on replaceable publishes (no sleep —
+    // D8). Read once after kernel construction (and re-applied on `Reset`)
+    // via `Kernel::set_clock`. `None` is the production/default state.
+    kernel_clock_slot: crate::slots::KernelClockSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -1609,6 +1641,17 @@ pub fn run_actor_with_observers(
             kernel.active_account_handle(),
         );
         kernel.set_publish_resolver(resolver);
+    }
+    // Test-support kernel-clock injection (if any), applied BEFORE any command
+    // is dispatched so the very first publish stamps `created_at` from the
+    // injected clock. Production never writes this slot (the kernel keeps its
+    // `SystemClock`). D6: a poisoned slot is a silent no-op.
+    if let Some(clock) = kernel_clock_slot
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(Arc::clone))
+    {
+        kernel.set_clock(clock);
     }
     // V-40 — bind the shared `EventIngestDispatcher` slot + the
     // `DmInboxRelayLookup` handle onto the freshly-constructed kernel.
@@ -2028,6 +2071,8 @@ pub fn run_actor_with_observers(
                         event,
                         &mut kernel,
                         &relay_text_interceptor,
+                        &relay_connected_hook,
+                        &command_tx_self,
                         &mut relay_controls,
                         &mut slot_to_url,
                         &pool,

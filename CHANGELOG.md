@@ -5,6 +5,128 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.6.2 — 2026-06-13
+
+**No `nmp_app_*` C-ABI symbol change.** Additive release — existing FFI callers
+do not need call-site changes.
+
+### Added
+
+- **NIP-55 (Amber) Android signing complete — ADR-0048 Stage 4 E2E passed**
+  (#1183, closes #1124). The registry `login-block` component is now
+  `compose: stable`: signer detection (Amber + Primal), "Sign in with Amber"
+  driving the full kernel flow (pubkey-only account, 90s interactive deadline,
+  `signer_state` projection), DM send via the ADR-0026 seal seam, and an
+  emulator-verified publish — kind:1 `11652d49…20a76a` signed by the
+  Amber-held key, relay-fetched and schnorr-verified. Amber wire fixes shipped
+  in the vendored Kotlin bridge (payload in the `nostrsigner:` data URI,
+  type/params as Intent extras, `{"type","kind"}` permissions JSON, full-event
+  reply via the `event` extra, `rejected` handling). E2E runbook:
+  `docs/testing/adr-0048-nip55-amber-e2e-runbook.md`. Android consumers:
+  vendor the three login-block Kotlin files (`ExternalSignerWire.kt`,
+  `AmberIntentCodec.kt`, `ExternalSignerCapabilityBridge.kt`) + the
+  `<queries>` manifest entries, register the bridge, and call
+  `nmp_app_signin_nip55` / `nmp_app_deliver_external_signer_response`
+  (`external-signer` feature on `nmp-ffi`).
+- **wasm NIP-10 reply write path** (PR-5, #1214).
+
+### Changed
+
+- **D5/D8 runtime enforcement** (#1203): `emit_hz` is clamped to
+  `EMIT_HZ_MAX = 60` with a D6 log line on clamp (graceful, not a panic);
+  snapshot-bound enforcement per D5. Apps requesting >60Hz now get 60.
+
+## nmp-v0.6.1 — 2026-06-12
+
+**Additive C-ABI change**: one NEW symbol, `nmp_app_probe_relay_info` (no
+existing symbol changed or removed). Rust API is additive.
+
+### Added
+
+- **ADR-0051 — first-class NIP-11 relay information** (#1195). New `nmp-nip11`
+  protocol crate owns the full NIP-11 lifecycle: when a relay connects, a
+  `RelayConnectedHook` (new substrate seam, fanned on `PoolEvent::Opened`)
+  fetches the relay's information document on an off-actor worker (`ureq`,
+  10s budget, 64 KiB body cap, per-URL 5-minute TTL) and posts it back via
+  `ActorCommand::SetRelayInfo`. The parsed document (name, description, icon,
+  pubkey, contact, software, version, supported_nips, payment/auth/
+  restricted-writes limitation flags) surfaces as the `info` child on every
+  `relay_diagnostics` row — serde JSON and the `KRDG` typed FlatBuffers
+  sidecar both carry it, so consumer apps render relay names and icons with
+  zero HTTP, JSON, or NIP-11 awareness of their own. On-demand
+  `nmp_nip11::probe_relay_info` (Rust) and `nmp_app_probe_relay_info` (C-ABI,
+  callback-borrowed string) cover add-relay preview flows for relays not yet
+  in the pool. `nmp-core` names no NIP-11 noun and imports no HTTP crate
+  (D0); `nmp-wasm` stays `ureq`-free.
+
+### Fixed
+
+- **CI hygiene** (#1213): `.file-size-baseline` refreshed for seven
+  pre-existing over-cap files grown by recent merges (the #1192/#1196
+  ratchet-drift pattern).
+
+## nmp-v0.6.0 — 2026-06-12
+
+**BREAKING (C-ABI)**: `nmp_app_free_string` and `nmp_broker_free_string` are
+RETIRED, replaced by a single `nmp_free_string` (V-114 #1044, PR #1135) —
+every consumer that frees NMP-returned strings must rename the call (one-line
+mechanical change; same semantics). One NEW symbol: `nmp_app_composition_report`.
+Rust API is additive; `register_defaults()` behavior is unchanged.
+
+### Added
+
+- **ADR-0049 — defaults yield; composition is observable** (#1185).
+  `ActionRegistry::register_default::<M>()` is an entry-or-insert *yielding*
+  registration: the canonical defaults (nip02/nip17/nip57/nip65) now back off
+  when the app already claimed the namespace, **regardless of call order**
+  (Spring `@ConditionalOnMissingBean` posture). App-path `register_action`
+  keeps insert semantics but fails loudly (`debug_assert!`) on app-over-app
+  collisions in dev/test builds; soft + recorded in release (D6). Every
+  AppHost registration (actions, ingest parsers, snapshot projections, the
+  last-writer-wins slots, dropped late wiring) is recorded in a composition
+  ledger queryable via the new `nmp_app_composition_report` FFI symbol —
+  the previously documented-but-absent `LateWiring` diagnostic now exists.
+- **`nmp-defaults` tier split + typed config** (#1180).
+  `register_substrate(app, gate)` is the always-on correctness floor (routing
+  substrate, kind:10002 parser, publish resolver, forward policy, coverage
+  hook + NIP-77 negentropy runtime); `register_defaults_with(app, NmpDefaults)`
+  layers toggleable social defaults (`social`/`dms`/`zaps`/`longform`) on top
+  and makes the previously hardcoded `CoverageGate` and nostrconnect bootstrap
+  relay overridable config fields — fixing the gate-desync where overriding
+  the coverage hook post-hoc desynced it from the negentropy runtime.
+  Non-social consumers can now compose a routable app without the social bundle.
+- **NIP-51 mute list in the composition root** (#1181): `MuteListProjection`
+  observer + `nmp.nip51.mute_list` diagnostic projection wired into the
+  `social` tier; `register_mute_runtime` exported for apps needing the `Arc`
+  to wire timeline suppression.
+- **ADR-0048 NIP-55 external signer** Stages 2–3 (#1153, #1165, #1166): Android
+  login-block + Chirp sign-in, proof lanes, DM send via the seal seam.
+- **Android**: Keystore keyring capability + synchronous capability routing +
+  identity restore (#1188); Marmot leave/invite/remove/clear_pending parity
+  with typed action envelopes (#1186).
+- **nmp-wasm**: browser runtime executes without panicking (PR-W1 #1150), real
+  wasm build deployed for chirp-web (PR-W2 #1176), interest/contact-feed
+  dispatch verbs + viewer-pubkey hand-off (PR-3 #1177).
+
+### Fixed
+
+- Publish to AUTH-required relays parks until `Authenticated` instead of
+  failing (#1192).
+- Bunker accounts activate WOT/DM-relay/zap-receipt runtimes (pubkey-only
+  identity accessor, #1191).
+- `DmInboxProjection` cleared on account switch (#1184).
+- Pre-verified inject path feeds the `IngestParser` dispatcher — closes the
+  #1137 regression (#1160).
+- NIP-57: bolt11 amount validated before auto-pay (#1189).
+- CI: file-size gate was a silent no-op on PRs (#1178).
+
+### Removed
+
+- **C-ABI**: `nmp_app_free_string` + `nmp_broker_free_string` retired into one
+  `nmp_free_string` (V-114 #1044, PR #1135). Migration: rename the call.
+
+---
+
 ## nmp-v0.5.0 — 2026-06-12
 
 **BREAKING (C-ABI + Rust API).** Four breaking changes since v0.4.0; all require

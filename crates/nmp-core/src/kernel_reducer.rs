@@ -42,27 +42,47 @@
 //! This is the NMP-145 follow-up: T-NMP-145-FF.
 
 use crate::app::{KernelAction, KernelUpdate};
-use crate::kernel::{Kernel, RelayFrame};
+use crate::kernel::{Kernel, RelayFrame, SnapshotProjectionSlot};
 use crate::kernel_action::dispatch_kernel_action;
 use crate::relay::{OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
-use crate::substrate::SignedEvent;
 
 /// Encapsulated kernel + public pure reducer.
 ///
 /// Owns the [`Kernel`] privately so codegen-driven `FfiApp`s can reduce
 /// [`KernelAction`] values to [`KernelUpdate`] values without depending on
-/// crate-internal types.
+/// crate-internal types. Two shared slots (`observer_slot`, `snapshot_slot`)
+/// support the PR-4 wasm32 composition seams in `composition_seams.rs`.
 pub struct KernelReducer {
     kernel: Kernel,
+    /// Headless event-observer slot (no drain thread — wasm32 safe).
+    observer_slot: crate::actor::KernelEventObserverSlot,
+    /// Typed snapshot-projection slot.
+    snapshot_slot: SnapshotProjectionSlot,
 }
 
 impl KernelReducer {
     /// Construct a fresh reducer with the default visible-limit. Equivalent
     /// to what the actor loop uses at startup.
+    ///
+    /// On all targets (including wasm32) this binds a headless
+    /// [`KernelEventObserverSlot`] and a [`SnapshotProjectionSlot`] into the
+    /// kernel so that composition roots can register event observers and typed
+    /// projections without spawning background threads.
     #[must_use]
     pub fn new() -> Self {
+        use crate::actor::new_event_observer_slot_headless;
+        use crate::kernel::new_snapshot_projection_slot;
+        use std::sync::Arc;
+
+        let observer_slot = new_event_observer_slot_headless();
+        let snapshot_slot = new_snapshot_projection_slot();
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        kernel.set_event_observers_handle(Arc::clone(&observer_slot));
+        kernel.set_snapshot_projection_handle(Arc::clone(&snapshot_slot));
         Self {
-            kernel: Kernel::new(DEFAULT_VISIBLE_LIMIT),
+            kernel,
+            observer_slot,
+            snapshot_slot,
         }
     }
 
@@ -174,17 +194,21 @@ impl KernelReducer {
         self.kernel.mark_publish_relay_unavailable(relay_url);
     }
 
-    /// Pump all three idle drains in native parity order: pending view
-    /// requests → lifecycle drain → publish pump. Mirrors the native actor's
-    /// idle-tick sequence at `actor/mod.rs:2086–2098` (pending_view_requests),
-    /// `2107–2120` (lifecycle drain), and `2161–2173` (publish pump).
+    /// Pump all four idle drains in native parity order: pending view
+    /// requests → lifecycle drain → claim-expansion tick → publish pump.
+    /// Mirrors the native actor's idle-tick sequence at
+    /// `actor/mod.rs:2086–2098` (pending_view_requests), `2107–2120`
+    /// (lifecycle drain), `2164–2188` (claim-expansion W6), and `2161–2173`
+    /// (publish pump).
     ///
     /// The wasm32 driver calls this from its `gloo-timers` periodic interval
     /// (1 Hz is sufficient; retry deadlines are seconds-scale) so transient
     /// publish failures recover without waiting for the next inbound frame
-    /// from any relay, and `CompileTrigger::ViewOpened` events enqueued by
+    /// from any relay, `CompileTrigger::ViewOpened` events enqueued by
     /// `claim_event` / `claim_profile` compile into REQ frames without
-    /// waiting for the next relay event.
+    /// waiting for the next relay event, and Phase-1 claims advance to
+    /// Phase 2 on every tick rather than stalling permanently on quiet
+    /// sockets (closes the W6 gap tracked in issue #1143).
     ///
     /// `pending_view_requests()` is placed first (before the lifecycle drain)
     /// to preserve the native M1-CLOSE-before-M2-REQ ordering: any pending
@@ -198,16 +222,6 @@ impl KernelReducer {
     /// already runs on every inbound frame via `handle_relay_frame` (line 114),
     /// so this call adds no new wasm32 `Instant` exposure.
     ///
-    /// # Parity note
-    ///
-    /// Native also calls `poll_claim_expansion(Instant::now())` at
-    /// `actor/mod.rs:2133–2145` between the lifecycle drain and the publish
-    /// pump. This drain was previously omitted because `std::time::Instant::now()`
-    /// panics on `wasm32-unknown-unknown` (issue #1143 / #1009). The web-time
-    /// shim (`crate::time::Instant`) introduced alongside this wasm runtime PR
-    /// resolves that blocker — wiring `poll_claim_expansion` here is a
-    /// follow-up; the omission is harmless while claim-expansion remains an
-    /// in-process-only feature.
     pub fn tick(&mut self) -> Vec<OutboundMessage> {
         // 1. Pending view requests: mirrors actor/mod.rs:2086-2098.
         //    Drains time-gated work (contacts_deadline, F-TTL reverify, deferred
@@ -219,7 +233,16 @@ impl KernelReducer {
         //    Placed after pending_view_requests to ensure M1 CLOSE frames are
         //    enqueued before M2 opens new subs (spec §3.1).
         outbound.extend(self.kernel.drain_lifecycle_outbound());
-        // 3. Publish pump: mirrors actor/mod.rs:2161-2173.
+        // 3. Claim-expansion idle tick: mirrors actor/mod.rs:2164-2188 (W6).
+        //    Advances the per-claim Phase-1/2 state machine once per tick.
+        //    `crate::time::Instant` resolves to `web_time::Instant` on
+        //    wasm32-unknown-unknown (performance.now() backed) and to
+        //    `std::time::Instant` on native — both are panic-free on their
+        //    respective targets (closes the #1143 / #1009 blocker).
+        //    D8: with no pending claims this is a single `is_empty()` check;
+        //    no allocation, no iteration.
+        outbound.extend(self.kernel.poll_claim_expansion(crate::time::Instant::now()));
+        // 4. Publish pump: mirrors actor/mod.rs:2161-2173.
         //    Retries in-flight publish frames whose retry deadline has elapsed.
         outbound.extend(self.kernel.tick_publish_engine_for_now());
         self.kernel.partition_auth_paused(outbound)
@@ -231,55 +254,6 @@ impl KernelReducer {
     /// (dirty-flag coalescing, PR-2 rider).
     pub fn changed_since_emit(&self) -> bool {
         self.kernel.changed_since_emit()
-    }
-
-    /// V-01 Stage 3c — public publish-from-signed-event surface for non-actor
-    /// consumers (today: the wasm32 `WasmRuntime` write path after the
-    /// `Nip07Signer::sign()` Promise resolves; tomorrow: any in-process Rust
-    /// caller that signs out-of-band and wants to feed the result through the
-    /// kernel's publish engine).
-    ///
-    /// Internally delegates to `Kernel::publish_signed_with_correlation` —
-    /// byte-for-byte the same entrypoint `actor::commands::publish::publish_unsigned_event`
-    /// reaches after `sign_active_nonblocking` resolves on the dispatched
-    /// path. The returned `Vec<OutboundMessage>` is the engine's per-(outbox-
-    /// relay) `EVENT` frame set, already AUTH-pause-partitioned through
-    /// `partition_auth_paused` for symmetry with the `handle_relay_*` surface
-    /// above.
-    ///
-    /// `p_tags` mirrors the legacy parameter on `Kernel::publish_signed` —
-    /// callers that have no extra `#p` tags pass an empty slice. The engine
-    /// recomputes `#p` tags from `signed.unsigned.tags` itself, so this slice
-    /// is informational only (kept on the surface so a future caller that
-    /// needs additional outbox routing tags has a place to inject them).
-    ///
-    /// `correlation_id` is the host-visible action id the publish should
-    /// report in the `action_results` projection on terminal verdicts (per-
-    /// relay OK / failed). Pass `Some(id)` when the publish is a dispatched
-    /// action whose host caller is awaiting a terminal under `id` (the wasm
-    /// runtime's `dispatch_app_action_async` Promise path); pass `None` for
-    /// non-dispatch callers (the engine then reports the event id as the
-    /// terminal key, matching every existing non-dispatched native publish).
-    ///
-    /// Without correlation threading the wasm host receives a publish-engine
-    /// terminal keyed on an event id it never saw — defeating partial-success
-    /// UX (e.g. "2/3 relays accepted"). Pinning the contract here keeps the
-    /// wasm path byte-for-byte aligned with the native generic publish dispatch.
-    ///
-    /// Doctrine (D0/D6): the surface is substrate-typed (`SignedEvent`,
-    /// `OutboundMessage`); failure is encoded as an empty outbound vec plus a
-    /// kernel-side toast / `RecentFailure` row (no `Result` across this
-    /// boundary, matching every other `KernelReducer` method).
-    pub fn publish_signed_event(
-        &mut self,
-        signed: &SignedEvent,
-        p_tags: &[String],
-        correlation_id: Option<String>,
-    ) -> Vec<OutboundMessage> {
-        let outbound = self
-            .kernel
-            .publish_signed_with_correlation(signed, p_tags, correlation_id);
-        self.kernel.partition_auth_paused(outbound)
     }
 
     // ─── F-CR-00 component-owned claim seam ─────────────────────────────────
@@ -451,7 +425,26 @@ impl KernelReducer {
 
 }
 
+/// Test-support seam: fire the observer slot directly with a `KernelEvent`.
+///
+/// This is the substrate-clean path for wasm32 integration tests that cannot
+/// go through `ingest_pre_verified_event` (a `pub(crate)` kernel method).
+/// It mirrors exactly what `Kernel::notify_event_observers` does on the
+/// production ingest path: snapshot observers under the lock and fire each
+/// synchronously.
+///
+/// Only available under `cfg(any(test, feature = "test-support"))`. Never
+/// call from production code — use `handle_relay_frame` for real ingest.
+#[cfg(any(test, feature = "test-support"))]
+impl KernelReducer {
+    pub fn fire_event_observers_for_test(&self, event: &crate::substrate::KernelEvent) {
+        crate::actor::notify_observers(&self.observer_slot, event);
+    }
+}
+
+mod composition_seams;
 mod feed_verbs;
+mod reply;
 
 impl Default for KernelReducer {
     fn default() -> Self {
@@ -471,3 +464,6 @@ mod tests_snapshot_claims;
 #[path = "kernel_reducer/tests_feed_verbs.rs"]
 mod tests_feed_verbs;
 
+#[cfg(test)]
+#[path = "kernel_reducer/tests_reply_tags.rs"]
+mod tests_reply_tags;

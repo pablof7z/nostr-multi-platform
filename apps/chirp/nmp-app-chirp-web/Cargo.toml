@@ -1,0 +1,34 @@
+[package]
+name = "nmp-app-chirp-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Wasm32 composition root for the Chirp web client. Wires the OP-centric home feed (nmp.feed.home) into WasmRuntime — the web twin of apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs."
+
+[lib]
+# `cdylib` for the wasm32 binary; `rlib` so native tests can link it.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Kernel seams: KernelReducer composition methods + substrate types.
+# `default-features = false` because the wasm32 target has no mio/lmdb.
+nmp-core = { path = "../../../crates/nmp-core", default-features = false }
+# NIP-10 OP-feed engine + claim-sink helpers.
+# `default-features = false` → nmp-nip57 ureq omitted on wasm32.
+nmp-nip01 = { path = "../../../crates/nmp-nip01", default-features = false }
+# ActiveFollowSet (rung 4) — follow predicate for the feed engine.
+# `default-features = false` because nmp-nip02 only needs nmp-core no-native.
+nmp-nip02 = { path = "../../../crates/nmp-nip02", default-features = false }
+# ClaimRequest / ClaimSink type aliases + FeedRequest.
+nmp-feed = { path = "../../../crates/nmp-feed" }
+# ThreadPointer — claim pointer encoding for the queuing drain.
+nmp-threading = { path = "../../../crates/nmp-threading" }
+# WasmRuntime: reducer_handle, install_post_tick_drain.
+# rlib dep — cdylib symbols are not consumed here.
+nmp-wasm = { path = "../../../crates/nmp-wasm" }
+
+[dev-dependencies]
+# test-support gates enable nmp_app_new / nmp_app_free and the
+# KernelEventObserverSlot test helpers.
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }

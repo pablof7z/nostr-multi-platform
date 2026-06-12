@@ -13,6 +13,10 @@
 #                      Without this flag the full tracked tree is checked (CI mode).
 #   --from-ref REF     Check only files changed from REF..TO_REF.
 #   --to-ref REF       Required with --from-ref.
+#   --baseline-ref REF Read the hard-cap baseline from this git ref instead of
+#                      FROM_REF. Use TO_REF for push events (self-consistent
+#                      tree) and FROM_REF/PR-base for pull_request events
+#                      (anti-cheat on baseline raises).
 #   --dry-run          Report violations but exit 0 (used by smoke tests).
 #   --baseline-file F  Read hard-cap baseline from F instead of .file-size-baseline.
 #                      Used by smoke tests.
@@ -31,6 +35,7 @@ DRY_RUN=0
 CHANGED_ONLY=0
 FROM_REF=""
 TO_REF=""
+BASELINE_REF=""
 BASELINE_FILE_OVERRIDE=""
 FORCE_INCLUDES=()
 
@@ -41,6 +46,7 @@ while [[ $# -gt 0 ]]; do
         --changed-only)  CHANGED_ONLY=1; shift ;;
         --from-ref)      FROM_REF="$2"; shift 2 ;;
         --to-ref)        TO_REF="$2"; shift 2 ;;
+        --baseline-ref)  BASELINE_REF="$2"; shift 2 ;;
         --baseline-file) BASELINE_FILE_OVERRIDE="$2"; shift 2 ;;
         --force-include) FORCE_INCLUDES+=("$2"); shift 2 ;;
         --) shift; break ;;
@@ -71,6 +77,18 @@ collect_files() {
         # Only staged additions/modifications
         git -C "$REPO_ROOT" diff --cached --name-only --diff-filter=ACMR
     elif [[ -n "$FROM_REF" && -n "$TO_REF" ]]; then
+        # Verify the base ref is actually fetchable before attempting to diff.
+        # A missing base ref (e.g. fetch-depth:1 checkout where the base SHA is
+        # not in the local clone) causes `git diff` to fail silently when its
+        # output is consumed via a process substitution, because errors inside
+        # <(...) are never propagated to the outer `set -euo pipefail` context.
+        # Failing loudly here is the correct behaviour — a gate that cannot
+        # compute its input must not pass.
+        if ! git -C "$REPO_ROOT" cat-file -e "$FROM_REF^{commit}" 2>/dev/null; then
+            echo "check-file-size: base ref '$FROM_REF' is not available in this clone." >&2
+            echo "  Ensure the checkout step uses fetch-depth: 0 (or fetches the base ref)." >&2
+            exit 1
+        fi
         # CI mode for changed files without mutating the index.
         git -C "$REPO_ROOT" diff --name-only --diff-filter=ACMR "$FROM_REF" "$TO_REF"
     else
@@ -82,6 +100,19 @@ collect_files() {
     for fi in "${FORCE_INCLUDES[@]+"${FORCE_INCLUDES[@]}"}"; do
         echo "$fi"
     done
+}
+
+# Wrapper that materialises collect_files output into a temp file so that any
+# failure inside the function (including the explicit exit above) is fatal even
+# though bash process substitutions do not propagate errors to the outer shell.
+collect_files_to_tmp() {
+    local _tmp
+    _tmp="$(mktemp)"
+    if ! collect_files > "$_tmp"; then
+        rm -f "$_tmp"
+        exit 1
+    fi
+    echo "$_tmp"
 }
 
 # ── Load ignore patterns from .file-size-ignore ───────────────────────────────
@@ -112,9 +143,27 @@ load_baseline_from_stream() {
     done
 }
 
-if [[ -n "$FROM_REF" && -z "$BASELINE_FILE_OVERRIDE" ]]; then
-    if git -C "$REPO_ROOT" cat-file -e "$FROM_REF:.file-size-baseline" 2>/dev/null; then
-        load_baseline_from_stream < <(git -C "$REPO_ROOT" show "$FROM_REF:.file-size-baseline")
+# Decide which git ref's baseline to trust.
+#   --baseline-ref REF  explicit choice (workflow passes this).
+#   otherwise           fall back to FROM_REF for ref-diff runs.
+# Reading the baseline from a ref (rather than the working tree) prevents a
+# change from both growing an over-limit file AND raising its own baseline in
+# the same reviewable diff. The correct ref depends on the event:
+#   * pull_request: read from the PR BASE (FROM_REF) — the reviewer-approved
+#     starting point. A PR that grows a file must not silently raise its base.
+#   * push: read from the pushed commit itself (TO_REF) — the branch already
+#     contains the merge/baseline-refresh, so comparing its files against a
+#     stale PREVIOUS-commit baseline produces false "expansion" failures for
+#     legitimately-refreshed entries. The pushed tree must be self-consistent.
+# When the chosen ref predates the baseline file entirely (e.g. the root-commit
+# fallback used for a branch's first push), fall back to the working-tree
+# baseline, which represents current debt.
+BASELINE_SOURCE_REF="${BASELINE_REF:-$FROM_REF}"
+if [[ -n "$BASELINE_SOURCE_REF" && -z "$BASELINE_FILE_OVERRIDE" ]]; then
+    if git -C "$REPO_ROOT" cat-file -e "$BASELINE_SOURCE_REF:.file-size-baseline" 2>/dev/null; then
+        load_baseline_from_stream < <(git -C "$REPO_ROOT" show "$BASELINE_SOURCE_REF:.file-size-baseline")
+    elif [[ -f "$BASELINE_FILE" ]]; then
+        load_baseline_from_stream < "$BASELINE_FILE"
     fi
 elif [[ -f "$BASELINE_FILE" ]]; then
     load_baseline_from_stream < "$BASELINE_FILE"
@@ -168,6 +217,14 @@ WARNINGS=0
 FAILURES=0
 BASELINED=0
 
+# Materialise the file list into a temp file.  Using a plain process
+# substitution `< <(collect_files)` would silently swallow errors from inside
+# collect_files (bash does not propagate failures out of <(...) to the outer
+# set -euo pipefail context).  Writing to a temp file first makes any failure
+# fatal before the loop begins.
+_FILES_TMP="$(collect_files_to_tmp)"
+trap 'rm -f "$_FILES_TMP"' EXIT
+
 while IFS= read -r rel_path; do
     is_checked_file "$rel_path" || continue
 
@@ -195,7 +252,7 @@ while IFS= read -r rel_path; do
         echo "SOFT-cap warning ($loc LOC >= $WARN_LOC): $rel_path" >&2
         WARNINGS=$((WARNINGS + 1))
     fi
-done < <(collect_files)
+done < "$_FILES_TMP"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 if [[ $FAILURES -gt 0 ]]; then

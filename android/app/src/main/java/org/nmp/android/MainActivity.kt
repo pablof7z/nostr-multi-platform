@@ -61,7 +61,25 @@ class MainActivity : ComponentActivity(), SignInAmberDelegate {
         model.registerExternalSignerHandler { requestJson ->
             signerBridge.handleJson(requestJson)
         }
-        model.start(storagePath = kernelStoragePath())
+        // E2E test seams: adb shell am start -e nmp.test_nsec <nsec>
+        //                                   -e nmp.test_relays '[["ws://…","both"]]'
+        // Both extras are ignored in production (no-op when absent or in
+        // release builds where BuildConfig.DEBUG is false). Kotlin ferries the
+        // raw strings verbatim; all parsing and policy live in Rust (D7).
+        val testNsec: String? = if (BuildConfig.DEBUG)
+            intent?.getStringExtra("nmp.test_nsec") else null
+        val testRelays: String? = if (BuildConfig.DEBUG)
+            intent?.getStringExtra("nmp.test_relays") else null
+        if (testNsec != null || testRelays != null) {
+            model.startWithContext(
+                context = this,
+                storagePath = kernelStoragePath(),
+                testNsec = testNsec,
+                testRelays = testRelays,
+            )
+        } else {
+            model.start(storagePath = kernelStoragePath())
+        }
         setContent {
             MaterialTheme {
                 RootTabs(model, amberDelegate = this)

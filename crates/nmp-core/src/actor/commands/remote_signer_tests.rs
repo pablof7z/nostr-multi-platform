@@ -933,6 +933,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             snapshot_projections,
             // V-38: substrate-generic relay-text interceptor slot.
             crate::substrate::new_relay_text_interceptor_slot(),
+            // ADR-0051: throwaway relay-connected hook slot.
+            crate::substrate::new_relay_connected_hook_slot(),
             bunker_slot,
             // V-14 step b: throwaway connection-state slot.
             crate::actor::new_signer_state_slot(),
@@ -983,6 +985,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             // V-83 — test wiring; nothing outside the actor reads the
             // event-store slot here (private throwaway).
             crate::slots::new_event_store_slot(),
+            // Test-support kernel-clock slot — private throwaway (None).
+            crate::slots::new_kernel_clock_slot(),
         );
     });
 

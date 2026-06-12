@@ -18,3 +18,4 @@ tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+tempfile = "3"

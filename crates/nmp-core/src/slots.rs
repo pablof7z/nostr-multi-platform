@@ -151,6 +151,38 @@ pub fn event_by_id_from_store(
     })
 }
 
+
+/// Synchronous event-by-id read over a directly-held [`Arc<dyn EventStore>`].
+///
+/// Use this over [`event_by_id_from_store`] when the composition root has
+/// already extracted an `Arc<dyn EventStore>` handle (e.g. via
+/// `KernelReducer::event_store_handle`) that must be captured into a closure
+/// outliving any `RefCell` borrow. The wasm32 `EventLookup` closure pattern
+/// in `nmp-app-chirp-web` is the primary caller; the native
+/// `KernelReducer::event_by_id` seam also delegates here so both paths
+/// share one body (no duplication per ADR-rule §4-B).
+///
+/// Returns `None` when `id` is not valid 64-char hex, the event is absent
+/// from the store, or the store returns an error (D6 — graceful degrade).
+#[must_use]
+pub fn event_by_id_from_arc(
+    store: &std::sync::Arc<dyn crate::store::EventStore>,
+    id: &str,
+) -> Option<crate::substrate::KernelEvent> {
+    use crate::kernel::hex_to_pubkey_bytes as hex_to_id_bytes;
+    let key = hex_to_id_bytes(id)?;
+    let stored = store.get_by_id(&key).ok()??;
+    let raw = &stored.raw;
+    Some(crate::substrate::KernelEvent {
+        id: raw.id.clone(),
+        author: raw.pubkey.clone(),
+        kind: raw.kind,
+        created_at: raw.created_at,
+        tags: raw.tags.clone(),
+        content: raw.content.clone(),
+    })
+}
+
 /// Construct a fresh, empty [`RoutingSubstrateSlot`].
 #[must_use]
 pub fn new_routing_substrate_slot() -> RoutingSubstrateSlot {
@@ -193,6 +225,42 @@ pub type PublishResolverSlot = Arc<Mutex<Option<Arc<PublishResolverFactory>>>>;
 #[must_use]
 pub fn new_publish_resolver_slot() -> PublishResolverSlot {
     Arc::new(Mutex::new(None))
+}
+
+// ─── Kernel-clock injection (test-support only) ─────────────────────────────
+//
+// Per-app injectable wall-clock. Production never writes this slot, so the
+// kernel keeps its `SystemClock` default. The test-support FFI seam
+// `NmpApp::set_kernel_clock_for_test` writes an `Arc<dyn Clock>` here; the
+// actor reads it once right after kernel construction (and on `Reset`) and
+// applies it via `Kernel::set_clock`. This lets end-to-end FFI tests that
+// publish two replaceable events stamp strictly-increasing `created_at`
+// deterministically (no wall-clock sleep — D8), exactly mirroring the existing
+// in-crate `Kernel::set_clock` deterministic-replay seam.
+//
+// `Arc<dyn Clock>` is `Send + Sync` (the `Clock` trait requires `Sync` so the
+// host thread that may advance a test clock and the actor thread that reads it
+// can share one `Arc`). The slot is always compiled (a bare `Option` costs
+// nothing on the production path) but only ever written by the test-support
+// FFI method.
+pub type KernelClockSlot = Arc<Mutex<Option<Arc<dyn crate::kernel::Clock>>>>;
+
+/// Construct a fresh, empty [`KernelClockSlot`].
+#[must_use]
+pub fn new_kernel_clock_slot() -> KernelClockSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// Erase a concrete [`crate::kernel::MonotonicSecondClock`] to the
+/// `Arc<dyn Clock>` the [`KernelClockSlot`] stores. Test-support only: lets
+/// the `nmp-ffi` `NmpApp::set_kernel_clock_for_test` seam install a deterministic
+/// clock without naming the crate-private `Clock` trait directly.
+#[cfg(any(test, feature = "test-support"))]
+#[must_use]
+pub fn erase_kernel_clock(
+    clock: Arc<crate::kernel::MonotonicSecondClock>,
+) -> Arc<dyn crate::kernel::Clock> {
+    clock
 }
 
 // ─── Raw-event forwarding policy factory ──────────────────────────────────
