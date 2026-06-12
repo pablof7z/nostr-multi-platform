@@ -631,6 +631,16 @@ impl<S> AppHost for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_nostrconnect_bootstrap_relay(url);
     }
+
+    fn register_identity_change_observer<F>(&self, f: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static,
+    {
+        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
+        // `&self` is safe — all AppHost methods take `&self`.
+        let app: &NmpApp = unsafe { &*self.app };
+        app.register_identity_change_observer(f);
+    }
 }
 
 // ── Drop guard ───────────────────────────────────────────────────────────────

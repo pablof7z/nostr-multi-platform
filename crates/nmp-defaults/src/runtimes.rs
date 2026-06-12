@@ -102,16 +102,21 @@ pub fn register_dm_runtime(app: &impl AppHost) {
 fn register_inbox_projection(app: &impl AppHost) {
     // Raw-tap retirement ladder complete (rules A5, PR-1 + PR-2): the DM inbox
     // projection rides the substrate `IngestParser` seam exclusively.
-    // `replace_ingest_parser` atomically swaps out any previously registered
-    // kind:1059 parser under slot `"nip17.dm_inbox"` (e.g. from a prior account
-    // — fresh projection = fresh in-memory state), so account-switch teardown is
-    // implicit in the replace.
+    //
+    // Issue #1138 — cross-account privacy leak: without the fix below,
+    // `DmInboxProjection` held onto decrypted messages across an account switch
+    // (the `messages` map was never cleared). The fix registers an
+    // identity-change observer (same seam as `op_feed_defaults.rs:308`) that
+    // calls `DmInboxProjection::clear()` whenever the active account changes, so
+    // the previous account's DMs are dropped before the new account's snapshot
+    // is served. Structurally impossible to leak them further.
     //
     // The raw-event tap is NO LONGER used for the DM inbox or for Marmot.
     // Cache-serve feeds the IngestParser exclusively via
     // `EventIngestDispatcher::dispatch`. Marmot rides its own `IngestParser`
     // under slot `"marmot"` for all five TAP_KINDS [443,444,445,1059,30443].
-    let projection = Arc::new(DmInboxProjection::new(app.active_local_keys()));
+    let local_keys = app.active_local_keys();
+    let projection = Arc::new(DmInboxProjection::new(Arc::clone(&local_keys)));
 
     // Register as IngestParser for kind:1059 (NIP-59 gift-wrap), under the
     // "nip17.dm_inbox" slot key. Slot-keyed replace ensures only the prior DM
@@ -124,6 +129,39 @@ fn register_inbox_projection(app: &impl AppHost) {
         "nip17.dm_inbox",
         Arc::clone(&projection) as Arc<dyn nmp_core::substrate::IngestParser>,
     );
+
+    // ── #1138 fix: clear inbox on account switch ─────────────────────────
+    //
+    // The identity-change observer fires on the update-listener thread after
+    // the actor has written the active-account slot. It compares the new
+    // active pubkey (from `local_keys`) to the last-seen one; if it changed,
+    // it calls `DmInboxProjection::clear()` so the previous account's messages
+    // cannot appear in any subsequent `snapshot()` call.
+    //
+    // The `projection` Arc is shared with the snapshot closures below — calling
+    // `clear()` on it is visible to both snapshot paths on the very next tick
+    // after the identity change fires. There is no gap window: the observer
+    // fires BEFORE the next actor snapshot tick, so the cleared state is what
+    // both snapshot closures will see.
+    //
+    // D6 — `DmInboxProjection::clear()` degrades silently on a poisoned mutex.
+    let controller = Arc::new(DmInboxController {
+        local_keys: Arc::clone(&local_keys),
+        last_seen_pubkey: Mutex::new(
+            // Seed with the registration-time active pubkey so the first
+            // identity-change fire is not a false positive (same pattern as
+            // `op_feed_defaults.rs:290` — seed `last_seen` at construction).
+            local_keys
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(|k| k.public_key().to_hex())),
+        ),
+        projection: Arc::clone(&projection),
+    });
+    let controller_for_identity = Arc::clone(&controller);
+    app.register_identity_change_observer(move |_| {
+        controller_for_identity.on_account_change();
+    });
 
     // Typed FlatBuffers sidecar (ADR-0037, Wave A), registered ALONGSIDE the
     // generic `Value` projection under the same key (additive — a `NDMI`-aware
@@ -145,6 +183,84 @@ fn register_inbox_projection(app: &impl AppHost) {
     app.register_snapshot_projection("nmp.nip17.dm_inbox", move || projection.snapshot_json());
 }
 
+/// Lifecycle controller for the DM inbox projection.
+///
+/// Detects active-account changes and clears the inbox projection so
+/// decrypted DMs from the previous account cannot leak into the new
+/// account's snapshot (issue #1138). The projection `Arc` is shared
+/// with the snapshot closures registered in `register_inbox_projection`.
+pub(crate) struct DmInboxController {
+    /// Shared active-local-keys slot — read to determine the current pubkey.
+    local_keys: Arc<Mutex<Option<nostr::Keys>>>,
+    /// Last pubkey we observed — used to detect genuine account changes
+    /// (vs. spurious identity-observer firings).
+    last_seen_pubkey: Mutex<Option<String>>,
+    /// The live projection, shared with both snapshot closures. `clear()` is
+    /// called on this when an account change is detected.
+    projection: Arc<DmInboxProjection>,
+}
+
+impl DmInboxController {
+    /// Construct a controller bound to `local_keys`, seeding the last-seen
+    /// pubkey from the slot's current value so the first observer fire is not
+    /// a false positive.
+    ///
+    /// Exposed `pub(crate)` so the unit tests in `runtimes_dm_inbox_tests` can
+    /// construct a controller without a real `AppHost`.
+    pub(crate) fn new(local_keys: Arc<Mutex<Option<nostr::Keys>>>) -> Self {
+        let initial_pubkey = local_keys
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|k| k.public_key().to_hex()));
+        let projection = Arc::new(DmInboxProjection::new(Arc::clone(&local_keys)));
+        Self {
+            local_keys,
+            last_seen_pubkey: Mutex::new(initial_pubkey),
+            projection,
+        }
+    }
+
+    /// Return a clone of the shared projection `Arc`.
+    ///
+    /// Used by the unit tests to feed DMs into the live projection and inspect
+    /// the snapshot.
+    pub(crate) fn inbox_slot(&self) -> Arc<DmInboxProjection> {
+        Arc::clone(&self.projection)
+    }
+
+    /// Called by the identity-change observer when the active account may have
+    /// changed. Compares the current pubkey in `local_keys` to the last-seen
+    /// value; if they differ, clears the projection and updates the cache.
+    ///
+    /// Returns `true` when a genuine account change was detected and the
+    /// projection was cleared; `false` for a no-op (same pubkey or poisoned
+    /// mutex).
+    ///
+    /// D6 — a poisoned `last_seen_pubkey` mutex is treated as "no prior
+    /// account" so the next sign-in still clears (safe over-clear, not an
+    /// under-clear).
+    pub(crate) fn on_account_change(&self) -> bool {
+        let current = self
+            .local_keys
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|k| k.public_key().to_hex()));
+
+        let mut last = self
+            .last_seen_pubkey
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        if *last == current {
+            return false;
+        }
+
+        *last = current;
+        self.projection.clear();
+        true
+    }
+}
+
 struct DmRuntimeController {
     relay_slot: AppRelaySlot,
     local_keys: Arc<Mutex<Option<nostr::Keys>>>,
@@ -160,9 +276,10 @@ impl DmRuntimeController {
                 .state
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for effect in
-                state.reconcile(relay_list.active_pubkey.as_deref(), &relay_list.read_relay_urls)
-            {
+            for effect in state.reconcile(
+                relay_list.active_pubkey.as_deref(),
+                &relay_list.read_relay_urls,
+            ) {
                 self.apply(effect);
             }
         }
@@ -320,3 +437,8 @@ impl ZapReceiptsRuntimeController {
 #[cfg(test)]
 #[path = "runtimes_zap_tests.rs"]
 mod zap_tests;
+
+// DM inbox account-switch teardown tests — verifies issue #1138 fix.
+#[cfg(test)]
+#[path = "runtimes_dm_inbox_tests.rs"]
+mod dm_inbox_tests;

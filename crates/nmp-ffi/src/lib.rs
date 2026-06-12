@@ -24,10 +24,10 @@ mod action;
 mod capability;
 // Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
 // by any NMP FFI function must be freed via `nmp_free_string`.
-mod free;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
+mod free;
 // D13 sign-and-return — `nmp_app_sign_event_for_return` end-to-end through the
 // actor thread, reading the `signed_events` projection.
 #[cfg(test)]
@@ -101,11 +101,11 @@ pub use action::{
 #[cfg(feature = "native")]
 pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};
 #[cfg(feature = "native")]
-pub use free::nmp_free_string;
-#[cfg(feature = "native")]
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "native")]
 pub use feed::nmp_app_load_older_feed;
+#[cfg(feature = "native")]
+pub use free::nmp_free_string;
 #[cfg(feature = "native")]
 pub use identity::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_remove_account, nmp_app_remove_relay,
@@ -115,13 +115,13 @@ pub use identity::{
 // Use nmp_app_chirp_open_home_feed (Chirp-specific wrapper) or the generic
 // nmp_app_open_contact_feed / nmp_app_close_contact_feed verbs below.
 #[cfg(feature = "native")]
-pub use nip19_ffi::nmp_app_encode_profile;
-#[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use lifecycle::{
     nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
     nmp_app_set_lifecycle_callback,
 };
+#[cfg(feature = "native")]
+pub use nip19_ffi::nmp_app_encode_profile;
 // Publish-lifecycle control-plane FFI (retry/cancel). The one-door-per-
 // capability rule deleted the bespoke event-producing siblings
 // (`nmp_app_publish_signed_event` / `nmp_app_publish_signed_event_to` /
@@ -138,6 +138,10 @@ pub use raw_event_tap::{
 };
 // V-51 phase 2 — routing-trace JSON accessor. Pull-only; the returned
 // pointer is heap-owned and must be freed via `nmp_free_string`.
+#[cfg(feature = "external-signer")]
+pub use external_signer::{
+    nmp_app_deliver_external_signer_response, nmp_app_signin_nip55, nmp_external_signer_init,
+};
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use routing_trace::nmp_app_recent_routing_decisions;
@@ -145,24 +149,26 @@ pub use routing_trace::nmp_app_recent_routing_decisions;
 pub use signer_broker::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,
 };
-#[cfg(feature = "external-signer")]
-pub use external_signer::{
-    nmp_app_deliver_external_signer_response, nmp_app_signin_nip55, nmp_external_signer_init,
-};
-#[cfg(feature = "native")]
-pub use storage::nmp_app_set_storage_path;
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use snapshot::nmp_app_register_snapshot_projection;
+#[cfg(feature = "native")]
+pub use storage::nmp_app_set_storage_path;
 #[cfg(feature = "native")]
 pub use timeline::{
     // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
     // nmp_app_open_thread, nmp_app_close_thread deleted from timeline.rs.
     // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline
     // deleted from identity.rs. Replaced by the pair below.
-    nmp_app_claim_event, nmp_app_claim_profile, nmp_app_close_contact_feed,
-    nmp_app_close_interest, nmp_app_open_contact_feed, nmp_app_open_interest, nmp_app_open_uri,
-    nmp_app_release_event, nmp_app_release_profile,
+    nmp_app_claim_event,
+    nmp_app_claim_profile,
+    nmp_app_close_contact_feed,
+    nmp_app_close_interest,
+    nmp_app_open_contact_feed,
+    nmp_app_open_interest,
+    nmp_app_open_uri,
+    nmp_app_release_event,
+    nmp_app_release_profile,
 };
 
 // ── test-support delta ───────────────────────────────────────────────────
@@ -195,25 +201,23 @@ pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wall
 // constructors, registration helpers, default constants); everything
 // already on the public surface comes through `nmp_core::*` directly.
 use nmp_core::__ffi_internal::{
-    default_registry, dispatch_capability, new_app_relay_slot,
-    new_signer_state_slot, new_bunker_handshake_slot, new_capability_callback_slot,
-    new_event_observer_slot, new_lifecycle_observer_slot, new_raw_event_observer_slot,
-    new_snapshot_projection_slot, register_rust_observer,
-    register_rust_raw_observer, run_actor_with_observers, unregister_observer,
-    unregister_raw_observer, ActionRegistry, CapabilityCallbackSlot, KernelEventObserverSlot,
-    LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
-    DEFAULT_VISIBLE_LIMIT,
+    default_registry, dispatch_capability, new_app_relay_slot, new_bunker_handshake_slot,
+    new_capability_callback_slot, new_event_observer_slot, new_lifecycle_observer_slot,
+    new_raw_event_observer_slot, new_signer_state_slot, new_snapshot_projection_slot,
+    register_rust_observer, register_rust_raw_observer, run_actor_with_observers,
+    unregister_observer, unregister_raw_observer, ActionRegistry, CapabilityCallbackSlot,
+    KernelEventObserverSlot, LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot,
+    DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT,
 };
 // V-38: the `new_wallet_status_slot` re-export moved to `nmp-nip47`; the
 // host (per-app crate) constructs the slot and registers it via
 // `register_snapshot_projection("wallet", …)` itself.
 use nmp_core::slots::{
     event_by_id_from_store, new_active_account_slot, new_active_local_keys_slot,
-    new_event_store_slot, new_mls_local_nsec_slot,
-    new_nostrconnect_bootstrap_relay_slot, new_publish_resolver_slot,
-    new_raw_event_forward_policy_slot, new_routing_substrate_slot, new_routing_trace_slot,
-    new_singleton_event_observer_id_slot, new_storage_path_slot, ActiveAccountSlot,
-    ActiveLocalKeysSlot, EventStoreSlot, MlsLocalNsecSlot,
+    new_event_store_slot, new_mls_local_nsec_slot, new_nostrconnect_bootstrap_relay_slot,
+    new_publish_resolver_slot, new_raw_event_forward_policy_slot, new_routing_substrate_slot,
+    new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
+    ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, MlsLocalNsecSlot,
     NostrConnectBootstrapRelaySlot, PublishResolverSlot, RawEventForwardPolicySlot,
     RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
 };
@@ -1724,7 +1728,10 @@ impl NmpApp {
     pub(crate) fn mailbox_cache_reader(
         &self,
     ) -> Option<std::sync::Arc<dyn nmp_core::substrate::MailboxCache>> {
-        self.mailbox_cache_reader.lock().ok().and_then(|slot| slot.clone())
+        self.mailbox_cache_reader
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
     }
 
     /// Override the active-account bootstrap Tailing self-kinds list.
@@ -2352,7 +2359,6 @@ impl NmpApp {
             correlation_id: None,
         });
     }
-
 }
 
 impl nmp_core::substrate::ActionRegistrar for NmpApp {
@@ -2542,6 +2548,13 @@ impl nmp_core::substrate::AppHost for NmpApp {
 
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {
         NmpApp::set_nostrconnect_bootstrap_relay(self, url)
+    }
+
+    fn register_identity_change_observer<F>(&self, f: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static,
+    {
+        NmpApp::register_identity_change_observer(self, f);
     }
 }
 
