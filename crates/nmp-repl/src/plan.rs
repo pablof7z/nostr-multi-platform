@@ -304,7 +304,7 @@ mod tests {
         let interest = build_interest(&session, &f, &BTreeSet::new()).unwrap();
         assert!(interest.shape.kinds.contains(&1));
         assert!(interest.shape.kinds.contains(&6));
-        assert!(interest.shape.authors.contains(&HEX64_A.to_string()));
+        assert!(interest.shape.authors.contains(HEX64_A));
     }
 
     #[test]
@@ -318,8 +318,8 @@ mod tests {
         follows.insert(HEX64_B.to_string());
         let interest = build_interest(&session, &f, &follows).unwrap();
         assert_eq!(interest.shape.authors.len(), 2);
-        assert!(interest.shape.authors.contains(&HEX64_A.to_string()));
-        assert!(interest.shape.authors.contains(&HEX64_B.to_string()));
+        assert!(interest.shape.authors.contains(HEX64_A));
+        assert!(interest.shape.authors.contains(HEX64_B));
     }
 
     #[test]
