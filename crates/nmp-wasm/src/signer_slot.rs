@@ -71,11 +71,15 @@ impl SignerInstallError {
 /// thread-spawning, no JS-event-loop interaction. The actual signing path is
 /// inside the returned `Arc<dyn Signer>`.
 ///
+/// Returns `(signer, canonical_pubkey_hex)` where `canonical_pubkey_hex` is
+/// the lowercase canonical form of the pubkey — derived from the parsed key
+/// so any uppercase input is normalised before the kernel stores it.
+///
 /// `nip07` is the only kind wired; other kinds are rejected so the host has
 /// an honest, stable error to surface to the user.
 pub(crate) fn install_from_request(
     request: &SetSigner,
-) -> Result<Arc<dyn Signer>, SignerInstallError> {
+) -> Result<(Arc<dyn Signer>, String), SignerInstallError> {
     match request.kind.as_str() {
         "nip07" => {
             let pubkey = PublicKey::from_hex(&request.pubkey_hex).map_err(|e| {
@@ -84,7 +88,8 @@ pub(crate) fn install_from_request(
                     request.pubkey_hex
                 ))
             })?;
-            Ok(Arc::new(Nip07Signer::from_cached_pubkey(pubkey)))
+            let canonical_hex = pubkey.to_hex();
+            Ok((Arc::new(Nip07Signer::from_cached_pubkey(pubkey)), canonical_hex))
         }
         other => Err(SignerInstallError::UnsupportedKind(other.to_string())),
     }
@@ -103,13 +108,19 @@ mod tests {
                     .to_string(),
             correlation_id: "set-1".to_string(),
         };
-        let signer = install_from_request(&request).expect("install must succeed");
+        let (signer, canonical_hex) = install_from_request(&request).expect("install must succeed");
         // Round-trip through the trait — proves we wired Nip07Signer, not
         // some other backend.
         assert_eq!(
             signer.backend(),
             nmp_signers::SignerBackend::Nip07,
             "must install the NIP-07 backend for kind = \"nip07\""
+        );
+        // Canonical hex must be lowercase regardless of input case.
+        assert_eq!(
+            canonical_hex,
+            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+            "canonical_hex must be lowercase"
         );
     }
 
@@ -134,5 +145,24 @@ mod tests {
         };
         let error = install_from_request(&request).expect_err("must fail");
         assert_eq!(error.code(), "invalid_signer_pubkey");
+    }
+
+    #[test]
+    fn install_nip07_uppercase_hex_returns_canonical_lowercase() {
+        // B2 canonicalization guard: an uppercase pubkey must be normalised to
+        // lowercase so `set_active_account` stores a canonical key.
+        let request = SetSigner {
+            kind: "nip07".to_string(),
+            pubkey_hex:
+                "3BF0C63FCB93463407AF97A5E5EE64FA883D107EF9E558472C4EB9AAAEFA459D"
+                    .to_string(),
+            correlation_id: "set-1".to_string(),
+        };
+        let (_signer, canonical_hex) = install_from_request(&request).expect("must succeed");
+        assert_eq!(
+            canonical_hex,
+            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+            "canonical_hex must be lowercase even when input is uppercase"
+        );
     }
 }

@@ -361,10 +361,13 @@ impl WasmRuntime {
     /// to load without waiting for a separate `set_active_account` action.
     fn set_signer(&mut self, request: SetSigner) -> Vec<WorkerEvent> {
         match signer_slot::install_from_request(&request) {
-            Ok(signer) => {
+            Ok((signer, canonical_pubkey)) => {
                 self.signer = Some(signer);
+                // Use the canonical (lowercase) hex from the parsed key, not
+                // the raw wire string — guards against uppercase input that
+                // would seed a non-canonical active_account (B2).
                 let outbound =
-                    self.reducer.borrow_mut().set_active_account(request.pubkey_hex.clone());
+                    self.reducer.borrow_mut().set_active_account(canonical_pubkey);
                 self.fan_outbound(outbound);
                 self.accepted_with_snapshot(
                     "nmp.set_signer".to_string(),
