@@ -35,7 +35,16 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 wasm-bindgen = "0.2.121"
 
+[dev-dependencies]
+# W1 — headless wasm boot test (`tests/wasm_boot.rs`). Version must match the
+# `wasm-bindgen` pin above so the test binary's abi token matches the CLI.
+wasm-bindgen-test = "0.3"
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# W1 — surface any future wasm panic in the browser DevTools console instead
+# of an opaque `RuntimeError: unreachable` swallowed by the worker harness.
+# Net-new to Cargo.lock (was not a transitive dep before).
+console_error_panic_hook = "0.1"
 # `js_sys::Function` (snapshot callback slot) + `js_sys::Promise`/`Date`
 # (used by the wasm-bindgen entrypoint in lib.rs).
 js-sys = "0.3.98"

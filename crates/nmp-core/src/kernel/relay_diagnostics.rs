@@ -27,7 +27,7 @@
 
 use serde::Serialize;
 use std::collections::BTreeMap;
-use std::time::Instant;
+use crate::time::Instant;
 
 mod format;
 

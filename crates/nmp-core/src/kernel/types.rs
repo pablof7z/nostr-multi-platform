@@ -26,9 +26,9 @@ pub(super) struct StoredEvent {
 // ── Profile cache ─────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Default)]
-pub(super) struct Profile {
+pub(in crate::kernel) struct Profile {
     pub(super) event_id: String,
-    pub(super) created_at: u64,
+    pub(in crate::kernel) created_at: u64,
     /// The verbatim display-name value from kind:0
     /// (`display_name` / `displayName` / `name`, first non-empty wins).
     /// Empty string when the parsed metadata carries none of those fields

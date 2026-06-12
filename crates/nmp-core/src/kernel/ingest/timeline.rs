@@ -5,7 +5,7 @@
 //! app-side with the legacy thread view stack.)
 
 use super::super::{Instant, Kernel, NostrEvent, OutboundMessage, RelayRole, StoredEvent};
-use super::{event_short_id, raw_event_from_nostr, raw_tap_should_fire};
+use super::helpers::{event_short_id, raw_event_from_nostr, raw_tap_should_fire};
 
 impl Kernel {
     /// Ingest a host-declared follow-feed event into the local read-cache and timeline.

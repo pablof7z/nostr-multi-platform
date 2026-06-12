@@ -85,7 +85,7 @@ pub(super) fn describe_engine_error(err: &PublishEngineError) -> (String, String
 /// source as `now_ms` — production uses `SystemTime::now()`; tests inject
 /// `now_ms` directly via `*_at` variants on the `Kernel` engine surface.
 pub(super) fn now_epoch_ms() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use crate::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)

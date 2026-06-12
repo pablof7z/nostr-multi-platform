@@ -183,6 +183,11 @@ pub mod slots;
 pub mod subs;
 pub mod substrate;
 pub mod tags;
+// Target-conditional time shim: `web_time` on wasm32, `std::time` on native.
+// Wasm-reachable kernel code imports `Instant`, `SystemTime`, `UNIX_EPOCH`
+// from here so `performance.now()` / `Date.now()` back them on wasm32
+// (where the `std` implementations abort). See `time.rs` for rationale.
+pub mod time;
 mod update_envelope;
 pub mod util;
 

@@ -4,7 +4,7 @@
 //! 500-LOC ceiling. These functions are production code (`pub(super)`) and are
 //! part of the normal build.
 
-use std::time::Instant;
+use crate::time::Instant;
 
 use crate::planner::{
     HintSource, InterestId, InterestLifecycle, InterestScope, LogicalInterest, RelayHint,

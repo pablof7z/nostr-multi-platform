@@ -164,6 +164,13 @@ nmp-store = { path = "../nmp-store" }
 # foundation with NO back-edge into nmp-core — keeps the dep graph acyclic.
 nmp-planner = { path = "../nmp-planner" }
 
+# W1 — wasm-safe time shim. `web-time 1.1.0` is already in the workspace
+# Cargo.lock (transitive via egui/winit) — no new version enters the tree.
+# On wasm32 `Instant::now()` → `performance.now()`, `SystemTime::now()` →
+# `Date.now()`. On native the crate re-exports `std::time` verbatim.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1.1"
+
 [dev-dependencies]
 proptest = "1"
 # Step 8 phase A — the `outbox_perf` example installs the ring crypto
