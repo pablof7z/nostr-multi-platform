@@ -271,10 +271,8 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
         return;
     };
     let action = json!({ "op": "publish_key_package" });
-    // TODO(PR-2): surface this Err via last_op_error snapshot — today the
-    // publish_key_package result (e.g. "no write relays configured") is
-    // swallowed, so a sign-in with no relays yet configured silently produces
-    // no key package with no host-visible diagnostic.
+    // TODO(PR-2): surface this Err via last_op_error snapshot — the result
+    // (e.g. "no write relays configured") is swallowed today.
     let _ = handle
         .projection
         .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs()));
@@ -509,18 +507,10 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
         app,
     }));
 
-    // Shared autopublish tail: if the caller set `pending_mls_autopublish`
-    // (via `nmp_app_signin_nsec`, `restore/sign_in_local_nsec_with_keyring`,
-    // or `nmp_app_create_new_account`), publish a key package immediately so
-    // every sign-in path — including test-nsec injection and nsec sign-in —
-    // produces an MLS-capable account without extra host plumbing.
-    //
-    // Idempotence: the flag is consumed by `take_pending_mls_autopublish`
-    // (atomic swap → false) in ONE step, so a re-register of an account that
-    // already published (e.g. an account switch back) does NOT spam new key
-    // packages.  The flag is set at sign-in time, consumed here at register
-    // time — the window is exactly one register call.
-    // `app_ref` is the same borrow established earlier in this function.
+    // Shared autopublish tail (PR-4): every local-key sign-in path sets
+    // `pending_mls_autopublish`; consuming it HERE (shared by both register
+    // entry points) makes every account MLS-capable on register. `take_*` is a
+    // one-shot atomic swap, so a re-register does NOT republish.
     if app_ref.take_pending_mls_autopublish() {
         publish_key_package_on_register(handle);
     }
@@ -651,3 +641,6 @@ pub(crate) fn c_str_opt(ptr: *const c_char) -> Option<String> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod autopublish_tests;
