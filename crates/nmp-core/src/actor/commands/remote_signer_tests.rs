@@ -16,7 +16,7 @@ use nostr::nips::nip19::FromBech32;
 use nostr::{EventBuilder, Keys, SecretKey, Timestamp};
 
 use super::*;
-use crate::actor::commands::identity::{sign_active, IdentityRuntime};
+use crate::actor::commands::identity::{sign_active_nonblocking, IdentityRuntime};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::remote_signer::RemoteSignerHandle;
@@ -282,7 +282,7 @@ fn bunker_handshake_dto_pre_computes_view_flags_and_label() {
 }
 
 #[test]
-fn sign_active_routes_through_remote_signer_when_active() {
+fn sign_active_nonblocking_routes_through_remote_signer_when_active() {
     let (mut id, mut kernel) = fresh();
     let (handle, count) = stub_signer();
     let expected_pk = handle.pubkey_hex();
@@ -295,8 +295,8 @@ fn sign_active_routes_through_remote_signer_when_active() {
     );
     assert_eq!(count.load(Ordering::Relaxed), 0);
 
-    // Drive a publish through the actor path: it must call `sign_active`,
-    // which the stub records via `sign_count`.
+    // Drive a publish through the actor path: it must call
+    // `sign_active_nonblocking`, which the stub records via `sign_count`.
     let unsigned = UnsignedEvent {
         pubkey: "ignored-by-signer".into(),
         kind: 1,
@@ -304,7 +304,11 @@ fn sign_active_routes_through_remote_signer_when_active() {
         content: "stage-3 hello".into(),
         created_at: 1_700_000_000,
     };
-    let signed = sign_active(&id, &unsigned).expect("stub sign ok");
+    let signed = sign_active_nonblocking(&id, &unsigned)
+        .expect("sign_active_nonblocking ok")
+        .poll()
+        .expect("stub signer resolves Ready immediately")
+        .expect("stub sign ok");
     assert_eq!(count.load(Ordering::Relaxed), 1);
     assert_eq!(signed.unsigned.pubkey, expected_pk);
     assert_eq!(signed.unsigned.kind, 1);

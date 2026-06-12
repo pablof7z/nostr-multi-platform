@@ -40,8 +40,8 @@
 //!   — once the handshake completes (the broker has the user's pubkey from
 //!   `get_public_key`), it hands the fully-initialized handle to the actor. The
 //!   actor inserts it into `IdentityRuntime.remote_signers`, applies the
-//!   stashed `make_active` decision, and routes all subsequent `sign_active`
-//!   through the handle's `sign(unsigned).wait(timeout)` call.
+//!   stashed `make_active` decision, and routes all subsequent signing
+//!   through the handle's non-blocking `sign_active_nonblocking` path.
 //!
 //! The actor never imports `nmp-signers`; it only touches the trait. NIP-42
 //! is currently cleared while a remote signer is active (the broker's
