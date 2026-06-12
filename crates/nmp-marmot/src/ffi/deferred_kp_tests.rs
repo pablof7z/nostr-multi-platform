@@ -1,19 +1,11 @@
 //! Deferred KP-completion tests (PR-1 — marmot-create-fix ladder).
 //!
-//! Proves the three key properties of the deferred-op mechanism:
-//!
-//! 1. A `create_group` / `invite` with a missing KP parks the op and returns
-//!    `{"pending":true}` when a `correlation_id` is provided.
-//! 2. After the missing KP arrives via `ingest_signed_event_core`, the parked
-//!    op executes and the terminal verdict is recorded under the ORIGINAL
-//!    `correlation_id`. The verdict is pushed via `push_actor_command`; in
-//!    tests `app` is null so the live channel send is a no-op, but the
-//!    `#[cfg(test)]` capture seam (`drain_captured_commands`) records a
-//!    `(verdict, correlation_id)` projection of the stream so we can assert
-//!    EXACTLY ONE terminal verdict per correlation_id.
-//! 3. Expiry: after `PENDING_OP_EXPIRY_SECS` have elapsed without the KP
-//!    arriving, the next wall-clock edge (a KP ingest OR a snapshot) evicts
-//!    the op with a terminal failure.
+//! Proves: (1) a missing-KP `create_group`/`invite` with a `correlation_id`
+//! parks the op and returns `{"pending":true}`; (2) the parked op runs on KP
+//! arrival and records its verdict under the ORIGINAL `correlation_id` (the
+//! `#[cfg(test)]` capture seam `drain_captured_commands` lets us assert
+//! EXACTLY ONE terminal per id, since `app` is null in tests); (3) a parked op
+//! expires on the next wall-clock edge (KP ingest OR snapshot) past 60 s.
 
 use crate::projection::ops::{self, ingest_signed_event_core};
 use crate::projection::pending::PENDING_OP_EXPIRY_SECS;

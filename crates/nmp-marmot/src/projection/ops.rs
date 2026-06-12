@@ -7,61 +7,35 @@
 //!
 //! ## Outbound relay seam — CLOSED (publish direction)
 //!
-//! Every op that produces relay-bound events now publishes them
-//! INTERNALLY via [`crate::projection::publish`] (the workspace-internal
-//! `nmp_ffi::NmpApp::publish_signed_explicit` kernel API, called against
-//! the retained `&NmpApp`) — there is no Swift relay path. Per-kind
-//! routing:
+//! Every op publishes its relay-bound events INTERNALLY via
+//! [`crate::projection::publish`] (`nmp_ffi::NmpApp::publish_signed_explicit`
+//! against the retained `&NmpApp`) — no Swift relay path. Per-kind routing:
+//! kind:445 → `publish_group_pinned` (group's relay-pinned list; a cache
+//! MISS degrades to author-outbox `Auto`); kind:30443 + kind:443 key-package
+//! → `publish_explicit` (`Auto` / NIP-65 outbox), dual-published; kind:1059
+//! gift-wrap Welcome → the GROUP's relays as a documented inbox-routing
+//! APPROXIMATION (published verbatim, NIP-59 ephemeral key, never re-signed).
+//! Publish is fire-and-forget (success == "submitted"); the op result's
+//! signed event JSON is INFORMATIONAL only.
 //!
-//! * **kind:445** (group message / commit / evolution_event / post-join
-//!   self-update) → `publish_group_pinned` → the group's configured relay
-//!   list (`Explicit`). Marmot groups are relay-pinned. The relay list is
-//!   recovered from the `create_group` envelope and
-//!   `Welcome::group_relays`; a cache MISS degrades to author-outbox
-//!   `Auto` (documented limitation — those events previously did not reach
-//!   relays at all, so this is strictly better, not a regression).
-//! * **kind:30443 + kind:443** key-package → `publish_explicit`
-//!   (`Auto` / NIP-65 outbox is correct for key packages). BOTH are
-//!   dual-published through 2026-05-31.
-//! * **kind:1059** gift-wrap Welcome → the Chirp layer has no NIP-65
-//!   inbox-relay resolver for invitees, so these route to the GROUP's
-//!   relays as a documented inbox-routing APPROXIMATION (group members
-//!   fetch from there). The gift-wrap is already signed with an ephemeral
-//!   key (NIP-59) — published verbatim, never re-signed.
+//! ## Inbound ingest seam — CLOSED (receive direction)
 //!
-//! Publish is fire-and-forget: success == "submitted to the kernel
-//! publish pipeline". The op result still carries the signed event JSON
-//! but it is now INFORMATIONAL only.
-//!
-//! ## Inbound ingest seam — CLOSED (this is the receive direction)
-//!
-//! [`ingest_signed_event_core`] is the single code path that drives a
-//! signed inbound event into `MarmotService` (kind:1059 →
-//! `unwrap_and_process_welcome`; kind:445 → `process_message`; seed the
-//! `group_id→relays` cache from `Welcome::group_relays`). It now has TWO
-//! callers sharing that one path: the automatic
-//! [`crate::projection::tap`] raw-event observer (registered against the
-//! retained `*mut NmpApp` in `nmp_marmot_register`; the kernel
-//! delivers every accepted inbound signed kind:1059/445 to it) and the
-//! back-compat `{"op":"ingest_signed_event"}` dispatch op. The tap makes
-//! welcomes / messages received from relays surface in the next
-//! `nmp_marmot_snapshot` with no Swift involvement. This was
-//! the last open seam.
+//! [`ingest_signed_event_core`] is the single path driving a signed inbound
+//! event into `MarmotService` (kind:1059 → `unwrap_and_process_welcome`;
+//! kind:445 → `process_message`; kind:443/30443 → cache KP + retry deferred
+//! ops). Two callers share it: the automatic [`crate::projection::tap`]
+//! raw-event observer and the back-compat `{"op":"ingest_signed_event"}`
+//! dispatch op.
 //!
 //! ## Pending-commit discipline (mdk-api.md §7.7)
 //!
-//! `create_group` / `add_members` / `remove_members` / `self_update`
-//! produce an MLS pending commit that MUST be resolved exactly once.
-//! Resolution policy (unchanged — publish is still fire-and-forget so we
-//! cannot observe relay success/failure synchronously):
-//!
-//! * The signed `evolution_event` / `welcome_rumors` / gift-wraps are
-//!   fully built, submitted to the kernel publish pipeline, then we
-//!   `commit()` the pending change eagerly (the events are produced +
-//!   handed to the kernel). If a relay publish later fails, the caller
-//!   re-dispatches the op (idempotent for `send`; for group-state ops a
-//!   fresh `self_update`/`invite` re-converges the epoch). We never wedge
-//!   the group, and `clear` is reachable via the `clear_pending` op.
+//! `create_group` / `add_members` / `remove_members` / `self_update` produce
+//! an MLS pending commit that MUST be resolved exactly once. Since publish is
+//! fire-and-forget (no synchronous relay success/failure), we build + submit
+//! the signed `evolution_event` / `welcome_rumors` / gift-wraps then `commit()`
+//! the pending change EAGERLY. A later relay failure → the caller re-dispatches
+//! (idempotent for `send`; a fresh `self_update`/`invite` re-converges the
+//! epoch). We never wedge the group; `clear` is reachable via `clear_pending`.
 //! * `leave_group` is SelfRemove: `commit()` is a documented no-op there.
 
 use nostr::{EventBuilder, JsonUtil, Kind, PublicKey, RelayUrl};
@@ -71,7 +45,6 @@ use std::collections::BTreeSet;
 use mdk_core::prelude::{GroupId, NostrGroupConfigData};
 
 use crate::projection::payload::MarmotMessageRow;
-use crate::projection::pending::StoreResult;
 use crate::projection::state::{hex_encode, parse_signed_event, InnerHandle};
 
 /// `{"ok":false,"error":"…"}` — local copy of the FFI shell's `err`
@@ -221,83 +194,6 @@ fn fill_key_packages_from_cache(
     (needs, fetch_pubkeys)
 }
 
-/// When a KP-gated op hits `key_package_unavailable` AND a `correlation_id`
-/// is available (the action came from the typed dispatch pipeline), park the
-/// op in the pending store and return a `{"pending":true}` envelope instead of
-/// a terminal failure.
-///
-/// The `DispatchHostOp` arm in `nmp-core` interprets `{"pending":true}` as
-/// "leave the action in `Requested` state; the handler will record the
-/// terminal verdict later". When no `correlation_id` is available (REPL /
-/// tests), fall back to the old terminal `{"ok":false}` response.
-///
-/// Single-flight: if the SAME op + missing-pubkeys fingerprint is already
-/// parked, the duplicate is rejected and we return a `{"pending":true}`
-/// referencing the already-pending `correlation_id` — no double-create.
-fn park_or_report_kp_unavailable(
-    h: &mut InnerHandle<'_>,
-    action_value: &Value,
-    op_tag: &str,
-    needs: Vec<String>,
-    fetch_pubkeys: &[PublicKey],
-    correlation_id: Option<&str>,
-    now_secs: u64,
-) -> Value {
-    // Always fire the fetch interest (idempotent at the kernel planner level).
-    let fetch_requested = h.request_key_package_fetch(fetch_pubkeys);
-    let needs_pubkeys_hex: Vec<String> = fetch_pubkeys.iter().map(PublicKey::to_hex).collect();
-
-    let Some(cid) = correlation_id else {
-        // No correlation_id — the call came from outside the typed dispatch
-        // pipeline (REPL / in-process tests). Fall back to the old terminal
-        // soft-fail: the caller has no spinner to keep alive.
-        return json!({
-            "ok": false,
-            "error": "key_package_unavailable",
-            "needs": needs,
-            "needs_pubkeys_hex": needs_pubkeys_hex,
-            "fetch_requested": fetch_requested,
-            "hint": "key package lookup was requested; results arrive via the kernel tap",
-        });
-    };
-
-    let action_json = serde_json::to_string(action_value)
-        .unwrap_or_else(|_| action_value.to_string());
-
-    let store_result = h.park_pending_op(
-        cid.to_string(),
-        action_json,
-        op_tag,
-        needs_pubkeys_hex.clone(),
-        now_secs,
-    );
-
-    match store_result {
-        StoreResult::Stored => {
-            // `{"pending":true}` — no `ok` field. The `DispatchHostOp` arm
-            // checks for `"pending":true` BEFORE the `ok` routing so it
-            // skips recording a terminal verdict and leaves the action in
-            // `Requested` state.
-            json!({
-                "pending": true,
-                "correlation_id": cid,
-                "needs_pubkeys_hex": needs_pubkeys_hex,
-                "fetch_requested": fetch_requested,
-            })
-        }
-        StoreResult::Duplicate { existing_correlation_id } => {
-            // An identical op is already pending. Reject the duplicate —
-            // the host's spinner for the first dispatch is still alive.
-            json!({
-                "pending": true,
-                "duplicate": true,
-                "correlation_id": existing_correlation_id,
-                "needs_pubkeys_hex": needs_pubkeys_hex,
-                "fetch_requested": fetch_requested,
-            })
-        }
-    }
-}
 
 /// Newest-N decrypted application messages for one group, newest first.
 ///
@@ -418,37 +314,24 @@ fn publish_key_package(
     }))
 }
 
-/// NIP-59 gift-wrap each kind:444 welcome rumor for its invitee and
-/// publish the resulting signed kind:1059 INTERNALLY.
+/// NIP-59 gift-wrap each kind:444 welcome rumor for its invitee and publish
+/// the resulting signed kind:1059 INTERNALLY.
 ///
-/// Recipient pairing: `welcome_rumors[i]` is paired with
-/// `kp_events[i].pubkey` — the key-package event's author IS the invitee
-/// MDK built that welcome for. This is the ground truth MDK used (more
-/// reliable than the `invitee_npubs` hint, which is caller-supplied and
-/// may be reordered / approximate). If the lengths diverge we still wrap
-/// every rumor we can pair and skip the rest (best-effort; never panic).
+/// Recipient pairing: `welcome_rumors[i]` pairs with `kp_events[i].pubkey`
+/// (the KP author IS the invitee MDK built that welcome for — ground truth,
+/// more reliable than the caller-supplied `invitee_npubs` hint). Length
+/// divergence → wrap every pairable rumor, skip the tail (never panic).
 ///
-/// Inbox-routing APPROXIMATION (documented limitation): the Chirp Rust
-/// layer has no NIP-65 inbox-relay resolver for arbitrary invitees, so
-/// the kind:1059 is published to the GROUP's relays rather than the
-/// recipient's personal inbox relays. Group members fetch welcomes from
-/// the group relays, so delivery still converges; a dedicated inbox
-/// resolver would tighten this.
+/// Inbox-routing APPROXIMATION: no NIP-65 inbox resolver for invitees, so the
+/// kind:1059 goes to the GROUP's relays (members fetch from there). **D10
+/// provenance guard**: a group-relay cache miss does NOT degrade to
+/// author-outbox `Auto` — [`publish_to`](crate::projection::publish::publish_to)
+/// refuses an unpinned kind:1059 (it would leak the Welcome's existence to the
+/// author's public outbox). The signed JSON still appears in the INFORMATIONAL
+/// return; only the wire dispatch is suppressed.
 ///
-/// **D10 provenance guard** — a group-relay cache miss (`group_relays` is
-/// empty) NO LONGER degrades to author-outbox `Auto`. The
-/// [`publish_to`](crate::projection::publish::publish_to) guard refuses to
-/// dispatch a kind:1059 envelope without an explicit relay pin (publishing
-/// it to the author's public NIP-65 outbox would leak the existence of an
-/// MLS Welcome to every public relay the author advertises). The signed
-/// kind:1059 JSON still appears in the INFORMATIONAL return so callers
-/// have ground-truth audit of what was built; only the wire dispatch is
-/// suppressed. To restore delivery in that edge case the group's relays
-/// must be cached (`cache_group_relays`) before the welcomes go out.
-///
-/// Returns the signed kind:1059 JSONs (INFORMATIONAL only — already
-/// submitted). A `wrap_welcome` failure is surfaced as `Err` (D6 → the
-/// op result becomes `{"ok":false,...}`; no panic crosses the FFI).
+/// Returns the signed kind:1059 JSONs (INFORMATIONAL — already submitted). A
+/// `wrap_welcome` failure → `Err` (D6 → `{"ok":false,...}`; no panic crosses FFI).
 fn wrap_and_publish_welcomes(
     h: &InnerHandle<'_>,
     group_relays: &[RelayUrl],
@@ -504,8 +387,7 @@ fn create_group(
         let (needs, fetch_pubkeys) =
             fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
         if !needs.is_empty() {
-            return Ok(park_or_report_kp_unavailable(
-                h,
+            return Ok(h.park_or_report_kp_unavailable(
                 v,
                 "create_group",
                 needs,
@@ -557,8 +439,7 @@ fn invite(
         let (needs, fetch_pubkeys) =
             fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
         if !needs.is_empty() {
-            return Ok(park_or_report_kp_unavailable(
-                h,
+            return Ok(h.park_or_report_kp_unavailable(
                 v,
                 "invite",
                 needs,
@@ -771,48 +652,11 @@ pub(crate) fn ingest_signed_event_core(
         // as a fallback when the caller supplies no explicit kp_events.
         let pubkey_hex = event.pubkey.to_hex();
         h.service().cache_key_package(event.clone());
-        // After caching, re-check any pending ops that were blocked on this
-        // pubkey's KP. Ready ops are re-dispatched and their terminal verdicts
-        // are recorded via the actor command channel (D8 — no polling, no
-        // timer; this fires exactly once per KP arrival). Expiry is also
-        // checked here (wall-clock gate; `now_secs` is caller-supplied so
-        // tests can use synthetic time without spurious expiry evictions).
-        let ready = h.handle_key_package_cached(&pubkey_hex, now_secs);
-        for outcome in ready {
-            // Re-run the original op through the full dispatch path.
-            // `correlation_id` is Some so deferred verdicts are NOT written
-            // again if the op still lacks some other KP — that shouldn't happen
-            // (the pending store only fires when the missing set is empty) but
-            // the dispatch path is defensive anyway.
-            let op_value: Value = serde_json::from_str(&outcome.action_json)
-                .unwrap_or_else(|_| json!({"op": "__invalid__"}));
-            let result = dispatch(h, &op_value, now_secs, Some(&outcome.correlation_id));
-            // Record the terminal verdict under the ORIGINAL correlation_id.
-            // `{"pending":true}` means re-dispatch hit yet another missing KP
-            // (should not happen — the pending store only returns an op when
-            // the missing set is empty — but guard defensively).
-            let ok = result.get("ok").and_then(Value::as_bool);
-            let pending = result.get("pending").and_then(Value::as_bool).unwrap_or(false);
-            if !pending {
-                let cmd = if ok == Some(true) {
-                    nmp_core::ActorCommand::RecordActionSuccess {
-                        correlation_id: outcome.correlation_id,
-                        result_json: None,
-                    }
-                } else {
-                    let reason = result
-                        .get("error")
-                        .and_then(Value::as_str)
-                        .unwrap_or("deferred op failed")
-                        .to_string();
-                    nmp_core::ActorCommand::RecordActionFailure {
-                        correlation_id: outcome.correlation_id,
-                        reason,
-                    }
-                };
-                h.push_actor_command(cmd);
-            }
-        }
+        // After caching, re-run any pending ops unblocked by this KP and age
+        // out expired ones (D8 wall-clock gate; `now_secs` is caller-supplied
+        // so tests can use synthetic time). The retry + terminal-verdict
+        // bookkeeping lives in the `deferred` module.
+        h.retry_unblocked_ops(&pubkey_hex, now_secs);
         Ok(Some(
             json!({ "kind": kind, "cached": true, "author": pubkey_hex }),
         ))

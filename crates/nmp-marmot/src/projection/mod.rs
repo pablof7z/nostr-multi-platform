@@ -19,6 +19,7 @@
 //!   `ops::ingest_signed_event_core`).
 
 pub mod action;
+pub mod deferred;
 pub mod display;
 pub mod handler;
 pub mod ops;

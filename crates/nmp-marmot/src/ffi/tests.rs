@@ -176,8 +176,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
                 h,
                 &json!({ "op": "publish_key_package",
                          "relays": ["wss://t.relay"] }),
-                1_000,
-                        None,
+                1_000, None,
             )
         })
         .unwrap();
@@ -204,8 +203,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
                     "invitee_npubs": [bob_keys.public_key().to_hex()],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                1_001,
-                        None,
+                1_001, None,
             )
         })
         .unwrap();
@@ -233,8 +231,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
                 &json!({ "op": "send",
                          "group_id_hex": group_id_hex,
                          "text": "hello marmot" }),
-                1_003,
-                        None,
+                1_003, None,
             )
         })
         .unwrap();
@@ -267,8 +264,7 @@ fn create_group_without_key_packages_reports_seam() {
                     "relays": ["wss://t.relay"],
                     "invitee_npubs": ["abc"],
                 }),
-                1,
-                        None,
+                1, None,
             )
         })
         .unwrap();
@@ -308,8 +304,7 @@ fn create_group_partial_key_package_set_reports_only_missing_invitees() {
                     ],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                1,
-                        None,
+                1, None,
             )
         })
         .unwrap();
@@ -342,8 +337,7 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
                     "name": "g",
                     "relays": ["wss://t.relay"],
                 }),
-                1,
-                        None,
+                1, None,
             )
         })
         .unwrap()["group_id_hex"]
@@ -364,8 +358,7 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
                     ],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                2,
-                        None,
+                2, None,
             )
         })
         .unwrap();
@@ -473,8 +466,7 @@ fn ingest_parser_kind_1059_welcome_reaches_service_and_snapshot() {
             ops::dispatch(
                 h,
                 &json!({ "op": "ingest_signed_event", "event_json": gift_json }),
-                3,
-                        None,
+                3, None,
             )
         })
         .unwrap();
@@ -793,8 +785,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
                     "group_id_hex": &group_id_hex,
                     "text": "parity proof",
                 }),
-                1_001,
-                        None,
+                1_001, None,
             )
         })
         .expect("projection mutex should not be poisoned");
@@ -852,8 +843,7 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
             ops::dispatch(
                 h,
                 &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
-                1_000,
-                        None,
+                1_000, None,
             )
         })
         .unwrap();
@@ -870,8 +860,7 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
                     "invitee_npubs": [bob_keys.public_key().to_hex()],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                1_001,
-                        None,
+                1_001, None,
             )
         })
         .unwrap();
@@ -900,8 +889,7 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
                     "group_id_hex": &group_id_hex,
                     "text": "all-groups map test",
                 }),
-                1_002,
-                        None,
+                1_002, None,
             )
         })
         .unwrap();
@@ -954,8 +942,7 @@ fn projection_slot_cleared_on_unregister_emits_empty() {
         ops::dispatch(
             h,
             &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
-            1_000,
-                None,
+            1_000, None,
         )
     });
     let create_r = proj
@@ -969,8 +956,7 @@ fn projection_slot_cleared_on_unregister_emits_empty() {
                     "invitee_npubs": [bob_keys.public_key().to_hex()],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                1_001,
-                        None,
+                1_001, None,
             )
         })
         .unwrap();
