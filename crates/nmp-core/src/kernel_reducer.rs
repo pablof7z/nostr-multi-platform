@@ -174,9 +174,10 @@ impl KernelReducer {
         self.kernel.mark_publish_relay_unavailable(relay_url);
     }
 
-    /// Pump the publish-engine retry queue **and** drain any pending
-    /// subscription lifecycle triggers. Mirrors the native actor's idle-tick
-    /// order (publish pump → lifecycle drain; see `actor/mod.rs:2086`).
+    /// Pump all three idle drains in native parity order: pending view
+    /// requests → lifecycle drain → publish pump. Mirrors the native actor's
+    /// idle-tick sequence at `actor/mod.rs:2086–2098` (pending_view_requests),
+    /// `2107–2120` (lifecycle drain), and `2161–2173` (publish pump).
     ///
     /// The wasm32 driver calls this from its `gloo-timers` periodic interval
     /// (1 Hz is sufficient; retry deadlines are seconds-scale) so transient
@@ -185,16 +186,40 @@ impl KernelReducer {
     /// `claim_event` / `claim_profile` compile into REQ frames without
     /// waiting for the next relay event.
     ///
+    /// `pending_view_requests()` is placed first (before the lifecycle drain)
+    /// to preserve the native M1-CLOSE-before-M2-REQ ordering: any pending
+    /// M1 CLOSE frames must be enqueued before the M2 planner opens new subs
+    /// (spec §3.1 placement rationale, also documented at the lifecycle-drain
+    /// site in `actor/mod.rs:2099–2106`). It also ensures time-gated work
+    /// (`contacts_deadline`, F-TTL `drain_pending_reverify`, deferred AUTH-gate
+    /// REQs) fires on every idle tick rather than only when inbound traffic
+    /// arrives. Note: `pending_view_requests()` internally calls
+    /// `maybe_open_timeline()` which uses `Instant::now()`, but that path
+    /// already runs on every inbound frame via `handle_relay_frame` (line 114),
+    /// so this call adds no new wasm32 `Instant` exposure.
+    ///
     /// # Parity note
     ///
-    /// Native also drains `pending_view_requests()` and calls
-    /// `poll_claim_expansion(Instant::now())` on each tick; those two drains
-    /// are omitted here because `poll_claim_expansion` requires
-    /// `std::time::Instant` (wasm32-incompatible at time of writing) and
-    /// `pending_view_requests` is already drained by `handle_relay_connected`.
+    /// Native also calls `poll_claim_expansion(Instant::now())` at
+    /// `actor/mod.rs:2133–2145` between the lifecycle drain and the publish
+    /// pump; that drain is omitted here because `poll_claim_expansion` takes
+    /// `now: Instant` as a **caller-supplied argument**, which would force a
+    /// new `Instant::now()` call site on wasm32 — and `std::time::Instant::now()`
+    /// panics on `wasm32-unknown-unknown` (see issue #1143 / #1009).
     pub fn tick(&mut self) -> Vec<OutboundMessage> {
-        let mut outbound = self.kernel.tick_publish_engine_for_now();
+        // 1. Pending view requests: mirrors actor/mod.rs:2086-2098.
+        //    Drains time-gated work (contacts_deadline, F-TTL reverify, deferred
+        //    AUTH-gate REQs from deferred_outbound) that would otherwise only
+        //    fire when inbound traffic arrives on a quiet socket.
+        let mut outbound = self.kernel.pending_view_requests();
+        // 2. Lifecycle drain: mirrors actor/mod.rs:2107-2120.
+        //    Compiles queued CompileTriggers into REQ/CLOSE WireFrames.
+        //    Placed after pending_view_requests to ensure M1 CLOSE frames are
+        //    enqueued before M2 opens new subs (spec §3.1).
         outbound.extend(self.kernel.drain_lifecycle_outbound());
+        // 3. Publish pump: mirrors actor/mod.rs:2161-2173.
+        //    Retries in-flight publish frames whose retry deadline has elapsed.
+        outbound.extend(self.kernel.tick_publish_engine_for_now());
         self.kernel.partition_auth_paused(outbound)
     }
 
@@ -286,7 +311,8 @@ impl KernelReducer {
     /// site (`KernelReducer::any_relay_connected` exposes this). When
     /// `can_send = false` the claim parks in `profile_requests.pending` and
     /// is drained by `handle_relay_connected` → `pending_view_requests` on
-    /// the next relay connect event.
+    /// the next relay connect event, or by the periodic `tick()` if the relay
+    /// is already connected when the claim arrives.
     pub fn claim_profile(
         &mut self,
         pubkey: String,
@@ -421,4 +447,8 @@ impl Default for KernelReducer {
 #[cfg(test)]
 #[path = "kernel_reducer/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "kernel_reducer/tests_snapshot_claims.rs"]
+mod tests_snapshot_claims;
 
