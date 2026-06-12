@@ -65,8 +65,9 @@ a Promise.
 Control events (`HelloAccepted`, `RuntimeStatus`, `ActionAccepted`,
 `CapabilityFailure`, `Error`) cross the boundary as JSON-serialised
 `WorkerEvent` arrays. The host pattern-matches on the `"type"` discriminator
-field and each event carries a `correlation_id` matching the originating
-request.
+field and each event except `HelloAccepted` carries a `correlation_id` matching
+the originating request (`RuntimeStatus` and `Error` carry it as an
+`Option` — absent for spontaneous emissions not tied to a specific request).
 
 Kernel state snapshots (`WorkerEvent::UpdateBytes`) are **not** included in
 the JSON array. They are delivered as raw `Uint8Array` bytes through the
