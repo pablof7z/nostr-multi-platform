@@ -71,39 +71,6 @@ fn follow_feed_interest(pubkey: &str, kinds: &BTreeSetInner<u32>) -> LogicalInte
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn contact_list_authors_interest_id_is_restart_stable() {
-        let kinds = BTreeSetInner::from([1u32, 6u32]);
-        // Restart-stable: the same (pubkey, kinds) pair hashes identically
-        // across calls.
-        assert_eq!(
-            contact_list_authors_interest_id(
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                &kinds,
-            ),
-            contact_list_authors_interest_id(
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                &kinds,
-            ),
-        );
-        // Distinct pubkeys never collide.
-        assert_ne!(
-            contact_list_authors_interest_id("alice", &kinds),
-            contact_list_authors_interest_id("bob", &kinds),
-        );
-        // Distinct kinds sets for the same pubkey never collide, so switching
-        // the host-declared kinds withdraws the old id and pushes a fresh one.
-        assert_ne!(
-            contact_list_authors_interest_id("alice", &BTreeSetInner::from([1u32, 6u32])),
-            contact_list_authors_interest_id("alice", &BTreeSetInner::from([1u32])),
-        );
-    }
-}
-
 impl Kernel {
     /// T140 — Register (or replace) M2 `LogicalInterest`s for the active
     /// account's follow set.
@@ -392,5 +359,38 @@ impl Kernel {
                     new_follows: Vec::new(),
                 });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contact_list_authors_interest_id_is_restart_stable() {
+        let kinds = BTreeSetInner::from([1u32, 6u32]);
+        // Restart-stable: the same (pubkey, kinds) pair hashes identically
+        // across calls.
+        assert_eq!(
+            contact_list_authors_interest_id(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                &kinds,
+            ),
+            contact_list_authors_interest_id(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                &kinds,
+            ),
+        );
+        // Distinct pubkeys never collide.
+        assert_ne!(
+            contact_list_authors_interest_id("alice", &kinds),
+            contact_list_authors_interest_id("bob", &kinds),
+        );
+        // Distinct kinds sets for the same pubkey never collide, so switching
+        // the host-declared kinds withdraws the old id and pushes a fresh one.
+        assert_ne!(
+            contact_list_authors_interest_id("alice", &BTreeSetInner::from([1u32, 6u32])),
+            contact_list_authors_interest_id("alice", &BTreeSetInner::from([1u32])),
+        );
     }
 }

@@ -65,24 +65,6 @@ fn relay_tag(relay_url: &str) -> String {
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn relay_tag_is_restart_stable() {
-        assert_eq!(relay_tag("wss://relay.example"), "0684d673");
-        assert_eq!(
-            relay_tag("wss://relay.example"),
-            relay_tag("wss://relay.example")
-        );
-        assert_ne!(
-            relay_tag("wss://relay.example"),
-            relay_tag("wss://other.example")
-        );
-    }
-}
-
 impl Kernel {
     pub(crate) fn claim_profile(
         &mut self,
@@ -333,4 +315,22 @@ impl Kernel {
         requests
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relay_tag_is_restart_stable() {
+        assert_eq!(relay_tag("wss://relay.example"), "0684d673");
+        assert_eq!(
+            relay_tag("wss://relay.example"),
+            relay_tag("wss://relay.example")
+        );
+        assert_ne!(
+            relay_tag("wss://relay.example"),
+            relay_tag("wss://other.example")
+        );
+    }
 }
