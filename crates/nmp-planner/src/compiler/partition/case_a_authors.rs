@@ -50,8 +50,7 @@ use super::inbox_helper::route_p_tags_to_inbox;
 use super::{MailboxCache, RelayEntry};
 use crate::{
     interest::{
-        InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord, Pubkey,
-        RelayUrl,
+        InterestShape, LogicalInterest, NaddrCoord, Pubkey, RelayUrl,
     },
     plan::{RoutingSource, UserConfiguredCategory},
 };
