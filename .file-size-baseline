@@ -127,7 +127,7 @@ docs/perf/pending-user-decisions.md	1406
 docs/research/applesauce-app-relay-model.md	535
 docs/testing/nmpui-website-screenshot-checklist.md	574
 ios/Chirp/Chirp/Bridge/KernelBridge.swift	2126
-ios/Chirp/Chirp/Bridge/KernelModel.swift	1041
+ios/Chirp/Chirp/Bridge/KernelModel.swift	1051
 ios/Chirp/Chirp/Bridge/MarmotBridge.swift	550
 ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift	961
 ios/Chirp/ChirpTests/OpFeedDecoderTests.swift	552

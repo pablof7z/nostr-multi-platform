@@ -40,3 +40,8 @@ nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp", default-features = fa
 nmp-chirp-config = { path = "../../apps/chirp/nmp-chirp-config" }
 jni = "0.21"
 serde_json = "1.0"
+# Secret zeroization for the restored nsec that crosses the JNI seam (D13).
+# This is a standalone workspace (empty `[workspace]` table above), so the dep
+# is pinned explicitly rather than inherited; the version tracks the parent
+# workspace constraint (`zeroize = "1"`, resolves to 1.8.2 in Cargo.lock).
+zeroize = "1"
