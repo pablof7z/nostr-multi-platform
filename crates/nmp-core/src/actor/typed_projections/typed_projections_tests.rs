@@ -1,14 +1,14 @@
 //! Proof tests for the actor-owned Tier-1 typed projections.
 //!
 //! These call the SAME builders (`bunker_handshake_typed` /
-//! `nip46_onboarding_typed`) the actor registers via `register_typed` — not a
-//! hand-duplicated closure — so they prove the wired behaviour: each typed
-//! entry lands (and decodes back) exactly when its JSON counterpart is present,
-//! and is absent otherwise.
+//! `nip46_onboarding_typed` / `signer_state_typed`) the actor registers via
+//! `register_typed` — not a hand-duplicated closure — so they prove the wired
+//! behaviour: each typed entry lands (and decodes back) exactly when its JSON
+//! counterpart is present, and is absent otherwise.
 
 use super::{
     bunker_handshake_typed, decode_bunker_handshake, decode_nip46_onboarding,
-    nip46_onboarding_typed,
+    decode_signer_state, nip46_onboarding_typed, signer_state_typed,
 };
 use crate::actor::commands::{new_bunker_handshake_slot, BunkerHandshakeDto, BunkerHandshakeSlot};
 
@@ -141,4 +141,63 @@ fn nip46_onboarding_ready_stage_is_terminal_success() {
     assert_eq!(decoded.stage_kind.as_deref(), Some("ready"));
     assert!(decoded.is_terminal_success);
     assert!(!decoded.is_in_flight);
+}
+
+// --- signer_state: conditionally present (ADR-0048 D6) ----------------------
+
+#[test]
+fn signer_state_absent_when_slot_idle() {
+    let slot = crate::actor::commands::new_signer_state_slot();
+    // Mirrors the generic closure's JSON `null` while no remote-signer session
+    // is active: no typed sidecar entry is emitted.
+    assert!(
+        signer_state_typed(&slot).is_none(),
+        "no signer_state sidecar entry while the slot is None"
+    );
+}
+
+#[test]
+fn signer_state_present_and_decodes_when_slot_some() {
+    use crate::actor::commands::{new_signer_state_slot, SignerStateDto};
+
+    let slot = new_signer_state_slot();
+    *slot.lock().unwrap() = Some(SignerStateDto::new(
+        "nip55".to_string(),
+        "awaiting_approval".to_string(),
+        None,
+    ));
+
+    let entry = signer_state_typed(&slot).expect("entry present when slot is Some");
+    assert_eq!(entry.key, "signer_state");
+    assert_eq!(entry.schema_id, "signer_state");
+    assert_eq!(entry.schema_version, 1);
+    assert_eq!(entry.file_identifier, "KSST");
+
+    let decoded = decode_signer_state(&entry.payload).expect("round-trips");
+    assert_eq!(decoded.signer_kind, "nip55");
+    assert_eq!(decoded.state, "awaiting_approval");
+    assert!(decoded.is_awaiting_approval);
+    assert!(!decoded.is_ready);
+    assert!(!decoded.is_reconnecting);
+    assert!(!decoded.is_unavailable);
+    assert!(!decoded.is_failed);
+    assert_eq!(decoded.reason, None);
+}
+
+#[test]
+fn signer_state_typed_mirrors_json_for_nip46_degraded_state() {
+    use crate::actor::commands::{new_signer_state_slot, SignerStateDto};
+
+    let slot = new_signer_state_slot();
+    *slot.lock().unwrap() = Some(SignerStateDto::from_nip46_connection_state(
+        "reconnecting",
+        Some("connection reset by peer".to_string()),
+    ));
+
+    let entry = signer_state_typed(&slot).expect("present");
+    let decoded = decode_signer_state(&entry.payload).expect("round-trips");
+    assert_eq!(decoded.signer_kind, "nip46");
+    assert_eq!(decoded.state, "reconnecting");
+    assert!(decoded.is_reconnecting);
+    assert_eq!(decoded.reason.as_deref(), Some("connection reset by peer"));
 }

@@ -116,6 +116,12 @@ zeroize.workspace = true
 # the slot. Matches the pattern in the other protocol crates (e.g. `nmp-nip01`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
+# `nmp-codegen` supplies `SNAPSHOT_PROJECTIONS` for the registry-coverage gate
+# (`ffi::tests::producer_completeness::every_codegen_registry_key_is_registered_at_runtime`)
+# — every json_key the Swift codegen promises to decode must be a key the
+# kernel actually registers at runtime. Dev-only: the registry is a codegen
+# artifact, never a production dependency of the app crate.
+nmp-codegen = { path = "../../../crates/nmp-codegen" }
 # (The `mdk-sqlite-storage` + `mdk-core` dev-deps were relocated alongside
 # the Marmot FFI smoke tests to `nmp-marmot`'s `src/ffi/tests.rs`; Chirp no
 # longer references any MLS types directly.)

@@ -62,13 +62,15 @@ data class SnapshotProjections(
     // no underscores, so convertFromSnakeCase leaves them unchanged.
     @SerialName("nmp.marmot.snapshot") val marmotSnapshot: MarmotSnapshot? = null,
     @SerialName("nmp.marmot.messages") val marmotMessages: Map<String, List<MarmotMessage>> = emptyMap(),
-    // V-14 / #963: relay-layer bunker connection health. Null when no bunker
-    // session is active (local-key accounts). Drives the signer relay badge
-    // in the accounts screen. Rust pre-computes every flag (ADR-0032 pattern):
-    // isConnected = green, isReconnecting = amber (wait), isFailed = red
-    // (re-auth required). No typed sidecar needed on Android — JSON fallback
-    // is the primary path here.
-    @SerialName("bunker_connection_state") val bunkerConnectionState: BunkerConnectionState? = null,
+    // ADR-0048 D6 (generalises V-14 / #963): unified remote-signer health.
+    // Null when no remote-signer session is active (local-key accounts).
+    // Covers BOTH NIP-46 bunker sessions and NIP-55 (Amber) external-signer
+    // sessions — `signerKind` discriminates. Drives the signer health badge
+    // in the sign-in screen. Rust pre-computes every flag (ADR-0032 pattern):
+    // isReady = green, isAwaitingApproval/isReconnecting = amber (wait),
+    // isUnavailable/isFailed = red (re-auth required). No typed sidecar needed
+    // on Android — JSON fallback is the primary path here.
+    @SerialName("signer_state") val signerState: SignerState? = null,
 )
 
 /**
@@ -188,26 +190,40 @@ data class DmInboxSnapshot(
 )
 
 /**
- * NIP-46 relay-layer connection health — `projections["bunker_connection_state"]`.
- * V-14 / #963. Null when no bunker session is active (local-key accounts).
+ * Unified remote-signer health — `projections["signer_state"]`.
+ * ADR-0048 D6 (generalises the V-14 / #963 `bunker_connection_state`
+ * projection). Null when no remote-signer session is active (local-key
+ * accounts). Covers BOTH NIP-46 bunker sessions and NIP-55 (Amber)
+ * external-signer sessions.
  *
- * Rust pre-computes every flag from the relay-socket state in
- * `nmp-signer-broker` so the UI never string-compares `state` (ADR-0032
- * relay_diagnostics pattern). Three states drive distinct presentation:
- *  - `isConnected` → green badge ("Connected")
+ * Rust pre-computes every flag (NIP-46: relay-socket state in
+ * `nmp-signer-broker`; NIP-55: Intent/ContentResolver outcomes) so the UI
+ * never string-compares `state` (ADR-0032 relay_diagnostics pattern). The
+ * states drive distinct presentation:
+ *  - `isReady` → green badge ("Connected")
+ *  - `isAwaitingApproval` → amber badge ("Waiting for approval…") — approve in
+ *    the signer app, do not re-auth
  *  - `isReconnecting` → amber badge ("Reconnecting…") — wait, do not re-auth
+ *  - `isUnavailable` → red badge ("Signer unavailable") — re-authenticate
  *  - `isFailed` → red badge ("Connection failed") — re-authenticate
  *
- * `reason` carries an optional human-readable error message on
- * `isReconnecting` / `isFailed` transitions.
+ * `reason` carries an optional human-readable error message on degraded
+ * transitions.
  */
 @Serializable
-data class BunkerConnectionState(
-    /** Raw state token: `"connected"` | `"reconnecting"` | `"failed"`. */
+data class SignerState(
+    /** Signer backend discriminator: `"nip46"` | `"nip55"` | `"local"`. */
+    @SerialName("signer_kind") val signerKind: String = "",
+    /**
+     * Raw state token: `"ready"` | `"awaiting_approval"` | `"reconnecting"`
+     * | `"unavailable"` | `"failed"`.
+     */
     val state: String = "",
     /** Optional human-readable error/reason text; null when absent. */
     val reason: String? = null,
-    @SerialName("is_connected") val isConnected: Boolean = false,
+    @SerialName("is_ready") val isReady: Boolean = false,
+    @SerialName("is_awaiting_approval") val isAwaitingApproval: Boolean = false,
     @SerialName("is_reconnecting") val isReconnecting: Boolean = false,
+    @SerialName("is_unavailable") val isUnavailable: Boolean = false,
     @SerialName("is_failed") val isFailed: Boolean = false,
 )

@@ -143,7 +143,7 @@ fn fresh() -> (IdentityRuntime, Kernel) {
     (
         IdentityRuntime::new(
             new_bunker_handshake_slot(),
-            crate::actor::new_bunker_connection_state_slot(),
+            crate::actor::new_signer_state_slot(),
         ),
         Kernel::new(DEFAULT_VISIBLE_LIMIT),
     )
@@ -491,7 +491,7 @@ fn snapshot_carries_bunker_handshake_value() {
     let bunker_slot = new_bunker_handshake_slot();
     let id = IdentityRuntime::new(
         Arc::clone(&bunker_slot),
-        crate::actor::new_bunker_connection_state_slot(),
+        crate::actor::new_signer_state_slot(),
     );
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
@@ -543,7 +543,7 @@ fn frame_carries_bunker_handshake_typed_sidecar_only_when_some() {
     let bunker_slot = new_bunker_handshake_slot();
     let id = IdentityRuntime::new(
         Arc::clone(&bunker_slot),
-        crate::actor::new_bunker_connection_state_slot(),
+        crate::actor::new_signer_state_slot(),
     );
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
@@ -632,33 +632,34 @@ fn frame_carries_nip46_onboarding_typed_sidecar_always() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// V-14 step b: BunkerConnectionState projection tests.
+// ADR-0048 D6: `signer_state` projection tests (generalised from the V-14
+// step b `bunker_connection_state` projection).
 //
-// These tests prove the `"bunker_connection_state"` projection is driven by
-// REAL transitions through the identity-runtime setter and that the snapshot
-// reflects them correctly. No live socket required — the command handler
-// (`bunker_connection_state_changed`) is called directly.
+// These tests prove the `"signer_state"` projection is driven by REAL
+// transitions through the identity-runtime setter and that the snapshot
+// reflects them correctly. No live socket required — the command handlers
+// (`bunker_connection_state_changed` for the NIP-46 broker path,
+// `nip55_signer_state_changed` for the NIP-55 capability path) are called
+// directly.
 // ──────────────────────────────────────────────────────────────────────────
 
 #[test]
-fn bunker_connection_state_projection_reflects_transitions() {
-    use crate::actor::commands::{
-        bunker_connection_state_changed, new_bunker_connection_state_slot,
-    };
+fn signer_state_projection_reflects_transitions() {
+    use crate::actor::commands::{bunker_connection_state_changed, new_signer_state_slot};
     use crate::actor::new_bunker_handshake_slot;
 
-    // Wire up a connection-state slot + identity runtime, register the
-    // `"bunker_connection_state"` projection closure, bind it onto a kernel.
-    let conn_state_slot = new_bunker_connection_state_slot();
-    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&conn_state_slot));
+    // Wire up a signer-state slot + identity runtime, register the
+    // `"signer_state"` projection closure, bind it onto a kernel.
+    let signer_state_slot = new_signer_state_slot();
+    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&signer_state_slot));
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let projections = crate::kernel::new_snapshot_projection_slot();
     {
-        let slot = Arc::clone(&conn_state_slot);
+        let slot = Arc::clone(&signer_state_slot);
         projections
             .lock()
             .expect("registry lock")
-            .register("bunker_connection_state", move || {
+            .register("signer_state", move || {
                 let s = slot.lock().unwrap_or_else(|e| e.into_inner());
                 s.as_ref()
                     .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
@@ -667,10 +668,10 @@ fn bunker_connection_state_projection_reflects_transitions() {
     }
     kernel.set_snapshot_projection_handle(projections);
 
-    // 1. Initial state: projection key is null (no active bunker session).
+    // 1. Initial state: projection key is null (no active remote-signer session).
     let snapshot = kernel.make_update_value_for_test(true);
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"],
+        snapshot["projections"]["signer_state"],
         serde_json::Value::Null,
         "idle slot must project null: {snapshot}"
     );
@@ -680,20 +681,25 @@ fn bunker_connection_state_projection_reflects_transitions() {
     bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
     let snapshot = kernel.make_update_value_for_test(true);
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["state"],
+        snapshot["projections"]["signer_state"]["state"],
         serde_json::json!("ready"),
         "connected transition must surface as 'ready' in projection: {snapshot}"
     );
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["is_ready"],
+        snapshot["projections"]["signer_state"]["signer_kind"],
+        serde_json::json!("nip46"),
+        "the NIP-46 broker path must stamp signer_kind=nip46"
+    );
+    assert_eq!(
+        snapshot["projections"]["signer_state"]["is_ready"],
         serde_json::json!(true)
     );
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["is_reconnecting"],
+        snapshot["projections"]["signer_state"]["is_reconnecting"],
         serde_json::json!(false)
     );
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["is_failed"],
+        snapshot["projections"]["signer_state"]["is_failed"],
         serde_json::json!(false)
     );
 
@@ -706,16 +712,16 @@ fn bunker_connection_state_projection_reflects_transitions() {
     );
     let snapshot = kernel.make_update_value_for_test(true);
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["state"],
+        snapshot["projections"]["signer_state"]["state"],
         serde_json::json!("reconnecting"),
         "relay flap must project reconnecting: {snapshot}"
     );
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["is_reconnecting"],
+        snapshot["projections"]["signer_state"]["is_reconnecting"],
         serde_json::json!(true)
     );
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["reason"],
+        snapshot["projections"]["signer_state"]["reason"],
         serde_json::json!("connection reset by peer")
     );
 
@@ -728,36 +734,34 @@ fn bunker_connection_state_projection_reflects_transitions() {
     );
     let snapshot = kernel.make_update_value_for_test(true);
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["state"],
+        snapshot["projections"]["signer_state"]["state"],
         serde_json::json!("failed"),
         "permanent failure must project failed: {snapshot}"
     );
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["is_failed"],
+        snapshot["projections"]["signer_state"]["is_failed"],
         serde_json::json!(true)
     );
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["reason"],
+        snapshot["projections"]["signer_state"]["reason"],
         serde_json::json!("403 Forbidden")
     );
 }
 
 #[test]
-fn bunker_connection_state_slot_reflects_direct_write() {
+fn signer_state_slot_reflects_direct_write() {
     // Drive `bunker_connection_state_changed` (the pub command handler) directly
     // to prove the slot writer pre-computes flags correctly without going
     // through the actor loop. Uses the test-accessor to read back the slot.
-    use crate::actor::commands::{
-        bunker_connection_state_changed, new_bunker_connection_state_slot,
-    };
+    use crate::actor::commands::{bunker_connection_state_changed, new_signer_state_slot};
     use crate::actor::new_bunker_handshake_slot;
 
-    let conn_state_slot = new_bunker_connection_state_slot();
-    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&conn_state_slot));
+    let signer_state_slot = new_signer_state_slot();
+    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&signer_state_slot));
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Idle: slot is None.
-    assert!(id.bunker_connection_state_for_test().is_none());
+    assert!(id.signer_state_for_test().is_none());
 
     // Write "reconnecting" via the command handler.
     bunker_connection_state_changed(
@@ -767,9 +771,10 @@ fn bunker_connection_state_slot_reflects_direct_write() {
         Some("timeout".to_string()),
     );
     let dto = id
-        .bunker_connection_state_for_test()
+        .signer_state_for_test()
         .expect("slot must be Some after reconnecting");
     assert_eq!(dto.state, "reconnecting");
+    assert_eq!(dto.signer_kind, "nip46");
     assert!(dto.is_reconnecting);
     assert!(!dto.is_ready);
     assert!(!dto.is_failed);
@@ -778,7 +783,7 @@ fn bunker_connection_state_slot_reflects_direct_write() {
     // Overwrite with "connected" (mapped to "ready" by ADR-0048 D6).
     bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
     let dto = id
-        .bunker_connection_state_for_test()
+        .signer_state_for_test()
         .expect("slot must be Some after connected");
     assert!(dto.is_ready, "connected maps to is_ready=true");
     assert!(!dto.is_reconnecting);
@@ -793,12 +798,60 @@ fn bunker_connection_state_slot_reflects_direct_write() {
         Some("403 Forbidden".to_string()),
     );
     let dto = id
-        .bunker_connection_state_for_test()
+        .signer_state_for_test()
         .expect("slot must be Some after failed");
     assert!(dto.is_failed);
     assert!(!dto.is_ready);
     assert!(!dto.is_reconnecting);
     assert_eq!(dto.reason.as_deref(), Some("403 Forbidden"));
+}
+
+#[test]
+fn signer_state_slot_reflects_nip55_transitions() {
+    // ADR-0048 D6: the NIP-55 capability path writes into the SAME slot via
+    // `nip55_signer_state_changed`, stamping `signer_kind = "nip55"` and the
+    // NIP-55-specific states (`awaiting_approval` / `unavailable`).
+    use crate::actor::commands::{new_signer_state_slot, nip55_signer_state_changed};
+    use crate::actor::new_bunker_handshake_slot;
+
+    let signer_state_slot = new_signer_state_slot();
+    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&signer_state_slot));
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Intent round-trip in flight → "awaiting_approval" drives the host's
+    // "Waiting for Amber…" inline affordance.
+    nip55_signer_state_changed(&id, &mut kernel, "awaiting_approval".to_string(), None);
+    let dto = id
+        .signer_state_for_test()
+        .expect("slot must be Some after awaiting_approval");
+    assert_eq!(dto.signer_kind, "nip55");
+    assert_eq!(dto.state, "awaiting_approval");
+    assert!(dto.is_awaiting_approval);
+    assert!(!dto.is_ready);
+    assert!(!dto.is_unavailable);
+
+    // Signer app uninstalled mid-session → "unavailable" prompts re-auth.
+    nip55_signer_state_changed(
+        &id,
+        &mut kernel,
+        "unavailable".to_string(),
+        Some("signer app not installed".to_string()),
+    );
+    let dto = id
+        .signer_state_for_test()
+        .expect("slot must be Some after unavailable");
+    assert!(dto.is_unavailable);
+    assert!(!dto.is_awaiting_approval);
+    assert_eq!(dto.reason.as_deref(), Some("signer app not installed"));
+
+    // Approval granted → "ready".
+    nip55_signer_state_changed(&id, &mut kernel, "ready".to_string(), None);
+    let dto = id
+        .signer_state_for_test()
+        .expect("slot must be Some after ready");
+    assert!(dto.is_ready);
+    assert_eq!(dto.signer_kind, "nip55");
+    assert!(dto.reason.is_none());
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -882,7 +935,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             crate::substrate::new_relay_text_interceptor_slot(),
             bunker_slot,
             // V-14 step b: throwaway connection-state slot.
-            crate::actor::new_bunker_connection_state_slot(),
+            crate::actor::new_signer_state_slot(),
             // Typed slot constructor.
             crate::kernel::new_app_relay_slot(),
             Arc::new(std::sync::Mutex::new(None)),

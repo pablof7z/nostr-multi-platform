@@ -18,7 +18,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import org.nmp.android.model.AccountSummary
-import org.nmp.android.model.BunkerConnectionState
+import org.nmp.android.model.SignerState
 import org.nmp.android.model.ChirpOpFeedSnapshot
 import org.nmp.android.model.KernelUpdate
 import org.nmp.android.model.RelayStatus
@@ -72,15 +72,17 @@ class KernelModel : ViewModel() {
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /**
-     * V-14 / #963: NIP-46 relay-layer connection health. Null while no bunker
-     * session is active (local-key accounts — the steady state). Collected from
-     * `projections.bunkerConnectionState`; decoded via the JSON fallback path
-     * (Android does not use a typed FlatBuffers sidecar for this projection).
-     * `isConnected` = green, `isReconnecting` = amber (wait), `isFailed` = red
-     * (re-auth). Drives `BunkerConnectionStateRow` in the accounts screen.
+     * ADR-0048 D6 (generalises V-14 / #963): unified remote-signer health.
+     * Null while no remote-signer session is active (local-key accounts — the
+     * steady state). Covers BOTH NIP-46 bunker and NIP-55 (Amber) sessions.
+     * Collected from `projections.signerState`; decoded via the JSON fallback
+     * path (Android does not use a typed FlatBuffers sidecar for this
+     * projection). `isReady` = green, `isAwaitingApproval`/`isReconnecting` =
+     * amber (wait), `isUnavailable`/`isFailed` = red (re-auth). Drives
+     * `SignerStateRow` in the sign-in screen.
      */
-    val bunkerConnectionState: StateFlow<BunkerConnectionState?> =
-        state.map { it.projections?.bunkerConnectionState }
+    val signerState: StateFlow<SignerState?> =
+        state.map { it.projections?.signerState }
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var started = false

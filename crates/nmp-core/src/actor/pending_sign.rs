@@ -17,7 +17,7 @@ use super::SignContinuation;
 use crate::publish::PublishTarget;
 use crate::substrate::SignedEvent;
 use nmp_signer_iface::SignerOp;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Wall-clock budget for a parked remote-sign op — re-exported from the leaf
 /// `nmp-signer-iface` crate so the constant is available both here (native-
@@ -43,12 +43,12 @@ pub(crate) struct PendingSign {
     /// can route p-tagged publishes without another signature change.
     pub p_tags: Vec<String>,
     /// D3 routing mode for the publish that fires once the broker turns the
-    /// sign request around. `Auto` (the [`Self::new`] default) routes via the
-    /// NIP-65 outbox resolver — every kind:1/3/7 publish path. `Explicit` is
-    /// the host-pinned opt-out used by [`Self::with_target`]: a NIP-29 group
-    /// action must reach the group's own relays, not the author's outbox, so
-    /// the target has to survive the remote-sign park (otherwise a bunker
-    /// user's group event would silently fall back to the wrong relay set).
+    /// sign request around. `Auto` routes via the NIP-65 outbox resolver —
+    /// every kind:1/3/7 publish path. `Explicit` is the host-pinned opt-out:
+    /// a NIP-29 group action must reach the group's own relays, not the
+    /// author's outbox, so the target has to survive the remote-sign park
+    /// (otherwise a bunker user's group event would silently fall back to the
+    /// wrong relay set).
     pub target: PublishTarget,
     /// Action `correlation_id` to report in `action_results` once the parked
     /// publish settles, when it differs from the eventual event id. Set on the
@@ -64,79 +64,25 @@ pub(crate) struct PendingSign {
 }
 
 impl PendingSign {
-    /// Park a sign op whose publish routes via the NIP-65 outbox resolver
-    /// (`PublishTarget::Auto`) — the back-compat path every kind:1/3/7
-    /// publish handler uses. Uses `PENDING_SIGN_TIMEOUT` (5s) as the deadline.
-    #[must_use]
-    pub fn new(op: SignerOp<SignedEvent>, p_tags: Vec<String>) -> Self {
-        Self::with_target(op, p_tags, PublishTarget::Auto)
-    }
-
-    /// Park a sign op whose publish routes to an EXPLICIT relay set
-    /// (`PublishTarget::Explicit`). Used by host-pinned action executors
-    /// (e.g. NIP-29 group actions) so the relay pin survives a remote-signer
-    /// round-trip — the idle-tick poll loop publishes through
-    /// `Kernel::publish_signed_to` with this exact target.
-    #[must_use]
-    pub fn with_target(
-        op: SignerOp<SignedEvent>,
-        p_tags: Vec<String>,
-        target: PublishTarget,
-    ) -> Self {
-        Self {
-            op,
-            p_tags,
-            target,
-            correlation_id_override: None,
-            deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
-        }
-    }
-
-    /// Park a sign op (NIP-65 `Auto` routing) that carries an action
-    /// `correlation_id` to report once the publish settles. Used by the
-    /// `PublishRaw` dispatch path so a bunker user's dispatched note settles
-    /// under the registry-minted id the host is waiting on, not the event id.
-    #[must_use]
-    pub fn with_correlation_id(
-        op: SignerOp<SignedEvent>,
-        p_tags: Vec<String>,
-        correlation_id_override: Option<String>,
-    ) -> Self {
-        Self::with_target_and_correlation_id(
-            op,
-            p_tags,
-            PublishTarget::Auto,
-            correlation_id_override,
-        )
-    }
-
-    /// Park a sign op with both a routing target and an optional action
-    /// correlation id. This is the lossless path for dispatched publishes
-    /// whose `PublishTarget` is not always `Auto`.
-    #[must_use]
-    pub fn with_target_and_correlation_id(
-        op: SignerOp<SignedEvent>,
-        p_tags: Vec<String>,
-        target: PublishTarget,
-        correlation_id_override: Option<String>,
-    ) -> Self {
-        Self {
-            op,
-            p_tags,
-            target,
-            correlation_id_override,
-            deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
-        }
-    }
-
-    /// Park a sign op with an explicit wall-clock deadline sourced from the
-    /// active signer's `RemoteSignerHandle::sign_timeout()` budget.
+    /// Park a sign op.
     ///
-    /// Use this in dispatch arms that have access to the `IdentityRuntime` and
-    /// want the per-op deadline (ADR-0048 D3). All other paths use the
-    /// `PENDING_SIGN_TIMEOUT` default via the constructors above.
+    /// `deadline` is the per-op drop-dead time sourced from the signing
+    /// account's `RemoteSignerHandle::sign_timeout()` budget via
+    /// [`crate::actor::commands::IdentityRuntime::sign_deadline_for`] /
+    /// `active_sign_deadline` (ADR-0048 D3 — NIP-46 = 5s, NIP-55 = 90s). This
+    /// is the ONLY constructor: every park site computes the deadline from the
+    /// identity runtime; there is no hard-coded-5s variant to silently strand
+    /// a NIP-55 publish (no-compat-alias rule — the legacy `new` /
+    /// `with_target` / `with_correlation_id` family is gone).
+    ///
+    /// `target` routes the eventual publish: `PublishTarget::Auto` for the
+    /// NIP-65 outbox resolver (every kind:1/3/7 path), `Explicit` for
+    /// host-pinned action executors (e.g. NIP-29 group actions) so the relay
+    /// pin survives the remote-sign round-trip. `correlation_id_override`
+    /// carries a dispatched action's registry-minted id so the publish
+    /// settles under the id the host is waiting on.
     #[must_use]
-    pub fn with_deadline(
+    pub fn new(
         op: SignerOp<SignedEvent>,
         p_tags: Vec<String>,
         target: PublishTarget,
@@ -214,28 +160,15 @@ pub(crate) struct PendingSignReturn {
 impl PendingSignReturn {
     /// Park a sign-and-return op whose resolved outcome lands in the
     /// `signed_events` projection under `correlation_id` (the
-    /// `SignEventForReturn` seam). Deadlined `PENDING_SIGN_TIMEOUT` (5s) into
-    /// the future — identical budget to [`PendingSign::new`].
-    #[must_use]
-    pub fn new(op: SignerOp<SignedEvent>, correlation_id: String) -> Self {
-        Self {
-            op,
-            sink: PendingSignReturnSink::SignedEventsProjection { correlation_id },
-            deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
-        }
-    }
-
-    /// Park a sign-and-return op into the `signed_events` projection with an
-    /// explicit deadline sourced from `RemoteSignerHandle::sign_timeout()`.
+    /// `SignEventForReturn` seam).
     ///
-    /// ADR-0048 D3 path: dispatch arms call `identity.active_sign_deadline()`
-    /// and pass it here to honour per-signer timeouts (NIP-55 = 90s).
+    /// `deadline` is the per-op drop-dead time sourced from the signing
+    /// account's `RemoteSignerHandle::sign_timeout()` budget (ADR-0048 D3 —
+    /// dispatch arms call `identity.active_sign_deadline()` /
+    /// `sign_deadline_for(..)`; NIP-46 = 5s, NIP-55 = 90s). There is no
+    /// hard-coded-budget variant.
     #[must_use]
-    pub fn new_with_deadline(
-        op: SignerOp<SignedEvent>,
-        correlation_id: String,
-        deadline: Instant,
-    ) -> Self {
+    pub fn new(op: SignerOp<SignedEvent>, correlation_id: String, deadline: Instant) -> Self {
         Self {
             op,
             sink: PendingSignReturnSink::SignedEventsProjection { correlation_id },
@@ -244,21 +177,10 @@ impl PendingSignReturn {
     }
 
     /// Park a sign-and-return op whose resolved outcome is handed to a boxed
-    /// continuation (the generic `SignEventForAccount` port). Uses the default
-    /// `PENDING_SIGN_TIMEOUT` (5s) budget.
+    /// continuation (the generic `SignEventForAccount` port). Same per-op
+    /// `deadline` contract as [`Self::new`].
     #[must_use]
-    pub fn with_continuation(op: SignerOp<SignedEvent>, continuation: SignContinuation) -> Self {
-        Self {
-            op,
-            sink: PendingSignReturnSink::Continuation(Some(continuation)),
-            deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
-        }
-    }
-
-    /// Park a sign-and-return op with a continuation and an explicit deadline
-    /// sourced from `RemoteSignerHandle::sign_timeout()` (ADR-0048 D3).
-    #[must_use]
-    pub fn with_continuation_and_deadline(
+    pub fn with_continuation(
         op: SignerOp<SignedEvent>,
         continuation: SignContinuation,
         deadline: Instant,
@@ -338,6 +260,14 @@ mod tests {
     use crate::substrate::{SignedEvent, UnsignedEvent};
     use nmp_signer_iface::{SignerError, SignerOp};
     use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// A deadline `PENDING_SIGN_TIMEOUT` into the future — what a park site
+    /// computes for a local/NIP-46 signer via `sign_deadline_for` /
+    /// `active_sign_deadline`.
+    fn fresh_deadline() -> Instant {
+        Instant::now() + PENDING_SIGN_TIMEOUT
+    }
 
     /// Minimal valid `SignedEvent` for exercising the success poll path.
     fn make_signed_event() -> SignedEvent {
@@ -360,7 +290,13 @@ mod tests {
     #[test]
     fn poll_returns_none_while_pending() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
-        let mut ps = PendingSign::new(SignerOp::Pending(rx), vec![]);
+        let mut ps = PendingSign::new(
+            SignerOp::Pending(rx),
+            vec![],
+            PublishTarget::Auto,
+            None,
+            fresh_deadline(),
+        );
         assert!(
             ps.op.poll().is_none(),
             "Pending op must poll to None before the sender produces a value"
@@ -377,7 +313,13 @@ mod tests {
     #[test]
     fn poll_resolves_with_signed_event_after_send() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
-        let mut ps = PendingSign::new(SignerOp::Pending(rx), vec!["p-tag".to_string()]);
+        let mut ps = PendingSign::new(
+            SignerOp::Pending(rx),
+            vec!["p-tag".to_string()],
+            PublishTarget::Auto,
+            None,
+            fresh_deadline(),
+        );
 
         // First tick: still pending.
         assert!(ps.op.poll().is_none(), "no value sent yet");
@@ -401,7 +343,13 @@ mod tests {
     #[test]
     fn poll_resolves_with_error_after_send() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
-        let mut ps = PendingSign::new(SignerOp::Pending(rx), vec![]);
+        let mut ps = PendingSign::new(
+            SignerOp::Pending(rx),
+            vec![],
+            PublishTarget::Auto,
+            None,
+            fresh_deadline(),
+        );
 
         tx.send(Err(SignerError::Rejected("user said no".to_string())))
             .unwrap();
@@ -418,7 +366,13 @@ mod tests {
     #[test]
     fn poll_resolves_with_backend_error_on_disconnect() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
-        let mut ps = PendingSign::new(SignerOp::Pending(rx), vec![]);
+        let mut ps = PendingSign::new(
+            SignerOp::Pending(rx),
+            vec![],
+            PublishTarget::Auto,
+            None,
+            fresh_deadline(),
+        );
 
         drop(tx); // broker died before responding.
 
@@ -437,7 +391,13 @@ mod tests {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
 
         // Fresh op: deadline is PENDING_SIGN_TIMEOUT in the future.
-        let fresh = PendingSign::new(SignerOp::Pending(rx), vec![]);
+        let fresh = PendingSign::new(
+            SignerOp::Pending(rx),
+            vec![],
+            PublishTarget::Auto,
+            None,
+            fresh_deadline(),
+        );
         assert!(!fresh.timed_out(), "a fresh PendingSign has not timed out");
 
         // Op whose deadline already elapsed.
@@ -467,7 +427,8 @@ mod tests {
     #[test]
     fn return_poll_returns_none_while_pending() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
-        let mut ps = PendingSignReturn::new(SignerOp::Pending(rx), "corr-1".to_string());
+        let mut ps =
+            PendingSignReturn::new(SignerOp::Pending(rx), "corr-1".to_string(), fresh_deadline());
         assert!(
             ps.op.poll().is_none(),
             "a Pending return-op polls to None before the broker responds"
@@ -492,7 +453,8 @@ mod tests {
     #[test]
     fn return_poll_resolves_with_signed_event_after_send() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
-        let mut ps = PendingSignReturn::new(SignerOp::Pending(rx), "corr-2".to_string());
+        let mut ps =
+            PendingSignReturn::new(SignerOp::Pending(rx), "corr-2".to_string(), fresh_deadline());
         assert!(ps.op.poll().is_none(), "no value sent yet");
         tx.send(Ok(make_signed_event())).unwrap();
         let signed = ps
@@ -508,7 +470,8 @@ mod tests {
     #[test]
     fn return_poll_resolves_with_error_after_send() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
-        let mut ps = PendingSignReturn::new(SignerOp::Pending(rx), "corr-3".to_string());
+        let mut ps =
+            PendingSignReturn::new(SignerOp::Pending(rx), "corr-3".to_string(), fresh_deadline());
         tx.send(Err(SignerError::Rejected("user said no".to_string())))
             .unwrap();
         assert!(
@@ -522,7 +485,8 @@ mod tests {
     #[test]
     fn return_timed_out_tracks_the_deadline() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
-        let fresh = PendingSignReturn::new(SignerOp::Pending(rx), "corr-4".to_string());
+        let fresh =
+            PendingSignReturn::new(SignerOp::Pending(rx), "corr-4".to_string(), fresh_deadline());
         assert!(
             !fresh.timed_out(),
             "a fresh PendingSignReturn has not timed out"
@@ -562,6 +526,7 @@ mod tests {
             SignContinuation::new(move |outcome| {
                 *sink_slot.lock().unwrap() = Some(outcome);
             }),
+            fresh_deadline(),
         );
         assert!(ps.op.poll().is_none(), "Pending before the broker responds");
         tx.send(Ok(make_signed_event())).unwrap();
@@ -594,6 +559,7 @@ mod tests {
             SignContinuation::new(move |outcome| {
                 *sink_slot.lock().unwrap() = Some(outcome);
             }),
+            fresh_deadline(),
         );
         let PendingSignReturnSink::Continuation(slot) = &mut ps.sink else {
             panic!("expected a Continuation sink");

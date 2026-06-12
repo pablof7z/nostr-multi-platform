@@ -227,7 +227,7 @@ impl SignerStateDto {
 }
 
 /// Shared signer-state slot (ADR-0048 D6 generalisation of the former
-/// `BunkerConnectionStateSlot`).
+/// bunker-connection-state slot).
 ///
 /// `None` (the default) means no remote signer session is active (the
 /// projection then contributes JSON `null` under `"signer_state"`).
@@ -240,34 +240,6 @@ pub type SignerStateSlot = Arc<Mutex<Option<SignerStateDto>>>;
 /// sole writer (D4).
 pub fn new_signer_state_slot() -> SignerStateSlot {
     Arc::new(Mutex::new(None))
-}
-
-// ---------- Back-compat type alias (removed once all callers updated) ----------
-// ADR-0048 D6: `BunkerConnectionStateDto` becomes an alias for `SignerStateDto`
-// so the broker (nmp-ffi/src/signer_broker.rs) can continue calling
-// `bunker_connection_state_changed` without a simultaneous update. The type
-// alias will be removed once Stage 2 wires the Kotlin capability bridge (no
-// compat alias is kept beyond one PR — no-compat-alias rule).
-
-/// Wire DTO for the NIP-46 relay-layer connection state. Now an alias for
-/// [`SignerStateDto`] — the generalised form introduced in ADR-0048 D6.
-/// The `bunker_connection_state_changed` update function writes this into the
-/// single `signer_state` slot.
-#[doc(hidden)]
-pub type BunkerConnectionStateDto = SignerStateDto;
-
-/// Slot type alias retained so existing `nmp-ffi` call-sites compile unchanged.
-/// The underlying data is the same [`SignerStateSlot`]; the projection key is now
-/// `"signer_state"`.
-#[doc(hidden)]
-pub type BunkerConnectionStateSlot = SignerStateSlot;
-
-/// Construct a fresh, empty slot. Delegates to [`new_signer_state_slot`].
-///
-/// `pub` so `nmp-ffi`'s `nmp_app_new` can build the slot; the actor is the
-/// sole writer (D4).
-pub fn new_bunker_connection_state_slot() -> BunkerConnectionStateSlot {
-    new_signer_state_slot()
 }
 
 /// Typed token for the NIP-46 handshake stage. Mirrors the wire strings the
@@ -451,13 +423,14 @@ pub(crate) struct IdentityRuntime {
     /// snapshot projection reads it. D0: NIP-46 remote signing is an app noun,
     /// so handshake state is NOT a typed `KernelSnapshot` field.
     bunker_handshake: BunkerHandshakeSlot,
-    /// Shared output slot for the bunker relay-layer connection-state projection.
+    /// Shared output slot for the unified remote-signer health projection
+    /// (ADR-0048 D6 — generalises the former `bunker_connection_state`).
     /// Parallels `bunker_handshake`. The actor is the sole writer (D4); the
-    /// built-in `"bunker_connection_state"` snapshot projection reads it.
-    /// V-14 step b: gives the host visibility into relay flaps after the
-    /// handshake completes so it can show a reconnecting indicator or
-    /// prompt re-auth rather than silently bricking the session.
-    bunker_connection_state: BunkerConnectionStateSlot,
+    /// built-in `"signer_state"` snapshot projection reads it. Gives the host
+    /// visibility into NIP-46 relay flaps and NIP-55 signer availability so it
+    /// can show a degraded indicator or prompt re-auth rather than silently
+    /// bricking the session.
+    signer_state: SignerStateSlot,
     /// Stashed `make_active` flag for an in-flight `bunker://` handshake.
     ///
     /// `AddSigner { source: BunkerUri, make_active }` starts an async broker
@@ -471,24 +444,21 @@ pub(crate) struct IdentityRuntime {
 }
 
 impl IdentityRuntime {
-    /// Construct an identity runtime bound to shared bunker slots.
+    /// Construct an identity runtime bound to shared projection slots.
     ///
-    /// `bunker_handshake` and `bunker_connection_state` are the `Arc<Mutex<…>>`
-    /// slots the actor writes into and the built-in snapshot projections read
-    /// from. The two `Arc` clones share one inner `Mutex` each, so an actor
-    /// write is visible to the projection closure on the next tick without
-    /// crossing the FFI boundary.
-    pub(crate) fn new(
-        bunker_handshake: BunkerHandshakeSlot,
-        bunker_connection_state: BunkerConnectionStateSlot,
-    ) -> Self {
+    /// `bunker_handshake` and `signer_state` are the `Arc<Mutex<…>>` slots the
+    /// actor writes into and the built-in snapshot projections read from. The
+    /// two `Arc` clones share one inner `Mutex` each, so an actor write is
+    /// visible to the projection closure on the next tick without crossing the
+    /// FFI boundary.
+    pub(crate) fn new(bunker_handshake: BunkerHandshakeSlot, signer_state: SignerStateSlot) -> Self {
         Self {
             keys: HashMap::new(),
             remote_signers: HashMap::new(),
             order: Vec::new(),
             active: None,
             bunker_handshake,
-            bunker_connection_state,
+            signer_state,
             pending_bunker_make_active: false,
         }
     }
@@ -523,16 +493,10 @@ impl IdentityRuntime {
     /// `into_inner` rather than panicking the actor thread (D6).
     pub(crate) fn set_signer_state(&self, value: Option<SignerStateDto>) {
         let mut slot = self
-            .bunker_connection_state
+            .signer_state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = value;
-    }
-
-    /// Delegate that keeps the broker call-site compiling while Stage 2 migrates
-    /// the NIP-46 broker to call `set_signer_state` directly.
-    pub(crate) fn set_bunker_connection_state(&self, value: Option<BunkerConnectionStateDto>) {
-        self.set_signer_state(value);
     }
 
     /// Test-only read of the current signer-state projection value.
@@ -540,17 +504,10 @@ impl IdentityRuntime {
     /// Production code never reads this slot through the runtime.
     #[cfg(test)]
     pub(crate) fn signer_state_for_test(&self) -> Option<SignerStateDto> {
-        self.bunker_connection_state
+        self.signer_state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
-    }
-
-    /// Test-only alias kept for existing NIP-46 tests that call
-    /// `bunker_connection_state_for_test`.
-    #[cfg(test)]
-    pub(crate) fn bunker_connection_state_for_test(&self) -> Option<BunkerConnectionStateDto> {
-        self.signer_state_for_test()
     }
 
     fn add(&mut self, keys: Keys) -> IdentityId {
@@ -665,6 +622,24 @@ impl IdentityRuntime {
     pub(crate) fn active_sign_deadline(&self) -> std::time::Instant {
         let duration = self
             .active_remote()
+            .map(|h| h.sign_timeout())
+            .unwrap_or(nmp_signer_iface::PENDING_SIGN_TIMEOUT);
+        std::time::Instant::now() + duration
+    }
+
+    /// Wall-clock deadline for a parked sign op on a SPECIFIC account.
+    ///
+    /// The account-addressed sibling of [`Self::active_sign_deadline`]:
+    /// publish paths that sign via `sign_with_account_nonblocking(pubkey, …)`
+    /// must read the budget of THAT account's signer — the active account may
+    /// be a different backend with a different budget. `None` falls back to
+    /// the active account (matching `sign_active_nonblocking`).
+    pub(crate) fn sign_deadline_for(&self, pubkey: Option<&str>) -> std::time::Instant {
+        let handle = match pubkey {
+            Some(pk) => self.remote_signers.get(pk).map(|h| h.as_ref()),
+            None => self.active_remote(),
+        };
+        let duration = handle
             .map(|h| h.sign_timeout())
             .unwrap_or(nmp_signer_iface::PENDING_SIGN_TIMEOUT);
         std::time::Instant::now() + duration
@@ -1409,17 +1384,8 @@ pub(crate) fn remove_account(
     Vec::new()
 }
 
-/// Broker adapter → actor: latest NIP-46 handshake progress. Stage `"idle"`
-/// clears the projection; everything else replaces it.
-///
-/// D0: the handshake state is an app noun, so it is written to the shared
-/// [`BunkerHandshakeSlot`] (read by the `"bunker_handshake"` snapshot
-/// projection) instead of a typed `KernelSnapshot` field. The slot write does
-/// NOT flip `changed_since_emit`, so the kernel is marked dirty explicitly —
-/// otherwise the refreshed projection could sit unemitted until an unrelated
-/// kernel mutation triggered a tick.
 /// Update the `"signer_state"` projection when the NIP-46 relay-layer
-/// connection state changes. V-14 step b.
+/// connection state changes. V-14 step b, generalised by ADR-0048 D6.
 ///
 /// `state` is one of `"connected"` | `"reconnecting"` | `"failed"`.
 /// `"connected"` is mapped to `"ready"` in the unified `SignerStateDto` surface
@@ -1449,6 +1415,7 @@ pub(crate) fn bunker_connection_state_changed(
 /// ADR-0048 D6: called from the capability-bridge result path when the host
 /// reports a NIP-55 operation outcome that affects the long-lived signer
 /// health (e.g. signer unavailable, rejected, awaiting approval).
+#[allow(dead_code)] // production caller lands with ADR-0048 Stage 2 (Kotlin capability bridge)
 pub(crate) fn nip55_signer_state_changed(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
@@ -1459,6 +1426,15 @@ pub(crate) fn nip55_signer_state_changed(
     kernel.mark_changed_since_emit();
 }
 
+/// Broker adapter → actor: latest NIP-46 handshake progress. Stage `"idle"`
+/// clears the projection; everything else replaces it.
+///
+/// D0: the handshake state is an app noun, so it is written to the shared
+/// [`BunkerHandshakeSlot`] (read by the `"bunker_handshake"` snapshot
+/// projection) instead of a typed `KernelSnapshot` field. The slot write does
+/// NOT flip `changed_since_emit`, so the kernel is marked dirty explicitly —
+/// otherwise the refreshed projection could sit unemitted until an unrelated
+/// kernel mutation triggered a tick.
 pub(crate) fn bunker_handshake_progress(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,

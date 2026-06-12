@@ -168,14 +168,16 @@ pub(crate) fn publish_unsigned_event(
         None => {
             // Remote signer pending. Action-dispatched calls park WITH their
             // correlation_id so the broker turn-around settles under the id
-            // the host is waiting on; non-dispatch calls park plain (matching
-            // the prior `PendingSign::new` shape and keeping that constructor
-            // live in the lib build).
-            let pending = match correlation_id {
-                Some(_) => PendingSign::with_correlation_id(op, Vec::new(), correlation_id),
-                None => PendingSign::new(op, Vec::new()),
-            };
-            pending_signs.push(pending);
+            // the host is waiting on. The deadline is the SIGNING account's
+            // per-op budget (ADR-0048 D3 — NIP-46 = 5s, NIP-55 = 90s).
+            let deadline = identity.sign_deadline_for(signer_pubkey.as_deref());
+            pending_signs.push(PendingSign::new(
+                op,
+                Vec::new(),
+                PublishTarget::Auto,
+                correlation_id,
+                deadline,
+            ));
             Vec::new()
         }
     }
@@ -261,12 +263,15 @@ pub(crate) fn publish_unsigned_event_to_relays(
         None => {
             // Remote signer not yet responded — park the op WITH its target
             // and correlation_id so pinned routing + spinner round-trip both
-            // survive the broker round-trip.
-            pending_signs.push(PendingSign::with_target_and_correlation_id(
+            // survive the broker round-trip. The deadline is the SIGNING
+            // account's per-op budget (ADR-0048 D3).
+            let deadline = identity.sign_deadline_for(signer_pubkey.as_deref());
+            pending_signs.push(PendingSign::new(
                 op,
                 Vec::new(),
                 target,
                 correlation_id,
+                deadline,
             ));
             Vec::new()
         }
@@ -509,10 +514,12 @@ pub(crate) fn publish_profile(
             // Remote signer pending — park the op WITH its correlation_id so
             // the dispatched profile still settles under the id the host is
             // waiting on once the broker turns the sign request around.
-            pending_signs.push(PendingSign::with_correlation_id(
+            pending_signs.push(PendingSign::new(
                 op,
                 Vec::new(),
+                PublishTarget::Auto,
                 correlation_id,
+                identity.active_sign_deadline(),
             ));
             Vec::new()
         }
@@ -590,10 +597,12 @@ pub(crate) fn react(
             // Remote signer pending — park the op WITH its correlation_id so
             // the dispatched reaction still settles under the id the host is
             // waiting on once the broker turns the sign request around.
-            pending_signs.push(PendingSign::with_correlation_id(
+            pending_signs.push(PendingSign::new(
                 op,
                 Vec::new(),
+                PublishTarget::Auto,
                 correlation_id,
+                identity.active_sign_deadline(),
             ));
             Vec::new()
         }
@@ -671,10 +680,12 @@ pub(crate) fn follow(
             // Remote signer pending — park the op WITH its correlation_id so
             // the dispatched follow/unfollow still settles under the id the
             // host is waiting on once the broker turns the sign request around.
-            pending_signs.push(PendingSign::with_correlation_id(
+            pending_signs.push(PendingSign::new(
                 op,
                 Vec::new(),
+                PublishTarget::Auto,
                 correlation_id,
+                identity.active_sign_deadline(),
             ));
             Vec::new()
         }

@@ -39,6 +39,8 @@ use super::super::{
     nmp_app_chirp_unregister,
 };
 
+mod registry_coverage;
+
 /// THE GATE: bootstrap the full Chirp projection surface, then assert every
 /// generic `Value` projection key has a typed sidecar under the same key.
 #[test]
@@ -65,7 +67,13 @@ fn every_generic_projection_key_has_a_typed_sidecar() {
     nmp_app_chirp_register_follow_list(app, active.as_ptr());
     let host = CString::new("wss://groups.example.com").unwrap();
     nmp_app_chirp_register_group_discovery(app, host.as_ptr());
-    let group_id = CString::new(r#"{"host":"wss://groups.example.com","id":"abcd"}"#).unwrap();
+    // Typed `GroupId` shape is `{host_relay_url, local_id}` — an earlier
+    // revision passed `{host, id}`, which fails deserialization and silently
+    // no-ops the registration (D6), leaving `nmp.nip29.group_chat` out of the
+    // bootstrapped keyspace. Caught by the registry-coverage gate.
+    let group_id =
+        CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"abcd"}"#)
+            .unwrap();
     nmp_app_chirp_register_group_chat(app, group_id.as_ptr());
 
     let app_ref: &NmpApp = unsafe { &*app };

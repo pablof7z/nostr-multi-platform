@@ -90,7 +90,7 @@ fn fresh() -> (IdentityRuntime, Kernel) {
     (
         IdentityRuntime::new(
             commands::new_bunker_handshake_slot(),
-            commands::new_bunker_connection_state_slot(),
+            commands::new_signer_state_slot(),
         ),
         Kernel::new(DEFAULT_VISIBLE_LIMIT),
     )
