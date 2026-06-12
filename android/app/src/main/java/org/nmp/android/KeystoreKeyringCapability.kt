@@ -127,6 +127,20 @@ class KeystoreKeyringCapability(context: Context) {
             return json.encodeToString(envelope)
         }
 
+        // D7: this handler serves exactly one namespace. A request addressed to a
+        // different namespace is a routing defect on the caller's side; reject it
+        // as data (D6) rather than silently executing the keyring op against
+        // foreign-namespace state. Echo back the request's own namespace and
+        // correlation_id so the kernel dispatcher can correlate the rejection.
+        if (request.namespace != NAMESPACE) {
+            val envelope = KeyringCapabilityEnvelope(
+                namespace = request.namespace,
+                correlationId = request.correlationId,
+                resultJson = json.encodeToString(errorResult(-51)),
+            )
+            return json.encodeToString(envelope)
+        }
+
         val result = runCatching { process(request.payloadJson) }
             .getOrElse { errorResult(-1) }
 
@@ -193,7 +207,12 @@ class KeystoreKeyringCapability(context: Context) {
             val cipher = Cipher.getInstance(TRANSFORMATION)
             cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
             val plaintext = cipher.doFinal(ciphertext)
-            okResult(secret = String(plaintext, Charsets.UTF_8))
+            val result = String(plaintext, Charsets.UTF_8)
+            // Narrow the window where plaintext bytes reside in memory.
+            // Full zeroization is impossible once a JVM String exists (immutable, interned),
+            // but wiping the source ByteArray reduces exposure time.
+            plaintext.fill(0)
+            okResult(secret = result)
         } catch (_: Exception) {
             errorResult(-1)
         }
@@ -214,7 +233,15 @@ class KeystoreKeyringCapability(context: Context) {
     /**
      * Lazily generate (or load) the AES-256-GCM key from the AndroidKeyStore.
      * The key is non-exportable and never leaves the hardware-backed store.
+     *
+     * `@Synchronized` (instance-level mutual exclusion) closes the
+     * check-then-generate race: without it, two concurrent first-callers can
+     * both observe `containsAlias == false` and both call `generateKey()`, with
+     * the second generation overwriting the alias. Any ciphertext written under
+     * the first key would then fail to decrypt under the second. Serializing the
+     * whole load-or-generate body makes the lazy init effectively-once.
      */
+    @Synchronized
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         if (keyStore.containsAlias(KEY_ALIAS)) {
