@@ -19,8 +19,6 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-12 — **fix(nmp-core): publish to AUTH relays parks until Authenticated instead of failing** (Finding B). PR #1192. Branch: `worktree-agent-a039795a01fd62ea8`. Worktree: agent-a039795a01fd62ea8. Auth-required ack now PARKS the publish via the existing `unavailable_relays` + InFlight→Pending machinery (new `RetryVerdict::ParkAwaitingAuth`, no reauth-budget consumed); on `RelayAuthState::Authenticated` the auth handler calls `mark_publish_relay_available` exactly like reconnect, re-dispatching the parked publish. Removes stale M6 comment + dead `Reauth`/`auth_required_max_retries`.
-
 - 2026-06-12 — **Android Keystore keyring capability + synchronous capability routing + identity restore (PR 1 of Marmot-keyring ladder)**. PR #1188. Branch: `feat/android-keyring-capability`. Worktree: agent-a432ddceb0cd2757c. New `capability.rs` + `identity.rs` modules in nmp-android-ffi; `session.rs` `capability_handler` slot; external_signer trampoline namespace router; `KeystoreKeyringCapability.kt` (AES-256-GCM AndroidKeyStore); `KernelBridge.setCapabilityHandler` + `identityRestore`; `KernelModel.startWithContext`.
 
 - 2026-06-12 — **PR-W2: build and deploy real nmp-wasm in Chirp Web** (follows PR-W1 / #1150). Branch: `feat/chirp-web-build-real-wasm`. Worktree: agent-a73fab19a44acce01. Deletes stale checked-in wasm artifact; gitignores generated output; wires wasm-pack build into chirp-web.yml CI and Vercel deploy command.
