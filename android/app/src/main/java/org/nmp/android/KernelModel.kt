@@ -117,29 +117,36 @@ class KernelModel : ViewModel() {
      * manages sign-in state across restarts.
      *
      * [testNsec] is null in production; pass only in headless UI tests.
+     * [testRelays] is null in production; when non-null it must be a JSON
+     * array of `["url","role"]` pairs that REPLACES the Chirp reference
+     * relays — used by E2E test harnesses to point the kernel at a local
+     * relay (e.g. `nak serve`). Kotlin ferries this string verbatim; all
+     * parsing and policy live in Rust (D7 / thin-shell principle).
      */
     fun startWithContext(
         context: Context,
         storagePath: String? = null,
         testNsec: String? = null,
+        testRelays: String? = null,
     ) {
         if (started) return
         keystoreKeyringCapability = KeystoreKeyringCapability(context.applicationContext)
         bridge.setCapabilityHandler(keystoreKeyringCapability!!)
-        start(storagePath)
+        start(storagePath, testRelays)
         bridge.identityRestore(
             dbDir = storagePath ?: context.filesDir.path,
             testNsec = testNsec,
         )
     }
 
-    fun start(storagePath: String? = null) {
+    fun start(storagePath: String? = null, testRelays: String? = null) {
         if (started) return
         started = true
         if (!storagePath.isNullOrBlank()) {
             bridge.setStoragePath(storagePath)
         }
         bridge.start(visibleLimit = 80, emitHz = 4)
+        bridge.seedRelays(testRelays)
         readerJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 val bytes = try {
