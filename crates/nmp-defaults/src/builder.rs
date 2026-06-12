@@ -503,6 +503,11 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.replace_ingest_parser(kind, slot_key, parser)
     }
 
+    fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.unregister_ingest_parser(kind, slot_key);
+    }
+
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_dm_inbox_relay_lookup(lookup);

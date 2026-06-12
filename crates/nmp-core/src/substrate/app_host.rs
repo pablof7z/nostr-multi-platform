@@ -149,6 +149,13 @@ pub trait AppHost: ActionRegistrar {
         parser: Arc<dyn IngestParser>,
     ) -> Option<Arc<dyn IngestParser>>;
 
+    /// Remove the parser registered under `slot_key` for `kind`, if any.
+    ///
+    /// Used by teardown paths (e.g. Marmot sign-out without re-register) to
+    /// clear a lifecycle-managed slot. D6 — a poisoned dispatcher lock is a
+    /// silent no-op.
+    fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str);
+
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn DmInboxRelayLookup>);
 
     /// H4 — install the read-only [`MailboxCache`] handle the host's NIP-19

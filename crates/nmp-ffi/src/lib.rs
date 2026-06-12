@@ -1622,6 +1622,16 @@ impl NmpApp {
         }
     }
 
+    /// Remove the parser registered under `slot_key` for `kind`, if any.
+    /// Used by teardown paths (e.g. Marmot sign-out) to clear a
+    /// lifecycle-managed slot without installing a replacement.
+    /// D6 — a poisoned dispatcher lock is a silent no-op.
+    pub fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
+        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+            d.remove_kind_parser_slot(kind, slot_key);
+        }
+    }
+
     /// V-40 — install the kernel's [`nmp_core::substrate::DmInboxRelayLookup`]
     /// handle. The per-app crate (today `nmp-nip17::register_actions`)
     /// hands in a concrete `DmRelayCache`; the same `Arc` is the writer
@@ -2424,6 +2434,10 @@ impl nmp_core::substrate::AppHost for NmpApp {
         parser: Arc<dyn nmp_core::substrate::IngestParser>,
     ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
         NmpApp::replace_ingest_parser(self, kind, slot_key, parser)
+    }
+
+    fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
+        NmpApp::unregister_ingest_parser(self, kind, slot_key);
     }
 
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {

@@ -105,6 +105,28 @@ impl EventIngestDispatcher {
         prev
     }
 
+    /// Remove the parser registered under `slot_key` for `kind`, if any.
+    ///
+    /// Used by teardown paths that need to clear a lifecycle-managed slot
+    /// without installing a replacement (e.g. Marmot sign-out without
+    /// immediate re-register). Returns the evicted parser, or `None` when
+    /// no parser was registered under that `(kind, slot_key)` pair.
+    pub fn remove_kind_parser_slot(
+        &mut self,
+        kind: u32,
+        slot_key: &'static str,
+    ) -> Option<Arc<dyn IngestParser>> {
+        let bucket = self.by_kind.get_mut(&kind)?;
+        let pos = bucket
+            .iter()
+            .position(|(key, _)| *key == Some(slot_key))?;
+        let removed = bucket.remove(pos).1;
+        if bucket.is_empty() {
+            self.by_kind.remove(&kind);
+        }
+        Some(removed)
+    }
+
     pub fn register_range(&mut self, range: Range<u32>, parser: Arc<dyn IngestParser>) {
         self.by_range.push((range, parser));
     }
