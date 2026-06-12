@@ -8,20 +8,28 @@ use std::time::Duration;
 use jni::sys::jlong;
 
 use nmp_app_chirp::{nmp_app_chirp_unregister, ChirpHandle};
-use nmp_ffi::{
-    nmp_app_free, nmp_app_set_capability_callback, nmp_app_set_update_callback, NmpApp,
-};
+use nmp_ffi::{nmp_app_free, nmp_app_set_capability_callback, nmp_app_set_update_callback, NmpApp};
 
 use crate::capability::CapabilityHandlerSlot;
+use crate::update_listener::UpdateListenerSlot;
+pub(crate) use crate::update_listener::UpdatePushListener;
 
 struct CallbackState {
+    /// Legacy mpsc sink — retained only for the in-crate unit tests
+    /// (`recv_next_update`). Production update delivery is the JNI push path
+    /// via [`CallbackState::push_listener`].
     tx: Mutex<Option<Sender<Vec<u8>>>>,
+    /// JNI push listener — invoked on every update frame (issue #614, D8: no
+    /// polling). Cleared in [`Session::close_updates_locked`] after the
+    /// quiescence gate guarantees no further `on_update` invocations.
+    push_listener: UpdateListenerSlot,
 }
 
 impl CallbackState {
     fn new(tx: Sender<Vec<u8>>) -> Self {
         Self {
             tx: Mutex::new(Some(tx)),
+            push_listener: Mutex::new(None),
         }
     }
 
@@ -37,6 +45,18 @@ impl CallbackState {
     fn close(&self) {
         if let Ok(mut guard) = self.tx.lock() {
             guard.take();
+        }
+    }
+
+    fn set_push_listener(&self, listener: UpdatePushListener) {
+        if let Ok(mut slot) = self.push_listener.lock() {
+            *slot = Some(listener);
+        }
+    }
+
+    fn clear_push_listener(&self) {
+        if let Ok(mut slot) = self.push_listener.lock() {
+            slot.take();
         }
     }
 }
@@ -90,9 +110,13 @@ impl SignerRequestChannel {
 /// Kotlin receives an integer registry id, not this allocation's address. Every
 /// JNI entry point clones an [`Arc<Session>`] from the registry before touching
 /// native state, so `nativeFree` can remove the handle id without reclaiming
-/// memory still held by a blocked `nativeNextUpdate`.
+/// memory still in use by an in-flight JNI call.
 pub(crate) struct Session {
     state: Mutex<SessionState>,
+    /// Legacy mpsc receiver — drained only by the test-only `recv_next_update`
+    /// since issue #614 removed the production polling path. Kept so the unit
+    /// tests can exercise the close/quiescence lifecycle without live JNI.
+    #[cfg_attr(not(test), allow(dead_code))]
     rx: Mutex<Receiver<Vec<u8>>>,
     callback_state: Arc<CallbackState>,
     callback_context: *const CallbackState,
@@ -155,6 +179,18 @@ impl Session {
         self.close_updates_locked(&mut state);
     }
 
+    /// Register the JNI push listener for kernel update frames (issue #614).
+    /// Replaces an existing listener if one is already set. Cleared on
+    /// teardown by [`Self::close_updates_locked`].
+    pub(crate) fn set_push_listener(&self, listener: UpdatePushListener) {
+        self.callback_state.set_push_listener(listener);
+    }
+
+    /// Drop the JNI push listener (deregister). Safe to call when none is set.
+    pub(crate) fn clear_push_listener(&self) {
+        self.callback_state.clear_push_listener();
+    }
+
     pub(crate) fn free_native(&self) {
         let (app, chirp) = {
             let Ok(mut state) = self.state.lock() else {
@@ -181,6 +217,12 @@ impl Session {
         }
     }
 
+    /// Test-only blocking drain of the legacy mpsc update channel.
+    ///
+    /// Issue #614 removed the production `nativeNextUpdate` polling path; the
+    /// in-crate unit tests still exercise the channel + quiescence lifecycle
+    /// through this helper, so it is gated `#[cfg(test)]`.
+    #[cfg(test)]
     pub(crate) fn recv_next_update(&self, timeout: Duration) -> NextUpdate {
         let Ok(rx) = self.rx.lock() else {
             return NextUpdate::Closed;
@@ -222,6 +264,11 @@ impl Session {
             // `free_native()` returns — the quiescence guarantee prevents the
             // use-after-free race that existed before the gate was introduced.
             nmp_app_set_update_callback(state.app, std::ptr::null_mut(), None);
+            // Issue #614 — drop the JNI push listener `GlobalRef` now that the
+            // quiescence gate above guarantees no in-flight (or future)
+            // `on_update` can read the slot. Doing it INSIDE the `app`-non-null
+            // branch (right after the gate) is what makes the drop UAF-safe.
+            self.callback_state.clear_push_listener();
             // ADR-0048 Stage 2 — unregister the external-signer capability
             // trampoline before the app is freed. The trampoline context is
             // the registry handle id (not a raw pointer), so any in-flight
@@ -278,6 +325,10 @@ impl Drop for Session {
     }
 }
 
+/// Result of one `recv_next_update` drain tick. Test-only since issue #614
+/// removed the production polling path (the JNI push listener is now the
+/// production update-delivery seam).
+#[cfg(test)]
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum NextUpdate {
     Frame(Vec<u8>),
@@ -298,8 +349,19 @@ extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
         return;
     }
     let state = unsafe { &*(context as *const CallbackState) };
-    let owned = unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec();
-    state.send(owned);
+    let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
+    // JNI push path (issue #614 — D8: no polling). The kernel pushes the frame
+    // straight to the Kotlin listener instead of a Kotlin thread draining a
+    // 250 ms-timed channel. The `push_listener` lock serialises against the
+    // `take()` in `close_updates_locked`; combined with the update-callback
+    // quiescence gate this is UAF-safe (see `UpdatePushListener` docs).
+    if let Ok(guard) = state.push_listener.lock() {
+        if let Some(listener) = guard.as_ref() {
+            listener.push(frame);
+        }
+    }
+    // Legacy mpsc path — only the in-crate unit tests drain this now.
+    state.send(frame.to_vec());
 }
 
 static NEXT_HANDLE: AtomicI64 = AtomicI64::new(1);
@@ -350,6 +412,36 @@ mod tests {
     use std::time::Duration;
 
     use super::{insert_session, remove_session, session_arc, NextUpdate, Session};
+
+    #[test]
+    fn push_listener_slot_starts_empty() {
+        // A freshly constructed session has no JNI push listener registered.
+        let session = Session::test_session();
+        let guard = session.callback_state.push_listener.lock().unwrap();
+        assert!(guard.is_none());
+    }
+
+    #[test]
+    fn close_updates_clears_push_listener_slot() {
+        // UAF-safety invariant: after teardown the push-listener slot is empty
+        // (in production the `GlobalRef` is dropped after the quiescence gate).
+        let session = Session::test_session();
+        session.close_updates();
+        let guard = session.callback_state.push_listener.lock().unwrap();
+        assert!(guard.is_none());
+    }
+
+    #[test]
+    fn on_update_forwards_frame_to_mpsc_when_no_push_listener() {
+        // With no JNI listener registered, the push branch is a no-op and the
+        // frame still reaches the legacy mpsc test seam — never dropped.
+        let session = Session::test_session();
+        let handle = insert_session(Arc::clone(&session));
+        session.callback_state.send(b"frame-bytes".to_vec());
+        let update = session.recv_next_update(Duration::from_millis(200));
+        assert_eq!(update, NextUpdate::Frame(b"frame-bytes".to_vec()));
+        remove_session(handle);
+    }
 
     #[test]
     fn close_updates_wakes_blocked_next_update() {

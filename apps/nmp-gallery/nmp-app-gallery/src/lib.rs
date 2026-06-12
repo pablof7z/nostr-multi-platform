@@ -48,6 +48,8 @@
 // when building with the `android-ffi` feature (cargo ndk build).
 #[cfg(feature = "android-ffi")]
 mod android;
+#[cfg(feature = "android-ffi")]
+mod android_push;
 
 pub mod registry;
 pub mod showcase;
