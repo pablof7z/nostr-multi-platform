@@ -45,7 +45,6 @@ use crate::app::{KernelAction, KernelUpdate};
 use crate::kernel::{Kernel, RelayFrame};
 use crate::kernel_action::dispatch_kernel_action;
 use crate::relay::{OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
-use crate::substrate::SignedEvent;
 
 /// Encapsulated kernel + public pure reducer.
 ///
@@ -236,55 +235,6 @@ impl KernelReducer {
         self.kernel.changed_since_emit()
     }
 
-    /// V-01 Stage 3c — public publish-from-signed-event surface for non-actor
-    /// consumers (today: the wasm32 `WasmRuntime` write path after the
-    /// `Nip07Signer::sign()` Promise resolves; tomorrow: any in-process Rust
-    /// caller that signs out-of-band and wants to feed the result through the
-    /// kernel's publish engine).
-    ///
-    /// Internally delegates to `Kernel::publish_signed_with_correlation` —
-    /// byte-for-byte the same entrypoint `actor::commands::publish::publish_unsigned_event`
-    /// reaches after `sign_active_nonblocking` resolves on the dispatched
-    /// path. The returned `Vec<OutboundMessage>` is the engine's per-(outbox-
-    /// relay) `EVENT` frame set, already AUTH-pause-partitioned through
-    /// `partition_auth_paused` for symmetry with the `handle_relay_*` surface
-    /// above.
-    ///
-    /// `p_tags` mirrors the legacy parameter on `Kernel::publish_signed` —
-    /// callers that have no extra `#p` tags pass an empty slice. The engine
-    /// recomputes `#p` tags from `signed.unsigned.tags` itself, so this slice
-    /// is informational only (kept on the surface so a future caller that
-    /// needs additional outbox routing tags has a place to inject them).
-    ///
-    /// `correlation_id` is the host-visible action id the publish should
-    /// report in the `action_results` projection on terminal verdicts (per-
-    /// relay OK / failed). Pass `Some(id)` when the publish is a dispatched
-    /// action whose host caller is awaiting a terminal under `id` (the wasm
-    /// runtime's `dispatch_app_action_async` Promise path); pass `None` for
-    /// non-dispatch callers (the engine then reports the event id as the
-    /// terminal key, matching every existing non-dispatched native publish).
-    ///
-    /// Without correlation threading the wasm host receives a publish-engine
-    /// terminal keyed on an event id it never saw — defeating partial-success
-    /// UX (e.g. "2/3 relays accepted"). Pinning the contract here keeps the
-    /// wasm path byte-for-byte aligned with the native generic publish dispatch.
-    ///
-    /// Doctrine (D0/D6): the surface is substrate-typed (`SignedEvent`,
-    /// `OutboundMessage`); failure is encoded as an empty outbound vec plus a
-    /// kernel-side toast / `RecentFailure` row (no `Result` across this
-    /// boundary, matching every other `KernelReducer` method).
-    pub fn publish_signed_event(
-        &mut self,
-        signed: &SignedEvent,
-        p_tags: &[String],
-        correlation_id: Option<String>,
-    ) -> Vec<OutboundMessage> {
-        let outbound = self
-            .kernel
-            .publish_signed_with_correlation(signed, p_tags, correlation_id);
-        self.kernel.partition_auth_paused(outbound)
-    }
-
     // ─── F-CR-00 component-owned claim seam ─────────────────────────────────
     //
     // Wasm consumers (chirp-web components) have no ActorCommand channel —
@@ -455,6 +405,7 @@ impl KernelReducer {
 }
 
 mod feed_verbs;
+mod reply;
 
 impl Default for KernelReducer {
     fn default() -> Self {
@@ -474,3 +425,6 @@ mod tests_snapshot_claims;
 #[path = "kernel_reducer/tests_feed_verbs.rs"]
 mod tests_feed_verbs;
 
+#[cfg(test)]
+#[path = "kernel_reducer/tests_reply_tags.rs"]
+mod tests_reply_tags;

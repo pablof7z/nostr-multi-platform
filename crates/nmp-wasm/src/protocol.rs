@@ -123,11 +123,13 @@ impl AppAction {
                 content,
                 // NIP-10 reply-tag construction now belongs to the host (issue
                 // #906): the core `PublishAction::PublishNote` variant is gone,
-                // so a kind:1 note dispatches as a generic `PublishRaw`. A reply
-                // would have the host build the NIP-10 tags via
-                // `nmp-nip01::Note::reply_to` and pass them in `tags`; the wasm
-                // publish path already fails closed on `reply_to_id` (see
-                // `publish_path.rs`), so a top-level note carries no tags here.
+                // so a kind:1 note dispatches as a generic `PublishRaw`. Replies
+                // are wired through the async publish path in `publish_path.rs`:
+                // `build_reply_tags` resolves the NIP-10 tags from the kernel
+                // store before the sign `.await`, and the resulting tagged event
+                // is published via `publish_signed_event`. A top-level note
+                // carries no tags here; `reply_to_id` is consumed by the async
+                // path and not forwarded into the FlatBuffers dispatch.
                 reply_to_id: _,
             } => (
                 "nmp.publish".to_string(),

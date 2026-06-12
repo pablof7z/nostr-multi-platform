@@ -22,16 +22,19 @@
 //! [`publish_app_action`] (this module) composes those two seams plus the
 //! relay-pool fan-out into a single `js_sys::Promise`-friendly async fn.
 //!
-//! # Scope (PR boundary, F-01 issue #1007)
+//! # Scope
 //!
-//! This module wires **`PublishNote` (kind:1)** only. `React` / `Follow` /
-//! `Unfollow` are scoped down to an honest `publish_path_not_wired_for_kind`
-//! error pointing at the GitHub issue follow-up. Adding them is small (build the
-//! unsigned event for kind:7 / kind:3 / kind:3-edit and the same async path
-//! handles them) but each kind has tag-construction subtleties the native
-//! `react` / `follow` commands own (e.g. NIP-25 `k` tag derivation, kind:3
-//! follow-set merging) that we want to land kind-by-kind so the wasm path
-//! does not silently drift from native.
+//! This module wires **`PublishNote` (kind:1)** including NIP-10 threaded
+//! replies. `React` / `Follow` / `Unfollow` remain scoped to an honest
+//! `publish_path_not_wired_for_kind` error — each kind has tag-construction
+//! subtleties the native `react` / `follow` commands own (e.g. NIP-25 `k`
+//! tag derivation, kind:3 follow-set merging) that land kind-by-kind so the
+//! wasm path does not silently drift from native.
+//!
+//! Reply tags are resolved through [`nmp_core::KernelReducer::build_reply_tags`]
+//! before the sign `.await` so no `RefCell` borrow ever lives across an async
+//! boundary. An unknown parent (event not in the local store) fails closed with
+//! a `reply_target_unknown:` reason rather than silently discarding the marker.
 
 use nmp_signers::SignerBackend;
 
@@ -74,6 +77,23 @@ pub(crate) fn write_path_not_wired_for_kind_reason(action_type: &str) -> String 
     )
 }
 
+/// Stable error-code prefix returned when the `reply_to_id` supplied to
+/// `PublishNote` is not a repliable event in the kernel's local store.
+///
+/// "Not repliable" covers two cases: the event is absent from the store, or
+/// it is present but not a kind:1 note (kind:0 profiles, kind:6 reposts, etc.
+/// are not valid NIP-10 reply targets). The wasm path fails closed in both
+/// cases — silently dropping the reply marker would produce a malformed
+/// NIP-10 thread. The prefix is pinned by the test below.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) fn reply_target_unknown_reason(reply_to_id: &str) -> String {
+    format!(
+        "reply_target_unknown: event {reply_to_id:?} is not a repliable note in the \
+         kernel's local store (absent or not kind:1). The parent must be a kind:1 \
+         note in the local feed before a reply can be composed."
+    )
+}
+
 /// Stable error-code prefix returned when an installed signer is the wrong
 /// backend kind for the wasm publish path. Stage 3c wires NIP-07 only —
 /// LocalKey can't run in the wasm runtime (the runtime should not hold key
@@ -102,17 +122,19 @@ pub(crate) fn unsupported_signer_backend_reason(backend: &SignerBackend) -> Stri
 ///    honest `publish_path_not_wired_for_kind` failure inline (no sign call).
 /// 2. Validate the installed signer's backend. Non-`Nip07` backends return
 ///    an `unsupported_signer_backend_for_writes` failure inline.
-/// 3. Build the `UnsignedEvent` (kind:1, no NIP-10 reply-thread structure
-///    yet — `reply_to_id` falls into the same follow-up bucket as
-///    React/Follow/Unfollow).
-/// 4. Await `nmp_signers::sign_event_via_extension(...)` — the JS Promise
+/// 3. Resolve NIP-10 reply tags (if `reply_to_id` is set) via
+///    `reducer.borrow().build_reply_tags(id)` — a synchronous store lookup
+///    that returns `None` for unknown parents (fail-closed with
+///    `reply_target_unknown:` reason). Borrow is dropped before the await.
+/// 4. Build the `UnsignedEvent` (kind:1) with the resolved tags.
+/// 5. Await `nmp_signers::sign_event_via_extension(...)` — the JS Promise
 ///    bridge that yields control to the JS event loop. On rejection we
 ///    surface the signer error verbatim through `CapabilityFailure`.
-/// 5. Borrow the reducer briefly, call `publish_signed_event(&signed, &[])`,
+/// 6. Borrow the reducer briefly, call `publish_signed_event(&signed, &[])`,
 ///    drop the borrow. Fan the resulting outbound through the driver pool,
 ///    then push a fresh snapshot through the callback (same `push_snapshot_if_callback`
 ///    helper the relay-pool sink uses on every inbound kernel mutation).
-/// 6. Resolve the Promise with `WorkerEvent::ActionAccepted` — the host's
+/// 7. Resolve the Promise with `WorkerEvent::ActionAccepted` — the host's
 ///    spinner clears immediately; per-relay terminal verdicts arrive later
 ///    via the `action_results` projection on the next snapshot push.
 ///
@@ -168,25 +190,35 @@ pub(crate) async fn publish_app_action(
     }
     let cached_pubkey = signer.pubkey();
 
-    // `reply_to_id` is intentionally unsupported in this PR — the native
-    // `publish_note` builder walks the kernel's `events` read-cache for
-    // NIP-10 root/parent reply tags. Wiring that through the wasm async
-    // path is a follow-up; failing closed here is more honest than
-    // silently dropping the reply marker.
-    if reply_to_id.is_some() {
-        return WorkerEvent::CapabilityFailure(CapabilityFailure {
-            capability: action_type,
-            correlation_id,
-            reason: write_path_not_wired_for_kind_reason("nmp.publish.reply"),
-        });
-    }
+    // Step 3 — resolve NIP-10 reply tags (if replying) and build the
+    // unsigned kind:1 event.
+    //
+    // The store lookup happens HERE — before the sign `.await` — so no
+    // `RefCell` borrow lives across the async boundary (borrow discipline,
+    // kernel_reducer.rs doc §D4/D8). `build_reply_tags` takes `&self` so
+    // the borrow is released the moment the block exits.
+    let tags = if let Some(ref rid) = reply_to_id {
+        match reducer.borrow().build_reply_tags(rid) {
+            Some(t) => t,
+            None => {
+                return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                    capability: action_type,
+                    correlation_id,
+                    reason: reply_target_unknown_reason(rid),
+                });
+            }
+        }
+    } else {
+        Vec::new()
+    };
 
-    // Step 3 — build the unsigned kind:1 event. No tags (a fresh note has
-    // none); the extension fills in id/sig.
+    // Step 3 — build the unsigned kind:1 event. Tags are empty for a fresh
+    // root note; a reply carries the NIP-10 marked-form e/p tags resolved
+    // above.
     let unsigned = UnsignedEvent {
         pubkey: cached_pubkey.to_hex(),
         kind: 1,
-        tags: Vec::new(),
+        tags,
         content,
         created_at: now_secs,
     };
@@ -259,5 +291,15 @@ mod tests {
     fn unsupported_signer_backend_reason_has_stable_prefix() {
         let reason = unsupported_signer_backend_reason(&SignerBackend::LocalKey);
         assert!(reason.starts_with("unsupported_signer_backend_for_writes"));
+    }
+
+    #[test]
+    fn reply_target_unknown_reason_has_stable_prefix() {
+        let reason = reply_target_unknown_reason("deadbeef");
+        assert!(
+            reason.starts_with("reply_target_unknown:"),
+            "prefix must be 'reply_target_unknown:'; got: {reason:?}"
+        );
+        assert!(reason.contains("deadbeef"), "reason must echo the event id");
     }
 }
