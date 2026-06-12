@@ -139,19 +139,23 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
     }
 }
 
-/// Whether a shape needs raw-observer dispatch (the `notify_raw_event_observers`
-/// path) in addition to normal projection fan-out.
+/// Whether a shape needs `IngestParser` dispatch in addition to normal
+/// `notify_event_observers` fan-out.
 ///
 /// This is true for shapes that map to a `Ptag` including kind:1059 (NIP-17
 /// gift-wrap). Such events carry encrypted content whose decryption requires
-/// the verbatim signed JSON (with `sig`) — the same seam live relay-delivered
-/// kind:1059 events use (ADR R2.4(f)). Other kinds can use the normal
-/// `notify_event_observers` (sig-stripped) path.
-pub(in crate::kernel) fn shape_needs_raw_observer_dispatch(shape: &InterestShape) -> bool {
+/// the verbatim signed JSON (with `sig`) — delivered via `IngestParser` which
+/// receives a `VerifiedEvent` carrying the `sig` field. Other kinds can use
+/// the normal `notify_event_observers` (sig-stripped) path.
+///
+/// Note: this does NOT control `notify_raw_event_observers` (the verbatim
+/// forwarding tap). The raw tap fires only on live relay ingest, never on
+/// cache-served replay.
+pub(in crate::kernel) fn shape_needs_ingest_parser_dispatch(shape: &InterestShape) -> bool {
     if shape.kinds.is_empty() {
         return false;
     }
-    // Fire the raw observer path only for #p shapes that include kind:1059.
+    // Fire the IngestParser path only for #p shapes that include kind:1059.
     if shape.tags.len() == 1 {
         if let Some((tag_key, values)) = shape.tags.iter().next() {
             if tag_key == "p" && values.len() == 1 && shape.kinds.contains(&KIND_GIFT_WRAP) {

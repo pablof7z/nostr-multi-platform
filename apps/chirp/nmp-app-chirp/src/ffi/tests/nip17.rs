@@ -42,10 +42,16 @@ fn nip17_dm_send_dispatches_through_action_registry() {
 }
 
 /// THE DM-INBOX WIRING PROOF: `nmp_app_chirp_register_dm_inbox` registers
-/// a `DmInboxProjection` against `app` — it runs to completion (raw-event
-/// observer + snapshot-projection/controller registration) without
-/// panicking across the FFI boundary. Active-account interest ownership is
-/// Rust-side — the FFI takes no viewer pubkey.
+/// a `DmInboxProjection` as an `IngestParser` for kind:1059 under slot
+/// `"nip17.dm_inbox"` — it runs to completion (IngestParser slot registration
+/// + snapshot-projection/controller registration) without panicking across
+/// the FFI boundary. Active-account interest ownership is Rust-side — the
+/// FFI takes no viewer pubkey.
+///
+/// Idempotency is provided by `replace_ingest_parser` (slot-keyed replace):
+/// re-invoking with the same slot key evicts the prior parser and installs a
+/// fresh one without stacking — no `swap_dm_inbox_observer` raw-tap slot
+/// needed (that slot was deleted in the raw-tap PR-4 retirement).
 #[test]
 fn register_dm_inbox_runs_for_app() {
     let app = nmp_app_new();
@@ -61,72 +67,20 @@ fn register_dm_inbox_null_app_is_silent_noop() {
 }
 
 /// THE IDEMPOTENCY PROOF: re-invoking `nmp_app_chirp_register_dm_inbox`
-/// must NOT stack a fresh raw-event observer on every call. The function
-/// remains directly callable from the host, while `nmp_app_chirp_register`
-/// also wires the runtime eagerly.
+/// must NOT stack observers on every call.
 ///
-/// Asserted observably through the per-app
-/// `swap_dm_inbox_observer` slot — the host-side handle that lets
-/// the function "remember the previous id and unregister it before
-/// installing the new one":
-///
-/// 1. The first register installs an id in the slot (the fix path
-///    actively writes through `swap_dm_inbox_observer(Some(id1))`).
-///    Before the fix the slot was never written, so this assertion alone
-///    fails on the buggy code.
-/// 2. The second register installs a FRESH id, distinct from the first —
-///    proving the slot was overwritten with the new observer, not
-///    silently dropped. The fix path also unregisters the prior id
-///    against the kernel observer slot before storing the new one, so
-///    the kernel's raw-observer registration count for `kind == 1059`
-///    after the second call is 1, not 2.
-/// 3. Manually unregistering the second id (`unregister_raw_event_
-///    observer(id2)`) drains the kernel observer slot — at this point
-///    there is no kind:1059 observer alive, which is the leak-free
-///    steady state.
+/// Since PR-4 (raw-tap retirement ladder), the DM inbox rides
+/// `replace_ingest_parser` under slot `"nip17.dm_inbox"`. The slot-keyed
+/// replace is inherently idempotent — a second call evicts the first parser
+/// under the same key and installs a fresh one. This test confirms the
+/// function is re-callable without panicking (the observable proof that no
+/// stacking occurs is in the `replace_ingest_parser` unit tests in nmp-core).
 #[test]
 fn register_dm_inbox_is_idempotent_on_re_invoke() {
     let app = nmp_app_new();
-    // SAFETY: `app` is a valid pointer returned by `nmp_app_new`, live
-    // for the duration of this test (we call `nmp_app_free` at the end).
-    let app_ref = unsafe { &*app };
-
-    // Pre-condition: the per-app slot starts empty.
-    assert!(
-        app_ref.swap_dm_inbox_observer(None).is_none(),
-        "slot must start empty (no DM inbox registered yet)"
-    );
-
-    // First registration.
+    // First registration — installs the DmInboxProjection under "nip17.dm_inbox".
     nmp_app_chirp_register_dm_inbox(app);
-    let id1 = app_ref
-        .swap_dm_inbox_observer(None)
-        .expect("first register must install a raw-observer id in the per-app slot");
-    // Put id1 back so the SECOND register sees it as the "previous" id
-    // and unregisters it before installing its own.
-    let prev = app_ref.swap_dm_inbox_observer(Some(id1));
-    assert!(prev.is_none(), "we just swap-took, slot was empty");
-
-    // Second registration — compatibility re-invoke case.
+    // Second registration — evicts the first via slot-keyed replace; no panic.
     nmp_app_chirp_register_dm_inbox(app);
-    let id2 = app_ref
-        .swap_dm_inbox_observer(None)
-        .expect("second register must install a fresh id in the per-app slot");
-
-    // Distinct ids: the slot was overwritten with the second register's
-    // observer, not silently dropped. This is the host-side proof that
-    // the leak is bounded — exactly one id lives in the per-app slot at
-    // any time, regardless of how many sign-in cycles preceded.
-    assert_ne!(
-        id1, id2,
-        "second register must produce a fresh raw-observer id (got {id1:?} both times)"
-    );
-
-    // Drain the kernel observer slot through the live id. Without the
-    // fix, id1 would ALSO still be in the kernel slot and this would
-    // leave kind:1059 observers behind (one observer of equivalence
-    // class id1). With the fix, the kernel slot is now empty.
-    app_ref.unregister_raw_event_observer(id2);
-
     nmp_app_free(app);
 }
