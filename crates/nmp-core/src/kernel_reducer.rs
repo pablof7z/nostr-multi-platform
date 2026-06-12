@@ -378,6 +378,16 @@ impl KernelReducer {
         self.kernel.any_relay_connected()
     }
 
+    /// Read the active-account pubkey the kernel currently holds (lowercase
+    /// canonical hex), or `None` if no active account is set.
+    ///
+    /// Wasm-side accessors (e.g. `nmp-wasm`'s test helpers) use this to
+    /// verify that `set_active_account` stored the canonicalised form.
+    #[must_use]
+    pub fn active_account_pubkey(&self) -> Option<String> {
+        self.kernel.active_account_pubkey().map(|s| s.to_string())
+    }
+
     /// V-51 phase 2 — render the kernel's routing-trace projection as JSON.
     ///
     /// The shape is documented at
@@ -438,7 +448,10 @@ impl KernelReducer {
             .collect();
         self.kernel.set_configured_relays(relay_rows);
     }
+
 }
+
+mod feed_verbs;
 
 impl Default for KernelReducer {
     fn default() -> Self {
@@ -453,4 +466,8 @@ mod tests;
 #[cfg(test)]
 #[path = "kernel_reducer/tests_snapshot_claims.rs"]
 mod tests_snapshot_claims;
+
+#[cfg(test)]
+#[path = "kernel_reducer/tests_feed_verbs.rs"]
+mod tests_feed_verbs;
 

@@ -1576,6 +1576,13 @@ impl Kernel {
         Arc::clone(&self.active_account_handle)
     }
 
+    /// Read the kernel's current active-account pubkey (lowercase canonical
+    /// hex), or `None` if no active account is set.
+    #[must_use]
+    pub(crate) fn active_account_pubkey(&self) -> Option<&str> {
+        self.active_account.as_deref()
+    }
+
     /// V-51 phase 1 — borrow the kernel's routing-trace projection.
     ///
     /// Returns an `Arc<RoutingTraceProjection>` so a host that swaps in a
@@ -2723,6 +2730,15 @@ impl Kernel {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_active_account_for_test(&mut self, pubkey: impl Into<String>) {
         self.active_account = Some(pubkey.into());
+    }
+
+    /// Seed a sentinel in the pre-kind:3 buffer (test-only).
+    #[cfg(test)]
+    pub(crate) fn seed_pre_kind3_buffer_for_test(&mut self, event_id: impl Into<String>) {
+        let id = event_id.into();
+        let e = NostrEvent { id: id.clone(), pubkey: "d".repeat(64), created_at: 0,
+            kind: 1, tags: vec![], content: String::new(), sig: "s".repeat(128) };
+        self.pre_kind3_buffer.insert(id, (e, String::new()));
     }
 
     /// Read-only access to the injected [`OutboxRouter`].

@@ -303,6 +303,42 @@ class KernelBridge {
         if (handle != 0L) nativeEncodeProfile(handle, pubkey) else null
 
     /**
+     * Register the synchronous capability handler for non-`external_signer`
+     * namespaces (e.g. Android Keystore keyring). The [handler] object must
+     * expose `fun handle(requestJson: String): String`.
+     *
+     * Must be called BEFORE [identityRestore] so the keyring capability is
+     * live when identity-restore reads the persisted secret.
+     *
+     * D6: null handle is a no-op. D7: the handler executes and reports; Rust
+     * owns all policy.
+     */
+    fun setCapabilityHandler(handler: KeystoreKeyringCapability) {
+        if (handle != 0L) nativeSetCapabilityHandler(handle, handler)
+    }
+
+    /**
+     * Restore a persisted Chirp identity and register Marmot.
+     *
+     * Calls `nmp_app_chirp_identity_restore` through the JNI seam: the kernel
+     * reads the nsec from the keyring capability (via [setCapabilityHandler]),
+     * signs in the actor, and registers Marmot against the active key.
+     *
+     * [dbDir] is the host app-support directory (e.g. `context.filesDir.path`).
+     * [testNsec] is null in production; pass a non-null nsec string only in
+     * headless UI tests.
+     *
+     * Returns `true` when a Marmot identity was registered (a local key was
+     * found), `false` when no persisted local key exists (first cold-start,
+     * bunker / NIP-55 account, or the `marmot` feature is disabled).
+     *
+     * D6: null/dead handle or any Rust-side failure returns false without
+     * panicking across the JNI seam.
+     */
+    fun identityRestore(dbDir: String, testNsec: String? = null): Boolean =
+        handle != 0L && nativeIdentityRestore(handle, dbDir, testNsec)
+
+    /**
      * Expose the raw Android JNI Session pointer (`jlong`) to same-process
      * Android bridge extensions. Returns 0 if the bridge was freed. Callers
      * must not store this value beyond the lifetime of this bridge.
@@ -352,5 +388,7 @@ class KernelBridge {
     private external fun nativeMarmotRegisterActive(handle: Long, dbDir: String): Boolean
     private external fun nativeMarmotUnregister(handle: Long)
     private external fun nativeEncodeProfile(handle: Long, pubkey: String): String?
+    private external fun nativeSetCapabilityHandler(handle: Long, handler: Any)
+    private external fun nativeIdentityRestore(handle: Long, dbDir: String, testNsec: String?): Boolean
     private external fun nativeFree(handle: Long)
 }

@@ -85,6 +85,16 @@ via remote signer RPC) extend the broker's NIP-46 verb set with verbs `nostr-con
 not support. Owning the broker lets NMP extend the verb set without depending on upstream
 merges.
 
+> Correction (2026-06-12): the V-08 Stage 3 plan as named here — per-envelope
+> `unwrap_gift_wrap` via remote signer RPC — was rejected as unviable (each
+> kind:1059 unseal is two *sequential* interactive NIP-46 decrypts; an inbox
+> backfill is O(2N) bunker round-trips). The argument above (owning the broker
+> lets NMP extend the verb set) stands; the *shape* of the V-08 extension is
+> re-decided in issue #961: a signer-session capability port as the
+> prerequisite seam, then either a delegated decrypt-session capability or an
+> explicit "bunker accounts do not receive DMs" product policy. V-06 Stages 2-3
+> should likewise ride the session port (see #960).
+
 ## Decision
 
 `nmp-signer-broker` is declared **canonical maintained infrastructure**. It is not a
