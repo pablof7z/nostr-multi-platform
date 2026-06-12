@@ -32,18 +32,26 @@ use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 
 /// Fan an outbound batch back to the driver(s) whose URL matches each
 /// message. Used by every kernel-handler closure (connected/text/binary)
-/// after the kernel returns a non-empty outbound queue.
+/// after the kernel returns a non-empty outbound queue, and by the tick
+/// path and publish path after kernel pump calls.
 ///
 /// A single bootstrap URL can map to multiple drivers when the role string
 /// is `"both,indexer"` (one Content lane + one Indexer lane share the same
-/// WebSocket target). The outbound is fanned to ALL matching drivers, not
-/// just the first, so each lane sees the frame and the kernel's per-lane
-/// `RelayHealth` counters stay accurate. A miss drops the frame (the relay
-/// is not in our bootstrap — fabricating a socket would violate the host's
-/// relay-policy declaration).
-fn fan_outbound(
+/// WebSocket target). The outbound is fanned to **all** matching drivers,
+/// not just the first, so each lane sees the frame and the kernel's
+/// per-lane `RelayHealth` counters stay accurate. A miss drops the frame
+/// (the relay is not in our bootstrap — fabricating a socket would violate
+/// the host's relay-policy declaration).
+///
+/// This is the single canonical fan-out implementation shared by the
+/// relay-pool sink, the 1 Hz tick path (`tick::start_tick_interval`), and
+/// the write publish path (`publish_path::publish_app_action`). It
+/// replaces the former `publish_path::fan_out_outbound` which used
+/// `.find()` (first match only) and therefore dropped frames on
+/// `"both"`-role URLs (issue #1143 fix 2).
+pub(crate) fn fan_out_outbound(
     drivers: &Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
-    outbound: Vec<OutboundMessage>,
+    outbound: &[OutboundMessage],
 ) {
     let drivers = drivers.borrow();
     for message in outbound {
@@ -99,7 +107,7 @@ pub(crate) fn build_handlers(
             let outbound = reducer
                 .borrow_mut()
                 .handle_relay_connected(role, url, is_reconnect);
-            fan_outbound(&drivers, outbound);
+            fan_out_outbound(&drivers, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
         }) as Rc<dyn Fn(RelayRole, &str, bool)>
     };
@@ -113,7 +121,7 @@ pub(crate) fn build_handlers(
             let outbound = reducer
                 .borrow_mut()
                 .handle_relay_frame(role, url, RelayFrame::Text(text));
-            fan_outbound(&drivers, outbound);
+            fan_out_outbound(&drivers, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
         }) as Rc<dyn Fn(RelayRole, &str, String)>
     };
@@ -127,7 +135,7 @@ pub(crate) fn build_handlers(
             let outbound = reducer
                 .borrow_mut()
                 .handle_relay_frame(role, url, RelayFrame::Binary(bytes));
-            fan_outbound(&drivers, outbound);
+            fan_out_outbound(&drivers, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
         }) as Rc<dyn Fn(RelayRole, &str, Vec<u8>)>
     };

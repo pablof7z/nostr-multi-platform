@@ -386,7 +386,7 @@ impl WasmRuntime {
     /// (native — the driver pool does not exist in test builds).
     fn fan_outbound(&self, outbound: Vec<OutboundMessage>) {
         #[cfg(target_arch = "wasm32")]
-        crate::publish_path::fan_out_outbound(&self.relays, &outbound);
+        crate::relay_pool::fan_out_outbound(&self.relays, &outbound);
         #[cfg(not(target_arch = "wasm32"))]
         let _ = outbound;
     }

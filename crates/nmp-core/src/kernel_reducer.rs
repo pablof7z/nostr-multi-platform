@@ -174,17 +174,21 @@ impl KernelReducer {
         self.kernel.mark_publish_relay_unavailable(relay_url);
     }
 
-    /// Pump all three idle drains in native parity order: pending view
-    /// requests → lifecycle drain → publish pump. Mirrors the native actor's
-    /// idle-tick sequence at `actor/mod.rs:2086–2098` (pending_view_requests),
-    /// `2107–2120` (lifecycle drain), and `2161–2173` (publish pump).
+    /// Pump all four idle drains in native parity order: pending view
+    /// requests → lifecycle drain → claim-expansion tick → publish pump.
+    /// Mirrors the native actor's idle-tick sequence at
+    /// `actor/mod.rs:2086–2098` (pending_view_requests), `2107–2120`
+    /// (lifecycle drain), `2164–2188` (claim-expansion W6), and `2161–2173`
+    /// (publish pump).
     ///
     /// The wasm32 driver calls this from its `gloo-timers` periodic interval
     /// (1 Hz is sufficient; retry deadlines are seconds-scale) so transient
     /// publish failures recover without waiting for the next inbound frame
-    /// from any relay, and `CompileTrigger::ViewOpened` events enqueued by
+    /// from any relay, `CompileTrigger::ViewOpened` events enqueued by
     /// `claim_event` / `claim_profile` compile into REQ frames without
-    /// waiting for the next relay event.
+    /// waiting for the next relay event, and Phase-1 claims advance to
+    /// Phase 2 on every tick rather than stalling permanently on quiet
+    /// sockets (closes the W6 gap tracked in issue #1143).
     ///
     /// `pending_view_requests()` is placed first (before the lifecycle drain)
     /// to preserve the native M1-CLOSE-before-M2-REQ ordering: any pending
@@ -198,16 +202,6 @@ impl KernelReducer {
     /// already runs on every inbound frame via `handle_relay_frame` (line 114),
     /// so this call adds no new wasm32 `Instant` exposure.
     ///
-    /// # Parity note
-    ///
-    /// Native also calls `poll_claim_expansion(Instant::now())` at
-    /// `actor/mod.rs:2133–2145` between the lifecycle drain and the publish
-    /// pump. This drain was previously omitted because `std::time::Instant::now()`
-    /// panics on `wasm32-unknown-unknown` (issue #1143 / #1009). The web-time
-    /// shim (`crate::time::Instant`) introduced alongside this wasm runtime PR
-    /// resolves that blocker — wiring `poll_claim_expansion` here is a
-    /// follow-up; the omission is harmless while claim-expansion remains an
-    /// in-process-only feature.
     pub fn tick(&mut self) -> Vec<OutboundMessage> {
         // 1. Pending view requests: mirrors actor/mod.rs:2086-2098.
         //    Drains time-gated work (contacts_deadline, F-TTL reverify, deferred
@@ -219,7 +213,16 @@ impl KernelReducer {
         //    Placed after pending_view_requests to ensure M1 CLOSE frames are
         //    enqueued before M2 opens new subs (spec §3.1).
         outbound.extend(self.kernel.drain_lifecycle_outbound());
-        // 3. Publish pump: mirrors actor/mod.rs:2161-2173.
+        // 3. Claim-expansion idle tick: mirrors actor/mod.rs:2164-2188 (W6).
+        //    Advances the per-claim Phase-1/2 state machine once per tick.
+        //    `crate::time::Instant` resolves to `web_time::Instant` on
+        //    wasm32-unknown-unknown (performance.now() backed) and to
+        //    `std::time::Instant` on native — both are panic-free on their
+        //    respective targets (closes the #1143 / #1009 blocker).
+        //    D8: with no pending claims this is a single `is_empty()` check;
+        //    no allocation, no iteration.
+        outbound.extend(self.kernel.poll_claim_expansion(crate::time::Instant::now()));
+        // 4. Publish pump: mirrors actor/mod.rs:2161-2173.
         //    Retries in-flight publish frames whose retry deadline has elapsed.
         outbound.extend(self.kernel.tick_publish_engine_for_now());
         self.kernel.partition_auth_paused(outbound)
