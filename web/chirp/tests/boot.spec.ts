@@ -1,8 +1,9 @@
 /**
  * PR-W3 Boot Smoke — proves the real NMP wasm runtime boots in a real
- * browser against a real (fixture) relay.
+ * browser against a real (fixture) relay, and that decoded snapshot data
+ * reaches the UI (post-#1209 TS bindings regen).
  *
- * Three honest assertions — NONE of these can pass on a DegradedRuntime:
+ * Five honest assertions — NONE of these can pass on a DegradedRuntime:
  *
  *   1. `[data-testid="nmp-has-snapshot"]` appears in the DOM within 30 s.
  *      This element is rendered by RuntimePanel only when
@@ -29,24 +30,18 @@
  *      pool.  Observed from the Node.js relay side (not the DOM) so no
  *      dependency on FlatBuffers snapshot decoding.
  *
- * ── KNOWN LIMITATION ──────────────────────────────────────────────────
- * The TypeScript FlatBuffers bindings for SnapshotFrame were generated
- * from an older schema and only expose `payload:Value` (field 1) and
- * `schemaVersion()` (field 0).  PR-B (#991/#979) deprecated and zeroed
- * `payload`; all projection data is now in `typed_projections` (field 2)
- * and Tier-3 fields such as `relay_statuses:[RelayStatus]` (field 10).
- * Decoding the relay-connected state from a live snapshot therefore
- * requires regenerating the TypeScript bindings — tracked as issue #1209
- * (post-v1).  The relay-row DOM assertion (relay URL + "Connected" from
- * a decoded snapshot) is intentionally deferred to that issue rather than
- * faked here.  Assertion 3 above proves the same relay I/O fact from the
- * relay side without needing snapshot decoding.
- * The web cannot yet decode or render any real snapshot data —
- * `decodeUpdateFrameBytes` throws on the zeroed `payload`, so the UI shows
- * a degraded Runtime status until the TS bindings are regenerated (see
- * #1209).  This boot smoke proves the runtime BOOTS and connects, not that
- * the UI renders live data.
- * ──────────────────────────────────────────────────────────────────────
+ *   4. `[data-testid="nmp-runtime-status"]` contains "running".
+ *      Proves the TS bindings regen (#1209) fixed the decode path: the
+ *      Tier-3 `running` field is now read from each SnapshotFrame and
+ *      surfaced as RuntimeStatus "running".  DegradedRuntime never sets
+ *      this element to "running"; a broken decode would leave it "degraded".
+ *
+ *   5. At least one `[data-testid="relay-row"]` is present (>= 1 row).
+ *      Proves the Tier-3 `relay_statuses` vector is decoded from the real
+ *      FlatBuffers snapshot and surfaced through RuntimePanel's relay list.
+ *      If the TS bindings decode is broken the relay rows stay empty.
+ *      (The kernel may report multiple rows per relay URL as connection
+ *      state advances; the assertion is >= 1, not a fixed count.)
  *
  * The fixture relay (fixture-relay.ts) runs in the Node test process and
  * listens on a random loopback port.  The app receives the relay URL via
@@ -92,6 +87,32 @@ test("NMP wasm runtime boots real wasm in browser against fixture relay", async 
     // 1.  DegradedRuntime never opens any relay connections, so a count
     // ≥ 1 proves the real runtime's relay pool fired at least once.
     await expect.poll(() => relay.connectionCount(), { timeout: 20_000 }).toBeGreaterThanOrEqual(1);
+
+    // ── Assertion 4: runtime status reads "running" (#1209 bindings regen) ──
+    //
+    // RuntimePanel renders <strong data-testid="nmp-runtime-status"> with the
+    // labelled status.  Before #1209, decodeUpdateFrameBytes threw on every
+    // real frame (zeroed deprecated payload) and client.ts set status to
+    // "browser actor driver missing".  After regen, the Tier-3 `running`
+    // field is decoded and status advances to "running".  Failing here means
+    // the TS bindings decode is still broken.
+    const runtimeStatus = page.locator('[data-testid="nmp-runtime-status"]');
+    await expect(runtimeStatus).toHaveText("running", { timeout: 30_000 });
+
+    // ── Assertion 5: relay row decoded from Tier-3 relay_statuses ──────────
+    //
+    // RuntimePanel renders <div data-testid="relay-row"> for each relay in
+    // snapshot.latestRelayStatuses, which is populated from the FlatBuffers
+    // Tier-3 `relay_statuses` vector.  The fixture relay URL was passed as
+    // relay_bootstrap so the kernel should report at least one relay row
+    // once it has processed the first tick.  If the TS bindings decode is
+    // broken, relayStatuses decodes to [] and no relay rows appear.
+    // (The kernel may report more than one entry per URL across connection
+    // state transitions; assert >= 1, not exactly 1.)
+    await expect.poll(
+      () => page.locator('[data-testid="relay-row"]').count(),
+      { timeout: 30_000 },
+    ).toBeGreaterThanOrEqual(1);
   } finally {
     await relay.close();
   }

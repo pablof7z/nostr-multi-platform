@@ -40,6 +40,7 @@ crates/**/src/**/generated/*.rs
 ios/*/*/Bridge/Generated/*.swift
 android/app/src/main/java/nmp/**
 apps/*/android/app/src/main/kotlin/nmp/transport/**
+web/chirp/src/nmp/generated/**
 
 # Web registry vendor mirror (copied output, source lives under crates/nmp-cli/registry/)
 web/registry/src/vendor/**
