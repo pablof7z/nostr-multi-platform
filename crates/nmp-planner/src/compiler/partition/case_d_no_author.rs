@@ -267,9 +267,9 @@ mod tests {
             .compile(&[hashtag_interest(1, "nostr")])
             .expect("compile");
 
-        assert!(plan.per_relay.get("wss://app").is_some());
+        assert!(plan.per_relay.contains_key("wss://app"));
         assert!(
-            plan.per_relay.get("wss://purplepag.es").is_none(),
+            !plan.per_relay.contains_key("wss://purplepag.es"),
             "indexer must NOT be touched when app_relays carry the firehose"
         );
     }
@@ -321,11 +321,11 @@ mod tests {
             UserConfiguredCategory::Bootstrap,
         )));
         assert!(
-            plan.per_relay.get("wss://purplepag.es").is_none(),
+            !plan.per_relay.contains_key("wss://purplepag.es"),
             "event_ids discovery must NOT land on the indexer lane"
         );
-        assert!(plan.per_relay.get("wss://user-read.example").is_none());
-        assert!(plan.per_relay.get("wss://user-app.example").is_none());
+        assert!(!plan.per_relay.contains_key("wss://user-read.example"));
+        assert!(!plan.per_relay.contains_key("wss://user-app.example"));
         assert_eq!(plan.per_relay.len(), 1);
     }
 
@@ -374,10 +374,10 @@ mod tests {
         let plan = compiler.compile(&[interest]).expect("compile");
 
         assert!(
-            plan.per_relay.get("wss://relay.primal.net").is_none(),
+            !plan.per_relay.contains_key("wss://relay.primal.net"),
             "Tailing event_ids must NOT route to bootstrap content relays"
         );
-        assert!(plan.per_relay.get("wss://purplepag.es").is_some());
+        assert!(plan.per_relay.contains_key("wss://purplepag.es"));
     }
 
     #[test]
@@ -399,7 +399,7 @@ mod tests {
         let plan = compiler.compile(&[interest]).expect("compile");
 
         assert!(
-            plan.per_relay.get("wss://relay.primal.net").is_none(),
+            !plan.per_relay.contains_key("wss://relay.primal.net"),
             "Account-scoped event_ids must NOT route to bootstrap content relays"
         );
     }
@@ -423,7 +423,7 @@ mod tests {
         let plan = compiler.compile(&[interest]).expect("compile");
 
         assert!(
-            plan.per_relay.get("wss://relay.primal.net").is_none(),
+            !plan.per_relay.contains_key("wss://relay.primal.net"),
             "OneShot+Global without event_ids must NOT route to bootstrap content"
         );
     }
