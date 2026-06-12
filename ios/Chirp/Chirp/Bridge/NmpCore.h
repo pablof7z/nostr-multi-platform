@@ -87,7 +87,10 @@ void nmp_app_switch_active(void *app, const char *identity_id);
 void nmp_app_remove_account(void *app, const char *identity_id);
 void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
-void nmp_app_open_timeline(void *app);
+// V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline REMOVED.
+// Use the Chirp home-feed wrappers below instead.
+void nmp_app_chirp_open_home_feed(void *app);
+void nmp_app_chirp_close_home_feed(void *app);
 
 // H4 — NMP-provided NIP-19 identity encoder. Turns a 64-char hex pubkey into a
 // bech32 display identifier so app shells stop hand-rolling bech32.  Prefers

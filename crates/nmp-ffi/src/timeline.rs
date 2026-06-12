@@ -248,3 +248,61 @@ pub extern "C" fn nmp_app_release_event(
 // Apps use their per-app seam (nmp_app_chirp_close_author_feed etc.) which
 // releases the FlatFeed and calls nmp_app_close_interest for kernel cleanup.
 
+/// ADR-0042 amendment (2026-06-12) — open the contact-feed subscription.
+///
+/// `kinds_json` is a JSON array of unsigned 32-bit integers identifying the
+/// event kinds the follow-set REQ should carry, e.g. `"[1,6]"`. The host
+/// (e.g. a Chirp wrapper) owns the policy; the substrate carries it verbatim
+/// (D0). An empty array `"[]"` is a legitimate clear — same effect as
+/// `nmp_app_close_contact_feed`. A malformed or non-array value surfaces a
+/// diagnostic toast rather than a panic (D6).
+///
+/// D8: fire-and-forget; the actor processes the command asynchronously.
+#[no_mangle]
+pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, kinds_json: *const c_char) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(kinds_str) = c_string_argument(kinds_json) else {
+        return;
+    };
+
+    // Parse kinds_json as a JSON array of u32.
+    let parsed: Option<Vec<u32>> = serde_json::from_str(&kinds_str)
+        .ok()
+        .and_then(|v: serde_json::Value| {
+            v.as_array().map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_u64().map(|n| n as u32))
+                    .collect()
+            })
+        });
+
+    let kinds = match parsed {
+        Some(vec) => std::collections::BTreeSet::from_iter(vec),
+        None => {
+            app.send_cmd(nmp_core::ActorCommand::ShowToast {
+                message: "open_contact_feed: malformed kinds JSON".to_string(),
+            });
+            return;
+        }
+    };
+
+    app.send_cmd(nmp_core::ActorCommand::OpenContactFeed { kinds });
+}
+
+/// ADR-0042 amendment (2026-06-12) — close the contact-feed subscription.
+///
+/// Withdraws all follow-feed M2 interests from the lifecycle registry;
+/// `drain_lifecycle_tick` emits CLOSE frames for any live REQs on the next
+/// idle tick. D6: a null `app` is a silent no-op.
+///
+/// D8: fire-and-forget; the actor processes the command asynchronously.
+#[no_mangle]
+pub extern "C" fn nmp_app_close_contact_feed(app: *mut NmpApp) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    app.send_cmd(nmp_core::ActorCommand::CloseContactFeed);
+}
+

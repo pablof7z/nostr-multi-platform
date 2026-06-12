@@ -714,18 +714,27 @@ pub enum ActorCommand {
     RemoveRelay {
         url: String,
     },
-    /// (Re)open the contact-list-authors subscription for the active account.
+    /// (Re)open the contact-feed subscription for the active account.
     ///
     /// `kinds` is the host-declared event-kind set the follow-set REQ should
     /// carry. D0: `nmp-core` does not know which kinds belong to the host's
-    /// app concept (Chirp's social timeline declares {1, 6}; another app might
+    /// app concept (Chirp's home feed declares {1, 6}; a long-form app might
     /// declare {30023}); the host supplies the set so the substrate carries no
     /// app-specific social knowledge. The actor folds it into the kernel via
     /// `Kernel::set_follow_feed_kinds`, which re-registers the active account's
-    /// follow-feed M2 interests under the new kind set.
-    OpenContactListSubscription {
+    /// follow-feed M2 interests under the new kind set. An empty set is
+    /// equivalent to `CloseContactFeed` — it withdraws all follow-feed interests.
+    OpenContactFeed {
         kinds: std::collections::BTreeSet<u32>,
     },
+    /// Tear down the contact-feed subscription opened by `OpenContactFeed`.
+    ///
+    /// Calls `Kernel::set_follow_feed_kinds(BTreeSet::new())`, which clears the
+    /// stored kinds and withdraws all follow-feed M2 interests from the lifecycle
+    /// registry. The unconditional `FollowListChanged` trigger propagates to
+    /// `drain_lifecycle_tick`, which emits CLOSE frames for any live REQs.
+    /// D6: no active account (or no prior open) is a silent no-op.
+    CloseContactFeed,
     /// Refcounted profile (kind:0) claim. `force` (F-TTL) bypasses the TTL
     /// freshness gate so a user-initiated navigation / pull-to-refresh always
     /// re-verifies the cached profile; `force == false` is the lazy, gated

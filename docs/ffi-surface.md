@@ -101,7 +101,8 @@ symbols are compatibility and kernel-owned surfaces.
 | `nmp_app_unfollow` | `(app, pubkey: *const c_char)` | Remove pubkey from kind:3 follow list. | Chirp | non-hex → early return | n/a |
 | `nmp_app_add_relay` | `(app, url: *const c_char, role: *const c_char)` | Add a relay. `role` NULL defaults to `"both"`. | Chirp | null/empty url → early return | n/a |
 | `nmp_app_remove_relay` | `(app, url: *const c_char)` | Remove a relay by URL. | Chirp | invalid → early return | n/a |
-| `nmp_app_open_timeline` | `(app)` | Open the main timeline subscription. | Chirp, Android (via `nmp-android-ffi` Rust paths) | null → early return | n/a |
+| `nmp_app_open_contact_feed` | `(app, kinds_json: *const c_char)` | ADR-0042 amendment. Open the contact-feed subscription with host-declared kinds (e.g. `"[1,6]"`). Empty array = clear. Malformed/non-array → toast + no-op. | Chirp (via `nmp_app_chirp_open_home_feed`), Android (via Chirp wrapper in JNI) | null app/kinds → early return; malformed → toast | n/a |
+| `nmp_app_close_contact_feed` | `(app)` | ADR-0042 amendment. Close the contact-feed subscription; withdraws all follow-feed M2 interests and emits CLOSE frames. | Chirp (via `nmp_app_chirp_close_home_feed`) | null → silent no-op | n/a |
 
 All 13 symbols: threading is fire-and-forget on calling thread; actor processes asynchronously.
 
@@ -263,7 +264,8 @@ policy (when to reconcile NIP-77, how to route relays, which identity signs).
 | `nmp_app_unfollow` | PASS | PASS | |
 | `nmp_app_add_relay` | PASS | PASS | |
 | `nmp_app_remove_relay` | PASS | PASS | |
-| `nmp_app_open_timeline` | PASS | PASS | |
+| `nmp_app_open_contact_feed` | PASS | PASS | ADR-0042 amendment — replaces deleted `nmp_app_open_timeline` |
+| `nmp_app_close_contact_feed` | PASS | PASS | ADR-0042 amendment — symmetric close missing from `nmp_app_open_timeline` |
 | `nmp_app_open_interest` | PASS | PASS | M2 (ADR-0042) — generic feed-subscription replacement for `open_firehose_tag` and the removed `open_author`/`open_thread` |
 | `nmp_app_close_interest` | PASS | PASS | M2 (ADR-0042) |
 | `nmp_app_open_uri` | PASS | PASS | |

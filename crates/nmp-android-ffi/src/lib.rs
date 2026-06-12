@@ -28,10 +28,11 @@ mod marmot;
 mod platform;
 mod session;
 mod signer;
+use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_new,
-    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay,
-    nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
+    nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay, nmp_app_signin_nsec,
+    nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
 };
 use session::{insert_session, remove_session, NextUpdate};
 pub(crate) use session::{session_arc, Session};
@@ -78,6 +79,10 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClose(
     }
 }
 
+/// JNI export name kept stable (Kotlin calls `nativeOpenTimeline`).
+/// Body updated to call the Chirp home-feed wrapper (`HOME_FEED_KINDS = [1,6]`
+/// defined in `nmp_app_chirp::ffi::interest_feed`) instead of the deleted
+/// `nmp_app_open_timeline` (ADR-0042 amendment 2026-06-12).
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenTimeline(
     _env: JNIEnv,
@@ -85,7 +90,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenTimeline(
     handle: jlong,
 ) {
     if let Some(s) = session_arc(handle) {
-        s.with_app(|app| nmp_app_open_timeline(app));
+        s.with_app(|app| nmp_app_chirp_open_home_feed(app));
     }
 }
 
