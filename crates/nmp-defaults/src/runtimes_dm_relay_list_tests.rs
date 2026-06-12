@@ -23,8 +23,9 @@ use super::DmRuntimeController;
 /// (the bunker-activation signal under test) fires from the active pubkey
 /// alone, independent of any configured relay list. The slot carries hex
 /// pubkey only — the bunker shape.
-fn controller() -> (DmRuntimeController, ActiveAccountSlot, Receiver<ActorCommand>) {
-    let (tx, rx) = mpsc::channel();
+fn controller() -> (DmRuntimeController, ActiveAccountSlot, Receiver<nmp_core::ActorMail>) {
+    let (inbox_tx, rx) = mpsc::channel::<nmp_core::ActorMail>();
+    let tx = nmp_core::CommandSender::new(inbox_tx);
     let active_pubkey: ActiveAccountSlot = Arc::new(Mutex::new(None));
     let relay_slot = Arc::new(Mutex::new(AppRelayList::default()));
     let controller = DmRuntimeController {
@@ -34,6 +35,17 @@ fn controller() -> (DmRuntimeController, ActiveAccountSlot, Receiver<ActorComman
         state: Mutex::new(DmRuntimeState::default()),
     };
     (controller, active_pubkey, rx)
+}
+
+/// Drain whatever the controller enqueued this tick (ADR-0050 §D3a: the inbox
+/// carries `ActorMail`).
+fn drained(rx: &Receiver<nmp_core::ActorMail>) -> Vec<ActorCommand> {
+    rx.try_iter()
+        .map(|mail| match mail {
+            nmp_core::ActorMail::Command(cmd) => cmd,
+            other => panic!("expected ActorMail::Command, got {other:?}"),
+        })
+        .collect()
 }
 
 /// Finding C — a bunker (remote-signer-only) account must activate the DM
@@ -50,7 +62,7 @@ fn bunker_only_account_activates_dm_relay_list_runtime() {
     // `snapshot_json` drives reconciliation (push/withdraw) once per tick.
     let _ = controller.snapshot_json();
 
-    let cmds: Vec<ActorCommand> = rx.try_iter().collect();
+    let cmds: Vec<ActorCommand> = drained(&rx);
     let pushed_inbox = cmds.iter().any(|cmd| {
         matches!(
             cmd,
@@ -69,7 +81,7 @@ fn bunker_only_account_activates_dm_relay_list_runtime() {
 fn no_account_enqueues_no_inbox_interest() {
     let (controller, _slot, rx) = controller();
     let _ = controller.snapshot_json();
-    let cmds: Vec<ActorCommand> = rx.try_iter().collect();
+    let cmds: Vec<ActorCommand> = drained(&rx);
     assert!(
         !cmds.iter().any(|cmd| matches!(
             cmd,

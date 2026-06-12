@@ -35,6 +35,11 @@ mod capability_worker;
 mod dispatch;
 #[cfg(feature = "native")]
 mod fairness;
+// ADR-0050 §D3a — the single waking actor inbox. `ActorMail` + `CommandSender`
+// are always-compiled (the always-compiled `substrate::protocol` seam hands
+// `CommandSender` to workers, and `ActorCommand` itself is always-compiled);
+// the relay-side scheduler / sink / `Inbox` are `native`-gated inside.
+mod inbox;
 // Generic raw signed-event forwarding dispatch. Native-only: depends on
 // `nmp_network::pool::Pool` for outbound `["EVENT", ...]` frames. Policy
 // crates provide target selection through a substrate trait object.
@@ -198,6 +203,16 @@ use crate::kernel::LifecyclePhase;
 
 use crate::app::KernelAction;
 
+// ADR-0050 §D3a — always-compiled inbox transport types. `CommandSender` is the
+// single command-send seam handed to host code, protocol/capability workers,
+// the broker adapter, and the actor's self-feedback path; `ActorMail` is what
+// the unified inbox carries. Both name no protocol concept (D0).
+pub use inbox::{ActorMail, CommandSendError, CommandSender};
+// Native-only relay-lane scheduler + receiver wrapper. (`RelayMailSink` is
+// constructed via `CommandSender::relay_sink()`, never named here.)
+#[cfg(feature = "native")]
+use inbox::{Inbox, LoopStep, MailScheduler};
+
 #[cfg(feature = "native")]
 use relay_idle::{sweep_temporary_idle_relays, TEMPORARY_RELAY_IDLE_GRACE};
 #[cfg(feature = "native")]
@@ -226,7 +241,7 @@ use crate::subs::PlanCoverageHook;
 #[cfg(feature = "native")]
 use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot, StoragePathSlot};
 #[cfg(feature = "native")]
-use nmp_network::pool::{Pool, PoolConfig, PoolEvent, RelayHandle};
+use nmp_network::pool::{Pool, PoolConfig, RelayHandle};
 use std::collections::HashMap;
 #[cfg(feature = "native")]
 use std::collections::HashSet;
@@ -235,7 +250,7 @@ use std::panic::{self, AssertUnwindSafe};
 #[cfg(feature = "native")]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(feature = "native")]
-use std::sync::mpsc::{self, TryRecvError};
+use std::sync::mpsc::TryRecvError;
 #[cfg(feature = "native")]
 use std::sync::mpsc::{Receiver, Sender};
 #[cfg(feature = "native")]
@@ -1134,16 +1149,16 @@ use outbound::wire_frames_to_outbound;
 #[cfg(feature = "native")]
 #[allow(dead_code)]
 pub fn run_actor(
-    command_rx: Receiver<ActorCommand>,
+    inbox_rx: Receiver<ActorMail>,
     // Self-feedback sender — see `run_actor_with_observers` for the
     // contract. The backwards-compat shim threads it through unchanged.
     // Callers (tests + `lib.rs::spawn_actor`) hand in a clone of the
-    // `Sender` they kept after constructing the channel.
-    command_tx_self: Sender<ActorCommand>,
+    // [`CommandSender`] over the same inbox.
+    command_tx_self: CommandSender,
     update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
 ) {
     run_actor_with_observers(
-        command_rx,
+        inbox_rx,
         command_tx_self,
         update_tx,
         new_lifecycle_observer_slot(),
@@ -1244,14 +1259,14 @@ pub fn run_actor(
 #[cfg(feature = "native")]
 #[allow(dead_code)]
 pub fn run_actor_with_lifecycle_observer(
-    command_rx: Receiver<ActorCommand>,
+    inbox_rx: Receiver<ActorMail>,
     // Self-feedback sender — see `run_actor_with_observers`.
-    command_tx_self: Sender<ActorCommand>,
+    command_tx_self: CommandSender,
     update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
     lifecycle_observer: LifecycleObserverSlot,
 ) {
     run_actor_with_observers(
-        command_rx,
+        inbox_rx,
         command_tx_self,
         update_tx,
         lifecycle_observer,
@@ -1324,25 +1339,27 @@ pub fn run_actor_with_lifecycle_observer(
 /// `Arc<Mutex<…>>` instances so registrations from outside the actor are
 /// visible without crossing the FFI on each event.
 ///
-/// Dual-channel priority design: `command_rx` is drained via `try_recv` at
-/// the top of every iteration so UI commands are NEVER dropped under relay
-/// event flood. The drain is budgeted so relay events and idle work still
-/// progress under sustained command bursts. Relay events use a separate
-/// channel read with `recv_timeout(compute_wait(…))` so emit-hz cadence is
-/// respected when the command lane is not saturated.
+/// Single-inbox priority design (ADR-0050 §D3a): `inbox_rx` carries both
+/// commands and relay events as [`ActorMail`]. Each iteration drains the
+/// command lane via `try_recv` first (budgeted, stashing any relay mail seen
+/// along the way), then makes the loop's single blocking `recv_timeout` — so a
+/// command send wakes a relay-blocked actor instead of waiting out the 250 ms
+/// idle cap. Command-lane priority and the [`COMMAND_DRAIN_BUDGET`] fairness
+/// budget are preserved exactly; relay events still surface at emit-hz cadence
+/// when the command lane is not saturated.
 #[cfg(feature = "native")]
 #[allow(clippy::too_many_arguments)]
 pub fn run_actor_with_observers(
-    command_rx: Receiver<ActorCommand>,
-    // Self-feedback sender — a clone of `command_rx`'s upstream `Sender`,
-    // handed to dispatch arms that spawn background workers (the LNURL-pay
-    // HTTP round-trip dispatched via `ActorCommand::Protocol` carries one
-    // through `ProtocolCommandContext::command_sender_clone`). The worker
-    // uses it to send a follow-up `ActorCommand` (e.g. `ShowToast` with
-    // the bolt11) back into this loop without needing access to the
-    // `NmpApp`. The actor itself never `recv`s on this sender — it only
-    // hands clones out via `ActorContext::command_tx_self`.
-    command_tx_self: Sender<ActorCommand>,
+    inbox_rx: Receiver<ActorMail>,
+    // Self-feedback sender — a [`CommandSender`] over the same inbox `inbox_rx`
+    // receives on, handed to dispatch arms that spawn background workers (the
+    // LNURL-pay HTTP round-trip dispatched via `ActorCommand::Protocol` carries
+    // one through `ProtocolCommandContext::command_sender_clone`). The worker
+    // uses it to send a follow-up `ActorCommand` (e.g. `ShowToast` with the
+    // bolt11) back into this loop — and now that send also *wakes* the actor.
+    // The actor itself never `recv`s on this sender — it only hands clones out
+    // via `ActorContext::command_tx_self`.
+    command_tx_self: CommandSender,
     update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
     lifecycle_observer: LifecycleObserverSlot,
     event_observers: KernelEventObserverSlot,
@@ -1502,8 +1519,13 @@ pub fn run_actor_with_observers(
     // keepalive constants, `RelayRole::Content` default lane) matches the
     // pre-Pool actor behaviour bit-for-bit; per-URL role attribution still
     // flows through `Pool::ensure_open_with_role` from `ensure_relay_worker`.
-    let (relay_tx, relay_rx) = mpsc::channel::<PoolEvent>();
-    let pool = Pool::new(PoolConfig::default(), relay_tx);
+    // ADR-0050 §D3a — the pool delivers relay events through a
+    // `RelayMailSink` that wraps each `PoolEvent` into `ActorMail::Relay` and
+    // pushes it onto the SAME inbox `inbox_rx` receives commands on. There is
+    // no longer a separate `relay_rx`: relay traffic and commands share one
+    // waking channel, so a command send wakes a relay-blocked actor.
+    let inbox = Inbox::new(inbox_rx);
+    let pool = Pool::new(PoolConfig::default(), command_tx_self.relay_sink());
 
     // T114b — bind a dispatch-drops counter for diagnostic visibility. Under
     // the new dual-channel design the counter is always zero (commands cannot
@@ -1551,9 +1573,25 @@ pub fn run_actor_with_observers(
     // the handle and before `Start`. Blocking here removes that init-order
     // race without polling; the first command is replayed through the normal
     // dispatch path below after the kernel has been built with the latest path.
-    let first_command = match command_rx.recv() {
-        Ok(ActorCommand::Shutdown) | Err(_) => return,
-        Ok(command) => command,
+    // The lane scheduler (ADR-0050 §D3a). It owns the relay backlog so any
+    // relay mail seen before the first command (see the bootstrap recv below)
+    // — or stashed while draining the command lane each iteration — is
+    // replayed in order. Constructed before the bootstrap recv so pre-kernel
+    // relay mail has somewhere to go.
+    let mut scheduler = MailScheduler::new();
+
+    // Wait for the first command before constructing the real kernel.
+    // Relay mail cannot precede the first command in practice — no relays are
+    // open until a command (`Start` / `Configure`) drives `ensure_relay_worker`
+    // — but the merged inbox means relay mail *could* in principle arrive
+    // first, so we handle it soundly: stash any pre-first-command relay mail in
+    // the scheduler's backlog and replay it after kernel construction.
+    let first_command = loop {
+        match inbox.recv() {
+            None | Some(ActorMail::Command(ActorCommand::Shutdown)) => return,
+            Some(ActorMail::Command(command)) => break command,
+            Some(ActorMail::Relay(event)) => scheduler.stash_relay(event),
+        }
     };
 
     // Resolve the FFI-supplied storage path once, after at least one host
@@ -1902,17 +1940,32 @@ pub fn run_actor_with_observers(
         // budget prevents a sustained command stream from starving relay
         // events, subscription ticks, publish retries, and parked sign ops.
         let mut command_drain = CommandDrain::new(COMMAND_DRAIN_BUDGET);
+        let mut inbox_disconnected = false;
         loop {
             if !command_drain.can_drain_command() {
                 break;
             }
-            let command_result = if let Some(command) = first_command.take() {
-                Ok(command)
+            let command = if let Some(command) = first_command.take() {
+                command
             } else {
-                command_rx.try_recv()
+                match inbox.try_recv() {
+                    Ok(ActorMail::Command(command)) => command,
+                    Ok(ActorMail::Relay(event)) => {
+                        // Relay mail does not consume the command budget; stash
+                        // it for the relay lane below and keep draining
+                        // commands.
+                        scheduler.stash_relay(event);
+                        continue;
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        inbox_disconnected = true;
+                        break;
+                    }
+                }
             };
-            match command_result {
-                Ok(command) => {
+            {
+                {
                     command_drain.record_command();
                     // G-S4 — straddle counter: one command has left the channel
                     // (either the replayed `first_command`, which `command_rx
@@ -2013,23 +2066,33 @@ pub fn run_actor_with_observers(
                         emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                     }
                 }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => {
-                    close_relays(
-                        &mut relay_controls,
-                        &mut slot_to_url,
-                        &pool,
-                        &mut connected_relays,
-                        &mut kernel,
-                    );
-                    connected_urls.clear();
-                    return;
-                }
             }
+        }
+        // Inbox closed (every `CommandSender` clone dropped) → tear down. This
+        // is the merged-inbox equivalent of the old `command_rx`
+        // `Disconnected` arm: relay traffic alone can never disconnect the
+        // inbox (the actor holds the relay sink), so a disconnect means all
+        // command senders are gone.
+        if inbox_disconnected {
+            close_relays(
+                &mut relay_controls,
+                &mut slot_to_url,
+                &pool,
+                &mut connected_relays,
+                &mut kernel,
+            );
+            connected_urls.clear();
+            return;
         }
 
         // ── Relay event lane ─────────────────────────────────────────────
         // Block up to compute_wait so emit-hz is respected without busy-spin.
+        // This `recv_timeout` is the loop's SINGLE blocking point (D8): a
+        // backlog relay event (stashed while draining commands, or pre-kernel
+        // bootstrap mail) is served first with zero wait; otherwise we block on
+        // the unified inbox, so a command send wakes us here too. A command
+        // received during the wait is replayed as `first_command` so the next
+        // iteration dispatches it on the priority lane (no added latency).
         //
         // Phase F: the inbound item is `PoolEvent` (push-model). Stale-event
         // filtering moved into `handle_relay_event` itself — the helper
@@ -2039,8 +2102,27 @@ pub fn run_actor_with_observers(
         // generation. The pool's translator already drops events with a
         // stale slot-generation, so this is belt-and-braces.
         let wait = command_drain.relay_wait(compute_wait(&kernel, running, last_emit, emit_hz));
-        match relay_rx.recv_timeout(wait) {
-            Ok(event) => {
+        match scheduler.next_after_drain(&inbox, wait) {
+            LoopStep::Command(command) => {
+                // Woken by a command during the blocking wait — replay it on
+                // next iteration's priority lane (zero added latency).
+                first_command = Some(command);
+            }
+            LoopStep::Shutdown => {
+                close_relays(
+                    &mut relay_controls,
+                    &mut slot_to_url,
+                    &pool,
+                    &mut connected_relays,
+                    &mut kernel,
+                );
+                connected_urls.clear();
+                return;
+            }
+            LoopStep::Idle => {
+                // Timeout (normal idle tick) — fall through to idle work.
+            }
+            LoopStep::Relay(event) => {
                 // Reliability north star: `handle_relay_event` processes
                 // arbitrary bytes from the network — it is the highest-risk
                 // panic site in the actor. Wrap it in `catch_unwind` so a
@@ -2100,11 +2182,6 @@ pub fn run_actor_with_observers(
                     // error path below.
                     emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                 }
-            }
-            Err(_timeout_or_disconnected) => {
-                // Timeout (normal idle tick) or relay_rx disconnected (the
-                // pool holds the sender so this can't happen in practice).
-                // Either way fall through to idle work below.
             }
         }
 

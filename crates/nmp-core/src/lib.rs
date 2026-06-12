@@ -313,6 +313,11 @@ pub mod typed_projections {
 // `ProtocolCommandContext::sign_event_for_account` (e.g. `nmp-nip57`'s zap
 // command) can name it — chiefly in tests that drive the continuation directly.
 pub use actor::{ActorCommand, SignContinuation, SignerSource};
+// ADR-0050 §D3a — the unified actor-inbox transport seam. `CommandSender` is
+// the single command-send handle (replaces the bare `mpsc::Sender<ActorCommand>`
+// once handed to host code / workers); `ActorMail` is the inbox item;
+// `CommandSendError` is `send`'s error (mpsc-`SendError` parity).
+pub use actor::{ActorMail, CommandSendError, CommandSender};
 
 // Step 11 final — every `nmp_app_*` `extern "C"` symbol that used to be
 // re-exported from `ffi::` now lives in the standalone `nmp-ffi` crate.
@@ -435,11 +440,15 @@ pub mod testing {
     /// frames from the update channel.  Dropping the sender or sending
     /// [`ActorCommand::Shutdown`] stops the actor thread.
     pub fn spawn_actor() -> (
-        mpsc::Sender<ActorCommand>,
+        crate::CommandSender,
         mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
     ) {
-        let (command_tx, command_rx) = mpsc::channel();
+        // ADR-0050 §D3a — one waking inbox of `ActorMail`. The host handle and
+        // the actor's self-feedback handle are both `CommandSender`s over this
+        // one channel, so any command send wakes the actor.
+        let (inbox_tx, command_rx) = mpsc::channel::<crate::ActorMail>();
         let (update_tx, update_rx) = mpsc::channel();
+        let command_tx = crate::CommandSender::new(inbox_tx);
         // Hand the actor a clone of the command sender so dispatch arms
         // that spawn workers (currently the LNURL-pay round-trip) can
         // send follow-up `ActorCommand`s back into the loop. The outer
@@ -460,7 +469,7 @@ pub mod testing {
     pub fn spawn_actor_with_storage_path(
         storage_path: &str,
     ) -> (
-        mpsc::Sender<ActorCommand>,
+        crate::CommandSender,
         mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
     ) {
         use crate::actor::run_actor_with_observers;
@@ -468,8 +477,9 @@ pub mod testing {
         use std::sync::atomic::AtomicU64;
         use std::sync::{Arc, Mutex};
 
-        let (command_tx, command_rx) = mpsc::channel();
+        let (inbox_tx, command_rx) = mpsc::channel::<crate::ActorMail>();
         let (update_tx, update_rx) = mpsc::channel();
+        let command_tx = crate::CommandSender::new(inbox_tx);
         let actor_command_tx_self = command_tx.clone();
 
         // Pre-populate the storage path slot so the actor reads it at startup.
@@ -534,10 +544,10 @@ pub mod testing {
     /// `nmp_app_inject_pre_verified_events` which uses `from_raw_unchecked`.
     #[allow(clippy::result_large_err)] // ActorCommand is large by design; boxing here would cascade through test callers
     pub fn inject_signed_events(
-        tx: &mpsc::Sender<ActorCommand>,
+        tx: &crate::CommandSender,
         base_ts: u64,
         count: u32,
-    ) -> Result<(), mpsc::SendError<ActorCommand>> {
+    ) -> Result<(), crate::CommandSendError> {
         use nostr::{EventBuilder, Keys, Timestamp};
 
         // Single fixture key: generate once, sign all events with it.
@@ -582,7 +592,7 @@ pub mod testing {
     /// the ack fires only once the actor has dispatched every command that
     /// preceded the barrier on the channel, so when `wait_barrier` returns
     /// `true` the actor's state reflects all prior commands.
-    pub fn wait_barrier(tx: &mpsc::Sender<ActorCommand>, timeout: std::time::Duration) -> bool {
+    pub fn wait_barrier(tx: &crate::CommandSender, timeout: std::time::Duration) -> bool {
         let (ack_tx, ack_rx) = mpsc::sync_channel(1);
         if tx.send(ActorCommand::Barrier { ack: ack_tx }).is_err() {
             return false;

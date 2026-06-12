@@ -27,7 +27,8 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, CString};
-use std::sync::mpsc::{channel, Sender};
+use crate::actor::{ActorMail, CommandSender};
+use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
@@ -116,7 +117,7 @@ fn dispatch_capability_result(
     kernel: &mut Kernel,
     slot: &CapabilityCallbackSlot,
     capability_work_tx: &CapabilityWorkSender,
-    command_tx: &Sender<ActorCommand>,
+    command_tx: &CommandSender,
 ) -> Option<String> {
     // Build a minimal ActorContext with the required fields. Relay pool,
     // relay_controls, etc. are not needed for CapabilityResultReady.
@@ -231,10 +232,11 @@ fn capability_result_ready_dropped_for_removed_account() {
     let _g = SERIAL.lock().unwrap();
     *STORE.lock().unwrap() = Some(HashMap::new());
     let slot = registered_slot();
-    let (cmd_tx, _cmd_rx) = channel::<ActorCommand>();
+    let (inbox_tx, _cmd_rx) = channel::<ActorMail>();
+    let cmd_tx = CommandSender::new(inbox_tx);
     let (work_tx, _work_cmd_rx) = {
-        let (tx, rx) = channel::<ActorCommand>();
-        (spawn_capability_worker(Arc::clone(&slot), tx), rx)
+        let (tx, rx) = channel::<ActorMail>();
+        (spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx)), rx)
     };
 
     let mut identity = IdentityRuntime::new(
@@ -319,10 +321,11 @@ fn capability_result_ready_error_toasts_for_present_account() {
     let _g = SERIAL.lock().unwrap();
     *STORE.lock().unwrap() = Some(HashMap::new());
     let slot = registered_slot();
-    let (cmd_tx, _cmd_rx) = channel::<ActorCommand>();
+    let (inbox_tx, _cmd_rx) = channel::<ActorMail>();
+    let cmd_tx = CommandSender::new(inbox_tx);
     let (work_tx, _work_cmd_rx) = {
-        let (tx, rx) = channel::<ActorCommand>();
-        (spawn_capability_worker(Arc::clone(&slot), tx), rx)
+        let (tx, rx) = channel::<ActorMail>();
+        (spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx)), rx)
     };
 
     let mut identity = IdentityRuntime::new(

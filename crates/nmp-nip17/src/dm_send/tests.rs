@@ -25,7 +25,7 @@ use nmp_core::substrate::{
     LocalSignerAccess, NoopActionStageTracker, NoopRecipientRelayLookup,
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts, UnsignedEvent,
 };
-use nmp_core::ActorCommand;
+use nmp_core::{ActorCommand, ActorMail, CommandSender};
 use nmp_nip59::SignerForSeal;
 use nmp_signer_iface::{SignerError, SignerOp};
 use std::cell::RefCell;
@@ -120,7 +120,7 @@ fn run_cmd_with_signer(
     signer: Arc<dyn SignerForSeal>,
     dm_lookup: &dyn DmInboxRelayLookup,
     now_secs: u64,
-) -> (Recorder, Receiver<ActorCommand>) {
+) -> (Recorder, Receiver<ActorMail>) {
     let recorder = Recorder::default();
     let pubkey_hex = signer.pubkey().to_hex();
     let rx = {
@@ -134,10 +134,10 @@ fn run_cmd_with_signer(
         };
         let stages = NoopActionStageTracker;
         let recipients = NoopRecipientRelayLookup;
-        let (tx, rx) = std::sync::mpsc::channel::<ActorCommand>();
+        let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
         let mut ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
             send: &send,
-            command_sender: tx,
+            command_sender: CommandSender::new(tx),
             clock: &clock,
             signers: &signers,
             dms: dm_lookup,
@@ -237,7 +237,7 @@ fn run_cmd(
     keys: Option<nostr::Keys>,
     dm_lookup: &dyn DmInboxRelayLookup,
     now_secs: u64,
-) -> (Recorder, Receiver<ActorCommand>) {
+) -> (Recorder, Receiver<ActorMail>) {
     let recorder = Recorder::default();
     let rx = {
         let sent_ref = &recorder.sent;
@@ -252,10 +252,10 @@ fn run_cmd(
         };
         let stages = NoopActionStageTracker;
         let recipients = NoopRecipientRelayLookup;
-        let (tx, rx) = std::sync::mpsc::channel::<ActorCommand>();
+        let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
         let mut ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
             send: &send,
-            command_sender: tx,
+            command_sender: CommandSender::new(tx),
             clock: &clock,
             signers: &signers,
             dms: dm_lookup,
@@ -278,13 +278,14 @@ fn run_cmd(
 /// larger than `GIFT_WRAP_TOTAL_TIMEOUT`).
 fn drain_worker(
     recorder: &Recorder,
-    rx: Receiver<ActorCommand>,
+    rx: Receiver<ActorMail>,
     expected: usize,
     timeout_per_msg: Duration,
 ) {
     for _ in 0..expected {
         match rx.recv_timeout(timeout_per_msg) {
-            Ok(cmd) => recorder.sent.borrow_mut().push(cmd),
+            Ok(ActorMail::Command(cmd)) => recorder.sent.borrow_mut().push(cmd),
+            Ok(ActorMail::Relay(_)) => unreachable!("dm_send worker only sends commands"),
             Err(_) => break,
         }
     }
