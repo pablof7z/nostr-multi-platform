@@ -84,7 +84,7 @@ pub fn fetch_events(relay_url: &str, filter: Filter) -> Result<Vec<Event>, Strin
             Err(_) => continue,
         };
         let Some(arr) = arr.as_array() else { continue };
-        match arr.get(0).and_then(|v| v.as_str()) {
+        match arr.first().and_then(|v| v.as_str()) {
             Some("EVENT") => {
                 if let Some(evt_val) = arr.get(2) {
                     if let Ok(evt) = Event::from_json(evt_val.to_string()) {
@@ -170,7 +170,7 @@ pub fn publish_event(relay_url: &str, event: &Event) -> Result<(), String> {
             Err(_) => continue,
         };
         let Some(arr) = arr.as_array() else { continue };
-        match arr.get(0).and_then(|v| v.as_str()) {
+        match arr.first().and_then(|v| v.as_str()) {
             Some("OK") => {
                 let accepted = arr.get(2).and_then(|v| v.as_bool()).unwrap_or(true);
                 if !accepted {
