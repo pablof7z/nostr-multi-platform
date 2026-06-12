@@ -1,19 +1,35 @@
 use super::*;
 
-/// Hex string for the `update_frame_tier3_golden_v1.fb.hex` Android fixture.
-/// Run `cargo test -p nmp-core -- print_tier3_golden_frame_hex --nocapture`
-/// to regenerate when the Tier-3 schema or golden_envelope() changes; then
-/// check the printed hex into
-/// `android/app/src/test/resources/fixtures/update_frame_tier3_golden_v1.fb.hex`.
+/// Drift assertion for `update_frame_tier3_golden_v1.fb.hex`.
 ///
-/// The golden frame uses the SAME `golden_envelope()` as the round-trip tests
-/// (a non-default value in every Tier-3 field) so any missed field in the
-/// Android decoder fails the field-level assertions.
+/// Encodes `golden_envelope()` and asserts the bytes are identical to the
+/// checked-in fixture.  Any change to the Tier-3 schema (`nmp_update.fbs`),
+/// the Rust encoder, or `golden_envelope()` will cause this test to **fail**
+/// with the new hex printed to stdout — forcing an explicit, reviewed fixture
+/// regeneration in BOTH the Rust tree (`crates/nmp-core/tests/fixtures/`) and
+/// the Android tree (`android/app/src/test/resources/fixtures/`).
+///
+/// To regenerate after an intentional schema change:
+///   1. Run this test with `--nocapture` and copy the printed hex line into
+///      both fixture files.
+///   2. Re-run to confirm the assertion passes.
 #[test]
-fn print_tier3_golden_frame_hex() {
+fn tier3_golden_fixture_matches_encoder() {
     let wire = encode_snapshot_frame(&golden_envelope(), &[]);
-    let hex: String = wire.iter().map(|b| format!("{b:02x}")).collect();
-    println!("\n{hex}");
+    let expected = decode_hex_fixture(include_str!(
+        "../../tests/fixtures/update_frame_tier3_golden_v1.fb.hex"
+    ));
+    if wire != expected {
+        let actual_hex: String = wire.iter().map(|b| format!("{b:02x}")).collect();
+        eprintln!(
+            "\ntier3 golden fixture drifted — new hex (update BOTH fixture files):\n{actual_hex}"
+        );
+    }
+    assert_eq!(
+        wire, expected,
+        "update_frame_tier3_golden_v1.fb.hex drifted from the encoder — regenerate both \
+         crates/nmp-core/tests/fixtures/ and android/app/src/test/resources/fixtures/ copies"
+    );
     // Golden sanity: the frame must carry the NMPU identifier.
     assert!(fb::update_frame_buffer_has_identifier(&wire));
     // Round-trip: the decoded envelope must equal golden_envelope().

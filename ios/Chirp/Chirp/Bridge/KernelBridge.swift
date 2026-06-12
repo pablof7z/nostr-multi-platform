@@ -566,7 +566,11 @@ final class KernelHandle {
     }
 
     func openTimeline() {
-        nmp_app_open_timeline(raw)
+        nmp_app_chirp_open_home_feed(raw)
+    }
+
+    func closeTimeline() {
+        nmp_app_chirp_close_home_feed(raw)
     }
 
     // ── NIP-47 Wallet Connect ─────────────────────────────────────────────

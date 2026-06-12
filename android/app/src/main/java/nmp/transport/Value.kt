@@ -62,8 +62,8 @@ class Value : Table() {
                 null
             }
         }
-    val stringValueAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(14, 1)
-    fun stringValueInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 14, 1)
+    val stringValueAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
+    fun stringValueInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
     fun list(j: Int) : nmp.transport.Value? = list(nmp.transport.Value(), j)
     fun list(obj: nmp.transport.Value, j: Int) : nmp.transport.Value? {
         val o = __offset(16)

@@ -55,7 +55,7 @@ use nmp_ffi::{
     nmp_app_add_relay, nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new,
     nmp_app_start, nmp_app_wallet_connect, nmp_app_wallet_pay_invoice,
 };
-use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister};
+use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus};
 use nostr::{Keys, ToBech32};
 
 use zap_e2e_common::{
@@ -194,7 +194,9 @@ fn zap_receipt_ingest_updates_aggregate_projection() {
     // over-relay subscription delivery; here we prove ingest → projection
     // deterministically.)
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
+    let mut handle: *mut ChirpHandle = std::ptr::null_mut();
+    let status = nmp_app_chirp_register(app, std::ptr::null(), &mut handle);
+    assert_eq!(status, NmpRegisterStatus::Ok as u32);
     assert!(!handle.is_null());
     let rx = install_emit_signal(app);
 

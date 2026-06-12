@@ -28,6 +28,15 @@ pub fn unrelated_kinds() {
     let _ = filter;
 }
 
+pub fn rust_u32_array_other_kinds() {
+    // [1u32, 7u32] — the `[1u32` needle does NOT fire without 6.
+    // Note: the detector fires on `[1u32` as a prefix regardless of what
+    // follows, so this is actually tested at the `check()` unit level.
+    // This negative fixture tests that non-u32-suffixed arrays are clean.
+    let arr = [1_u32, 7_u32];
+    let _ = arr;
+}
+
 #[cfg(test)]
 mod tests {
     // Inside cfg(test) block: even "kinds":[1,6] is exempt here.

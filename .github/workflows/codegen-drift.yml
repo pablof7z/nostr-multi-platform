@@ -77,3 +77,39 @@ jobs:
 
       - name: Check Rust transport bindings are in sync with the schema
         run: bash ci/check-rust-flatc-drift.sh
+
+  # Issue #1093 — Kotlin flatc transport-binding drift gate. The checked-in
+  # Kotlin bindings at android/app/src/main/java/nmp/transport/*.kt must be
+  # identical to a fresh `flatc --kotlin` run over nmp_update.fbs, with flatc
+  # pinned to the Android/Kotlin runtime pin (25.2.10, distinct from the
+  # Rust+Swift pin of 25.12.19). Regenerate locally per the instructions in
+  # ci/check-kotlin-flatc-drift.sh.
+  #
+  # TypeScript/web bindings drift gate: deferred to post-v1 (#1007).
+  kotlin-flatc-drift:
+    name: Kotlin flatc drift (android/app/src/main/java/nmp/transport/*.kt vs nmp_update.fbs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned flatc 25.2.10
+        run: |
+          curl -fsSL -o /tmp/flatc.zip \
+            https://github.com/google/flatbuffers/releases/download/v25.2.10/Linux.flatc.binary.clang++-18.zip
+          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
+          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
+          flatc --version
+
+      - name: Check Kotlin transport bindings are in sync with the schema
+        run: bash ci/check-kotlin-flatc-drift.sh
+
+      # Issue #1093 — golden fixture parity gate. The two copies of
+      # update_frame_tier3_golden_v1.fb.hex (Rust crate + Android resources)
+      # must be byte-identical. Regenerate both via:
+      #   cargo test -p nmp-core -- tier3_golden_fixture_matches_encoder --nocapture
+      - name: Assert golden fixture copies are byte-identical
+        run: |
+          cmp \
+            crates/nmp-core/tests/fixtures/update_frame_tier3_golden_v1.fb.hex \
+            android/app/src/test/resources/fixtures/update_frame_tier3_golden_v1.fb.hex \
+          || { echo "golden fixture copies diverged — regenerate BOTH via tier3_golden_fixture_matches_encoder"; exit 1; }

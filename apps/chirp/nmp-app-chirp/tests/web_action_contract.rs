@@ -1,6 +1,8 @@
 use std::ffi::{CStr, CString};
 
-use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister};
+use nmp_app_chirp::{
+    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus,
+};
 use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new, NmpApp};
 use nmp_wasm::{AppAction, AppActionDispatch};
 
@@ -17,7 +19,9 @@ fn dispatch(app: *mut NmpApp, namespace: &str, action_json: &str) -> serde_json:
 #[test]
 fn web_chirp_action_contract_dispatches_against_registered_app_actions() {
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
+    let mut handle: *mut ChirpHandle = std::ptr::null_mut();
+    let status = nmp_app_chirp_register(app, std::ptr::null(), &mut handle);
+    assert_eq!(status, NmpRegisterStatus::Ok as u32);
     assert!(!handle.is_null());
 
     for (intent, expected_namespace) in [

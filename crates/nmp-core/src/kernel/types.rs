@@ -6,36 +6,6 @@
 
 use super::{BTreeSet, CanonicalRelayUrl, HashMap, HashSet, Instant, RelayRole, Serialize};
 
-// ── Seed accounts (test fixtures only) ──────────────────────────────────────
-
-#[cfg(test)]
-#[allow(dead_code)]
-#[derive(Clone)]
-pub(super) struct SeedAccount {
-    pub(super) name: &'static str,
-    pub(super) pubkey: &'static str,
-}
-
-#[cfg(test)]
-#[allow(dead_code)]
-pub(super) fn seed_accounts() -> Vec<SeedAccount> {
-    use crate::relay::{FIATJAF_PUBKEY, JB55_PUBKEY, TEST_PUBKEY};
-    vec![
-        SeedAccount {
-            name: "pablof7z",
-            pubkey: TEST_PUBKEY,
-        },
-        SeedAccount {
-            name: "fiatjaf",
-            pubkey: FIATJAF_PUBKEY,
-        },
-        SeedAccount {
-            name: "jb55",
-            pubkey: JB55_PUBKEY,
-        },
-    ]
-}
-
 // ── Event read-cache ──────────────────────────────────────────────────────────
 
 /// Lightweight read-cache entry for timeline ordering and display.

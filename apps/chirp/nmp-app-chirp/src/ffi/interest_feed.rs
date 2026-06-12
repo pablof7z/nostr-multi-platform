@@ -51,7 +51,10 @@ use std::sync::Arc;
 use nmp_core::store::{EventStore, StoreQuery, StoredEvent};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
-use nmp_ffi::{nmp_app_close_interest, nmp_app_open_interest, NmpApp};
+use nmp_ffi::{
+    nmp_app_close_contact_feed, nmp_app_close_interest, nmp_app_open_contact_feed,
+    nmp_app_open_interest, NmpApp,
+};
 use nmp_nip01::op_feed::{
     encode_op_feed_snapshot, OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
 };
@@ -254,6 +257,44 @@ pub extern "C" fn nmp_app_chirp_close_thread_feed(app: *mut NmpApp, event_id_hex
         &feed_filter_json("#e", &root_id),
         &thread_consumer(&root_id),
     );
+}
+
+/// The home-feed kind policy for Chirp's contact-feed subscription: kind:1
+/// (text note) + kind:6 (repost). Defined ONCE here — the single source of
+/// truth for the `{1, 6}` decision (D0: `nmp-core` no longer hardcodes it).
+/// `nmp_app_chirp_open_home_feed` passes this via the generic
+/// `nmp_app_open_contact_feed` verb; `nmp_app_chirp_close_home_feed` uses the
+/// matching `nmp_app_close_contact_feed`. Any app wanting different kinds
+/// calls the generic verbs directly with its own set.
+///
+/// `pub(crate)` so in-crate tests can assert the constant value without
+/// duplicating the literal.
+pub(crate) const HOME_FEED_KINDS_JSON: &str = "[1,6]";
+
+/// Open Chirp's home (contact) feed — the subscription that REQs kind:1 and
+/// kind:6 events from the active account's follow set.
+///
+/// Delegates to the generic `nmp_app_open_contact_feed` with
+/// `HOME_FEED_KINDS_JSON = "[1,6]"` so the `{1, 6}` literal lives in EXACTLY
+/// ONE place (this constant). App shells that previously called
+/// `nmp_app_open_timeline` must call this instead (ADR-0042 amendment
+/// 2026-06-12).
+///
+/// D6 — a null `app` is a silent no-op (forwarded by `nmp_app_open_contact_feed`).
+#[no_mangle]
+pub extern "C" fn nmp_app_chirp_open_home_feed(app: *mut NmpApp) {
+    if let Ok(kinds_c) = std::ffi::CString::new(HOME_FEED_KINDS_JSON) {
+        nmp_app_open_contact_feed(app, kinds_c.as_ptr());
+    }
+}
+
+/// Close Chirp's home (contact) feed. Mirrors `nmp_app_chirp_open_home_feed`;
+/// withdraws all follow-feed M2 interests and emits CLOSE frames.
+///
+/// D6 — a null `app` is a silent no-op.
+#[no_mangle]
+pub extern "C" fn nmp_app_chirp_close_home_feed(app: *mut NmpApp) {
+    nmp_app_close_contact_feed(app);
 }
 
 /// Refcount-owner key for an author interest. Stable per author so a re-open

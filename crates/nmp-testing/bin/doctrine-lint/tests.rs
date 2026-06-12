@@ -1575,3 +1575,94 @@ fn d19_negative_fixture_clean() {
         stdout
     );
 }
+
+/// N2: D17 must fire on a Rust kind-set literal `[1u32, 6u32]` (the exact
+/// form that the deleted `nmp_app_open_timeline` used in nmp-ffi) when the
+/// file is inside a scoped path.
+#[test]
+fn d17_positive_rust_kind_set_literal() {
+    let workspace = workspace_root();
+    let tmp = workspace
+        .join("target")
+        .join("doctrine_lint_d17_rust_ksl_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    std::fs::write(
+        tmp.join("timeline.rs"),
+        "use std::collections::BTreeSet;\n\
+         pub fn social_kinds() -> BTreeSet<u32> {\n    \
+         BTreeSet::from([1u32, 6u32])\n}\n",
+    )
+    .expect("write rust ksl positive fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d17-extra-scope",
+        "doctrine_lint_d17_rust_ksl_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d17 Rust-literal positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D17]"),
+        "d17 must emit a D17 finding for [1u32, 6u32]; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("V-68"),
+        "d17 Rust-literal finding must reference V-68; stdout:\n{}",
+        stdout
+    );
+}
+
+/// N2: D17 must NOT fire on the `apps/chirp/nmp-app-chirp` path even when
+/// the file contains both a `"kinds":[1,6]` JSON shape and a `[1u32, 6u32]`
+/// Rust literal — that is the legitimate home of the kind policy.
+///
+/// This is verified at the `file_in_scope` unit-test level in `d17.rs`; this
+/// smoke test confirms the same invariant holds end-to-end through the binary.
+/// We simulate it by staging the file in a directory that contains the
+/// sentinel string `apps/chirp/nmp-app-chirp` in its path (using a nested
+/// subdirectory whose name carries the fragment) and passing it WITHOUT
+/// `--d17-extra-scope` so the path-based gate is the sole guard.
+#[test]
+fn d17_does_not_fire_in_chirp_app_path() {
+    let workspace = workspace_root();
+    // Stage the file in target/apps/chirp/nmp-app-chirp/src/ — the path
+    // contains the `apps/chirp/nmp-app-chirp` fragment that file_in_scope
+    // exempts. The directory is NOT passed via --d17-extra-scope so the
+    // file must be excluded by the path guard alone.
+    let tmp = workspace
+        .join("target")
+        .join("apps")
+        .join("chirp")
+        .join("nmp-app-chirp")
+        .join("src");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create chirp app temp dir");
+    std::fs::write(
+        tmp.join("ffi.rs"),
+        "use std::collections::BTreeSet;\n\
+         pub fn chirp_kinds() -> BTreeSet<u32> {\n    \
+         BTreeSet::from([1u32, 6u32])\n}\n",
+    )
+    .expect("write chirp app fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // Deliberately omit --d17-extra-scope — file_in_scope must self-gate.
+    let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
+    assert_eq!(
+        code, 0,
+        "d17 must not fire in apps/chirp/nmp-app-chirp; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D17]"),
+        "d17 must not emit findings for the chirp app path; stdout:\n{}",
+        stdout
+    );
+}

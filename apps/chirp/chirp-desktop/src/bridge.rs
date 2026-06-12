@@ -20,16 +20,17 @@ use nmp_app_chirp::ffi::{
     nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
 };
 use nmp_app_chirp::{
-    nmp_app_cancel_bunker_handshake, nmp_app_chirp_close_author_feed, nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_thread_feed, nmp_app_chirp_register,
-    nmp_app_chirp_unregister, nmp_app_nostrconnect_uri, nmp_broker_free_string,
-    nmp_marmot_unregister, nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle,
+    nmp_app_cancel_bunker_handshake, nmp_app_chirp_close_author_feed,
+    nmp_app_chirp_close_home_feed, nmp_app_chirp_close_thread_feed,
+    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
+    nmp_app_chirp_open_thread_feed, nmp_app_chirp_register, nmp_app_chirp_unregister,
+    nmp_app_nostrconnect_uri, nmp_broker_free_string, nmp_marmot_unregister,
+    nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle, NmpRegisterStatus,
 };
 use nmp_nip01::NoteRecord;
 use nmp_ffi::{
     nmp_app_dispatch_action,
     nmp_app_free, nmp_app_free_string, nmp_app_load_older_feed,
-    nmp_app_open_timeline,
     nmp_app_set_capability_callback,
     nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, nmp_app_retry_publish,
     nmp_app_cancel_publish, NmpApp,
@@ -122,8 +123,12 @@ impl AppRuntime {
             );
         }
 
-        let chirp = unsafe { nmp_app_chirp_register(app, ptr::null()) };
-        if chirp.is_null() {
+        // V-73: nmp_app_chirp_register now returns a status code; the handle
+        // is written through the out-parameter.  Null viewer_pubkey (no viewer
+        // at startup) always succeeds.
+        let mut chirp: *mut ChirpHandle = ptr::null_mut();
+        let register_status = unsafe { nmp_app_chirp_register(app, ptr::null(), &mut chirp) };
+        if register_status != NmpRegisterStatus::Ok as u32 || chirp.is_null() {
             unsafe { nmp_app_free(app) };
             return None;
         }
@@ -142,8 +147,8 @@ impl AppRuntime {
         // SAFETY: `app` is valid.
         unsafe {
             nmp_app_start(app, 0, 200, 10);
-            nmp_app_open_timeline(app);
         }
+        nmp_app_chirp_open_home_feed(app);
 
         Some((
             Self {
@@ -167,7 +172,13 @@ impl AppRuntime {
 
     pub fn open_timeline(&self) {
         if !self.app.is_null() {
-            unsafe { nmp_app_open_timeline(self.app) };
+            nmp_app_chirp_open_home_feed(self.app);
+        }
+    }
+
+    pub fn close_timeline(&self) {
+        if !self.app.is_null() {
+            nmp_app_chirp_close_home_feed(self.app);
         }
     }
 
