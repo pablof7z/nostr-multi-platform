@@ -37,8 +37,8 @@ class RelayStatus : Table() {
                 null
             }
         }
-    val roleAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun roleInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val roleAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun roleInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val relayUrl : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class RelayStatus : Table() {
                 null
             }
         }
-    val relayUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val relayUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val connection : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class RelayStatus : Table() {
                 null
             }
         }
-    val connectionAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun connectionInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val connectionAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun connectionInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val auth : String?
         get() {
             val o = __offset(10)
@@ -70,8 +70,8 @@ class RelayStatus : Table() {
                 null
             }
         }
-    val authAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun authInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val authAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun authInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     val negentropyProbe : String?
         get() {
             val o = __offset(12)
@@ -81,8 +81,8 @@ class RelayStatus : Table() {
                 null
             }
         }
-    val negentropyProbeAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(12, 1)
-    fun negentropyProbeInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 12, 1)
+    val negentropyProbeAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
+    fun negentropyProbeInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
     val activeWireSubscriptions : ULong
         get() {
             val o = __offset(14)
@@ -112,8 +112,8 @@ class RelayStatus : Table() {
                 null
             }
         }
-    val lastNoticeAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(22, 1)
-    fun lastNoticeInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 22, 1)
+    val lastNoticeAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(22, 1)
+    fun lastNoticeInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 22, 1)
     val lastError : String?
         get() {
             val o = __offset(24)
@@ -123,8 +123,8 @@ class RelayStatus : Table() {
                 null
             }
         }
-    val lastErrorAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(24, 1)
-    fun lastErrorInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 24, 1)
+    val lastErrorAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(24, 1)
+    fun lastErrorInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 24, 1)
     val errorCategory : String?
         get() {
             val o = __offset(26)
@@ -134,8 +134,8 @@ class RelayStatus : Table() {
                 null
             }
         }
-    val errorCategoryAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(26, 1)
-    fun errorCategoryInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 26, 1)
+    val errorCategoryAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(26, 1)
+    fun errorCategoryInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 26, 1)
     val eventsRx : ULong
         get() {
             val o = __offset(28)
@@ -165,8 +165,8 @@ class RelayStatus : Table() {
                 null
             }
         }
-    val lastCloseReasonAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(36, 1)
-    fun lastCloseReasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 36, 1)
+    val lastCloseReasonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(36, 1)
+    fun lastCloseReasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 36, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsRelayStatus(_bb: ByteBuffer): RelayStatus = getRootAsRelayStatus(_bb, RelayStatus())

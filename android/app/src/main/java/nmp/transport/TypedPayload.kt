@@ -37,8 +37,8 @@ class TypedPayload : Table() {
                 null
             }
         }
-    val schemaIdAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun schemaIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val schemaIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun schemaIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val schemaVersion : UInt
         get() {
             val o = __offset(6)
@@ -53,8 +53,8 @@ class TypedPayload : Table() {
                 null
             }
         }
-    val fileIdentifierAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun fileIdentifierInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val fileIdentifierAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun fileIdentifierInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     fun payload(j: Int) : UByte {
         val o = __offset(10)
         return if (o != 0) {
@@ -67,8 +67,8 @@ class TypedPayload : Table() {
         get() {
             val o = __offset(10); return if (o != 0) __vector_len(o) else 0
         }
-    val payloadAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun payloadInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val payloadAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun payloadInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsTypedPayload(_bb: ByteBuffer): TypedPayload = getRootAsTypedPayload(_bb, TypedPayload())
