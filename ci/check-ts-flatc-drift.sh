@@ -1,31 +1,41 @@
 #!/usr/bin/env bash
 #
-# TypeScript flatc codegen-drift gate (issue #1209).
+# TypeScript flatc codegen-drift gate (issue #1209, extended by PR-F2).
 #
-# The checked-in TypeScript transport bindings at
+# The checked-in TypeScript bindings at
 #   web/chirp/src/nmp/generated/nmp/
-# are the flatc output for crates/nmp-core/schema/nmp_update.fbs, generated
-# with flatc 25.9.23 (the Web/TypeScript runtime pin — see
+# cover five schemas:
+#   transport  — crates/nmp-core/schema/nmp_update.fbs
+#   feed        — crates/nmp-nip01/schema/op_feed.fbs
+#              + crates/nmp-nip01/schema/timeline_snapshot.fbs
+#              + crates/nmp-content/schema/content_tree.fbs
+#              + crates/nmp-feed/schema/feed_home.fbs
+# All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
 # ci/check-flatbuffers-version-pins.sh and web/chirp/package.json).
 #
-# This script regenerates the TypeScript bindings with the PINNED flatc version
-# and fails on any file difference — so the schema and the TypeScript bindings
-# can never drift apart again.  The version is intentionally different from the
+# This script regenerates ALL five schemas with the PINNED flatc version into
+# one temp dir and fails on any file difference so checked-in bindings can
+# never drift from the schemas. The version is intentionally different from the
 # Rust+Swift pin (25.12.19) and the Kotlin pin (25.2.10); see the comment at
 # the top of crates/nmp-core/schema/nmp_update.fbs for the rationale.
-#
-# NOTE: flatc 25.9.23 and 25.12.19 produce byte-identical TypeScript output for
-# this schema, but the version pin is enforced here for consistency with the
-# Web/TypeScript runtime pin in web/chirp/package.json.
 #
 # Usage: ci/check-ts-flatc-drift.sh
 # Requires: flatc 25.9.23 on PATH.
 #
 # To regenerate after an intentional schema change:
 #   1. Install flatc 25.9.23 (https://github.com/google/flatbuffers/releases/tag/v25.9.23).
-#   2. flatc --ts -o web/chirp/src/nmp/generated/ \
+#   2. # Transport bindings:
+#      flatc --ts -o web/chirp/src/nmp/generated/ \
 #          crates/nmp-core/schema/nmp_update.fbs
-#   3. Verify the output with this script.
+#   3. # Feed schema bindings (must be one invocation — op_feed.fbs alone yields
+#      # broken barrel imports because timeline_snapshot.fbs is not generated):
+#      flatc --ts -o web/chirp/src/nmp/generated/ \
+#          -I crates/nmp-nip01/schema \
+#          crates/nmp-nip01/schema/timeline_snapshot.fbs \
+#          crates/nmp-nip01/schema/op_feed.fbs \
+#          crates/nmp-content/schema/content_tree.fbs \
+#          crates/nmp-feed/schema/feed_home.fbs
+#   4. Verify the output with this script.
 #      (requires flatc 25.9.23 — the Web/TypeScript runtime pin)
 
 set -euo pipefail
@@ -34,7 +44,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 EXPECTED_FLATC_VERSION="25.9.23"
-SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/nmp_update.fbs"
+TRANSPORT_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/nmp_update.fbs"
+FEED_INCLUDE_DIR="${REPO_ROOT}/crates/nmp-nip01/schema"
+FEED_SCHEMAS=(
+  "${REPO_ROOT}/crates/nmp-nip01/schema/timeline_snapshot.fbs"
+  "${REPO_ROOT}/crates/nmp-nip01/schema/op_feed.fbs"
+  "${REPO_ROOT}/crates/nmp-content/schema/content_tree.fbs"
+  "${REPO_ROOT}/crates/nmp-feed/schema/feed_home.fbs"
+)
 CHECKED_IN_DIR="${REPO_ROOT}/web/chirp/src/nmp/generated/nmp"
 
 # ── flatc availability + version guard ──────────────────────────────────────
@@ -69,18 +86,35 @@ fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
-flatc --ts -o "${TMP_DIR}" "${SCHEMA}"
+# ── Transport schema (nmp_update.fbs → nmp/transport/) ──────────────────────
+flatc --ts -o "${TMP_DIR}" "${TRANSPORT_SCHEMA}"
+
+# ── Feed schemas (op_feed + deps → nmp/nip01/, nmp/content/, nmp/feed/) ──────
+# Must be one invocation: generating op_feed.fbs alone emits a barrel that
+# re-exports timeline-event-card.js etc. without generating those files —
+# broken imports. timeline_snapshot.fbs must be passed explicitly alongside it.
+flatc --ts -o "${TMP_DIR}" \
+    -I "${FEED_INCLUDE_DIR}" \
+    "${FEED_SCHEMAS[@]}"
+
 GENERATED_DIR="${TMP_DIR}/nmp"
 
 if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
     echo "" >&2
-    echo "ts-flatc-drift: checked-in TypeScript transport bindings differ from a" >&2
-    echo "fresh 'flatc --ts' run over crates/nmp-core/schema/nmp_update.fbs." >&2
-    echo "Regenerate with:" >&2
+    echo "ts-flatc-drift: checked-in TypeScript bindings differ from a fresh" >&2
+    echo "'flatc --ts' run. Regenerate with:" >&2
+    echo "  # Transport:" >&2
     echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
     echo "      crates/nmp-core/schema/nmp_update.fbs" >&2
+    echo "  # Feed schemas (one invocation):" >&2
+    echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
+    echo "      -I crates/nmp-nip01/schema \\" >&2
+    echo "      crates/nmp-nip01/schema/timeline_snapshot.fbs \\" >&2
+    echo "      crates/nmp-nip01/schema/op_feed.fbs \\" >&2
+    echo "      crates/nmp-content/schema/content_tree.fbs \\" >&2
+    echo "      crates/nmp-feed/schema/feed_home.fbs" >&2
     echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Web/TypeScript runtime pin)" >&2
     exit 1
 fi
 
-echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, bindings in sync)"
+echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed bindings in sync)"
