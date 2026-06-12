@@ -151,6 +151,38 @@ pub fn event_by_id_from_store(
     })
 }
 
+
+/// Synchronous event-by-id read over a directly-held [`Arc<dyn EventStore>`].
+///
+/// Use this over [`event_by_id_from_store`] when the composition root has
+/// already extracted an `Arc<dyn EventStore>` handle (e.g. via
+/// `KernelReducer::event_store_handle`) that must be captured into a closure
+/// outliving any `RefCell` borrow. The wasm32 `EventLookup` closure pattern
+/// in `nmp-app-chirp-web` is the primary caller; the native
+/// `KernelReducer::event_by_id` seam also delegates here so both paths
+/// share one body (no duplication per ADR-rule §4-B).
+///
+/// Returns `None` when `id` is not valid 64-char hex, the event is absent
+/// from the store, or the store returns an error (D6 — graceful degrade).
+#[must_use]
+pub fn event_by_id_from_arc(
+    store: &std::sync::Arc<dyn crate::store::EventStore>,
+    id: &str,
+) -> Option<crate::substrate::KernelEvent> {
+    use crate::kernel::hex_to_pubkey_bytes as hex_to_id_bytes;
+    let key = hex_to_id_bytes(id)?;
+    let stored = store.get_by_id(&key).ok()??;
+    let raw = &stored.raw;
+    Some(crate::substrate::KernelEvent {
+        id: raw.id.clone(),
+        author: raw.pubkey.clone(),
+        kind: raw.kind,
+        created_at: raw.created_at,
+        tags: raw.tags.clone(),
+        content: raw.content.clone(),
+    })
+}
+
 /// Construct a fresh, empty [`RoutingSubstrateSlot`].
 #[must_use]
 pub fn new_routing_substrate_slot() -> RoutingSubstrateSlot {

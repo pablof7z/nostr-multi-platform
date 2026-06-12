@@ -6,8 +6,21 @@ license = { workspace = true }
 repository.workspace = true
 description = "NIP-57 lightning zaps as an NMP protocol crate — ZapReceiptRecord decoder (kind:9735) + ZapRequestBuilder (kind:9734) + ZapAction ActionModule + ZapsView + LNURL-pay fetcher (FetchLnurlInvoiceCommand)."
 
+[features]
+# `native` gates the LNURL-pay HTTP worker (`FetchLnurlInvoiceCommand` +
+# `sign_zap_request`) which uses `ureq` + `std::thread::spawn` — not
+# available on wasm32. Enabled by default so existing native consumers see
+# no change. Disable with `default-features = false` for wasm32 / pure-Rust
+# compilation (the zap decoder, builder, view, and FlatBuffers codec remain
+# always-compiled).
+default = ["native"]
+native = ["dep:ureq", "dep:nmp-nip47"]
+
 [dependencies]
-nmp-core = { path = "../nmp-core" }
+# Pure-kernel traits only (no I/O layer needed for decode/view/FlatBuffers).
+# `native` feature on nmp-core is opted-in by callers that need it via
+# feature unification — no explicit re-export required here.
+nmp-core = { path = "../nmp-core", default-features = false }
 # Layer-0 kind-constant registry — re-exports KIND_ZAP_REQUEST / KIND_ZAP_RECEIPT
 # so this crate no longer duplicates those values (V-57).
 nmp-kinds = { path = "../nmp-kinds" }
@@ -17,7 +30,7 @@ flatbuffers = { workspace = true }
 # auto-dispatches `WalletPayInvoiceCommand` using the process-global
 # `active_wallet_runtime()`. The correlation_id threads through so the
 # `nmp.nip57.zap` action closes on kind:23195 confirmation, not on bolt11 fetch.
-nmp-nip47 = { path = "../nmp-nip47" }
+nmp-nip47 = { path = "../nmp-nip47", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # LNURL-pay fetcher dependencies (V-41). The fetcher runs on
@@ -25,7 +38,8 @@ serde_json = "1"
 # uses `ureq` for the two-leg HTTP round-trip. `bech32` decodes LUD-01
 # `lnurl1…` inputs; `nostr` mints the kind:9734 signature on the actor
 # thread (the keys come from `ProtocolCommandContext::active_local_keys`).
-ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+# Optional — gated by the `native` feature; absent on wasm32.
+ureq = { version = "2", optional = true, default-features = false, features = ["tls", "json"] }
 bech32 = "0.11"
 nostr = { workspace = true }
 # Diagnostic logger for the LNURL worker (matches the rest of nmp-core's

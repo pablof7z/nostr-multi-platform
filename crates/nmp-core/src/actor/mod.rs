@@ -82,17 +82,16 @@ use commands::IdentityRuntime;
 // unconditionally — keep them always-compiled. The slot constructors, registration helpers,
 // and lifecycle observer types are only consumed by the native FFI and actor runtime.
 pub(crate) use commands::notify_observers;
-// `KernelEventObserverSlot`, the slot constructors, registration helpers,
-// and lifecycle observer types are reached by `nmp-ffi` through
-// `nmp_core::__ffi_internal::*` — promoted to `pub` for the extracted
-// crate; `register_c_observer` stays `pub(crate)` because the C-ABI bridge
-// is in `nmp-ffi` and goes through `register_rust_observer` for the typed
-// path.
-pub use commands::KernelEventObserverSlot;
+// `KernelEventObserverSlot` and `register_rust_observer` are `pub`
+// unconditionally so `nmp-ffi` and wasm32 composition roots can register
+// observers. `new_event_observer_slot_headless` is `pub(crate)` — wasm32-safe
+// (no drain thread); used by `KernelReducer::new` on all targets.
+pub use commands::{KernelEventObserverSlot, register_rust_observer};
+pub(crate) use commands::new_event_observer_slot_headless;
 #[cfg(feature = "native")]
 pub use commands::{
     new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot,
-    register_rust_observer, unregister_observer, LifecycleObserverSlot,
+    unregister_observer, LifecycleObserverSlot,
 };
 // `register_c_observer` + `LifecycleObserverRegistration` reach `nmp-ffi`
 // through `nmp_core::__ffi_internal::*` so the C-ABI bridge in
