@@ -267,12 +267,34 @@ impl Kernel {
         }
         self.events.insert(id.clone(), cached);
         self.notify_event_observers(&kernel_event);
-        // Also fan out to raw-event observers (e.g. DmInboxProjection for kind:1059).
+        // Also fan out to raw-event observers (verbatim-signed-event tap for
+        // live-delivery consumers such as chirp-tui / hl nostrdb mirror).
         // Mirrors the `verify_and_persist` branch in `ingest/mod.rs` that calls
         // `notify_raw_event_observers` when the store outcome is Inserted|Replaced.
         // The `proceed` gate above already enforces that same store-outcome condition.
         if !self.raw_event_observers_idle_for_kind(raw.kind) {
             self.notify_raw_event_observers(&raw, &relay_url);
+        }
+        // Fan to the substrate `EventIngestDispatcher` — mirrors the V-40 /
+        // raw-tap retirement ladder (PR-1 + PR-2) that moved the DM inbox
+        // (`DmInboxProjection`) and Marmot onto the `IngestParser` seam.
+        // Without this, injecting events via `ActorCommand::IngestPreVerifiedEvents`
+        // (the `nmp_app_inject_signed_event_json` FFI path and the
+        // notification-service-extension / signer-return paths) silently missed
+        // every registered `IngestParser` — the regression fixed here.
+        //
+        // Gating matches `verify_and_persist`: only fire on Inserted|Replaced
+        // (i.e. when `proceed` is true). Duplicate re-deliveries do not re-fire
+        // the parser (D4 dedup); the `proceed` check above enforces this.
+        //
+        // D6 — a poisoned dispatcher lock degrades to "no parser fired"; the
+        // store insert already succeeded so this is the safe graceful-degrade.
+        {
+            let verified_for_dispatch =
+                crate::store::VerifiedEvent::from_raw_unchecked(raw.clone());
+            if let Ok(d) = self.ingest_dispatcher_slot().read() {
+                d.dispatch(&verified_for_dispatch);
+            }
         }
         // diag-firehose-stress sub_id: always appended to timeline.
         // sort_timeline() is NOT called here; callers that inject a batch of

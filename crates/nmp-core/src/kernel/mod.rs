@@ -96,6 +96,8 @@ mod event_observer_tests;
 mod identity_state;
 mod ingest;
 #[cfg(test)]
+mod ingest_pre_verified_dispatcher_tests;
+#[cfg(test)]
 mod ingest_tests;
 mod lifecycle;
 mod lifecycle_drain;
