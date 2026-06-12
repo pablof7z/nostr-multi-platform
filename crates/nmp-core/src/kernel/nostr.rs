@@ -81,14 +81,6 @@ pub(super) fn parse_profile(event: &NostrEvent) -> Profile {
     }
 }
 
-pub(in crate::kernel) fn parse_profile_intent(event: &SignedEvent) -> Option<Profile> {
-    if event.unsigned.kind != 0 {
-        return None;
-    }
-    let event = signed_event_to_nostr(event);
-    Some(parse_profile(&event))
-}
-
 pub(super) fn signed_event_to_nostr(event: &SignedEvent) -> NostrEvent {
     NostrEvent {
         id: event.id.clone(),

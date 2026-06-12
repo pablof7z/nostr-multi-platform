@@ -193,46 +193,15 @@ fn profile_card_does_not_project_metadata_source() {
     );
 }
 
-#[test]
-fn profile_card_projects_pending_kind0_publish_intent_after_restart() {
-    let publish_store = Arc::new(InMemoryPublishStore::new());
-    publish_store
-        .upsert(&PublishRecord {
-            handle: "pending-profile".to_string(),
-            event: SignedEvent {
-                id: "0000000000000000000000000000000000000000000000000000000000000040".to_string(),
-                sig: "a".repeat(128),
-                unsigned: UnsignedEvent {
-                    pubkey: ACCOUNT.to_string(),
-                    kind: 0,
-                    tags: Vec::new(),
-                    content: r#"{"display_name":"Pending Profile"}"#.to_string(),
-                    created_at: 1_700_000_200,
-                },
-            },
-            per_relay: vec![("wss://relay.test".to_string(), PerRelayState::Pending)],
-            pending_retries: Vec::new(),
-            relay_reasons: Vec::new(),
-        })
-        .expect("seed pending profile intent");
-    let mut kernel = Kernel::with_publish_store(
-        DEFAULT_VISIBLE_LIMIT,
-        Arc::clone(&publish_store) as Arc<dyn PublishStore>,
-    );
-    kernel.active_account = Some(ACCOUNT.to_string());
-
-    let snap = snapshot(&mut kernel);
-    assert_eq!(
-        snap["projections"]["profile"]["display_name"].as_str(),
-        Some("Pending Profile"),
-        "pending kind:0 publish intent must survive kernel reconstruction"
-    );
-    assert_eq!(
-        snap["metrics"]["profile_events"].as_u64(),
-        Some(0),
-        "pending profile intent is not a relay-ingested kind:0"
-    );
-}
+// `profile_card_projects_pending_kind0_publish_intent_after_restart` was
+// deleted with the `local_profile_intents` overlay (#1193, ADR-0045 Rev 2
+// single-mechanism). The overlay used to rehydrate an unsent pending kind:0
+// from the publish store on kernel reconstruction; the retired architecture
+// deliberately drops that publish-store-rehydration path. Read-your-writes for
+// a locally-published kind:0 is now served immediately at publish time by
+// `verify_and_persist` + `ingest_profile` into the canonical event store /
+// `profiles` cache (covered by `local_kind0_publish_fans_out_to_event_observers`
+// in `local_publish_intent_tests.rs`), not by a separate restart-restore overlay.
 
 #[test]
 fn publish_outbox_projects_pending_event_details_and_relays() {
