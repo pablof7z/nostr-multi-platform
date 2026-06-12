@@ -72,9 +72,16 @@ extern "C" fn on_capability_request(
     let parsed: serde_json::Value = serde_json::from_str(&request).unwrap_or_default();
     let namespace = parsed.get("namespace").and_then(|v| v.as_str()).unwrap_or("");
     if namespace != EXTERNAL_SIGNER_NAMESPACE {
-        // No other Android capability host exists yet — same outcome as an
-        // unregistered handler (the keyring capability no-ops on Android).
-        return to_c_string(capability_error_envelope(&request, "unsupported-on-android"));
+        // Route all non-external_signer namespaces to the registered
+        // synchronous capability handler (e.g. Android Keystore keyring).
+        // The trampoline context is the registry handle id.
+        let handle = context as usize as jlong;
+        if let Some(session) = session_arc(handle) {
+            let result = crate::capability::call_sync_handler(&session.capability_handler, &request)
+                .unwrap_or_else(|| capability_error_envelope(&request, "no-capability-handler"));
+            return to_c_string(result);
+        }
+        return to_c_string(capability_error_envelope(&request, "session-closed"));
     }
     let correlation_id = parsed
         .get("correlation_id")
@@ -231,18 +238,22 @@ mod tests {
     }
 
     #[test]
-    fn non_external_namespace_returns_error_envelope() {
+    fn non_external_namespace_with_no_handler_returns_error_envelope() {
+        // No synchronous capability handler registered — the trampoline
+        // degrades to an error envelope (D6: never a panic or NULL).
         let session = Session::test_session();
         let handle = insert_session(session);
 
         let envelope = call_trampoline(
             handle,
-            r#"{"namespace":"keyring","correlation_id":"c2","payload_json":"{}"}"#,
+            r#"{"namespace":"nmp.keyring.capability","correlation_id":"c2","payload_json":"{}"}"#,
         );
+        // The `call_sync_handler` returns None when the slot is empty, which
+        // maps to "no-capability-handler" in the result_json.
         assert!(envelope["result_json"]
             .as_str()
             .unwrap()
-            .contains("unsupported-on-android"));
+            .contains("no-capability-handler"));
 
         remove_session(handle);
     }

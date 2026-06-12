@@ -191,6 +191,10 @@ impl AppHost for GateSpy {
         unreachable!("register_substrate does not read active local keys");
     }
 
+    fn active_pubkey(&self) -> ActiveAccountSlot {
+        unreachable!("register_substrate does not read the active pubkey");
+    }
+
     fn actor_sender(&self) -> Sender<ActorCommand> {
         unreachable!("register_substrate does not read the actor sender");
     }

@@ -15,6 +15,7 @@
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 
+use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::ActorCommand;
 use nmp_nip57::{self_zap_receipts_interest, self_zap_receipts_interest_id};
 use nostr::Keys;
@@ -22,20 +23,29 @@ use nostr::Keys;
 use super::ZapReceiptsRuntimeController;
 
 /// Build a controller wired to a fresh in-memory actor channel + a shared
-/// active-local-keys slot the test mutates to simulate sign-in / sign-out.
+/// pubkey-only active-account slot the test mutates to simulate sign-in /
+/// sign-out. The slot carries the hex pubkey only (Finding C) — the same shape
+/// the kernel populates for EVERY backend, bunker included — so these tests
+/// exercise the bunker-safe activation path by construction.
 fn controller() -> (
     ZapReceiptsRuntimeController,
-    Arc<Mutex<Option<Keys>>>,
+    ActiveAccountSlot,
     Receiver<ActorCommand>,
 ) {
     let (tx, rx) = mpsc::channel();
-    let local_keys = Arc::new(Mutex::new(None));
+    let active_pubkey: ActiveAccountSlot = Arc::new(Mutex::new(None));
     let controller = ZapReceiptsRuntimeController {
-        local_keys: Arc::clone(&local_keys),
+        active_pubkey: Arc::clone(&active_pubkey),
         tx,
         last_pushed_pubkey: Mutex::new(None),
     };
-    (controller, local_keys, rx)
+    (controller, active_pubkey, rx)
+}
+
+/// Set the pubkey-only slot to `keys`' hex pubkey (no secret material), the
+/// shape a bunker / remote-signer account presents.
+fn sign_in(slot: &ActiveAccountSlot, keys: &Keys) {
+    *slot.lock().unwrap() = Some(keys.public_key().to_hex());
 }
 
 /// Drain whatever the controller enqueued this tick.
@@ -56,7 +66,7 @@ fn sign_in_pushes_interest_once_then_idles() {
     assert!(drained(&rx).is_empty(), "cold start must enqueue nothing");
 
     // Sign in → exactly one PushInterest for this pubkey.
-    *slot.lock().unwrap() = Some(keys);
+    sign_in(&slot, &keys);
     controller.tick();
     let cmds = drained(&rx);
     assert_eq!(cmds.len(), 1, "sign-in enqueues exactly one command");
@@ -79,11 +89,11 @@ fn account_switch_withdraws_then_pushes() {
     let second = Keys::generate();
     let second_pubkey = second.public_key().to_hex();
 
-    *slot.lock().unwrap() = Some(first);
+    sign_in(&slot, &first);
     controller.tick();
     let _ = drained(&rx); // first sign-in push already proven above
 
-    *slot.lock().unwrap() = Some(second);
+    sign_in(&slot, &second);
     controller.tick();
     let cmds = drained(&rx);
     assert_eq!(cmds.len(), 2, "switch enqueues withdraw + push");
@@ -96,7 +106,7 @@ fn account_switch_withdraws_then_pushes() {
 #[test]
 fn sign_out_withdraws_interest_once() {
     let (controller, slot, rx) = controller();
-    *slot.lock().unwrap() = Some(Keys::generate());
+    sign_in(&slot, &Keys::generate());
     controller.tick();
     let _ = drained(&rx);
 
@@ -111,6 +121,29 @@ fn sign_out_withdraws_interest_once() {
         drained(&rx).is_empty(),
         "already signed out → no further traffic"
     );
+}
+
+/// Finding C — a bunker (remote-signer-only) account must activate the
+/// self-zap-receipts subscription. The reconciler reads the pubkey-only slot
+/// the kernel populates for every backend; with NO secret keys ever present it
+/// must still push the kind:9735 `#p` interest for the active pubkey.
+#[test]
+fn bunker_only_account_activates_self_zap_receipts() {
+    let (controller, slot, rx) = controller();
+    let keys = Keys::generate();
+    let pubkey = keys.public_key().to_hex();
+
+    // Pubkey-only sign-in (bunker shape): hex pubkey present, zero secrets.
+    sign_in(&slot, &keys);
+    controller.tick();
+
+    let cmds = drained(&rx);
+    assert_eq!(
+        cmds.len(),
+        1,
+        "a bunker account must still push exactly one zap-receipts interest"
+    );
+    assert_push_for(&cmds[0], &pubkey);
 }
 
 fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {

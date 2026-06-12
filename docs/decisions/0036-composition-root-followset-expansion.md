@@ -4,9 +4,69 @@
 > renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
 > as `nmp-defaults` / `nmp_defaults`.
 
-Status: accepted
+Status: accepted. **Revised 2026-06-12 (Revision 2): the interest-expansion
+half of the Decision (composition-root expansion, step 2/3 of "The expansion")
+was never built and is superseded — the kernel's `sync_follow_feed_interests`
+is the live owner of follow→interest expansion. See "Revision 2" below before
+building anything follow-list-shaped from this ADR.**
 
 Date: 2026-05-28
+
+## Revision 2 (2026-06-12) — the kernel owns follow→interest expansion
+
+### What this revision corrects
+
+Rev 1's "The expansion — at the composition root" section decides that
+`register_op_feed_defaults` expands `follow_set.follows()` into one
+`LogicalInterest` per followed author and re-runs the expansion on every
+follow-set change. **That topology was never built, and building it would be a
+bug.** The live owner of follow→interest expansion is the kernel:
+`crates/nmp-core/src/kernel/ingest/contacts.rs::sync_follow_feed_interests`
+registers one per-follow `LogicalInterest` (host-declared kinds, `Tailing`) on
+the active account's kind:3 ingest and on every identity change
+(`register_follow_feed_for_active_account` /
+`reconcile_follow_feed_after_identity_change`), and rebuilds
+`timeline_authors`. Those subscriptions are what bring follow-feed events onto
+the wire.
+
+`crates/nmp-defaults/src/op_feed_defaults.rs` (the "CRITICAL DECISION — no
+per-follow interest expansion here" module note) records why at the
+implementation site: registering the same interests *again* at the composition
+root would be **duplicate REQ subscriptions** — a wire-level bug and a
+no-duplication violation. The composition root wires only the engine
+(predicate + event lookup + claim sink + card builder), the `ActiveFollowSet`
+`on_change`, and the identity-change callback. No interest expansion.
+
+### Why the correct design won in code rather than in this ADR
+
+Rev 1 was written while the v3→v4 override was deleting the planner-side
+`SocialTimeline` seam; it assumed the kernel-side per-follow expansion would be
+removed too. It never was — deliberately: the kernel is the single writer of
+follow-derived subscription state (D4), already owns the kind:3 ingest path and
+the identity-change reconciliation, and re-deriving the same interests from a
+second writer at the composition root cannot be kept coherent with it.
+
+### What survives from Rev 1 (unchanged)
+
+- The **producer**: `nmp_nip02::ActiveFollowSet`, closures-only API, observing
+  kind:3 ingest, `notify_account_changed()` seam — exactly as decided.
+- The **membership predicate** consumed by the `RootIndexedFeed` engine via
+  `follow_set.predicate()` — exactly as decided.
+- The rejections of v3 (`FollowSetLookup` trait) and of
+  `LogicalInterest::SocialTimeline` — still correct, for the same reasons.
+
+Only the *interest-expansion locus* moves: kernel, not composition root.
+
+### Guidance for follow-like lists (mutes, NIP-51 sets)
+
+Anyone building a follow-like list MUST NOT copy Rev 1's composition-root
+expansion sketch — it re-introduces the duplicate-REQ bug whenever the kernel
+(or any other single writer) also derives interests from the same list. The
+pattern is: ONE owner per list derives the planner interests (today the kernel
+owns the follow set's); the composition root wires *consumers* (predicates,
+engines, projections) only. If a new list has no kernel-side owner, decide the
+single owner first — do not default to the composition root because this ADR's
+Rev 1 text said so.
 
 ## Context
 
@@ -109,6 +169,11 @@ the slot, rebuilds for the new active account (clearing the set entirely on
 logout), and fires `on_change`.
 
 ### The expansion — at the composition root (rung 6, `nmp-app-template`)
+
+> **Superseded by Revision 2 (2026-06-12).** Steps 2 and 3 below were never
+> built; the kernel's `sync_follow_feed_interests` owns the expansion. Doing
+> them at the composition root duplicates every follow-feed REQ. Steps 1 and 4
+> shipped as written.
 
 `nmp-app-template::register_op_feed_defaults` will:
 

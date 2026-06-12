@@ -12,6 +12,8 @@ use nmp_ffi::{
     nmp_app_free, nmp_app_set_capability_callback, nmp_app_set_update_callback, NmpApp,
 };
 
+use crate::capability::CapabilityHandlerSlot;
+
 struct CallbackState {
     tx: Mutex<Option<Sender<Vec<u8>>>>,
 }
@@ -98,6 +100,10 @@ pub(crate) struct Session {
     /// drain. The capability trampoline (`external_signer::on_capability_request`)
     /// pushes; `nativeNextSignerRequest` drains.
     pub(crate) signer_requests: SignerRequestChannel,
+    /// Synchronous capability handler for non-`external_signer` namespaces
+    /// (e.g. Android Keystore keyring). Registered by `nativeSetCapabilityHandler`;
+    /// cleared in `close_updates_locked` after the capability socket is unregistered.
+    pub(crate) capability_handler: CapabilityHandlerSlot,
     /// Opaque `*mut MarmotHandle` (or null when no MLS identity is registered).
     /// Stored type-erased so the core session module stays feature-agnostic.
     #[cfg_attr(not(feature = "marmot"), allow(dead_code))]
@@ -127,6 +133,7 @@ impl Session {
             callback_state,
             callback_context,
             signer_requests: SignerRequestChannel::new(),
+            capability_handler: Mutex::new(None),
             marmot: AtomicPtr::new(std::ptr::null_mut()),
         }
     }
@@ -224,6 +231,19 @@ impl Session {
         }
         self.callback_state.close();
         self.signer_requests.close();
+        // Drop the synchronous capability handler GlobalRef.
+        //
+        // UAF safety is NOT the capability-socket unregister above: unlike the
+        // update-callback gate, `nmp_app_set_capability_callback(None)` does
+        // NOT quiesce an in-flight capability dispatch (the kernel capability
+        // socket clones the registration out and drops its slot lock before
+        // invoking the trampoline). The load-bearing guard is THIS `lock()`:
+        // `capability::call_sync_handler` holds `capability_handler` for the
+        // entire `handler.call()`, so the `take()` here serializes against any
+        // active dispatch and the GlobalRef is never dropped while in use.
+        if let Ok(mut slot) = self.capability_handler.lock() {
+            slot.take();
+        }
         state.updates_closed = true;
     }
 
@@ -241,6 +261,7 @@ impl Session {
             callback_state: Arc::new(CallbackState::new(tx)),
             callback_context: std::ptr::null(),
             signer_requests: SignerRequestChannel::new(),
+            capability_handler: Mutex::new(None),
             marmot: AtomicPtr::new(std::ptr::null_mut()),
         })
     }

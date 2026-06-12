@@ -73,7 +73,11 @@ pub fn register_dm_runtime(app: &impl AppHost) {
 
     let controller = Arc::new(DmRuntimeController {
         relay_slot: app.configured_relays_handle(),
-        local_keys: app.active_local_keys(),
+        // Pubkey-only identity (Finding C): the relay-list reconciler only
+        // needs the active pubkey, never secret keys — read the slot the kernel
+        // populates for every backend so bunker accounts reconcile their inbox
+        // interest + kind:10050 relay list too.
+        active_pubkey: app.active_pubkey(),
         tx: app.actor_sender(),
         state: Mutex::new(DmRuntimeState::default()),
     });
@@ -264,7 +268,10 @@ impl DmInboxController {
 
 struct DmRuntimeController {
     relay_slot: AppRelaySlot,
-    local_keys: Arc<Mutex<Option<nostr::Keys>>>,
+    /// Pubkey-only identity slot (Finding C): the active account's hex pubkey,
+    /// populated for every backend including bunker. The reconciler needs
+    /// identity only, never secret key material.
+    active_pubkey: nmp_core::slots::ActiveAccountSlot,
     tx: Sender<ActorCommand>,
     state: Mutex<DmRuntimeState>,
 }
@@ -302,10 +309,12 @@ impl DmRuntimeController {
     }
 
     fn active_pubkey(&self) -> Option<String> {
-        self.local_keys
+        // Identity straight from the pubkey slot — already hex, no keypair
+        // derivation. `None` on a poisoned lock or no signed-in account.
+        self.active_pubkey
             .lock()
             .ok()
-            .and_then(|slot| slot.as_ref().map(|keys| keys.public_key().to_hex()))
+            .and_then(|slot| slot.clone())
     }
 
     fn read_relay_urls(&self) -> Vec<String> {
@@ -363,7 +372,10 @@ impl DmRuntimeController {
 /// subscription by itself.
 pub fn register_zap_receipts_runtime(app: &impl AppHost) {
     let controller = Arc::new(ZapReceiptsRuntimeController {
-        local_keys: app.active_local_keys(),
+        // Pubkey-only identity (Finding C): the self-zap-receipts reconciler
+        // only needs the active pubkey for the kind:9735 `#p` subscription —
+        // never secret keys — so bunker accounts activate it too.
+        active_pubkey: app.active_pubkey(),
         tx: app.actor_sender(),
         last_pushed_pubkey: Mutex::new(None),
     });
@@ -372,7 +384,10 @@ pub fn register_zap_receipts_runtime(app: &impl AppHost) {
 
 /// Per-tick reconciler for the active-account zap-receipts interest.
 struct ZapReceiptsRuntimeController {
-    local_keys: Arc<Mutex<Option<nostr::Keys>>>,
+    /// Pubkey-only identity slot (Finding C): the active account's hex pubkey,
+    /// populated for every backend including bunker. Identity only — never
+    /// secret key material.
+    active_pubkey: nmp_core::slots::ActiveAccountSlot,
     tx: Sender<ActorCommand>,
     last_pushed_pubkey: Mutex<Option<String>>,
 }
@@ -425,10 +440,12 @@ impl ZapReceiptsRuntimeController {
     }
 
     fn active_pubkey(&self) -> Option<String> {
-        self.local_keys
+        // Identity straight from the pubkey slot — already hex, no keypair
+        // derivation. `None` on a poisoned lock or no signed-in account.
+        self.active_pubkey
             .lock()
             .ok()
-            .and_then(|slot| slot.as_ref().map(|keys| keys.public_key().to_hex()))
+            .and_then(|slot| slot.clone())
     }
 }
 
@@ -489,39 +506,17 @@ impl ZapReceiptsRuntimeController {
 /// Like [`crate::register_defaults`], call before `nmp_app_start`. The
 /// `KernelEventObserver` must be registered before the first event arrives.
 pub fn register_mute_runtime(app: &impl AppHost) -> Arc<MuteListProjection> {
-    // ── 1. Pubkey slot bridge ────────────────────────────────────────────
+    // ── 1. Active-pubkey slot (Finding C) ────────────────────────────────
     //
-    // `MuteListProjection` takes `Arc<Mutex<Option<String>>>` (a hex pubkey
-    // string slot). `AppHost::active_local_keys()` returns
-    // `Arc<Mutex<Option<nostr::Keys>>>`. A per-tick observer bridges the two:
-    // it derives the hex pubkey on every snapshot tick and writes it into the
-    // shared hex slot. The tick runs on the actor thread between relay frames
-    // (D8), so the lock hold is bounded and non-blocking.
-    //
-    // The mute projection reads the slot at ingest time AND at
-    // `is_suppressed_*` query time, so both paths see the live active account.
-    let active_keys = app.active_local_keys();
-    let hex_pubkey_slot: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let hex_slot_for_tick = Arc::clone(&hex_pubkey_slot);
-    app.register_snapshot_tick_observer(move || {
-        // Derive the active hex pubkey from the keys slot (same pattern as
-        // `WotBootstrapRuntime::active_pubkey`).
-        let current_hex = active_keys
-            .lock()
-            .ok()
-            .and_then(|g| g.as_ref().map(|keys| keys.public_key().to_hex()));
-        // Write into the hex slot only when the value changed — avoids a
-        // write-then-read contention cycle on every tick when stable.
-        // Poisoned hex slot → silent no-op (D6).
-        if let Ok(mut slot) = hex_slot_for_tick.lock() {
-            if *slot != current_hex {
-                *slot = current_hex;
-            }
-        }
-    });
-
-    // ── 2. Construct the projection ──────────────────────────────────────
-    let mute = Arc::new(MuteListProjection::new(Arc::clone(&hex_pubkey_slot)));
+    // `MuteListProjection` takes `Arc<Mutex<Option<String>>>` (hex pubkey) —
+    // exactly the shape of `AppHost::active_pubkey()` (`ActiveAccountSlot`),
+    // populated by the kernel for EVERY backend including bunker. We hand the
+    // projection that shared slot directly: no keys→hex bridge tick observer
+    // (the old code derived hex from `active_local_keys()`, silently dead for
+    // bunker accounts), and a single source of truth for the active pubkey (D4)
+    // rather than a second mirrored hex slot. The projection reads the slot at
+    // ingest AND `is_suppressed_*` query time, so both see the live account.
+    let mute = Arc::new(MuteListProjection::new(app.active_pubkey()));
 
     // ── 3. Register as ingest observer ───────────────────────────────────
     //
@@ -556,3 +551,9 @@ mod zap_tests;
 #[cfg(test)]
 #[path = "runtimes_dm_inbox_tests.rs"]
 mod dm_inbox_tests;
+
+// DM relay-list reconciler bunker-activation tests (Finding C) — verifies the
+// `DmRuntimeController` activates from the pubkey-only slot.
+#[cfg(test)]
+#[path = "runtimes_dm_relay_list_tests.rs"]
+mod dm_relay_list_tests;

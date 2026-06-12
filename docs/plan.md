@@ -140,8 +140,8 @@ Deliberately deferred. See GitHub Issues labeled `phase:post-v1` and [`plan/post
 - UniFFI migration (M14)
 - Further zap work: receipt `nostrPubkey` author verification (#1043), `ZapRequestBuilder` sentinel-value API fix (#610), `zap_subscription` typed-sidecar shape decision (#1022), any zap UX hardening — owner decision 2026-06-12; v1 ships current capability: send via NWC, kind:9735 ingest + `ZapsAggregateProjection`, E2E-harness-verified
 - Cashu / nutzaps (NIP-60/61)
-- V-06 NIP-42+NIP-46 Stages 2-3 (broker `sign_auth_challenge` RPC)
-- V-08 NIP-17 DM bunker support Stage 3 (`unwrap_gift_wrap` via remote signer RPC)
+- V-06 NIP-42+NIP-46 Stages 2-3 — via the signer-session capability port ([#960](https://github.com/pablof7z/nostr-multi-platform/issues/960))
+- V-08 NIP-17 DM bunker receive Stage 3 — per-envelope remote-RPC plan rejected 2026-06-12 (O(2N) sequential bunker round-trips); re-scoped to signer-session port + delegated-decrypt-vs-product-policy decision ([#961](https://github.com/pablof7z/nostr-multi-platform/issues/961))
 - ADR-0025 Marmot C-ABI cluster relocation out of Chirp binary
 
 ---

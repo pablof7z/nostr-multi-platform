@@ -10,7 +10,6 @@
 # Genuinely generated/output files belong in .file-size-ignore, not here.
 
 android/app/src/main/java/org/nmp/android/ExternalSignerCapabilityBridge.kt	529
-android/app/src/main/java/org/nmp/android/KernelModel.kt	572
 android/app/src/test/java/org/nmp/android/OpFeedDecoderTest.kt	540
 apps/chirp/chirp-desktop/src/app.rs	1102
 apps/chirp/chirp-tui/src/runtime.rs	664
@@ -33,7 +32,7 @@ crates/nmp-core/src/actor/commands/identity.rs	1562
 crates/nmp-core/src/actor/commands/publish.rs	742
 crates/nmp-core/src/actor/commands/remote_signer_tests.rs	1160
 crates/nmp-core/src/actor/commands/tests.rs	2270
-crates/nmp-core/src/actor/dispatch.rs	2682
+crates/nmp-core/src/actor/dispatch.rs	2544
 crates/nmp-core/src/actor/mod.rs	2360
 crates/nmp-core/src/actor/pending_sign.rs	573
 crates/nmp-core/src/actor/relay_mgmt.rs	534
@@ -47,7 +46,7 @@ crates/nmp-core/src/kernel/event_claim_tests.rs	560
 crates/nmp-core/src/kernel/ingest_tests.rs	952
 crates/nmp-core/src/kernel/ingest/mod.rs	746
 crates/nmp-core/src/kernel/mailboxes.rs	506
-crates/nmp-core/src/kernel/mod.rs	2876
+crates/nmp-core/src/kernel/mod.rs	2892
 crates/nmp-core/src/kernel/publish_engine_tests.rs	828
 crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	840
 crates/nmp-core/src/kernel/retention_tests.rs	546
@@ -66,11 +65,11 @@ crates/nmp-core/src/substrate/ingest.rs	619
 crates/nmp-core/src/substrate/protocol.rs	646
 crates/nmp-core/tests/nip_tag_conformance.rs	554
 crates/nmp-core/tests/nip19_nip21.rs	548
-crates/nmp-defaults/src/builder.rs	690
-crates/nmp-defaults/src/runtimes.rs	558
+crates/nmp-defaults/src/builder.rs	695
+crates/nmp-defaults/src/runtimes.rs	559
 crates/nmp-ffi/src/action/tests.rs	977
 crates/nmp-ffi/src/external_signer.rs	665
-crates/nmp-ffi/src/lib.rs	2901
+crates/nmp-ffi/src/lib.rs	2905
 crates/nmp-marmot/src/ffi.rs	634
 crates/nmp-marmot/src/ffi/tests.rs	996
 crates/nmp-marmot/src/projection/ops.rs	713
@@ -87,8 +86,8 @@ crates/nmp-nip17/src/inbox.rs	544
 crates/nmp-nip17/src/inbox/tests.rs	510
 crates/nmp-nip47/src/runtime.rs	1246
 crates/nmp-nip57/src/decode.rs	500
-crates/nmp-nip57/src/lnurl/mod.rs	648
-crates/nmp-nip57/src/lnurl/tests.rs	712
+crates/nmp-nip57/src/lnurl/mod.rs	682
+crates/nmp-nip57/src/lnurl/tests.rs	807
 crates/nmp-nip60/src/nip60_wallet.rs	923
 crates/nmp-nostr-lmdb/src/lib_tests.rs	875
 crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs	1761
@@ -117,7 +116,7 @@ crates/nmp-testing/tests/cross_platform_parity.rs	584
 crates/nmp-testing/tests/e2e_full_pipeline.rs	864
 crates/nmp-threading/src/grouper.rs	595
 crates/nmp-threading/tests/grouper.rs	657
-crates/nmp-wasm/src/runtime.rs	581
+crates/nmp-wasm/src/runtime.rs	557
 docs/architecture-audit/pd033c-plan.md	689
 docs/architecture-audit/v6-codegen-plan.md	724
 docs/decisions/0038-typed-op-feed-projection.md	625
