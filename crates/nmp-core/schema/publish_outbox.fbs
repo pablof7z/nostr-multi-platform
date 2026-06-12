@@ -63,8 +63,9 @@ table PublishOutboxItem {
   title:string;
   // Pre-formatted content preview (or an encrypted/empty placeholder).
   preview:string;
-  // Pre-formatted creation-time display string.
-  created_at_display:string;
+  // V-115 / ADR-0032: `created_at_display` deprecated — shells format the raw
+  // Unix-seconds timestamp themselves. Slot retained for wire compatibility.
+  created_at_display:string (deprecated);
   // Row-level status token (`"sending"` / `"retrying"` / `"pending"` /
   // `"failed"` / `"queued"`).
   status:string;
@@ -78,10 +79,15 @@ table PublishOutboxItem {
   // Number of target relays (mirrors the JSON `usize`; `uint` is the widest
   // portable count type the shells share).
   target_relays:uint;
-  // Pre-formatted "N relays · <created_at>" header line.
-  target_summary:string;
+  // V-115 / ADR-0032: `target_summary` deprecated — shells compose
+  // "N relays · <formatted time>" themselves. Slot retained for wire compat.
+  target_summary:string (deprecated);
   // The per-relay rows, in producer order.
   relays:[PublishOutboxRelay];
+  // V-115 / ADR-0032: raw Unix-seconds creation timestamp. Replaces the
+  // deprecated `created_at_display` string so shells can format with their
+  // own locale and timezone. Appended at the end to preserve all prior slots.
+  created_at:uint64;
 }
 
 table PublishOutboxSnapshot {

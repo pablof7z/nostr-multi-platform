@@ -39,17 +39,6 @@ class ProfileCard : Table() {
         }
     val pubkeyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
     fun pubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
-    val npub : String?
-        get() {
-            val o = __offset(6)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val npubAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
-    fun npubInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val hasDisplayName : Boolean
         get() {
             val o = __offset(8)
@@ -132,14 +121,13 @@ class ProfileCard : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createProfileCard(builder: FlatBufferBuilder, pubkeyOffset: Int, npubOffset: Int, hasDisplayName: Boolean, displayNameOffset: Int, hasPictureUrl: Boolean, pictureUrlOffset: Int, nip05Offset: Int, aboutOffset: Int, hasProfile: Boolean, hasLnurl: Boolean, lnurlOffset: Int) : Int {
+        fun createProfileCard(builder: FlatBufferBuilder, pubkeyOffset: Int, hasDisplayName: Boolean, displayNameOffset: Int, hasPictureUrl: Boolean, pictureUrlOffset: Int, nip05Offset: Int, aboutOffset: Int, hasProfile: Boolean, hasLnurl: Boolean, lnurlOffset: Int) : Int {
             builder.startTable(11)
             addLnurl(builder, lnurlOffset)
             addAbout(builder, aboutOffset)
             addNip05(builder, nip05Offset)
             addPictureUrl(builder, pictureUrlOffset)
             addDisplayName(builder, displayNameOffset)
-            addNpub(builder, npubOffset)
             addPubkey(builder, pubkeyOffset)
             addHasLnurl(builder, hasLnurl)
             addHasProfile(builder, hasProfile)
@@ -149,7 +137,6 @@ class ProfileCard : Table() {
         }
         fun startProfileCard(builder: FlatBufferBuilder) = builder.startTable(11)
         fun addPubkey(builder: FlatBufferBuilder, pubkey: Int) = builder.addOffset(0, pubkey, 0)
-        fun addNpub(builder: FlatBufferBuilder, npub: Int) = builder.addOffset(1, npub, 0)
         fun addHasDisplayName(builder: FlatBufferBuilder, hasDisplayName: Boolean) = builder.addBoolean(2, hasDisplayName, false)
         fun addDisplayName(builder: FlatBufferBuilder, displayName: Int) = builder.addOffset(3, displayName, 0)
         fun addHasPictureUrl(builder: FlatBufferBuilder, hasPictureUrl: Boolean) = builder.addBoolean(4, hasPictureUrl, false)

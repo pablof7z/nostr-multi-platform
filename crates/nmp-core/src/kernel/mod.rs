@@ -267,10 +267,9 @@ use crate::relay::{
     CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_HZ, TIMELINE_AUTHOR_LIMIT,
 };
 // `chrono::Local` reads the OS-local wall clock; the `clock` feature it lives
-// behind is gated to `native` in Cargo.toml. The wall-clock display helpers
-// (`format_timestamp` / `now_hms` in `kernel/nostr.rs`) are themselves
-// native-only — see the `#[cfg(feature = "native")]` gates on those two
-// functions and the single use site in `kernel/update.rs::created_at_display`.
+// behind is gated to `native` in Cargo.toml. The wall-clock display helper
+// `now_hms` in `kernel/nostr.rs` is native-only — see the `#[cfg(feature =
+// "native")]` gate and the single use site in `kernel/status.rs`.
 #[cfg(feature = "native")]
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -279,11 +278,11 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-// `SystemTime` and `UNIX_EPOCH` are only consumed by native-gated functions in
-// `kernel/nostr.rs` (format_timestamp/now_hms) and `kernel/ingest/auth_handlers.rs`.
-// Both callers use `#[cfg(feature = "native")]` so these imports can also be gated.
+// `SystemTime` is consumed by native-gated `now_hms` in `kernel/nostr.rs`.
+// `UNIX_EPOCH` was only used by the now-deleted `format_timestamp`; each
+// remaining call site (`auth_handlers.rs`) imports it directly.
 #[cfg(feature = "native")]
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 // V-01 Phase 1c: the kernel no longer names `tungstenite`. The native
 // `relay_worker` converts `tungstenite::Message` → [`RelayFrame`] before
 // handing it to [`Kernel::handle_message`]; a non-native transport (wasm32)
@@ -358,14 +357,15 @@ pub mod public_typed_projections {
 }
 
 use nostr::{parse_profile, parse_relay_list, ratio, short_hex, truncate, NostrEvent};
-// V-01 Phase 1c follow-up: `format_timestamp` / `now_hms` are
-// `#[cfg(feature = "native")]` in `kernel/nostr.rs` (they read the OS
-// wall clock via `chrono::Local`). Importing them unconditionally breaks
-// `--no-default-features` (wasm32) builds. The single call sites in
-// `update.rs`, `status.rs`, and `publish_outbox.rs` are themselves
-// already `#[cfg(feature = "native")]`, so the re-export is gated too.
+// V-01 Phase 1c follow-up: `now_hms` is `#[cfg(feature = "native")]` in
+// `kernel/nostr.rs` (reads the OS wall clock via `chrono::Local`). Importing
+// it unconditionally breaks `--no-default-features` (wasm32) builds. The
+// single call site in `status.rs` is already `#[cfg(feature = "native")]`,
+// so the re-export is gated too.
+// `format_timestamp` was deleted by ADR-0032 / V-115: publish_outbox now
+// emits raw `created_at` (Unix seconds); shells format timestamps locally.
 #[cfg(feature = "native")]
-use nostr::{format_timestamp, now_hms};
+use nostr::now_hms;
 // `is_hex_id` / `is_hex_pubkey` reach `nmp-ffi` through
 // `nmp_core::__ffi_internal::*` (the FFI surface uses them to validate
 // `*const c_char` arguments for `open_thread` / `open_author` etc.).
@@ -1489,7 +1489,7 @@ impl Kernel {
     /// in-crate `NoopOutboxResolver` default (every `PublishTarget::Auto`
     /// resolves to an empty set → `PublishEngineError::NoTargets`,
     /// fail-closed). Production composition
-    /// (`nmp-app-template::register_defaults` → the
+    /// (`nmp-defaults::register_defaults` → the
     /// `NmpApp::set_publish_resolver_factory` slot the actor reads at
     /// kernel construction) calls this method right after
     /// [`Self::set_routing`] to install
@@ -1875,7 +1875,7 @@ impl Kernel {
         // Spec §271 (2026-05-25): `Nip65OutboxResolver` lives in
         // `nmp-router`, not `nmp-core`. The engine is built with the
         // in-crate `NoopOutboxResolver` default; production composition
-        // (`nmp-app-template::register_defaults` → the
+        // (`nmp-defaults::register_defaults` → the
         // `set_publish_resolver_factory` slot the actor reads at
         // construction) swaps in the router-side resolver via
         // [`Kernel::set_publish_resolver`]. The `indexer_relays_handle`,
@@ -2066,7 +2066,7 @@ impl Kernel {
         // consumers) keep working without each test calling
         // `Kernel::set_publish_resolver` manually. Production builds use the
         // `NoopOutboxResolver` default the engine was built with above; the
-        // production composition site (`nmp-app-template::register_defaults`)
+        // production composition site (`nmp-defaults::register_defaults`)
         // installs the full router-side `nmp_router::Nip65OutboxResolver`
         // via `NmpApp::set_publish_resolver_factory` →
         // `Kernel::set_publish_resolver` (D0 — `nmp-core` does not name

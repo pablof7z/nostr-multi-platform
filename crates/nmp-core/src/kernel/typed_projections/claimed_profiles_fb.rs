@@ -68,7 +68,8 @@ pub(super) fn create_profile_card<'a>(
     card: &ProfileCardModel,
 ) -> WIPOffset<pc::ProfileCard<'a>> {
     let pubkey = fbb.create_string(&card.pubkey);
-    let npub = fbb.create_string(&card.npub);
+    // ADR-0032 / V-115: `npub` deprecated in schema; `ProfileCardArgs` no longer
+    // has an `npub` arg (flatc omits args for deprecated fields).
     let display_name = card.display_name.as_ref().map(|v| fbb.create_string(v));
     let picture_url = card.picture_url.as_ref().map(|v| fbb.create_string(v));
     let nip05 = fbb.create_string(&card.nip05);
@@ -78,7 +79,6 @@ pub(super) fn create_profile_card<'a>(
         fbb,
         &pc::ProfileCardArgs {
             pubkey: Some(pubkey),
-            npub: Some(npub),
             has_display_name: card.display_name.is_some(),
             display_name,
             has_picture_url: card.picture_url.is_some(),
@@ -131,7 +131,8 @@ pub(crate) fn encode_claimed_profiles(model: &ClaimedProfilesModel) -> Vec<u8> {
 fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey().unwrap_or_default().to_string(),
-        npub: card.npub().unwrap_or_default().to_string(),
+        // ADR-0032 / V-115: `npub` deprecated; no accessor generated. Empty.
+        npub: String::new(),
         display_name: card
             .has_display_name()
             .then(|| card.display_name().unwrap_or_default().to_string()),
@@ -154,7 +155,7 @@ fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
 /// Promoted to unconditional `pub` (V-112 follow-up): `claim_profile` is the
 /// component-owned profile-hydration verb, and the `claimed_profiles` typed
 /// sidecar is its direct observable — out-of-tree Rust consumers (e.g. the
-/// `nmp-app-template` `validate_claim_profile` example) read it through
+/// `nmp-defaults` `validate_claim_profile` example) read it through
 /// `nmp_core::typed_projections`, mirroring the `decode_claimed_events` /
 /// `decode_resolved_profiles` promotions from PR-B.
 pub fn decode_claimed_profiles(bytes: &[u8]) -> Result<ClaimedProfilesModel, String> {

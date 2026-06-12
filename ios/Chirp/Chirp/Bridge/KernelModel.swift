@@ -431,13 +431,18 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
     }
 
+    /// ADR-0032 / V-115: bech32-encode a hex pubkey as `npub1…`.
+    /// Returns nil on failure; callers fall back to hex display.
+    func encodeProfile(pubkey: String) -> String? {
+        kernel.encodeProfile(pubkey: pubkey)
+    }
+
     /// NostrProfileHost conformance: look up a profile by pubkey.
     /// First checks claimed profiles, then falls back to mention profiles.
     ///
-    /// `ProfileWire.npub` is `nil` on the mention-profiles path because the
-    /// mention projection carries no bech32 encoding. Callers that need npub
-    /// for copy/share must guard for nil — only the claimedProfiles path
-    /// guarantees a non-nil npub.
+    /// `ProfileWire.npub` is `nil` — the projection no longer sends bech32
+    /// (ADR-0032 / V-115). Callers that need an npub for copy/share must
+    /// encode it themselves via `nmp_app_encode_profile(app, pubkey)`.
     func profile(forPubkey pubkey: String) -> ProfileWire? {
         if let card = claimedProfiles[pubkey] {
             #if DEBUG
@@ -445,16 +450,16 @@ final class KernelModel: ObservableObject, NostrProfileHost {
                 markProfileNameResolved(pubkey)
             }
             #endif
+            // ADR-0032 / V-115: bech32 `npub` no longer sent by projection.
+            // Pass nil; callers encode bech32 host-side when needed.
             return ProfileWire(
                 pubkey: pubkey,
                 displayName: (card.displayName?.isEmpty == false) ? card.displayName : nil,
                 about: card.about.isEmpty ? nil : card.about,
                 pictureUrl: card.pictureUrl,
                 nip05: card.nip05.isEmpty ? nil : card.nip05,
-                npub: card.npub,
-                npubShort: card.npub.count > 12
-                    ? "\(card.npub.prefix(9))…\(card.npub.suffix(4))"
-                    : card.npub
+                npub: nil,
+                npubShort: pubkey.shortHex
             )
         }
         if let mention = mentionProfiles[pubkey] {

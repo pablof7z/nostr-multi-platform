@@ -259,6 +259,21 @@ class KernelBridge {
     }
 
     /**
+     * Encode a hex pubkey as a NIP-19 display identifier (`nprofile1…` when
+     * kind:10002 relay hints are cached, else `npub1…`). Wraps the existing
+     * `nmp_app_encode_profile` C-ABI symbol — no new NMP C-ABI surface.
+     *
+     * ADR-0032 / V-115: replaces the deprecated `ProfileCard.npub` field that
+     * the projection no longer sends. Hosts call this to derive the display
+     * identifier on their side.
+     *
+     * D6: returns `null` for a null/dead handle or a malformed pubkey. The
+     * caller falls back to its own short-hex rendering in that case.
+     */
+    fun encodeProfile(pubkey: String): String? =
+        if (handle != 0L) nativeEncodeProfile(handle, pubkey) else null
+
+    /**
      * Expose the raw Android JNI Session pointer (`jlong`) to same-process
      * Android bridge extensions. Returns 0 if the bridge was freed. Callers
      * must not store this value beyond the lifetime of this bridge.
@@ -304,5 +319,6 @@ class KernelBridge {
     private external fun nativeRemoveAccount(handle: Long, pubkey: String)
     private external fun nativeMarmotRegisterActive(handle: Long, dbDir: String): Boolean
     private external fun nativeMarmotUnregister(handle: Long)
+    private external fun nativeEncodeProfile(handle: Long, pubkey: String): String?
     private external fun nativeFree(handle: Long)
 }

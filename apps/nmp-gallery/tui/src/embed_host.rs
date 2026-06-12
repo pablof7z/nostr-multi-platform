@@ -186,6 +186,21 @@ fn apply_author_profile(
 }
 
 #[cfg(test)]
+trait ArticleHelpers {
+    fn kind_optional_check(&self) -> u32;
+}
+
+#[cfg(test)]
+impl ArticleHelpers for nmp_content::embed_projection::ArticleProjection {
+    /// Test-only helper — `ArticleProjection` doesn't carry an explicit `kind`
+    /// field (the variant tag IS the kind), so we return the canonical value
+    /// from the spec for kind:30023.
+    fn kind_optional_check(&self) -> u32 {
+        30023
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::data::{
@@ -367,20 +382,5 @@ mod tests {
         host.update_from_typed(&snapshot_with(vec![(primary_b.clone(), row_b)]));
         assert!(!host.current_envelopes().contains_key(&primary_a));
         assert!(host.current_envelopes().contains_key(&primary_b));
-    }
-}
-
-#[cfg(test)]
-trait ArticleHelpers {
-    fn kind_optional_check(&self) -> u32;
-}
-
-#[cfg(test)]
-impl ArticleHelpers for nmp_content::embed_projection::ArticleProjection {
-    /// Test-only helper — `ArticleProjection` doesn't carry an explicit `kind`
-    /// field (the variant tag IS the kind), so we return the canonical value
-    /// from the spec for kind:30023.
-    fn kind_optional_check(&self) -> u32 {
-        30023
     }
 }

@@ -3,6 +3,8 @@
 use super::*;
 
 fn sample() -> PublishOutboxModel {
+    // ADR-0032 / V-115: `created_at` is raw Unix seconds; `target_summary`
+    // removed. Shells format timestamps and compose "N relays · time" themselves.
     PublishOutboxModel {
         items: vec![
             PublishOutboxItemRow {
@@ -11,13 +13,12 @@ fn sample() -> PublishOutboxModel {
                 kind: 1,
                 title: "Note".to_string(),
                 preview: "hello world".to_string(),
-                created_at_display: "12:34".to_string(),
+                created_at: 1_700_000_000,
                 status: "sending".to_string(),
                 status_label: "Sending".to_string(),
                 system_image: "text.bubble".to_string(),
                 can_retry: false,
                 target_relays: 2,
-                target_summary: "2 relays · 12:34".to_string(),
                 relays: vec![
                     PublishOutboxRelayRow {
                         relay_url: "wss://relay.one/".to_string(),
@@ -45,13 +46,12 @@ fn sample() -> PublishOutboxModel {
                 kind: 7,
                 title: "Reaction".to_string(),
                 preview: "Reaction event".to_string(),
-                created_at_display: "09:00".to_string(),
+                created_at: 1_699_900_000,
                 status: "pending".to_string(),
                 status_label: "Pending".to_string(),
                 system_image: "heart".to_string(),
                 can_retry: true,
                 target_relays: 0,
-                target_summary: "0 relays · 09:00".to_string(),
                 relays: Vec::new(),
             },
         ],
@@ -86,13 +86,12 @@ fn item_with_no_relays_round_trips() {
             kind: 1,
             title: "Note".to_string(),
             preview: "p".to_string(),
-            created_at_display: "00:00".to_string(),
+            created_at: 0,
             status: "queued".to_string(),
             status_label: "Queued".to_string(),
             system_image: "doc.text".to_string(),
             can_retry: true,
             target_relays: 0,
-            target_summary: "0 relays · 00:00".to_string(),
             relays: Vec::new(),
         }],
     };

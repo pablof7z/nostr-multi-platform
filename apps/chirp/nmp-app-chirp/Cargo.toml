@@ -60,7 +60,7 @@ nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["signer-broker"] }
 # modules that used to live in this crate (`src/dm_runtime.rs`,
 # `src/zap_receipts_runtime.rs`) moved into the template's `runtimes`
 # module.
-nmp-app-template = { path = "../../../crates/nmp-app-template" }
+nmp-defaults = { path = "../../../crates/nmp-defaults" }
 nmp-feed = { path = "../../../crates/nmp-feed" }
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
 nmp-nip18 = { path = "../../../crates/nmp-nip18" }
@@ -84,7 +84,7 @@ nmp-nip29 = { path = "../../../crates/nmp-nip29" }
 # `ZapsAggregateProjection` event observer + `"nmp.nip57.zaps"` snapshot
 # projection (per-target zap-count aggregate read for the timeline). The
 # `nmp.nip57.zap` action module + kind:9734 builder + LNURL fetcher are
-# wired by `nmp-app-template::register_defaults` (transitively).
+# wired by `nmp-defaults::register_defaults` (transitively).
 nmp-nip57 = { path = "../../../crates/nmp-nip57" }
 # V-38: NIP-47 NWC wallet stack moved out of `nmp-core`. Optional + gated
 # behind the `wallet` feature so the default-off build excludes it.

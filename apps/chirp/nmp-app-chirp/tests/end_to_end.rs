@@ -4,7 +4,7 @@
 //! lands.
 //!
 //! V-80 rung 7 — the home feed is now thread-ROOTS-only, produced by the
-//! `nmp-nip01` OP-feed engine (via `nmp_app_template::register_op_feed_defaults`
+//! `nmp-nip01` OP-feed engine (via `nmp_defaults::register_op_feed_defaults`
 //! wired in `nmp_app_chirp_register`). Replies no longer appear as their own
 //! rows; a followed author's reply attributes back to its root. These tests run
 //! with NO signed-in account, so the follow set is empty and the follow

@@ -32,7 +32,7 @@ class TypedProfilesDecoderTest {
         lnurl: String?,
     ): Int {
         val pubkeyOff = builder.createString(pubkey)
-        val npubOff = builder.createString("npub_$pubkey")
+        // ADR-0032 / V-115: `npub` deprecated — no longer passed to createProfileCard.
         val dnOff = if (displayName != null) builder.createString(displayName) else 0
         val pxOff = if (pictureUrl != null) builder.createString(pictureUrl) else 0
         val nip05Off = builder.createString("nip05@example")
@@ -41,7 +41,6 @@ class TypedProfilesDecoderTest {
         return FbProfileCard.createProfileCard(
             builder,
             pubkeyOff,
-            npubOff,
             displayName != null,
             dnOff,
             pictureUrl != null,

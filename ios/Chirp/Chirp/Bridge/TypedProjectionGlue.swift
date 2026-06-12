@@ -121,19 +121,20 @@ enum TypedProjectionGlue {
     /// string, so both paths yield the same `""` (parity-preserving).
     static func publishOutbox(_ reader: nmp_kernel_PublishOutboxSnapshot) -> [PublishOutboxItem] {
         reader.items.map { item in
+            // ADR-0032 / V-115: `createdAtDisplay`/`targetSummary` deprecated;
+            // use `createdAt` (raw uint64 Unix seconds) instead.
             PublishOutboxItem(
                 handle: item.handle ?? "",
                 eventId: item.eventId ?? "",
                 kind: item.kind,
                 title: item.title ?? "",
                 preview: item.preview ?? "",
-                createdAtDisplay: item.createdAtDisplay ?? "",
+                createdAt: item.createdAt,
                 status: item.status ?? "",
                 statusLabel: item.statusLabel ?? "",
                 systemImage: item.systemImage ?? "",
                 canRetry: item.canRetry,
                 targetRelays: Int(item.targetRelays),
-                targetSummary: item.targetSummary ?? "",
                 relays: item.relays.map { relay in
                     PublishOutboxRelay(
                         relayUrl: relay.relayUrl ?? "",
@@ -393,9 +394,10 @@ enum TypedProjectionGlue {
     /// `null`-when-`None` semantics (ADR-0032): when `has_x == false` the
     /// optional field is `nil`, regardless of the (empty) string slot.
     private static func profileCard(_ card: nmp_kernel_ProfileCard) -> ProfileCard {
+        // ADR-0032 / V-115: `npub` slot deprecated; `card.npub` returns nil/empty.
+        // `ProfileCard` no longer has an `npub` property (removed from wire).
         ProfileCard(
             pubkey: card.pubkey ?? "",
-            npub: card.npub ?? "",
             displayName: card.hasDisplayName ? (card.displayName ?? "") : nil,
             pictureUrl: card.hasPictureUrl ? (card.pictureUrl ?? "") : nil,
             nip05: card.nip05 ?? "",

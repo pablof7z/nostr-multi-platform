@@ -22,7 +22,7 @@
 //! focus on the wiring-phase guarantees.
 
 use nmp_ffi::{nmp_app_free, nmp_app_stop};
-use nmp_app_template::{NmpAppBuilder, RunConfig};
+use nmp_defaults::{NmpAppBuilder, RunConfig};
 
 // ── helper ───────────────────────────────────────────────────────────────────
 
@@ -68,7 +68,7 @@ fn builder_implements_apphost_for_register_defaults() {
     // `register_defaults` on the builder before calling `start()`.
     let app = {
         let mut builder = NmpAppBuilder::new();
-        nmp_app_template::register_defaults(&mut builder);
+        nmp_defaults::register_defaults(&mut builder);
         builder.in_memory().start(RunConfig::default())
     };
     assert!(!app.is_null());
@@ -114,7 +114,7 @@ fn builder_full_pipeline_with_register_defaults_and_custom_run_config() {
     };
     let app = {
         let mut builder = NmpAppBuilder::new();
-        nmp_app_template::register_defaults(&mut builder);
+        nmp_defaults::register_defaults(&mut builder);
         builder.in_memory().start(cfg)
     };
     assert!(!app.is_null());

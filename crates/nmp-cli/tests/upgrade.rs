@@ -29,21 +29,26 @@ fn upgrade_switches_manifest_to_versioned_nmp_release() {
     assert!(manifest.contains("dependency_mode = \"version\""));
     assert!(manifest.contains("version = \"0.2.0\""));
 
+    // ADR-0046: the scaffolded core crate is a thin composition shell whose
+    // `nmp-*` dependencies are git-rev pins (consumers pin NMP by git rev).
+    // `nmp upgrade` repoints each pin at the new release tag — there is no
+    // `nmp gen modules` step and no generated `apps/` FFI crate.
     let app_core = fs::read_to_string(root.join("crates/demoapp-core/Cargo.toml")).unwrap();
-    assert!(app_core.contains("nmp-core = \"0.2.0\""));
-
-    let gen = nmp(&root, &["gen", "modules"]);
     assert!(
-        gen.status.success(),
-        "gen failed: {}",
-        String::from_utf8_lossy(&gen.stderr)
+        app_core.contains("nmp-core = { git = ")
+            && app_core.contains("tag = \"v0.2.0\"")
+            && app_core.contains("package = \"nmp-core\""),
+        "upgrade must repoint nmp-core to the v0.2.0 git tag:\n{app_core}"
     );
-
-    let cargo_toml =
-        fs::read_to_string(root.join("apps/demoapp/nmp-app-demoapp/Cargo.toml")).unwrap();
-    assert!(cargo_toml.contains("nmp-core = \"0.2.0\""));
-    assert!(cargo_toml.contains("nmp-ffi = \"0.2.0\""));
-    assert!(cargo_toml.contains("demoapp_core = { package = \"demoapp-core\", path = \""));
+    assert!(
+        app_core.contains("package = \"nmp-defaults\"")
+            && app_core.contains("package = \"nmp-ffi\""),
+        "upgrade must repoint nmp-defaults and nmp-ffi too:\n{app_core}"
+    );
+    assert!(
+        !root.join("apps").exists(),
+        "ADR-0046: upgrade must not produce a generated apps/ tree"
+    );
 }
 
 #[test]

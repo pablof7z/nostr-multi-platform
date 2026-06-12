@@ -1,4 +1,4 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
 //! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,11,12,13,14,15,16,17,18}.rs` for
@@ -63,7 +63,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
-use rules::{d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d6, d7, d8, d9};
+use rules::{d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -130,6 +130,7 @@ fn main() -> ExitCode {
                 &cfg.d15_extra_scopes,
                 &cfg.d16_extra_scopes,
                 &cfg.d17_extra_scopes,
+                &cfg.d19_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
             ) {
@@ -142,7 +143,7 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17"
+        "D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19"
     };
     finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
@@ -203,6 +204,7 @@ fn scan_one_file(
     d15_extra_scopes: &[String],
     d16_extra_scopes: &[String],
     d17_extra_scopes: &[String],
+    d19_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -238,6 +240,9 @@ fn scan_one_file(
     let d15_in_scope = d15_file_in_scope(path, d15_extra_scopes);
     let d16_in_scope = d16_file_in_scope(path, d16_extra_scopes);
     let d17_in_scope = d17_file_in_scope(path, d17_extra_scopes);
+    // D19 — display-formatting banned from kernel projection builders.
+    // Scope is `kernel/update/`, `kernel/types.rs`, `kernel/publish_outbox.rs`.
+    let d19_in_scope = d19_file_in_scope(path, d19_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
     let mut d10_tracker = d10::PrivatePublishTracker::default();
@@ -549,6 +554,26 @@ fn scan_one_file(
                 });
             }
         }
+        // D19 — display formatting banned from kernel projection builders.
+        // ADR-0032 (V-115): `crate::display::` and `format_timestamp` must
+        // not appear in `kernel/update/`, `kernel/types.rs`, or
+        // `kernel/publish_outbox.rs`. Test-only files and #[cfg(test)] bodies
+        // are exempt. Skipped in --workspace-d8 (no-polling sweep only).
+        if !workspace_d8 && d19_in_scope && !d6_test_file {
+            for (col, msg, suggested) in d19::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows(sl.text, d19::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d19::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
         // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
         // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
         // doctrine applies to all non-test code under `nmp-core`. Reuses
@@ -698,6 +723,19 @@ fn d17_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 /// commands/dm.rs`) and uses this hook to reach it without forging a
 /// fake `crates/` layout.
 fn d13_file_extra_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff D19 should scan `path` — either the file matches the kernel
+/// projection-builder paths via `d19::file_in_scope`, or the caller opted-in
+/// via `--d19-extra-scope <fragment>` (the fixture smoke test stages a
+/// positive fixture under `target/` outside the nmp-core kernel/ path tree).
+/// Mirrors `d17_file_in_scope`.
+fn d19_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d19::file_in_scope(path) {
+        return true;
+    }
     let s = path.to_string_lossy().replace('\\', "/");
     extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
 }

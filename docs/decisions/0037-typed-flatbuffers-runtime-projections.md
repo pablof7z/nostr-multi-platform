@@ -1,5 +1,9 @@
 # ADR-0037 — Typed FlatBuffers sidecar for high-volume runtime projections
 
+> Note (ADR-0046, 2026-06-12): the `nmp-app-template` crate named below was
+> renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
+> as `nmp-defaults` / `nmp_defaults`.
+
 - **Status:** Accepted / Partially implemented (2026-05-28; PR-B in progress 2026-06-11)
 - **Relates to:** the FlatBuffers update-transport envelope (commits `021ba295`
   "Replace update transport with FlatBuffers" and `716eac9c` "Address FlatBuffers

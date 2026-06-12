@@ -162,13 +162,14 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         XCTAssertEqual(item.kind, 1)
         XCTAssertEqual(item.title, "Typed Note")
         XCTAssertEqual(item.preview, "typed preview")
-        XCTAssertEqual(item.createdAtDisplay, "just now (typed)")
+        // ADR-0032 / V-115: `createdAtDisplay`/`targetSummary` removed; assert
+        // raw unix-seconds and relay count instead.
+        XCTAssertEqual(item.createdAt, 1_700_000_000)
         XCTAssertEqual(item.status, "sending")
         XCTAssertEqual(item.statusLabel, "Sending")
         XCTAssertEqual(item.systemImage, "paperplane")
         XCTAssertTrue(item.canRetry)
         XCTAssertEqual(item.targetRelays, 2)
-        XCTAssertEqual(item.targetSummary, "2 relays · typed")
         XCTAssertEqual(item.relays.count, 2)
 
         XCTAssertEqual(item.relays[0].relayUrl, "wss://typed-r1")
@@ -319,18 +320,16 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         let eventId = fbb.create(string: "typed-event-1")
         let title = fbb.create(string: "Typed Note")
         let preview = fbb.create(string: "typed preview")
-        let created = fbb.create(string: "just now (typed)")
+        // ADR-0032 / V-115: use raw unix seconds; no createdAtDisplay/targetSummary.
         let status = fbb.create(string: "sending")
         let statusLabel = fbb.create(string: "Sending")
         let systemImage = fbb.create(string: "paperplane")
-        let targetSummary = fbb.create(string: "2 relays · typed")
         let item = nmp_kernel_PublishOutboxItem.createPublishOutboxItem(
             &fbb, handleOffset: handle, eventIdOffset: eventId, kind: 1,
             titleOffset: title, previewOffset: preview,
-            createdAtDisplayOffset: created, statusOffset: status,
-            statusLabelOffset: statusLabel, systemImageOffset: systemImage,
-            canRetry: true, targetRelays: 2, targetSummaryOffset: targetSummary,
-            relaysVectorOffset: relaysVec)
+            statusOffset: status, statusLabelOffset: statusLabel,
+            systemImageOffset: systemImage, canRetry: true, targetRelays: 2,
+            relaysVectorOffset: relaysVec, createdAt: 1_700_000_000)
 
         let itemsVec = fbb.createVector(ofOffsets: [item])
         let root = nmp_kernel_PublishOutboxSnapshot.createPublishOutboxSnapshot(

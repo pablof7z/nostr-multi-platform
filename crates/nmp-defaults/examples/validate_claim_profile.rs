@@ -4,12 +4,12 @@
 //!
 //! Run (real network required — `purplepag.es` must be reachable):
 //!
-//!     cargo run --example validate_claim_profile -p nmp-app-template
+//!     cargo run --example validate_claim_profile -p nmp-defaults
 //!
 //! Exit code `0` on success (kind:0 surfaced into the snapshot inside the
 //! 30-second window); `1` on timeout / shape mismatch.
 //!
-//! Why `nmp-app-template`, not `nmp-ffi`: without `register_defaults` the
+//! Why `nmp-defaults`, not `nmp-ffi`: without `register_defaults` the
 //! kernel keeps `EmptyOutboxRouter`, every routing decision returns
 //! `Unroutable`, and `claim_profile` is a no-op (no REQ ever reaches the
 //! wire). This example needs the canonical composition.
@@ -109,7 +109,7 @@ fn main() -> std::process::ExitCode {
     }
 
     // SAFETY: `app` is a valid non-null pointer from `nmp_app_new`.
-    nmp_app_template::register_defaults(unsafe { &mut *app });
+    nmp_defaults::register_defaults(unsafe { &mut *app });
     nmp_app_set_update_callback(app, ctx, Some(update_cb));
     nmp_app_start(app, 200, 80, 4);
 

@@ -5,7 +5,8 @@ use super::*;
 fn card(pubkey: &str, named: bool) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: pubkey.to_string(),
-        npub: format!("npub1{pubkey}"),
+        // ADR-0032 / V-115: `npub` deprecated; always empty after decode.
+        npub: String::new(),
         display_name: named.then(|| "Alice".to_string()),
         picture_url: named.then(|| "https://example.com/a.png".to_string()),
         nip05: if named {

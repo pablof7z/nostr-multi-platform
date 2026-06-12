@@ -31,7 +31,7 @@ nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp" }
 # (`register_defaults`) through a real `NmpApp`/Kernel so the F-02 closure-gate
 # scenario (kind:10050 → DmRelayCache → planner-compiled kind:1059 #p REQ →
 # verify+store gate → DmInboxProjection) runs end-to-end against a live relay.
-nmp-app-template = { path = "../nmp-app-template" }
+nmp-defaults = { path = "../nmp-defaults" }
 nmp-core = { path = "../nmp-core" }
 # longform_projection_supersession.rs — drives the typed NIP-23
 # `LongformProjection` against the real event store to prove kernel-resolved

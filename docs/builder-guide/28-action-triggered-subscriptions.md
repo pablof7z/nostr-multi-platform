@@ -21,7 +21,7 @@ in a projection the shell reads."
 The canonical live reference is
 `crates/nmp-nip01/src/visible_relations.rs` (reaction/reply relations on a
 note card). The illustrative non-kind-1 example is
-`crates/nmp-app-template/src/topic_articles.rs` (NIP-23 long-form articles
+`crates/nmp-defaults/src/topic_articles.rs` (NIP-23 long-form articles
 by topic). Both are fully operational; this chapter explains the pattern they
 share.
 
@@ -49,7 +49,7 @@ the same `SubIdentity` from the same inputs: a derivation mismatch (drop the
 wrong owner) causes a subscription to leak forever.
 
 ```rust
-// crates/nmp-app-template/src/topic_articles.rs
+// crates/nmp-defaults/src/topic_articles.rs
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case", tag = "op")]
 pub enum TopicArticlesAction {
@@ -113,7 +113,7 @@ Derive both with namespaced hashes so keys from different modules never
 collide:
 
 ```rust
-// crates/nmp-app-template/src/topic_articles.rs
+// crates/nmp-defaults/src/topic_articles.rs
 pub fn topic_articles_identity(topic: &str, consumer_id: &str) -> SubIdentity {
     SubIdentity::new(
         SubOwnerKey::new((TOPIC_ARTICLES_NAMESPACE, "owner", topic, consumer_id)),
@@ -135,7 +135,7 @@ Use `ViewDependencies::into_logical_interest`
 authors, tag-refs, and limit onto the planner's `InterestShape`:
 
 ```rust
-// crates/nmp-app-template/src/topic_articles.rs
+// crates/nmp-defaults/src/topic_articles.rs
 pub fn topic_articles_interest(topic: &str) -> LogicalInterest {
     let mut interest = ViewDependencies {
         kinds: vec![KIND_LONG_FORM_ARTICLE],           // kind:30023
@@ -276,7 +276,7 @@ app.register_snapshot_projection("myapp.discover_results", {
 app.register_action::<TopicArticlesModule>();
 
 // 4. (optional) Call register_defaults if you want the standard NIP stack.
-nmp_app_template::register_defaults(&mut app);
+nmp_defaults::register_defaults(&mut app);
 ```
 
 The observer registration does not need to happen before the action
@@ -393,4 +393,4 @@ See also: [05a — Substrate traits](05a-substrate-traits.md) ·
 [16 — Capabilities](16-capabilities.md) ·
 [20 — Adding a protocol module](20-new-protocol-module.md) ·
 `crates/nmp-nip01/src/visible_relations.rs` (production reference) ·
-`crates/nmp-app-template/src/topic_articles.rs` (illustrative example)
+`crates/nmp-defaults/src/topic_articles.rs` (illustrative example)

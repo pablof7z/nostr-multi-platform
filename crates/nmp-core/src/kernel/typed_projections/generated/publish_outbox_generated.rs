@@ -229,14 +229,13 @@ impl<'a> PublishOutboxItem<'a> {
   pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
   pub const VT_TITLE: ::flatbuffers::VOffsetT = 10;
   pub const VT_PREVIEW: ::flatbuffers::VOffsetT = 12;
-  pub const VT_CREATED_AT_DISPLAY: ::flatbuffers::VOffsetT = 14;
   pub const VT_STATUS: ::flatbuffers::VOffsetT = 16;
   pub const VT_STATUS_LABEL: ::flatbuffers::VOffsetT = 18;
   pub const VT_SYSTEM_IMAGE: ::flatbuffers::VOffsetT = 20;
   pub const VT_CAN_RETRY: ::flatbuffers::VOffsetT = 22;
   pub const VT_TARGET_RELAYS: ::flatbuffers::VOffsetT = 24;
-  pub const VT_TARGET_SUMMARY: ::flatbuffers::VOffsetT = 26;
   pub const VT_RELAYS: ::flatbuffers::VOffsetT = 28;
+  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 30;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -248,13 +247,12 @@ impl<'a> PublishOutboxItem<'a> {
     args: &'args PublishOutboxItemArgs<'args>
   ) -> ::flatbuffers::WIPOffset<PublishOutboxItem<'bldr>> {
     let mut builder = PublishOutboxItemBuilder::new(_fbb);
+    builder.add_created_at(args.created_at);
     if let Some(x) = args.relays { builder.add_relays(x); }
-    if let Some(x) = args.target_summary { builder.add_target_summary(x); }
     builder.add_target_relays(args.target_relays);
     if let Some(x) = args.system_image { builder.add_system_image(x); }
     if let Some(x) = args.status_label { builder.add_status_label(x); }
     if let Some(x) = args.status { builder.add_status(x); }
-    if let Some(x) = args.created_at_display { builder.add_created_at_display(x); }
     if let Some(x) = args.preview { builder.add_preview(x); }
     if let Some(x) = args.title { builder.add_title(x); }
     builder.add_kind(args.kind);
@@ -301,13 +299,6 @@ impl<'a> PublishOutboxItem<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_PREVIEW, None)}
   }
   #[inline]
-  pub fn created_at_display(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_CREATED_AT_DISPLAY, None)}
-  }
-  #[inline]
   pub fn status(&self) -> Option<&'a str> {
     // Safety:
     // Created from valid Table for this object
@@ -343,18 +334,18 @@ impl<'a> PublishOutboxItem<'a> {
     unsafe { self._tab.get::<u32>(PublishOutboxItem::VT_TARGET_RELAYS, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn target_summary(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_TARGET_SUMMARY, None)}
-  }
-  #[inline]
   pub fn relays(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'a>>>> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay>>>>(PublishOutboxItem::VT_RELAYS, None)}
+  }
+  #[inline]
+  pub fn created_at(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(PublishOutboxItem::VT_CREATED_AT, Some(0)).unwrap()}
   }
 }
 
@@ -369,14 +360,13 @@ impl ::flatbuffers::Verifiable for PublishOutboxItem<'_> {
      .visit_field::<u32>("kind", Self::VT_KIND, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("title", Self::VT_TITLE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("preview", Self::VT_PREVIEW, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("created_at_display", Self::VT_CREATED_AT_DISPLAY, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status", Self::VT_STATUS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status_label", Self::VT_STATUS_LABEL, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("system_image", Self::VT_SYSTEM_IMAGE, false)?
      .visit_field::<bool>("can_retry", Self::VT_CAN_RETRY, false)?
      .visit_field::<u32>("target_relays", Self::VT_TARGET_RELAYS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("target_summary", Self::VT_TARGET_SUMMARY, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay>>>>("relays", Self::VT_RELAYS, false)?
+     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
      .finish();
     Ok(())
   }
@@ -387,14 +377,13 @@ pub struct PublishOutboxItemArgs<'a> {
     pub kind: u32,
     pub title: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub preview: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub created_at_display: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub status_label: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub system_image: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub can_retry: bool,
     pub target_relays: u32,
-    pub target_summary: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub relays: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'a>>>>>,
+    pub created_at: u64,
 }
 impl<'a> Default for PublishOutboxItemArgs<'a> {
   #[inline]
@@ -405,14 +394,13 @@ impl<'a> Default for PublishOutboxItemArgs<'a> {
       kind: 0,
       title: None,
       preview: None,
-      created_at_display: None,
       status: None,
       status_label: None,
       system_image: None,
       can_retry: false,
       target_relays: 0,
-      target_summary: None,
       relays: None,
+      created_at: 0,
     }
   }
 }
@@ -443,10 +431,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxItemBuilder<'a, 
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_PREVIEW, preview);
   }
   #[inline]
-  pub fn add_created_at_display(&mut self, created_at_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_CREATED_AT_DISPLAY, created_at_display);
-  }
-  #[inline]
   pub fn add_status(&mut self, status: ::flatbuffers::WIPOffset<&'b  str>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_STATUS, status);
   }
@@ -467,12 +451,12 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxItemBuilder<'a, 
     self.fbb_.push_slot::<u32>(PublishOutboxItem::VT_TARGET_RELAYS, target_relays, 0);
   }
   #[inline]
-  pub fn add_target_summary(&mut self, target_summary: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_TARGET_SUMMARY, target_summary);
-  }
-  #[inline]
   pub fn add_relays(&mut self, relays: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'b >>>>) {
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_RELAYS, relays);
+  }
+  #[inline]
+  pub fn add_created_at(&mut self, created_at: u64) {
+    self.fbb_.push_slot::<u64>(PublishOutboxItem::VT_CREATED_AT, created_at, 0);
   }
   #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PublishOutboxItemBuilder<'a, 'b, A> {
@@ -497,14 +481,13 @@ impl ::core::fmt::Debug for PublishOutboxItem<'_> {
       ds.field("kind", &self.kind());
       ds.field("title", &self.title());
       ds.field("preview", &self.preview());
-      ds.field("created_at_display", &self.created_at_display());
       ds.field("status", &self.status());
       ds.field("status_label", &self.status_label());
       ds.field("system_image", &self.system_image());
       ds.field("can_retry", &self.can_retry());
       ds.field("target_relays", &self.target_relays());
-      ds.field("target_summary", &self.target_summary());
       ds.field("relays", &self.relays());
+      ds.field("created_at", &self.created_at());
       ds.finish()
   }
 }

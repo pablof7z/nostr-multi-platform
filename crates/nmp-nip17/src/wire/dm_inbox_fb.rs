@@ -2,7 +2,7 @@
 //!
 //! The authoritative FFI shape of the `"nmp.nip17.dm_inbox"` projection is the
 //! serde JSON of [`DmInboxSnapshot`] (registered via
-//! `register_snapshot_projection` in `crates/nmp-app-template/src/runtimes.rs`).
+//! `register_snapshot_projection` in `crates/nmp-defaults/src/runtimes.rs`).
 //! This module adds a **typed FlatBuffers** encoding of the same struct — a
 //! self-describing, schema-versioned, language-neutral binary the host
 //! platforms (Swift / Kotlin / TypeScript) can decode with generated accessors

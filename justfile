@@ -3,12 +3,6 @@ set shell := ["zsh", "-cu"]
 rust-test:
     cargo test --workspace
 
-gen-modules:
-    cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/nmp-app-fixture
-
-gen-modules-check:
-    cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/nmp-app-fixture --check
-
 rust-ios-sim:
     # Keep the standalone core archive fresh for shells that link nmp-core
     # directly.

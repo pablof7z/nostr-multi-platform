@@ -5,6 +5,17 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+# The composition-root library (ADR-0046). `register_defaults` wires the
+# canonical NMP composition — NIP-01/02/17/57/65 action modules, the routing
+# substrate, the DM-inbox + zap-receipts + WOT runtimes — in one call. This is
+# the Bevy-`DefaultPlugins` / Spring-Boot-starter pattern every real NMP
+# consumer uses.
+nmp-defaults = {{nmp_defaults_dep}}
+# The `NmpApp` C-ABI handle (`nmp_app_new` / `nmp_app_free` / `nmp_app_stop`)
+# the headless shell example drives.
+nmp-ffi = {{nmp_ffi_dep}}
+# Kernel substrate — `AppHost`, action/observer traits, the reducer. Your
+# app-owned nouns live in THIS crate, never in `nmp-core` (doctrine D0).
 nmp-core = {{nmp_core_dep}}
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

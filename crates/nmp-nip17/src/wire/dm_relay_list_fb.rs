@@ -2,7 +2,7 @@
 //!
 //! The authoritative FFI shape of this projection is the serde JSON produced by
 //! the `DmRuntimeController::snapshot_json` closure in
-//! `crates/nmp-app-template/src/runtimes.rs` — the private struct
+//! `crates/nmp-defaults/src/runtimes.rs` — the private struct
 //! `DmRelayListSnapshot { active_pubkey: Option<String>, read_relay_urls:
 //! Vec<String> }` (registered via `register_snapshot_projection`). This module
 //! adds a **typed FlatBuffers** encoding of the same shape, carried in the

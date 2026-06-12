@@ -41,7 +41,7 @@ set. The builder carries these as defaults; on first start they are written to
 the `.nmp-relay-config.json` sidecar alongside the LMDB store.
 
 ```rust
-use nmp_app_template::{NmpAppBuilder, RunConfig};
+use nmp_defaults::{NmpAppBuilder, RunConfig};
 
 let app = NmpAppBuilder::new()
     .with_relay("wss://relay.primal.net", "both,indexer")  // read + write + discovery
@@ -69,7 +69,7 @@ In-memory mode always uses the declared defaults; there is no sidecar.
 
 Calling `.with_relay()` at least once **replaces** the built-in defaults
 entirely. If you make no `.with_relay()` calls the builder uses the
-nmp-app-template defaults (`relay.primal.net` both+indexer, `purplepag.es`
+nmp-defaults defaults (`relay.primal.net` both+indexer, `purplepag.es`
 indexer). Most apps should declare explicit relays rather than relying on
 defaults.
 

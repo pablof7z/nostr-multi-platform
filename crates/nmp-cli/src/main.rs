@@ -1,24 +1,23 @@
 //! `nmp` — the NMP developer CLI.
 //!
-//! Two commands make NMP adoptable instead of hand-wired:
+//! The commands that make NMP adoptable instead of hand-wired:
 //!
-//! * `nmp init <app-name>` — scaffold a new app (an `nmp.toml` manifest plus
-//!   an `<app>-core` crate skeleton with a reactive view, an `ActionModule`,
-//!   and a minimal headless shell stub).
-//! * `nmp gen modules` — invoke the existing `nmp-codegen` pipeline to emit
-//!   the per-app `nmp-app-<name>` FFI crate.
+//! * `nmp init <app-name>` — scaffold a new app: a thin `<app>-core` crate
+//!   that depends on the composition-root library `nmp-defaults` and calls
+//!   `NmpAppBuilder` + `register_defaults` (ADR-0046 — composition is a
+//!   library, not a generator).
 //! * `nmp add component <id>` — copy app-owned native source components from
 //!   the offline NMP registry into an app tree.
 //! * `nmp update component <id>` — refresh installed component sources from
 //!   the registry while preserving locally edited files (conflict report).
+//! * `nmp doctor` / `nmp upgrade` — inspect / bump the app's `nmp.toml` NMP
+//!   dependency policy.
 //!
-//! The scaffold compiles immediately after `nmp init`, and `nmp gen modules`
-//! is deterministic. See `docs/cli.md`.
+//! The scaffold compiles immediately after `nmp init`. See `docs/cli.md`.
 
 mod component;
 mod doctor;
 mod export;
-mod gen;
 mod init;
 mod manifest_edit;
 mod upgrade;
@@ -39,7 +38,6 @@ fn run() -> Result<(), String> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     match args.first().map(String::as_str) {
         Some("init") => init::run(&args[1..]),
-        Some("gen") => gen::run(&args[1..]),
         Some("doctor") => doctor::run(&args[1..]),
         Some("upgrade") => upgrade::run(&args[1..]),
         Some("add") => component::run_add(&args[1..]),
@@ -63,16 +61,12 @@ fn help() -> String {
         "  nmp init <app-name> [--path DIR] [--nmp-version VERSION | --nmp-path DIR]",
         "      Scaffold a new NMP app. Creates a workspace at DIR (default",
         "      ./<app-name>) with an nmp.toml manifest and an <app-name>-core",
-        "      crate skeleton (a reactive view, an ActionModule, plus a",
-        "      headless shell stub). It compiles as-is.",
-        "      --nmp-version writes versioned nmp-* dependencies for release",
-        "      consumers; --nmp-path writes local checkout dependencies for",
-        "      framework development.",
-        "",
-        "  nmp gen modules [--manifest nmp.toml] [--out DIR] [--check]",
-        "      Generate the per-app nmp-app-<name> FFI crate from a manifest",
-        "      via the nmp-codegen pipeline. --check verifies the on-disk",
-        "      crate matches a fresh generation (deterministic codegen gate).",
+        "      crate that depends on the composition-root library nmp-defaults",
+        "      and calls NmpAppBuilder + register_defaults (ADR-0046). It",
+        "      compiles as-is.",
+        "      --nmp-version pins the nmp-* git dependencies to a release rev for",
+        "      release consumers; --nmp-path writes local checkout dependencies",
+        "      for framework development.",
         "",
         "  nmp add component <id> [--path DIR] [--registry DIR] [--with ROLES]",
         "      Copy app-owned source components from the local offline registry",
@@ -85,13 +79,12 @@ fn help() -> String {
         "      as conflicts and left untouched.",
         "",
         "  nmp upgrade --to VERSION [--manifest nmp.toml]",
-        "      Move the app manifest to a pinned NMP release. Re-run",
-        "      `nmp gen modules` after this command to refresh generated",
-        "      crate dependencies.",
+        "      Move the app manifest to a pinned NMP release and rewrite the",
+        "      app crate's nmp-* dependencies to that version.",
         "",
         "  nmp doctor [--manifest nmp.toml]",
         "      Validate the app's NMP dependency policy and report the release",
-        "      or local checkout baseline used by codegen.",
+        "      or local checkout baseline in use.",
         "",
         "  nmp export jsrepo [--output DIR] [--registry DIR]",
         "      Emit a jsrepo/shadcn-compatible registry.json (full index) plus",

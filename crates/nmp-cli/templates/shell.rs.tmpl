@@ -1,23 +1,38 @@
-//! Minimal headless shell stub for `{{display}}`.
+//! Minimal headless shell for `{{display}}`.
 //!
-//! A real platform shell (SwiftUI / Compose / iced / wasm) drives the
-//! generated `nmp-app-{{name}}` FFI surface. This stub stays dependency-free
-//! — it just assembles the app's module registry and prints it, proving the
-//! `{{pkg}}` skeleton wires together. Run it with:
+//! Models `nmp-defaults`' own `examples/minimal_app.rs`: construct an app via
+//! `NmpAppBuilder`, inherit the canonical NMP composition through this crate's
+//! [`register`], start the kernel, and tear it down. A real platform shell
+//! (SwiftUI / Compose / iced / wasm) drives the same `NmpApp` C-ABI surface.
+//!
+//! Run it with:
 //!
 //! ```sh
 //! cargo run --example shell -p {{pkg}}
 //! ```
 
-use {{crate_ident}}::module_namespaces;
+use nmp_defaults::{NmpAppBuilder, RunConfig};
+use nmp_ffi::{nmp_app_free, nmp_app_stop};
 
 fn main() {
-    let namespaces = module_namespaces();
-    println!(
-        "{{display}} assembled {} module(s):",
-        namespaces.len()
-    );
-    for namespace in namespaces {
-        println!("  {}", namespace);
-    }
+    // 1. Start the builder.
+    let mut builder = NmpAppBuilder::new();
+
+    // 2. Inherit the canonical NMP composition + this app's modules. The
+    //    single `register` call (which forwards to
+    //    `nmp_defaults::register_defaults`) is the whole point of ADR-0046.
+    {{crate_ident}}::register(&mut builder);
+
+    // 3. Commit the storage choice and start the kernel.
+    //    `.in_memory()` transitions the builder typestate, unlocking
+    //    `.start()`. For production replace with
+    //    `.storage_path("/path/to/lmdb")`.
+    //    Omitting the storage choice is a COMPILE ERROR (V-94 typestate).
+    let app = builder.in_memory().start(RunConfig::default());
+
+    println!("{{display}}: NmpAppBuilder → register_defaults → start() complete.");
+
+    // 4. Tear down.
+    nmp_app_stop(app);
+    nmp_app_free(app);
 }

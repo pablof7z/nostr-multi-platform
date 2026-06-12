@@ -98,14 +98,14 @@ pub extern "C" fn nmp_app_chirp_register(
     // (`GenericOutboxRouter` + `InMemoryMailboxCache`), the D2 coverage
     // hook, and the DM-inbox + zap-receipts runtime controllers. This
     // is the closure of V-48: a new Nostr app calls
-    // `nmp_app_template::register_defaults` instead of re-deriving the
+    // `nmp_defaults::register_defaults` instead of re-deriving the
     // 130 LOC of wiring this used to live as.
     //
     // SAFETY: caller guarantees `app` is a valid pointer from
     // `nmp_app_new`. No other reference aliases it here — the `&*app`
     // borrow further down is taken only after this exclusive borrow is
     // dropped.
-    nmp_app_template::register_defaults(unsafe { &mut *app });
+    nmp_defaults::register_defaults(unsafe { &mut *app });
 
     // Chirp-specific: register the NIP-29 group-chat `ActionModule`s
     // against the kernel. Lives in this crate (not the template) because
@@ -130,7 +130,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // / pay_invoice action modules, and the `"wallet"` projection wiring;
     // Chirp drives the registration here so a single call covers the
     // host-side glue. Other action modules (NIP-02 / NIP-17 / NIP-57 /
-    // NIP-65) are wired transitively by `nmp_app_template::register_defaults`
+    // NIP-65) are wired transitively by `nmp_defaults::register_defaults`
     // above.
     //
     // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
@@ -182,7 +182,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // in thread".
     //
     // `register_op_feed_defaults` is the one-line composition affordance from
-    // `nmp-app-template`: it constructs the `ActiveFollowSet` over the app's
+    // `nmp-defaults`: it constructs the `ActiveFollowSet` over the app's
     // authoritative active-account slot, wires the follow predicate + event
     // lookup + actor claim sink + card builder into the `nmp-nip01` OP-feed
     // engine, and registers the engine as BOTH a `KernelEventObserver`
@@ -190,10 +190,10 @@ pub extern "C" fn nmp_app_chirp_register(
     // also registers the `ActiveFollowSet` as its own observer for kind:3
     // ingest and on `NmpApp`'s identity-change observer so sign-in, switch,
     // logout, and reset proactively clear stale OP-feed state.
-    let defaults = nmp_app_template::register_op_feed_defaults(app_ref, viewer);
+    let defaults = nmp_defaults::register_op_feed_defaults(app_ref, viewer);
 
     // ADR-0037 typed sidecar for nmp.feed.home IS wired:
-    // `register_op_feed_defaults` step 5b (nmp-app-template
+    // `register_op_feed_defaults` step 5b (nmp-defaults
     // op_feed_defaults.rs) registers the NOFS typed-FB encoder alongside the
     // JSON projection, and iOS `TypedHomeFeedDecoder` consumes it typed-first
     // (JSON remains the ADR-0037 Commitment-4 fallback).
@@ -357,7 +357,7 @@ pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp) {
     // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`,
     // live for the duration of this call. The borrow is not held past return.
     let app_ref = unsafe { &*app };
-    nmp_app_template::runtimes::register_dm_runtime(app_ref);
+    nmp_defaults::runtimes::register_dm_runtime(app_ref);
 }
 
 /// Wire a [`FollowListProjection`] for the active account into `app`.

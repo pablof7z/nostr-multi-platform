@@ -5,7 +5,8 @@ use super::*;
 fn populated() -> ProfileCardModel {
     ProfileCardModel {
         pubkey: "a".repeat(64),
-        npub: "npub1aaa".to_string(),
+        // ADR-0032 / V-115: `npub` deprecated; always empty in codec round-trips.
+        npub: String::new(),
         display_name: Some("Alice".to_string()),
         picture_url: Some("https://img/alice.png".to_string()),
         nip05: "alice@example.com".to_string(),

@@ -20,7 +20,6 @@ fn run() -> Result<(), String> {
     let subcommand = args.remove(1);
     args.remove(0); // drop "gen"
     match subcommand.as_str() {
-        "modules" => run_gen_modules(args),
         // V6 Stage 1 — Swift `Decodable` emitter. Reads a projection schema
         // document (default: stdin) and writes Swift to `--out`. See
         // `crates/nmp-codegen/src/swift.rs` for the emitter itself.
@@ -29,59 +28,9 @@ fn run() -> Result<(), String> {
         // decoders. Writes `TypedProjectionDecoders.generated.swift` from the
         // registry's `typed_sidecar` metadata; no schema-document stdin needed.
         "typed-decoders" => run_gen_typed_decoders(args),
+        // NOTE (ADR-0046): `gen modules` was deleted. Composition is a library
+        // (`nmp-defaults::register_defaults`), not a generated FFI crate.
         other => Err(format!("unknown subcommand `gen {other}`\n{}", help())),
-    }
-}
-
-fn run_gen_modules(args: Vec<String>) -> Result<(), String> {
-    let mut manifest = PathBuf::from("nmp.toml");
-    let mut out = None;
-    let mut check = false;
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--manifest" => {
-                index += 1;
-                manifest = args
-                    .get(index)
-                    .map(PathBuf::from)
-                    .ok_or_else(|| "--manifest requires a path".to_string())?;
-            }
-            "--out" => {
-                index += 1;
-                out = args.get(index).map(PathBuf::from);
-            }
-            "--check" => check = true,
-            other => return Err(format!("unknown argument {other}\n{}", help())),
-        }
-        index += 1;
-    }
-
-    let manifest_model = nmp_codegen::AppManifest::read(&manifest)?;
-    let out = out.unwrap_or_else(|| {
-        PathBuf::from(format!(
-            "apps/{}/{}",
-            manifest_model.name,
-            nmp_codegen::app_crate_name(&manifest_model.name)
-        ))
-    });
-
-    if check {
-        if nmp_codegen::check_modules(&manifest, &out)? {
-            println!("nmp gen modules --check: ok");
-            Ok(())
-        } else {
-            Err("generated module crate is stale".to_string())
-        }
-    } else {
-        let report = nmp_codegen::generate_modules(&manifest, &out)?;
-        println!(
-            "generated {} for {} ({} files)",
-            report.crate_name,
-            report.app_name,
-            report.files.len()
-        );
-        Ok(())
     }
 }
 
@@ -235,7 +184,6 @@ fn read_schemas(path: &std::path::Path) -> Result<String, String> {
 
 fn help() -> String {
     "usage:\n  \
-     nmp gen modules        [--manifest nmp.toml] [--out DIR] [--check]\n  \
      nmp gen swift          [--schemas - | <path>] [--out <path>] [--check]\n  \
      nmp gen typed-decoders [--out <path>] [--check]"
         .to_string()

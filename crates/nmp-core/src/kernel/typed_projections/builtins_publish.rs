@@ -79,13 +79,12 @@ impl super::super::Kernel {
                     kind: item.kind,
                     title: item.title.clone(),
                     preview: item.preview.clone(),
-                    created_at_display: item.created_at_display.clone(),
+                    created_at: item.created_at,
                     status: item.status.clone(),
                     status_label: item.status_label.clone(),
                     system_image: item.system_image.clone(),
                     can_retry: item.can_retry,
                     target_relays: item.target_relays as u32,
-                    target_summary: item.target_summary.clone(),
                     relays: item
                         .relays
                         .iter()

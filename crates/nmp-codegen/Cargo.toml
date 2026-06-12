@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "NMP code generator for per-app Rust FFI crates and platform projection mirrors."
+description = "NMP code generator for consumer-side Swift projection mirrors (KernelTypes + typed-FlatBuffer decoders) plus the nmp.toml manifest parser. The Rust-shell FFI-crate generator was removed by ADR-0046 (composition is a library, not a generator)."
 
 [lib]
 name = "nmp_codegen"

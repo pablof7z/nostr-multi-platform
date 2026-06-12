@@ -145,20 +145,19 @@ struct ProfileView: View {
                 }
             }
 
-            if let profile, !profile.npub.isEmpty {
-                Button(action: copyNpub) {
-                    HStack(spacing: 4) {
-                        // ADR-0032: shell-side abbreviation of the bech32 npub.
-                        Text(profile.npub.shortHex)
-                            .font(.body.monospaced())
-                            .foregroundStyle(.secondary)
-                        Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+            // ADR-0032 / V-115: bech32 no longer in projection; encode host-side
+            // on demand. Always show the copy button — pubkey is always available.
+            Button(action: copyNpub) {
+                HStack(spacing: 4) {
+                    Text(pubkey.shortHex)
+                        .font(.body.monospaced())
+                        .foregroundStyle(.secondary)
+                    Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
             }
+            .buttonStyle(.plain)
 
             if profile?.hasProfile == true, let about = profile?.about, !about.isEmpty {
                 Text(about)
@@ -249,7 +248,9 @@ struct ProfileView: View {
     }
 
     private func copyNpub() {
-        guard let npub = profile?.npub else { return }
+        // ADR-0032 / V-115: encode bech32 host-side; fall back to hex if the
+        // C function fails (e.g. invalid key or no app handle).
+        let npub = model.encodeProfile(pubkey: pubkey) ?? pubkey
         UIPasteboard.general.string = npub
         copiedNpub = true
         Task {

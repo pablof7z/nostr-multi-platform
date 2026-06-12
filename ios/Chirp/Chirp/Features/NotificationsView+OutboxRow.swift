@@ -2,11 +2,16 @@ import SwiftUI
 
 // Per-row UI for `NotificationsView`. Lifted into a sibling file so the
 // parent screen stays focused on the summary + section composition. All
-// projection-provided status labels (`statusLabel`, `targetSummary`,
-// `attemptLabel`), the SF Symbol name (`systemImage`), and the retry flag
-// (`canRetry`) come from Rust (`projections["publish_outbox"]`); these structs
-// only choose status-driven colors — presentation, not policy (aim.md §4.4:
-// no kind-number switches in Swift).
+// projection-provided status labels (`statusLabel`, `attemptLabel`), the SF
+// Symbol name (`systemImage`), and the retry flag (`canRetry`) come from Rust
+// (`projections["publish_outbox"]`); these structs only choose status-driven
+// colors — presentation, not policy (aim.md §4.4: no kind-number switches in
+// Swift).
+//
+// ADR-0032 / V-115: `targetSummary` and `createdAtDisplay` were removed from
+// the Rust projection. The target relay count (`targetRelays`) and raw unix
+// seconds (`createdAt`) are provided instead; this view computes the display
+// string locally.
 
 struct OutboxEventRow: View {
     let item: PublishOutboxItem
@@ -31,7 +36,8 @@ struct OutboxEventRow: View {
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                     }
-                    Text(item.targetSummary)
+                    // ADR-0032 / V-115: compute locally from raw relay count + unix seconds.
+                    Text(targetSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -79,6 +85,14 @@ struct OutboxEventRow: View {
         }
         .padding(.vertical, 4)
         .accessibilityIdentifier("publish-outbox-card")
+    }
+
+    /// "N relay(s) · <relative time>" — formatted from raw projection fields.
+    private var targetSummary: String {
+        let relayCount = Int(item.targetRelays)
+        let relayWord = relayCount == 1 ? "relay" : "relays"
+        let timeString = item.createdAt.relativeTimeFromUnixSeconds
+        return "\(relayCount) \(relayWord) · \(timeString)"
     }
 
     private var iconColor: Color {

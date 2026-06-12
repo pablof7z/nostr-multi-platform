@@ -5,7 +5,7 @@
 //! runtime. The gallery is a pure framework showcase — its single value
 //! is showing that an NMP-based Nostr app can be assembled from the
 //! substrate primitives alone, via the canonical
-//! [`nmp_app_template::register_defaults`] one-shot.
+//! [`nmp_defaults::register_defaults`] one-shot.
 //!
 //! # Surface
 //!
@@ -19,7 +19,7 @@
 //! The crate adds two new `#[no_mangle]` symbols of its own:
 //!
 //! * [`nmp_app_gallery_register`] — one-shot installer. Forwards to
-//!   [`nmp_app_template::register_defaults`]. MUST be called once after
+//!   [`nmp_defaults::register_defaults`]. MUST be called once after
 //!   `nmp_app_new` and BEFORE `nmp_app_start`.
 //! * [`showcase::nmp_app_gallery_showcase_references_json`] — borrowed JSON
 //!   pointer for the shared gallery references used by every host shell.
@@ -39,7 +39,7 @@
 //!
 //! # D0 — no protocol nouns
 //!
-//! `Cargo.toml` depends on `nmp-ffi` + `nmp-app-template` + `serde_json`
+//! `Cargo.toml` depends on `nmp-ffi` + `nmp-defaults` + `serde_json`
 //! only. No `nmp-nip*`, no `nmp-app-chirp`, no `nmp-marmot`, no
 //! `nmp-nwc`. The crate name does not appear in any per-NIP Cargo file.
 
@@ -69,7 +69,7 @@ use std::ffi::c_void;
 
 /// Install the canonical NMP composition into `app`.
 ///
-/// Forwards to [`nmp_app_template::register_defaults`] — the gallery has
+/// Forwards to [`nmp_defaults::register_defaults`] — the gallery has
 /// no per-app projections, so the entire registration is "what every
 /// generic Nostr app needs". MUST be called exactly once after
 /// [`nmp_ffi::nmp_app_new`] and BEFORE [`nmp_ffi::nmp_app_start`].
@@ -102,7 +102,7 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     // C signature is `void(void *)` — Swift / Kotlin pass the same opaque
     // pointer they got back from `nmp_app_new`.
     let app = unsafe { &mut *(app as *mut nmp_ffi::NmpApp) };
-    nmp_app_template::register_defaults(app);
+    nmp_defaults::register_defaults(app);
 }
 
 #[cfg(test)]

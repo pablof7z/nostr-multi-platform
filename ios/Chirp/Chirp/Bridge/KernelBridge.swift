@@ -183,6 +183,18 @@ final class KernelHandle {
         }
     }
 
+    /// ADR-0032 / V-115: bech32-encode a hex pubkey as `npub1…` on the shell
+    /// side. Projections no longer carry pre-encoded npub strings; shells call
+    /// this when they need the bech32 form (copy-to-clipboard, share sheet).
+    /// Returns `nil` if the C function fails (e.g. invalid key).
+    func encodeProfile(pubkey: String) -> String? {
+        pubkey.withCString { pkPtr -> String? in
+            guard let ptr = nmp_app_encode_profile(raw, pkPtr) else { return nil }
+            defer { nmp_app_free_string(ptr) }
+            return String(cString: ptr)
+        }
+    }
+
     /// F-TTL — `force` controls the lazy re-verification gate; it only has an
     /// effect for `naddr` (addressable / replaceable) URIs and is a silent
     /// no-op for immutable `nevent`/`note` URIs. Pass `true` only when the
@@ -1819,7 +1831,9 @@ struct PublishOutboxItem: Decodable, Identifiable, Equatable {
     let kind: UInt32
     let title: String
     let preview: String
-    let createdAtDisplay: String
+    // ADR-0032 / V-115: `createdAtDisplay` removed. Raw Unix-seconds timestamp;
+    // shell formats with its own locale/TZ via `UInt64.relativeTimeFromUnixSeconds`.
+    let createdAt: UInt64
     let status: String
     /// Pre-formatted English status label (e.g. `"Sending"`, `"Retrying"`).
     /// Doctrine §6 anti-pattern #1: the shell renders this verbatim — it
@@ -1836,10 +1850,8 @@ struct PublishOutboxItem: Decodable, Identifiable, Equatable {
     /// commandment #4 — no native `if` deciding what the app should do).
     let canRetry: Bool
     let targetRelays: Int
-    /// Pre-formatted "N relays · <created_at>" header line. Server-side
-    /// pluralization keeps the shell free of the `count == 1 ? "" : "s"`
-    /// ternary (§6 anti-pattern #1).
-    let targetSummary: String
+    // ADR-0032 / V-115: `targetSummary` removed. Shell composes
+    // "N relays · <time>" from `targetRelays` + `createdAt.relativeTimeFromUnixSeconds`.
     let relays: [PublishOutboxRelay]
 
     var id: String { handle }
@@ -1978,10 +1990,8 @@ struct WalletStatusData: Decodable, Equatable {
 /// ADR-0032.
 struct ProfileCard: Decodable, Equatable {
     let pubkey: String
-    /// Bech32 `npub1…` encoding. Pubkey-deterministic; retained for shells
-    /// that lack a bech32 encoder. Presentation layer chooses how to
-    /// abbreviate via `shortHex` on the underlying hex pubkey.
-    let npub: String
+    // ADR-0032 / V-115: `npub` (bech32) removed from wire. Shells encode
+    // bech32 via `nmp_app_encode_profile(app, pubkey)` or equivalent.
     /// Display name from kind:0 (`display_name` / `displayName` / `name`,
     /// first non-empty wins). `nil` when no kind:0 has arrived yet —
     /// presentation layer renders its own fallback.
