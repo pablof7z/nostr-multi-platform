@@ -13,8 +13,9 @@ use nmp_app_chirp::{
     nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, react_spec, unfollow_spec,
     ChirpHandle, MarmotHandle, NmpRegisterStatus,
 };
+use nmp_core::substrate::IngestParser;
+use nmp_core::store::VerifiedEvent;
 use nmp_core::tags::Nip10Refs;
-use nmp_core::{KindFilter, RawEventObserver};
 use nmp_nip01::NoteRecord;
 
 use crate::app::ReplyTarget;
@@ -30,19 +31,33 @@ use crate::Result;
 const VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.visible-author";
 const VISIBLE_NOTE_RELATIONS_CONSUMER_PREFIX: &str = "chirp-tui.visible-note";
 
-/// Caches verbatim NIP-01 wire-format event JSON (with `sig`) keyed by
-/// event id. Populated by the raw event observer registered at startup.
-struct RawEventCacheObserver {
+/// Slot key for the all-kinds raw-event cache parser. Must be globally unique
+/// across crates (reverse-domain convention).
+const RAW_CACHE_SLOT: &str = "chirp-tui.raw-cache";
+
+/// Caches verbatim NIP-01 wire-format event JSON (with `sig`) keyed by event
+/// id, populated via the `IngestParser` seam so cache-served events (ADR-0045)
+/// populate the debug modal on second launch too.
+///
+/// Behaviour note: because the `EventIngestDispatcher` fires on cache-serve as
+/// well as live network ingest (since PR-1/#1137 and PR-2/#1145), this parser
+/// also captures events that the kernel serves from its local store on cold
+/// start, which actually *improves* the "View raw event" modal vs the prior
+/// live-only `RawEventObserver` approach.
+///
+/// D8-clean: `parse` holds the mutex only for a single `HashMap::insert`.
+struct RawCacheIngestParser {
     cache: Arc<Mutex<HashMap<String, String>>>,
 }
 
-impl RawEventObserver for RawEventCacheObserver {
-    fn on_raw_event(&self, _kind: u32, json: &str) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
-            if let Some(id) = v.get("id").and_then(|id| id.as_str()) {
-                if let Ok(mut guard) = self.cache.lock() {
-                    guard.insert(id.to_string(), json.to_string());
-                }
+impl IngestParser for RawCacheIngestParser {
+    fn parse(&self, evt: &VerifiedEvent) {
+        // Re-serialize the already-verified event to its canonical wire JSON.
+        // serde_json::to_string is infallible on a well-typed struct; the
+        // `if let` guards against the (impossible in practice) error path.
+        if let Ok(json) = serde_json::to_string(evt.raw()) {
+            if let Ok(mut guard) = self.cache.lock() {
+                guard.insert(evt.raw().id.clone(), json);
             }
         }
     }
@@ -88,16 +103,19 @@ impl AppRuntime {
         nmp_app_chirp_register_dm_inbox(app);
         nmp_app_chirp_register_follow_list(app, ptr::null());
 
-        // Register a raw event observer before nmp_app_start so every
-        // accepted inbound event (sig included) is cached by id for the
-        // "View raw event" modal. D8-clean: callback is cheap lock+insert.
+        // Register an all-kinds IngestParser before nmp_app_start so every
+        // accepted inbound event (cache-served or live) is cached by id for
+        // the "View raw event" modal. The slot-keyed replace allows a future
+        // account-switch to install a fresh cache without evicting unrelated
+        // parsers. D8-clean: parse() holds the lock only for a single insert.
         let raw_event_cache: Arc<Mutex<HashMap<String, String>>> =
             Arc::new(Mutex::new(HashMap::new()));
         // SAFETY: `app` is a valid, non-null pointer from `nmp_app_new`.
         // The borrow is not held past this statement.
-        let _ = unsafe { &*app }.register_raw_event_observer(
-            KindFilter::default(),
-            Arc::new(RawEventCacheObserver {
+        unsafe { &*app }.replace_ingest_parser_range(
+            0..u32::MAX,
+            RAW_CACHE_SLOT,
+            Arc::new(RawCacheIngestParser {
                 cache: Arc::clone(&raw_event_cache),
             }),
         );
@@ -357,9 +375,84 @@ fn validate_hex64(label: &str, value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nmp_core::store::{RawEvent, VerifiedEvent};
 
     const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const EVENT: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    /// Build a `VerifiedEvent` from minimal valid-looking hex strings.
+    fn make_event(id: &str, kind: u32) -> VerifiedEvent {
+        VerifiedEvent::from_raw_unchecked(RawEvent {
+            id: id.to_string(),
+            pubkey: "11".repeat(32),
+            created_at: 0,
+            kind,
+            tags: Vec::new(),
+            content: String::new(),
+            sig: "22".repeat(64),
+        })
+    }
+
+    // ── RawCacheIngestParser unit tests ──────────────────────────────────────
+
+    /// Proves that an event dispatched through `RawCacheIngestParser::parse`
+    /// lands in the shared cache under its event id.
+    #[test]
+    fn raw_cache_parser_stores_event_json_by_id() {
+        let cache: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+        let parser = RawCacheIngestParser {
+            cache: Arc::clone(&cache),
+        };
+
+        let evt = make_event("00".repeat(32).as_str(), 1);
+        parser.parse(&evt);
+
+        let guard = cache.lock().unwrap();
+        let json = guard.get(&"00".repeat(32)).expect("event stored in cache");
+        // The stored JSON round-trips to the same event id.
+        let v: serde_json::Value = serde_json::from_str(json).expect("stored JSON is valid");
+        assert_eq!(
+            v["id"].as_str().unwrap(),
+            "00".repeat(32),
+            "id in stored JSON must match the event id key"
+        );
+    }
+
+    /// Proves that multiple distinct events are stored without collision.
+    #[test]
+    fn raw_cache_parser_stores_multiple_events() {
+        let cache: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+        let parser = RawCacheIngestParser {
+            cache: Arc::clone(&cache),
+        };
+
+        let id_a = "aa".repeat(32);
+        let id_b = "bb".repeat(32);
+        parser.parse(&make_event(&id_a, 1));
+        parser.parse(&make_event(&id_b, 10_050));
+
+        let guard = cache.lock().unwrap();
+        assert!(guard.contains_key(&id_a), "event A stored");
+        assert!(guard.contains_key(&id_b), "event B stored");
+        assert_eq!(guard.len(), 2, "exactly two entries");
+    }
+
+    /// Proves that different kinds are all stored (all-kinds coverage).
+    #[test]
+    fn raw_cache_parser_accepts_any_kind() {
+        let cache: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+        let parser = RawCacheIngestParser {
+            cache: Arc::clone(&cache),
+        };
+
+        for (i, kind) in [0u32, 1, 1059, 10_002, 30_023].iter().enumerate() {
+            let id = format!("{:02x}", i).repeat(32);
+            parser.parse(&make_event(&id, *kind));
+        }
+
+        let guard = cache.lock().unwrap();
+        assert_eq!(guard.len(), 5, "all-kinds events stored");
+    }
 
     #[test]
     fn visible_author_profile_consumer_id_is_stable() {
