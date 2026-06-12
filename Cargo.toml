@@ -45,7 +45,6 @@ members = [
     "crates/nmp-signers",
     "crates/nmp-testing",
     "crates/nmp-threading",
-    "crates/nmp-wot",
     "apps/chirp/chirp-desktop",
     "crates/nmp-wasm",
 ]

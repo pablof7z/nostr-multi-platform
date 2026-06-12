@@ -111,6 +111,7 @@ pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, RunConfig, StorageSet, Unstarted};
 pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
+pub use runtimes::register_mute_runtime;
 pub use tiers::{register_substrate, NmpDefaults};
 
 /// Wire the canonical NMP composition into `app`.
@@ -207,6 +208,16 @@ pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
         // WOT bootstrap reconciler (PushInterest/WithdrawInterest book-keeping
         // for the active account; kernel ships zero WOT nouns — D0).
         nmp_wot::register_runtime(app);
+        // NIP-51 mute-list observer: installs `MuteListProjection` as a
+        // `KernelEventObserver` for kind:10000 and registers the
+        // `"nmp.nip51.mute_list"` diagnostic snapshot projection. The
+        // `Arc<MuteListProjection>` return is intentionally dropped here:
+        // this is the fire-and-forget conveniences-bundle path. Apps that
+        // need the `Arc` to wire `timeline.set_suppression(mute)` (the
+        // timeline projection is app-owned, so `AppHost` has no
+        // `set_suppression` seam) should call [`register_mute_runtime`]
+        // directly instead of relying on this path.
+        let _ = runtimes::register_mute_runtime(app);
     }
 
     if dms {

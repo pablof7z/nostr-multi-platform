@@ -71,6 +71,15 @@ jobs:
           CC_wasm32_unknown_unknown: clang
         run: wasm-pack test --headless --chrome crates/nmp-wasm
 
+      # W2 — build the production wasm package that web/chirp consumes.
+      # The artifact is intentionally NOT checked in (public/nmp-wasm/ is
+      # gitignored); this step is the only authoritative build path in CI.
+      # wasm-pack is already installed by the step above; no re-install needed.
+      - name: Build wasm package for web/chirp
+        env:
+          CC_wasm32_unknown_unknown: clang
+        run: wasm-pack build --target web crates/nmp-wasm --out-dir ../../web/chirp/public/nmp-wasm
+
       - name: Install Node
         uses: actions/setup-node@v4
         with:
