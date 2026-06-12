@@ -404,7 +404,7 @@ impl Kernel {
         // metadata without polling or app-local fetch logic. Every other
         // kind — including the former kind:10002 arm (deleted 2026-05-25
         // alongside `kernel/ingest/relay_list.rs` when the substrate parser
-        // was wired in `nmp-app-template`) — routes through the wildcard arm,
+        // was wired in `nmp-defaults`) — routes through the wildcard arm,
         // which fans through the `EventIngestDispatcher` inside
         // `verify_and_persist` and then observes any substrate mailbox-cache
         // mutation kind-agnostically.

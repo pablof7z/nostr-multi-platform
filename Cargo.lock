@@ -2199,16 +2199,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 
 [[package]]
-name = "fixture-todo-core"
-version = "0.4.0"
-dependencies = [
- "nmp-core",
- "nmp-ffi",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "flatbuffers"
 version = "25.12.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4412,8 +4402,8 @@ dependencies = [
 name = "nmp-app-chirp"
 version = "0.4.0"
 dependencies = [
- "nmp-app-template",
  "nmp-core",
+ "nmp-defaults",
  "nmp-feed",
  "nmp-ffi",
  "nmp-marmot",
@@ -4434,45 +4424,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-app-fixture"
-version = "0.4.0"
-dependencies = [
- "fixture-todo-core",
- "nmp-core",
- "nmp-ffi",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "nmp-app-gallery"
 version = "0.4.0"
 dependencies = [
  "jni 0.21.1",
- "nmp-app-template",
  "nmp-core",
+ "nmp-defaults",
  "nmp-ffi",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nmp-app-template"
-version = "0.4.0"
-dependencies = [
- "nmp-content",
- "nmp-core",
- "nmp-coverage-gate",
- "nmp-feed",
- "nmp-ffi",
- "nmp-nip01",
- "nmp-nip02",
- "nmp-nip17",
- "nmp-nip57",
- "nmp-nip77",
- "nmp-router",
- "nmp-wot",
- "nostr",
  "serde",
  "serde_json",
 ]
@@ -4574,6 +4532,27 @@ dependencies = [
 [[package]]
 name = "nmp-coverage-gate"
 version = "0.4.0"
+
+[[package]]
+name = "nmp-defaults"
+version = "0.4.0"
+dependencies = [
+ "nmp-content",
+ "nmp-core",
+ "nmp-coverage-gate",
+ "nmp-feed",
+ "nmp-ffi",
+ "nmp-nip01",
+ "nmp-nip02",
+ "nmp-nip17",
+ "nmp-nip57",
+ "nmp-nip77",
+ "nmp-router",
+ "nmp-wot",
+ "nostr",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "nmp-feed"
@@ -4951,9 +4930,9 @@ dependencies = [
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-app-chirp",
- "nmp-app-template",
  "nmp-content",
  "nmp-core",
+ "nmp-defaults",
  "nmp-ffi",
  "nmp-marmot",
  "nmp-nip01",

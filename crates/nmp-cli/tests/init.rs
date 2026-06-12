@@ -1,6 +1,7 @@
-//! End-to-end: `nmp init` into a tempdir must produce a scaffold that
-//! `cargo check`s green, and `nmp gen modules` must succeed and be
-//! deterministic on it.
+//! End-to-end: `nmp init` into a tempdir must produce a thin composition-shell
+//! scaffold (ADR-0046) that `cargo check`s green, whose tests pass, and whose
+//! `register` shell calls `nmp_defaults::register_defaults` — NOT a generated
+//! FFI crate.
 
 mod helpers;
 
@@ -8,7 +9,7 @@ use helpers::{nmp, TempDir};
 use std::process::Command;
 
 #[test]
-fn init_scaffold_compiles_and_gen_is_deterministic() {
+fn init_scaffold_is_a_compiling_composition_shell() {
     let tmp = TempDir::new("init");
     let root = tmp.path().join("demoapp");
 
@@ -26,7 +27,30 @@ fn init_scaffold_compiles_and_gen_is_deterministic() {
     assert!(root.join("crates/demoapp-core/src/lib.rs").exists());
     assert!(root.join("crates/demoapp-core/examples/shell.rs").exists());
 
-    // 2. The scaffold compiles as-is (lib + example + tests).
+    // 2. ADR-0046: composition is a LIBRARY, not a generator. The scaffolded
+    //    `register` shell forwards to `register_defaults`, the headless
+    //    example drives it through `NmpAppBuilder`, and there is NO generated
+    //    `apps/` FFI tree and NO `nmp gen modules` step.
+    let lib = std::fs::read_to_string(root.join("crates/demoapp-core/src/lib.rs"))
+        .expect("read scaffolded lib.rs");
+    assert!(
+        lib.contains("nmp_defaults::register_defaults"),
+        "scaffolded `register` must call nmp_defaults::register_defaults:\n{lib}"
+    );
+    let shell = std::fs::read_to_string(root.join("crates/demoapp-core/examples/shell.rs"))
+        .expect("read scaffolded shell.rs");
+    assert!(
+        shell.contains("NmpAppBuilder") && shell.contains("::register("),
+        "scaffolded shell must build via NmpAppBuilder and call register:\n{shell}"
+    );
+    assert!(
+        !root.join("apps").exists(),
+        "ADR-0046: init must not scaffold a generated apps/ FFI tree"
+    );
+
+    // 3. The scaffold compiles as-is (lib + example + tests). This links
+    //    against the local-path `nmp-defaults` / `nmp-ffi` / `nmp-core`
+    //    crates, so the whole composition root is type-checked end-to-end.
     let check = Command::new(env!("CARGO"))
         .args(["check", "--all-targets"])
         .current_dir(&root)
@@ -38,7 +62,7 @@ fn init_scaffold_compiles_and_gen_is_deterministic() {
         String::from_utf8_lossy(&check.stderr)
     );
 
-    // 3. Skeleton tests pass.
+    // 4. Skeleton tests pass.
     let test = Command::new(env!("CARGO"))
         .args(["test", "-p", "demoapp-core"])
         .current_dir(&root)
@@ -48,25 +72,6 @@ fn init_scaffold_compiles_and_gen_is_deterministic() {
         test.status.success(),
         "scaffold tests failed:\n{}",
         String::from_utf8_lossy(&test.stderr)
-    );
-
-    // 4. `nmp gen modules` succeeds.
-    let gen = nmp(&root, &["gen", "modules"]);
-    assert!(
-        gen.status.success(),
-        "nmp gen modules failed: {}",
-        String::from_utf8_lossy(&gen.stderr)
-    );
-    assert!(root
-        .join("apps/demoapp/nmp-app-demoapp/src/lib.rs")
-        .exists());
-
-    // 5. Codegen is deterministic.
-    let recheck = nmp(&root, &["gen", "modules", "--check"]);
-    assert!(
-        recheck.status.success(),
-        "nmp gen modules --check reported drift: {}",
-        String::from_utf8_lossy(&recheck.stderr)
     );
 }
 

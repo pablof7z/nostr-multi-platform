@@ -58,7 +58,7 @@ pub use engine::{
 pub use fs_store::FsPublishStore;
 // `Nip65OutboxResolver` lives in `nmp-router` (spec §271, 2026-05-25). The
 // `OutboxResolver` trait stays here (publish-side seam); production
-// composition (`nmp-app-template::register_defaults`) installs the
+// composition (`nmp-defaults::register_defaults`) installs the
 // router-side resolver via `NmpApp::set_publish_resolver_factory` →
 // `Kernel::set_publish_resolver`. The kernel default is
 // `NoopOutboxResolver` (below) so a kernel without router-side composition

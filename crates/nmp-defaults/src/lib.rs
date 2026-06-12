@@ -1,8 +1,16 @@
-//! `nmp-app-template` — canonical composition root for an NMP-based Nostr app.
+//! `nmp-defaults` — the framework's **default composition** for an NMP-based
+//! Nostr app (the Bevy-`DefaultPlugins` / Spring-Boot-starter pattern).
 //!
-//! Step 10 of `docs/architecture/crate-boundaries.md` §5. Closes **V-48**:
-//! "No `nmp-app-template` crate — second-app developer must read 403 LOC of
-//! Chirp to understand registration".
+//! Per **ADR-0046** ("composition is a library, not a generator") this crate is
+//! NOT a template and NOT a scaffold to copy — it is a runtime library you
+//! depend on and call. Step 10 of `docs/architecture/crate-boundaries.md` §5.
+//! Closes **V-48**: "No composition-root crate — second-app developer must read
+//! 403 LOC of Chirp to understand registration".
+//!
+//! (Renamed from `nmp-app-template` by ADR-0046; the old name lied — a
+//! "template" implies copy-and-edit, but every real consumer *calls*
+//! `register_defaults` as a library, exactly as Chirp and the external
+//! podcast-player do.)
 //!
 //! # What this crate is
 //!
@@ -52,7 +60,7 @@
 //!   Per-app crates wire those themselves on top of `register_defaults`.
 //! * It does not own a C-ABI surface. The `nmp_app_*` FFI lives in
 //!   `nmp-ffi` (and per-app `nmp_app_<app>_*` shells live in the app
-//!   crate). The template is pure Rust composition.
+//!   crate). This crate is pure Rust composition.
 //! * It does not call `nmp_app_start`. The caller drives
 //!   lifecycle.
 //!
@@ -66,7 +74,7 @@
 //!
 //! // 2. Inherit the canonical NMP composition.
 //! // SAFETY: `app` is a valid pointer from `nmp_app_new`.
-//! nmp_app_template::register_defaults(unsafe { &mut *app });
+//! nmp_defaults::register_defaults(unsafe { &mut *app });
 //!
 //! // 3. (Optional) Register any app-specific projections / actions.
 //! //    — e.g. a `ModularTimelineProjection` for a Twitter-style client.
@@ -114,12 +122,24 @@ pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
 
 /// Wire the canonical NMP composition into `app`.
 ///
-/// One call. Idempotency is the same as the underlying per-NIP
-/// `register_actions` calls — the action registry rejects duplicate
-/// namespaces; the ingest dispatcher allows additive parsers per kind; the
-/// routing-substrate slot is overwritten on each call. A second call is a
-/// no-op for actions, additive for parsers, and last-writer-wins for the
-/// routing substrate / coverage hook.
+/// **Call this exactly once**, before `nmp_app_start`. It is NOT idempotent:
+///
+/// * **Action namespaces — last-writer-wins (replace, not reject).** The
+///   action registry is a `HashMap` keyed on namespace; a second registration
+///   of the same namespace *replaces* the first
+///   (`nmp_core::kernel::action_registry`: "A second registration of the same
+///   namespace replaces the first", a bare `HashMap::insert`). It does **not**
+///   reject the duplicate.
+/// * **Ingest parsers / event observers — additive.** A second call
+///   double-registers them (e.g. the kind:10002 parser and the long-form
+///   observer would each be installed twice).
+/// * **Single-slot factories / hooks — last-writer-wins.** The
+///   routing-substrate factory, publish-resolver factory, raw-event-forward
+///   policy factory, and coverage hook are overwritten on each call.
+///
+/// Because parsers/observers are additive, calling `register_defaults` twice
+/// is a latent bug, not a no-op — callers must invoke it once. (A
+/// diagnostic/idempotence latch is tracked separately.)
 ///
 /// See the crate-level doc for the full list of registrations and the
 /// rationale for each.

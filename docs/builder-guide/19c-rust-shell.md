@@ -9,7 +9,7 @@ native shell.
 
 ## The entry point: `NmpAppBuilder`
 
-`nmp-app-template` ships `NmpAppBuilder`, a typestate-guarded composition root.
+`nmp-defaults` ships `NmpAppBuilder`, a typestate-guarded composition root.
 The typestate enforces at compile time that:
 
 1. A storage choice (`.in_memory()` or `.storage_path(p)`) is made before `start()`.
@@ -21,7 +21,7 @@ Add the dependency:
 ```toml
 # Cargo.toml of your app-core crate (or a top-level binary crate)
 [dependencies]
-nmp-app-template = { path = "/path/to/nmp/crates/nmp-app-template" }
+nmp-defaults = { path = "/path/to/nmp/crates/nmp-defaults" }
 nmp-ffi          = { path = "/path/to/nmp/crates/nmp-ffi" }
 ```
 
@@ -29,7 +29,7 @@ nmp-ffi          = { path = "/path/to/nmp/crates/nmp-ffi" }
 
 ```rust
 use std::sync::{Arc, Mutex};
-use nmp_app_template::{NmpAppBuilder, RunConfig};
+use nmp_defaults::{NmpAppBuilder, RunConfig};
 use nmp_ffi::{nmp_app_free, nmp_app_stop};
 
 // Import your app-core crate — see 19a for how it's structured.
@@ -147,7 +147,7 @@ relay lists) call `register_defaults` before `start`:
 
 ```rust
 let mut builder = NmpAppBuilder::new();
-nmp_app_template::register_defaults(&mut builder);
+nmp_defaults::register_defaults(&mut builder);
 // … then register your own projections/observers …
 let app = builder.in_memory().start(RunConfig::default());
 ```

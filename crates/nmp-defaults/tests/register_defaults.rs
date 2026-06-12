@@ -1,4 +1,4 @@
-//! Integration test for [`nmp_app_template::register_defaults`].
+//! Integration test for [`nmp_defaults::register_defaults`].
 //!
 //! Spins up a real [`NmpApp`] via `nmp_app_new`, calls `register_defaults`,
 //! and asserts that every canonical action namespace is reachable through
@@ -14,7 +14,7 @@ use nmp_ffi::{
     nmp_app_read_projection_json,
 };
 
-/// All action namespaces [`nmp_app_template::register_defaults`] is
+/// All action namespaces [`nmp_defaults::register_defaults`] is
 /// contracted to register.
 const EXPECTED_NAMESPACES: &[&str] = &[
     // NIP-02 — substrate-level social graph (follow / unfollow / react).
@@ -36,7 +36,7 @@ fn register_defaults_wires_every_canonical_namespace() {
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
-    nmp_app_template::register_defaults(unsafe { &mut *app });
+    nmp_defaults::register_defaults(unsafe { &mut *app });
 
     for ns in EXPECTED_NAMESPACES {
         let result = dispatch(app, ns, "{}");
@@ -85,8 +85,8 @@ fn register_defaults_is_repeatable_for_routing_and_runtime_slots() {
     // kind). The proof: a second call does not panic.
     let app = nmp_app_new();
     // SAFETY: same as above.
-    nmp_app_template::register_defaults(unsafe { &mut *app });
-    nmp_app_template::register_defaults(unsafe { &mut *app });
+    nmp_defaults::register_defaults(unsafe { &mut *app });
+    nmp_defaults::register_defaults(unsafe { &mut *app });
     nmp_app_free(app);
 }
 
@@ -95,7 +95,7 @@ fn register_defaults_wires_wot_bootstrap_projection() {
     let app = nmp_app_new();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
-    nmp_app_template::register_defaults(unsafe { &mut *app });
+    nmp_defaults::register_defaults(unsafe { &mut *app });
 
     let key = CString::new("nmp.wot.bootstrap").unwrap();
     let raw = nmp_app_read_projection_json(app, key.as_ptr());
@@ -121,7 +121,7 @@ fn register_defaults_longform_is_typed_only_not_in_json_map() {
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
-    nmp_app_template::register_defaults(unsafe { &mut *app });
+    nmp_defaults::register_defaults(unsafe { &mut *app });
 
     // The NIP-23 long-form projection is registered ONLY as a typed FlatBuffer
     // in the `typed_projections` sidecar (`AppHost::register_typed_snapshot_projection`),
@@ -167,7 +167,7 @@ fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
     assert!(!app.is_null(), "nmp_app_new returned null");
 
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
-    nmp_app_template::register_defaults(unsafe { &mut *app });
+    nmp_defaults::register_defaults(unsafe { &mut *app });
 
     let key = CString::new("nmp.nip57.zap_subscription").unwrap();
     let raw = nmp_app_read_projection_json(app, key.as_ptr());

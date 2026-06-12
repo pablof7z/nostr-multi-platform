@@ -36,7 +36,7 @@ Critical scope correction vs. the backlog: of the ~18 "setters", only FOUR are
 C-ABI symbols (`nmp_app_set_update_callback` :2148, `nmp_app_set_storage_path`
 :2188, `nmp_app_start` :2204, `nmp_app_configure` :2221). The rest are `AppHost`
 **Rust trait methods** (substrate/app_host.rs) invoked from the Rust composition
-root — `nmp_app_template::register_defaults` (crates/nmp-app-template/src/lib.rs)
+root — `nmp_defaults::register_defaults` (crates/nmp-defaults/src/lib.rs)
 and per-app `register.rs` (apps/chirp/nmp-app-chirp/src/ffi/register.rs:53). So
 the enforcement surface splits cleanly in two.
 
@@ -64,10 +64,10 @@ already blesses (docs/architecture/crate-boundaries.md:269, :835). V-94's
 
 ## 3. Recommended architecture (end-state)
 
-### 3.1 `NmpAppBuilder` in `nmp-app-template` (the Rust enforcement, (a) + F-08)
+### 3.1 `NmpAppBuilder` in `nmp-defaults` (the Rust enforcement, (a) + F-08)
 
 A single config/builder type that owns the wiring phase and makes start the only
-terminal transition. It is the home V-48 (`nmp-app-template`) was created to be
+terminal transition. It is the home V-48 (`nmp-defaults`) was created to be
 and the type F-08 names.
 
 - `NmpAppBuilder::new()` — begins a config session. Owns the in-construction
@@ -120,7 +120,7 @@ tracks this remaining work.
 ### 3.3 V-95 folded in
 
 `install_wallet_runtime` and the other "before-first-dispatch" runtime injections
-route through the same builder phase: `nmp-app-template`'s wallet wiring becomes
+route through the same builder phase: `nmp-defaults`'s wallet wiring becomes
 a builder step, so the runtime is installed during config, before `start`. The
 runtime-guard diagnostic (§3.2) covers the C-ABI path for the same defect class
 (a wallet action dispatched before the runtime is installed already returns a
@@ -129,10 +129,10 @@ only the *use* mistake).
 
 ## 4. New crates / types
 
-- No new crate. `nmp-app-template` (exists, V-48) gains `NmpAppBuilder`.
+- No new crate. `nmp-defaults` (exists, V-48) gains `NmpAppBuilder`.
 - New types:
-  - `nmp_app_template::NmpAppBuilder` (config-phase host; implements `AppHost`).
-  - `nmp_app_template::RunConfig` (the visible_limit / emit_hz that
+  - `nmp_defaults::NmpAppBuilder` (config-phase host; implements `AppHost`).
+  - `nmp_defaults::RunConfig` (the visible_limit / emit_hz that
     `nmp_app_start` takes today, made a typed value passed to `builder.start`).
   - A late-wiring diagnostic variant on the existing FFI update-channel envelope
     (likely in nmp-core where the envelope variants live, or nmp-ffi if the
@@ -149,7 +149,7 @@ only the *use* mistake).
    each C-ABI `nmp_app_set_*` setter: if `started`, emit the diagnostic instead
    of silently mutating an already-read slot. Escalate severity for
    `nmp_app_set_storage_path`.
-3. Introduce `NmpAppBuilder` in `nmp-app-template` implementing `AppHost`;
+3. Introduce `NmpAppBuilder` in `nmp-defaults` implementing `AppHost`;
    move `register_defaults` to operate on it (free-fn-taking-`&mut impl AppHost`
    keeps working). Add `RunConfig` + terminal `start(self, RunConfig)`.
 4. Make `storage_path` the one required field on `start` (or explicit

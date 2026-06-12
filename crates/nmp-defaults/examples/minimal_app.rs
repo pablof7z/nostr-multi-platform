@@ -1,7 +1,7 @@
 //! Minimal end-to-end example: construct an [`NmpApp`] via `NmpAppBuilder`,
 //! inherit the canonical NMP composition, start the kernel, and tear it down.
 //!
-//! Run with: `cargo run -p nmp-app-template --example minimal_app`
+//! Run with: `cargo run -p nmp-defaults --example minimal_app`
 //!
 //! This example is intentionally tiny — its load-bearing claims are:
 //!
@@ -16,7 +16,7 @@
 //! If this example outgrows ~20 lines of actual work, the template is
 //! regressing toward boilerplate.
 
-use nmp_app_template::{NmpAppBuilder, RunConfig};
+use nmp_defaults::{NmpAppBuilder, RunConfig};
 use nmp_ffi::{nmp_app_free, nmp_app_stop};
 
 fn main() {
@@ -27,7 +27,7 @@ fn main() {
     //    modules, NIP-17 ingest parser (kind:10050), production routing
     //    substrate (GenericOutboxRouter + InMemoryMailboxCache), D2 coverage
     //    hook, and the DM-inbox + zap-receipts + WOT runtime controllers.
-    nmp_app_template::register_defaults(&mut builder);
+    nmp_defaults::register_defaults(&mut builder);
 
     // 3. (Optional) Register any app-specific projections / actions here.
     //    e.g. nmp_nip29::register_actions(&mut builder) for group chat.
@@ -39,7 +39,7 @@ fn main() {
     //    Omitting this step is a COMPILE ERROR — V-94 typestate guarantee.
     let app = builder.in_memory().start(RunConfig::default());
 
-    println!("nmp-app-template: NmpAppBuilder → start() complete.");
+    println!("nmp-defaults: NmpAppBuilder → start() complete.");
     println!("  - NIP-02 social actions wired");
     println!("  - NIP-17 DM action + kind:10050 ingest parser wired");
     println!("  - NIP-57 zap action wired");

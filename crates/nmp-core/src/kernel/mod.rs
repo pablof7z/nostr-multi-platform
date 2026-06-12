@@ -1487,7 +1487,7 @@ impl Kernel {
     /// in-crate `NoopOutboxResolver` default (every `PublishTarget::Auto`
     /// resolves to an empty set → `PublishEngineError::NoTargets`,
     /// fail-closed). Production composition
-    /// (`nmp-app-template::register_defaults` → the
+    /// (`nmp-defaults::register_defaults` → the
     /// `NmpApp::set_publish_resolver_factory` slot the actor reads at
     /// kernel construction) calls this method right after
     /// [`Self::set_routing`] to install
@@ -1873,7 +1873,7 @@ impl Kernel {
         // Spec §271 (2026-05-25): `Nip65OutboxResolver` lives in
         // `nmp-router`, not `nmp-core`. The engine is built with the
         // in-crate `NoopOutboxResolver` default; production composition
-        // (`nmp-app-template::register_defaults` → the
+        // (`nmp-defaults::register_defaults` → the
         // `set_publish_resolver_factory` slot the actor reads at
         // construction) swaps in the router-side resolver via
         // [`Kernel::set_publish_resolver`]. The `indexer_relays_handle`,
@@ -2000,7 +2000,7 @@ impl Kernel {
         // consumers) keep working without each test calling
         // `Kernel::set_publish_resolver` manually. Production builds use the
         // `NoopOutboxResolver` default the engine was built with above; the
-        // production composition site (`nmp-app-template::register_defaults`)
+        // production composition site (`nmp-defaults::register_defaults`)
         // installs the full router-side `nmp_router::Nip65OutboxResolver`
         // via `NmpApp::set_publish_resolver_factory` →
         // `Kernel::set_publish_resolver` (D0 — `nmp-core` does not name

@@ -38,7 +38,7 @@ injected by app composition.
 
 ## Composition
 
-`nmp-app-template::register_defaults` constructs one
+`nmp-defaults::register_defaults` constructs one
 `Arc<InMemoryMailboxCache>` and shares it between:
 
 - the `GenericOutboxRouter` / `MailboxCache` pair installed into the kernel;

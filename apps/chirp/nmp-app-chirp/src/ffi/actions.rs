@@ -2,7 +2,7 @@
 //! [`super::register::nmp_app_chirp_register`].
 //!
 //! `super::register::nmp_app_chirp_register` calls
-//! `nmp_app_template::register_defaults` for the canonical NMP action
+//! `nmp_defaults::register_defaults` for the canonical NMP action
 //! modules (NIP-02 / NIP-17 / NIP-57 / NIP-65) and the production routing
 //! substrate; this file owns the **Chirp-specific** registration that the
 //! template intentionally does not ship.
@@ -17,7 +17,7 @@
 //! NIP-25), `register_nip17_actions`, `register_nip57_actions`, and
 //! `register_nip65_actions`. Those wrappers were each a one-line forward
 //! to the corresponding NIP crate's `register_actions`; they all moved
-//! into `nmp_app_template::register_defaults` so a second NMP-based app
+//! into `nmp_defaults::register_defaults` so a second NMP-based app
 //! inherits them through one call rather than re-copying five lines.
 //!
 //! The bespoke C-ABI symbols (`nmp_app_react` / `nmp_app_follow` /

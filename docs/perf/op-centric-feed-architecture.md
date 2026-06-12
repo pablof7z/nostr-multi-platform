@@ -13,7 +13,7 @@
 > appear in the feed when a followed user replies to it. Delivers the
 > OP-centric feed as a generic primitive in `nmp-feed`, with `nmp-nip01` as
 > a thin protocol instance, follow-set expansion done at the composition
-> root (`nmp-app-template`), and a kernel-side pre-kind:3 ingest buffer
+> root (`nmp-defaults`), and a kernel-side pre-kind:3 ingest buffer
 > closing the cold-start gap.
 >
 > ### Revision history
@@ -30,7 +30,7 @@
 >   decisions (Q1, Q2, Q5, Q7). Major changes:
 >   - **Composition-root expansion of the follow-set timeline (codex
 >     architecture override).** `LogicalInterest::SocialTimeline` is
->     **deleted from the design**. `nmp-app-template` expands the active
+>     **deleted from the design**. `nmp-defaults` expands the active
 >     follow set into concrete per-author `LogicalInterest`s at
 >     composition + on every kind:3 update. No planner-side seam, no
 >     `FollowSetLookup` cycle. **User's Q2 enum-conversion answer is
@@ -40,7 +40,7 @@
 >     engine takes `Arc<dyn Fn(&str) -> bool + Send + Sync>`. No new
 >     trait crate, no dependency cycle. Codex §3-Q-options aligned. The
 >     follow-set producer lives in `nmp-nip02`; the predicate is wired
->     by `nmp-app-template`.
+>     by `nmp-defaults`.
 >   - **Pre-kind:3 ingest buffer (Q7 implementation).** The kernel
 >     buffers kind:1 / kind:6 events that arrive before the active
 >     account's kind:3 is processed in a bounded queue keyed by
@@ -145,7 +145,7 @@ own enumeration policy.
   read and a `predicate() -> Arc<dyn Fn(&str) -> bool + Send + Sync>`
   factory. No trait introduced; no `FollowSetLookup`; this is the
   follow-set producer.
-- **`nmp-app-template`** — `register_op_feed_defaults(app, viewer)`
+- **`nmp-defaults`** — `register_op_feed_defaults(app, viewer)`
   composes everything: constructs the `ActiveFollowSet`, wires the
   predicate + event-lookup into `register_op_feed`, registers an
   internal observer that calls `nmp_app_expand_follow_timeline_interests`
@@ -180,7 +180,7 @@ own enumeration policy.
    canonical OneShot path. The kernel-side enhancements (initial-hint
    plumbing, no-match release signal) benefit every claim_event consumer,
    not just the OP feed.
-4. **`nmp-app-template`** is the composition root. It owns the
+4. **`nmp-defaults`** is the composition root. It owns the
    follow-set producer (`nmp-nip02`'s `ActiveFollowSet`), the
    pre-engine kind:1/6 buffer drainage, the per-follow
    `LogicalInterest` registration, and the OP-feed registration.
@@ -189,7 +189,7 @@ own enumeration policy.
 
 - `nmp-core` D0-clean. `nmp-feed` D0-clean. No new bespoke C-ABI symbol.
 - One-line affordance for any composing app:
-  `nmp_app_template::register_op_feed_defaults(app, viewer)`.
+  `nmp_defaults::register_op_feed_defaults(app, viewer)`.
 - The pre-kind:3 cold-start gap is closed at the source (kernel
   ingest), not papered over at the engine layer.
 
@@ -207,7 +207,7 @@ own enumeration policy.
                                      │ RootFeedSnapshot<C, A> JSON
                                      │ (visible window only)
 ┌────────────────────────────────────┴────────────────────────────────────────┐
-│  Layer 5 — nmp-app-template (COMPOSITION ROOT — ~150 LOC NEW)               │
+│  Layer 5 — nmp-defaults (COMPOSITION ROOT — ~150 LOC NEW)               │
 │                                                                             │
 │   register_op_feed_defaults(app, viewer):                                   │
 │     1. construct nmp_nip02::ActiveFollowSet (observer over kind:3 +        │
@@ -367,7 +367,7 @@ sees the events as ordinary fan-out.
 
 **Decision: generic engine `RootIndexedFeed<R, A>` in `nmp-feed`; NIP-10
 instance in `nmp-nip01`; follow-set producer in `nmp-nip02`;
-composition wiring in `nmp-app-template`.** Unchanged from v3 except for
+composition wiring in `nmp-defaults`.** Unchanged from v3 except for
 the composition-root expansion of follow-set (§3-D).
 
 ### B. How does Bob's unfollowed OP enter the kernel?
@@ -565,7 +565,7 @@ for the active account; an internal observer of
 internal state is `Arc<RwLock<BTreeSet<String>>>`. On every change,
 registered `on_change` callbacks fire.
 
-**`nmp-app-template`** is the composition root:
+**`nmp-defaults`** is the composition root:
 
 ```rust
 pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey) {
@@ -636,7 +636,7 @@ v2/v3 design strengthened it.
 **V-45 status:** the original V-45 issue is closed by this design,
 just not through the originally-named `SocialTimeline` mechanism. The
 tracker entry needs to record that the V-45 affordance is delivered
-through `nmp-app-template::register_op_feed_defaults` instead.
+through `nmp-defaults::register_op_feed_defaults` instead.
 
 ### E. `TimelineBlock::Standalone` lossless reshape
 
@@ -710,7 +710,7 @@ grep against the current tree. Rung 2 patches all of:
   `ClaimRequest(ThreadPointer)`). Records the closure-based predicate
   + event-lookup capability shape.
 - **ADR-0036** — Composition-root expansion of follow-set timeline
-  interests in `nmp-app-template`. Records why `SocialTimeline` was
+  interests in `nmp-defaults`. Records why `SocialTimeline` was
   rejected and what replaces V-45.
 - Existing 0033 (`nmp-feed-viewport-ffi`) + 0034 (kind-dispatch
   content rendering) are not touched.
@@ -751,7 +751,7 @@ where
 affordance.** A second protocol (`nmp-nip22` covering kind:1111 for ALL
 non-kind:1 root kinds — NIP-23, NIP-94, NIP-99, podcasts) composes with
 `(R, A)` only; the composition-root expansion logic is generic over
-"the set of kinds to register interests for," so `nmp-app-template`
+"the set of kinds to register interests for," so `nmp-defaults`
 also gains a `register_op_feed_for_comments_defaults(...)` helper
 post-v1.
 
@@ -978,7 +978,7 @@ Tests in §3-J cover all five cases.
 | Single-source-of-truth | ✅ | Engine `attributions` is single owner; `event_claims[primary_id]` is single refcount. |
 | V-45 prerequisite | ✅ | Closed by `register_op_feed_defaults` (composition-root expansion replaces SocialTimeline). |
 | ADR numbering | ✅ | 0035 + 0036 (0033, 0034 already taken). |
-| Crate dep graph | ✅ | New edges: `nmp-nip02 → nmp-feed` NOT needed (nmp-nip02 has no `FollowSetLookup` trait to implement); `nmp-app-template → nmp-nip02` (already exists); `nmp-app-template → nmp-nip01` (already exists). NO `nmp-planner → nmp-feed` cycle. |
+| Crate dep graph | ✅ | New edges: `nmp-nip02 → nmp-feed` NOT needed (nmp-nip02 has no `FollowSetLookup` trait to implement); `nmp-defaults → nmp-nip02` (already exists); `nmp-defaults → nmp-nip01` (already exists). NO `nmp-planner → nmp-feed` cycle. |
 | F-05 codegen | ⚠ | TimelineBlock shape (rung 2) + RootFeedSnapshot (rung 5) regenerate Swift Decodables. |
 | Doctrine-lint scoped | ✅ | `cargo test -p nmp-testing --test doctrine_lint_smoke` + new `op_feed_doctrine_lint` test. |
 | Crate-boundary spec update | ⚠ | Rung 7 updates `nmp-feed` row (charter expands to OP-centric engine + the closure-shaped predicate / event_lookup capabilities) and `nmp-nip02` row (gains ActiveFollowSet producer). |
@@ -1053,20 +1053,20 @@ Tests in §3-J cover all five cases.
 | `crates/nmp-nip01/src/op_feed/tests.rs` | **NEW** — instance tests + repost L-1 through L-5 + claim URI encoding. | +260 |
 | `crates/nmp-nip01/src/lib.rs` | Export. | +12 |
 
-### Stage 5 — `nmp-app-template` composition (rung 6)
+### Stage 5 — `nmp-defaults` composition (rung 6)
 
 | File | Change | LOC ± |
 |---|---|---|
-| `crates/nmp-app-template/src/op_feed_defaults.rs` | **NEW** — `register_op_feed_defaults(app, viewer)`. Constructs `ActiveFollowSet`, calls `expand_follow_timeline_interests`, registers `on_change` callback re-running expansion, calls `nmp_nip01::register_op_feed`. | +120 |
-| `crates/nmp-app-template/src/expand_follow_interests.rs` | **NEW** — `expand_follow_timeline_interests(app, follows, viewer)`. Builds per-follow `LogicalInterest` (kinds 1, 6, Tailing, limit 200); registers via the existing actor command surface. Mirrors `kernel::ingest::contacts::sync_follow_feed_interests` body. | +90 |
-| `crates/nmp-app-template/src/lib.rs` | Export. | +8 |
-| `crates/nmp-app-template/tests/op_feed_defaults_test.rs` | **NEW** — integration test: register defaults; feed events; assert snapshot. | +180 |
+| `crates/nmp-defaults/src/op_feed_defaults.rs` | **NEW** — `register_op_feed_defaults(app, viewer)`. Constructs `ActiveFollowSet`, calls `expand_follow_timeline_interests`, registers `on_change` callback re-running expansion, calls `nmp_nip01::register_op_feed`. | +120 |
+| `crates/nmp-defaults/src/expand_follow_interests.rs` | **NEW** — `expand_follow_timeline_interests(app, follows, viewer)`. Builds per-follow `LogicalInterest` (kinds 1, 6, Tailing, limit 200); registers via the existing actor command surface. Mirrors `kernel::ingest::contacts::sync_follow_feed_interests` body. | +90 |
+| `crates/nmp-defaults/src/lib.rs` | Export. | +8 |
+| `crates/nmp-defaults/tests/op_feed_defaults_test.rs` | **NEW** — integration test: register defaults; feed events; assert snapshot. | +180 |
 
 ### Stage 6 — Chirp wiring (rung 7)
 
 | File | Change | LOC ± |
 |---|---|---|
-| `apps/chirp/nmp-app-chirp/src/ffi/register.rs` | Replace `ModularTimelineProjection` registration with `nmp_app_template::register_op_feed_defaults(app, viewer)`. Drop ~30 LOC of hand-rolled follow-set wiring. | +5 / -50 |
+| `apps/chirp/nmp-app-chirp/src/ffi/register.rs` | Replace `ModularTimelineProjection` registration with `nmp_defaults::register_op_feed_defaults(app, viewer)`. Drop ~30 LOC of hand-rolled follow-set wiring. | +5 / -50 |
 | `apps/chirp/chirp-tui/src/timeline.rs` | Rewrite `TimelineRow::from_snapshot` for `RootFeedSnapshot`. Delete `ids_from_block`, `event_root_mismatches_top`, `is_partial_chain_head`. Add `thread_attribution: Vec<RowReplyAttribution>` field. | +60 / -100 |
 | `apps/chirp/chirp-tui/src/ui/post_list.rs` | Delete ↳ indicator. Add attribution row (chirp-tui's display policy: render the most recent 1 with "and N others"). Apply L-4 rule. | +50 / -25 |
 | `apps/chirp/chirp-tui/src/timeline/tests.rs` | Delete partial-chain tests; add RootCard mapping tests. | +220 / -160 |
@@ -1104,7 +1104,7 @@ Each rung independently mergeable, leaves master green.
 5. **Rung 5 — Stage 4 — `nmp-nip01` instance.** ADR-0036. Composes the
    engine with the NIP-10 resolver + payload + adapter predicate.
    Master: unchanged (Chirp not wired yet).
-6. **Rung 6 — Stage 5 — `nmp-app-template` composition.** One-line
+6. **Rung 6 — Stage 5 — `nmp-defaults` composition.** One-line
    affordance lands. Composing apps get the feed. Master: unchanged
    (Chirp not wired yet).
 7. **Rung 7 — Stage 6 — Chirp cut-over.** Product-visible PR. chirp-tui
@@ -1161,13 +1161,13 @@ standalone rows; PR #710 added a ↳ partial mitigation. Product model is
 parameterized over `ParentResolver` + `AttributionPayload<Profile=…>` +
 closure-shaped follow predicate + event-lookup callback. NIP-10 instance in
 `nmp-nip01`. Follow-set producer in `nmp-nip02`. Composition root in
-`nmp-app-template`. Kernel additions (rung 1): pre-kind:3 ingest buffer,
+`nmp-defaults`. Kernel additions (rung 1): pre-kind:3 ingest buffer,
 `event_claim_released` projection, `OneshotApi::request` initial hints,
 `release_event` calls `release_claim_expansion`. Root hydration via existing
 `Kernel::claim_event` / `nmp_app_claim_event` — no bespoke action.
 
 **Closes V-45** (via composition-root expansion of follow-set timeline
-interests in `nmp-app-template`; no planner-side `SocialTimeline` variant).
+interests in `nmp-defaults`; no planner-side `SocialTimeline` variant).
 
 **Recommended action:** 7-rung PR ladder per §5. Net ~+2,400 LOC,
 ~-310 LOC. Two ADRs (0035 + 0036).

@@ -154,7 +154,7 @@ fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
 /// Promoted to unconditional `pub` (V-112 follow-up): `claim_profile` is the
 /// component-owned profile-hydration verb, and the `claimed_profiles` typed
 /// sidecar is its direct observable — out-of-tree Rust consumers (e.g. the
-/// `nmp-app-template` `validate_claim_profile` example) read it through
+/// `nmp-defaults` `validate_claim_profile` example) read it through
 /// `nmp_core::typed_projections`, mirroring the `decode_claimed_events` /
 /// `decode_resolved_profiles` promotions from PR-B.
 pub fn decode_claimed_profiles(bytes: &[u8]) -> Result<ClaimedProfilesModel, String> {

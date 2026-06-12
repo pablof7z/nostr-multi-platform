@@ -1,9 +1,15 @@
 # `nmp` CLI
 
 The `nmp` command is what makes NMP **adoptable instead of hand-wired**: it
-scaffolds a new app and runs the codegen pipeline that produces the per-app
-FFI crate (ADR-0010). It also installs app-owned source components from the
-offline NMP component registry.
+scaffolds a new app as a thin **composition shell** over the framework's default
+composition library (`nmp-defaults`), and installs app-owned source components
+from the offline NMP component registry.
+
+Per **ADR-0046** ("composition is a library, not a generator") there is **no
+`nmp gen modules` step**: a downstream app depends on `nmp-defaults` and calls
+`register_defaults` — the Bevy-`DefaultPlugins` / Spring-Boot-starter pattern —
+rather than generating an FFI crate. The old generator emitted a non-functional
+FFI tree (it never called `register_defaults`) and has been deleted.
 
 It ships in the `nmp-cli` crate (`crates/nmp-cli`). Install or run it:
 
@@ -13,13 +19,13 @@ cargo install --path crates/nmp-cli      # installs the `nmp` binary
 cargo run -p nmp-cli -- <args>
 ```
 
-> **Relationship to the legacy `nmp` binary.** The `nmp-codegen` crate also
-> ships a `[[bin]] name = "nmp"` that only does `gen modules`. `nmp-cli` is
-> the canonical superset (`init` **and** `gen modules`, the latter delegating
-> to the `nmp-codegen` *library*, unmodified). Because two workspace members
-> declare a `nmp` binary, prefer `cargo run -p nmp-cli --` /
-> `cargo install --path crates/nmp-cli` over a bare workspace `cargo build`
-> when you want the full CLI. `nmp-cli` does not modify `nmp-codegen`.
+> **Relationship to the `nmp-codegen` binary.** The `nmp-codegen` crate ships a
+> `[[bin]] name = "nmp"` that does only the Swift emitters (`gen swift` / `gen
+> typed-decoders`, the CI-gated consumer-side codegen). `nmp-cli` is the
+> developer-facing CLI (`init`, `add`/`update component`, `doctor`, `upgrade`,
+> `export`). Because two workspace members declare a `nmp` binary, prefer
+> `cargo run -p nmp-cli --` / `cargo install --path crates/nmp-cli` over a bare
+> workspace `cargo build` when you want the full developer CLI.
 
 ## Commands
 
@@ -43,76 +49,56 @@ Produced layout:
 ```text
 <root>/
   Cargo.toml                 # workspace: members = ["crates/<name>-core"]
-  nmp.toml                   # app manifest (NMP baseline + modules)
+  nmp.toml                   # NMP dependency policy (read by doctor/upgrade)
   README.md                  # per-app next steps
   crates/<name>-core/
-    Cargo.toml               # nmp-core (absolute path) + serde
-    src/lib.rs               # one Domain + View + Action module + descriptors
-    examples/shell.rs        # minimal headless shell stub
+    Cargo.toml               # nmp-defaults + nmp-ffi + nmp-core + serde
+    src/lib.rs               # register() → register_defaults + example domain
+    examples/shell.rs        # NmpAppBuilder → register → start
 ```
 
-The `<name>-core` crate is a **generic** example (an `EntryRecord` with a
-domain store, a reactive view, and a validating action) — deliberately not
-social-app-shaped. It demonstrates the kernel boundary: per cardinal
-doctrine **D0**, app nouns live in `<name>-core`, never in `nmp-core`.
+The `<name>-core` crate is a **thin composition shell** (ADR-0046): its
+`register` function forwards to `nmp_defaults::register_defaults` to inherit the
+canonical NMP composition (NIP-01/02/17/57/65 action modules, routing substrate,
+DM-inbox + zap-receipts + WOT runtimes, …). It also carries a **generic** example
+domain (an `EntryRecord` with a reactive view and a validating action),
+deliberately not social-app-shaped, to demonstrate the kernel boundary: per
+cardinal doctrine **D0**, app nouns live in `<name>-core`, never in `nmp-core`.
 
-The skeleton compiles the moment it is scaffolded:
+The shell compiles the moment it is scaffolded:
 
 ```sh
 cd my-app
-cargo check --all-targets            # green
-cargo test -p my-app-core            # 2 tests pass
-cargo run --example shell -p my-app-core
+cargo check --all-targets                  # green
+cargo test -p my-app-core                  # skeleton tests pass
+cargo run --example shell -p my-app-core   # register_defaults → start → stop
 ```
 
-By default, `nmp init` writes `dependency_mode = "path"` and resolves the
-NMP checkout path to the absolute location of the checkout that ran it, so the
-skeleton builds from any directory (including a tempdir — see the integration
-test `crates/nmp-cli/tests/init.rs`). Use `--nmp-version` for apps consuming a
-published NMP release; use `--nmp-path` when developing NMP and an app together.
-
-### `nmp gen modules [--manifest nmp.toml] [--out DIR] [--check]`
-
-Invokes the `nmp-codegen` pipeline to emit the per-app FFI crate
-`nmp-app-<name>` (`AppAction` / `AppUpdate` / `ViewSpec` enums, domain and
-capability registrations, the `FfiApp` wrapper). Flags and defaults match
-the legacy `nmp-codegen` binary exactly.
-
-- `--manifest` — manifest path (default `nmp.toml`).
-- `--out` — output directory (default `apps/<name>/nmp-app-<name>`).
-- `--check` — regenerate to a scratch dir and diff; non-zero exit on drift.
-  This is the deterministic-codegen CI gate.
-
-```sh
-nmp gen modules            # emit apps/<name>/nmp-app-<name>
-nmp gen modules --check     # verify it is up to date (deterministic)
-```
-
-The generated `nmp-app-<name>/Cargo.toml` follows `[nmp]` in `nmp.toml`:
-
-- `dependency_mode = "version"` emits versioned dependencies for `nmp-core`,
-  `nmp-ffi`, and any `nmp-*` protocol modules. App-local modules remain path
-  dependencies.
-- `dependency_mode = "path"` emits local path dependencies against the NMP
-  checkout and workspace layout. This is the mode for framework development.
+By default, `nmp init` writes `dependency_mode = "path"` and resolves the NMP
+checkout path to the absolute location of the checkout that ran it, so the shell
+builds from any directory (including a tempdir — see the integration test
+`crates/nmp-cli/tests/init.rs`). Use `--nmp-version X.Y.Z` for apps consuming a
+published NMP release (git-rev pins on `github.com/pablof7z/nostr-multi-platform`
+at tag `vX.Y.Z` — consumers pin NMP by git rev, see
+`docs/architecture/external-consumers.md`); use `--nmp-path` when developing NMP
+and an app together.
 
 ### `nmp upgrade --to VERSION [--manifest nmp.toml]`
 
-Moves an app manifest to a pinned NMP release baseline.
+Moves an app manifest to a pinned NMP release baseline and repoints the app
+crate's `nmp-*` dependencies at the new git tag.
 
 ```sh
-nmp upgrade --to 0.2.0
-nmp gen modules
-nmp gen modules --check
+nmp upgrade --to 0.4.0
 nmp doctor
 ```
 
 The command updates the `[nmp]` section to `dependency_mode = "version"`,
 records the target release, and rewrites direct `nmp-*` dependencies in local
-app-module crates listed under `[modules].app`. Regeneration then rewrites
-generated FFI crate dependencies to the matching `nmp-*` release train.
-Component source updates remain explicit through `nmp update component` so
-local app edits are not silently overwritten.
+app-module crates listed under `[modules].app` to git-rev pins at the new tag
+(the same shape `nmp init --nmp-version` emits). Component source updates remain
+explicit through `nmp update component` so local app edits are not silently
+overwritten.
 
 ### `nmp doctor [--manifest nmp.toml]`
 
@@ -182,17 +168,19 @@ Component contract:
 `crates/nmp-cli/tests/init.rs` is the end-to-end gate:
 
 1. `nmp init` into a fresh tempdir.
-2. `cargo check --all-targets` on the scaffold → green.
-3. `cargo test -p <name>-core` → skeleton tests pass.
-4. `nmp gen modules` → succeeds, emits the FFI crate.
-5. `nmp gen modules --check` → no drift (codegen is deterministic).
+2. Assert the scaffold is a composition shell: `register` calls
+   `nmp_defaults::register_defaults`, the example drives `NmpAppBuilder`, and
+   there is no generated `apps/` FFI tree.
+3. `cargo check --all-targets` on the scaffold → green (links the live
+   `nmp-defaults` / `nmp-ffi` / `nmp-core` crates).
+4. `cargo test -p <name>-core` → skeleton tests pass.
 
 A second test asserts invalid app names are rejected.
 
 `crates/nmp-cli/tests/upgrade.rs` covers the release-consumer path:
 
 1. `nmp upgrade --to <version>` rewrites `[nmp]`.
-2. `nmp gen modules` emits versioned `nmp-core` / `nmp-ffi` dependencies.
+2. The app crate's `nmp-*` dependencies become git-rev pins at the new tag.
 3. `nmp doctor` reports the pinned baseline.
 
 `crates/nmp-cli/tests/component.rs` covers component installation:

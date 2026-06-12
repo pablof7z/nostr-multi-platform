@@ -48,6 +48,30 @@ rebuild from Tier-3 typed fields + sidecars (#1092).
   The `claimed_profiles` decode cluster is promoted to the public typed
   surface as part of this migration (#1100 fix round).
 
+- **`nmp gen modules` scaffolder + `apps/fixture` deleted** (ADR-0046 —
+  "composition is a library, not a generator"). The Rust-shell FFI-crate
+  generator (`nmp-codegen`'s `generate` / `ffi_gen` / `workspace` modules, the
+  `gen modules` subcommand, the `gen-modules` justfile targets) and its sole
+  consumer `apps/fixture` (`nmp-app-fixture` + `fixture-todo-core`) are removed.
+  A generated `FfiApp` never called `register_defaults` and was a
+  non-functional Nostr app; the fixture existed only to give the orphan
+  generator a test target (Opus review #49). The `nmp.toml` manifest parser and
+  the Swift `gen swift` / `gen typed-decoders` emitters (live CI gates) are
+  unaffected. `nmp init` now scaffolds a thin composition shell that calls
+  `nmp_defaults::register_defaults`.
+
+### Changed (BREAKING)
+
+- **`nmp-app-template` renamed to `nmp-defaults`** (ADR-0046). The public API
+  (`register_defaults`, `NmpAppBuilder`, all symbols) is unchanged; only the
+  crate name changed, to stop the "template" name lying — it is a runtime
+  composition-root library you depend on and call (the Bevy-`DefaultPlugins` /
+  Spring-Boot-starter pattern), not a template you fork. **Rev-pinned external
+  consumers must rename the dependency** when they bump their pin across this
+  change: `nmp-app-template = { git = … }` → `nmp-defaults = { git = …, package
+  = "nmp-defaults" }`, and `use nmp_app_template::…` → `use nmp_defaults::…`.
+  See `docs/architecture/external-consumers.md`.
+
 ### Fixed
 
 - **Android completely dark at v0.3.0 — rebuilt frame decoder from typed

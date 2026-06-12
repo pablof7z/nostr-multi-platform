@@ -49,8 +49,8 @@ name = "nmp-wasm"
 path = "crates/nmp-wasm"
 
 [[public_crates]]
-name = "nmp-app-template"
-path = "crates/nmp-app-template"
+name = "nmp-defaults"
+path = "crates/nmp-defaults"
 
 [[public_crates]]
 name = "nmp-cli"
@@ -195,16 +195,6 @@ reason = "Chirp-specific configuration crate"
 name = "chirp-tui"
 path = "apps/chirp/chirp-tui"
 reason = "Chirp reference TUI application"
-
-[[private_packages]]
-name = "nmp-app-fixture"
-path = "apps/fixture/nmp-app-fixture"
-reason = "fixture app composition crate"
-
-[[private_packages]]
-name = "fixture-todo-core"
-path = "apps/fixture/fixture-todo-core"
-reason = "fixture app domain crate"
 
 [[private_packages]]
 name = "nmp-app-gallery"

@@ -12,7 +12,7 @@ for independent, non-social applications.
 
 | App | Description | Evidence |
 |-----|-------------|----------|
-| **podcast-player** | Podcast client | `~/Work/podcast-player` (external workspace); pins `nmp-app-template`, `nmp-core`, `nmp-ffi`, `nmp-signer-broker` at git rev `104c3f76` from `github.com/pablof7z/nostr-multi-platform`. Contains `apps/nmp-app-podcast` (~56k LOC Rust composing `ffi/register.rs`, `nmp_dispatch.rs`, `android.rs`) and a ~100k-LOC Swift iOS app. |
+| **podcast-player** | Podcast client | `~/Work/podcast-player` (external workspace); pins the composition-root library plus `nmp-core`, `nmp-ffi`, `nmp-signer-broker` at git rev `104c3f76` from `github.com/pablof7z/nostr-multi-platform` (at that rev the composition-root crate was still named `nmp-app-template`; it is `nmp-defaults` from ADR-0046 onward — see the rename note below). Contains `apps/nmp-app-podcast` (~56k LOC Rust composing `ffi/register.rs`, `nmp_dispatch.rs`, `android.rs`) and a ~100k-LOC Swift iOS app. |
 | **win-the-day** | Goal/habit tracker | Owner-operated NMP app. |
 | **hl** | Highlighter app | Owner-operated NMP app. |
 
@@ -25,6 +25,17 @@ process (cutting a tag, bumping `Cargo.toml` workspace version, updating
 `CHANGELOG.md`) is documented in the `nmp-release-and-consumption` memory note
 and the release scripts under `release/`. Consumers update their pin to a new
 rev when they want to pick up framework changes.
+
+### BREAKING rename — `nmp-app-template` → `nmp-defaults` (ADR-0046, 2026-06-12)
+
+ADR-0046 ("composition is a library, not a generator") renamed the
+composition-root crate `nmp-app-template` → `nmp-defaults` (the public API —
+`register_defaults`, `NmpAppBuilder`, every symbol — is unchanged). When a
+consumer bumps its git rev across this change it must **rename the dependency**:
+`nmp-app-template = { git = … }` → `nmp-defaults = { git = …, package =
+"nmp-defaults" }`, and `use nmp_app_template::…` → `use nmp_defaults::…`. The
+same ADR deleted the unused `nmp gen modules` scaffolder and the `apps/fixture`
+crate; no consumer depended on either.
 
 ---
 
