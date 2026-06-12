@@ -1,44 +1,41 @@
 //! ADR-0045 E1 — store-cache serve acceptance tests.
 //!
-//! These tests verify the four ADR-0045 E1 invariants:
+//! These tests verify the ADR-0045 E1 invariants:
 //!
 //! 1. **Universal acceptance** — on second launch (in-memory caches cleared,
 //!    store warm), `sync_follow_feed_interests` drives cache-serve and
 //!    re-populates `events` and `timeline` from the store without any relay
 //!    connectivity.
 //!
-//! 2. **Budget-bounded serve** — a store with `CACHE_SERVE_BUDGET_EVENTS + 1`
-//!    events does not stall the actor; at most `CACHE_SERVE_BUDGET_EVENTS` are
-//!    served in one call (budget cap).
+//! 2. **Serve depth = 1× visible window** — a store holding more events than
+//!    the consumer's visible window serves at most `visible_limit` events for
+//!    one interest (owner decision 2026-06-12; `shape.limit` is the wire cap,
+//!    not the render window).
 //!
-//! 3. **Dedup-on-redelivery** — events already in the `events` cache (from a
+//! 3. **Aggregate per-tick budget + chunked continuation** (ADR §5) and the
+//!    **watermark ⇄ serve invariant** (§6) live in
+//!    `cache_serve_budget_tests.rs` (500-LOC file ceiling); the shared
+//!    fixtures below are `pub(super)` for that sibling.
+//!
+//! 4. **Dedup-on-redelivery** — events already in the `events` cache (from a
 //!    prior relay deliver) are skipped on cache-serve; the cache is not
 //!    double-populated.
 //!
-//! 4. **Watermark ⇄ serve invariant** — the `StoreQuery` variants produced by
-//!    `shape_to_store_queries` for E1 shapes are exactly the shapes the
-//!    watermark rewrite covers (structural identity, not a runtime assertion).
+//! 6. **Completion-key one-shot** — re-syncing the same follow set does not
+//!    re-serve (the completion key gates it).
 //!
-//! 5. **Completion-key one-shot** — calling `sync_follow_feed_interests` a
-//!    second time for the same follow set is a no-op (the completion key is
-//!    already in `served_interest_shapes`).
-//!
-//! 6. **Account-switch clears completion set** — after
-//!    `reconcile_follow_feed_after_identity_change`, the completion set is
-//!    empty and a fresh serve runs for the new account's interests.
+//! 7. **Account-switch clears completion set + queue** — after
+//!    `reconcile_follow_feed_after_identity_change`, the new account's
+//!    interests get a fresh serve.
 
 use super::*;
-use crate::kernel::cache_serve::{
-    shape_to_store_queries, CACHE_SERVE_BUDGET_EVENTS,
-};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::store::StoreQuery;
 use std::collections::BTreeSet;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 /// Build a 64-char lowercase hex string by repeating `prefix` until 64 chars.
-fn hex_pk(prefix: &str) -> String {
+pub(super) fn hex_pk(prefix: &str) -> String {
     let padded: String = prefix
         .chars()
         .chain(std::iter::repeat('0'))
@@ -48,7 +45,7 @@ fn hex_pk(prefix: &str) -> String {
 }
 
 /// Signed kind:1 event helper — mirrors `ingest_tests::signed_note`.
-fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
+pub(super) fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
     use ::nostr::{EventBuilder, Timestamp};
     let ev = EventBuilder::text_note(content)
         .custom_created_at(Timestamp::from(ts))
@@ -68,7 +65,7 @@ fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
 /// Seed `n` signed kind:1 events from `keys` into `kernel` by calling
 /// `ingest_timeline_event` (uses the real store insert path). The author must
 /// already be in `kernel.timeline_authors`. Returns the ids in order.
-fn seed_events(
+pub(super) fn seed_events(
     kernel: &mut Kernel,
     keys: &::nostr::Keys,
     n: usize,
@@ -90,14 +87,37 @@ fn seed_events(
 
 /// Clear `kernel.events` and `kernel.timeline` to simulate a cold second
 /// launch (store persisted, in-memory caches empty).
-fn simulate_cold_restart(kernel: &mut Kernel) {
+pub(super) fn simulate_cold_restart(kernel: &mut Kernel) {
     kernel.events.clear();
     kernel.timeline.clear();
     kernel.metric_stored_events = 0;
     kernel.metric_note_events = 0;
-    // Clear the served-interest completion set so the next
+    // Clear the served-interest completion set + pending queue so the next
     // `sync_follow_feed_interests` triggers a fresh cache-serve.
-    kernel.served_interest_shapes.clear();
+    kernel.clear_served_interest_shapes();
+}
+
+/// Drain the cache-serve continuation queue, asserting each step respects the
+/// aggregate tick budget (served-per-step can never exceed visits-per-step,
+/// which is capped at the budget). Returns the number of steps taken.
+pub(super) fn drain_cache_serves(kernel: &mut Kernel, max_steps: usize) -> usize {
+    let tick_budget = kernel.visible_limit * 2;
+    let mut steps = 0usize;
+    while kernel.has_pending_cache_serves() {
+        let before = kernel.events.len();
+        kernel.run_cache_serve_step();
+        let served = kernel.events.len() - before;
+        assert!(
+            served <= tick_budget,
+            "aggregate budget: one step served {served} events, budget is {tick_budget}"
+        );
+        steps += 1;
+        assert!(
+            steps <= max_steps,
+            "cache-serve continuation did not finish within {max_steps} steps"
+        );
+    }
+    steps
 }
 
 // ─── 1. Universal acceptance ─────────────────────────────────────────────────
@@ -110,8 +130,8 @@ fn simulate_cold_restart(kernel: &mut Kernel) {
 /// 4. Assert events reappear in `kernel.events` and `kernel.timeline` without
 ///    any relay connectivity.
 ///
-/// This is the central falsifiability probe: if `cache_serve_for_interest` is
-/// broken or not called, `kernel.events` will be empty and the test fails.
+/// This is the central falsifiability probe: if the serve seam is broken or
+/// not enqueued, `kernel.events` stays empty and the test fails.
 #[test]
 fn e1_stored_events_reappear_after_cold_restart_without_relay() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -134,8 +154,10 @@ fn e1_stored_events_reappear_after_cold_restart_without_relay() {
     assert!(kernel.events.is_empty(), "events cache must be empty after restart");
     assert!(kernel.timeline.is_empty(), "timeline must be empty after restart");
 
-    // Phase 3: re-open the follow-feed interest (triggers cache-serve).
+    // Phase 3: re-open the follow-feed interest (enqueues serves + drains one
+    // aggregate-budget chunk; 3 events fit in one chunk).
     kernel.sync_follow_feed_interests(&[author.clone()]);
+    drain_cache_serves(&mut kernel, 4);
 
     // Phase 4: verify all seeded events are back.
     for id in &ids {
@@ -150,18 +172,17 @@ fn e1_stored_events_reappear_after_cold_restart_without_relay() {
     );
 }
 
-// ─── 2. Budget-bounded serve ─────────────────────────────────────────────────
+// ─── 2. Serve depth = 1× visible window ─────────────────────────────────────
 
-/// ADR-0045 budget discipline: no actor stall on a large store.
+/// ADR §4 (owner decision 2026-06-12): the serve depth for one interest is 1×
+/// the consumer's visible window — NOT `shape.limit` (the follow feed's wire
+/// cap is `Some(1000)`) and NOT a fixed constant.
 ///
-/// Seeds `CACHE_SERVE_BUDGET_EVENTS + 5` events from one author, then
-/// triggers cache-serve and asserts the served count is at most the budget.
-///
-/// This does NOT assert a minimum — if the store returns fewer than the budget
-/// that is fine. The assertion is the upper bound: the actor is never asked to
-/// process more than `CACHE_SERVE_BUDGET_EVENTS` events per interest.
+/// Seeds `visible_limit + 5` events from one author, cold-restarts, serves,
+/// drains, and asserts exactly `visible_limit` events were served — the
+/// 5 events past the window stay on disk (the snapshot cannot show them).
 #[test]
-fn e1_serve_is_bounded_by_budget() {
+fn e1_serve_depth_is_the_consumers_visible_window() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     let keys = ::nostr::Keys::generate();
@@ -172,38 +193,41 @@ fn e1_serve_is_bounded_by_budget() {
     kernel.follow_feed_kinds = BTreeSet::from([1u32]);
     kernel.timeline_authors.insert(author.clone());
 
-    let over_budget = CACHE_SERVE_BUDGET_EVENTS + 5;
-    seed_events(&mut kernel, &keys, over_budget, base_ts);
-    assert_eq!(kernel.events.len(), over_budget, "all seeded events must be in events cache");
+    let over_window = DEFAULT_VISIBLE_LIMIT + 5;
+    seed_events(&mut kernel, &keys, over_window, base_ts);
+    assert_eq!(kernel.events.len(), over_window);
 
     simulate_cold_restart(&mut kernel);
-    assert!(kernel.events.is_empty(), "events cache must be empty after restart");
 
-    // cache-serve fires via sync_follow_feed_interests.
     kernel.sync_follow_feed_interests(&[author.clone()]);
+    drain_cache_serves(&mut kernel, 8);
 
-    let served = kernel.events.len();
-    assert!(
-        served <= CACHE_SERVE_BUDGET_EVENTS,
-        "E1 budget: served {served} events but budget is {CACHE_SERVE_BUDGET_EVENTS}"
+    assert_eq!(
+        kernel.events.len(),
+        DEFAULT_VISIBLE_LIMIT,
+        "serve depth must be exactly the visible window ({DEFAULT_VISIBLE_LIMIT}), \
+         not shape.limit (1000) and not the full store ({over_window})"
     );
-    // Also: the serve did actually serve some events (> 0).
-    assert!(
-        served > 0,
-        "E1 budget: at least one event must be served from a warm store"
+    // And the window must hold the NEWEST events (newest-first index scan):
+    // the oldest 5 seeded events are the ones left on disk.
+    let oldest_served = kernel
+        .events
+        .values()
+        .map(|e| e.created_at)
+        .min()
+        .expect("events non-empty");
+    assert_eq!(
+        oldest_served,
+        base_ts + 5,
+        "the 5 events past the window must be the OLDEST ones (newest-first serve)"
     );
 }
 
-// ─── 3. Dedup-on-redelivery ───────────────────────────────────────────────────
+// ─── 4. Dedup-on-redelivery ───────────────────────────────────────────────────
 
 /// Events already in `kernel.events` (from a live relay deliver that ran
 /// BEFORE the interest was also served from the store) must NOT be
 /// double-inserted.
-///
-/// The test pre-populates `kernel.events` manually to simulate a relay
-/// delivering an event just before the cache-serve fires, then asserts
-/// that `kernel.events.len()` does not grow for events that were already
-/// in the cache.
 #[test]
 fn e1_events_already_in_cache_are_not_double_served() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -231,18 +255,14 @@ fn e1_events_already_in_cache_are_not_double_served() {
         content: "pre-cached from relay".to_string(),
         relay_count: 1,
     };
-    kernel.events.clear();
-    kernel.timeline.clear();
-    kernel.metric_stored_events = 0;
-    kernel.metric_note_events = 0;
-    kernel.served_interest_shapes.clear();
+    simulate_cold_restart(&mut kernel);
     // Re-insert the "relay-delivered" event into the empty cache.
     kernel.events.insert(kept_id.clone(), kept_event);
 
     let cache_size_before = kernel.events.len();
 
-    // cache-serve fires via sync_follow_feed_interests.
     kernel.sync_follow_feed_interests(&[author.clone()]);
+    drain_cache_serves(&mut kernel, 4);
 
     // The already-cached event must NOT cause the cache to grow by more than 1
     // (the second event that was in the store but not in the cache).
@@ -256,80 +276,20 @@ fn e1_events_already_in_cache_are_not_double_served() {
         kernel.events.contains_key(kept_id.as_str()),
         "E1 dedup: the pre-cached relay-delivered event must still be present"
     );
+    // The relay-delivered copy keeps its provenance: relay_count stays 1
+    // (cache-serve never overwrites a live-delivered cache entry; served
+    // entries carry relay_count 0 — the de-facto LocalStore marker).
+    assert_eq!(
+        kernel.events[kept_id.as_str()].relay_count,
+        1,
+        "cache-serve must not clobber the relay-delivered entry's relay_count"
+    );
 }
 
-// ─── 4. Watermark ⇄ serve invariant ─────────────────────────────────────────
-
-/// ADR-0045 §6 structural identity: `shape_to_store_queries` produces
-/// `AuthorKind` for shapes with ≥1 author + ≥1 kind, and `KindTime` for
-/// shapes with 0 authors + ≥1 kind.
-///
-/// This is a compile-time-enforced structural assertion — if `StoreQuery`
-/// variants change, this test fails, forcing a deliberate alignment update.
-#[test]
-fn e1_watermark_serve_invariant_shapes_are_aligned() {
-    use crate::planner::InterestShape;
-
-    // Shape 1: 1 author + 1 kind → AuthorKind
-    let mut shape_author = InterestShape::default();
-    shape_author.authors = BTreeSet::from([hex_pk("ab")]);
-    shape_author.kinds = BTreeSet::from([1u32]);
-    let queries = shape_to_store_queries(&shape_author);
-    assert_eq!(queries.len(), 1, "1 author + 1 kind must produce 1 AuthorKind query");
-    match &queries[0] {
-        StoreQuery::AuthorKind { kinds, .. } => {
-            assert_eq!(kinds, &vec![1u32], "kinds must match");
-        }
-        other => panic!("expected AuthorKind, got {other:?}"),
-    }
-
-    // Shape 2: 2 authors + 1 kind → 2 AuthorKind queries (one per author)
-    let mut shape_two_authors = InterestShape::default();
-    shape_two_authors.authors = BTreeSet::from([hex_pk("aa"), hex_pk("bb")]);
-    shape_two_authors.kinds = BTreeSet::from([1u32]);
-    let queries2 = shape_to_store_queries(&shape_two_authors);
-    assert_eq!(queries2.len(), 2, "2 authors + 1 kind must produce 2 AuthorKind queries");
-    for q in &queries2 {
-        assert!(
-            matches!(q, StoreQuery::AuthorKind { .. }),
-            "each per-author query must be AuthorKind"
-        );
-    }
-
-    // Shape 3: 0 authors + 1 kind → KindTime
-    let mut shape_kindtime = InterestShape::default();
-    shape_kindtime.kinds = BTreeSet::from([30023u32]);
-    let queries3 = shape_to_store_queries(&shape_kindtime);
-    assert_eq!(queries3.len(), 1, "0 authors + 1 kind must produce 1 KindTime query");
-    assert!(
-        matches!(&queries3[0], StoreQuery::KindTime { .. }),
-        "must produce KindTime for 0-author shape"
-    );
-
-    // Shape 4: 0 kinds → empty (wildcard; not covered by E1)
-    let shape_no_kinds = InterestShape::default();
-    let queries4 = shape_to_store_queries(&shape_no_kinds);
-    assert!(queries4.is_empty(), "0 kinds must produce no queries (not covered by E1)");
-
-    // Shape 5: has tags → empty (E2/E3 territory)
-    let mut shape_tagged = InterestShape::default();
-    shape_tagged.kinds = BTreeSet::from([1u32]);
-    // tags: BTreeMap<TagKey, BTreeSet<String>>; insert an `#e` tag filter.
-    shape_tagged.tags.insert(
-        "e".to_string(),
-        BTreeSet::from(["abc".to_string()]),
-    );
-    let queries5 = shape_to_store_queries(&shape_tagged);
-    assert!(queries5.is_empty(), "tagged shapes must produce no queries (E2/E3)");
-}
-
-// ─── 5. Completion-key one-shot ───────────────────────────────────────────────
+// ─── 6. Completion-key one-shot ───────────────────────────────────────────────
 
 /// Once an interest has been served, `sync_follow_feed_interests` for the same
 /// follow set must NOT re-serve the same events (the completion key gates it).
-///
-/// We verify this by checking that `kernel.events.len()` does not grow on a
-/// second `sync_follow_feed_interests` call.
 #[test]
 fn e1_completion_key_prevents_re_serve() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -347,33 +307,32 @@ fn e1_completion_key_prevents_re_serve() {
 
     // First serve.
     kernel.sync_follow_feed_interests(&[author.clone()]);
+    drain_cache_serves(&mut kernel, 4);
     let after_first = kernel.events.len();
     assert!(after_first > 0, "first sync must serve events");
 
-    // Second sync — same follow set; completion key is already recorded.
+    // Second sync — same follow set; completion keys already recorded, so
+    // nothing is enqueued and nothing is served.
     kernel.sync_follow_feed_interests(&[author.clone()]);
-    let after_second = kernel.events.len();
+    drain_cache_serves(&mut kernel, 4);
     assert_eq!(
-        after_second, after_first,
+        kernel.events.len(),
+        after_first,
         "E1 one-shot: a second sync for the same follow set must not re-serve events"
     );
 }
 
-// ─── 6. Account-switch clears completion set ─────────────────────────────────
+// ─── 7. Account-switch clears completion set + queue ─────────────────────────
 
-/// After `reconcile_follow_feed_after_identity_change`, the completion set is
-/// cleared so the new account's interests get a fresh serve.
+/// After `reconcile_follow_feed_after_identity_change`, the completion set
+/// (and pending queue) is cleared so the new account's interests get a fresh
+/// serve.
 ///
-/// Strategy: run cache-serve for account A (populates completion set), record
-/// the set is non-empty, then switch to account B. After the switch the
-/// completion set must either be empty (cleared with no new serves) or contain
-/// ONLY keys for B's interests (cleared + re-served for B). Either way, A's
-/// old keys must NOT be present — verified by confirming the set was cleared at
-/// least once before B's interests were registered.
-///
-/// We verify this indirectly: after the account switch, re-run
-/// `sync_follow_feed_interests` for B's author and assert the served count
-/// grows (it would be 0 if the completion key from A's serve was blocking).
+/// Evidence: after the switch, events for author_a (whom B follows) appear in
+/// the `events` cache — served from the store for B's interests. If
+/// `clear_served_interest_shapes` were not called, the completion key from
+/// A's serve (same shape: author_a + kinds) would gate the re-serve and the
+/// cache would stay empty.
 #[test]
 fn e1_account_switch_triggers_fresh_serve() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -391,6 +350,7 @@ fn e1_account_switch_triggers_fresh_serve() {
     seed_events(&mut kernel, &keys_a, 2, base_ts);
     simulate_cold_restart(&mut kernel);
     kernel.sync_follow_feed_interests(&[author_a.clone()]);
+    drain_cache_serves(&mut kernel, 4);
 
     // The completion set must be non-empty after serving A's interests.
     assert!(
@@ -398,53 +358,28 @@ fn e1_account_switch_triggers_fresh_serve() {
         "completion set must be non-empty after first serve (pre-condition)"
     );
 
-    // Seed events for author B into the store (we add B to timeline_authors
-    // temporarily so ingest_timeline_event will store them).
-    kernel.timeline_authors.insert(author_b.clone());
-    seed_events(&mut kernel, &keys_b, 2, base_ts + 100_000);
-    // Remove B from timeline_authors again; B is not yet followed by A.
-    kernel.timeline_authors.remove(&author_b);
-
-    // Snapshot the completion set size before the switch.
-    let keys_before_switch = kernel.served_interest_shapes.clone();
-
-    // Switch to account B (sets active_account, registers B's follow-feed
-    // interests, and calls clear_served_interest_shapes).
+    // Switch to account B (B follows author_a).
     kernel.events.clear();
     kernel.timeline.clear();
     kernel.metric_stored_events = 0;
     kernel.metric_note_events = 0;
     kernel.active_account = Some(author_b.clone());
-    // Manually register B's follows in seed_contacts so reconcile has something
-    // to work with. B follows author_a.
     kernel.seed_contacts.insert(author_b.clone(), vec![author_a.clone()]);
     kernel.reconcile_follow_feed_after_identity_change();
+    drain_cache_serves(&mut kernel, 4);
 
-    // Verify that the clear + fresh serve actually ran. The evidence:
-    //
-    // 1. After the switch, events for author_a (B follows A) must appear in
-    //    the `events` cache — they were served from the store for B's interests.
-    //    If `clear_served_interest_shapes` was NOT called, the completion key
-    //    would still be set from A's serve and the re-serve would be skipped,
-    //    leaving `kernel.events` empty.
-    //
-    // 2. Since A's interests and B's interests (B follows A) share the same
-    //    shape (author_a + kinds), the completion key happens to be the same.
-    //    We can't assert the key is absent (B re-added it). We CAN assert that
-    //    the serve DID fire by checking `kernel.events` is non-empty.
-    assert!(
-        !kernel.events.is_empty(),
-        "E1 account-switch: events cache must be non-empty after switch — \
-         cache-serve must have fired for B's interests (B follows A, A has stored events)"
-    );
-    let author_a_events: Vec<_> = kernel
+    // The fresh serve must have fired for B's interests: author_a's stored
+    // events reappear. (A's serve used the SAME shape/completion key, so this
+    // can only pass if the switch cleared the completion set.)
+    let author_a_events = kernel
         .events
         .values()
         .filter(|e| e.author == author_a)
-        .collect();
+        .count();
     assert!(
-        !author_a_events.is_empty(),
-        "E1 account-switch: author_a's events must be served for account B (B follows A); \
+        author_a_events > 0,
+        "E1 account-switch: author_a's events must be re-served for account B \
+         (B follows A); an uncleared completion set would gate the serve. \
          events in cache: {:?}",
         kernel.events.keys().collect::<Vec<_>>()
     );

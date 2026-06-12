@@ -19,7 +19,7 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-12 — **ADR-0045 E1: store-cache serve seam** (closes #1086). Branch: `feat/adr-0045-e1-cache-serve`. Worktree: agent-a204deb3329f4b504. New `kernel/cache_serve.rs` + `cache_serve_tests.rs` (6 tests); hooks into `open_interest_sub` + `sync_follow_feed_interests`; `clear_served_interest_shapes` on account-switch. Stage E1 covers `AuthorKind` + `KindTime` shapes. Doctrine lint + workspace build clean.
+- 2026-06-12 — **ADR-0045 E1: store-cache serve seam** (advances #1086 — E1 only; the issue stays open until E2 DM/`Ptag` + E3 threads/long-form land and the universal §11 acceptance test passes). Branch: `feat/adr-0045-e1-cache-serve-clean` (PR #1107, fix round after Opus review). New `kernel/cache_serve.rs` (chunked-continuation queue, aggregate per-tick budget, depth = 1× visible window) + 7 tests across `cache_serve_tests.rs`/`cache_serve_budget_tests.rs`; hooks: `open_interest_sub`, `sync_follow_feed_interests`, actor-tick piggyback drain; watermark refuses tagged/address/event-id floors (§6). Doctrine lint + workspace build clean.
 
 - 2026-06-12 — **ADR-0045 Rev 2: single-mechanism cache-serve (owner correction)**. Branch: `adr-0045-rev2-single-mechanism-cache-serve`. Worktree: agent-a229248b7c12f575c. Supersedes §9 staged-by-domain rollout; amends decision to ONE always-on store-serve seam (cold/warm/offline/online, every LogicalInterest); preserves Rev 1 technical findings; updates issue #1086; restates v1 recommendation as "does universal cache-serve gate v1?".
 

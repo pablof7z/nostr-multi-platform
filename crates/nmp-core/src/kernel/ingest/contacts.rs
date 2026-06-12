@@ -174,16 +174,22 @@ impl Kernel {
         //
         // `sync_follow_feed_interests` uses the legacy `push` path (not
         // `open_interest_sub`) so the cache-serve hook in `open_interest_sub`
-        // does not fire here. Trigger cache-serve explicitly for every
-        // newly-registered follow-feed interest.
+        // does not fire here. Enqueue a serve for every newly-registered
+        // follow-feed interest, then drain ONE aggregate-budget chunk
+        // synchronously so the next snapshot carries store data (D1). The
+        // remainder continues on the actor tick (§5 chunked continuation) —
+        // a 300–500-follow cold start never bursts unbounded synchronous
+        // work on the actor thread.
         //
         // We reconstruct each interest's shape directly from `(pubkey, kinds)`
         // rather than looking it up via the registry to keep this O(n) instead
-        // of O(n²). The `follow_feed_interest` constructor is deterministic so
-        // the derived completion key matches the one the registry would produce.
+        // of O(n²). The `follow_feed_interest` constructor is deterministic and
+        // the completion key uses `InterestRegistry::legacy_key` — the SAME
+        // derivation the registry mints for `push`-registered interests
+        // (single source of truth; no hand-copied key recipe).
         {
             use crate::kernel::cache_serve::completion_key_for_interest;
-            use crate::subs::SubKey;
+            use crate::subs::InterestRegistry;
             // Collect the pubkey list: follows + active user.
             let mut cache_serve_authors: Vec<String> = follows.to_vec();
             if let Some(ref me) = self.active_account {
@@ -191,14 +197,11 @@ impl Kernel {
             }
             for pubkey in cache_serve_authors {
                 let interest = follow_feed_interest(&pubkey, &kinds);
-                // Build the legacy SubKey that the registry uses for `push`-ed
-                // interests — same derivation as `InterestRegistry::legacy_key`.
-                let sub_key = SubKey::builder("legacy-interest-id")
-                    .with(interest.id.0)
-                    .finish();
+                let sub_key = InterestRegistry::legacy_key(&interest.id);
                 let completion_key = completion_key_for_interest(&sub_key, &interest.shape);
-                self.cache_serve_for_interest(&interest.shape, completion_key);
+                self.enqueue_cache_serve(&interest.shape, completion_key);
             }
+            self.run_cache_serve_step();
         }
     }
 
@@ -373,10 +376,11 @@ impl Kernel {
         // `sync_follow_feed_interests` (which flushes the buffer), guarantees
         // the flush sees an empty buffer on the switch.
         self.pre_kind3_buffer = BoundedMessageMap::new(MAX_PROJECTION_MESSAGES);
-        // ADR-0045 E1 — clear the served-interest completion set so the new
-        // identity's interests get a fresh store-cache serve. Must precede
-        // `sync_follow_feed_interests` so that the serve that runs there starts
-        // from a clean slate.
+        // ADR-0045 E1 — clear the served-interest completion set AND the
+        // pending serve queue so the new identity's interests get a fresh
+        // store-cache serve and the prior identity's queued serves stop.
+        // Must precede `sync_follow_feed_interests` so that the serve that
+        // runs there starts from a clean slate.
         self.clear_served_interest_shapes();
         if self.active_account.clone().is_some() {
             self.register_follow_feed_for_active_account()
