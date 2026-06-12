@@ -25,7 +25,7 @@ use nmp_app_chirp::{
     nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
     nmp_app_chirp_open_thread_feed, nmp_app_chirp_register, nmp_app_chirp_unregister,
     nmp_app_nostrconnect_uri, nmp_broker_free_string, nmp_marmot_unregister,
-    nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle,
+    nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle, NmpRegisterStatus,
 };
 use nmp_nip01::NoteRecord;
 use nmp_ffi::{
@@ -123,8 +123,12 @@ impl AppRuntime {
             );
         }
 
-        let chirp = unsafe { nmp_app_chirp_register(app, ptr::null()) };
-        if chirp.is_null() {
+        // V-73: nmp_app_chirp_register now returns a status code; the handle
+        // is written through the out-parameter.  Null viewer_pubkey (no viewer
+        // at startup) always succeeds.
+        let mut chirp: *mut ChirpHandle = ptr::null_mut();
+        let register_status = unsafe { nmp_app_chirp_register(app, ptr::null(), &mut chirp) };
+        if register_status != NmpRegisterStatus::Ok as u32 || chirp.is_null() {
             unsafe { nmp_app_free(app) };
             return None;
         }

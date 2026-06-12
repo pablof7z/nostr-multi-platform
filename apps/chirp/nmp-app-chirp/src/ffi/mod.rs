@@ -69,7 +69,7 @@ pub use interest_feed::{
 };
 pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
-    nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
+    nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery, NmpRegisterStatus,
 };
 pub use snapshot::nmp_app_chirp_unregister;
 pub use typed_actions::nmp_app_chirp_action_spec;

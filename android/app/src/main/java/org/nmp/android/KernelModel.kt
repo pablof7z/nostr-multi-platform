@@ -37,11 +37,13 @@ private const val HOME_FEED_KEY = "nmp.feed.home"
  * `guard update.rev > rev` in `apply`). No Kotlin-side business logic or
  * derived state (D5/D8); decode fails closed (D1).
  *
- * Each [ByteArray] from `nextUpdate()` carries both the generic [KernelUpdate]
- * (decoded from the `SnapshotFrame.payload` `Value` tree) AND the typed
- * `nmp.feed.home` FlatBuffers projection (file_identifier "NFTS") embedded in
- * `SnapshotFrame.typed_projections`. Both are extracted in a single pass
- * through [KernelUpdateFrameDecoder.decode] — no second FFI call needed.
+ * Each [ByteArray] from `nextUpdate()` carries a [SnapshotEnvelope] (the
+ * ADR-0044 Tier-3 typed envelope decoded directly from `SnapshotFrame` fields)
+ * AND typed sidecars in `SnapshotFrame.typed_projections`, including the
+ * `nmp.feed.home` FlatBuffers projection (file_identifier "NFTS"). Both are
+ * extracted in a single pass through [KernelUpdateFrameDecoder.decode] — no
+ * second FFI call needed. `payload:Value` was removed from the wire in PR #1082
+ * (PR-B); the typed-sidecar path is now authoritative on all platforms.
  */
 class KernelModel : ViewModel() {
 
@@ -438,12 +440,13 @@ class KernelModel : ViewModel() {
     /**
      * Decode one FlatBuffers update frame.
      *
-     * Extracts both the generic [KernelUpdate] (from `SnapshotFrame.payload`)
-     * and the typed `nmp.feed.home` timeline projection (from
-     * `SnapshotFrame.typed_projections`) in a single pass.  Returns `null`
-     * (drop the frame) on any parse error; logs enough context to diagnose
-     * the failure without flooding logcat (PD-025 finding 4 — no silent
-     * swallow).
+     * Decodes the [SnapshotEnvelope] (ADR-0044 Tier-3 fields directly on
+     * `SnapshotFrame`) and the typed `nmp.feed.home` timeline projection
+     * (from `SnapshotFrame.typed_projections`, file_identifier "NFTS") in a
+     * single pass.  `payload:Value` is no longer emitted (PR #1082 — PR-B);
+     * the typed-sidecar path is authoritative.  Returns `null` (drop the
+     * frame) on any parse error; logs enough context to diagnose the failure
+     * without flooding logcat (PD-025 finding 4 — no silent swallow).
      *
      * Panic frames are logged at ASSERT level — they indicate actor death (D7)
      * and also latch [kernelIsDead], matching the iOS fatal-kernel state.

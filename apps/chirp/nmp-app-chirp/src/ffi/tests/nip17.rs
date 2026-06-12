@@ -2,10 +2,8 @@
 
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 
-use super::super::{
-    nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_unregister,
-};
-use super::helpers::dispatch;
+use super::super::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_unregister};
+use super::helpers::{dispatch, register_app};
 
 /// THE NIP-17 SEND-VERB PROOF: after `nmp_app_chirp_register`, the
 /// `nmp.nip17.send` action — `SendDmAction`, an `ActionModule` living in the
@@ -16,8 +14,7 @@ use super::helpers::dispatch;
 #[test]
 fn nip17_dm_send_dispatches_through_action_registry() {
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
-    assert!(!handle.is_null());
+    let handle = register_app(app);
 
     let recipient = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
     let body = format!(r#"{{"recipient_pubkey":"{recipient}","content":"hello over NIP-17"}}"#);

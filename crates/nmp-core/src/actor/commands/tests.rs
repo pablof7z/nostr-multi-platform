@@ -576,9 +576,10 @@ fn publish_unsigned_event_valid_tags_pass_through() {
 // ── publish_signed_event — already-signed verbatim relay-publish path ───────
 //
 // Sibling to the unsigned tests above. The decisive difference: the signer is
-// NEVER consulted. We produce a genuine signed event via `sign_active` (real
-// Schnorr sig over TEST_NSEC's keys), serialize it to flat NIP-01 JSON, and
-// feed it through the signed path. Assertions mirror the unsigned sibling.
+// NEVER consulted. We produce a genuine signed event via
+// `sign_active_nonblocking` (real Schnorr sig over TEST_NSEC's keys), serialize
+// it to flat NIP-01 JSON, and feed it through the signed path. Assertions
+// mirror the unsigned sibling.
 
 /// Produce a genuine flat NIP-01 JSON for a real signed event over `id`'s
 /// active keys (kind:30023 article — generic, kind-agnostic).
@@ -593,8 +594,11 @@ fn signed_nip01_json(id: &IdentityRuntime, content: &str) -> (String, String, St
         content: content.into(),
         created_at: 1_700_000_000,
     };
-    let signed = crate::actor::commands::identity::sign_active(id, &unsigned)
-        .expect("sign_active produces a real signed event");
+    let signed = crate::actor::commands::identity::sign_active_nonblocking(id, &unsigned)
+        .expect("sign_active_nonblocking ok")
+        .poll()
+        .expect("local sign resolves Ready immediately")
+        .expect("sign produces a real signed event");
     let raw = crate::store::RawEvent {
         id: signed.id.clone(),
         pubkey: signed.unsigned.pubkey.clone(),
@@ -874,10 +878,11 @@ fn publish_signed_event_to_explicit_relays_works_with_no_active_account() {
 /// Produce a genuine signed kind:1059 (NIP-59 gift-wrap shape) RawEvent.
 ///
 /// The body is a placeholder ciphertext — the gift-wrap construction's
-/// authenticity gate is the outer Schnorr signature, and `sign_active` mints
-/// a real Schnorr over the active keys. `VerifiedEvent::try_from_raw` (the
-/// gate that runs first inside `publish_signed_event`) accepts this as a
-/// well-formed signed event; only the kernel-level D10 guard rejects it.
+/// authenticity gate is the outer Schnorr signature, and
+/// `sign_active_nonblocking` mints a real Schnorr over the active keys.
+/// `VerifiedEvent::try_from_raw` (the gate that runs first inside
+/// `publish_signed_event`) accepts this as a well-formed signed event; only
+/// the kernel-level D10 guard rejects it.
 fn signed_kind_1059_raw(id: &IdentityRuntime) -> crate::store::RawEvent {
     let unsigned = crate::substrate::UnsignedEvent {
         pubkey: String::new(), // ignored by signer
@@ -889,8 +894,11 @@ fn signed_kind_1059_raw(id: &IdentityRuntime) -> crate::store::RawEvent {
         content: "AAAA-placeholder-ciphertext".into(),
         created_at: 1_700_000_000,
     };
-    let signed = crate::actor::commands::identity::sign_active(id, &unsigned)
-        .expect("sign_active produces a real signed kind:1059 envelope");
+    let signed = crate::actor::commands::identity::sign_active_nonblocking(id, &unsigned)
+        .expect("sign_active_nonblocking ok")
+        .poll()
+        .expect("local sign resolves Ready immediately")
+        .expect("sign produces a real signed kind:1059 envelope");
     crate::store::RawEvent {
         id: signed.id.clone(),
         pubkey: signed.unsigned.pubkey.clone(),

@@ -6,8 +6,8 @@
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 
 use super::super::register::zaps_typed_projection;
-use super::super::{nmp_app_chirp_register, nmp_app_chirp_unregister};
-use super::helpers::dispatch;
+use super::super::nmp_app_chirp_unregister;
+use super::helpers::{dispatch, register_app};
 
 /// `nmp.nip57.zap` action — `ZapAction`, an `ActionModule` living in the
 /// `nmp-nip57` protocol crate — is reachable through the generic
@@ -27,8 +27,7 @@ use super::helpers::dispatch;
 #[test]
 fn nip57_zap_dispatches_through_action_registry() {
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
-    assert!(!handle.is_null());
+    let handle = register_app(app);
 
     let recipient = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
     let body = format!(

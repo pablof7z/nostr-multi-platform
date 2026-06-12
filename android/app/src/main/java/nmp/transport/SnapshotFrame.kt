@@ -70,8 +70,8 @@ class SnapshotFrame : Table() {
                 null
             }
         }
-    val updateKindAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(16, 1)
-    fun updateKindInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 16, 1)
+    val updateKindAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
+    fun updateKindInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     val running : Boolean
         get() {
             val o = __offset(18)
@@ -155,8 +155,8 @@ class SnapshotFrame : Table() {
                 null
             }
         }
-    val lastErrorToastAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(32, 1)
-    fun lastErrorToastInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 32, 1)
+    val lastErrorToastAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(32, 1)
+    fun lastErrorToastInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 32, 1)
     val lastErrorCategory : String?
         get() {
             val o = __offset(34)
@@ -166,8 +166,8 @@ class SnapshotFrame : Table() {
                 null
             }
         }
-    val lastErrorCategoryAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(34, 1)
-    fun lastErrorCategoryInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 34, 1)
+    val lastErrorCategoryAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(34, 1)
+    fun lastErrorCategoryInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 34, 1)
     val lastPlannerError : String?
         get() {
             val o = __offset(36)
@@ -177,8 +177,8 @@ class SnapshotFrame : Table() {
                 null
             }
         }
-    val lastPlannerErrorAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(36, 1)
-    fun lastPlannerErrorInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 36, 1)
+    val lastPlannerErrorAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(36, 1)
+    fun lastPlannerErrorInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 36, 1)
     val storeOpenFailure : String?
         get() {
             val o = __offset(38)
@@ -188,8 +188,8 @@ class SnapshotFrame : Table() {
                 null
             }
         }
-    val storeOpenFailureAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(38, 1)
-    fun storeOpenFailureInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 38, 1)
+    val storeOpenFailureAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(38, 1)
+    fun storeOpenFailureInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 38, 1)
     val noConfiguredRelays : Boolean?
         get() {
             val o = __offset(40)

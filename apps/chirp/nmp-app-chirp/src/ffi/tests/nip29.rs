@@ -15,10 +15,10 @@ use nmp_nip29::group_id::GroupId;
 use nmp_nip29::kinds::KIND_CHAT_MESSAGE;
 
 use super::super::{
-    nmp_app_chirp_register, nmp_app_chirp_register_group_chat,
-    nmp_app_chirp_register_group_discovery, nmp_app_chirp_unregister,
+    nmp_app_chirp_register_group_chat, nmp_app_chirp_register_group_discovery,
+    nmp_app_chirp_unregister,
 };
-use super::helpers::{dispatch, run_module_execute};
+use super::helpers::{dispatch, register_app, run_module_execute};
 
 /// THE NIP-CRATE SEAM PROOF: after `nmp_app_chirp_register`, the NIP-29
 /// `PostChatMessageAction` — an `ActionModule` impl living in the
@@ -33,8 +33,7 @@ use super::helpers::{dispatch, run_module_execute};
 #[test]
 fn nip29_post_chat_message_dispatches_through_action_registry() {
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
-    assert!(!handle.is_null());
+    let handle = register_app(app);
 
     // Well-formed chat message: a host-pinned group + non-empty content.
     // The typed `PostChatMessageAction::start` builds the `["h", local_id]`
@@ -128,8 +127,7 @@ fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
 #[test]
 fn nip29_all_namespaces_dispatch_through_action_registry() {
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
-    assert!(!handle.is_null());
+    let handle = register_app(app);
 
     let group = r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
     // Each chat/create namespace, with a well-formed body for its typed
@@ -178,8 +176,7 @@ fn nip29_all_namespaces_dispatch_through_action_registry() {
 #[test]
 fn nip29_discover_dispatches_through_action_registry_and_emits_push_interest() {
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
-    assert!(!handle.is_null());
+    let handle = register_app(app);
 
     // Well-formed: a `wss://` host relay URL. The executor pushes a
     // host-pinned LogicalInterest scoped to that relay.
@@ -276,8 +273,7 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
 #[test]
 fn nip29_join_dispatches_through_action_registry() {
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
-    assert!(!handle.is_null());
+    let handle = register_app(app);
 
     let group = r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
     let body = format!(r#"{{"group":{group}}}"#);
