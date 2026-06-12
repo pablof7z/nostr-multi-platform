@@ -127,6 +127,22 @@ pub trait AppHost: ActionRegistrar {
 
     fn register_ingest_parser(&self, kind: u32, parser: Arc<dyn IngestParser>);
 
+    /// Replace all [`IngestParser`]s for `kind` with a single new `parser`,
+    /// returning the previous parsers. Mirrors the lifecycle semantics of
+    /// [`Self::swap_dm_inbox_observer`]: call-sites that own a singleton
+    /// lifecycle-managed parser (e.g. the NIP-17 DM inbox parser — fresh
+    /// projection on account switch) use this instead of
+    /// [`Self::register_ingest_parser`] so repeated registration does not
+    /// accumulate stale parsers in the per-kind bucket.
+    ///
+    /// D6 — a poisoned dispatcher lock is a silent no-op returning an empty
+    /// `Vec` (the registration is dropped; existing parsers are preserved).
+    fn replace_ingest_parser(
+        &self,
+        kind: u32,
+        parser: Arc<dyn IngestParser>,
+    ) -> Vec<Arc<dyn IngestParser>>;
+
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn DmInboxRelayLookup>);
 
     /// H4 — install the read-only [`MailboxCache`] handle the host's NIP-19

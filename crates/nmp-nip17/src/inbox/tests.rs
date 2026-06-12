@@ -1,4 +1,6 @@
 use super::*;
+use nmp_core::store::{RawEvent, VerifiedEvent};
+use nmp_core::substrate::IngestParser;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
 /// Wrap `rumor` for `receiver` via the ADR-0026 `SignerForSeal` seam. The
@@ -352,5 +354,157 @@ fn snapshot_round_trips_through_serde() {
     let encoded = serde_json::to_string(&snap).expect("serialises");
     let decoded: DmInboxSnapshot = serde_json::from_str(&encoded).expect("deserialises");
     assert_eq!(snap, decoded);
+}
+
+// ─── IngestParser impl tests ─────────────────────────────────────────────────
+//
+// These verify that `DmInboxProjection` correctly implements the `IngestParser`
+// seam (PR-1 of the raw-tap retirement ladder). A `VerifiedEvent` carrying the
+// real Schnorr signature is constructed by serialising a `nostr::Event` to the
+// NIP-01 wire JSON and passing it through `VerifiedEvent::try_from_raw`, which
+// is the same gate the production ingest path uses.
+
+/// Build a `VerifiedEvent` from a real signed `nostr::Event`.
+fn verified_from_nostr_event(ev: &Event) -> VerifiedEvent {
+    use nostr::util::JsonUtil as _;
+    let tag_vecs: Vec<Vec<String>> = ev
+        .tags
+        .iter()
+        .map(|t| t.as_slice().to_vec())
+        .collect();
+    let raw = RawEvent {
+        id: ev.id.to_hex(),
+        pubkey: ev.pubkey.to_hex(),
+        created_at: ev.created_at.as_u64(),
+        kind: ev.kind.as_u16() as u32,
+        tags: tag_vecs,
+        content: ev.content.clone(),
+        sig: ev.sig.to_string(),
+    };
+    VerifiedEvent::try_from_raw(raw).expect("real signed event must verify")
+}
+
+#[test]
+fn ingest_parser_receives_kind_1059_and_decrypts() {
+    // The IngestParser seam must accept a kind:1059 VerifiedEvent and decrypt
+    // it exactly as the RawEventObserver path does.
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+    let proj = Arc::new(inbox_for(&bob));
+    let parser: Arc<dyn IngestParser> = Arc::clone(&proj) as _;
+
+    let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "via ingest parser", 400, None);
+    let verified = verified_from_nostr_event(&envelope);
+
+    parser.parse(&verified);
+
+    let snap = proj.snapshot();
+    assert_eq!(
+        snap.conversations.len(),
+        1,
+        "IngestParser::parse must decrypt and store the gift-wrap"
+    );
+    assert_eq!(
+        snap.conversations[0].messages[0].content,
+        "via ingest parser"
+    );
+    assert_eq!(
+        snap.conversations[0].peer_pubkey,
+        alice.public_key().to_hex(),
+        "peer must be the sender when received"
+    );
+    assert!(
+        !snap.conversations[0].messages[0].is_outgoing,
+        "a message from Alice to Bob's inbox is incoming"
+    );
+}
+
+#[test]
+fn ingest_parser_is_idempotent_on_duplicate() {
+    // Re-delivering the same VerifiedEvent through IngestParser must not
+    // duplicate the message — mirrors the RawEventObserver duplicate test.
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+    let proj = Arc::new(inbox_for(&bob));
+    let parser: Arc<dyn IngestParser> = Arc::clone(&proj) as _;
+
+    let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "once via parser", 500, None);
+    let verified = verified_from_nostr_event(&envelope);
+
+    parser.parse(&verified);
+    parser.parse(&verified);
+
+    let snap = proj.snapshot();
+    assert_eq!(
+        snap.conversations[0].messages.len(),
+        1,
+        "duplicate IngestParser dispatch must not duplicate the message"
+    );
+}
+
+#[test]
+fn ingest_parser_silent_noop_when_not_signed_in() {
+    // `IngestParser::parse` with no active keys is a silent no-op — D6.
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+    let proj = Arc::new(DmInboxProjection::new(Arc::new(Mutex::new(None))));
+    let parser: Arc<dyn IngestParser> = Arc::clone(&proj) as _;
+
+    let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "no-op", 600, None);
+    let verified = verified_from_nostr_event(&envelope);
+
+    parser.parse(&verified); // must not panic
+
+    assert!(
+        proj.snapshot().conversations.is_empty(),
+        "IngestParser with no active keys must be a silent no-op"
+    );
+}
+
+#[test]
+fn ingest_parser_and_raw_observer_produce_same_result() {
+    // Symmetry test: the IngestParser and RawEventObserver paths must produce
+    // the same DmInboxSnapshot for the same gift-wrap envelope (PR-1
+    // correctness: the migration does not change the user-visible result).
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+
+    let inbox_via_parser = inbox_for(&bob);
+    let inbox_via_observer = inbox_for(&bob);
+
+    let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "symmetry check", 700, None);
+    let verified = verified_from_nostr_event(&envelope);
+    let json = envelope.as_json();
+
+    // Feed through IngestParser.
+    inbox_via_parser.parse(&verified);
+    // Feed through RawEventObserver.
+    inbox_via_observer.on_raw_event(KIND_GIFT_WRAP, &json);
+
+    let snap_parser = inbox_via_parser.snapshot();
+    let snap_observer = inbox_via_observer.snapshot();
+
+    // The content and peer must match; source_relays may differ (the parser
+    // seam has no relay URL today, so source_relays is empty via parser).
+    assert_eq!(
+        snap_parser.conversations.len(),
+        snap_observer.conversations.len(),
+        "both paths must yield the same number of conversations"
+    );
+    assert_eq!(
+        snap_parser.conversations[0].messages[0].content,
+        snap_observer.conversations[0].messages[0].content,
+        "message content must be identical via both paths"
+    );
+    assert_eq!(
+        snap_parser.conversations[0].peer_pubkey,
+        snap_observer.conversations[0].peer_pubkey,
+        "peer pubkey must be identical via both paths"
+    );
+    assert_eq!(
+        snap_parser.conversations[0].messages[0].is_outgoing,
+        snap_observer.conversations[0].messages[0].is_outgoing,
+        "is_outgoing must be identical via both paths"
+    );
 }
 

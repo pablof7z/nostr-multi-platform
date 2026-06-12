@@ -128,3 +128,31 @@ pub fn open_event_store(backend: &StorageBackend) -> Result<Box<dyn EventStore>,
         StorageBackend::Lmdb { path } => Ok(Box::new(LmdbEventStore::open(path)?)),
     }
 }
+
+// ── Cross-crate internal seam for nmp-core ────────────────────────────────
+//
+// `nmp-core` is the only legitimate cross-crate consumer of
+// `VerifiedEvent::from_store_verified_unchecked`. The method is `pub(crate)`
+// in `nmp-store`; this hidden module re-exports a thin free-function wrapper
+// so `nmp-core` can reach it through a deliberate, grep-visible path
+// (`nmp_store::__nmp_core_internal::from_store_verified_unchecked`) without
+// promoting the constructor to the general public API surface.
+//
+// Convention mirrors `nmp_core::__ffi_internal`: the `__` prefix is the
+// signal that this module is an extraction seam, not a public API.
+// App crates and protocol crates MUST NOT import from here.
+#[doc(hidden)]
+pub mod __nmp_core_internal {
+    use crate::types::{RawEvent, VerifiedEvent};
+
+    /// Re-export of [`VerifiedEvent::from_store_verified_unchecked`] for
+    /// `nmp-core`'s cache-serve path.
+    ///
+    /// See the safety contract on the private method: the caller MUST
+    /// guarantee that `raw` was already verified at a prior trust boundary.
+    #[must_use]
+    #[inline]
+    pub fn from_store_verified_unchecked(raw: RawEvent) -> VerifiedEvent {
+        VerifiedEvent::from_store_verified_unchecked(raw)
+    }
+}
