@@ -361,14 +361,6 @@ impl std::fmt::Debug for SignContinuation {
 /// nothing re-exports these items, so they remain effectively crate-private.
 #[derive(Debug)]
 pub enum ActorCommand {
-    /// Start the actor's main event loop.
-    ///
-    /// `emit_hz` — desired snapshot-emit frequency in Hz.  Values above the
-    /// D8 ceiling (currently 60 Hz) are silently clamped at the dispatch site:
-    /// the actor will never spin faster than 60 Hz regardless of the requested
-    /// rate.  A kernel log line is emitted when a clamp occurs so the
-    /// violation is observable in diagnostics (D6: no panics at configuration
-    /// time).
     Start {
         visible_limit: usize,
         emit_hz: u32,
@@ -377,10 +369,6 @@ pub enum ActorCommand {
         /// pre-start `add_relay` calls instead.
         initial_relays: Vec<(String, String)>,
     },
-    /// Reconfigure the actor without restarting it.
-    ///
-    /// `emit_hz` is subject to the same D8 ceiling as [`ActorCommand::Start`]:
-    /// values above 60 Hz are clamped and logged.
     Configure {
         visible_limit: usize,
         emit_hz: u32,
