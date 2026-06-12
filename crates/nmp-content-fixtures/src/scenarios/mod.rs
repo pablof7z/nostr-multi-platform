@@ -5,6 +5,7 @@
 
 pub mod edge;
 pub mod hashtags;
+pub mod highlights;
 pub mod links;
 pub mod lists;
 pub mod media;

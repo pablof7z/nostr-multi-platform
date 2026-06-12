@@ -53,6 +53,7 @@ pub fn build_bundle() -> Bundle {
     scenarios.extend(scenarios::text::build(&ids));
     scenarios.extend(scenarios::mentions::build(&ids));
     scenarios.extend(scenarios::quotes::build(&ids));
+    scenarios.extend(scenarios::highlights::build(&ids));
     scenarios.extend(scenarios::lists::build(&ids));
     scenarios.extend(scenarios::media::build(&ids));
     scenarios.extend(scenarios::links::build(&ids));
