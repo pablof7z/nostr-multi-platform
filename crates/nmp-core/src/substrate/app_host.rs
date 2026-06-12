@@ -25,8 +25,8 @@ use crate::{
 
 use super::{
     ActionRegistrar, DmInboxRelayLookup, IngestParser, MailboxCache, OutboxRouter,
-    RawEventForwardPolicy, RawEventForwardPolicyContext, RelayTextInterceptor, ReqFrameInterceptor,
-    RoutingTraceObserver,
+    RawEventForwardPolicy, RawEventForwardPolicyContext, RelayConnectedHook, RelayTextInterceptor,
+    ReqFrameInterceptor, RoutingTraceObserver,
 };
 
 /// Host surface needed by reusable NMP composition crates.
@@ -125,6 +125,12 @@ pub trait AppHost: ActionRegistrar {
     fn set_req_frame_interceptor(&self, interceptor: Arc<dyn ReqFrameInterceptor>);
 
     fn add_relay_text_interceptor(&self, interceptor: Arc<dyn RelayTextInterceptor>);
+
+    /// ADR-0051 — install a [`RelayConnectedHook`] so a protocol crate (today
+    /// `nmp-nip11`) reacts when a relay connects (e.g. fetch its NIP-11
+    /// information document). Additive: multiple crates may react to the same
+    /// connect.
+    fn add_relay_connected_hook(&self, hook: Arc<dyn RelayConnectedHook>);
 
     fn register_ingest_parser(&self, kind: u32, parser: Arc<dyn IngestParser>);
 

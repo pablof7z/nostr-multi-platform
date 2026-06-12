@@ -145,6 +145,11 @@ catalogue of `RelayPurpose::Bunker`/`Search`/`Draft` enums.
    `auth_required: bool`, `negentropy_supported: Option<bool>` (probed),
    `last_connected_at`, `reconnect_attempts`, `keepalive_ok`. The kernel
    *reports*; the planner/protocol crates *decide*.
+   > **Update (ADR-0051):** the `nip11_*` slice of this report shipped as a
+   > parsed `RelayInfoDoc` on the `relay_diagnostics` projection, fetched by the
+   > `nmp-nip11` protocol crate on connect — NOT as a pool-internal capability
+   > map. The D7 framing here is exactly what landed; the placement is
+   > diagnostics, not the pool. `negentropy_supported` remains a separate probe.
 3. **Routing-purpose remains in the planner**, not the pool. `RoutingSource`
    (`planner/plan.rs:55-72`) already encodes lane (NIP-65/Hint/Provenance/
    UserConfigured); the planner's `CompiledPlan` is the contract the pool

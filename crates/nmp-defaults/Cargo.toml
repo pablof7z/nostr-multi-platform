@@ -18,6 +18,7 @@ nmp-router = { path = "../nmp-router" }
 # to call the per-NIP `register_actions` selectively rather than
 # `register_defaults` wholesale.
 nmp-nip02 = { path = "../nmp-nip02" }
+nmp-nip11 = { path = "../nmp-nip11" }
 nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-nip77 = { path = "../nmp-nip77" }

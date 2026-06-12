@@ -8,10 +8,25 @@
 use std::collections::{BTreeMap, HashSet};
 
 use super::{CanonicalRelayUrl, Counters, Instant, Kernel, RelayRole, RelayStatus, WireSub};
+use crate::substrate::RelayInfoDoc;
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct RelayTransportMap {
     rows: BTreeMap<CanonicalRelayUrl, RelayTransportStatus>,
+    /// ADR-0051 — per-URL relay-information documents (NIP-11), keyed by the
+    /// SAME canonical URL as `rows`. Stored independently of the role-keyed
+    /// transport row so the `nmp-nip11` fetch result (which has no role) can
+    /// attach a document to any connected URL, and so the doc survives the
+    /// transient role bookkeeping. Surfaced on `RelayStatus.info`.
+    info: BTreeMap<CanonicalRelayUrl, InfoEntry>,
+}
+
+/// A cached relay-information document plus the monotonic instant it was last
+/// fetched, for TTL gating (`is_info_fresh`).
+#[derive(Clone, Debug)]
+struct InfoEntry {
+    doc: RelayInfoDoc,
+    fetched_at: Instant,
 }
 
 #[derive(Clone, Debug)]
@@ -88,10 +103,34 @@ impl RelayTransportMap {
                         bytes_tx: row.counters.bytes_tx,
                         denied: row.denied,
                         last_close_reason: row.last_close_reason.clone(),
+                        info: self.info.get(url).map(|e| e.doc.clone()),
                     },
                 )
             })
             .collect()
+    }
+
+    /// Store / replace the relay-information document for `relay_url`,
+    /// anchoring its freshness to `now` (ADR-0051).
+    fn set_info(&mut self, relay_url: &str, doc: RelayInfoDoc, now: Instant) {
+        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.info.insert(key, InfoEntry { doc, fetched_at: now });
+    }
+
+    /// Whether a *fresh* (within `ttl`) document already exists for
+    /// `relay_url` as of `now`. The `nmp-nip11` connect-hook consults this to
+    /// avoid refetching on every reconnect.
+    fn info_is_fresh(&self, relay_url: &str, now: Instant, ttl: std::time::Duration) -> bool {
+        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.info
+            .get(&key)
+            .is_some_and(|e| now.saturating_duration_since(e.fetched_at) < ttl)
+    }
+
+    /// Read the stored document for `relay_url`, if any.
+    fn info_for(&self, relay_url: &str) -> Option<&RelayInfoDoc> {
+        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.info.get(&key).map(|e| &e.doc)
     }
 }
 
@@ -148,6 +187,31 @@ impl Kernel {
                 .filter_map(|(url, status)| emitted.insert(url).then_some(status)),
         );
         ordered
+    }
+
+    /// ADR-0051 — fold a fetched relay-information document onto the per-URL
+    /// transport row and mark the snapshot dirty so the `relay_diagnostics`
+    /// projection surfaces the new metadata on the next emit. Called from the
+    /// actor's [`crate::ActorCommand::SetRelayInfo`] dispatch arm.
+    pub(crate) fn set_relay_info(&mut self, relay_url: &str, doc: RelayInfoDoc) {
+        self.transport_relays
+            .set_info(relay_url, doc, Instant::now());
+        self.changed_since_emit = true;
+    }
+
+    /// ADR-0051 — whether a fresh (within `ttl`) relay-information document
+    /// already exists for `relay_url`. The `nmp-nip11` connect-hook reads this
+    /// (via the FFI seam) to avoid a refetch on every reconnect.
+    #[must_use]
+    pub(crate) fn relay_info_is_fresh(&self, relay_url: &str, ttl: std::time::Duration) -> bool {
+        self.transport_relays
+            .info_is_fresh(relay_url, Instant::now(), ttl)
+    }
+
+    /// ADR-0051 — read the cached relay-information document for `relay_url`.
+    #[must_use]
+    pub(crate) fn relay_info_for(&self, relay_url: &str) -> Option<&RelayInfoDoc> {
+        self.transport_relays.info_for(relay_url)
     }
 
     pub(crate) fn record_tx_to(&mut self, role: RelayRole, relay_url: &str, bytes: usize) {

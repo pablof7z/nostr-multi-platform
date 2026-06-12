@@ -32,7 +32,7 @@
 use super::{
     encode_action_lifecycle, encode_action_results, encode_action_stages, encode_relay_diagnostics,
     encode_signed_events, ActionLifecycleModel, ActionResultsModel, ActionStagesModel,
-    InterestRow, RelayDiagnosticsModel, RelayRow, SignedEventsModel, WireSubRow,
+    InfoRow, InterestRow, RelayDiagnosticsModel, RelayRow, SignedEventsModel, WireSubRow,
     ACTION_LIFECYCLE_FILE_IDENTIFIER, ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
     ACTION_RESULTS_FILE_IDENTIFIER, ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION,
     ACTION_STAGES_FILE_IDENTIFIER, ACTION_STAGES_SCHEMA_ID, ACTION_STAGES_SCHEMA_VERSION,
@@ -86,6 +86,25 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
         last_notice: row.last_notice.clone(),
         last_error: row.last_error.clone(),
         wire_subs: row.wire_subs.iter().map(wire_sub_row).collect(),
+        info: row.info.as_ref().map(info_row),
+    }
+}
+
+/// Map one captured `RelayDiagnosticsInfo` struct onto the codec's [`InfoRow`]
+/// (ADR-0051). The `pub(super)` struct fields are reachable here.
+fn info_row(info: &super::super::relay_diagnostics::RelayDiagnosticsInfo) -> InfoRow {
+    InfoRow {
+        name: info.name.clone(),
+        description: info.description.clone(),
+        icon: info.icon.clone(),
+        pubkey: info.pubkey.clone(),
+        contact: info.contact.clone(),
+        software: info.software.clone(),
+        version: info.version.clone(),
+        supported_nips: info.supported_nips.clone(),
+        payment_required: info.payment_required,
+        auth_required: info.auth_required,
+        restricted_writes: info.restricted_writes,
     }
 }
 

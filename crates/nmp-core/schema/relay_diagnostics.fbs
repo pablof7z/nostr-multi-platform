@@ -83,6 +83,38 @@ table RelayDiagnosticsWireSub {
   close_reason:string;
 }
 
+// ADR-0051 — relay-information document (NIP-11), mirror of
+// `RelayDiagnosticsInfo`. Carried as an OPTIONAL child table on
+// `RelayDiagnosticsRow.info`: a null table means "no document fetched yet"
+// (the JSON `info: null` case), so no `has_info` flag is needed — table
+// presence is the discriminator. Each `Option<String>` field carries its
+// presence as an explicit `has_*` flag; `supported_nips` is a (possibly
+// empty) list; the three `limitation` flags carry both a `has_*` presence
+// bit and the bool value.
+table RelayDiagnosticsInfo {
+  has_name:bool;
+  name:string;
+  has_description:bool;
+  description:string;
+  has_icon:bool;
+  icon:string;
+  has_pubkey:bool;
+  pubkey:string;
+  has_contact:bool;
+  contact:string;
+  has_software:bool;
+  software:string;
+  has_version:bool;
+  version:string;
+  supported_nips:[uint];
+  has_payment_required:bool;
+  payment_required:bool;
+  has_auth_required:bool;
+  auth_required:bool;
+  has_restricted_writes:bool;
+  restricted_writes:bool;
+}
+
 // One rolled-up row per known relay URL (mirror of `RelayDiagnosticsRow`).
 table RelayDiagnosticsRow {
   // Canonical relay URL — stable list identity.
@@ -134,6 +166,9 @@ table RelayDiagnosticsRow {
   last_error:string;
   // Per-wire-subscription detail rows (kernel-sorted by `wire_id`).
   wire_subs:[RelayDiagnosticsWireSub];
+  // ADR-0051 — the relay's NIP-11 information document; null until
+  // `nmp-nip11` has fetched it (or the relay serves no document).
+  info:RelayDiagnosticsInfo;
 }
 
 // Enriched logical-interest row (mirror of `RelayDiagnosticsInterest`).
