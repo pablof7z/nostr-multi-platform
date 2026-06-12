@@ -19,8 +19,8 @@ use nmp_nip01::NoteRecord;
 
 use crate::app::ReplyTarget;
 use nmp_ffi::{
-    nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string,
-    nmp_app_load_older_feed, nmp_app_release_profile, nmp_app_start, NmpApp,
+    nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_load_older_feed,
+    nmp_app_release_profile, nmp_app_start, nmp_free_string, NmpApp,
 };
 use serde_json::{json, Value};
 
@@ -252,7 +252,7 @@ impl AppRuntime {
         let text = unsafe { CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        nmp_app_free_string(ptr);
+        nmp_free_string(ptr);
         let value: Value = serde_json::from_str(&text)
             .map_err(|e| format!("action dispatch returned invalid JSON: {e}"))?;
         parse_dispatch_envelope(&value)

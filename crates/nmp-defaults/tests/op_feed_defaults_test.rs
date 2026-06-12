@@ -34,9 +34,7 @@ use nmp_core::KernelEventObserver;
 // `AttributionPayload` brings `author_pubkey()` into scope for the attribution
 // assertion in `followed_reply_surfaces_root_with_attribution`.
 use nmp_feed::AttributionPayload as _;
-use nmp_ffi::{
-    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_read_projection_json, NmpApp,
-};
+use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_read_projection_json, nmp_free_string, NmpApp};
 
 // Valid-looking 64-hex pubkeys (distinct), mirroring the rung-4/rung-5 idioms.
 const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
@@ -119,7 +117,7 @@ fn read_projection(app: *mut NmpApp, key: &str) -> Option<serde_json::Value> {
     let json = unsafe { CStr::from_ptr(raw) }
         .to_string_lossy()
         .into_owned();
-    nmp_app_free_string(raw);
+    nmp_free_string(raw);
     serde_json::from_str(&json).ok()
 }
 

@@ -17,7 +17,8 @@ use super::queries::{query_since_mut, query_until, query_until_mut};
 use super::PendingCacheServe;
 use super::super::Kernel;
 use super::super::types::StoredEvent;
-use crate::store::RawEvent;
+use crate::store::{RawEvent, VerifiedEvent};
+use nmp_store::__nmp_core_internal;
 use crate::substrate::KernelEvent;
 
 /// One store-served event collected during the immutable-borrow phase of
@@ -184,9 +185,13 @@ impl Kernel {
     /// (ADR-0045 §2, step 3).
     ///
     /// For shapes that need raw observer dispatch (kind:1059 DM gift-wraps),
-    /// additionally fires `notify_raw_event_observers` with the verbatim
-    /// signed JSON (same seam live delivery uses — ADR R2.4(f), one decrypt
-    /// code path, zero duplication).
+    /// fires BOTH:
+    /// - `notify_raw_event_observers` — for Marmot and any other raw-tap
+    ///   consumers that still ride the raw observer until PR-2 of the rawtap
+    ///   retirement ladder. KEPT until PR-2 removes the raw tap entirely.
+    /// - `ingest_dispatcher.dispatch()` — for `IngestParser` consumers (e.g.
+    ///   the NIP-17 `DmInboxProjection` migrated to the parser seam in PR-1).
+    ///   Dual fan-out is intentional during the PR-1/PR-2 transition window.
     pub(super) fn feed_served_event(&mut self, ev: CollectedEvent) {
         let cached = StoredEvent {
             id: ev.id.clone(),
@@ -218,16 +223,22 @@ impl Kernel {
         };
         self.notify_event_observers(&kernel_event);
 
-        // E2: raw observer dispatch for kinds that need verbatim signed JSON
-        // (e.g. kind:1059 DM gift-wraps — the DmInboxProjection decrypt seam
-        // requires the full signed event including `sig`). This fires the same
-        // `notify_raw_event_observers` path that live relay delivery uses after
-        // `Inserted | Replaced` — one decrypt code path, zero duplication
-        // (ADR R2.4(f)). The `source_relay_url` is `""` (empty string) for
-        // store-served events — no relay delivered this event in the current
-        // session, which the DmInboxProjection records as an empty source_relays
-        // list (the same result as the `on_raw_event` / no-source path).
-        if ev.needs_raw_dispatch && !self.raw_event_observers_idle_for_kind(ev.kind) {
+        // E2 + PR-1 dual fan-out: for kinds that need raw observer dispatch
+        // (kind:1059 DM gift-wraps), fire BOTH the raw-observer tap AND the
+        // ingest-dispatcher. During the PR-1/PR-2 transition window:
+        //   • `notify_raw_event_observers` — Marmot + any other raw-tap
+        //     consumer still riding the raw observer (removed in PR-2).
+        //   • `ingest_dispatcher.dispatch()` — NIP-17 `DmInboxProjection`
+        //     (migrated to IngestParser in PR-1) and future IngestParser
+        //     consumers. The `VerifiedEvent` is reconstructed from the
+        //     already-verified raw fields (trust boundary: the store only holds
+        //     events that passed `try_from_raw`; re-verification would be
+        //     prohibitively expensive on cache-serve).
+        //
+        // PR-2 removes the `notify_raw_event_observers` call in this block
+        // once Marmot is migrated to IngestParser. At that point the `raw`
+        // construction and `needs_raw_dispatch` flag also become redundant.
+        if ev.needs_raw_dispatch {
             let raw = RawEvent {
                 id: ev.id.clone(),
                 pubkey: ev.author.clone(),
@@ -237,8 +248,26 @@ impl Kernel {
                 content: ev.content.clone(),
                 sig: ev.sig.clone(),
             };
+
+            // Fan 1 — raw-observer tap (Marmot + transition consumers).
+            // `notify_raw_event_observers` is a fast no-op when no registration
+            // exists for this kind (the `raw_event_observers_idle_for_kind`
+            // guard is preserved here — PR-2 removes the entire block).
             // Empty string source relay — local-store provenance, no relay URL.
-            self.notify_raw_event_observers(&raw, "");
+            if !self.raw_event_observers_idle_for_kind(ev.kind) {
+                self.notify_raw_event_observers(&raw, "");
+            }
+
+            // Fan 2 — ingest-dispatcher (`IngestParser` seam). Reconstruct a
+            // `VerifiedEvent` from the already-verified raw fields. This skips
+            // re-verification: store events passed `try_from_raw` at original
+            // ingest; re-running Schnorr verify on every cache-serve step would
+            // be O(events × sessions) overhead. `from_store_verified_unchecked`
+            // documents this trust boundary explicitly.
+            let verified = __nmp_core_internal::from_store_verified_unchecked(raw);
+            if let Ok(d) = self.ingest_dispatcher.read() {
+                d.dispatch(&verified);
+            }
         }
 
         // Append to the timeline only when the author is in the follow set —

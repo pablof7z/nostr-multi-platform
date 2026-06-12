@@ -118,7 +118,7 @@ let result_ptr = unsafe { nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr(
 // result_ptr is a heap-allocated JSON string; free it after reading.
 let result = unsafe { std::ffi::CStr::from_ptr(result_ptr) }
     .to_string_lossy().into_owned();
-nmp_ffi::nmp_app_free_string(result_ptr);
+nmp_ffi::nmp_free_string(result_ptr);
 
 // {"correlation_id":"..."} = accepted; {"error":"..."} = rejected.
 ```

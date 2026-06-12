@@ -7,7 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## nmp-v0.5.0 — 2026-06-12
 
-**BREAKING (C-ABI + Rust API).** Two breaking changes since v0.4.0; both require
+**BREAKING (C-ABI + Rust API).** Three breaking changes since v0.4.0; all require
 migration before pinning this revision (see **Removed** below).
 
 **ADR-0045 COMPLETE — v1 exit criterion satisfied.** Offline / second-launch
@@ -73,6 +73,15 @@ delivers a single event.
   **What breaks for whom**: any CI or script that invokes `nmp gen modules` will
   fail with "unknown subcommand". No real app consumed the generated output;
   verify with `grep -r 'gen modules' .` in your app.
+
+- **`nmp_app_free_string` and `nmp_broker_free_string` deleted** — collapsed into
+  a single canonical `nmp_free_string(char *ptr)` (V-114, closes #1044). Frees any
+  `*mut c_char` returned by any NMP FFI function; null-safe no-op (D6).
+
+  **Migration**: replace every `nmp_app_free_string(ptr)` /
+  `nmp_broker_free_string(ptr)` call with `nmp_free_string(ptr)`. No semantic
+  change — identical CString::from_raw free path; the symbol name is the only
+  break.
 
 ### Fixed
 
@@ -435,7 +444,7 @@ surface is available.
 
 ### Added
 
-- **`nmp_app_encode_profile(app, pubkey_hex) → *char`** — NMP-provided NIP-19 identity encoder (closes app-conformance finding H4: "shell hand-rolls NIP-19 bech32"). Prefers an `nprofile` carrying the pubkey plus up to 3 of its kind:10002 write-relay hints **when the kernel already holds them** (no fetch — reads the same mailbox cache the kind:10002 ingest parser fills); falls back to a plain `npub` when there is no relay hint. Lets app shells stop reimplementing bech32/NIP-19 for display. Free the returned string via `nmp_app_free_string`.
+- **`nmp_app_encode_profile(app, pubkey_hex) → *char`** — NMP-provided NIP-19 identity encoder (closes app-conformance finding H4: "shell hand-rolls NIP-19 bech32"). Prefers an `nprofile` carrying the pubkey plus up to 3 of its kind:10002 write-relay hints **when the kernel already holds them** (no fetch — reads the same mailbox cache the kind:10002 ingest parser fills); falls back to a plain `npub` when there is no relay hint. Lets app shells stop reimplementing bech32/NIP-19 for display. Free the returned string via `nmp_free_string`.
 
 ---
 

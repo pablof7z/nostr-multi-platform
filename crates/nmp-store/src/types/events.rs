@@ -188,6 +188,31 @@ impl VerifiedEvent {
         VerifiedEvent(raw)
     }
 
+    /// Wrap a [`RawEvent`] that is **known to have been verified** at a prior
+    /// trust boundary — for example, when reconstructing an event that the
+    /// store accepted (i.e. passed `try_from_raw` at original ingest) for
+    /// dispatch to an [`crate::IngestParser`] or similar read-path hook.
+    ///
+    /// ## Safety contract
+    ///
+    /// The caller MUST guarantee that `raw` was already accepted by
+    /// `try_from_raw` (or by the equivalent Schnorr + event-id gate in the
+    /// ingest path). Re-verifying store events on every cache-serve step is
+    /// unacceptable overhead; this constructor is the production-safe
+    /// alternative for that call-site only. Do NOT use this constructor for
+    /// externally-sourced events.
+    ///
+    /// ## Visibility
+    ///
+    /// `pub(crate)` — the only cross-crate consumer is `nmp-core`, which
+    /// reaches this via `nmp_store::__nmp_core_internal::from_store_verified_unchecked`.
+    /// App crates MUST NOT call this; the `__nmp_core_internal` module name is
+    /// the explicit signal that it is an extraction seam, not a public API.
+    #[must_use]
+    pub(crate) fn from_store_verified_unchecked(raw: RawEvent) -> Self {
+        VerifiedEvent(raw)
+    }
+
     /// Access the underlying raw event.
     #[must_use]
     pub fn raw(&self) -> &RawEvent {

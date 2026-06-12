@@ -16,8 +16,8 @@ use std::ffi::{CStr, CString};
 use std::time::{Duration, Instant};
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_start,
-    nmp_app_wallet_connect,
+    nmp_app_add_relay, nmp_app_dispatch_action, nmp_app_free, nmp_app_start, nmp_app_wallet_connect,
+    nmp_free_string,
 };
 use nmp_app_chirp::nmp_app_chirp_unregister;
 use nostr::{Keys, ToBech32};
@@ -138,7 +138,7 @@ fn real_wallet_zap_e2e() {
         .to_str()
         .expect("dispatch result utf8")
         .to_owned();
-    nmp_app_free_string(out_ptr);
+    nmp_free_string(out_ptr);
     let parsed: serde_json::Value = serde_json::from_str(&out).expect("dispatch result json");
     let correlation_id = parsed
         .get("correlation_id")

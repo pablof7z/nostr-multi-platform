@@ -43,8 +43,8 @@ fn register_app(app: *mut nmp_ffi::NmpApp) -> *mut ChirpHandle {
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
 use nmp_ffi::{
-    nmp_app_free, nmp_app_free_string, nmp_app_load_older_feed, nmp_app_new,
-    nmp_app_read_projection_json, nmp_app_start,
+    nmp_app_free, nmp_app_load_older_feed, nmp_app_new, nmp_app_read_projection_json,
+    nmp_app_start, nmp_free_string,
 };
 use nmp_nip01::DEFAULT_TIMELINE_WINDOW_LIMIT;
 
@@ -72,7 +72,7 @@ fn feed_projection_for(app: *mut nmp_ffi::NmpApp) -> ChirpTimelineSnapshot {
         .to_str()
         .expect("projection JSON is utf8")
         .to_owned();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     serde_json::from_str(&json).expect("projection deserializes")
 }
 

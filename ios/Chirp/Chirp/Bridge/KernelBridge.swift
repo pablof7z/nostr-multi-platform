@@ -190,7 +190,7 @@ final class KernelHandle {
     func encodeProfile(pubkey: String) -> String? {
         pubkey.withCString { pkPtr -> String? in
             guard let ptr = nmp_app_encode_profile(raw, pkPtr) else { return nil }
-            defer { nmp_app_free_string(ptr) }
+            defer { nmp_free_string(ptr) }
             return String(cString: ptr)
         }
     }
@@ -270,14 +270,14 @@ final class KernelHandle {
                 guard let ptr = nmp_app_nostrconnect_uri(raw, nil, cbPtr) else {
                     return nil
                 }
-                defer { nmp_broker_free_string(ptr) }
+                defer { nmp_free_string(ptr) }
                 return String(cString: ptr)
             }
         }
         guard let ptr = nmp_app_nostrconnect_uri(raw, nil, nil) else {
             return nil
         }
-        defer { nmp_broker_free_string(ptr) }
+        defer { nmp_free_string(ptr) }
         return String(cString: ptr)
     }
 
@@ -403,7 +403,7 @@ final class KernelHandle {
                 guard let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) else {
                     return nil
                 }
-                defer { nmp_app_free_string(ptr) }
+                defer { nmp_free_string(ptr) }
                 return String(cString: ptr)
             }
         }
@@ -478,7 +478,7 @@ final class KernelHandle {
             guard let ptr = nmp_app_chirp_action_spec(intentPtr) else {
                 return nil
             }
-            defer { nmp_app_free_string(ptr) }
+            defer { nmp_free_string(ptr) }
             return String(cString: ptr)
         }
         guard let specJson else {
@@ -516,7 +516,7 @@ final class KernelHandle {
                 guard let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) else {
                     return nil
                 }
-                defer { nmp_app_free_string(ptr) }
+                defer { nmp_free_string(ptr) }
                 return String(cString: ptr)
             }
         }
@@ -814,7 +814,7 @@ enum KernelDecodedUpdateFrame {
 
 /// C capability callback — receives `CapabilityRequest` JSON from Rust and
 /// returns a malloc-allocated `CapabilityEnvelope` JSON string that Rust frees
-/// via `nmp_app_free_string` / `CString::from_raw`. Uses `strdup` so the
+/// via `nmp_free_string` / `CString::from_raw`. Uses `strdup` so the
 /// allocation is compatible with Rust's `CString::from_raw` on Apple platforms
 /// (both use the system malloc allocator).
 ///

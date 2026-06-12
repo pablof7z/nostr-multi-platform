@@ -21,7 +21,7 @@ use crate::action_specs::{
     follow_spec, publish_note_spec, publish_profile_spec, react_spec, repost_spec, send_dm_spec,
     unfollow_spec, zap_spec,
 };
-use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free_string, NmpApp};
+use nmp_ffi::{nmp_app_dispatch_action, nmp_free_string, NmpApp};
 use nmp_nip01::NoteRecord;
 
 /// Typed Chirp action client.
@@ -80,7 +80,7 @@ impl ChirpClient {
 
         // SAFETY: `app` is a valid, non-null pointer. FFI always returns a
         // valid (non-null) JSON string for a valid app (D6).
-        // nmp_app_dispatch_action and nmp_app_free_string are not marked as `unsafe`
+        // nmp_app_dispatch_action and nmp_free_string are not marked as `unsafe`
         // because FFI boilerplate automatically dereferences raw pointers internally.
         let ptr = nmp_app_dispatch_action(self.app, namespace.as_ptr(), action.as_ptr());
 
@@ -93,7 +93,7 @@ impl ChirpClient {
             .into_owned();
 
         // FFI allocated this; we must free it.
-        nmp_app_free_string(ptr);
+        nmp_free_string(ptr);
 
         let value: Value = serde_json::from_str(&text)
             .map_err(|e| format!("action dispatch returned invalid JSON: {e}"))?;

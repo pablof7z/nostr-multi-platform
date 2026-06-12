@@ -416,7 +416,7 @@ mod tests {
     use std::ffi::{CStr, CString};
 
     use nmp_core::store::{MemEventStore, RawEvent, VerifiedEvent};
-    use nmp_ffi::{nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_read_projection_json};
+    use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_read_projection_json, nmp_free_string};
     use serde_json::Value;
 
     #[test]
@@ -635,7 +635,7 @@ mod tests {
         let json = unsafe { CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        nmp_app_free_string(ptr);
+        nmp_free_string(ptr);
         serde_json::from_str(&json).ok()
     }
 

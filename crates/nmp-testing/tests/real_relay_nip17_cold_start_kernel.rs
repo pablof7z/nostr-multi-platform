@@ -85,9 +85,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_free, nmp_app_free_string, nmp_app_new,
-    nmp_app_read_projection_json, nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_start,
-    NmpApp,
+    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_read_projection_json,
+    nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
 };
 use nmp_nip59::{gift_wrap_with_signer, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
@@ -251,7 +250,7 @@ fn dm_inbox_snapshot(app: *mut NmpApp) -> Option<serde_json::Value> {
         .to_str()
         .ok()
         .map(str::to_owned);
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     json.and_then(|s| serde_json::from_str(&s).ok())
 }
 

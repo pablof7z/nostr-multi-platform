@@ -92,7 +92,7 @@ pub extern "C" fn nmp_app_cancel_bunker_handshake(_app: *mut NmpApp) {
 }
 
 /// Return a freshly generated `nostrconnect://` URI string. The caller must
-/// free the returned pointer via `nmp_broker_free_string`. Returns null if the
+/// free the returned pointer via `nmp_free_string`. Returns null if the
 /// broker is not yet initialised or if string allocation fails.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
@@ -152,17 +152,6 @@ fn relay_url_from_arg_or_app(app: *mut NmpApp, relay_url: *const c_char) -> Opti
         }
     }
     app_ref(app).and_then(NmpApp::nostrconnect_relay_url)
-}
-
-/// Free a string returned by `nmp_app_nostrconnect_uri`. Null-safe.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_broker_free_string(ptr: *mut c_char) {
-    if ptr.is_null() {
-        return;
-    }
-    // SAFETY: ptr was created by CString::into_raw() in this module.
-    unsafe { drop(CString::from_raw(ptr)) };
 }
 
 /// Adapter: `Box<dyn RemoteSignerHandle>` from an `Arc<Nip46Signer>`.

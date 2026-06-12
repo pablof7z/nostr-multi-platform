@@ -75,8 +75,8 @@ handler before `start()`.
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
 | `nmp_app_set_capability_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, *const c_char) -> *mut c_char>)` | Register the native capability handler. `None` unregisters. A request received while unregistered yields an error envelope, never a crash. | Chirp | Synchronous registration; callback invoked on the thread that calls `dispatch_capability` | null app / poisoned lock → early return | D7-clean: socket transports envelopes, decides no policy |
-| `nmp_app_dispatch_capability` | `(app: *mut NmpApp, request_json: *const c_char) -> *mut c_char` | Route a `CapabilityRequest` JSON to the registered handler, return a heap-allocated `CapabilityEnvelope` JSON string. MUST be released via `nmp_app_free_string`. Returns a populated error envelope on missing handler, malformed request, or NULL handler return — never NULL for valid app+request. | Chirp via `KernelBridge.registerCapabilityHandler` | Synchronous on calling thread | Never returns NULL for non-null app+request; error is data | D7-clean: pure transport |
-| `nmp_app_free_string` | `(ptr: *mut c_char)` | Release a Rust-allocated `*mut c_char` returned by `dispatch_capability`. null is a no-op. This is the ONLY symbol where Rust allocates memory the caller must free. | Callers of `dispatch_capability` | Synchronous | null → no-op | n/a |
+| `nmp_app_dispatch_capability` | `(app: *mut NmpApp, request_json: *const c_char) -> *mut c_char` | Route a `CapabilityRequest` JSON to the registered handler, return a heap-allocated `CapabilityEnvelope` JSON string. MUST be released via `nmp_free_string`. Returns a populated error envelope on missing handler, malformed request, or NULL handler return — never NULL for valid app+request. | Chirp via `KernelBridge.registerCapabilityHandler` | Synchronous on calling thread | Never returns NULL for non-null app+request; error is data | D7-clean: pure transport |
+| `nmp_free_string` | `(ptr: *mut c_char)` | Release any Rust-allocated `*mut c_char` returned by any NMP FFI function. null is a no-op (D6). This is the canonical and ONLY heap-string release symbol — replaces the retired `nmp_app_free_string` and `nmp_broker_free_string`. | All callers of FFI functions that return `*mut c_char` | Synchronous | null → no-op | n/a |
 
 ---
 
@@ -212,7 +212,7 @@ symbol bodies in the cdylib CGU. Five `extern "system"` JNI exports:
 |---|---|---|---|---|
 | `*mut NmpApp` | Opaque handle | Rust (`Box::into_raw` in `nmp_app_new`) | Rust (`Box::from_raw` in `nmp_app_free`; `Drop` joins threads) | Created on caller thread; actor/listener on own OS threads |
 | `*const c_char` (inputs) | C string args (pubkey, uri, content, …) | Caller | Caller; Rust copies into owned `String` synchronously, never frees the C buffer | Read synchronously on calling thread |
-| `*mut c_char` (output) | `dispatch_capability` return value only | Rust (`CString::into_raw`) | Caller must call `nmp_app_free_string` | Calling thread |
+| `*mut c_char` (output) | Return value of any FFI function that yields a heap string | Rust (`CString::into_raw`) | Caller must call `nmp_free_string` | Calling thread |
 | `*mut c_void` | Callback context for `set_update_callback`, `set_lifecycle_callback`, `set_capability_callback` | Caller; stored as `usize`, never dereffed by Rust | Caller-owned | Passed back on the relevant callback thread |
 | `c_uint` | Config scalars (`visible_limit`, `emit_hz`) | By value | n/a | Calling thread; `0` = use default |
 | `UpdateCallback` | `extern "C" fn(*mut c_void, *const u8, usize)` | Caller supplies fn pointer | n/a | Invoked on update-listener thread; FlatBuffers payload valid only for call duration |
@@ -251,7 +251,7 @@ policy (when to reconcile NIP-77, how to route relays, which identity signs).
 | `nmp_app_set_lifecycle_callback` | PASS | PASS | |
 | `nmp_app_set_capability_callback` | PASS | PASS | |
 | `nmp_app_dispatch_capability` | PASS — error envelope, never NULL, never panic | PASS | Only transports envelopes |
-| `nmp_app_free_string` | PASS | PASS | |
+| `nmp_free_string` | PASS | PASS | |
 | `nmp_app_signin_nsec` | PASS | PASS | |
 | `nmp_app_signin_bunker` | PASS | PASS | |
 | `nmp_app_create_new_account` | PASS | PASS | |
