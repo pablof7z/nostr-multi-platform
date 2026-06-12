@@ -187,9 +187,8 @@ pub fn apply_selection_with_lookup(
     let selection_pinned: BTreeSet<RelayUrl> = plan
         .per_relay
         .iter()
-        .filter_map(|(relay, relay_plan)| {
-            relay_bypasses_selection(&relay_plan.role_tags).then(|| relay.clone())
-        })
+        .filter(|&(_relay, relay_plan)| relay_bypasses_selection(&relay_plan.role_tags))
+        .map(|(relay, _relay_plan)| relay.clone())
         .collect();
 
     // Stage 1: extract the (relay → union-of-author-sets) shape the algorithm
