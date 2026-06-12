@@ -354,6 +354,44 @@ impl KernelReducer {
             String::from(r#"{"schema_version":1,"capacity":0,"publishes":[],"subscriptions":[]}"#)
         })
     }
+
+    /// Build one FlatBuffers update frame from the current kernel state.
+    ///
+    /// Forwards to [`crate::kernel::Kernel::make_update`] which bumps the
+    /// kernel's monotonic revision, runs all typed projections (including
+    /// the `configured_relays` and `relay_statuses` Tier-3 rows), drains
+    /// `emit` observers, and encodes the complete Tier-3 + Tier-2 frame.
+    /// The caller does **not** need to maintain a separate revision counter
+    /// — the kernel is the sole owner of `rev` (D4).
+    ///
+    /// D6 — total: never panics; `make_update` is unconditional for any
+    /// reducer that has been successfully constructed.
+    pub fn make_update_frame(&mut self, running: bool) -> crate::UpdateFrameBytes {
+        self.kernel.make_update(running)
+    }
+
+    /// Populate the kernel's configured-relay lanes from a caller-supplied
+    /// list of `(url, role)` pairs.
+    ///
+    /// Each `role` string is canonicalised via the kernel's own
+    /// `canonical_relay_role` pass (same normalisation the native actor
+    /// applies on every relay-edit write). [`crate::kernel::AppRelay`] is
+    /// `pub(crate)`; external crates (e.g. `nmp-wasm`) pass raw string
+    /// pairs and let this method build the typed rows internally.
+    ///
+    /// Calling this before the first [`make_update_frame`] ensures the
+    /// `relay_statuses` Tier-3 rows and the `configured_relays` typed
+    /// projection both carry real URLs rather than empty defaults.
+    ///
+    /// [`make_update_frame`]: Self::make_update_frame
+    pub fn set_configured_relays(&mut self, rows: Vec<(String, String)>) {
+        use crate::kernel::AppRelay;
+        let relay_rows: Vec<AppRelay> = rows
+            .into_iter()
+            .map(|(url, role)| AppRelay::new(url, role))
+            .collect();
+        self.kernel.set_configured_relays(relay_rows);
+    }
 }
 
 impl Default for KernelReducer {
@@ -695,5 +733,75 @@ mod tests {
         assert!(r.any_relay_connected());
         r.handle_relay_closed(RelayRole::Content, RELAY);
         assert!(!r.any_relay_connected(), "after close: must be false");
+    }
+
+    #[test]
+    fn make_update_frame_bumps_rev_monotonically() {
+        // D6 (total) + monotonic-rev contract: `make_update_frame` must never
+        // panic on a fresh reducer, and each successive call must produce a
+        // strictly larger revision number in the decoded envelope.
+        let mut r = KernelReducer::new();
+
+        let bytes0 = r.make_update_frame(false);
+        assert!(
+            !bytes0.is_empty(),
+            "make_update_frame must return a non-empty frame"
+        );
+
+        let env0 = crate::decode_snapshot_envelope(&bytes0)
+            .expect("first frame must decode without error");
+
+        let bytes1 = r.make_update_frame(false);
+        let env1 = crate::decode_snapshot_envelope(&bytes1)
+            .expect("second frame must decode without error");
+
+        assert!(
+            env1.rev > env0.rev,
+            "rev must increase monotonically: {} → {}",
+            env0.rev,
+            env1.rev
+        );
+    }
+
+    #[test]
+    fn set_configured_relays_surfaces_in_update_frame() {
+        // After `set_configured_relays`, the next `make_update_frame` must
+        // carry the supplied URL in both the Tier-3 relay_statuses rows and
+        // the `configured_relays` typed-projection sidecar.
+        use crate::typed_projections::{decode_configured_relays, CONFIGURED_RELAYS_SCHEMA_ID};
+
+        let mut r = KernelReducer::new();
+        r.set_configured_relays(vec![(
+            "wss://relay.test".to_string(),
+            "both".to_string(),
+        )]);
+
+        let bytes = r.make_update_frame(true);
+
+        // Tier-3 relay_statuses
+        let env = crate::decode_snapshot_envelope(&bytes)
+            .expect("frame must decode");
+        assert!(
+            env.relay_statuses
+                .iter()
+                .any(|row| row.relay_url == "wss://relay.test"),
+            "relay_statuses must contain the configured URL; got: {:?}",
+            env.relay_statuses
+        );
+
+        // Tier-2 configured_relays sidecar
+        let projections = crate::decode_snapshot_typed_projections(&bytes)
+            .expect("typed projections must decode");
+        let cr_entry = projections
+            .iter()
+            .find(|p| p.schema_id == CONFIGURED_RELAYS_SCHEMA_ID)
+            .expect("configured_relays sidecar must be present");
+        let model = decode_configured_relays(&cr_entry.payload)
+            .expect("configured_relays payload must decode");
+        assert!(
+            model.relays.iter().any(|row| row.url == "wss://relay.test"),
+            "configured_relays sidecar must contain the configured URL; got: {:?}",
+            model.relays
+        );
     }
 }
