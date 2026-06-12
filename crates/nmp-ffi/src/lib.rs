@@ -101,9 +101,12 @@ pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_eve
 pub use feed::nmp_app_load_older_feed;
 #[cfg(feature = "native")]
 pub use identity::{
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_account,
-    nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
+// V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline DELETED.
+// Use nmp_app_chirp_open_home_feed (Chirp-specific wrapper) or the generic
+// nmp_app_open_contact_feed / nmp_app_close_contact_feed verbs below.
 #[cfg(feature = "native")]
 pub use nip19_ffi::nmp_app_encode_profile;
 #[cfg(feature = "native")]
@@ -145,8 +148,11 @@ pub use snapshot::nmp_app_register_snapshot_projection;
 pub use timeline::{
     // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
     // nmp_app_open_thread, nmp_app_close_thread deleted from timeline.rs.
-    nmp_app_claim_event, nmp_app_claim_profile, nmp_app_close_interest,
-    nmp_app_open_interest, nmp_app_open_uri, nmp_app_release_event, nmp_app_release_profile,
+    // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline
+    // deleted from identity.rs. Replaced by the pair below.
+    nmp_app_claim_event, nmp_app_claim_profile, nmp_app_close_contact_feed,
+    nmp_app_close_interest, nmp_app_open_contact_feed, nmp_app_open_interest, nmp_app_open_uri,
+    nmp_app_release_event, nmp_app_release_profile,
 };
 
 // ── test-support delta ───────────────────────────────────────────────────

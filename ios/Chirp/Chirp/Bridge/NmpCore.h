@@ -61,6 +61,18 @@ void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id, in
 void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 // V-68 / V-112 (ADR-0042): nmp_app_close_author, nmp_app_close_thread deleted.
 // Use nmp_app_chirp_close_author_feed / nmp_app_chirp_close_thread_feed below.
+//
+// ADR-0042 amendment (2026-06-12) — contact-feed subscription seam.
+// `kinds_json` is a JSON array of unsigned 32-bit integers, e.g. `"[1,6]"`.
+// The host declares the policy; the substrate carries it verbatim (D0).
+// An empty array `"[]"` is a legitimate clear (same effect as close).
+// A malformed or non-array value surfaces a diagnostic toast (D6).
+// D8: fire-and-forget; the actor processes the command asynchronously.
+void nmp_app_open_contact_feed(void *app, const char *kinds_json);
+// ADR-0042 amendment (2026-06-12) — withdraw all follow-feed M2 interests
+// from the lifecycle registry; `drain_lifecycle_tick` emits CLOSE frames for
+// any live REQs on the next idle tick. D6: a null `app` is a silent no-op.
+void nmp_app_close_contact_feed(void *app);
 
 // T66a — identity / publish / multi-account / relay-edit. None return a
 // value; outcomes (incl. validation failures) arrive via the snapshot's
@@ -87,7 +99,10 @@ void nmp_app_switch_active(void *app, const char *identity_id);
 void nmp_app_remove_account(void *app, const char *identity_id);
 void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
-void nmp_app_open_timeline(void *app);
+// V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline REMOVED.
+// Use the Chirp home-feed wrappers below instead.
+void nmp_app_chirp_open_home_feed(void *app);
+void nmp_app_chirp_close_home_feed(void *app);
 
 // H4 — NMP-provided NIP-19 identity encoder. Turns a 64-char hex pubkey into a
 // bech32 display identifier so app shells stop hand-rolling bech32.  Prefers

@@ -681,11 +681,11 @@ pub(crate) fn follow(
     }
 }
 
-/// (Re)open the contact-list-authors subscription for the active account.
+/// (Re)open the contact-feed subscription for the active account.
 ///
 /// `kinds` is the host-declared event-kind set the follow-set REQ should
 /// carry. D0: `nmp-core` does not know which kinds belong to the host's app
-/// concept (Chirp's social timeline declares {1, 6}; another app might declare
+/// concept (Chirp's home feed declares {1, 6}; a long-form app might declare
 /// {30023}); the host supplies the set so the substrate carries no
 /// app-specific social knowledge. `Kernel::set_follow_feed_kinds` stores the
 /// set and re-registers the active account's M2 follow-feed interests under it,
@@ -693,11 +693,11 @@ pub(crate) fn follow(
 /// idle tick. This complements `ingest_contacts` (which registers on kind:3
 /// arrival, reading the same stored kinds); this command covers re-opens
 /// (screen re-entry) before a new kind:3 arrives, and is also where the host
-/// first activates the subscription by declaring its kinds.
-pub(crate) fn open_contact_list_sub(
+/// first activates the subscription by declaring its kinds. An empty `kinds`
+/// set clears the subscription (equivalent to `close_contact_feed`).
+pub(crate) fn open_contact_feed(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
-    _relays_ready: bool, // V-112: was passed to open_author(); now unused.
     kinds: std::collections::BTreeSet<u32>,
 ) -> Vec<OutboundMessage> {
     match identity.active_pubkey() {
@@ -705,13 +705,27 @@ pub(crate) fn open_contact_list_sub(
             // Store the host-declared kinds and re-register M2 follow-feed
             // interests so drain_lifecycle_tick emits REQ frames for the follow
             // set on the next idle tick. `set_follow_feed_kinds` already calls
-            // `register_follow_feed_for_active_account` internally.
+            // `register_follow_feed_for_active_account` internally. An empty
+            // set clears all follow-feed interests (D5 CLEAR branch).
             kernel.set_follow_feed_kinds(kinds);
-            // V-112 (ADR-0042): open_author() deleted from kernel.
-            // Profile subscription is now handled by nmp_app_chirp_open_author_feed
-            // called by the host when the ProfileView opens.
             Vec::new()
         }
-        None => toast_no_account(kernel, "open timeline", None),
+        None => toast_no_account(kernel, "open_contact_feed", None),
     }
+}
+
+/// Tear down the contact-feed subscription opened by `open_contact_feed`.
+///
+/// Passes an empty kinds set to the kernel so it withdraws all follow-feed
+/// M2 interests from the lifecycle registry. The `FollowListChanged` trigger
+/// propagates and `drain_lifecycle_tick` emits CLOSE frames for any live REQs.
+///
+/// D6: no active account (or no prior open) is a silent no-op — the kernel's
+/// `follow_feed_kinds` is already empty for a not-signed-in session.
+pub(crate) fn close_contact_feed(
+    _identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+) -> Vec<OutboundMessage> {
+    kernel.set_follow_feed_kinds(std::collections::BTreeSet::new());
+    Vec::new()
 }

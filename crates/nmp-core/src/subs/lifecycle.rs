@@ -230,6 +230,20 @@ impl SubscriptionLifecycle {
         self.watermark_fn = Some(f);
     }
 
+    /// Evaluate the installed watermark function for `shape` — test-only.
+    ///
+    /// ADR-0045 §6: lets the cache-serve invariant test assert the
+    /// load-bearing implication "watermark floors the shape ⇒ cache-serve
+    /// covers the shape" against the REAL production watermark closure, not
+    /// a re-derivation of its rules.
+    #[cfg(test)]
+    pub(crate) fn watermark_for_shape_for_test(
+        &self,
+        shape: &crate::planner::InterestShape,
+    ) -> Option<u64> {
+        self.watermark_fn.as_ref().and_then(|f| f(shape))
+    }
+
     /// Mutable access to the registry — view modules push interests through
     /// this in production; integration tests push directly.
     pub fn registry_mut(&mut self) -> &mut InterestRegistry {

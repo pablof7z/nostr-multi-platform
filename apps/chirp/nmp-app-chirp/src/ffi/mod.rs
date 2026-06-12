@@ -63,8 +63,9 @@ pub use identity::{
     nmp_app_chirp_identity_sign_in_nsec,
 };
 pub use interest_feed::{
-    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_thread_feed,
+    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_home_feed,
+    nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed,
+    nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
 };
 pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,

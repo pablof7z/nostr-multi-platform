@@ -46,7 +46,7 @@ const FOLLOW_FEED_LIMIT: u32 = 1000;
 ///
 /// `nmp-core` does not know which kinds belong to the host's app concept — the
 /// `kinds` argument is supplied by the host through
-/// `ActorCommand::OpenContactListSubscription { kinds }` (D0: the substrate
+/// `ActorCommand::OpenContactFeed { kinds }` (D0: the substrate
 /// carries no app-specific social knowledge).
 ///
 /// Carries `limit: Some(1000)`. The relay returns the newest 1000 events and
@@ -125,8 +125,7 @@ impl Kernel {
         self.follow_feed_interest_ids.clear();
 
         // D0: the host declares which kinds the contact-list-authors
-        // subscription should REQ via `ActorCommand::OpenContactListSubscription
-        // { kinds }`. An empty `follow_feed_kinds` means the subscription is
+        // subscription should REQ via `ActorCommand::OpenContactFeed { kinds }`. An empty `follow_feed_kinds` means the subscription is
         // NOT active — withdraw any existing interests (done above) and return
         // without registering. `nmp-core` never hardcodes a kind set here.
         let kinds = self.follow_feed_kinds.clone();
@@ -169,6 +168,40 @@ impl Kernel {
         // `timeline_authors`; drop the rest. Must run AFTER `timeline_authors`
         // is rebuilt above so the re-ingest's `should_store_event` gate passes.
         self.flush_pre_kind3_buffer();
+
+        // ADR-0045 E1 — store-cache serve for follow-feed interests.
+        //
+        // `sync_follow_feed_interests` uses the legacy `push` path (not
+        // `open_interest_sub`) so the cache-serve hook in `open_interest_sub`
+        // does not fire here. Enqueue a serve for every newly-registered
+        // follow-feed interest, then drain ONE aggregate-budget chunk
+        // synchronously so the next snapshot carries store data (D1). The
+        // remainder continues on the actor tick (§5 chunked continuation) —
+        // a 300–500-follow cold start never bursts unbounded synchronous
+        // work on the actor thread.
+        //
+        // We reconstruct each interest's shape directly from `(pubkey, kinds)`
+        // rather than looking it up via the registry to keep this O(n) instead
+        // of O(n²). The `follow_feed_interest` constructor is deterministic and
+        // the completion key uses `InterestRegistry::legacy_key` — the SAME
+        // derivation the registry mints for `push`-registered interests
+        // (single source of truth; no hand-copied key recipe).
+        {
+            use crate::kernel::cache_serve::completion_key_for_interest;
+            use crate::subs::InterestRegistry;
+            // Collect the pubkey list: follows + active user.
+            let mut cache_serve_authors: Vec<String> = follows.to_vec();
+            if let Some(ref me) = self.active_account {
+                cache_serve_authors.push(me.clone());
+            }
+            for pubkey in cache_serve_authors {
+                let interest = follow_feed_interest(&pubkey, &kinds);
+                let sub_key = InterestRegistry::legacy_key(&interest.id);
+                let completion_key = completion_key_for_interest(&sub_key, &interest.shape);
+                self.enqueue_cache_serve(&interest.shape, completion_key);
+            }
+            self.run_cache_serve_step();
+        }
     }
 
     /// Replay parked pre-kind:3 events whose author is now in
@@ -264,10 +297,10 @@ impl Kernel {
     /// T140 — Re-register M2 follow-feed interests from the current
     /// `seed_contacts` of the active account.
     ///
-    /// Called by `open_contact_list_sub()` (the
-    /// `ActorCommand::OpenContactListSubscription` handler) so that switching
-    /// screens back to the timeline re-confirms the M2 interest set is populated
-    /// under the host-declared `follow_feed_kinds`.
+    /// Called by `open_contact_feed()` (the `ActorCommand::OpenContactFeed`
+    /// handler) so that switching screens back to the home feed re-confirms
+    /// the M2 interest set is populated under the host-declared
+    /// `follow_feed_kinds`.
     ///
     /// T140 (codex finding #4): empty / no-cached-follows must NOT no-op —
     /// that left the *previous* account's `follow_feed_interest_ids` and
@@ -277,14 +310,14 @@ impl Kernel {
     /// the trigger drives `drain_tick` to emit the CLOSE diff for the
     /// now-withdrawn subs. Calling it unconditionally is the correct CLEAR
     /// semantics.
-    /// Host-declared kinds setter for the contact-list-authors subscription.
+    /// Host-declared kinds setter for the contact-feed subscription.
     ///
     /// The host (e.g. Chirp) calls this via
-    /// `ActorCommand::OpenContactListSubscription { kinds }` to declare which
-    /// event kinds the active account's follow-set REQ should carry. D0:
-    /// `nmp-core` does not know which kinds belong to the host's app concept
-    /// (Chirp's social timeline is {1, 6}; another app might want {30023}); the
-    /// substrate just stores and threads the set the host supplies.
+    /// `ActorCommand::OpenContactFeed { kinds }` to declare which event kinds
+    /// the active account's follow-set REQ should carry. D0: `nmp-core` does
+    /// not know which kinds belong to the host's app concept (Chirp's home
+    /// feed is {1, 6}; a long-form app might want {30023}); the substrate just
+    /// stores and threads the set the host supplies.
     ///
     /// Setting the kinds and then calling
     /// `register_follow_feed_for_active_account` re-registers the active
@@ -342,6 +375,12 @@ impl Kernel {
         // `sync_follow_feed_interests` (which flushes the buffer), guarantees
         // the flush sees an empty buffer on the switch.
         self.pre_kind3_buffer = BoundedMessageMap::new(MAX_PROJECTION_MESSAGES);
+        // ADR-0045 E1 — clear the served-interest completion set AND the
+        // pending serve queue so the new identity's interests get a fresh
+        // store-cache serve and the prior identity's queued serves stop.
+        // Must precede `sync_follow_feed_interests` so that the serve that
+        // runs there starts from a clean slate.
+        self.clear_served_interest_shapes();
         if self.active_account.clone().is_some() {
             self.register_follow_feed_for_active_account()
         } else {

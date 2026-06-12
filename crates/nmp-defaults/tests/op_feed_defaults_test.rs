@@ -20,7 +20,7 @@
 //!    set. The composition root's `on_change` callback wiring (engine reset on
 //!    switch, no-op on kind:3) is exercised via the same self-detecting logic.
 //! 4. **No duplicate interest registration** — `register_op_feed_defaults`
-//!    enqueues no `OpenContactListSubscription` / interest-mutating command on
+//!    enqueues no `OpenContactFeed` / interest-mutating command on
 //!    the actor channel (the kernel's `sync_follow_feed_interests` already owns
 //!    the follow-feed subscription).
 
