@@ -63,7 +63,7 @@ use super::relay_mgmt::{
     shutdown_relay_worker, spawn_missing_relays,
 };
 use super::session_persistence;
-use super::tick::{clamp_emit_hz, emit_now, maybe_emit_after_dispatch};
+use super::tick::{clamp_emit_hz_logged, emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
@@ -520,17 +520,7 @@ pub(super) fn dispatch_command(
             initial_relays,
         } => {
             *ctx.running = true;
-            // D8 — enforce the 60 Hz emit ceiling. Clamp silently and emit a
-            // kernel log line so the violation is observable in diagnostics
-            // (D6: no panics at configuration time).
-            let (hz, was_clamped) = clamp_emit_hz(requested_hz);
-            if was_clamped {
-                ctx.kernel.log(format!(
-                    "D8: Start emit_hz={requested_hz} exceeds the 60 Hz ceiling — \
-                     clamped to {hz} Hz"
-                ));
-            }
-            *ctx.emit_hz = hz;
+            *ctx.emit_hz = clamp_emit_hz_logged(ctx.kernel, requested_hz, "Start"); // D8 ceiling
             *ctx.startup_sent = false;
             ctx.kernel.set_visible_limit(visible_limit);
             // Seed the app-declared initial relay configuration into
@@ -592,15 +582,7 @@ pub(super) fn dispatch_command(
             visible_limit,
             emit_hz: requested_hz,
         } => {
-            // D8 — enforce the 60 Hz emit ceiling (same contract as `Start`).
-            let (hz, was_clamped) = clamp_emit_hz(requested_hz);
-            if was_clamped {
-                ctx.kernel.log(format!(
-                    "D8: Configure emit_hz={requested_hz} exceeds the 60 Hz ceiling — \
-                     clamped to {hz} Hz"
-                ));
-            }
-            *ctx.emit_hz = hz;
+            *ctx.emit_hz = clamp_emit_hz_logged(ctx.kernel, requested_hz, "Configure"); // D8 ceiling
             ctx.kernel.set_visible_limit(visible_limit);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())

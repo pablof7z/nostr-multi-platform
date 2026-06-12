@@ -93,96 +93,10 @@ impl ChangeGate for AtomicU64 {
     }
 }
 
-/// A registered generic projection: the closure plus the optional change-gate
-/// memo that lets `run` skip re-invoking the closure when the gate is unchanged.
-///
-/// - `f` — the host projection closure (always present).
-/// - `gate` — `None` for the default always-run registration
-///   ([`SnapshotRegistry::register`]); `Some` for the gated variant
-///   ([`SnapshotRegistry::register_gated`]).
-/// - `memo` — interior-mutable per-key cache of `(last witnessed gate value,
-///   last produced value)`. Interior mutability (a `Mutex`) is required because
-///   [`SnapshotRegistry::run`] takes `&self` (it is driven from `make_update`
-///   through a shared `&self` kernel path); threading `&mut` all the way through
-///   `make_update` would ripple a borrow change across the whole emit path. The
-///   `Mutex` is contended only by the single actor thread that drives `run`, so
-///   it is effectively uncontended in production. `None` until the first run
-///   populates it; ignored entirely when `gate` is `None`.
-struct ProjectionEntry {
-    f: ProjectionFn,
-    gate: Option<Arc<dyn ChangeGate>>,
-    memo: Mutex<Option<(u64, serde_json::Value)>>,
-}
-
-impl ProjectionEntry {
-    /// An ungated (always-run) entry — the default registration semantics.
-    fn ungated(f: ProjectionFn) -> Self {
-        Self {
-            f,
-            gate: None,
-            memo: Mutex::new(None),
-        }
-    }
-
-    /// A gated entry — `run` consults `gate` and may serve `memo` instead of
-    /// invoking `f`.
-    fn gated(gate: Arc<dyn ChangeGate>, f: ProjectionFn) -> Self {
-        Self {
-            f,
-            gate: Some(gate),
-            memo: Mutex::new(None),
-        }
-    }
-
-    /// Produce this entry's value for the current tick.
-    ///
-    /// Returns `Some(value)` on success; `None` when the closure panicked (D15:
-    /// every host-supplied closure invocation is wrapped in [`catch_unwind`] so
-    /// a panicking projection can never unwind the actor thread). The caller
-    /// ([`SnapshotRegistry::run`]) omits the key from the snapshot when `None`
-    /// is returned, exactly as if the key had never been registered.
-    ///
-    /// Ungated: always invokes the closure (legacy semantics, unchanged).
-    /// Gated: if the gate value matches the memoized value, clones and returns
-    /// the cached value WITHOUT invoking the closure; otherwise invokes the
-    /// closure, caches `(gate_value, value)`, and returns it. A panicking
-    /// gated closure leaves the prior memo intact (not overwritten), so the
-    /// next clean gate still serves the last good cached value.
-    fn value_for_tick(&self) -> Option<serde_json::Value> {
-        let Some(gate) = self.gate.as_ref() else {
-            // Ungated: the default always-run path — never touches the memo.
-            // D15: host-supplied closure invocation wrapped in catch_unwind.
-            return catch_unwind(AssertUnwindSafe(|| (self.f)())).ok();
-        };
-
-        let gate_value = gate.current();
-        // Fast path: a clean gate serves the cached value without invoking `f`.
-        // The memo mutex is contended only by the single actor thread, so this
-        // lock is effectively uncontended. A poisoned memo (defensive — the lock
-        // is always released before `f` runs, so a closure panic can never
-        // poison it) collapses to a fresh run.
-        if let Ok(memo) = self.memo.lock() {
-            if let Some((cached_gate, cached_value)) = memo.as_ref() {
-                if *cached_gate == gate_value {
-                    return Some(cached_value.clone());
-                }
-            }
-        }
-
-        // Dirty (or never run): invoke `f` inside catch_unwind (D15), then
-        // memoize for the next tick on success. `f` runs OUTSIDE the memo lock
-        // so a slow/panicking closure never holds the memo mutex. On panic,
-        // return `None` (key omitted this tick) and leave the prior memo intact.
-        let value = match catch_unwind(AssertUnwindSafe(|| (self.f)())) {
-            Ok(v) => v,
-            Err(_) => return None,
-        };
-        if let Ok(mut memo) = self.memo.lock() {
-            *memo = Some((gate_value, value.clone()));
-        }
-        Some(value)
-    }
-}
+// `ProjectionEntry` — the per-key closure + change-gate memo machinery,
+// extracted to a submodule to keep this file within its LOC ceiling.
+mod entry;
+use entry::ProjectionEntry;
 
 /// A host-registered **typed** projection closure — the FlatBuffers-sidecar
 /// counterpart to [`ProjectionFn`].
@@ -221,36 +135,17 @@ pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send 
 /// a lock.
 pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
 
-/// D5 — maximum number of distinct keys in the generic (`projections`) or
-/// typed (`typed_projections`) projection registries.
-///
-/// # Rationale
-///
-/// D5 requires that snapshot output is bounded by the set of currently-open
-/// views.  An unbounded registry would let a misconfigured or adversarial host
-/// grow the per-tick serialisation cost without limit, violating D5 and D8
-/// (snapshot cost must be proportional to open views).
-///
-/// The busiest in-repo app (the Chirp defaults layer, counting across
-/// `nmp-defaults`, `nmp-nip47`, `nmp-nip17`, `nmp-marmot`, `nmp-nip02`,
-/// `nmp-nip29`, `nmp-content`, `nmp-wot`) registers approximately **12**
-/// distinct projection keys.  A 4× headroom factor (48, rounded up to 64 for
-/// alignment) yields a defensible ceiling that absorbs future growth while
-/// still preventing accidental unbounded accumulation.
-///
-/// Registration of a new key beyond this limit is a **loud no-op** (a
-/// `tracing::warn!` line is emitted; the closure is silently dropped).  This
-/// follows the D6 contract: configuration-time errors are never panics, but
-/// they MUST be observable.
-pub const MAX_SNAPSHOT_PROJECTIONS: usize = 64;
+// D5 — registration-count ceilings and the loud-no-op admission helpers
+// (`MAX_SNAPSHOT_PROJECTIONS` / `MAX_TICK_OBSERVERS` + `admit_keyed` /
+// `admit_additive`). Extracted to a `pub` submodule so the registry file stays
+// within its LOC ceiling; the constants are part of the public D5 contract.
+pub mod bounds;
+use bounds::{admit_additive, admit_keyed};
 
-/// D5 — maximum number of per-tick observer closures in the `tick_observers`
-/// list.
-///
-/// Tick observers are additive (no key dedup), so they have their own bound.
-/// Production wires exactly **1** today; 16 gives generous headroom while
-/// capping runaway registration.
-pub const MAX_TICK_OBSERVERS: usize = 16;
+// D5 — registration-count ceiling tests (kept beside the registry, off the
+// `kernel/mod.rs` module list, so this PR does not touch that ratcheted file).
+#[cfg(test)]
+mod bounds_tests;
 
 /// Registry of host-supplied snapshot projections.
 ///
@@ -301,17 +196,12 @@ impl SnapshotRegistry {
         let key = key.into();
         // D5: admit a new key only when below the ceiling; re-registering an
         // existing key is always allowed (it just replaces the closure).
-        if !self.projections.contains_key(&key)
-            && self.projections.len() >= MAX_SNAPSHOT_PROJECTIONS
-        {
-            tracing::warn!(
-                key = %key,
-                limit = MAX_SNAPSHOT_PROJECTIONS,
-                "D5: snapshot projection registry is full — \
-                 registration of '{}' dropped (limit: {})",
-                key,
-                MAX_SNAPSHOT_PROJECTIONS,
-            );
+        if !admit_keyed(
+            self.projections.len(),
+            self.projections.contains_key(&key),
+            &key,
+            "snapshot projection",
+        ) {
             return;
         }
         self.projections
@@ -345,17 +235,12 @@ impl SnapshotRegistry {
         f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
     ) {
         let key = key.into();
-        if !self.projections.contains_key(&key)
-            && self.projections.len() >= MAX_SNAPSHOT_PROJECTIONS
-        {
-            tracing::warn!(
-                key = %key,
-                limit = MAX_SNAPSHOT_PROJECTIONS,
-                "D5: snapshot projection registry is full — \
-                 registration of '{}' dropped (limit: {})",
-                key,
-                MAX_SNAPSHOT_PROJECTIONS,
-            );
+        if !admit_keyed(
+            self.projections.len(),
+            self.projections.contains_key(&key),
+            &key,
+            "snapshot projection",
+        ) {
             return;
         }
         self.projections
@@ -429,17 +314,12 @@ impl SnapshotRegistry {
         f: impl Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
     ) {
         let key = key.into();
-        if !self.typed_projections.contains_key(&key)
-            && self.typed_projections.len() >= MAX_SNAPSHOT_PROJECTIONS
-        {
-            tracing::warn!(
-                key = %key,
-                limit = MAX_SNAPSHOT_PROJECTIONS,
-                "D5: typed snapshot projection registry is full — \
-                 registration of '{}' dropped (limit: {})",
-                key,
-                MAX_SNAPSHOT_PROJECTIONS,
-            );
+        if !admit_keyed(
+            self.typed_projections.len(),
+            self.typed_projections.contains_key(&key),
+            &key,
+            "typed snapshot projection",
+        ) {
             return;
         }
         self.typed_projections.insert(key, Box::new(f));
@@ -488,12 +368,7 @@ impl SnapshotRegistry {
     /// D5: if the observer list already holds [`MAX_TICK_OBSERVERS`] entries the
     /// registration is a loud no-op (D6: `tracing::warn!`, no panic).
     pub fn register_tick_observer(&mut self, f: impl Fn() + Send + Sync + 'static) {
-        if self.tick_observers.len() >= MAX_TICK_OBSERVERS {
-            tracing::warn!(
-                limit = MAX_TICK_OBSERVERS,
-                "D5: tick-observer list is full — registration dropped (limit: {})",
-                MAX_TICK_OBSERVERS,
-            );
+        if !admit_additive(self.tick_observers.len()) {
             return;
         }
         self.tick_observers.push(Box::new(f));
@@ -608,143 +483,5 @@ impl Kernel {
                 registry.run_tick_observers();
             }
         }
-    }
-}
-
-// ── D5 projection-count ceiling tests ────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        ChangeGate, SnapshotRegistry, MAX_SNAPSHOT_PROJECTIONS, MAX_TICK_OBSERVERS,
-    };
-    use std::sync::atomic::AtomicU64;
-    use std::sync::Arc;
-
-    /// D5: registering up to `MAX_SNAPSHOT_PROJECTIONS` entries succeeds; the
-    /// (MAX+1)-th registration with a fresh key is silently dropped.
-    #[test]
-    fn generic_projection_registry_rejects_overflow() {
-        let mut reg = SnapshotRegistry::new();
-
-        // Fill to the ceiling.
-        for i in 0..MAX_SNAPSHOT_PROJECTIONS {
-            reg.register(format!("test.key.{i}"), || serde_json::Value::Null);
-        }
-        assert_eq!(
-            reg.projections.len(),
-            MAX_SNAPSHOT_PROJECTIONS,
-            "registry should hold exactly MAX_SNAPSHOT_PROJECTIONS entries after filling"
-        );
-
-        // One more NEW key — must be silently dropped.
-        reg.register("test.key.overflow", || serde_json::Value::Bool(true));
-        assert_eq!(
-            reg.projections.len(),
-            MAX_SNAPSHOT_PROJECTIONS,
-            "D5 regression: registry grew past MAX_SNAPSHOT_PROJECTIONS after overflow attempt"
-        );
-
-        // The overflow key must not appear in the run output.
-        let output = reg.run();
-        assert!(
-            !output.contains_key("test.key.overflow"),
-            "D5 regression: overflowed projection key appeared in run() output"
-        );
-    }
-
-    /// D5: re-registering an **existing** key at the ceiling replaces the
-    /// closure without growing the registry.
-    #[test]
-    fn generic_projection_registry_allows_re_registration_at_ceiling() {
-        let mut reg = SnapshotRegistry::new();
-
-        for i in 0..MAX_SNAPSHOT_PROJECTIONS {
-            reg.register(format!("test.key.{i}"), || serde_json::Value::Null);
-        }
-
-        // Re-registering "test.key.0" (already present) must succeed and keep
-        // the count at MAX.
-        reg.register("test.key.0", || serde_json::Value::Bool(true));
-        assert_eq!(
-            reg.projections.len(),
-            MAX_SNAPSHOT_PROJECTIONS,
-            "re-registration of an existing key must not grow the registry"
-        );
-
-        // The re-registered closure must be the active one.
-        let output = reg.run();
-        assert_eq!(
-            output.get("test.key.0"),
-            Some(&serde_json::Value::Bool(true)),
-            "re-registered closure must replace the old one"
-        );
-    }
-
-    /// D5: same ceiling check for the **typed** projection registry.
-    #[test]
-    fn typed_projection_registry_rejects_overflow() {
-        let mut reg = SnapshotRegistry::new();
-
-        for i in 0..MAX_SNAPSHOT_PROJECTIONS {
-            reg.register_typed(format!("test.typed.{i}"), || None);
-        }
-        assert_eq!(
-            reg.typed_projections.len(),
-            MAX_SNAPSHOT_PROJECTIONS,
-        );
-
-        reg.register_typed("test.typed.overflow", || None);
-        assert_eq!(
-            reg.typed_projections.len(),
-            MAX_SNAPSHOT_PROJECTIONS,
-            "D5 regression: typed registry grew past MAX_SNAPSHOT_PROJECTIONS"
-        );
-    }
-
-    /// D5: same ceiling check for the **gated** projection variant.
-    #[test]
-    fn gated_projection_registry_rejects_overflow() {
-        let mut reg = SnapshotRegistry::new();
-        let gate = Arc::new(AtomicU64::new(0));
-
-        for i in 0..MAX_SNAPSHOT_PROJECTIONS {
-            reg.register_gated(
-                format!("test.gated.{i}"),
-                Arc::clone(&gate) as Arc<dyn ChangeGate>,
-                || serde_json::Value::Null,
-            );
-        }
-        assert_eq!(reg.projections.len(), MAX_SNAPSHOT_PROJECTIONS);
-
-        reg.register_gated(
-            "test.gated.overflow",
-            Arc::clone(&gate) as Arc<dyn ChangeGate>,
-            || serde_json::Value::Bool(true),
-        );
-        assert_eq!(
-            reg.projections.len(),
-            MAX_SNAPSHOT_PROJECTIONS,
-            "D5 regression: gated registry grew past MAX_SNAPSHOT_PROJECTIONS"
-        );
-    }
-
-    /// D5: tick-observer ceiling — the (MAX_TICK_OBSERVERS+1)-th registration
-    /// is silently dropped.
-    #[test]
-    fn tick_observer_registry_rejects_overflow() {
-        let mut reg = SnapshotRegistry::new();
-
-        for _ in 0..MAX_TICK_OBSERVERS {
-            reg.register_tick_observer(|| {});
-        }
-        assert_eq!(reg.tick_observers.len(), MAX_TICK_OBSERVERS);
-
-        reg.register_tick_observer(|| {});
-        assert_eq!(
-            reg.tick_observers.len(),
-            MAX_TICK_OBSERVERS,
-            "D5 regression: tick-observer list grew past MAX_TICK_OBSERVERS"
-        );
     }
 }
