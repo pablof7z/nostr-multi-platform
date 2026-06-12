@@ -18,7 +18,13 @@
 
 pub const DEFAULT_VISIBLE_LIMIT: usize = 80;
 pub const DEFAULT_EMIT_HZ: u32 = 4;
-pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
+// The per-account follow-set cap (`TIMELINE_AUTHOR_LIMIT`) moved to
+// `crate::tags` — it is a substrate-generic number shared by the kernel ingest
+// and the `nmp-nip02` follow-set observers, so it lives in the kind-agnostic
+// tag module both can reach (single source of truth, exactly one `500`
+// literal). No re-export is kept here: the sole former consumer
+// (`kernel::ingest::contacts`) now calls `tags::capped_contact_follows`
+// directly, and per the no-compat-alias rule a dead re-export is not retained.
 
 /// A `wss://`/`ws://` URL for a relay, in plain (non-canonicalized) string
 /// form.
