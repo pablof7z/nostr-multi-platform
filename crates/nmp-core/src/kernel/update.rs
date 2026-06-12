@@ -23,6 +23,8 @@ mod helpers;
 mod projections;
 mod views;
 
+pub use projections::KERNEL_BUILTIN_PROJECTION_KEYS;
+
 /// Snapshot schema version stamped into every emitted `KernelUpdate`.
 ///
 /// This is a re-export of the canonical [`crate::update_envelope::SNAPSHOT_SCHEMA_VERSION`]

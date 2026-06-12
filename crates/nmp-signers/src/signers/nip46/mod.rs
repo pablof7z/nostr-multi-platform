@@ -28,7 +28,7 @@
 //!   their id; we resolve and drop.
 
 mod handle;
-mod mapper;
+pub(crate) mod mapper;
 
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Sender};

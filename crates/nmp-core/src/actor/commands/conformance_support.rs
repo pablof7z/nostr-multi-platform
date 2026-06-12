@@ -49,7 +49,7 @@ impl ConformanceHarness {
             // reads it). V-14 step b: likewise a throwaway connection-state slot.
             identity: IdentityRuntime::new(
                 super::new_bunker_handshake_slot(),
-                super::new_bunker_connection_state_slot(),
+                super::new_signer_state_slot(),
             ),
             kernel: Kernel::with_publish_store(
                 DEFAULT_VISIBLE_LIMIT,

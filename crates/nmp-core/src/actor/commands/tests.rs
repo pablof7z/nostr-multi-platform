@@ -59,7 +59,7 @@ fn fresh() -> (IdentityRuntime, Kernel) {
     (
         IdentityRuntime::new(
             new_bunker_handshake_slot(),
-            crate::actor::new_bunker_connection_state_slot(),
+            crate::actor::new_signer_state_slot(),
         ),
         Kernel::new(DEFAULT_VISIBLE_LIMIT),
     )
@@ -74,7 +74,7 @@ fn fresh_with_publish_store() -> (IdentityRuntime, Kernel, Arc<InMemoryPublishSt
     (
         IdentityRuntime::new(
             new_bunker_handshake_slot(),
-            crate::actor::new_bunker_connection_state_slot(),
+            crate::actor::new_signer_state_slot(),
         ),
         kernel,
         publish_store,

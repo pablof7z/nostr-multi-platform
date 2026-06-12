@@ -193,7 +193,10 @@ pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 // Step 11 final — `NmpApp` opaque handle + the `nmp_app_*` symbol family
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.
-pub use kernel::{read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel};
+pub use kernel::{
+    read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel,
+    KERNEL_BUILTIN_PROJECTION_KEYS,
+};
 // Opt-in per-projection change gate (perf): a host names this to pass its rev
 // `Arc<AtomicU64>` as the gate to `register_snapshot_projection_gated`, so an
 // unchanged projection is served from cache instead of being re-serialized on
@@ -341,7 +344,7 @@ pub use actor::{KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserv
 #[doc(hidden)]
 pub mod __ffi_internal {
     pub use crate::actor::{
-        has_role, new_bunker_connection_state_slot, new_bunker_handshake_slot,
+        has_role, new_signer_state_slot, new_bunker_handshake_slot,
         new_event_observer_slot, new_lifecycle_observer_slot, new_raw_event_observer_slot,
         nostrconnect_relay_url, register_c_observer, register_c_raw_observer,
         register_rust_observer, register_rust_raw_observer, run_actor_with_observers,
@@ -459,7 +462,7 @@ pub mod testing {
                 crate::kernel::new_snapshot_projection_slot(),
                 crate::substrate::new_relay_text_interceptor_slot(),
                 crate::actor::new_bunker_handshake_slot(),
-                crate::actor::new_bunker_connection_state_slot(),
+                crate::actor::new_signer_state_slot(),
                 crate::kernel::new_app_relay_slot(),
                 Arc::new(Mutex::new(None)),
                 Arc::new(Mutex::new(None)),

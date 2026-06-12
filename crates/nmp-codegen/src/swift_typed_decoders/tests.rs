@@ -216,9 +216,9 @@ fn real_registry_emits_exactly_the_proof_keys() {
          NIP-46 cluster: bunker_handshake, nip46_onboarding; the Marmot \
          push-projection cluster: nmp.marmot.snapshot, nmp.marmot.messages; \
          plus the wallet (producer field-add) + settings_hub (kernel built-in) \
-         flips; Wave C: action_results, action_stages; V-14 \
-         bunker_connection_state; V-112 author_view + thread_view deleted \
-         = 30 - 2 = 28); if this changed, regenerate \
-         TypedProjectionDecoders.generated.swift and update this test"
+         flips; Wave C: action_results, action_stages; signer_state \
+         (ADR-0048 D6, generalised from V-14 bunker_connection_state); V-112 \
+         author_view + thread_view deleted = 30 - 2 = 28); if this changed, \
+         regenerate TypedProjectionDecoders.generated.swift and update this test"
     );
 }

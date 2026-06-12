@@ -30,6 +30,10 @@ pub enum SignerPayload {
     /// NIP-07 browser extension.  Carries no secret — re-acquisition prompts
     /// the user via `window.nostr.getPublicKey()` on restore.
     Nip07(Nip07Payload),
+    /// NIP-55 Android external signer (Amber / `nostrsigner:`).  Carries
+    /// pubkey + package name only — no key material ever enters the NMP
+    /// process (ADR-0048).
+    Nip55(Nip55Payload),
 }
 
 /// Local-key signer persistence form.
@@ -105,6 +109,27 @@ pub struct Nip07Payload {
     pub cached_pubkey_hex: Option<String>,
 }
 
+/// NIP-55 Android external-signer payload.
+///
+/// Contains only the user's pubkey and the signer app's package name — no
+/// private key ever enters the NMP process (ADR-0048). Derives `Debug`
+/// directly because no secret is stored here.
+#[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
+pub struct Nip55Payload {
+    /// The user's public key, hex-encoded.  Cached from the first successful
+    /// `get_public_key` reply; used to reconstruct the signer on restore
+    /// without a round-trip.
+    pub user_pubkey_hex: String,
+    /// Package name of the signer app (e.g. `"com.greenart7c3.nostrsigner"`).
+    /// `None` on a first-connect restore before the package is known.
+    pub signer_package: Option<String>,
+    /// Permissions granted in the first-connect batch.  Stored so `from_payload`
+    /// can reconstruct the fast-path grant list without another permission batch.
+    /// Serialised as a `Vec<String>` (permission kind strings).
+    #[serde(default)]
+    pub granted_permissions: Vec<String>,
+}
+
 // ---------------- Redacting `Debug` impls ----------------
 //
 // Secret-bearing payloads do NOT derive `Debug`; these hand-written impls
@@ -152,6 +177,8 @@ impl fmt::Debug for SignerPayload {
             Self::Local(p) => f.debug_tuple("SignerPayload::Local").field(p).finish(),
             Self::Nip46(p) => f.debug_tuple("SignerPayload::Nip46").field(p).finish(),
             Self::Nip07(p) => f.debug_tuple("SignerPayload::Nip07").field(p).finish(),
+            // Nip55Payload derives Debug and carries no secrets — delegate directly.
+            Self::Nip55(p) => f.debug_tuple("SignerPayload::Nip55").field(p).finish(),
         }
     }
 }

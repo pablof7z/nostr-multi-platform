@@ -21,7 +21,7 @@
 //! 6. The mock signs the inner kind:1 with the user's secret key and
 //!    replies with an encrypted `{id, result: <signed-event-json>}`.
 //! 7. The inbound dispatcher thread the broker spawned routes the
-//!    response back into `Nip46Signer::deliver_rpc_response`, which fires
+//!    response back into `Nip46Signer::deliver_response`, which fires
 //!    the pending one-shot.
 //! 8. The mapper validates the signed kind:1 (id recomputation + schnorr
 //!    verify + pubkey match) and the `.wait()` call in the test unblocks.
@@ -210,7 +210,7 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
 
     // Now drive a publish.  This walks `sign_active_nonblocking` →
     // handle.sign() → BrokerTransport → mock → dispatch_inbound →
-    // deliver_rpc_response → mapper → signed event → publish_signed.
+    // deliver_response → mapper → signed event → publish_signed.
     let unsigned = nmp_core::substrate::UnsignedEvent {
         pubkey: user_pubkey_hex.clone(),
         kind: 1,

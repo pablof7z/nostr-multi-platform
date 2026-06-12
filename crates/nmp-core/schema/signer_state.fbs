@@ -1,0 +1,73 @@
+namespace nmp.kernel;
+
+// Typed FlatBuffers wire for the actor-owned `signer_state` snapshot
+// projection (Tier-1 closure path — registered via `SnapshotRegistry::register`
+// AND `SnapshotRegistry::register_typed` in `crates/nmp-core/src/actor/mod.rs`).
+//
+// ADR-0048 D6: generalises the former `bunker_connection_state` projection
+// (V-14 step b, #963 / #1098 — file identifier "KBCS") into a unified
+// remote-signer health surface covering BOTH NIP-46 bunker sessions and NIP-55
+// external-signer (Amber) sessions. The rename is a hard break (no-compat-alias
+// rule): the old schema file, table, and identifier are deleted; all in-repo
+// consumers (iOS `AccountsView`, Android `SignInScreen`) read the new key.
+//
+// The producer is the `registry.register("signer_state", …)` closure in
+// `crates/nmp-core/src/actor/mod.rs`, which serialises the shared
+// `SignerStateSlot` (`Arc<Mutex<Option<SignerStateDto>>>`). When the slot holds
+// `None` (no remote-signer session active) the closure contributes JSON `null`;
+// when it holds `Some(dto)` it serialises the `SignerStateDto`. That generic
+// `Value` projection stays the source of truth (registered unchanged); this
+// buffer is emitted ALONGSIDE it in the `SnapshotFrame`'s `typed_projections`
+// sidecar (ADR-0037) under the SAME key, and ONLY when the JSON closure
+// produces a non-null value.
+//
+// Field-for-field mirror of the serialised `SignerStateDto`
+// (`crates/nmp-core/src/actor/commands/identity.rs`). All fields are present in
+// every serialisation. `reason` is the only `Option<String>` and uses
+// `has_reason` as the companion-bool (the #1029 `ProfileCard` convention).
+//
+// D0: remote-signer session health is an app noun; NOT a typed `KernelSnapshot`
+// field — projected under `projections["signer_state"]` exactly like a
+// host-registered namespace, and typed here ALONGSIDE the generic `Value`.
+// D6: the decoder returns `Err(String)` on malformed input, never panics.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-core/src/actor/typed_projections/generated \
+//         crates/nmp-core/schema/signer_state.fbs
+//
+// Regenerate the checked-in Swift bindings only with the same pin:
+//   flatc --swift -o ios/Chirp/Chirp/Bridge/Generated \
+//         crates/nmp-core/schema/signer_state.fbs
+
+table SignerState {
+  // Signer backend discriminator: "nip46" | "nip55" | "local".
+  // Carried verbatim from `SignerStateDto::signer_kind`.
+  signer_kind:string;
+  // Wire state token:
+  // "ready" | "awaiting_approval" | "reconnecting" | "unavailable" | "failed".
+  // Carried verbatim from `SignerStateDto::state`. (The NIP-46 broker's legacy
+  // "connected" token is canonicalised to "ready" by the producer.)
+  state:string;
+  // Optional human-readable error reason (present on degraded states).
+  // `has_reason == false` mirrors JSON `null` (absent when ready).
+  has_reason:bool;
+  reason:string;
+  // `state == "ready"` — the signer is operational.
+  is_ready:bool;
+  // `state == "awaiting_approval"` — a NIP-55 Intent round-trip is in flight;
+  // hosts render "Waiting for Amber…" inline (ADR-0048 D6).
+  is_awaiting_approval:bool;
+  // `state == "reconnecting"` — transient NIP-46 relay flap, auto-reconnect in
+  // progress. Hosts show a reconnecting indicator on this signal.
+  is_reconnecting:bool;
+  // `state == "unavailable"` — NIP-55 signer app not installed / uninstalled
+  // mid-session. Hosts prompt re-auth on this signal.
+  is_unavailable:bool;
+  // `state == "failed"` — permanent error (rejected / mismatch / timeout),
+  // session bricked. Hosts prompt re-auth on this signal.
+  is_failed:bool;
+}
+
+file_identifier "KSST";
+root_type SignerState;

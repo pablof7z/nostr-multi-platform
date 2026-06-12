@@ -188,7 +188,7 @@ pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wall
 // already on the public surface comes through `nmp_core::*` directly.
 use nmp_core::__ffi_internal::{
     default_registry, dispatch_capability, new_app_relay_slot,
-    new_bunker_connection_state_slot, new_bunker_handshake_slot, new_capability_callback_slot,
+    new_signer_state_slot, new_bunker_handshake_slot, new_capability_callback_slot,
     new_event_observer_slot, new_lifecycle_observer_slot, new_raw_event_observer_slot,
     new_snapshot_projection_slot, register_rust_observer,
     register_rust_raw_observer, run_actor_with_observers, unregister_observer,
@@ -809,12 +809,12 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `KernelSnapshot` field — and every actor consumer (FFI or test) gets the
     // projection without a separate FFI registration step.
     let actor_bunker_handshake = new_bunker_handshake_slot();
-    // V-14 step b: bunker relay-layer connection-state slot. The broker
-    // callback routes `BrokerEvent::ConnectionStateChanged` through
+    // ADR-0048 D6: unified remote-signer health slot. The broker callback
+    // routes `BrokerEvent::ConnectionStateChanged` through
     // `ActorCommand::BunkerConnectionStateChanged` → actor → this slot → the
-    // built-in `"bunker_connection_state"` snapshot projection. D4: the actor
-    // is the sole writer of the slot.
-    let actor_bunker_connection_state = new_bunker_connection_state_slot();
+    // built-in `"signer_state"` snapshot projection. D4: the actor is the
+    // sole writer of the slot.
+    let actor_signer_state = new_signer_state_slot();
     // Shared relay-edit rows handle. Cloned to the actor thread and bound
     // onto the kernel so external Rust callers can read the user's current
     // relay list without crossing FFI.
@@ -1004,7 +1004,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_bunker_handshake,
                 // V-14 step b: bunker relay-layer connection-state slot.
                 // The broker callback → actor command → slot write keeps D4.
-                actor_bunker_connection_state,
+                actor_signer_state,
                 actor_configured_relays,
                 actor_mls_local_nsec,
                 actor_active_local_keys,

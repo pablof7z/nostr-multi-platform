@@ -242,6 +242,7 @@ mod tier3_encode;
 mod tier3_envelope_tests;
 mod types;
 mod update;
+pub use update::KERNEL_BUILTIN_PROJECTION_KEYS;
 #[cfg(test)]
 mod v66_no_configured_relays_tests;
 #[cfg(test)]

@@ -238,28 +238,32 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_Nip46Onboarding"),
         }),
     },
-    // NIP-46 relay-layer connection state (V-14 step b, closes #963).
-    // `projections["bunker_connection_state"]` — null when no bunker session is
-    // active; `{ state, reason, is_connected, is_reconnecting, is_failed }` when
-    // a session is live. Shells surface this as a status badge on the active
-    // bunker account row and as a non-blocking alert banner when degraded.
+    // Unified remote-signer health (ADR-0048 D6 — generalises the V-14 step b
+    // `bunker_connection_state` projection; hard-break rename, no compat key).
+    // `projections["signer_state"]` — null when no remote-signer session is
+    // active; `{ signer_kind, state, reason, is_ready, is_awaiting_approval,
+    // is_reconnecting, is_unavailable, is_failed }` when one is live. Covers
+    // BOTH NIP-46 bunker sessions and NIP-55 external-signer (Amber) sessions;
+    // shells surface ONE status badge on the active remote account row keyed
+    // by `signer_kind`, and a non-blocking alert banner when degraded.
     // Tier-1 actor projection: producer sets `key == schema_id`.
     SnapshotProjectionEntry {
-        json_key: "bunker_connection_state",
-        swift_field: "bunkerConnectionState",
-        swift_type: "BunkerConnectionState",
-        // Typed FlatBuffers sidecar (KBCS, V-14 step b). The `flatc --swift`
-        // reader (`nmp_kernel_BunkerConnectionState`) ships with this PR from
-        // `crates/nmp-core/schema/bunker_connection_state.fbs`. Field-for-field
-        // copy: `{ state, reason, has_reason, is_connected, is_reconnecting,
-        // is_failed }`. Only emitted when a bunker session is active (the slot
-        // is `Some`) — mirrors the JSON closure's `null`-while-idle behaviour.
-        // See `TypedProjectionGlue.bunkerConnectionState`.
+        json_key: "signer_state",
+        swift_field: "signerState",
+        swift_type: "SignerState",
+        // Typed FlatBuffers sidecar (KSST). The `flatc --swift` reader
+        // (`nmp_kernel_SignerState`) ships from
+        // `crates/nmp-core/schema/signer_state.fbs`. Field-for-field copy:
+        // `{ signer_kind, state, has_reason, reason, is_ready,
+        // is_awaiting_approval, is_reconnecting, is_unavailable, is_failed }`.
+        // Only emitted when a remote-signer session is active (the slot is
+        // `Some`) — mirrors the JSON closure's `null`-while-idle behaviour.
+        // See `TypedProjectionGlue.signerState`.
         typed_sidecar: Some(TypedSidecar {
-            key: "bunker_connection_state",
-            schema_id: "bunker_connection_state",
-            file_identifier: "KBCS",
-            swift_reader_type: Some("nmp_kernel_BunkerConnectionState"),
+            key: "signer_state",
+            schema_id: "signer_state",
+            file_identifier: "KSST",
+            swift_reader_type: Some("nmp_kernel_SignerState"),
         }),
     },
     // Publish-cluster outbox feeds — kernel-owned `publish_queue` and

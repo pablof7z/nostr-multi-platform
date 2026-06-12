@@ -142,21 +142,21 @@ enum TypedNip46OnboardingDecoder {
     }
 }
 
-// MARK: - TypedBunkerConnectionStateDecoder
-// Projection `bunker_connection_state` → typed sidecar `bunker_connection_state` (KBCS). Domain type: `BunkerConnectionState?`.
-enum TypedBunkerConnectionStateDecoder {
+// MARK: - TypedSignerStateDecoder
+// Projection `signer_state` → typed sidecar `signer_state` (KSST). Domain type: `SignerState?`.
+enum TypedSignerStateDecoder {
     /// `TypedProjection.key` the producer publishes for this projection.
-    static let key = "bunker_connection_state"
+    static let key = "signer_state"
     /// `TypedPayload.schema_id` carried on the sidecar buffer.
-    static let schemaId = "bunker_connection_state"
-    /// FlatBuffers `file_identifier` for `nmp_kernel_BunkerConnectionState`.
-    static let fileIdentifier = "KBCS"
+    static let schemaId = "signer_state"
+    /// FlatBuffers `file_identifier` for `nmp_kernel_SignerState`.
+    static let fileIdentifier = "KSST"
 
-    /// Decode the typed `bunker_connection_state` sidecar from the snapshot's typed-projection
+    /// Decode the typed `signer_state` sidecar from the snapshot's typed-projection
     /// envelopes into the Chirp domain value. Returns `nil` (so the host
     /// falls back to the generic JSON `payload`) when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
-    static func decode(from projections: [TypedProjectionEnvelope]) -> BunkerConnectionState? {
+    static func decode(from projections: [TypedProjectionEnvelope]) -> SignerState? {
         guard let projection = projections.first(where: {
             $0.key == key && $0.schemaId == schemaId
         }), !projection.payload.isEmpty else {
@@ -165,19 +165,19 @@ enum TypedBunkerConnectionStateDecoder {
         return decode(bytes: projection.payload)
     }
 
-    /// Decode a raw `KBCS` FlatBuffers buffer into the Chirp domain value.
-    static func decode(bytes: Data) -> BunkerConnectionState? {
+    /// Decode a raw `KSST` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> SignerState? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_BunkerConnectionState = try? getCheckedRoot(
+        guard let reader: nmp_kernel_SignerState = try? getCheckedRoot(
             byteBuffer: &buffer,
             fileId: fileIdentifier
         ) else {
             return nil
         }
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
-        // struct to the Chirp domain type. See `TypedProjectionGlue.bunkerConnectionState`.
-        return TypedProjectionGlue.bunkerConnectionState(reader)
+        // struct to the Chirp domain type. See `TypedProjectionGlue.signerState`.
+        return TypedProjectionGlue.signerState(reader)
     }
 }
 

@@ -36,7 +36,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
-import org.nmp.android.model.BunkerConnectionState
+import org.nmp.android.model.SignerState
 
 /**
  * Sign-in screen for Android Chirp app. Provides two authentication paths:
@@ -53,9 +53,9 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
     var displayName by remember { mutableStateOf("") }
     var bunkerUri by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
-    // V-14 / #963: relay-layer bunker connection health. Null while no bunker
-    // session is active (local-key accounts — the steady state).
-    val bunkerConnectionState by model.bunkerConnectionState.collectAsStateWithLifecycle()
+    // ADR-0048 D6 (generalises V-14 / #963): unified remote-signer health.
+    // Null while no remote-signer session is active (local-key accounts).
+    val signerState by model.signerState.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
@@ -202,13 +202,15 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
             }
         }
 
-        // V-14 / #963: signer relay health badge — only shown when a bunker
-        // session is active. `isConnected` → green; `isReconnecting` → amber
-        // spinner; `isFailed` → red. Rust pre-computes all flags (ADR-0032).
-        bunkerConnectionState?.let { connState ->
+        // ADR-0048 D6 (generalises V-14 / #963): remote-signer health badge —
+        // only shown when a remote-signer session (NIP-46 bunker or NIP-55
+        // Amber) is active. `isReady` → green; `isAwaitingApproval` /
+        // `isReconnecting` → amber spinner; `isUnavailable` / `isFailed` →
+        // red. Rust pre-computes all flags (ADR-0032).
+        signerState?.let { state ->
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            BunkerConnectionStateRow(
-                connectionState = connState,
+            SignerStateRow(
+                signerState = state,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -237,36 +239,48 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
 }
 
 /**
- * V-14 / #963: inline signer-relay health indicator.
+ * ADR-0048 D6 (generalises V-14 / #963): inline remote-signer health indicator.
  *
- * Rendered only when `bunkerConnectionState` is non-null (i.e. an NIP-46 bunker
- * session is active). Three visual states:
- *  - `isConnected` → green dot + "Signer relay: Connected"
- *  - `isReconnecting` → amber spinner + "Signer relay: Reconnecting…" (wait)
- *  - `isFailed` → red warning + "Signer relay: Connection failed" (re-auth)
+ * Rendered only when `signerState` is non-null (i.e. a remote-signer session —
+ * NIP-46 bunker or NIP-55 Amber — is active). Visual states:
+ *  - `isReady` → green dot + "Connected"
+ *  - `isAwaitingApproval` → amber spinner + "Waiting for approval…" (approve
+ *    in the signer app)
+ *  - `isReconnecting` → amber spinner + "Reconnecting…" (wait)
+ *  - `isUnavailable` → red warning + "Signer unavailable" (re-auth)
+ *  - `isFailed` → red warning + "Connection failed" (re-auth)
  *
- * Rust pre-computes every flag (ADR-0032 relay_diagnostics pattern); Compose
- * renders verbatim — no string-compare on `connectionState.state`.
+ * The row label is picked from `signerKind` ("Signer relay" for NIP-46,
+ * "External signer" for NIP-55). Rust pre-computes every flag (ADR-0032
+ * relay_diagnostics pattern); Compose renders verbatim — no string-compare on
+ * `signerState.state`.
  */
 @Composable
-private fun BunkerConnectionStateRow(
-    connectionState: BunkerConnectionState,
+private fun SignerStateRow(
+    signerState: SignerState,
     modifier: Modifier = Modifier,
 ) {
+    // Degraded-terminal grouping (red, prompt re-auth) and transient
+    // in-progress grouping (amber spinner) — both pre-computed flags.
+    val isDegradedTerminal = signerState.isFailed || signerState.isUnavailable
+    val isInProgress = signerState.isAwaitingApproval || signerState.isReconnecting
+    val rowLabel = if (signerState.signerKind == "nip55") "External signer" else "Signer relay"
     val statusLabel = when {
-        connectionState.isFailed -> "Connection failed"
-        connectionState.isReconnecting -> "Reconnecting…"
+        signerState.isUnavailable -> "Signer unavailable"
+        signerState.isFailed -> "Connection failed"
+        signerState.isAwaitingApproval -> "Waiting for approval…"
+        signerState.isReconnecting -> "Reconnecting…"
         else -> "Connected"
     }
     val statusColor: Color = when {
-        connectionState.isFailed -> MaterialTheme.colorScheme.error
-        connectionState.isReconnecting -> Color(0xFFF59E0B) // amber-400
+        isDegradedTerminal -> MaterialTheme.colorScheme.error
+        isInProgress -> Color(0xFFF59E0B) // amber-400
         else -> Color(0xFF22C55E) // green-500
     }
 
     Card(
         modifier = modifier.semantics {
-            contentDescription = "Bunker relay: $statusLabel"
+            contentDescription = "$rowLabel: $statusLabel"
         },
         shape = RoundedCornerShape(8.dp),
     ) {
@@ -278,7 +292,7 @@ private fun BunkerConnectionStateRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (connectionState.isReconnecting) {
+                if (isInProgress) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
                         color = statusColor,
@@ -293,20 +307,20 @@ private fun BunkerConnectionStateRow(
                     )
                 }
                 Text(
-                    text = "Signer relay: $statusLabel",
+                    text = "$rowLabel: $statusLabel",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (connectionState.isFailed) {
+                    color = if (isDegradedTerminal) {
                         MaterialTheme.colorScheme.error
                     } else {
                         MaterialTheme.colorScheme.onSurface
                     },
                 )
             }
-            connectionState.reason?.takeIf { it.isNotEmpty() }?.let { reason ->
+            signerState.reason?.takeIf { it.isNotEmpty() }?.let { reason ->
                 Text(
                     text = reason,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (connectionState.isFailed) {
+                    color = if (isDegradedTerminal) {
                         MaterialTheme.colorScheme.error
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant

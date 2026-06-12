@@ -1,5 +1,50 @@
 use super::super::{ClaimedEventDto, Kernel, MentionProfilePayload, ProfileCard};
 
+/// Canonical list of the kernel-owned (Tier-2) built-in projection keys —
+/// every key [`Kernel::snapshot_projections_with_publish_cluster`] can insert
+/// into the snapshot `projections` map (the registry-closure Tier-1 keys are
+/// NOT listed here; they are introspectable via the live `SnapshotRegistry`).
+///
+/// This is the single source of truth for "which projection keys does the
+/// kernel itself produce". Two consumers depend on it staying exact:
+///
+/// 1. The registry-coverage gate
+///    (`nmp-app-chirp::ffi::tests::producer_completeness::every_codegen_registry_key_is_registered_at_runtime`)
+///    asserts every `nmp-codegen` `SNAPSHOT_PROJECTIONS` json_key is either a
+///    runtime-registered Tier-1 closure key or a member of this list — closing
+///    the #1084-class hole where a producer-side key rename ships without its
+///    consumers (the codegen registry, the Swift/Kotlin bridges).
+/// 2. The in-crate pinning test
+///    (`builtin_projection_keys_const_matches_runtime`) drives a real
+///    `make_update` tick and asserts the emitted built-in keys are a subset of
+///    this list AND that every unconditional key is present — so the const
+///    cannot silently drift from the insertion code above.
+///
+/// Conditional keys (`action_results` / `signed_events` / `action_stages` /
+/// `action_lifecycle` — drain-on-emit, present only on ticks where something
+/// settled) are listed too: the gate asks "can the kernel produce this key",
+/// not "is it present this tick".
+pub const KERNEL_BUILTIN_PROJECTION_KEYS: &[&str] = &[
+    "publish_queue",
+    "publish_outbox",
+    "outbox_summary",
+    "configured_relays",
+    "relay_role_options",
+    "settings_hub",
+    "action_results",
+    "signed_events",
+    "action_stages",
+    "action_lifecycle",
+    "accounts",
+    "active_account",
+    "profile",
+    "relay_diagnostics",
+    "mention_profiles",
+    "claimed_profiles",
+    "claimed_events",
+    "resolved_profiles",
+];
+
 impl Kernel {
     /// Collect the snapshot `projections` map: every host-registered
     /// projection closure plus the kernel-owned built-in projections (the

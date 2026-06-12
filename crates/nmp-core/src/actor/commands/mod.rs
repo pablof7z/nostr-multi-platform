@@ -106,6 +106,11 @@ pub(super) use identity::{
     add_signer, bunker_connection_state_changed, bunker_handshake_progress, create_account,
     remove_account, restore_bunker_session, switch_active, IdentityRuntime,
 };
+// ADR-0048 D6: the NIP-55 writer into the shared `signer_state` slot. Its
+// production caller is the Stage 2 Kotlin capability bridge; until that lands
+// the only callers are the `signer_state` projection tests.
+#[cfg(all(test, feature = "native"))]
+pub(super) use identity::nip55_signer_state_changed;
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot + its
 // constructor are re-exported (crate-wide) so the `ffi` module can build the
 // shared slot and register the built-in `"bunker_handshake"` snapshot
@@ -133,10 +138,16 @@ pub use identity::{new_bunker_handshake_slot, BunkerHandshakeSlot};
 // gated to test builds so it never widens the production surface.
 #[cfg(all(test, feature = "native"))]
 pub(crate) use identity::BunkerHandshakeDto;
-// V-14 step b: bunker relay-layer connection-state slot + constructor.
-// Same pattern as `BunkerHandshakeSlot` / `new_bunker_handshake_slot`.
+// ADR-0048 D6: generalised remote-signer health slot + constructor.
+// V-14 step b's `bunker_connection_state` slot is now `signer_state` — a
+// hard-break rename (no compat aliases); all callers updated in the same PR.
 #[cfg(feature = "native")]
-pub use identity::{new_bunker_connection_state_slot, BunkerConnectionStateSlot};
+pub use identity::{new_signer_state_slot, SignerStateSlot};
+// Test-only: the typed-projection proof tests drive the shared slot to
+// `Some(SignerStateDto)` to assert conditional presence — same gating as
+// `BunkerHandshakeDto` above (the DTO stays production-private).
+#[cfg(all(test, feature = "native"))]
+pub(crate) use identity::SignerStateDto;
 // V-01 Phase 1c: lifecycle handler consumes the native dispatch path.
 #[cfg(feature = "native")]
 pub(super) use lifecycle::handle_lifecycle_event;

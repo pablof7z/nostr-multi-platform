@@ -706,12 +706,14 @@ final class KernelHandle {
             // is the steady-state — the generic JSON `null` is the fallback.
             let typedBunkerHandshake = TypedBunkerHandshakeDecoder.decode(from: envelopes)
             let typedNip46Onboarding = TypedNip46OnboardingDecoder.decode(from: envelopes)
-            // V-14: relay-layer bunker connection health (`bunker_connection_state`,
-            // KBCS). Nil while no bunker session is active (slot is `None`) — the
-            // steady state for local-key accounts. `isConnected`/`isReconnecting`/
-            // `isFailed` drive status badges; no generic JSON fallback needed
-            // because iOS has always needed the sidecar (ADR-0037 §4).
-            let typedBunkerConnectionState = TypedBunkerConnectionStateDecoder.decode(from: envelopes)
+            // ADR-0048 D6: unified remote-signer health (`signer_state`, KSST —
+            // generalises the V-14 `bunker_connection_state` sidecar). Nil while
+            // no remote-signer session is active (slot is `None`) — the steady
+            // state for local-key accounts. `isReady`/`isAwaitingApproval`/
+            // `isReconnecting`/`isUnavailable`/`isFailed` drive status badges
+            // for BOTH NIP-46 and NIP-55 backends; no generic JSON fallback
+            // needed because iOS has always needed the sidecar (ADR-0037 §4).
+            let typedSignerState = TypedSignerStateDecoder.decode(from: envelopes)
             // Marmot push-projection cluster (`nmp.marmot.snapshot` /
             // `nmp.marmot.messages`, V-107 / ADR-0039). Each returns nil when its
             // sidecar is absent/malformed → the generic `projections.<field>` JSON
@@ -760,7 +762,7 @@ final class KernelHandle {
                     typedClaimedEvents: typedClaimedEvents,
                     typedBunkerHandshake: typedBunkerHandshake,
                     typedNip46Onboarding: typedNip46Onboarding,
-                    typedBunkerConnectionState: typedBunkerConnectionState,
+                    typedSignerState: typedSignerState,
                     typedMarmotSnapshot: typedMarmotSnapshot,
                     typedMarmotMessages: typedMarmotMessages,
                     typedWallet: typedWallet,
@@ -964,13 +966,15 @@ struct KernelUpdateResult {
     /// `projections["nip46_onboarding"]` JSON fallback. Always present from a
     /// current kernel (the static signer-app table is emitted every tick).
     let typedNip46Onboarding: Nip46Onboarding?
-    /// Typed `bunker_connection_state` projection decode (`KBCS`). V-14 / #963.
-    /// `nil` while no bunker session is active (relay socket not yet opened).
-    /// `nil` is the steady state for local-key accounts — no JSON fallback
-    /// available because iOS is typed-sidecar-only (ADR-0037 §4). When non-nil,
-    /// `isConnected` drives the green dot, `isReconnecting` the amber badge, and
-    /// `isFailed` the red re-auth prompt (ADR-0032 / relay_diagnostics pattern).
-    let typedBunkerConnectionState: BunkerConnectionState?
+    /// Typed `signer_state` projection decode (`KSST`). ADR-0048 D6 —
+    /// generalises the V-14 `bunker_connection_state` sidecar. `nil` while no
+    /// remote-signer session is active — the steady state for local-key
+    /// accounts; no JSON fallback available because iOS is typed-sidecar-only
+    /// (ADR-0037 §4). When non-nil, `isReady` drives the green dot,
+    /// `isAwaitingApproval` the "Waiting for Amber…" affordance,
+    /// `isReconnecting` the amber badge, and `isUnavailable`/`isFailed` the
+    /// red re-auth prompt (ADR-0032 / relay_diagnostics pattern).
+    let typedSignerState: SignerState?
     /// Typed `nmp.marmot.snapshot` projection decode (`NMMS`, V-107 / ADR-0039).
     /// `nil` ⇒ generic `projections["nmp.marmot.snapshot"]` JSON fallback. Routed
     /// to `MarmotStore.apply` (typed-first effective value) in `KernelModel.apply`.
@@ -1526,30 +1530,44 @@ struct BunkerHandshake: Decodable, Equatable {
     let stageLabel: String?
 }
 
-/// NIP-46 bunker relay-layer connection state — `projections["bunker_connection_state"]`.
+/// Unified remote-signer health — `projections["signer_state"]`.
 ///
-/// Tracks the health of the relay socket that the established bunker session
-/// rides on. Distinct from `BunkerHandshake` (which tracks the NIP-46
-/// connect / get_public_key handshake progress). Nil when no bunker session is
-/// active (the projection contributes JSON `null`).
+/// ADR-0048 D6: the unified remote-signer health surface (generalises the
+/// former `BunkerConnectionState`, V-14 / #963 / #1098). Covers BOTH NIP-46
+/// bunker sessions (relay-socket health) and NIP-55 external-signer (Amber)
+/// sessions (app availability / Intent approval state). Distinct from
+/// `BunkerHandshake` (which tracks the NIP-46 connect / get_public_key
+/// handshake progress). Nil when no remote-signer session is active (the
+/// projection contributes JSON `null` — local-key accounts).
 ///
 /// Rust pre-computes every flag so shells never string-compare `state`
-/// (aim.md §6 / AP1). `isConnected` drives the green indicator; `isReconnecting`
-/// drives an amber reconnecting badge; `isFailed` drives a red re-auth prompt.
+/// (aim.md §6 / AP1). `isReady` drives the green indicator;
+/// `isAwaitingApproval` drives a "Waiting for Amber…" inline affordance;
+/// `isReconnecting` drives an amber reconnecting badge; `isUnavailable` and
+/// `isFailed` drive a red re-auth prompt.
 ///
 /// `Decodable` for the JSON fallback path; `Equatable` for `@Published` diffing
 /// so SwiftUI re-renders only on real state changes.
-struct BunkerConnectionState: Decodable, Equatable {
-    /// `"connected"` | `"reconnecting"` | `"failed"`. Carried verbatim from
-    /// `BunkerConnectionStateDto::state`. Prefer the typed flag fields below.
+struct SignerState: Decodable, Equatable {
+    /// `"nip46"` | `"nip55"` | `"local"`. Picks the row icon/label copy.
+    let signerKind: String
+    /// `"ready"` | `"awaiting_approval"` | `"reconnecting"` | `"unavailable"`
+    /// | `"failed"`. Carried verbatim from `SignerStateDto::state`. Prefer the
+    /// typed flag fields below.
     let state: String
-    /// Optional human-readable reason (error message on `reconnecting`/`failed`).
+    /// Optional human-readable reason (error message on degraded states).
     let reason: String?
-    /// `state == "connected"`. Green indicator.
-    let isConnected: Bool
-    /// `state == "reconnecting"` — transient flap, auto-reconnect in progress.
-    /// Amber badge; do NOT prompt re-auth yet.
+    /// `state == "ready"`. Green indicator.
+    let isReady: Bool
+    /// `state == "awaiting_approval"` — NIP-55 Intent round-trip in flight.
+    /// Inline "Waiting for Amber…" affordance; no error styling.
+    let isAwaitingApproval: Bool
+    /// `state == "reconnecting"` — transient NIP-46 flap, auto-reconnect in
+    /// progress. Amber badge; do NOT prompt re-auth yet.
     let isReconnecting: Bool
+    /// `state == "unavailable"` — NIP-55 signer app not installed /
+    /// uninstalled mid-session. Red badge; prompt re-auth.
+    let isUnavailable: Bool
     /// `state == "failed"` — permanent error, session bricked.
     /// Red badge; prompt re-auth.
     let isFailed: Bool
