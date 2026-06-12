@@ -1,0 +1,297 @@
+//! The two composition tiers behind [`super::register_defaults`] — the
+//! **substrate** tier (correctness) and the **social-feature** defaults tier —
+//! plus the [`NmpDefaults`] config struct that parameterises them.
+//!
+//! # Why two tiers (the V-48 failure mode, restated)
+//!
+//! `register_defaults` historically fused two layers with *different
+//! audiences*. **Substrate correctness** — without it the app is broken, not
+//! minimal: routing returns `Unroutable`, `PublishTarget::Auto` fail-closes to
+//! `NoTargets`, kind:10002 never populates the mailbox cache, oversized relay
+//! plans are never trimmed. This is the `MinimalPlugins` analog from the Bevy
+//! `DefaultPlugins` study — the irreducible floor every NMP app stands on.
+//! **Social-feature defaults** — the nip02/nip17/nip57 action bundles, the
+//! WOT/DM/zap runtime controllers, the NIP-23 long-form typed projection — are
+//! *preferences*, not correctness; a non-social external consumer
+//! (podcast-player, hl, win-the-day) wants the floor without the ceiling.
+//!
+//! Before this split a non-social consumer had two bad options: call
+//! `register_defaults` and swallow the social bundle, or hand-copy the
+//! substrate block — which is *un-copyable* because it threads a single shared
+//! `Arc<InMemoryMailboxCache>` through three seams (the mailbox-cache reader,
+//! the routing factory, and the kind:10002 parser). Copy it wrong and the
+//! writer (parser) and readers (router + NIP-19 encoder) desync. That is the
+//! V-48 failure mode this crate exists to prevent — so the substrate tier is
+//! now a *callable* [`register_substrate`], not a comment block.
+//!
+//! # The tier boundary (drawn here, honestly)
+//!
+//! **Substrate** ([`register_substrate`]): `nmp_router::register_actions` (the
+//! `nmp.nip65.publish_relay_list` action — the routing crate's *own* action,
+//! inseparable from the routing substrate it publishes for, NOT a social
+//! toggle); the shared `Arc<InMemoryMailboxCache>` + mailbox-cache reader +
+//! routing factory + kind:10002 parser (one cache, three clones); the
+//! publish-resolver factory; the raw-event forward/republish policy; and the
+//! `CoverageGate` coverage hook + NIP-77 negentropy runtime — the gate value
+//! is **shared** between the hook and the runtime, so overriding it post-hoc
+//! would desync them, which is why it is a [`NmpDefaults`] field, not a literal.
+//!
+//! **Social** (added by [`register_defaults`] on top): nip02/nip17/nip57
+//! action bundles, WOT/DM/zap runtime controllers, the long-form typed
+//! projection, and the operator-policy `nostrconnect` bootstrap relay.
+
+use std::sync::Arc;
+
+use nmp_core::publish::OutboxResolver;
+use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
+use nmp_core::store::EventStore;
+use nmp_core::substrate::{
+    AppHost, MailboxCache, OutboxRouter, RawEventForwardPolicy, RoutingTraceObserver,
+};
+use nmp_coverage_gate::CoverageGate;
+use nmp_router::{
+    GenericOutboxRouter, InMemoryMailboxCache, IndexerRepublishPolicy, Nip65OutboxResolver,
+};
+
+/// Declarative configuration for [`super::register_defaults_with`] — the
+/// config-as-fields pattern (Bevy's `.set(WindowPlugin { .. })` insight, and
+/// the discoverability win from Spring Boot's configuration metadata: every
+/// knob is a named, rustdoc'd field rather than a hardcoded literal buried in
+/// the composition body).
+///
+/// [`NmpDefaults::default()`] reproduces today's `register_defaults()`
+/// behaviour **exactly** — every field's `Default` is the value the function
+/// previously hardcoded, so `register_defaults(app)` ≡
+/// `register_defaults_with(app, NmpDefaults::default())`.
+#[derive(Clone, Debug)]
+pub struct NmpDefaults {
+    /// Coverage policy shared by the D2 coverage hook **and** the NIP-77
+    /// negentropy runtime. One value feeds *both* collaborators: the hook
+    /// trims oversized relay plans to `max_relay_connections`, and the
+    /// negentropy runtime reads the same gate to decide which large
+    /// author×kind REQs to replace with NIP-77 sync. Overriding the gate
+    /// post-hoc is impossible without desyncing them — which is precisely
+    /// why it lives here as config rather than as a hardcoded
+    /// `CoverageGate::default()` inside the substrate body.
+    ///
+    /// **Default:** [`CoverageGate::default()`] (`max_relay_connections = 30`).
+    pub coverage_gate: CoverageGate,
+
+    /// Fallback relay for client-initiated NIP-46 (`nostrconnect://`)
+    /// handshakes when the user has no configured write relay. Operator
+    /// policy — legitimately a composition-root default, not an `nmp-core`
+    /// concern (D0).
+    ///
+    /// **Default:** `"wss://relay.damus.io"`.
+    pub nostrconnect_bootstrap_relay: String,
+
+    /// Wire the NIP-02 follow/unfollow/react action bundle **and** the WOT
+    /// bootstrap runtime. The social graph layer. Disable for a non-social
+    /// consumer that never follows, reacts, or computes web-of-trust.
+    ///
+    /// **Default:** `true`.
+    pub social: bool,
+
+    /// Wire the NIP-17 DM action bundle (`send` + `publish_relay_list`) **and**
+    /// the DM-inbox runtime (kind:1059 gift-wrap inbox projection + relay-list
+    /// reconciler). Disable for a consumer that never sends or receives DMs.
+    ///
+    /// **Default:** `true`.
+    pub dms: bool,
+
+    /// Wire the NIP-57 zap action bundle **and** the self-zap-receipts
+    /// subscription runtime (kind:9735 `#p` reconciler). Disable for a
+    /// consumer with no lightning/zap surface.
+    ///
+    /// **Default:** `true`.
+    pub zaps: bool,
+
+    /// Wire the NIP-23 long-form (kind:30023) **typed** snapshot projection
+    /// (`nmp.nip23.articles`, the `NL23` FlatBuffer). Disable for a consumer
+    /// that never reads long-form articles.
+    ///
+    /// **Default:** `true`.
+    pub longform: bool,
+}
+
+impl Default for NmpDefaults {
+    /// Reproduces today's `register_defaults()` behaviour exactly: the
+    /// previously-hardcoded `CoverageGate::default()` and
+    /// `"wss://relay.damus.io"` bootstrap relay, with every social feature on.
+    fn default() -> Self {
+        Self {
+            coverage_gate: CoverageGate::default(),
+            nostrconnect_bootstrap_relay: "wss://relay.damus.io".to_string(),
+            social: true,
+            dms: true,
+            zaps: true,
+            longform: true,
+        }
+    }
+}
+
+/// Wire the **substrate** tier — the correctness floor every NMP app needs,
+/// regardless of which social features it enables (the `MinimalPlugins`
+/// analog).
+///
+/// This is NOT toggleable: without it routing returns `Unroutable`,
+/// `PublishTarget::Auto` fail-closes, kind:10002 never reaches the mailbox
+/// cache, and oversized relay plans are never trimmed. It is *correctness*,
+/// not preference, so [`super::register_defaults_with`] always calls it.
+///
+/// `gate` parameterises the D2 coverage hook **and** the NIP-77 negentropy
+/// runtime — the single shared value whose sharing this signature makes
+/// explicit (passing it in, rather than constructing it here, is what lets a
+/// caller override the coverage policy for *both* collaborators at once
+/// without desyncing them). [`super::register_defaults`] passes
+/// `CoverageGate::default()`.
+///
+/// # `app` borrow
+///
+/// Takes `&mut impl AppHost` because `nmp_router::register_actions` needs the
+/// `&mut`-only action-registry surface; every other substrate seam used here
+/// (`set_routing_substrate`, `set_publish_resolver_factory`,
+/// `set_coverage_hook`, …) is a shared-`&self` method, so the unique borrow is
+/// released before they run.
+///
+/// Exposed `pub` so a non-social external consumer (podcast-player, hl,
+/// win-the-day) can stand on the exact same routable substrate as Chirp
+/// **without** swallowing the social bundle — and without hand-copying the
+/// un-copyable shared-`Arc<InMemoryMailboxCache>` block (the V-48 failure mode
+/// this crate exists to prevent).
+pub fn register_substrate(app: &mut impl AppHost, gate: CoverageGate) {
+    // NIP-65: kind:10002 relay-list publish. The `nmp-router` crate owns
+    // both routing AND the kind:10002 publish path (step 3 absorbed the
+    // former `nmp-nip65` crate into `nmp-router`). This is the routing
+    // crate's own action — inseparable from the routing substrate it
+    // publishes for, NOT a social toggle.
+    nmp_router::register_actions(app);
+
+    // ── Routing substrate (V-51 phase 5 + kind:10002 ingest wiring) ─────
+    //
+    // Install the production substrate-routing factory AND register the
+    // [`nmp_router::Kind10002Parser`] against the same shared cache the
+    // factory hands the kernel. Without the swap the kernel keeps its
+    // in-crate `EmptyOutboxRouter` (substrate-honest debt B, 2026-05-24)
+    // — every routing decision returns `Unroutable`. Without the parser
+    // registration kind:10002 events arrive but never populate the cache.
+    //
+    // `nmp-core` (Layer 3) cannot depend on `nmp-router` (Layer 2), so
+    // both injections go through the substrate seam: the routing factory
+    // for `(OutboxRouter, MailboxCache)`, and the dispatcher slot for
+    // the parser. The same `Arc<InMemoryMailboxCache>` is captured by
+    // BOTH paths so the writer (parser) and the readers (router +
+    // planner adapter) see one source of truth.
+    //
+    // Cache lifetime: created once at composition time and shared
+    // process-lifetime. A `Reset` rebuilds the router but re-uses this
+    // cache — the parser's `Arc` clone in the dispatcher would otherwise
+    // dangle. The factory closure captures `Arc::clone(&cache)` so the
+    // rebuilt kernel sees the live cache, not a fresh empty one.
+    //
+    // The supplied `RoutingTraceObserver` is threaded through
+    // `GenericOutboxRouter::with_trace_observer` so the kernel's
+    // trace-projection ring buffer (V-51 phase 1) keeps populating across
+    // the swap. The closure is re-invoked by the `Reset` dispatch arm
+    // against the rebuilt kernel's fresh trace projection.
+    let mailbox_cache: Arc<InMemoryMailboxCache> = Arc::new(InMemoryMailboxCache::new());
+    // H4 — install the SAME mailbox-cache instance as the read side for the
+    // `nmp_app_encode_profile` NIP-19 encoder. This is a THIRD clone of the
+    // one `InMemoryMailboxCache`: the other two go to the routing factory
+    // (below) and the `Kind10002Parser` (further below). Sharing one instance
+    // is what lets the encoder prefer `nprofile` from the kind:10002 relay
+    // hints the parser writes on ingest.
+    app.set_mailbox_cache_reader(
+        Arc::clone(&mailbox_cache) as Arc<dyn nmp_core::substrate::MailboxCache>
+    );
+    let cache_for_factory = Arc::clone(&mailbox_cache);
+    app.set_routing_substrate(
+        move |observer: Arc<dyn RoutingTraceObserver>|
+              -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>) {
+            let router: Arc<dyn OutboxRouter> =
+                Arc::new(GenericOutboxRouter::new().with_trace_observer(observer));
+            let cache: Arc<dyn MailboxCache> = Arc::clone(&cache_for_factory) as _;
+            (router, cache)
+        },
+    );
+    // Register the substrate kind:10002 ingest parser against the same
+    // cache `set_routing_substrate` hands the kernel. The
+    // `EventIngestDispatcher` fans every accepted (D4 `Inserted | Replaced`)
+    // kind:10002 to this parser; the parser upserts the resolved
+    // `ParsedRelayList` (or removes the entry on an empty list) into
+    // the shared cache.
+    let parser: Arc<dyn nmp_core::substrate::IngestParser> =
+        Arc::new(nmp_router::Kind10002Parser::new(mailbox_cache));
+    app.register_ingest_parser(10_002, parser);
+
+    // ── Publish-resolver substrate (spec §271, 2026-05-25) ─────────────
+    //
+    // Install the production substrate-publish-resolver factory. Without
+    // this swap the kernel keeps its in-crate `NoopOutboxResolver`
+    // default — every `PublishTarget::Auto` publish then resolves to an
+    // empty relay set and the publish engine surfaces `NoTargets`
+    // (fail-closed). `nmp-core` (Layer 3) cannot depend on `nmp-router`
+    // (Layer 2), so the production resolver is injected through this
+    // factory slot.
+    //
+    // The factory receives the kernel-owned event store + the three
+    // typed slots (`IndexerRelaysSlot`, `LocalWriteRelaysSlot`,
+    // `ActiveAccountSlot`) — the actor reducer is the sole writer of
+    // those slots (D4), so the produced `Nip65OutboxResolver` reads
+    // through the same shared state the actor pushes into. The closure
+    // is re-invoked by the `Reset` dispatch arm against the rebuilt
+    // kernel's fresh handles.
+    app.set_publish_resolver_factory(
+        |store: Arc<dyn EventStore>,
+         indexer_relays: IndexerRelaysSlot,
+         local_write_relays: LocalWriteRelaysSlot,
+         active_account: ActiveAccountSlot|
+         -> Arc<dyn OutboxResolver> {
+            Arc::new(Nip65OutboxResolver::with_local_relays(
+                store,
+                indexer_relays,
+                local_write_relays,
+                active_account,
+            ))
+        },
+    );
+
+    // ── Raw-event forwarding policy ─────────────────────────────────────
+    //
+    // The kernel's raw-event forwarder is deliberately generic: it registers
+    // a policy as a `RawEventObserver`, wraps accepted events in
+    // `["EVENT", ...]`, and sends through the native pool. The
+    // replaceable-kind/indexer policy belongs in `nmp-router` beside the
+    // rest of the indexer-lane routing rules, so default composition injects
+    // it here. The factory is re-invoked on `Reset` with the rebuilt
+    // kernel's fresh store/provenance + indexer-relay handles.
+    app.set_raw_event_forward_policy_factory(|context| {
+        vec![Arc::new(IndexerRepublishPolicy::enabled(context)) as Arc<dyn RawEventForwardPolicy>]
+    });
+
+    // ── D2 coverage + NIP-77 sync hooks ─────────────────────────────────
+    //
+    // Install a `CoverageGate`-based hook on the kernel so the M2 compiler
+    // pipeline's `apply_selection` output is trimmed to the gate's
+    // `max_relay_connections` before `plan_diff`. `per_relay` is a
+    // `BTreeMap` so the "keep first N" trim is deterministic across runs.
+    //
+    // The SAME `gate` value feeds the NIP-77 negentropy runtime below — the
+    // hook and the runtime are two collaborators reading one coverage policy.
+    // This shared-value invariant is why `gate` is a parameter (and a
+    // `NmpDefaults` field) rather than a literal: overriding it post-hoc
+    // would desync the two.
+    let negentropy_runtime = Arc::new(nmp_nip77::NegentropySyncRuntime::new(gate.clone()));
+    let req_interceptor: Arc<dyn nmp_core::substrate::ReqFrameInterceptor> =
+        negentropy_runtime.clone();
+    let relay_interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor> = negentropy_runtime;
+    app.set_req_frame_interceptor(req_interceptor);
+    app.add_relay_text_interceptor(relay_interceptor);
+    app.set_coverage_hook(Arc::new(move |plan| {
+        let cap = gate.max_relay_connections;
+        if plan.per_relay.len() > cap {
+            let keep: Vec<_> = plan.per_relay.keys().take(cap).cloned().collect();
+            plan.per_relay.retain(|k, _| keep.contains(k));
+        }
+    }));
+}
