@@ -123,7 +123,7 @@ fn sign_event_for_return_signs_with_active_local_key_and_returns_flat_json() {
         .expect("utf-8 correlation_id")
         .to_string();
     assert!(!correlation_id.is_empty(), "the correlation_id is non-empty");
-    super::capability::nmp_app_free_string(cid_ptr);
+    super::free::nmp_free_string(cid_ptr);
 
     let entry =
         wait_for_signed_event(&rx, &correlation_id).expect("the signed event must surface in time");
@@ -179,7 +179,7 @@ fn sign_event_for_return_without_account_returns_error_verdict() {
         .to_str()
         .unwrap()
         .to_string();
-    super::capability::nmp_app_free_string(cid_ptr);
+    super::free::nmp_free_string(cid_ptr);
 
     let entry = wait_for_signed_event(&rx, &correlation_id)
         .expect("the error verdict must surface in time");
@@ -217,7 +217,7 @@ fn sign_by_explicit_pubkey_uses_named_signer() {
         .to_str()
         .unwrap()
         .to_string();
-    super::capability::nmp_app_free_string(cid_ptr);
+    super::free::nmp_free_string(cid_ptr);
 
     let entry = wait_for_signed_event(&rx, &correlation_id)
         .expect("signing by explicit pubkey must produce a result");

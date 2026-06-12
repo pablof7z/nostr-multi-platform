@@ -37,7 +37,7 @@ fn new_sign_return_correlation_id() -> String {
 
 /// Sign an event draft and park the signed JSON in the `signed_events`
 /// snapshot projection. Returns an opaque `correlation_id` C string the caller
-/// uses to retrieve the result. Caller frees with `nmp_app_free_string`.
+/// uses to retrieve the result. Caller frees with `nmp_free_string`.
 ///
 /// This is the D13 sign-and-return seam: a host that needs a signed auth event
 /// (e.g. a Blossom upload `Authorization: Nostr …` header, or a feedback
