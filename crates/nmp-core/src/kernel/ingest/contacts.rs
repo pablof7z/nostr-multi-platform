@@ -1,6 +1,6 @@
 //! Kind:3 (contact list) ingest.
 
-use super::super::{is_hex_pubkey, short_hex, BTreeSet, Kernel, NostrEvent, TIMELINE_AUTHOR_LIMIT};
+use super::super::{short_hex, BTreeSet, Kernel, NostrEvent};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
@@ -210,7 +210,10 @@ impl Kernel {
     /// lifecycle inbox.
     ///
     /// Only called after `verify_and_persist` returns `Inserted | Replaced` (D4).
-    /// Extracts "p"-tagged hex pubkeys, capping at `TIMELINE_AUTHOR_LIMIT`.
+    /// Extracts "p"-tagged hex pubkeys, capping at `TIMELINE_AUTHOR_LIMIT`, via
+    /// the shared `crate::tags::capped_contact_follows` — the SAME pure function
+    /// the `nmp-nip02` follow-set observers call, so the router's
+    /// `timeline_authors` and the NIP-02 read models never diverge on the cap.
     ///
     /// T140: also calls `sync_follow_feed_interests` for the active account's
     /// kind:3 to register M2 `LogicalInterest`s into the lifecycle registry.
@@ -220,18 +223,12 @@ impl Kernel {
     /// during the T140 verification window (Step A). Step C will retire M1 once
     /// M2 output is confirmed equivalent.
     pub(in crate::kernel) fn ingest_contacts(&mut self, event: NostrEvent) {
-        let follows = event
-            .tags
-            .iter()
-            .filter_map(|tag| {
-                if tag.first().map(String::as_str) == Some("p") {
-                    tag.get(1).filter(|value| is_hex_pubkey(value)).cloned()
-                } else {
-                    None
-                }
-            })
-            .take(TIMELINE_AUTHOR_LIMIT)
-            .collect::<Vec<_>>();
+        // Single source of truth for the follow cap: the same pure function the
+        // `nmp-nip02` `ActiveFollowSet` / `FollowListProjection` observers call,
+        // so the router's `timeline_authors`, the follow predicate, and the
+        // `nmp.follow_list` snapshot can never diverge on which 500 follows
+        // count (first-500-valid-hex-p-tags in document order).
+        let follows = crate::tags::capped_contact_follows(&event.tags);
 
         self.log(format!(
             "contacts {} -> {} followees",
