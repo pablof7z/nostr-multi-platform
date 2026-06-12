@@ -88,7 +88,7 @@ fn case_a_nip65_unknown_routes_to_app_relays_only() {
         .expect("compile");
 
     // Indexer URL is NEVER consulted for content routing now.
-    assert!(plan.per_relay.get("wss://purplepag.es").is_none());
+    assert!(!plan.per_relay.contains_key("wss://purplepag.es"));
 
     // App relay carries Bob with the AppRelay lane only.
     let app_plan = plan.per_relay.get("wss://app").expect("app");
@@ -313,7 +313,7 @@ fn pd033c_case_a_cold_start_uses_bootstrap_indexer_not_raw_indexer() {
 
     let plan = compiler.compile(&[interest]).expect("compile");
     assert!(
-        plan.per_relay.get("wss://purplepag.es").is_some(),
+        plan.per_relay.contains_key("wss://purplepag.es"),
         "cold-start discovery MUST land on bootstrap_indexer even when raw \
          indexer_relays is empty (M1 parity)"
     );
@@ -350,7 +350,7 @@ fn pd033c_case_a_tailing_no_nip65_remains_unroutable() {
         .expect("compile");
 
     assert!(
-        plan.per_relay.get("wss://purplepag.es").is_none(),
+        !plan.per_relay.contains_key("wss://purplepag.es"),
         "Tailing follow-feed must NOT route to bootstrap indexer (T134 invariant)"
     );
     assert!(
@@ -396,7 +396,7 @@ fn pd033c_case_a_account_scoped_oneshot_does_not_indexer_fallback() {
 
     let plan = compiler.compile(&[interest]).expect("compile");
     assert!(
-        plan.per_relay.get("wss://purplepag.es").is_none(),
+        !plan.per_relay.contains_key("wss://purplepag.es"),
         "Account-scoped OneShot without is_indexer_discovery must NOT divert \
          to the bootstrap indexer lane"
     );
@@ -437,9 +437,9 @@ fn pd033c_case_a_oneshot_global_with_app_relays_skips_bootstrap_indexer() {
 
     let plan = compiler.compile(&[interest]).expect("compile");
     // App relay carried Bob — indexer must be untouched.
-    assert!(plan.per_relay.get("wss://user-app.example").is_some());
+    assert!(plan.per_relay.contains_key("wss://user-app.example"));
     assert!(
-        plan.per_relay.get("wss://purplepag.es").is_none(),
+        !plan.per_relay.contains_key("wss://purplepag.es"),
         "PD-033-C bootstrap-indexer fallback must NOT fire when AppRelay \
          carried the author"
     );
@@ -487,9 +487,9 @@ fn pd033c_case_a_mixed_authors_partial_nip65_landed_via_bootstrap_indexer() {
 
     let plan = compiler.compile(&[interest]).expect("compile");
     // Alice rides her NIP-65 write relay.
-    assert!(plan.per_relay.get("wss://alice-write").is_some());
+    assert!(plan.per_relay.contains_key("wss://alice-write"));
     // Bob lands on the bootstrap indexer via the PD-033-C arm.
-    assert!(plan.per_relay.get("wss://purplepag.es").is_some());
+    assert!(plan.per_relay.contains_key("wss://purplepag.es"));
     // Neither is unroutable.
     assert!(plan.unroutable_authors.is_empty());
 }
