@@ -371,7 +371,7 @@ private fun InstallHint() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "Install Amber for one-tap sign-in",
+            text = "Install Amber or Primal for one-tap sign-in",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -382,5 +382,6 @@ private fun InstallHint() {
 
 private fun signerIcon(signer: NostrSignerInfo): ImageVector = when (signer.intentScheme) {
     "nostrsigner" -> Icons.Default.Person // Amber
+    "primal" -> Icons.Default.Key         // Primal (bolt icon not in default set)
     else -> Icons.Default.Key
 }

@@ -229,5 +229,21 @@ class ExternalSignerCapabilityBridgeTest {
         }
         assertNotNull("Amber must be in KNOWN_NOSTR_SIGNERS", amber)
         assertEquals("com.greenart7c3.nostrsigner", amber!!.contentAuthority)
+        // packageName must be set explicitly — the signer_package wire field
+        // carries the APK identifier, not the ContentProvider authority.
+        assertEquals("com.greenart7c3.nostrsigner", amber.packageName)
+    }
+
+    @Test
+    fun primalIsInKnownSigners() {
+        val primal = org.nmp.gallery.registry.KNOWN_NOSTR_SIGNERS.firstOrNull {
+            it.intentScheme == "primal"
+        }
+        assertNotNull("Primal must be in KNOWN_NOSTR_SIGNERS", primal)
+        // Primal uses the Intent-only path (no ContentProvider fast-path).
+        assertNull(primal!!.contentAuthority)
+        // The APK package name (net.primal.android) is distinct from the
+        // intent scheme and must be set explicitly for signer_package routing.
+        assertEquals("net.primal.android", primal.packageName)
     }
 }

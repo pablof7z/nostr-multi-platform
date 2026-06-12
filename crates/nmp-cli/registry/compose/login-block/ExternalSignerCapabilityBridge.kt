@@ -104,6 +104,18 @@ data class NostrSignerInfo(
      */
     val contentAuthority: String? = null,
     /**
+     * The Android package name passed to `KernelBridge.signInNip55` as the
+     * `signer_package` wire field. For Amber the package name and
+     * contentAuthority coincide (`com.greenart7c3.nostrsigner`), but the
+     * two fields are logically distinct: contentAuthority is the
+     * ContentProvider namespace; packageName is the APK identifier used for
+     * Intent routing and for the `signer_package` field in the Rust wire.
+     *
+     * Defaults to [contentAuthority] when null (backward-compatible for
+     * signers where the two values are identical).
+     */
+    val packageName: String? = null,
+    /**
      * Human-readable "not installed" hint for the UI.
      */
     val installHint: String = "Install $displayName for one-tap sign-in",
@@ -124,7 +136,19 @@ val KNOWN_NOSTR_SIGNERS: List<NostrSignerInfo> = listOf(
         displayName = "Amber",
         intentScheme = "nostrsigner",
         contentAuthority = "com.greenart7c3.nostrsigner",
+        packageName = "com.greenart7c3.nostrsigner",
         installHint = "Install Amber for one-tap sign-in",
+    ),
+    // Primal registers the `primal://` scheme on Android (API 30+). It does
+    // not expose a ContentProvider fast-path (contentAuthority = null), so
+    // all operations go through the Intent round-trip. Its package name
+    // (`net.primal.android`) MUST appear in <queries> in AndroidManifest.xml.
+    NostrSignerInfo(
+        displayName = "Primal",
+        intentScheme = "primal",
+        contentAuthority = null,
+        packageName = "net.primal.android",
+        installHint = "Install Primal for one-tap sign-in",
     ),
 )
 

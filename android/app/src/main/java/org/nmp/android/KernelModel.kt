@@ -313,7 +313,12 @@ class KernelModel : ViewModel() {
      * through the registered capability bridge.
      */
     fun signInWithAmber(signer: NostrSignerInfo) {
-        bridge.signInNip55(signer.contentAuthority)
+        // Pass the explicit packageName (the APK identifier used for Intent
+        // routing and the signer_package wire field). Falls back to
+        // contentAuthority for signers where they coincide (e.g. Amber),
+        // but the two fields are logically distinct — future signers
+        // (e.g. Primal) have a packageName that differs from contentAuthority.
+        bridge.signInNip55(signer.packageName ?: signer.contentAuthority)
     }
 
     /**

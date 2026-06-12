@@ -58,13 +58,51 @@ jobs:
         env:
           RUSTFLAGS: ""
 
+      # ADR-0048 Stage 2 NIP-55 proof gate (advances #1124).
+      #
+      # `cargo test --workspace` (above) runs nmp-ffi with default features,
+      # which excludes the `external-signer` feature. The signin_loop_* tests
+      # in `crates/nmp-ffi/src/external_signer.rs` are therefore skipped by
+      # the default lane. This step adds the explicit `--features
+      # external-signer` pass to prove those tests are run and green.
+      #
+      # The feature is cheap: it activates `nmp-signer-iface` + `nmp-signers`
+      # (already compiled for the default test run), so this step costs only
+      # the incremental delta for the feature-gated code paths.
+      - name: cargo test (nmp-ffi --features external-signer)
+        run: cargo test -p nmp-ffi --features external-signer
+
+      # ADR-0048 Stage 2 — nmp-app-gallery android-ffi feature check.
+      #
+      # `nmp-app-gallery` is a workspace member, so `cargo test --workspace`
+      # compiles it with default features. The `android-ffi` feature enables
+      # the JNI shim surface (`Java_org_nmp_gallery_*` symbols, `jni` dep)
+      # that no other workspace build exercises. This `cargo check` catches
+      # compile breaks in the JNI glue without requiring a cross-compiled .so
+      # or an emulator.
+      #
+      # Host-target check only (same posture as `nmp-android-ffi` below).
+      - name: cargo check (nmp-app-gallery --features android-ffi)
+        run: cargo check -p nmp-app-gallery --features android-ffi
+
   android-ffi:
-    # Checks that the nmp-android-ffi standalone workspace compiles (host
-    # target; JNI ABI validation is separate). The crate has its own
-    # `[workspace]` table, so `cargo build/test --workspace` from the repo
-    # root never touches it — a Rust-level break there is otherwise invisible
-    # to CI until an Android build runs.
-    name: cargo check (android-ffi)
+    # ADR-0048 Stage 2 — nmp-android-ffi host test gate (advances #1124).
+    #
+    # The crate has its own `[workspace]` table, so `cargo build/test
+    # --workspace` from the repo root never touches it — a Rust-level break
+    # there is otherwise invisible to CI until an Android build runs.
+    #
+    # This job runs the full `cargo test` (not just `cargo check`):
+    #   - 5 unit tests in `src/` (external_signer + session)
+    #   - 2 integration tests in `tests/bridge_parity.rs` (JNI symbol parity +
+    #     Rust re-export coverage)
+    # Total: 7 tests, verified green locally.
+    #
+    # The crate is a `cdylib`, but `cargo test` still links the test binary
+    # against the host target — it does NOT require a cross-compiled .so or an
+    # Android emulator. The integration test is hermetic string-search over
+    # `include_str!` source files.
+    name: cargo test (android-ffi)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,8 +120,5 @@ jobs:
           key: ${{ runner.os }}-cargo-android-ffi-${{ hashFiles('crates/nmp-android-ffi/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-android-ffi-
 
-      # Host-target check only. The crate is a `cdylib`, but `cargo check`
-      # still validates Rust semantics and the `android-ffi` feature of
-      # nmp-core. Actual Android ABI cross-compilation is out of scope here.
-      - name: cargo check (nmp-android-ffi standalone workspace)
-        run: cd crates/nmp-android-ffi && cargo check
+      - name: cargo test (nmp-android-ffi standalone workspace)
+        run: cd crates/nmp-android-ffi && cargo test
