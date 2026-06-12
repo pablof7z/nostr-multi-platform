@@ -421,12 +421,11 @@ pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
 // `SnapshotProjectionSlot` is a Kernel struct field type (always-compiled);
-// `new_snapshot_projection_slot` is only called from native-only callers.
+// `new_snapshot_projection_slot` is called from `KernelReducer::new` on all
+// targets (PR-4) and from `nmp_app_new` on native.
 // `SnapshotProjectionSlot` is reached by `nmp-ffi` through
 // `nmp_core::__ffi_internal::SnapshotProjectionSlot` (the NmpApp struct
-// field type); `new_snapshot_projection_slot` is called once from
-// `nmp_app_new`.
-#[cfg(feature = "native")]
+// field type).
 pub use snapshot_registry::new_snapshot_projection_slot;
 pub use snapshot_registry::SnapshotProjectionSlot;
 // `ChangeGate`: the opt-in per-projection change-gate trait. A host

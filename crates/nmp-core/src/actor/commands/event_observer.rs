@@ -156,6 +156,29 @@ fn drain_c_envelope(envelope: CFanoutEnvelope) {
     }
 }
 
+/// Construct an empty slot with **no** background drain thread.
+///
+/// Unlike [`new_event_observer_slot`], this variant does NOT spawn any
+/// OS thread, making it safe to call on wasm32 targets. The internal
+/// channel's receiver is dropped immediately, disconnecting the channel.
+///
+/// C-ABI observer fan-out is therefore silently dropped on `try_send`
+/// (D6 best-effort — same behaviour as the channel-full case). This is
+/// intentional: wasm32 consumers never register C-ABI observers; they
+/// register in-process Rust trait objects directly via
+/// `register_rust_observer`, which is unaffected by the disconnected
+/// channel (Rust fan-out fires synchronously and does not touch the
+/// channel).
+///
+/// Called once in `KernelReducer::new` on the wasm32 path.
+pub(crate) fn new_event_observer_slot_headless() -> KernelEventObserverSlot {
+    let (tx, _rx) = sync_channel::<CFanoutEnvelope>(1);
+    // _rx is dropped here, disconnecting the channel. The ObserverInner
+    // stores the sender; any try_send returns Err(Disconnected) and the
+    // envelope is dropped silently — D6 best-effort.
+    Arc::new(Mutex::new(ObserverInner::new(tx)))
+}
+
 /// Construct an empty slot, spawning its background C-ABI drain thread.
 ///
 /// The drain thread lives for the life of the slot: it exits when the last
