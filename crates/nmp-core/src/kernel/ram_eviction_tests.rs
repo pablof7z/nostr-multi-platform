@@ -48,7 +48,11 @@ pub(super) fn make_pubkey(n: usize) -> String {
 
 /// Insert `count` unique kind:1 events via `ingest_pre_verified_event` so
 /// they land in `self.events`.  Returns the list of inserted event ids.
-pub(super) fn inject_events(kernel: &mut Kernel, count: usize, base_created_at: u64) -> Vec<String> {
+pub(super) fn inject_events(
+    kernel: &mut Kernel,
+    count: usize,
+    base_created_at: u64,
+) -> Vec<String> {
     let mut ids = Vec::with_capacity(count);
     for i in 0..count {
         let id = make_event_id(i + 1);
@@ -72,12 +76,16 @@ pub(super) fn inject_events(kernel: &mut Kernel, count: usize, base_created_at: 
 }
 
 /// Insert `count` unique kind:0 profile events via `inject_replaceable_event`.
-pub(super) fn inject_profiles(kernel: &mut Kernel, count: usize, base_created_at: u64) -> Vec<String> {
+pub(super) fn inject_profiles(
+    kernel: &mut Kernel,
+    count: usize,
+    base_created_at: u64,
+) -> Vec<String> {
     let mut pubkeys = Vec::with_capacity(count);
     for i in 0..count {
         let pubkey = make_pubkey(1_000 + i + 1); // distinct from event authors
-        // Event id must also be valid 64-char hex — use offset 0x10000 to
-        // avoid colliding with `make_event_id` (which uses decimal-padded).
+                                                 // Event id must also be valid 64-char hex — use offset 0x10000 to
+                                                 // avoid colliding with `make_event_id` (which uses decimal-padded).
         let id = format!("{:0>64x}", 0x10000usize + i + 1);
         kernel.inject_replaceable_event(
             &id,
@@ -132,11 +140,7 @@ fn events_no_eviction_under_hwm() {
 
     let before = kernel.events.len();
     let report = kernel.evict_ram_caches();
-    assert_eq!(
-        kernel.events.len(),
-        before,
-        "under-HWM map must not shrink"
-    );
+    assert_eq!(kernel.events.len(), before, "under-HWM map must not shrink");
     assert_eq!(report.events_evicted, 0);
 }
 
@@ -420,4 +424,3 @@ fn run_gc_step_drives_ram_eviction() {
         kernel.events.len()
     );
 }
-

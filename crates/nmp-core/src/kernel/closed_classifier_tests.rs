@@ -328,7 +328,11 @@ fn v58_rate_limited_closed_enqueues_backoff_hint() {
         "no hints expected before any CLOSED frame"
     );
 
-    let _ = kernel.handle_text(role, url, &closed_frame("sub-rl", "rate-limited: slow down"));
+    let _ = kernel.handle_text(
+        role,
+        url,
+        &closed_frame("sub-rl", "rate-limited: slow down"),
+    );
 
     let hints = kernel.take_backoff_hints();
     assert_eq!(hints.len(), 1, "exactly one hint must be enqueued");

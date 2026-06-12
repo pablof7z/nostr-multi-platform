@@ -61,8 +61,8 @@ fn sample() -> RelayDiagnosticsModel {
 #[test]
 fn encode_decode_round_trips() {
     let model = sample();
-    let decoded = decode_relay_diagnostics(&encode_relay_diagnostics(&model))
-        .expect("decode must succeed");
+    let decoded =
+        decode_relay_diagnostics(&encode_relay_diagnostics(&model)).expect("decode must succeed");
     assert_eq!(
         decoded, model,
         "round-trip must preserve every field, nested wire_subs/interests, and \

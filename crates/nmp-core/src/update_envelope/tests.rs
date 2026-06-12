@@ -17,7 +17,10 @@ fn print_tier3_golden_frame_hex() {
     // Golden sanity: the frame must carry the NMPU identifier.
     assert!(fb::update_frame_buffer_has_identifier(&wire));
     // Round-trip: the decoded envelope must equal golden_envelope().
-    assert_eq!(decode_snapshot_envelope(&wire).expect("decode"), golden_envelope());
+    assert_eq!(
+        decode_snapshot_envelope(&wire).expect("decode"),
+        golden_envelope()
+    );
 }
 
 /// A representative typed envelope for round-trip tests — every
@@ -128,7 +131,10 @@ fn typed_sidecar_round_trips_opaque_payloads_alongside_envelope() {
 
     // The envelope decoder must still see the same envelope, ignoring the
     // typed sidecar entirely.
-    assert_eq!(decode_snapshot_envelope(&wire).expect("decode envelope"), envelope);
+    assert_eq!(
+        decode_snapshot_envelope(&wire).expect("decode envelope"),
+        envelope
+    );
 }
 
 #[test]
@@ -145,10 +151,16 @@ fn frame_without_sidecar_decodes_with_empty_typed_vector() {
 fn decode_snapshot_envelope_rejects_panic_frame() {
     let wire = encode_panic("boom");
     let err = decode_snapshot_envelope(&wire).expect_err("panic must not decode as snapshot");
-    assert!(matches!(err, UpdateFrameDecodeError::MissingSnapshotPayload));
+    assert!(matches!(
+        err,
+        UpdateFrameDecodeError::MissingSnapshotPayload
+    ));
     let err =
         decode_snapshot_typed_projections(&wire).expect_err("panic must not decode as snapshot");
-    assert!(matches!(err, UpdateFrameDecodeError::MissingSnapshotPayload));
+    assert!(matches!(
+        err,
+        UpdateFrameDecodeError::MissingSnapshotPayload
+    ));
 }
 
 /// Forward-compat proof for the PR-B zeroing: a pre-PR-B v1 frame (generic

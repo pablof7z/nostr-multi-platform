@@ -131,8 +131,12 @@ mod tests {
     #[test]
     fn empty_lookup_never_suppresses() {
         let lookup: Arc<dyn SuppressionLookup> = empty_suppression_lookup();
-        assert!(!lookup.is_suppressed_author("aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"));
-        assert!(!lookup.is_suppressed_event("0000000000000000000000000000000000000000000000000000000000000001"));
+        assert!(!lookup.is_suppressed_author(
+            "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899"
+        ));
+        assert!(!lookup.is_suppressed_event(
+            "0000000000000000000000000000000000000000000000000000000000000001"
+        ));
     }
 
     #[test]

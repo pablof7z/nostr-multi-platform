@@ -150,12 +150,9 @@ fn dispatch_capability_result(
     let ingest_dispatcher_slot = Arc::new(std::sync::RwLock::new(
         crate::substrate::EventIngestDispatcher::default(),
     ));
-    let dm_inbox_relays_slot = Arc::new(Mutex::new(
-        crate::substrate::empty_dm_inbox_relay_lookup(),
-    ));
-    let blocked_relays_slot = Arc::new(Mutex::new(
-        crate::substrate::empty_blocked_relay_lookup(),
-    ));
+    let dm_inbox_relays_slot =
+        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup()));
+    let blocked_relays_slot = Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup()));
     let bootstrap_self_kinds_slot = Arc::new(Mutex::new(None));
     let routing_trace_slot = Arc::new(Mutex::new(None));
     let event_store_slot = Arc::new(Mutex::new(None));

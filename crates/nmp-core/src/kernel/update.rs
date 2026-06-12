@@ -232,7 +232,8 @@ impl Kernel {
             self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
         }
 
-        let update = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
+        let update =
+            self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
 
         // Capture the encode start so we can report "build" vs "encode" time.
         let before_serialize = Instant::now();
@@ -331,7 +332,8 @@ impl Kernel {
         if let Some(value) = last_event_to_emit_ms {
             self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
         }
-        let update = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
+        let update =
+            self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
         let json = serde_json::to_value(&update).unwrap_or(serde_json::Value::Null);
         let before_serialize = Instant::now();
         let typed = self.run_typed_projections();
@@ -370,7 +372,8 @@ impl Kernel {
             .timing
             .last_event_at
             .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
-        let snapshot = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
+        let snapshot =
+            self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
         // Run the same side-effect hooks that `make_update` runs, so tests
         // observing tick observers / typed projection closures see the same
         // per-tick semantics.
@@ -404,8 +407,8 @@ impl Kernel {
         Vec<crate::update_envelope::TypedProjectionData>,
     ) {
         let (frame, value) = self.make_update_frame_and_json_for_test(running);
-        let typed = crate::update_envelope::decode_snapshot_typed_projections(&frame)
-            .unwrap_or_default();
+        let typed =
+            crate::update_envelope::decode_snapshot_typed_projections(&frame).unwrap_or_default();
         (value, typed)
     }
 }

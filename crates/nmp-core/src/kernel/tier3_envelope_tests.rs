@@ -21,7 +21,11 @@ fn with_snapshot_frame<R>(bytes: &[u8], f: impl FnOnce(fb::SnapshotFrame<'_>) ->
         "frame must carry the NMPU identifier"
     );
     let frame = fb::root_as_update_frame(bytes).expect("decode update frame");
-    assert_eq!(frame.kind(), fb::FrameKind::Snapshot, "expected a snapshot frame");
+    assert_eq!(
+        frame.kind(),
+        fb::FrameKind::Snapshot,
+        "expected a snapshot frame"
+    );
     let snapshot = frame.snapshot().expect("snapshot frame present");
     f(snapshot)
 }
@@ -52,7 +56,10 @@ fn adr0044_typed_envelope_agrees_with_json_on_healthy_kernel() {
             json["update_kind"].as_str(),
             "update_kind must round-trip as the same ViewBatch string"
         );
-        assert_eq!(frame.running(), json["running"].as_bool().expect("running in json"));
+        assert_eq!(
+            frame.running(),
+            json["running"].as_bool().expect("running in json")
+        );
 
         // Nested Metrics: assert EVERY field agrees with the JSON map. This is
         // the bulk of the encode surface — a transposed field (e.g. the
@@ -71,8 +78,12 @@ fn adr0044_typed_envelope_agrees_with_json_on_healthy_kernel() {
         // `relay_statuses` is the per-role vector — non-empty even on a fresh
         // kernel (one entry per RelayRole). Assert the vector length AND every
         // element field-for-field through the same RelayStatus encoder.
-        let json_relay_statuses = json["relay_statuses"].as_array().expect("relay_statuses array");
-        let typed_relay_statuses = frame.relay_statuses().expect("typed relay_statuses present");
+        let json_relay_statuses = json["relay_statuses"]
+            .as_array()
+            .expect("relay_statuses array");
+        let typed_relay_statuses = frame
+            .relay_statuses()
+            .expect("typed relay_statuses present");
         assert_eq!(
             typed_relay_statuses.len(),
             json_relay_statuses.len(),
@@ -94,10 +105,17 @@ fn adr0044_typed_envelope_agrees_with_json_on_healthy_kernel() {
         // unconditionally), so assert every element field-for-field — this is
         // the only coverage of the LogicalInterestStatus encoder, including its
         // nested `relay_urls:[string]` vector.
-        let json_interests =
-            json["logical_interests"].as_array().expect("logical_interests array");
-        let typed_interests = frame.logical_interests().expect("typed logical_interests present");
-        assert_eq!(typed_interests.len(), json_interests.len(), "logical_interests vector length");
+        let json_interests = json["logical_interests"]
+            .as_array()
+            .expect("logical_interests array");
+        let typed_interests = frame
+            .logical_interests()
+            .expect("typed logical_interests present");
+        assert_eq!(
+            typed_interests.len(),
+            json_interests.len(),
+            "logical_interests vector length"
+        );
         assert!(
             !json_interests.is_empty(),
             "Profile + Timeline interests are always present — vector must be non-empty"
@@ -109,12 +127,18 @@ fn adr0044_typed_envelope_agrees_with_json_on_healthy_kernel() {
         // covered field-for-field by the dedicated test below.
         assert_eq!(
             frame.wire_subscriptions().map_or(0, |v| v.len()),
-            json["wire_subscriptions"].as_array().expect("wire_subscriptions array").len()
+            json["wire_subscriptions"]
+                .as_array()
+                .expect("wire_subscriptions array")
+                .len()
         );
 
         // Optional diagnostics: absent in JSON (skip_serializing_if) ⇒ typed None.
         assert!(
-            !json.as_object().map(|o| o.contains_key("store_open_failure")).unwrap_or(false),
+            !json
+                .as_object()
+                .map(|o| o.contains_key("store_open_failure"))
+                .unwrap_or(false),
             "healthy kernel must omit store_open_failure from JSON"
         );
         assert_eq!(
@@ -123,7 +147,10 @@ fn adr0044_typed_envelope_agrees_with_json_on_healthy_kernel() {
             "absent store_open_failure must read back as typed None"
         );
         assert!(
-            !json.as_object().map(|o| o.contains_key("no_configured_relays")).unwrap_or(false),
+            !json
+                .as_object()
+                .map(|o| o.contains_key("no_configured_relays"))
+                .unwrap_or(false),
             "healthy kernel must omit no_configured_relays from JSON"
         );
         assert_eq!(
@@ -181,19 +208,31 @@ fn adr0044_typed_wire_subscriptions_agree_with_json_when_populated() {
     kernel.register_wire_frames_for_test(&frames);
 
     let (bytes, json) = kernel.make_update_frame_and_json_for_test(true);
-    let json_subs = json["wire_subscriptions"].as_array().expect("wire_subscriptions array");
+    let json_subs = json["wire_subscriptions"]
+        .as_array()
+        .expect("wire_subscriptions array");
     assert!(
         !json_subs.is_empty(),
         "registering a wire frame must populate wire_subscriptions so this assertion is not vacuous"
     );
 
     with_snapshot_frame(&bytes, |frame| {
-        let typed_subs = frame.wire_subscriptions().expect("typed wire_subscriptions present");
-        assert_eq!(typed_subs.len(), json_subs.len(), "wire_subscriptions vector length");
+        let typed_subs = frame
+            .wire_subscriptions()
+            .expect("typed wire_subscriptions present");
+        assert_eq!(
+            typed_subs.len(),
+            json_subs.len(),
+            "wire_subscriptions vector length"
+        );
         for (index, json_sub) in json_subs.iter().enumerate() {
             let sub = typed_subs.get(index);
             assert_eq!(sub.wire_id(), json_opt_str(json_sub, "wire_id"), "wire_id");
-            assert_eq!(sub.relay_url(), json_opt_str(json_sub, "relay_url"), "relay_url");
+            assert_eq!(
+                sub.relay_url(),
+                json_opt_str(json_sub, "relay_url"),
+                "relay_url"
+            );
             assert_eq!(
                 sub.filter_summary(),
                 json_opt_str(json_sub, "filter_summary"),
@@ -205,14 +244,26 @@ fn adr0044_typed_wire_subscriptions_agree_with_json_when_populated() {
                 json_u64(json_sub, "logical_consumer_count"),
                 "logical_consumer_count"
             );
-            assert_eq!(sub.events_rx(), json_u64(json_sub, "events_rx"), "events_rx");
-            assert_eq!(sub.opened_at_ms(), json_u64(json_sub, "opened_at_ms"), "opened_at_ms");
+            assert_eq!(
+                sub.events_rx(),
+                json_u64(json_sub, "events_rx"),
+                "events_rx"
+            );
+            assert_eq!(
+                sub.opened_at_ms(),
+                json_u64(json_sub, "opened_at_ms"),
+                "opened_at_ms"
+            );
             assert_eq!(
                 sub.last_event_at_ms(),
                 json_opt_u64(json_sub, "last_event_at_ms"),
                 "last_event_at_ms"
             );
-            assert_eq!(sub.eose_at_ms(), json_opt_u64(json_sub, "eose_at_ms"), "eose_at_ms");
+            assert_eq!(
+                sub.eose_at_ms(),
+                json_opt_u64(json_sub, "eose_at_ms"),
+                "eose_at_ms"
+            );
             assert_eq!(
                 sub.close_reason(),
                 json_opt_str(json_sub, "close_reason"),
@@ -262,7 +313,9 @@ fn json_opt_u64(json: &serde_json::Value, key: &str) -> Option<u64> {
 }
 
 fn json_u64(json: &serde_json::Value, key: &str) -> u64 {
-    json[key].as_u64().unwrap_or_else(|| panic!("metric {key} must be a u64: {:?}", json.get(key)))
+    json[key]
+        .as_u64()
+        .unwrap_or_else(|| panic!("metric {key} must be a u64: {:?}", json.get(key)))
 }
 
 /// Assert EVERY `Metrics` field agrees between the typed table and the JSON map.
@@ -295,7 +348,10 @@ fn assert_metrics_agree(metrics: &fb::Metrics<'_>, json: &serde_json::Value) {
     u64_field!(visible_items);
     u64_field!(visible_profiled_items);
     u64_field!(visible_placeholder_avatar_items);
-    assert_eq!(u64::from(metrics.open_views()), json_u64(json, "open_views"));
+    assert_eq!(
+        u64::from(metrics.open_views()),
+        json_u64(json, "open_views")
+    );
     u64_field!(events_since_last_update);
     u64_field!(diagnostic_firehose_events);
     u64_field!(inserted_count);
@@ -305,16 +361,24 @@ fn assert_metrics_agree(metrics: &fb::Metrics<'_>, json: &serde_json::Value) {
         u64::from(metrics.events_per_second_configured()),
         json_u64(json, "events_per_second_configured")
     );
-    assert_eq!(u64::from(metrics.emit_hz_configured()), json_u64(json, "emit_hz_configured"));
+    assert_eq!(
+        u64::from(metrics.emit_hz_configured()),
+        json_u64(json, "emit_hz_configured")
+    );
     u64_field!(update_sequence);
     u64_field!(estimated_store_bytes);
     u64_field!(payload_bytes);
     assert_eq!(
         metrics.store_to_payload_ratio(),
-        json["store_to_payload_ratio"].as_f64().expect("store_to_payload_ratio"),
+        json["store_to_payload_ratio"]
+            .as_f64()
+            .expect("store_to_payload_ratio"),
         "Metrics::store_to_payload_ratio typed vs JSON"
     );
-    assert_eq!(u64::from(metrics.actor_queue_depth()), json_u64(json, "actor_queue_depth"));
+    assert_eq!(
+        u64::from(metrics.actor_queue_depth()),
+        json_u64(json, "actor_queue_depth")
+    );
     u64_field!(frames_rx);
     u64_field!(events_rx);
     u64_field!(eose_rx);
@@ -351,10 +415,26 @@ fn json_opt_str<'a>(json: &'a serde_json::Value, key: &str) -> Option<&'a str> {
 /// object — covers the 17-field shared encoder (used by both the singular
 /// aggregate and each `relay_statuses` element).
 fn assert_relay_status_agrees(status: &fb::RelayStatus<'_>, json: &serde_json::Value) {
-    assert_eq!(status.role(), json_opt_str(json, "role"), "RelayStatus::role");
-    assert_eq!(status.relay_url(), json_opt_str(json, "relay_url"), "RelayStatus::relay_url");
-    assert_eq!(status.connection(), json_opt_str(json, "connection"), "RelayStatus::connection");
-    assert_eq!(status.auth(), json_opt_str(json, "auth"), "RelayStatus::auth");
+    assert_eq!(
+        status.role(),
+        json_opt_str(json, "role"),
+        "RelayStatus::role"
+    );
+    assert_eq!(
+        status.relay_url(),
+        json_opt_str(json, "relay_url"),
+        "RelayStatus::relay_url"
+    );
+    assert_eq!(
+        status.connection(),
+        json_opt_str(json, "connection"),
+        "RelayStatus::connection"
+    );
+    assert_eq!(
+        status.auth(),
+        json_opt_str(json, "auth"),
+        "RelayStatus::auth"
+    );
     assert_eq!(
         status.negentropy_probe(),
         json_opt_str(json, "negentropy_probe"),
@@ -380,16 +460,36 @@ fn assert_relay_status_agrees(status: &fb::RelayStatus<'_>, json: &serde_json::V
         json_opt_u64(json, "last_event_at_ms"),
         "RelayStatus::last_event_at_ms"
     );
-    assert_eq!(status.last_notice(), json_opt_str(json, "last_notice"), "RelayStatus::last_notice");
-    assert_eq!(status.last_error(), json_opt_str(json, "last_error"), "RelayStatus::last_error");
+    assert_eq!(
+        status.last_notice(),
+        json_opt_str(json, "last_notice"),
+        "RelayStatus::last_notice"
+    );
+    assert_eq!(
+        status.last_error(),
+        json_opt_str(json, "last_error"),
+        "RelayStatus::last_error"
+    );
     assert_eq!(
         status.error_category(),
         json_opt_str(json, "error_category"),
         "RelayStatus::error_category"
     );
-    assert_eq!(status.events_rx(), json_u64(json, "events_rx"), "RelayStatus::events_rx");
-    assert_eq!(status.bytes_rx(), json_u64(json, "bytes_rx"), "RelayStatus::bytes_rx");
-    assert_eq!(status.bytes_tx(), json_u64(json, "bytes_tx"), "RelayStatus::bytes_tx");
+    assert_eq!(
+        status.events_rx(),
+        json_u64(json, "events_rx"),
+        "RelayStatus::events_rx"
+    );
+    assert_eq!(
+        status.bytes_rx(),
+        json_u64(json, "bytes_rx"),
+        "RelayStatus::bytes_rx"
+    );
+    assert_eq!(
+        status.bytes_tx(),
+        json_u64(json, "bytes_tx"),
+        "RelayStatus::bytes_tx"
+    );
     assert_eq!(
         status.denied(),
         json["denied"].as_bool().expect("denied"),
@@ -404,9 +504,20 @@ fn assert_relay_status_agrees(status: &fb::RelayStatus<'_>, json: &serde_json::V
 
 /// Assert every `LogicalInterestStatus` field agrees, including the nested
 /// `relay_urls:[string]` vector.
-fn assert_logical_interest_agrees(interest: &fb::LogicalInterestStatus<'_>, json: &serde_json::Value) {
-    assert_eq!(interest.key(), json_opt_str(json, "key"), "LogicalInterestStatus::key");
-    assert_eq!(interest.state(), json_opt_str(json, "state"), "LogicalInterestStatus::state");
+fn assert_logical_interest_agrees(
+    interest: &fb::LogicalInterestStatus<'_>,
+    json: &serde_json::Value,
+) {
+    assert_eq!(
+        interest.key(),
+        json_opt_str(json, "key"),
+        "LogicalInterestStatus::key"
+    );
+    assert_eq!(
+        interest.state(),
+        json_opt_str(json, "state"),
+        "LogicalInterestStatus::state"
+    );
     assert_eq!(
         u64::from(interest.refcount()),
         json_u64(json, "refcount"),
@@ -424,7 +535,11 @@ fn assert_logical_interest_agrees(interest: &fb::LogicalInterestStatus<'_>, json
     );
     let json_urls = json["relay_urls"].as_array().expect("relay_urls array");
     let typed_urls = interest.relay_urls().expect("typed relay_urls present");
-    assert_eq!(typed_urls.len(), json_urls.len(), "LogicalInterestStatus::relay_urls length");
+    assert_eq!(
+        typed_urls.len(),
+        json_urls.len(),
+        "LogicalInterestStatus::relay_urls length"
+    );
     for (index, json_url) in json_urls.iter().enumerate() {
         assert_eq!(
             typed_urls.get(index),

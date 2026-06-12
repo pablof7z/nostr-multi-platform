@@ -113,7 +113,10 @@ fn nip46_onboarding_stage_kind_wire_token_matches_serde() {
     // The wire token is derived through serde, so it matches the exact
     // snake_case string the JSON projection emits.
     assert_eq!(decoded.stage_kind.as_deref(), Some("awaiting_pubkey"));
-    assert_eq!(decoded.progress_message.as_deref(), Some("approve on bunker"));
+    assert_eq!(
+        decoded.progress_message.as_deref(),
+        Some("approve on bunker")
+    );
     assert!(decoded.is_in_flight);
     assert!(decoded.can_cancel);
 }

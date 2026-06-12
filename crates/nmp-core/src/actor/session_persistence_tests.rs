@@ -103,10 +103,7 @@ fn fresh() -> (IdentityRuntime, Kernel) {
 /// helper blocks until `count` `CapabilityResultReady` commands arrive
 /// on the actor command channel, confirming every enqueued write has
 /// been executed by the worker.
-fn drain_worker_results(
-    cmd_rx: &Receiver<ActorCommand>,
-    count: usize,
-) {
+fn drain_worker_results(cmd_rx: &Receiver<ActorCommand>, count: usize) {
     for _ in 0..count {
         cmd_rx
             .recv_timeout(Duration::from_secs(5))
@@ -233,13 +230,8 @@ fn restores_nip46_from_persisted_remote_payload() {
         let wtx = spawn_capability_worker(Arc::clone(&slot), tx);
         (wtx, rx)
     };
-    let _outbound = restore_active_session(
-        &mut identity,
-        &mut kernel,
-        &slot,
-        &restore_work_tx,
-        false,
-    );
+    let _outbound =
+        restore_active_session(&mut identity, &mut kernel, &slot, &restore_work_tx, false);
 
     assert_eq!(
         calls.lock().unwrap().as_slice(),

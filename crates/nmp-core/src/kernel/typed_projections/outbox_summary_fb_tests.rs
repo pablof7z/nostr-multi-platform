@@ -19,7 +19,10 @@ fn encode_decode_round_trips() {
     let model = sample();
     let bytes = encode_outbox_summary(&model);
     let decoded = decode_outbox_summary(&bytes).expect("decode must succeed");
-    assert_eq!(decoded, model, "round-trip must preserve every counter + string");
+    assert_eq!(
+        decoded, model,
+        "round-trip must preserve every counter + string"
+    );
 }
 
 #[test]

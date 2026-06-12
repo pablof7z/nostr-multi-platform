@@ -332,5 +332,4 @@ impl Kernel {
         }
         requests
     }
-
 }

@@ -329,11 +329,17 @@ fn remove_drops_generic_and_typed_for_one_key_only() {
     let mut registry = SnapshotRegistry::new();
     // A transient feed registers BOTH a generic and a typed projection under its
     // key; a sibling (e.g. the home feed) is registered too.
-    registry.register("nmp.feed.author.alice", || serde_json::json!({ "cards": [] }));
+    registry.register(
+        "nmp.feed.author.alice",
+        || serde_json::json!({ "cards": [] }),
+    );
     registry.register_typed("nmp.feed.author.alice", || {
         Some(typed_entry("nmp.feed.author.alice", &[0xAB]))
     });
-    registry.register("nmp.feed.home", || serde_json::json!({ "cards": [{ "id": "h" }] }));
+    registry.register(
+        "nmp.feed.home",
+        || serde_json::json!({ "cards": [{ "id": "h" }] }),
+    );
 
     // Removing the transient key reports success and clears it from both maps.
     assert!(registry.remove("nmp.feed.author.alice"));

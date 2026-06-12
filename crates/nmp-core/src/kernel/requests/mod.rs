@@ -312,9 +312,7 @@ impl Kernel {
         while let Some(key) = self.pending_reverify.pop_front() {
             // Build the reverify filter from the key.
             let (kind, pubkey, d_tag_opt) = match &key {
-                crate::store::ReplaceableKey::Regular { kind, pubkey } => {
-                    (*kind, *pubkey, None)
-                }
+                crate::store::ReplaceableKey::Regular { kind, pubkey } => (*kind, *pubkey, None),
                 crate::store::ReplaceableKey::Parameterized {
                     kind,
                     pubkey,

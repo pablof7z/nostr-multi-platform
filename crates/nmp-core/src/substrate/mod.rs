@@ -42,7 +42,6 @@ mod action;
 mod app_host;
 mod blocked_relays;
 mod bounded;
-mod suppression;
 mod capability;
 mod dm_inbox_relays;
 mod empty_routing;
@@ -58,6 +57,7 @@ mod relay_score_store;
 mod req_intercept;
 mod routing;
 mod routing_trace;
+mod suppression;
 mod view;
 
 pub use action::{
@@ -65,7 +65,6 @@ pub use action::{
 };
 pub use app_host::AppHost;
 pub use blocked_relays::{empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBlockedRelayLookup};
-pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};
 pub use bounded::{BoundedMessageMap, BoundedRing, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 #[cfg(any(test, feature = "test-support"))]
@@ -74,6 +73,7 @@ pub use dm_inbox_relays::{
     empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyDmInboxRelayLookup,
 };
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
+pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};
 // Step 9: the `DomainMigration` / `MigrationTx` value types passed to
 // `EventStore::run_migrations` moved with the store (they are consumed only by
 // that seam, and keeping them in `nmp-store` lets the store crate compile
@@ -81,6 +81,11 @@ pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandler
 // `nmp_core::substrate::{DomainMigration, MigrationTx}` import path is
 // unchanged.
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
+pub use ingest::{EventIngestDispatcher, IngestParser};
+pub use keyring::{
+    KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
+    MALFORMED_RESULT,
+};
 /// V-78 — NIP crates need to name `SignerOp` to `op.wait()` a parked
 /// remote (NIP-46 bunker) sign on an off-actor worker thread (the
 /// `nmp-nip57` zap path). Re-exported through the substrate so NIP crates
@@ -91,11 +96,6 @@ pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 /// `Receiver<Result<T, SignerError>>`, so any crate constructing or matching
 /// on a pending op needs the error name too.
 pub use nmp_signer_iface::{SignerError, SignerOp};
-pub use ingest::{EventIngestDispatcher, IngestParser};
-pub use keyring::{
-    KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
-    MALFORMED_RESULT,
-};
 pub use nmp_store::{DomainMigration, MigrationTx};
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{
@@ -133,8 +133,8 @@ pub use routing::{
     UserConfiguredCategory,
 };
 pub use routing_trace::{
-    truncate_event_id, LaneOutcome, PublishTrace, RouteAttempt, RoutingLane,
-    RoutingTraceObserver, SubscriptionTrace,
+    truncate_event_id, LaneOutcome, PublishTrace, RouteAttempt, RoutingLane, RoutingTraceObserver,
+    SubscriptionTrace,
 };
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 

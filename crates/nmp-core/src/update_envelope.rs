@@ -271,12 +271,18 @@ pub fn encode_snapshot_frame(
             ..Default::default()
         },
     );
-    let last_error_toast =
-        envelope.last_error_toast.as_deref().map(|s| builder.create_string(s));
-    let last_error_category =
-        envelope.last_error_category.as_deref().map(|s| builder.create_string(s));
-    let last_planner_error =
-        envelope.last_planner_error.as_deref().map(|s| builder.create_string(s));
+    let last_error_toast = envelope
+        .last_error_toast
+        .as_deref()
+        .map(|s| builder.create_string(s));
+    let last_error_category = envelope
+        .last_error_category
+        .as_deref()
+        .map(|s| builder.create_string(s));
+    let last_planner_error = envelope
+        .last_planner_error
+        .as_deref()
+        .map(|s| builder.create_string(s));
     let snapshot = fb::SnapshotFrame::create(
         &mut builder,
         &fb::SnapshotFrameArgs {
@@ -441,7 +447,6 @@ fn decode_typed_projections(
     }
     Ok(out)
 }
-
 
 /// Best-effort message extraction from a `catch_unwind` payload.
 pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {

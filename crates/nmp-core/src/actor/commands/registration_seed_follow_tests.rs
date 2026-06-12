@@ -188,7 +188,15 @@ fn create_account_followfeed_probes_default_follow_mailboxes_via_indexer() {
         "wss://onboard-indexer.relay/".to_string(),
         "both,indexer".to_string(),
     )];
-    create_account(&mut identity, &mut kernel, false, &profile, &relays, false, true);
+    create_account(
+        &mut identity,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        false,
+        true,
+    );
 
     let frames = kernel.drain_lifecycle_tick();
     let reqs = reqs_by_relay(&frames);

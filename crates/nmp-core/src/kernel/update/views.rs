@@ -2,7 +2,9 @@ use super::super::{
     truncate, AccountSummary, Kernel, MentionProfilePayload, Profile, ProfileCard, StoredEvent,
     TimelineItem,
 };
-use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored, parse_repost_inner};
+use super::helpers::{
+    hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored, parse_repost_inner,
+};
 
 impl Kernel {
     /// Look up the `StoredEvent` that resolves a `claim_event`

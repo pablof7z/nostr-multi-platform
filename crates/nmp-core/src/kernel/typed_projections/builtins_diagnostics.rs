@@ -31,13 +31,14 @@
 
 use super::{
     encode_action_lifecycle, encode_action_results, encode_action_stages, encode_relay_diagnostics,
-    encode_signed_events, ActionLifecycleModel, ActionResultsModel, ActionStagesModel,
-    InterestRow, RelayDiagnosticsModel, RelayRow, SignedEventsModel, WireSubRow,
+    encode_signed_events, ActionLifecycleModel, ActionResultsModel, ActionStagesModel, InterestRow,
+    RelayDiagnosticsModel, RelayRow, SignedEventsModel, WireSubRow,
     ACTION_LIFECYCLE_FILE_IDENTIFIER, ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
     ACTION_RESULTS_FILE_IDENTIFIER, ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION,
     ACTION_STAGES_FILE_IDENTIFIER, ACTION_STAGES_SCHEMA_ID, ACTION_STAGES_SCHEMA_VERSION,
-    RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID, RELAY_DIAGNOSTICS_SCHEMA_VERSION,
-    SIGNED_EVENTS_FILE_IDENTIFIER, SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
+    RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID,
+    RELAY_DIAGNOSTICS_SCHEMA_VERSION, SIGNED_EVENTS_FILE_IDENTIFIER, SIGNED_EVENTS_SCHEMA_ID,
+    SIGNED_EVENTS_SCHEMA_VERSION,
 };
 use crate::update_envelope::TypedProjectionData;
 

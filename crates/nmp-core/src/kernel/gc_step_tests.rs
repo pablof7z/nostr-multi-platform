@@ -205,7 +205,10 @@ fn production_budget_documents_ceiling_state() {
          are wired (see #1090). HOT_EVENT_CEILING={}, see types/gc.rs.",
         crate::store::HOT_EVENT_CEILING,
     );
-    assert_eq!(budget.max_events_per_step, crate::store::GC_MAX_EVENTS_PER_STEP);
+    assert_eq!(
+        budget.max_events_per_step,
+        crate::store::GC_MAX_EVENTS_PER_STEP
+    );
     assert_eq!(budget.max_duration_ms, crate::store::GC_MAX_DURATION_MS);
 }
 
@@ -230,9 +233,7 @@ fn gc_report_includes_duration_ms() {
     }
 
     pin_clock(&mut kernel, T0_SECS + 100);
-    let report = kernel
-        .run_gc_step()
-        .expect("gc_step must succeed");
+    let report = kernel.run_gc_step().expect("gc_step must succeed");
 
     // duration_ms must be set (non-zero on any real pass).
     // Allow 0 only in theory (pass so fast it rounds to 0ms); the important

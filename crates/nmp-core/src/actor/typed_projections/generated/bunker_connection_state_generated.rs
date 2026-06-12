@@ -2,278 +2,357 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod kernel {
+    #[allow(unused_imports, dead_code)]
+    pub mod kernel {
 
+        pub enum BunkerConnectionStateOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum BunkerConnectionStateOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct BunkerConnectionState<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct BunkerConnectionState<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for BunkerConnectionState<'a> {
+            type Inner = BunkerConnectionState<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for BunkerConnectionState<'a> {
-  type Inner = BunkerConnectionState<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> BunkerConnectionState<'a> {
+            pub const VT_STATE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HAS_REASON: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REASON: ::flatbuffers::VOffsetT = 8;
+            pub const VT_IS_CONNECTED: ::flatbuffers::VOffsetT = 10;
+            pub const VT_IS_RECONNECTING: ::flatbuffers::VOffsetT = 12;
+            pub const VT_IS_FAILED: ::flatbuffers::VOffsetT = 14;
 
-impl<'a> BunkerConnectionState<'a> {
-  pub const VT_STATE: ::flatbuffers::VOffsetT = 4;
-  pub const VT_HAS_REASON: ::flatbuffers::VOffsetT = 6;
-  pub const VT_REASON: ::flatbuffers::VOffsetT = 8;
-  pub const VT_IS_CONNECTED: ::flatbuffers::VOffsetT = 10;
-  pub const VT_IS_RECONNECTING: ::flatbuffers::VOffsetT = 12;
-  pub const VT_IS_FAILED: ::flatbuffers::VOffsetT = 14;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                BunkerConnectionState { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BunkerConnectionStateArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<BunkerConnectionState<'bldr>> {
+                let mut builder = BunkerConnectionStateBuilder::new(_fbb);
+                if let Some(x) = args.reason {
+                    builder.add_reason(x);
+                }
+                if let Some(x) = args.state {
+                    builder.add_state(x);
+                }
+                builder.add_is_failed(args.is_failed);
+                builder.add_is_reconnecting(args.is_reconnecting);
+                builder.add_is_connected(args.is_connected);
+                builder.add_has_reason(args.has_reason);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    BunkerConnectionState { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args BunkerConnectionStateArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<BunkerConnectionState<'bldr>> {
-    let mut builder = BunkerConnectionStateBuilder::new(_fbb);
-    if let Some(x) = args.reason { builder.add_reason(x); }
-    if let Some(x) = args.state { builder.add_state(x); }
-    builder.add_is_failed(args.is_failed);
-    builder.add_is_reconnecting(args.is_reconnecting);
-    builder.add_is_connected(args.is_connected);
-    builder.add_has_reason(args.has_reason);
-    builder.finish()
-  }
+            #[inline]
+            pub fn state(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        BunkerConnectionState::VT_STATE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_reason(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerConnectionState::VT_HAS_REASON, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn reason(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        BunkerConnectionState::VT_REASON,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn is_connected(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerConnectionState::VT_IS_CONNECTED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_reconnecting(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerConnectionState::VT_IS_RECONNECTING, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_failed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerConnectionState::VT_IS_FAILED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for BunkerConnectionState<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "state",
+                        Self::VT_STATE,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_reason", Self::VT_HAS_REASON, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "reason",
+                        Self::VT_REASON,
+                        false,
+                    )?
+                    .visit_field::<bool>("is_connected", Self::VT_IS_CONNECTED, false)?
+                    .visit_field::<bool>("is_reconnecting", Self::VT_IS_RECONNECTING, false)?
+                    .visit_field::<bool>("is_failed", Self::VT_IS_FAILED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct BunkerConnectionStateArgs<'a> {
+            pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_reason: bool,
+            pub reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub is_connected: bool,
+            pub is_reconnecting: bool,
+            pub is_failed: bool,
+        }
+        impl<'a> Default for BunkerConnectionStateArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BunkerConnectionStateArgs {
+                    state: None,
+                    has_reason: false,
+                    reason: None,
+                    is_connected: false,
+                    is_reconnecting: false,
+                    is_failed: false,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn state(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(BunkerConnectionState::VT_STATE, None)}
-  }
-  #[inline]
-  pub fn has_reason(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerConnectionState::VT_HAS_REASON, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn reason(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(BunkerConnectionState::VT_REASON, None)}
-  }
-  #[inline]
-  pub fn is_connected(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerConnectionState::VT_IS_CONNECTED, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_reconnecting(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerConnectionState::VT_IS_RECONNECTING, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_failed(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerConnectionState::VT_IS_FAILED, Some(false)).unwrap()}
-  }
-}
+        pub struct BunkerConnectionStateBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BunkerConnectionStateBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_state(&mut self, state: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    BunkerConnectionState::VT_STATE,
+                    state,
+                );
+            }
+            #[inline]
+            pub fn add_has_reason(&mut self, has_reason: bool) {
+                self.fbb_.push_slot::<bool>(
+                    BunkerConnectionState::VT_HAS_REASON,
+                    has_reason,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_reason(&mut self, reason: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    BunkerConnectionState::VT_REASON,
+                    reason,
+                );
+            }
+            #[inline]
+            pub fn add_is_connected(&mut self, is_connected: bool) {
+                self.fbb_.push_slot::<bool>(
+                    BunkerConnectionState::VT_IS_CONNECTED,
+                    is_connected,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_is_reconnecting(&mut self, is_reconnecting: bool) {
+                self.fbb_.push_slot::<bool>(
+                    BunkerConnectionState::VT_IS_RECONNECTING,
+                    is_reconnecting,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_is_failed(&mut self, is_failed: bool) {
+                self.fbb_
+                    .push_slot::<bool>(BunkerConnectionState::VT_IS_FAILED, is_failed, false);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> BunkerConnectionStateBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BunkerConnectionStateBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<BunkerConnectionState<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for BunkerConnectionState<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("state", Self::VT_STATE, false)?
-     .visit_field::<bool>("has_reason", Self::VT_HAS_REASON, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reason", Self::VT_REASON, false)?
-     .visit_field::<bool>("is_connected", Self::VT_IS_CONNECTED, false)?
-     .visit_field::<bool>("is_reconnecting", Self::VT_IS_RECONNECTING, false)?
-     .visit_field::<bool>("is_failed", Self::VT_IS_FAILED, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct BunkerConnectionStateArgs<'a> {
-    pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_reason: bool,
-    pub reason: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub is_connected: bool,
-    pub is_reconnecting: bool,
-    pub is_failed: bool,
-}
-impl<'a> Default for BunkerConnectionStateArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    BunkerConnectionStateArgs {
-      state: None,
-      has_reason: false,
-      reason: None,
-      is_connected: false,
-      is_reconnecting: false,
-      is_failed: false,
-    }
-  }
-}
+        impl ::core::fmt::Debug for BunkerConnectionState<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("BunkerConnectionState");
+                ds.field("state", &self.state());
+                ds.field("has_reason", &self.has_reason());
+                ds.field("reason", &self.reason());
+                ds.field("is_connected", &self.is_connected());
+                ds.field("is_reconnecting", &self.is_reconnecting());
+                ds.field("is_failed", &self.is_failed());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `BunkerConnectionState`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_bunker_connection_state_unchecked`.
+        pub fn root_as_bunker_connection_state(
+            buf: &[u8],
+        ) -> Result<BunkerConnectionState<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<BunkerConnectionState>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `BunkerConnectionState` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_bunker_connection_state_unchecked`.
+        pub fn size_prefixed_root_as_bunker_connection_state(
+            buf: &[u8],
+        ) -> Result<BunkerConnectionState<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<BunkerConnectionState>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `BunkerConnectionState` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_bunker_connection_state_unchecked`.
+        pub fn root_as_bunker_connection_state_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<BunkerConnectionState<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<BunkerConnectionState<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `BunkerConnectionState` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_bunker_connection_state_unchecked`.
+        pub fn size_prefixed_root_as_bunker_connection_state_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<BunkerConnectionState<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<BunkerConnectionState<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a BunkerConnectionState and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `BunkerConnectionState`.
+        pub unsafe fn root_as_bunker_connection_state_unchecked(
+            buf: &[u8],
+        ) -> BunkerConnectionState<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<BunkerConnectionState>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed BunkerConnectionState and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `BunkerConnectionState`.
+        pub unsafe fn size_prefixed_root_as_bunker_connection_state_unchecked(
+            buf: &[u8],
+        ) -> BunkerConnectionState<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<BunkerConnectionState>(buf) }
+        }
+        pub const BUNKER_CONNECTION_STATE_IDENTIFIER: &str = "KBCS";
 
-pub struct BunkerConnectionStateBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BunkerConnectionStateBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_state(&mut self, state: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(BunkerConnectionState::VT_STATE, state);
-  }
-  #[inline]
-  pub fn add_has_reason(&mut self, has_reason: bool) {
-    self.fbb_.push_slot::<bool>(BunkerConnectionState::VT_HAS_REASON, has_reason, false);
-  }
-  #[inline]
-  pub fn add_reason(&mut self, reason: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(BunkerConnectionState::VT_REASON, reason);
-  }
-  #[inline]
-  pub fn add_is_connected(&mut self, is_connected: bool) {
-    self.fbb_.push_slot::<bool>(BunkerConnectionState::VT_IS_CONNECTED, is_connected, false);
-  }
-  #[inline]
-  pub fn add_is_reconnecting(&mut self, is_reconnecting: bool) {
-    self.fbb_.push_slot::<bool>(BunkerConnectionState::VT_IS_RECONNECTING, is_reconnecting, false);
-  }
-  #[inline]
-  pub fn add_is_failed(&mut self, is_failed: bool) {
-    self.fbb_.push_slot::<bool>(BunkerConnectionState::VT_IS_FAILED, is_failed, false);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> BunkerConnectionStateBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    BunkerConnectionStateBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<BunkerConnectionState<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn bunker_connection_state_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, BUNKER_CONNECTION_STATE_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for BunkerConnectionState<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("BunkerConnectionState");
-      ds.field("state", &self.state());
-      ds.field("has_reason", &self.has_reason());
-      ds.field("reason", &self.reason());
-      ds.field("is_connected", &self.is_connected());
-      ds.field("is_reconnecting", &self.is_reconnecting());
-      ds.field("is_failed", &self.is_failed());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `BunkerConnectionState`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_bunker_connection_state_unchecked`.
-pub fn root_as_bunker_connection_state(buf: &[u8]) -> Result<BunkerConnectionState<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<BunkerConnectionState>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `BunkerConnectionState` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_bunker_connection_state_unchecked`.
-pub fn size_prefixed_root_as_bunker_connection_state(buf: &[u8]) -> Result<BunkerConnectionState<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<BunkerConnectionState>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `BunkerConnectionState` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_bunker_connection_state_unchecked`.
-pub fn root_as_bunker_connection_state_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<BunkerConnectionState<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<BunkerConnectionState<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `BunkerConnectionState` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_bunker_connection_state_unchecked`.
-pub fn size_prefixed_root_as_bunker_connection_state_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<BunkerConnectionState<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<BunkerConnectionState<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a BunkerConnectionState and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `BunkerConnectionState`.
-pub unsafe fn root_as_bunker_connection_state_unchecked(buf: &[u8]) -> BunkerConnectionState<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<BunkerConnectionState>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed BunkerConnectionState and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `BunkerConnectionState`.
-pub unsafe fn size_prefixed_root_as_bunker_connection_state_unchecked(buf: &[u8]) -> BunkerConnectionState<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<BunkerConnectionState>(buf) }
-}
-pub const BUNKER_CONNECTION_STATE_IDENTIFIER: &str = "KBCS";
+        #[inline]
+        pub fn bunker_connection_state_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, BUNKER_CONNECTION_STATE_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn bunker_connection_state_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, BUNKER_CONNECTION_STATE_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_bunker_connection_state_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<BunkerConnectionState<'a>>,
+        ) {
+            fbb.finish(root, Some(BUNKER_CONNECTION_STATE_IDENTIFIER));
+        }
 
-#[inline]
-pub fn bunker_connection_state_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, BUNKER_CONNECTION_STATE_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_bunker_connection_state_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<BunkerConnectionState<'a>>) {
-  fbb.finish(root, Some(BUNKER_CONNECTION_STATE_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_bunker_connection_state_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<BunkerConnectionState<'a>>) {
-  fbb.finish_size_prefixed(root, Some(BUNKER_CONNECTION_STATE_IDENTIFIER));
-}
-}  // pub mod kernel
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_bunker_connection_state_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<BunkerConnectionState<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(BUNKER_CONNECTION_STATE_IDENTIFIER));
+        }
+    } // pub mod kernel
+} // pub mod nmp

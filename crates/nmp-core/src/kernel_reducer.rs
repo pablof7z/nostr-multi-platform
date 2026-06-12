@@ -608,8 +608,16 @@ mod tests {
         let mut r = KernelReducer::new();
         let _ = r.reduce(KernelAction::Start);
         // any_relay_connected is false on a fresh reducer — assert the gate.
-        assert!(!r.any_relay_connected(), "fresh reducer: no relay connected");
-        let out = r.claim_profile(PK.to_string(), "chirp-web-author-1".to_string(), false, false);
+        assert!(
+            !r.any_relay_connected(),
+            "fresh reducer: no relay connected"
+        );
+        let out = r.claim_profile(
+            PK.to_string(),
+            "chirp-web-author-1".to_string(),
+            false,
+            false,
+        );
         assert!(out.is_empty(), "parked claim must emit no outbound");
     }
 

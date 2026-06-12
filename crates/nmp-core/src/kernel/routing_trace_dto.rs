@@ -461,7 +461,12 @@ mod tests {
                     },
                 ],
             },
-            &make_routed("wss://app.example/", Src::AppRelay { mode: AppRelayMode::Fallback }),
+            &make_routed(
+                "wss://app.example/",
+                Src::AppRelay {
+                    mode: AppRelayMode::Fallback,
+                },
+            ),
         );
         p.on_subscription(
             SubscriptionTrace {
@@ -469,14 +474,17 @@ mod tests {
                 kinds: vec![1],
                 authors_count: 1,
                 explicit_targets_set: false,
-                attempts: vec![
-                    RouteAttempt {
-                        lane: RoutingLane::Nip65,
-                        outcome: LaneOutcome::Matched { count: 3 },
-                    },
-                ],
+                attempts: vec![RouteAttempt {
+                    lane: RoutingLane::Nip65,
+                    outcome: LaneOutcome::Matched { count: 3 },
+                }],
             },
-            &make_routed("wss://r.example/", Src::Nip65 { direction: Direction::Read }),
+            &make_routed(
+                "wss://r.example/",
+                Src::Nip65 {
+                    direction: Direction::Read,
+                },
+            ),
         );
 
         let v = projection_to_json(&p);
@@ -520,7 +528,10 @@ mod tests {
             (RoutingLane::AppRelayFallback, "AppRelayFallback"),
         ];
         for (lane, expected) in cases {
-            let a = RouteAttempt { lane, outcome: LaneOutcome::Empty };
+            let a = RouteAttempt {
+                lane,
+                outcome: LaneOutcome::Empty,
+            };
             let v = attempt_to_json(&a);
             assert_eq!(
                 v["lane"].as_str().unwrap(),

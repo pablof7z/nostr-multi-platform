@@ -955,8 +955,9 @@ fn snapshot_carries_nip46_onboarding_projection() {
         .iter()
         .find(|p| p.key == crate::actor::typed_projections::NIP46_ONBOARDING_SCHEMA_ID)
         .expect("snapshot missing nip46_onboarding typed sidecar");
-    let onboarding = crate::actor::typed_projections::decode_nip46_onboarding(&onboarding_entry.payload)
-        .expect("nip46_onboarding sidecar must decode");
+    let onboarding =
+        crate::actor::typed_projections::decode_nip46_onboarding(&onboarding_entry.payload)
+            .expect("nip46_onboarding sidecar must decode");
 
     // The typed projection's `stage_kind` + `is_in_flight` must reflect the
     // same broker progress as the prior JSON path.
@@ -1025,14 +1026,21 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
         .iter()
         .find(|p| p.key == crate::kernel::public_typed_projections::ACCOUNTS_SCHEMA_ID)
         .expect("snapshot missing accounts typed sidecar");
-    let accounts = crate::kernel::public_typed_projections::decode_accounts(&accounts_entry.payload)
-        .expect("accounts sidecar must decode");
+    let accounts =
+        crate::kernel::public_typed_projections::decode_accounts(&accounts_entry.payload)
+            .expect("accounts sidecar must decode");
     assert!(
-        accounts.accounts.iter().any(|row| row.id == pk || row.npub.contains(&pk)),
+        accounts
+            .accounts
+            .iter()
+            .any(|row| row.id == pk || row.npub.contains(&pk)),
         "snapshot missing remote-signer pubkey {pk} in accounts sidecar"
     );
     assert!(
-        accounts.accounts.iter().any(|row| row.signer_kind == "nip46"),
+        accounts
+            .accounts
+            .iter()
+            .any(|row| row.signer_kind == "nip46"),
         "snapshot missing nip46 signer_kind in accounts sidecar"
     );
 

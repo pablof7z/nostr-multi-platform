@@ -94,9 +94,7 @@ fn kind1_ingest_does_not_queue_profile_fetch() {
     // The proactive fetch at timeline.rs:172 would have moved the author into
     // `profile_requests.pending`; its removal leaves both sets empty.
     assert!(
-        !kernel
-            .profile_requests_pending_for_test()
-            .contains(&author),
+        !kernel.profile_requests_pending_for_test().contains(&author),
         "kind:1 ingest must NOT queue a kind:0 profile fetch for the author (pending set); \
          F-CR-00 proactive fetch was not removed"
     );

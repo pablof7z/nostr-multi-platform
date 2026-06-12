@@ -1186,16 +1186,15 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
         created_at: 1_700_000_000,
     };
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
-    let outbound =
-        publish_unsigned_event_to_relays(
-            &id,
-            &mut kernel,
-            unsigned,
-            relays,
-            None,
-            None,
-            &mut Vec::new(),
-        );
+    let outbound = publish_unsigned_event_to_relays(
+        &id,
+        &mut kernel,
+        unsigned,
+        relays,
+        None,
+        None,
+        &mut Vec::new(),
+    );
 
     assert!(
         outbound.is_empty(),

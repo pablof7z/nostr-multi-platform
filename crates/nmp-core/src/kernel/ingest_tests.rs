@@ -801,7 +801,12 @@ fn ingest_timeline_event_duplicate_is_not_double_stored() {
 
 /// Build one real Schnorr-signed kind:1 event carrying a single `#t` hashtag
 /// tag, in the `NostrEvent` shape the kernel ingest path consumes.
-fn signed_note_with_hashtag(keys: &::nostr::Keys, content: &str, ts: u64, hashtag: &str) -> NostrEvent {
+fn signed_note_with_hashtag(
+    keys: &::nostr::Keys,
+    content: &str,
+    ts: u64,
+    hashtag: &str,
+) -> NostrEvent {
     use ::nostr::{EventBuilder, Tag, Timestamp};
     let nostr_event = EventBuilder::text_note(content)
         .tag(Tag::hashtag(hashtag))
@@ -929,9 +934,7 @@ fn open_interest_generalisation_still_drops_unmatched_event() {
 
     // Register an interest for a DIFFERENT author.
     let mut shape = crate::planner::InterestShape::default();
-    shape
-        .authors
-        .insert(FOLLOW_A.to_string());
+    shape.authors.insert(FOLLOW_A.to_string());
     shape.kinds.insert(1);
     register_open_interest(&mut kernel, shape);
 

@@ -1,6 +1,4 @@
-use super::{
-    decode_nip46_onboarding, encode_nip46_onboarding, Nip46OnboardingModel, SignerAppRow,
-};
+use super::{decode_nip46_onboarding, encode_nip46_onboarding, Nip46OnboardingModel, SignerAppRow};
 
 fn sample_apps() -> Vec<SignerAppRow> {
     vec![

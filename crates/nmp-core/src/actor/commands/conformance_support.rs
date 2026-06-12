@@ -140,7 +140,6 @@ impl ConformanceHarness {
         last_event_json(&outbound)
     }
 
-
     /// Drive a kind:1 short-text note publish. Returns the emitted `EVENT` JSON
     /// object. When `reply_to` is `Some(parent_id)` the note is built as a
     /// NIP-10 marked-form reply: the parent event is looked up from the kernel

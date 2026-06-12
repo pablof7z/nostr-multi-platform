@@ -65,7 +65,10 @@ fn relay_diagnostics_emits_typed_sidecar_alongside_json() {
     let rd = typed_entry(&typed, "relay_diagnostics");
     assert_eq!(rd.schema_id, RELAY_DIAGNOSTICS_SCHEMA_ID);
     assert_eq!(rd.schema_version, RELAY_DIAGNOSTICS_SCHEMA_VERSION);
-    assert_eq!(rd.file_identifier.as_bytes(), RELAY_DIAGNOSTICS_FILE_IDENTIFIER);
+    assert_eq!(
+        rd.file_identifier.as_bytes(),
+        RELAY_DIAGNOSTICS_FILE_IDENTIFIER
+    );
     let decoded = decode_relay_diagnostics(&rd.payload).expect("relay_diagnostics must decode");
 
     let json_relays = json_rd
@@ -153,16 +156,25 @@ fn drain_on_emit_builtins_present_iff_json_then_vanish() {
     let ar = typed_entry(&typed, "action_results");
     assert_eq!(ar.schema_id, ACTION_RESULTS_SCHEMA_ID);
     assert_eq!(ar.schema_version, ACTION_RESULTS_SCHEMA_VERSION);
-    assert_eq!(ar.file_identifier.as_bytes(), ACTION_RESULTS_FILE_IDENTIFIER);
+    assert_eq!(
+        ar.file_identifier.as_bytes(),
+        ACTION_RESULTS_FILE_IDENTIFIER
+    );
     let decoded_ar = decode_action_results(&ar.payload).expect("action_results must decode");
     assert_eq!(decoded_ar.results.len(), json_ar.len());
-    assert_eq!(decoded_ar.results.len(), 1, "exactly the one settled action");
+    assert_eq!(
+        decoded_ar.results.len(),
+        1,
+        "exactly the one settled action"
+    );
     let row = &decoded_ar.results[0];
     let json_row = &json_ar[0];
     assert_eq!(row.correlation_id, "corr-pub");
     assert_eq!(
         Some(row.correlation_id.as_str()),
-        json_row.get("correlation_id").and_then(serde_json::Value::as_str),
+        json_row
+            .get("correlation_id")
+            .and_then(serde_json::Value::as_str),
         "correlation_id must agree field-for-field"
     );
     assert_eq!(
@@ -198,12 +210,17 @@ fn drain_on_emit_builtins_present_iff_json_then_vanish() {
     assert!(se_row.ok);
     assert_eq!(
         se_row.ok,
-        json_se_val.get("ok").and_then(serde_json::Value::as_bool).unwrap(),
+        json_se_val
+            .get("ok")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap(),
         "signed_events.ok must agree field-for-field"
     );
     assert_eq!(
         se_row.signed_json.as_deref(),
-        json_se_val.get("signed_json").and_then(serde_json::Value::as_str),
+        json_se_val
+            .get("signed_json")
+            .and_then(serde_json::Value::as_str),
         "signed_events.signed_json must agree field-for-field"
     );
     assert_eq!(se_row.error, None);
@@ -216,7 +233,10 @@ fn drain_on_emit_builtins_present_iff_json_then_vanish() {
     let ast = typed_entry(&typed, "action_stages");
     assert_eq!(ast.schema_id, ACTION_STAGES_SCHEMA_ID);
     assert_eq!(ast.schema_version, ACTION_STAGES_SCHEMA_VERSION);
-    assert_eq!(ast.file_identifier.as_bytes(), ACTION_STAGES_FILE_IDENTIFIER);
+    assert_eq!(
+        ast.file_identifier.as_bytes(),
+        ACTION_STAGES_FILE_IDENTIFIER
+    );
     let decoded_as = decode_action_stages(&ast.payload).expect("action_stages must decode");
     assert_eq!(decoded_as.entries.len(), json_as.len());
     assert_eq!(decoded_as.entries[0].0, "corr-pub");
@@ -244,7 +264,10 @@ fn drain_on_emit_builtins_present_iff_json_then_vanish() {
     let al = typed_entry(&typed, "action_lifecycle");
     assert_eq!(al.schema_id, ACTION_LIFECYCLE_SCHEMA_ID);
     assert_eq!(al.schema_version, ACTION_LIFECYCLE_SCHEMA_VERSION);
-    assert_eq!(al.file_identifier.as_bytes(), ACTION_LIFECYCLE_FILE_IDENTIFIER);
+    assert_eq!(
+        al.file_identifier.as_bytes(),
+        ACTION_LIFECYCLE_FILE_IDENTIFIER
+    );
     let decoded_al = decode_action_lifecycle(&al.payload).expect("action_lifecycle must decode");
     let json_recent = json_al
         .get("recent_terminal")

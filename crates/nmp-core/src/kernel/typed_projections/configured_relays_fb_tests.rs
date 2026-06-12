@@ -22,7 +22,10 @@ fn encode_decode_round_trips_and_preserves_order() {
     let model = sample();
     let bytes = encode_configured_relays(&model);
     let decoded = decode_configured_relays(&bytes).expect("decode must succeed");
-    assert_eq!(decoded, model, "round-trip must preserve every row, in order");
+    assert_eq!(
+        decoded, model,
+        "round-trip must preserve every row, in order"
+    );
 }
 
 #[test]

@@ -20,8 +20,7 @@
 //! its typed-first port (#1007, post-v1).
 
 use super::{
-    encode_typed_projections, TypedProjectionData, UpdateFrameBytes,
-    SNAPSHOT_SCHEMA_VERSION,
+    encode_typed_projections, TypedProjectionData, UpdateFrameBytes, SNAPSHOT_SCHEMA_VERSION,
 };
 use crate::transport::wire as fb;
 use flatbuffers::FlatBufferBuilder;

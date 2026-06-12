@@ -241,7 +241,6 @@ pub(super) struct MentionProfilePayload {
     pub(super) picture_url: Option<String>,
 }
 
-
 // ── Relay health and wire subscription state ──────────────────────────────────
 // V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` so the
 // feature-gated `crate::codegen_schema` re-export can name the type (Rust's

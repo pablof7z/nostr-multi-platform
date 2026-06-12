@@ -66,7 +66,11 @@ fn insert_event(
         sig: "aa".repeat(64),
     };
     store
-        .insert(VerifiedEvent::from_raw_unchecked(raw), &"wss://r0/".to_string(), 0)
+        .insert(
+            VerifiedEvent::from_raw_unchecked(raw),
+            &"wss://r0/".to_string(),
+            0,
+        )
         .expect("insert must succeed");
 }
 
@@ -76,9 +80,7 @@ fn two_author_interest(id: u64, author_a: &str, author_b: &str) -> LogicalIntere
         id: InterestId(id),
         scope: InterestScope::Global,
         shape: InterestShape {
-            authors: [pubkey(author_a), pubkey(author_b)]
-                .into_iter()
-                .collect(),
+            authors: [pubkey(author_a), pubkey(author_b)].into_iter().collect(),
             kinds: [1u32].into_iter().collect(),
             ..Default::default()
         },
@@ -111,7 +113,9 @@ fn since_from_filter(filter_json: &str) -> Option<u64> {
     let needle = "\"since\":";
     let start = filter_json.find(needle)? + needle.len();
     let rest = &filter_json[start..];
-    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
     rest[..end].parse().ok()
 }
 
@@ -165,10 +169,7 @@ fn multi_author_no_floor_when_any_author_has_no_events() {
         .expect("compile");
     let filters = req_filters_from_frames(&frames);
 
-    assert!(
-        !filters.is_empty(),
-        "expected REQ frames; got {frames:?}"
-    );
+    assert!(!filters.is_empty(), "expected REQ frames; got {frames:?}");
     // The merged shape has authors [A, B] — since B has no events the floor
     // is unsafe and the watermark_fn must return None.
     let multi_author_filters: Vec<&String> = filters
@@ -214,7 +215,9 @@ fn multi_author_since_is_min_of_per_author_watermarks() {
     // Both authors share relay r1 so the planner produces a single merged
     // sub-shape rather than per-relay shapes; raise the budget so no relay
     // is dropped.
-    kernel.lifecycle_mut().set_selection_budget(usize::MAX, usize::MAX);
+    kernel
+        .lifecycle_mut()
+        .set_selection_budget(usize::MAX, usize::MAX);
 
     let mailboxes = mailboxes_for(&[("a", 1), ("b", 1)]);
     kernel
@@ -231,11 +234,7 @@ fn multi_author_since_is_min_of_per_author_watermarks() {
     assert!(!filters.is_empty(), "expected REQ frames; got {frames:?}");
     for f in &filters {
         let since = since_from_filter(f);
-        assert_eq!(
-            since,
-            Some(51),
-            "since must be min(50,100)+1 = 51; got {f}"
-        );
+        assert_eq!(since, Some(51), "since must be min(50,100)+1 = 51; got {f}");
     }
 }
 

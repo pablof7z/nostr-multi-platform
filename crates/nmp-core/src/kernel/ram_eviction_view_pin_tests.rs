@@ -18,9 +18,7 @@
 //! Shared fixtures live in `ram_eviction_tests` (`pub(super)` helpers).
 
 use super::ram_eviction::{EVENTS_RAM_HWM, PROFILES_RAM_HWM};
-use super::ram_eviction_tests::{
-    inject_events, inject_profiles, make_pubkey, pin_clock, T0_SECS,
-};
+use super::ram_eviction_tests::{inject_events, inject_profiles, make_pubkey, pin_clock, T0_SECS};
 use super::*;
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::store::{RawEvent, VerifiedEvent};
@@ -36,7 +34,10 @@ fn open_interest(kernel: &mut Kernel, filter_json: &str, consumer_id: &str) {
 
     let shape = crate::planner::InterestShape::from_filter_json(filter_json)
         .expect("test filter must be a valid NIP-01 filter object");
-    let key = SubKey::builder("open-interest").with(&shape).with(1u32).finish();
+    let key = SubKey::builder("open-interest")
+        .with(&shape)
+        .with(1u32)
+        .finish();
     let identity = SubIdentity::new(SubOwnerKey::new(consumer_id), key, SubScope::Global);
     let interest = LogicalInterest {
         scope: InterestScope::Global,
@@ -121,7 +122,13 @@ fn open_thread_interest_events_survive_eviction() {
     // open; without the pin, eviction would remove it from under the open
     // feed (the read path has no store fallback).
     let hydrated_id = format!("{:0>64x}", 0xA00099u64);
-    inject_tagged_note(&mut kernel, &hydrated_id, &make_pubkey(5_099), T0_SECS + 7, vec![]);
+    inject_tagged_note(
+        &mut kernel,
+        &hydrated_id,
+        &make_pubkey(5_099),
+        T0_SECS + 7,
+        vec![],
+    );
 
     // Open the thread through the REAL generic seam: an `ids` interest for
     // the root/focused/hydrated notes + a `#e` interest for the replies.

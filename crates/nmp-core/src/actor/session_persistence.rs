@@ -271,10 +271,7 @@ pub(super) fn enqueue_persist_active_pointer(
     );
 }
 
-pub(super) fn enqueue_forget_account(
-    identity_id: &str,
-    capability_work_tx: &CapabilityWorkSender,
-) {
+pub(super) fn enqueue_forget_account(identity_id: &str, capability_work_tx: &CapabilityWorkSender) {
     enqueue_write(
         capability_work_tx,
         identity_id,
@@ -293,10 +290,7 @@ pub(super) fn enqueue_forget_account(
     );
 }
 
-fn enqueue_forget_active_pointer(
-    capability_work_tx: &CapabilityWorkSender,
-    account_id: &str,
-) {
+fn enqueue_forget_active_pointer(capability_work_tx: &CapabilityWorkSender, account_id: &str) {
     enqueue_write(
         capability_work_tx,
         account_id,

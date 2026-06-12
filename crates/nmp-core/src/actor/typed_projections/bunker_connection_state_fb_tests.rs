@@ -119,8 +119,5 @@ fn file_identifier_constant_is_kbcs() {
 fn schema_id_constant_matches_projection_key() {
     // The schema_id and projection key must be identical per ADR-0037
     // shared-keyspace contract.
-    assert_eq!(
-        BUNKER_CONNECTION_STATE_SCHEMA_ID,
-        "bunker_connection_state"
-    );
+    assert_eq!(BUNKER_CONNECTION_STATE_SCHEMA_ID, "bunker_connection_state");
 }

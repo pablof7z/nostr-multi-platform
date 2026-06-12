@@ -111,7 +111,6 @@ fn snapshot_carries_advancing_last_tick_ms() {
     );
 }
 
-
 // V-112 (ADR-0042): d5_view_dependent_keys_absent_when_no_view_open deleted —
 // author_view / thread_view projection bounding is removed with those projections.
 // The open_author / open_thread methods and AuthorViewState / ThreadViewState are
@@ -493,7 +492,6 @@ fn outbox_summary_projects_sending_counters_and_strings() {
 // author_view_carries_note_count_display_string — all deleted.
 // author_view projection and profile_action_for() removed from kernel.
 
-
 /// `profile.npub_short` is the truncated copy-button form — Rust owns the
 /// truncation policy (`<first10>…<last8>`), no Swift `truncatedNpub` helper.
 #[test]
@@ -519,7 +517,6 @@ fn profile_card_carries_raw_pubkey_and_npub() {
         "npub_short field was removed by aim.md §2 — shells own abbreviation"
     );
 }
-
 
 // V-112 (ADR-0042): mention_profiles_projection_carries_each_author_in_author_view
 // deleted — mention_profiles now comes from claimed_profiles (component-owned claiming).

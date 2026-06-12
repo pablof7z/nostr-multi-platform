@@ -187,10 +187,7 @@ mod tests {
     static STORE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
     static SERIAL: Mutex<()> = Mutex::new(());
 
-    extern "C" fn mock_handler(
-        _ctx: *mut c_void,
-        request_json: *const c_char,
-    ) -> *mut c_char {
+    extern "C" fn mock_handler(_ctx: *mut c_void, request_json: *const c_char) -> *mut c_char {
         use crate::substrate::{KeyringRequest, KeyringResult};
         let request = unsafe { CStr::from_ptr(request_json) }
             .to_str()
@@ -263,10 +260,7 @@ mod tests {
     /// asynchronously via `CapabilityResultReady`.
     #[test]
     fn worker_runs_callback_off_actor() {
-        extern "C" fn slow_handler(
-            _ctx: *mut c_void,
-            _req: *const c_char,
-        ) -> *mut c_char {
+        extern "C" fn slow_handler(_ctx: *mut c_void, _req: *const c_char) -> *mut c_char {
             std::thread::sleep(Duration::from_millis(200));
             // Return a minimal valid CapabilityEnvelope JSON.
             CString::new(r#"{"namespace":"n","correlation_id":"c","result_json":"{}"}"#)
@@ -401,7 +395,10 @@ mod tests {
             .recv_timeout(Duration::from_secs(2))
             .expect("timed-out item result not received");
         match cmd {
-            super::super::ActorCommand::CapabilityResultReady { result_json, account_id } => {
+            super::super::ActorCommand::CapabilityResultReady {
+                result_json,
+                account_id,
+            } => {
                 assert_eq!(account_id, "acct-timeout");
                 // The result should be an error envelope (capability-op-timed-out).
                 let v: serde_json::Value = serde_json::from_str(&result_json).unwrap();
@@ -409,7 +406,12 @@ mod tests {
                     .get("result_json")
                     .and_then(|r| r.as_str())
                     .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
-                    .and_then(|inner| inner.get("status").and_then(|s| s.as_str()).map(String::from))
+                    .and_then(|inner| {
+                        inner
+                            .get("status")
+                            .and_then(|s| s.as_str())
+                            .map(String::from)
+                    })
                     .unwrap_or_default();
                 assert_eq!(status, "error", "expired deadline must yield error result");
             }

@@ -690,12 +690,7 @@ pub(super) fn dispatch_command(
                     &correlation_id,
                     Err("no active account — sign in first".to_string()),
                 );
-                maybe_emit_after_dispatch(
-                    ctx.kernel,
-                    *ctx.running,
-                    ctx.update_tx,
-                    ctx.last_emit,
-                );
+                maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
                 return Some(Vec::new());
             };
             let unsigned = match build_unsigned_for_return(
@@ -1261,7 +1256,8 @@ pub(super) fn dispatch_command(
             // channel. Writes `Accepted` to `action_stages` and a terminal
             // verdict to `action_results`. `result_json` (ADR-0043 Decision 4)
             // rides into the `action_results` row's `result` field verbatim.
-            ctx.kernel.record_action_success(correlation_id, result_json);
+            ctx.kernel
+                .record_action_success(correlation_id, result_json);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
@@ -2159,7 +2155,10 @@ mod open_interest_tests {
         assert_eq!(interest.scope, InterestScope::ActiveAccount);
         // Shape carried the app-supplied kinds verbatim (D0 — no substrate default).
         assert_eq!(interest.shape.kinds, [1u32, 6u32].into_iter().collect());
-        assert_eq!(interest.shape.authors, ["aa".to_string()].into_iter().collect());
+        assert_eq!(
+            interest.shape.authors,
+            ["aa".to_string()].into_iter().collect()
+        );
         // Owner is derived from the consumer_id.
         let _ = identity;
     }
@@ -2276,7 +2275,10 @@ mod open_interest_tests {
         // re-install, so no second trigger (idempotent — would otherwise churn
         // the compiler on every re-mount).
         let (id2, int2) = build_open_interest(filter, "consumer-2", 0).unwrap();
-        assert!(!kernel.open_interest_sub(id2, int2), "second owner attaches");
+        assert!(
+            !kernel.open_interest_sub(id2, int2),
+            "second owner attaches"
+        );
         assert_eq!(
             kernel.lifecycle_mut().pending_trigger_count(),
             after_first,
@@ -2614,7 +2616,10 @@ mod sign_return_tests {
     fn build_unsigned_rejects_missing_content() {
         let err = build_unsigned_for_return(r#"{"kind":1}"#, "pk", 0)
             .expect_err("missing content is rejected");
-        assert!(err.contains("content"), "error names the missing field: {err}");
+        assert!(
+            err.contains("content"),
+            "error names the missing field: {err}"
+        );
     }
 
     #[test]
@@ -2641,14 +2646,26 @@ mod sign_return_tests {
         let json: serde_json::Value =
             serde_json::from_str(&signed_event_to_json(&signed)).expect("valid JSON");
         // Flat NIP-01 shape — NOT nested under `unsigned` (the kernel serde shape).
-        assert_eq!(json.get("id").and_then(|v| v.as_str()), Some(signed.id.as_str()));
+        assert_eq!(
+            json.get("id").and_then(|v| v.as_str()),
+            Some(signed.id.as_str())
+        );
         assert_eq!(
             json.get("pubkey").and_then(|v| v.as_str()),
             Some(signed.unsigned.pubkey.as_str())
         );
-        assert_eq!(json.get("kind").and_then(serde_json::Value::as_u64), Some(24242));
-        assert_eq!(json.get("created_at").and_then(serde_json::Value::as_u64), Some(1234));
-        assert_eq!(json.get("sig").and_then(|v| v.as_str()), Some(signed.sig.as_str()));
+        assert_eq!(
+            json.get("kind").and_then(serde_json::Value::as_u64),
+            Some(24242)
+        );
+        assert_eq!(
+            json.get("created_at").and_then(serde_json::Value::as_u64),
+            Some(1234)
+        );
+        assert_eq!(
+            json.get("sig").and_then(|v| v.as_str()),
+            Some(signed.sig.as_str())
+        );
         assert_eq!(
             json.get("content").and_then(|v| v.as_str()),
             Some("Upload image")

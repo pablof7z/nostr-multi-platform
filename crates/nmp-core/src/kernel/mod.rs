@@ -40,14 +40,14 @@ mod clock;
 #[cfg(test)]
 mod clock_injection_tests;
 #[cfg(test)]
+mod closed_classifier_tests;
+#[cfg(test)]
 mod gc_step_tests;
 mod ram_eviction;
 #[cfg(test)]
 mod ram_eviction_tests;
 #[cfg(test)]
 mod ram_eviction_view_pin_tests;
-#[cfg(test)]
-mod closed_classifier_tests;
 // `pub(crate)` so the typed FFI error-category constants (`ERR_*`) are
 // reachable from the `actor` module's command handlers, not just kernel-
 // internal callsites.
@@ -176,11 +176,11 @@ mod replaceable_ttl_gate_tests;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
-#[cfg(test)]
-mod watermark_author_tests;
 mod requests;
 #[cfg(test)]
 mod retention_tests;
+#[cfg(test)]
+mod watermark_author_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
 // seam. `pub(crate)` so the crate-private `ffi` module can reach the registry
 // + slot helpers for the C-ABI registration entry point.
@@ -212,6 +212,9 @@ mod test_router;
 mod test_support;
 #[cfg(test)]
 mod tests;
+mod tier3_encode;
+#[cfg(test)]
+mod tier3_envelope_tests;
 #[cfg(test)]
 mod timeline_order_tests;
 #[cfg(test)]
@@ -223,12 +226,9 @@ mod typed_projections;
 #[cfg(test)]
 mod typed_projections_tests;
 #[cfg(test)]
-mod typed_projections_wave_c_tests;
-#[cfg(test)]
 mod typed_projections_wave_c_diagnostics_tests;
-mod tier3_encode;
 #[cfg(test)]
-mod tier3_envelope_tests;
+mod typed_projections_wave_c_tests;
 mod types;
 mod update;
 #[cfg(test)]
@@ -291,58 +291,114 @@ pub use relay_frame::RelayFrame;
 /// doc for the return-type / scope rationale.
 pub mod public_typed_projections {
     pub use super::typed_projections::{
-        // --- already-public decode/model surface (wave-C diagnostics + publish) ---
-        decode_action_results, decode_action_stages, decode_publish_queue,
-        decode_relay_diagnostics, ActionResultRow, ActionResultsModel, ActionStageEntryRow,
-        ActionStagesModel, InterestRow, PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow,
-        RelayDiagnosticsModel, RelayRow, WireSubRow, ACTION_RESULTS_FILE_IDENTIFIER,
-        ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION, ACTION_STAGES_FILE_IDENTIFIER,
-        ACTION_STAGES_SCHEMA_ID, ACTION_STAGES_SCHEMA_VERSION, PUBLISH_QUEUE_FILE_IDENTIFIER,
-        PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
-        RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID,
-        RELAY_DIAGNOSTICS_SCHEMA_VERSION,
         // --- PR-B: newly-promoted decoders (identity + views + outbox cluster) ---
         // accounts
-        decode_accounts, AccountSummaryRow, AccountsModel, ACCOUNTS_FILE_IDENTIFIER,
-        ACCOUNTS_SCHEMA_ID, ACCOUNTS_SCHEMA_VERSION,
+        decode_accounts,
+        // --- already-public decode/model surface (wave-C diagnostics + publish) ---
+        decode_action_results,
+        decode_action_stages,
         // active_account
-        decode_active_account, ActiveAccountModel, ACTIVE_ACCOUNT_FILE_IDENTIFIER,
-        ACTIVE_ACCOUNT_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_VERSION,
+        decode_active_account,
+        // claimed_events (nmp-gallery typed-sidecar migration — PR-B final zeroing)
+        decode_claimed_events,
+        // claimed_profiles (V-112 follow-up: the direct observable of the
+        // `claim_profile` verb — the app-template `validate_claim_profile`
+        // example reads it; ProfileCardModel re-used from the profile cluster)
+        decode_claimed_profiles,
         // configured_relays
-        decode_configured_relays, ConfiguredRelayRow, ConfiguredRelaysModel,
-        CONFIGURED_RELAYS_FILE_IDENTIFIER, CONFIGURED_RELAYS_SCHEMA_ID,
-        CONFIGURED_RELAYS_SCHEMA_VERSION,
-        // settings_hub
-        decode_settings_hub, SettingsHubModel, SETTINGS_HUB_FILE_IDENTIFIER,
-        SETTINGS_HUB_SCHEMA_ID, SETTINGS_HUB_SCHEMA_VERSION,
+        decode_configured_relays,
+        // outbox_summary
+        decode_outbox_summary,
         // profile
-        decode_profile, ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID,
-        PROFILE_SCHEMA_VERSION,
+        decode_profile,
         // V-112 (ADR-0042): decode_author_view, AuthorViewModel, ProfileActionModel,
         // ProfileDispatchSpecModel, AUTHOR_VIEW_* deleted.
         // V-112 (ADR-0042): decode_thread_view, ThreadViewModel, TimelineItemModel,
         // THREAD_VIEW_* deleted.
         // publish_outbox
-        decode_publish_outbox, PublishOutboxItemRow, PublishOutboxModel, PublishOutboxRelayRow,
-        PUBLISH_OUTBOX_FILE_IDENTIFIER, PUBLISH_OUTBOX_SCHEMA_ID, PUBLISH_OUTBOX_SCHEMA_VERSION,
-        // outbox_summary
-        decode_outbox_summary, OutboxSummaryModel, OUTBOX_SUMMARY_FILE_IDENTIFIER,
-        OUTBOX_SUMMARY_SCHEMA_ID, OUTBOX_SUMMARY_SCHEMA_VERSION,
+        decode_publish_outbox,
+        decode_publish_queue,
+        decode_relay_diagnostics,
         // resolved_profiles (desktop mention/display-name resolution; ProfileCardModel
         // re-used from the profile cluster above)
-        decode_resolved_profiles, ResolvedProfilesModel, RESOLVED_PROFILES_FILE_IDENTIFIER,
-        RESOLVED_PROFILES_SCHEMA_ID, RESOLVED_PROFILES_SCHEMA_VERSION,
-        // claimed_profiles (V-112 follow-up: the direct observable of the
-        // `claim_profile` verb — the app-template `validate_claim_profile`
-        // example reads it; ProfileCardModel re-used from the profile cluster)
-        decode_claimed_profiles, ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER,
-        CLAIMED_PROFILES_SCHEMA_ID, CLAIMED_PROFILES_SCHEMA_VERSION,
-        // claimed_events (nmp-gallery typed-sidecar migration — PR-B final zeroing)
-        decode_claimed_events, ClaimedEventRow, ClaimedEventsModel,
-        CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
+        decode_resolved_profiles,
+        // settings_hub
+        decode_settings_hub,
         // signed_events (nmp-ffi sign_event_for_return typed migration — PR-B final zeroing)
-        decode_signed_events, SignedEventRow, SignedEventsModel, SIGNED_EVENTS_FILE_IDENTIFIER,
-        SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
+        decode_signed_events,
+        AccountSummaryRow,
+        AccountsModel,
+        ActionResultRow,
+        ActionResultsModel,
+        ActionStageEntryRow,
+        ActionStagesModel,
+        ActiveAccountModel,
+        ClaimedEventRow,
+        ClaimedEventsModel,
+        ClaimedProfilesModel,
+        ConfiguredRelayRow,
+        ConfiguredRelaysModel,
+        InterestRow,
+        OutboxSummaryModel,
+        ProfileCardModel,
+        PublishOutboxItemRow,
+        PublishOutboxModel,
+        PublishOutboxRelayRow,
+        PublishQueueEntryRow,
+        PublishQueueModel,
+        RelayAckOutcomeRow,
+        RelayDiagnosticsModel,
+        RelayRow,
+        ResolvedProfilesModel,
+        SettingsHubModel,
+        SignedEventRow,
+        SignedEventsModel,
+        WireSubRow,
+        ACCOUNTS_FILE_IDENTIFIER,
+        ACCOUNTS_SCHEMA_ID,
+        ACCOUNTS_SCHEMA_VERSION,
+        ACTION_RESULTS_FILE_IDENTIFIER,
+        ACTION_RESULTS_SCHEMA_ID,
+        ACTION_RESULTS_SCHEMA_VERSION,
+        ACTION_STAGES_FILE_IDENTIFIER,
+        ACTION_STAGES_SCHEMA_ID,
+        ACTION_STAGES_SCHEMA_VERSION,
+        ACTIVE_ACCOUNT_FILE_IDENTIFIER,
+        ACTIVE_ACCOUNT_SCHEMA_ID,
+        ACTIVE_ACCOUNT_SCHEMA_VERSION,
+        CLAIMED_EVENTS_FILE_IDENTIFIER,
+        CLAIMED_EVENTS_SCHEMA_ID,
+        CLAIMED_EVENTS_SCHEMA_VERSION,
+        CLAIMED_PROFILES_FILE_IDENTIFIER,
+        CLAIMED_PROFILES_SCHEMA_ID,
+        CLAIMED_PROFILES_SCHEMA_VERSION,
+        CONFIGURED_RELAYS_FILE_IDENTIFIER,
+        CONFIGURED_RELAYS_SCHEMA_ID,
+        CONFIGURED_RELAYS_SCHEMA_VERSION,
+        OUTBOX_SUMMARY_FILE_IDENTIFIER,
+        OUTBOX_SUMMARY_SCHEMA_ID,
+        OUTBOX_SUMMARY_SCHEMA_VERSION,
+        PROFILE_FILE_IDENTIFIER,
+        PROFILE_SCHEMA_ID,
+        PROFILE_SCHEMA_VERSION,
+        PUBLISH_OUTBOX_FILE_IDENTIFIER,
+        PUBLISH_OUTBOX_SCHEMA_ID,
+        PUBLISH_OUTBOX_SCHEMA_VERSION,
+        PUBLISH_QUEUE_FILE_IDENTIFIER,
+        PUBLISH_QUEUE_SCHEMA_ID,
+        PUBLISH_QUEUE_SCHEMA_VERSION,
+        RELAY_DIAGNOSTICS_FILE_IDENTIFIER,
+        RELAY_DIAGNOSTICS_SCHEMA_ID,
+        RELAY_DIAGNOSTICS_SCHEMA_VERSION,
+        RESOLVED_PROFILES_FILE_IDENTIFIER,
+        RESOLVED_PROFILES_SCHEMA_ID,
+        RESOLVED_PROFILES_SCHEMA_VERSION,
+        SETTINGS_HUB_FILE_IDENTIFIER,
+        SETTINGS_HUB_SCHEMA_ID,
+        SETTINGS_HUB_SCHEMA_VERSION,
+        SIGNED_EVENTS_FILE_IDENTIFIER,
+        SIGNED_EVENTS_SCHEMA_ID,
+        SIGNED_EVENTS_SCHEMA_VERSION,
     };
 }
 
@@ -2159,7 +2215,9 @@ impl Kernel {
         // the LMDB-tier gc_step (#1085) so the two paths stay independent and
         // merge-clean.
         let ram_report = self.evict_ram_caches();
-        if ram_report.events_evicted + ram_report.profiles_evicted + ram_report.seed_contacts_evicted
+        if ram_report.events_evicted
+            + ram_report.profiles_evicted
+            + ram_report.seed_contacts_evicted
             > 0
         {
             tracing::debug!(
@@ -2169,7 +2227,10 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        match self.store.gc_step(crate::store::GcBudget::production(), now_secs) {
+        match self
+            .store
+            .gc_step(crate::store::GcBudget::production(), now_secs)
+        {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
