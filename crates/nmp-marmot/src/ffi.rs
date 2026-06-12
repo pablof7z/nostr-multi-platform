@@ -111,9 +111,8 @@ use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT, TAP_KINDS};
 /// [`MarmotHandle::messages_rust`].
 const DEFAULT_MESSAGE_PAGE: usize = 200;
 
-/// Keyring coordinates for the production encrypted SQLite DB. Stable
-/// strings — the keyring entry is created lazily by `MdkSqliteStorage`.
-/// `pub(crate)` so `credential_store` can build the same probe account_id.
+/// Keyring coordinates for the production encrypted SQLite DB (lazily created
+/// by `MdkSqliteStorage`; `pub(crate)` for `credential_store`'s probe id).
 pub(crate) const KEYRING_SERVICE_ID: &str = "nmp.chirp.marmot";
 pub(crate) const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 
@@ -305,26 +304,15 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
 ///   In that case `keyring_unavailable = true` is set on the projection so
 ///   the snapshot surfaces the diagnostic to the host.
 pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
-    // Obtain the capability slot from the NmpApp before installing the store.
-    // iOS ordering invariant: KernelBridge.swift:76 calls registerCapabilityHandler
-    // before any restoreChirpIdentity / nmp_marmot_register* invocation, so the
-    // slot is already populated by the time initialize() runs its probe.
-    // SAFETY: caller guarantees `app` is non-null and valid (same as every other
-    // `app_ref` use in this function below).
-    let capability_slot = if app.is_null() {
-        nmp_core::capability_socket::new_capability_callback_slot()
-    } else {
-        unsafe { &*app }.capability_callback_slot()
-    };
+    // Capability slot for the probe (rationale in `credential_store::initialize`).
+    // SAFETY: both callers null-check `app` before delegating here.
+    let capability_slot = unsafe { &*app }.capability_callback_slot();
     let Some(use_mock) = crate::credential_store::initialize(capability_slot) else {
         return std::ptr::null_mut();
     };
 
-    // V-62: `use_mock` is `true` only when `initialize()` explicitly chose
-    // the in-memory mock store (non-Apple platform, or Apple platform where
-    // no Keychain entitlement is available). We surface this as
-    // `keyring_unavailable = true` in the projection snapshot so the host can
-    // warn the user. We never silently switch from the real Keychain to mock.
+    // V-62: `use_mock` is `true` only when `initialize()` chose the mock store
+    // (env hatch / probe failure); surfaced as `keyring_unavailable`.
     let service = match MarmotService::new(db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone()) {
         Ok(s) => s,
         Err(e) => {

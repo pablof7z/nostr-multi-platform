@@ -2210,26 +2210,6 @@ impl NmpApp {
         Arc::clone(&self.event_observers)
     }
 
-    /// Arc clone of the per-app capability callback slot.
-    ///
-    /// Per-app protocol crates (e.g. `nmp-marmot`) use this to route their
-    /// own capability requests through the same registered native handler the
-    /// kernel uses (e.g. the iOS `KeychainCapability`). Exposed as
-    /// `#[doc(hidden)]` because only crate-family consumers need it; the
-    /// public API is `NmpApp::dispatch_capability`. Precedent:
-    /// `event_observers_slot` / `raw_event_observers_slot`.
-    ///
-    /// NOTE: `keyring-core`'s default store is process-global while the slot
-    /// is per-`NmpApp`. Since every NMP shell runs exactly one kernel per
-    /// process, last registration wins and the global/per-app distinction is
-    /// irrelevant in practice. This is stated here so a future multi-kernel
-    /// scenario knows where the policy lives.
-    #[doc(hidden)]
-    #[must_use]
-    pub fn capability_callback_slot(&self) -> CapabilityCallbackSlot {
-        Arc::clone(&self.capability_callback)
-    }
-
     /// Register a typed Rust raw signed-event observer for **verbatim
     /// forwarding only** (rule A5).
     ///
