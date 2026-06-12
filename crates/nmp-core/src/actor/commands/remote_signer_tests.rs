@@ -983,6 +983,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             // V-83 — test wiring; nothing outside the actor reads the
             // event-store slot here (private throwaway).
             crate::slots::new_event_store_slot(),
+            // Test-support kernel-clock slot — private throwaway (None).
+            crate::slots::new_kernel_clock_slot(),
         );
     });
 

@@ -37,7 +37,18 @@ pub(super) fn raw_tap_should_fire(outcome: &crate::store::InsertOutcome) -> bool
     )
 }
 
-pub(super) fn kernel_event_from_nostr(event: &NostrEvent) -> crate::substrate::KernelEvent {
+/// Project a wire-parsed [`NostrEvent`] into the FFI-stable
+/// [`crate::substrate::KernelEvent`] fanned to every `KernelEventObserver`.
+///
+/// `pub(in crate::kernel)` (not `pub(super)`): the relay ingest arms
+/// (`ingest/mod.rs`, `ingest/timeline.rs`) AND the local-publish-intent path
+/// (`kernel/local_publish_intent.rs`) both build the observer event through
+/// this single construction site, so a locally-authored event and its later
+/// relay echo carry byte-identical observer payloads (read-your-writes; no
+/// second fan-out code path — zero fragmentation).
+pub(in crate::kernel) fn kernel_event_from_nostr(
+    event: &NostrEvent,
+) -> crate::substrate::KernelEvent {
     crate::substrate::KernelEvent {
         id: event.id.clone(),
         author: event.pubkey.clone(),

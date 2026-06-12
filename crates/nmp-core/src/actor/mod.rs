@@ -1217,6 +1217,9 @@ pub fn run_actor(
         // throwaway. The actor still publishes its kernel's store into it;
         // nothing outside the actor reads it on this path.
         crate::slots::new_event_store_slot(),
+        // Test-support kernel-clock slot — no `NmpApp` here, so it's a private
+        // throwaway (`None` → the kernel keeps its `SystemClock`).
+        crate::slots::new_kernel_clock_slot(),
     );
 }
 
@@ -1294,6 +1297,8 @@ pub fn run_actor_with_lifecycle_observer(
         crate::slots::new_active_account_slot(),
         // V-83 — same private-throwaway pattern for the event-store slot.
         crate::slots::new_event_store_slot(),
+        // Test-support kernel-clock slot — private throwaway here.
+        crate::slots::new_kernel_clock_slot(),
     );
 }
 
@@ -1459,6 +1464,13 @@ pub fn run_actor_with_observers(
     // store). Mirrors `routing_trace_slot`'s publish-back — NOT V-82's
     // hand-down — because the store is kernel-built, not host-built.
     event_store_slot: crate::slots::EventStoreSlot,
+    // Test-support kernel-clock slot. Production never writes it (the kernel
+    // keeps its `SystemClock`); the `NmpApp::set_kernel_clock_for_test` seam
+    // writes an `Arc<dyn Clock>` here so deterministic e2e tests can stamp
+    // strictly-increasing `created_at` on replaceable publishes (no sleep —
+    // D8). Read once after kernel construction (and re-applied on `Reset`)
+    // via `Kernel::set_clock`. `None` is the production/default state.
+    kernel_clock_slot: crate::slots::KernelClockSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -1609,6 +1621,17 @@ pub fn run_actor_with_observers(
             kernel.active_account_handle(),
         );
         kernel.set_publish_resolver(resolver);
+    }
+    // Test-support kernel-clock injection (if any), applied BEFORE any command
+    // is dispatched so the very first publish stamps `created_at` from the
+    // injected clock. Production never writes this slot (the kernel keeps its
+    // `SystemClock`). D6: a poisoned slot is a silent no-op.
+    if let Some(clock) = kernel_clock_slot
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(Arc::clone))
+    {
+        kernel.set_clock(clock);
     }
     // V-40 — bind the shared `EventIngestDispatcher` slot + the
     // `DmInboxRelayLookup` handle onto the freshly-constructed kernel.
