@@ -4572,6 +4572,7 @@ dependencies = [
  "nmp-ffi",
  "nmp-nip01",
  "nmp-nip02",
+ "nmp-nip11",
  "nmp-nip17",
  "nmp-nip51",
  "nmp-nip57",
@@ -4702,6 +4703,17 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-nip11"
+version = "0.6.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ureq",
 ]
 
 [[package]]
@@ -4953,6 +4965,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
+ "web-time",
 ]
 
 [[package]]

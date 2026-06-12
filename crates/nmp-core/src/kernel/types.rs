@@ -248,6 +248,22 @@ pub(crate) struct RelayStatus {
     /// matches `CloseReason::as_key()`. `None` until the first classified
     /// CLOSED frame arrives.
     pub(super) last_close_reason: Option<String>,
+    /// ADR-0051 — the relay's NIP-11 information document, once `nmp-nip11`
+    /// has fetched it for this URL. `None` until the fetch resolves (or if
+    /// the relay serves no document). The carried-through `RelayInfoDoc` is
+    /// substrate-generic transport metadata (D0).
+    ///
+    /// Excluded from the V6 Stage-1 Swift `KernelTypes.generated.swift` mirror
+    /// (`#[schemars(skip)]`): that emitter renders flat-record types only, and a
+    /// nested `Option<RelayInfoDoc>` is Stage-2/3 scope (see
+    /// `crates/nmp-codegen/src/swift.rs` + `docs/architecture-audit/
+    /// v6-codegen-plan.md`). iOS reads `info` through the `relay_diagnostics`
+    /// projection — both the authoritative serde-JSON subtree and the `KRDG`
+    /// typed FlatBuffers sidecar (`InfoRow`) — not through this flat mirror, so
+    /// skipping it from the schema costs the shell nothing. `serde` still
+    /// serialises the field; only the JSON *schema* omits it.
+    #[cfg_attr(feature = "codegen-schema", schemars(skip))]
+    pub(super) info: Option<crate::substrate::RelayInfoDoc>,
 }
 
 // V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` for

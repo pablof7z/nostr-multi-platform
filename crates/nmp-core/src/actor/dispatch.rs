@@ -1232,6 +1232,20 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        ActorCommand::SetRelayInfo {
+            relay_url,
+            doc_json,
+        } => {
+            // ADR-0051 — fold the nmp-nip11 fetch result onto the kernel's
+            // per-URL transport row (marks the snapshot dirty so the
+            // `relay_diagnostics` projection surfaces it). Malformed JSON is a
+            // silent no-op (D6).
+            if let Some(doc) = crate::substrate::RelayInfoDoc::from_json(&doc_json) {
+                ctx.kernel.set_relay_info(&relay_url, doc);
+                maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            }
+            Some(Vec::new())
+        }
         ActorCommand::RecordActionSuccess {
             correlation_id,
             result_json,
@@ -1928,6 +1942,11 @@ pub(super) fn handle_relay_event(
     // runtime installs itself here to peek at kind:23195 NWC responses
     // before the kernel drops them as unknown kinds.
     relay_text_interceptor: &crate::substrate::RelayTextInterceptorSlot,
+    // ADR-0051: relay-connected hook slot fanned on `PoolEvent::Opened`, plus
+    // the actor's self-sender so a spawned nmp-nip11 fetch can post
+    // `ActorCommand::SetRelayInfo` back into the loop.
+    relay_connected_hook: &crate::substrate::RelayConnectedHookSlot,
+    command_tx_self: &Sender<ActorCommand>,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
     pool: &Pool,
@@ -1974,6 +1993,15 @@ pub(super) fn handle_relay_event(
             // D7 preserved: actor reports the OS-level transition; the
             // kernel decides what to replay and rewrites `since`.
             let is_reconnect = !connected_urls.insert(canonical.clone());
+            // ADR-0051 — fan the connect to any installed hook (today
+            // `nmp-nip11`); the hook must not block (D8) and posts results back
+            // via `command_tx_self`.
+            crate::substrate::fan_relay_connected(
+                relay_connected_hook,
+                canonical.as_str(),
+                is_reconnect,
+                command_tx_self,
+            );
             if is_reconnect && running {
                 let replay = kernel.replay_on_reconnect(role, &url);
                 if !replay.is_empty() {

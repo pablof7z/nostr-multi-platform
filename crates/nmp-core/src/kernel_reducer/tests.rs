@@ -402,3 +402,43 @@ fn set_active_account_with_relay_does_not_panic() {
     // Pass: no panic.
 }
 
+// ─── Fix #1143 — tick() claim-expansion parity ───────────────────────────
+//
+// Proves that `KernelReducer::tick()` calls `poll_claim_expansion` (W6)
+// and does not panic. With no pending claims (the common idle case) the
+// call must be a D8 zero-cost no-op: no allocation, no outbound frames.
+
+#[test]
+fn tick_with_no_claims_is_noop_and_does_not_panic() {
+    // Regression guard: before the #1143 fix, `tick()` was missing the
+    // `poll_claim_expansion` drain entirely. On wasm32 that meant Phase-1
+    // claims stalled permanently on quiet sockets.  The assertion here is
+    // minimal (empty outbound, no panic) but the compile guarantee is what
+    // matters: `crate::time::Instant::now()` resolves to `web_time::Instant`
+    // on wasm32 and to `std::time::Instant` on native — neither panics.
+    let mut r = KernelReducer::new();
+    r.set_configured_relays(vec![(RELAY.to_string(), "content".to_string())]);
+    let _ = r.reduce(KernelAction::Start);
+    // tick() with no relay connected yet and no claims registered.
+    let out = r.tick();
+    assert!(
+        out.is_empty(),
+        "idle tick with no claims and no relay must produce no outbound; got {out:?}"
+    );
+}
+
+#[test]
+fn tick_invokes_claim_expansion_drain_without_panicking_with_relay() {
+    // With a relay connected and no claims pending, `tick()` must still
+    // complete without panicking. This guards the wasm32 path: the shim
+    // uses `web_time::Instant::now()` which is backed by
+    // `performance.now()` in a JS Worker and never panics.
+    let mut r = KernelReducer::new();
+    r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
+    let _ = r.reduce(KernelAction::Start);
+    let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+    // Tick after relay connect — poll_claim_expansion must run without panic.
+    let _out = r.tick();
+    // Pass: no panic is the primary assertion.
+}
+

@@ -27,6 +27,9 @@ mod domain_migration;
 mod events;
 mod lmdb;
 mod mem;
+// D20 — wasm-safe time shim. All wasm-reachable code in this crate that
+// needs `Instant` imports from here instead of directly from `std::time`.
+pub(crate) mod time;
 pub mod types;
 
 pub use domain_migration::{DomainMigration, MigrationTx};

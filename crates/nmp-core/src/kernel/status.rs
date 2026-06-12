@@ -60,6 +60,7 @@ impl Kernel {
                 .filter(|sub| sub.relay_url == *url.as_str())
                 .map(|sub| sub.events_rx)
                 .sum();
+            let info = self.relay_info_for(&url).cloned();
             statuses.push(RelayStatus {
                 role: "outbox".to_string(),
                 relay_url: url,
@@ -82,6 +83,7 @@ impl Kernel {
                 bytes_tx: 0,
                 denied: false,
                 last_close_reason: None,
+                info,
             });
         }
         statuses
@@ -105,13 +107,15 @@ impl Kernel {
 
     pub(super) fn relay_status_for(&self, role: RelayRole) -> RelayStatus {
         let relay = self.relay(role);
+        let relay_url = self
+            .bootstrap_urls_for_role(role)
+            .first()
+            .cloned()
+            .unwrap_or_default();
+        let info = self.relay_info_for(&relay_url).cloned();
         RelayStatus {
             role: role.key().to_string(),
-            relay_url: self
-                .bootstrap_urls_for_role(role)
-                .first()
-                .cloned()
-                .unwrap_or_default(),
+            relay_url,
             connection: relay.connection.clone(),
             auth: relay.auth.clone(),
             negentropy_probe: relay.negentropy_probe_state.clone(),
@@ -134,6 +138,7 @@ impl Kernel {
             bytes_tx: relay.counters.bytes_tx,
             denied: relay.denied,
             last_close_reason: relay.last_close_reason.clone(),
+            info,
         }
     }
 
