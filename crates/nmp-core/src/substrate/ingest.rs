@@ -574,4 +574,46 @@ mod tests {
             "parser behind empty range must never fire"
         );
     }
+
+    // ── is_interested tests ──────────────────────────────────────────────────
+
+    /// `is_interested` returns true when a kind-specific parser is registered.
+    #[test]
+    fn is_interested_true_for_registered_kind() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        d.register_kind(1059, p.clone());
+        assert!(d.is_interested(1059), "must be true for registered kind");
+        assert!(!d.is_interested(1), "must be false for unregistered kind");
+    }
+
+    /// `is_interested` returns true when a range-registered parser covers the kind.
+    #[test]
+    fn is_interested_true_for_range_covered_kind() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        d.replace_range_parser(0..u32::MAX, "test.all-kinds", p.clone());
+        assert!(d.is_interested(1), "all-kinds range must cover kind:1");
+        assert!(d.is_interested(1059), "all-kinds range must cover kind:1059");
+        assert!(d.is_interested(30023), "all-kinds range must cover kind:30023");
+    }
+
+    /// `is_interested` returns false for an empty dispatcher.
+    #[test]
+    fn is_interested_false_for_empty_dispatcher() {
+        let d = EventIngestDispatcher::new();
+        assert!(!d.is_interested(1), "empty dispatcher: is_interested must be false");
+        assert!(!d.is_interested(1059), "empty dispatcher: is_interested must be false");
+    }
+
+    /// `is_interested` returns false after all parsers for a kind are removed.
+    #[test]
+    fn is_interested_false_after_kind_parser_removed() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        d.replace_kind_parser(1059, "test.slot", p.clone());
+        assert!(d.is_interested(1059), "must be true before removal");
+        d.remove_kind_parser_slot(1059, "test.slot");
+        assert!(!d.is_interested(1059), "must be false after removal");
+    }
 }
