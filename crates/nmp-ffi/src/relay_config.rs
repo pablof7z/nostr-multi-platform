@@ -52,6 +52,13 @@ impl NmpApp {
 
     pub(crate) fn set_nostrconnect_bootstrap_relay(&self, url: String) {
         if let Ok(mut guard) = self.nostrconnect_bootstrap_relay.lock() {
+            // ADR-0049 Part 2 — record the last-writer-wins decision for this
+            // slot (Installed / ReplacedPrevious / DroppedLateWiring).
+            self.record_slot_decision(
+                "nostrconnect_bootstrap_relay",
+                "nostrconnect_bootstrap_relay",
+                guard.is_some(),
+            );
             *guard = Some(url);
         }
     }

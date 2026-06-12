@@ -311,9 +311,11 @@ impl ActionModule for PublishRelayListAction {
     }
 }
 
-/// Register the `nmp.nip65.publish_relay_list` action module on the app.
+/// Register the `nmp.nip65.publish_relay_list` action module on the app as a
+/// **yielding default** (ADR-0049 Part 1): an app may pre-empt it regardless of
+/// call order.
 pub fn register_actions(app: &mut impl ActionRegistrar) {
-    app.register_action::<PublishRelayListAction>();
+    app.register_default_action::<PublishRelayListAction>();
 }
 
 #[cfg(test)]

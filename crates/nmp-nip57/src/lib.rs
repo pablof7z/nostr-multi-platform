@@ -37,7 +37,9 @@ pub use wire::typed_fb::{
 };
 
 pub fn register_actions(app: &mut impl nmp_core::substrate::ActionRegistrar) {
-    app.register_action::<ZapAction>();
+    // Yielding default (ADR-0049 Part 1): an app may pre-empt the zap action
+    // module regardless of call order.
+    app.register_default_action::<ZapAction>();
 }
 
 // `nmp-nip57` exposes `ZapsView` as a plain public type whose `open` /

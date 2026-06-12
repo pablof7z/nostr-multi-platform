@@ -126,7 +126,31 @@ pub trait ActionModule: Send + Sync + 'static {
 /// `nmp-ffi::NmpApp` C-ABI host handle. The host decides where the registry
 /// lives; modules only require "register this typed action module".
 pub trait ActionRegistrar {
+    /// Register `M` as an **app** action module under `M::NAMESPACE` — an
+    /// explicit, intentional registration that overrides a yielding default
+    /// (legal) but collides loudly with another app registration of the same
+    /// namespace (ADR-0049 Part 1). This is the path app-specific verbs
+    /// (Chirp's NIP-29, wallet, …) use.
     fn register_action<M: ActionModule + 'static>(&mut self);
+
+    /// Register `M` as a **yielding default** under `M::NAMESPACE` — install it
+    /// ONLY if the namespace is unclaimed; otherwise yield to the existing
+    /// registration REGARDLESS of call order (ADR-0049 Part 1, the
+    /// Spring-Boot `@ConditionalOnMissingBean` shape). Returns `true` when
+    /// installed, `false` when it yielded.
+    ///
+    /// The canonical NMP defaults (`nmp_nip02` / `nmp_nip17` / `nmp_nip57`
+    /// action modules, the NIP-65 publish-relay-list module in `nmp-router`)
+    /// register through THIS path so an app may pre-empt any of them.
+    ///
+    /// Default impl: delegate to [`Self::register_action`] and report `true`.
+    /// This keeps non-recording / test [`ActionRegistrar`] impls valid without
+    /// re-implementing yielding semantics; the real entry-or-insert behaviour
+    /// lives in the kernel's `ActionRegistry` override.
+    fn register_default_action<M: ActionModule + 'static>(&mut self) -> bool {
+        self.register_action::<M>();
+        true
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

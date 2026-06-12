@@ -15,6 +15,11 @@
 // `ActionRegistry` / `default_registry` for the `nmp_app_dispatch_action`
 // entry point.
 pub(crate) mod action_registry;
+// ADR-0049 Part 2 — the composition ledger (explain-the-composition surface):
+// an append-only record of host-init registration decisions, read back as JSON
+// through `nmp_app_composition_report`. Written only at registration time, not
+// on any hot path (D8).
+pub mod composition_ledger;
 // Actor-owned per-correlation_id stage tracker. `pub(crate)` so the
 // FFI ack symbol (`crate::ffi::action::nmp_app_ack_action_stage`) and the
 // dispatch handler (`actor::dispatch`) can reach the type aliases; the
@@ -40,14 +45,14 @@ mod clock;
 #[cfg(test)]
 mod clock_injection_tests;
 #[cfg(test)]
+mod closed_classifier_tests;
+#[cfg(test)]
 mod gc_step_tests;
 mod ram_eviction;
 #[cfg(test)]
 mod ram_eviction_tests;
 #[cfg(test)]
 mod ram_eviction_view_pin_tests;
-#[cfg(test)]
-mod closed_classifier_tests;
 // `pub(crate)` so the typed FFI error-category constants (`ERR_*`) are
 // reachable from the `actor` module's command handlers, not just kernel-
 // internal callsites.
@@ -100,9 +105,9 @@ mod ingest;
 #[cfg(test)]
 mod ingest_pre_verified_dispatcher_tests;
 #[cfg(test)]
-mod ingest_timeline_dispatcher_tests;
-#[cfg(test)]
 mod ingest_tests;
+#[cfg(test)]
+mod ingest_timeline_dispatcher_tests;
 mod lifecycle;
 mod lifecycle_drain;
 mod local_publish_intent;
@@ -193,11 +198,11 @@ mod replaceable_ttl_gate_tests;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
-#[cfg(test)]
-mod watermark_author_tests;
 mod requests;
 #[cfg(test)]
 mod retention_tests;
+#[cfg(test)]
+mod watermark_author_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
 // seam. `pub(crate)` so the crate-private `ffi` module can reach the registry
 // + slot helpers for the C-ABI registration entry point.
@@ -213,6 +218,7 @@ mod snapshot_registry_tests;
 #[cfg(test)]
 mod state_projection_tests;
 mod status;
+mod store_init;
 #[cfg(test)]
 mod t140_m1_retirement_tests;
 #[cfg(test)]
@@ -229,6 +235,9 @@ mod test_router;
 mod test_support;
 #[cfg(test)]
 mod tests;
+mod tier3_encode;
+#[cfg(test)]
+mod tier3_envelope_tests;
 #[cfg(test)]
 mod timeline_order_tests;
 #[cfg(test)]
@@ -240,13 +249,9 @@ mod typed_projections;
 #[cfg(test)]
 mod typed_projections_tests;
 #[cfg(test)]
-mod typed_projections_wave_c_tests;
-#[cfg(test)]
 mod typed_projections_wave_c_diagnostics_tests;
-mod tier3_encode;
 #[cfg(test)]
-mod tier3_envelope_tests;
-mod store_init;
+mod typed_projections_wave_c_tests;
 mod types;
 mod update;
 pub use update::KERNEL_BUILTIN_PROJECTION_KEYS;
@@ -354,6 +359,9 @@ use clock::{Clock, SystemClock};
 // `nmp_app_dispatch_action` entry point).
 #[cfg(feature = "native")]
 pub use action_registry::{default_registry, ActionRegistry};
+pub use composition_ledger::{
+    CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
+};
 pub(crate) use identity_state::{AccountSummary, PublishQueueEntry, RelayAckOutcome};
 // Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
 // re-export them into the public crate surface — `nmp-router::Nip65OutboxResolver`
@@ -1659,8 +1667,8 @@ impl Kernel {
     ) -> Self {
         let (store_bundle, store_open_failure) = store_init::build_event_store(storage_path);
         let store = store_bundle.store;
-        let publish_store =
-            publish_store.unwrap_or_else(|| store_init::resolve_publish_store(storage_path, &store));
+        let publish_store = publish_store
+            .unwrap_or_else(|| store_init::resolve_publish_store(storage_path, &store));
         let local_profile_intents = store_init::load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         // Typed-slot constructors so the slot's purpose is visible at
@@ -2081,7 +2089,9 @@ impl Kernel {
         // the LMDB-tier gc_step (#1085) so the two paths stay independent and
         // merge-clean.
         let ram_report = self.evict_ram_caches();
-        if ram_report.events_evicted + ram_report.profiles_evicted + ram_report.seed_contacts_evicted
+        if ram_report.events_evicted
+            + ram_report.profiles_evicted
+            + ram_report.seed_contacts_evicted
             > 0
         {
             tracing::debug!(
@@ -2091,7 +2101,10 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        match self.store.gc_step(crate::store::GcBudget::production(), now_secs) {
+        match self
+            .store
+            .gc_step(crate::store::GcBudget::production(), now_secs)
+        {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
@@ -2600,10 +2613,8 @@ impl Kernel {
             // snapshot carries store data (D1). Anything beyond the per-tick
             // budget stays queued and continues on the actor tick (§5
             // chunked continuation).
-            let completion_key = cache_serve::completion_key_for_interest(
-                &key_for_serve,
-                &shape_for_serve,
-            );
+            let completion_key =
+                cache_serve::completion_key_for_interest(&key_for_serve, &shape_for_serve);
             self.enqueue_cache_serve(&shape_for_serve, completion_key);
             self.run_cache_serve_step();
         }

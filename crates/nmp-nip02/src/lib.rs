@@ -212,9 +212,12 @@ impl ActionModule for ReactModule {
 /// Registration MUST happen before `nmp_app_start` because
 /// the host-side action registrar requires `&mut self`.
 pub fn register_actions(app: &mut impl ActionRegistrar) {
-    app.register_action::<FollowModule>();
-    app.register_action::<UnfollowModule>();
-    app.register_action::<ReactModule>();
+    // Yielding defaults (ADR-0049 Part 1): each module installs only if its
+    // namespace is unclaimed, so an app may pre-empt any of them regardless of
+    // whether it registers before or after `register_defaults`.
+    app.register_default_action::<FollowModule>();
+    app.register_default_action::<UnfollowModule>();
+    app.register_default_action::<ReactModule>();
 }
 
 // ---------------------------------------------------------------------------
@@ -275,10 +278,7 @@ mod tests {
         // field name and must surface as a serde error (mapped to
         // `ActionRejection::Invalid` by the registry adapter).
         let err = serde_json::from_str::<PubkeyAction>(r#"{"not_pubkey":"x"}"#);
-        assert!(
-            err.is_err(),
-            "PubkeyAction must require the `pubkey` field"
-        );
+        assert!(err.is_err(), "PubkeyAction must require the `pubkey` field");
     }
 
     // ----- executor dispatch routing --------------------------------------
@@ -288,13 +288,15 @@ mod tests {
     /// the verb, the payload threads through verbatim, AND the
     /// registry-minted `correlation_id` is forwarded so the host spinner
     /// closes on the publish engine's terminal verdict.
-    fn capture_one(
-        run: impl FnOnce(&dyn Fn(ActorCommand)),
-    ) -> ActorCommand {
+    fn capture_one(run: impl FnOnce(&dyn Fn(ActorCommand))) -> ActorCommand {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
         run(&|cmd| captured.borrow_mut().push(cmd));
         let mut cmds = captured.into_inner();
-        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        assert_eq!(
+            cmds.len(),
+            1,
+            "executor must send exactly one command, got {cmds:?}"
+        );
         cmds.pop().unwrap()
     }
 
@@ -302,14 +304,19 @@ mod tests {
     fn follow_executor_enqueues_follow_with_correlation_id() {
         let cmd = capture_one(|send| {
             FollowModule::execute(
-                PubkeyAction { pubkey: "deadbeef".to_string() },
+                PubkeyAction {
+                    pubkey: "deadbeef".to_string(),
+                },
                 "test-cid-follow",
                 send,
             )
             .expect("execute must not fail");
         });
         match cmd {
-            ActorCommand::Follow { pubkey, correlation_id } => {
+            ActorCommand::Follow {
+                pubkey,
+                correlation_id,
+            } => {
                 assert_eq!(pubkey, "deadbeef");
                 assert_eq!(
                     correlation_id.as_deref(),
@@ -326,14 +333,19 @@ mod tests {
     fn unfollow_executor_enqueues_unfollow_with_correlation_id() {
         let cmd = capture_one(|send| {
             UnfollowModule::execute(
-                PubkeyAction { pubkey: "cafebabe".to_string() },
+                PubkeyAction {
+                    pubkey: "cafebabe".to_string(),
+                },
                 "test-cid-unfollow",
                 send,
             )
             .expect("execute must not fail");
         });
         match cmd {
-            ActorCommand::Unfollow { pubkey, correlation_id } => {
+            ActorCommand::Unfollow {
+                pubkey,
+                correlation_id,
+            } => {
                 assert_eq!(pubkey, "cafebabe");
                 assert_eq!(correlation_id.as_deref(), Some("test-cid-unfollow"));
             }
