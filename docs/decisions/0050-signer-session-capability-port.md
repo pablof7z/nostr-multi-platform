@@ -51,14 +51,24 @@ key material held outside the identity runtime, cloned on every envelope.
 
 ### Completion delivery is tick-luck
 
-When a NIP-46 broker decrypts a kind:24133 response, it calls
-`RemoteSignerHandle::deliver_response` **directly on the broker thread**
-(`crates/nmp-ffi/src/signer_broker.rs:186`), which resolves the parked op's mpsc channel.
-NIP-55 does the same from the host capability bridge thread
-(`crates/nmp-ffi/src/external_signer.rs:160-187`). Nothing wakes the actor: the parked op
-is only noticed on the next idle tick, paced by the hardcoded 250ms cap in `compute_wait`
-(`crates/nmp-core/src/actor/tick.rs:27`). Every remote sign therefore pays up to 250ms of
-artificial latency per step, and the actor scans every parked receiver every tick.
+When a NIP-46 response (kind:24133) arrives, the broker's own relay-dispatcher thread
+decrypts it and calls `Nip46Signer::ingest_rpc_response` **directly on that thread**
+(`crates/nmp-signer-broker/src/broker.rs:340` → `transport.rs:89` →
+`crates/nmp-signers/src/signers/nip46/mod.rs:189`), which resolves the parked op's mpsc
+channel. (The `RemoteSignerHandle::deliver_response` impl in
+`crates/nmp-ffi/src/signer_broker.rs:186` is effectively dead for steady-state inbound —
+the broker bypasses it.) NIP-55 resolves the channel from the host capability bridge
+thread (`crates/nmp-ffi/src/external_signer.rs:160-187`). Nothing wakes the actor: the
+parked op is only noticed on the next idle tick, paced by the hardcoded 250ms cap in
+`compute_wait` (`crates/nmp-core/src/actor/tick.rs:27`).
+
+Worse, **sending an `ActorCommand` does not wake the actor either**: the loop's only
+blocking point is `relay_rx.recv_timeout` (`actor/mod.rs:1999`); commands are drained
+with `try_recv` at the top of each iteration (`actor/mod.rs:1862-1875`). So even a
+completion *message* would sit in the command channel for up to 250ms when no relay
+traffic flows. The same latency afflicts the existing ADR-0040
+`CapabilityResultReady` re-entry today. Any mailbox-completion design must therefore
+also make command arrival a genuine wake.
 
 ### The named-account deadline defect
 
@@ -101,8 +111,10 @@ Nip44DecryptForAccount { peer_pubkey: String, ciphertext: String,
 the sign verb byte-for-byte. D0: `nip44_*` are capability verb names already present in
 `nmp-core` since ADR-0026 (`remote_signer.rs`); they name a cryptographic capability, not
 an app concept. Continuations never receive key material — only ciphertext/plaintext/
-`SignedEvent` (D13, strengthened: after Stage 4 *no* code outside the identity runtime
-holds `nostr::Keys`).
+`SignedEvent` (D13: after Stage 4 the **DM inbox** no longer holds `nostr::Keys`. The
+broader `active_local_keys` / `mls_local_nsec` slots that Marmot and the
+protocol-context host bridge depend on remain and are out of scope here — V-55/#971
+tracks the global property).
 
 The identity runtime gains the local halves the verbs need (none exist today):
 `nip44_encrypt_nonblocking` / `nip44_decrypt_nonblocking`, routing local accounts through
@@ -128,21 +140,48 @@ The ~90-line inline publish drain in `actor/mod.rs` is **deleted**; the loop run
 (toasts, `record_action_failure`, `publish_signed_to_with_correlation`, immediate
 `emit_now`).
 
-### D3 — Completions are actor-mailbox messages
+### D3 — Completions are actor-mailbox messages, and the mailbox actually wakes
 
-New `ActorCommand::DeliverSignerResponse { response_json: String }`. The NIP-46 broker
-adapter (`nmp-ffi/src/signer_broker.rs`) and the NIP-55 capability bridge
-(`nmp-ffi/src/external_signer.rs`) **send this command** instead of calling
-`deliver_response` from their own threads. The dispatch arm fans the JSON out to the
-identity runtime's remote handles (each silently drops non-matching correlation ids — the
-existing trait contract, and exactly what the NIP-55 registry fan-out does today), then
-the same loop iteration drains the parked-op `Vec`.
+**D3a — one waking inbox.** The actor's two bare mpsc channels (commands; `PoolEvent`s)
+are replaced by a single blocking inbox the loop `recv_timeout`s on, carrying
+`Command(ActorCommand) | Relay(PoolEvent)`. Command-lane priority is preserved exactly
+(the `CommandDrain` budget keeps governing how many commands run before relay/idle work —
+classification into two local lanes happens after the one blocking receive). `nmp-network`
+gains a narrow `PoolEventSink` seam for `Pool::new` with a blanket impl for the existing
+`mpsc::Sender<PoolEvent>` so every other `Pool` consumer (`nmp-signer-broker`, tests)
+compiles unchanged; the actor passes its inbox's relay-side handle. After this, *any*
+`ActorCommand` send is a genuine wake — fixing the latent ≤250ms latency on
+`CapabilityResultReady` (ADR-0040) and host commands too, not just signer completions.
+
+**D3b — `DeliverSignerResponse`.** New
+`ActorCommand::DeliverSignerResponse { response_json: String }`:
+
+- **NIP-46**: the broker's steady-state inbound dispatcher
+  (`nmp-signer-broker/src/broker.rs:340` / `transport.rs:89`) stops calling
+  `ingest_rpc_response` directly. The nmp-ffi adapter — which constructs the broker and
+  already owns the app's command sender — installs a **completion sink closure**
+  (`Fn(String) + Send`) on the broker; the dispatcher hands the decrypted RPC body to the
+  sink, which sends `DeliverSignerResponse`. `nmp-signer-broker` stays `nmp-core`-free
+  (D0): it sees an opaque sink, never `ActorCommand`. The handshake path is untouched (it
+  runs on its own worker with its own `await_response` loop and completes via the
+  existing `AddSigner { RemoteHandle }` re-entry).
+- **NIP-55**: `nmp-ffi/src/external_signer.rs::deliver` sends the command instead of
+  fanning out to signer handles on the bridge thread.
+
+The dispatch arm fans the JSON out to the identity runtime's remote handles (each
+silently drops non-matching correlation ids — the existing trait contract, and exactly
+what the NIP-55 registry fan-out does today), then the same loop iteration drains the
+parked-op `Vec` (the drains run unconditionally after the command lane — no `continue`
+skips them).
 
 Consequences:
 
-- The `recv_timeout` wake **is** the completion path: latency = mailbox latency, not
-  ≤250ms tick luck (Erlang deferred-`gen_server`-reply style).
+- The inbox wake **is** the completion path: latency = mailbox latency, not ≤250ms tick
+  luck (Erlang deferred-`gen_server`-reply style).
 - Signer pending-map mutation happens on the actor thread — one writer (D4).
+- No park/response race exists: the signer creates and parks the op's channel before the
+  RPC leaves, so a completion processed later at worst buffers a value the drain picks
+  up.
 - The residual 250ms idle sweep remains **solely as the deadline gate** (wall-clock-gated
   timeout detection, D8-compliant). It is no longer how completions are noticed. No new
   sleeps, no polling loops anywhere in the change (D8).
@@ -181,8 +220,31 @@ Envelope order is sequential and failure-preserving: the recipient chain runs fi
 success continuation launches the self-copy chain; self-copy failures surface a toast
 only (single-terminal contract — the action verdict is the recipient envelope's,
 unchanged from today's semantics). Per-step deadlines are the port's (§D4) — the dual
-timeout constants disappear rather than being renamed. Local accounts resolve every step
-inline, so the local path stays effectively synchronous.
+timeout constants disappear rather than being renamed.
+
+**Account pinning.** Today the signer is resolved once and both envelopes bind the same
+`Arc`; a chain of port requests would re-resolve "active" at every step, so a mid-chain
+account switch could sign the seal with a different key than the one that encrypted it.
+The chain therefore resolves the active account's pubkey **once, at step 1**, and every
+subsequent step passes `signer_pubkey: Some(hex)` — never `None`. Oracle: a DM-send
+chain whose active account switches mid-flight signs the seal with the originating
+account.
+
+**Mailbox cost, stated honestly.** Each chain step issued via the `Sender` is one
+mailbox enqueue/dequeue even for local accounts (~3 hops per DM send vs. today's zero).
+This is accepted: DM sends are rare, the hops are processed in the same priority-lane
+drain burst, and the per-hop cost is trivial next to the NIP-44 ECDH work itself. A
+parallel inline-bypass path for local keys is rejected (one mechanism per concern); if
+profiling ever shows the hops matter, that is the moment to revisit — not before.
+
+**nmp-marmot.** Marmot gift-wraps MLS welcome rumors via
+`gift_wrap_with_signer(Arc::new(self.keys.clone()), ..).wait(GIFT_WRAP_TOTAL_TIMEOUT)`
+(`crates/nmp-marmot/src/service.rs:480-483`) — it consumes the trait, the `Keys` blanket
+impl, the driver, and the timeout constant. Marmot is local-key-only by construction
+(its MLS identity key never lives in a bunker), so it migrates to the **pure functions**
+directly: NIP-44-encrypt with its own `Keys`, `build_seal_unsigned`, sign in-process,
+`wrap_signed_seal` — synchronous, no port, no thread. `cargo test -p nmp-marmot` green
+is a Stage 3 oracle.
 
 ### D6 — Gift-unwrap through the port; the raw-`Keys` slot is deleted
 
@@ -190,9 +252,21 @@ inline, so the local path stays effectively synchronous.
 two-step continuation chain (outer: peer = the wrap's ephemeral `event.pubkey`; seal:
 peer = the seal's `pubkey`), issued via a `Sender<ActorCommand>` the projection is
 constructed with; the active pubkey comes from the pubkey-only identity accessor
-(#1191). Local accounts resolve both steps inline through the same dispatch arm — same
-observable behavior as today, one mechanism. Bunker accounts become *structurally* able
-to decrypt; whether and how much they do is policy (§D7), not structure.
+(#1191). Bunker accounts become *structurally* able to decrypt; whether and how much
+they do is policy (§D7), not structure.
+
+Like §D5, the chain is **account-pinned at envelope arrival** (`signer_pubkey:
+Some(hex)` on both steps), and the terminal insert carries an **epoch guard**: the
+projection keeps a generation counter bumped by `clear()` (account switch, #1138); a
+continuation completing for a stale generation discards its message instead of leaking a
+previous account's plaintext into the new account's snapshot.
+
+**Backfill cost, stated honestly.** A local-account backfill of N envelopes becomes 2N
+small `Nip44DecryptForAccount` commands instead of today's zero (inline synchronous
+unwrap). Accepted for the same single-mechanism reason as §D5: the mailbox hop is cheap
+next to the two ECDH+ChaCha operations per envelope that dominate either way, and the
+command lane processes them in priority bursts. An inline local-keys bypass would be a
+second decrypt mechanism and is rejected; profiling gates any future revisit.
 
 ### D7 — Bulk-decrypt destination: bounded interactive policy now; delegated session deferred
 
@@ -229,9 +303,9 @@ Decision:
 | Stage | Content | Oracles |
 |---|---|---|
 | 1 | This ADR. | — |
-| 2 | D1 verbs + D2 unified park/drain + D3 mailbox completions + D4 deadline fix & `op_timeout` rename. | Existing sign tests green unchanged; encrypt+decrypt round-trip through the port with a stub remote signer; completion delivered without an unrelated actor wake (no ≤250ms dependence); named roster key with 90s budget does not inherit the active 5s budget. |
-| 3 | D5 gift-wrap chain + deletions. | DM send tests green for BOTH backends; `grep -R "thread::spawn"` finds nothing in the nip59/nip17 send path; `signer_for_seal` slot consumers migrated; both timeout constants gone. |
-| 4 | D6 unwrap through the port + raw-`Keys` slot deletion. | Inbox test decrypting an envelope with a stub remote signer; local-backend inbox tests green unchanged; no `nostr::Keys` outside the identity runtime in nmp-nip17. |
+| 2 | D1 verbs + D2 unified park/drain + D3 waking inbox & mailbox completions + D4 deadline fix & `op_timeout` rename. | Existing sign tests green unchanged; encrypt+decrypt round-trip through the port with a stub remote signer; a command send wakes a blocked actor and the completion is delivered without an unrelated wake (no ≤250ms dependence); named roster key with 90s budget does not inherit the active 5s budget; `nmp-signer-broker` tests green unchanged (blanket `PoolEventSink` impl). |
+| 3 | D5 gift-wrap chain + deletions (incl. nmp-marmot pure-function migration). | DM send tests green for BOTH backends; `grep -R "thread::spawn"` finds nothing in the nip59/nip17 send path; `signer_for_seal` slot consumers migrated; both timeout constants gone; mid-chain account-switch test; `cargo test -p nmp-marmot` green. |
+| 4 | D6 unwrap through the port + raw-`Keys` slot deletion. | Inbox test decrypting an envelope with a stub remote signer; local-backend inbox tests green unchanged; no `nostr::Keys` in nmp-nip17; stale-generation continuation discards its message (account-switch leak test). |
 | 5 | D7 policy + projection state + host decoders; file the delegated-session issue. | Bounded-queue admission test; overflow surfaces state, never silence. |
 
 ## Consequences
