@@ -19,6 +19,9 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **Release nmp-v0.5.0** (version bump 0.4.0→0.5.0, CHANGELOG). Branch: `release/nmp-v0.5.0`. Worktree: agent-a4efb80c336f372c3. Two C-ABI/architecture breaks: #1108 (`nmp_app_open_timeline` → `open/close_contact_feed`) + #1114 (ADR-0046 composition-is-a-library; `gen modules` + `apps/fixture` deleted). Closes #1086 (ADR-0045 universal cache-serve, v1 exit criterion satisfied).
+
+
 - 2026-06-12 — **Remove dead seed_accounts test fixture from nmp-core**. Branch: `chore/nmp-core-remove-dead-seed-accounts`. Worktree: /home/pablo/Work/nostrmultiplatform (root checkout). Removes `SeedAccount` struct and `seed_accounts()` fn — zero call sites, `#[cfg(test)] #[allow(dead_code)]` items carried over from 2026-05-18 kernel mod split.
 
 - 2026-06-12 — **ADR-0045 Rev 2: single-mechanism cache-serve (owner correction)**. Branch: `adr-0045-rev2-single-mechanism-cache-serve`. Worktree: agent-a229248b7c12f575c. Supersedes §9 staged-by-domain rollout; amends decision to ONE always-on store-serve seam (cold/warm/offline/online, every LogicalInterest); preserves Rev 1 technical findings; updates issue #1086; restates v1 recommendation as "does universal cache-serve gate v1?".

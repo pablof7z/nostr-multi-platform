@@ -5,21 +5,143 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## nmp-v0.5.0 — 2026-06-12
+
+**BREAKING (C-ABI + Rust API).** Two breaking changes since v0.4.0; both require
+migration before pinning this revision (see **Removed** below).
+
+**ADR-0045 COMPLETE — v1 exit criterion satisfied.** Offline / second-launch
+rendering now works for every open interest: contact feed, DM inbox, threads,
+and long-form articles all render from the local LMDB store before any relay
+delivers a single event.
+
+### Added
+
+- **ADR-0045 universal cache-serve — E1+E2+E3, closes #1086** (#1107, #1117). The
+  `kernel/cache_serve.rs` seam maps every `InterestShape` to LMDB `StoreQuery`
+  variants, scans newest-first up to `CACHE_SERVE_BUDGET_EVENTS = 200`, and
+  feeds matched events into the post-store projection-dispatch path (bypassing
+  `store.insert`, which would return `Duplicate` and skip all observer fan-out):
+  - **E1** (`#1107`): `AuthorKind` / `KindTime` shapes — contact-feed events
+    served at `open_interest`/follow-feed-sync time with aggregate per-tick budget
+    and one-shot completion gate.
+  - **E2** (`#1117`): `Ptag` + kind:1059 → `StoreQuery::Ptag` for DM inbox
+    gift-wraps; events fed through `notify_raw_event_observers` so
+    `DmInboxProjection` receives the full sig-bearing JSON — one decrypt path
+    shared with live relay delivery (ADR-0045 R2.4(f)).
+  - **E3** (`#1117`): `Etag` (thread replies), `KindDtag` (addressable /
+    long-form), and `Ptag`-mentions. Watermark floors restored for all covered
+    shapes; the `e3_structural_floored_implies_served` seam-identity test
+    enforces "no floor without serve coverage."
+  Universal acceptance test `cache_serve_universal_tests`: populates the store
+  with a feed event, DM gift-wrap, thread reply, and long-form article; creates a
+  fresh kernel with zero relay connections; asserts all four project into the
+  snapshot without any relay delivery.
+
+### Removed (BREAKING)
+
+- **`nmp_app_open_timeline` deleted** — replaced by `nmp_app_open_contact_feed` /
+  `nmp_app_close_contact_feed` (ADR-0042 §2 amendment, closes #911; #1108). The
+  `{1,6}` social-kind literal that was hardcoded in the generic FFI layer (a D0
+  violation) now lives in exactly one place: `HOME_FEED_KINDS_JSON` in
+  `nmp-app-chirp`. Two new Chirp wrappers —
+  `nmp_app_chirp_open_home_feed` / `nmp_app_chirp_close_home_feed` — wrap
+  `nmp_app_open_contact_feed` with that constant. `ActorCommand::OpenContactListSubscription`
+  is renamed to `OpenContactFeed { kinds }`.
+
+  **Migration**: replace `nmp_app_open_timeline(app)` with
+  `nmp_app_chirp_open_home_feed(app)` for the Chirp home feed, or call
+  `nmp_app_open_contact_feed(app, kinds_json)` directly with an explicit kinds
+  array. Add a matching `nmp_app_close_contact_feed` (the prior
+  `nmp_app_open_timeline` had no symmetric close).
+
+- **`nmp-codegen gen modules` scaffolder and `apps/fixture` deleted** (ADR-0046
+  — "composition is a library, not a generator"; #1114). The Rust-shell FFI-crate
+  generator (`generate.rs` / `ffi_gen.rs` / `workspace.rs`, the `gen modules`
+  subcommand, `gen-modules` / `gen-modules-check` justfile targets) and its sole
+  consumer `apps/fixture` (`nmp-app-fixture` + `fixture-todo-core`) are removed.
+  A generated `FfiApp` never called `register_defaults` and was a non-functional
+  Nostr app; the fixture existed only to give the orphan generator a test target.
+  The `nmp.toml` manifest parser and the `gen swift` / `gen typed-decoders`
+  emitters (live CI gates) are unaffected.
+
+  **Migration for `nmp-app-template` consumers**: the crate is renamed to
+  `nmp-defaults` (rename landed in v0.4.0). If you pinned across the v0.4.0 break
+  already you have no further action here; the `gen modules` scaffolder was the
+  only thing deleted in v0.5.0.
+
+  **What breaks for whom**: any CI or script that invokes `nmp gen modules` will
+  fail with "unknown subcommand". No real app consumed the generated output;
+  verify with `grep -r 'gen modules' .` in your app.
+
+### Fixed
+
+- **V-115 — display formatting removed from kernel projections** (ADR-0032; #1109,
+  closes #1045). Three violations fixed; shells must adopt corresponding changes:
+  - `ProfileCard.npub` (bech32 string) removed from the FlatBuffers struct and
+    schema; slot marked `(deprecated)` for wire compat. Shells encode bech32 via
+    `nmp_app_encode_profile` / the new `KernelHandle.encodeProfile(pubkey:)` Swift
+    wrapper.
+  - `claimed_profiles` builder no longer bakes a bech32 `to_npub(pubkey)` into the
+    wire frame.
+  - `PublishOutboxItem` loses `created_at_display: String` and
+    `target_summary: String`; both FlatBuffers slots marked `(deprecated)`. A new
+    `created_at: uint64` slot (raw Unix seconds) is appended. Shells format
+    timestamps and compose the relay-count label themselves.
+
+  Doctrine-lint D19 rule bans `crate::display::` and `format_timestamp` in the
+  three kernel files; wired into the doctrine-lint smoke gate.
+
+- **V-118 — expiration index replaces gc Phase-1 cursor** (#1106, closes #1097).
+  Phase-1 of `gc_step` previously used a resumable `created_at` cursor that
+  permanently stalled when a block of non-expired events shared one `created_at`
+  value larger than a single budget pass. Replaced with a dedicated
+  `nmp-expiry-index` LMDB sub-db keyed `expiry_ts(8 BE) || event_id(32)`. Phase 1
+  is now an O(expired) range scan for `expiry_ts <= now_secs`; non-expired events
+  are invisible to it and can never stall progress. Index is maintained on insert,
+  supersession, kind:5 deletes, and all bulk-delete paths; backfilled once on
+  store open for pre-V-118 databases.
+
+- **Blocking `sign_active` primitive removed** (#1104, closes #972). The
+  `sign_active` function blocked the actor thread for up to 5 s via
+  `SignerOp::wait` on every NIP-46 remote-signer call — a D8 violation masked by
+  `debug_assert!` guards. All three production call sites (`create_account` /
+  `publish_initial_follows`) converted to `sign_active_nonblocking(..).poll()`;
+  error arms surface a D6 toast via `set_last_error_toast`.
+
+- **V-73 — `nmp_app_chirp_register` validates `viewer_pubkey`** (#1105, closes
+  #1011). A non-null malformed `viewer_pubkey` was previously silently replaced
+  with an empty-string pubkey, causing all subsystems to run against the zero
+  "anonymous" identity. `nmp_app_chirp_register` now returns an
+  `NmpRegisterStatus` (`#[repr(u32)]` enum: `Ok` / `NullApp` /
+  `InvalidViewerPubkey`); a non-null invalid pubkey returns `InvalidViewerPubkey`
+  and does not start the kernel.
+
+- **Golden-fixture drift assertion + Kotlin flatc CI gate** (#1103, closes
+  part of #1093). `tier3_golden_fixture_matches_encoder` asserts the Rust
+  encoder output matches `update_frame_tier3_golden_v1.fb.hex` byte-for-byte.
+  `ci/check-kotlin-flatc-drift.sh` mirrors the Rust flatc-drift gate for the
+  Kotlin transport bindings (`android/app/src/main/java/nmp/transport/*.kt`),
+  requiring flatc v25.2.10 (the Android/Kotlin runtime pin); wired into
+  `codegen-drift.yml` as a new `kotlin-flatc-drift` job.
 
 ### Changed
 
-- **Watermark floors restored for tagged and addressable shapes** (ADR-0045 E2+E3, closes #1086).
-  E1 (#1107) conservatively refused to floor tag- and address-filtered shapes
-  (`InterestShape::Ptag`, `Etag`, `KindDtag`) because the cache-serve seam did
-  not cover them. E2 adds Ptag → `StoreQuery::Ptag` (kind:1059 DM inbox
-  gift-wraps, routed through `notify_raw_event_observers` so
-  `DmInboxProjection` receives the full sig-bearing JSON — one decrypt path
-  shared with live relay delivery). E3 adds Etag (thread replies), KindDtag
-  (addressable / long-form articles), and Ptag-mentions. Now that every floored
-  shape is covered by serve, the watermark floor is re-enabled for those shapes.
-  The structural invariant "no floor without serve coverage" is enforced by the
-  new `e3_structural_floored_implies_served` seam-identity test.
+- **ADR-0045 Rev 2 — single-mechanism cache-serve** (`#1102` — docs-only ADR
+  amendment). Supersedes the §9 staged-by-domain rollout: one always-on
+  store-serve seam for every `LogicalInterest`, regardless of
+  cold/warm/offline/online. Offline is the degenerate case where the network half
+  delivers nothing.
+
+### Chores
+
+- Remove dead `seed_accounts` test fixture from `nmp-core` (#1110).
+- Drop stale `too_many_arguments` allows on `with_relays_and_bootstrap` /
+  `build_event_for_verify` (#1111, #1112).
+- Move kernel test modules to end-of-file (#1115).
+- Move test-only `ArticleHelpers` before test module in gallery-tui (#1116).
+- Move `nmp_app_close_contact_feed` before test module (#1113).
+- Replace no-op `repeat(1)` with `to_string` in `nmp-store` gc tests (#1118).
 
 ---
 
