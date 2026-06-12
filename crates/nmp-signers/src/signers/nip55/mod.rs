@@ -47,8 +47,11 @@ use serde_json;
 use crate::signers::payload::{Nip55Payload, SignerPayload};
 use crate::signers::traits::{Nip44, Signer, SignerBackend};
 
+mod connect;
 mod handle;
 pub(crate) mod mapper;
+
+pub use connect::Nip55Connect;
 
 /// Pending request correlation table: correlation_id → one-shot sender.
 type PendingMap = HashMap<String, Sender<Result<String, SignerError>>>;

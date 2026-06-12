@@ -16,6 +16,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import org.nmp.gallery.bridge.GalleryModel
+import org.nmp.gallery.gallery.AuthComponentPage
 import org.nmp.gallery.gallery.ContentComponentPage
 import org.nmp.gallery.gallery.EmbedComponentPage
 import org.nmp.gallery.gallery.RegistryComponent
@@ -53,6 +54,7 @@ fun ComponentDetailScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             when (section.id) {
+                "auth" -> AuthComponentPage(model = model, componentId = component.id)
                 "relay" -> RelayComponentSection(model = model, component = component)
                 "user" -> UserComponentPage(model = model, componentId = component.id)
                 "content" -> ContentComponentPage(model = model, componentId = component.id)

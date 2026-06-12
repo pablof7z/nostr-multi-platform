@@ -93,6 +93,33 @@ class KernelBridge {
     fun dispatchAction(action: String, payload: String): String? =
         if (handle != 0L) nativeDispatchAction(handle, action, payload) else null
 
+    /**
+     * ADR-0048 Stage 2 — begin a NIP-55 sign-in routed to `signerPackage`
+     * (null = let the OS resolver pick). Rust builds the `get_public_key` +
+     * permission-batch request; it surfaces on [nextSignerRequest].
+     */
+    fun signInNip55(signerPackage: String?) {
+        if (handle != 0L) nativeSignInNip55(handle, signerPackage)
+    }
+
+    /**
+     * ADR-0048 Stage 2 — blocking timed drain of the outbound NIP-55
+     * capability-request channel (the signer twin of [nextUpdate]):
+     * `null` = idle tick, a `String` = one `ExternalSignerRequest` JSON for
+     * `ExternalSignerCapabilityBridge.handleJson`, [IllegalStateException]
+     * = channel closed (STOP polling).
+     */
+    fun nextSignerRequest(timeoutMs: Long = 30_000L): String? =
+        if (handle != 0L) nativeNextSignerRequest(handle, timeoutMs) else null
+
+    /**
+     * ADR-0048 Stage 2 — report a raw `ExternalSignerResponse` JSON back to
+     * the Rust NIP-55 driver (D7: verbatim, Kotlin decides nothing).
+     */
+    fun deliverSignerResponse(responseJson: String) {
+        if (handle != 0L) nativeDeliverSignerResponse(handle, responseJson)
+    }
+
     fun free() {
         if (handle != 0L) {
             nativeFree(handle)
@@ -113,4 +140,7 @@ class KernelBridge {
     private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
     private external fun nativeNextUpdate(handle: Long, timeoutMs: Long): ByteArray?
     private external fun nativeDispatchAction(handle: Long, action: String, payload: String): String?
+    private external fun nativeSignInNip55(handle: Long, signerPackage: String?)
+    private external fun nativeNextSignerRequest(handle: Long, timeoutMs: Long): String?
+    private external fun nativeDeliverSignerResponse(handle: Long, responseJson: String)
 }

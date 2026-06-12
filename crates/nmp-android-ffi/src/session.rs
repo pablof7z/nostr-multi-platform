@@ -8,7 +8,9 @@ use std::time::Duration;
 use jni::sys::jlong;
 
 use nmp_app_chirp::{nmp_app_chirp_unregister, ChirpHandle};
-use nmp_ffi::{nmp_app_free, nmp_app_set_update_callback, NmpApp};
+use nmp_ffi::{
+    nmp_app_free, nmp_app_set_capability_callback, nmp_app_set_update_callback, NmpApp,
+};
 
 struct CallbackState {
     tx: Mutex<Option<Sender<Vec<u8>>>>,
@@ -44,6 +46,43 @@ struct SessionState {
     freed: bool,
 }
 
+/// Outbound `external_signer` capability requests (ADR-0048 Stage 2),
+/// drained by the Kotlin reader via `nativeNextSignerRequest` — the same
+/// channel + blocking-timed-drain shape as the update-frame channel (it
+/// sidesteps JNI thread-attach/global-ref complexity; see the module doc
+/// in `lib.rs`).
+pub(crate) struct SignerRequestChannel {
+    tx: Mutex<Option<Sender<String>>>,
+    rx: Mutex<Receiver<String>>,
+}
+
+impl SignerRequestChannel {
+    fn new() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        Self {
+            tx: Mutex::new(Some(tx)),
+            rx: Mutex::new(rx),
+        }
+    }
+
+    /// Push one `ExternalSignerRequest` JSON payload for the Kotlin drain.
+    pub(crate) fn push(&self, payload_json: String) -> bool {
+        let Ok(guard) = self.tx.lock() else {
+            return false;
+        };
+        match guard.as_ref() {
+            Some(tx) => tx.send(payload_json).is_ok(),
+            None => false,
+        }
+    }
+
+    fn close(&self) {
+        if let Ok(mut guard) = self.tx.lock() {
+            guard.take();
+        }
+    }
+}
+
 /// Owns the Android JNI kernel lifetime.
 ///
 /// Kotlin receives an integer registry id, not this allocation's address. Every
@@ -55,6 +94,10 @@ pub(crate) struct Session {
     rx: Mutex<Receiver<Vec<u8>>>,
     callback_state: Arc<CallbackState>,
     callback_context: *const CallbackState,
+    /// ADR-0048 Stage 2 — outbound NIP-55 capability requests for the Kotlin
+    /// drain. The capability trampoline (`external_signer::on_capability_request`)
+    /// pushes; `nativeNextSignerRequest` drains.
+    pub(crate) signer_requests: SignerRequestChannel,
     /// Opaque `*mut MarmotHandle` (or null when no MLS identity is registered).
     /// Stored type-erased so the core session module stays feature-agnostic.
     #[cfg_attr(not(feature = "marmot"), allow(dead_code))]
@@ -83,6 +126,7 @@ impl Session {
             rx: Mutex::new(rx),
             callback_state,
             callback_context,
+            signer_requests: SignerRequestChannel::new(),
             marmot: AtomicPtr::new(std::ptr::null_mut()),
         }
     }
@@ -141,6 +185,21 @@ impl Session {
         }
     }
 
+    /// Blocking timed drain of the outbound NIP-55 signer-request channel
+    /// (ADR-0048 Stage 2). Same contract as [`Self::recv_next_update`]:
+    /// `Idle` is a normal timeout tick, `Closed` means the channel sender
+    /// was dropped (session teardown) and the Kotlin reader must stop.
+    pub(crate) fn recv_next_signer_request(&self, timeout: Duration) -> NextSignerRequest {
+        let Ok(rx) = self.signer_requests.rx.lock() else {
+            return NextSignerRequest::Closed;
+        };
+        match rx.recv_timeout(timeout) {
+            Ok(payload) => NextSignerRequest::Request(payload),
+            Err(RecvTimeoutError::Timeout) => NextSignerRequest::Idle,
+            Err(RecvTimeoutError::Disconnected) => NextSignerRequest::Closed,
+        }
+    }
+
     fn close_updates_locked(&self, state: &mut SessionState) {
         if state.updates_closed {
             return;
@@ -156,13 +215,20 @@ impl Session {
             // `free_native()` returns — the quiescence guarantee prevents the
             // use-after-free race that existed before the gate was introduced.
             nmp_app_set_update_callback(state.app, std::ptr::null_mut(), None);
+            // ADR-0048 Stage 2 — unregister the external-signer capability
+            // trampoline before the app is freed. The trampoline context is
+            // the registry handle id (not a raw pointer), so any in-flight
+            // dispatch degrades to an error envelope via the registry lookup
+            // rather than a use-after-free.
+            nmp_app_set_capability_callback(state.app, std::ptr::null_mut(), None);
         }
         self.callback_state.close();
+        self.signer_requests.close();
         state.updates_closed = true;
     }
 
     #[cfg(test)]
-    fn test_session() -> Arc<Self> {
+    pub(crate) fn test_session() -> Arc<Self> {
         let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         Arc::new(Self {
             state: Mutex::new(SessionState {
@@ -174,6 +240,7 @@ impl Session {
             rx: Mutex::new(rx),
             callback_state: Arc::new(CallbackState::new(tx)),
             callback_context: std::ptr::null(),
+            signer_requests: SignerRequestChannel::new(),
             marmot: AtomicPtr::new(std::ptr::null_mut()),
         })
     }
@@ -193,6 +260,14 @@ impl Drop for Session {
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum NextUpdate {
     Frame(Vec<u8>),
+    Idle,
+    Closed,
+}
+
+/// Result of one `recv_next_signer_request` drain tick (ADR-0048 Stage 2).
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum NextSignerRequest {
+    Request(String),
     Idle,
     Closed,
 }

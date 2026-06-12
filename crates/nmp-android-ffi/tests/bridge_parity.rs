@@ -6,10 +6,11 @@ const LIB_RS: &str = include_str!("../src/lib.rs");
 const ACTION_RS: &str = include_str!("../src/action.rs");
 const PLATFORM_RS: &str = include_str!("../src/platform.rs");
 const SIGNER_RS: &str = include_str!("../src/signer.rs");
+const EXTERNAL_SIGNER_RS: &str = include_str!("../src/external_signer.rs");
 
 #[test]
 fn android_bridge_declares_parity_jni_symbols() {
-    let rust = [LIB_RS, ACTION_RS, PLATFORM_RS, SIGNER_RS].join("\n");
+    let rust = [LIB_RS, ACTION_RS, PLATFORM_RS, SIGNER_RS, EXTERNAL_SIGNER_RS].join("\n");
     for method in [
         "SetStoragePath",
         "LifecycleForeground",
@@ -20,6 +21,10 @@ fn android_bridge_declares_parity_jni_symbols() {
         "SignInBunker",
         "CancelBunkerHandshake",
         "NostrConnectUri",
+        // ADR-0048 Stage 2 — NIP-55 external-signer seam.
+        "SignInNip55",
+        "DeliverSignerResponse",
+        "NextSignerRequest",
     ] {
         let kotlin_decl = format!("native{method}(");
         assert!(
@@ -50,4 +55,10 @@ fn rust_path_reexports_cover_android_parity_surface() {
     let _ = nmp_app_chirp::nmp_app_nostrconnect_uri
         as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char, *const c_char) -> *mut c_char;
     let _ = nmp_ffi::nmp_free_string as extern "C" fn(*mut c_char);
+    // ADR-0048 Stage 2 — NIP-55 external-signer driver surface.
+    let _ = nmp_ffi::nmp_external_signer_init as extern "C" fn(*mut nmp_ffi::NmpApp);
+    let _ =
+        nmp_ffi::nmp_app_signin_nip55 as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char);
+    let _ = nmp_ffi::nmp_app_deliver_external_signer_response
+        as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char);
 }

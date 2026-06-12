@@ -1,0 +1,233 @@
+package org.nmp.gallery.bridge
+
+import kotlinx.serialization.json.Json
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.nmp.gallery.registry.ExternalSignerOutcome
+import org.nmp.gallery.registry.ExternalSignerRequest
+import org.nmp.gallery.registry.ExternalSignerResponse
+import org.nmp.gallery.registry.Nip55Permission
+import org.nmp.gallery.registry.shouldUseContentResolver
+
+/**
+ * ADR-0048 Stage 2 — D7 contract tests for [ExternalSignerCapabilityBridge].
+ *
+ * The bridge must:
+ *  1. Deserialise `ExternalSignerRequest` JSON produced by Rust without loss.
+ *  2. Serialise `ExternalSignerResponse` JSON in a shape Rust can parse.
+ *  3. Select ContentResolver when `granted_permissions` contains the method
+ *     AND `signer_package` is known AND `force_interactive` is false.
+ *  4. Fall through to the Intent path in every other case.
+ *  5. Correctly map Rust method tags to NIP-55 Intent URI components.
+ *
+ * These are pure Kotlin unit tests — no Activity, no PackageManager, no
+ * ContentProvider. The bridge's OS seams are validated separately in the
+ * Stage-4 emulator E2E (ADR-0048 D7).
+ */
+class ExternalSignerCapabilityBridgeTest {
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        classDiscriminator = "kind"
+    }
+
+    // ── ExternalSignerRequest round-trip ──────────────────────────────────
+
+    @Test
+    fun signEventRequestDeserialises() {
+        val raw = """
+            {
+                "correlation_id": "abc123",
+                "method": "sign_event",
+                "payload": "{\"kind\":1,\"content\":\"hello\"}",
+                "current_user": "deadbeef",
+                "counterparty": null,
+                "permissions": [],
+                "signer_package": "com.greenart7c3.nostrsigner",
+                "force_interactive": false
+            }
+        """.trimIndent()
+
+        val req = json.decodeFromString<ExternalSignerRequest>(raw)
+        assertEquals("abc123", req.correlationId)
+        assertEquals("sign_event", req.method)
+        assertEquals("deadbeef", req.currentUser)
+        assertNull(req.counterparty)
+        assertEquals("com.greenart7c3.nostrsigner", req.signerPackage)
+        assertTrue(req.permissions.isEmpty())
+    }
+
+    @Test
+    fun getPublicKeyRequestWithPermissionsDeserialises() {
+        val raw = """
+            {
+                "correlation_id": "perm-req-1",
+                "method": "get_public_key",
+                "payload": "",
+                "current_user": null,
+                "permissions": [
+                    {"kind": "sign_event:1"},
+                    {"kind": "nip44_encrypt"},
+                    {"kind": "nip44_decrypt"}
+                ],
+                "signer_package": null,
+                "force_interactive": false
+            }
+        """.trimIndent()
+
+        val req = json.decodeFromString<ExternalSignerRequest>(raw)
+        assertEquals("get_public_key", req.method)
+        assertNull(req.currentUser)
+        assertNull(req.signerPackage)
+        assertEquals(3, req.permissions.size)
+        assertEquals("sign_event:1", req.permissions[0].kind)
+        assertEquals("nip44_encrypt", req.permissions[1].kind)
+        assertEquals("nip44_decrypt", req.permissions[2].kind)
+    }
+
+    @Test
+    fun forceInteractiveDefaultsFalse() {
+        val raw = """{"correlation_id":"x","method":"sign_event","payload":"{}"}"""
+        val req = json.decodeFromString<ExternalSignerRequest>(raw)
+        assertEquals(false, req.forceInteractive)
+    }
+
+    // ── ExternalSignerResponse round-trip ─────────────────────────────────
+
+    @Test
+    fun okResponseSerialises() {
+        val resp = ExternalSignerResponse(
+            correlationId = "abc123",
+            outcome = ExternalSignerOutcome.Ok(result = "signedEventJsonHere"),
+            signerPackage = null,
+        )
+        val encoded = json.encodeToString(ExternalSignerResponse.serializer(), resp)
+        assertTrue(encoded.contains("\"ok\"") || encoded.contains("\"kind\":\"ok\""))
+        assertTrue(encoded.contains("abc123"))
+        assertTrue(encoded.contains("signedEventJsonHere"))
+    }
+
+    @Test
+    fun rejectedResponseSerialises() {
+        val resp = ExternalSignerResponse(
+            correlationId = "abc123",
+            outcome = ExternalSignerOutcome.Rejected(reason = "user cancelled"),
+        )
+        val encoded = json.encodeToString(ExternalSignerResponse.serializer(), resp)
+        assertTrue(encoded.contains("user cancelled"))
+    }
+
+    @Test
+    fun unavailableResponseSerialises() {
+        val resp = ExternalSignerResponse(
+            correlationId = "no-pkg",
+            outcome = ExternalSignerOutcome.Unavailable(reason = "signer not installed"),
+        )
+        val encoded = json.encodeToString(ExternalSignerResponse.serializer(), resp)
+        assertTrue(encoded.contains("signer not installed"))
+    }
+
+    @Test
+    fun signerPackagePopulatedOnGetPublicKeyReply() {
+        val resp = ExternalSignerResponse(
+            correlationId = "gpk-1",
+            outcome = ExternalSignerOutcome.Ok(result = "aabbccdd"),
+            signerPackage = "com.greenart7c3.nostrsigner",
+        )
+        val encoded = json.encodeToString(ExternalSignerResponse.serializer(), resp)
+        assertTrue(encoded.contains("com.greenart7c3.nostrsigner"))
+    }
+
+    // ── Transport-path selection logic ────────────────────────────────────
+    //
+    // These tests exercise the PRODUCTION `shouldUseContentResolver`
+    // predicate — the exact function `ExternalSignerCapabilityBridge.handle()`
+    // branches on (extracted as an internal pure function so no test-side
+    // mirror exists). Rule (D7, mechanical):
+    //   ContentResolver iff NOT forceInteractive AND signerPackage != null
+    //   AND the method's permission kind is in the request's batch.
+
+    @Test
+    fun contentResolverSelectedWhenPermissionGrantedAndNotForced() {
+        val req = ExternalSignerRequest(
+            correlationId = "cr-1",
+            method = "nip44_encrypt",
+            payload = "plaintext",
+            currentUser = "pubkeyhex",
+            signerPackage = "com.greenart7c3.nostrsigner",
+            permissions = listOf(Nip55Permission("nip44_encrypt")),
+            forceInteractive = false,
+        )
+        assertTrue(shouldUseContentResolver(req))
+    }
+
+    @Test
+    fun intentSelectedWhenForceInteractive() {
+        val req = ExternalSignerRequest(
+            correlationId = "intent-1",
+            method = "nip44_encrypt",
+            payload = "plaintext",
+            signerPackage = "com.greenart7c3.nostrsigner",
+            permissions = listOf(Nip55Permission("nip44_encrypt")),
+            forceInteractive = true,
+        )
+        assertTrue(!shouldUseContentResolver(req))
+    }
+
+    @Test
+    fun intentSelectedWhenSignerPackageUnknown() {
+        val req = ExternalSignerRequest(
+            correlationId = "intent-2",
+            method = "nip44_encrypt",
+            payload = "plaintext",
+            signerPackage = null, // unknown
+            permissions = listOf(Nip55Permission("nip44_encrypt")),
+            forceInteractive = false,
+        )
+        assertTrue(!shouldUseContentResolver(req))
+    }
+
+    @Test
+    fun intentSelectedWhenPermissionNotGranted() {
+        val req = ExternalSignerRequest(
+            correlationId = "intent-3",
+            method = "nip44_decrypt",
+            payload = "ciphertext",
+            signerPackage = "com.greenart7c3.nostrsigner",
+            permissions = emptyList(), // no permissions granted
+            forceInteractive = false,
+        )
+        assertTrue(!shouldUseContentResolver(req))
+    }
+
+    @Test
+    fun contentResolverSelectedForSignEventWhenKindPermissionGranted() {
+        // sign_event:1 grants sign_event for kind:1. The prefix-match should
+        // recognise "sign_event:" as the permission kind for "sign_event".
+        val req = ExternalSignerRequest(
+            correlationId = "cr-sign-1",
+            method = "sign_event",
+            payload = "{\"kind\":1}",
+            currentUser = "pubkeyhex",
+            signerPackage = "com.greenart7c3.nostrsigner",
+            permissions = listOf(Nip55Permission("sign_event:1")),
+            forceInteractive = false,
+        )
+        assertTrue(shouldUseContentResolver(req))
+    }
+
+    // ── KNOWN_NOSTR_SIGNERS contract ──────────────────────────────────────
+
+    @Test
+    fun amberIsInKnownSigners() {
+        val amber = org.nmp.gallery.registry.KNOWN_NOSTR_SIGNERS.firstOrNull {
+            it.intentScheme == "nostrsigner"
+        }
+        assertNotNull("Amber must be in KNOWN_NOSTR_SIGNERS", amber)
+        assertEquals("com.greenart7c3.nostrsigner", amber!!.contentAuthority)
+    }
+}
