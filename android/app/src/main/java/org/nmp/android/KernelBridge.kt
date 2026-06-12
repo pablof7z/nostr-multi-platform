@@ -176,6 +176,22 @@ class KernelBridge {
     }
 
     /**
+     * Seed the relay list from an override JSON string or the Chirp defaults.
+     *
+     * [relaysJson] is an optional `[["url","role"],…]` JSON array. When null
+     * the Chirp reference relays are seeded (normal production path). When
+     * non-null the supplied list REPLACES the defaults entirely (E2E test
+     * override). All parsing and policy live in Rust (D7 / thin-shell).
+     *
+     * Must be called AFTER [start] so the kernel is alive to receive the
+     * relay entries. D6: null/dead handle or malformed JSON falls back to
+     * the Chirp reference relay set.
+     */
+    fun seedRelays(relaysJson: String? = null) {
+        if (handle != 0L) nativeSeedRelays(handle, relaysJson)
+    }
+
+    /**
      * Add a relay with the given URL and role ("read", "write", or "both").
      *
      * D6: null handle is a silent no-op.
@@ -374,6 +390,7 @@ class KernelBridge {
     private external fun nativeCloseThread(handle: Long, noteId: String)
     private external fun nativeOpenAuthor(handle: Long, pubkey: String)
     private external fun nativeCloseAuthor(handle: Long, pubkey: String)
+    private external fun nativeSeedRelays(handle: Long, relaysJson: String?)
     private external fun nativeAddRelay(handle: Long, url: String, role: String)
     private external fun nativeRemoveRelay(handle: Long, url: String)
     private external fun nativeSignInNsec(handle: Long, secret: String)
