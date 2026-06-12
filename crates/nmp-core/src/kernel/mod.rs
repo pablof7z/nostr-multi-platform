@@ -277,9 +277,7 @@ mod auth_url_threading_tests;
 #[cfg(test)]
 mod contacts_fanout_tests;
 
-use crate::relay::{
-    CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_HZ, TIMELINE_AUTHOR_LIMIT,
-};
+use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_HZ};
 // `chrono::Local` reads the OS-local wall clock; the `clock` feature it lives
 // behind is gated to `native` in Cargo.toml. The wall-clock display helper
 // `now_hms` in `kernel/nostr.rs` is native-only — see the `#[cfg(feature =
