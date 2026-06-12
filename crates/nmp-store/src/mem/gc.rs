@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn mem_stale_addr_tombstone_is_purged_by_gc() {
         let store = MemEventStore::new();
-        let key = "30023:aa".repeat(1) + ":some-dtag";
+        let key = "30023:aa".to_string() + ":some-dtag";
 
         // deleted_at is TOMBSTONE_MAX_AGE_SECS + 1 seconds in the past.
         let now_secs = 10_000_000u64;
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn mem_fresh_addr_tombstone_is_retained_by_gc() {
         let store = MemEventStore::new();
-        let key = "30023:bb".repeat(1) + ":my-dtag";
+        let key = "30023:bb".to_string() + ":my-dtag";
 
         let now_secs = 10_000_000u64;
         // deleted_at is only 1 second in the past (very fresh).
