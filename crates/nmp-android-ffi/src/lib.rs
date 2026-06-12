@@ -4,18 +4,17 @@
 //! Errors never cross FFI (D6): the kernel reports via update frames; these
 //! entrypoints return only a handle / bytes / void. The kernel's update
 //! callback fires on its own listener thread with a pointer valid ONLY for the
-//! call's duration (`docs/ffi-surface.md` §3), so we copy it into owned bytes
-//! before handing it to a channel. A Kotlin thread drains the channel via
-//! `nativeNextUpdate` (blocking, timed) — this sidesteps JNI
-//! thread-attach/global-ref complexity while staying a faithful mirror of the
-//! iOS push model.
+//! call's duration (`docs/ffi-surface.md` §3); the `on_update` trampoline in
+//! `session.rs` copies it into owned bytes and pushes them straight to a
+//! registered Kotlin listener via JNI (`nativeSetUpdateListener`, issue #614 —
+//! D8 no-polling). This mirrors the iOS push model: Kotlin no longer drains a
+//! 250 ms-timed channel on a blocked thread.
 
 use std::ffi::CString;
 use std::sync::Arc;
-use std::time::Duration;
 
-use jni::objects::{JClass, JString};
-use jni::sys::{jbyteArray, jint, jlong};
+use jni::objects::{JClass, JObject, JString};
+use jni::sys::{jint, jlong};
 use jni::JNIEnv;
 
 use nmp_app_chirp::{
@@ -32,6 +31,7 @@ mod platform;
 mod relay_seeding;
 mod session;
 mod signer;
+mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
@@ -39,7 +39,7 @@ use nmp_ffi::{
     nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
     nmp_app_switch_active, nmp_free_string,
 };
-use session::{insert_session, remove_session, NextUpdate};
+use session::{insert_session, remove_session, UpdatePushListener};
 pub(crate) use session::{session_arc, Session};
 
 #[no_mangle]
@@ -199,54 +199,53 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
     }
 }
 
-/// Blocking binary drain with a 250 ms timeout so the Kotlin reader thread
-/// stays responsive to cancellation.
+/// Register (or clear) the JNI push listener for kernel update frames
+/// (issue #614 — D8 no-polling; replaces the deleted `nativeNextUpdate`
+/// blocking drain).
 ///
-/// Return contract (mirrors PR #644 / V-57 P5 for nmp-gallery — the two
-/// `recv_timeout` arms have distinct meanings and must NOT be conflated):
+/// `listener` must implement `fun onUpdate(frame: ByteArray)`. Frames are
+/// pushed from the kernel's update-listener thread (a Rust background thread),
+/// so Kotlin must treat `onUpdate` as a background callback and marshal to the
+/// main thread itself when needed. Pass `null` to deregister.
 ///
-/// * timeout — normal idle tick. Returns `null`; the
-///   Kotlin caller loops back into `nextUpdate`. This is the steady state
-///   between snapshot emits at `emit_hz`.
-/// * closed — `nativeClose`/`nativeFree` has closed the callback sender. The
-///   reader gets a JNI `java.lang.IllegalStateException` and stops before
-///   Kotlin frees the handle id.
+/// D6: a null/dead handle, or any JNI failure obtaining the `JavaVM` / global
+/// ref, is a silent no-op — never panics across the seam. The listener
+/// `GlobalRef` is dropped on teardown (`nativeClose`/`nativeFree`) after the
+/// update-callback quiescence gate guarantees no in-flight `on_update`.
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdateBytes<'l>(
-    env: JNIEnv<'l>,
-    _class: JClass<'l>,
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSetUpdateListener(
+    env: JNIEnv,
+    _class: JClass,
     handle: jlong,
-) -> jbyteArray {
-    next_update_byte_array(env, handle)
-}
-
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdate<'l>(
-    env: JNIEnv<'l>,
-    _class: JClass<'l>,
-    handle: jlong,
-) -> jbyteArray {
-    next_update_byte_array(env, handle)
-}
-
-fn next_update_byte_array<'l>(mut env: JNIEnv<'l>, handle: jlong) -> jbyteArray {
-    let null = std::ptr::null_mut();
+    listener: JObject,
+) {
     let Some(s) = session_arc(handle) else {
-        return null;
+        return;
     };
-    match s.recv_next_update(Duration::from_millis(250)) {
-        NextUpdate::Frame(bytes) => match env.byte_array_from_slice(&bytes) {
-            Ok(array) => array.into_raw(),
-            Err(_) => null,
-        },
-        NextUpdate::Idle => null,
-        NextUpdate::Closed => {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "kernel update channel closed",
-            );
-            null
-        }
+    if listener.is_null() {
+        s.clear_push_listener();
+        return;
+    }
+    let Ok(vm) = env.get_java_vm() else {
+        return;
+    };
+    let Ok(global) = env.new_global_ref(&listener) else {
+        return;
+    };
+    s.set_push_listener(UpdatePushListener::new(vm, global));
+}
+
+/// Clear the JNI push listener without freeing the session (issue #614).
+///
+/// D6: a null/dead handle is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClearUpdateListener(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if let Some(s) = session_arc(handle) {
+        s.clear_push_listener();
     }
 }
 
@@ -480,9 +479,10 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeFree(
     handle: jlong,
 ) {
     if let Some(s) = remove_session(handle) {
-        // `free_native` first closes the update sender, waking any blocked
-        // `nativeNextUpdate`. The `Arc<Session>` held by that reader keeps the
-        // receiver allocation alive until the JNI call returns.
+        // `free_native` quiesces the update callback (the gate blocks until any
+        // in-flight `on_update` returns) and drops the JNI push listener
+        // `GlobalRef` before reclaiming the kernel. The `Arc<Session>` held by
+        // the registry keeps native state alive across concurrent JNI calls.
         s.free_native();
     }
 }
@@ -496,4 +496,3 @@ pub(crate) fn jstring_to_cstring(env: &mut JNIEnv, value: &JString) -> Option<CS
     let owned = java_str.to_string_lossy().into_owned();
     CString::new(owned).ok()
 }
-

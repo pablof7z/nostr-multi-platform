@@ -1,6 +1,17 @@
 package org.nmp.gallery.bridge
 
 /**
+ * Push callback for kernel update frames (issue #614 — D8 no-polling).
+ *
+ * Rust invokes [onUpdate] from the kernel's update-listener thread (a native
+ * background thread), NOT the Android main thread. [frame] is one FlatBuffers
+ * snapshot frame. Mirrors the Chirp `KernelUpdateListener`.
+ */
+fun interface KernelUpdateListener {
+    fun onUpdate(frame: ByteArray)
+}
+
+/**
  * Thin JNI wrapper around `libnmp_app_gallery.so` — the gallery-specific
  * Rust shim that links the SAME `nmp-core` kernel that Chirp / iOS consume.
  *
@@ -13,7 +24,7 @@ package org.nmp.gallery.bridge
  *
  * This bridge intentionally has NO OkHttp / Ktor / WebSocket code. Every
  * relay connection lives inside the Rust kernel; Kotlin only owns the
- * UI thread and drains the snapshot channel.
+ * UI thread and receives pushed snapshots via [setUpdateListener].
  */
 class KernelBridge {
     private var handle: Long = 0
@@ -69,21 +80,22 @@ class KernelBridge {
     }
 
     /**
-     * Blocking drain of the update-frame channel. `timeoutMs` caps the wait
-     * so the Kotlin reader coroutine can react to cancellation.
+     * Register a push listener for kernel update frames (issue #614 — D8
+     * no-polling; replaces the former blocking `nextUpdate` drain).
      *
-     * Return contract (V-57 P5):
-     * * `null` — idle tick (`RecvTimeoutError::Timeout` on the Rust side).
-     *   The caller should loop back into `nextUpdate` immediately.
-     * * `ByteArray` (non-empty) — one FlatBuffers snapshot frame.
-     * * Throws [IllegalStateException] — the snapshot channel has been
-     *   closed (`RecvTimeoutError::Disconnected`; the boxed `Sender` in the
-     *   Rust `GallerySession` was dropped, typically as part of `free()`).
-     *   The caller MUST stop polling — looping after a disconnect spins
-     *   the CPU on a dead channel.
+     * [listener] receives each FlatBuffers snapshot frame on the kernel's
+     * update-listener thread (a native background thread). Pass a new listener
+     * to swap; call [clearUpdateListener] on teardown before [free]. D6: a
+     * null/dead handle is a no-op.
      */
-    fun nextUpdate(timeoutMs: Long = 30_000L): ByteArray? =
-        if (handle != 0L) nativeNextUpdate(handle, timeoutMs) else null
+    fun setUpdateListener(listener: KernelUpdateListener) {
+        if (handle != 0L) nativeSetUpdateListener(handle, listener)
+    }
+
+    /** Deregister the push listener. Safe when none is set; D6 no-op on dead handle. */
+    fun clearUpdateListener() {
+        if (handle != 0L) nativeClearUpdateListener(handle)
+    }
 
     /**
      * Dispatch a typed action through the kernel's action seam. Payload is
@@ -104,7 +116,7 @@ class KernelBridge {
 
     /**
      * ADR-0048 Stage 2 — blocking timed drain of the outbound NIP-55
-     * capability-request channel (the signer twin of [nextUpdate]):
+     * capability-request channel (the signer request twin):
      * `null` = idle tick, a `String` = one `ExternalSignerRequest` JSON for
      * `ExternalSignerCapabilityBridge.handleJson`, [IllegalStateException]
      * = channel closed (STOP polling).
@@ -138,7 +150,8 @@ class KernelBridge {
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
     private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
-    private external fun nativeNextUpdate(handle: Long, timeoutMs: Long): ByteArray?
+    private external fun nativeSetUpdateListener(handle: Long, listener: KernelUpdateListener)
+    private external fun nativeClearUpdateListener(handle: Long)
     private external fun nativeDispatchAction(handle: Long, action: String, payload: String): String?
     private external fun nativeSignInNip55(handle: Long, signerPackage: String?)
     private external fun nativeNextSignerRequest(handle: Long, timeoutMs: Long): String?

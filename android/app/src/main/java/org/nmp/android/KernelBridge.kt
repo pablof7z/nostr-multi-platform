@@ -1,6 +1,18 @@
 package org.nmp.android
 
 /**
+ * Push callback for kernel update frames (issue #614 — D8 no-polling).
+ *
+ * Rust invokes [onUpdate] from the kernel's update-listener thread (a native
+ * background thread), NOT the Android main thread. Implementations must marshal
+ * to the main thread themselves if they touch UI state directly. [frame] is one
+ * FlatBuffers `UpdateFrame` (file_identifier "NMPU").
+ */
+fun interface KernelUpdateListener {
+    fun onUpdate(frame: ByteArray)
+}
+
+/**
  * Thin JNI wrapper around `libnmp_android_ffi.so`, which links the SAME
  * `nmp_app_*` Rust kernel the iOS app consumes. Direct mirror of
  * `ios/Chirp/.../KernelBridge.swift`'s `KernelHandle`.
@@ -36,11 +48,12 @@ class KernelBridge {
     }
 
     /**
-     * Close the Rust update sender without freeing the session id.
+     * Close the Rust update callback without freeing the session id.
      *
-     * Lifecycle invariant: callers that own a reader coroutine must call this
-     * first, join the reader after `nextUpdate()` wakes with
-     * [IllegalStateException], and only then call [free].
+     * Quiesces the kernel update callback (the Rust gate blocks until any
+     * in-flight `on_update` returns) and drops the registered
+     * [KernelUpdateListener]. Lifecycle invariant: call [clearUpdateListener]
+     * (or this, which also clears it) before [free].
      */
     fun closeUpdates() {
         val current = handle
@@ -66,19 +79,29 @@ class KernelBridge {
     }
 
     /**
-     * Blocking (≤250 ms) drain of the kernel update channel.
+     * Register a push listener for kernel update frames (issue #614 — D8
+     * no-polling; replaces the former blocking `nextUpdate` drain).
      *
-     * Return contract (mirrors PR #644 / V-57 P5 for nmp-gallery):
-     * * `null` — idle tick (`RecvTimeoutError::Timeout` on the Rust side).
-     *   The caller should loop back into `nextUpdate` immediately.
-     * * Non-null [ByteArray] — one FlatBuffers `UpdateFrame` (file_identifier "NMPU").
-     *   Decode with [KernelUpdateFrameDecoder].
-     * * Throws [IllegalStateException] — the update channel has been closed
-     *   (`RecvTimeoutError::Disconnected`; the boxed `Sender` in the Rust
-     *   `Session` was dropped, typically as part of `free()`). The caller MUST
-     *   stop polling — looping after a disconnect spins the CPU on a dead channel.
+     * [listener] receives each FlatBuffers `UpdateFrame` (file_identifier
+     * "NMPU") on the kernel's update-listener thread — a native background
+     * thread, NOT the main thread. Decode with [KernelUpdateFrameDecoder] and
+     * marshal to the main thread for UI state. Replacing an existing listener
+     * is allowed; pass a new one to swap.
+     *
+     * Call [clearUpdateListener] (or [closeUpdates]) on teardown before [free].
+     * D6: a null/dead handle is a no-op.
      */
-    fun nextUpdate(): ByteArray? = if (handle != 0L) nativeNextUpdate(handle) else null
+    fun setUpdateListener(listener: KernelUpdateListener) {
+        if (handle != 0L) nativeSetUpdateListener(handle, listener)
+    }
+
+    /**
+     * Deregister the push listener set by [setUpdateListener]. Safe to call
+     * when none is registered. D6: a null/dead handle is a no-op.
+     */
+    fun clearUpdateListener() {
+        if (handle != 0L) nativeClearUpdateListener(handle)
+    }
 
     /**
      * Demand-driven profile fetch claim: the UI is rendering [pubkey] under
@@ -236,7 +259,7 @@ class KernelBridge {
 
     /**
      * ADR-0048 Stage 2 — blocking timed drain of the outbound NIP-55
-     * capability-request channel (the signer twin of [nextUpdate]):
+     * capability-request channel (the signer-request twin):
      * * `null` — idle tick; loop back in.
      * * non-null — one `ExternalSignerRequest` JSON for
      *   `ExternalSignerCapabilityBridge.handleJson`.
@@ -379,7 +402,8 @@ class KernelBridge {
     private external fun nativeLifecycleForeground(handle: Long)
     private external fun nativeLifecycleBackground(handle: Long)
     private external fun nativeIsAlive(handle: Long): Boolean
-    private external fun nativeNextUpdate(handle: Long): ByteArray?
+    private external fun nativeSetUpdateListener(handle: Long, listener: KernelUpdateListener)
+    private external fun nativeClearUpdateListener(handle: Long)
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
     private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
