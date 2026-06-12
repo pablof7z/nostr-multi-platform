@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
+    "build:wasm": "CC_wasm32_unknown_unknown=clang wasm-pack build --target web ../../crates/nmp-wasm --out-dir ../../web/chirp/public/nmp-wasm",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
