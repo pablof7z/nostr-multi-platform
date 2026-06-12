@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **ADR-0045 Rev 2: single-mechanism cache-serve (owner correction)**. Branch: `adr-0045-rev2-single-mechanism-cache-serve`. Worktree: agent-a229248b7c12f575c. Supersedes §9 staged-by-domain rollout; amends decision to ONE always-on store-serve seam (cold/warm/offline/online, every LogicalInterest); preserves Rev 1 technical findings; updates issue #1086; restates v1 recommendation as "does universal cache-serve gate v1?".
+
 - 2026-06-12 — **Release nmp-v0.4.0** (version bump 0.3.0→0.4.0, CHANGELOG). Branch: `release/nmp-v0.4.0`. PR #1101. Worktree: agent-a86437222f2953564. C-ABI break (4 symbols removed by #1100) + Android dark fix (#1092) warrant minor bump over 0.3.1.
 
 - 2026-06-12 — **RAM-tier eviction for events/profiles/seed_contacts** (closes #1088). Branch: `fix/kernel-ram-tier-bounded-1088`. Worktree: agent-a93463be1bec749f1. New module `kernel/ram_eviction.rs` + 12 TDD tests in `kernel/ram_eviction_tests.rs`. HWMs: events=1000, profiles=2000, seed_contacts=32. Piggybacked on `run_gc_step` (separate call site from #1085).
