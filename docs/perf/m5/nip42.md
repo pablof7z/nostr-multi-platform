@@ -133,6 +133,15 @@ Independent. NIP-77 reconciliation runs over an already-authenticated subscripti
 
 The publish engine has its own `Signer::sign_auth` shim for the `AUTH-REQUIRED` publish-retry classification (`publish/state.rs::AckClass::AuthRequired`). Per the advisor review: that's a different code path. The two paths can coexist; the publish engine handles AUTH-REQUIRED responses to its OWN publishes, while `nmp-nip42` handles relay-initiated AUTH challenges. If a future cleanup wants to consolidate, the natural seam is: publish engine uses `nmp_nip42::run_handshake` for its retry, replacing the inline `sign_auth` call. Out of scope here.
 
+> Correction (2026-06-12): the consolidation landed in the *other* direction —
+> the publish engine never performs AUTH itself (no `sign_auth` call, no
+> `run_handshake` call from the engine). The settled shape is an **availability
+> gate**: a relay answering AUTH-REQUIRED is treated as unavailable for publish
+> until the existing `nmp-nip42` driver authenticates it; on `Authenticated`
+> the engine re-dispatches the pending publish, exactly like
+> `mark_publish_relay_available`. The engine-side `Signer::sign_auth` shim is
+> retired with that change. There is ONE auth code path: `nmp-nip42`.
+
 ---
 
 ## Doctrine alignment
