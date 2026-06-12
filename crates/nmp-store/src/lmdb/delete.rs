@@ -53,22 +53,25 @@ fn by_ids(
 ) -> Result<usize, StoreError> {
     let mut n = 0usize;
     for id in ids {
-        if inner
+        // Load the event to capture its expiry timestamp before deletion.
+        let expiry = match inner
             .lmdb
-            .has_event(txn, &id)
-            .map_err(|e| StoreError::Io(format!("has: {e}")))?
+            .get_event_by_id(txn, &id)
+            .map_err(|e| StoreError::Io(format!("get: {e}")))?
         {
-            let f = Filter::new().id(nostr::EventId::from_slice(&id)
-                .map_err(|e| StoreError::Encoding(format!("id: {e}")))?);
-            inner
-                .lmdb
-                .delete(txn, f)
-                .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-            provenance::delete(inner.provenance, txn, &id)?;
-            gc::lru_delete(inner, txn, &id)?;
-            gc::expiry_index_delete_id(inner, txn, &id)?;
-            n += 1;
-        }
+            None => continue, // Not stored — skip.
+            Some(ev) => ev.into_owned().tags.expiration().map(|ts| ts.as_secs()),
+        };
+        let f = Filter::new().id(nostr::EventId::from_slice(&id)
+            .map_err(|e| StoreError::Encoding(format!("id: {e}")))?);
+        inner
+            .lmdb
+            .delete(txn, f)
+            .map_err(|e| StoreError::Io(format!("del: {e}")))?;
+        provenance::delete(inner.provenance, txn, &id)?;
+        gc::lru_delete(inner, txn, &id)?;
+        gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
+        n += 1;
     }
     Ok(n)
 }
@@ -76,25 +79,28 @@ fn by_ids(
 fn by_author(inner: &Arc<Inner>, txn: &mut heed::RwTxn, pk: EventId) -> Result<usize, StoreError> {
     let pk = PublicKey::from_slice(&pk).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
     let f = Filter::new().author(pk);
-    let ids: Vec<EventId> = inner
+    // Collect (id, expiry) before the bulk delete so index cleanup is O(1) per event.
+    let victims: Vec<(EventId, Option<u64>)> = inner
         .lmdb
         .query(txn, f.clone())
         .map_err(|e| StoreError::Io(format!("q: {e}")))?
         .map(|ev| {
+            let owned = ev.into_owned();
             let mut id = [0u8; 32];
-            id.copy_from_slice(ev.id);
-            id
+            id.copy_from_slice(owned.id.as_bytes());
+            let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+            (id, expiry)
         })
         .collect();
-    let n = ids.len();
+    let n = victims.len();
     inner
         .lmdb
         .delete(txn, f)
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-    for id in ids {
+    for (id, expiry) in victims {
         provenance::delete(inner.provenance, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
-        gc::expiry_index_delete_id(inner, txn, &id)?;
+        gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
     }
     Ok(n)
 }
@@ -107,25 +113,28 @@ fn by_kind_range(
 ) -> Result<usize, StoreError> {
     let kinds: Vec<Kind> = (lo..=hi).map(|k| Kind::from(k as u16)).collect();
     let f = Filter::new().kinds(kinds);
-    let ids: Vec<EventId> = inner
+    // Collect (id, expiry) before the bulk delete so index cleanup is O(1) per event.
+    let victims: Vec<(EventId, Option<u64>)> = inner
         .lmdb
         .query(txn, f.clone())
         .map_err(|e| StoreError::Io(format!("q: {e}")))?
         .map(|ev| {
+            let owned = ev.into_owned();
             let mut id = [0u8; 32];
-            id.copy_from_slice(ev.id);
-            id
+            id.copy_from_slice(owned.id.as_bytes());
+            let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+            (id, expiry)
         })
         .collect();
-    let n = ids.len();
+    let n = victims.len();
     inner
         .lmdb
         .delete(txn, f)
         .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-    for id in ids {
+    for (id, expiry) in victims {
         provenance::delete(inner.provenance, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
-        gc::expiry_index_delete_id(inner, txn, &id)?;
+        gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
     }
     Ok(n)
 }
@@ -154,6 +163,12 @@ fn by_relay_only(
     }
     let n = victims.len();
     for id in victims {
+        // Load expiry before deletion so index cleanup can be O(1).
+        let expiry = inner
+            .lmdb
+            .get_event_by_id(txn, &id)
+            .map_err(|e| StoreError::Io(format!("get: {e}")))?
+            .and_then(|ev| ev.into_owned().tags.expiration().map(|ts| ts.as_secs()));
         let f = Filter::new().id(nostr::EventId::from_slice(&id)
             .map_err(|e| StoreError::Encoding(format!("id: {e}")))?);
         inner
@@ -162,7 +177,7 @@ fn by_relay_only(
             .map_err(|e| StoreError::Io(format!("del: {e}")))?;
         provenance::delete(inner.provenance, txn, &id)?;
         gc::lru_delete(inner, txn, &id)?;
-        gc::expiry_index_delete_id(inner, txn, &id)?;
+        gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
     }
     Ok(n)
 }

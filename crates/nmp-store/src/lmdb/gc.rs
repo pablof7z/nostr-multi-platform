@@ -123,40 +123,31 @@ pub(super) fn expiry_index_put(
         .map_err(|e| StoreError::Io(format!("expiry_index put: {e}")))
 }
 
-/// Remove the expiry-index entry for `id` within an existing write txn.
+/// Remove the expiry-index entry for `id` within an existing write txn using
+/// the known `expiry_ts`.
 ///
-/// The index is keyed by `expiry_ts || id`, and a caller on a delete path does
-/// not always know the expiry timestamp, so this scans the index for the entry
-/// whose trailing 32 bytes match `id` and deletes it.  This is O(index size) but
-/// only ever runs on explicit / bulk delete paths (admin purge, kind:5 e-tag
-/// deletes) — never on the GC reaper hot path, which already holds the key and
-/// deletes it directly.  Idempotent: a no-op if `id` is not indexed (the common
-/// case — most events carry no expiration tag and have no index entry).
-pub(super) fn expiry_index_delete_id(
+/// O(1): constructs the exact 40-byte key and issues a single LMDB delete.
+/// Returns `Ok(())` immediately if `expiry_ts` is `None` (the event carries no
+/// expiration tag and therefore has no index entry).
+///
+/// Replaces the old `expiry_index_delete_id` which did an O(index) linear scan
+/// because callers didn't always know the expiry timestamp.  All delete paths
+/// now retrieve the expiry from the event before deleting it, enabling O(1)
+/// cleanup.
+pub(super) fn expiry_index_delete_exact(
     inner: &Arc<Inner>,
     txn: &mut heed::RwTxn,
+    expiry_ts: Option<u64>,
     id: &EventId,
 ) -> Result<(), StoreError> {
-    let mut found_key: Option<[u8; 40]> = None;
-    for entry in inner
+    let Some(exp) = expiry_ts else {
+        return Ok(()); // No expiration tag → no index entry to remove.
+    };
+    let key = expiry_index_key(exp, id);
+    inner
         .expiry_index
-        .iter(txn)
-        .map_err(|e| StoreError::Io(format!("expiry_index iter: {e}")))?
-    {
-        let (k, _) = entry.map_err(|e| StoreError::Io(format!("expiry_index entry: {e}")))?;
-        if k.len() == 40 && &k[8..] == id.as_slice() {
-            let mut key = [0u8; 40];
-            key.copy_from_slice(k);
-            found_key = Some(key);
-            break;
-        }
-    }
-    if let Some(key) = found_key {
-        inner
-            .expiry_index
-            .delete(txn, &key)
-            .map_err(|e| StoreError::Io(format!("expiry_index delete: {e}")))?;
-    }
+        .delete(txn, &key)
+        .map_err(|e| StoreError::Io(format!("expiry_index delete_exact: {e}")))?;
     Ok(())
 }
 

@@ -119,7 +119,9 @@ pub(super) fn insert(
     }
 
     // 7. Replaceable / addressable — pre-query existing for outcome typing.
-    let pre_existing_id: Option<EventId> = pre_query_existing(inner, &txn, &event)?;
+    // Returns (replaced_id, replaced_expiry) so the replace path can clean up
+    // the expiry index in O(1) without a second event load.
+    let pre_existing: Option<(EventId, Option<u64>)> = pre_query_existing(inner, &txn, &event)?;
 
     // 8. Convert to nostr::Event for the fork.
     let nostr_ev = conv::raw_to_nostr(&event)?;
@@ -148,12 +150,12 @@ pub(super) fn insert(
             if let Some(exp) = event.expiration() {
                 gc::expiry_index_put(inner, &mut txn, exp, &id_bytes)?;
             }
-            if let Some(replaced_id) = pre_existing_id {
+            if let Some((replaced_id, replaced_expiry)) = pre_existing {
                 // Replaced — also drop the replaced event's provenance + LRU entry.
                 provenance::delete(inner.provenance, &mut txn, &replaced_id)?;
                 gc::lru_delete(inner, &mut txn, &replaced_id)?;
-                // V-118: drop any expiry-index entry for the superseded event.
-                gc::expiry_index_delete_id(inner, &mut txn, &replaced_id)?;
+                // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
+                gc::expiry_index_delete_exact(inner, &mut txn, replaced_expiry, &replaced_id)?;
                 InsertOutcome::Replaced {
                     new_id: id_bytes,
                     replaced_id,
@@ -184,7 +186,7 @@ pub(super) fn insert(
             // `current_id` is whatever pre_query found.
             InsertOutcome::Superseded {
                 id: id_bytes,
-                current_id: pre_existing_id.unwrap_or(id_bytes),
+                current_id: pre_existing.map(|(id, _)| id).unwrap_or(id_bytes),
             }
         }
         SaveEventStatus::Rejected(RejectedReason::Deleted) => {
@@ -224,14 +226,16 @@ pub(super) fn insert(
     Ok(outcome)
 }
 
-/// Look up the existing event id for a replaceable / addressable so the
-/// outcome can carry `replaced_id` / `current_id`. Returns `None` for
-/// non-replaceable kinds or when nothing matches.
+/// Look up the existing event id (and expiry timestamp) for a replaceable /
+/// addressable so the outcome can carry `replaced_id` / `current_id` and the
+/// replace path can clean up the expiry index in O(1).
+///
+/// Returns `None` for non-replaceable kinds or when nothing matches.
 fn pre_query_existing(
     inner: &Arc<Inner>,
     txn: &heed::RwTxn,
     event: &RawEvent,
-) -> Result<Option<EventId>, StoreError> {
+) -> Result<Option<(EventId, Option<u64>)>, StoreError> {
     use nostr::prelude::*;
     // pre_query_existing is only called after is_structurally_valid() passes,
     // so pubkey_bytes() is guaranteed Some.
@@ -250,9 +254,11 @@ fn pre_query_existing(
             .map_err(|e| StoreError::Io(format!("find_replaceable: {e}")))?
         {
             Some(ev) => {
+                let owned = ev.into_owned();
                 let mut id = [0u8; 32];
-                id.copy_from_slice(ev.id);
-                Ok(Some(id))
+                id.copy_from_slice(owned.id.as_bytes());
+                let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+                Ok(Some((id, expiry)))
             }
             None => Ok(None),
         }
@@ -277,9 +283,11 @@ fn pre_query_existing(
             .map_err(|e| StoreError::Io(format!("find_addressable: {e}")))?
         {
             Some(ev) => {
+                let owned = ev.into_owned();
                 let mut id = [0u8; 32];
-                id.copy_from_slice(ev.id);
-                Ok(Some(id))
+                id.copy_from_slice(owned.id.as_bytes());
+                let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+                Ok(Some((id, expiry)))
             }
             None => Ok(None),
         }
@@ -317,14 +325,19 @@ fn handle_kind5(
         let Some(target_id_bytes) = RawEvent::hex_to_bytes32_owned(&target_hex) else {
             continue;
         };
-        // Author check: load target via fork; skip if author mismatch.
-        let target_is_self = match inner
+        // Author check: load target via fork; capture expiry for O(1) index cleanup.
+        let (target_is_self, target_stored, target_expiry) = match inner
             .lmdb
             .get_event_by_id(txn, &target_id_bytes)
             .map_err(|e| StoreError::Io(format!("k5 get: {e}")))?
         {
-            Some(target) => target.pubkey == kind5_pubkey.as_slice(),
-            None => true, // No target stored — record tombstone for future arrivals.
+            Some(target) => {
+                let owned = target.into_owned();
+                let is_self = owned.pubkey.as_bytes().as_slice() == kind5_pubkey.as_slice();
+                let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+                (is_self, true, expiry)
+            }
+            None => (true, false, None), // Not stored — tombstone for future arrivals.
         };
         if !target_is_self {
             continue;
@@ -346,13 +359,8 @@ fn handle_kind5(
         let row = tombstones::kind5_row(target_id_bytes, kind5_id, kind5_pubkey, kind5_at, source);
         tombstones::merge_per_id(inner.tombstones, txn, &target_id_bytes, row)?;
 
-        // Remove the target's primary + indexes if it exists.
-        if inner
-            .lmdb
-            .get_event_by_id(txn, &target_id_bytes)
-            .map_err(|e| StoreError::Io(format!("k5 get2: {e}")))?
-            .is_some()
-        {
+        // Remove the target's primary + indexes if it was present.
+        if target_stored {
             // The fork doesn't expose a single-id deletion; emulate by
             // delete-by-filter on the id.
             let filter = nostr::Filter::new().id(EventId::from_slice(&target_id_bytes)
@@ -364,8 +372,8 @@ fn handle_kind5(
             // Also drop NMP-side provenance and LRU entry.
             provenance::delete(inner.provenance, txn, &target_id_bytes)?;
             gc::lru_delete(inner, txn, &target_id_bytes)?;
-            // V-118: drop any expiry-index entry for the deleted target.
-            gc::expiry_index_delete_id(inner, txn, &target_id_bytes)?;
+            // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
+            gc::expiry_index_delete_exact(inner, txn, target_expiry, &target_id_bytes)?;
         }
     }
 
