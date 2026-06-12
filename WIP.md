@@ -21,10 +21,6 @@ the spec itself; this file no longer mirrors it.
 
 - PR **#1014** — nmp-conformance scanner skill + catalog (v0 seed). **Draft** (author-gated);
   all checks green after the 2026-06-11 re-run cleared the v58 flake.
-- branch **`worktree-agent-a052ce8a59c21cfc6`** (2026-06-12) — fix(nmp-core,nmp-nip02):
-  local publish kind:3 now feeds the `KernelEventObserver` fan-out (read-your-writes for
-  follows/unfollows). Worktree:
-  `.claude/worktrees/agent-a052ce8a59c21cfc6`.
 
 ## Stale-entry purge log
 
