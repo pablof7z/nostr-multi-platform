@@ -37,8 +37,8 @@ class ProfileCard : Table() {
                 null
             }
         }
-    val pubkeyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun pubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val pubkeyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun pubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val hasDisplayName : Boolean
         get() {
             val o = __offset(8)
@@ -53,8 +53,8 @@ class ProfileCard : Table() {
                 null
             }
         }
-    val displayNameAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val displayNameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun displayNameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     val hasPictureUrl : Boolean
         get() {
             val o = __offset(12)
@@ -69,8 +69,8 @@ class ProfileCard : Table() {
                 null
             }
         }
-    val pictureUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(14, 1)
-    fun pictureUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 14, 1)
+    val pictureUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
+    fun pictureUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
     val nip05 : String?
         get() {
             val o = __offset(16)
@@ -80,8 +80,8 @@ class ProfileCard : Table() {
                 null
             }
         }
-    val nip05AsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(16, 1)
-    fun nip05InByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 16, 1)
+    val nip05AsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
+    fun nip05InByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     val about : String?
         get() {
             val o = __offset(18)
@@ -91,8 +91,8 @@ class ProfileCard : Table() {
                 null
             }
         }
-    val aboutAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(18, 1)
-    fun aboutInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 18, 1)
+    val aboutAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
+    fun aboutInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
     val hasProfile : Boolean
         get() {
             val o = __offset(20)
@@ -112,10 +112,10 @@ class ProfileCard : Table() {
                 null
             }
         }
-    val lnurlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(24, 1)
-    fun lnurlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 24, 1)
+    val lnurlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(24, 1)
+    fun lnurlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 24, 1)
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
+        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsProfileCard(_bb: ByteBuffer): ProfileCard = getRootAsProfileCard(_bb, ProfileCard())
         fun getRootAsProfileCard(_bb: ByteBuffer, obj: ProfileCard): ProfileCard {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
