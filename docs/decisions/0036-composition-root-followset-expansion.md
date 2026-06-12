@@ -1,5 +1,9 @@
 # ADR-0036 - Composition-root expansion of the follow-set timeline
 
+> Note (ADR-0046, 2026-06-12): the `nmp-app-template` crate named below was
+> renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
+> as `nmp-defaults` / `nmp_defaults`.
+
 Status: accepted
 
 Date: 2026-05-28

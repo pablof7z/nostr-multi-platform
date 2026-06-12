@@ -67,8 +67,8 @@ mod testing;
 
 // ── Native re-export surface ──────────────────────────────────────────────
 // Hoist every per-submodule FFI entry-point into the `ffi::` namespace so
-// any native (non-WASM) Rust-side caller — third-party app crates
-// (`nmp-app-fixture`, `nmp-app-*`), out-of-crate integration tests, the
+// any native (non-WASM) Rust-side caller — composition-root crates
+// (`nmp-defaults`, `nmp-app-*`), out-of-crate integration tests, the
 // Android JNI shim — can name them through the rlib without an `extern "C"`
 // block. The symbols themselves stay `#[no_mangle] extern "C"` in their
 // owning submodules, so the Swift/C ABI is unaffected; the `pub use` only
@@ -527,7 +527,7 @@ pub struct NmpApp {
     routing_substrate: RoutingSubstrateSlot,
     /// Spec §271 (2026-05-25) — per-app substrate-publish-resolver
     /// factory slot. The per-app crate (today:
-    /// `nmp_app_template::register_defaults`) writes a closure here via
+    /// `nmp_defaults::register_defaults`) writes a closure here via
     /// [`Self::set_publish_resolver_factory`]; the actor reads it after
     /// kernel construction (and again after `Reset`) and invokes
     /// [`crate::kernel::Kernel::set_publish_resolver`] with the produced
@@ -683,7 +683,7 @@ pub struct NmpApp {
     bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
     /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the
     /// `nmp_app_encode_profile` NIP-19 identity encoder. The per-app crate
-    /// (today `nmp-app-template`) writes the SAME `Arc<InMemoryMailboxCache>`
+    /// (today `nmp-defaults`) writes the SAME `Arc<InMemoryMailboxCache>`
     /// here via [`Self::set_mailbox_cache_reader`] that it hands the routing
     /// factory and the `Kind10002Parser`. That instance identity is the whole
     /// ballgame: the encoder reads kind:10002 relay hints out of the very
@@ -816,7 +816,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_configured_relays = Arc::clone(&configured_relays);
     // V-65 — host-supplied bootstrap relay for client-initiated NIP-46
     // `nostrconnect://` handshakes. Default `None`; the composition root
-    // (e.g. `nmp_app_template::register_defaults`) writes a sane default via
+    // (e.g. `nmp_defaults::register_defaults`) writes a sane default via
     // `NmpApp::set_nostrconnect_bootstrap_relay` before `nmp_app_start`. Unlike
     // the relay-edit-rows slot, this is NOT shared with the actor thread
     // (the read path is FFI-synchronous on the calling thread).
@@ -1729,7 +1729,7 @@ impl NmpApp {
     /// `nmp-core::publish::nip65` into `nmp-router` (Layer 2). The kernel
     /// constructs `PublishEngine` with the in-crate `NoopOutboxResolver`
     /// default (fail-closed); production composition
-    /// (`nmp-app-template::register_defaults`) installs the
+    /// (`nmp-defaults::register_defaults`) installs the
     /// router-side resolver through this factory slot. The actor reads
     /// the slot right after kernel construction (and on `Reset`) and
     /// invokes [`crate::kernel::Kernel::set_publish_resolver`] with the

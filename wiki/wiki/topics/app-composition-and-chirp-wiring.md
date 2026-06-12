@@ -21,7 +21,7 @@ discover these pieces dynamically or recreate their policy.
 
 ## Generic Defaults
 
-`nmp-app-template::register_defaults` is the generic Nostr-app wiring point.
+`nmp-defaults::register_defaults` is the generic Nostr-app wiring point.
 It installs common action modules, kind parsers, routing substrate, publish
 resolver, indexer-republish policy, coverage hooks, and runtime controllers.
 

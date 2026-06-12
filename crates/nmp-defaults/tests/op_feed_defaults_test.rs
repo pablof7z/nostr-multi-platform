@@ -1,4 +1,4 @@
-//! Integration test for [`nmp_app_template::register_op_feed_defaults`]
+//! Integration test for [`nmp_defaults::register_op_feed_defaults`]
 //! (V-80 rung 6, Stage 5 — the OP-centric home-feed composition root).
 //!
 //! Spins up a real [`NmpApp`] via `nmp_app_new`, wires the OP feed with
@@ -133,7 +133,7 @@ fn registers_op_feed_engine_under_home_key() {
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     set_app_active(app, Some(ALICE));
     let _defaults =
-        nmp_app_template::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string());
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string());
 
     // The engine's `RootFeedSnapshot` shape is `{ cards, page, metrics }`.
     // `ModularTimelineProjection` would emit a `ChirpTimelineSnapshot`
@@ -173,7 +173,7 @@ fn followed_reply_surfaces_root_with_attribution() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_app_template::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
 
     // ALICE (a follow, via self-inclusion) replies to BOB's not-yet-seen OP.
     let reply = reply_event(REPLY_ID, ALICE, 200, OP_ID);
@@ -308,7 +308,7 @@ fn wiring_does_not_register_duplicate_follow_feed_interests() {
     // SAFETY: valid non-null pointer.
     set_app_active(app, Some(ALICE));
     let engine =
-        nmp_app_template::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
+        nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string()).engine;
 
     let snapshot = engine.snapshot(&nmp_feed::FeedRequest::default());
     assert!(

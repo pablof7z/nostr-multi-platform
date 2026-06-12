@@ -214,7 +214,7 @@ For schema-validated payloads, `NmpApp::register_typed_snapshot_projection`
 rides a **separate sidecar**: its output lands in the frame's
 `typed_projections`, read on the host via `snapshot.typedProjections`
 (`KernelUpdateFrameDecoder.swift:74`), **not** in `projections[key]`. The
-production exemplar is the op-feed (`crates/nmp-app-template/src/op_feed_defaults.rs:286`,
+production exemplar is the op-feed (`crates/nmp-defaults/src/op_feed_defaults.rs:286`,
 `OP_FEED_SNAPSHOT_KEY`), decoded by `TypedHomeFeedDecoder` (ADR-0037 / ADR-0038).
 Reach for this only when you need typed FlatBuffers across the boundary; for the
 common "expose a named JSON slice and read it in `apply()`" case, use the generic

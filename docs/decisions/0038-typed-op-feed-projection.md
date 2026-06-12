@@ -1,5 +1,9 @@
 # ADR-0038 — Typed FlatBuffers sidecar for the OP-centric home feed
 
+> Note (ADR-0046, 2026-06-12): the `nmp-app-template` crate named below was
+> renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
+> as `nmp-defaults` / `nmp_defaults`.
+
 - **Status:** Proposed (2026-05-29)
 - **Relates to:** ADR-0037 (typed FlatBuffers runtime projections — the
   sidecar transport, the `(schema_id, schema_version, file_identifier)`

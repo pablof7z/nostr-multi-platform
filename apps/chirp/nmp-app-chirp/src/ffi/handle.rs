@@ -16,7 +16,7 @@ use nmp_nip01::OpFeedEngine;
 /// template registration through `NmpApp`'s Rust-side identity observer.
 ///
 /// The engine and follow set are registered with the kernel by
-/// [`nmp_app_template::register_op_feed_defaults`], which plugs their observers
+/// [`nmp_defaults::register_op_feed_defaults`], which plugs their observers
 /// into the kernel's standard `KernelEventObserver` registry (not a single
 /// swappable slot). Those registrations live for the life of the `NmpApp`:
 /// [`super::nmp_app_chirp_unregister`] no longer holds a single `observer_id`

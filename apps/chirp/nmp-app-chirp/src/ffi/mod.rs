@@ -3,7 +3,7 @@
 //! `extern "C"` symbols Swift links against:
 //!
 //! - [`nmp_app_chirp_register`] — wire the OP-centric home feed (V-80 rung 7)
-//!   via `nmp_app_template::register_op_feed_defaults`: the `nmp-nip01` OP-feed
+//!   via `nmp_defaults::register_op_feed_defaults`: the `nmp-nip01` OP-feed
 //!   engine registered as both a kernel event observer (ingest) and a
 //!   `"nmp.feed.home"` feed controller (output), plus the `ActiveFollowSet`
 //!   producer. Returns an opaque handle (boxed engine + follow set) for later

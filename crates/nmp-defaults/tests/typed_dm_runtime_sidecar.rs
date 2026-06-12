@@ -1,6 +1,6 @@
 //! NIP-17 DM-runtime typed-projection sidecar proof (Wave A producer-typing).
 //!
-//! Proves `nmp_app_template::runtimes::register_dm_runtime` emits typed
+//! Proves `nmp_defaults::runtimes::register_dm_runtime` emits typed
 //! FlatBuffers sidecars (ADR-0037) for BOTH DM keys:
 //!
 //! - `"nmp.nip17.dm_inbox"` (`NDMI`) — `nmp_nip17::DmInboxSnapshot`.
@@ -87,7 +87,7 @@ fn dm_inbox_typed_sidecar_surfaces() {
     let app = boot();
 
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
-    nmp_app_template::runtimes::register_dm_runtime(unsafe { &*app });
+    nmp_defaults::runtimes::register_dm_runtime(unsafe { &*app });
 
     let entry = wait_for_typed("nmp.nip17.dm_inbox", |t| {
         decode_dm_inbox_snapshot(&t.payload).is_ok()
@@ -121,7 +121,7 @@ fn dm_relay_list_typed_sidecar_surfaces() {
     let app = boot();
 
     // SAFETY: valid pointer from `nmp_app_new`, live for this block.
-    nmp_app_template::runtimes::register_dm_runtime(unsafe { &*app });
+    nmp_defaults::runtimes::register_dm_runtime(unsafe { &*app });
 
     let entry = wait_for_typed("nmp.nip17.dm_relay_list", |t| {
         decode_dm_relay_list(&t.payload).is_ok()

@@ -1,5 +1,9 @@
 # ADR-0039 — The push projection seam is canonical; reject generic pull accessors
 
+> Note (ADR-0046, 2026-06-12): the `nmp-app-template` crate named below was
+> renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
+> as `nmp-defaults` / `nmp_defaults`.
+
 - **Status:** Accepted (2026-05-31)
 - **Relates to:** ADR-0025 (Marmot bespoke FFI cluster — the pull anti-pattern this
   ADR finishes retiring), ADR-0037 (typed FlatBuffers sidecar — a hot-path

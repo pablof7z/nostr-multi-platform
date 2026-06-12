@@ -1,6 +1,6 @@
 ---
 title: "App Composition and Chirp Wiring Sources 2026-05-28"
-summary: "Source notes for nmp-app-template defaults, Chirp per-app registration, and OP-feed composition boundaries."
+summary: "Source notes for nmp-defaults defaults, Chirp per-app registration, and OP-feed composition boundaries."
 tags: [repo, app-composition, chirp, ffi]
 source_type: repo-snapshot
 repo: /Users/pablofernandez/Work/nostr-multi-platform
@@ -13,8 +13,8 @@ updated: 2026-05-28
 
 ## Primary Source Files
 
-- `crates/nmp-app-template/src/lib.rs`
-- `crates/nmp-app-template/src/op_feed_defaults.rs`
+- `crates/nmp-defaults/src/lib.rs`
+- `crates/nmp-defaults/src/op_feed_defaults.rs`
 - `apps/chirp/nmp-app-chirp/src/lib.rs`
 - `apps/chirp/nmp-app-chirp/src/ffi/register.rs`
 - `apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs`
@@ -23,7 +23,7 @@ updated: 2026-05-28
 
 ## `register_defaults`
 
-`nmp-app-template` is the canonical generic Nostr composition root. Its
+`nmp-defaults` is the canonical generic Nostr composition root. Its
 `register_defaults` function wires common action modules, ingest parsers,
 routing substrate, publish resolver, indexer-republish policy, coverage hook,
 and runtime controllers onto an `AppHost`.
@@ -46,7 +46,7 @@ The publish resolver is likewise injected through a factory. Production uses
 
 ## Chirp Registration
 
-`nmp_app_chirp_register` calls `nmp_app_template::register_defaults`, then
+`nmp_app_chirp_register` calls `nmp_defaults::register_defaults`, then
 adds Chirp-specific registrations: NIP-29 actions, visible note relation
 actions, optional wallet runtime, zap aggregates, and the Chirp home timeline
 projection.

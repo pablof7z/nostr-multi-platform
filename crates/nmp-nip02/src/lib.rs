@@ -23,7 +23,7 @@
 //! follow-set *producer*. It exposes the active account's follows as a live
 //! closure predicate (`Arc<dyn Fn(&str) -> bool>`) the generic `RootIndexedFeed`
 //! engine in `nmp-feed` consumes, with follow → planner-interest expansion done
-//! at the composition root (`nmp-app-template`) — no `FollowSetLookup` trait, no
+//! at the composition root (`nmp-defaults`) — no `FollowSetLookup` trait, no
 //! planner `SocialTimeline` seam. See
 //! [`active_follow_set`] and ADR-0036.
 //!

@@ -141,7 +141,7 @@ impl PublishEngine {
     ///
     /// Spec §271 (2026-05-25): the kernel constructs `PublishEngine` with
     /// the in-crate `NoopOutboxResolver` default, then production
-    /// composition (`nmp-app-template::register_defaults` →
+    /// composition (`nmp-defaults::register_defaults` →
     /// `Kernel::set_publish_resolver`) swaps in
     /// `nmp_router::Nip65OutboxResolver`. MUST be called BEFORE any publish
     /// reaches `start_publish` — swapping mid-publish would leave the

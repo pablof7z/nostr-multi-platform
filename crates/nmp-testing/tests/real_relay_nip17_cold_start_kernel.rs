@@ -42,7 +42,7 @@
 //!    - Alice's gift-wrap: a kind:14 rumor sealed into a kind:1059 addressed
 //!      to Bob (`#p`).
 //! 2. **Bob cold-starts a real `NmpApp`.** `nmp_app_new` →
-//!    `nmp_app_template::register_defaults` (wires the kind:10050
+//!    `nmp_defaults::register_defaults` (wires the kind:10050
 //!    `Kind10050Parser` + `DmRelayCache`, the `DmInboxProjection`, and the
 //!    `DmRuntimeController` reconciler — the exact composition Chirp ships) →
 //!    `nmp_app_start` → `nmp_app_add_relay(relay, "both,indexer")` →
@@ -400,7 +400,7 @@ fn run_scenario() -> Result<bool, String> {
     //
     // SAFETY: `app` is a live pointer from `nmp_app_new`; the exclusive borrow
     // is released before any other access.
-    nmp_app_template::register_defaults(unsafe { &mut *app });
+    nmp_defaults::register_defaults(unsafe { &mut *app });
 
     // Start the actor + real relay-worker pool, then add the relay as
     // read+write+indexer:

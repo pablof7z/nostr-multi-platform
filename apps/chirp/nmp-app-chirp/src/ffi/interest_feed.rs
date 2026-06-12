@@ -98,7 +98,7 @@ fn thread_feed_key(event_id_hex: &str) -> String {
 /// [`encode_op_feed_snapshot`] with NO new `.fbs` schema. The sidecar is keyed
 /// by the SAME dynamic key (`nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`)
 /// under the op-feed schema id (`nmp.nip01.opfeed`), exactly as
-/// [`nmp_app_template::register_op_feed_defaults`] does for `nmp.feed.home`. A
+/// [`nmp_defaults::register_op_feed_defaults`] does for `nmp.feed.home`. A
 /// host with a `NOFS` decoder prefers this typed payload; an un-updated host
 /// falls back to the generic `Value` subtree (ADR-0037 Commitment 4). Additive.
 ///

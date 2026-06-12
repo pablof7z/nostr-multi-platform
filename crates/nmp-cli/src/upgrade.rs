@@ -39,8 +39,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
     println!("upgraded {} to NMP {version}", manifest.display());
     println!("next:");
-    println!("  nmp gen modules");
-    println!("  nmp gen modules --check");
     println!("  nmp doctor --manifest {}", manifest.display());
     Ok(())
 }
@@ -64,8 +62,13 @@ fn rewrite_app_module_dependencies(
         for line in body.lines() {
             if let Some((name, _rest)) = line.split_once('=') {
                 let dep = name.trim();
+                // Repoint every `nmp-*` dependency at the new release tag.
+                // Consumers pin NMP by git rev (ADR-0046 /
+                // `docs/architecture/external-consumers.md`), so the rewrite
+                // emits a git-tag pin — the same shape `nmp init --nmp-version`
+                // produces — rather than a bare crates.io version.
                 if dep == "nmp-core" || dep.starts_with("nmp-") {
-                    out.push_str(&format!("{dep} = \"{version}\"\n"));
+                    out.push_str(&format!("{dep} = {}\n", git_tag_dependency(dep, version)));
                     changed = true;
                     continue;
                 }
@@ -78,6 +81,16 @@ fn rewrite_app_module_dependencies(
         }
     }
     Ok(())
+}
+
+/// The canonical upstream git remote for NMP git-rev pins. Kept in sync with
+/// `init::NMP_GIT_REMOTE`.
+const NMP_GIT_REMOTE: &str = "https://github.com/pablof7z/nostr-multi-platform";
+
+/// Render the `Cargo.toml` value for an `nmp-*` git-tag dependency at
+/// `v<version>`. Matches the shape `nmp init --nmp-version` emits.
+fn git_tag_dependency(krate: &str, version: &str) -> String {
+    format!("{{ git = \"{NMP_GIT_REMOTE}\", tag = \"v{version}\", package = \"{krate}\" }}")
 }
 
 fn validate_version(version: &str) -> Result<(), String> {

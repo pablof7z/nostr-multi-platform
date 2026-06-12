@@ -5,18 +5,35 @@
 //! ```text
 //! <root>/
 //!   Cargo.toml                 # workspace: members = ["crates/<name>-core"]
-//!   nmp.toml                   # app manifest consumed by `nmp gen modules`
+//!   nmp.toml                   # app manifest (NMP dependency policy; read by
+//!                              # `nmp doctor` / `nmp upgrade`)
 //!   README.md                  # next steps
 //!   crates/<name>-core/
-//!     Cargo.toml               # depends on nmp-core (absolute path) + serde
-//!     src/lib.rs               # one Domain/View/Action module + descriptors
-//!     examples/shell.rs        # minimal headless shell stub
+//!     Cargo.toml               # depends on nmp-defaults + nmp-ffi + nmp-core
+//!     src/lib.rs               # thin composition shell → register_defaults
+//!     examples/shell.rs        # NmpAppBuilder → register_defaults → start
 //! ```
 //!
-//! The `<name>-core` crate compiles standalone (`cargo check`) because its
-//! `nmp-core` dependency defaults to the absolute location of this checkout
-//! at init time. `--nmp-version` switches the scaffold to versioned NMP
-//! dependencies for release-consumer apps.
+//! # ADR-0046 — composition is a library, not a generator
+//!
+//! The scaffolded `<name>-core` crate is a **thin composition shell**: it
+//! depends on the composition-root library [`nmp-defaults`] and calls
+//! `NmpAppBuilder` + `register_defaults` to inherit the canonical NMP wiring
+//! (NIP-01/02/17/57/65 action modules, the routing substrate, the DM-inbox +
+//! zap-receipts + WOT runtimes, the long-form typed projection, …). It does
+//! NOT generate an FFI crate — a generated FfiApp never called
+//! `register_defaults` and was a non-functional Nostr app. This is the
+//! Bevy-`DefaultPlugins` / Spring-Boot-starter pattern every real NMP consumer
+//! already uses (Chirp, the external podcast-player).
+//!
+//! # Dependency policy
+//!
+//! * Default / `--nmp-path DIR` — local path dependencies on the NMP checkout,
+//!   so the scaffold `cargo check`s against the in-tree crates.
+//! * `--nmp-version VERSION` — git-rev pins on
+//!   `github.com/pablof7z/nostr-multi-platform` at tag `vVERSION`, matching the
+//!   external-consumer contract (consumers pin NMP by git rev; see
+//!   `docs/architecture/external-consumers.md`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -27,6 +44,11 @@ const LIB_TMPL: &str = include_str!("../templates/lib.rs.tmpl");
 const NMP_TOML_TMPL: &str = include_str!("../templates/nmp.toml.tmpl");
 const SHELL_TMPL: &str = include_str!("../templates/shell.rs.tmpl");
 const README_TMPL: &str = include_str!("../templates/README.md.tmpl");
+
+/// The canonical upstream git remote for git-rev pins (`--nmp-version`).
+/// Matches the external-consumer contract in
+/// `docs/architecture/external-consumers.md`.
+const NMP_GIT_REMOTE: &str = "https://github.com/pablof7z/nostr-multi-platform";
 
 pub fn run(args: &[String]) -> Result<(), String> {
     let mut name: Option<String> = None;
@@ -62,9 +84,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
                     .get(index)
                     .map(PathBuf::from)
                     .ok_or_else(|| "--nmp-path requires a directory".to_string())?;
-                let path = fs::canonicalize(&raw).map_err(|e| {
-                    format!("cannot resolve --nmp-path {}: {e}", raw.display())
-                })?;
+                let path = fs::canonicalize(&raw)
+                    .map_err(|e| format!("cannot resolve --nmp-path {}: {e}", raw.display()))?;
                 if nmp_dependency.replace(NmpDependency::Path(path)).is_some() {
                     return Err("pass only one of --nmp-version or --nmp-path".to_string());
                 }
@@ -98,7 +119,9 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let crate_ident = pkg.replace('-', "_");
     let display = title_case(&name);
     let nmp_dependency = nmp_dependency.unwrap_or(NmpDependency::Path(nmp_checkout_path()?));
-    let nmp_core_dep = nmp_core_dependency(&nmp_dependency);
+    let nmp_core_dep = nmp_crate_dependency(&nmp_dependency, "nmp-core");
+    let nmp_ffi_dep = nmp_crate_dependency(&nmp_dependency, "nmp-ffi");
+    let nmp_defaults_dep = nmp_crate_dependency(&nmp_dependency, "nmp-defaults");
     let nmp_manifest = nmp_manifest_block(&nmp_dependency);
 
     let render = |tmpl: &str| -> String {
@@ -107,6 +130,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
             .replace("{{crate_ident}}", &crate_ident)
             .replace("{{display}}", &display)
             .replace("{{nmp_core_dep}}", &nmp_core_dep)
+            .replace("{{nmp_ffi_dep}}", &nmp_ffi_dep)
+            .replace("{{nmp_defaults_dep}}", &nmp_defaults_dep)
             .replace("{{nmp_manifest}}", &nmp_manifest)
     };
 
@@ -124,8 +149,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
     println!("scaffolded `{name}` at {}", root.display());
     println!("next:");
     println!("  cd {}", root.display());
-    println!("  cargo check                 # the {pkg} skeleton compiles as-is");
-    println!("  nmp gen modules             # emit apps/{name}/nmp-app-{name}");
+    println!("  cargo check                          # the {pkg} shell compiles as-is");
+    println!("  cargo run --example shell -p {pkg}   # build → register_defaults → start");
     Ok(())
 }
 
@@ -181,12 +206,20 @@ fn nmp_checkout_path() -> Result<PathBuf, String> {
     })
 }
 
-fn nmp_core_dependency(dependency: &NmpDependency) -> String {
+/// Render the `Cargo.toml` dependency spec for an in-tree NMP crate
+/// (`crates/<crate>`), honoring the chosen dependency policy.
+///
+/// * `Version` → git-rev pin on the upstream remote at tag `v<version>`
+///   (the external-consumer contract: consumers pin NMP by git rev).
+/// * `Path` → local path dependency into the NMP checkout.
+fn nmp_crate_dependency(dependency: &NmpDependency, krate: &str) -> String {
     match dependency {
-        NmpDependency::Version(version) => format!("\"{version}\""),
+        NmpDependency::Version(version) => {
+            format!("{{ git = \"{NMP_GIT_REMOTE}\", tag = \"v{version}\", package = \"{krate}\" }}")
+        }
         NmpDependency::Path(path) => format!(
             "{{ path = \"{}\" }}",
-            path.join("crates/nmp-core").to_string_lossy()
+            path.join("crates").join(krate).to_string_lossy()
         ),
     }
 }

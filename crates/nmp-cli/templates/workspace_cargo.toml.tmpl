@@ -1,9 +1,9 @@
 # Scaffolded by `nmp init {{name}}`.
 #
-# The generated FFI crate (apps/{{name}}/nmp-app-{{name}}, produced by
-# `nmp gen modules`) is intentionally NOT a member here until you are ready
-# to link a native shell. See README.md for the release vs. local NMP
-# dependency modes.
+# The `{{pkg}}` crate is a thin composition shell over the NMP framework
+# (ADR-0046 — composition is a library, not a generator): it depends on
+# `nmp-defaults` and calls `register_defaults`. See README.md for the release
+# (git-rev pin) vs. local-checkout NMP dependency modes.
 [workspace]
 members = ["crates/{{pkg}}"]
 resolver = "2"

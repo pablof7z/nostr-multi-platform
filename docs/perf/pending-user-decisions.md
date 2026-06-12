@@ -1069,7 +1069,7 @@ is done, PRed, verified, merged, no hacks, no debt"). Decisions made without blo
      on the Xcode-26-beta `UIUtilities`/`SwiftUI` module workaround — `/tmp/LocalFrameworks/
      UIUtilities.framework` has only the linker `.tbd` (no `Headers/UIDefines.h`), and the
      setup doc the project.yml points to (`docs/dev/xcode26-workarounds.md`) is **absent**.
-   - Behavior IS verified through the real production path by the test suite: `nmp-app-template`
+   - Behavior IS verified through the real production path by the test suite: `nmp-defaults`
      `op_feed_defaults_test` + `op_feed_repost_hydration_test` (composition→engine→snapshot),
      chirp-tui snapshot/render-parity, B1 golden-wire, B2 typed==generic parity, B4 Kotlin
      golden (5/5). A developer with a configured GUI/Xcode env can do the literal pixel
@@ -1132,7 +1132,7 @@ HomeFeedView reads `nmp.feed.home`. **No new FlatBuffers schema, no new codegen.
 the earlier "multi-day, new schema" estimate; the read-path build is in-session
 sized. (Initial pass over-set the bar to "running iOS build showing notes"; the
 task's actual gate is the cargo test scope + `check-ffi-header-drift.sh`, and the
-op_feed precedent — `nmp-app-template` `op_feed_defaults_test` — establishes
+op_feed precedent — `nmp-defaults` `op_feed_defaults_test` — establishes
 test-verified-Rust as the project standard, with iOS-visual deferred to a
 configured env. Xcode-26-beta `UIUtilities` workaround is absent on this machine,
 so iOS-visual confirmation is deferred, NOT a hard gate.)
@@ -1146,7 +1146,7 @@ so iOS-visual confirmation is deferred, NOT a hard gate.)
   (feed-engine `EventGate` + store-retain hook, ADR-0042 §5.1 D8 argument); (c)
   ProfileView/ThreadScreen migrated to read the new feed snapshot + compose profile
   card (`claimed_profiles`), primaryAction (local follow-state), noteCountDisplay
-  (feed length). Verification = the task's cargo scope + the `nmp-app-template`
+  (feed length). Verification = the task's cargo scope + the `nmp-defaults`
   op_feed harness pattern.
 - The **`open_firehose_tag` / `diagnostic_firehose` verb** (PR #932 NOT yet
   merged; still fully present) is the clean −3 sub-case with ZERO projection /
@@ -1220,7 +1220,7 @@ session — only additive nmp-nip01 — so deferred to the wiring/delete PRs tha
 2. **Registration home = the host composition crate, NOT kernel dispatch.** The
    `OpenInterest`/`CloseInterest` dispatch arms live in `nmp-core` (`actor/dispatch.rs`),
    which CANNOT depend on `nmp-nip01`/`FlatFeed` (D0). `nmp-ffi` also does NOT depend on
-   `nmp-nip01`. But `nmp-app-chirp` AND `nmp-app-template` BOTH depend on `nmp-nip01` +
+   `nmp-nip01`. But `nmp-app-chirp` AND `nmp-defaults` BOTH depend on `nmp-nip01` +
    `nmp-feed` — they are the correct home, exactly where `register_op_feed_defaults`
    already lives (`apps/chirp/nmp-app-chirp/src/ffi/register.rs:134`).
 3. **Teardown exists.** `NmpApp::unregister_event_observer(id)` (`nmp-ffi/src/lib.rs:1589`)
@@ -1232,7 +1232,7 @@ session — only additive nmp-nip01 — so deferred to the wiring/delete PRs tha
 the delete-cascade):*
 - A. `nmp-feed`: add `FeedRegistry::unregister(key)`; `nmp-ffi`: `NmpApp::register_feed`
   already exists, add `unregister_feed(key)`.
-- B. Host-side per-open registration in `nmp-app-chirp` (or `nmp-app-template`): on
+- B. Host-side per-open registration in `nmp-app-chirp` (or `nmp-defaults`): on
   author/thread open, construct a `FlatFeed`, register it as observer + `FeedController`
   under `nmp.feed.author.<pk>` / `nmp.feed.thread.<id>`, and track the observer id for
   teardown on close. This is driven from the SAME Swift call site that calls

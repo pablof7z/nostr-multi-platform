@@ -42,7 +42,7 @@
 //! # Usage (canonical Rust composition root)
 //!
 //! ```rust,no_run
-//! use nmp_app_template::{NmpAppBuilder, RunConfig};
+//! use nmp_defaults::{NmpAppBuilder, RunConfig};
 //!
 //! let app: *mut nmp_ffi::NmpApp = NmpAppBuilder::new()
 //!     .in_memory()                  // required: choose storage
@@ -57,7 +57,7 @@
 //!
 //! # Scope
 //!
-//! This type lives in `nmp-app-template` and targets **Rust composition
+//! This type lives in `nmp-defaults` and targets **Rust composition
 //! roots** (`nmp_app_chirp_register`, fixture helpers, future second apps).
 //! It does NOT modify the C-ABI surface (`nmp_app_*` symbols) or any
 //! Swift/Kotlin code — those remain unchanged.
@@ -155,7 +155,7 @@ impl Default for RunConfig {
 /// `NmpAppBuilder<StorageSet>`, not on `NmpAppBuilder<Unstarted>`:
 ///
 /// ```compile_fail
-/// use nmp_app_template::{NmpAppBuilder, RunConfig};
+/// use nmp_defaults::{NmpAppBuilder, RunConfig};
 ///
 /// // ERROR: no method named `start` found for `NmpAppBuilder<Unstarted>`
 /// let _app = NmpAppBuilder::new().start(RunConfig::default());
@@ -164,7 +164,7 @@ impl Default for RunConfig {
 /// The correct sequence is:
 ///
 /// ```rust,no_run
-/// use nmp_app_template::{NmpAppBuilder, RunConfig};
+/// use nmp_defaults::{NmpAppBuilder, RunConfig};
 ///
 /// let _app = NmpAppBuilder::new()
 ///     .in_memory()                  // ← required: advance to StorageSet
