@@ -19,8 +19,6 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-12 — **Drop redundant double_must_use in nmp-planner mailbox**. Branch: `chore/nmp-planner-mailbox-drop-redundant-must-use`. Worktree: /home/pablo/Work/nostrmultiplatform (root checkout). Removes 2 redundant `#[must_use]` attributes on `outbox_relays`/`inbox_relays` (both return `impl Iterator`, already `#[must_use]`) per clippy::double_must_use.
-
 - 2026-06-12 — **Drop redundant double_must_use in nmp-codegen**. Branch: `chore/nmp-codegen-drop-redundant-must-use`. Worktree: /home/pablo/Work/nostrmultiplatform (root checkout). Removes 5 redundant `#[must_use]` attributes on Result-returning fns (read/parse/render_swift/generate_swift/check_swift) per clippy::double_must_use.
 
 - 2026-06-12 — **ADR-0048 Stage 1: NIP-55 capability seam + Nip55Signer (Rust, headless)** (implements #1124 Stage 1). PR #1141 (review round 2: full-stack `signer_state` rename). Branch: `feat/adr-0048-stage1-nip55-capability-seam`. ExternalSignerTransport leaf trait + wire types in nmp-signer-iface; Nip55Signer implementing RemoteSignerHandle; SignerPayload::Nip55; per-op deadline refactor (now including the publish-path park sites via `sign_deadline_for`); deliver_rpc_response→deliver_response rename; FULL signer_state rename: `signer_state.fbs`/`KSST` schema + regenerated Rust/Swift flatc bindings, codegen registry, KernelTypes/TypedProjectionDecoders regen, iOS bridges + `SignerStateRow`, Android Snapshot/KernelModel/SignInScreen; NEW registry-coverage gate (codegen json_keys ⊆ runtime keys) in nmp-app-chirp + `KERNEL_BUILTIN_PROJECTION_KEYS` pinning test in nmp-core.
