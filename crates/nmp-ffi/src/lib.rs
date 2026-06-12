@@ -2677,6 +2677,13 @@ impl nmp_core::substrate::AppHost for NmpApp {
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {
         NmpApp::set_nostrconnect_bootstrap_relay(self, url)
     }
+
+    fn register_identity_change_observer<F>(&self, f: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static,
+    {
+        NmpApp::register_identity_change_observer(self, f);
+    }
 }
 
 // SAFETY: `app` is a raw pointer from `nmp_app_new()`. The function is `extern "C"` (callable

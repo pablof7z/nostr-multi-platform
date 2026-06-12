@@ -234,6 +234,13 @@ impl AppHost for GateSpy {
             "the bootstrap relay is wired by register_defaults_with, not register_substrate"
         );
     }
+
+    fn register_identity_change_observer<F>(&self, _f: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static,
+    {
+        unreachable!("register_substrate does not register identity-change observers");
+    }
 }
 
 /// A `CompiledPlan` with `n` distinct per-relay entries (the hook only reads

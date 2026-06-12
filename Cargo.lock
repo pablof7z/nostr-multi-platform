@@ -4575,6 +4575,7 @@ dependencies = [
  "nmp-nip17",
  "nmp-nip51",
  "nmp-nip57",
+ "nmp-nip59",
  "nmp-nip77",
  "nmp-router",
  "nmp-threading",

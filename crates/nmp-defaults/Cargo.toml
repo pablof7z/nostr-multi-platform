@@ -60,6 +60,10 @@ nmp-core = { path = "../nmp-core", features = ["test-support"] }
 # Same posture for the extracted FFI crate so dev/test builds see
 # `nmp_app_new`/`nmp_app_free`.
 nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
+# nmp-nip59: used by runtimes_dm_inbox_tests to build gift-wrap envelopes for
+# the account-switch clear test (issue #1138). nmp-nip17 already depends on
+# nmp-nip59 transitively; this adds a direct dev-dep for the test helpers.
+nmp-nip59 = { path = "../nmp-nip59" }
 # `ModulePolicy` used by `ModularTimelineSpec` in the mute-runtime integration
 # tests — supplies thread-model configuration for timeline projections.
 nmp-threading = { path = "../nmp-threading" }
