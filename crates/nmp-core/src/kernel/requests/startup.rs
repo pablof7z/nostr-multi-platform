@@ -152,6 +152,14 @@ impl Kernel {
     /// (not `ensure_sub`) so an account switch replaces the prior account's
     /// author in the slot rather than leaking it (V-04).
     ///
+    /// ADR-0045 — intentionally does NOT route through
+    /// [`crate::kernel::Kernel::enqueue_interest_cache_serve`]: these are
+    /// `is_indexer_discovery` bootstrap lanes whose explicit intent is a fresh
+    /// network fetch (the cold-start author-unknown fallback). Serving a
+    /// possibly-stale store copy would defeat the bootstrap. The store-first
+    /// uniformity guarantee applies to consumer interests, not these
+    /// discovery-direction bootstrap REQs.
+    ///
     /// `seed` is the stable, human-readable [`SubKey`] discriminator (e.g.
     /// `"bootstrap:self-dm-relays"`). The matching `InterestId` is derived
     /// from the same seed via `SubKey::new`, so re-mounting the same logical
@@ -189,6 +197,11 @@ impl Kernel {
     ///
     /// Uses `set_sub` so an account switch swaps the author in-place
     /// rather than leaving the prior account's REQ live.
+    ///
+    /// ADR-0045 — intentionally NOT cache-served (same rationale as
+    /// `register_oneshot_discovery_interest`): an `is_indexer_discovery`
+    /// bootstrap REQ whose intent is the live republication of the active
+    /// account's replaceable kinds, not a store replay.
     fn register_tailing_self_kinds_interest(&mut self, owner: SubOwnerKey, author: String) {
         let sub_key = SubKey::new("bootstrap:self-kinds-tailing");
         let identity = SubIdentity::new(owner, sub_key, SubScope::Global);

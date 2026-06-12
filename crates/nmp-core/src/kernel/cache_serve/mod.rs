@@ -135,10 +135,18 @@ impl Kernel {
     /// chunked continuation). Idempotent: completion keys already served or
     /// already queued are no-ops.
     ///
-    /// Called from:
-    /// - [`Kernel::open_interest_sub`] (M2 `OpenInterest` / `EnsureInterest` front door)
-    /// - `ActorCommand::PushInterest` dispatch arm (legacy `InterestId` surface)
-    /// - `ActorCommand::EnsureInterest` dispatch arm (on newly-installed only)
+    /// The single key-derivation + enqueue + drain recipe. Every interest-install
+    /// path funnels here so the completion-key derivation lives in exactly one
+    /// place — no hand-copied recipe can drift from it (the lesson F3 of the
+    /// PR #1237 review enforces).
+    ///
+    /// Reached through the two install front doors that own the recipe end to
+    /// end ([`Kernel::push_interest_and_serve`],
+    /// [`Kernel::ensure_interest_and_serve`]). Batch callers that enqueue many
+    /// interests under ONE synchronous drain (the follow-feed sync) use
+    /// [`Kernel::enqueue_interest_cache_serve_deferred`] + a single trailing
+    /// [`Kernel::run_cache_serve_step`] instead, so a 300–500-follow cold start
+    /// drains once, not per author.
     ///
     /// `pub(crate)` so `crate::actor::dispatch` can reach it without
     /// crossing the `pub(in crate::kernel)` boundary.
@@ -147,9 +155,79 @@ impl Kernel {
         key: &crate::subs::SubKey,
         shape: &InterestShape,
     ) {
+        self.enqueue_interest_cache_serve_deferred(key, shape);
+        self.run_cache_serve_step();
+    }
+
+    /// Enqueue-only half of [`Kernel::enqueue_interest_cache_serve`] — derive
+    /// the completion key and queue the serve WITHOUT draining a budget chunk.
+    ///
+    /// For batch installers (the follow-feed sync registers one interest per
+    /// followed pubkey) that want N enqueues under ONE trailing
+    /// [`Kernel::run_cache_serve_step`]. The completion-key derivation is shared
+    /// with the single-install path, so the two cannot drift.
+    pub(in crate::kernel) fn enqueue_interest_cache_serve_deferred(
+        &mut self,
+        key: &crate::subs::SubKey,
+        shape: &InterestShape,
+    ) {
         let completion_key = completion_key_for_interest(key, shape);
         self.enqueue_cache_serve(shape, completion_key);
-        self.run_cache_serve_step();
+    }
+
+    /// Legacy-surface install recipe (the `ActorCommand::PushInterest` arm and
+    /// the follow-feed sync's per-author path resolve to this shape of work).
+    ///
+    /// `push` uses `set_sub` (always-upsert): the shape may be newly installed
+    /// or may have changed, so we always (a) enqueue the recompile trigger and
+    /// (b) serve. Completion-key idempotency inside
+    /// [`Kernel::enqueue_interest_cache_serve`] makes an unchanged shape a no-op.
+    ///
+    /// Centralised here (not inlined in the dispatch arm) so dispatch.rs stays
+    /// under its file-size cap and the install recipe lives in one place.
+    pub(crate) fn push_interest_and_serve(&mut self, interest: crate::planner::LogicalInterest) {
+        let serve_key = crate::subs::InterestRegistry::legacy_key(&interest.id);
+        let serve_shape = interest.shape.clone();
+        self.lifecycle.registry_mut().push(interest);
+        self.lifecycle
+            .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
+                reason: crate::subs::InvalidateReason::External("push-interest".to_string()),
+            });
+        self.enqueue_interest_cache_serve(&serve_key, &serve_shape);
+    }
+
+    /// `ensure_sub` install recipe — register-if-absent, then enqueue a recompile
+    /// trigger AND a store-cache serve ONLY when the interest was newly installed.
+    ///
+    /// The single front door for every register-if-absent install path:
+    /// - the `ActorCommand::EnsureInterest` dispatch arm,
+    /// - [`Kernel::open_interest_sub`] (the M2 `OpenInterest` seam),
+    /// - the `nostr:` URI resolver (`kernel_action::open_uri`).
+    ///
+    /// Routing all three through here closes the F2 bypass the PR #1237 review
+    /// found (open_uri installed an interest without serving store-resident
+    /// events) and keeps the "trigger + serve only on newly-installed" invariant
+    /// in one place so the call sites cannot drift.
+    ///
+    /// `reason` labels the recompile trigger for diagnostics. Returns `true`
+    /// iff the interest was newly installed.
+    pub(crate) fn ensure_interest_and_serve(
+        &mut self,
+        identity: crate::subs::SubIdentity,
+        interest: crate::planner::LogicalInterest,
+        reason: &'static str,
+    ) -> bool {
+        let serve_key = identity.key;
+        let serve_shape = interest.shape.clone();
+        let newly_installed = self.lifecycle.registry_mut().ensure_sub(identity, interest);
+        if newly_installed {
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
+                    reason: crate::subs::InvalidateReason::External(reason.to_string()),
+                });
+            self.enqueue_interest_cache_serve(&serve_key, &serve_shape);
+        }
+        newly_installed
     }
 
     /// Serve depth for one interest: 1× the consumer's visible window.

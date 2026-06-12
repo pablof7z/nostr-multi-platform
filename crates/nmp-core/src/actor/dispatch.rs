@@ -389,8 +389,8 @@ pub(super) struct ActorContext<'a> {
 // a submodule so this file stays within its LOC ceiling.
 mod substrate_adapters;
 use substrate_adapters::{
-    ActionStageTrackerAdapter, ErrorSurfaceAdapter, KernelClockAdapter,
-    LocalSignerAccessAdapter, RecipientRelayLookupAdapter,
+    ActionStageTrackerAdapter, ErrorSurfaceAdapter, KernelClockAdapter, LocalSignerAccessAdapter,
+    RecipientRelayLookupAdapter,
 };
 
 /// M2 (ADR-0042) — thin shim delegating to the always-compiled
@@ -548,12 +548,7 @@ pub(super) fn dispatch_command(
                     &correlation_id,
                     Err("no active account — sign in first".to_string()),
                 );
-                maybe_emit_after_dispatch(
-                    ctx.kernel,
-                    *ctx.running,
-                    ctx.update_tx,
-                    ctx.last_emit,
-                );
+                maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
                 return Some(Vec::new());
             };
             let unsigned = match build_unsigned_for_return(
@@ -606,13 +601,11 @@ pub(super) fn dispatch_command(
                         // budget applies without touching PENDING_SIGN_TIMEOUT
                         // (ADR-0048 D3).
                         let deadline = ctx.identity.active_sign_deadline();
-                        ctx.pending_sign_returns.push(
-                            PendingSignReturn::new(
-                                op,
-                                correlation_id.clone(),
-                                deadline,
-                            ),
-                        );
+                        ctx.pending_sign_returns.push(PendingSignReturn::new(
+                            op,
+                            correlation_id.clone(),
+                            deadline,
+                        ));
                     }
                 },
             }
@@ -660,13 +653,12 @@ pub(super) fn dispatch_command(
                         // (or on timeout, with an `Err`). Use per-signer deadline
                         // so NIP-55's 90s budget applies (ADR-0048 D3).
                         let deadline = ctx.identity.active_sign_deadline();
-                        ctx.pending_sign_returns.push(
-                            PendingSignReturn::with_continuation(
+                        ctx.pending_sign_returns
+                            .push(PendingSignReturn::with_continuation(
                                 op,
                                 continuation,
                                 deadline,
-                            ),
-                        );
+                            ));
                     }
                 },
             }
@@ -1154,7 +1146,8 @@ pub(super) fn dispatch_command(
             // channel. Writes `Accepted` to `action_stages` and a terminal
             // verdict to `action_results`. `result_json` (ADR-0043 Decision 4)
             // rides into the `action_results` row's `result` field verbatim.
-            ctx.kernel.record_action_success(correlation_id, result_json);
+            ctx.kernel
+                .record_action_success(correlation_id, result_json);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
@@ -1560,26 +1553,10 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::PushInterest(interest) => {
-            // ADR-0045 single choke-point: capture key + shape before the
-            // registry takes ownership of `interest` (borrow-checker ordering).
-            // `push` uses `set_sub` (always-upsert) so we always serve: the
-            // shape may be newly installed or may have changed (new completion
-            // key either way). The completion-key idempotency inside
-            // `enqueue_interest_cache_serve` prevents redundant re-serves when
-            // the shape is identical to what was served before.
-            let serve_key =
-                crate::subs::InterestRegistry::legacy_key(&interest.id);
-            let serve_shape = interest.shape.clone();
-            ctx.kernel.lifecycle_mut().registry_mut().push(interest);
-            ctx.kernel.lifecycle_mut().enqueue_trigger(
-                crate::subs::CompileTrigger::InvalidateCompile {
-                    reason: crate::subs::InvalidateReason::External("push-interest".to_string()),
-                },
-            );
-            // ADR-0045 E1 — serve store-resident events for this interest so
-            // parsers (e.g. MarmotIngestParser KP lookup) see persisted events
-            // on every session, not only the one that first fetched them.
-            ctx.kernel.enqueue_interest_cache_serve(&serve_key, &serve_shape);
+            // ADR-0045 — legacy push install recipe (registry push + recompile
+            // trigger + store-cache serve) is centralised on the kernel so this
+            // arm stays a one-liner and the recipe lives in one place.
+            ctx.kernel.push_interest_and_serve(interest);
             Some(Vec::new())
         }
         ActorCommand::WithdrawInterest(id) => {
@@ -1594,29 +1571,12 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::EnsureInterest { identity, interest } => {
-            // ADR-0045 single choke-point: capture key + shape before
-            // `ensure_sub` takes ownership (borrow-checker ordering).
-            let serve_key = identity.key;
-            let serve_shape = interest.shape.clone();
-            let newly_installed = ctx
-                .kernel
-                .lifecycle_mut()
-                .registry_mut()
-                .ensure_sub(identity, interest);
-            if newly_installed {
-                ctx.kernel.lifecycle_mut().enqueue_trigger(
-                    crate::subs::CompileTrigger::InvalidateCompile {
-                        reason: crate::subs::InvalidateReason::External(
-                            "ensure-interest".to_string(),
-                        ),
-                    },
-                );
-                // ADR-0045 E1 — newly-installed only (idempotent install =
-                // existing interest unchanged; the completion key for the
-                // unchanged shape is already served, so this is a no-op in
-                // that case).
-                ctx.kernel.enqueue_interest_cache_serve(&serve_key, &serve_shape);
-            }
+            // ADR-0045 — register-if-absent install recipe (ensure_sub +
+            // recompile trigger + store-cache serve, all gated on
+            // newly-installed) is centralised on the kernel so this arm stays a
+            // one-liner and shares the recipe with open_interest_sub / open_uri.
+            ctx.kernel
+                .ensure_interest_and_serve(identity, interest, "ensure-interest");
             Some(Vec::new())
         }
         ActorCommand::DropInterestOwner(identity) => {
@@ -2109,7 +2069,10 @@ mod open_interest_tests {
         // re-install, so no second trigger (idempotent — would otherwise churn
         // the compiler on every re-mount).
         let (id2, int2) = build_open_interest(filter, "consumer-2", 0).unwrap();
-        assert!(!kernel.open_interest_sub(id2, int2), "second owner attaches");
+        assert!(
+            !kernel.open_interest_sub(id2, int2),
+            "second owner attaches"
+        );
         assert_eq!(
             kernel.lifecycle_mut().pending_trigger_count(),
             after_first,
@@ -2187,10 +2150,7 @@ mod nip65_auto_publish_tests {
 
     fn fresh_identity() -> IdentityRuntime {
         use crate::actor::new_signer_state_slot;
-        IdentityRuntime::new(
-            new_bunker_handshake_slot(),
-            new_signer_state_slot(),
-        )
+        IdentityRuntime::new(new_bunker_handshake_slot(), new_signer_state_slot())
     }
 
     fn signed_in_identity(kernel: &mut Kernel) -> IdentityRuntime {
@@ -2447,7 +2407,10 @@ mod sign_return_tests {
     fn build_unsigned_rejects_missing_content() {
         let err = build_unsigned_for_return(r#"{"kind":1}"#, "pk", 0)
             .expect_err("missing content is rejected");
-        assert!(err.contains("content"), "error names the missing field: {err}");
+        assert!(
+            err.contains("content"),
+            "error names the missing field: {err}"
+        );
     }
 
     #[test]
@@ -2474,14 +2437,26 @@ mod sign_return_tests {
         let json: serde_json::Value =
             serde_json::from_str(&signed_event_to_json(&signed)).expect("valid JSON");
         // Flat NIP-01 shape — NOT nested under `unsigned` (the kernel serde shape).
-        assert_eq!(json.get("id").and_then(|v| v.as_str()), Some(signed.id.as_str()));
+        assert_eq!(
+            json.get("id").and_then(|v| v.as_str()),
+            Some(signed.id.as_str())
+        );
         assert_eq!(
             json.get("pubkey").and_then(|v| v.as_str()),
             Some(signed.unsigned.pubkey.as_str())
         );
-        assert_eq!(json.get("kind").and_then(serde_json::Value::as_u64), Some(24242));
-        assert_eq!(json.get("created_at").and_then(serde_json::Value::as_u64), Some(1234));
-        assert_eq!(json.get("sig").and_then(|v| v.as_str()), Some(signed.sig.as_str()));
+        assert_eq!(
+            json.get("kind").and_then(serde_json::Value::as_u64),
+            Some(24242)
+        );
+        assert_eq!(
+            json.get("created_at").and_then(serde_json::Value::as_u64),
+            Some(1234)
+        );
+        assert_eq!(
+            json.get("sig").and_then(|v| v.as_str()),
+            Some(signed.sig.as_str())
+        );
         assert_eq!(
             json.get("content").and_then(|v| v.as_str()),
             Some("Upload image")

@@ -104,14 +104,15 @@ fn open_uri(kernel: &mut Kernel, uri: String) -> KernelUpdate {
     let owner = SubOwnerKey::new(("open-uri-view", namespace.as_str(), key.as_str()));
     let identity = SubIdentity::new(owner, sub_key, scope);
 
-    // `ensure_sub` is idempotent register-if-absent: re-opening the same URI
-    // attaches another owner without clobbering the live filter (§3.3).
-    // Return value (newly installed?) is intentionally unused here — the
-    // caller only needs the side effect of the registration.
-    let _ = kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .ensure_sub(identity, interest);
+    // ADR-0045 — route through the single ensure-install front door so opening
+    // a `nostr:` URI whose target is already in the store serves those events
+    // to parsers/projections (closes the F2 bypass: this path previously called
+    // bare `ensure_sub` with neither a recompile trigger nor a store-cache
+    // serve). `ensure_interest_and_serve` is idempotent register-if-absent —
+    // re-opening the same URI attaches another owner without clobbering the
+    // live filter (§3.3) and re-serving a completed shape is a no-op. The
+    // newly-installed return is unused here; the side effect is what matters.
+    let _ = kernel.ensure_interest_and_serve(identity, interest, "open-uri");
 
     view
 }

@@ -28,139 +28,12 @@
 //!   processed event does not panic and does not produce duplicate deliveries
 //!   within a session (in-memory dedup).
 
-use super::cache_serve_tests::{drain_cache_serves, hex_pk, seed_events, simulate_cold_restart};
+use super::cache_serve_tests::{drain_cache_serves, seed_events, simulate_cold_restart};
+use super::interest_install_cache_serve_support::{
+    author_kind1_interest, kp_interest, seed_kind0_event, seed_kp_event, sub_id, CapturingParser,
+};
 use super::*;
-use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
-use crate::store::VerifiedEvent;
-use crate::subs::{InterestRegistry, SubIdentity, SubKey, SubOwnerKey, SubScope};
-use crate::substrate::IngestParser;
-use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex};
-
-// ─── Fixtures ────────────────────────────────────────────────────────────────
-
-/// Minimal `IngestParser` that records every `(kind, id)` it receives.
-struct CapturingParser {
-    seen: Mutex<Vec<(u32, String)>>,
-}
-
-impl CapturingParser {
-    fn new() -> Arc<Self> {
-        Arc::new(Self {
-            seen: Mutex::new(Vec::new()),
-        })
-    }
-
-    fn seen_kinds(&self) -> Vec<u32> {
-        self.seen.lock().unwrap().iter().map(|(k, _)| *k).collect()
-    }
-
-    fn seen_ids(&self) -> Vec<String> {
-        self.seen
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|(_, id)| id.clone())
-            .collect()
-    }
-
-    fn clear(&self) {
-        self.seen.lock().unwrap().clear();
-    }
-}
-
-impl IngestParser for CapturingParser {
-    fn parse(&self, evt: &VerifiedEvent) {
-        let raw = evt.raw();
-        self.seen
-            .lock()
-            .unwrap()
-            .push((raw.kind, raw.id.clone()));
-    }
-}
-
-/// Build a `LogicalInterest` for `kind:1` from `author_hex`.
-fn author_kind1_interest(id: u64, author_hex: &str) -> LogicalInterest {
-    LogicalInterest {
-        id: InterestId(id),
-        scope: InterestScope::Global,
-        shape: InterestShape {
-            authors: BTreeSet::from([author_hex.to_string()]),
-            kinds: BTreeSet::from([1u32]),
-            ..Default::default()
-        },
-        hints: Vec::new(),
-        lifecycle: InterestLifecycle::Tailing,
-        is_indexer_discovery: false,
-    }
-}
-
-/// Build a `LogicalInterest` for `kind:443` (Marmot key-package kind).
-fn kp_interest(id: u64, target_pubkey: &str) -> LogicalInterest {
-    // kind:443 is the Marmot MLS key-package kind. We model it as a
-    // #p-tagged interest (the real Marmot interest shape uses #p to match
-    // KPs published for a specific recipient pubkey).
-    let mut shape = InterestShape {
-        kinds: BTreeSet::from([443u32]),
-        ..Default::default()
-    };
-    shape
-        .tags
-        .insert("p".to_string(), BTreeSet::from([target_pubkey.to_string()]));
-    LogicalInterest {
-        id: InterestId(id),
-        scope: InterestScope::Global,
-        shape,
-        hints: Vec::new(),
-        lifecycle: InterestLifecycle::Tailing,
-        is_indexer_discovery: false,
-    }
-}
-
-/// Build a `SubIdentity` for a generic non-feed interest.
-fn sub_id(seed: u64) -> SubIdentity {
-    SubIdentity::new(
-        SubOwnerKey::new(seed),
-        SubKey::new(seed),
-        SubScope::Global,
-    )
-}
-
-/// Seed a kind:443 (Marmot KP) event addressed to `target_hex` into the
-/// kernel's store via `handle_event` (the live ingest path that persists to the
-/// store). Returns the event id.
-fn seed_kp_event(
-    kernel: &mut Kernel,
-    keys: &::nostr::Keys,
-    target_hex: &str,
-    ts: u64,
-) -> String {
-    use ::nostr::{EventBuilder, Kind, Tag, Timestamp};
-    let target_pk: ::nostr::PublicKey = target_hex.parse().expect("valid hex pubkey");
-    let ev = EventBuilder::new(Kind::from(443u16), "kp-payload")
-        .tags(vec![Tag::public_key(target_pk)])
-        .custom_created_at(Timestamp::from(ts))
-        .sign_with_keys(keys)
-        .expect("sign_with_keys cannot fail with generated keys");
-    let tag_vecs: Vec<Vec<String>> = ev
-        .tags
-        .iter()
-        .map(|t: &::nostr::Tag| t.as_slice().to_vec())
-        .collect();
-    let json = serde_json::json!({
-        "id": ev.id.to_hex(),
-        "pubkey": ev.pubkey.to_hex(),
-        "created_at": ev.created_at.as_secs(),
-        "kind": ev.kind.as_u16(),
-        "tags": tag_vecs,
-        "content": ev.content.clone(),
-        "sig": ev.sig.to_string(),
-    });
-    let id = ev.id.to_hex();
-    kernel.handle_event(RelayRole::Content, "wss://relay.test/", "kp-sub", &json);
-    id
-}
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -198,14 +71,11 @@ fn push_interest_serves_store_on_install() {
     assert!(kernel.events.is_empty(), "events cache must be cleared");
     assert!(parser.seen_kinds().is_empty(), "parser must be cleared");
 
-    // ── Phase 3: install interest via PushInterest path ───────────────────────
-    // Mirrors the production `registry_mut().push(interest)` + cache-serve path
-    // added by this PR.
+    // ── Phase 3: install interest via the real PushInterest front door ────────
+    // `push_interest_and_serve` is exactly what the `ActorCommand::PushInterest`
+    // dispatch arm calls — registry push + recompile trigger + store-cache serve.
     let interest = author_kind1_interest(1, &author);
-    let serve_key = InterestRegistry::legacy_key(&interest.id);
-    let serve_shape = interest.shape.clone();
-    kernel.lifecycle_mut().registry_mut().push(interest);
-    kernel.enqueue_interest_cache_serve(&serve_key, &serve_shape);
+    kernel.push_interest_and_serve(interest);
     drain_cache_serves(&mut kernel, 10);
 
     // ── Phase 4: parser must have received all 3 stored events ────────────────
@@ -243,19 +113,14 @@ fn ensure_interest_serves_store_on_newly_installed() {
     simulate_cold_restart(&mut kernel);
     parser.clear();
 
-    // ── EnsureInterest (newly installed) ─────────────────────────────────────
+    // ── EnsureInterest (newly installed) via the real front door ─────────────
+    // `ensure_interest_and_serve` is exactly what the
+    // `ActorCommand::EnsureInterest` dispatch arm (and open_interest_sub /
+    // open_uri) call — ensure_sub + trigger + serve, all gated on newly-installed.
     let identity = sub_id(42);
     let interest = author_kind1_interest(42, &author);
-    let serve_key = identity.key;
-    let serve_shape = interest.shape.clone();
-    let newly = kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .ensure_sub(identity, interest);
+    let newly = kernel.ensure_interest_and_serve(identity, interest, "ensure-interest");
     assert!(newly, "must be newly installed");
-
-    // The dispatch arm only serves when newly_installed.
-    kernel.enqueue_interest_cache_serve(&serve_key, &serve_shape);
     drain_cache_serves(&mut kernel, 10);
 
     let seen = parser.seen_kinds();
@@ -288,42 +153,30 @@ fn ensure_interest_no_serve_on_idempotent_reinstall() {
     simulate_cold_restart(&mut kernel);
     parser.clear();
 
-    // First install — serves.
+    // First install — serves (via the real front door).
     let identity_1 = sub_id(100);
     let interest_1 = author_kind1_interest(100, &author);
-    let serve_key_1 = identity_1.key;
-    let serve_shape_1 = interest_1.shape.clone();
-    let newly_1 = kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .ensure_sub(identity_1, interest_1);
+    let newly_1 = kernel.ensure_interest_and_serve(identity_1, interest_1, "ensure-interest");
     assert!(newly_1);
-    kernel.enqueue_interest_cache_serve(&serve_key_1, &serve_shape_1);
     drain_cache_serves(&mut kernel, 10);
     let after_first = parser.seen_kinds().len();
     assert_eq!(after_first, 2, "first install must serve 2 events");
 
     parser.clear();
 
-    // Second install — same (owner, key, scope) = idempotent, not new.
+    // Second install — same (owner, key, scope) = idempotent, not new. The
+    // front door returns false and internally skips both the trigger and the
+    // serve; no pending serve is queued.
     let identity_2 = sub_id(100);
     let interest_2 = author_kind1_interest(100, &author);
-    let serve_key_2 = identity_2.key;
-    let serve_shape_2 = interest_2.shape.clone();
-    let newly_2 = kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .ensure_sub(identity_2, interest_2);
-    assert!(!newly_2, "second ensure_sub for same slot must return false");
-
-    // The dispatch arm gates the serve on newly_installed. Call the helper
-    // anyway to assert that the completion-key guard makes it a true no-op
-    // (idempotent re-serve invariant, verified via has_pending_cache_serves).
-    kernel.enqueue_interest_cache_serve(&serve_key_2, &serve_shape_2);
-    // serve_interest_shapes already contains the key → no pending serve.
+    let newly_2 = kernel.ensure_interest_and_serve(identity_2, interest_2, "ensure-interest");
+    assert!(
+        !newly_2,
+        "second ensure_interest_and_serve for same slot must return false"
+    );
     assert!(
         !kernel.has_pending_cache_serves(),
-        "second enqueue of an already-served completion key must be a no-op"
+        "idempotent reinstall must not queue a serve"
     );
     drain_cache_serves(&mut kernel, 10);
 
@@ -366,8 +219,12 @@ fn two_session_push_interest_kp_regression() {
 
     // Seed 2 kind:443 KP events (addressed to receiver_hex via #p).
     let kp_id_1 = seed_kp_event(&mut kernel_s1, &kp_publisher_keys, &receiver_hex, base_ts);
-    let kp_id_2 =
-        seed_kp_event(&mut kernel_s1, &kp_publisher_keys, &receiver_hex, base_ts + 1);
+    let kp_id_2 = seed_kp_event(
+        &mut kernel_s1,
+        &kp_publisher_keys,
+        &receiver_hex,
+        base_ts + 1,
+    );
 
     // Confirm live delivery fires the parser.
     let seen_s1 = parser_s1.seen_ids();
@@ -392,12 +249,10 @@ fn two_session_push_interest_kp_regression() {
     );
 
     // ── Session 2: push the KP interest (production path) ────────────────────
+    // `push_interest_and_serve` is the exact call the
+    // `ActorCommand::PushInterest` arm makes from `nmp-marmot/src/ffi.rs:499`.
     let interest = kp_interest(999, &receiver_hex);
-    let serve_key = InterestRegistry::legacy_key(&interest.id);
-    let serve_shape = interest.shape.clone();
-    kernel.lifecycle_mut().registry_mut().push(interest);
-    // ADR-0045 single choke-point — the fix being tested.
-    kernel.enqueue_interest_cache_serve(&serve_key, &serve_shape);
+    kernel.push_interest_and_serve(interest);
     drain_cache_serves(&mut kernel, 10);
 
     // ── Assert: parser received stored KP events, NO network needed ───────────
@@ -445,10 +300,7 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
 
     // First serve — in-memory events are already present; cache-serve skips them.
     let interest = author_kind1_interest(50, &author);
-    let serve_key_1 = InterestRegistry::legacy_key(&interest.id);
-    let serve_shape_1 = interest.shape.clone();
-    kernel.lifecycle_mut().registry_mut().push(interest);
-    kernel.enqueue_interest_cache_serve(&serve_key_1, &serve_shape_1);
+    kernel.push_interest_and_serve(interest);
     drain_cache_serves(&mut kernel, 10);
     // Events already in memory → serve skips → no additional dispatches.
     let after_first_serve = parser.seen_kinds().len();
@@ -464,12 +316,9 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
     parser.clear();
 
     // Second install via PushInterest with a new InterestId (fresh completion key).
-    let interest_2 = author_kind1_interest(51, &author);
-    let serve_key_2 = InterestRegistry::legacy_key(&interest_2.id);
-    let serve_shape_2 = interest_2.shape.clone();
-    kernel.lifecycle_mut().registry_mut().push(interest_2);
     // This must NOT panic and must NOT deliver duplicate events (in-memory dedup).
-    kernel.enqueue_interest_cache_serve(&serve_key_2, &serve_shape_2);
+    let interest_2 = author_kind1_interest(51, &author);
+    kernel.push_interest_and_serve(interest_2);
     drain_cache_serves(&mut kernel, 10);
 
     let after_reserve = parser.seen_kinds();
@@ -477,5 +326,68 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
         after_reserve.is_empty(),
         "idempotent re-serve: events already in the events cache must NOT be \
          re-dispatched; got {after_reserve:?}"
+    );
+}
+
+/// OPEN-URI BYPASS REGRESSION (PR #1237 review F2):
+///
+/// Opening a `nostr:` URI installs an interest for the resolved target. Before
+/// the F2 fix, `open_uri` called bare `ensure_sub` with neither a recompile
+/// trigger nor a store-cache serve — so a `nostr:npub…` whose kind:0 metadata
+/// was already in the store would NOT surface those stored events to parsers.
+///
+/// This test seeds a kind:0 event into the store, cold-restarts (store warm,
+/// caches cold), then drives the real `dispatch_kernel_action(OpenUri{npub})`
+/// path and asserts the registered kind:0 parser receives the stored event
+/// WITHOUT any network — proving open_uri now routes through the single
+/// ensure-install front door (`ensure_interest_and_serve`).
+#[test]
+fn open_uri_serves_store_for_resolved_target() {
+    use crate::app::{KernelAction, KernelUpdate};
+    use crate::kernel_action::dispatch_kernel_action;
+    use crate::nip19::encode_npub;
+
+    let base_ts: u64 = 1_760_000_000;
+    let keys = ::nostr::Keys::generate();
+    let author = keys.public_key().to_hex();
+
+    // ── Phase 1: seed a kind:0 metadata event into the store ─────────────────
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let parser = CapturingParser::new();
+    kernel.register_ingest_parser(0, parser.clone());
+    let meta_id = seed_kind0_event(&mut kernel, &keys, base_ts);
+    assert!(
+        parser.seen_ids().contains(&meta_id),
+        "Phase 1: parser must see the kind:0 event on live ingest"
+    );
+
+    // ── Phase 2: cold restart (store warm, caches cold) ──────────────────────
+    simulate_cold_restart(&mut kernel);
+    parser.clear();
+    assert!(kernel.events.is_empty());
+
+    // ── Phase 3: open the npub via the real action dispatcher ────────────────
+    let npub = encode_npub(&author).expect("valid npub");
+    let update = dispatch_kernel_action(
+        &mut kernel,
+        KernelAction::OpenUri {
+            uri: format!("nostr:{npub}"),
+        },
+    );
+    assert!(
+        matches!(update, KernelUpdate::ViewOpened { .. }),
+        "open_uri must resolve the npub to a profile view; got {update:?}"
+    );
+    // open_uri serves synchronously through enqueue_interest_cache_serve; drain
+    // any continuation to be safe.
+    drain_cache_serves(&mut kernel, 10);
+
+    // ── Phase 4: parser must have received the stored kind:0 event ───────────
+    assert!(
+        parser.seen_ids().contains(&meta_id),
+        "OPEN-URI BYPASS FAIL: parser must receive the store-resident kind:0 \
+         event ({meta_id}) after open_uri installs the profile interest; \
+         got {:?}",
+        parser.seen_ids()
     );
 }
