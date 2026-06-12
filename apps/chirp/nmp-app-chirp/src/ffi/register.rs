@@ -32,8 +32,8 @@ pub enum NmpRegisterStatus {
     Ok = 0,
     /// The `app` pointer was null. `handle_out` is left as null.
     NullApp = 1,
-    /// `viewer_pubkey` was non-null but did not parse as a 64-char lowercase
-    /// hex pubkey (32 bytes).  `handle_out` is left as null.
+    /// `viewer_pubkey` was non-null but did not parse as a 64-char
+    /// case-insensitive hex pubkey (32 bytes).  `handle_out` is left as null.
     ///
     /// A null `viewer_pubkey` is always accepted ("no viewer set"); only a
     /// *non-null malformed* value triggers this status.
@@ -51,15 +51,18 @@ pub enum NmpRegisterStatus {
 ///
 /// * `NULL` — permitted and treated as "no viewer set"; registration
 ///   proceeds with an empty viewer identity.
-/// * Non-null — **must** be a 64-character lowercase hexadecimal string
-///   representing a 32-byte Nostr public key.  Any other value causes the
-///   function to return [`NmpRegisterStatus::InvalidViewerPubkey`] and
+/// * Non-null — **must** be a 64-character case-insensitive hexadecimal
+///   string representing a 32-byte Nostr public key.  Any other value causes
+///   the function to return [`NmpRegisterStatus::InvalidViewerPubkey`] and
 ///   leaves `*handle_out` as null (D6 — explicit error, no silent fallback).
 ///
 /// ## SAFETY
 ///
 /// * `app` must be a valid non-null `*mut NmpApp` from `nmp_app_new()`.
-/// * `handle_out` must be a valid non-null `*mut *mut ChirpHandle`.
+/// * `handle_out` must be a valid non-null `*mut *mut ChirpHandle`; passing
+///   null is a programmer-error contract violation and returns
+///   [`NmpRegisterStatus::NullApp`] without writing through the pointer or
+///   leaking the handle allocation.
 /// * `app` MUST outlive the returned handle. Call
 ///   [`nmp_app_chirp_unregister`] before `nmp_app_free`.
 #[no_mangle]
@@ -194,12 +197,21 @@ pub extern "C" fn nmp_app_chirp_register(
     // op_feed_defaults.rs) registers the NOFS typed-FB encoder alongside the
     // JSON projection, and iOS `TypedHomeFeedDecoder` consumes it typed-first
     // (JSON remains the ADR-0037 Commitment-4 fallback).
+    // D6 — guard the write-through before allocating the handle. A null
+    // `handle_out` is a programmer-error contract violation: returning an
+    // error code here (instead of a segfault) is the safe, D6-compliant
+    // behaviour. We reuse `NullApp` (1) — it covers all null-pointer
+    // caller-contract violations; adding a new discriminant for this case
+    // would widen the stable ABI surface without adding information.
+    if handle_out.is_null() {
+        return NmpRegisterStatus::NullApp as u32;
+    }
     let handle = Box::into_raw(Box::new(ChirpHandle {
         engine: defaults.engine,
         app,
     }));
-    // SAFETY: caller contract requires `handle_out` to be a valid non-null
-    // writable pointer (documented in the function's SAFETY section above).
+    // SAFETY: `handle_out` was verified non-null above; the pointer must be
+    // a valid `*mut *mut ChirpHandle` per the function's SAFETY contract.
     unsafe { *handle_out = handle };
     NmpRegisterStatus::Ok as u32
 }

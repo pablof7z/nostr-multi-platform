@@ -52,6 +52,25 @@ fn register_with_null_app_returns_null_handle() {
     assert_eq!(status, NmpRegisterStatus::NullApp as u32);
     assert!(handle.is_null());
 }
+// ── Finding 1 (D6): null handle_out must return NullApp without crashing ─────
+
+/// Passing a null `handle_out` is a programmer-error contract violation.
+/// The function must return `NmpRegisterStatus::NullApp` without writing
+/// through the null pointer (which would be a segfault) or leaking the
+/// `Box::into_raw` handle allocation.
+#[test]
+fn null_handle_out_returns_null_app_without_crash() {
+    let app = nmp_app_new();
+    // Pass null as handle_out — must not segfault, must return NullApp.
+    let status = nmp_app_chirp_register(app, std::ptr::null(), std::ptr::null_mut());
+    assert_eq!(
+        status,
+        NmpRegisterStatus::NullApp as u32,
+        "null handle_out must return NullApp (programmer-error contract violation)"
+    );
+    // app was not consumed by a handle, so free it directly.
+    nmp_app_free(app);
+}
 
 // ── V-73: non-null invalid viewer_pubkey must be rejected ────────────────────
 

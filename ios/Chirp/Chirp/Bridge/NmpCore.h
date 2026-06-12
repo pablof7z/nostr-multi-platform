@@ -368,7 +368,7 @@ void nmp_broker_free_string(char *ptr);
 //    `nmp_app_new()` succeeds. Returns NmpRegisterStatus (0 = Ok). On Ok,
 //    `handle` is written with a non-null opaque pointer.
 //    `viewer_pubkey` may be NULL (treated as "no viewer set").
-//    A non-null viewer_pubkey MUST be a 64-char lowercase hex string.
+//    A non-null viewer_pubkey MUST be a 64-char case-insensitive hex string.
 // 2. Read the standard `projections["nmp.feed.home"]` value from the normal
 //    NMP update stream. It carries
 //    `{ "blocks": [...], "cards": [...], "page": {...}, "metrics": {...} }`.
@@ -381,6 +381,11 @@ void nmp_broker_free_string(char *ptr);
 // V-73 (D6 fix): a non-null viewer_pubkey that is not a valid 64-char hex
 // pubkey returns NmpRegisterStatus_InvalidViewerPubkey (2) and leaves
 // *handle_out as NULL. Callers must check the status before using the handle.
+//
+// D6 null handle_out guard: if handle_out itself is NULL, the function returns
+// NmpRegisterStatus_NullApp (1) without writing through the pointer or leaking
+// any allocation. Passing a null handle_out is a programmer-error contract
+// violation (same as passing a null app).
 
 // Status codes returned by `nmp_app_chirp_register`.
 // Discriminants are stable — do not renumber.
