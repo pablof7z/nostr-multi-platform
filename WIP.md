@@ -19,7 +19,6 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-13 — **fix(nmp-marmot,nmp-ffi,nmp-app-chirp): key-package autopublish parity across all register paths (PR-4 of marmot-create-fix ladder)**. Branch: `feat/marmot-autopublish-parity`. Worktree: agent-ac2dcc1ce93a137dc. Hoists `take_pending_mls_autopublish` + `publish_key_package_on_register` into the shared `register_with_keys` tail; sets the flag in `nmp_app_signin_nsec(make_active=1)`, `restore_local_nsec_from_keyring`, and `sign_in_local_nsec_with_keyring`; makes `set_pending_mls_autopublish` `pub`. Fixes: iOS/Android nsec-signed-in accounts (including NMP_TEST_NSEC seam) now autopublish a key package on register so they can be invited to MLS groups without visiting Settings.
 
 - 2026-06-12 — **PR 2 of 4: MLS DB key rides host keyring capability; drop apple-native-keyring-store** (Marmot keyring ladder). PR #1187. Branch: `refactor/marmot-capability-credential-store`. Worktree: agent-marmot-keyring. Implements `CapabilityCredentialStore` + `CapabilityCredential` (keyring-core traits over the capability socket); removes `apple-native-keyring-store` dep; rewrites `credential_store::initialize` to probe the capability handler on all platforms (no `cfg(target_os)` branches); exposes `NmpApp::capability_callback_slot()` accessor. Dispatches to the Android Keystore capability handler landed by #1188.
 
