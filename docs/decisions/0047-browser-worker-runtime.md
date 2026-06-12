@@ -36,9 +36,14 @@ None of that execution model is available in single-threaded WebAssembly.
 NMP's browser runtime is a `KernelReducer` driven on a dedicated Worker's
 event loop. There is no ported copy of the native thread + flume + tokio actor.
 The Worker thread is the single writer of kernel state (D4), and `wasm-bindgen`
-closures parked on `WebSocket::onmessage` deliver relay frames back onto that
-same event loop via `spawn_local`. The actor pattern is preserved; the
-execution substrate is not.
+closures parked on `WebSocket::onmessage` deliver relay frames **synchronously**
+on that same event loop — the `build_on_message` handler body calls the kernel
+callbacks directly with no `spawn_local` indirection
+(`nmp-network/src/browser_driver.rs:286-299`). (`spawn_local` is used only in
+the NIP-07 sign bridge,
+`nmp-signers/src/signers/nip07/wasm.rs`, where it parks the async
+`window.nostr.signEvent` Promise on the event loop.) The actor pattern is
+preserved; the execution substrate is not.
 
 ### 2. Synchronous read/dispatch path + Promise-based async write path
 
@@ -87,9 +92,12 @@ surface as `CapabilityFailure`.
 ### 5. Correlation IDs on all request/response pairs
 
 Every `WorkerRequest` that expects a response carries a `correlation_id` string
-supplied by the host. Every responsive `WorkerEvent` echoes it back. This is
-the single event channel the host uses to match responses to pending requests;
-there is no separate callback-per-dispatch.
+supplied by the host, with the sole exception of `Hello` — `HelloAccepted`
+carries no correlation, because `Hello` is a fire-and-observe handshake, not a
+tracked async request (`protocol.rs:33-37`). Every other responsive
+`WorkerEvent` echoes the id back. This is the single event channel the host
+uses to match responses to pending requests; there is no separate
+callback-per-dispatch.
 
 ## Consequences
 

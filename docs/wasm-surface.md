@@ -35,7 +35,7 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 6–30.
 
 | `type` wire tag | Rust variant | Payload fields | Notes |
 |---|---|---|---|
-| `"hello"` | `Hello(ClientHello)` | `app_id: String`, `platform: String`, `protocol_version: u16` | Must be the first message. Protocol version must be `1`; mismatch returns `WorkerEvent::Error` with `code = "protocol_mismatch"`. |
+| `"hello"` | `Hello(ClientHello)` | `app_id: String`, `platform: String`, `protocol_version: u16` | **Host convention:** send before `Start`. The runtime enforces no ordering — `Start` without a prior `Hello` succeeds (`runtime.rs:185-223`). Protocol version must be `1`; mismatch returns `WorkerEvent::Error` with `code = "protocol_mismatch"`. |
 | `"start"` | `Start(StartConfig)` | `app_id: String`, `relays: Vec<String>` (default: Chirp defaults), `relay_bootstrap: Vec<{url, role}>` (default: Chirp defaults), `database_name: String`, `correlation_id: String` | Starts the `KernelReducer`, spawns relay drivers (wasm32 only). |
 | `"stop"` | `Stop` | `correlation_id: String` | Closes relay drivers, stops the kernel. |
 | `"dispatch"` | `Dispatch(ActionDispatch)` | `action_type: String`, `payload: Value`, `correlation_id: String` | Generic kernel-namespaced dispatch. Routes `nmp.kernel.*` actions through `KernelReducer::reduce`. App-namespaced writes not routed through the sync path (see §3). |
@@ -45,8 +45,10 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 6–30.
 
 ### `Dispatch` kernel-namespaced action types
 
-These `action_type` values route through `KernelReducer::reduce` on the sync path.
-Source: `crates/nmp-wasm/src/dispatch_routing.rs` lines 148–176.
+Two routing paths serve these `action_type` values:
+
+- **Kernel-namespaced actions** (`nmp.kernel.start` through `nmp.kernel.close_view`): `kernel_action_from_dispatch` maps them to `KernelAction` variants, then `KernelReducer::reduce` processes them. Source: `crates/nmp-wasm/src/dispatch_routing.rs` lines 148–176.
+- **Claim/release actions** (`nmp.kernel.claim_*` / `nmp.kernel.release_*`): `claim_dispatch_from_action` parses the payload and routes to dedicated `KernelReducer` methods (`claim_profile`, `release_profile`, etc.) — not through `reduce`. Source: `crates/nmp-wasm/src/dispatch_routing.rs` lines 62–86.
 
 | `action_type` | `KernelAction` | Notes |
 |---|---|---|
@@ -114,8 +116,12 @@ through the snapshot callback before `handle_json` returns. The host sees a
 single binary channel for snapshot frames regardless of whether they were
 produced by a relay-inbound frame or by a `Start`/`Dispatch` request.
 
-**D6:** Returns `Err(JsValue)` only for JSON deserialisation failure (programmer
-error). All runtime failures surface as `CapabilityFailure` inside the `Ok`
+**D6:** Returns `Err(JsValue)` for JSON deserialisation failure *and* for any
+`WasmRuntimeError` from `WasmRuntime::handle` (`lib.rs:76`) — concretely:
+`InvalidConfig` (empty `app_id`, `database_name`, or `relays` on `Start`;
+relay-spawn failure on wasm32) or `KernelContract` (unexpected `KernelUpdate`
+variant returned by the pure reducer). All three cases are programmer errors.
+All other runtime failures surface as `CapabilityFailure` inside the `Ok`
 result — never a `JsValue` rejection on anything the user can cause.
 
 ### Async path — `dispatch_app_action_async`
@@ -145,9 +151,9 @@ Serialised with `"action"` tag (`serde(tag = "action", rename_all = "snake_case"
 | `action` | Payload fields | Notes |
 |---|---|---|
 | `"publish_note"` | `content: String`, `reply_to_id?: String` | Maps to `nmp.publish / PublishRaw { kind: 1 }`. `reply_to_id` is accepted in the struct; on the async path a non-null value returns `CapabilityFailure` with reason `publish_path_not_wired_for_kind: nmp.publish.reply` — replies are not yet wired. |
-| `"react"` | `target_event_id: String`, `reaction?: String` (default `"+"`) | Maps to `nmp.nip25.react`. |
-| `"follow"` | `pubkey: String` | Maps to `nmp.follow`. |
-| `"unfollow"` | `pubkey: String` | Maps to `nmp.unfollow`. |
+| `"react"` | `target_event_id: String`, `reaction?: String` (default `"+"`) | Maps to `nmp.nip25.react`. **Not wired on the async path:** `dispatch_app_action_async` returns `CapabilityFailure` with reason `publish_path_not_wired_for_kind` (`publish_path.rs:165-171`). |
+| `"follow"` | `pubkey: String` | Maps to `nmp.follow`. **Not wired on the async path:** returns `CapabilityFailure` with reason `publish_path_not_wired_for_kind`. |
+| `"unfollow"` | `pubkey: String` | Maps to `nmp.unfollow`. **Not wired on the async path:** returns `CapabilityFailure` with reason `publish_path_not_wired_for_kind`. |
 
 ---
 
@@ -165,17 +171,22 @@ Install a JS callback the runtime invokes with a `Uint8Array` argument
 this once at Worker boot. Passing `null` clears the slot; subsequent snapshot
 frames are dropped on the synchronous path.
 
-The callback fires on two triggers:
+The callback fires on three triggers:
 - **Relay-driven mutations:** an inbound `WebSocket::onmessage` fires a
   `BrowserRelayDriver` handler, which calls `KernelReducer::handle_relay_frame`,
   then pushes a snapshot via the registered callback. No timer is scheduled;
   the push fires only on relay activity.
 - **Request-driven mutations:** `handle_json` drains `UpdateBytes` events from
   the handle result and routes them through the callback before returning.
+- **Async publish mutations:** `dispatch_app_action_async` calls
+  `push_snapshot_if_callback` after a successful sign + publish
+  (`publish_path.rs:242`). The host sees the new publish-queue entry
+  (status: `"accepted_locally"`) immediately without waiting for the next
+  relay-inbound frame.
 
-In both cases the host receives snapshot frames on the same binary channel,
-regardless of whether the mutation originated from the network or from a host
-dispatch.
+In all cases the host receives snapshot frames on the same binary channel,
+regardless of whether the mutation originated from the network, a host
+dispatch, or an async publish.
 
 ---
 
@@ -186,12 +197,16 @@ in `CapabilityFailure.reason`. Hosts must pattern-match on the prefix (split on
 the first `: `).
 
 Source: `crates/nmp-wasm/src/dispatch_routing.rs` lines 112–138;
-`crates/nmp-wasm/src/signer_slot.rs` lines 47–67.
+`crates/nmp-wasm/src/signer_slot.rs` lines 47–67;
+`crates/nmp-wasm/src/publish_path.rs` lines 69–75, 83–88, 216.
 
 | Prefix | Source function | Condition |
 |---|---|---|
 | `signer_not_installed` | `write_path_unavailable_reason(None)` | App-level write dispatched before `SetSigner`. Host should prompt sign-in. |
 | `publish_path_not_wired` | `write_path_unavailable_reason(Some(&signer))` | Signer installed but write routed through sync `handle_json` instead of `dispatch_app_action_async`. Host integration error. |
+| `publish_path_not_wired_for_kind` | `write_path_not_wired_for_kind_reason` | Async path received `React`, `Follow`, or `Unfollow` (or `PublishNote` with non-null `reply_to_id`). Only plain `PublishNote` (kind:1, no reply) is wired in the current async path. |
+| `unsupported_signer_backend_for_writes` | `unsupported_signer_backend_reason` | Installed signer backend is not NIP-07 (e.g. `LocalKey`). Only NIP-07 is wired for wasm async writes. |
+| `nip07_sign_failed` | inline in `publish_app_action` | `window.nostr.signEvent` was rejected or returned an error. The failure detail follows the prefix after `": "`. |
 | `browser_actor_driver_missing` | `browser_driver_missing_reason()` | `CapabilityResult` received; no native actor to route it. The wasm runtime drains the JS pending state and returns this reason. |
 | `unsupported_signer_kind` | `SignerInstallError::UnsupportedKind` | `SetSigner.kind` is not `"nip07"`. Only NIP-07 is wired. |
 | `invalid_signer_pubkey` | `SignerInstallError::InvalidPubkey` | `SetSigner.pubkey_hex` failed secp256k1 x-only pubkey parse. |
@@ -219,6 +234,15 @@ work across both surfaces.
 
 ## 7. Follow-on work (not yet shipped)
 
+- **React / Follow / Unfollow + reply wiring on the async path.** The async
+  `dispatch_app_action_async` entrypoint currently wires `PublishNote` (kind:1,
+  no reply) only. `React`, `Follow`, `Unfollow`, and `PublishNote` with a non-null
+  `reply_to_id` all return `CapabilityFailure` with reason
+  `publish_path_not_wired_for_kind`. Each variant needs kind-specific tag
+  construction (NIP-25 `k` tag for React, kind:3 follow-set merging for
+  Follow/Unfollow, NIP-10 reply tags for replies) before it can use the same
+  publish path. This is the largest unshipped async-write piece; tracked in
+  the Chirp-isms issue (see `"chirp_action"` rename below).
 - **IndexedDB store.** The kernel runs in memory; state resets on page reload.
   An IndexedDB replay-log adapter feeding explicit events into the kernel is
   unimplemented.
@@ -227,4 +251,4 @@ work across both surfaces.
 - **`"chirp_action"` wire tag rename.** The `WorkerRequest::AppAction` variant
   serialises as `"chirp_action"` — a residual Chirp-ism. Rename to
   `"app_action"` (or a framework-namespaced equivalent) in a future
-  breaking-wire-version bump.
+  breaking-wire-version bump. Tracked with other Chirp-isms in issue https://github.com/pablof7z/nostr-multi-platform/issues/1125.
