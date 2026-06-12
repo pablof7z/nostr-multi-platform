@@ -21,7 +21,7 @@ One `lmdb::Environment` per app data directory. Sub-databases:
 | `provenance` | NMP | `event_id[32]` | CBOR `ProvenanceRow` | per-relay sidecar (master doc §9) |
 | `watermarks` | NMP | `filter_hash[32] ‖ relay_url_bytes` | CBOR `WatermarkRow` | M4 NIP-77 sync state |
 | `idx_watermark_relay` | NMP | `relay_url_bytes ‖ filter_hash[32]` | empty | relay-first secondary; enables O(matching rows) `list_watermarks_for_relay` |
-| `claims_meta` | NMP | `claimer_id_be[8]` | CBOR `BTreeSet<EventId>` | pinned set per ClaimerId (deduped); rebuilt on restart from open views |
+| ~~`claims_meta`~~ | — | — | — | **REMOVED (#1090 Stage 1)** — persisted claims had zero production callers (V-117); the eviction pin set is now derived by the kernel each GC pass and passed to `gc_step_with_pins`, never persisted (see [`gc.md`](gc.md) §4) |
 | `domain_<ns>_data` | NMP, per `DomainModule` | module-defined | module-defined | one sub-db per registered namespace |
 | `domain_<ns>_idx_<name>` | NMP, per `DomainModule` index | `index_key ‖ primary_key` | empty | secondary indexes per `DomainIndex` |
 | `_meta` | NMP | string namespace | `{ schema_version: u32, opened_with_nmp_version: String }` | migration tracking |

@@ -3,14 +3,15 @@
 //! Pure delegation — all logic lives in the sub-modules. This file exists so
 //! `mod.rs` stays under 200 LOC (Article I hard ceiling).
 
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 
 use super::{domain, gc, insert, query, MemEventStore};
 use crate::events::{DomainHandle, EventIter, EventStore};
 use crate::types::{
-    ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow,
-    VerifiedEvent, WatermarkKey, WatermarkRow,
+    Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
+    WatermarkKey, WatermarkRow,
 };
 use crate::DomainMigration;
 use crate::StoreError;
@@ -149,29 +150,18 @@ impl EventStore for MemEventStore {
         query::list_watermarks_for_relay(self, relay_url)
     }
 
-    fn register_view_cover(
-        &self,
-        claimer: ClaimerId,
-        cover_budget: usize,
-    ) -> Result<(), StoreError> {
-        gc::register_view_cover(self, claimer, cover_budget)
-    }
-
-    fn claim(&self, claimer: ClaimerId, ids: &[EventId]) -> Result<(), StoreError> {
-        gc::claim(self, claimer, ids)
-    }
-
-    fn release(&self, claimer: ClaimerId) -> Result<(), StoreError> {
-        gc::release(self, claimer)
-    }
-
     fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> {
         // Memory backend has no LRU — all events are equally hot. No-op.
         Ok(())
     }
 
-    fn gc_step(&self, budget: GcBudget, now_secs: u64) -> Result<GcReport, StoreError> {
-        gc::gc_step(self, budget, now_secs)
+    fn gc_step_with_pins(
+        &self,
+        budget: GcBudget,
+        now_secs: u64,
+        pins: &HashSet<EventId>,
+    ) -> Result<GcReport, StoreError> {
+        gc::gc_step_with_pins(self, budget, now_secs, pins)
     }
 
     fn domain_open(&self, namespace: &'static str) -> Result<DomainHandle, StoreError> {

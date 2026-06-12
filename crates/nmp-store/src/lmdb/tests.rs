@@ -11,8 +11,8 @@
 
 use std::ops::ControlFlow;
 
-use crate::types::{ClaimerId, InsertOutcome, RawEvent, StoreQuery};
-use crate::{EventStore, StoreError};
+use crate::types::{InsertOutcome, RawEvent, StoreQuery};
+use crate::EventStore;
 
 use super::test_fixtures::{open_tmp, signed_event, signed_event_with_keys, verified};
 
@@ -201,71 +201,6 @@ fn query_wrapper_newest_first_ordered() {
         assert!(w[0].raw.created_at >= w[1].raw.created_at, "newest-first");
     }
     assert_eq!(v[0].raw.created_at, 2_000_049, "first must be newest");
-}
-
-// ─── Claims parity ───────────────────────────────────────────────────────────
-
-#[test]
-fn claim_idempotent_reclaim_does_not_count() {
-    let (store, _dir) = open_tmp();
-    let c = ClaimerId(1);
-    store.register_view_cover(c, 5).unwrap();
-    let mut id = [0u8; 32];
-    id[0] = 1;
-    store.claim(c, &[id]).unwrap();
-    store.claim(c, &[id]).unwrap();
-    // No direct count exposure, so we exercise the budget: claim 5 unique ids
-    // (4 fresh) — must succeed.
-    let mut others = Vec::new();
-    for b in 2..6u8 {
-        let mut o = [0u8; 32];
-        o[0] = b;
-        others.push(o);
-    }
-    store.claim(c, &others).unwrap();
-}
-
-#[test]
-fn claim_over_per_view_ceiling_returns_err() {
-    let (store, _dir) = open_tmp();
-    let c = ClaimerId(2);
-    store.register_view_cover(c, 2).unwrap();
-    let id1 = {
-        let mut i = [0u8; 32];
-        i[0] = 1;
-        i
-    };
-    let id2 = {
-        let mut i = [0u8; 32];
-        i[0] = 2;
-        i
-    };
-    let id3 = {
-        let mut i = [0u8; 32];
-        i[0] = 3;
-        i
-    };
-    store.claim(c, &[id1, id2]).unwrap();
-    let res = store.claim(c, &[id3]);
-    assert!(
-        matches!(res, Err(StoreError::OverPinned { .. })),
-        "expected OverPinned, got {res:?}"
-    );
-}
-
-#[test]
-fn release_clears_claimer() {
-    let (store, _dir) = open_tmp();
-    let c = ClaimerId(3);
-    store.register_view_cover(c, 100).unwrap();
-    let mut id = [0u8; 32];
-    id[0] = 7;
-    store.claim(c, &[id]).unwrap();
-    store.release(c).unwrap();
-    // After release, the slot is free — re-registering and claiming a fresh
-    // id must succeed without OverPinned.
-    store.register_view_cover(c, 1).unwrap();
-    store.claim(c, &[id]).unwrap();
 }
 
 // ─── Domain rows parity ──────────────────────────────────────────────────────

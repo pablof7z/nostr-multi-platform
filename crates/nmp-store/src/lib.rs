@@ -30,7 +30,7 @@ mod mem;
 pub mod types;
 
 pub use domain_migration::{DomainMigration, MigrationTx};
-pub use events::{ClaimGuard, DomainHandle, DomainScanIter, EventIter, EventStore};
+pub use events::{DomainHandle, DomainScanIter, EventIter, EventStore};
 pub use lmdb::LmdbEventStore;
 // W2 — relay-author-score encode/decode helpers. Gated on `lmdb-backend`
 // because the implementation is LMDB-specific. Callers that build
@@ -42,10 +42,10 @@ pub mod relay_scores {
 }
 pub use mem::MemEventStore;
 pub use types::{
-    ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RawEvent, RejectReason, RelayUrl, StoreQuery,
-    StoredEvent, SyncMethod, TombstoneOrigin, TombstoneRow, VerifiedEvent, WatermarkKey,
-    WatermarkRow, GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
+    Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    ProvenanceEntry, PubKey, RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent, SyncMethod,
+    TombstoneOrigin, TombstoneRow, VerifiedEvent, WatermarkKey, WatermarkRow, GC_MAX_DURATION_MS,
+    GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
 };
 
 // Re-export error types from types (defined there to avoid circular imports).

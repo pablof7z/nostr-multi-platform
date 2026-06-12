@@ -210,6 +210,53 @@ impl Kernel {
         pins
     }
 
+    // ─── store-tier pin derivation (#1090 Stage 1) ──────────────────────────
+
+    /// Derive the store-tier LRU-eviction pin set for [`Kernel::run_gc_step`].
+    ///
+    /// Mirrors the RAM-tier `events` pin set ([`Self::evict_events_cache`]) but
+    /// targets the store's byte-keyed [`EventStore::gc_step_with_pins`] seam
+    /// instead of the kernel's hex-keyed `events` map.  An event is pinned when
+    /// any of these hold:
+    ///
+    /// - its hex id appears in `self.timeline` (the bounded visible feed);
+    /// - its hex id is a key in `self.event_claims` (a UI component is holding a
+    ///   claim — `event_claims` keys are `kind:pubkey:d_tag` coordinates for
+    ///   naddr URIs and hex64 ids for nevent/note URIs; only the hex64 keys map
+    ///   to a store `EventId`, coordinate keys are skipped);
+    /// - it matches the wire-filter shape of any active open interest
+    ///   ([`Self::open_view_pins`] — the same predicate `should_store_event`'s
+    ///   `matches_active_open_interest` clause uses for admission).
+    ///
+    /// The result is a set of 32-byte store [`EventId`](crate::store::EventId)s.
+    /// Hex strings that do not parse to a 32-byte id (e.g. coordinate keys) are
+    /// silently skipped — they have no store row to protect.
+    ///
+    /// This replaces the deleted persisted-claims sub-db: the pin set is
+    /// recomputed from live kernel state on every GC pass and passed straight
+    /// into `gc_step_with_pins`, never persisted.
+    pub(crate) fn derive_store_pin_set(&self) -> HashSet<crate::store::EventId> {
+        let view_pins = self.open_view_pins();
+
+        // Convert a hex64 event-id string into a store `EventId` ([u8; 32]).
+        // Returns `None` for any string that is not a valid 32-byte hex id
+        // (e.g. a `kind:pubkey:d_tag` coordinate key from `event_claims`).
+        fn hex_to_id(hex: &str) -> Option<crate::store::EventId> {
+            let parsed = nostr::EventId::from_hex(hex).ok()?;
+            let mut bytes = [0u8; 32];
+            bytes.copy_from_slice(parsed.as_bytes());
+            Some(bytes)
+        }
+
+        self.timeline
+            .iter()
+            .map(String::as_str)
+            .chain(self.event_claims.keys().map(String::as_str))
+            .chain(view_pins.event_ids.iter().map(String::as_str))
+            .filter_map(hex_to_id)
+            .collect()
+    }
+
     // ─── events ────────────────────────────────────────────────────────────
 
     fn evict_events_cache(&mut self, view_pins: &OpenViewPins) -> usize {
