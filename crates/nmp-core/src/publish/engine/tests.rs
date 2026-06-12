@@ -248,6 +248,19 @@ fn publish_action_threads_dispatch_correlation_id_through_to_terminal() {
         "the event id MUST NOT leak as the terminal correlation_id when an override is set"
     );
     assert_eq!(drained[0].status, "ok");
+    let result_json = drained[0]
+        .result_json
+        .as_deref()
+        .expect("dispatch-originated publish returns the signed event");
+    let result: serde_json::Value = serde_json::from_str(result_json).expect("result_json is JSON");
+    assert_eq!(
+        result
+            .get("event")
+            .and_then(|event| event.get("id"))
+            .and_then(serde_json::Value::as_str),
+        Some(event_id.as_str()),
+        "host can recover the NIP-01 event id without reconstructing it"
+    );
 }
 
 #[test]

@@ -320,6 +320,7 @@ impl PublishEngine {
                 &handle,
                 in_flight.correlation_id_override.as_deref(),
                 &outcome,
+                Some(&in_flight.event),
             );
             self.record_terminal(terminal);
             self.recently_completed.insert(handle.clone(), outcome);
@@ -358,6 +359,7 @@ impl PublishEngine {
                 handle,
                 in_flight.correlation_id_override.as_deref(),
                 &outcome,
+                Some(&in_flight.event),
             );
             let event_id = in_flight.event.id.clone();
             self.record_terminal(terminal);

@@ -86,9 +86,10 @@ pub struct LastTerminal {
     /// verbatim into the `action_results[correlation_id]` row's `result` field
     /// so a protocol crate can attach a descriptor (e.g. a Blossom blob
     /// descriptor) without `nmp-core` learning any protocol noun (D0). `None`
-    /// for every publish-engine terminal and the bare `record_action_success`
-    /// path; `Some(json)` only on the `RecordActionSuccess { result_json }`
-    /// off-band path.
+    /// for pre-signed publish handles and the bare `record_action_success` path.
+    /// `Some(json)` appears when a dispatch-originated publish needed a registry
+    /// correlation id before the event id existed, and on off-band
+    /// `RecordActionSuccess { result_json }` completions.
     pub result_json: Option<String>,
 }
 
@@ -103,11 +104,16 @@ impl LastTerminal {
     /// registry-minted id, not the event id). When `Some`, the returned
     /// `correlation_id` is that override; when `None`, it falls back to the
     /// `handle` (the pre-existing behaviour for every other publish path).
+    /// When an override is present and the publish succeeds, `signed_event` is
+    /// forwarded as the opaque action result so hosts can bind their UI to the
+    /// actual event id without reconstructing the signed event outside NMP.
     pub(super) fn from_outcome(
         handle: &PublishHandle,
         correlation_id_override: Option<&str>,
         outcome: &TerminalOutcome,
+        signed_event: Option<&SignedEvent>,
     ) -> Self {
+        let carries_dispatch_result = correlation_id_override.is_some();
         let correlation_id = correlation_id_override.map_or_else(|| handle.clone(), str::to_string);
         if outcome.accepted.is_empty() {
             let error = if outcome.failed.is_empty() {
@@ -133,8 +139,17 @@ impl LastTerminal {
                 correlation_id,
                 status: "ok",
                 error: None,
-                result_json: None,
+                result_json: carries_dispatch_result
+                    .then(|| signed_event.map(publish_result_json))
+                    .flatten(),
             }
         }
     }
+}
+
+fn publish_result_json(signed_event: &SignedEvent) -> String {
+    let event_json = signed_event.to_nip01_json();
+    let event = serde_json::from_str::<serde_json::Value>(&event_json)
+        .unwrap_or_else(|_| serde_json::Value::String(event_json));
+    serde_json::json!({ "event": event }).to_string()
 }
