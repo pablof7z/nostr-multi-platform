@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **fix(nmp-core): publish to AUTH relays parks until Authenticated instead of failing** (Finding B). Branch: `worktree-agent-a039795a01fd62ea8`. Worktree: agent-a039795a01fd62ea8. Auth-required ack now PARKS the publish via the existing `unavailable_relays` + InFlight→Pending machinery (new `RetryVerdict::ParkAwaitingAuth`, no reauth-budget consumed); on `RelayAuthState::Authenticated` the auth handler calls `mark_publish_relay_available` exactly like reconnect, re-dispatching the parked publish. Removes stale M6 comment + dead `Reauth`/`auth_required_max_retries`.
+
 - PR **#1014** — nmp-conformance scanner skill + catalog (v0 seed). **Draft** (author-gated);
   all checks green after the 2026-06-11 re-run cleared the v58 flake.
 
