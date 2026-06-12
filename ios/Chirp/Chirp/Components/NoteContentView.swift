@@ -48,11 +48,15 @@ struct NoteContentView: View {
 
     @ViewBuilder
     private func richBody(_ tree: ContentTreeWire) -> some View {
+        // No quoteCardProvider — embed refs flow through the NostrKindRegistry
+        // environment path (EmbeddedEvent) injected by ChirpApp. The legacy
+        // quoteCardProvider closure is intentionally omitted so that quote
+        // cards use the same kind-registry seam as article/highlight embeds
+        // (resolves #1179 / F-CR-05 residual).
         NostrContentView(
             tree: tree,
             font: font,
-            mentionLabel: { uri in renderContext.mentionLabel(for: uri.primaryId) },
-            quoteCardProvider: quoteCardModel(for:)
+            mentionLabel: { uri in renderContext.mentionLabel(for: uri.primaryId) }
         )
         .nostrContentRenderer(chirpContentRenderer)
     }
@@ -78,47 +82,6 @@ struct NoteContentView: View {
                 onEventRefTap: { eventID in router.push(.thread(eventID: eventID)) }
             )
         )
-    }
-
-    private func quoteCardModel(for uri: NostrWireUri) -> NostrQuoteCardModel? {
-        let eventID = uri.primaryId
-        if let card = renderContext.eventCards[eventID] {
-            return NostrQuoteCardModel(
-                id: card.id,
-                unresolvedUri: uri.uri,
-                authorPubkey: card.authorPubkey,
-                authorDisplayName: card.authorDisplayName,
-                authorAvatarUrl: httpImageURL(card.authorPictureUrl),
-                content: card.contentPreview.isEmpty ? card.content : card.contentPreview,
-                createdAtDisplay: card.createdAt.relativeTimeFromUnixSeconds
-            )
-        }
-
-        if let item = renderContext.timelineItems[eventID] {
-            return NostrQuoteCardModel(
-                id: item.id,
-                unresolvedUri: uri.uri,
-                authorPubkey: item.authorPubkey,
-                authorDisplayName: renderContext.mentionLabel(for: item.authorPubkey),
-                authorAvatarUrl: httpImageURL(item.authorPictureUrl),
-                content: item.contentPreview.isEmpty ? item.renderedContent : item.contentPreview,
-                createdAtDisplay: item.createdAt.relativeTimeFromUnixSeconds
-            )
-        }
-
-        return nil
-    }
-
-    private func httpImageURL(_ value: String?) -> URL? {
-        guard
-            let value,
-            let url = URL(string: value),
-            let scheme = url.scheme?.lowercased(),
-            ["http", "https"].contains(scheme)
-        else {
-            return nil
-        }
-        return url
     }
 }
 
