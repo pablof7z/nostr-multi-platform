@@ -102,3 +102,14 @@ jobs:
 
       - name: Check Kotlin transport bindings are in sync with the schema
         run: bash ci/check-kotlin-flatc-drift.sh
+
+      # Issue #1093 — golden fixture parity gate. The two copies of
+      # update_frame_tier3_golden_v1.fb.hex (Rust crate + Android resources)
+      # must be byte-identical. Regenerate both via:
+      #   cargo test -p nmp-core -- tier3_golden_fixture_matches_encoder --nocapture
+      - name: Assert golden fixture copies are byte-identical
+        run: |
+          cmp \
+            crates/nmp-core/tests/fixtures/update_frame_tier3_golden_v1.fb.hex \
+            android/app/src/test/resources/fixtures/update_frame_tier3_golden_v1.fb.hex \
+          || { echo "golden fixture copies diverged — regenerate BOTH via tier3_golden_fixture_matches_encoder"; exit 1; }
