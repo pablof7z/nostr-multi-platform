@@ -38,8 +38,8 @@ pub fn hash_to_curve(message: &[u8]) -> Result<PublicKey, Nip60Error> {
     // Try-and-increment: find a valid compressed point.
     for counter in 0u32..1000 {
         let mut h2 = Sha256::new();
-        h2.update(&msg_hash);
-        h2.update(&counter.to_le_bytes()); // 4-byte little-endian per NUT-00 spec
+        h2.update(msg_hash);
+        h2.update(counter.to_le_bytes()); // 4-byte little-endian per NUT-00 spec
         let hash = h2.finalize();
 
         // Build a 33-byte compressed point candidate with prefix 0x02.
