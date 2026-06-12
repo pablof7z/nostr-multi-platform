@@ -348,6 +348,29 @@ void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapsho
 // A NULL `app` is also handled — returns the same empty-rings payload.
 char *nmp_app_recent_routing_decisions(void *app);
 
+// ADR-0049 Part 2 — composition report (the explain-the-composition surface,
+// NMP's analog of Spring Boot's ConditionEvaluationReport). Returns a heap-owned
+// NUL-terminated JSON snapshot of the composition ledger: every host-init
+// registration decision (action modules, ingest parsers, snapshot projections,
+// the last-writer-wins wiring slots) and its disposition.
+//
+// Payload shape (stable, schema-versioned):
+//   { "schema_version": 1, "count": N, "records": [
+//       { "seam": "action_registry", "key": "nmp.nip02.follow",
+//         "provider": "nmp_nip02::FollowModule", "disposition": "Installed" },
+//       { "seam": "action_registry", "key": "nmp.publish",
+//         "provider": "app::MyPublish", "disposition": "ReplacedPrevious",
+//         "replaced": "nmp_core::publish::PublishModule" } ] }
+//
+// `disposition` is one of "Installed", "ReplacedPrevious", "YieldedToExisting",
+// "DroppedLateWiring". `replaced` is present only for the replaced/yielded cases.
+//
+// The caller MUST release the returned pointer via nmp_free_string.
+// D6: never returns NULL for a non-NULL app — a serialisation failure collapses
+// to a well-formed empty document (`{"schema_version":1,"count":0,"records":[]}`).
+// A NULL `app` is also handled — returns the same empty document.
+char *nmp_app_composition_report(void *app);
+
 // Release a Rust-heap C string returned by ANY NMP FFI function. Null-safe.
 // This is the ONLY correct freer — the host's free(3) must NOT be used.
 void nmp_free_string(char *ptr);
