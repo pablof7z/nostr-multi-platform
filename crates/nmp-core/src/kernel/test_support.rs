@@ -267,12 +267,47 @@ impl Kernel {
         }
         self.events.insert(id.clone(), cached);
         self.notify_event_observers(&kernel_event);
-        // Also fan out to raw-event observers (e.g. DmInboxProjection for kind:1059).
+        // Also fan out to raw-event observers (verbatim-signed-event tap for
+        // live-delivery consumers such as chirp-tui / hl nostrdb mirror).
         // Mirrors the `verify_and_persist` branch in `ingest/mod.rs` that calls
         // `notify_raw_event_observers` when the store outcome is Inserted|Replaced.
         // The `proceed` gate above already enforces that same store-outcome condition.
         if !self.raw_event_observers_idle_for_kind(raw.kind) {
             self.notify_raw_event_observers(&raw, &relay_url);
+        }
+        // Fan to the substrate `EventIngestDispatcher` — keeps TEST-SUPPORT
+        // injection consistent with the production fan-out in `verify_and_persist`
+        // (the wildcard ingest arm) and `ingest_timeline_event` (the follow-feed
+        // path).
+        //
+        // IMPORTANT: `ingest_pre_verified_event` is TEST-SUPPORT ONLY. The FFI
+        // symbol `nmp_app_inject_signed_event_json`, the
+        // `ActorCommand::IngestPreVerifiedEvents` dispatch arm, and this function
+        // are all gated on `#[cfg(any(test, feature = "test-support"))]`. Production
+        // ingest flows through `verify_and_persist` and `ingest_timeline_event`,
+        // which each call the dispatcher directly. This call mirrors those paths
+        // so that tests exercising the inject path see the same IngestParser
+        // fan-out as production ingest paths.
+        //
+        // Gating matches `verify_and_persist`: only fire on Inserted|Replaced
+        // (i.e. when `proceed` is true). Duplicate re-deliveries do not re-fire
+        // the parser (D4 dedup); the `proceed` check above enforces this.
+        //
+        // Ephemeral gate divergence: pre-verified injection never carries
+        // ephemeral kinds (ephemeral events expire at the relay boundary and
+        // are not stored). `verify_and_persist` fires the dispatcher for
+        // Ephemeral outcomes; this path does not (the `proceed` gate above
+        // already ensures Inserted|Replaced only). If ephemeral pre-verified
+        // injection is ever added, the gate here must be re-evaluated.
+        //
+        // D6 — a poisoned dispatcher lock degrades to "no parser fired"; the
+        // store insert already succeeded so this is the safe graceful-degrade.
+        {
+            let verified_for_dispatch =
+                crate::store::VerifiedEvent::from_raw_unchecked(raw.clone());
+            if let Ok(d) = self.ingest_dispatcher_slot().read() {
+                d.dispatch(&verified_for_dispatch);
+            }
         }
         // diag-firehose-stress sub_id: always appended to timeline.
         // sort_timeline() is NOT called here; callers that inject a batch of

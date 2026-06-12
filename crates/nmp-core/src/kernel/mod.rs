@@ -69,6 +69,8 @@ mod claim_expansion_tick_tests;
 // post-store projection-dispatch path (not store.insert — see ADR §1.2).
 mod cache_serve;
 #[cfg(test)]
+mod cache_serve_all_kinds_dispatcher_tests;
+#[cfg(test)]
 mod cache_serve_budget_tests;
 #[cfg(test)]
 mod cache_serve_tests;
@@ -95,6 +97,10 @@ mod event_observer;
 mod event_observer_tests;
 mod identity_state;
 mod ingest;
+#[cfg(test)]
+mod ingest_pre_verified_dispatcher_tests;
+#[cfg(test)]
+mod ingest_timeline_dispatcher_tests;
 #[cfg(test)]
 mod ingest_tests;
 mod lifecycle;

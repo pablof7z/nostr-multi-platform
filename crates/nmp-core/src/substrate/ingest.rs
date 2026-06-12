@@ -190,6 +190,21 @@ impl EventIngestDispatcher {
         Some(self.by_range.remove(pos).2)
     }
 
+    /// Return `true` when at least one parser is registered that would fire
+    /// for `kind`. Used by the cache-serve gate to decide whether to run the
+    /// `IngestParser` dispatch path for a served event without needing a full
+    /// `VerifiedEvent` — avoids the `from_store_verified_unchecked` call and
+    /// lock acquisition when the dispatcher is empty or has no match.
+    ///
+    /// Cheap read: walks only the by-kind bucket for `kind` (O(parsers-for-kind),
+    /// typically 0–2) and the short range-vec (O(ranges), typically 0–3) without
+    /// any allocation. Safe to call under the read lock.
+    #[must_use]
+    pub fn is_interested(&self, kind: u32) -> bool {
+        self.by_kind.contains_key(&kind)
+            || self.by_range.iter().any(|(range, _, _)| range.contains(&kind))
+    }
+
     /// Fan `evt` to every parser registered for its kind. Called by the
     /// kernel's ingest path; non-existent registrations are a fast no-op.
     pub fn dispatch(&self, evt: &VerifiedEvent) {
@@ -558,5 +573,47 @@ mod tests {
             p.kinds().is_empty(),
             "parser behind empty range must never fire"
         );
+    }
+
+    // ── is_interested tests ──────────────────────────────────────────────────
+
+    /// `is_interested` returns true when a kind-specific parser is registered.
+    #[test]
+    fn is_interested_true_for_registered_kind() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        d.register_kind(1059, p.clone());
+        assert!(d.is_interested(1059), "must be true for registered kind");
+        assert!(!d.is_interested(1), "must be false for unregistered kind");
+    }
+
+    /// `is_interested` returns true when a range-registered parser covers the kind.
+    #[test]
+    fn is_interested_true_for_range_covered_kind() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        d.replace_range_parser(0..u32::MAX, "test.all-kinds", p.clone());
+        assert!(d.is_interested(1), "all-kinds range must cover kind:1");
+        assert!(d.is_interested(1059), "all-kinds range must cover kind:1059");
+        assert!(d.is_interested(30023), "all-kinds range must cover kind:30023");
+    }
+
+    /// `is_interested` returns false for an empty dispatcher.
+    #[test]
+    fn is_interested_false_for_empty_dispatcher() {
+        let d = EventIngestDispatcher::new();
+        assert!(!d.is_interested(1), "empty dispatcher: is_interested must be false");
+        assert!(!d.is_interested(1059), "empty dispatcher: is_interested must be false");
+    }
+
+    /// `is_interested` returns false after all parsers for a kind are removed.
+    #[test]
+    fn is_interested_false_after_kind_parser_removed() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        d.replace_kind_parser(1059, "test.slot", p.clone());
+        assert!(d.is_interested(1059), "must be true before removal");
+        d.remove_kind_parser_slot(1059, "test.slot");
+        assert!(!d.is_interested(1059), "must be false after removal");
     }
 }

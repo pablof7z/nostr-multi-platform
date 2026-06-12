@@ -183,11 +183,17 @@ impl Kernel {
     /// same seam relay-delivered events use after `Inserted | Replaced`
     /// (ADR-0045 §2, step 3).
     ///
-    /// For shapes that need ingest-parser dispatch (kind:1059 DM gift-wraps):
-    /// - `ingest_dispatcher.dispatch()` — both the NIP-17 `DmInboxProjection`
-    ///   (migrated to IngestParser in PR-1) and the Marmot `MarmotIngestParser`
-    ///   (migrated in PR-2) receive the event via this path. No raw-observer
-    ///   fan-out is needed — all former raw-tap consumers now ride IngestParser.
+    /// For shapes where at least one registered `IngestParser` is interested in
+    /// the served kind (`needs_ingest_parser_dispatch = true`, set at enqueue
+    /// time by querying `EventIngestDispatcher::is_interested`):
+    /// - `ingest_dispatcher.dispatch()` — all registered parsers for the kind
+    ///   receive the event. This covers NIP-17 `DmInboxProjection` (kind:1059,
+    ///   PR-1), Marmot `MarmotIngestParser` (kind:1059, PR-2), and all-kinds
+    ///   range parsers (e.g. chirp-tui's `RawCacheIngestParser`, `0..u32::MAX`).
+    ///
+    /// The old hardcoded `#p`+kind:1059 allowlist is replaced by the
+    /// `is_interested` check at enqueue time — any registered parser now
+    /// transparently causes dispatch without code changes here.
     ///
     /// Note: the live ingest path (`kernel/ingest/mod.rs`) STILL calls
     /// `notify_raw_event_observers` for live-delivery consumers like the `hl`
