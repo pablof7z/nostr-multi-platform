@@ -5,8 +5,9 @@
 //! ships no DM/zap nouns):
 //!
 //! 1. [`register_dm_runtime`] — NIP-17 DM inbox.
-//!    * Wires the kind:1059 raw-event [`nmp_nip17::DmInboxProjection`] +
-//!      its `"nmp.nip17.dm_inbox"` snapshot projection.
+//!    * Wires the kind:1059 [`nmp_nip17::DmInboxProjection`] as an
+//!      `IngestParser` under slot `"nip17.dm_inbox"` + its
+//!      `"nmp.nip17.dm_inbox"` snapshot projection.
 //!    * Owns a `DmRuntimeController` whose `"nmp.nip17.dm_relay_list"`
 //!      projection closure both reconciles (active-account gift-wrap inbox
 //!      interest + pending kind:10050 publishes) AND emits the relay-list
@@ -55,8 +56,9 @@ use nmp_nip57::{self_zap_receipts_interest, self_zap_receipts_interest_id};
 
 /// Wire the NIP-17 DM runtime into `app`.
 ///
-/// Registers the kind:1059 raw-event [`DmInboxProjection`] + the
-/// `"nmp.nip17.dm_inbox"` snapshot projection, then captures a
+/// Registers [`DmInboxProjection`] as an `IngestParser` for kind:1059
+/// under slot `"nip17.dm_inbox"` + the `"nmp.nip17.dm_inbox"` snapshot
+/// projection, then captures a
 /// `DmRuntimeController` under `"nmp.nip17.dm_relay_list"` whose closure
 /// body reconciles the active-account gift-wrap inbox interest +
 /// kind:10050 relay-list publishes against the relay-edit-rows snapshot
@@ -98,18 +100,17 @@ pub fn register_dm_runtime(app: &impl AppHost) {
 }
 
 fn register_inbox_projection(app: &impl AppHost) {
-    // PR-1 of the raw-tap retirement ladder (rule A5): the DM inbox projection
-    // now rides the substrate `IngestParser` seam instead of the raw-event tap.
+    // Raw-tap retirement ladder complete (rules A5, PR-1 + PR-2): the DM inbox
+    // projection rides the substrate `IngestParser` seam exclusively.
     // `replace_ingest_parser` atomically swaps out any previously registered
-    // kind:1059 parser (e.g. from a prior account — fresh projection = fresh
-    // in-memory state), so account-switch teardown is implicit in the replace.
+    // kind:1059 parser under slot `"nip17.dm_inbox"` (e.g. from a prior account
+    // — fresh projection = fresh in-memory state), so account-switch teardown is
+    // implicit in the replace.
     //
-    // The raw-event tap (`register_raw_event_observer` / `swap_dm_inbox_observer`)
-    // is NO LONGER used for the DM inbox. The raw tap still fires for kind:1059
-    // because Marmot (`nmp-marmot`) registers its own raw observer for that kind
-    // (unaffected by this change). Cache-serve feeds the IngestParser via
-    // `EventIngestDispatcher::dispatch` in addition to the existing
-    // `notify_raw_event_observers` fan-out (dual fan-out preserved until PR-2).
+    // The raw-event tap is NO LONGER used for the DM inbox or for Marmot.
+    // Cache-serve feeds the IngestParser exclusively via
+    // `EventIngestDispatcher::dispatch`. Marmot rides its own `IngestParser`
+    // under slot `"marmot"` for all five TAP_KINDS [443,444,445,1059,30443].
     let projection = Arc::new(DmInboxProjection::new(app.active_local_keys()));
 
     // Register as IngestParser for kind:1059 (NIP-59 gift-wrap), under the

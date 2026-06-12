@@ -217,8 +217,9 @@ pub struct KeyPackageLookupPayload {
 /// declaration of the lookup interest shape pending V-110 (wire `OpenView` to
 /// compile a view's dependencies, or remove the unused View machinery).
 ///
-/// Signed-event caching is handled by the app's `RawEventObserver` tap (which
-/// receives the full signed event including `sig`) calling
+/// Signed-event caching is handled by [`crate::projection::tap::MarmotIngestParser`]
+/// (the `IngestParser` under slot `"marmot"`, which receives the full verified
+/// event including `sig` reconstructed from `VerifiedEvent::raw`) calling
 /// `MarmotService::cache_key_package`.
 pub struct KeyPackageLookupView;
 

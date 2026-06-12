@@ -142,6 +142,11 @@ pub trait AppHost: ActionRegistrar {
     /// the first registration for that slot. D6 — a poisoned dispatcher lock is a
     /// silent no-op returning `None` (the registration is dropped; existing parsers
     /// are preserved).
+    ///
+    /// **Slot keys MUST be globally unique across crates.** A second component
+    /// reusing an existing slot name silently evicts the peer's parser. Choose a
+    /// fully-qualified reverse-domain key (e.g. `"nip17.dm_inbox"`, `"marmot"`)
+    /// that cannot collide with any other crate's registration.
     fn replace_ingest_parser(
         &self,
         kind: u32,

@@ -84,6 +84,12 @@ impl EventIngestDispatcher {
     /// `"marmot"` both on kind:1059). Each slot key acts as an independent
     /// lifecycle scope — a re-registration for one slot never evicts the other.
     ///
+    /// **Slot keys MUST be globally unique across crates.** A second component
+    /// that reuses an existing slot name for the same kind silently evicts the
+    /// peer's parser (the slot replace is unconditional within its slot). Choose
+    /// a fully-qualified reverse-domain key (e.g. `"nip17.dm_inbox"`,
+    /// `"marmot"`) that cannot collide with any other crate's registration.
+    ///
     /// Distinct from [`Self::register_kind`] which appends with no slot key.
     pub fn replace_kind_parser(
         &mut self,

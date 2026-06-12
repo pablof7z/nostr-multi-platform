@@ -45,17 +45,16 @@
 //!
 //! ## Inbound ingest seam — CLOSED (this is the receive direction)
 //!
-//! The kernel now also exposes a parallel raw signed-event tap
-//! (`RawEventObserver`, sig included). The host shell's Marmot register
-//! path registers [`crate::projection::tap`] against the retained
-//! `*mut NmpApp` for kinds `[444, 445, 1059]`; the kernel delivers every
-//! accepted inbound signed event of those kinds to it and it drives them
-//! through the shared `ops::ingest_signed_event_core` (kind:1059 →
-//! `unwrap_and_process_welcome`; kind:445 → `process_message`; seeds the
-//! `group_id→relays` cache). Welcomes / messages received from relays
-//! therefore surface in the next `snapshot` automatically — no Swift
-//! path. The `{"op":"ingest_signed_event"}` dispatch op remains as a
-//! back-compat alias over the same core.
+//! `nmp_marmot_register` registers [`crate::projection::tap::MarmotIngestParser`]
+//! as an `IngestParser` under slot `"marmot"` for all five TAP_KINDS
+//! `[443, 444, 445, 1059, 30443]`. The kernel delivers every accepted inbound
+//! verified event of those kinds to it and it drives them through the shared
+//! `ops::ingest_signed_event_core` (kind:1059 → `unwrap_and_process_welcome`;
+//! kind:445 → `process_message`; seeds the `group_id→relays` cache).
+//! Welcomes / messages received from relays therefore surface in the next
+//! `snapshot` automatically — no Swift path, no raw-event tap.
+//! The `{"op":"ingest_signed_event"}` dispatch op remains as a back-compat
+//! alias over the same core.
 //!
 //! ## Threading
 //!
@@ -89,10 +88,12 @@
 //!    `MarmotProjection::on_kernel_event` still only uses it for
 //!    *metadata* (presence of the local identity's own kind:30443/443
 //!    key-package). Actual MLS ingest of kind:445 group messages and
-//!    kind:1059 gift-wraps is now driven automatically by the parallel
-//!    raw signed-event tap ([`crate::projection::tap`], a
-//!    `nmp-core` `RawEventObserver` that DOES carry `sig`), registered by
-//!    the host shell. The
+//!    kind:1059 gift-wraps is now driven automatically by
+//!    [`crate::projection::tap::MarmotIngestParser`], an `IngestParser`
+//!    registered under slot `"marmot"` for all five TAP_KINDS
+//!    `[443, 444, 445, 1059, 30443]`. It reconstructs the signed
+//!    `nostr::Event` from [`nmp_core::store::VerifiedEvent::raw`] and
+//!    drives it through `ops::ingest_signed_event_core`. The
 //!    `{"op":"ingest_signed_event","event_json":"…"}` dispatch op is kept
 //!    as a back-compat alias over the SAME
 //!    `ops::ingest_signed_event_core`; it no longer requires a Swift
@@ -176,8 +177,8 @@ pub struct MarmotProjection {
 // plain `final class`, no queue):
 //
 //   * `MarmotProjection` is genuinely accessed from two threads — the
-//     kernel actor thread (`on_kernel_event`, and the raw tap's
-//     `on_raw_event` via `with_inner`) and the Swift main actor
+//     kernel actor thread (`on_kernel_event`, and the `MarmotIngestParser`'s
+//     `parse` via `with_inner`) and the Swift main actor
 //     (`snapshot` / `with_inner` from the FFI ops). All such access goes
 //     through the inner `Mutex<Inner>`, which is what actually makes the
 //     cross-thread sharing sound. The `unsafe impl` only asserts that the
