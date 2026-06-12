@@ -498,12 +498,30 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     let pubkey_hex = keys.public_key().to_hex();
     app_ref.push_interest(crate::interest::giftwrap_inbox_interest(&pubkey_hex));
 
-    Box::into_raw(Box::new(MarmotHandle {
+    let handle = Box::into_raw(Box::new(MarmotHandle {
         projection,
         projection_slot,
         observer_id,
         app,
-    }))
+    }));
+
+    // Shared autopublish tail: if the caller set `pending_mls_autopublish`
+    // (via `nmp_app_signin_nsec`, `restore/sign_in_local_nsec_with_keyring`,
+    // or `nmp_app_create_new_account`), publish a key package immediately so
+    // every sign-in path — including test-nsec injection and nsec sign-in —
+    // produces an MLS-capable account without extra host plumbing.
+    //
+    // Idempotence: the flag is consumed by `take_pending_mls_autopublish`
+    // (atomic swap → false) in ONE step, so a re-register of an account that
+    // already published (e.g. an account switch back) does NOT spam new key
+    // packages.  The flag is set at sign-in time, consumed here at register
+    // time — the window is exactly one register call.
+    // `app_ref` is the same borrow established earlier in this function.
+    if app_ref.take_pending_mls_autopublish() {
+        publish_key_package_on_register(handle);
+    }
+
+    handle
 }
 
 /// Register a Marmot projection against `app`.
@@ -570,11 +588,8 @@ pub extern "C" fn nmp_marmot_register_active(
         return std::ptr::null_mut();
     };
     let db_path = format!("{}/marmot-mls-state.sqlite", dir.trim_end_matches('/'));
-    let handle = register_with_keys(app, keys, &db_path);
-    if !handle.is_null() && app_ref.take_pending_mls_autopublish() {
-        publish_key_package_on_register(handle);
-    }
-    handle
+    // Autopublish is handled in the shared register_with_keys tail.
+    register_with_keys(app, keys, &db_path)
 }
 
 /// Drop the observer registration and free the handle. Idempotent: null is

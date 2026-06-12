@@ -2085,7 +2085,17 @@ impl NmpApp {
             })
     }
 
-    pub(crate) fn set_pending_mls_autopublish(&self, enabled: bool) {
+    /// Set the one-shot MLS-autopublish intent.
+    ///
+    /// Called by every entry point that gains a local signing key — including
+    /// `nmp_app_signin_nsec` and `restore/sign_in_local_nsec_with_keyring` —
+    /// so that the next `nmp_marmot_register[_active]` call automatically
+    /// publishes a key package without extra host plumbing.
+    ///
+    /// Rule: **gaining a local signing key ⇒ flag set**. The flag is consumed
+    /// (atomic swap) in `register_with_keys`, so re-register on an account
+    /// that already published does NOT spam new key packages.
+    pub fn set_pending_mls_autopublish(&self, enabled: bool) {
         self.pending_mls_autopublish
             .store(enabled, Ordering::Release);
     }
@@ -2143,6 +2153,9 @@ impl NmpApp {
             Some(secret) => Some(secret),
             None => self.recall_local_nsec(account_id),
         }?;
+        // Gaining a local signing key ⇒ flag set so the next
+        // nmp_marmot_register[_active] call autopublishes a key package.
+        self.set_pending_mls_autopublish(true);
         self.add_signer(
             nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
             true,
@@ -2164,6 +2177,9 @@ impl NmpApp {
             &secret,
         );
         let _ = self.dispatch_capability(&req);
+        // Gaining a local signing key ⇒ flag set so the next
+        // nmp_marmot_register[_active] call autopublishes a key package.
+        self.set_pending_mls_autopublish(true);
         self.add_signer(
             nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
             true,

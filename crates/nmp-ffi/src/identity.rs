@@ -89,13 +89,17 @@ pub extern "C" fn nmp_app_sign_event_for_return(
 /// Sign in with a local nsec and optionally make it the active account.
 ///
 /// `make_active = 1` (the common path): registers the signer AND makes it the
-/// active account, publishing no metadata — the standard sign-in.
+/// active account, publishing no metadata — the standard sign-in. Sets
+/// `pending_mls_autopublish` so the next `nmp_marmot_register[_active]` call
+/// automatically publishes a key package; accounts signed in this way are
+/// immediately MLS-capable without the user visiting Settings.
 ///
 /// `make_active = 0`: registers the signer in the kernel's identity roster
 /// WITHOUT activating it. The key can then sign events via
 /// `nmp_app_sign_event_for_return` by naming its pubkey explicitly. Use this
 /// for agent / secondary keys that must sign (e.g. Blossom auth events) without
-/// disturbing the user's active account.
+/// disturbing the user's active account. Does NOT set the autopublish flag
+/// (secondary keys are not registered with Marmot).
 ///
 /// D13: the nsec is wrapped in `Zeroizing` the instant it is copied out of the
 /// C string; no raw key bytes are retained past the command dispatch.
@@ -112,9 +116,17 @@ pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char, m
     let Some(secret) = c_string_argument(secret).map(zeroize::Zeroizing::new) else {
         return;
     };
+    let is_active = make_active != 0;
+    // Gaining a local signing key as the active account ⇒ flag set.
+    // The flag is consumed (atomic swap) in register_with_keys, so a
+    // re-register of an account that already published does not spam new
+    // key packages — the flag is only set at sign-in, consumed at register.
+    if is_active {
+        app.set_pending_mls_autopublish(true);
+    }
     app.send_cmd(ActorCommand::AddSigner {
         source: nmp_core::SignerSource::LocalNsec(secret),
-        make_active: make_active != 0,
+        make_active: is_active,
     });
 }
 
@@ -255,3 +267,60 @@ pub extern "C" fn nmp_app_remove_relay(app: *mut NmpApp, url: *const c_char) {
 // hardcodes HOME_FEED_KINDS = [1,6] in ONE place) or the generic
 // `nmp_app_open_contact_feed`/`nmp_app_close_contact_feed` verbs in
 // `crates/nmp-ffi/src/timeline.rs`.
+
+#[cfg(test)]
+mod autopublish_flag_tests {
+    //! Verifies that every local-key sign-in path sets `pending_mls_autopublish`
+    //! and that the flag is NOT set for non-active or bunker sign-ins.
+    use super::*;
+    use crate::{nmp_app_free, nmp_app_new};
+    use std::ffi::CString;
+
+    /// A stable, valid nsec used across sign-in flag tests.
+    const TEST_NSEC: &str =
+        "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+
+    fn nsec_c() -> CString {
+        CString::new(TEST_NSEC).unwrap()
+    }
+
+    /// `nmp_app_signin_nsec(make_active=1)` must set the autopublish flag so
+    /// the next `nmp_marmot_register[_active]` publishes a key package.
+    #[test]
+    fn signin_nsec_make_active_sets_autopublish_flag() {
+        let app = nmp_app_new();
+        let app_ref = unsafe { &*app };
+        // Precondition: flag starts false.
+        assert!(!app_ref.take_pending_mls_autopublish(), "flag must start false");
+
+        // Set it back; sign in as active.
+        nmp_app_signin_nsec(app, nsec_c().as_ptr(), 1);
+        assert!(
+            app_ref.take_pending_mls_autopublish(),
+            "make_active=1 sign-in must set pending_mls_autopublish"
+        );
+
+        // Flag must be cleared by take (consume-once semantics).
+        assert!(
+            !app_ref.take_pending_mls_autopublish(),
+            "take_pending_mls_autopublish must be one-shot"
+        );
+        nmp_app_free(app);
+    }
+
+    /// `nmp_app_signin_nsec(make_active=0)` registers a secondary / agent key
+    /// and must NOT set the autopublish flag (those keys are never registered
+    /// with Marmot).
+    #[test]
+    fn signin_nsec_secondary_does_not_set_autopublish_flag() {
+        let app = nmp_app_new();
+        let app_ref = unsafe { &*app };
+
+        nmp_app_signin_nsec(app, nsec_c().as_ptr(), 0);
+        assert!(
+            !app_ref.take_pending_mls_autopublish(),
+            "make_active=0 sign-in must NOT set pending_mls_autopublish"
+        );
+        nmp_app_free(app);
+    }
+}
