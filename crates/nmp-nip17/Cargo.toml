@@ -40,3 +40,7 @@ nmp-core = { path = "../nmp-core", features = ["test-support"] }
 # Tests for ADR-0040 Site 1 implement a delayed `SignerForSeal` to prove
 # `run()` returns before `op.wait` completes.
 nmp-signer-iface = { path = "../nmp-signer-iface" }
+# Stage 3 (ADR-0048 §D5) V-78 invisibility + DM-send proof tests: inject a
+# `Nip55Signer`-backed `SignerForSeal` and verify the DM-send pipeline is
+# identical to the local-nsec and NIP-46-fake paths.
+nmp-signers = { path = "../nmp-signers" }
