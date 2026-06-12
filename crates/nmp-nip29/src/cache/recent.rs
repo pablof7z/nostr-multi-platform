@@ -53,7 +53,7 @@ impl RecentGroupEvents {
             return Vec::new();
         };
         let mut sorted: Vec<&RecentEntry> = entries.iter().collect();
-        sorted.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.created_at));
         sorted
             .iter()
             .take(n)
