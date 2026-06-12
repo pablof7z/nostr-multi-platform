@@ -193,3 +193,49 @@ fn ingest_timeline_event_routes_to_correct_kind_parser() {
         "kind:1059 parser must NOT fire for kind:1 timeline event",
     );
 }
+
+/// NO-PARSER GATE: when no `IngestParser` is registered, `ingest_timeline_event`
+/// must complete successfully without dispatching — the event is stored and
+/// observers are notified, but the dispatcher path is never entered.
+///
+/// This test is the behavioral guard for the D8 clone gate: with an empty
+/// dispatcher `is_interested` returns `false`, so the clone is skipped and the
+/// second lock acquisition never happens. We assert behaviorally: the event
+/// is accepted (function returns `true`) and no parser fires (verified by the
+/// absence of any registered parser — a vacuous proof, but consistent with the
+/// unit being the only observable boundary here).
+#[test]
+fn ingest_timeline_event_no_parser_registered_no_dispatch() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let keys = ::nostr::Keys::generate();
+    let author = keys.public_key().to_hex();
+    kernel.timeline_authors.insert(author.clone());
+
+    // Dispatcher is empty — is_interested(1) == false, clone must be skipped.
+    assert_eq!(
+        kernel.ingest_dispatcher_slot().read().unwrap().registration_count(),
+        0,
+        "dispatcher must be empty before ingest",
+    );
+
+    let ev = signed_kind1(&keys, "no-parser path", 1_700_000_003);
+    let accepted = kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://relay.test/",
+        "follow-feed-default",
+        ev,
+    );
+
+    // The event must be accepted (stored + observer fan-out succeeded).
+    assert!(
+        accepted,
+        "ingest_timeline_event must return true on Inserted even with no registered parser",
+    );
+    // Confirm dispatcher is still empty — no side-effects on the registry.
+    assert_eq!(
+        kernel.ingest_dispatcher_slot().read().unwrap().registration_count(),
+        0,
+        "dispatcher must remain empty after ingest with no parser",
+    );
+}

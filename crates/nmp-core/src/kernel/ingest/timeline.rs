@@ -70,16 +70,27 @@ impl Kernel {
         // `VerifiedEvent` without re-running Schnorr verification — trust
         // boundary: `try_from_raw` above already verified the signature.
         //
-        // D8: clone only when a parser is registered; idle-dispatcher guard is
-        // below at the dispatch site (lock read short-circuits on empty registry).
-        let raw_for_dispatch = crate::store::RawEvent {
-            id: verified.raw().id.clone(),
-            pubkey: verified.raw().pubkey.clone(),
-            created_at: verified.raw().created_at,
-            kind: verified.raw().kind,
-            tags: verified.raw().tags.clone(),
-            content: verified.raw().content.clone(),
-            sig: verified.raw().sig.clone(),
+        // D8: clone ONLY when at least one parser is registered for this kind.
+        // We read the dispatcher lock once here — a cheap O(parsers) check —
+        // and skip the clone entirely when the dispatcher is idle or has no
+        // match for this kind. The `Option` is consumed at the dispatch site
+        // below (after `Inserted | Replaced` is confirmed).
+        let raw_for_dispatch = if self
+            .ingest_dispatcher_slot()
+            .read()
+            .map_or(false, |d| d.is_interested(verified.raw().kind))
+        {
+            Some(crate::store::RawEvent {
+                id: verified.raw().id.clone(),
+                pubkey: verified.raw().pubkey.clone(),
+                created_at: verified.raw().created_at,
+                kind: verified.raw().kind,
+                tags: verified.raw().tags.clone(),
+                content: verified.raw().content.clone(),
+                sig: verified.raw().sig.clone(),
+            })
+        } else {
+            None
         };
         // T105: provenance is the resolved per-author write relay the EVENT
         // actually arrived on, not the lane's bootstrap URL.
@@ -244,16 +255,21 @@ impl Kernel {
         // `ingest_pre_verified_event` (the test-support inject path).
         //
         // Gating: Inserted|Replaced only — `Duplicate` returns earlier in this
-        // function (line 127) and never reaches here; `proceed = true` at this
-        // point guarantees an Inserted or Replaced outcome. No Ephemeral gate
-        // needed: timeline events (kind:1 / kind:6) are never ephemeral.
+        // function and never reaches here; `proceed = true` at this point
+        // guarantees an Inserted or Replaced outcome. No Ephemeral gate needed:
+        // timeline events (kind:1 / kind:6) are never ephemeral.
+        //
+        // Clone gate: `raw_for_dispatch` is `Some` only when `is_interested`
+        // returned `true` above (at least one registered parser covers this
+        // kind). When the dispatcher is idle or has no match, both the clone
+        // and this second lock acquisition are skipped entirely (D8).
         //
         // D6 — a poisoned dispatcher lock degrades to "no parser fired"; the
         // store insert and observer fan-out already succeeded, so this is the
         // safe graceful-degrade.
-        {
+        if let Some(raw) = raw_for_dispatch {
             use nmp_store::__nmp_core_internal;
-            let verified_for_dispatch = __nmp_core_internal::from_store_verified_unchecked(raw_for_dispatch);
+            let verified_for_dispatch = __nmp_core_internal::from_store_verified_unchecked(raw);
             if let Ok(d) = self.ingest_dispatcher_slot().read() {
                 d.dispatch(&verified_for_dispatch);
             }
