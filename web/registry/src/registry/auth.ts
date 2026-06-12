@@ -46,7 +46,7 @@ export const authComponents: Component[] = [
         version: "0.1.0",
         dependencies: [],
         longDescription:
-          "`NostrLoginBlock` detects installed Nostr signer apps (currently Amber / `nostrsigner:` via Android `PackageManager.queryIntentActivities`) and surfaces each as a one-tap sign-in card. Falls back to a manual key-entry row when no signers are found. The `ExternalSignerCapabilityBridge` handles the D7 host contract: fires the Rust-built `ExternalSignerRequest` as either an Android Intent round-trip or a `ContentResolver` fast-path (post-permission-grant), and reports raw results back unchanged. Status flips to `stable` when the Stage-4 emulator E2E (Amber APK installed, sign-in → publish kind:1 → event signed by Amber key) passes (ADR-0048 D7).",
+          "`NostrLoginBlock` detects installed Nostr signer apps (currently Amber / `nostrsigner:` via Android `PackageManager.queryIntentActivities`) and surfaces each as a one-tap sign-in card. Falls back to a manual key-entry row when no signers are found. The `ExternalSignerCapabilityBridge` handles the D7 host contract: fires the Rust-built `ExternalSignerRequest` as either an Android Intent round-trip or a `ContentResolver` fast-path (post-permission-grant), and reports raw results back unchanged. Status flipped to `stable` when the Stage-4 emulator E2E (Amber APK installed, sign-in → publish kind:1 → event signed by Amber key) passed (ADR-0048 D7; 2026-06-12, event `11652d49…`).",
         files: [
           {
             source: "compose/login-block/NostrLoginBlock.kt",

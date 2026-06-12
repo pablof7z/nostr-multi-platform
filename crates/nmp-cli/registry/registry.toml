@@ -508,6 +508,14 @@ role = "source"
 source = "compose/login-block/ExternalSignerCapabilityBridge.kt"
 target = "Components/Auth/ExternalSignerCapabilityBridge.kt"
 role = "source"
+[[components.files]]
+source = "compose/login-block/ExternalSignerWire.kt"
+target = "Components/Auth/ExternalSignerWire.kt"
+role = "source"
+[[components.files]]
+source = "compose/login-block/AmberIntentCodec.kt"
+target = "Components/Auth/AmberIntentCodec.kt"
+role = "source"
 # -----------------------------------------------------------------------------
 # Ratatui user profile widgets. `tui/user-avatar` accepts pubkeys through a
 # `NostrProfileHost` adapter and owns the visible profile claim; host apps own

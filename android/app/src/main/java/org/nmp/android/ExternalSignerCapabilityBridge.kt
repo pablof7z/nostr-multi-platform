@@ -1,278 +1,24 @@
 package org.nmp.android
 
 import android.app.Activity
-import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-// ── Wire types mirroring nmp-signer-iface ExternalSignerRequest/Response ──────
-
-/**
- * Mirror of `ExternalSignerRequest` from `nmp-signer-iface`.
- *
- * Rust builds this and serialises it as `CapabilityRequest.payload_json`.
- * The Kotlin host fires it and reports the raw result — it decides nothing (D7).
- */
-@Serializable
-data class ExternalSignerRequest(
-    @SerialName("correlation_id") val correlationId: String,
-    val method: String,
-    val payload: String,
-    @SerialName("current_user") val currentUser: String? = null,
-    val counterparty: String? = null,
-    val permissions: List<Nip55Permission> = emptyList(),
-    @SerialName("signer_package") val signerPackage: String? = null,
-    @SerialName("force_interactive") val forceInteractive: Boolean = false,
-)
-
-/** Mirror of `Nip55Permission` from `nmp-signer-iface`. */
-@Serializable
-data class Nip55Permission(val kind: String)
-
-/**
- * Mirror of `ExternalSignerResponse` from `nmp-signer-iface`.
- *
- * The host fills this and hands it back to Rust via `deliverResponse`.
- * D7: raw results only, no interpretation.
- */
-@Serializable
-data class ExternalSignerResponse(
-    @SerialName("correlation_id") val correlationId: String,
-    val outcome: ExternalSignerOutcome,
-    @SerialName("signer_package") val signerPackage: String? = null,
-)
-
-/** Wire shape for `ExternalSignerOutcome` (tagged by `kind`). */
-@Serializable
-sealed class ExternalSignerOutcome {
-    @Serializable
-    @SerialName("ok")
-    data class Ok(val result: String) : ExternalSignerOutcome()
-
-    @Serializable
-    @SerialName("rejected")
-    data class Rejected(val reason: String) : ExternalSignerOutcome()
-
-    @Serializable
-    @SerialName("unavailable")
-    data class Unavailable(val reason: String) : ExternalSignerOutcome()
-
-    @Serializable
-    @SerialName("signer_error")
-    data class SignerError(val reason: String) : ExternalSignerOutcome()
-}
-
-// ── Known signer descriptors ──────────────────────────────────────────────────
-
-/**
- * Describes one locally-detectable Nostr signer app.
- *
- * Android detection: `PackageManager.queryIntentActivities` on the
- * `nostrsigner:` scheme. This is the Android analogue of the SwiftUI
- * `NostrSignerDetector.knownSigners` list.
- *
- * All package names listed here MUST also appear in the app's
- * `<queries>` block in `AndroidManifest.xml` — see the comment at the
- * top of the manifest. Without the `<queries>` declaration Android 11+
- * (API 30+) returns an empty result even when the app is installed.
- */
-data class NostrSignerInfo(
-    /** Display name shown in the login-block card (e.g. "Amber"). */
-    val displayName: String,
-    /**
-     * The `nostrsigner:` scheme used for Intent dispatch.
-     * Amber registers `nostrsigner`; future signers may differ.
-     */
-    val intentScheme: String,
-    /**
-     * ContentProvider authority prefix for the fast-path (background)
-     * queries after the permission batch is granted. For Amber:
-     * `com.greenart7c3.nostrsigner`. The full authority per-method is
-     * `"$contentAuthority.<METHOD>"`, e.g.
-     * `"com.greenart7c3.nostrsigner.sign_event"`.
-     *
-     * `null` means this signer supports the Intent path only.
-     */
-    val contentAuthority: String? = null,
-    /**
-     * The Android package name passed to `KernelBridge.signInNip55` as the
-     * `signer_package` wire field. For Amber the package name and
-     * contentAuthority coincide (`com.greenart7c3.nostrsigner`), but the
-     * two fields are logically distinct: contentAuthority is the
-     * ContentProvider namespace; packageName is the APK identifier used for
-     * Intent routing and for the `signer_package` field in the Rust wire.
-     *
-     * Defaults to [contentAuthority] when null (backward-compatible for
-     * signers where the two values are identical).
-     */
-    val packageName: String? = null,
-    /**
-     * Human-readable "not installed" hint for the UI.
-     */
-    val installHint: String = "Install $displayName for one-tap sign-in",
-)
-
-/**
- * Ordered list of signers this detector knows about.
- *
- * Extend this list as new Android Nostr signer apps emerge. Each entry
- * whose `intentScheme` is NOT resolvable by `PackageManager` is silently
- * excluded from the detection result; only installed apps surface.
- *
- * All `intentScheme` values here MUST be mirrored in `<queries>` in
- * `AndroidManifest.xml`.
- */
-val KNOWN_NOSTR_SIGNERS: List<NostrSignerInfo> = listOf(
-    NostrSignerInfo(
-        displayName = "Amber",
-        intentScheme = "nostrsigner",
-        contentAuthority = "com.greenart7c3.nostrsigner",
-        packageName = "com.greenart7c3.nostrsigner",
-        installHint = "Install Amber for one-tap sign-in",
-    ),
-    // Primal registers the `primal://` scheme on Android (API 30+). It does
-    // not expose a ContentProvider fast-path (contentAuthority = null), so
-    // all operations go through the Intent round-trip. Its package name
-    // (`net.primal.android`) MUST appear in <queries> in AndroidManifest.xml.
-    NostrSignerInfo(
-        displayName = "Primal",
-        intentScheme = "primal",
-        contentAuthority = null,
-        packageName = "net.primal.android",
-        installHint = "Install Primal for one-tap sign-in",
-    ),
-)
-
-// ── Package-manager-based detection ──────────────────────────────────────────
-
-/**
- * Probes `PackageManager` for installed Nostr signer apps.
- *
- * Returns only signers whose `intentScheme` can be resolved by an
- * installed app. This mirrors the iOS `NostrSignerDetector.detect()`
- * approach (`UIApplication.canOpenURL`) but uses the Android
- * `PackageManager.queryIntentActivities` API instead.
- *
- * MUST be called on the main thread (same constraint as the iOS counterpart).
- *
- * ## AndroidManifest requirement
- *
- * Add the following `<queries>` block to your app's manifest:
- * ```xml
- * <queries>
- *     <intent>
- *         <action android:name="android.intent.action.VIEW" />
- *         <data android:scheme="nostrsigner" />
- *     </intent>
- * </queries>
- * ```
- * Without this declaration Android 11+ (API 30+) returns an empty list
- * even when Amber is installed.
- */
-fun detectInstalledSigners(packageManager: PackageManager): List<NostrSignerInfo> {
-    return KNOWN_NOSTR_SIGNERS.filter { signer ->
-        val probe = Intent(Intent.ACTION_VIEW, Uri.parse("${signer.intentScheme}://"))
-        @Suppress("DEPRECATION")
-        val handlers = packageManager.queryIntentActivities(probe, PackageManager.MATCH_DEFAULT_ONLY)
-        handlers.isNotEmpty()
-    }
-}
-
-// ── Capability bridge ─────────────────────────────────────────────────────────
+// Wire types live in ExternalSignerWire.kt; the Amber-specific Intent/URI/
+// permissions encoding and result extraction live in AmberIntentCodec.kt.
+// The three files are vendored together as one unit (ADR-0048 Stage 2):
+// byte-identical copies except the package line, see VendorDriftGateTest.
 
 private val bridgeJson = Json {
     ignoreUnknownKeys = true
     isLenient = true
     classDiscriminator = "kind"
-}
-
-/**
- * THE transport-selection rule (ADR-0048 D2) — a mechanical consequence of
- * fields Rust set on the request, never host policy (D7):
- *
- * | Condition | Mechanism |
- * |---|---|
- * | `forceInteractive == true` | Intent |
- * | `signerPackage` known AND method's permission in the request batch | ContentResolver |
- * | otherwise | Intent |
- *
- * Extracted as a pure top-level function so unit tests exercise the SAME
- * predicate `handle()` executes (no test-side copies).
- */
-internal fun shouldUseContentResolver(request: ExternalSignerRequest): Boolean =
-    !request.forceInteractive &&
-        request.signerPackage != null &&
-        request.permissions.any { p -> p.kind.startsWith(request.method.toPermissionKind()) }
-
-/**
- * Build the Amber-specific permissions JSON array from a `Nip55Permission` list.
- *
- * Our internal format: `kind` is a combined string like `"sign_event:1"`,
- * `"nip44_encrypt"`, etc.
- *
- * Amber expects: `[{"type":"sign_event","kind":1},{"type":"nip44_encrypt"}]`
- * — a separate `type` (method) and optional integer `kind` (event kind).
- *
- * Extracted as a pure top-level function so unit tests exercise the SAME
- * logic `dispatchIntent` executes (no test-side copies).
- */
-/**
- * Select the reply value from an Amber `RESULT_OK` Intent (Stage-4 emulator
- * finding #3).
- *
- * Amber's `IntentUtils.sendResult` sets:
- *  - `result` extra — signature hex for `sign_event`; pubkey for
- *    `get_public_key`; ciphertext/plaintext for encrypt/decrypt.
- *  - `event` extra — the full signed-event JSON (`sign_event` replies).
- *
- * Rust's `parse_signed_event_response` verifies id + schnorr signature on the
- * COMPLETE event, so `sign_event` must return the `event` extra; everything
- * else uses `result`. Mechanical extra selection, not policy (D7).
- *
- * Extracted as a pure top-level function so unit tests exercise the SAME
- * logic the Activity Result callback executes (no test-side copies).
- */
-internal fun selectAmberResultValue(
-    method: String,
-    eventExtra: String?,
-    resultExtra: String?,
-): String? = if (method == "sign_event") {
-    eventExtra.takeUnless { it.isNullOrBlank() } ?: resultExtra
-} else {
-    resultExtra
-}
-
-internal fun buildAmberPermissionsJsonInternal(permissions: List<Nip55Permission>): String {
-    val sb = StringBuilder("[")
-    permissions.forEachIndexed { idx, perm ->
-        if (idx > 0) sb.append(",")
-        val combined = perm.kind
-        val colonIdx = combined.indexOf(':')
-        if (colonIdx >= 0) {
-            // "sign_event:1" → type="sign_event", kind=1
-            val typePart = combined.substring(0, colonIdx)
-            val kindPart = combined.substring(colonIdx + 1).toIntOrNull()
-            if (kindPart != null) {
-                sb.append("""{"type":"$typePart","kind":$kindPart}""")
-            } else {
-                sb.append("""{"type":"$typePart"}""")
-            }
-        } else {
-            // "nip44_encrypt" → type="nip44_encrypt"
-            sb.append("""{"type":"$combined"}""")
-        }
-    }
-    sb.append("]")
-    return sb.toString()
 }
 
 /**
@@ -333,7 +79,8 @@ class ExternalSignerCapabilityBridge(
      * - `"event"` — the full signed-event JSON (`sign_event` replies).
      *   Rust's `parse_signed_event_response` verifies id + schnorr sig on
      *   the complete event, so this extra — not `result` — is the value a
-     *   `sign_event` reply must carry (Stage-4 emulator finding #3).
+     *   `sign_event` reply must carry (Stage-4 emulator finding #3); see
+     *   `selectAmberResultValue` in AmberIntentCodec.kt.
      * - `"package"` — the signer app's package name (present on
      *   `get_public_key` replies; Amber-specific).
      * - `"rejected"` — boolean; Amber returns `RESULT_OK` with this flag
@@ -342,9 +89,6 @@ class ExternalSignerCapabilityBridge(
      *
      * `RESULT_CANCELED` means the user navigated back without approving —
      * reported as `Rejected`.
-     *
-     * testTags are embedded in the Intent extras for the Stage-4 emulator
-     * E2E (`adb shell am broadcast`) to inject fake results.
      */
     private var launcher: ActivityResultLauncher<Intent>? = null
 
@@ -456,63 +200,7 @@ class ExternalSignerCapabilityBridge(
     // ── Intent path ───────────────────────────────────────────────────
 
     private fun dispatchIntent(request: ExternalSignerRequest) {
-        val methodTag = request.method.toNostrSignerMethod()
-
-        // NIP-55 Intent — Amber (v6.x) reads the method PAYLOAD from the
-        // Intent data URI (`nostrsigner:<url-encoded payload>`) and every
-        // other parameter from Intent extras. Amber's SignerActivity
-        // branches on the presence of `Browser.EXTRA_APPLICATION_ID` to
-        // choose between URI-query parsing and extras parsing. We do NOT
-        // set that extra, so extras-based parsing is always used.
-        //
-        // Amber requires:
-        //   intent.data             = nostrsigner:<Uri.encode(payload)>
-        //                             (unsigned-event JSON / ciphertext / …;
-        //                             bare `nostrsigner:` when payload empty)
-        //   extras["type"]          = method tag string (mandatory)
-        //   extras["id"]            = caller request id (echoed in the reply)
-        //   extras["returnType"]    = "signature" | "event" (default: signature)
-        //   extras["current_user"]  = current user pubkey hex (if known)
-        //   extras["pubkey"]        = counterparty pubkey hex (for encrypt/decrypt)
-        //   extras["permissions"]   = JSON array string in Amber format (first call only)
-        //
-        // Stage-4 fixes (each found by a failing emulator round):
-        //  1. `type` must be an extra, not a URI query param — Amber's
-        //     extras-path saw no `type` key → SignerType.INVALID →
-        //     "malformed nostrsigner request" (get_public_key round).
-        //  2. The payload must ride the data URI, not a `payload` extra —
-        //     Amber's `IntentUtils.getIntentDataFromIntent` reads
-        //     `intent.data.toString().replace("nostrsigner:", "")` and never
-        //     looks at a `payload` extra; an empty URI made
-        //     `getUnsignedEvent("")` throw → the same "malformed" dialog
-        //     (sign_event round). `Uri.encode` is mandatory: Amber URL-decodes
-        //     only when its `isUrlEncoded` regex matches, and encoding also
-        //     keeps JSON `?`/`#` characters from being parsed as URI structure.
-        val uriPayload = if (request.payload.isNotEmpty()) Uri.encode(request.payload) else ""
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("nostrsigner:$uriPayload"))
-        intent.putExtra("type", methodTag)
-        intent.putExtra("id", request.correlationId)
-        intent.putExtra("returnType", "signature")
-        if (request.currentUser != null) {
-            intent.putExtra("current_user", request.currentUser)
-        }
-        if (request.counterparty != null) {
-            intent.putExtra("pubkey", request.counterparty)
-        }
-        if (request.permissions.isNotEmpty()) {
-            // Amber expects `[{"type":"sign_event","kind":1},{"type":"nip44_encrypt"}]`.
-            // Our `Nip55Permission.kind` is a combined string ("sign_event:1",
-            // "nip44_encrypt", etc.) — expand it to the Amber shape.
-            val permsJson = buildAmberPermissionsJson(request.permissions)
-            intent.putExtra("permissions", permsJson)
-        }
-
-        // Include the package hint so Amber auto-routes when multiple
-        // nostrsigner-scheme handlers are installed.
-        request.signerPackage?.let { pkg -> intent.setPackage(pkg) }
-        // testTag for Stage-4 emulator E2E: the correlation_id is passed
-        // as an extra so the adb-driven fake can echo it in RESULT_OK.
-        intent.putExtra("nmp_correlation_id", request.correlationId)
+        val intent = buildAmberSignerIntent(request)
 
         pendingCorrelationId = request.correlationId
         pendingMethod = request.method
@@ -524,18 +212,9 @@ class ExternalSignerCapabilityBridge(
             // Launcher not registered — report Unavailable so Rust can toast.
             pendingCorrelationId = null
             pendingMethod = null
-            val resp = ExternalSignerResponse(
-                correlationId = request.correlationId,
-                outcome = ExternalSignerOutcome.Unavailable(
-                    reason = "capability bridge not registered",
-                ),
-            )
-            onResult(bridgeJson.encodeToString(resp))
+            reportUnavailable(request.correlationId, "capability bridge not registered")
         }
     }
-
-    private fun buildAmberPermissionsJson(permissions: List<Nip55Permission>): String =
-        buildAmberPermissionsJsonInternal(permissions)
 
     // ── ContentResolver fast-path ─────────────────────────────────────
 
@@ -607,40 +286,4 @@ class ExternalSignerCapabilityBridge(
         fun detect(context: Context): List<NostrSignerInfo> =
             detectInstalledSigners(context.packageManager)
     }
-}
-
-// ── Method mapping helpers ────────────────────────────────────────────────────
-
-/**
- * Map the Rust `ExternalSignerMethod` snake_case tag to the NIP-55
- * `nostrsigner:` method name (used in both the Intent URI and as the
- * ContentProvider suffix).
- *
- * Amber uses: `get_public_key`, `sign_event`, `nip44_encrypt`,
- * `nip44_decrypt`, `nip04_encrypt`, `nip04_decrypt`.
- */
-private fun String.toNostrSignerMethod(): String = when (this) {
-    "get_public_key" -> "get_public_key"
-    "sign_event" -> "sign_event"
-    "nip44_encrypt" -> "nip44_encrypt"
-    "nip44_decrypt" -> "nip44_decrypt"
-    "nip04_encrypt" -> "nip04_encrypt"
-    "nip04_decrypt" -> "nip04_decrypt"
-    else -> this
-}
-
-/**
- * Map a method tag to its corresponding NIP-55 permission kind string
- * used in the permission batch.
- *
- * E.g. `"sign_event"` → `"sign_event:"` (prefix for "sign_event:1" etc.),
- * `"nip44_encrypt"` → `"nip44_encrypt"`.
- */
-private fun String.toPermissionKind(): String = when (this) {
-    "sign_event" -> "sign_event:"
-    "nip44_encrypt" -> "nip44_encrypt"
-    "nip44_decrypt" -> "nip44_decrypt"
-    "nip04_encrypt" -> "nip04_encrypt"
-    "nip04_decrypt" -> "nip04_decrypt"
-    else -> this
 }

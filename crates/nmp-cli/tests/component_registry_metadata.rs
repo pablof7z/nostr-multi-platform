@@ -10,6 +10,7 @@ const CLI_REGISTRY: &str = include_str!("../registry/registry.toml");
 const WEB_REGISTRY_INDEX: &str = include_str!("../../../web/registry/src/registry.ts");
 const WEB_REGISTRY_TYPES: &str = include_str!("../../../web/registry/src/registry/types.ts");
 const WEB_REGISTRY_CONTENT: &str = include_str!("../../../web/registry/src/registry/content.ts");
+const WEB_REGISTRY_AUTH: &str = include_str!("../../../web/registry/src/registry/auth.ts");
 const WEB_REGISTRY_USER: &str = include_str!("../../../web/registry/src/registry/user.ts");
 const WEB_REGISTRY_RELAY: &str = include_str!("../../../web/registry/src/registry/relay.ts");
 
@@ -86,6 +87,7 @@ fn web_registry_source() -> String {
         WEB_REGISTRY_INDEX,
         WEB_REGISTRY_TYPES,
         WEB_REGISTRY_CONTENT,
+        WEB_REGISTRY_AUTH,
         WEB_REGISTRY_USER,
         WEB_REGISTRY_RELAY,
     ]
