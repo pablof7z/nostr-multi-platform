@@ -22,12 +22,26 @@
 //! `JavaVM` in the `SyncCapabilityHandler` and use `attach_current_thread` for
 //! each upcall rather than caching the `JNIEnv` (which is thread-local).
 //!
-//! Teardown
-//! --------
-//! `clear` drops the `GlobalRef` and NULLs the `JavaVM`. After
-//! `nmp_app_set_capability_callback(None)` quiesces any in-flight dispatch (the
-//! FFI update-callback gate ensures this), `clear` is safe to call from
-//! `close_updates_locked`.
+//! Local-reference hygiene: each `call()` body runs inside `with_local_frame`
+//! so the JNI local-reference table is reclaimed on every dispatch. Without
+//! this, dispatches arriving on an already-attached thread (where the
+//! `AttachGuard` never detaches) would leak ~3 local refs each — the new
+//! String argument, the returned object, and the `JString` wrapper — and
+//! eventually overflow the local-ref table.
+//!
+//! Teardown / UAF safety
+//! ---------------------
+//! The synchronous handler's `GlobalRef` is dropped by `close_updates_locked`
+//! via `session.capability_handler.lock().take()`. The load-bearing safety
+//! mechanism is the **mutex hold**: `call_sync_handler` holds the
+//! `capability_handler` lock for the entire duration of `handler.call()`, and
+//! `close_updates_locked`'s `take()` acquires the same lock — so a dispatch and
+//! a teardown serialize and can never overlap. (Note: unlike the *update*
+//! callback gate, `nmp_app_set_capability_callback(None)` does NOT quiesce an
+//! in-flight capability dispatch — the kernel capability socket clones the
+//! registration out and releases its own slot lock before invoking. Do not
+//! remove the lock hold around `call()`; it is the only thing preventing a
+//! use-after-free of the `GlobalRef`.)
 //!
 //! Doctrine
 //! --------
@@ -68,41 +82,48 @@ impl SyncCapabilityHandler {
             }
         };
 
-        // Build the Java String argument.
-        let j_request = match env.new_string(request_json) {
-            Ok(s) => s,
-            Err(e) => {
-                return capability_error_envelope(
-                    request_json,
-                    &format!("jni-new-string-failed:{e}"),
-                );
-            }
-        };
+        // Run the whole upcall inside a local-reference frame so every JNI
+        // local ref allocated below (the request String, the returned object,
+        // and the JString wrapper) is reclaimed when the frame pops — required
+        // because dispatches on an already-attached thread never detach
+        // (no AttachGuard cleanup), which would otherwise leak ~3 locals per
+        // dispatch and eventually overflow the local-ref table.
+        let outcome = env.with_local_frame(8, |env| -> Result<String, jni::errors::Error> {
+            // `new_string` builds a Java String via JNI NewStringUTF, which
+            // uses *modified UTF-8*. Safe today because keyring payloads are
+            // ASCII (base64 ciphertext + opaque account-id) — but supplementary
+            // -plane (4-byte) code points would be corrupted. Any reuse of this
+            // handler for richer (non-ASCII) payloads must revisit the encoding.
+            let j_request = env.new_string(request_json)?;
 
-        // Call `handler.handle(requestJson: String): String`.
-        let result = env.call_method(
-            &self.handler,
-            "handle",
-            "(Ljava/lang/String;)Ljava/lang/String;",
-            &[jni::objects::JValueGen::Object(j_request.as_ref())],
-        );
+            // Call `handler.handle(requestJson: String): String`.
+            let val = env.call_method(
+                &self.handler,
+                "handle",
+                "(Ljava/lang/String;)Ljava/lang/String;",
+                &[jni::objects::JValueGen::Object(j_request.as_ref())],
+            )?;
 
-        match result {
-            Ok(val) => {
-                // Extract the returned Java String.
-                match val.l() {
-                    Ok(obj) if !obj.is_null() => {
-                        match env.get_string(unsafe { &jni::objects::JString::from_raw(obj.as_raw()) }) {
-                            Ok(s) => s.into(),
-                            Err(e) => capability_error_envelope(
-                                request_json,
-                                &format!("jni-get-string-failed:{e}"),
-                            ),
-                        }
-                    }
-                    _ => capability_error_envelope(request_json, "handler-returned-null"),
-                }
+            let obj = val.l()?;
+            if obj.is_null() {
+                // Empty-string sentinel → "handler-returned-null" below. A real
+                // CapabilityEnvelope is never empty (always at least `{}`), so
+                // an empty result unambiguously means the handler returned null.
+                return Ok(String::new());
             }
+            // `get_string` reads via JNI GetStringUTFChars — also modified
+            // UTF-8; the same ASCII-only caveat as `new_string` above applies
+            // to the handler's returned envelope.
+            // SAFETY: `obj` is the non-null String returned by `handle`; the
+            // JString wrapper borrows it for the duration of `get_string`.
+            let j_result = unsafe { jni::objects::JString::from_raw(obj.as_raw()) };
+            let s = env.get_string(&j_result)?;
+            Ok(s.into())
+        });
+
+        match outcome {
+            Ok(s) if !s.is_empty() => s,
+            Ok(_) => capability_error_envelope(request_json, "handler-returned-null"),
             Err(e) => {
                 // Clear any pending JNI exception so the thread doesn't stay in
                 // a poisoned state (D6: error is data, not an exception).
@@ -120,6 +141,13 @@ pub(crate) type CapabilityHandlerSlot = Mutex<Option<SyncCapabilityHandler>>;
 
 /// Invoke the registered synchronous capability handler, if any.
 /// Returns `None` when no handler is registered (caller should error-envelope).
+///
+/// LOAD-BEARING: the `slot` lock is held for the ENTIRE `h.call()` duration
+/// (the `guard` outlives the `map` closure). This serializes against
+/// `Session::close_updates_locked`'s `slot.take()`, which is the only thing
+/// preventing a use-after-free of the handler's `GlobalRef` during teardown
+/// (the capability socket does NOT quiesce in-flight dispatches — see the
+/// teardown note in this module's header). Do not narrow this lock scope.
 pub(crate) fn call_sync_handler(slot: &CapabilityHandlerSlot, request_json: &str) -> Option<String> {
     let guard = slot.lock().ok()?;
     guard.as_ref().map(|h| h.call(request_json))

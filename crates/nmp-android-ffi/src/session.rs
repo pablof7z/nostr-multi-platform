@@ -231,9 +231,16 @@ impl Session {
         }
         self.callback_state.close();
         self.signer_requests.close();
-        // Drop the synchronous capability handler GlobalRef after the
-        // capability socket has been unregistered (above). The quiescence
-        // guarantee ensures no in-flight trampoline call can race with this.
+        // Drop the synchronous capability handler GlobalRef.
+        //
+        // UAF safety is NOT the capability-socket unregister above: unlike the
+        // update-callback gate, `nmp_app_set_capability_callback(None)` does
+        // NOT quiesce an in-flight capability dispatch (the kernel capability
+        // socket clones the registration out and drops its slot lock before
+        // invoking the trampoline). The load-bearing guard is THIS `lock()`:
+        // `capability::call_sync_handler` holds `capability_handler` for the
+        // entire `handler.call()`, so the `take()` here serializes against any
+        // active dispatch and the GlobalRef is never dropped while in use.
         if let Ok(mut slot) = self.capability_handler.lock() {
             slot.take();
         }
