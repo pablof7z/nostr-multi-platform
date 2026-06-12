@@ -50,3 +50,7 @@ js-sys = "0.3.98"
 # caller. No tokio — `wasm-bindgen-futures` is a pure JS Promise glue crate
 # (it is already a transitive dep of the workspace through `nostr`).
 wasm-bindgen-futures = "0.4.71"
+# PR-2 — 1 Hz periodic tick driver. `gloo_timers::callback::Interval` fires
+# on the JS event loop without blocking; dropping it cancels `setInterval`.
+# In 0.3.x the callback API ships in the default crate (no extra feature flag).
+gloo-timers = "0.3"

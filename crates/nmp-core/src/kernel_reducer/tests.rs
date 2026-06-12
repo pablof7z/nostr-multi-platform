@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::VIEW_PROFILE;
-use crate::nip19::encode_npub;
+use crate::nip19::{encode_nevent, encode_npub, NeventData};
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
@@ -141,6 +141,97 @@ fn tick_on_fresh_reducer_is_empty() {
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
     assert!(r.tick().is_empty());
+}
+
+// ─── PR-2 tick driver acceptance tests ───────────────────────────────────
+//
+// These two tests pin the contracts the wasm32 1 Hz timer depends on.
+// They are deliberately fail-first: they FAIL without the lifecycle-drain
+// extension to `tick()` and the `changed_since_emit` accessor.
+
+fn nevent_uri_for_test(event_id: &str) -> String {
+    let bech = encode_nevent(&NeventData {
+        event_id: event_id.to_string(),
+        relays: vec![],
+        author: None,
+        kind: Some(1),
+    })
+    .expect("encode_nevent must succeed for well-formed test data");
+    format!("nostr:{bech}")
+}
+
+#[test]
+fn tick_drains_lifecycle_outbound_after_claim_event() {
+    // Regression guard for PR-2: `tick()` must drain the subscription
+    // lifecycle outbound, not only the publish-engine retry queue.
+    //
+    // `claim_event` enqueues a `CompileTrigger::ViewOpened` and returns
+    // `Vec::new()` — the REQ frame only materialises through a lifecycle
+    // drain. Before the PR-2 fix, `tick()` called only
+    // `tick_publish_engine_for_now` and the trigger silently sat until the
+    // next relay-connected event. After the fix, `tick()` appends
+    // `drain_lifecycle_outbound()` and the REQ appears in the same call.
+    //
+    // Test structure:
+    //   1. Start the reducer and seed a configured relay so the lifecycle
+    //      planner has a lane to compile REQs against.
+    //   2. Connect the relay — this drains startup triggers (empty on a
+    //      fresh kernel).
+    //   3. Call `claim_event` with `can_send = true` — this enqueues a
+    //      fresh `CompileTrigger::ViewOpened` but returns `Vec::new()`.
+    //   4. Assert `tick()` returns a non-empty outbound containing a REQ.
+    let mut r = KernelReducer::new();
+    r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
+    let _ = r.reduce(KernelAction::Start);
+    // Step 2: connect — drains any startup lifecycle triggers.
+    let startup = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+    let _ = startup; // may be empty or carry startup REQs; we don't assert here
+
+    // Step 3: claim an event (enqueues CompileTrigger, returns empty).
+    let event_id = "a".repeat(64);
+    let uri = nevent_uri_for_test(&event_id);
+    let direct = r.claim_event(uri, "chirp-web-embed-tick-test".to_string(), true, false);
+    assert!(
+        direct.is_empty(),
+        "claim_event must return empty (REQ flows via lifecycle drain, not direct return)"
+    );
+
+    // Step 4: tick must drain the trigger and emit the REQ.
+    let tick_out = r.tick();
+    assert!(
+        !tick_out.is_empty(),
+        "tick() must drain the lifecycle trigger enqueued by claim_event and emit a REQ; \
+         got empty outbound — lifecycle drain is missing from tick()"
+    );
+}
+
+#[test]
+fn idle_tick_does_not_set_dirty_flag() {
+    // Guard for the PR-2 dirty-flag coalescing rider: a tick with no
+    // pending publish retries and no pending lifecycle triggers must NOT
+    // mark the kernel dirty. If it did, the wasm32 timer would push a
+    // snapshot on every heartbeat regardless of whether anything changed —
+    // burning JS-heap churn and upstream re-renders for free.
+    //
+    // Flow:
+    //   1. Start and take a snapshot — clears `changed_since_emit`.
+    //   2. Execute an idle tick (nothing pending).
+    //   3. Assert `changed_since_emit()` is still false.
+    let mut r = KernelReducer::new();
+    let _ = r.reduce(KernelAction::Start);
+    // Clear the dirty flag by taking a snapshot.
+    let _ = r.make_update_frame(true);
+    assert!(
+        !r.changed_since_emit(),
+        "changed_since_emit must be false right after make_update_frame"
+    );
+    // An idle tick: no publishes in flight, no lifecycle triggers.
+    let tick_out = r.tick();
+    assert!(tick_out.is_empty(), "idle tick must produce no outbound");
+    assert!(
+        !r.changed_since_emit(),
+        "idle tick must not dirty the kernel — would cause spurious snapshot pushes"
+    );
 }
 
 // ─── V-01 Stage 3c publish-from-signed-event surface ─────────────────────

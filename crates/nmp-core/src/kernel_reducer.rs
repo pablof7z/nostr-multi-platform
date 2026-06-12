@@ -174,18 +174,36 @@ impl KernelReducer {
         self.kernel.mark_publish_relay_unavailable(relay_url);
     }
 
-    /// Pump the publish-engine retry queue. Mirrors the
-    /// `tick_publish_engine_for_now` invocation the native actor performs on
-    /// every inbound text frame (and on tick boundaries) — frames whose retry
-    /// backoff has elapsed are returned for the caller to send.
+    /// Pump the publish-engine retry queue **and** drain any pending
+    /// subscription lifecycle triggers. Mirrors the native actor's idle-tick
+    /// order (publish pump → lifecycle drain; see `actor/mod.rs:2086`).
     ///
     /// The wasm32 driver calls this from its `gloo-timers` periodic interval
     /// (1 Hz is sufficient; retry deadlines are seconds-scale) so transient
     /// publish failures recover without waiting for the next inbound frame
-    /// from any relay.
+    /// from any relay, and `CompileTrigger::ViewOpened` events enqueued by
+    /// `claim_event` / `claim_profile` compile into REQ frames without
+    /// waiting for the next relay event.
+    ///
+    /// # Parity note
+    ///
+    /// Native also drains `pending_view_requests()` and calls
+    /// `poll_claim_expansion(Instant::now())` on each tick; those two drains
+    /// are omitted here because `poll_claim_expansion` requires
+    /// `std::time::Instant` (wasm32-incompatible at time of writing) and
+    /// `pending_view_requests` is already drained by `handle_relay_connected`.
     pub fn tick(&mut self) -> Vec<OutboundMessage> {
-        let outbound = self.kernel.tick_publish_engine_for_now();
+        let mut outbound = self.kernel.tick_publish_engine_for_now();
+        outbound.extend(self.kernel.drain_lifecycle_outbound());
         self.kernel.partition_auth_paused(outbound)
+    }
+
+    /// Returns `true` when the kernel state has changed since the last
+    /// `make_update_frame` call. The wasm32 periodic timer checks this before
+    /// pushing a snapshot so that idle ticks do not produce spurious frames
+    /// (dirty-flag coalescing, PR-2 rider).
+    pub fn changed_since_emit(&self) -> bool {
+        self.kernel.changed_since_emit()
     }
 
     /// V-01 Stage 3c — public publish-from-signed-event surface for non-actor

@@ -42,4 +42,17 @@ impl super::WasmRuntime {
         use crate::snapshot::build_snapshot_bytes;
         build_snapshot_bytes(&mut self.reducer.borrow_mut(), &self.meta.borrow())
     }
+
+    /// Simulate one tick cycle (native test helper). Returns `(outbound,
+    /// dirty)` where `dirty` mirrors `KernelReducer::changed_since_emit()`
+    /// **after** the tick — the same flag the wasm32 timer checks before
+    /// pushing a snapshot.
+    ///
+    /// Calling this helper exercises the identical coalescing path as the
+    /// wasm32 `gloo-timers` closure: both call [`crate::tick::tick_once`],
+    /// so a native test asserting `dirty == false` proves the timer would
+    /// not push a spurious snapshot.
+    pub fn tick_for_test(&mut self) -> (Vec<nmp_core::OutboundMessage>, bool) {
+        crate::tick::tick_once(&self.reducer)
+    }
 }
