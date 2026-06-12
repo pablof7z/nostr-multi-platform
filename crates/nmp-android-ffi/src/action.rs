@@ -8,7 +8,7 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jlong, jstring};
 use jni::JNIEnv;
 
-use nmp_ffi::{nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_app_free_string};
+use nmp_ffi::{nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_free_string};
 
 use crate::{jstring_to_cstring, session_arc};
 
@@ -56,7 +56,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
     let result = unsafe { std::ffi::CStr::from_ptr(result_ptr) }
         .to_string_lossy()
         .into_owned();
-    nmp_app_free_string(result_ptr);
+    nmp_free_string(result_ptr);
     json_string(env, &result)
 }
 

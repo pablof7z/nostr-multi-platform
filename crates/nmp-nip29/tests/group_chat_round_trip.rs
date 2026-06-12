@@ -38,8 +38,8 @@ use std::time::Duration;
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::ActorCommand;
 use nmp_ffi::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new,
-    nmp_app_set_update_callback, nmp_app_start,
+    nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
+    nmp_app_start, nmp_free_string,
 };
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::{register_actions, wire_group_chat};
@@ -142,7 +142,7 @@ fn post_chat_message_dispatch_returns_correlation_id() {
     assert!(!ptr.is_null(), "dispatch_action must not return null");
     // SAFETY: ptr is a valid nul-terminated string from dispatch_action.
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
 
     let result: serde_json::Value = serde_json::from_str(&out).unwrap();
     let cid = result
@@ -157,7 +157,7 @@ fn post_chat_message_dispatch_returns_correlation_id() {
     let ns2 = CString::new("nmp.nip29.post_chat_message").unwrap();
     let ptr2 = nmp_app_dispatch_action(app, ns2.as_ptr(), bad.as_ptr());
     let out2 = unsafe { CStr::from_ptr(ptr2) }.to_str().unwrap().to_owned();
-    nmp_app_free_string(ptr2);
+    nmp_free_string(ptr2);
     let result2: serde_json::Value = serde_json::from_str(&out2).unwrap();
     assert!(
         result2.get("error").is_some(),

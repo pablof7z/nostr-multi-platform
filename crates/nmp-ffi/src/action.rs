@@ -60,8 +60,8 @@ use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
 /// Dispatch a named action through the action registry.
 ///
 /// Returns a freshly heap-allocated, NUL-terminated JSON C string the caller
-/// MUST release via [`super::capability::nmp_app_free_string`]
-/// (`nmp_app_free_string`):
+/// MUST release via [`super::free::nmp_free_string`]
+/// (`nmp_free_string`):
 ///
 /// * `{"correlation_id":"<32-hex>"}` — the action was accepted, assigned a
 ///   correlation id, and (for `nmp.publish` `Publish`) enqueued with the

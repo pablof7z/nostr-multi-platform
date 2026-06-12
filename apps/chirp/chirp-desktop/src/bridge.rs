@@ -24,16 +24,14 @@ use nmp_app_chirp::{
     nmp_app_chirp_close_home_feed, nmp_app_chirp_close_thread_feed,
     nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
     nmp_app_chirp_open_thread_feed, nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_app_nostrconnect_uri, nmp_broker_free_string, nmp_marmot_unregister,
+    nmp_app_nostrconnect_uri, nmp_marmot_unregister,
     nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle, NmpRegisterStatus,
 };
 use nmp_nip01::NoteRecord;
 use nmp_ffi::{
-    nmp_app_dispatch_action,
-    nmp_app_free, nmp_app_free_string, nmp_app_load_older_feed,
-    nmp_app_set_capability_callback,
-    nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, nmp_app_retry_publish,
-    nmp_app_cancel_publish, NmpApp,
+    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_dispatch_action, nmp_app_free,
+    nmp_app_load_older_feed, nmp_app_remove_relay, nmp_app_retry_publish,
+    nmp_app_set_capability_callback, nmp_app_start, nmp_free_string, NmpApp,
 };
 use serde_json::Value;
 use std::ffi::c_void;
@@ -278,7 +276,7 @@ impl AppRuntime {
         let text = unsafe { CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        unsafe { nmp_broker_free_string(ptr) };
+        unsafe { nmp_free_string(ptr) };
 
         Ok(text)
     }
@@ -431,7 +429,7 @@ impl AppRuntime {
         let text = unsafe { CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        unsafe { nmp_app_free_string(ptr) };
+        unsafe { nmp_free_string(ptr) };
         let value: Value = serde_json::from_str(&text)
             .map_err(|e| format!("action dispatch returned invalid JSON: {e}"))?;
         parse_dispatch_envelope(&value)

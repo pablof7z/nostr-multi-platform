@@ -57,8 +57,7 @@ pub use ffi::{
     nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
 };
 pub use nmp_ffi::{
-    nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
-    nmp_signer_broker_init,
+    nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,
 };
 pub use nmp_nip01::{
     Nip10ReplyAttribution as ChirpReplyAttribution, TimelineEventCard as ChirpEventCard,

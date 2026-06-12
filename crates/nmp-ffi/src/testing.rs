@@ -203,7 +203,7 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
 }
 
 /// Read a single snapshot-projection's JSON by key, returning a heap-owned
-/// C string the caller must free via [`crate::ffi::nmp_app_free_string`].
+/// C string the caller must free via [`crate::free::nmp_free_string`].
 ///
 /// Runs every registered snapshot projection directly against the app's
 /// shared registry (the same path `make_update` drives on each actor tick),
@@ -217,7 +217,7 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
 /// * the resulting `CString` would contain an interior NUL.
 ///
 /// The returned pointer is heap-owned (`CString::into_raw`); failing to free
-/// it via `nmp_app_free_string` leaks the underlying allocation.
+/// it via `nmp_free_string` leaks the underlying allocation.
 ///
 /// This is the symmetric output-side seam for `nmp_app_inject_signed_event_json`:
 /// together they let an integration test inject a verbatim signed event and

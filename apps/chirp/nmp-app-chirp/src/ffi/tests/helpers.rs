@@ -9,7 +9,7 @@ use std::ffi::{CStr, CString};
 
 use nmp_core::substrate::ActionModule;
 use nmp_core::ActorCommand;
-use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free_string, NmpApp};
+use nmp_ffi::{nmp_app_dispatch_action, nmp_free_string, NmpApp};
 
 use super::super::{nmp_app_chirp_register, ChirpHandle, NmpRegisterStatus};
 
@@ -60,6 +60,6 @@ pub(super) fn dispatch(app: *mut NmpApp, namespace: &str, action_json: &str) -> 
     assert!(!ptr.is_null(), "dispatch_action must never return null");
     // SAFETY: `ptr` is a valid C string from `nmp_app_dispatch_action`.
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     serde_json::from_str(&out).unwrap()
 }

@@ -31,9 +31,9 @@ mod signer;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
-    nmp_app_encode_profile, nmp_app_free_string, nmp_app_new,
-    nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay,
-    nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
+    nmp_app_encode_profile, nmp_app_new, nmp_app_release_profile, nmp_app_remove_account,
+    nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
+    nmp_app_switch_active, nmp_free_string, NmpApp,
 };
 use session::{insert_session, remove_session, NextUpdate};
 pub(crate) use session::{session_arc, Session};
@@ -286,9 +286,9 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeEncodeProfile(
     let encoded = unsafe { CStr::from_ptr(raw_ptr) }
         .to_string_lossy()
         .into_owned();
-    // SAFETY: `nmp_app_free_string` is the documented free for C-strings
-    // allocated by `nmp_app_encode_profile` (nip19_ffi.rs).
-    nmp_app_free_string(raw_ptr);
+    // SAFETY: `nmp_free_string` is the canonical free for C-strings
+    // allocated by any NMP FFI function (nmp-ffi/src/free.rs).
+    nmp_free_string(raw_ptr);
     env.new_string(encoded)
         .map(|s| s.into_raw())
         .unwrap_or(ptr::null_mut())

@@ -57,7 +57,7 @@
 # and must appear in the header.
 #
 # The check is restricted to the `nmp_app_*` prefix; broker-only symbols such
-# as `nmp_signer_broker_init` / `nmp_broker_free_string` are out of scope by
+# as `nmp_signer_broker_init` / `nmp_free_string` are out of scope by
 # construction (different prefix) and are not gated by this script. This is a
 # DELIBERATE scope decision, not an oversight: those symbols are stable, few,
 # and owned by `nmp-ffi`; gating them here would couple this script to a

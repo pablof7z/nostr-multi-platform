@@ -2,7 +2,7 @@
 
 use std::ffi::{CStr, CString};
 
-use nmp_ffi::nmp_app_free_string;
+use nmp_ffi::nmp_free_string;
 
 use super::super::nmp_app_chirp_action_spec;
 
@@ -11,7 +11,7 @@ fn build_spec(intent: &str) -> serde_json::Value {
     let ptr = nmp_app_chirp_action_spec(intent.as_ptr());
     assert!(!ptr.is_null(), "action spec must return a JSON string");
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_string();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     serde_json::from_str(&out).unwrap()
 }
 
@@ -30,7 +30,7 @@ fn action_spec_ffi_returns_error_for_null_intent() {
     let ptr = nmp_app_chirp_action_spec(std::ptr::null());
     assert!(!ptr.is_null());
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_string();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     let value: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(value["error"], "missing Chirp action intent JSON");
 }
