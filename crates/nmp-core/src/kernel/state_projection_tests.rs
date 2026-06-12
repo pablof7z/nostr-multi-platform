@@ -285,15 +285,25 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     // The kernel emits the decision; the shell binds it directly (no Swift
     // `if status != "sending"` branch).
     assert_eq!(outbox[0]["can_retry"].as_bool(), Some(false));
-    // §6 anti-pattern #1: pluralization lives in Rust. Single relay → "1 relay";
-    // the shell never reconstructs the plural with a ternary.
+    // V-115 / ADR-0032: `target_summary` removed — shell composes
+    // "N relays · <time>" from `target_relays` + `created_at` (raw Unix secs).
     assert!(
-        outbox[0]["target_summary"]
-            .as_str()
-            .map(|s| s.starts_with("1 relay · "))
-            .unwrap_or(false),
-        "target_summary must pluralize server-side: got {:?}",
-        outbox[0]["target_summary"]
+        outbox[0].get("target_summary").is_none(),
+        "target_summary must be absent from projection (V-115)"
+    );
+    assert_eq!(
+        outbox[0]["target_relays"].as_u64(),
+        Some(1),
+        "target_relays carries the raw count the shell uses to compose the summary"
+    );
+    // Raw Unix-seconds timestamp — shell formats with its own locale/TZ.
+    assert!(
+        outbox[0]["created_at"].as_u64().is_some(),
+        "created_at must carry raw Unix seconds (V-115 / ADR-0032)"
+    );
+    assert!(
+        outbox[0].get("created_at_display").is_none(),
+        "created_at_display must be absent from projection (V-115)"
     );
     assert_eq!(
         outbox[0]["relays"][0]["relay_url"].as_str(),
@@ -494,10 +504,11 @@ fn outbox_summary_projects_sending_counters_and_strings() {
 // author_view projection and profile_action_for() removed from kernel.
 
 
-/// `profile.npub_short` is the truncated copy-button form — Rust owns the
-/// truncation policy (`<first10>…<last8>`), no Swift `truncatedNpub` helper.
+/// V-115 / ADR-0032: projection sends raw hex pubkey only; shells encode
+/// bech32 and any abbreviation host-side. `npub` must be ABSENT from the
+/// JSON projection.
 #[test]
-fn profile_card_carries_raw_pubkey_and_npub() {
+fn profile_card_carries_raw_pubkey_without_npub() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
 
@@ -508,11 +519,10 @@ fn profile_card_carries_raw_pubkey_and_npub() {
         Some(ACCOUNT),
         "profile.pubkey must carry the raw hex (aim.md §2)"
     );
-    // npub stays for shells without a bech32 encoder; presentation owns
-    // the abbreviation policy.
+    // ADR-0032 / V-115: `npub` bech32 field removed from projection.
     assert!(
-        profile["npub"].as_str().is_some(),
-        "profile.npub must carry the bech32 encoding"
+        profile.get("npub").is_none(),
+        "profile.npub must be absent — shells encode bech32 themselves"
     );
     assert!(
         profile.get("npub_short").is_none(),
@@ -555,8 +565,12 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
         "claimed_profiles must carry a placeholder for every claimed pubkey"
     );
     assert_eq!(entry["pubkey"].as_str(), Some(ACCOUNT));
-    let expected_npub = crate::display::to_npub(ACCOUNT);
-    assert_eq!(entry["npub"].as_str(), Some(expected_npub.as_str()));
+    // ADR-0032 / V-115: `npub` bech32 field removed from projection; shells
+    // encode bech32 themselves.
+    assert!(
+        entry.get("npub").is_none(),
+        "claimed_profiles entry must not carry npub — shells encode bech32"
+    );
     assert_eq!(entry["has_profile"].as_bool(), Some(false));
     assert!(entry["display_name"].is_null());
     assert!(entry["picture_url"].is_null());

@@ -226,12 +226,15 @@ impl DesktopApp {
 
                 // Active account mini-card
                 if let Some(ref pk) = snap.active_account {
+                    // ADR-0032 / V-115: `profile.npub` is always empty; derive
+                    // the fallback from the raw pubkey on the host side.
+                    let npub_fallback = nmp_core::display::to_npub(pk);
                     let name = snap
                         .profile
                         .display_name
                         .as_deref()
                         .filter(|s| !s.is_empty())
-                        .unwrap_or_else(|| &snap.profile.npub);
+                        .unwrap_or(npub_fallback.as_str());
                     ui.label(RichText::new(name).strong().small());
                     ui.label(
                         RichText::new(nmp_core::display::short_npub(pk))

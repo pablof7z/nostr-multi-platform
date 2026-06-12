@@ -163,6 +163,17 @@ class KernelModel : ViewModel() {
     }
 
     /**
+     * Encode a hex pubkey as a NIP-19 display identifier via the kernel's
+     * cached kind:10002 relay hints (`nprofile1…`) or a bare `npub1…` when
+     * none are available. ADR-0032 / V-115: replaces the deprecated
+     * `ProfileCard.npub` projection field.
+     *
+     * Returns null when the bridge is uninitialised or the pubkey is invalid;
+     * callers should fall back to short-hex rendering in that case.
+     */
+    fun encodeProfile(pubkey: String): String? = bridge.encodeProfile(pubkey)
+
+    /**
      * Publish a new note. Kotlin forwards only user intent; Rust builds the
      * `nmp.publish` namespace and `PublishRaw` body, including reply tags.
      *

@@ -131,7 +131,9 @@ object TypedProfilesDecoder {
      */
     private fun mapProfileCard(card: FbProfileCard): ProfileCard = ProfileCard(
         pubkey = card.pubkey ?: "",
-        npub = card.npub ?: "",
+        // ADR-0032 / V-115: `npub` deprecated in schema; always empty string here.
+        // Callers encode bech32 host-side when needed.
+        npub = "",
         displayName = if (card.hasDisplayName) card.displayName else null,
         pictureUrl = if (card.hasPictureUrl) card.pictureUrl else null,
         nip05 = card.nip05 ?: "",

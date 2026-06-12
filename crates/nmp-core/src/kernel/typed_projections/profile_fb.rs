@@ -75,7 +75,9 @@ fn create_profile_card<'a>(
     card: &ProfileCardModel,
 ) -> WIPOffset<pc::ProfileCard<'a>> {
     let pubkey = fbb.create_string(&card.pubkey);
-    let npub = fbb.create_string(&card.npub);
+    // ADR-0032 / V-115: `npub` deprecated in schema; `ProfileCardArgs` no longer
+    // has an `npub` field (flatc omits args for deprecated fields). The slot is
+    // preserved in the vtable for wire compatibility with un-updated hosts.
     let display_name = card
         .display_name
         .as_ref()
@@ -91,7 +93,6 @@ fn create_profile_card<'a>(
         fbb,
         &pc::ProfileCardArgs {
             pubkey: Some(pubkey),
-            npub: Some(npub),
             has_display_name: card.display_name.is_some(),
             display_name,
             has_picture_url: card.picture_url.is_some(),
@@ -125,7 +126,9 @@ pub(crate) fn encode_profile(model: &ProfileCardModel) -> Vec<u8> {
 pub fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey().unwrap_or_default().to_string(),
-        npub: card.npub().unwrap_or_default().to_string(),
+        // ADR-0032 / V-115: `npub` deprecated in schema; no accessor generated.
+        // Shells encode bech32 themselves. Field kept in model as empty string.
+        npub: String::new(),
         display_name: card
             .has_display_name()
             .then(|| card.display_name().unwrap_or_default().to_string()),

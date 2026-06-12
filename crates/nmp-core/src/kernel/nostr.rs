@@ -9,11 +9,11 @@
 
 use super::types::AuthorRelayList;
 use super::{Deserialize, HashSet, Profile};
-// `UNIX_EPOCH`, `Duration`, `DateTime`, `Local`, `SystemTime` are only consumed
-// by `format_timestamp` / `now_hms` below, both `#[cfg(feature = "native")]` —
-// the imports are gated to match so `--no-default-features` (wasm32) compiles.
+// `DateTime`, `Local`, `SystemTime` are only consumed by `now_hms` below,
+// `#[cfg(feature = "native")]` — the import is gated to match so
+// `--no-default-features` (wasm32) compiles.
 #[cfg(feature = "native")]
-use super::{DateTime, Duration, Local, SystemTime, UNIX_EPOCH};
+use super::{DateTime, Local, SystemTime};
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -182,17 +182,11 @@ pub(super) fn truncate(value: &str, limit: usize) -> String {
 // Wall-clock display strings only appear on the FFI snapshot surface (whose
 // callers are themselves native), so the helpers can also be `native`-only.
 // V-01 Phase 1c: under `--no-default-features` the two call sites
-// (`format_timestamp` in `update.rs`, `now_hms` in `status.rs`) are gated
-// to match — the diagnostic strings drop out alongside the FFI module.
-#[cfg(feature = "native")]
-pub(super) fn format_timestamp(created_at: u64) -> String {
-    let Some(system_time) = UNIX_EPOCH.checked_add(Duration::from_secs(created_at)) else {
-        return created_at.to_string();
-    };
-    let datetime: DateTime<Local> = DateTime::<Local>::from(system_time);
-    datetime.format("%b %-d %H:%M").to_string()
-}
-
+// (`now_hms` in `status.rs`) are gated to match — the diagnostic strings
+// drop out alongside the FFI module.
+//
+// `format_timestamp` deleted by ADR-0032 / V-115 F4: publish_outbox now
+// emits raw `created_at` (Unix seconds); shells format timestamps locally.
 #[cfg(feature = "native")]
 pub(super) fn now_hms() -> String {
     let now = SystemTime::now();

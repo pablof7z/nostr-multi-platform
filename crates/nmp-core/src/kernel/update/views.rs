@@ -138,15 +138,14 @@ impl Kernel {
 
     pub(in crate::kernel) fn profile_card(&self) -> ProfileCard {
         match self.active_account.as_deref() {
-            Some(pk) => self.profile_card_for(pk, None, "Waiting for kind:0 from indexer"),
-            None => self.profile_card_for("", None, "Waiting for kind:0 from indexer"),
+            Some(pk) => self.profile_card_for(pk, "Waiting for kind:0 from indexer"),
+            None => self.profile_card_for("", "Waiting for kind:0 from indexer"),
         }
     }
 
     pub(in crate::kernel) fn profile_card_for(
         &self,
         pubkey: &str,
-        npub: Option<&str>,
         placeholder_about: &str,
     ) -> ProfileCard {
         let profile = self.profile_for_pubkey(pubkey);
@@ -156,13 +155,11 @@ impl Kernel {
             .and_then(|p| p.picture_url.as_deref())
             .filter(|url| !url.is_empty())
             .map(str::to_owned);
-        let npub_str = npub.unwrap_or(pubkey).to_string();
         let display_name = profile
             .map(|profile| profile.display.clone())
             .filter(|display| !display.is_empty());
         ProfileCard {
             pubkey: pubkey.to_string(),
-            npub: npub_str,
             display_name,
             picture_url,
             nip05: profile

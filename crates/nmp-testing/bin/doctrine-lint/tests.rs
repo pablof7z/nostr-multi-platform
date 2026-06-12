@@ -1503,6 +1503,79 @@ fn d17_does_not_fire_outside_nmp_core() {
     );
 }
 
+// ─── D19 (display formatting banned from kernel projection builders) ──────────
+
+#[test]
+fn d19_positive_fixture_fires() {
+    // Stage pos.rs in isolation so neg.rs cannot pollute the assertion.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d19_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d19/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D19 is path-scoped to kernel projection builder files — the staged
+    // fixture under `target/` falls outside that scope, so
+    // `--d19-extra-scope` opts it in (mirrors `--d17-extra-scope`).
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d19-extra-scope",
+        "doctrine_lint_d19_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d19 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D19]"),
+        "d19 positive must emit >=1 D19 finding; stdout:\n{}",
+        stdout
+    );
+    // Both banned tokens in pos.rs must surface.
+    assert!(
+        stdout.contains("crate::display::"),
+        "d19 finding must name crate::display::; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("ADR-0032"),
+        "d19 finding message must reference ADR-0032; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn d19_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d19_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d19/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d19-extra-scope",
+        "doctrine_lint_d19_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d19 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D19]"),
+        "d19 negative must produce zero D19 findings; stdout:\n{}",
+        stdout
+    );
+}
+
 /// N2: D17 must fire on a Rust kind-set literal `[1u32, 6u32]` (the exact
 /// form that the deleted `nmp_app_open_timeline` used in nmp-ffi) when the
 /// file is inside a scoped path.

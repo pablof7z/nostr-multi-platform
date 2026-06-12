@@ -137,10 +137,9 @@ pub(crate) struct TimelineItem {
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct ProfileCard {
     pub(super) pubkey: String,
-    /// Bech32 `npub1…` encoding. Pubkey-deterministic; retained for
-    /// shells that lack a bech32 encoder. Presentation layer chooses how
-    /// to abbreviate.
-    pub(super) npub: String,
+    // D6 / ADR-0032: `npub` (bech32) field removed — projection sends raw hex
+    // pubkey only; shells encode bech32 host-side via `nmp_app_encode_profile`
+    // or their own implementation. Closes V-115.
     /// Display name from kind:0 (`display_name` / `displayName` / `name`,
     /// first non-empty wins). `None` when no kind:0 has arrived yet —
     /// presentation layer renders its own fallback.
@@ -174,7 +173,6 @@ impl ProfileCard {
     pub(in crate::kernel) fn from_mention(pubkey: &str, m: &MentionProfilePayload) -> Self {
         Self {
             pubkey: pubkey.to_string(),
-            npub: crate::display::to_npub(pubkey),
             display_name: m.display_name.clone(),
             picture_url: m.picture_url.clone(),
             nip05: String::new(),
@@ -293,7 +291,10 @@ pub(super) struct PublishOutboxItem {
     pub(super) kind: u32,
     pub(super) title: String,
     pub(super) preview: String,
-    pub(super) created_at_display: String,
+    /// Raw Unix-seconds creation timestamp. ADR-0032: projection sends raw
+    /// epoch seconds; shells format for display with their own locale/TZ.
+    /// Replaces the deprecated `created_at_display` string (V-115).
+    pub(super) created_at: u64,
     pub(super) status: String,
     /// Pre-formatted English label for `status` (e.g. `"Sending"`, `"Retrying"`).
     /// Doctrine §6 anti-pattern #1: the shell renders this directly — it never
@@ -311,10 +312,8 @@ pub(super) struct PublishOutboxItem {
     /// deciding what the app should *do*.
     pub(super) can_retry: bool,
     pub(super) target_relays: usize,
-    /// Pre-formatted "N relays · <`created_at`>" header line (or "1 relay · …"
-    /// — pluralization is server-side). The shell renders this verbatim
-    /// instead of reconstructing the plural with a ternary on `target_relays`.
-    pub(super) target_summary: String,
+    // ADR-0032 / V-115: `target_summary` removed — shells compose "N relays ·
+    // <formatted time>" themselves from `target_relays` + `created_at`.
     pub(super) relays: Vec<PublishOutboxRelay>,
 }
 
