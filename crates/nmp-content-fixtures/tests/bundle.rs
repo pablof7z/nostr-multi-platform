@@ -13,7 +13,7 @@ use nmp_content_fixtures::build_bundle;
 use nmp_content_fixtures::dto::{EmbedEntry, ScenarioDto, SegmentDto};
 use nmp_core::store::{RawEvent, VerifiedEvent};
 
-const EXPECTED_SCENARIOS: usize = 38;
+const EXPECTED_SCENARIOS: usize = 43; // +5 F-CR-12 (S-M10…S-M14)
 
 fn verify_event(ev: &nmp_content_fixtures::dto::SignedEventJson) {
     let raw = RawEvent {

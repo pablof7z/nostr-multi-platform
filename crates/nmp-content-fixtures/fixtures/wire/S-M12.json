@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {
+      "kind": "text",
+      "text": "L0 root "
+    },
+    {
+      "kind": "event_ref",
+      "uri": {
+        "uri": "nostr:note108f2aylx7yxp0ddw7vdxjuemh8hut0cw7qs5ptvh36wdgmlufx0q6r3ux7",
+        "kind": "event",
+        "primary_id": "79d2ae93e6f10c17b5aef31a69733bb9efc5bf0ef02140ad978e9cd46ffc499e",
+        "relays": [],
+        "author": null,
+        "event_kind": null
+      }
+    }
+  ],
+  "roots": [
+    0,
+    1
+  ],
+  "mode": "Plain"
+}
