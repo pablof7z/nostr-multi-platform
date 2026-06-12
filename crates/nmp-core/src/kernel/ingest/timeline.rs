@@ -64,6 +64,23 @@ impl Kernel {
         } else {
             Some(verified.raw().clone())
         };
+        // Capture the raw event for the `IngestParser` dispatcher fan-out below
+        // (after `store.insert` consumes `verified`). The sig is preserved here
+        // so `from_store_verified_unchecked` can reconstruct a correct
+        // `VerifiedEvent` without re-running Schnorr verification — trust
+        // boundary: `try_from_raw` above already verified the signature.
+        //
+        // D8: clone only when a parser is registered; idle-dispatcher guard is
+        // below at the dispatch site (lock read short-circuits on empty registry).
+        let raw_for_dispatch = crate::store::RawEvent {
+            id: verified.raw().id.clone(),
+            pubkey: verified.raw().pubkey.clone(),
+            created_at: verified.raw().created_at,
+            kind: verified.raw().kind,
+            tags: verified.raw().tags.clone(),
+            content: verified.raw().content.clone(),
+            sig: verified.raw().sig.clone(),
+        };
         // T105: provenance is the resolved per-author write relay the EVENT
         // actually arrived on, not the lane's bootstrap URL.
         let provenance = relay_url.to_string();
@@ -215,6 +232,32 @@ impl Kernel {
         self.events.insert(event.id.clone(), cached);
         self.cached_estimated_store_bytes.set(None);
         self.notify_event_observers(&kernel_event);
+        // V-40 / raw-tap retirement ladder: fan to the substrate
+        // `EventIngestDispatcher` so all registered `IngestParser`s receive
+        // timeline events (kind:1 notes, kind:6 reposts, and any other
+        // host-declared follow-feed kind).
+        //
+        // Gap closed: before this fix, parsers registered for all-kinds ranges
+        // (e.g. `chirp-tui`'s `RawCacheIngestParser`, `0..u32::MAX`) silently
+        // missed every timeline event because this call was absent here while
+        // being present in `verify_and_persist` (the wildcard ingest arm) and
+        // `ingest_pre_verified_event` (the test-support inject path).
+        //
+        // Gating: Inserted|Replaced only — `Duplicate` returns earlier in this
+        // function (line 127) and never reaches here; `proceed = true` at this
+        // point guarantees an Inserted or Replaced outcome. No Ephemeral gate
+        // needed: timeline events (kind:1 / kind:6) are never ephemeral.
+        //
+        // D6 — a poisoned dispatcher lock degrades to "no parser fired"; the
+        // store insert and observer fan-out already succeeded, so this is the
+        // safe graceful-degrade.
+        {
+            use nmp_store::__nmp_core_internal;
+            let verified_for_dispatch = __nmp_core_internal::from_store_verified_unchecked(raw_for_dispatch);
+            if let Ok(d) = self.ingest_dispatcher_slot().read() {
+                d.dispatch(&verified_for_dispatch);
+            }
+        }
         if sub_id.starts_with("diag-firehose-") {
             self.diagnostic_firehose.events = self.diagnostic_firehose.events.saturating_add(1);
         }

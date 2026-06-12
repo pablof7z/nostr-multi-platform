@@ -190,6 +190,21 @@ impl EventIngestDispatcher {
         Some(self.by_range.remove(pos).2)
     }
 
+    /// Return `true` when at least one parser is registered that would fire
+    /// for `kind`. Used by the cache-serve gate to decide whether to run the
+    /// `IngestParser` dispatch path for a served event without needing a full
+    /// `VerifiedEvent` — avoids the `from_store_verified_unchecked` call and
+    /// lock acquisition when the dispatcher is empty or has no match.
+    ///
+    /// Cheap read: walks only the by-kind bucket for `kind` (O(parsers-for-kind),
+    /// typically 0–2) and the short range-vec (O(ranges), typically 0–3) without
+    /// any allocation. Safe to call under the read lock.
+    #[must_use]
+    pub fn is_interested(&self, kind: u32) -> bool {
+        self.by_kind.contains_key(&kind)
+            || self.by_range.iter().any(|(range, _, _)| range.contains(&kind))
+    }
+
     /// Fan `evt` to every parser registered for its kind. Called by the
     /// kernel's ingest path; non-existent registrations are a fast no-op.
     pub fn dispatch(&self, evt: &VerifiedEvent) {

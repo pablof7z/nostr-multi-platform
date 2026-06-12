@@ -24,7 +24,7 @@
 use super::super::hex_to_pubkey_bytes;
 use crate::planner::InterestShape;
 use crate::store::StoreQuery;
-use nmp_kinds::KIND_GIFT_WRAP;
+use crate::substrate::EventIngestDispatcher;
 
 /// Map an `InterestShape` to the `StoreQuery` variants this seam covers.
 ///
@@ -142,28 +142,33 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
 /// Whether a shape needs `IngestParser` dispatch in addition to normal
 /// `notify_event_observers` fan-out.
 ///
-/// This is true for shapes that map to a `Ptag` including kind:1059 (NIP-17
-/// gift-wrap). Such events carry encrypted content whose decryption requires
-/// the verbatim signed JSON (with `sig`) — delivered via `IngestParser` which
-/// receives a `VerifiedEvent` carrying the `sig` field. Other kinds can use
-/// the normal `notify_event_observers` (sig-stripped) path.
+/// Owner doctrine (single-mechanism cache-serve): dispatch decisions MUST honor
+/// ACTUAL dispatcher registrations rather than a hardcoded shape allowlist.
+/// This function checks `dispatcher.is_interested(kind)` for every kind in the
+/// shape — a fast read that short-circuits as soon as one match is found.
+///
+/// The old hardcoded `#p`+kind:1059 allowlist is retired here. Any registered
+/// `IngestParser` — including all-kinds range parsers (e.g. chirp-tui's
+/// `RawCacheIngestParser` for `0..u32::MAX`) — now transparently causes
+/// cache-serve dispatch without code changes.
+///
+/// If `dispatcher` is `None` (e.g. poisoned lock graceful-degrade), returns
+/// `false` — no dispatch fires, which is the safe degraded state.
 ///
 /// Note: this does NOT control `notify_raw_event_observers` (the verbatim
 /// forwarding tap). The raw tap fires only on live relay ingest, never on
 /// cache-served replay.
-pub(in crate::kernel) fn shape_needs_ingest_parser_dispatch(shape: &InterestShape) -> bool {
+pub(in crate::kernel) fn shape_needs_ingest_parser_dispatch(
+    shape: &InterestShape,
+    dispatcher: Option<&EventIngestDispatcher>,
+) -> bool {
     if shape.kinds.is_empty() {
         return false;
     }
-    // Fire the IngestParser path only for #p shapes that include kind:1059.
-    if shape.tags.len() == 1 {
-        if let Some((tag_key, values)) = shape.tags.iter().next() {
-            if tag_key == "p" && values.len() == 1 && shape.kinds.contains(&KIND_GIFT_WRAP) {
-                return true;
-            }
-        }
-    }
-    false
+    let Some(d) = dispatcher else {
+        return false;
+    };
+    shape.kinds.iter().any(|&kind| d.is_interested(kind))
 }
 
 /// Derive the completion key for an interest.
