@@ -169,7 +169,7 @@ where
         };
         if best
             .as_ref()
-            .map_or(true, |existing| cursor.is_newer_than(existing))
+            .is_none_or(|existing| cursor.is_newer_than(existing))
         {
             best = Some(cursor);
         }
