@@ -17,8 +17,14 @@ use case. Every escape hatch trades a framework guarantee for direct access.
 **C ABI:** `nmp_app_register_raw_event_observer` / `nmp_app_unregister_raw_event_observer`
 
 **What it gives you:** The verbatim inbound `SignedEvent` JSON (id + pubkey +
-created_at + kind + tags + content + **sig**) for every accepted event whose
-kind matches your filter, delivered on a dedicated drain thread.
+created_at + kind + tags + content + **sig**) for every accepted live-ingest
+event whose kind matches your filter, delivered on a dedicated drain thread.
+
+**Important: live ingest only.** The tap fires on live relay delivery
+(including `Duplicate` outcomes). It does **not** fire on cache-served replay.
+If you need your consumer to see both live events and events served from the
+local store on cold start, use `register_ingest_parser` (escape hatch #5 /
+rule A5) instead.
 
 **What it bypasses:**
 - D1 — subscription/planner routing is invisible; you receive events regardless
@@ -29,10 +35,17 @@ kind matches your filter, delivered on a dedicated drain thread.
 - D8 — callback runs on the drain thread; any blocking operation stalls the
   drain.
 
-**When appropriate:** Only when you need the `sig` field verbatim — e.g., MLS
-transport that must forward a signed NIP-59 gift-wrap byte-for-byte. If you
-only need the event content or a derived view, use the snapshot-projector seam
-instead.
+**When appropriate:** Only when you need the `sig` field verbatim **to
+forward the exact signed frame to an external store or relay bridge** — e.g.
+the `hl` app's nostrdb mirror that stores events locally including their
+signatures. If you need to derive in-process state or projections, use
+`register_ingest_parser` (rule A5) instead.
+
+**Raw-tap retirement ladder (four-PR history):**
+- PR-1 (#1137) — NIP-17 DM inbox moved from raw tap to `IngestParser`; cache-serve replay wired.
+- PR-2 (#1145) — Marmot moved from raw tap to `IngestParser`; slot-keyed replace semantics added.
+- PR-3 (#1148) — chirp-tui debug raw-event cache moved to `IngestParser`.
+- PR-4 (this PR) — tap narrowed to verbatim-forwarding contract; `swap_dm_inbox_observer` dead surface deleted; lint backstop (rule A5) added.
 
 ---
 
@@ -101,8 +114,15 @@ prevents accidental inclusion.
 ## Decision tree
 
 ```
-Need the `sig` field verbatim?
+Need the `sig` field to forward the signed frame verbatim to an
+external store or relay bridge (e.g. nostrdb mirror)?
   → raw event tap (#1)
+  NOTE: live ingest only — does NOT see cache-served replay.
+
+Need the `sig` field to derive in-process state (decrypt gift-wraps,
+build projections, accumulate per-kind views)?
+  → register_ingest_parser (rule A5) — fires on live ingest AND
+    cache-served replay; supports slot-keyed lifecycle replace.
 
 Need custom state in every snapshot?
   → snapshot projector (#2) or ActionModule snapshotProjector (#3)

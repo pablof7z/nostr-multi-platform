@@ -18,6 +18,29 @@
 //! point (`kernel/ingest/mod.rs::handle_event`) after the event passes the
 //! kernel's existing Schnorr + id-hash gate.
 //!
+//! ## Purpose: verbatim signed-frame forwarding only
+//!
+//! This tap has ONE legitimate use case: **forwarding the exact signed NIP-01
+//! frame byte-for-byte to an external store or relay bridge** where the `sig`
+//! field must be preserved verbatim — for example, the `hl` app's nostrdb
+//! mirror that stores all-kinds events locally.
+//!
+//! **It is not the right seam for deriving in-process state or projections.**
+//! State-derivation — decrypting gift-wraps, building projection views,
+//! maintaining per-kind accumulators — belongs on
+//! [`crate::NmpApp::register_ingest_parser`] / `replace_ingest_parser` (the
+//! slot-keyed `IngestParser` seam). The `IngestParser` seam is preferred
+//! because it:
+//!
+//! * fires on **Inserted / Replaced / Ephemeral** ingest outcomes AND on
+//!   **cache-served replay** (since the raw-tap retirement ladder, PRs
+//!   #1137/#1145/#1148); the raw tap fires on live ingest only (including
+//!   `Duplicate` outcomes) and **never** sees cache-served replay.
+//! * participates in slot-keyed replace semantics, so lifecycle-managed
+//!   singleton parsers can be re-registered on account switch without
+//!   stacking observers.
+//! * does not bypass back-pressure or drain-thread constraints.
+//!
 //! ## Wire contract (the inbound-ingest consumer depends on this verbatim)
 //!
 //! * **`kinds_json`** — a `*const c_char` holding a JSON array of u32 event
@@ -34,6 +57,16 @@
 //! * **C-string lifetime** — the payload pointer is borrowed for the
 //!   duration of the callback only; consumers MUST copy any bytes they
 //!   need. Same contract as `ffi/event_observer.rs` / `ffi/mod.rs`.
+//!
+//! ## Behavioral contrast with `IngestParser`
+//!
+//! | Property | Raw tap | `IngestParser` |
+//! |---|---|---|
+//! | Fires on live ingest (including `Duplicate`) | yes | yes (Inserted/Replaced/Ephemeral only) |
+//! | Fires on cache-served replay | **no** | **yes** |
+//! | Slot-keyed replace for lifecycle seams | no | yes |
+//! | `sig` field available | yes | yes (passed via `VerifiedEvent`) |
+//! | Bypasses ingest-outcome filtering | yes | no |
 //!
 //! ## Escape-hatch caveat
 //!
@@ -52,12 +85,10 @@
 //!   any blocking operation in the callback stalls that drain, queuing events
 //!   indefinitely.
 //!
-//! Use a raw tap only when you genuinely need the verbatim signed event
-//! (`sig` field included) and kernel projections cannot supply it. The kernel
-//! projection system (`NmpSnapshotProjector`) and action module seam
-//! (`register_action::<M>`) are the doctrine-clean alternatives for the
-//! overwhelming majority of use cases. See `docs/escape-hatches.md` for a
-//! full catalogue of the four escape hatches and when each is appropriate.
+//! See `docs/escape-hatches.md` for the full decision tree. The short rule:
+//! **need the `sig` field to forward bytes verbatim to an external store or
+//! relay bridge? → raw tap. Need to derive in-process state or projections?
+//! → `register_ingest_parser` (rule A5).**
 //!
 //! ## Doctrine
 //!
@@ -97,12 +128,18 @@ fn parse_kind_filter(kinds_json: *const c_char) -> KindFilter {
 
 /// Register a C-ABI raw signed-event observer.
 ///
+/// **Use for verbatim signed-frame forwarding only** — e.g. mirroring events
+/// byte-for-byte into an external nostrdb or relay bridge where the `sig`
+/// field must be preserved. To derive in-process state or projections use
+/// `register_ingest_parser` instead (rule A5); the `IngestParser` seam also
+/// fires on cache-served replay, which the raw tap does not.
+///
 /// `callback` fires on the raw-observer drain thread once per inbound
-/// event that has passed the kernel's Schnorr + id-hash gate, entered
-/// canonical store semantics, AND whose `kind` matches `kinds_json`.
-/// The C string argument is a nul-terminated JSON encoding
-/// of the verbatim flat NIP-01 signed event
-/// `{id, pubkey, created_at, kind, tags, content, sig}`.
+/// event that has passed the kernel's Schnorr + id-hash gate AND whose
+/// `kind` matches `kinds_json`. The tap fires on live ingest (including
+/// `Duplicate` outcomes); it does NOT fire on cache-served replay.
+/// The C string argument is a nul-terminated JSON encoding of the verbatim
+/// flat NIP-01 signed event `{id, pubkey, created_at, kind, tags, content, sig}`.
 ///
 /// `kinds_json` is a JSON array of u32 kinds (e.g. `"[445,1059]"`); a null
 /// pointer, `"[]"`, or unparseable input means "deliver every kind".
