@@ -429,6 +429,29 @@ impl KernelReducer {
         self.kernel.make_update(running)
     }
 
+    /// Build NIP-10 marked-form reply tags for a reply to `reply_to_id` (hex).
+    ///
+    /// Looks up the event from the kernel's store, parses its NIP-10 refs,
+    /// and delegates to [`crate::tags::reply_tags`] — the canonical builder
+    /// shared by both native and wasm paths.
+    ///
+    /// Returns `None` if `reply_to_id` is not valid hex or the event is not
+    /// in the local store. Callers must fail closed on `None`
+    /// (`reply_target_unknown:` reason prefix in the wasm publish path).
+    /// Takes `&self` — safe to call before a sign `.await`; the borrow drops
+    /// before the async boundary (wasm `RefCell` borrow discipline).
+    #[must_use]
+    pub fn build_reply_tags(&self, reply_to_id: &str) -> Option<Vec<Vec<String>>> {
+        use crate::kernel::hex_to_pubkey_bytes;
+        use crate::tags::{parse_nip10, reply_tags};
+
+        let id_bytes = hex_to_pubkey_bytes(reply_to_id)?;
+        let store = self.kernel.event_store_handle();
+        let stored = store.get_by_id(&id_bytes).ok()??;
+        let refs = parse_nip10(&stored.raw.tags);
+        Some(reply_tags(reply_to_id, &stored.raw.pubkey, &refs, None))
+    }
+
     /// Populate the kernel's configured-relay lanes from a caller-supplied
     /// list of `(url, role)` pairs.
     ///
@@ -473,4 +496,8 @@ mod tests_snapshot_claims;
 #[cfg(test)]
 #[path = "kernel_reducer/tests_feed_verbs.rs"]
 mod tests_feed_verbs;
+
+#[cfg(test)]
+#[path = "kernel_reducer/tests_reply_tags.rs"]
+mod tests_reply_tags;
 

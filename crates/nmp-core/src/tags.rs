@@ -91,6 +91,61 @@ pub fn all_tag_values<'a>(tags: &'a [Vec<String>], key: &str) -> Vec<&'a str> {
         .collect()
 }
 
+// ─── NIP-10 reply builder ────────────────────────────────────────────────────
+
+/// Build the NIP-10 marked-form reply tag set for a new note that replies to
+/// the event described by `parent_id` / `parent_author` / `parent_refs`.
+///
+/// This is the shared canonical implementation; both the `nmp-nip01` kind:1
+/// builder and `KernelReducer::build_reply_tags` (the wasm write-path seam)
+/// delegate to it so there is exactly one copy of the root-inheritance rule,
+/// the p-tag dedup pass, and the relay-hint placement.
+///
+/// # Tag layout (NIP-10 marked form)
+///
+/// 1. `["e", root_id, relay_or_empty, "root"]` — thread root.
+///    When `parent_refs.root` is `None` the parent IS the root, so this e-tag
+///    carries `parent_id`. When `parent_refs.root` is `Some(root_ref)` the
+///    root id and its stored relay hint are inherited from that ref.
+/// 2. `["e", parent_id, relay_or_empty, "reply"]` — direct parent.
+///    The relay column uses `relay_hint`.
+/// 3. One `["p", pubkey]` per thread-participant: `parent_author` first, then
+///    `parent_refs.mentioned_pubkeys`, de-duplicated in stable order.
+///
+/// `relay_hint` is applied to the reply e-tag and all p-tags; the root e-tag
+/// uses the relay stored in `parent_refs.root` (or `relay_hint` when the
+/// parent is the root and there is no prior relay annotation).
+#[must_use]
+pub fn reply_tags(
+    parent_id: &str,
+    parent_author: &str,
+    parent_refs: &Nip10Refs,
+    relay_hint: Option<&str>,
+) -> Vec<Vec<String>> {
+    let (root_id, root_relay): (&str, Option<&str>) = match parent_refs.root.as_ref() {
+        Some(root) => (root.id.as_str(), root.relay.as_deref()),
+        None => (parent_id, relay_hint),
+    };
+
+    // Build the p-tag pubkey set: parent author first, then anyone the parent
+    // was already notifying, de-duplicated, stable order.
+    let mut pubkeys: Vec<&str> = Vec::with_capacity(1 + parent_refs.mentioned_pubkeys.len());
+    pubkeys.push(parent_author);
+    for pk in &parent_refs.mentioned_pubkeys {
+        if !pubkeys.iter().any(|p| *p == pk.as_str()) {
+            pubkeys.push(pk.as_str());
+        }
+    }
+
+    let mut tags = Vec::with_capacity(2 + pubkeys.len());
+    tags.push(e_tag(root_id, root_relay, Some("root")));
+    tags.push(e_tag(parent_id, relay_hint, Some("reply")));
+    for pk in pubkeys {
+        tags.push(p_tag(pk, relay_hint));
+    }
+    tags
+}
+
 // ─── NIP-10 reference parser ─────────────────────────────────────────────────
 
 /// A single `e`-tag reference: the pointed-to event id, plus the optional
@@ -415,3 +470,10 @@ mod tests {
         assert_eq!(back, refs);
     }
 }
+
+// Tests for `reply_tags` live in a separate file to stay within the 500-line
+// ceiling. `use super::*` in that file provides the same namespace access as
+// the inline tests above.
+#[cfg(test)]
+#[path = "tags_reply_tests.rs"]
+mod reply_tests;
