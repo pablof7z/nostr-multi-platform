@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **PR 2 of 4: MLS DB key rides host keyring capability; drop apple-native-keyring-store** (Marmot keyring ladder). PR #1187. Branch: `refactor/marmot-capability-credential-store`. Worktree: agent-marmot-keyring. Implements `CapabilityCredentialStore` + `CapabilityCredential` (keyring-core traits over the capability socket); removes `apple-native-keyring-store` dep; rewrites `credential_store::initialize` to probe the capability handler on all platforms (no `cfg(target_os)` branches); exposes `NmpApp::capability_callback_slot()` accessor. Dispatches to the Android Keystore capability handler landed by #1188.
+
 - 2026-06-12 — **E2E relay + nsec seams: NMP_TEST_RELAYS + Android nmp.test_relay intent (PR 4 of Marmot-keyring ladder)**. Branch: `test/e2e-relay-and-nsec-seams`. Worktree: agent-ab8386e8b5050d9a3. New `relay_seeding.rs` module in nmp-android-ffi; `nativeSeedRelays` JNI + `KernelBridge.seedRelays`; `KernelModel.start(testRelays)` + `startWithContext(testRelays)`; `MainActivity` reads `nmp.test_nsec`/`nmp.test_relays` intent extras (debug-only); iOS `KernelModel.start()` reads `NMP_TEST_RELAYS` env var. 5 new unit tests in relay_seeding::tests.
 
 - 2026-06-12 — **Android Keystore keyring capability + synchronous capability routing + identity restore (PR 1 of Marmot-keyring ladder)**. PR #1188. Branch: `feat/android-keyring-capability`. Worktree: agent-a432ddceb0cd2757c. New `capability.rs` + `identity.rs` modules in nmp-android-ffi; `session.rs` `capability_handler` slot; external_signer trampoline namespace router; `KeystoreKeyringCapability.kt` (AES-256-GCM AndroidKeyStore); `KernelBridge.setCapabilityHandler` + `identityRestore`; `KernelModel.startWithContext`.

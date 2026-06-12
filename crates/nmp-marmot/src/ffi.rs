@@ -113,8 +113,9 @@ const DEFAULT_MESSAGE_PAGE: usize = 200;
 
 /// Keyring coordinates for the production encrypted SQLite DB. Stable
 /// strings — the keyring entry is created lazily by `MdkSqliteStorage`.
-const KEYRING_SERVICE_ID: &str = "nmp.chirp.marmot";
-const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
+/// `pub(crate)` so `credential_store` can build the same probe account_id.
+pub(crate) const KEYRING_SERVICE_ID: &str = "nmp.chirp.marmot";
+pub(crate) const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 
 /// Clearable slot for the two Marmot push-projection closures (ADR-0039).
 ///
@@ -304,7 +305,18 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
 ///   In that case `keyring_unavailable = true` is set on the projection so
 ///   the snapshot surfaces the diagnostic to the host.
 pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
-    let Some(use_mock) = crate::credential_store::initialize() else {
+    // Obtain the capability slot from the NmpApp before installing the store.
+    // iOS ordering invariant: KernelBridge.swift:76 calls registerCapabilityHandler
+    // before any restoreChirpIdentity / nmp_marmot_register* invocation, so the
+    // slot is already populated by the time initialize() runs its probe.
+    // SAFETY: caller guarantees `app` is non-null and valid (same as every other
+    // `app_ref` use in this function below).
+    let capability_slot = if app.is_null() {
+        nmp_core::capability_socket::new_capability_callback_slot()
+    } else {
+        unsafe { &*app }.capability_callback_slot()
+    };
+    let Some(use_mock) = crate::credential_store::initialize(capability_slot) else {
         return std::ptr::null_mut();
     };
 

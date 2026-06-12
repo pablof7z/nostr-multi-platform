@@ -18,10 +18,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 # C-ABI shell (`src/ffi.rs` + siblings). Gates the platform credential-store
-# deps (`keyring-core`, `apple-native-keyring-store`) so non-FFI consumers
-# (in-process REPL, headless tests) do not pull them in. Chirp opts in via
-# its own `marmot` feature (`nmp-marmot/ffi`).
-ffi = ["dep:keyring-core", "dep:apple-native-keyring-store"]
+# deps (`keyring-core`, `base64`) so non-FFI consumers (in-process REPL,
+# headless tests) do not pull them in. Chirp opts in via its own `marmot`
+# feature (`nmp-marmot/ffi`).
+ffi = ["dep:keyring-core", "dep:base64"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
@@ -48,11 +48,9 @@ mdk-sqlite-storage = "0.8.0"
 # requires a platform-specific keyring store to be initialized before use.
 # Optional; activated by the `ffi` feature (only the C-ABI shell needs it).
 keyring-core = { version = "1", optional = true }
-
-[target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos", target_os = "watchos", target_os = "visionos"))'.dependencies]
-# Apple-native keyring backend for the encrypted MLS DB on Apple platforms.
-# Optional; activated by the `ffi` feature.
-apple-native-keyring-store = { version = "1.0", features = ["protected"], optional = true }
+# RFC 4648 base64 — used to encode/decode MLS DB key bytes as strings for
+# the capability keyring wire format. Activated by the `ffi` feature.
+base64 = { version = "0.22", optional = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
