@@ -19,6 +19,12 @@ REPO_ROOT="$(cd "$WEB_CHIRP_DIR/../.." && pwd)"
 CRATE_DIR="$REPO_ROOT/crates/nmp-wasm"
 OUT_DIR="$WEB_CHIRP_DIR/public/nmp-wasm"
 
+# $HOME/.cargo/bin may not exist if cargo was installed system-wide (e.g.
+# the Vercel build image).  Create it unconditionally and add it to PATH so
+# that tools we drop there (wasm-pack) are immediately visible.
+mkdir -p "$HOME/.cargo/bin"
+export PATH="$HOME/.cargo/bin:$PATH"
+
 # ---------------------------------------------------------------------------
 # 0. Ensure clang (required by secp256k1-sys when cross-compiling to wasm32)
 # ---------------------------------------------------------------------------
@@ -38,8 +44,6 @@ if ! command -v cargo &>/dev/null; then
     # shellcheck disable=SC1091
     if [ -f "$HOME/.cargo/env" ]; then
         source "$HOME/.cargo/env"
-    else
-        export PATH="$HOME/.cargo/bin:$PATH"
     fi
 fi
 
@@ -54,9 +58,9 @@ if ! command -v wasm-pack &>/dev/null; then
     echo "[build] wasm-pack not found — fetching pre-built 0.13.1 binary..."
     WASM_PACK_URL="https://github.com/rustwasm/wasm-pack/releases/download/v0.13.1/wasm-pack-v0.13.1-x86_64-unknown-linux-musl.tar.gz"
     WASM_PACK_TMP=$(mktemp -d)
-    if curl -fsSL "$WASM_PACK_URL" | tar -xz -C "$WASM_PACK_TMP"; then
-        install -m 0755 "$WASM_PACK_TMP"/wasm-pack-v0.13.1-x86_64-unknown-linux-musl/wasm-pack \
-            "$HOME/.cargo/bin/wasm-pack"
+    if curl -fsSL "$WASM_PACK_URL" | tar -xz -C "$WASM_PACK_TMP" && \
+       install -m 0755 "$WASM_PACK_TMP"/*/wasm-pack "$HOME/.cargo/bin/wasm-pack"; then
+        echo "[build] wasm-pack 0.13.1 installed from pre-built binary."
         rm -rf "$WASM_PACK_TMP"
     else
         echo "[build] pre-built binary failed — falling back to cargo install..."
