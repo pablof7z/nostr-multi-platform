@@ -40,7 +40,7 @@
 //! `register_planner_wire_frames` (bridge in `kernel/requests/mod.rs`).
 
 use std::collections::{BTreeSet, VecDeque};
-use std::time::Instant;
+use crate::time::Instant;
 
 use crate::planner::{InterestId, InterestShape};
 use crate::relay::CanonicalRelayUrl;
