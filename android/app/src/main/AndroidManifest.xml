@@ -4,6 +4,20 @@
     <!-- The Rust kernel opens relay websockets directly. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+        ADR-0048 Stage 2: NIP-55 signer detection via PackageManager.
+
+        Android 11+ (API 30+) package visibility: without this block,
+        PackageManager.queryIntentActivities returns an empty list even when
+        Amber (com.greenart7c3.nostrsigner) is installed.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="nostrsigner" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:label="Chirp"

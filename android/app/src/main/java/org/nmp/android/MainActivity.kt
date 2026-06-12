@@ -126,7 +126,7 @@ private fun RootTabs(model: KernelModel) {
             1 -> DmScreen(model, Modifier.padding(inner))
             2 -> GroupsScreen(model, Modifier.padding(inner))
             3 -> RelayScreen(model, Modifier.padding(inner))
-            4 -> SignInScreen(model, Modifier.padding(inner))
+            4 -> SignInScreen(model, modifier = Modifier.padding(inner))
             5 -> WalletScreen(model, Modifier.padding(inner))
             else -> DiagnosticsScreen(model, Modifier.padding(inner))
         }

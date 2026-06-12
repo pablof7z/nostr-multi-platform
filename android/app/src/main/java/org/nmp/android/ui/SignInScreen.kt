@@ -1,5 +1,7 @@
 package org.nmp.android.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,15 +14,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,14 +36,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.nmp.android.ExternalSignerCapabilityBridge
 import org.nmp.android.KernelModel
+import org.nmp.android.NostrSignerInfo
+import org.nmp.android.detectInstalledSigners
 import org.nmp.android.model.SignerState
 
 /**
@@ -47,8 +60,25 @@ import org.nmp.android.model.SignerState
  * All actions route through the shared KernelModel: signInNsec, createAccount,
  * and signInBunker. No local KernelBridge instantiation.
  */
+/**
+ * Callback interface the host activity implements to wire the
+ * [ExternalSignerCapabilityBridge] into [SignInScreen].
+ *
+ * The host is responsible for launching the Activity Result and routing
+ * the response back to Rust. The screen itself triggers the start; the
+ * bridge owns the dispatch (D7 — no sign-in logic in the screen).
+ */
+interface SignInAmberDelegate {
+    /** Initiate the NIP-55 `get_public_key` flow for the given signer. */
+    fun signInWithAmber(signer: NostrSignerInfo)
+}
+
 @Composable
-fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
+fun SignInScreen(
+    model: KernelModel,
+    amberDelegate: SignInAmberDelegate? = null,
+    modifier: Modifier = Modifier,
+) {
     var nsecSecret by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
     var bunkerUri by remember { mutableStateOf("") }
@@ -56,6 +86,15 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
     // ADR-0048 D6 (generalises V-14 / #963): unified remote-signer health.
     // Null while no remote-signer session is active (local-key accounts).
     val signerState by model.signerState.collectAsStateWithLifecycle()
+
+    // ADR-0048 Stage 2: detect installed NIP-55 signer apps.
+    // Detection result drives the "Sign in with Amber" affordance; the list
+    // is reported to the screen — Rust owns the gating decision (D7).
+    val context = LocalContext.current
+    var availableSigners by remember { mutableStateOf<List<NostrSignerInfo>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        availableSigners = detectInstalledSigners(context.packageManager)
+    }
 
     Column(
         modifier = modifier
@@ -78,6 +117,21 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
         )
 
         Spacer(Modifier.size(24.dp))
+
+        // ADR-0048 Stage 2: Sign in with Amber (NIP-55) — shown only when at
+        // least one NIP-55 signer app is installed (D7: Kotlin reports; Rust gates).
+        if (availableSigners.isNotEmpty()) {
+            availableSigners.forEach { signer ->
+                AmberSignerCard(
+                    signer = signer,
+                    signerState = signerState?.takeIf { it.signerKind == "nip55" },
+                    onClick = {
+                        amberDelegate?.signInWithAmber(signer)
+                    },
+                )
+            }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        }
 
         // Sign In with Nsec Section
         Card(
@@ -235,6 +289,103 @@ fun SignInScreen(model: KernelModel, modifier: Modifier = Modifier) {
         }
 
         Spacer(Modifier.size(32.dp))
+    }
+}
+
+/**
+ * ADR-0048 Stage 2: Amber (NIP-55) sign-in card in the Chirp sign-in screen.
+ *
+ * Consumes the same [NostrSignerInfo] + [SignerState] as the gallery's
+ * `NostrLoginBlock` component. Visual states are identical:
+ *  - `isAwaitingApproval` → amber spinner + "Waiting for approval…"
+ *  - `isReady` → green border + "Connected"
+ *  - `isFailed` / `isUnavailable` → red border + error text
+ *  - null signer state → default border + "Sign in with {name}"
+ *
+ * testTags are present for the Stage-4 emulator E2E.
+ */
+@Composable
+private fun AmberSignerCard(
+    signer: NostrSignerInfo,
+    signerState: SignerState?,
+    onClick: () -> Unit,
+) {
+    val isInProgress = signerState?.isAwaitingApproval == true || signerState?.isReconnecting == true
+    val isDegraded = signerState?.isFailed == true || signerState?.isUnavailable == true
+    val isReady = signerState?.isReady == true
+
+    val borderColor: Color = when {
+        isDegraded -> MaterialTheme.colorScheme.error
+        isInProgress -> Color(0xFFF59E0B)
+        isReady -> Color(0xFF22C55E)
+        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+    }
+
+    val subtitleText: String = when {
+        signerState?.isUnavailable == true -> "Signer unavailable"
+        signerState?.isFailed == true -> "Connection failed"
+        signerState?.isAwaitingApproval == true -> "Waiting for approval…"
+        signerState?.isReconnecting == true -> "Reconnecting…"
+        isReady -> "Connected"
+        else -> "Sign in with ${signer.displayName}"
+    }
+
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("amber_signer_card")
+            .semantics { contentDescription = "Sign in with ${signer.displayName}" }
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, borderColor),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = signer.displayName,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                )
+                Text(
+                    text = subtitleText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = when {
+                        isDegraded -> MaterialTheme.colorScheme.error
+                        isInProgress -> Color(0xFFF59E0B)
+                        isReady -> Color(0xFF22C55E)
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+            if (isInProgress) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    color = Color(0xFFF59E0B),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

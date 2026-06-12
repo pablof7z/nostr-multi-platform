@@ -4,6 +4,25 @@
     <!-- The Rust kernel opens relay websockets directly. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+        ADR-0048 Stage 2: NIP-55 signer detection via PackageManager.
+
+        Android 11+ (API 30+) package visibility: the app can only query for
+        packages whose intent schemes are listed here. Without this block,
+        PackageManager.queryIntentActivities returns an empty list even when
+        Amber (com.greenart7c3.nostrsigner) is installed.
+
+        Extend this list when adding support for new Nostr signer apps.
+        Each scheme here MUST also appear in KNOWN_NOSTR_SIGNERS in
+        ExternalSignerCapabilityBridge.kt.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="nostrsigner" />
+        </intent>
+    </queries>
+
     <application
         android:name=".GalleryApplication"
         android:allowBackup="false"

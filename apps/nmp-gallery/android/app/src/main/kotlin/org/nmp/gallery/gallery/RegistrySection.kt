@@ -85,6 +85,17 @@ fun parseRegistryJson(raw: String): List<RegistrySection>? {
  */
 val REGISTRY_SECTIONS: List<RegistrySection> = listOf(
     RegistrySection(
+        id = "auth",
+        label = "Auth",
+        components = listOf(
+            RegistryComponent(
+                "login-block",
+                "NostrLoginBlock",
+                "Login UI with Amber and other local Nostr signer detection, plus a manual key entry fallback",
+            ),
+        ),
+    ),
+    RegistrySection(
         id = "relay",
         label = "Relay",
         components = listOf(
