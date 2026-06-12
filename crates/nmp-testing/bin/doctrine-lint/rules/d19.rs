@@ -71,6 +71,7 @@ pub fn file_in_scope(path: &Path) -> bool {
 
     // The three targeted file paths within nmp-core:
     let is_projection_file = s.contains("/crates/nmp-core/src/kernel/update/")
+        || s.contains("crates/nmp-core/src/kernel/update/")
         || s.ends_with("/crates/nmp-core/src/kernel/types.rs")
         || s.contains("crates/nmp-core/src/kernel/types.rs")
         || s.ends_with("/crates/nmp-core/src/kernel/publish_outbox.rs")
