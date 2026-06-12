@@ -25,6 +25,8 @@ pub enum SignerBackend {
     Nip46,
     /// NIP-07 browser extension (`window.nostr.*`).
     Nip07,
+    /// NIP-55 Android external signer (`nostrsigner:` Intent / ContentResolver).
+    Nip55,
     /// Custom signer kind.
     Custom(String),
 }

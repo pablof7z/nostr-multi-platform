@@ -62,7 +62,7 @@ impl RemoteSignerHandle for ArcRemoteSigner {
         RemoteSignerHandle::nip44_decrypt(&*self.0, sender_pubkey, ciphertext)
     }
 
-    fn deliver_rpc_response(&self, response_json: &str) {
+    fn deliver_response(&self, response_json: &str) {
         self.0.ingest_rpc_response(response_json);
     }
 

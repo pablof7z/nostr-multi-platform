@@ -1,6 +1,7 @@
 //! Tier-1 (closure-path) typed-projection codecs for the actor-owned NIP-46
 //! built-in projections `"bunker_handshake"`, `"nip46_onboarding"`, and
-//! `"bunker_connection_state"` (V-14 step b, closes #963).
+//! `"signer_state"` (ADR-0048 D6 — generalised from `"bunker_connection_state"`
+//! V-14 step b / #963).
 //!
 //! ## Why these live under `actor/` (not `kernel/typed_projections/`)
 //!
@@ -39,7 +40,7 @@ mod bunker_handshake_fb;
 mod nip46_onboarding_fb;
 
 use crate::actor::commands::{
-    build_nip46_onboarding_dto, BunkerConnectionStateSlot, BunkerHandshakeSlot,
+    build_nip46_onboarding_dto, BunkerConnectionStateSlot, BunkerHandshakeSlot, SignerStateSlot,
 };
 use crate::update_envelope::TypedProjectionData;
 
@@ -65,26 +66,42 @@ pub(crate) use bunker_handshake_fb::decode_bunker_handshake;
 #[cfg(test)]
 pub(crate) use nip46_onboarding_fb::decode_nip46_onboarding;
 
-/// Build the typed `"bunker_connection_state"` sidecar entry from the shared
-/// slot. V-14 step b — closes #963.
+/// Build the typed `"signer_state"` sidecar entry from the shared slot.
+///
+/// ADR-0048 D6 — generalises the former `"bunker_connection_state"` (V-14 step
+/// b) into a unified remote-signer health surface. Both NIP-46 and NIP-55
+/// write into the same slot via `IdentityRuntime::set_signer_state`.
+///
+/// The typed payload reuses the `KBCS` FlatBuffer codec from Stage 1 (the
+/// FlatBuffer schema carries the legacy NIP-46 fields); a full schema update
+/// with `signer_kind` + `is_awaiting_approval` + `is_unavailable` + `is_ready`
+/// is tracked as part of Stage 2 (Kotlin bridge). In Stage 1 the JSON projection
+/// carries the full `SignerStateDto` shape; the typed sidecar carries the
+/// backward-compatible subset (state / reason / is_connected / is_reconnecting /
+/// is_failed). Hosts that decode the typed sidecar must not branch on the legacy
+/// `is_connected` flag for NIP-55 state (they should use the JSON `is_ready` or
+/// `signer_kind` from the JSON projection until the schema is updated in Stage 2).
 ///
 /// Returns `Some(envelope)` ONLY when the slot holds `Some` (mirroring the JSON
 /// closure, which emits `null` — and thus no typed sidecar entry — while no
-/// bunker session is active). Registered via
-/// `registry.register_typed("bunker_connection_state", …)` ALONGSIDE the generic
-/// closure in [`crate::actor`]. Reads the SAME slot, so the typed and JSON forms
-/// cannot diverge. D8: a single lock-and-clone, non-blocking.
-pub(crate) fn bunker_connection_state_typed(
-    slot: &BunkerConnectionStateSlot,
-) -> Option<TypedProjectionData> {
+/// remote signer is active). Registered via
+/// `registry.register_typed("signer_state", …)` ALONGSIDE the generic closure in
+/// [`crate::actor`]. Reads the SAME slot, so the typed and JSON forms cannot
+/// diverge. D8: a single lock-and-clone, non-blocking.
+pub(crate) fn signer_state_typed(slot: &SignerStateSlot) -> Option<TypedProjectionData> {
     let dto = slot
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .clone()?;
+    // Map the generalised `SignerStateDto` fields back to the legacy
+    // `BunkerConnectionStateModel` shape. `is_ready` fills `is_connected`
+    // (same semantic — "signer is operational"); NIP-55-specific flags
+    // (`is_awaiting_approval`, `is_unavailable`) have no typed-sidecar
+    // counterpart until the schema is regenerated in Stage 2.
     let model = BunkerConnectionStateModel {
-        state: dto.state,
-        reason: dto.reason,
-        is_connected: dto.is_connected,
+        state: dto.state.clone(),
+        reason: dto.reason.clone(),
+        is_connected: dto.is_ready,
         is_reconnecting: dto.is_reconnecting,
         is_failed: dto.is_failed,
     };
@@ -96,6 +113,15 @@ pub(crate) fn bunker_connection_state_typed(
             .into_owned(),
         payload: encode_bunker_connection_state(&model),
     })
+}
+
+/// Back-compat alias called by any code that still references the old function
+/// name (e.g. `nmp-ffi` compile paths that haven't been updated yet).
+#[cfg(feature = "native")]
+pub(crate) fn bunker_connection_state_typed(
+    slot: &BunkerConnectionStateSlot,
+) -> Option<TypedProjectionData> {
+    signer_state_typed(slot)
 }
 
 /// Build the typed `"bunker_handshake"` sidecar entry from the shared slot.

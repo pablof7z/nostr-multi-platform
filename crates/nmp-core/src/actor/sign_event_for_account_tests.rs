@@ -143,7 +143,7 @@ impl RemoteSignerHandle for PendingRemoteSigner {
         SignerOp::err(SignerError::Backend("unused".into()))
     }
 
-    fn deliver_rpc_response(&self, _response_json: &str) {}
+    fn deliver_response(&self, _response_json: &str) {}
 }
 
 /// Drive a single `dispatch_command(cmd, ctx)` against a freshly built

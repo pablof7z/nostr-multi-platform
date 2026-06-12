@@ -19,10 +19,18 @@ use crate::substrate::SignedEvent;
 use nmp_signer_iface::SignerOp;
 use std::time::{Duration, Instant};
 
-/// Wall-clock budget for a parked remote-sign op. 5s — long enough for a fast
-/// / auto-approving bunker, short enough that a crashed broker cannot strand
-/// the publish.
-pub(crate) const PENDING_SIGN_TIMEOUT: Duration = Duration::from_secs(5);
+/// Wall-clock budget for a parked remote-sign op — re-exported from the leaf
+/// `nmp-signer-iface` crate so the constant is available both here (native-
+/// gated actor path) and in the always-compiled `RemoteSignerHandle::sign_timeout`
+/// default impl in `remote_signer.rs`.
+///
+/// This is the **default** deadline; individual signers may override it via
+/// [`crate::remote_signer::RemoteSignerHandle::sign_timeout`].  In particular
+/// `Nip55Signer` (ADR-0048 D3) uses `EXTERNAL_SIGN_TIMEOUT` = 90s because an
+/// Android Intent round-trip requires the user to foreground Amber. The kernel
+/// never hard-codes NIP-55 — it reads the duration from the handle it already
+/// holds and passes it to the constructors below.
+pub use nmp_signer_iface::PENDING_SIGN_TIMEOUT;
 
 /// A remote-sign operation parked on the actor loop, awaiting the broker's
 /// kind:24133 response.
@@ -58,7 +66,7 @@ pub(crate) struct PendingSign {
 impl PendingSign {
     /// Park a sign op whose publish routes via the NIP-65 outbox resolver
     /// (`PublishTarget::Auto`) — the back-compat path every kind:1/3/7
-    /// publish handler uses.
+    /// publish handler uses. Uses `PENDING_SIGN_TIMEOUT` (5s) as the deadline.
     #[must_use]
     pub fn new(op: SignerOp<SignedEvent>, p_tags: Vec<String>) -> Self {
         Self::with_target(op, p_tags, PublishTarget::Auto)
@@ -121,7 +129,30 @@ impl PendingSign {
         }
     }
 
-    /// True once the op has overrun `PENDING_SIGN_TIMEOUT`.
+    /// Park a sign op with an explicit wall-clock deadline sourced from the
+    /// active signer's `RemoteSignerHandle::sign_timeout()` budget.
+    ///
+    /// Use this in dispatch arms that have access to the `IdentityRuntime` and
+    /// want the per-op deadline (ADR-0048 D3). All other paths use the
+    /// `PENDING_SIGN_TIMEOUT` default via the constructors above.
+    #[must_use]
+    pub fn with_deadline(
+        op: SignerOp<SignedEvent>,
+        p_tags: Vec<String>,
+        target: PublishTarget,
+        correlation_id_override: Option<String>,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            op,
+            p_tags,
+            target,
+            correlation_id_override,
+            deadline,
+        }
+    }
+
+    /// True once the op has overrun its deadline.
     pub fn timed_out(&self) -> bool {
         Instant::now() >= self.deadline
     }
@@ -194,8 +225,27 @@ impl PendingSignReturn {
         }
     }
 
+    /// Park a sign-and-return op into the `signed_events` projection with an
+    /// explicit deadline sourced from `RemoteSignerHandle::sign_timeout()`.
+    ///
+    /// ADR-0048 D3 path: dispatch arms call `identity.active_sign_deadline()`
+    /// and pass it here to honour per-signer timeouts (NIP-55 = 90s).
+    #[must_use]
+    pub fn new_with_deadline(
+        op: SignerOp<SignedEvent>,
+        correlation_id: String,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            op,
+            sink: PendingSignReturnSink::SignedEventsProjection { correlation_id },
+            deadline,
+        }
+    }
+
     /// Park a sign-and-return op whose resolved outcome is handed to a boxed
-    /// continuation (the generic `SignEventForAccount` port). Same 5s budget.
+    /// continuation (the generic `SignEventForAccount` port). Uses the default
+    /// `PENDING_SIGN_TIMEOUT` (5s) budget.
     #[must_use]
     pub fn with_continuation(op: SignerOp<SignedEvent>, continuation: SignContinuation) -> Self {
         Self {
@@ -205,7 +255,22 @@ impl PendingSignReturn {
         }
     }
 
-    /// True once the op has overrun `PENDING_SIGN_TIMEOUT`.
+    /// Park a sign-and-return op with a continuation and an explicit deadline
+    /// sourced from `RemoteSignerHandle::sign_timeout()` (ADR-0048 D3).
+    #[must_use]
+    pub fn with_continuation_and_deadline(
+        op: SignerOp<SignedEvent>,
+        continuation: SignContinuation,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            op,
+            sink: PendingSignReturnSink::Continuation(Some(continuation)),
+            deadline,
+        }
+    }
+
+    /// True once the op has overrun its deadline.
     pub fn timed_out(&self) -> bool {
         Instant::now() >= self.deadline
     }

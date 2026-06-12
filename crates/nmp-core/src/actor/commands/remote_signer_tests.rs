@@ -134,7 +134,7 @@ impl RemoteSignerHandle for StubRemoteSigner {
         )
     }
 
-    fn deliver_rpc_response(&self, _response_json: &str) {
+    fn deliver_response(&self, _response_json: &str) {
         // Stub: no-op. NIP-46 inbound routing is the broker's job (Stage 4).
     }
 }
@@ -676,15 +676,16 @@ fn bunker_connection_state_projection_reflects_transitions() {
     );
 
     // 2. Simulate the broker reporting "connected" after handshake completes.
+    // ADR-0048 D6: "connected" is mapped to "ready" in the unified SignerStateDto.
     bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
     let snapshot = kernel.make_update_value_for_test(true);
     assert_eq!(
         snapshot["projections"]["bunker_connection_state"]["state"],
-        serde_json::json!("connected"),
-        "connected transition must surface in projection: {snapshot}"
+        serde_json::json!("ready"),
+        "connected transition must surface as 'ready' in projection: {snapshot}"
     );
     assert_eq!(
-        snapshot["projections"]["bunker_connection_state"]["is_connected"],
+        snapshot["projections"]["bunker_connection_state"]["is_ready"],
         serde_json::json!(true)
     );
     assert_eq!(
@@ -770,16 +771,16 @@ fn bunker_connection_state_slot_reflects_direct_write() {
         .expect("slot must be Some after reconnecting");
     assert_eq!(dto.state, "reconnecting");
     assert!(dto.is_reconnecting);
-    assert!(!dto.is_connected);
+    assert!(!dto.is_ready);
     assert!(!dto.is_failed);
     assert_eq!(dto.reason.as_deref(), Some("timeout"));
 
-    // Overwrite with "connected".
+    // Overwrite with "connected" (mapped to "ready" by ADR-0048 D6).
     bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
     let dto = id
         .bunker_connection_state_for_test()
         .expect("slot must be Some after connected");
-    assert!(dto.is_connected);
+    assert!(dto.is_ready, "connected maps to is_ready=true");
     assert!(!dto.is_reconnecting);
     assert!(!dto.is_failed);
     assert!(dto.reason.is_none());
@@ -795,7 +796,7 @@ fn bunker_connection_state_slot_reflects_direct_write() {
         .bunker_connection_state_for_test()
         .expect("slot must be Some after failed");
     assert!(dto.is_failed);
-    assert!(!dto.is_connected);
+    assert!(!dto.is_ready);
     assert!(!dto.is_reconnecting);
     assert_eq!(dto.reason.as_deref(), Some("403 Forbidden"));
 }

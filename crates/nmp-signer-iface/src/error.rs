@@ -23,6 +23,11 @@ pub enum SignerError {
     /// User-visible rejection (NIP-46 remote denied, extension user clicked
     /// "no", etc.).
     Rejected(String),
+    /// Signer app is not installed or was uninstalled mid-session (NIP-55
+    /// ContentResolver returned `null` after permission was silently revoked).
+    /// Rust re-issues the same op with `force_interactive: true` after receiving
+    /// this; the host never retries on its own (D7).
+    Unavailable(String),
     /// Mismatch between expected and returned pubkey/id — catches malicious or
     /// buggy signers that mutate the event before signing (applesauce
     /// `SignerMismatchError`).
@@ -38,7 +43,10 @@ pub enum SignerError {
     /// Event kind is outside the valid u16 range (0–65535). The caller must
     /// ensure the kind fits within NIP-01's u16 namespace before requesting
     /// a signature.
-    KindOutOfRange { kind: u32 },
+    KindOutOfRange {
+        /// The out-of-range kind value that was rejected.
+        kind: u32,
+    },
     /// Backend-specific failure (network, IO, parse, etc.).
     Backend(String),
 }
@@ -49,6 +57,7 @@ impl std::fmt::Display for SignerError {
             Self::NotReady(m) => write!(f, "signer not ready: {m}"),
             Self::Unsupported(m) => write!(f, "unsupported: {m}"),
             Self::Rejected(m) => write!(f, "rejected: {m}"),
+            Self::Unavailable(m) => write!(f, "signer unavailable: {m}"),
             Self::Mismatch(m) => write!(f, "signer mismatch: {m}"),
             Self::Timeout(m) => write!(f, "timeout: {m}"),
             Self::SignatureVerificationFailed(m) => {

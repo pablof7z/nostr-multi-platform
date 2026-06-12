@@ -110,9 +110,14 @@ pub(crate) use commands::{build_nip46_onboarding_dto, BunkerHandshakeSlot};
 // handing it to the actor; promoted to `pub` for the extracted crate.
 #[cfg(feature = "native")]
 pub use commands::new_bunker_handshake_slot;
-// V-14 step b: bunker relay-layer connection-state slot.
+// ADR-0048 D6: generalised remote-signer health slot.
+// Back-compat aliases `BunkerConnectionStateSlot` / `new_bunker_connection_state_slot`
+// are re-exported alongside the new `SignerStateSlot` / `new_signer_state_slot`.
 #[cfg(feature = "native")]
-pub use commands::{new_bunker_connection_state_slot, BunkerConnectionStateSlot};
+pub use commands::{
+    new_bunker_connection_state_slot, new_signer_state_slot, BunkerConnectionStateSlot,
+    SignerStateDto, SignerStateSlot,
+};
 // `pub` (not `pub(crate)`) so the `lib.rs` test-support re-export reaches
 // integration tests outside the crate. The `actor` module itself is
 // crate-private (`mod actor;` in `lib.rs`), so external Rust callers still
@@ -1744,20 +1749,20 @@ pub fn run_actor_with_observers(
             });
         }
     }
-    // V-14 step b — third built-in NIP-46 projection: `"bunker_connection_state"`.
-    // Tracks the relay-layer connection health of the established bunker session.
-    // Distinct from `"bunker_handshake"` (which tracks protocol-handshake
-    // progress). `None` (no active bunker session) → JSON `null`.
-    // D0: relay-layer connection state for a remote signer session is an app noun.
+    // ADR-0048 D6 — generalised remote-signer health projection: `"signer_state"`.
+    // Replaces the NIP-46-only `"bunker_connection_state"` (V-14 step b) with a
+    // unified surface keyed by `signer_kind` (`"nip46"` | `"nip55"`). Both
+    // signers write into the same slot via `IdentityRuntime::set_signer_state`.
+    // `None` (no active remote signer session) → JSON `null`.
+    // D0: remote-signer health is an app noun, not a typed `KernelSnapshot` field.
     {
         let projection_slot = Arc::clone(&bunker_connection_state);
         // Typed sidecar (ADR-0037) registered ALONGSIDE the generic projection,
         // reading the SAME slot. Returns `None` while the slot is `None` (no
-        // active bunker session) — mirroring the JSON closure's `null` output.
-        // V-14 step b closes #963.
+        // active remote signer session) — mirroring the JSON closure's `null`.
         let typed_slot = Arc::clone(&bunker_connection_state);
         if let Ok(mut registry) = snapshot_projections.lock() {
-            registry.register("bunker_connection_state", move || {
+            registry.register("signer_state", move || {
                 let slot = projection_slot
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -1765,8 +1770,8 @@ pub fn run_actor_with_observers(
                     serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
                 })
             });
-            registry.register_typed("bunker_connection_state", move || {
-                typed_projections::bunker_connection_state_typed(&typed_slot)
+            registry.register_typed("signer_state", move || {
+                typed_projections::signer_state_typed(&typed_slot)
             });
         }
     }
