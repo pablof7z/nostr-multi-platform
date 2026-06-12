@@ -87,7 +87,7 @@ pub(super) mod continuation;
 pub(super) mod queries;
 
 pub(in crate::kernel) use queries::{
-    completion_key_for_interest, shape_needs_raw_observer_dispatch, shape_to_store_queries,
+    completion_key_for_interest, shape_needs_ingest_parser_dispatch, shape_to_store_queries,
 };
 
 use super::Kernel;
@@ -115,10 +115,14 @@ pub(super) struct PendingCacheServe {
     /// is the correctness gate.
     pub(super) timeline_bound: bool,
     /// Whether events collected during this serve should be dispatched through
-    /// `notify_raw_event_observers` (the verbatim-signed-event tap) in addition
-    /// to `notify_event_observers`. True for Ptag+kind:1059 shapes (DM inbox
-    /// gift-wraps); false for all other shapes (ADR R2.4(f)).
-    pub(super) needs_raw_dispatch: bool,
+    /// the `IngestParser` dispatcher in addition to `notify_event_observers`.
+    /// True for Ptag+kind:1059 shapes (DM inbox gift-wraps) so the
+    /// `DmInboxProjection` and Marmot `IngestParser` seams receive cache-served
+    /// replay; false for all other shapes (ADR R2.4(f)).
+    ///
+    /// Note: this flag does NOT gate `notify_raw_event_observers` — the verbatim
+    /// signed-event tap fires only on live relay ingest, never on cache-serve.
+    pub(super) needs_ingest_parser_dispatch: bool,
 }
 
 impl Kernel {
@@ -183,7 +187,7 @@ impl Kernel {
                 .iter()
                 .all(|a| self.timeline_authors.contains(a));
 
-        let needs_raw_dispatch = shape_needs_raw_observer_dispatch(shape);
+        let needs_ingest_parser_dispatch = shape_needs_ingest_parser_dispatch(shape);
 
         self.pending_cache_serves.push_back(PendingCacheServe {
             completion_key,
@@ -191,7 +195,7 @@ impl Kernel {
             query_idx: 0,
             remaining_depth: self.serve_depth_for_shape(shape),
             timeline_bound,
-            needs_raw_dispatch,
+            needs_ingest_parser_dispatch,
         });
     }
 

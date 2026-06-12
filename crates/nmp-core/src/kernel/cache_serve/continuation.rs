@@ -40,9 +40,9 @@ pub(super) struct CollectedEvent {
     pub(super) sig: String,
     /// Whether this served event should be dispatched through
     /// the `IngestParser` dispatcher in addition to `notify_event_observers`.
-    /// Set at collection time from the `PendingCacheServe::needs_raw_dispatch`
-    /// flag (which was derived at enqueue time from `shape_needs_raw_observer_dispatch`).
-    pub(super) needs_raw_dispatch: bool,
+    /// Set at collection time from the `PendingCacheServe::needs_ingest_parser_dispatch`
+    /// flag (which was derived at enqueue time from `shape_needs_ingest_parser_dispatch`).
+    pub(super) needs_ingest_parser_dispatch: bool,
 }
 
 impl Kernel {
@@ -98,7 +98,7 @@ impl Kernel {
                 let store = std::sync::Arc::clone(&self.store);
                 let events_cache = &self.events;
                 let serve_target = pending.remaining_depth;
-                let needs_raw = pending.needs_raw_dispatch;
+                let needs_ingest = pending.needs_ingest_parser_dispatch;
                 let _ = store.query_visit(&effective, visit_limit, &mut |ev| {
                     visited += 1;
                     last_visited_created_at = Some(ev.raw.created_at);
@@ -112,7 +112,7 @@ impl Kernel {
                             tags: ev.raw.tags.clone(),
                             content: ev.raw.content.clone(),
                             sig: ev.raw.sig.clone(),
-                            needs_raw_dispatch: needs_raw,
+                            needs_ingest_parser_dispatch: needs_ingest,
                         });
                         if collected.len() >= serve_target {
                             return std::ops::ControlFlow::Break(());
@@ -190,12 +190,12 @@ impl Kernel {
     ///   fan-out is needed — all former raw-tap consumers now ride IngestParser.
     ///
     /// Note: the live ingest path (`kernel/ingest/mod.rs`) STILL calls
-    /// `notify_raw_event_observers` for chirp-tui debug and external hl mirror
-    /// consumers. Those are LIVE relay delivery consumers and are NOT touched
-    /// by this PR. The `needs_raw_dispatch` flag and `sig` field are retained
-    /// here because they are used to reconstruct the `VerifiedEvent` for the
-    /// `IngestParser` dispatcher (which needs the `sig` to be present in the
-    /// raw fields for gift-wrap decryption).
+    /// `notify_raw_event_observers` for live-delivery consumers like the `hl`
+    /// app's nostrdb mirror (verbatim-forwarding consumers). Those are LIVE
+    /// relay delivery consumers — cache-serve intentionally does NOT fan out to
+    /// the raw tap. The `needs_ingest_parser_dispatch` flag and `sig` field are
+    /// retained here because they are used to reconstruct the `VerifiedEvent`
+    /// for the `IngestParser` dispatcher (gift-wrap decryption needs the `sig`).
     pub(super) fn feed_served_event(&mut self, ev: CollectedEvent) {
         let cached = StoredEvent {
             id: ev.id.clone(),
@@ -230,15 +230,12 @@ impl Kernel {
         // E2 — IngestParser dispatch for kinds that need it (kind:1059 DM
         // gift-wraps). All former raw-tap consumers (NIP-17 DM inbox + Marmot)
         // now ride `IngestParser` (PR-1 + PR-2). No raw-observer fan-out is
-        // emitted from this path. The `VerifiedEvent` is reconstructed from the
-        // already-verified raw fields (trust boundary: the store only holds
-        // events that passed `try_from_raw`; re-verification would be
+        // emitted from this cache-serve path — the verbatim-signed-event tap
+        // fires only on live relay ingest. The `VerifiedEvent` is reconstructed
+        // from the already-verified raw fields (trust boundary: the store only
+        // holds events that passed `try_from_raw`; re-verification would be
         // prohibitively expensive on cache-serve).
-        //
-        // The live ingest path (`kernel/ingest/mod.rs`) continues to call
-        // `notify_raw_event_observers` for chirp-tui / hl mirror consumers
-        // (LIVE relay delivery consumers — NOT touched by this PR).
-        if ev.needs_raw_dispatch {
+        if ev.needs_ingest_parser_dispatch {
             let raw = RawEvent {
                 id: ev.id.clone(),
                 pubkey: ev.author.clone(),

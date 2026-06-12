@@ -239,6 +239,19 @@ pub trait AppHost: ActionRegistrar {
         new: Option<KernelEventObserverId>,
     ) -> Option<KernelEventObserverId>;
 
+    /// Register a raw signed-event observer for **verbatim forwarding only**.
+    ///
+    /// The tap delivers the exact signed NIP-01 frame (including `sig`) for
+    /// every accepted live-ingest event matching `kinds`. It fires on live
+    /// ingest (including `Duplicate` outcomes) but does **NOT** fire on
+    /// cache-served replay.
+    ///
+    /// **State derivation belongs on `register_ingest_parser` (rule A5),
+    /// not here.** The `IngestParser` seam fires on cache-served replay
+    /// (since PR-1/#1137 + PR-2/#1145) and supports slot-keyed replace for
+    /// lifecycle-managed singleton parsers. Use the raw tap exclusively when
+    /// the `sig` field must be forwarded verbatim to an external store or
+    /// relay bridge (e.g. the `hl` app's nostrdb mirror).
     fn register_raw_event_observer(
         &self,
         kinds: KindFilter,
@@ -246,9 +259,6 @@ pub trait AppHost: ActionRegistrar {
     ) -> RawEventObserverId;
 
     fn unregister_raw_event_observer(&self, id: RawEventObserverId);
-
-    fn swap_dm_inbox_observer(&self, new: Option<RawEventObserverId>)
-        -> Option<RawEventObserverId>;
 
     fn configured_relays_handle(&self) -> AppRelaySlot;
 

@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19.
+//! Doctrine-lint — grep-based static analyzer enforcing A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,11,12,13,14,15,16,17,18}.rs` for
+//! per-line opt-out comment, and `rules/{a5,d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -63,7 +63,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
-use rules::{d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d6, d7, d8, d9};
+use rules::{a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -121,6 +121,7 @@ fn main() -> ExitCode {
         for path in &files {
             if let Err(e) = scan_one_file(
                 path,
+                &cfg.a5_extra_scopes,
                 &cfg.d8_extra_scopes,
                 &cfg.d9_extra_scopes,
                 &cfg.d10_extra_scopes,
@@ -143,7 +144,7 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19"
+        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19"
     };
     finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
@@ -195,6 +196,7 @@ fn finish(
 #[allow(clippy::too_many_arguments)]
 fn scan_one_file(
     path: &Path,
+    a5_extra_scopes: &[String],
     d8_extra_scopes: &[String],
     d9_extra_scopes: &[String],
     d10_extra_scopes: &[String],
@@ -208,6 +210,7 @@ fn scan_one_file(
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
+    let a5_in_scope = a5_file_in_scope(path, a5_extra_scopes);
     let d0_exempt = d0::file_is_exempt(path);
     let d6_test_file = d6::file_is_test_only(path);
     let d7_in_scope = d7::file_in_scope(path);
@@ -283,6 +286,29 @@ fn scan_one_file(
         // fires only when the file is in scope (kernel/actor/FFI substrate).
         d14_tracker.observe_line(sl.text, sl.is_comment);
 
+        // A5 — raw-tap registrations in production code that are NOT in the
+        // seam's own definition files violate rule A5. State-derivation must
+        // use `register_ingest_parser` (fires on cache-served replay + slot-
+        // keyed replace). The rule is workspace-wide (any in-repo production
+        // caller is a violation) but self-gates via `a5::file_in_scope`
+        // (definition files are exempt). Test-only files (`d6_test_file`) and
+        // #[cfg(test)] bodies (`sl.in_test_cfg`) are exempt. Skipped in
+        // --workspace-d8 (no-polling sweep only).
+        if !workspace_d8 && a5_in_scope && !d6_test_file && !sl.in_test_cfg {
+            for (col, msg, suggested) in a5::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows(sl.text, a5::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: a5::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
         // D0
         if !workspace_d8 && !d0_exempt {
             for (col, msg, suggested) in d0::check(sl.text, sl.is_comment) {
@@ -734,6 +760,20 @@ fn d13_file_extra_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 /// Mirrors `d17_file_in_scope`.
 fn d19_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if d19::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff A5 should scan `path` — either the file is in the A5 workspace
+/// scope via `a5::file_in_scope` (which already exempts definition files and
+/// the doctrine-lint binary itself), or the caller opted-in via
+/// `--a5-extra-scope <fragment>` (the fixture smoke test uses this so a
+/// staged fixture file under `target/` is reachable without faking a
+/// `crates/` layout). Mirrors `d17_file_in_scope`.
+fn a5_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if a5::file_in_scope(path) {
         return true;
     }
     let s = path.to_string_lossy().replace('\\', "/");

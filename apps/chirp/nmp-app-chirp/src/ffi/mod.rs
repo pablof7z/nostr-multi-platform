@@ -14,7 +14,8 @@
 //!   consumption — no handle, no actions, no unregister.
 //! - [`nmp_app_chirp_register_dm_inbox`] — host entry point for the NIP-17 DM
 //!   runtime. `nmp_app_chirp_register` wires it eagerly: a kind:1059
-//!   raw-event observer, a `"nmp.nip17.dm_inbox"` snapshot projection, and a
+//!   `IngestParser` (slot `"nip17.dm_inbox"`, fires on live ingest and
+//!   cache-served replay), a `"nmp.nip17.dm_inbox"` snapshot projection, and a
 //!   Rust-owned controller for the active gift-wrap interest + kind:10050
 //!   relay-list publish.
 //! - [`nmp_app_chirp_unregister`] — free the handle. Idempotent. (The engine /

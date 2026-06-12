@@ -622,14 +622,6 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.unregister_raw_event_observer(id);
     }
 
-    fn swap_dm_inbox_observer(
-        &self,
-        new: Option<nmp_core::RawEventObserverId>,
-    ) -> Option<nmp_core::RawEventObserverId> {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.swap_dm_inbox_observer(new)
-    }
-
     fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
         let app: &NmpApp = unsafe { &*self.app };
         app.configured_relays_handle()
