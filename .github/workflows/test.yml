@@ -122,3 +122,19 @@ jobs:
 
       - name: cargo test (nmp-android-ffi standalone workspace)
         run: cd crates/nmp-android-ffi && cargo test
+
+      # Marmot-feature host compile gate.
+      #
+      # The cargoNdk task in android/app/build.gradle.kts passes `--features
+      # marmot` when building the APK, but CI previously only ran `cargo test`
+      # (no features), so a Rust-level compile break under `--features marmot`
+      # was invisible until a developer ran a full Android build locally.
+      #
+      # This step catches scope/trait/import errors (e.g. missing
+      # `jstring_to_cstring` import, missing `zeroize std` feature, missing
+      # `libsqlite3-sys` vendored OpenSSL dep) on the host target without
+      # requiring NDK cross-compilation in CI. A host `cargo check --features
+      # marmot` is sufficient because the breakages are Rust scope errors, not
+      # link-time or ABI errors.
+      - name: cargo check (nmp-android-ffi --features marmot)
+        run: cd crates/nmp-android-ffi && cargo check --features marmot
