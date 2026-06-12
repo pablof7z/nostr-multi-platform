@@ -11,16 +11,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,9 +46,13 @@ import org.nmp.android.model.MarmotMessage
  * projection (passed in by [GroupsScreen]) and a compose row.
  *
  * Thin-shell rule (aim.md §2): no protocol logic. Sending routes through
- * [KernelModel.sendGroupMessage] → `dispatch_action("nmp.marmot", {"op":"send",…})`;
+ * [MarmotActions.sendGroupMessage] → `dispatch_action("nmp.marmot", {"op":"send",…})`;
  * the sent message reappears on the next snapshot tick via the push projection
  * (D8 — no poll, no optimistic local echo).
+ *
+ * The overflow menu (mirrors iOS `toolbarContent`): Invite members, Members list
+ * (per-member Remove), Leave group (with confirm). Clear pending surfaced when
+ * the snapshot signals orphaned commits (mirrors iOS `pendingCommitFailureAffordance`).
  */
 @Composable
 internal fun GroupChatView(
@@ -52,27 +60,89 @@ internal fun GroupChatView(
     group: MarmotGroup,
     messages: List<MarmotMessage>,
     onBack: () -> Unit,
+    hasOrphanedCommit: Boolean = false,
 ) {
     var draft by remember { mutableStateOf("") }
+    var showMenu by remember { mutableStateOf(false) }
+    var showInvite by remember { mutableStateOf(false) }
+    var showMembers by remember { mutableStateOf(false) }
+    var showLeaveConfirm by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
+        // Header row
         Row(
-            Modifier.fillMaxWidth().padding(12.dp),
+            Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Button(onClick = onBack) { Text("Back") }
+            TextButton(onClick = onBack) { Text("Back") }
             Column(Modifier.weight(1f)) {
-                Text(group.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
                 Text(
-                    "${group.memberCount} members",
+                    group.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                Text(
+                    "${group.memberCount} ${if (group.memberCount == 1) "member" else "members"}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // Overflow menu — mirrors iOS toolbarContent
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Group options")
+                }
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Invite members") },
+                        onClick = { showMenu = false; showInvite = true },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Members") },
+                        onClick = { showMenu = false; showMembers = true },
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "Leave group",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        onClick = { showMenu = false; showLeaveConfirm = true },
+                    )
+                }
+            }
         }
         HorizontalDivider()
 
+        // Pending-commit failure affordance (mirrors iOS `pendingCommitFailureAffordance`).
+        // Surfaced when the snapshot signals orphaned commits — matches GroupListScreen
+        // WarningBanner gate (snapshot.orphanedCommitCount > 0) forwarded by caller.
+        if (hasOrphanedCommit) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "A commit may not have reached the relay.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { model.marmot.clearPending(group.idHex) }) {
+                    Text("Clear pending")
+                }
+            }
+            HorizontalDivider()
+        }
+
+        // Message stream
         if (messages.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
@@ -92,18 +162,19 @@ internal fun GroupChatView(
         }
 
         HorizontalDivider()
+        // Composer row
         Row(
             Modifier.fillMaxWidth().padding(8.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TextField(
+            androidx.compose.material3.TextField(
                 value = draft,
                 onValueChange = { draft = it },
-                label = { Text("Message…") },
+                label = { Text("Encrypted message…") },
                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)),
                 maxLines = 3,
-                colors = TextFieldDefaults.colors(
+                colors = androidx.compose.material3.TextFieldDefaults.colors(
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                 ),
@@ -112,7 +183,7 @@ internal fun GroupChatView(
                 onClick = {
                     val trimmed = draft.trim()
                     if (trimmed.isNotEmpty()) {
-                        model.sendGroupMessage(group.idHex, trimmed)
+                        model.marmot.sendGroupMessage(group.idHex, trimmed)
                         draft = ""
                     }
                 },
@@ -121,6 +192,53 @@ internal fun GroupChatView(
                 Icon(Icons.Filled.Send, contentDescription = "Send")
             }
         }
+    }
+
+    // Invite dialog
+    if (showInvite) {
+        MarmotInviteDialog(
+            group = group,
+            onDismiss = { showInvite = false },
+            onInvite = { inviteeText ->
+                model.marmot.invite(group.idHex, inviteeText)
+                showInvite = false
+            },
+        )
+    }
+
+    // Members sheet — per-member Remove (mirrors iOS MarmotMembersSheet with Remove)
+    if (showMembers) {
+        MarmotMembersDialog(
+            members = group.members,
+            onRemove = { memberHex ->
+                model.marmot.removeMembers(group.idHex, listOf(memberHex))
+            },
+            onDismiss = { showMembers = false },
+        )
+    }
+
+    // Leave-group confirmation (mirrors iOS destructive Button(role: .destructive))
+    if (showLeaveConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLeaveConfirm = false },
+            title = { Text("Leave group") },
+            text = { Text("Are you sure you want to leave “${group.displayName}”? This cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLeaveConfirm = false
+                        model.marmot.leave(group.idHex)
+                        onBack()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) { Text("Leave") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveConfirm = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -145,4 +263,47 @@ private fun GroupMessageBubble(message: MarmotMessage) {
             )
         }
     }
+}
+
+/**
+ * Members sheet with per-member Remove action — mirrors iOS
+ * `MarmotMembersSheet` (which has a per-member Remove button in its
+ * iOS counterpart that the owner had in MarmotGroupChatView.swift).
+ */
+@Composable
+internal fun MarmotMembersDialog(
+    members: List<String>,
+    onRemove: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Members") },
+        text = {
+            LazyColumn {
+                itemsIndexed(members, key = { _, m -> m }) { _, member ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            shortHex(member),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(
+                            onClick = { onRemove(member) },
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                        ) { Text("Remove") }
+                    }
+                    HorizontalDivider()
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        },
+    )
 }

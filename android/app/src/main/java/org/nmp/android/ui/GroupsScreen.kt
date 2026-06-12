@@ -97,6 +97,9 @@ fun GroupsScreen(model: KernelModel, modifier: Modifier = Modifier) {
                     group = group,
                     messages = messagesByGroup[selected] ?: emptyList(),
                     onBack = { selectedGroupId = null },
+                    // Forward orphaned-commit state so the in-chat affordance
+                    // mirrors the iOS `pendingCommitFailureAffordance` surface.
+                    hasOrphanedCommit = snapshot.orphanedCommitCount > 0,
                 )
             }
         } else {
@@ -202,7 +205,7 @@ private fun GroupListScreen(
         CreateGroupDialog(
             onDismiss = { showCreate = false },
             onCreate = { name, invitees ->
-                model.createGroup(name = name, description = "", inviteeText = invitees)
+                model.marmot.createGroup(name = name, description = "", inviteeText = invitees)
                 showCreate = false
             },
         )
@@ -226,7 +229,7 @@ private fun KeyPackageRow(model: KernelModel, snapshot: MarmotSnapshot) {
             )
         }
         Spacer(Modifier.size(8.dp))
-        OutlinedButton(onClick = { model.publishKeyPackage() }) {
+        OutlinedButton(onClick = { model.marmot.publishKeyPackage() }) {
             // Rust picks the verb ("Publish key package" / "Rotate key package").
             Text(snapshot.keyPackage.actionLabel.ifEmpty { "Publish" })
         }
@@ -248,8 +251,8 @@ private fun PendingWelcomeRow(model: KernelModel, welcome: MarmotPendingWelcome)
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = { model.declineWelcome(welcome.idHex) }) { Text("Decline") }
-        Button(onClick = { model.acceptWelcome(welcome.idHex) }) { Text("Accept") }
+        TextButton(onClick = { model.marmot.declineWelcome(welcome.idHex) }) { Text("Decline") }
+        Button(onClick = { model.marmot.acceptWelcome(welcome.idHex) }) { Text("Accept") }
     }
 }
 

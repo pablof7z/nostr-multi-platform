@@ -29,26 +29,23 @@ private const val TAG = "NmpCore"
 private const val HOME_FEED_KEY = "nmp.feed.home"
 
 /**
- * Observable mirror of the kernel snapshot — the Android peer of iOS
- * `KernelModel`. The Rust actor pushes FlatBuffers `UpdateFrame` bytes
- * (file_identifier "NMPU"); a reader coroutine decodes them via
- * [KernelUpdateFrameDecoder] and republishes via [StateFlow].
- *
- * Pure mirror: the only guard is `rev` monotonicity (identical to the Swift
- * `guard update.rev > rev` in `apply`). No Kotlin-side business logic or
- * derived state (D5/D8); decode fails closed (D1).
- *
- * Each [ByteArray] from `nextUpdate()` carries a [SnapshotEnvelope] (the
- * ADR-0044 Tier-3 typed envelope decoded directly from `SnapshotFrame` fields)
- * AND typed sidecars in `SnapshotFrame.typed_projections`, including the
- * `nmp.feed.home` FlatBuffers projection (file_identifier "NFTS"). Both are
- * extracted in a single pass through [KernelUpdateFrameDecoder.decode] — no
- * second FFI call needed. `payload:Value` was removed from the wire in PR #1082
- * (PR-B); the typed-sidecar path is now authoritative on all platforms.
+ * Observable mirror of the kernel snapshot — Android peer of iOS `KernelModel`.
+ * Rust pushes FlatBuffers `UpdateFrame` bytes (file_identifier "NMPU"); the
+ * reader coroutine decodes them via [KernelUpdateFrameDecoder] and republishes
+ * via [StateFlow]. Pure mirror: rev-monotonicity guard only (D5/D8). Fails
+ * closed (D1). `payload:Value` removed in PR #1082; typed-sidecar path is
+ * authoritative. Marmot write ops live in [MarmotActions] (see [marmot]).
  */
 class KernelModel : ViewModel() {
 
     private val bridge = KernelBridge()
+
+    /**
+     * Marmot (MLS-over-Nostr encrypted groups) write operations. Mirrors the iOS
+     * `model.marmot` surface; all UI call sites use `model.marmot.<op>()`.
+     * Extracted into [MarmotActions] to keep this file under the 500-LOC ceiling.
+     */
+    val marmot = MarmotActions(dispatchAction = { ns, json -> bridge.dispatchAction(ns, json) })
 
     private val _state = MutableStateFlow(KernelUpdate())
     val state: StateFlow<KernelUpdate> = _state.asStateFlow()
@@ -72,16 +69,9 @@ class KernelModel : ViewModel() {
         state.map { it.relayStatuses }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
-    /**
-     * ADR-0048 D6 (generalises V-14 / #963): unified remote-signer health.
-     * Null while no remote-signer session is active (local-key accounts — the
-     * steady state). Covers BOTH NIP-46 bunker and NIP-55 (Amber) sessions.
-     * Collected from `projections.signerState`; decoded via the JSON fallback
-     * path (Android does not use a typed FlatBuffers sidecar for this
-     * projection). `isReady` = green, `isAwaitingApproval`/`isReconnecting` =
-     * amber (wait), `isUnavailable`/`isFailed` = red (re-auth). Drives
-     * `SignerStateRow` in the sign-in screen.
-     */
+    /** ADR-0048 D6: unified remote-signer health (NIP-46 + NIP-55). Null = local
+     *  key (steady state). `isReady` = green, `isAwaitingApproval`/`isReconnecting`
+     *  = amber, `isUnavailable`/`isFailed` = red. Drives `SignerStateRow`. */
     val signerState: StateFlow<SignerState?> =
         state.map { it.projections?.signerState }
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -91,14 +81,8 @@ class KernelModel : ViewModel() {
     private var signerReaderJob: Job? = null
     private var lastLoadMoreCursor: TimelineWindowCursor? = null
 
-    /**
-     * ADR-0048 Stage 2 — the host adapter that executes NIP-55 capability
-     * requests (`ExternalSignerCapabilityBridge.handleJson`). Registered by
-     * the activity (it owns the Activity Result launcher); the signer reader
-     * loop hands each drained request JSON to this handler on Main (Intent
-     * launches require the main thread). Null = no activity registered yet;
-     * the request is dropped and degrades to a Rust-side timeout (D6).
-     */
+    /** ADR-0048 Stage 2 — NIP-55 capability handler (activity-registered).
+     *  Null = no activity registered; requests degrade to Rust-side timeout (D6). */
     @Volatile
     private var externalSignerHandler: ((requestJson: String) -> Unit)? = null
 
@@ -124,12 +108,7 @@ class KernelModel : ViewModel() {
                 val bytes = try {
                     bridge.nextUpdate()
                 } catch (e: IllegalStateException) {
-                    // Mirrors PR #644 / V-57 P5 for nmp-gallery: the Rust JNI
-                    // distinguishes RecvTimeoutError::Disconnected (channel
-                    // closed — sender dropped) from RecvTimeoutError::Timeout
-                    // (idle tick — keep polling). A disconnect surfaces as
-                    // this exception. Break out of the loop instead of
-                    // spinning on a dead channel.
+                    // Disconnect (channel closed) surfaces as IllegalStateException (PR #644).
                     Log.i(TAG, "update channel closed: ${e.message}")
                     break
                 } ?: continue
@@ -141,10 +120,7 @@ class KernelModel : ViewModel() {
                 _lastSnapshotAtMs.value = System.currentTimeMillis()
             }
         }
-        // ADR-0048 Stage 2 — drain Rust-built NIP-55 capability requests and
-        // hand them to the activity-registered bridge on Main (Intent
-        // launches require the main thread). Same blocking-timed-drain shape
-        // as the update reader above.
+        // ADR-0048 Stage 2 — drain NIP-55 requests; dispatch on Main (Intent requires it).
         signerReaderJob = viewModelScope.launch(Dispatchers.IO) {
             while (isActive) {
                 val requestJson = try {
@@ -155,8 +131,6 @@ class KernelModel : ViewModel() {
                 } ?: continue
                 val handler = externalSignerHandler
                 if (handler == null) {
-                    // No activity registered — drop; the Rust op times out
-                    // and surfaces a D6 toast. Never queue stale Intents.
                     Log.w(TAG, "NIP-55 request dropped: no capability bridge registered")
                     continue
                 }
@@ -194,12 +168,7 @@ class KernelModel : ViewModel() {
         bridge.createLocalAccount()
     }
 
-    /**
-     * Demand-driven profile fetch claim. Called from a Compose `LaunchedEffect`
-     * when a view starts rendering a pubkey; the kernel batches a kind:0 REQ
-     * and re-fetches against the author's NIP-65 write set once it lands.
-     * Matched by a [releaseProfile] in `DisposableEffect.onDispose`.
-     */
+    /** Demand-driven profile fetch claim (Compose LaunchedEffect → DisposableEffect). */
     fun claimProfile(pubkey: String, consumerId: String) {
         bridge.claimProfile(pubkey, consumerId)
     }
@@ -209,15 +178,7 @@ class KernelModel : ViewModel() {
         bridge.releaseProfile(pubkey, consumerId)
     }
 
-    /**
-     * Encode a hex pubkey as a NIP-19 display identifier via the kernel's
-     * cached kind:10002 relay hints (`nprofile1…`) or a bare `npub1…` when
-     * none are available. ADR-0032 / V-115: replaces the deprecated
-     * `ProfileCard.npub` projection field.
-     *
-     * Returns null when the bridge is uninitialised or the pubkey is invalid;
-     * callers should fall back to short-hex rendering in that case.
-     */
+    /** NIP-19 display identifier (nprofile1… or npub1…). ADR-0032 / V-115. */
     fun encodeProfile(pubkey: String): String? = bridge.encodeProfile(pubkey)
 
     /**
@@ -240,11 +201,7 @@ class KernelModel : ViewModel() {
         return response.correlationId
     }
 
-    /**
-     * Extend the Rust-owned home-feed window after the rendered tail becomes
-     * visible. Android treats [after] as an opaque edge marker; Rust owns page
-     * size, cap, cursor interpretation, and the next snapshot.
-     */
+    /** Extend home-feed window; [after] is an opaque edge cursor (Rust owns page policy). */
     fun loadOlderTimeline(after: TimelineWindowCursor) {
         val page = state.value.modularTimeline.page ?: return
         if (!page.hasMore) return
@@ -306,25 +263,12 @@ class KernelModel : ViewModel() {
         bridge.signInBunker(uri)
     }
 
-    /**
-     * ADR-0048 Stage 2 — begin a NIP-55 sign-in with the given detected
-     * signer. Kotlin reports user intent only; Rust builds the
-     * `get_public_key` + permission-batch request (D7) and routes it back
-     * through the registered capability bridge.
-     */
+    /** ADR-0048 Stage 2 — begin NIP-55 sign-in; Rust builds the get_public_key request. */
     fun signInWithAmber(signer: NostrSignerInfo) {
-        // Pass the explicit packageName (the APK identifier used for Intent
-        // routing and the signer_package wire field). Falls back to
-        // contentAuthority for signers where they coincide (e.g. Amber),
-        // but the two fields are logically distinct — future signers
-        // (e.g. Primal) have a packageName that differs from contentAuthority.
         bridge.signInNip55(signer.packageName ?: signer.contentAuthority)
     }
 
-    /**
-     * ADR-0048 Stage 2 — route a raw `ExternalSignerResponse` JSON from the
-     * capability bridge back to the Rust NIP-55 driver (D7: verbatim).
-     */
+    /** ADR-0048 Stage 2 — route ExternalSignerResponse JSON back to the Rust NIP-55 driver. */
     fun deliverSignerResponse(responseJson: String) {
         bridge.deliverSignerResponse(responseJson)
     }
@@ -339,8 +283,6 @@ class KernelModel : ViewModel() {
     /** Create a new local account with the given display name. */
     fun createAccount(displayName: String) {
         bridge.createLocalAccount(displayName)
-        // Mirror desktop bridge: openTimeline after account creation so the
-        // kernel starts fetching notes for the new account immediately.
         bridge.openTimeline()
     }
 
@@ -408,92 +350,28 @@ class KernelModel : ViewModel() {
     )
 
     // -------------------------------------------------------------------------
-    // Marmot (MLS-over-Nostr encrypted groups)
+    // Marmot registration trampoline — write ops live in [marmot: MarmotActions]
     // -------------------------------------------------------------------------
-    //
-    // Android peer of iOS `MarmotStore` (Bridge/MarmotBridge.swift). State is
-    // read reactively from the `nmp.marmot.snapshot` / `nmp.marmot.messages`
-    // push projections on `state` (V-107 / ADR-0039) — never polled. Write ops
-    // route through the generic `dispatch_action("nmp.marmot", …)` seam; the
-    // refreshed snapshot arrives on the next kernel tick.
 
-    /** Account this `KernelModel` last registered a Marmot identity for. */
-    private var marmotRegisteredAccount: String? = null
-
-    /**
-     * Register a Marmot MLS identity against the active local account, idempotent
-     * per account. [dbDir] is the host app-support directory (e.g.
-     * `context.filesDir.path`). No-op when there is no active account yet, or
-     * when already registered for the current account. Mirrors the iOS shell
-     * calling `registerActiveMarmotIfAvailable()` once an account is live.
-     */
+    /** Idempotent per-account Marmot MLS registration. [dbDir] = context.filesDir.path. */
     fun registerMarmotIfNeeded(dbDir: String) {
-        val account = state.value.activeAccount
-        if (account.isEmpty() || account == marmotRegisteredAccount) return
-        if (bridge.marmotRegisterActive(dbDir)) {
-            marmotRegisteredAccount = account
-        }
+        marmot.registerIfNeeded(state.value.activeAccount, dbDir, bridge)
     }
-
-    /**
-     * Create a new MLS group. [inviteeText] is the raw text the user typed;
-     * Rust tokenises (whitespace / comma / semicolon / newline) and validates
-     * each entry — no parsing in Kotlin. Fire-and-forget: the new group appears
-     * on the next snapshot tick.
-     */
-    fun createGroup(name: String, description: String, inviteeText: String) =
-        bridge.dispatchAction(
-            "nmp.marmot",
-            """{"op":"create_group","name":"${escapeJson(name)}","description":"${escapeJson(description)}","invitee_text":"${escapeJson(inviteeText)}","signed_key_package_events_json":[]}""",
-        )
-
-    /** Send an application message in an existing MLS group. */
-    fun sendGroupMessage(groupIdHex: String, text: String) =
-        bridge.dispatchAction(
-            "nmp.marmot",
-            """{"op":"send","group_id_hex":"$groupIdHex","text":"${escapeJson(text)}"}""",
-        )
-
-    /** Publish (or rotate) the local MLS key package. */
-    fun publishKeyPackage() =
-        bridge.dispatchAction("nmp.marmot", """{"op":"publish_key_package"}""")
-
-    /** Accept a pending MLS group invite (kind:444 Welcome). */
-    fun acceptWelcome(welcomeIdHex: String) =
-        bridge.dispatchAction("nmp.marmot", """{"op":"accept_welcome","welcome_id_hex":"$welcomeIdHex"}""")
-
-    /** Decline a pending MLS group invite. */
-    fun declineWelcome(welcomeIdHex: String) =
-        bridge.dispatchAction("nmp.marmot", """{"op":"decline_welcome","welcome_id_hex":"$welcomeIdHex"}""")
 
     // -------------------------------------------------------------------------
     // Wallet (NIP-47 / NWC)
     // -------------------------------------------------------------------------
 
-    /**
-     * Connect a NIP-47 wallet via NWC URI. Routes through dispatch_action("nmp.wallet.connect", ...).
-     *
-     * The actionJson format is: {"Connect":{"uri":"nostr+walletconnect://..."}}
-     */
+    /** Connect a NIP-47 wallet via NWC URI. [actionJson] = {"Connect":{"uri":"nostr+walletconnect://..."}} */
     fun dispatchWalletConnect(actionJson: String) {
         val response = bridge.dispatchAction("nmp.wallet.connect", actionJson)
         Log.d(TAG, "wallet connect response: $response")
     }
 
-    /**
-     * Disconnect the current NIP-47 wallet. Routes through dispatch_action("nmp.wallet.disconnect", ...).
-     */
+    /** Disconnect the current NIP-47 wallet. */
     fun dispatchWalletDisconnect() {
         val response = bridge.dispatchAction("nmp.wallet.disconnect", "\"Disconnect\"")
         Log.d(TAG, "wallet disconnect response: $response")
-    }
-
-    private fun escapeJson(s: String): String {
-        return s.replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
     }
 
     private fun dispatchTypedIntent(intent: ChirpActionIntent): DispatchResult? {
@@ -519,18 +397,9 @@ class KernelModel : ViewModel() {
     }
 
     /**
-     * Decode one FlatBuffers update frame.
-     *
-     * Decodes the [SnapshotEnvelope] (ADR-0044 Tier-3 fields directly on
-     * `SnapshotFrame`) and the typed `nmp.feed.home` timeline projection
-     * (from `SnapshotFrame.typed_projections`, file_identifier "NFTS") in a
-     * single pass.  `payload:Value` is no longer emitted (PR #1082 — PR-B);
-     * the typed-sidecar path is authoritative.  Returns `null` (drop the
-     * frame) on any parse error; logs enough context to diagnose the failure
-     * without flooding logcat (PD-025 finding 4 — no silent swallow).
-     *
-     * Panic frames are logged at ASSERT level — they indicate actor death (D7)
-     * and also latch [kernelIsDead], matching the iOS fatal-kernel state.
+     * Decode one FlatBuffers update frame (single pass: SnapshotEnvelope + typed
+     * nmp.feed.home sidecar). Returns null on parse error (fail-closed, D1).
+     * Panic frames latch [kernelIsDead] (D7).
      */
     private fun decodeUpdate(bytes: ByteArray): KernelUpdate? {
         return when (val frame = KernelUpdateFrameDecoder.decode(bytes)) {
@@ -541,12 +410,7 @@ class KernelModel : ViewModel() {
                 null
             }
             is KernelDecodedUpdateFrame.Snapshot -> {
-                // ADR-0038 V-85: the typed `nmp.feed.home` NOFS decoder
-                // ([TypedHomeFeedDecoder]) now fills `contentTree` via the
-                // native Kotlin NFCT decoder, making the typed path
-                // render-complete. Prefer it when present; fall back to the
-                // generic `Value` projection (ADR-0037 Commitment 4: the
-                // generic path is a permanent fallback, never removed).
+                // Prefer typed nmp.feed.home sidecar (ADR-0038 V-85 / ADR-0037 C4).
                 val typed: ChirpOpFeedSnapshot? =
                     TypedHomeFeedDecoder.decode(frame.typedProjections)
                 if (typed != null) frame.update.copy(modularTimeline = typed) else frame.update
