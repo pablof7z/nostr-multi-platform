@@ -567,7 +567,41 @@ pub(crate) fn fetch_lnurl_invoice_blocking(
             "LNURL callback returned a `pr` value that does not look like a bolt11 invoice: {bolt11}"
         ));
     }
+    // NIP-57 recommendation — verify the bolt11 encodes exactly the amount the
+    // user requested before handing it to the wallet for automatic payment.
+    // Fail closed: an amountless invoice or one with a different amount is
+    // never forwarded to the wallet (D6 — errors as state, not panic).
+    validate_bolt11_amount(bolt11, amount_msats)?;
     Ok(bolt11.to_string())
+}
+
+/// Validate that a bolt11 invoice encodes exactly `requested_msats`.
+///
+/// Parses the BOLT-11 HRP with [`crate::bolt11::amount_msats`] and compares
+/// the result against the user-chosen amount.  Returns `Err` when:
+///
+/// - the invoice is **amountless** (parser returns `None`) — fail closed,
+///   because an unverifiable invoice must not be auto-paid (a malicious
+///   provider could charge any amount); or
+/// - the encoded amount **does not match** the requested amount — a mismatch
+///   means a buggy or hostile LNURL provider; the error message names both
+///   values so the user can diagnose it.
+///
+/// Returns `Ok(())` only when the parsed amount equals `requested_msats`
+/// exactly.
+pub(crate) fn validate_bolt11_amount(bolt11: &str, requested_msats: u64) -> Result<(), String> {
+    match crate::bolt11::amount_msats(bolt11) {
+        None => Err(format!(
+            "LNURL provider returned an amountless bolt11 invoice — \
+             refusing automatic payment of an unverifiable amount \
+             (requested {requested_msats} msats)"
+        )),
+        Some(actual) if actual != requested_msats => Err(format!(
+            "LNURL provider invoice amount mismatch: requested {requested_msats} msats \
+             but bolt11 encodes {actual} msats — refusing automatic payment"
+        )),
+        Some(_) => Ok(()),
+    }
 }
 
 /// One-shot HTTP GET → JSON. Bounded by `LNURL_HTTP_TIMEOUT_SECS` and

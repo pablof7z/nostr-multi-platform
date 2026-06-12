@@ -1,6 +1,6 @@
 //! Pure helpers around the runtime's dispatch routing surface.
 //!
-//! Two responsibilities:
+//! Three responsibilities:
 //!
 //! 1. [`kernel_action_from_dispatch`] — map a generic
 //!    [`crate::protocol::ActionDispatch`] to a [`nmp_core::KernelAction`] if
@@ -8,7 +8,16 @@
 //!    `None` for app-namespaced actions, which the runtime surfaces through
 //!    the write-path-unavailable error path.
 //!
-//! 2. Stable, host-pattern-matchable reason strings for the two
+//! 2. [`claim_dispatch_from_action`] / [`execute_claim_dispatch`] — parse and
+//!    execute `nmp.kernel.claim_*` / `nmp.kernel.release_*` operations via the
+//!    `KernelReducer` claim surface.
+//!
+//! 3. [`interest_dispatch_from_action`] / [`execute_interest_dispatch`] —
+//!    parse and execute PR-3 feed-verb operations:
+//!    `nmp.kernel.open_interest`, `nmp.kernel.close_interest`,
+//!    `nmp.kernel.open_contact_feed`, `nmp.kernel.close_contact_feed`.
+//!
+//! 4. Stable, host-pattern-matchable reason strings for the two
 //!    write-unavailability states the wasm runtime can honestly report
 //!    (`signer_not_installed`, `publish_path_not_wired`) plus the
 //!    capability-completion failure reason (`browser_actor_driver_missing`).
@@ -19,7 +28,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::KernelAction;
+use nmp_core::{KernelAction, KernelReducer, OutboundMessage};
 use nmp_signers::Signer;
 use serde_json::Value;
 
@@ -175,141 +184,142 @@ pub(crate) fn kernel_action_from_dispatch(action: &ActionDispatch) -> Option<Ker
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// ─── F-CR-00 claim arm executor ──────────────────────────────────────────────
+//
+// Extracted from the former inline arm in `runtime.rs::dispatch()` so the
+// routing table and the execution logic stay co-located (dispatch_routing is
+// the single owner) and runtime.rs can replace the 37-line block with a
+// one-line delegation.
+//
+// `can_send` mirrors the native `claim_send_gate` semantics: true when any
+// relay lane has reported `Connected`. Release calls always return empty vecs.
 
-    #[test]
-    fn claim_dispatch_from_action_routes_claim_profile() {
-        let action = ActionDispatch {
-            action_type: "nmp.kernel.claim_profile".to_string(),
-            payload: serde_json::json!({"pubkey": "abc123", "consumer_id": "chirp-web-author-1"}),
-            correlation_id: "x".to_string(),
-        };
-        assert_eq!(
-            claim_dispatch_from_action(&action),
-            Some(ClaimDispatch::ClaimProfile {
-                pubkey: "abc123".to_string(),
-                consumer_id: "chirp-web-author-1".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn claim_dispatch_from_action_routes_release_profile() {
-        let action = ActionDispatch {
-            action_type: "nmp.kernel.release_profile".to_string(),
-            payload: serde_json::json!({"pubkey": "abc123", "consumer_id": "chirp-web-author-1"}),
-            correlation_id: "x".to_string(),
-        };
-        assert_eq!(
-            claim_dispatch_from_action(&action),
-            Some(ClaimDispatch::ReleaseProfile {
-                pubkey: "abc123".to_string(),
-                consumer_id: "chirp-web-author-1".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn claim_dispatch_from_action_routes_claim_event() {
-        let uri = "nostr:note1abc".to_string();
-        let action = ActionDispatch {
-            action_type: "nmp.kernel.claim_event".to_string(),
-            payload: serde_json::json!({"uri": uri, "consumer_id": "chirp-web-embed-1"}),
-            correlation_id: "x".to_string(),
-        };
-        assert_eq!(
-            claim_dispatch_from_action(&action),
-            Some(ClaimDispatch::ClaimEvent {
-                uri,
-                consumer_id: "chirp-web-embed-1".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn claim_dispatch_from_action_routes_release_event() {
-        let uri = "nostr:note1abc".to_string();
-        let action = ActionDispatch {
-            action_type: "nmp.kernel.release_event".to_string(),
-            payload: serde_json::json!({"uri": uri, "consumer_id": "chirp-web-embed-1"}),
-            correlation_id: "x".to_string(),
-        };
-        assert_eq!(
-            claim_dispatch_from_action(&action),
-            Some(ClaimDispatch::ReleaseEvent {
-                uri,
-                consumer_id: "chirp-web-embed-1".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn claim_dispatch_from_action_returns_none_for_non_claim_type() {
-        let action = ActionDispatch {
-            action_type: "nmp.publish".to_string(),
-            payload: serde_json::json!({}),
-            correlation_id: "x".to_string(),
-        };
-        assert!(claim_dispatch_from_action(&action).is_none());
-    }
-
-    #[test]
-    fn claim_dispatch_from_action_returns_none_for_missing_field() {
-        // Missing consumer_id — defensive parse returns None (D6).
-        let action = ActionDispatch {
-            action_type: "nmp.kernel.claim_profile".to_string(),
-            payload: serde_json::json!({"pubkey": "abc123"}),
-            correlation_id: "x".to_string(),
-        };
-        assert!(claim_dispatch_from_action(&action).is_none());
-    }
-
-    #[test]
-    fn claim_dispatch_from_action_returns_none_for_null_payload() {
-        // Payload is null (not a JSON object) — must not panic (D6).
-        let action = ActionDispatch {
-            action_type: "nmp.kernel.claim_profile".to_string(),
-            payload: serde_json::Value::Null,
-            correlation_id: "x".to_string(),
-        };
-        assert!(claim_dispatch_from_action(&action).is_none());
-    }
-
-    #[test]
-    fn write_path_unavailable_reason_distinguishes_signer_states() {
-        assert!(write_path_unavailable_reason(None).starts_with("signer_not_installed"));
-        // Build a real Arc<dyn Signer> using the NIP-07 stub so we exercise
-        // the `Some` arm honestly. The signer's sign() will return
-        // Unsupported on native; we never call sign() here.
-        use nmp_signers::Nip07Signer;
-        let signer: Arc<dyn Signer> = Arc::new(Nip07Signer::from_cached_pubkey(
-            nostr::PublicKey::from_hex(
-                "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
-            )
-            .unwrap(),
-        ));
-        assert!(write_path_unavailable_reason(Some(&signer)).starts_with("publish_path_not_wired"));
-    }
-
-    #[test]
-    fn kernel_action_routes_kernel_namespace_only() {
-        let dispatch = ActionDispatch {
-            action_type: "nmp.kernel.start".to_string(),
-            payload: serde_json::Value::Null,
-            correlation_id: "x".to_string(),
-        };
-        assert!(matches!(
-            kernel_action_from_dispatch(&dispatch),
-            Some(KernelAction::Start)
-        ));
-
-        let app = ActionDispatch {
-            action_type: "nmp.publish".to_string(),
-            payload: serde_json::Value::Null,
-            correlation_id: "y".to_string(),
-        };
-        assert!(kernel_action_from_dispatch(&app).is_none());
+/// Execute a decoded `ClaimDispatch` against the live kernel, returning any
+/// immediately-sendable `Vec<OutboundMessage>` (already `partition_auth_paused`
+/// inside the `KernelReducer` methods).
+///
+/// Claims are not `KernelAction`s — they operate on the claim-refcount table
+/// that is separate from the M2 interest registry. `force = false` throughout:
+/// web-component claims on mount are background/`.onAppear`-equivalent, not
+/// user-navigation force-refreshes (F-TTL lazy path).
+pub(crate) fn execute_claim_dispatch(
+    reducer: &mut KernelReducer,
+    claim: ClaimDispatch,
+    can_send: bool,
+) -> Vec<OutboundMessage> {
+    match claim {
+        ClaimDispatch::ClaimProfile { pubkey, consumer_id } => {
+            reducer.claim_profile(pubkey, consumer_id, can_send, false)
+        }
+        ClaimDispatch::ReleaseProfile { pubkey, consumer_id } => {
+            reducer.release_profile(&pubkey, &consumer_id)
+        }
+        ClaimDispatch::ClaimEvent { uri, consumer_id } => {
+            reducer.claim_event(uri, consumer_id, can_send, false)
+        }
+        ClaimDispatch::ReleaseEvent { uri, consumer_id } => {
+            reducer.release_event(&uri, &consumer_id)
+        }
     }
 }
+
+// ─── PR-3 feed-verb dispatch ─────────────────────────────────────────────────
+//
+// Four new verb types that map to the `KernelReducer` feed-verb surface added
+// in PR-3. Same D6 parse discipline as `ClaimDispatch`: missing/non-string
+// payload fields return `None`; the caller treats `None` as "not this dispatch
+// type" and falls through.
+
+/// Decoded feed-subscription verb extracted from an `ActionDispatch` whose
+/// `action_type` is in the `nmp.kernel.open_interest` / `close_interest` /
+/// `open_contact_feed` / `close_contact_feed` namespace.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum InterestDispatch {
+    OpenInterest {
+        filter_json: String,
+        consumer_id: String,
+        scope: u32,
+    },
+    CloseInterest {
+        filter_json: String,
+        consumer_id: String,
+        scope: u32,
+    },
+    /// `open_contact_feed {kinds:[1,6]}` — sets the follow-feed kind set and
+    /// re-registers the active account's follow interests.
+    OpenContactFeed {
+        kinds: std::collections::BTreeSet<u32>,
+    },
+    /// `close_contact_feed {}` — clears the follow-feed kind set (no relay
+    /// CLOSE diff is emitted until `drain_lifecycle_outbound` / `tick`).
+    CloseContactFeed,
+}
+
+/// Parse an `ActionDispatch` as a feed-subscription verb. Returns `None` if
+/// the `action_type` is not a feed-verb namespace or a required payload field
+/// is absent / malformed (D6: malformed → `None`, never a panic).
+pub(crate) fn interest_dispatch_from_action(action: &ActionDispatch) -> Option<InterestDispatch> {
+    match action.action_type.as_str() {
+        "nmp.kernel.open_interest" => {
+            let filter_json = str_field(&action.payload, "filter_json")?;
+            let consumer_id = str_field(&action.payload, "consumer_id")?;
+            let scope = action
+                .payload
+                .get("scope")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as u32;
+            Some(InterestDispatch::OpenInterest { filter_json, consumer_id, scope })
+        }
+        "nmp.kernel.close_interest" => {
+            let filter_json = str_field(&action.payload, "filter_json")?;
+            let consumer_id = str_field(&action.payload, "consumer_id")?;
+            let scope = action
+                .payload
+                .get("scope")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as u32;
+            Some(InterestDispatch::CloseInterest { filter_json, consumer_id, scope })
+        }
+        "nmp.kernel.open_contact_feed" => {
+            let kinds = action
+                .payload
+                .get("kinds")
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_u64().map(|n| n as u32))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(InterestDispatch::OpenContactFeed { kinds })
+        }
+        "nmp.kernel.close_contact_feed" => Some(InterestDispatch::CloseContactFeed),
+        _ => None,
+    }
+}
+
+/// Execute a decoded `InterestDispatch` against the live kernel, returning any
+/// immediately-sendable `Vec<OutboundMessage>` (already
+/// `partition_auth_paused` inside the `KernelReducer` methods).
+pub(crate) fn execute_interest_dispatch(
+    reducer: &mut KernelReducer,
+    interest: InterestDispatch,
+) -> Vec<OutboundMessage> {
+    match interest {
+        InterestDispatch::OpenInterest { filter_json, consumer_id, scope } => {
+            reducer.open_interest(&filter_json, &consumer_id, scope)
+        }
+        InterestDispatch::CloseInterest { filter_json, consumer_id, scope } => {
+            reducer.close_interest(&filter_json, &consumer_id, scope)
+        }
+        InterestDispatch::OpenContactFeed { kinds } => reducer.set_follow_feed_kinds(kinds),
+        InterestDispatch::CloseContactFeed => {
+            reducer.set_follow_feed_kinds(std::collections::BTreeSet::new())
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "dispatch_routing_tests.rs"]
+mod tests;
+

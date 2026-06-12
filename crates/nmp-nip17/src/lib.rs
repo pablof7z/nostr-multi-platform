@@ -117,10 +117,7 @@ pub struct DmInput {
 /// the kernel clock before wrapping; this crate never reads the system clock.
 #[must_use]
 pub fn build_dm_rumor(input: &DmInput) -> UnsignedEvent {
-    let mut tags: Vec<Vec<String>> = vec![vec![
-        "p".to_string(),
-        input.recipient_pubkey.clone(),
-    ]];
+    let mut tags: Vec<Vec<String>> = vec![vec!["p".to_string(), input.recipient_pubkey.clone()]];
 
     if let Some(reply_to) = &input.reply_to {
         // NIP-10 reply marker: ["e", <event-id>, <relay-hint>, "reply"].
@@ -164,8 +161,10 @@ pub fn build_dm_rumor(input: &DmInput) -> UnsignedEvent {
 /// store the cache themselves and pass it explicitly. The default
 /// path (one composition, one cache) is the common case.
 pub fn register_actions(app: &mut impl AppHost) {
-    app.register_action::<SendDmAction>();
-    app.register_action::<PublishDmRelayListAction>();
+    // Yielding defaults (ADR-0049 Part 1): an app may pre-empt either DM action
+    // module regardless of call order.
+    app.register_default_action::<SendDmAction>();
+    app.register_default_action::<PublishDmRelayListAction>();
 
     // V-40 — install the shared `DmRelayCache` on both ends:
     //   1. As the kernel's `Arc<dyn DmInboxRelayLookup>` (reader).

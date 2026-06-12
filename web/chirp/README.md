@@ -2,38 +2,45 @@
 
 This package is the browser proof for Chirp. It is a Solid/Vite shell that
 renders the NMP browser-worker contract. Product actions are sent as typed
-Chirp intents; the checked-in `nmp-wasm` package maps those intents and emits
-Rust-owned Chirp snapshots for the shell to render.
+Chirp intents; the `nmp-wasm` package maps those intents and emits Rust-owned
+Chirp snapshots for the shell to render.
 
 ## Requirements
 
 - Node.js 20 or newer.
 - npm, using the checked-in `package-lock.json`.
+- Rust stable + `wasm32-unknown-unknown` target (for the wasm build step).
+- `wasm-pack` 0.13.1 (`cargo install wasm-pack --version 0.13.1 --locked`).
+- `clang` (required by secp256k1-sys when cross-compiling to wasm32).
 
 ## Local Build
 
-From this directory:
+The wasm package is generated at build time and **not checked in**
+(`public/nmp-wasm/` is gitignored).  Build it first, then build the web app:
 
 ```sh
 npm ci
-npm run build
+npm run build:wasm   # compiles crates/nmp-wasm → public/nmp-wasm/
+npm run build        # TypeScript check + Vite bundle → dist/
 ```
 
-`npm run build` runs TypeScript with `--noEmit` and then writes the static Vite
-bundle to `dist/`.
+`build:wasm` requires `wasm-pack` on `$PATH` and `CC_wasm32_unknown_unknown=clang`
+(the script sets this automatically).  If Rust is not on your machine,
+`scripts/build.sh` installs it automatically (used by the Vercel deploy).
 
 ## Local Preview
 
 Build first, then serve the production bundle:
 
 ```sh
+npm run build:wasm
 npm run build
 npm run preview -- --host 127.0.0.1 --port 4173
 ```
 
 Open `http://127.0.0.1:4173/`.
 
-For active development, use:
+For active development, run the wasm build once, then use:
 
 ```sh
 npm run dev
@@ -41,15 +48,17 @@ npm run dev
 
 ## Static Deploy
 
-The repository root includes `vercel.json` so a Vercel project pointed at the
-repo root still installs and builds `web/chirp`.
+`web/chirp/vercel.json` sets `"buildCommand": "bash scripts/build.sh"`,
+which installs Rust + wasm-pack if absent, builds nmp-wasm, and runs
+`npm run build`.  The Vercel project must have its root directory set to
+`web/chirp` so the script can reach `../../crates/nmp-wasm`.
 
-Use these settings for static hosts:
+For other static hosts:
 
 | Setting | Value |
 | --- | --- |
 | Install command | `cd web/chirp && npm ci` |
-| Build command | `cd web/chirp && npm run build` |
+| Build command | `cd web/chirp && bash scripts/build.sh` |
 | Output directory | `web/chirp/dist` |
 | Node version | `20` or newer |
 
@@ -63,15 +72,13 @@ The browser worker loads a generated `nmp-wasm` package from:
 public/nmp-wasm/nmp_wasm.js
 ```
 
-Refresh it after changing `crates/nmp-wasm`:
+The package is produced by `wasm-pack build --target web crates/nmp-wasm` and
+is gitignored — a fresh build is always required.  `npm run build:wasm`
+wraps the invocation with the correct `CC_wasm32_unknown_unknown=clang`
+environment variable.
 
-```sh
-wasm-pack build ../../crates/nmp-wasm --target web --out-dir ../../web/chirp/public/nmp-wasm
-```
-
-When that package is absent, the worker emits
-`wasm_bridge_unavailable` and falls back to `DegradedRuntime` with
-`browser_bridge_unavailable` status.
+When the package is absent, the worker emits `wasm_bridge_unavailable` and
+falls back to `DegradedRuntime` with `browser_bridge_unavailable` status.
 
 The wasm facade proves the browser uses the same Rust-owned action contract,
 relay defaults, and Chirp snapshot shape.

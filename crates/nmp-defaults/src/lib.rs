@@ -100,25 +100,19 @@
 
 use std::sync::Arc;
 
-use nmp_core::publish::OutboxResolver;
-use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
-use nmp_core::store::EventStore;
-use nmp_core::substrate::{
-    AppHost, MailboxCache, OutboxRouter, RawEventForwardPolicy, RoutingTraceObserver,
-};
-use nmp_coverage_gate::CoverageGate;
-use nmp_router::{
-    GenericOutboxRouter, InMemoryMailboxCache, IndexerRepublishPolicy, Nip65OutboxResolver,
-};
+use nmp_core::substrate::AppHost;
 
 pub mod builder;
 pub mod op_feed_defaults;
 pub(crate) mod relay_config;
 pub mod runtimes;
+pub mod tiers;
 pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, RunConfig, StorageSet, Unstarted};
 pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
+pub use runtimes::register_mute_runtime;
+pub use tiers::{register_substrate, NmpDefaults};
 
 /// Wire the canonical NMP composition into `app`.
 ///
@@ -157,201 +151,119 @@ pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
 /// concurrently with `dispatch_action`). The substrate-routing factory +
 /// coverage-hook installation paths take `&AppHost` (shared); the unique
 /// borrow on the action-registry side is released before they run.
+///
+/// # Tiers
+///
+/// `register_defaults` is the convenience entry point: it delegates to
+/// [`register_defaults_with`] with [`NmpDefaults::default()`], which in turn
+/// calls [`register_substrate`] (the always-on correctness floor) and then
+/// layers the social-feature defaults on top. A consumer that wants the
+/// routable substrate *without* the social bundle calls
+/// [`register_substrate`] directly; one that wants to toggle individual
+/// social features or override the coverage policy / bootstrap relay calls
+/// [`register_defaults_with`].
 pub fn register_defaults(app: &mut impl AppHost) {
-    // ── Action modules ───────────────────────────────────────────────────
-    //
-    // NIP-02: kind:3 follow/unfollow + kind:7 reactions. Substrate-level
-    // social verbs every Nostr app shares. Originally lived as
-    // `ChirpFollowModule` / `ChirpUnfollowModule` / `ChirpReactModule`
-    // inside `nmp-app-chirp`; lifted into `nmp-nip02` so the template can
-    // wire them through one call.
-    nmp_nip02::register_actions(app);
+    register_defaults_with(app, NmpDefaults::default());
+}
 
-    // NIP-17: kind:14 chat-message DM send + kind:10050 DM-relay-list
-    // publish. Critically, this call also installs the substrate
-    // `DmInboxRelayLookup` (so the gift-wrap publish path's
-    // `recipient_dm_relays` reader sees the cache) AND registers the
-    // `Kind10050Parser` as an `IngestParser` for kind:10050 (V-40).
-    nmp_nip17::register_actions(app);
+/// Wire the canonical NMP composition into `app`, parameterised by `defaults`.
+///
+/// Always calls [`register_substrate`] (the correctness floor is NOT
+/// toggleable — it is correctness, not preference), then layers the
+/// social-feature defaults selected by the `social` / `dms` / `zaps` /
+/// `longform` toggles on top, and finally installs the operator-policy
+/// `nostrconnect` bootstrap relay.
+///
+/// `register_defaults(app)` ≡ `register_defaults_with(app,
+/// NmpDefaults::default())` — the default-constructed config reproduces
+/// today's behaviour exactly (every social feature on, the previously
+/// hardcoded `CoverageGate::default()` and `"wss://relay.damus.io"`).
+///
+/// See [`NmpDefaults`] for the full field set and each field's default.
+pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
+    let NmpDefaults {
+        coverage_gate,
+        nostrconnect_bootstrap_relay,
+        social,
+        dms,
+        zaps,
+        longform,
+    } = defaults;
 
-    // NIP-57: kind:9734 zap-request build + LNURL fetch + bolt11 surfacing.
-    // The protocol crate owns the action module and the
-    // `FetchLnurlInvoiceCommand` protocol command end-to-end (V-41).
-    nmp_nip57::register_actions(app);
+    // ── Substrate tier (always on — correctness, not preference) ─────────
+    //
+    // Routing factory + kind:10002 parser (shared `Arc<InMemoryMailboxCache>`),
+    // mailbox-cache reader, publish-resolver factory, raw-event forward policy,
+    // and the `CoverageGate` coverage hook + NIP-77 negentropy runtime (one
+    // shared `coverage_gate` feeds both). See [`register_substrate`].
+    register_substrate(app, coverage_gate);
 
-    // NIP-65: kind:10002 relay-list publish. The `nmp-router` crate owns
-    // both routing AND the kind:10002 publish path (step 3 absorbed the
-    // former `nmp-nip65` crate into `nmp-router`).
-    nmp_router::register_actions(app);
+    // ── Social-feature defaults (toggleable) ─────────────────────────────
 
-    // ── Routing substrate (V-51 phase 5 + kind:10002 ingest wiring) ─────
-    //
-    // Install the production substrate-routing factory AND register the
-    // [`nmp_router::Kind10002Parser`] against the same shared cache the
-    // factory hands the kernel. Without the swap the kernel keeps its
-    // in-crate `EmptyOutboxRouter` (substrate-honest debt B, 2026-05-24)
-    // — every routing decision returns `Unroutable`. Without the parser
-    // registration kind:10002 events arrive but never populate the cache
-    // (D0 violation flagged 2026-05-25 — the kernel previously named
-    // kind:10002 by hand in `ingest/mod.rs:391` because the parser was
-    // never wired; that explicit arm + `kernel/ingest/relay_list.rs` are
-    // both deleted in the same PR as this wiring lands).
-    //
-    // `nmp-core` (Layer 3) cannot depend on `nmp-router` (Layer 2), so
-    // both injections go through the substrate seam: the routing factory
-    // for `(OutboxRouter, MailboxCache)`, and the dispatcher slot for
-    // the parser. The same `Arc<InMemoryMailboxCache>` is captured by
-    // BOTH paths so the writer (parser) and the readers (router +
-    // planner adapter) see one source of truth.
-    //
-    // Cache lifetime: created once at composition time and shared
-    // process-lifetime (mirrors `nmp_nip17::register_actions`'s
-    // single-`DmRelayCache` pattern). A `Reset` rebuilds the router but
-    // re-uses this cache — the parser's `Arc` clone in the dispatcher
-    // would otherwise dangle (writes to a cache no longer held by the
-    // rebuilt kernel). The factory closure captures `Arc::clone(&cache)`
-    // so the rebuilt kernel sees the live cache, not a fresh empty one.
-    //
-    // The supplied `RoutingTraceObserver` is threaded through
-    // `GenericOutboxRouter::with_trace_observer` so the kernel's
-    // trace-projection ring buffer (V-51 phase 1) keeps populating across
-    // the swap — the FFI snapshot surface (phase 2) and `chirp-repl
-    // routing-trace` (phase 4) keep working unchanged. The closure is
-    // re-invoked by the `Reset` dispatch arm against the rebuilt kernel's
-    // fresh trace projection.
-    let mailbox_cache: Arc<InMemoryMailboxCache> = Arc::new(InMemoryMailboxCache::new());
-    // H4 — install the SAME mailbox-cache instance as the read side for the
-    // `nmp_app_encode_profile` NIP-19 encoder. This is a THIRD clone of the
-    // one `InMemoryMailboxCache`: the other two go to the routing factory
-    // (below) and the `Kind10002Parser` (further below). Sharing one instance
-    // is what lets the encoder prefer `nprofile` from the kind:10002 relay
-    // hints the parser writes on ingest.
-    app.set_mailbox_cache_reader(
-        Arc::clone(&mailbox_cache) as Arc<dyn nmp_core::substrate::MailboxCache>,
-    );
-    let cache_for_factory = Arc::clone(&mailbox_cache);
-    app.set_routing_substrate(
-        move |observer: Arc<dyn RoutingTraceObserver>|
-              -> (Arc<dyn OutboxRouter>, Arc<dyn MailboxCache>) {
-            let router: Arc<dyn OutboxRouter> =
-                Arc::new(GenericOutboxRouter::new().with_trace_observer(observer));
-            let cache: Arc<dyn MailboxCache> = Arc::clone(&cache_for_factory) as _;
-            (router, cache)
-        },
-    );
-    // Register the substrate kind:10002 ingest parser against the same
-    // cache `set_routing_substrate` hands the kernel. The
-    // `EventIngestDispatcher` fans every accepted (D4 `Inserted | Replaced`)
-    // kind:10002 to this parser; the parser upserts the resolved
-    // `ParsedRelayList` (or removes the entry on an empty list) into
-    // the shared cache. The kernel observes the cache transition in its
-    // wildcard ingest arm and fires the recompile trigger — no NIP
-    // knowledge in `nmp-core/src/kernel/`.
-    let parser: Arc<dyn nmp_core::substrate::IngestParser> =
-        Arc::new(nmp_router::Kind10002Parser::new(mailbox_cache));
-    app.register_ingest_parser(10_002, parser);
+    if social {
+        // NIP-02: kind:3 follow/unfollow + kind:7 reactions. Originally lived
+        // as `ChirpFollowModule` / `ChirpUnfollowModule` / `ChirpReactModule`
+        // inside `nmp-app-chirp`; lifted into `nmp-nip02`.
+        nmp_nip02::register_actions(app);
+        // WOT bootstrap reconciler (PushInterest/WithdrawInterest book-keeping
+        // for the active account; kernel ships zero WOT nouns — D0).
+        nmp_wot::register_runtime(app);
+        // NIP-51 mute-list observer: installs `MuteListProjection` as a
+        // `KernelEventObserver` for kind:10000 and registers the
+        // `"nmp.nip51.mute_list"` diagnostic snapshot projection. The
+        // `Arc<MuteListProjection>` return is intentionally dropped here:
+        // this is the fire-and-forget conveniences-bundle path. Apps that
+        // need the `Arc` to wire `timeline.set_suppression(mute)` (the
+        // timeline projection is app-owned, so `AppHost` has no
+        // `set_suppression` seam) should call [`register_mute_runtime`]
+        // directly instead of relying on this path.
+        let _ = runtimes::register_mute_runtime(app);
+    }
 
-    // ── Publish-resolver substrate (spec §271, 2026-05-25) ─────────────
-    //
-    // Install the production substrate-publish-resolver factory. Without
-    // this swap the kernel keeps its in-crate `NoopOutboxResolver`
-    // default — every `PublishTarget::Auto` publish then resolves to an
-    // empty relay set and the publish engine surfaces `NoTargets`
-    // (fail-closed). `nmp-core` (Layer 3) cannot depend on `nmp-router`
-    // (Layer 2), so the production resolver is injected through this
-    // factory slot.
-    //
-    // The factory receives the kernel-owned event store + the three
-    // typed slots (`IndexerRelaysSlot`, `LocalWriteRelaysSlot`,
-    // `ActiveAccountSlot`) — the actor reducer is the sole writer of
-    // those slots (D4), so the produced `Nip65OutboxResolver` reads
-    // through the same shared state the actor pushes into (e.g. local
-    // relay-row edits become visible to the resolver immediately, before
-    // the just-sent kind:10002 round-trips from a relay). The closure
-    // is re-invoked by the `Reset` dispatch arm against the rebuilt
-    // kernel's fresh handles.
-    app.set_publish_resolver_factory(
-        |store: Arc<dyn EventStore>,
-         indexer_relays: IndexerRelaysSlot,
-         local_write_relays: LocalWriteRelaysSlot,
-         active_account: ActiveAccountSlot|
-         -> Arc<dyn OutboxResolver> {
-            Arc::new(Nip65OutboxResolver::with_local_relays(
-                store,
-                indexer_relays,
-                local_write_relays,
-                active_account,
-            ))
-        },
-    );
+    if dms {
+        // NIP-17: kind:14 chat-message DM send + kind:10050 DM-relay-list
+        // publish. Critically, this call also installs the substrate
+        // `DmInboxRelayLookup` AND registers the `Kind10050Parser` as an
+        // `IngestParser` for kind:10050 (V-40).
+        nmp_nip17::register_actions(app);
+        // NIP-17 DM-inbox runtime (kind:1059 gift-wrap inbox projection +
+        // relay-list reconciler).
+        runtimes::register_dm_runtime(app);
+    }
 
-    // ── Raw-event forwarding policy ─────────────────────────────────────
-    //
-    // The kernel's raw-event forwarder is deliberately generic: it registers
-    // a policy as a `RawEventObserver`, wraps accepted events in
-    // `["EVENT", ...]`, and sends through the native pool. The
-    // replaceable-kind/indexer policy belongs in `nmp-router` beside the
-    // rest of the indexer-lane routing rules, so default composition injects
-    // it here. The factory is re-invoked on `Reset` with the rebuilt
-    // kernel's fresh store/provenance + indexer-relay handles.
-    app.set_raw_event_forward_policy_factory(|context| {
-        vec![Arc::new(IndexerRepublishPolicy::enabled(context)) as Arc<dyn RawEventForwardPolicy>]
-    });
+    if zaps {
+        // NIP-57: kind:9734 zap-request build + LNURL fetch + bolt11
+        // surfacing. The protocol crate owns the action module and the
+        // `FetchLnurlInvoiceCommand` protocol command end-to-end (V-41).
+        nmp_nip57::register_actions(app);
+        // NIP-57 self-zap-receipts subscription runtime (kind:9735 `#p`).
+        runtimes::register_zap_receipts_runtime(app);
+    }
 
-    // ── D2 coverage + NIP-77 sync hooks ─────────────────────────────────
-    //
-    // Install a `CoverageGate`-based hook on the kernel so the M2 compiler
-    // pipeline's `apply_selection` output is trimmed to the gate's
-    // `max_relay_connections` before `plan_diff`. `per_relay` is a
-    // `BTreeMap` so the "keep first N" trim is deterministic across runs
-    // — important for reproducible test runs and human-readable
-    // diagnostics.
-    //
-    let gate = CoverageGate::default();
-    let negentropy_runtime = Arc::new(nmp_nip77::NegentropySyncRuntime::new(gate.clone()));
-    let req_interceptor: Arc<dyn nmp_core::substrate::ReqFrameInterceptor> =
-        negentropy_runtime.clone();
-    let relay_interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor> = negentropy_runtime;
-    app.set_req_frame_interceptor(req_interceptor);
-    app.add_relay_text_interceptor(relay_interceptor);
-    app.set_coverage_hook(Arc::new(move |plan| {
-        let cap = gate.max_relay_connections;
-        if plan.per_relay.len() > cap {
-            let keep: Vec<_> = plan.per_relay.keys().take(cap).cloned().collect();
-            plan.per_relay.retain(|k, _| keep.contains(k));
-        }
-    }));
-
-    // ── Canonical runtime controllers ───────────────────────────────────
-    //
-    // WOT bootstrap plus two snapshot-projection-driven reconcilers that own
-    // PushInterest / WithdrawInterest book-keeping for the active account.
-    // Kernel ships zero WOT/DM/zap nouns (D0); these controllers are the
-    // canonical host-side wiring every NMP-based app needs.
-    nmp_wot::register_runtime(app);
-    runtimes::register_dm_runtime(app);
-    runtimes::register_zap_receipts_runtime(app);
-
-    // ── NIP-23 long-form TYPED snapshot projection (A5 root-cause fix) ────
-    //
-    // The default kind:30023 projection, emitted as a strongly-typed
-    // FlatBuffer in the `typed_projections` sidecar (NOT the generic JSON
-    // `projections` map — that map is being retired). Apps read resolved
-    // `ArticleProjection` entries off the typed `nmp.nip23.articles` payload
-    // instead of tapping raw events and re-parsing/re-superseding NIP-23 tags
-    // by hand (the recurring A5 pattern found in Chirp / Podcastr / tenex-off).
-    register_longform_projection(app);
+    if longform {
+        // ── NIP-23 long-form TYPED snapshot projection (A5 root-cause fix) ──
+        //
+        // The default kind:30023 projection, emitted as a strongly-typed
+        // FlatBuffer in the `typed_projections` sidecar (NOT the generic JSON
+        // `projections` map — that map is being retired). Apps read resolved
+        // `ArticleProjection` entries off the typed `nmp.nip23.articles`
+        // payload instead of tapping raw events and re-parsing/re-superseding
+        // NIP-23 tags by hand (the recurring A5 pattern found in Chirp /
+        // Podcastr / tenex-off).
+        register_longform_projection(app);
+    }
 
     // ── Bootstrap relay for client-initiated NIP-46 (V-65) ──────────────
     //
     // Fallback relay for `nostrconnect://` handshakes when the user has no
     // configured write relay. This is the *composition-root* home for the
     // default — operator policy legitimately lives here, not in nmp-core (D0).
+    // It is always wired (its value, not its presence, is the config knob).
     //
     // A per-app crate may override this after calling `register_defaults` by
     // invoking `AppHost::set_nostrconnect_bootstrap_relay` a second time
     // (last-writer-wins, like every other pre-start slot).
-    app.set_nostrconnect_bootstrap_relay("wss://relay.damus.io".to_string());
+    app.set_nostrconnect_bootstrap_relay(nostrconnect_bootstrap_relay);
 }
 
 /// Wire the default NIP-23 long-form (kind:30023) **typed** snapshot projection

@@ -15,6 +15,11 @@
 // `ActionRegistry` / `default_registry` for the `nmp_app_dispatch_action`
 // entry point.
 pub(crate) mod action_registry;
+// ADR-0049 Part 2 — the composition ledger (explain-the-composition surface):
+// an append-only record of host-init registration decisions, read back as JSON
+// through `nmp_app_composition_report`. Written only at registration time, not
+// on any hot path (D8).
+pub mod composition_ledger;
 // Actor-owned per-correlation_id stage tracker. `pub(crate)` so the
 // FFI ack symbol (`crate::ffi::action::nmp_app_ack_action_stage`) and the
 // dispatch handler (`actor::dispatch`) can reach the type aliases; the
@@ -40,14 +45,14 @@ mod clock;
 #[cfg(test)]
 mod clock_injection_tests;
 #[cfg(test)]
+mod closed_classifier_tests;
+#[cfg(test)]
 mod gc_step_tests;
 mod ram_eviction;
 #[cfg(test)]
 mod ram_eviction_tests;
 #[cfg(test)]
 mod ram_eviction_view_pin_tests;
-#[cfg(test)]
-mod closed_classifier_tests;
 // `pub(crate)` so the typed FFI error-category constants (`ERR_*`) are
 // reachable from the `actor` module's command handlers, not just kernel-
 // internal callsites.
@@ -100,9 +105,9 @@ mod ingest;
 #[cfg(test)]
 mod ingest_pre_verified_dispatcher_tests;
 #[cfg(test)]
-mod ingest_timeline_dispatcher_tests;
-#[cfg(test)]
 mod ingest_tests;
+#[cfg(test)]
+mod ingest_timeline_dispatcher_tests;
 mod lifecycle;
 mod lifecycle_drain;
 mod local_publish_intent;
@@ -193,11 +198,11 @@ mod replaceable_ttl_gate_tests;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
-#[cfg(test)]
-mod watermark_author_tests;
 mod requests;
 #[cfg(test)]
 mod retention_tests;
+#[cfg(test)]
+mod watermark_author_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
 // seam. `pub(crate)` so the crate-private `ffi` module can reach the registry
 // + slot helpers for the C-ABI registration entry point.
@@ -213,6 +218,7 @@ mod snapshot_registry_tests;
 #[cfg(test)]
 mod state_projection_tests;
 mod status;
+mod store_init;
 #[cfg(test)]
 mod t140_m1_retirement_tests;
 #[cfg(test)]
@@ -229,6 +235,9 @@ mod test_router;
 mod test_support;
 #[cfg(test)]
 mod tests;
+mod tier3_encode;
+#[cfg(test)]
+mod tier3_envelope_tests;
 #[cfg(test)]
 mod timeline_order_tests;
 #[cfg(test)]
@@ -240,12 +249,9 @@ mod typed_projections;
 #[cfg(test)]
 mod typed_projections_tests;
 #[cfg(test)]
-mod typed_projections_wave_c_tests;
-#[cfg(test)]
 mod typed_projections_wave_c_diagnostics_tests;
-mod tier3_encode;
 #[cfg(test)]
-mod tier3_envelope_tests;
+mod typed_projections_wave_c_tests;
 mod types;
 mod update;
 pub use update::KERNEL_BUILTIN_PROJECTION_KEYS;
@@ -284,12 +290,14 @@ use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-// `SystemTime` is consumed by native-gated `now_hms` in `kernel/nostr.rs`.
-// `UNIX_EPOCH` was only used by the now-deleted `format_timestamp`; each
-// remaining call site (`auth_handlers.rs`) imports it directly.
-#[cfg(feature = "native")]
-use std::time::SystemTime;
+// W1 — use the wasm-safe time shim (`crate::time`) rather than `std::time`
+// directly. On wasm32 `Instant` → `performance.now()`, `SystemTime` →
+// `Date.now()`; on native the shim re-exports `std::time` verbatim so native
+// behaviour is unchanged. Submodules in `kernel/` access these via `super::`.
+use crate::time::{Duration, Instant, UNIX_EPOCH};
+// `SystemTime` is consumed by native-gated `now_hms` in `kernel/nostr.rs`
+// and by `Clock::now()` (always-compiled). Use the shim on both targets.
+use crate::time::SystemTime;
 // V-01 Phase 1c: the kernel no longer names `tungstenite`. The native
 // `relay_worker` converts `tungstenite::Message` → [`RelayFrame`] before
 // handing it to [`Kernel::handle_message`]; a non-native transport (wasm32)
@@ -306,62 +314,7 @@ pub use relay_frame::RelayFrame;
 /// typed DTOs let out-of-tree Rust consumers read typed projections instead of
 /// string-keying the generic JSON `payload`. See the `typed_projections` module
 /// doc for the return-type / scope rationale.
-pub mod public_typed_projections {
-    pub use super::typed_projections::{
-        // --- already-public decode/model surface (wave-C diagnostics + publish) ---
-        decode_action_results, decode_action_stages, decode_publish_queue,
-        decode_relay_diagnostics, ActionResultRow, ActionResultsModel, ActionStageEntryRow,
-        ActionStagesModel, InterestRow, PublishQueueEntryRow, PublishQueueModel, RelayAckOutcomeRow,
-        RelayDiagnosticsModel, RelayRow, WireSubRow, ACTION_RESULTS_FILE_IDENTIFIER,
-        ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION, ACTION_STAGES_FILE_IDENTIFIER,
-        ACTION_STAGES_SCHEMA_ID, ACTION_STAGES_SCHEMA_VERSION, PUBLISH_QUEUE_FILE_IDENTIFIER,
-        PUBLISH_QUEUE_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_VERSION,
-        RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID,
-        RELAY_DIAGNOSTICS_SCHEMA_VERSION,
-        // --- PR-B: newly-promoted decoders (identity + views + outbox cluster) ---
-        // accounts
-        decode_accounts, AccountSummaryRow, AccountsModel, ACCOUNTS_FILE_IDENTIFIER,
-        ACCOUNTS_SCHEMA_ID, ACCOUNTS_SCHEMA_VERSION,
-        // active_account
-        decode_active_account, ActiveAccountModel, ACTIVE_ACCOUNT_FILE_IDENTIFIER,
-        ACTIVE_ACCOUNT_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_VERSION,
-        // configured_relays
-        decode_configured_relays, ConfiguredRelayRow, ConfiguredRelaysModel,
-        CONFIGURED_RELAYS_FILE_IDENTIFIER, CONFIGURED_RELAYS_SCHEMA_ID,
-        CONFIGURED_RELAYS_SCHEMA_VERSION,
-        // settings_hub
-        decode_settings_hub, SettingsHubModel, SETTINGS_HUB_FILE_IDENTIFIER,
-        SETTINGS_HUB_SCHEMA_ID, SETTINGS_HUB_SCHEMA_VERSION,
-        // profile
-        decode_profile, ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID,
-        PROFILE_SCHEMA_VERSION,
-        // V-112 (ADR-0042): decode_author_view, AuthorViewModel, ProfileActionModel,
-        // ProfileDispatchSpecModel, AUTHOR_VIEW_* deleted.
-        // V-112 (ADR-0042): decode_thread_view, ThreadViewModel, TimelineItemModel,
-        // THREAD_VIEW_* deleted.
-        // publish_outbox
-        decode_publish_outbox, PublishOutboxItemRow, PublishOutboxModel, PublishOutboxRelayRow,
-        PUBLISH_OUTBOX_FILE_IDENTIFIER, PUBLISH_OUTBOX_SCHEMA_ID, PUBLISH_OUTBOX_SCHEMA_VERSION,
-        // outbox_summary
-        decode_outbox_summary, OutboxSummaryModel, OUTBOX_SUMMARY_FILE_IDENTIFIER,
-        OUTBOX_SUMMARY_SCHEMA_ID, OUTBOX_SUMMARY_SCHEMA_VERSION,
-        // resolved_profiles (desktop mention/display-name resolution; ProfileCardModel
-        // re-used from the profile cluster above)
-        decode_resolved_profiles, ResolvedProfilesModel, RESOLVED_PROFILES_FILE_IDENTIFIER,
-        RESOLVED_PROFILES_SCHEMA_ID, RESOLVED_PROFILES_SCHEMA_VERSION,
-        // claimed_profiles (V-112 follow-up: the direct observable of the
-        // `claim_profile` verb — the app-template `validate_claim_profile`
-        // example reads it; ProfileCardModel re-used from the profile cluster)
-        decode_claimed_profiles, ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER,
-        CLAIMED_PROFILES_SCHEMA_ID, CLAIMED_PROFILES_SCHEMA_VERSION,
-        // claimed_events (nmp-gallery typed-sidecar migration — PR-B final zeroing)
-        decode_claimed_events, ClaimedEventRow, ClaimedEventsModel,
-        CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
-        // signed_events (nmp-ffi sign_event_for_return typed migration — PR-B final zeroing)
-        decode_signed_events, SignedEventRow, SignedEventsModel, SIGNED_EVENTS_FILE_IDENTIFIER,
-        SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
-    };
-}
+pub mod public_typed_projections;
 
 use nostr::{parse_profile, parse_relay_list, ratio, short_hex, truncate, NostrEvent};
 // V-01 Phase 1c follow-up: `now_hms` is `#[cfg(feature = "native")]` in
@@ -406,6 +359,9 @@ use clock::{Clock, SystemClock};
 // `nmp_app_dispatch_action` entry point).
 #[cfg(feature = "native")]
 pub use action_registry::{default_registry, ActionRegistry};
+pub use composition_ledger::{
+    CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
+};
 pub(crate) use identity_state::{AccountSummary, PublishQueueEntry, RelayAckOutcome};
 // Re-exported `pub` (widened from `pub(crate)`) so `crate::slots` can
 // re-export them into the public crate surface — `nmp-router::Nip65OutboxResolver`
@@ -1254,159 +1210,6 @@ pub struct Kernel {
     _not_send: PhantomData<*const ()>,
 }
 
-struct EventStoreBundle {
-    store: Arc<dyn EventStore>,
-    relay_score_store: Option<Box<dyn crate::substrate::RelayAuthorScoreStore>>,
-}
-
-/// Construct the kernel's `EventStore`.
-///
-/// Default: `MemEventStore` — used by all tests and the pre-M15 web target.
-///
-/// When compiled with `--features lmdb-backend`, an `LmdbEventStore` is
-/// opened when a persistent path is available. The path is resolved in
-/// priority order:
-///
-/// 1. `storage_path` — the FFI-supplied path threaded through from
-///    `nmp_app_set_storage_path` (production iOS / Android). When the host
-///    sets it before `nmp_app_start`, this is the path used.
-/// 2. `NMP_LMDB_PATH` environment variable — the pre-existing opt-in
-///    mechanism, kept for tests and tools that drive the kernel without
-///    the FFI surface.
-///
-/// When neither is present (the common case for the in-process test
-/// suites) the in-memory store is used. When a path is present but the
-/// store cannot be opened, the function still falls back to the in-memory
-/// store (so the app runs) but returns a non-`None` failure reason — the
-/// caller stores this on `Kernel::store_open_failure` and surfaces it
-/// through the normal snapshot channel (D6: no stderr writes).
-///
-/// Return value: `(bundle, open_failure)`.
-/// - `open_failure` is `Some(reason)` ONLY when a path was resolved but
-///   the open failed — it is `None` for the legitimate no-path/no-feature
-///   in-memory default so the host can distinguish "degraded" from "normal".
-fn build_event_store(storage_path: Option<&str>) -> (EventStoreBundle, Option<String>) {
-    #[cfg(feature = "lmdb-backend")]
-    {
-        // Priority 1: FFI-supplied path. Priority 2: env-var fallback.
-        let resolved: Option<String> = storage_path
-            .map(str::to_owned)
-            .or_else(|| std::env::var("NMP_LMDB_PATH").ok());
-        if let Some(path) = resolved {
-            match crate::store::LmdbEventStore::open(std::path::Path::new(&path)) {
-                Ok(s) => {
-                    let relay_score_store =
-                        crate::substrate::LmdbRelayAuthorScoreStore::from_event_store(s.clone());
-                    return (
-                        EventStoreBundle {
-                            store: Arc::new(s),
-                            relay_score_store: Some(Box::new(relay_score_store)),
-                        },
-                        None,
-                    );
-                }
-                Err(e) => {
-                    // V-67: path was supplied but open failed — fall back to
-                    // in-memory and surface the reason as a diagnostic. D6: no
-                    // stderr write; the caller stores this on
-                    // `Kernel::store_open_failure` and emits it through the
-                    // snapshot channel.
-                    return (
-                        EventStoreBundle {
-                            store: Arc::new(MemEventStore::new()),
-                            relay_score_store: None,
-                        },
-                        Some(e.to_string()),
-                    );
-                }
-            }
-        }
-    }
-    // `storage_path` is unused when the `lmdb-backend` feature is off.
-    #[cfg(not(feature = "lmdb-backend"))]
-    let _ = storage_path;
-    // No path or feature — in-memory is the legitimate default; no failure.
-    (
-        EventStoreBundle {
-            store: Arc::new(MemEventStore::new()),
-            relay_score_store: None,
-        },
-        None,
-    )
-}
-
-/// Choose the [`PublishStore`](crate::publish::PublishStore) backing the
-/// publish engine.
-///
-/// Publish intents composed offline only survive an app kill if the store is
-/// durable - `PublishEngine::resume_from_store` replays exactly what
-/// `load_pending` returns at startup. There are three backends:
-///
-/// 1. [`FsPublishStore`](crate::publish::FsPublishStore) - JSON files under
-///    `{storage_path}/publish_intents/`. Durable **without** any feature flag,
-///    so it is the chosen backend whenever the host supplied a storage path.
-/// 2. [`DomainPublishStore`](crate::publish::DomainPublishStore) - LMDB-backed
-///    via the shared `EventStore`. Durable *only* with `--features
-///    lmdb-backend`; without it the underlying store is `MemEventStore` and
-///    intents are lost on restart. Kept as the fallback when no storage path
-///    is set but the event store still opened cleanly.
-/// 3. [`InMemoryPublishStore`](crate::publish::InMemoryPublishStore) - last
-///    resort (and the steady state for CI / in-process tests, which pass no
-///    storage path).
-///
-/// Resolution mirrors [`build_event_store`]: the FFI-supplied `storage_path`
-/// wins, then the `NMP_LMDB_PATH` env-var fallback. When a path resolves, the
-/// `FsPublishStore` is rooted at the *same* directory as the LMDB event store
-/// so one `storage_path` covers all durable kernel state.
-fn resolve_publish_store(
-    storage_path: Option<&str>,
-    event_store: &Arc<dyn EventStore>,
-) -> Arc<dyn crate::publish::PublishStore> {
-    let resolved = resolve_storage_path(storage_path);
-    if let Some(path) = resolved {
-        // Durable, feature-flag-independent: offline intents survive restart.
-        return Arc::new(crate::publish::FsPublishStore::new(path));
-    }
-    // No storage path: fall back to the LMDB-domain store (durable only under
-    // `lmdb-backend`), then the in-memory store. This keeps CI/test behaviour
-    // (no storage path -> no on-disk artefacts) unchanged.
-    crate::publish::DomainPublishStore::open(Arc::clone(event_store)).map_or_else(
-        |_| {
-            Arc::new(crate::publish::InMemoryPublishStore::new())
-                as Arc<dyn crate::publish::PublishStore>
-        },
-        |store| Arc::new(store) as Arc<dyn crate::publish::PublishStore>,
-    )
-}
-
-fn resolve_storage_path(storage_path: Option<&str>) -> Option<String> {
-    storage_path
-        .map(str::to_owned)
-        .or_else(|| std::env::var("NMP_LMDB_PATH").ok())
-}
-
-fn load_profile_intents(
-    publish_store: &Arc<dyn crate::publish::PublishStore>,
-) -> HashMap<String, Profile> {
-    let mut intents = HashMap::new();
-    let Ok(records) = publish_store.load_pending() else {
-        return intents;
-    };
-    for record in records {
-        let Some(profile) = nostr::parse_profile_intent(&record.event) else {
-            continue;
-        };
-        let pubkey = record.event.unsigned.pubkey;
-        let should_replace = intents
-            .get(&pubkey)
-            .is_none_or(|existing: &Profile| existing.created_at <= profile.created_at);
-        if should_replace {
-            intents.insert(pubkey, profile);
-        }
-    }
-    intents
-}
-
 impl Kernel {
     pub(crate) fn new(visible_limit: usize) -> Self {
         Self::with_storage_path(visible_limit, None)
@@ -1773,6 +1576,13 @@ impl Kernel {
         Arc::clone(&self.active_account_handle)
     }
 
+    /// Read the kernel's current active-account pubkey (lowercase canonical
+    /// hex), or `None` if no active account is set.
+    #[must_use]
+    pub(crate) fn active_account_pubkey(&self) -> Option<&str> {
+        self.active_account.as_deref()
+    }
+
     /// V-51 phase 1 — borrow the kernel's routing-trace projection.
     ///
     /// Returns an `Arc<RoutingTraceProjection>` so a host that swaps in a
@@ -1862,11 +1672,11 @@ impl Kernel {
         storage_path: Option<&str>,
         active_account_handle: Option<ActiveAccountSlot>,
     ) -> Self {
-        let (store_bundle, store_open_failure) = build_event_store(storage_path);
+        let (store_bundle, store_open_failure) = store_init::build_event_store(storage_path);
         let store = store_bundle.store;
-        let publish_store =
-            publish_store.unwrap_or_else(|| resolve_publish_store(storage_path, &store));
-        let local_profile_intents = load_profile_intents(&publish_store);
+        let publish_store = publish_store
+            .unwrap_or_else(|| store_init::resolve_publish_store(storage_path, &store));
+        let local_profile_intents = store_init::load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         // Typed-slot constructors so the slot's purpose is visible at
         // the call site and D14 does not fire on the field declaration.
@@ -2239,7 +2049,7 @@ impl Kernel {
     pub fn now_secs(&self) -> u64 {
         self.clock
             .now()
-            .duration_since(std::time::UNIX_EPOCH)
+            .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0)
     }
@@ -2252,7 +2062,7 @@ impl Kernel {
     pub(crate) fn now_ms(&self) -> u64 {
         self.clock
             .now()
-            .duration_since(std::time::UNIX_EPOCH)
+            .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0)
     }
@@ -2286,7 +2096,9 @@ impl Kernel {
         // the LMDB-tier gc_step (#1085) so the two paths stay independent and
         // merge-clean.
         let ram_report = self.evict_ram_caches();
-        if ram_report.events_evicted + ram_report.profiles_evicted + ram_report.seed_contacts_evicted
+        if ram_report.events_evicted
+            + ram_report.profiles_evicted
+            + ram_report.seed_contacts_evicted
             > 0
         {
             tracing::debug!(
@@ -2296,7 +2108,10 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        match self.store.gc_step(crate::store::GcBudget::production(), now_secs) {
+        match self
+            .store
+            .gc_step(crate::store::GcBudget::production(), now_secs)
+        {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
@@ -2805,10 +2620,8 @@ impl Kernel {
             // snapshot carries store data (D1). Anything beyond the per-tick
             // budget stays queued and continues on the actor tick (§5
             // chunked continuation).
-            let completion_key = cache_serve::completion_key_for_interest(
-                &key_for_serve,
-                &shape_for_serve,
-            );
+            let completion_key =
+                cache_serve::completion_key_for_interest(&key_for_serve, &shape_for_serve);
             self.enqueue_cache_serve(&shape_for_serve, completion_key);
             self.run_cache_serve_step();
         }
@@ -2917,6 +2730,15 @@ impl Kernel {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_active_account_for_test(&mut self, pubkey: impl Into<String>) {
         self.active_account = Some(pubkey.into());
+    }
+
+    /// Seed a sentinel in the pre-kind:3 buffer (test-only).
+    #[cfg(test)]
+    pub(crate) fn seed_pre_kind3_buffer_for_test(&mut self, event_id: impl Into<String>) {
+        let id = event_id.into();
+        let e = NostrEvent { id: id.clone(), pubkey: "d".repeat(64), created_at: 0,
+            kind: 1, tags: vec![], content: String::new(), sig: "s".repeat(128) };
+        self.pre_kind3_buffer.insert(id, (e, String::new()));
     }
 
     /// Read-only access to the injected [`OutboxRouter`].

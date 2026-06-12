@@ -3,7 +3,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::planner::LogicalInterest;
-use nmp_core::slots::ActiveLocalKeysSlot;
+use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{AppHost, KernelEvent};
 use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId};
 use serde::Serialize;
@@ -16,7 +16,10 @@ use crate::score::WotGraph;
 /// Register the WOT graph observer and bootstrap controller.
 pub fn register_runtime(app: &impl AppHost) {
     let runtime = Arc::new(WotBootstrapRuntime::new(
-        app.active_local_keys(),
+        // Pubkey-only identity (Finding C): the WOT bootstrap needs the active
+        // account's pubkey, never its secret key — read the slot the kernel
+        // populates for every backend so bunker accounts bootstrap too.
+        app.active_pubkey(),
         app.actor_sender(),
     ));
     let observer_id =
@@ -46,7 +49,10 @@ pub fn register_runtime(app: &impl AppHost) {
 /// Runtime controller that watches kind:3/kind:10000 arrivals and emits the
 /// active account's large replaceable-kind bootstrap interest.
 pub struct WotBootstrapRuntime {
-    local_keys: ActiveLocalKeysSlot,
+    /// Pubkey-only identity slot (Finding C): the active account's hex pubkey,
+    /// populated by the kernel for every backend including bunker. The runtime
+    /// only ever needs identity, never secret key material.
+    active_pubkey: ActiveAccountSlot,
     tx: Sender<ActorCommand>,
     state: Mutex<WotRuntimeState>,
 }
@@ -78,11 +84,13 @@ pub struct WotBootstrapSnapshot {
 }
 
 impl WotBootstrapRuntime {
-    /// Construct a runtime around the active-key slot and actor command sender.
+    /// Construct a runtime around the active-pubkey slot and actor command
+    /// sender. The slot carries the active account's hex pubkey only — never
+    /// secret key material — so the runtime activates for bunker accounts.
     #[must_use]
-    pub fn new(local_keys: ActiveLocalKeysSlot, tx: Sender<ActorCommand>) -> Self {
+    pub fn new(active_pubkey: ActiveAccountSlot, tx: Sender<ActorCommand>) -> Self {
         Self {
-            local_keys,
+            active_pubkey,
             tx,
             state: Mutex::new(WotRuntimeState::default()),
         }
@@ -138,10 +146,12 @@ impl WotBootstrapRuntime {
     }
 
     fn active_pubkey(&self) -> Option<String> {
-        self.local_keys
+        // Identity straight from the pubkey slot — already a hex string, so no
+        // keypair derivation. `None` on a poisoned lock or no signed-in account.
+        self.active_pubkey
             .lock()
             .ok()
-            .and_then(|slot| slot.as_ref().map(|keys| keys.public_key().to_hex()))
+            .and_then(|slot| slot.clone())
     }
 
     fn reconcile_active_follows(&self, author: &str, follows: BTreeSet<String>) {

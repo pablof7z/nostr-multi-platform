@@ -1,3 +1,8 @@
+// This test uses native-only helpers (inject_relay_*, snapshot_bytes_for_test)
+// that only exist under #[cfg(not(target_arch = "wasm32"))].  Skip the entire
+// file when compiled for wasm32 so `wasm-pack test` does not abort the build.
+#![cfg(not(target_arch = "wasm32"))]
+
 // PR-1 acceptance: snapshot is kernel-authored.
 //
 // Proves that the snapshot emitted after `Start` carries real kernel data

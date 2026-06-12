@@ -208,14 +208,20 @@ pub struct RelayPlan {
     pub relays: Vec<RelayUrl>,
 }
 
-/// Retry policy. Default: AUTH-REQUIRED → reauth + 1 retry; transient →
-/// up to 3 total attempts (initial + 2 retries) with exponential backoff
-/// (1s before attempt 2, 4s before attempt 3). The 16s slot in the original
-/// task spec is reachable by setting `transient_max_retries = 4`.
+/// Retry policy. Default: transient → up to 3 total attempts (initial + 2
+/// retries) with exponential backoff (1s before attempt 2, 4s before attempt
+/// 3). The 16s slot in the original task spec is reachable by setting
+/// `transient_max_retries = 4`.
+///
+/// `auth-required` is deliberately NOT a retry class: an un-/pending-authed
+/// relay is treated as *unavailable for publish* and parked via the engine's
+/// availability gate (see [`RetryVerdict::ParkAwaitingAuth`]) until the socket
+/// reaches NIP-42 `Authenticated`. It therefore has no per-policy budget — a
+/// budget would race the seconds-scale challenge→sign→AUTH→OK round-trip and
+/// settle a false terminal failure.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RetryPolicy {
     pub transient_max_retries: u32,
-    pub auth_required_max_retries: u32,
     pub backoff_base_ms: u64,
     pub backoff_factor: u32,
     /// How long to wait for a relay `OK` before treating the relay as
@@ -233,7 +239,6 @@ impl Default for RetryPolicy {
     fn default() -> Self {
         Self {
             transient_max_retries: 3,
-            auth_required_max_retries: 1,
             backoff_base_ms: 1_000,
             backoff_factor: 4,
             inflight_deadline_ms: Self::default_inflight_deadline_ms(),
@@ -263,7 +268,15 @@ impl RetryPolicy {
 pub enum RetryVerdict {
     Settled(PerRelayState),
     ScheduleRetry { delay_ms: u64, next_attempt: u32 },
-    Reauth { delay_ms: u64, next_attempt: u32 },
+    /// `auth-required` — the relay refused the EVENT because the socket is not
+    /// yet NIP-42 authenticated. The publish must PARK (the engine demotes the
+    /// relay to durable `Pending` via the availability gate and re-dispatches
+    /// only when the socket reaches `Authenticated`), NOT spend a retry budget.
+    /// The challenge→sign→AUTH→OK round-trip is seconds-scale (and slower for
+    /// bunker-signed AUTH), far longer than any fast retry tick — a budgeted
+    /// retry guarantees a false terminal failure. The park is event-driven (D8:
+    /// no sleep/poll); `reason` carries the relay's message for diagnostics.
+    ParkAwaitingAuth { reason: String },
 }
 
 /// Pure transition function. Takes the current state + an ack + policy + a
@@ -306,19 +319,13 @@ pub fn apply_ack(
             },
             last_at_ms: now_ms,
         }),
-        AckClass::AuthRequired => {
-            if attempt > policy.auth_required_max_retries {
-                RetryVerdict::Settled(PerRelayState::FailedAfterRetries {
-                    reason: format!("auth-required after {attempt} reauth attempts: {message}"),
-                    last_at_ms: now_ms,
-                })
+        AckClass::AuthRequired => RetryVerdict::ParkAwaitingAuth {
+            reason: if message.is_empty() {
+                "auth-required".to_string()
             } else {
-                RetryVerdict::Reauth {
-                    delay_ms: 0,
-                    next_attempt: attempt + 1,
-                }
-            }
-        }
+                message.to_string()
+            },
+        },
         AckClass::Transient => {
             if attempt >= policy.transient_max_retries {
                 let reason = if ack.code == TIMEOUT_CODE {

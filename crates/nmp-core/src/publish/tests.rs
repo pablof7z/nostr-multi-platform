@@ -131,29 +131,41 @@ fn state_machine_transient_retries_with_exponential_backoff() {
 }
 
 #[test]
-fn state_machine_auth_required_triggers_reauth_then_gives_up() {
+fn state_machine_auth_required_parks_without_consuming_retry_budget() {
+    // Finding B: an `auth-required` OK reason must NOT consume a fast retry
+    // budget (the challenge→sign→AUTH→OK round-trip — seconds, and slower for
+    // bunker-signed AUTH — never completes inside one ≤250ms retry tick, so a
+    // budget-consuming retry guarantees a false terminal failure). The pure
+    // state machine signals a PARK: the engine demotes the relay to durable
+    // Pending-awaiting-auth and re-dispatches only when the relay socket
+    // reaches NIP-42 `Authenticated`. The attempt counter is preserved across
+    // the park; no retry slot is spent.
     let policy = RetryPolicy::default();
+    let ack = RelayAck::failed("wss://r1", "auth-required", "AUTH-REQUIRED: please AUTH");
+
+    // Attempt 1 parks.
     let state = PerRelayState::InFlight {
         sent_at_ms: 1_000,
         attempt: 1,
     };
-    let ack = RelayAck::failed("wss://r1", "auth-required", "AUTH-REQUIRED: please AUTH");
-    let verdict = apply_ack(&state, &ack, policy, 1_010);
-    match verdict {
-        RetryVerdict::Reauth { next_attempt, .. } => assert_eq!(next_attempt, 2),
-        other => panic!("expected reauth, got {:?}", other),
-    }
+    assert!(
+        matches!(apply_ack(&state, &ack, policy, 1_010), RetryVerdict::ParkAwaitingAuth { .. }),
+        "first auth-required parks awaiting auth"
+    );
 
-    // Second auth-required after reauth → give up (max 1 reauth).
+    // An auth-required ack on a higher attempt count STILL parks — the park is
+    // not budgeted, so repeated auth challenges can never settle the publish
+    // terminally. (A relay that keeps demanding AUTH after we authenticate is a
+    // relay/signer fault surfaced via the diagnostic auth-state lane, not a
+    // publish FailedAfterRetries.)
     let state = PerRelayState::InFlight {
         sent_at_ms: 2_000,
-        attempt: 2,
+        attempt: 5,
     };
-    let verdict = apply_ack(&state, &ack, policy, 2_010);
-    assert!(matches!(
-        verdict,
-        RetryVerdict::Settled(PerRelayState::FailedAfterRetries { .. })
-    ));
+    assert!(
+        matches!(apply_ack(&state, &ack, policy, 2_010), RetryVerdict::ParkAwaitingAuth { .. }),
+        "auth-required always parks; it never settles FailedAfterRetries by budget exhaustion"
+    );
 }
 
 #[test]

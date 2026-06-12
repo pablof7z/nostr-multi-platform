@@ -24,10 +24,10 @@ mod action;
 mod capability;
 // Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
 // by any NMP FFI function must be freed via `nmp_free_string`.
-mod free;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
+mod free;
 // D13 sign-and-return — `nmp_app_sign_event_for_return` end-to-end through the
 // actor thread, reading the `signed_events` projection.
 #[cfg(test)]
@@ -60,6 +60,10 @@ mod external_signer;
 // (`nmp_app_recent_routing_decisions`). Pull-only diagnostic surface; not
 // folded into the snapshot tick.
 mod routing_trace;
+// ADR-0049 Part 2 — composition-report pull accessor
+// (`nmp_app_composition_report`). Pull-only diagnostic surface; not folded into
+// the snapshot tick.
+mod composition_report;
 mod snapshot;
 mod storage;
 mod timeline;
@@ -101,11 +105,11 @@ pub use action::{
 #[cfg(feature = "native")]
 pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};
 #[cfg(feature = "native")]
-pub use free::nmp_free_string;
-#[cfg(feature = "native")]
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "native")]
 pub use feed::nmp_app_load_older_feed;
+#[cfg(feature = "native")]
+pub use free::nmp_free_string;
 #[cfg(feature = "native")]
 pub use identity::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_remove_account, nmp_app_remove_relay,
@@ -115,13 +119,13 @@ pub use identity::{
 // Use nmp_app_chirp_open_home_feed (Chirp-specific wrapper) or the generic
 // nmp_app_open_contact_feed / nmp_app_close_contact_feed verbs below.
 #[cfg(feature = "native")]
-pub use nip19_ffi::nmp_app_encode_profile;
-#[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use lifecycle::{
     nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
     nmp_app_set_lifecycle_callback,
 };
+#[cfg(feature = "native")]
+pub use nip19_ffi::nmp_app_encode_profile;
 // Publish-lifecycle control-plane FFI (retry/cancel). The one-door-per-
 // capability rule deleted the bespoke event-producing siblings
 // (`nmp_app_publish_signed_event` / `nmp_app_publish_signed_event_to` /
@@ -138,6 +142,11 @@ pub use raw_event_tap::{
 };
 // V-51 phase 2 — routing-trace JSON accessor. Pull-only; the returned
 // pointer is heap-owned and must be freed via `nmp_free_string`.
+pub use composition_report::nmp_app_composition_report;
+#[cfg(feature = "external-signer")]
+pub use external_signer::{
+    nmp_app_deliver_external_signer_response, nmp_app_signin_nip55, nmp_external_signer_init,
+};
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use routing_trace::nmp_app_recent_routing_decisions;
@@ -145,24 +154,26 @@ pub use routing_trace::nmp_app_recent_routing_decisions;
 pub use signer_broker::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,
 };
-#[cfg(feature = "external-signer")]
-pub use external_signer::{
-    nmp_app_deliver_external_signer_response, nmp_app_signin_nip55, nmp_external_signer_init,
-};
-#[cfg(feature = "native")]
-pub use storage::nmp_app_set_storage_path;
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use snapshot::nmp_app_register_snapshot_projection;
+#[cfg(feature = "native")]
+pub use storage::nmp_app_set_storage_path;
 #[cfg(feature = "native")]
 pub use timeline::{
     // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
     // nmp_app_open_thread, nmp_app_close_thread deleted from timeline.rs.
     // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline
     // deleted from identity.rs. Replaced by the pair below.
-    nmp_app_claim_event, nmp_app_claim_profile, nmp_app_close_contact_feed,
-    nmp_app_close_interest, nmp_app_open_contact_feed, nmp_app_open_interest, nmp_app_open_uri,
-    nmp_app_release_event, nmp_app_release_profile,
+    nmp_app_claim_event,
+    nmp_app_claim_profile,
+    nmp_app_close_contact_feed,
+    nmp_app_close_interest,
+    nmp_app_open_contact_feed,
+    nmp_app_open_interest,
+    nmp_app_open_uri,
+    nmp_app_release_event,
+    nmp_app_release_profile,
 };
 
 // ── test-support delta ───────────────────────────────────────────────────
@@ -195,25 +206,23 @@ pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wall
 // constructors, registration helpers, default constants); everything
 // already on the public surface comes through `nmp_core::*` directly.
 use nmp_core::__ffi_internal::{
-    default_registry, dispatch_capability, new_app_relay_slot,
-    new_signer_state_slot, new_bunker_handshake_slot, new_capability_callback_slot,
-    new_event_observer_slot, new_lifecycle_observer_slot, new_raw_event_observer_slot,
-    new_snapshot_projection_slot, register_rust_observer,
-    register_rust_raw_observer, run_actor_with_observers, unregister_observer,
-    unregister_raw_observer, ActionRegistry, CapabilityCallbackSlot, KernelEventObserverSlot,
-    LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot, DEFAULT_EMIT_HZ,
-    DEFAULT_VISIBLE_LIMIT,
+    default_registry, dispatch_capability, new_app_relay_slot, new_bunker_handshake_slot,
+    new_capability_callback_slot, new_event_observer_slot, new_lifecycle_observer_slot,
+    new_raw_event_observer_slot, new_signer_state_slot, new_snapshot_projection_slot,
+    register_rust_observer, register_rust_raw_observer, run_actor_with_observers,
+    unregister_observer, unregister_raw_observer, ActionRegistry, CapabilityCallbackSlot,
+    KernelEventObserverSlot, LifecycleObserverSlot, RawEventObserverSlot, SnapshotProjectionSlot,
+    DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT,
 };
 // V-38: the `new_wallet_status_slot` re-export moved to `nmp-nip47`; the
 // host (per-app crate) constructs the slot and registers it via
 // `register_snapshot_projection("wallet", …)` itself.
 use nmp_core::slots::{
     event_by_id_from_store, new_active_account_slot, new_active_local_keys_slot,
-    new_event_store_slot, new_mls_local_nsec_slot,
-    new_nostrconnect_bootstrap_relay_slot, new_publish_resolver_slot,
-    new_raw_event_forward_policy_slot, new_routing_substrate_slot, new_routing_trace_slot,
-    new_singleton_event_observer_id_slot, new_storage_path_slot, ActiveAccountSlot,
-    ActiveLocalKeysSlot, EventStoreSlot, MlsLocalNsecSlot,
+    new_event_store_slot, new_mls_local_nsec_slot, new_nostrconnect_bootstrap_relay_slot,
+    new_publish_resolver_slot, new_raw_event_forward_policy_slot, new_routing_substrate_slot,
+    new_routing_trace_slot, new_singleton_event_observer_id_slot, new_storage_path_slot,
+    ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, MlsLocalNsecSlot,
     NostrConnectBootstrapRelaySlot, PublishResolverSlot, RawEventForwardPolicySlot,
     RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
 };
@@ -566,6 +575,21 @@ pub struct NmpApp {
     /// action ledger) is the M6 follow-up; see
     /// [`crate::kernel::action_registry`].
     action_registry: ActionRegistry,
+    /// ADR-0049 Part 2 — the composition ledger. A shared
+    /// `Arc<CompositionLedger>` recorded at every host-init registration seam
+    /// (action registry, ingest parsers, snapshot projections, the
+    /// last-writer-wins wiring slots) and the post-start late-wiring drop path.
+    /// Read back as JSON by `nmp_app_composition_report`. The SAME handle is
+    /// installed on `action_registry` (via `with_composition_ledger`) so action
+    /// dispositions land here too. Written only at registration time — never on
+    /// a hot path (D8).
+    composition_ledger: Arc<nmp_core::CompositionLedger>,
+    /// ADR-0049 Part 2 — flips to `true` the first time `nmp_app_start` sends
+    /// `ActorCommand::Start`. After that point the actor has read every wiring
+    /// slot once at kernel construction, so any setter call is dropped and
+    /// recorded as `DroppedLateWiring`. A plain `AtomicBool`
+    /// (single-flag, lock-free; same posture as `pending_mls_autopublish`).
+    started: AtomicBool,
     /// Host-extensible snapshot output registry — the output-side counterpart
     /// to `action_registry`. Shared `Arc<Mutex<…>>` with the actor thread
     /// (bound onto the kernel via `set_snapshot_projection_handle`): a host
@@ -877,6 +901,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `Kernel::set_routing`.
     let routing_substrate: RoutingSubstrateSlot = new_routing_substrate_slot();
     let actor_routing_substrate = Arc::clone(&routing_substrate);
+    // ADR-0049 Part 2 — the composition ledger, shared between the action
+    // registry and this struct's wiring-slot recorders.
+    let composition_ledger: Arc<nmp_core::CompositionLedger> =
+        Arc::new(nmp_core::CompositionLedger::new());
     // Spec §271 (2026-05-25) — substrate-publish-resolver factory slot.
     // Default `None`; the per-app crate installs a closure via
     // `set_publish_resolver_factory` before `nmp_app_start`. The actor reads
@@ -1158,7 +1186,18 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // M6 — the action registry the kernel ships with: `PublishModule`
         // only. NIP-29 / NIP-59 modules are app nouns (D0) and are
         // registered by the app host against its own registry instance.
-        action_registry: default_registry(),
+        //
+        // ADR-0049: the registry carries the shared composition ledger so every
+        // `register` / `register_default` decision is recorded. `default_registry()`
+        // installs `PublishModule` via the bare `register` path before the ledger
+        // is attached — that single seeded entry is the kernel's own and is not
+        // ledger-recorded (it is constant across every app); all host-init
+        // registrations after this point ARE recorded.
+        action_registry: default_registry()
+            .with_composition_ledger(Arc::clone(&composition_ledger)),
+        composition_ledger,
+        // ADR-0049 Part 2 — not started until `nmp_app_start` sends Start.
+        started: AtomicBool::new(false),
         // Host-extensible snapshot output: ships with the built-in `"wallet"`
         // projection (registered below when `feature = "wallet"`). A non-social
         // host registers its own projections via
@@ -1275,6 +1314,50 @@ impl NmpApp {
         self.action_registry.register::<M>();
     }
 
+    /// Register a typed action module as a **yielding default** (ADR-0049
+    /// Part 1): install it only if its namespace is unclaimed; otherwise yield
+    /// to the existing registration regardless of call order. Returns `true`
+    /// when installed, `false` when it yielded. The canonical NMP defaults
+    /// (`nmp_nip02` / `nmp_nip17` / `nmp_nip57` / `nmp_router`) register through
+    /// this path.
+    pub fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+    ) -> bool {
+        self.action_registry.register_default::<M>()
+    }
+
+    /// ADR-0049 — read-only handle to the composition ledger for
+    /// `nmp_app_composition_report`.
+    #[must_use]
+    pub fn composition_ledger(&self) -> &Arc<nmp_core::CompositionLedger> {
+        &self.composition_ledger
+    }
+
+    /// ADR-0049 Part 2 — record a last-writer-wins **wiring-slot** decision.
+    ///
+    /// `seam`/`key` name the slot (e.g. `"routing_substrate"`). When the app is
+    /// already started the value is dropped by the actor (it read the slot once
+    /// at kernel construction), so this records [`nmp_core::Disposition::DroppedLateWiring`];
+    /// otherwise the slot is being (re)written pre-start. `had_previous` is
+    /// `true` when the slot already held a value — distinguishing a first
+    /// install from an overwrite.
+    pub(crate) fn record_slot_decision(
+        &self,
+        seam: &'static str,
+        key: &'static str,
+        had_previous: bool,
+    ) {
+        let disposition = if self.started.load(Ordering::SeqCst) {
+            nmp_core::Disposition::DroppedLateWiring
+        } else if had_previous {
+            nmp_core::Disposition::ReplacedPrevious
+        } else {
+            nmp_core::Disposition::Installed
+        };
+        self.composition_ledger
+            .record(seam, key, key, disposition, None);
+    }
+
     /// Register a host-supplied snapshot projection — the output-side
     /// counterpart to [`Self::register_action`].
     ///
@@ -1299,6 +1382,23 @@ impl NmpApp {
         f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
     ) {
         if let Ok(mut registry) = self.snapshot_projections.lock() {
+            let key = key.into();
+            // ADR-0049 Part 2 — record the projection registration. A pre-start
+            // call is `Installed`; a post-start call is dropped by the actor
+            // (it reads the projection registry handle once) and recorded as
+            // `DroppedLateWiring`. Keyed by the projection key.
+            let disposition = if self.started.load(Ordering::SeqCst) {
+                nmp_core::Disposition::DroppedLateWiring
+            } else {
+                nmp_core::Disposition::Installed
+            };
+            self.composition_ledger.record(
+                "snapshot_projection",
+                key.clone(),
+                "host_snapshot_projection",
+                disposition,
+                None,
+            );
             registry.register(key, f);
         }
     }
@@ -1480,6 +1580,9 @@ impl NmpApp {
     /// installed (or `None`).
     pub fn set_coverage_hook(&self, hook: PlanCoverageHook) {
         if let Ok(mut slot) = self.coverage_hook.lock() {
+            // ADR-0049 Part 2 — record before overwriting so `had_previous`
+            // reflects the pre-write state of this last-writer-wins slot.
+            self.record_slot_decision("coverage_hook", "coverage_hook", slot.is_some());
             *slot = Some(hook);
         }
     }
@@ -1588,6 +1691,23 @@ impl NmpApp {
         parser: std::sync::Arc<dyn nmp_core::substrate::IngestParser>,
     ) {
         if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+            // ADR-0049 Part 2 — record the parser registration. This is an
+            // additive seam (multiple parsers per kind coexist), so a pre-start
+            // call is always `Installed`; a post-start call is dropped by the
+            // actor and recorded as `DroppedLateWiring`. Keyed by kind; the
+            // provider is the (type-erased) parser trait-object name.
+            let disposition = if self.started.load(Ordering::SeqCst) {
+                nmp_core::Disposition::DroppedLateWiring
+            } else {
+                nmp_core::Disposition::Installed
+            };
+            self.composition_ledger.record(
+                "ingest_parser",
+                format!("kind:{kind}"),
+                std::any::type_name::<dyn nmp_core::substrate::IngestParser>(),
+                disposition,
+                None,
+            );
             d.register_kind(kind, parser);
         }
     }
@@ -1724,7 +1844,10 @@ impl NmpApp {
     pub(crate) fn mailbox_cache_reader(
         &self,
     ) -> Option<std::sync::Arc<dyn nmp_core::substrate::MailboxCache>> {
-        self.mailbox_cache_reader.lock().ok().and_then(|slot| slot.clone())
+        self.mailbox_cache_reader
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
     }
 
     /// Override the active-account bootstrap Tailing self-kinds list.
@@ -1777,6 +1900,8 @@ impl NmpApp {
             + 'static,
     {
         if let Ok(mut slot) = self.routing_substrate.lock() {
+            // ADR-0049 Part 2 — record the last-writer-wins decision.
+            self.record_slot_decision("routing_substrate", "routing_substrate", slot.is_some());
             *slot = Some(std::sync::Arc::new(factory));
         }
     }
@@ -2352,12 +2477,21 @@ impl NmpApp {
             correlation_id: None,
         });
     }
-
 }
 
 impl nmp_core::substrate::ActionRegistrar for NmpApp {
     fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
         NmpApp::register_action::<M>(self);
+    }
+
+    /// ADR-0049 Part 1 — override the trait default so the canonical NMP
+    /// defaults (`nmp_nip02` / `nmp_nip17` / `nmp_nip57` / `nmp_router`, which
+    /// register through `&mut impl AppHost`) get true entry-or-insert yielding
+    /// semantics. Without this override the trait's default impl would delegate
+    /// to `register_action` (the app path), recording every default as an app
+    /// registration and making a repeated `register_defaults` collide.
+    fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) -> bool {
+        NmpApp::register_default_action::<M>(self)
     }
 }
 
@@ -2502,6 +2636,10 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::active_local_keys(self)
     }
 
+    fn active_pubkey(&self) -> nmp_core::slots::ActiveAccountSlot {
+        NmpApp::active_account_handle(self)
+    }
+
     fn actor_sender(&self) -> Sender<ActorCommand> {
         NmpApp::actor_sender(self)
     }
@@ -2542,6 +2680,13 @@ impl nmp_core::substrate::AppHost for NmpApp {
 
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {
         NmpApp::set_nostrconnect_bootstrap_relay(self, url)
+    }
+
+    fn register_identity_change_observer<F>(&self, f: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static,
+    {
+        NmpApp::register_identity_change_observer(self, f);
     }
 }
 
@@ -2642,6 +2787,13 @@ pub extern "C" fn nmp_app_start(
         .lock()
         .map(|g| g.clone())
         .unwrap_or_default();
+
+    // ADR-0049 Part 2 — mark the app started BEFORE sending Start. From this
+    // point the actor reads every wiring slot once at kernel construction, so a
+    // later setter call is dropped and recorded as `DroppedLateWiring`. Set
+    // before the send so there is no window where a setter racing in just after
+    // Start records `ReplacedPrevious` instead of the truthful drop.
+    app.started.store(true, Ordering::SeqCst);
 
     app.send_cmd(ActorCommand::Start {
         visible_limit: clamp_visible(visible_limit),

@@ -202,10 +202,12 @@ impl KernelReducer {
     ///
     /// Native also calls `poll_claim_expansion(Instant::now())` at
     /// `actor/mod.rs:2133–2145` between the lifecycle drain and the publish
-    /// pump; that drain is omitted here because `poll_claim_expansion` takes
-    /// `now: Instant` as a **caller-supplied argument**, which would force a
-    /// new `Instant::now()` call site on wasm32 — and `std::time::Instant::now()`
-    /// panics on `wasm32-unknown-unknown` (see issue #1143 / #1009).
+    /// pump. This drain was previously omitted because `std::time::Instant::now()`
+    /// panics on `wasm32-unknown-unknown` (issue #1143 / #1009). The web-time
+    /// shim (`crate::time::Instant`) introduced alongside this wasm runtime PR
+    /// resolves that blocker — wiring `poll_claim_expansion` here is a
+    /// follow-up; the omission is harmless while claim-expansion remains an
+    /// in-process-only feature.
     pub fn tick(&mut self) -> Vec<OutboundMessage> {
         // 1. Pending view requests: mirrors actor/mod.rs:2086-2098.
         //    Drains time-gated work (contacts_deadline, F-TTL reverify, deferred
@@ -376,6 +378,16 @@ impl KernelReducer {
         self.kernel.any_relay_connected()
     }
 
+    /// Read the active-account pubkey the kernel currently holds (lowercase
+    /// canonical hex), or `None` if no active account is set.
+    ///
+    /// Wasm-side accessors (e.g. `nmp-wasm`'s test helpers) use this to
+    /// verify that `set_active_account` stored the canonicalised form.
+    #[must_use]
+    pub fn active_account_pubkey(&self) -> Option<String> {
+        self.kernel.active_account_pubkey().map(|s| s.to_string())
+    }
+
     /// V-51 phase 2 — render the kernel's routing-trace projection as JSON.
     ///
     /// The shape is documented at
@@ -436,7 +448,10 @@ impl KernelReducer {
             .collect();
         self.kernel.set_configured_relays(relay_rows);
     }
+
 }
+
+mod feed_verbs;
 
 impl Default for KernelReducer {
     fn default() -> Self {
@@ -451,4 +466,8 @@ mod tests;
 #[cfg(test)]
 #[path = "kernel_reducer/tests_snapshot_claims.rs"]
 mod tests_snapshot_claims;
+
+#[cfg(test)]
+#[path = "kernel_reducer/tests_feed_verbs.rs"]
+mod tests_feed_verbs;
 

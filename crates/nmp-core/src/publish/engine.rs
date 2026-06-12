@@ -23,6 +23,8 @@ mod dispatch;
 mod error_mapping;
 mod helpers;
 #[cfg(test)]
+mod auth_park_tests;
+#[cfg(test)]
 mod tests;
 mod types;
 mod view_ops;
@@ -340,7 +342,23 @@ impl PublishEngine {
             return;
         };
         let verdict = apply_ack(&state, &ack, self.policy, now_ms);
-        helpers::apply_verdict(in_flight, &relay_url, verdict, now_ms);
+        let park_awaiting_auth = helpers::apply_verdict(in_flight, &relay_url, verdict, now_ms);
+        if park_awaiting_auth {
+            // The relay refused the EVENT pending NIP-42 auth. Route it through
+            // the single availability gate: `mark_relay_unavailable` demotes the
+            // InFlight send back to durable `Pending`, drops any scheduled
+            // retry, persists, and parks the relay in `unavailable_relays` so no
+            // retry tick re-dispatches it. The publish stays in-flight; it
+            // re-dispatches event-driven when the kernel calls
+            // `mark_relay_available` on the `RelayAuthState::Authenticated`
+            // transition (no budget spent, no sleep/poll — D8). Borrow of
+            // `in_flight` ends above, so the `&mut self` call is sound.
+            if let Err(err) = self.mark_relay_unavailable(&relay_url, now_ms) {
+                self.record_engine_error(&err, handle, "", now_ms);
+            }
+            self.flush_view();
+            return;
+        }
         if helpers::is_complete(in_flight) {
             helpers::for_each_terminal(in_flight, handle, &mut self.view, now_ms);
             // T128: snapshot the terminal verdict for the kernel's queue-entry

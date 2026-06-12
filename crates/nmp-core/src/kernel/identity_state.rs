@@ -234,6 +234,28 @@ impl super::Kernel {
         }
     }
 
+    /// Lightweight active-account setter for the wasm path.
+    ///
+    /// The native actor uses [`Self::set_accounts`] (which requires a full
+    /// `Vec<AccountSummary>` driven by `actor::commands::identity`). The wasm
+    /// runtime has no account-management actor; when the NIP-07 signer installs
+    /// itself it already knows the viewer pubkey from
+    /// `window.nostr.getPublicKey()` — this method feeds that pubkey into the
+    /// kernel so contact-feed resolution and bootstrap interests know whose
+    /// follows to load.
+    ///
+    /// Sets `active_account` and flushes the `active_account_handle` mutex slot
+    /// (the same two writes `set_accounts` does for the active field). Does NOT
+    /// touch `self.accounts` (the typed account-list projection) — on the wasm
+    /// path that projection stays empty and the host does not render it.
+    pub(crate) fn set_active_account(&mut self, pubkey: String) {
+        self.active_account = Some(pubkey);
+        self.changed_since_emit = true;
+        if let Ok(mut guard) = self.active_account_handle.lock() {
+            *guard = self.active_account.clone();
+        }
+    }
+
     /// Append a publish-queue entry, keeping a bounded recent window (D5).
     pub(crate) fn push_publish_entry(&mut self, entry: PublishQueueEntry) {
         self.publish_queue.push(entry);
