@@ -8,7 +8,7 @@
 
 use std::ffi::{CStr, CString};
 
-use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new};
+use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_free_string};
 
 /// Drive `nmp_app_dispatch_action` for `namespace`/`action_json` and return
 /// the parsed JSON result. The returned C string is freed.
@@ -23,7 +23,7 @@ fn dispatch(
     assert!(!ptr.is_null(), "dispatch_action must never return null");
     // SAFETY: `ptr` is a valid C string from `nmp_app_dispatch_action`.
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     serde_json::from_str(&out).unwrap()
 }
 

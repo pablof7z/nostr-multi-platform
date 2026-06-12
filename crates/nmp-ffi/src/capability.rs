@@ -46,7 +46,7 @@ pub extern "C" fn nmp_app_set_capability_callback(
 
 /// Route a `CapabilityRequest` JSON to the registered native handler and
 /// return the resulting `CapabilityEnvelope` JSON. The returned pointer is
-/// heap-allocated by Rust and MUST be released via [`nmp_app_free_string`].
+/// heap-allocated by Rust and MUST be released via [`nmp_free_string`].
 ///
 /// D6: never returns NULL for a non-NULL `app`/`request_json`; a missing
 /// handler, malformed request, or a NULL handler return all come back as a
@@ -67,19 +67,6 @@ pub extern "C" fn nmp_app_dispatch_capability(
     CString::new(envelope)
         .unwrap_or_else(|_| c"{}".to_owned())
         .into_raw()
-}
-
-/// Release a string previously returned by [`nmp_app_dispatch_capability`].
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_free_string(ptr: *mut c_char) {
-    if !ptr.is_null() {
-        // SAFETY: caller guarantees ptr came from a `CString::into_raw`
-        // returned by this module and is freed exactly once.
-        unsafe {
-            drop(CString::from_raw(ptr));
-        }
-    }
 }
 
 #[cfg(test)]

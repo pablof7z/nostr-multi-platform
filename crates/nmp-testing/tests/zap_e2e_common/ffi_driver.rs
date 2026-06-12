@@ -15,8 +15,8 @@ use std::time::Instant;
 
 use nmp_app_chirp::{nmp_app_chirp_register, ChirpHandle, NmpRegisterStatus};
 use nmp_ffi::{
-    nmp_app_free_string, nmp_app_new, nmp_app_read_projection_json, nmp_app_set_update_callback,
-    nmp_app_signin_nsec, NmpApp,
+    nmp_app_new, nmp_app_read_projection_json, nmp_app_set_update_callback, nmp_app_signin_nsec,
+    nmp_free_string, NmpApp,
 };
 
 /// Install the rustls ring provider once (mirrors the relay-worker setup the
@@ -65,7 +65,7 @@ pub fn read_projection(app: *mut NmpApp, key: &str) -> Option<serde_json::Value>
         .to_str()
         .ok()
         .map(str::to_owned);
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     json.and_then(|s| serde_json::from_str(&s).ok())
 }
 

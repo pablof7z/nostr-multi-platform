@@ -50,7 +50,7 @@ const MAX_NPROFILE_RELAYS: usize = 3;
 ///
 /// `pubkey_hex` — 64-char lowercase hex public key (a C string).
 ///
-/// Returns a heap `*mut c_char` the host MUST free via `nmp_app_free_string`.
+/// Returns a heap `*mut c_char` the host MUST free via `nmp_free_string`.
 /// D6: a null/invalid `app` or `pubkey_hex`, or any encode failure, degrades
 /// to a heap copy of the raw input (empty string only when the input itself
 /// is unusable) — never NULL, never a panic, never an error across the FFI.
@@ -94,7 +94,7 @@ fn encode_profile(app: Option<&NmpApp>, pubkey: &str) -> String {
 }
 
 /// Move a `String` into a heap C string the host frees via
-/// `nmp_app_free_string`. An interior NUL (impossible for bech32 / hex, but
+/// `nmp_free_string`. An interior NUL (impossible for bech32 / hex, but
 /// guarded for totality) collapses to the empty string — never a panic (D6).
 fn into_c_string(value: String) -> *mut c_char {
     CString::new(value)

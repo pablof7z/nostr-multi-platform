@@ -91,7 +91,7 @@ void nmp_app_signin_bunker(void *app, const char *uri, uint8_t make_active);
 // Sign an unsigned event with the named account's signer and park the result
 // in the snapshot's signed_events projection.  Returns a correlation_id string
 // that the caller uses to retrieve the signed event JSON.  Free with
-// nmp_app_free_string.  Pass an empty string for account_pubkey_hex to use
+// nmp_free_string.  Pass an empty string for account_pubkey_hex to use
 // the active account.
 char *nmp_app_sign_event_for_return(void *app, const char *account_pubkey_hex, const char *unsigned_json);
 void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls, uint8_t make_active);
@@ -109,7 +109,7 @@ void nmp_app_chirp_close_home_feed(void *app);
 // `nprofile1…` (pubkey + relays) when the kernel already holds the pubkey's
 // kind:10002 relay hints; otherwise returns a bare `npub1…`.  Never fetches —
 // it is a synchronous read of cached kind:10002 state.  Returns a heap string
-// the caller MUST free via nmp_app_free_string.  D6: a null/invalid input or
+// the caller MUST free via nmp_free_string.  D6: a null/invalid input or
 // any encode failure degrades to a copy of the raw input, never NULL.
 char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
 
@@ -212,14 +212,14 @@ uint8_t nmp_app_is_alive(void *app);
 // iOS Keychain via PD-019/T96).  The callback receives the
 // `CapabilityRequest` JSON and MUST return a freshly heap-allocated
 // `CapabilityEnvelope` JSON string; that string MUST then be released by the
-// caller via `nmp_app_free_string`.  Passing NULL for `callback` unregisters
+// caller via `nmp_free_string`.  Passing NULL for `callback` unregisters
 // the handler; a request received while unregistered yields an error
 // envelope (D6), never a crash.
 //
 // `nmp_app_dispatch_capability` routes a `CapabilityRequest` JSON through
 // the registered handler and returns the resulting `CapabilityEnvelope`
 // JSON.  The returned pointer is heap-allocated by Rust and MUST be freed
-// by the caller via `nmp_app_free_string`.  Never returns NULL for a
+// by the caller via `nmp_free_string`.  Never returns NULL for a
 // non-NULL app/request_json (D6).
 //
 // (PR-F: the `nmp_app_publish_unsigned_event` symbol was deleted — every
@@ -237,7 +237,7 @@ uint8_t nmp_app_is_alive(void *app);
 // `ActionModule` family (M6).  The caller names the action namespace (e.g.
 // `"nmp.publish"`) and passes the action as JSON; the returned heap-allocated
 // JSON string is `{"correlation_id":"<32-hex>"}` on accept or `{"error":"…"}`
-// on rejection, and MUST be freed via `nmp_app_free_string`.  D6: never NULL
+// on rejection, and MUST be freed via `nmp_free_string`.  D6: never NULL
 // for a non-NULL app.  SCOPE — this validates the action, assigns a
 // correlation id, AND executes it: after `ActionRegistry::start` validates
 // the action and mints the id, the dispatch path drives `M::execute` which
@@ -313,7 +313,7 @@ void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapsho
 // Return a heap-owned NUL-terminated JSON snapshot of the kernel's recent
 // routing decisions (the bounded ring-buffer projection
 // `RoutingTraceProjection`). The caller MUST release the returned pointer
-// via `nmp_app_free_string`.
+// via `nmp_free_string`.
 //
 // Payload shape (stable, schema-versioned — schema_version=1):
 //
@@ -340,7 +340,9 @@ void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapsho
 // A NULL `app` is also handled — returns the same empty-rings payload.
 char *nmp_app_recent_routing_decisions(void *app);
 
-void nmp_app_free_string(char *ptr);
+// Release a Rust-heap C string returned by ANY NMP FFI function. Null-safe.
+// This is the ONLY correct freer — the host's free(3) must NOT be used.
+void nmp_free_string(char *ptr);
 // PR-F deleted `nmp_app_publish_unsigned_event` — use
 // `nmp_app_dispatch_action(app, "nmp.publish", action_json)` instead.
 void nmp_app_open_uri(void *app, const char *uri);
@@ -361,7 +363,7 @@ void nmp_app_open_uri(void *app, const char *uri);
 void nmp_signer_broker_init(void *app);
 void nmp_app_cancel_bunker_handshake(void *app);
 // Generate a nostrconnect:// URI for the QR-code NIP-46 sign-in flow.
-// The returned string must be freed via nmp_broker_free_string.
+// The returned string must be freed via nmp_free_string.
 // Returns NULL if the broker is not yet initialised.
 // relay_url may be NULL. When NULL, Rust chooses the first configured
 // write-capable relay from the app kernel, falling back to its default.
@@ -370,7 +372,6 @@ void nmp_app_cancel_bunker_handshake(void *app);
 // app deep-links back to the host on approval. Hosts MUST NOT compose this
 // suffix themselves — protocol-owned strings stay in Rust.
 char *nmp_app_nostrconnect_uri(void *app, const char *relay_url, const char *callback_scheme);
-void nmp_broker_free_string(char *ptr);
 
 // ── T146: nmp-app-chirp per-app FFI ──────────────────────────────────────
 //
@@ -417,7 +418,7 @@ void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 void nmp_app_chirp_register_dm_inbox(void *app);
 // Build a Rust-authored Chirp action dispatch spec from typed user intent JSON.
 // Returns {"namespace":"...","body_json":"..."} or {"error":"..."}; free with
-// nmp_app_free_string.
+// nmp_free_string.
 char *nmp_app_chirp_action_spec(const char *intent_json);
 void nmp_app_chirp_unregister(void *handle);
 

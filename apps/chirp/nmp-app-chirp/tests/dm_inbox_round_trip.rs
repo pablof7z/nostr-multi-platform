@@ -30,8 +30,8 @@
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
 use nmp_core::RawEventObserver;
 use nmp_ffi::{
-    nmp_app_free, nmp_app_free_string, nmp_app_inject_signed_event_json, nmp_app_new,
-    nmp_app_read_projection_json, NmpApp,
+    nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new, nmp_app_read_projection_json,
+    nmp_free_string, NmpApp,
 };
 use nmp_nip17::{DmInboxProjection, DmInboxSnapshot};
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
@@ -248,7 +248,7 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
 ///   that Schnorr-verifies and routes through `IngestPreVerifiedEvents`.
 /// * `nmp_app_read_projection_json` — runs every registered snapshot
 ///   projection and returns the value at a single key as a caller-owned
-///   C string (freed via `nmp_app_free_string`).
+///   C string (freed via `nmp_free_string`).
 ///
 /// Together these let `nmp-app-chirp` (or any per-app crate) prove its
 /// registered raw-event observers and snapshot projections fire end-to-end
@@ -328,7 +328,7 @@ fn dm_inbox_full_round_trip_through_ffi() {
         .to_str()
         .expect("projection JSON must be valid UTF-8")
         .to_owned();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
 
     // Decode through the typed `DmInboxSnapshot` to assert the wire shape
     // matches what Swift consumes off the kernel update channel — same

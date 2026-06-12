@@ -75,7 +75,7 @@ void nmp_app_remove_relay(void *app, const char *url);
 // Single namespace-keyed entry point for the M6 `ActionModule` family. The
 // gallery uses it (phase 2) for the showcase "publish a note" page. Returns a
 // heap-allocated JSON envelope (`{"correlation_id":"<32-hex>"}` or
-// `{"error":"…"}`) the caller MUST free via `nmp_app_free_string`.
+// `{"error":"…"}`) the caller MUST free via `nmp_free_string`.
 char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
 
 // ── Showcase sign-in (phase 2) ───────────────────────────────────────────
@@ -109,6 +109,9 @@ const char *nmp_app_gallery_showcase_references_json(void);
 
 // ── Heap-string release ──────────────────────────────────────────────────
 
-void nmp_app_free_string(char *ptr);
+// Release a `*mut c_char` returned by any NMP FFI function. Passing NULL is a
+// no-op (D6). This is the ONLY symbol the caller must invoke to free NMP-heap
+// strings — `nmp_app_free_string` and `nmp_broker_free_string` are removed.
+void nmp_free_string(char *ptr);
 
 #endif

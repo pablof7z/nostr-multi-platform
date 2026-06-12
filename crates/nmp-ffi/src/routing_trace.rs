@@ -61,7 +61,7 @@ fn empty_payload() -> *mut c_char {
 
 /// Return a heap-owned NUL-terminated JSON snapshot of the kernel's
 /// recent routing decisions. The caller MUST release the returned pointer
-/// via [`super::capability::nmp_app_free_string`].
+/// via [`super::free::nmp_free_string`].
 ///
 /// Payload shape (stable, schema-versioned):
 ///
@@ -127,7 +127,7 @@ mod tests {
         assert_eq!(v["publishes"].as_array().unwrap().len(), 0);
         assert_eq!(v["subscriptions"].as_array().unwrap().len(), 0);
         // Free through the public string-free entry point.
-        crate::capability::nmp_app_free_string(ptr);
+        crate::free::nmp_free_string(ptr);
     }
 
     #[test]
@@ -145,7 +145,7 @@ mod tests {
         assert_eq!(v["schema_version"], 1);
         assert!(v["publishes"].is_array());
         assert!(v["subscriptions"].is_array());
-        crate::capability::nmp_app_free_string(ptr);
+        crate::free::nmp_free_string(ptr);
         nmp_app_free(app);
     }
 
@@ -165,7 +165,7 @@ mod tests {
         assert!(v.get("capacity").is_some());
         assert!(v.get("publishes").is_some());
         assert!(v.get("subscriptions").is_some());
-        crate::capability::nmp_app_free_string(ptr);
+        crate::free::nmp_free_string(ptr);
         nmp_app_free(app);
     }
 }

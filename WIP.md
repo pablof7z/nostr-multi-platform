@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **ADR-0048: NIP-55 ExternalSignerCapability (Amber)** (design-only; closes the design half of #1124). Branch: `adr-0048-nip55-external-signer`. Worktree: agent-a39d7a894faea8376. Adds `docs/decisions/0048-nip55-external-signer-capability.md` (signer placement = `Nip55Signer` impl of `RemoteSignerHandle` returning `SignerOp::Pending`; `external_signer` capability namespace; `EXTERNAL_SIGN_TIMEOUT` per-op deadline; pubkey-only `SignerPayload::Nip55`; nip44 via ADR-0026 seam, decrypt-for-receive staged with V-08/#961; KBCS-generalized `external_signer_state` projection; emulator E2E). Stages the #1124 plan; no code in this PR.
+
 - 2026-06-12 — **Release nmp-v0.5.0** (version bump 0.4.0→0.5.0, CHANGELOG). Branch: `release/nmp-v0.5.0`. PR #1120. Worktree: agent-a4efb80c336f372c3. Two C-ABI/architecture breaks: #1108 (`nmp_app_open_timeline` → `open/close_contact_feed`) + #1114 (ADR-0046 composition-is-a-library; `gen modules` + `apps/fixture` deleted). Closes #1086 (ADR-0045 universal cache-serve, v1 exit criterion satisfied).
 
 

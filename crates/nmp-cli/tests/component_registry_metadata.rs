@@ -74,9 +74,9 @@ fn web_registry_install_metadata_mirrors_cli_manifest() {
 
         let files = array_field(&block, "files");
         for file in component.files {
-            assert_contains(&files, &format!("source: \"{}\"", file.source));
-            assert_contains(&files, &format!("target: \"{}\"", file.target));
-            assert_contains(&files, &format!("role: \"{}\"", file.role));
+            assert_contains(files, &format!("source: \"{}\"", file.source));
+            assert_contains(files, &format!("target: \"{}\"", file.target));
+            assert_contains(files, &format!("role: \"{}\"", file.role));
         }
     }
 }

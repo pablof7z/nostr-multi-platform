@@ -10,8 +10,8 @@
 use std::ffi::{CStr, CString};
 
 use nmp_ffi::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new,
-    nmp_app_read_projection_json,
+    nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_app_read_projection_json,
+    nmp_free_string,
 };
 
 /// All action namespaces [`nmp_defaults::register_defaults`] is
@@ -106,7 +106,7 @@ fn register_defaults_wires_wot_bootstrap_projection() {
     let json = unsafe { CStr::from_ptr(raw) }
         .to_string_lossy()
         .into_owned();
-    nmp_app_free_string(raw);
+    nmp_free_string(raw);
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("projection JSON");
 
     assert_eq!(parsed["active_pubkey"], serde_json::Value::Null);
@@ -189,6 +189,6 @@ fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> St
     let s = unsafe { CStr::from_ptr(raw) }
         .to_string_lossy()
         .into_owned();
-    nmp_app_free_string(raw);
+    nmp_free_string(raw);
     s
 }

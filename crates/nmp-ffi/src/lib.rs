@@ -22,6 +22,9 @@ mod active_account_handle_tests;
 // ingest driven through the actor thread; publish-back slot survives Reset).
 mod action;
 mod capability;
+// Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
+// by any NMP FFI function must be freed via `nmp_free_string`.
+mod free;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
@@ -92,9 +95,9 @@ pub use action::{
     nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_app_register_action_result_observer,
 };
 #[cfg(feature = "native")]
-pub use capability::{
-    nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
-};
+pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};
+#[cfg(feature = "native")]
+pub use free::nmp_free_string;
 #[cfg(feature = "native")]
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "native")]
@@ -130,14 +133,13 @@ pub use raw_event_tap::{
     nmp_app_register_raw_event_observer, nmp_app_unregister_raw_event_observer,
 };
 // V-51 phase 2 — routing-trace JSON accessor. Pull-only; the returned
-// pointer is heap-owned and must be freed via `nmp_app_free_string`.
+// pointer is heap-owned and must be freed via `nmp_free_string`.
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use routing_trace::nmp_app_recent_routing_decisions;
 #[cfg(feature = "signer-broker")]
 pub use signer_broker::{
-    nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
-    nmp_signer_broker_init,
+    nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,
 };
 #[cfg(feature = "native")]
 pub use storage::nmp_app_set_storage_path;

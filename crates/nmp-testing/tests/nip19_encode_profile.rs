@@ -25,7 +25,7 @@ use std::sync::Arc;
 use nmp_core::nip19::{decode_nprofile, decode_npub};
 use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_router::{InMemoryMailboxCache, Kind10002Parser};
-use nmp_ffi::{nmp_app_encode_profile, nmp_app_free, nmp_app_free_string, nmp_app_new, NmpApp};
+use nmp_ffi::{nmp_app_encode_profile, nmp_app_free, nmp_app_new, nmp_free_string, NmpApp};
 
 const PUBKEY_WITH_RELAYS: &str =
     "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -50,7 +50,7 @@ fn kind_10002(pubkey: &str, relays: &[&str]) -> VerifiedEvent {
 }
 
 /// Call `nmp_app_encode_profile`, copy the result to an owned `String`, and
-/// free the C string the FFI handed back (`nmp_app_free_string`).
+/// free the C string the FFI handed back (`nmp_free_string`).
 fn encode(app: *mut NmpApp, pubkey: &str) -> String {
     let c_pubkey = CString::new(pubkey).expect("hex has no interior NUL");
     let ptr: *mut c_char = nmp_app_encode_profile(app, c_pubkey.as_ptr());
@@ -60,7 +60,7 @@ fn encode(app: *mut NmpApp, pubkey: &str) -> String {
         .to_str()
         .expect("encoder output is valid UTF-8")
         .to_owned();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     // `c_pubkey` is held live across the FFI call by being named here.
     drop(c_pubkey);
     out

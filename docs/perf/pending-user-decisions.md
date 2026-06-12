@@ -474,7 +474,7 @@ contract now exists and converges exactly on the Swift vocabulary:
 `CapabilityModule`, `KeyringRequest` store/retrieve/delete-by-`account_id`,
 `KeyringResult` ok/not_found/error, `KeyringIdentityWiring` persist/recall/
 forget), plus the `nmp_app_set_capability_callback` /
-`nmp_app_dispatch_capability` / `nmp_app_free_string` FFI socket in
+`nmp_app_dispatch_capability` / `nmp_free_string` FFI socket in
 `crates/nmp-core/src/ffi/capability.rs` that routes a `CapabilityRequest`
 JSON to the registered native handler (`KeychainCapability.handleJSON(_:)`)
 and back as envelope-data only (D6). Swift convergence (replacing the

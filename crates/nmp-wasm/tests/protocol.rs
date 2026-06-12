@@ -467,3 +467,6 @@ fn recent_routing_decisions_returns_schema_versioned_json() {
     assert_eq!(value["publishes"].as_array().unwrap().len(), 0);
     assert_eq!(value["subscriptions"].as_array().unwrap().len(), 0);
 }
+
+// PR-1 acceptance test (kernel-authored snapshot) lives in snapshot_protocol.rs
+// to keep this file under the 500-LOC hard cap (AGENTS.md).
