@@ -7,10 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## nmp-v0.6.0 — 2026-06-12
 
-**Additive C-ABI change**: one NEW symbol, `nmp_app_composition_report` (no
-existing symbol changed or removed — headers gain one declaration; nothing
-breaks if you ignore it). Rust API is additive; `register_defaults()` behavior
-is unchanged.
+**BREAKING (C-ABI)**: `nmp_app_free_string` and `nmp_broker_free_string` are
+RETIRED, replaced by a single `nmp_free_string` (V-114 #1044, PR #1135) —
+every consumer that frees NMP-returned strings must rename the call (one-line
+mechanical change; same semantics). One NEW symbol: `nmp_app_composition_report`.
+Rust API is additive; `register_defaults()` behavior is unchanged.
 
 ### Added
 
@@ -58,6 +59,11 @@ is unchanged.
   #1137 regression (#1160).
 - NIP-57: bolt11 amount validated before auto-pay (#1189).
 - CI: file-size gate was a silent no-op on PRs (#1178).
+
+### Removed
+
+- **C-ABI**: `nmp_app_free_string` + `nmp_broker_free_string` retired into one
+  `nmp_free_string` (V-114 #1044, PR #1135). Migration: rename the call.
 
 ---
 
