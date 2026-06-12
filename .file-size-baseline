@@ -65,7 +65,6 @@ crates/nmp-core/tests/nip_tag_conformance.rs	554
 crates/nmp-defaults/src/builder.rs	703
 crates/nmp-defaults/src/runtimes.rs	559
 crates/nmp-ffi/src/action/tests.rs	977
-crates/nmp-ffi/src/external_signer.rs	665
 crates/nmp-ffi/src/lib.rs	2976
 crates/nmp-marmot/src/ffi.rs	634
 crates/nmp-marmot/src/ffi/tests.rs	996

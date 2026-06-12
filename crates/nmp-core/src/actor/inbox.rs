@@ -89,7 +89,7 @@ impl std::error::Error for CommandSendError {}
 /// error carrying the undelivered command when the actor is gone. The wrapped
 /// `Sender<ActorMail>` is `Clone`, so `CommandSender` is too — clones target
 /// the same inbox.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CommandSender {
     tx: Sender<ActorMail>,
 }
