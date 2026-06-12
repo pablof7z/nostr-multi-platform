@@ -40,8 +40,8 @@
 //!   — once the handshake completes (the broker has the user's pubkey from
 //!   `get_public_key`), it hands the fully-initialized handle to the actor. The
 //!   actor inserts it into `IdentityRuntime.remote_signers`, applies the
-//!   stashed `make_active` decision, and routes all subsequent `sign_active`
-//!   through the handle's `sign(unsigned).wait(timeout)` call.
+//!   stashed `make_active` decision, and routes all subsequent signing
+//!   through the handle's non-blocking `sign_active_nonblocking` path.
 //!
 //! The actor never imports `nmp-signers`; it only touches the trait. NIP-42
 //! is currently cleared while a remote signer is active (the broker's
@@ -189,8 +189,8 @@ pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEvent
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
-    follow, open_contact_list_sub, publish_profile, publish_signed_event, publish_unsigned_event,
-    publish_unsigned_event_to_relays, react,
+    close_contact_feed, follow, open_contact_feed, publish_profile, publish_signed_event,
+    publish_unsigned_event, publish_unsigned_event_to_relays, react,
 };
 // V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
 // LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`

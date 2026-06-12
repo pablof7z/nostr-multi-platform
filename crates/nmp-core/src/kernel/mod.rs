@@ -774,7 +774,10 @@ pub struct Kernel {
     /// (a downstream crate cycle the doctrine forbids).
     #[cfg(any(test, feature = "test-support"))]
     test_dm_inbox_cache: Option<Arc<crate::substrate::TestDmInboxRelayCache>>,
-    timeline_authors: BTreeSet<String>,
+    /// `pub(crate)` so in-crate tests can assert close-contact-feed clears
+    /// the follow author set without triggering the full follow-feed
+    /// registration side-effect that `set_follow_feed_kinds` fires.
+    pub(crate) timeline_authors: BTreeSet<String>,
     /// V-59 rung 1 (Q7) — pre-kind:3 ingest buffer. Holds host-declared
     /// follow-feed events that arrived BEFORE the active account's follow set
     /// named their author — i.e. `should_store_event` returned `false` solely
@@ -805,14 +808,15 @@ pub struct Kernel {
     /// follow-feed `InterestId` so `sync_follow_feed_interests` can withdraw
     /// stale entries before re-registering on kind:3 change. Derived from the
     /// active account's kind:3 follow set; empty until first kind:3 arrives.
-    follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
-    /// Host-declared event kinds the contact-list-authors subscription should
-    /// REQ for the active account's follow set. Empty = the subscription is not
-    /// active (no follow-feed interests are registered). The host (e.g. Chirp)
-    /// declares its app-specific kinds via
-    /// `ActorCommand::OpenContactListSubscription { kinds }`; `nmp-core` no
-    /// longer hardcodes any kind set here (D0 — the substrate carries no
-    /// app-specific social knowledge such as {1, 6}).
+    /// `pub(crate)` so in-crate tests can assert the interest registry is
+    /// empty after `close_contact_feed` without triggering side-effects.
+    pub(crate) follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
+    /// Host-declared event kinds the contact-feed subscription should REQ for
+    /// the active account's follow set. Empty = the subscription is not active
+    /// (no follow-feed interests are registered). The host (e.g. Chirp) declares
+    /// its app-specific kinds via `ActorCommand::OpenContactFeed { kinds }`;
+    /// `nmp-core` no longer hardcodes any kind set here (D0 — the substrate
+    /// carries no app-specific social knowledge such as {1, 6}).
     ///
     /// `pub(crate)` so in-crate tests can seed it directly as fixture setup
     /// without triggering the `register_follow_feed_for_active_account`

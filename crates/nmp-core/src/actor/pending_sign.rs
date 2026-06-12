@@ -1,18 +1,13 @@
 //! `PendingSign` — an in-flight remote (NIP-46) sign operation parked on the
 //! actor loop.
 //!
-//! Background: `sign_active` (`commands/identity.rs`) blocks the actor thread
-//! for up to `REMOTE_SIGN_TIMEOUT` (5s) waiting on a NIP-46 broker via
-//! `SignerOp::wait`. While it blocks, relay ingest, subscription management,
-//! and UI emits all stall — a D8 violation (no polling / no blocking the
-//! actor).
-//!
-//! The fix: the publish path signs through `sign_active_nonblocking`, which
-//! hands back the raw `SignerOp` instead of blocking. A local signer's op is
-//! `Ready` and resolves on the spot; a remote signer's op is `Pending` and is
-//! stashed here. The actor's idle section then `poll()`s every parked
-//! `PendingSign` once per loop tick — non-blocking `try_recv` — and publishes
-//! the signed event the moment the broker turns the request around.
+//! Background: all publish paths sign through `sign_active_nonblocking`
+//! (`commands/identity.rs`), which hands back the raw `SignerOp` without
+//! blocking the actor thread (D8). A local signer's op is `Ready` and resolves
+//! on the spot; a remote signer's op is `Pending` and is stashed here. The
+//! actor's idle section then `poll()`s every parked `PendingSign` once per
+//! loop tick — non-blocking `try_recv` — and publishes the signed event the
+//! moment the broker turns the request around.
 //!
 //! `deadline` bounds the wait: a broker that never responds within
 //! `PENDING_SIGN_TIMEOUT` has its `PendingSign` dropped and a toast surfaced
@@ -24,9 +19,9 @@ use crate::substrate::SignedEvent;
 use nmp_signer_iface::SignerOp;
 use std::time::{Duration, Instant};
 
-/// Wall-clock budget for a parked remote-sign op. Mirrors the old blocking
-/// `REMOTE_SIGN_TIMEOUT` (5s) — long enough for a fast / auto-approving
-/// bunker, short enough that a crashed broker cannot strand the publish.
+/// Wall-clock budget for a parked remote-sign op. 5s — long enough for a fast
+/// / auto-approving bunker, short enough that a crashed broker cannot strand
+/// the publish.
 pub(crate) const PENDING_SIGN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// A remote-sign operation parked on the actor loop, awaiting the broker's

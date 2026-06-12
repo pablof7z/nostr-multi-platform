@@ -12,7 +12,9 @@
 //!    `AddRemoteSigner` to the actor sender — the same translation NmpApp
 //!    composition performs.
 //! 4. The test plays the actor's role: receives `AddRemoteSigner`, slots
-//!    the handle into a fresh `IdentityRuntime`, drives `sign_active`.
+//!    the handle into a fresh `IdentityRuntime`, drives the signer handle
+//!    directly via `handle.sign(..).wait(..)` (a test-side convenience —
+//!    production code uses `sign_active_nonblocking`).
 //! 5. The signer's `sign()` enqueues a `sign_event` RPC; the broker's
 //!    `BrokerTransport::send_rpc` NIP-44-encrypts + signs + ships it to
 //!    the mock relay.
@@ -22,7 +24,7 @@
 //!    response back into `Nip46Signer::deliver_rpc_response`, which fires
 //!    the pending one-shot.
 //! 8. The mapper validates the signed kind:1 (id recomputation + schnorr
-//!    verify + pubkey match) and resolves the `sign_active` blocking call.
+//!    verify + pubkey match) and the `.wait()` call in the test unblocks.
 //!
 //! ## Assertions
 //!
@@ -57,7 +59,9 @@ use crate::common::mock_bunker_relay::MockBunkerRelay;
 
 /// Spin up the mock, hand the broker a `bunker://<bunker-pubkey>?relay=ws://…`
 /// URI, wait until the actor channel produces `AddRemoteSigner`, then drive a
-/// `sign_active`-style call against the resulting handle.
+/// sign call directly against the resulting handle (test convenience — see
+/// `bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue`
+/// for the full actor path).
 #[test]
 fn bunker_sign_event_round_trip_on_the_wire() {
     // ── Setup ───────────────────────────────────────────────────────────
@@ -122,7 +126,7 @@ fn bunker_sign_event_round_trip_on_the_wire() {
         created_at: 1_700_000_500,
     };
 
-    // The production REMOTE_SIGN_TIMEOUT is 5s; we don't need that here —
+    // The actor's PENDING_SIGN_TIMEOUT is 5s; we don't need that here —
     // the mock turns around in milliseconds. 10s is generous.
     let signed = handle
         .sign(&unsigned)
@@ -151,8 +155,8 @@ fn bunker_sign_event_round_trip_on_the_wire() {
 }
 
 /// Same wire chain, but drive the sign through the actor path so the
-/// `IdentityRuntime` → `sign_active` → `publish_unsigned_event` plumbing is
-/// covered end-to-end (mirroring how production code calls into the signer).
+/// `IdentityRuntime` → `sign_active_nonblocking` → `publish_unsigned_event`
+/// plumbing is covered end-to-end (mirroring production code).
 #[test]
 fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     use std::sync::mpsc;
@@ -204,8 +208,8 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     wait_for_nip46_account_active(&upd_rx, &user_pk_for_wait, Duration::from_secs(10))
         .expect("actor snapshot must include the nip46 account after handshake completes");
 
-    // Now drive a publish.  This walks `sign_active` → handle.sign() →
-    // BrokerTransport → mock → BrokerTransport::dispatch_inbound →
+    // Now drive a publish.  This walks `sign_active_nonblocking` →
+    // handle.sign() → BrokerTransport → mock → dispatch_inbound →
     // deliver_rpc_response → mapper → signed event → publish_signed.
     let unsigned = nmp_core::substrate::UnsignedEvent {
         pubkey: user_pubkey_hex.clone(),

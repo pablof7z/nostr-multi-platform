@@ -1220,9 +1220,13 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::OpenContactListSubscription { kinds } => {
-            let outbound =
-                commands::open_contact_list_sub(ctx.identity, ctx.kernel, ctx.relays_ready, kinds);
+        ActorCommand::OpenContactFeed { kinds } => {
+            let outbound = commands::open_contact_feed(ctx.identity, ctx.kernel, kinds);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
+        ActorCommand::CloseContactFeed => {
+            let outbound = commands::close_contact_feed(ctx.identity, ctx.kernel);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }

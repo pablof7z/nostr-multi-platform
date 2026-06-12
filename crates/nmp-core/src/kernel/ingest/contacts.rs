@@ -46,7 +46,7 @@ const FOLLOW_FEED_LIMIT: u32 = 1000;
 ///
 /// `nmp-core` does not know which kinds belong to the host's app concept — the
 /// `kinds` argument is supplied by the host through
-/// `ActorCommand::OpenContactListSubscription { kinds }` (D0: the substrate
+/// `ActorCommand::OpenContactFeed { kinds }` (D0: the substrate
 /// carries no app-specific social knowledge).
 ///
 /// Carries `limit: Some(1000)`. The relay returns the newest 1000 events and
@@ -125,8 +125,7 @@ impl Kernel {
         self.follow_feed_interest_ids.clear();
 
         // D0: the host declares which kinds the contact-list-authors
-        // subscription should REQ via `ActorCommand::OpenContactListSubscription
-        // { kinds }`. An empty `follow_feed_kinds` means the subscription is
+        // subscription should REQ via `ActorCommand::OpenContactFeed { kinds }`. An empty `follow_feed_kinds` means the subscription is
         // NOT active — withdraw any existing interests (done above) and return
         // without registering. `nmp-core` never hardcodes a kind set here.
         let kinds = self.follow_feed_kinds.clone();
@@ -298,10 +297,10 @@ impl Kernel {
     /// T140 — Re-register M2 follow-feed interests from the current
     /// `seed_contacts` of the active account.
     ///
-    /// Called by `open_contact_list_sub()` (the
-    /// `ActorCommand::OpenContactListSubscription` handler) so that switching
-    /// screens back to the timeline re-confirms the M2 interest set is populated
-    /// under the host-declared `follow_feed_kinds`.
+    /// Called by `open_contact_feed()` (the `ActorCommand::OpenContactFeed`
+    /// handler) so that switching screens back to the home feed re-confirms
+    /// the M2 interest set is populated under the host-declared
+    /// `follow_feed_kinds`.
     ///
     /// T140 (codex finding #4): empty / no-cached-follows must NOT no-op —
     /// that left the *previous* account's `follow_feed_interest_ids` and
@@ -311,14 +310,14 @@ impl Kernel {
     /// the trigger drives `drain_tick` to emit the CLOSE diff for the
     /// now-withdrawn subs. Calling it unconditionally is the correct CLEAR
     /// semantics.
-    /// Host-declared kinds setter for the contact-list-authors subscription.
+    /// Host-declared kinds setter for the contact-feed subscription.
     ///
     /// The host (e.g. Chirp) calls this via
-    /// `ActorCommand::OpenContactListSubscription { kinds }` to declare which
-    /// event kinds the active account's follow-set REQ should carry. D0:
-    /// `nmp-core` does not know which kinds belong to the host's app concept
-    /// (Chirp's social timeline is {1, 6}; another app might want {30023}); the
-    /// substrate just stores and threads the set the host supplies.
+    /// `ActorCommand::OpenContactFeed { kinds }` to declare which event kinds
+    /// the active account's follow-set REQ should carry. D0: `nmp-core` does
+    /// not know which kinds belong to the host's app concept (Chirp's home
+    /// feed is {1, 6}; a long-form app might want {30023}); the substrate just
+    /// stores and threads the set the host supplies.
     ///
     /// Setting the kinds and then calling
     /// `register_follow_feed_for_active_account` re-registers the active

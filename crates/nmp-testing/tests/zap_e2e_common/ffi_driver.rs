@@ -13,7 +13,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::Once;
 use std::time::Instant;
 
-use nmp_app_chirp::{nmp_app_chirp_register, ChirpHandle};
+use nmp_app_chirp::{nmp_app_chirp_register, ChirpHandle, NmpRegisterStatus};
 use nmp_ffi::{
     nmp_app_free_string, nmp_app_new, nmp_app_read_projection_json, nmp_app_set_update_callback,
     nmp_app_signin_nsec, NmpApp,
@@ -115,7 +115,13 @@ where
 /// sign in a fresh local key so the active account exists.
 pub fn build_app_signed_in(nsec: &str) -> (*mut NmpApp, *mut ChirpHandle) {
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
+    let mut handle: *mut ChirpHandle = std::ptr::null_mut();
+    let status = nmp_app_chirp_register(app, std::ptr::null(), &mut handle);
+    assert_eq!(
+        status,
+        NmpRegisterStatus::Ok as u32,
+        "chirp register must succeed (null viewer)"
+    );
     assert!(!handle.is_null(), "chirp register must return a handle");
     let nsec_c = CString::new(nsec).expect("nsec NUL-free");
     nmp_app_signin_nsec(app, nsec_c.as_ptr(), 1);

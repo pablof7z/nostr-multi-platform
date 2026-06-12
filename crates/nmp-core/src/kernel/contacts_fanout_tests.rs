@@ -38,9 +38,9 @@ fn install_relay_list(kernel: &Kernel, author: &str, write: &[&str]) {
 #[test]
 fn kind3_arrival_fans_out_timeline_onto_new_follows_write_relays() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Declare the host kinds {1, 6} the contact-list-authors subscription REQs
-    // for (D0: the substrate no longer hardcodes a kind set; the host declares
-    // it via `ActorCommand::OpenContactListSubscription`).
+    // Declare the host kinds {1, 6} the contact-feed subscription REQs for
+    // (D0: the substrate no longer hardcodes a kind set; the host declares it
+    // via `ActorCommand::OpenContactFeed { kinds }`).
     kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
 
     // Active account: ALICE.

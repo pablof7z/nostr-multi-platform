@@ -206,7 +206,6 @@ impl<'a> SubscriptionCompiler<'a> {
     /// do not churn sub-ids — matching the `app_relays` treatment in
     /// `compile_with_context`'s Stage 4 comment.
     #[must_use]
-    #[allow(clippy::too_many_arguments)]
     pub fn with_relays_and_bootstrap(
         mailbox_cache: &'a dyn MailboxCache,
         indexer_relays: &'a [RelayUrl],
