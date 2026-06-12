@@ -198,7 +198,7 @@ mod tests {
         let b_prime = blind_message(secret, &r, &secp).expect("blind");
 
         // Mint: sign  C' = k * B'
-        let k_scalar = Scalar::from(k.clone());
+        let k_scalar = Scalar::from(k);
         let c_prime = b_prime.mul_tweak(&secp, &k_scalar).expect("mint sign");
 
         // Client: unblind → C
