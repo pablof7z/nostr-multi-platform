@@ -47,7 +47,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
-use nmp_core::{KernelReducer, OutboundMessage};
+use nmp_core::KernelReducer;
 #[cfg(target_arch = "wasm32")]
 use nmp_signers::Signer;
 
@@ -74,7 +74,7 @@ pub(crate) fn write_path_not_wired_for_kind_reason(action_type: &str) -> String 
     format!(
         "publish_path_not_wired_for_kind: action {action_type:?} is not yet wired through the \
          wasm publish path. V-01 Stage 3c first PR wired `nmp.publish` (kind:1 notes) only — \
-         React / Follow / Unfollow follow up. See issue #1007."
+         Follow / Unfollow follow up. See issue #1007."
     )
 }
 
@@ -96,7 +96,7 @@ pub(crate) fn reply_target_unknown_reason(reply_to_id: &str) -> String {
 }
 
 /// Stable error-code prefix returned when the `target_event_id` supplied to
-/// `React` is not a valid 64-char lowercase hex event id.
+/// `React` is not a valid 64-char hex event id.
 ///
 /// `build_reaction_draft` returns `None` for this case; the wasm path fails
 /// closed — silently ignoring the reaction would publish an ill-formed
@@ -105,7 +105,7 @@ pub(crate) fn reply_target_unknown_reason(reply_to_id: &str) -> String {
 pub(crate) fn react_target_invalid_reason(target_event_id: &str) -> String {
     format!(
         "react_target_invalid: target event id {target_event_id:?} is not a valid \
-         64-char lowercase hex event id."
+         64-char hex event id."
     )
 }
 
@@ -133,8 +133,9 @@ pub(crate) fn unsupported_signer_backend_reason(backend: &SignerBackend) -> Stri
 /// V-01 Stage 3c — async publish path executed inside a `js_sys::Promise`.
 ///
 /// Lifecycle:
-/// 1. Validate the action variant. Non-`PublishNote` variants return an
-///    honest `publish_path_not_wired_for_kind` failure inline (no sign call).
+/// 1. Validate the action variant. `React` (kind:7) and `PublishNote` (kind:1)
+///    are wired; `Follow` / `Unfollow` and all other variants return an honest
+///    `publish_path_not_wired_for_kind` failure inline (no sign call).
 /// 2. Validate the installed signer's backend. Non-`Nip07` backends return
 ///    an `unsupported_signer_backend_for_writes` failure inline.
 /// 3. Resolve NIP-10 reply tags (if `reply_to_id` is set) via
@@ -243,17 +244,14 @@ pub(crate) async fn publish_app_action(
             }
         };
 
-        // Publish + fan-out. `correlation_id` is NOT threaded into the engine
-        // for reactions: native `react()` calls `publish_signed_with_correlation`
-        // but passes the raw dispatch correlation_id through the engine only
-        // when it already has one (actor path). Here we pass `None` so the
-        // engine keys the terminal verdict on the signed event id, matching
-        // the native non-correlation path. The ActionAccepted below fires
-        // immediately; per-relay verdicts arrive via the `action_results`
-        // projection on the next snapshot push.
+        // Publish + fan-out. Thread `correlation_id` into the engine so
+        // per-relay terminal verdicts land in `action_results` under the
+        // dispatch id the JS host is waiting on — same contract as the Note
+        // branch below (Step 5). Without this the engine keys on the signed
+        // event id the host never sees, breaking the action-result promise.
         let outbound = {
             let mut r = reducer.borrow_mut();
-            r.publish_signed_event(&signed, &[], None)
+            r.publish_signed_event(&signed, &[], Some(correlation_id.clone()))
         };
         crate::relay_pool::fan_out_outbound(&drivers, &outbound);
         push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
