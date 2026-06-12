@@ -22,6 +22,7 @@ pub enum NwcMethod {
     GetInfo,
     GetBalance,
     PayInvoice,
+    LookupInvoice,
 }
 
 impl NwcMethod {
@@ -31,6 +32,7 @@ impl NwcMethod {
             Self::GetInfo => "get_info",
             Self::GetBalance => "get_balance",
             Self::PayInvoice => "pay_invoice",
+            Self::LookupInvoice => "lookup_invoice",
         }
     }
 }
@@ -82,6 +84,26 @@ pub struct PayInvoiceResult {
     pub preimage: String,
 }
 
+/// Parameters for `lookup_invoice`. NIP-47 accepts payment_hash OR invoice (bolt11).
+#[derive(Debug, Clone, Serialize)]
+pub struct LookupInvoiceParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invoice: Option<String>,
+}
+
+/// Decoded `lookup_invoice` result.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LookupInvoiceResult {
+    pub payment_hash: String,
+    /// `"settled"` when payment succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preimage: Option<String>,
+}
+
 impl NwcResponse {
     /// Extract balance in msats from a `get_balance` response.
     #[must_use] 
@@ -106,6 +128,18 @@ impl NwcResponse {
             .and_then(|v| serde_json::from_value::<PayInvoiceResult>(v.clone()).ok())
             .map(|r| r.preimage)
     }
+
+    /// Extract a `lookup_invoice` result. Returns None when result_type mismatches,
+    /// error is set, or result is absent/malformed.
+    #[must_use]
+    pub fn lookup_invoice_result(&self) -> Option<LookupInvoiceResult> {
+        if self.result_type != "lookup_invoice" || self.error.is_some() {
+            return None;
+        }
+        self.result
+            .as_ref()
+            .and_then(|v| serde_json::from_value::<LookupInvoiceResult>(v.clone()).ok())
+    }
 }
 
 #[cfg(test)]
@@ -118,6 +152,54 @@ mod tests {
         assert_eq!(NwcMethod::GetInfo.as_str(), "get_info");
         assert_eq!(NwcMethod::GetBalance.as_str(), "get_balance");
         assert_eq!(NwcMethod::PayInvoice.as_str(), "pay_invoice");
+    }
+
+    #[test]
+    fn lookup_invoice_method_as_str_is_correct() {
+        assert_eq!(NwcMethod::LookupInvoice.as_str(), "lookup_invoice");
+    }
+
+    #[test]
+    fn lookup_invoice_result_accessor_reads_preimage() {
+        let r = response(
+            "lookup_invoice",
+            None,
+            json!({ "payment_hash": "ph01", "state": "settled", "preimage": "pre01" }),
+        );
+        let res = r.lookup_invoice_result().expect("must decode");
+        assert_eq!(res.preimage.as_deref(), Some("pre01"));
+        assert_eq!(res.payment_hash, "ph01");
+    }
+
+    #[test]
+    fn lookup_invoice_result_accessor_reads_state() {
+        let r = response(
+            "lookup_invoice",
+            None,
+            json!({ "payment_hash": "ph02", "state": "settled" }),
+        );
+        let res = r.lookup_invoice_result().expect("must decode");
+        assert_eq!(res.state.as_deref(), Some("settled"));
+        assert_eq!(res.preimage, None);
+    }
+
+    /// A `lookup_invoice` accessor on a `pay_invoice` response must return None.
+    #[test]
+    fn lookup_invoice_result_wrong_result_type_is_none() {
+        let r = response("pay_invoice", None, json!({ "payment_hash": "x", "state": "settled" }));
+        assert!(r.lookup_invoice_result().is_none());
+    }
+
+    /// An error response must never surface a usable lookup result.
+    #[test]
+    fn lookup_invoice_result_with_error_is_none() {
+        let err = NwcError { code: "NOT_FOUND".into(), message: "no such invoice".into() };
+        let r = response(
+            "lookup_invoice",
+            Some(err),
+            json!({ "payment_hash": "x", "state": "settled" }),
+        );
+        assert!(r.lookup_invoice_result().is_none());
     }
 
     fn response(result_type: &str, error: Option<NwcError>, result: serde_json::Value)

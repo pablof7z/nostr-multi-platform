@@ -100,7 +100,7 @@ pub mod wire;
 //
 // Feature-gated behind `ffi` so consumers that only want the protocol
 // types (in-process REPL, headless tests) do not have to pull in
-// `keyring-core` / `apple-native-keyring-store`.
+// `keyring-core` / `base64`.
 #[cfg(feature = "ffi")]
 pub mod credential_store;
 #[cfg(feature = "ffi")]

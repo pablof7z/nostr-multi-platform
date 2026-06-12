@@ -167,7 +167,7 @@ table SnapshotFrame {
   // typed-first. The field is kept `(deprecated)` so the vtable slot stays
   // reserved: pre-PR-B frames (e.g. the v1 golden fixture) remain parseable,
   // and no future field can be assigned this slot. Generated bindings expose
-  // no accessor for it; web/chirp's typed-first port is post-v1 (#1007).
+  // no accessor for it; web/chirp's typed-first port is post-v1 (#1209).
   payload:Value (deprecated);             // PR-B: zeroed — typed sidecars are authoritative
   typed_projections:[TypedProjection];    // new: typed sidecar
 
