@@ -81,6 +81,8 @@ mod cache_serve_budget_tests;
 mod cache_serve_tests;
 #[cfg(test)]
 mod cache_serve_universal_tests;
+#[cfg(test)]
+mod interest_install_cache_serve_tests;
 pub(crate) mod closed_reason;
 mod diagnostic_counters;
 mod discovery;
@@ -2517,15 +2519,9 @@ impl Kernel {
                 .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
                     reason: crate::subs::InvalidateReason::External("open-interest".to_string()),
                 });
-            // ADR-0045 E1 — queue a store-cache serve for this shape, then
-            // drain ONE aggregate-budget chunk synchronously so the next
-            // snapshot carries store data (D1). Anything beyond the per-tick
-            // budget stays queued and continues on the actor tick (§5
-            // chunked continuation).
-            let completion_key =
-                cache_serve::completion_key_for_interest(&key_for_serve, &shape_for_serve);
-            self.enqueue_cache_serve(&shape_for_serve, completion_key);
-            self.run_cache_serve_step();
+            // ADR-0045 E1 — single choke-point: enqueue + drain one budget chunk
+            // so the first snapshot after open carries store data (D1).
+            self.enqueue_interest_cache_serve(&key_for_serve, &shape_for_serve);
         }
         newly_installed
     }

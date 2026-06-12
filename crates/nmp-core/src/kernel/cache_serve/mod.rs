@@ -128,6 +128,30 @@ pub(super) struct PendingCacheServe {
 }
 
 impl Kernel {
+    /// ADR-0045 single choke-point — queue a store-cache serve for an interest
+    /// that was just installed (any install path), then drain ONE aggregate-budget
+    /// chunk synchronously so the first snapshot after install carries store data
+    /// (D1). Further work stays queued and continues on the actor tick (§5
+    /// chunked continuation). Idempotent: completion keys already served or
+    /// already queued are no-ops.
+    ///
+    /// Called from:
+    /// - [`Kernel::open_interest_sub`] (M2 `OpenInterest` / `EnsureInterest` front door)
+    /// - `ActorCommand::PushInterest` dispatch arm (legacy `InterestId` surface)
+    /// - `ActorCommand::EnsureInterest` dispatch arm (on newly-installed only)
+    ///
+    /// `pub(crate)` so `crate::actor::dispatch` can reach it without
+    /// crossing the `pub(in crate::kernel)` boundary.
+    pub(crate) fn enqueue_interest_cache_serve(
+        &mut self,
+        key: &crate::subs::SubKey,
+        shape: &InterestShape,
+    ) {
+        let completion_key = completion_key_for_interest(key, shape);
+        self.enqueue_cache_serve(shape, completion_key);
+        self.run_cache_serve_step();
+    }
+
     /// Serve depth for one interest: 1× the consumer's visible window.
     ///
     /// `shape.limit` is the relay-wire backfill cap (the follow feed carries

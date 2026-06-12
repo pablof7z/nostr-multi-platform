@@ -1560,12 +1560,26 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::PushInterest(interest) => {
+            // ADR-0045 single choke-point: capture key + shape before the
+            // registry takes ownership of `interest` (borrow-checker ordering).
+            // `push` uses `set_sub` (always-upsert) so we always serve: the
+            // shape may be newly installed or may have changed (new completion
+            // key either way). The completion-key idempotency inside
+            // `enqueue_interest_cache_serve` prevents redundant re-serves when
+            // the shape is identical to what was served before.
+            let serve_key =
+                crate::subs::InterestRegistry::legacy_key(&interest.id);
+            let serve_shape = interest.shape.clone();
             ctx.kernel.lifecycle_mut().registry_mut().push(interest);
             ctx.kernel.lifecycle_mut().enqueue_trigger(
                 crate::subs::CompileTrigger::InvalidateCompile {
                     reason: crate::subs::InvalidateReason::External("push-interest".to_string()),
                 },
             );
+            // ADR-0045 E1 — serve store-resident events for this interest so
+            // parsers (e.g. MarmotIngestParser KP lookup) see persisted events
+            // on every session, not only the one that first fetched them.
+            ctx.kernel.enqueue_interest_cache_serve(&serve_key, &serve_shape);
             Some(Vec::new())
         }
         ActorCommand::WithdrawInterest(id) => {
@@ -1580,6 +1594,10 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::EnsureInterest { identity, interest } => {
+            // ADR-0045 single choke-point: capture key + shape before
+            // `ensure_sub` takes ownership (borrow-checker ordering).
+            let serve_key = identity.key;
+            let serve_shape = interest.shape.clone();
             let newly_installed = ctx
                 .kernel
                 .lifecycle_mut()
@@ -1593,6 +1611,11 @@ pub(super) fn dispatch_command(
                         ),
                     },
                 );
+                // ADR-0045 E1 — newly-installed only (idempotent install =
+                // existing interest unchanged; the completion key for the
+                // unchanged shape is already served, so this is a no-op in
+                // that case).
+                ctx.kernel.enqueue_interest_cache_serve(&serve_key, &serve_shape);
             }
             Some(Vec::new())
         }
