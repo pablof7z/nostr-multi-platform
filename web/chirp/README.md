@@ -20,7 +20,7 @@ The wasm package is generated at build time and **not checked in**
 
 ```sh
 npm ci
-npm run build:wasm   # compiles crates/nmp-wasm → public/nmp-wasm/
+npm run build:wasm   # compiles apps/chirp/nmp-app-chirp-web → public/nmp-wasm/
 npm run build        # TypeScript check + Vite bundle → dist/
 ```
 
@@ -49,9 +49,9 @@ npm run dev
 ## Static Deploy
 
 `web/chirp/vercel.json` sets `"buildCommand": "bash scripts/build.sh"`,
-which installs Rust + wasm-pack if absent, builds nmp-wasm, and runs
+which installs Rust + wasm-pack if absent, builds nmp-app-chirp-web, and runs
 `npm run build`.  The Vercel project must have its root directory set to
-`web/chirp` so the script can reach `../../crates/nmp-wasm`.
+`web/chirp` so the script can reach `apps/chirp/nmp-app-chirp-web`.
 
 For other static hosts:
 
@@ -69,10 +69,10 @@ If the host needs an SPA fallback, route all paths to `index.html`.
 The browser worker loads a generated `nmp-wasm` package from:
 
 ```text
-public/nmp-wasm/nmp_wasm.js
+public/nmp-wasm/nmp_app_chirp_web.js
 ```
 
-The package is produced by `wasm-pack build --target web crates/nmp-wasm` and
+The package is produced by `wasm-pack build --target web apps/chirp/nmp-app-chirp-web` and
 is gitignored — a fresh build is always required.  `npm run build:wasm`
 wraps the invocation with the correct `CC_wasm32_unknown_unknown=clang`
 environment variable.

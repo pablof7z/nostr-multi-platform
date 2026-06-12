@@ -9,14 +9,6 @@ description = "Browser-facing NMP worker protocol and wasm runtime facade."
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# `wasm-entry-point` gates the `#[wasm_bindgen]` `NmpWasmRuntime` export in
-# `src/lib.rs::bindings`. Enabled by default so `wasm-pack build crates/nmp-wasm`
-# and `wasm-pack test` keep working. Downstream crates (e.g.
-# `nmp-app-chirp-web`) consume nmp-wasm as an rlib and set
-# `default-features = false` to suppress the duplicate export.
-[features]
-default = ["wasm-entry-point"]
-wasm-entry-point = []
 
 [dependencies]
 # V-01 Phase 1b: nmp-core compiled with `default-features = false` so the

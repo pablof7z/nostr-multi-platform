@@ -149,10 +149,6 @@ impl WasmRuntime {
         *self.snapshot_callback.borrow_mut() = callback;
     }
 
-    /// Hand the wasm-bindgen wrapper a borrow of the snapshot-callback slot
-    /// so the `handle_json` drain path can route `UpdateBytes` through the
-    /// same `Uint8Array` channel the relay-pool sink uses. Wasm32-only —
-    /// callers off-wasm have no `js_sys::Function` to push to.
     /// Return a shared reference to the snapshot-callback slot.
     ///
     /// Used by composition-root crates (`nmp-app-chirp-web`) that own the

@@ -9,11 +9,14 @@
 //!   `setup_chirp_web_feeds`, delivering a kind:1 event directly to the
 //!   engine via `on_kernel_event` populates the snapshot with one root card.
 //!
-//! * `reentrant_claim_is_queued_not_panicked` — when `on_kernel_event` fires
+//! * `reentrant_claim_sink_queues_without_panic` — when `on_kernel_event` fires
 //!   while the `KernelReducer` is mutably borrowed (simulating the
 //!   `handle_relay_frame` re-entrancy window), the queuing claim sink parks the
 //!   `ClaimRequest` without panicking. After the borrow is released,
 //!   `drain_pending_claims` processes the queue.
+//!
+//! * `setup_chirp_web_feeds_wires_snapshot_key` — verifies the typed projection
+//!   is registered under `"nmp.feed.home"` (the `OP_FEED_SNAPSHOT_KEY` constant).
 //!
 //! * `wired_path_follow_feed_populates_snapshot` — goes through the REAL path:
 //!   events fired through `KernelReducer::fire_event_observers_for_test` reach
@@ -23,6 +26,11 @@
 //! * `wired_path_attribution_surfaces_after_post_tick_drain` — ADR-0035 proof:
 //!   a followed-user reply to a non-followed root surfaces that root with
 //!   attribution after the claim queue is drained, going through the wired path.
+//!
+//! * `setup_chirp_web_feeds_projection_appears_in_snapshot` — PR-F1 acceptance
+//!   test: after `setup_chirp_web_feeds`, every snapshot frame carries a
+//!   `TypedProjectionData` entry keyed `"nmp.feed.home"` with
+//!   `schema_id = "nmp.nip01.opfeed"`.
 //!
 //! * `notify_account_changed_resets_engine_on_switch` — Blocking-3 regression
 //!   guard: switching accounts clears the prior identity's roots; the engine

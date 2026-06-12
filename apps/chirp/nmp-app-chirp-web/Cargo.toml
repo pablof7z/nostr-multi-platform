@@ -25,10 +25,7 @@ nmp-feed = { path = "../../../crates/nmp-feed" }
 # ThreadPointer — claim pointer encoding for the queuing drain.
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # WasmRuntime: reducer_handle, install_post_tick_drain, snapshot_callback_handle.
-# `default-features = false` suppresses the `wasm-entry-point` feature so that
-# nmp-wasm's own `#[wasm_bindgen] NmpWasmRuntime` export is not compiled into
-# this cdylib — this crate owns the entry point and provides its own binding.
-nmp-wasm = { path = "../../../crates/nmp-wasm", default-features = false }
+nmp-wasm = { path = "../../../crates/nmp-wasm" }
 # JSON serialisation/deserialisation for the wasm32 `handle_json` entry point.
 serde_json = { workspace = true }
 # `#[wasm_bindgen]` attribute + `JsValue` — the wasm32 entry-point glue.
