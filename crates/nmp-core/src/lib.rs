@@ -217,6 +217,17 @@ pub use kernel::{
 // unchanged projection is served from cache instead of being re-serialized on
 // every emit.
 pub use kernel::ChangeGate;
+// Injectable kernel wall-clock trait. Re-exported (always) so the `pub`
+// `slots::KernelClockSlot` alias (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) is
+// nameable across crates. Production installs nothing (the kernel keeps its
+// `SystemClock`); only the test-support `MonotonicSecondClock` is constructible
+// downstream.
+pub use kernel::Clock;
+// Test-support: advanceable kernel clock external e2e tests install through the
+// FFI `NmpApp::set_kernel_clock_for_test` seam to stamp strictly-increasing
+// `created_at` deterministically (no wall-clock sleep — D8).
+#[cfg(any(test, feature = "test-support"))]
+pub use kernel::MonotonicSecondClock;
 // W2 — relay-author-score types. Re-exported so nmp-testing integration tests
 // and downstream crates (W4, W5) can access `ClaimOutcome`, `RelayAuthorScore`,
 // and `RelayAuthorScoreMap` without reaching into the private `kernel` module.
@@ -503,6 +514,8 @@ pub mod testing {
                 // V-83 — throwaway event-store slot (no FFI surface reads it on
                 // this test/spawn-actor entry point).
                 crate::slots::new_event_store_slot(),
+                // Test-support kernel-clock slot — private throwaway (None).
+                crate::slots::new_kernel_clock_slot(),
             );
         });
         (command_tx, update_rx)

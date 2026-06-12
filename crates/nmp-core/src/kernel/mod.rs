@@ -41,7 +41,7 @@ mod active_timeline_authors;
 #[cfg(test)]
 mod active_timeline_authors_tests;
 mod auth;
-mod clock;
+pub(crate) mod clock;
 #[cfg(test)]
 mod clock_injection_tests;
 #[cfg(test)]
@@ -351,7 +351,18 @@ use crate::store::{EventStore, MemEventStore};
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::AuthDriverState;
 pub use auth::AuthSignerFn;
-use clock::{Clock, SystemClock};
+use clock::SystemClock;
+// Re-export `Clock` at `crate::kernel::Clock` so the always-compiled
+// `crate::slots::KernelClockSlot` (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) can
+// name the trait across crates, and so this module's own `use` of it stays
+// valid. Only the trait NAME is public; the swap-in setter (`set_clock`) stays
+// `pub(crate)`, so downstream crates cannot replace the kernel clock except
+// through the test-support `NmpApp::set_kernel_clock_for_test` seam.
+pub use clock::Clock;
+// Test-support: the advanceable clock external e2e tests install through the
+// FFI `set_kernel_clock_for_test` seam.
+#[cfg(any(test, feature = "test-support"))]
+pub use clock::MonotonicSecondClock;
 // M6 — action-dispatch runtime, reachable from the `ffi` module for the
 // `nmp_app_dispatch_action` entry point. V-01 Phase 1c: native FFI only.
 // `default_registry` / `ActionRegistry` are reached by `nmp-ffi` through
@@ -2032,8 +2043,12 @@ impl Kernel {
     /// external crate integration tests call this seam without `cfg(test)`.
     // `allow(dead_code)`: called from `#[cfg(test)]` code only in nmp-core;
     // external crate integration tests reach it via the `test-support` feature.
-    #[cfg_attr(not(test), allow(dead_code))]
-    #[cfg(any(test, feature = "test-support"))]
+    // Always compiled: the test-support kernel-clock injection seam
+    // (`NmpApp::set_kernel_clock_for_test` → actor → here) is the production
+    // code path that calls this, even though production never installs a
+    // non-default clock. `allow(dead_code)` covers builds with neither the
+    // `test` cfg nor any clock-injecting consumer linked.
+    #[allow(dead_code)]
     pub(crate) fn set_clock(&mut self, clock: Arc<dyn Clock>) {
         self.clock = clock;
     }
