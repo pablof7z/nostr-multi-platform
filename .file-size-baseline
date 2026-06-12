@@ -29,7 +29,7 @@ crates/nmp-codegen/src/swift_projections_registry.rs	921
 crates/nmp-core/src/actor/commands/identity.rs	1562
 crates/nmp-core/src/actor/commands/publish.rs	742
 crates/nmp-core/src/actor/commands/remote_signer_tests.rs	1166
-crates/nmp-core/src/actor/commands/tests.rs	2279
+crates/nmp-core/src/actor/commands/tests.rs	2270
 crates/nmp-core/src/actor/dispatch.rs	2471
 crates/nmp-core/src/actor/mod.rs	2482
 crates/nmp-core/src/actor/pending_sign.rs	573
