@@ -81,7 +81,7 @@ pub(super) fn parse_profile(event: &NostrEvent) -> Profile {
     }
 }
 
-pub(super) fn parse_profile_intent(event: &SignedEvent) -> Option<Profile> {
+pub(in crate::kernel) fn parse_profile_intent(event: &SignedEvent) -> Option<Profile> {
     if event.unsigned.kind != 0 {
         return None;
     }

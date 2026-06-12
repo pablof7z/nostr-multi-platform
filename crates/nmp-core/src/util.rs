@@ -8,7 +8,8 @@
 //! but tolerate staleness. They all want the same shape: hold a value, hand it
 //! back until a TTL elapses, then recompute on the next read.
 
-use std::time::{Duration, Instant};
+use crate::time::Instant;
+use std::time::Duration;
 
 /// Sort `v` in place and remove consecutive duplicates.
 ///

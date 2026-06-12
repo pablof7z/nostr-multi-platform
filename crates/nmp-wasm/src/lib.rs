@@ -67,6 +67,11 @@ mod bindings {
     impl NmpWasmRuntime {
         #[wasm_bindgen(constructor)]
         pub fn new() -> Self {
+            // W1 — route any future wasm panic to the browser DevTools console
+            // (instead of an opaque `RuntimeError: unreachable` swallowed by
+            // the worker's generic error handler). `set_once` is idempotent.
+            #[cfg(target_arch = "wasm32")]
+            console_error_panic_hook::set_once();
             Self {
                 runtime: WasmRuntime::new(),
             }

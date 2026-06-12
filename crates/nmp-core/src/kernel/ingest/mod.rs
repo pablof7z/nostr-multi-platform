@@ -29,47 +29,14 @@
 mod auth_handlers;
 mod closed;
 mod contacts;
+mod helpers;
 mod profile;
 mod timeline;
 mod timeline_order;
-
 use super::{
     json, truncate, CanonicalRelayUrl, Instant, Kernel, NostrEvent, OutboundMessage, RelayFrame,
     RelayRole, Value,
 };
-
-/// Returns up to the first 16 chars of an event id, safe for any length.
-fn event_short_id(id: &str) -> &str {
-    &id[..id.len().min(16)]
-}
-
-/// Project a wire-parsed [`NostrEvent`] into the store's [`crate::store::RawEvent`].
-///
-/// The signed-event tap, `verify_and_persist`, and `ingest_timeline_event`
-/// each need an identical `RawEvent` to feed `VerifiedEvent::try_from_raw` —
-/// this is the single construction site so the field list never drifts.
-fn raw_event_from_nostr(event: &NostrEvent) -> crate::store::RawEvent {
-    crate::store::RawEvent {
-        id: event.id.clone(),
-        pubkey: event.pubkey.clone(),
-        created_at: event.created_at,
-        kind: event.kind,
-        tags: event.tags.clone(),
-        content: event.content.clone(),
-        sig: event.sig.clone(),
-    }
-}
-
-pub(super) fn raw_tap_should_fire(outcome: &crate::store::InsertOutcome) -> bool {
-    use crate::store::InsertOutcome;
-    matches!(
-        outcome,
-        InsertOutcome::Inserted { .. }
-            | InsertOutcome::Duplicate { .. }
-            | InsertOutcome::Replaced { .. }
-            | InsertOutcome::Ephemeral { .. }
-    )
-}
 
 impl Kernel {
     /// Ingest a single inbound relay frame on the named role/url.
@@ -429,7 +396,7 @@ impl Kernel {
                     if let Some(author) = claim_match_author.as_deref() {
                         self.record_claim_expansion_hit(sub_id, relay_url, author, &event.id);
                     }
-                    let kernel_event = kernel_event_from_nostr(&event);
+                    let kernel_event = helpers::kernel_event_from_nostr(&event);
                     self.ingest_profile(event);
                     self.notify_event_observers(&kernel_event);
                 }
@@ -446,7 +413,7 @@ impl Kernel {
                     if let Some(author) = claim_match_author.as_deref() {
                         self.record_claim_expansion_hit(sub_id, relay_url, author, &event.id);
                     }
-                    let kernel_event = kernel_event_from_nostr(&event);
+                    let kernel_event = helpers::kernel_event_from_nostr(&event);
                     self.ingest_contacts(event);
                     self.notify_event_observers(&kernel_event);
                 }
@@ -517,7 +484,7 @@ impl Kernel {
                             &event_id_for_trace,
                         );
                     }
-                    let kernel_event = kernel_event_from_nostr(&event);
+                    let kernel_event = helpers::kernel_event_from_nostr(&event);
                     self.notify_event_observers(&kernel_event);
                     let after = self.mailbox_cache().snapshot(&author);
                     if before != after {
@@ -555,13 +522,13 @@ impl Kernel {
         relay_url: &str,
         event: &NostrEvent,
     ) -> Option<crate::store::InsertOutcome> {
-        let verified = match crate::store::VerifiedEvent::try_from_raw(raw_event_from_nostr(event))
+        let verified = match crate::store::VerifiedEvent::try_from_raw(helpers::raw_event_from_nostr(event))
         {
             Ok(v) => v,
             Err(e) => {
                 self.log(format!(
                     "sig verify failed for {}: {e}",
-                    event_short_id(&event.id)
+                    helpers::event_short_id(&event.id)
                 ));
                 return None;
             }
@@ -589,7 +556,7 @@ impl Kernel {
             Ok(outcome) => {
                 if raw_for_observer
                     .as_ref()
-                    .is_some_and(|_| raw_tap_should_fire(&outcome))
+                    .is_some_and(|_| helpers::raw_tap_should_fire(&outcome))
                 {
                     if let Some(raw) = raw_for_observer.as_ref() {
                         self.notify_raw_event_observers(raw, &provenance);
@@ -662,7 +629,7 @@ impl Kernel {
             Err(e) => {
                 self.log(format!(
                     "store insert error for {}: {e}",
-                    event_short_id(&event.id)
+                    helpers::event_short_id(&event.id)
                 ));
                 None
             }
@@ -678,7 +645,7 @@ impl Kernel {
     pub(in crate::kernel) fn ingest_received_at_ms(&self) -> u64 {
         self.clock
             .now()
-            .duration_since(std::time::UNIX_EPOCH)
+            .duration_since(super::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0)
     }
@@ -771,17 +738,6 @@ impl Kernel {
                 pubkey: author.to_string(),
                 created_at,
             });
-    }
-}
-
-fn kernel_event_from_nostr(event: &NostrEvent) -> crate::substrate::KernelEvent {
-    crate::substrate::KernelEvent {
-        id: event.id.clone(),
-        author: event.pubkey.clone(),
-        kind: event.kind,
-        created_at: event.created_at,
-        tags: event.tags.clone(),
-        content: event.content.clone(),
     }
 }
 

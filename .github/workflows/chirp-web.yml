@@ -54,6 +54,23 @@ jobs:
           CC_wasm32_unknown_unknown: clang
         run: cargo check -p nmp-wasm --target wasm32-unknown-unknown
 
+      # W1 — the first test that actually EXECUTES wasm in a browser.
+      # `wasm-pack test --headless --chrome` compiles nmp-wasm to wasm32,
+      # spins up headless Chrome via chromedriver (both ship on ubuntu-latest),
+      # and runs the `#[wasm_bindgen_test]` suite. This is the milestone proof:
+      # the runtime boots without panicking on wasm32-unknown-unknown.
+      #
+      # wasm-bindgen-cli must match the `wasm-bindgen = "0.2.x"` pin in
+      # nmp-wasm/Cargo.toml. wasm-pack resolves and caches a compatible version
+      # automatically (look for "Caching wasm-bindgen..." in the step log).
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.13.1 --locked
+
+      - name: Boot test in headless Chrome
+        env:
+          CC_wasm32_unknown_unknown: clang
+        run: wasm-pack test --headless --chrome crates/nmp-wasm
+
       - name: Install Node
         uses: actions/setup-node@v4
         with:

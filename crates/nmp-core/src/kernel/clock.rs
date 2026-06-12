@@ -12,7 +12,7 @@
 //! performance timing (emit latency, EOSE timing) stay as direct calls —
 //! they never affect replay output.
 
-use std::time::SystemTime;
+use crate::time::SystemTime;
 
 /// Wall-clock used by the kernel ingest path.
 ///

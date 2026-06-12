@@ -36,7 +36,7 @@
 //! cold-claim transition (`event_claim_requested` dedupes); ingest is
 //! push, and the projection re-emits on the next snapshot tick.
 
-use super::super::{truncate, Kernel, OutboundMessage};
+use super::super::{truncate, Instant, Kernel, OutboundMessage};
 use crate::nip21::{parse_nostr_uri, NostrUri};
 use crate::planner::{HintSource, InterestScope, InterestShape, NaddrCoord, RelayHint};
 use crate::subs::CompileTrigger;
@@ -285,7 +285,7 @@ impl Kernel {
             Some(interest_id),
             uri_author,
             uri_relay_hints,
-            std::time::Instant::now(),
+            Instant::now(),
         );
         // A2 — view-equivalent registered an interest. Empty
         // `interest_ids` is correct (the compiler walks the full

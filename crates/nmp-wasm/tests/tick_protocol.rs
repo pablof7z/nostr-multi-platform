@@ -1,3 +1,9 @@
+// This test uses native-only helpers (inject_relay_connected_for_test,
+// tick_for_test, snapshot_bytes_for_test) that only exist under
+// #[cfg(not(target_arch = "wasm32"))].  Skip the entire file when compiled
+// for wasm32 so `wasm-pack test` does not abort the build.
+#![cfg(not(target_arch = "wasm32"))]
+
 // PR-2 acceptance: worker tick driver — idle-tick coalescing.
 //
 // Proves that `tick_for_test` (which calls the same `tick::tick_once` core

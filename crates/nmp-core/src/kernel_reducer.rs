@@ -202,10 +202,12 @@ impl KernelReducer {
     ///
     /// Native also calls `poll_claim_expansion(Instant::now())` at
     /// `actor/mod.rs:2133–2145` between the lifecycle drain and the publish
-    /// pump; that drain is omitted here because `poll_claim_expansion` takes
-    /// `now: Instant` as a **caller-supplied argument**, which would force a
-    /// new `Instant::now()` call site on wasm32 — and `std::time::Instant::now()`
-    /// panics on `wasm32-unknown-unknown` (see issue #1143 / #1009).
+    /// pump. This drain was previously omitted because `std::time::Instant::now()`
+    /// panics on `wasm32-unknown-unknown` (issue #1143 / #1009). The web-time
+    /// shim (`crate::time::Instant`) introduced alongside this wasm runtime PR
+    /// resolves that blocker — wiring `poll_claim_expansion` here is a
+    /// follow-up; the omission is harmless while claim-expansion remains an
+    /// in-process-only feature.
     pub fn tick(&mut self) -> Vec<OutboundMessage> {
         // 1. Pending view requests: mirrors actor/mod.rs:2086-2098.
         //    Drains time-gated work (contacts_deadline, F-TTL reverify, deferred

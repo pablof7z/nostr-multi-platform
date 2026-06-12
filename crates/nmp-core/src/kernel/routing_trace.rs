@@ -30,7 +30,7 @@
 
 use std::collections::{BTreeSet, VecDeque};
 use std::sync::RwLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::time::{SystemTime, UNIX_EPOCH};
 
 use crate::substrate::{
     PublishTrace, RoutedRelaySet, RoutingPubkey as Pubkey, RoutingRelayUrl as RelayUrl,
