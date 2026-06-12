@@ -19,7 +19,7 @@ use jni::sys::{jbyteArray, jint, jlong};
 use jni::JNIEnv;
 
 use nmp_app_chirp::{
-    action_spec_json_for_intent, nmp_app_chirp_register, nmp_signer_broker_init,
+    action_spec_json_for_intent, nmp_app_chirp_register, nmp_signer_broker_init, NmpRegisterStatus,
 };
 
 mod action;
@@ -28,10 +28,11 @@ mod marmot;
 mod platform;
 mod session;
 mod signer;
+use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_new,
-    nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay,
-    nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
+    nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay, nmp_app_signin_nsec,
+    nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
 };
 use session::{insert_session, remove_session, NextUpdate};
 pub(crate) use session::{session_arc, Session};
@@ -46,7 +47,18 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
         return 0;
     }
     nmp_signer_broker_init(app);
-    let chirp = nmp_app_chirp_register(app, std::ptr::null());
+    // V-73: null viewer_pubkey (no viewer set at startup) always succeeds.
+    // Android passes null until the user signs in; the status is expected to
+    // be Ok.  If registration fails for an unexpected reason, fall back to a
+    // null chirp handle — the Session is still created so the kernel remains
+    // usable; the missing Chirp handle degrades the home feed gracefully (D6).
+    let mut chirp = std::ptr::null_mut();
+    let _register_status = nmp_app_chirp_register(app, std::ptr::null(), &mut chirp);
+    debug_assert_eq!(
+        _register_status,
+        NmpRegisterStatus::Ok as u32,
+        "nmp_app_chirp_register with null viewer must succeed"
+    );
     let session = Arc::new(Session::new(app, chirp));
     insert_session(session)
 }
@@ -78,6 +90,10 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClose(
     }
 }
 
+/// JNI export name kept stable (Kotlin calls `nativeOpenTimeline`).
+/// Body updated to call the Chirp home-feed wrapper (`HOME_FEED_KINDS = [1,6]`
+/// defined in `nmp_app_chirp::ffi::interest_feed`) instead of the deleted
+/// `nmp_app_open_timeline` (ADR-0042 amendment 2026-06-12).
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenTimeline(
     _env: JNIEnv,
@@ -85,7 +101,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenTimeline(
     handle: jlong,
 ) {
     if let Some(s) = session_arc(handle) {
-        s.with_app(|app| nmp_app_open_timeline(app));
+        s.with_app(|app| nmp_app_chirp_open_home_feed(app));
     }
 }
 

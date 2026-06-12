@@ -5,6 +5,7 @@
 use std::ffi::c_char;
 use std::sync::{Arc, Mutex};
 
+use nmp_core::__ffi_internal::is_hex_pubkey;
 use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
@@ -17,25 +18,79 @@ use super::actions::register_nip29_actions;
 use super::handle::ChirpHandle;
 use super::helpers::c_string_opt;
 
-/// Register a Chirp modular timeline projection against `app`. Returns a
-/// non-null `*mut ChirpHandle` on success; `null` on any failure (null
-/// pointer arguments, invalid UTF-8 viewer pubkey, slot lock poisoning).
+/// Status code returned by [`nmp_app_chirp_register`].
 ///
-/// `viewer_pubkey` is a hex-encoded pubkey (typically 64 chars; not
-/// validated here — the grouper carries it through unchanged for future
-/// personalization keys). NULL is permitted and treated as "no viewer".
+/// Laid out as `#[repr(u32)]` so it maps to a plain `uint32_t` in C / Swift
+/// without any platform-specific enum sizing surprises.
 ///
-/// `app` MUST outlive the returned handle. Call [`nmp_app_chirp_unregister`]
-/// before `nmp_app_free`.
+/// **Discriminant stability contract** — numeric values are part of the C ABI
+/// and must never be renumbered.  Add new variants at the end only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum NmpRegisterStatus {
+    /// Registration succeeded. `handle_out` is non-null and ready to use.
+    Ok = 0,
+    /// The `app` pointer was null. `handle_out` is left as null.
+    NullApp = 1,
+    /// `viewer_pubkey` was non-null but did not parse as a 64-char
+    /// case-insensitive hex pubkey (32 bytes).  `handle_out` is left as null.
+    ///
+    /// A null `viewer_pubkey` is always accepted ("no viewer set"); only a
+    /// *non-null malformed* value triggers this status.
+    InvalidViewerPubkey = 2,
+}
+
+/// Register a Chirp modular timeline projection against `app`.
+///
+/// Returns an [`NmpRegisterStatus`] discriminant as `u32`.  On
+/// [`NmpRegisterStatus::Ok`] the opaque handle is written through
+/// `handle_out`; on any failure `*handle_out` is left unchanged (the caller
+/// should initialise it to `NULL` before calling).
+///
+/// ## `viewer_pubkey`
+///
+/// * `NULL` — permitted and treated as "no viewer set"; registration
+///   proceeds with an empty viewer identity.
+/// * Non-null — **must** be a 64-character case-insensitive hexadecimal
+///   string representing a 32-byte Nostr public key.  Any other value causes
+///   the function to return [`NmpRegisterStatus::InvalidViewerPubkey`] and
+///   leaves `*handle_out` as null (D6 — explicit error, no silent fallback).
+///
+/// ## SAFETY
+///
+/// * `app` must be a valid non-null `*mut NmpApp` from `nmp_app_new()`.
+/// * `handle_out` must be a valid non-null `*mut *mut ChirpHandle`; passing
+///   null is a programmer-error contract violation and returns
+///   [`NmpRegisterStatus::NullApp`] without writing through the pointer or
+///   leaking the handle allocation.
+/// * `app` MUST outlive the returned handle. Call
+///   [`nmp_app_chirp_unregister`] before `nmp_app_free`.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_app_chirp_register(
     app: *mut NmpApp,
     viewer_pubkey: *const c_char,
-) -> *mut ChirpHandle {
+    handle_out: *mut *mut ChirpHandle,
+) -> u32 {
     if app.is_null() {
-        return std::ptr::null_mut();
+        return NmpRegisterStatus::NullApp as u32;
     }
+
+    // V-73 (D6): validate a non-null viewer_pubkey at the FFI boundary.
+    // A null viewer_pubkey is explicitly permitted ("no viewer"); a non-null
+    // value that does not parse as a 64-char lowercase hex pubkey is an
+    // explicit caller error and must NOT silently fall back to the empty
+    // identity.
+    let viewer: Pubkey = match c_string_opt(viewer_pubkey) {
+        None => String::new(), // null pointer → no viewer
+        Some(s) if s.is_empty() => String::new(), // empty string → no viewer
+        Some(s) => {
+            if !is_hex_pubkey(&s) {
+                return NmpRegisterStatus::InvalidViewerPubkey as u32;
+            }
+            s
+        }
+    };
 
     // Inherit the canonical NMP composition through one call — NIP-02 /
     // NIP-17 / NIP-57 / NIP-65 action modules, the kind:10050 ingest
@@ -118,8 +173,6 @@ pub extern "C" fn nmp_app_chirp_register(
         app_ref.register_snapshot_projection("nmp.nip57.zaps", move || zaps_proj.snapshot_json());
     }
 
-    let viewer: Pubkey = c_string_opt(viewer_pubkey).unwrap_or_default();
-
     // V-80 rung 7 — the product-visible cut-over. The home feed
     // (`"nmp.feed.home"`) is now produced by the OP-centric engine instead of
     // the modular timeline projection: a stream of thread ROOTS, each carrying
@@ -144,10 +197,23 @@ pub extern "C" fn nmp_app_chirp_register(
     // op_feed_defaults.rs) registers the NOFS typed-FB encoder alongside the
     // JSON projection, and iOS `TypedHomeFeedDecoder` consumes it typed-first
     // (JSON remains the ADR-0037 Commitment-4 fallback).
-    Box::into_raw(Box::new(ChirpHandle {
+    // D6 — guard the write-through before allocating the handle. A null
+    // `handle_out` is a programmer-error contract violation: returning an
+    // error code here (instead of a segfault) is the safe, D6-compliant
+    // behaviour. We reuse `NullApp` (1) — it covers all null-pointer
+    // caller-contract violations; adding a new discriminant for this case
+    // would widen the stable ABI surface without adding information.
+    if handle_out.is_null() {
+        return NmpRegisterStatus::NullApp as u32;
+    }
+    let handle = Box::into_raw(Box::new(ChirpHandle {
         engine: defaults.engine,
         app,
-    }))
+    }));
+    // SAFETY: `handle_out` was verified non-null above; the pointer must be
+    // a valid `*mut *mut ChirpHandle` per the function's SAFETY contract.
+    unsafe { *handle_out = handle };
+    NmpRegisterStatus::Ok as u32
 }
 
 /// Wire a NIP-29 `GroupChatProjection` for a single group into `app`.

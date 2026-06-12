@@ -41,7 +41,9 @@ pub mod typed_api;
 #[cfg(feature = "wallet")]
 mod wallet_runtime;
 
-pub use ffi::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle};
+pub use ffi::{
+    nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus,
+};
 // M2 (ADR-0042 §5.1, V-112): per-open flat author/thread feeds that replace the
 // `author_view`/`thread_view` projections + the four `open_*`/`close_*` symbols.
 pub use action_specs::{
@@ -50,8 +52,9 @@ pub use action_specs::{
     zap_spec, ActionDispatchSpec, ChirpActionIntent, ReplyTargetInput,
 };
 pub use ffi::{
-    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_thread_feed,
+    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_home_feed,
+    nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed,
+    nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
 };
 pub use nmp_ffi::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,

@@ -7,8 +7,6 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
 use nmp_signer_iface::SignerOp;
 use nostr::nips::nip19::{FromBech32, ToBech32};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
@@ -366,22 +364,6 @@ pub(crate) fn build_nip46_onboarding_dto(slot: &BunkerHandshakeSlot) -> Nip46Onb
     }
 }
 
-/// `SignerOp::wait` timeout for remote-signer signs.
-///
-/// This blocks the actor thread — relay ingest, subscription management, and
-/// UI emits all stall for its full duration. The previous 45s value froze the
-/// whole actor for up to 45 seconds on every NIP-46 sign; 5s bounds that worst
-/// case while a non-blocking `SignerOp::poll` path is the documented follow-up.
-///
-/// Trade-off: 5s is too short to cover an interactive user-approval tap on the
-/// bunker device. If the remote does not turn around within 5s the sign fails
-/// with `SignerError::Timeout`, which `sign_active` formats into a string and
-/// the publish callsites (`publish.rs`) surface as `last_error_toast` per D6 —
-/// the user sees a toast and re-issues the action rather than the actor
-/// wedging. A fast (already-approved / auto-approving) bunker comfortably
-/// completes inside 5s.
-const REMOTE_SIGN_TIMEOUT: Duration = Duration::from_secs(5);
-
 /// `IdentityId` is the hex pubkey (matches NDK / applesauce / `AccountManager`).
 pub(crate) type IdentityId = String;
 
@@ -391,8 +373,8 @@ pub(crate) type IdentityId = String;
 /// accounts (NIP-46 bunker today, NIP-07 / hardware later) live in
 /// `remote_signers`. Both share the same `order` list so the UI projection
 /// stays deterministic. If the same pubkey lands in BOTH maps, the remote
-/// signer wins (`active_signer_kind` + `sign_active` consult it first) — the
-/// user explicitly added a remote handle, so route through it.
+/// signer wins (`active_signer_kind` + `sign_active_nonblocking` consult it
+/// first) — the user explicitly added a remote handle, so route through it.
 pub(crate) struct IdentityRuntime {
     keys: HashMap<IdentityId, Keys>,
     // ADR-0026 Phase 2: stored as `Arc<dyn>` (not `Box<dyn>`) so the
@@ -542,9 +524,9 @@ impl IdentityRuntime {
     /// must surface a graceful error for that case rather than assuming a key.
     ///
     /// This is the deliberate seam for the `SendGiftWrappedDm` actor arm:
-    /// `gift_wrap` requires `&Keys`, and `sign_active` (which transparently
-    /// routes to a remote signer) cannot satisfy that — sealing the rumor is
-    /// not a single "sign this event" operation.
+    /// `gift_wrap` requires `&Keys`, and `sign_active_nonblocking` (which
+    /// transparently routes to a remote signer) cannot satisfy that — sealing
+    /// the rumor is not a single "sign this event" operation.
     pub(crate) fn active_local_keys(&self) -> Option<&Keys> {
         self.active_keys()
     }
@@ -702,36 +684,10 @@ pub(super) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedE
     })
 }
 
-/// Sign `unsigned` with the active account. Returns `Err` (as state, surfaced
-/// via toast — never panics across FFI, D6) if no active account. Remote
-/// signers are consulted first (D0: actor only sees the trait); local keys
-/// are the fallback for nsec-imported accounts.
+/// Non-blocking sign with the active account (D8 — never blocks the actor
+/// thread).
 ///
-/// For remote signers the call blocks the actor thread for up to
-/// `REMOTE_SIGN_TIMEOUT` (5s) — bounded so a slow or crashed broker cannot
-/// freeze relay ingest / subscriptions / UI for the old 45s window. On
-/// timeout the `SignerError::Timeout` is `Display`-formatted into the toast
-/// string (D6); a non-blocking `SignerOp::poll` path is the follow-up.
-pub(crate) fn sign_active(
-    identity: &IdentityRuntime,
-    unsigned: &UnsignedEvent,
-) -> Result<SignedEvent, String> {
-    if let Some(handle) = identity.active_remote() {
-        return handle
-            .sign(unsigned)
-            .wait(REMOTE_SIGN_TIMEOUT)
-            .map_err(|e| format!("remote sign failed: {e}"));
-    }
-    let keys = identity
-        .active_keys()
-        .ok_or_else(|| "no active account — sign in first".to_string())?;
-    sign_with(keys, unsigned)
-}
-
-/// Non-blocking sign with the active account.
-///
-/// Unlike [`sign_active`], this never blocks the actor thread. For a remote
-/// (NIP-46) signer it returns the `SignerOp` verbatim — typically
+/// For a remote (NIP-46) signer it returns the `SignerOp` verbatim — typically
 /// `SignerOp::Pending`, which the caller must park (`PendingSign`) and
 /// `poll()` on future loop ticks. For a local nsec/generated key the sign is
 /// CPU-bound and resolves immediately into `SignerOp::Ready`.
@@ -764,11 +720,11 @@ pub(crate) fn sign_active_nonblocking(
 /// This is the `signer_pubkey: Some(_)` path for `PublishUnsignedEvent` /
 /// `PublishUnsignedEventToRelays`: it lets a non-active account publish without
 /// first switching active. Remote signers shadow local keys for the same
-/// pubkey (consistent with `sign_active`'s ordering). Returns an `Err(String)`
-/// (surfaced as a toast per D6) when no account matches the pubkey; a
-/// local-signing failure is folded into a `SignerOp::Ready(Err(..))` so the
-/// caller's single `poll()` match handles both signer kinds uniformly — exactly
-/// like [`sign_active_nonblocking`].
+/// pubkey (consistent with `sign_active_nonblocking`'s ordering). Returns an
+/// `Err(String)` (surfaced as a toast per D6) when no account matches the
+/// pubkey; a local-signing failure is folded into a `SignerOp::Ready(Err(..))`
+/// so the caller's single `poll()` match handles both signer kinds uniformly —
+/// exactly like `sign_active_nonblocking`.
 pub(crate) fn sign_with_account_nonblocking(
     identity: &IdentityRuntime,
     pubkey: &str,
@@ -821,7 +777,8 @@ fn signer_label_for_kind(kind: &str) -> String {
 /// active key (D4 single-writer: this is the only path that mutates either).
 ///
 /// Order matters: remote signers shadow local keys for the same pubkey, so
-/// the `signer_kind` projection reflects what `sign_active` will actually use.
+/// the `signer_kind` projection reflects what `sign_active_nonblocking` will
+/// actually use.
 pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
     let active = identity.active.clone();
     let summaries = identity
@@ -1039,39 +996,51 @@ pub(crate) fn create_account(
             created_at: kernel.now_secs(),
         };
         // V-54 (closed, non-bug) / ADR-0040 site-3 correction: `create_account`
-        // activates a fresh LOCAL key before this sign, so `sign_active` takes
-        // the synchronous local branch and never `.wait()`s a remote signer —
-        // no actor stall. Enforce that invariant so a future edit can't silently
-        // reintroduce an onboarding freeze (V-106 tracks removing the blocking
+        // activates a fresh LOCAL key before this sign, so `sign_active_nonblocking`
+        // takes the synchronous Ready branch — no remote round-trip, no actor
+        // stall (D8). Enforce that invariant so a future edit can't silently
+        // reintroduce an onboarding freeze (V-111 / #972 removed the blocking
         // primitive entirely).
         debug_assert!(
             identity.active_remote().is_none(),
             "cold-start kind:0 sign must run with a local key active (else blocks the actor)"
         );
-        if let Ok(signed) = sign_active(identity, &unsigned_meta) {
-            // Cold-start routing (same chicken-and-egg as kind:10002 below).
-            // A brand-new account has no kind:10002 on file, so the NIP-65
-            // outbox resolver (`PublishTarget::Auto`) would resolve
-            // `NoTargets` and the publish engine would silently drop this
-            // profile metadata — nobody would ever see the new account's
-            // display name. Route the initial kind:0 to the explicit
-            // cold-start target instead.
-            let target_relays = cold_start_publish_targets(kernel, &relay_rows);
-            if target_relays.is_empty() {
-                // D6: no usable cold-start relay — surface a toast, never
-                // panic. The account still exists locally; the user can add
-                // relays and re-publish their profile from Settings.
-                kernel.set_last_error_toast(Some(
-                    "could not publish profile — no cold-start relays available".to_string(),
-                ));
-            } else {
-                publish_outbound.extend(kernel.publish_signed_to(
-                    &signed,
-                    &[],
-                    crate::publish::PublishTarget::Explicit {
-                        relays: target_relays,
-                    },
-                ));
+        match sign_active_nonblocking(identity, &unsigned_meta).and_then(|mut op| {
+            op.poll()
+                .ok_or_else(|| "sign op pending — remote signer on cold-start path".to_string())
+                .and_then(|r| r.map_err(|e| format!("sign failed: {e}")))
+        }) {
+            Ok(signed) => {
+                // Cold-start routing (same chicken-and-egg as kind:10002 below).
+                // A brand-new account has no kind:10002 on file, so the NIP-65
+                // outbox resolver (`PublishTarget::Auto`) would resolve
+                // `NoTargets` and the publish engine would silently drop this
+                // profile metadata — nobody would ever see the new account's
+                // display name. Route the initial kind:0 to the explicit
+                // cold-start target instead.
+                let target_relays = cold_start_publish_targets(kernel, &relay_rows);
+                if target_relays.is_empty() {
+                    // D6: no usable cold-start relay — surface a toast, never
+                    // panic. The account still exists locally; the user can add
+                    // relays and re-publish their profile from Settings.
+                    kernel.set_last_error_toast(Some(
+                        "could not publish profile — no cold-start relays available".to_string(),
+                    ));
+                } else {
+                    publish_outbound.extend(kernel.publish_signed_to(
+                        &signed,
+                        &[],
+                        crate::publish::PublishTarget::Explicit {
+                            relays: target_relays,
+                        },
+                    ));
+                }
+            }
+            Err(reason) => {
+                // D6: sign failed — surface toast, skip publish. The
+                // debug_assert above ensures this arm is unreachable on the
+                // guaranteed local-key path (V-111 / #972).
+                kernel.set_last_error_toast(Some(reason));
             }
         }
     }
@@ -1086,43 +1055,57 @@ pub(crate) fn create_account(
             content: String::new(),
             created_at: kernel.now_secs(),
         };
-        // Local-key invariant (see kind:0 site above) — synchronous sign, no stall.
+        // Local-key invariant (see kind:0 site above) — synchronous Ready
+        // branch via sign_active_nonblocking, no actor stall (D8). V-111 / #972.
         debug_assert!(
             identity.active_remote().is_none(),
             "cold-start kind:10002 sign must run with a local key active (else blocks the actor)"
         );
-        if let Ok(signed) = sign_active(identity, &unsigned_relay) {
-            kernel.prepopulate_author_relay_list(
-                signed.unsigned.pubkey.clone(),
-                signed.id.clone(),
-                signed.unsigned.created_at,
-                signed.unsigned.tags.clone(),
-            );
-            // Cold-start routing. A brand-new account has no kind:10002 on
-            // file yet, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
-            // would resolve `NoTargets` and the publish engine would silently
-            // drop this very event — the chicken-and-egg the account can never
-            // escape (it can't announce its relays because it has no relays on
-            // record). Route the initial relay list explicitly instead: to the
-            // relays the user just declared (the canonical NIP-65 home of a
-            // relay list — publish it to the relays it names) unioned with the
-            // well-known discovery seed so others can find the new account.
-            let target_relays = cold_start_publish_targets(kernel, &relay_rows);
-            if target_relays.is_empty() {
-                // D6: no usable cold-start relay — surface a toast, never
-                // panic. The account still exists locally; the user can add
-                // relays and re-publish from Settings.
-                kernel.set_last_error_toast(Some(
-                    "could not publish relay list — no cold-start relays available".to_string(),
-                ));
-            } else {
-                publish_outbound.extend(kernel.publish_signed_to(
-                    &signed,
-                    &[],
-                    crate::publish::PublishTarget::Explicit {
-                        relays: target_relays,
-                    },
-                ));
+        match sign_active_nonblocking(identity, &unsigned_relay).and_then(|mut op| {
+            op.poll()
+                .ok_or_else(|| "sign op pending — remote signer on cold-start path".to_string())
+                .and_then(|r| r.map_err(|e| format!("sign failed: {e}")))
+        }) {
+            Ok(signed) => {
+                kernel.prepopulate_author_relay_list(
+                    signed.unsigned.pubkey.clone(),
+                    signed.id.clone(),
+                    signed.unsigned.created_at,
+                    signed.unsigned.tags.clone(),
+                );
+                // Cold-start routing. A brand-new account has no kind:10002 on
+                // file yet, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
+                // would resolve `NoTargets` and the publish engine would silently
+                // drop this very event — the chicken-and-egg the account can never
+                // escape (it can't announce its relays because it has no relays on
+                // record). Route the initial relay list explicitly instead: to the
+                // relays the user just declared (the canonical NIP-65 home of a
+                // relay list — publish it to the relays it names) unioned with the
+                // well-known discovery seed so others can find the new account.
+                let target_relays = cold_start_publish_targets(kernel, &relay_rows);
+                if target_relays.is_empty() {
+                    // D6: no usable cold-start relay — surface a toast, never
+                    // panic. The account still exists locally; the user can add
+                    // relays and re-publish from Settings.
+                    kernel.set_last_error_toast(Some(
+                        "could not publish relay list — no cold-start relays available"
+                            .to_string(),
+                    ));
+                } else {
+                    publish_outbound.extend(kernel.publish_signed_to(
+                        &signed,
+                        &[],
+                        crate::publish::PublishTarget::Explicit {
+                            relays: target_relays,
+                        },
+                    ));
+                }
+            }
+            Err(reason) => {
+                // D6: sign failed — surface toast, skip publish. The
+                // debug_assert above ensures this arm is unreachable on the
+                // guaranteed local-key path (V-111 / #972).
+                kernel.set_last_error_toast(Some(reason));
             }
         }
     }
@@ -1238,14 +1221,19 @@ fn publish_initial_follows(
         created_at: kernel.now_secs(),
     };
     // Local-key invariant: `publish_initial_follows` is only called from
-    // `create_account` (after a fresh local key is activated), so this sign is
-    // synchronous and never stalls the actor. See the kind:0 site for the full
-    // rationale; V-106 tracks removing the blocking `sign_active` primitive.
+    // `create_account` (after a fresh local key is activated), so
+    // `sign_active_nonblocking` takes the synchronous Ready branch — no remote
+    // round-trip, no actor stall (D8). V-111 / #972 removed the blocking
+    // primitive entirely.
     debug_assert!(
         identity.active_remote().is_none(),
         "cold-start kind:3 sign must run with a local key active (else blocks the actor)"
     );
-    match sign_active(identity, &unsigned) {
+    match sign_active_nonblocking(identity, &unsigned).and_then(|mut op| {
+        op.poll()
+            .ok_or_else(|| "sign op pending — remote signer on cold-start path".to_string())
+            .and_then(|r| r.map_err(|e| format!("sign failed: {e}")))
+    }) {
         Ok(signed) => {
             let target_relays = cold_start_publish_targets(kernel, relay_rows);
             if target_relays.is_empty() {

@@ -6,6 +6,7 @@
 mod helpers;
 #[cfg(feature = "marmot")]
 mod identity;
+mod interest_feed;
 mod nip17;
 mod nip29;
 mod nip57;

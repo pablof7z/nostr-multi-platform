@@ -37,8 +37,8 @@ class WireSubscriptionStatus : Table() {
                 null
             }
         }
-    val wireIdAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun wireIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val wireIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun wireIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val relayUrl : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class WireSubscriptionStatus : Table() {
                 null
             }
         }
-    val relayUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val relayUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val filterSummary : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class WireSubscriptionStatus : Table() {
                 null
             }
         }
-    val filterSummaryAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun filterSummaryInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val filterSummaryAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun filterSummaryInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val state : String?
         get() {
             val o = __offset(10)
@@ -70,8 +70,8 @@ class WireSubscriptionStatus : Table() {
                 null
             }
         }
-    val stateAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val stateAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     val logicalConsumerCount : UInt
         get() {
             val o = __offset(12)
@@ -106,8 +106,8 @@ class WireSubscriptionStatus : Table() {
                 null
             }
         }
-    val closeReasonAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(22, 1)
-    fun closeReasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 22, 1)
+    val closeReasonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(22, 1)
+    fun closeReasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 22, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsWireSubscriptionStatus(_bb: ByteBuffer): WireSubscriptionStatus = getRootAsWireSubscriptionStatus(_bb, WireSubscriptionStatus())

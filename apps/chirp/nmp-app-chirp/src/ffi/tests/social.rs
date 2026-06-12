@@ -10,8 +10,8 @@
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 
 use super::super::register::follow_list_typed_projection;
-use super::super::{nmp_app_chirp_register, nmp_app_chirp_unregister};
-use super::helpers::dispatch;
+use super::super::nmp_app_chirp_unregister;
+use super::helpers::{dispatch, register_app};
 
 /// THE MIGRATION PROOF: after `nmp_app_chirp_register`, the three social
 /// verbs are reachable through the generic `dispatch_action` path — each
@@ -22,8 +22,7 @@ use super::helpers::dispatch;
 #[test]
 fn social_verbs_dispatch_through_action_registry() {
     let app = nmp_app_new();
-    let handle = nmp_app_chirp_register(app, std::ptr::null());
-    assert!(!handle.is_null());
+    let handle = register_app(app);
 
     for (namespace, body) in [
         (
