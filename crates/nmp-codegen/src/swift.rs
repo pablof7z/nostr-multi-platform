@@ -169,7 +169,6 @@ import Foundation
 ///   doesn't match this emitter.
 /// - [`SwiftEmitError::Unsupported`] if any type has a non-flat-record
 ///   schema.
-#[must_use]
 pub fn render_swift(document_json: &str) -> Result<String, SwiftEmitError> {
     let document: ProjectionSchemaDocument = serde_json::from_str(document_json)
         .map_err(|err| SwiftEmitError::ParseFailed {
@@ -565,7 +564,6 @@ pub struct SwiftCheckOutcome {
 ///
 /// # Errors
 /// As [`render_swift`], plus filesystem I/O failures.
-#[must_use]
 pub fn generate_swift(document_json: &str, out_path: &Path) -> Result<(), SwiftEmitError> {
     let rendered = render_swift(document_json)?;
     if let Some(parent) = out_path.parent() {
@@ -581,7 +579,6 @@ pub fn generate_swift(document_json: &str, out_path: &Path) -> Result<(), SwiftE
 /// As [`render_swift`]. A missing file returns `up_to_date = false` with
 /// `first_diff_line = None`, not an error — the CI gate treats "file
 /// doesn't exist" the same as "file is stale".
-#[must_use]
 pub fn check_swift(document_json: &str, out_path: &Path) -> Result<SwiftCheckOutcome, SwiftEmitError> {
     let rendered = render_swift(document_json)?;
     let actual = match std::fs::read_to_string(out_path) {
