@@ -435,7 +435,7 @@ surface is available.
 
 ### Added
 
-- **`nmp_app_encode_profile(app, pubkey_hex) → *char`** — NMP-provided NIP-19 identity encoder (closes app-conformance finding H4: "shell hand-rolls NIP-19 bech32"). Prefers an `nprofile` carrying the pubkey plus up to 3 of its kind:10002 write-relay hints **when the kernel already holds them** (no fetch — reads the same mailbox cache the kind:10002 ingest parser fills); falls back to a plain `npub` when there is no relay hint. Lets app shells stop reimplementing bech32/NIP-19 for display. Free the returned string via `nmp_app_free_string`.
+- **`nmp_app_encode_profile(app, pubkey_hex) → *char`** — NMP-provided NIP-19 identity encoder (closes app-conformance finding H4: "shell hand-rolls NIP-19 bech32"). Prefers an `nprofile` carrying the pubkey plus up to 3 of its kind:10002 write-relay hints **when the kernel already holds them** (no fetch — reads the same mailbox cache the kind:10002 ingest parser fills); falls back to a plain `npub` when there is no relay hint. Lets app shells stop reimplementing bech32/NIP-19 for display. Free the returned string via `nmp_free_string`.
 
 ---
 

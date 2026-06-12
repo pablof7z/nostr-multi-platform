@@ -7,12 +7,11 @@ use nmp_app_chirp::ffi::{
 };
 use nmp_app_chirp::{
     nmp_app_cancel_bunker_handshake, nmp_app_chirp_identity_sign_in_nsec, nmp_app_nostrconnect_uri,
-    nmp_broker_free_string, nmp_marmot_register_active, nmp_marmot_unregister, send_dm_spec,
-    zap_spec,
+    nmp_marmot_register_active, nmp_marmot_unregister, send_dm_spec, zap_spec,
 };
 use nmp_ffi::{
     nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_interest,
-    nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
+    nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec, nmp_free_string,
 };
 use serde_json::{json, Value};
 
@@ -389,6 +388,6 @@ fn take_broker_string(ptr: *mut std::ffi::c_char, label: &str) -> Result<String>
     let text = unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned();
-    nmp_broker_free_string(ptr);
+    nmp_free_string(ptr);
     Ok(text)
 }

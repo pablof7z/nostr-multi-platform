@@ -12,7 +12,7 @@ use crate::action_specs::action_spec_json_for_intent;
 ///
 /// Returns `{"namespace":"...","body_json":"..."}` on success or
 /// `{"error":"..."}` on malformed intent. The returned pointer must be freed
-/// by the shell with `nmp_app_free_string`.
+/// by the shell with `nmp_free_string`.
 #[no_mangle]
 pub extern "C" fn nmp_app_chirp_action_spec(intent_json: *const c_char) -> *mut c_char {
     let result = read_c_string(intent_json)

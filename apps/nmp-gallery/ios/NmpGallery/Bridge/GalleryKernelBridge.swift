@@ -183,7 +183,7 @@ final class GalleryKernelHandle {
             }
         }
         guard let ptr else { return nil }
-        defer { nmp_app_free_string(ptr) }
+        defer { nmp_free_string(ptr) }
         return String(cString: ptr)
     }
 

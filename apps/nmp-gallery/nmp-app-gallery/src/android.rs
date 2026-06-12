@@ -18,8 +18,8 @@ use jni::JNIEnv;
 
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_event, nmp_app_claim_profile, nmp_app_dispatch_action,
-    nmp_app_free, nmp_app_free_string, nmp_app_new, nmp_app_release_event, nmp_app_release_profile,
-    nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
+    nmp_app_free, nmp_app_new, nmp_app_release_event, nmp_app_release_profile,
+    nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, nmp_free_string, NmpApp,
 };
 
 /// Owns the kernel handle, snapshot receiver, and boxed sender held by the
@@ -324,7 +324,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAc
     let result = unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     match env.new_string(result) {
         Ok(js) => js.into_raw(),
         Err(_) => null,

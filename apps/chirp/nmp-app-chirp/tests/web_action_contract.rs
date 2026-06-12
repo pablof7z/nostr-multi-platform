@@ -3,7 +3,7 @@ use std::ffi::{CStr, CString};
 use nmp_app_chirp::{
     nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus,
 };
-use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_new, NmpApp};
+use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_free_string, NmpApp};
 use nmp_wasm::{AppAction, AppActionDispatch};
 
 fn dispatch(app: *mut NmpApp, namespace: &str, action_json: &str) -> serde_json::Value {
@@ -12,7 +12,7 @@ fn dispatch(app: *mut NmpApp, namespace: &str, action_json: &str) -> serde_json:
     let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
     assert!(!ptr.is_null(), "dispatch_action must never return null");
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_app_free_string(ptr);
+    nmp_free_string(ptr);
     serde_json::from_str(&out).unwrap()
 }
 

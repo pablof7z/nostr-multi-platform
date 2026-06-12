@@ -161,7 +161,7 @@ extension KernelHandle {
         json.withCString { jsonPtr in
             namespace.withCString { nsPtr in
                 if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
-                    nmp_app_free_string(ptr)
+                    nmp_free_string(ptr)
                 }
             }
         }

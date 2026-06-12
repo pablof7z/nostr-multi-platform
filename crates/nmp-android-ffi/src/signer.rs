@@ -11,9 +11,8 @@ use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jlong, jstring};
 use jni::JNIEnv;
 
-use nmp_app_chirp::{
-    nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
-};
+use nmp_app_chirp::{nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri};
+use nmp_ffi::nmp_free_string;
 use nmp_ffi::nmp_app_signin_bunker;
 
 use crate::{jstring_to_cstring, session_arc};
@@ -77,7 +76,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNostrConnectUri(
     let uri = unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned();
-    nmp_broker_free_string(ptr);
+    nmp_free_string(ptr);
     env.new_string(uri)
         .map(|value| value.into_raw())
         .unwrap_or(ptr::null_mut())

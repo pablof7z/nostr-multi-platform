@@ -49,5 +49,5 @@ fn rust_path_reexports_cover_android_parity_surface() {
     let _ = nmp_app_chirp::nmp_app_cancel_bunker_handshake as extern "C" fn(*mut nmp_ffi::NmpApp);
     let _ = nmp_app_chirp::nmp_app_nostrconnect_uri
         as extern "C" fn(*mut nmp_ffi::NmpApp, *const c_char, *const c_char) -> *mut c_char;
-    let _ = nmp_app_chirp::nmp_broker_free_string as extern "C" fn(*mut c_char);
+    let _ = nmp_ffi::nmp_free_string as extern "C" fn(*mut c_char);
 }

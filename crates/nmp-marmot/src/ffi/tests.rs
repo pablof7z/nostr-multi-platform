@@ -565,7 +565,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
         nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
     assert!(!out_ptr.is_null(), "dispatch_action must return a non-null envelope (D6)");
     // SAFETY: the dispatcher returns a freshly-allocated NUL-terminated
-    // string the caller must release via `nmp_app_free_string`.
+    // string the caller must release via `nmp_free_string`.
     let out = unsafe { CStr::from_ptr(out_ptr) }
         .to_string_lossy()
         .into_owned();
@@ -576,7 +576,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("dispatch envelope must carry a correlation_id; got: {out}"));
     assert_eq!(id.len(), 32, "correlation_id must be 32 hex chars; got: {id}");
-    nmp_ffi::nmp_app_free_string(out_ptr);
+    nmp_ffi::nmp_free_string(out_ptr);
 
     // The handler ran on the actor thread; poll the projection's
     // snapshot for the published key-package mutation. 2 s deadline
@@ -655,7 +655,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
         .ok()
         .and_then(|v| v.get("correlation_id").and_then(|c| c.as_str()).map(str::to_owned))
         .expect("dispatch must return correlation_id");
-    nmp_ffi::nmp_app_free_string(out_ptr);
+    nmp_ffi::nmp_free_string(out_ptr);
 
     // Poll for the create_group to complete on the actor thread.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
