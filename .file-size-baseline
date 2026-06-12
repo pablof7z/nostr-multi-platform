@@ -47,7 +47,6 @@ crates/nmp-core/src/kernel/status.rs	519
 crates/nmp-core/src/kernel/test_support.rs	508
 crates/nmp-core/src/kernel/tests.rs	1242
 crates/nmp-core/src/kernel/types.rs	1015
-crates/nmp-core/src/kernel_reducer.rs	699
 crates/nmp-core/src/lib.rs	634
 crates/nmp-core/src/publish/engine/tests.rs	506
 crates/nmp-core/src/subs/lifecycle_tests.rs	965
