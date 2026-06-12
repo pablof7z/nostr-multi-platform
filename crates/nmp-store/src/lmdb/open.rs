@@ -86,9 +86,9 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
         .map_err(|e| StoreError::Io(format!("commit init: {e}")))?;
 
     // V-118 — one-time backfill: populate the expiry index for any events that
-    // were stored before the index existed (pre-V-118 databases).  Idempotent
-    // and cheap on a fresh store (the scan finds nothing to write).
-    backfill_expiry_index(&env, &lmdb, expiry_index)?;
+    // were stored before the index existed (pre-V-118 databases).  Gated by
+    // the domain_versions key so the O(store) scan runs exactly once.
+    backfill_expiry_index(&env, &lmdb, expiry_index, domain_versions)?;
 
     Ok(LmdbEventStore {
         path: path.to_path_buf(),
@@ -112,19 +112,47 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     })
 }
 
+/// Key used in the `domain_versions` sub-db to record that the V-118 expiry
+/// index backfill has completed for this store.  Once this key is present the
+/// O(store) scan is skipped on every subsequent open.
+const EXPIRY_INDEX_BACKFILL_KEY: &[u8] = b"nmp-expiry-index";
+
 /// Populate the expiry index for any events already in the store that have an
 /// expiration tag but are not yet indexed.
 ///
-/// This is a one-time migration that runs every store open.  It is idempotent:
-/// putting a key that already exists is a no-op in LMDB.  On a fresh store it
-/// is a very cheap no-op scan; on a pre-V-118 store it iterates all events once
+/// **Migration gate**: the `domain_versions` sub-db is checked first.  If the
+/// key `EXPIRY_INDEX_BACKFILL_KEY` is already present this function returns
+/// immediately without touching the event store — the O(store) scan only runs
+/// once per physical database.  After the scan completes the key is written so
+/// subsequent opens skip straight through.
+///
+/// On a fresh store the scan finds nothing and the version key is written in a
+/// single atomic transaction.  On a pre-V-118 store it iterates all events once
 /// and writes one index entry per expiring event.
+///
+/// **Tag parsing**: uses `nostr::Tags::expiration()` (NIP-40 helper) rather than
+/// hand-parsing the raw tag slice, which removes the duplicated parsing logic.
 fn backfill_expiry_index(
     env: &Env,
     lmdb: &Lmdb,
     expiry_index: Database<Bytes, Bytes>,
+    domain_versions: Database<Bytes, Bytes>,
 ) -> Result<(), StoreError> {
-    // Collect (event_id, expiry_ts) for every event carrying an expiration tag.
+    // O(1) gate — skip the full-store scan if the migration already ran.
+    {
+        let txn = env
+            .read_txn()
+            .map_err(|e| StoreError::Io(format!("backfill gate read_txn: {e}")))?;
+        if domain_versions
+            .get(&txn, EXPIRY_INDEX_BACKFILL_KEY)
+            .map_err(|e| StoreError::Io(format!("backfill gate get: {e}")))?
+            .is_some()
+        {
+            return Ok(());
+        }
+    }
+
+    // One-time scan: collect (event_id, expiry_ts) for events with an expiration tag.
     let entries: Vec<([u8; 32], u64)> = {
         let txn = env
             .read_txn()
@@ -135,27 +163,17 @@ fn backfill_expiry_index(
         let mut out: Vec<([u8; 32], u64)> = Vec::new();
         for ev in iter {
             let owned: nostr::Event = ev.into_owned();
-            if let Some(exp_tag) = owned
-                .tags
-                .iter()
-                .find(|t| t.as_slice().first().map(|s| s == "expiration").unwrap_or(false))
-            {
-                if let Some(val) = exp_tag.as_slice().get(1) {
-                    if let Ok(exp) = val.parse::<u64>() {
-                        let mut id = [0u8; 32];
-                        id.copy_from_slice(owned.id.as_bytes());
-                        out.push((id, exp));
-                    }
-                }
+            // Use the nostr crate's NIP-40 accessor rather than hand-parsing the tag slice.
+            if let Some(exp) = owned.tags.expiration() {
+                let mut id = [0u8; 32];
+                id.copy_from_slice(owned.id.as_bytes());
+                out.push((id, exp.as_secs()));
             }
         }
         out
     };
 
-    if entries.is_empty() {
-        return Ok(());
-    }
-
+    // Write index entries + version key in a single atomic transaction.
     let mut txn = env
         .write_txn()
         .map_err(|e| StoreError::Io(format!("backfill write_txn: {e}")))?;
@@ -167,6 +185,10 @@ fn backfill_expiry_index(
             .put(&mut txn, &key, &[])
             .map_err(|e| StoreError::Io(format!("backfill put: {e}")))?;
     }
+    // Mark migration as done — this is the gate key checked on subsequent opens.
+    domain_versions
+        .put(&mut txn, EXPIRY_INDEX_BACKFILL_KEY, &1u32.to_be_bytes())
+        .map_err(|e| StoreError::Io(format!("backfill version put: {e}")))?;
     txn.commit()
         .map_err(|e| StoreError::Io(format!("backfill commit: {e}")))?;
     Ok(())
