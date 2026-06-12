@@ -180,7 +180,7 @@ mod tests {
         }
         // No `d` tag filter — discovery is per-relay, not per-group.
         assert!(
-            i.shape.tags.get("d").is_none(),
+            !i.shape.tags.contains_key("d"),
             "discovery interest must not constrain by group id"
         );
     }
