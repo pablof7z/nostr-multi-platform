@@ -323,6 +323,47 @@ fn wired_path_attribution_surfaces_after_post_tick_drain() {
     );
 }
 
+/// PR-F1 acceptance test: the `nmp.feed.home` typed projection is PRODUCED.
+///
+/// After `setup_chirp_web_feeds`, every snapshot frame must carry a
+/// `TypedProjectionData` entry keyed `"nmp.feed.home"` with
+/// `schema_id = "nmp.nip01.opfeed"`. This is the load-bearing proof that
+/// wiring the composition root into the build target causes the browser
+/// snapshot to contain the feed projection — not just register the function.
+///
+/// Runs native (not wasm-pack) to keep the CI gate fast and free of browser
+/// infrastructure. The projection closure (`register_typed_snapshot_projection`
+/// step 9 in `composition.rs`) is exercised on the same `Kernel` code path
+/// regardless of host, so native is an honest proof.
+#[test]
+fn setup_chirp_web_feeds_projection_appears_in_snapshot() {
+    use nmp_core::decode_snapshot_typed_projections;
+    use nmp_nip01::op_feed::{OP_FEED_SCHEMA_ID, OP_FEED_SNAPSHOT_KEY};
+
+    let mut runtime = WasmRuntime::new();
+    let _setup = setup_chirp_web_feeds(&runtime);
+
+    // `snapshot_bytes_for_test` builds the FlatBuffers update frame the same
+    // way the wasm32 relay-pool sink does (via `make_update_frame`), which
+    // runs the registered typed-projection closures.
+    let frame = runtime.snapshot_bytes_for_test();
+    let projections = decode_snapshot_typed_projections(&frame)
+        .expect("snapshot frame must decode as valid typed projections");
+
+    let feed_proj = projections
+        .iter()
+        .find(|p| p.key == OP_FEED_SNAPSHOT_KEY)
+        .expect(
+            "typed projections must contain an entry keyed \"nmp.feed.home\" \
+             after setup_chirp_web_feeds; the projection was not registered",
+        );
+
+    assert_eq!(
+        feed_proj.schema_id, OP_FEED_SCHEMA_ID,
+        "nmp.feed.home projection must carry schema_id \"nmp.nip01.opfeed\""
+    );
+}
+
 #[test]
 fn notify_account_changed_resets_engine_on_switch() {
     // Blocking-3 regression guard: switching accounts clears prior roots.

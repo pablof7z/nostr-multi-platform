@@ -38,5 +38,9 @@
 
 pub mod claim_queue;
 pub mod composition;
+// wasm32 composition-root entry point. Compiled only for the wasm32 target so
+// `wasm-bindgen` glue is never emitted for native builds or test binaries.
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_binding;
 
 pub use composition::{setup_chirp_web_feeds, ChirpWebFeedSetup};

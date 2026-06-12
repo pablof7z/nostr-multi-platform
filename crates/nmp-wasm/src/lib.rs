@@ -47,7 +47,12 @@ pub use protocol::{
 };
 pub use runtime::{WasmRuntime, WasmRuntimeError};
 
-#[cfg(target_arch = "wasm32")]
+// The `NmpWasmRuntime` wasm-bindgen entry-point lives in `bindings` and is
+// only compiled when this crate is the *build root* (i.e. it owns the cdylib
+// output). When nmp-wasm is consumed as an rlib by `nmp-app-chirp-web`'s
+// cdylib, that crate sets `default-features = false` so `wasm-entry-point`
+// is absent → this mod is skipped → no duplicate `#[wasm_bindgen]` exports.
+#[cfg(all(target_arch = "wasm32", feature = "wasm-entry-point"))]
 mod bindings {
     use wasm_bindgen::prelude::*;
     use wasm_bindgen_futures::future_to_promise;

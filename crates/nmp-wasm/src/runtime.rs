@@ -153,8 +153,14 @@ impl WasmRuntime {
     /// so the `handle_json` drain path can route `UpdateBytes` through the
     /// same `Uint8Array` channel the relay-pool sink uses. Wasm32-only —
     /// callers off-wasm have no `js_sys::Function` to push to.
+    /// Return a shared reference to the snapshot-callback slot.
+    ///
+    /// Used by composition-root crates (`nmp-app-chirp-web`) that own the
+    /// `#[wasm_bindgen]` entry point and need to route `UpdateBytes` through
+    /// the same callback channel as `handle_json`. The slot is `Rc<RefCell>`
+    /// so cloning it gives a shared handle with zero-copy semantics.
     #[cfg(target_arch = "wasm32")]
-    pub(crate) fn snapshot_callback_handle(
+    pub fn snapshot_callback_handle(
         &self,
     ) -> &Rc<RefCell<Option<js_sys::Function>>> {
         &self.snapshot_callback

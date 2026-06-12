@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEB_CHIRP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$WEB_CHIRP_DIR/../.." && pwd)"
-CRATE_DIR="$REPO_ROOT/crates/nmp-wasm"
+CRATE_DIR="$REPO_ROOT/apps/chirp/nmp-app-chirp-web"
 OUT_DIR="$WEB_CHIRP_DIR/public/nmp-wasm"
 
 # $HOME/.cargo/bin may not exist if cargo was installed system-wide (e.g.
