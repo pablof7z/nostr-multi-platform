@@ -180,6 +180,252 @@ fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
     nmp_app_free(app);
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// Tier split (`register_substrate`) + config struct (`register_defaults_with`)
+// ───────────────────────────────────────────────────────────────────────
+
+/// The action namespaces that belong to the SUBSTRATE tier — the routing
+/// crate's own relay-list publish action. `register_substrate` alone must wire
+/// this (routing is broken without the kind:10002 publish path).
+const SUBSTRATE_NAMESPACES: &[&str] = &["nmp.nip65.publish_relay_list"];
+
+/// The action namespaces that belong to the SOCIAL tier — `register_substrate`
+/// alone must NOT wire any of these (they are preferences, not correctness).
+const SOCIAL_NAMESPACES: &[&str] = &[
+    "nmp.follow",
+    "nmp.unfollow",
+    "nmp.nip25.react",
+    "nmp.nip17.send",
+    "nmp.nip17.publish_relay_list",
+    "nmp.nip57.zap",
+];
+
+/// `register_substrate` alone yields a **routable but social-free** composition:
+/// the substrate relay-list action dispatches, but NONE of the social action
+/// bundles do. This is the `MinimalPlugins`-analog floor a non-social external
+/// consumer (podcast-player, hl) stands on without swallowing the social bundle.
+#[test]
+fn register_substrate_is_routable_but_social_free() {
+    let app = nmp_app_new();
+    assert!(!app.is_null(), "nmp_app_new returned null");
+
+    // Substrate tier ONLY — note the default coverage gate, matching what
+    // `register_defaults` passes.
+    nmp_defaults::register_substrate(
+        unsafe { &mut *app },
+        nmp_coverage_gate::CoverageGate::default(),
+    );
+
+    // Substrate action(s) ARE wired (anything other than unknown-namespace).
+    for ns in SUBSTRATE_NAMESPACES {
+        assert!(
+            is_registered(app, ns),
+            "substrate namespace `{ns}` must be wired by `register_substrate`"
+        );
+    }
+
+    // Social actions are NOT wired — the discriminating half of the proof.
+    for ns in SOCIAL_NAMESPACES {
+        assert!(
+            !is_registered(app, ns),
+            "social namespace `{ns}` must NOT be wired by `register_substrate` alone \
+             (substrate tier is social-free)"
+        );
+    }
+
+    // Social runtimes (WOT / DM) are likewise absent from the JSON registry.
+    assert!(
+        read_projection(app, "nmp.wot.bootstrap").is_none(),
+        "WOT bootstrap must NOT be wired by `register_substrate` alone"
+    );
+    assert!(
+        read_projection(app, "nmp.nip17.dm_relay_list").is_none(),
+        "DM runtime must NOT be wired by `register_substrate` alone"
+    );
+
+    nmp_app_free(app);
+}
+
+/// `register_defaults_with(default)` ≡ `register_defaults`: the same action
+/// namespaces register, and the same social runtimes appear. This pins the
+/// "zero behaviour change for `register_defaults()`" contract.
+#[test]
+fn register_defaults_with_default_equals_register_defaults() {
+    // Reference app via the legacy entry point.
+    let app_ref = nmp_app_new();
+    nmp_defaults::register_defaults(unsafe { &mut *app_ref });
+
+    // Candidate app via the new config entry point with the default config.
+    let app_cfg = nmp_app_new();
+    nmp_defaults::register_defaults_with(
+        unsafe { &mut *app_cfg },
+        nmp_defaults::NmpDefaults::default(),
+    );
+
+    // Every canonical action namespace registers in BOTH (and the bogus one in
+    // neither). Substrate + social.
+    for ns in EXPECTED_NAMESPACES {
+        assert_eq!(
+            is_registered(app_ref, ns),
+            is_registered(app_cfg, ns),
+            "namespace `{ns}` registration must match between register_defaults and \
+             register_defaults_with(default)"
+        );
+        assert!(
+            is_registered(app_cfg, ns),
+            "namespace `{ns}` must be registered by register_defaults_with(default)"
+        );
+    }
+
+    // Social runtime projections present in both.
+    for key in ["nmp.wot.bootstrap", "nmp.nip17.dm_relay_list"] {
+        assert_eq!(
+            read_projection(app_ref, key).is_some(),
+            read_projection(app_cfg, key).is_some(),
+            "projection `{key}` presence must match between the two entry points"
+        );
+        assert!(
+            read_projection(app_cfg, key).is_some(),
+            "projection `{key}` must be present under register_defaults_with(default)"
+        );
+    }
+
+    nmp_app_free(app_ref);
+    nmp_app_free(app_cfg);
+}
+
+/// Each social toggle, when `false`, skips exactly its own block and leaves the
+/// substrate floor intact.
+#[test]
+fn register_defaults_with_toggles_skip_their_blocks() {
+    // `social: false` → no nip02 actions, no WOT runtime; substrate still routable.
+    {
+        let app = nmp_app_new();
+        let cfg = nmp_defaults::NmpDefaults {
+            social: false,
+            ..Default::default()
+        };
+        nmp_defaults::register_defaults_with(unsafe { &mut *app }, cfg);
+        assert!(
+            !is_registered(app, "nmp.follow"),
+            "social:false must skip nip02"
+        );
+        assert!(
+            read_projection(app, "nmp.wot.bootstrap").is_none(),
+            "social:false must skip the WOT runtime"
+        );
+        // Substrate floor intact.
+        assert!(
+            is_registered(app, "nmp.nip65.publish_relay_list"),
+            "substrate must remain wired regardless of social toggle"
+        );
+        // Other toggles untouched.
+        assert!(is_registered(app, "nmp.nip17.send"), "dms still on");
+        assert!(is_registered(app, "nmp.nip57.zap"), "zaps still on");
+        nmp_app_free(app);
+    }
+
+    // `dms: false` → no nip17 actions, no DM runtime projection.
+    {
+        let app = nmp_app_new();
+        let cfg = nmp_defaults::NmpDefaults {
+            dms: false,
+            ..Default::default()
+        };
+        nmp_defaults::register_defaults_with(unsafe { &mut *app }, cfg);
+        assert!(
+            !is_registered(app, "nmp.nip17.send"),
+            "dms:false must skip nip17"
+        );
+        assert!(
+            read_projection(app, "nmp.nip17.dm_relay_list").is_none(),
+            "dms:false must skip the DM runtime projection"
+        );
+        assert!(is_registered(app, "nmp.follow"), "social still on");
+        nmp_app_free(app);
+    }
+
+    // `zaps: false` → no nip57 action.
+    {
+        let app = nmp_app_new();
+        let cfg = nmp_defaults::NmpDefaults {
+            zaps: false,
+            ..Default::default()
+        };
+        nmp_defaults::register_defaults_with(unsafe { &mut *app }, cfg);
+        assert!(
+            !is_registered(app, "nmp.nip57.zap"),
+            "zaps:false must skip nip57"
+        );
+        assert!(is_registered(app, "nmp.follow"), "social still on");
+        nmp_app_free(app);
+    }
+
+    // `longform: false` is observed via the TYPED registry, not the JSON map
+    // (longform is typed-only). We can at least assert the rest stay on and the
+    // call doesn't panic; the typed-projection absence is asserted in-crate.
+    {
+        let app = nmp_app_new();
+        let cfg = nmp_defaults::NmpDefaults {
+            longform: false,
+            ..Default::default()
+        };
+        nmp_defaults::register_defaults_with(unsafe { &mut *app }, cfg);
+        assert!(is_registered(app, "nmp.follow"), "social still on");
+        assert!(
+            is_registered(app, "nmp.nip65.publish_relay_list"),
+            "substrate still on"
+        );
+        nmp_app_free(app);
+    }
+}
+
+/// A custom `nostrconnect_bootstrap_relay` is consumed without panic (the value,
+/// not the presence, is the knob — it is always wired). The relay value itself
+/// is not exposed through a read seam, so this guards the plumbing/consume path.
+#[test]
+fn register_defaults_with_accepts_custom_bootstrap_relay() {
+    let app = nmp_app_new();
+    let cfg = nmp_defaults::NmpDefaults {
+        nostrconnect_bootstrap_relay: "wss://relay.example.test".to_string(),
+        ..Default::default()
+    };
+    nmp_defaults::register_defaults_with(unsafe { &mut *app }, cfg);
+    // Substrate + social still wired.
+    assert!(is_registered(app, "nmp.nip65.publish_relay_list"));
+    assert!(is_registered(app, "nmp.follow"));
+    nmp_app_free(app);
+}
+
+/// `true` when dispatching `namespace` does NOT surface an unknown-namespace
+/// error — i.e. the namespace is registered (it may still reject `{}` on input
+/// shape, which still proves registration).
+fn is_registered(app: *mut nmp_ffi::NmpApp, namespace: &str) -> bool {
+    let result = dispatch(app, namespace, "{}");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&result).expect("dispatch returned non-JSON");
+    if let Some(err) = parsed.get("error").and_then(|e| e.as_str()) {
+        return !err.to_ascii_lowercase().contains("unknown");
+    }
+    // A correlation_id (no error) is unambiguous registration.
+    true
+}
+
+/// Read a JSON projection by key, returning `None` for an absent key (null
+/// pointer) and `Some(json)` for a present one.
+fn read_projection(app: *mut nmp_ffi::NmpApp, key: &str) -> Option<String> {
+    let key_c = CString::new(key).unwrap();
+    let raw = nmp_app_read_projection_json(app, key_c.as_ptr());
+    if raw.is_null() {
+        return None;
+    }
+    let json = unsafe { CStr::from_ptr(raw) }
+        .to_string_lossy()
+        .into_owned();
+    nmp_free_string(raw);
+    Some(json)
+}
+
 fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> String {
     let ns_c = CString::new(namespace).unwrap();
     let json_c = CString::new(action_json).unwrap();
