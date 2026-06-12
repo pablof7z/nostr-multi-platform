@@ -37,9 +37,28 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
+use super::composition_ledger::{CompositionLedger, Disposition};
 use crate::substrate::{
     ActionContext, ActionId, ActionModule, ActionRegistrar, ActionRejection, ActionResult,
 };
+
+/// Per-namespace provenance: did the live entry come from a yielding default
+/// or from an explicit app registration? (ADR-0049 Part 1.)
+///
+/// The distinction drives two behaviours:
+/// * [`ActionRegistry::register_default`] yields (declines to install) when the
+///   namespace is already claimed — by EITHER provenance.
+/// * [`ActionRegistry::register`] (the app path) loudly fails when it replaces
+///   an [`Provenance::App`] entry — an app-over-app collision is a composition
+///   bug — while silently overriding a [`Provenance::Default`] entry (an app
+///   intentionally replacing a default is legal).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Provenance {
+    /// Installed via the yielding-default path (`register_default`).
+    Default,
+    /// Installed via the explicit app path (`register`).
+    App,
+}
 
 /// Dyn-safe facade over [`ActionModule`].
 ///
@@ -132,6 +151,18 @@ pub(crate) type ResultObserverSlot =
 /// surfaces these as `{"error":…}` (D6).
 pub struct ActionRegistry {
     modules: HashMap<String, Box<dyn ErasedActionModule>>,
+    /// Per-namespace provenance + the registering provider's type name
+    /// (ADR-0049 Part 1). Keyed identically to `modules`; an entry is present
+    /// iff `modules` holds the namespace. The `provider` string feeds the
+    /// composition ledger's `replaced` field and the app-over-app collision
+    /// diagnostic.
+    provenance: HashMap<String, (Provenance, &'static str)>,
+    /// Optional composition ledger (ADR-0049 Part 2). `None` for a bare
+    /// registry (the kernel's `default_registry` and most unit tests); the
+    /// host wires a shared `Arc<CompositionLedger>` via
+    /// [`Self::with_composition_ledger`] so registration decisions are
+    /// recorded for `nmp_app_composition_report`.
+    ledger: Option<Arc<CompositionLedger>>,
     /// Optional host-registered observer notified when an action is accepted
     /// and enqueued. See [`Self::set_result_observer`] /
     /// [`Self::deliver_result`]. `None` until a host registers one — an
@@ -151,21 +182,127 @@ impl ActionRegistry {
     pub fn new() -> Self {
         Self {
             modules: HashMap::new(),
+            provenance: HashMap::new(),
+            ledger: None,
             result_observer: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// Register module `M` under its [`ActionModule::NAMESPACE`]. A second
-    /// registration of the same namespace replaces the first.
+    /// Attach a shared composition ledger so registration decisions are
+    /// recorded for `nmp_app_composition_report` (ADR-0049 Part 2).
+    ///
+    /// Builder-style: the host calls this once, right after `ActionRegistry::new`,
+    /// before any registration. A registry with no ledger records nothing — the
+    /// yielding/override semantics are identical either way.
+    #[must_use]
+    pub fn with_composition_ledger(mut self, ledger: Arc<CompositionLedger>) -> Self {
+        self.ledger = Some(ledger);
+        self
+    }
+
+    /// Register module `M` under its [`ActionModule::NAMESPACE`] via the **app
+    /// path** — an explicit, intentional registration (ADR-0049 Part 1).
+    ///
+    /// Semantics by what currently holds the namespace:
+    /// * **unclaimed** → install `M` ([`Disposition::Installed`]).
+    /// * **held by a yielding default** → override it ([`Disposition::ReplacedPrevious`]).
+    ///   An app replacing a default is legal and expected (the Bevy/Spring
+    ///   "bring your own bean" case).
+    /// * **held by another app registration** → an app-over-app collision. This
+    ///   is a composition bug: a hard `debug_assert!` failure in dev/test builds,
+    ///   recorded-but-soft in release (D6 — no panic across the C-ABI). The new
+    ///   module still replaces the old (last-writer-wins) so release behaviour
+    ///   is unchanged from before ADR-0049; the ledger makes the collision
+    ///   visible either way.
     ///
     /// `M::start` handles validation and `M::execute` handles execution — both
     /// under the same `M::NAMESPACE`, so namespace mismatch between validator
     /// and executor is structurally impossible (ADR-0027).
     pub fn register<M: ActionModule + 'static>(&mut self) {
+        let provider = std::any::type_name::<M>();
+        let prior = self.provenance.get(M::NAMESPACE).copied();
+        let disposition = match prior {
+            None => Disposition::Installed,
+            Some((Provenance::Default, _)) => Disposition::ReplacedPrevious,
+            Some((Provenance::App, prev_provider)) => {
+                // App-over-app collision: loud in dev/test, soft in release.
+                debug_assert!(
+                    false,
+                    "action namespace '{}' already registered by app provider '{}'; \
+                     a second app registration ('{}') is a composition collision \
+                     (ADR-0049). Two app modules must not claim the same namespace.",
+                    M::NAMESPACE,
+                    prev_provider,
+                    provider,
+                );
+                Disposition::ReplacedPrevious
+            }
+        };
+        let replaced = prior.map(|(_, prev_provider)| prev_provider.to_string());
+
         self.modules.insert(
             M::NAMESPACE.to_string(),
             Box::new(ActionModuleAdapter::<M>::default()),
         );
+        self.provenance
+            .insert(M::NAMESPACE.to_string(), (Provenance::App, provider));
+
+        if let Some(ledger) = &self.ledger {
+            ledger.record(
+                "action_registry",
+                M::NAMESPACE,
+                provider,
+                disposition,
+                replaced,
+            );
+        }
+    }
+
+    /// Register module `M` as a **yielding default** under its
+    /// [`ActionModule::NAMESPACE`] (ADR-0049 Part 1).
+    ///
+    /// Entry-or-insert: install `M` ONLY if the namespace is unclaimed. If any
+    /// registration (app OR an earlier default) already holds the namespace,
+    /// this YIELDS — the existing module stays, `M` is dropped — and returns
+    /// `false`. Returns `true` when `M` was installed.
+    ///
+    /// This is the Spring-Boot `@ConditionalOnMissingBean` shape: a framework
+    /// default that an app can pre-empt REGARDLESS of call order. Because the
+    /// default yields rather than clobbers, an app registering its own module
+    /// under a default namespace BEFORE `register_defaults` runs is no longer
+    /// silently overwritten — the inverted, order-dependent behaviour ADR-0049
+    /// fixes.
+    pub fn register_default<M: ActionModule + 'static>(&mut self) -> bool {
+        let provider = std::any::type_name::<M>();
+        if let Some((_, existing_provider)) = self.provenance.get(M::NAMESPACE).copied() {
+            // Already claimed — yield. Record the yield for the report.
+            if let Some(ledger) = &self.ledger {
+                ledger.record(
+                    "action_registry",
+                    M::NAMESPACE,
+                    provider,
+                    Disposition::YieldedToExisting,
+                    Some(existing_provider.to_string()),
+                );
+            }
+            return false;
+        }
+        self.modules.insert(
+            M::NAMESPACE.to_string(),
+            Box::new(ActionModuleAdapter::<M>::default()),
+        );
+        self.provenance
+            .insert(M::NAMESPACE.to_string(), (Provenance::Default, provider));
+        if let Some(ledger) = &self.ledger {
+            ledger.record(
+                "action_registry",
+                M::NAMESPACE,
+                provider,
+                Disposition::Installed,
+                None,
+            );
+        }
+        true
     }
 
     /// Validate `action_json` against the module registered under
@@ -307,6 +444,10 @@ impl ActionRegistry {
 impl ActionRegistrar for ActionRegistry {
     fn register_action<M: ActionModule + 'static>(&mut self) {
         self.register::<M>();
+    }
+
+    fn register_default_action<M: ActionModule + 'static>(&mut self) -> bool {
+        self.register_default::<M>()
     }
 }
 

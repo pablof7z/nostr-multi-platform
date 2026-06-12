@@ -271,4 +271,24 @@ pub trait AppHost: ActionRegistrar {
     /// substrate surfaces a typed error rather than silently using a hardcoded
     /// URL (V-65 / D0).
     fn set_nostrconnect_bootstrap_relay(&self, url: String);
+
+    /// Register a Rust-side callback for active-account changes.
+    ///
+    /// The callback runs on the update-listener thread after the actor has
+    /// written [`Self::active_local_keys`] and emitted an update frame. It
+    /// fires only when the slot value changes (`Some(pubkey)` on sign-in /
+    /// switch, `None` on logout / reset), never on ordinary snapshot ticks.
+    /// This is the canonical composition seam for long-lived Rust objects that
+    /// need to reset per-account state without polling.
+    ///
+    /// The callback receives the new active pubkey (hex), or `None` on
+    /// logout / reset. No unregister is provided — current consumers are
+    /// app-lifetime registrations installed during host init.
+    ///
+    /// This method lives on the trait — not only on the concrete `NmpApp` — so
+    /// reusable protocol/runtime crates that register through `&impl AppHost`
+    /// can wire per-account lifecycle hooks without depending on the C-ABI crate.
+    fn register_identity_change_observer<F>(&self, f: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static;
 }

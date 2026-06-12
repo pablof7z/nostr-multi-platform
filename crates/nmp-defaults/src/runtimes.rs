@@ -43,7 +43,8 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::AppHost;
-use nmp_core::{read_eligible_relay_urls, ActorCommand, AppRelaySlot};
+use nmp_core::{read_eligible_relay_urls, ActorCommand, AppRelaySlot, KernelEventObserver};
+use nmp_nip51::MuteListProjection;
 use nmp_nip17::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
     DmRuntimeEffect, DmRuntimeState,
@@ -102,16 +103,21 @@ pub fn register_dm_runtime(app: &impl AppHost) {
 fn register_inbox_projection(app: &impl AppHost) {
     // Raw-tap retirement ladder complete (rules A5, PR-1 + PR-2): the DM inbox
     // projection rides the substrate `IngestParser` seam exclusively.
-    // `replace_ingest_parser` atomically swaps out any previously registered
-    // kind:1059 parser under slot `"nip17.dm_inbox"` (e.g. from a prior account
-    // — fresh projection = fresh in-memory state), so account-switch teardown is
-    // implicit in the replace.
+    //
+    // Issue #1138 — cross-account privacy leak: without the fix below,
+    // `DmInboxProjection` held onto decrypted messages across an account switch
+    // (the `messages` map was never cleared). The fix registers an
+    // identity-change observer (same seam as `op_feed_defaults.rs:308`) that
+    // calls `DmInboxProjection::clear()` whenever the active account changes, so
+    // the previous account's DMs are dropped before the new account's snapshot
+    // is served. Structurally impossible to leak them further.
     //
     // The raw-event tap is NO LONGER used for the DM inbox or for Marmot.
     // Cache-serve feeds the IngestParser exclusively via
     // `EventIngestDispatcher::dispatch`. Marmot rides its own `IngestParser`
     // under slot `"marmot"` for all five TAP_KINDS [443,444,445,1059,30443].
-    let projection = Arc::new(DmInboxProjection::new(app.active_local_keys()));
+    let local_keys = app.active_local_keys();
+    let projection = Arc::new(DmInboxProjection::new(Arc::clone(&local_keys)));
 
     // Register as IngestParser for kind:1059 (NIP-59 gift-wrap), under the
     // "nip17.dm_inbox" slot key. Slot-keyed replace ensures only the prior DM
@@ -124,6 +130,39 @@ fn register_inbox_projection(app: &impl AppHost) {
         "nip17.dm_inbox",
         Arc::clone(&projection) as Arc<dyn nmp_core::substrate::IngestParser>,
     );
+
+    // ── #1138 fix: clear inbox on account switch ─────────────────────────
+    //
+    // The identity-change observer fires on the update-listener thread after
+    // the actor has written the active-account slot. It compares the new
+    // active pubkey (from `local_keys`) to the last-seen one; if it changed,
+    // it calls `DmInboxProjection::clear()` so the previous account's messages
+    // cannot appear in any subsequent `snapshot()` call.
+    //
+    // The `projection` Arc is shared with the snapshot closures below — calling
+    // `clear()` on it is visible to both snapshot paths on the very next tick
+    // after the identity change fires. There is no gap window: the observer
+    // fires BEFORE the next actor snapshot tick, so the cleared state is what
+    // both snapshot closures will see.
+    //
+    // D6 — `DmInboxProjection::clear()` degrades silently on a poisoned mutex.
+    let controller = Arc::new(DmInboxController {
+        local_keys: Arc::clone(&local_keys),
+        last_seen_pubkey: Mutex::new(
+            // Seed with the registration-time active pubkey so the first
+            // identity-change fire is not a false positive (same pattern as
+            // `op_feed_defaults.rs:290` — seed `last_seen` at construction).
+            local_keys
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(|k| k.public_key().to_hex())),
+        ),
+        projection: Arc::clone(&projection),
+    });
+    let controller_for_identity = Arc::clone(&controller);
+    app.register_identity_change_observer(move |_| {
+        controller_for_identity.on_account_change();
+    });
 
     // Typed FlatBuffers sidecar (ADR-0037, Wave A), registered ALONGSIDE the
     // generic `Value` projection under the same key (additive — a `NDMI`-aware
@@ -145,6 +184,84 @@ fn register_inbox_projection(app: &impl AppHost) {
     app.register_snapshot_projection("nmp.nip17.dm_inbox", move || projection.snapshot_json());
 }
 
+/// Lifecycle controller for the DM inbox projection.
+///
+/// Detects active-account changes and clears the inbox projection so
+/// decrypted DMs from the previous account cannot leak into the new
+/// account's snapshot (issue #1138). The projection `Arc` is shared
+/// with the snapshot closures registered in `register_inbox_projection`.
+pub(crate) struct DmInboxController {
+    /// Shared active-local-keys slot — read to determine the current pubkey.
+    local_keys: Arc<Mutex<Option<nostr::Keys>>>,
+    /// Last pubkey we observed — used to detect genuine account changes
+    /// (vs. spurious identity-observer firings).
+    last_seen_pubkey: Mutex<Option<String>>,
+    /// The live projection, shared with both snapshot closures. `clear()` is
+    /// called on this when an account change is detected.
+    projection: Arc<DmInboxProjection>,
+}
+
+impl DmInboxController {
+    /// Construct a controller bound to `local_keys`, seeding the last-seen
+    /// pubkey from the slot's current value so the first observer fire is not
+    /// a false positive.
+    ///
+    /// Exposed `pub(crate)` so the unit tests in `runtimes_dm_inbox_tests` can
+    /// construct a controller without a real `AppHost`.
+    pub(crate) fn new(local_keys: Arc<Mutex<Option<nostr::Keys>>>) -> Self {
+        let initial_pubkey = local_keys
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|k| k.public_key().to_hex()));
+        let projection = Arc::new(DmInboxProjection::new(Arc::clone(&local_keys)));
+        Self {
+            local_keys,
+            last_seen_pubkey: Mutex::new(initial_pubkey),
+            projection,
+        }
+    }
+
+    /// Return a clone of the shared projection `Arc`.
+    ///
+    /// Used by the unit tests to feed DMs into the live projection and inspect
+    /// the snapshot.
+    pub(crate) fn inbox_slot(&self) -> Arc<DmInboxProjection> {
+        Arc::clone(&self.projection)
+    }
+
+    /// Called by the identity-change observer when the active account may have
+    /// changed. Compares the current pubkey in `local_keys` to the last-seen
+    /// value; if they differ, clears the projection and updates the cache.
+    ///
+    /// Returns `true` when a genuine account change was detected and the
+    /// projection was cleared; `false` for a no-op (same pubkey or poisoned
+    /// mutex).
+    ///
+    /// D6 — a poisoned `last_seen_pubkey` mutex is treated as "no prior
+    /// account" so the next sign-in still clears (safe over-clear, not an
+    /// under-clear).
+    pub(crate) fn on_account_change(&self) -> bool {
+        let current = self
+            .local_keys
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|k| k.public_key().to_hex()));
+
+        let mut last = self
+            .last_seen_pubkey
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        if *last == current {
+            return false;
+        }
+
+        *last = current;
+        self.projection.clear();
+        true
+    }
+}
+
 struct DmRuntimeController {
     relay_slot: AppRelaySlot,
     local_keys: Arc<Mutex<Option<nostr::Keys>>>,
@@ -160,9 +277,10 @@ impl DmRuntimeController {
                 .state
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for effect in
-                state.reconcile(relay_list.active_pubkey.as_deref(), &relay_list.read_relay_urls)
-            {
+            for effect in state.reconcile(
+                relay_list.active_pubkey.as_deref(),
+                &relay_list.read_relay_urls,
+            ) {
                 self.apply(effect);
             }
         }
@@ -314,9 +432,127 @@ impl ZapReceiptsRuntimeController {
     }
 }
 
+// ───────────────────────────────────────────────────────────────────────
+// NIP-51 mute-list runtime
+// ───────────────────────────────────────────────────────────────────────
+
+/// Wire the NIP-51 mute-list observer into `app` and return the
+/// [`MuteListProjection`] so the caller can connect it to a timeline
+/// projection via [`nmp_nip01::ModularTimelineProjection::set_suppression`].
+///
+/// # What this function does
+///
+/// 1. **Pubkey slot bridge** — creates a `Arc<Mutex<Option<String>>>` hex-pubkey
+///    slot and registers a per-tick observer that derives the live hex pubkey from
+///    `active_local_keys` on every snapshot tick. `MuteListProjection` reads the
+///    slot at event-ingest time and at query time, so it is always consistent with
+///    the active account.
+/// 2. **Ingest observer** — registers `MuteListProjection` as a
+///    [`KernelEventObserver`] so the kernel fan-out delivers kind:10000 events.
+///    The projection filters for the active account's author and ignores all other
+///    kind:10000 events (account-switch safety is enforced at read time by the
+///    owner-pubkey gate inside the projection — no explicit reset call needed).
+/// 3. **Diagnostic snapshot** — registers `"nmp.nip51.mute_list"` as a generic
+///    JSON projection so the active account's muted pubkeys and muted event ids
+///    are visible in the kernel snapshot (useful for diagnostics and the
+///    `chirp-repl` snapshot viewer). The projection key carries no NIP-51 nouns
+///    through `nmp-core` — the composition root (this crate) is entitled to name
+///    NIP constants directly per ADR-0046.
+/// 4. **Returns the `Arc<MuteListProjection>`** — the caller wires `set_suppression`
+///    on whichever `ModularTimelineProjection` it owns. The split between observer
+///    registration (here) and suppression wiring (caller-side) is intentional:
+///    `AppHost` has no `set_suppression` seam, and nmp-defaults must not
+///    depend on any concrete timeline instance (it is composition-root neutral).
+///
+/// # Account-switch safety
+///
+/// `MuteListProjection` is self-contained: the read path (`is_suppressed_author`,
+/// `is_suppressed_event`) re-reads the live `active_pubkey` slot on every call and
+/// gates against the `owner_pubkey` stored inside the `MuteSet`. If the active
+/// account changed between the last kind:10000 ingest and the read, the methods
+/// return `false` — stale data from the prior account is invisible. No explicit
+/// reset call or identity-change observer is required. This is the same read-time
+/// owner-gate pattern documented in `nmp-nip51/src/projection.rs`.
+///
+/// # D0 hygiene
+///
+/// This function names `kind:10000` only as a numeric literal. The term "mute"
+/// enters `nmp-core` nowhere: `SuppressionLookup` is the substrate-generic trait;
+/// `"nmp.nip51.mute_list"` is a projection key string owned by this composition
+/// crate. `nmp-core` sees `KernelEventObserver` + `SuppressionLookup` only.
+///
+/// Called by [`super::register_defaults`]; exposed `pub` so an app crate that opts
+/// out of the wholesale defaults can still wire just the mute runtime by itself.
+///
+/// # Ordering
+///
+/// Like [`crate::register_defaults`], call before `nmp_app_start`. The
+/// `KernelEventObserver` must be registered before the first event arrives.
+pub fn register_mute_runtime(app: &impl AppHost) -> Arc<MuteListProjection> {
+    // ── 1. Pubkey slot bridge ────────────────────────────────────────────
+    //
+    // `MuteListProjection` takes `Arc<Mutex<Option<String>>>` (a hex pubkey
+    // string slot). `AppHost::active_local_keys()` returns
+    // `Arc<Mutex<Option<nostr::Keys>>>`. A per-tick observer bridges the two:
+    // it derives the hex pubkey on every snapshot tick and writes it into the
+    // shared hex slot. The tick runs on the actor thread between relay frames
+    // (D8), so the lock hold is bounded and non-blocking.
+    //
+    // The mute projection reads the slot at ingest time AND at
+    // `is_suppressed_*` query time, so both paths see the live active account.
+    let active_keys = app.active_local_keys();
+    let hex_pubkey_slot: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let hex_slot_for_tick = Arc::clone(&hex_pubkey_slot);
+    app.register_snapshot_tick_observer(move || {
+        // Derive the active hex pubkey from the keys slot (same pattern as
+        // `WotBootstrapRuntime::active_pubkey`).
+        let current_hex = active_keys
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|keys| keys.public_key().to_hex()));
+        // Write into the hex slot only when the value changed — avoids a
+        // write-then-read contention cycle on every tick when stable.
+        // Poisoned hex slot → silent no-op (D6).
+        if let Ok(mut slot) = hex_slot_for_tick.lock() {
+            if *slot != current_hex {
+                *slot = current_hex;
+            }
+        }
+    });
+
+    // ── 2. Construct the projection ──────────────────────────────────────
+    let mute = Arc::new(MuteListProjection::new(Arc::clone(&hex_pubkey_slot)));
+
+    // ── 3. Register as ingest observer ───────────────────────────────────
+    //
+    // The WOT bootstrap interest already includes kind:10000 in its
+    // `WOT_BOOTSTRAP_KINDS` filter (see `nmp-wot/src/interest.rs`), so the
+    // active account's kind:10000 will arrive via the existing subscription.
+    // No separate interest push is needed.
+    app.register_event_observer(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
+
+    // ── 4. Diagnostic snapshot projection ────────────────────────────────
+    //
+    // Emits `{"muted_pubkeys":[…],"muted_event_ids":[…]}` on every tick so
+    // the active account's mute list is visible in the kernel snapshot. This
+    // key is NOT a typed sidecar (no FlatBuffers schema for mute lists in v1)
+    // — the generic JSON path is sufficient for diagnostics.
+    let mute_for_proj = Arc::clone(&mute);
+    app.register_snapshot_projection("nmp.nip51.mute_list", move || {
+        mute_for_proj.snapshot_json()
+    });
+
+    mute
+}
+
 // Co-located zap-reconciler unit tests live in a sibling file (kept out of this
 // module body to hold it under the 300-LOC ceiling) but compile as a child
 // module so they reach the private `ZapReceiptsRuntimeController`.
 #[cfg(test)]
 #[path = "runtimes_zap_tests.rs"]
 mod zap_tests;
+
+// DM inbox account-switch teardown tests — verifies issue #1138 fix.
+#[cfg(test)]
+#[path = "runtimes_dm_inbox_tests.rs"]
+mod dm_inbox_tests;

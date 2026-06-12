@@ -22,6 +22,11 @@ nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-nip77 = { path = "../nmp-nip77" }
 nmp-wot = { path = "../nmp-wot" }
+# NIP-51 mute-list adapter: `MuteListProjection` (kind:10000 observer +
+# `SuppressionLookup` impl). Registered in `register_mute_runtime` so the
+# active account's muted pubkeys and event-ids are suppressed from every
+# timeline projection that calls `set_suppression` with the returned Arc.
+nmp-nip51 = { path = "../nmp-nip51" }
 # Layer-A content sidecar: supplies the typed NIP-23 `LongformProjection`
 # (reuses the existing `ArticleProjection` resolver) the template registers as
 # the default kind:30023 TYPED snapshot projection (`nmp.nip23.articles`).
@@ -55,3 +60,13 @@ nmp-core = { path = "../nmp-core", features = ["test-support"] }
 # Same posture for the extracted FFI crate so dev/test builds see
 # `nmp_app_new`/`nmp_app_free`.
 nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }
+# nmp-nip59: used by runtimes_dm_inbox_tests to build gift-wrap envelopes for
+# the account-switch clear test (issue #1138). nmp-nip17 already depends on
+# nmp-nip59 transitively; this adds a direct dev-dep for the test helpers.
+nmp-nip59 = { path = "../nmp-nip59" }
+# `ModulePolicy` used by `ModularTimelineSpec` in the mute-runtime integration
+# tests — supplies thread-model configuration for timeline projections.
+nmp-threading = { path = "../nmp-threading" }
+# `nmp-nip51` is a runtime dep but must also appear in dev-deps so the test
+# binary can name `nmp_nip51::MuteListProjection` directly (test-support path).
+nmp-nip51 = { path = "../nmp-nip51" }

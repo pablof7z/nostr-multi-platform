@@ -171,6 +171,74 @@ actual output (un-wired FFI tree) is a liability, not an asset.
   app proving the thesis" justification is satisfied by the external consumers;
   a generated non-functional fixture never satisfied it.
 
+## Refinement: tier split + config struct (2026-06-12, Bevy/Spring study)
+
+`register_defaults` historically fused two layers with different audiences. The
+[Bevy `DefaultPlugins` study](https://docs.rs/bevy) (validated by Spring Boot 4's
+modularization retrospective) motivates separating them — `DefaultPlugins` vs
+`MinimalPlugins`, and `.set(WindowPlugin { .. })` config-as-fields.
+
+**1. Tier split — `register_substrate` (the `MinimalPlugins` analog).**
+`nmp-defaults` now exposes `pub fn register_substrate(app: &mut impl AppHost,
+gate: CoverageGate)` — the **substrate correctness** tier, called unconditionally
+by `register_defaults`:
+
+- `nmp_router::register_actions` (the `nmp.nip65.publish_relay_list` action — the
+  routing crate's own action, inseparable from the routing substrate it publishes
+  for; NOT a social toggle),
+- the shared `Arc<InMemoryMailboxCache>` + mailbox-cache reader + routing factory
+  + kind:10002 parser (one cache, three clones),
+- the publish-resolver factory,
+- the raw-event forward / republish policy,
+- the `CoverageGate` coverage hook + the NIP-77 negentropy runtime (one shared
+  gate value feeds both collaborators).
+
+Without this tier the app is **broken, not minimal**: routing returns
+`Unroutable`, `PublishTarget::Auto` fail-closes to `NoTargets`, kind:10002 never
+populates the mailbox cache, oversized relay plans are never trimmed. It is
+correctness, so it is never toggleable.
+
+**Why this is callable, not a comment block.** The non-social external consumers
+(`podcast-player`, `hl`, `win-the-day` —
+`docs/architecture/external-consumers.md`) want the routable substrate **without**
+the social bundle. Before the split they had two bad options: call
+`register_defaults` and swallow the social bundle, or hand-copy the substrate
+block — which is *un-copyable* because it threads a single shared
+`Arc<InMemoryMailboxCache>` through three seams; copy it wrong and the writer
+(parser) and readers (router + NIP-19 encoder) desync. That is the V-48 failure
+mode this crate exists to prevent, so the substrate tier is now a function they
+call.
+
+**2. `NmpDefaults` config struct + `register_defaults_with` (config-as-fields).**
+`pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults)`
+consumes a declarative config; `register_defaults(app)` delegates to it with
+`NmpDefaults::default()`. The struct fields:
+
+- `coverage_gate: CoverageGate` — **the shared D2/NIP-77 policy.** One value feeds
+  the coverage hook AND the negentropy runtime; overriding it post-hoc is
+  impossible without desyncing them, which is exactly why it is config here rather
+  than a hardcoded `CoverageGate::default()`. A regression test
+  (`tests/substrate_coverage_gate.rs`) pins that a custom gate reaches both
+  collaborators.
+- `nostrconnect_bootstrap_relay: String` — operator-policy NIP-46 fallback relay
+  (default `wss://relay.damus.io`). Always wired; its *value*, not its presence,
+  is the knob.
+- `social` / `dms` / `zaps` / `longform: bool` — the social-feature toggles
+  (nip02+WOT / nip17+DM runtime / nip57+zap runtime / NIP-23 typed projection).
+  All default `true`, so `register_defaults_with(app, default())` is byte-for-byte
+  equivalent to today's `register_defaults(app)` (pinned by
+  `tests/register_defaults.rs`).
+
+**Zero behaviour change for `register_defaults()`.** This refinement is a pure
+extraction + parameterisation: the registration order, the shared-`Arc`
+structure, and every default value are unchanged, so Chirp and every existing
+consumer compile and behave identically — `register_defaults` keeps its exact
+signature.
+
+A separate, parallel decision (**ADR-0049** — yielding `register_default`
+semantics + a composition ledger in `nmp-core`'s action registry) lands
+independently; it is orthogonal to this `nmp-defaults`-local tier split.
+
 ## Relation to M14 / ADR-0030 (UniFFI bindings)
 
 ADR-0030 / M14 move the **host bindings** (Swift/Kotlin) to generated UniFFI

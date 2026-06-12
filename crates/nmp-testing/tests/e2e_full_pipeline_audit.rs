@@ -43,7 +43,8 @@ use std::collections::HashSet;
 const DONE_MILESTONES: &[&str] = &[
     // M0 and M1 are done but not referenced in ignore tags — safe to list.
     "M0", "M1",
-    // Add "M2", "M3", ... here as milestones land on master.
+    // M2–M8 are all marked ✅ done in docs/plan.md (milestone ladder table).
+    "M2", "M3", "M4", "M5", "M6", "M7", "M8",
 ];
 
 /// Path to the e2e test file, relative to the workspace root.
