@@ -424,10 +424,10 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
     static STAGES: NoopActionStageTracker = NoopActionStageTracker;
     static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
     let send = |_: crate::actor::ActorCommand| {};
-    let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorCommand>();
+    let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
     let ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
         send: &send,
-        command_sender: tx,
+        command_sender: crate::actor::CommandSender::new(tx),
         clock: &CLOCK,
         signers: &signers,
         dms: &DMS,
@@ -887,12 +887,13 @@ fn snapshot_carries_nip46_onboarding_projection() {
     use std::thread;
     use std::time::Duration;
 
-    use crate::actor::{run_actor_with_observers, ActorCommand};
+    use crate::actor::{run_actor_with_observers, ActorCommand, ActorMail, CommandSender};
     use crate::capability_socket::new_capability_callback_slot;
     use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
 
-    let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+    let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
+    let cmd_tx = CommandSender::new(inbox_tx);
     let (upd_tx, upd_rx) = mpsc::channel::<crate::update_envelope::UpdateFrameBytes>();
 
     let snapshot_projections = crate::kernel::new_snapshot_projection_slot();
@@ -1041,9 +1042,10 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
     use std::thread;
     use std::time::Duration;
 
-    use crate::actor::{run_actor, ActorCommand};
+    use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
 
-    let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+    let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
+    let cmd_tx = CommandSender::new(inbox_tx);
     let (upd_tx, upd_rx) = mpsc::channel::<crate::update_envelope::UpdateFrameBytes>();
     let actor_self_tx = cmd_tx.clone();
     thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));

@@ -26,6 +26,16 @@ use nmp_core::substrate::{
 const RECIPIENT_HEX: &str =
     "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
 
+/// ADR-0050 §D3a — the LNURL worker now sends through a `CommandSender`, so the
+/// observation receiver carries `ActorMail`. Unwrap the command for the
+/// existing assertions.
+fn nmp_core_unwrap_mail(mail: nmp_core::ActorMail) -> ActorCommand {
+    match mail {
+        nmp_core::ActorMail::Command(cmd) => cmd,
+        other => panic!("expected ActorMail::Command, got {other:?}"),
+    }
+}
+
 fn unsigned_for(tags: Vec<Vec<String>>) -> UnsignedEvent {
     UnsignedEvent {
         pubkey: String::new(),
@@ -144,7 +154,7 @@ impl RecipientRelayLookup for FixedRecipientLookup {
 /// / toast / failure surfaces use the `Empty` / `Noop` defaults.
 fn ctx_with_sender<'a>(
     send: &'a dyn Fn(ActorCommand),
-    command_sender: std::sync::mpsc::Sender<ActorCommand>,
+    command_sender: nmp_core::CommandSender,
     clock: &'a dyn KernelClock,
     signers: &'a LocalSigner,
     stages: &'a RecordingStages,
@@ -175,8 +185,8 @@ fn ctx_with<'a>(
     stages: &'a RecordingStages,
     recipients: &'a dyn RecipientRelayLookup,
 ) -> ProtocolCommandContext<'a> {
-    let (tx, _rx) = std::sync::mpsc::channel::<ActorCommand>();
-    ctx_with_sender(send, tx, clock, signers, stages, recipients)
+    let (tx, _rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
+    ctx_with_sender(send, nmp_core::CommandSender::new(tx), clock, signers, stages, recipients)
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -462,7 +472,7 @@ struct PortCapture {
     unsigned: UnsignedEvent,
     continuation: nmp_core::SignContinuation,
     stages: Vec<String>,
-    worker_rx: std::sync::mpsc::Receiver<ActorCommand>,
+    worker_rx: std::sync::mpsc::Receiver<nmp_core::ActorMail>,
 }
 
 /// Run the command with a parse-failing LNURL target and return the single
@@ -481,12 +491,12 @@ fn run_and_capture_port(
     let recipients = NoopRecipientRelayLookup;
     // Keep the receiver alive so the continuation's worker `send`s are
     // observable rather than landing on a dropped channel.
-    let (worker_tx, worker_rx) = std::sync::mpsc::channel::<ActorCommand>();
+    let (worker_tx, worker_rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
     let signers = LocalSigner::none();
 
     {
         let mut ctx =
-            ctx_with_sender(&send, worker_tx, &clock, &signers, &stages, &recipients);
+            ctx_with_sender(&send, nmp_core::CommandSender::new(worker_tx), &clock, &signers, &stages, &recipients);
         let cmd = Box::new(FetchLnurlInvoiceCommand {
             unsigned: unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]),
             recipient_pubkey: RECIPIENT_HEX.to_string(),
@@ -553,7 +563,7 @@ fn continuation_err_fails_closed_with_toast_and_failure() {
     cap.continuation
         .call(Err("no active account — sign in first".to_string()));
 
-    let sends: Vec<ActorCommand> = cap.worker_rx.try_iter().collect();
+    let sends: Vec<ActorCommand> = cap.worker_rx.try_iter().map(nmp_core_unwrap_mail).collect();
     assert_eq!(
         sends.len(),
         2,
@@ -584,7 +594,7 @@ fn continuation_err_without_correlation_emits_only_toast() {
     assert!(cap.stages.is_empty(), "no correlation_id → no Requested stage");
     cap.continuation.call(Err("no active account".to_string()));
 
-    let sends: Vec<ActorCommand> = cap.worker_rx.try_iter().collect();
+    let sends: Vec<ActorCommand> = cap.worker_rx.try_iter().map(nmp_core_unwrap_mail).collect();
     assert_eq!(sends.len(), 1, "expected only ShowToast: {sends:?}");
     assert!(matches!(&sends[0], ActorCommand::ShowToast { .. }));
 }
@@ -611,10 +621,11 @@ fn continuation_ok_spawns_worker_carrying_signed_event() {
     // LNURL parse and posts its terminal through the worker channel. Block
     // briefly on the worker's first message so the off-thread send is observed
     // deterministically (no polling).
-    let first = cap
-        .worker_rx
-        .recv_timeout(std::time::Duration::from_secs(5))
-        .expect("worker must post a terminal after the LNURL leg fails");
+    let first = nmp_core_unwrap_mail(
+        cap.worker_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("worker must post a terminal after the LNURL leg fails"),
+    );
     match first {
         ActorCommand::ShowToast { message } => {
             assert!(
@@ -625,10 +636,11 @@ fn continuation_ok_spawns_worker_carrying_signed_event() {
         other => panic!("expected ShowToast from the worker, got {other:?}"),
     }
     // The matching RecordActionFailure follows (correlation present).
-    let second = cap
-        .worker_rx
-        .recv_timeout(std::time::Duration::from_secs(5))
-        .expect("RecordActionFailure must follow when correlation_id is present");
+    let second = nmp_core_unwrap_mail(
+        cap.worker_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("RecordActionFailure must follow when correlation_id is present"),
+    );
     match second {
         ActorCommand::RecordActionFailure { correlation_id, .. } => {
             assert_eq!(correlation_id, "cid-ok");

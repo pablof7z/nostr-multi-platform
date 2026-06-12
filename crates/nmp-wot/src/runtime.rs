@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::planner::LogicalInterest;
@@ -53,7 +52,7 @@ pub struct WotBootstrapRuntime {
     /// populated by the kernel for every backend including bunker. The runtime
     /// only ever needs identity, never secret key material.
     active_pubkey: ActiveAccountSlot,
-    tx: Sender<ActorCommand>,
+    tx: nmp_core::CommandSender,
     state: Mutex<WotRuntimeState>,
 }
 
@@ -88,7 +87,7 @@ impl WotBootstrapRuntime {
     /// sender. The slot carries the active account's hex pubkey only — never
     /// secret key material — so the runtime activates for bunker accounts.
     #[must_use]
-    pub fn new(active_pubkey: ActiveAccountSlot, tx: Sender<ActorCommand>) -> Self {
+    pub fn new(active_pubkey: ActiveAccountSlot, tx: nmp_core::CommandSender) -> Self {
         Self {
             active_pubkey,
             tx,

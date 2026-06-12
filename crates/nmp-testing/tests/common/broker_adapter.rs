@@ -1,16 +1,16 @@
 //! Test-only adapter from app-neutral broker events to actor commands.
 
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
-use nmp_core::{ActorCommand, RemoteSignerHandle};
+use nmp_core::{ActorCommand, CommandSender, RemoteSignerHandle};
 use nmp_signer_broker::{BrokerEvent, BunkerBroker};
 use nmp_signer_iface::SignerOp;
 use nmp_signers::Nip46Signer;
 
-/// Construct a broker that reports events into an actor command channel.
-pub fn broker_for_actor(tx: Sender<ActorCommand>) -> Arc<BunkerBroker> {
+/// Construct a broker that reports events into the actor command inbox
+/// (ADR-0050 §D3a: sends through a [`CommandSender`], waking the actor).
+pub fn broker_for_actor(tx: CommandSender) -> Arc<BunkerBroker> {
     BunkerBroker::new(Arc::new(move |event| {
         let _ = tx.send(actor_command_from_event(event));
     }))

@@ -587,7 +587,7 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.active_account_handle()
     }
 
-    fn actor_sender(&self) -> std::sync::mpsc::Sender<nmp_core::ActorCommand> {
+    fn actor_sender(&self) -> nmp_core::CommandSender {
         let app: &NmpApp = unsafe { &*self.app };
         app.actor_sender()
     }

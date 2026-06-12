@@ -30,9 +30,10 @@ use super::ZapReceiptsRuntimeController;
 fn controller() -> (
     ZapReceiptsRuntimeController,
     ActiveAccountSlot,
-    Receiver<ActorCommand>,
+    Receiver<nmp_core::ActorMail>,
 ) {
-    let (tx, rx) = mpsc::channel();
+    let (inbox_tx, rx) = mpsc::channel::<nmp_core::ActorMail>();
+    let tx = nmp_core::CommandSender::new(inbox_tx);
     let active_pubkey: ActiveAccountSlot = Arc::new(Mutex::new(None));
     let controller = ZapReceiptsRuntimeController {
         active_pubkey: Arc::clone(&active_pubkey),
@@ -49,8 +50,13 @@ fn sign_in(slot: &ActiveAccountSlot, keys: &Keys) {
 }
 
 /// Drain whatever the controller enqueued this tick.
-fn drained(rx: &Receiver<ActorCommand>) -> Vec<ActorCommand> {
-    rx.try_iter().collect()
+fn drained(rx: &Receiver<nmp_core::ActorMail>) -> Vec<ActorCommand> {
+    rx.try_iter()
+        .map(|mail| match mail {
+            nmp_core::ActorMail::Command(cmd) => cmd,
+            other => panic!("expected ActorMail::Command, got {other:?}"),
+        })
+        .collect()
 }
 
 /// Sign-in pushes exactly one `PushInterest` for the active pubkey; a steady

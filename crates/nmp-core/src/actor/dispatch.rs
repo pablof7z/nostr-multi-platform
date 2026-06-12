@@ -299,7 +299,7 @@ pub(super) struct ActorContext<'a> {
     /// out. The matching receiver is `command_rx` in `run_actor_with_observers`.
     /// A disconnected sender (post-Shutdown) is a benign send-failure on
     /// the worker side; the worker swallows it as a no-op (D6).
-    pub(super) command_tx_self: &'a Sender<crate::actor::ActorCommand>,
+    pub(super) command_tx_self: &'a crate::actor::CommandSender,
     /// ADR-0040 §3 — sender half of the serialized capability-worker queue
     /// (V-90 Site 2). Identity-mutation dispatch arms enqueue a
     /// [`super::capability_worker::CapabilityWorkItem`] here instead of

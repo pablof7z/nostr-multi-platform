@@ -233,7 +233,7 @@ use nmp_core::{
 };
 use std::ffi::{c_char, c_uint, c_void, CStr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -370,7 +370,7 @@ fn notify_identity_change_observers(
 }
 
 pub struct NmpApp {
-    tx: Sender<ActorCommand>,
+    tx: nmp_core::CommandSender,
     update_callback: UpdateCallbackSlot,
     /// Rust-side active-account observer registry. The update listener fires
     /// callbacks after the actor has written `active_account_handle` and before
@@ -779,7 +779,10 @@ impl Drop for NmpApp {
 
 #[no_mangle]
 pub extern "C" fn nmp_app_new() -> *mut NmpApp {
-    let (command_tx, command_rx) = mpsc::channel();
+    // ADR-0050 §D3a — one waking inbox of `ActorMail`. `command_tx` is the host
+    // `CommandSender` (stored on `NmpApp`); the actor receives on `command_rx`.
+    let (inbox_tx, command_rx) = mpsc::channel::<nmp_core::ActorMail>();
+    let command_tx = nmp_core::CommandSender::new(inbox_tx);
     let (update_tx, update_rx) = mpsc::channel();
     let update_callback = new_update_callback_slot();
     let listener_callback = Arc::clone(&update_callback);
@@ -2087,7 +2090,7 @@ impl NmpApp {
     /// broker is wired — acceptable for a backpressure gate that watches for
     /// buildup, not exact occupancy.
     #[must_use]
-    pub fn actor_sender(&self) -> Sender<ActorCommand> {
+    pub fn actor_sender(&self) -> nmp_core::CommandSender {
         self.tx.clone()
     }
 
@@ -2682,7 +2685,7 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::active_account_handle(self)
     }
 
-    fn actor_sender(&self) -> Sender<ActorCommand> {
+    fn actor_sender(&self) -> nmp_core::CommandSender {
         NmpApp::actor_sender(self)
     }
 

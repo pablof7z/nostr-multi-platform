@@ -4,7 +4,7 @@ use super::session_persistence::{
     enqueue_persist_remote_signer_payload, restore_active_session,
 };
 use crate::actor::capability_worker::spawn_capability_worker;
-use crate::actor::ActorCommand;
+use crate::actor::{ActorCommand, ActorMail, CommandSender};
 use crate::bunker_hook::BunkerHookRequest;
 use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
 use crate::kernel::Kernel;
@@ -104,7 +104,7 @@ fn fresh() -> (IdentityRuntime, Kernel) {
 /// on the actor command channel, confirming every enqueued write has
 /// been executed by the worker.
 fn drain_worker_results(
-    cmd_rx: &Receiver<ActorCommand>,
+    cmd_rx: &Receiver<ActorMail>,
     count: usize,
 ) {
     for _ in 0..count {
@@ -119,8 +119,8 @@ fn restores_imported_nsec_without_swift_cache() {
     let _g = SERIAL.lock().unwrap();
     *STORE.lock().unwrap() = Some(HashMap::new());
     let slot = registered_slot();
-    let (cmd_tx, cmd_rx): (Sender<ActorCommand>, Receiver<ActorCommand>) = channel();
-    let work_tx = spawn_capability_worker(Arc::clone(&slot), cmd_tx);
+    let (inbox_tx, cmd_rx): (Sender<ActorMail>, Receiver<ActorMail>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(inbox_tx));
 
     let (mut identity, mut kernel) = fresh();
     commands::add_signer(
@@ -140,8 +140,8 @@ fn restores_imported_nsec_without_swift_cache() {
     let (mut restored_identity, mut restored_kernel) = fresh();
     // restore_active_session is synchronous (cold-start read chain).
     let (restore_work_tx, _restore_cmd_rx) = {
-        let (tx, rx) = channel::<ActorCommand>();
-        let wtx = spawn_capability_worker(Arc::clone(&slot), tx);
+        let (tx, rx) = channel::<ActorMail>();
+        let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
         (wtx, rx)
     };
     restore_active_session(
@@ -163,8 +163,8 @@ fn persists_generated_account_for_next_launch() {
     let _g = SERIAL.lock().unwrap();
     *STORE.lock().unwrap() = Some(HashMap::new());
     let slot = registered_slot();
-    let (cmd_tx, cmd_rx): (Sender<ActorCommand>, Receiver<ActorCommand>) = channel();
-    let work_tx = spawn_capability_worker(Arc::clone(&slot), cmd_tx);
+    let (inbox_tx, cmd_rx): (Sender<ActorMail>, Receiver<ActorMail>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(inbox_tx));
 
     let (mut identity, mut kernel) = fresh();
     commands::create_account(
@@ -184,8 +184,8 @@ fn persists_generated_account_for_next_launch() {
 
     let (mut restored_identity, mut restored_kernel) = fresh();
     let (restore_work_tx, _restore_cmd_rx) = {
-        let (tx, rx) = channel::<ActorCommand>();
-        let wtx = spawn_capability_worker(Arc::clone(&slot), tx);
+        let (tx, rx) = channel::<ActorMail>();
+        let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
         (wtx, rx)
     };
     restore_active_session(
@@ -205,8 +205,8 @@ fn restores_nip46_from_persisted_remote_payload() {
     let _g = SERIAL.lock().unwrap();
     *STORE.lock().unwrap() = Some(HashMap::new());
     let slot = registered_slot();
-    let (cmd_tx, cmd_rx): (Sender<ActorCommand>, Receiver<ActorCommand>) = channel();
-    let work_tx = spawn_capability_worker(Arc::clone(&slot), cmd_tx);
+    let (inbox_tx, cmd_rx): (Sender<ActorMail>, Receiver<ActorMail>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(inbox_tx));
 
     let identity_id = "701eb015134aed0cb6582a86b9527f2db0241ca36a64bfd63ddbde59002c7c05";
     let payload_json = format!(
@@ -229,8 +229,8 @@ fn restores_nip46_from_persisted_remote_payload() {
 
     let (mut identity, mut kernel) = fresh();
     let (restore_work_tx, _restore_cmd_rx) = {
-        let (tx, rx) = channel::<ActorCommand>();
-        let wtx = spawn_capability_worker(Arc::clone(&slot), tx);
+        let (tx, rx) = channel::<ActorMail>();
+        let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
         (wtx, rx)
     };
     let _outbound = restore_active_session(

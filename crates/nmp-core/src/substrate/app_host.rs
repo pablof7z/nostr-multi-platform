@@ -8,7 +8,6 @@
 //! has to name.
 
 use std::ops::Range;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use crate::publish::OutboxResolver;
@@ -19,8 +18,8 @@ use crate::store::EventStore;
 use crate::subs::PlanCoverageHook;
 use crate::update_envelope::TypedProjectionData;
 use crate::{
-    ActorCommand, AppRelaySlot, KernelEventObserver, KernelEventObserverId, KindFilter,
-    RawEventObserver, RawEventObserverId,
+    AppRelaySlot, KernelEventObserver, KernelEventObserverId, KindFilter, RawEventObserver,
+    RawEventObserverId,
 };
 
 use super::{
@@ -244,7 +243,7 @@ pub trait AppHost: ActionRegistrar {
     /// account. `None` means no account is signed in.
     fn active_pubkey(&self) -> ActiveAccountSlot;
 
-    fn actor_sender(&self) -> Sender<ActorCommand>;
+    fn actor_sender(&self) -> crate::actor::CommandSender;
 
     fn register_event_observer(
         &self,

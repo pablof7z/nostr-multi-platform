@@ -32,7 +32,6 @@
 pub mod http;
 
 use std::io::Read;
-use std::sync::mpsc::Sender;
 
 use nmp_core::substrate::{
     build_sign_event_for_account, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
@@ -116,7 +115,7 @@ fn run_upload_worker(
     signer_pubkey: Option<String>,
     correlation_id: String,
     created_at: u64,
-    worker_tx: Sender<ActorCommand>,
+    worker_tx: nmp_core::CommandSender,
 ) {
     // Stream the file through the hasher (never load the whole blob into a
     // single buffer for hashing).
@@ -178,7 +177,7 @@ fn run_upload_worker(
 /// the actor thread is never blocked on HTTP (D8).
 #[allow(clippy::too_many_arguments)]
 fn spawn_put_worker(
-    worker_tx: Sender<ActorCommand>,
+    worker_tx: nmp_core::CommandSender,
     servers: Vec<String>,
     content_type: String,
     sha256_hex: String,
@@ -300,7 +299,7 @@ fn aggregate(
 }
 
 /// Record a terminal `RecordActionFailure` so the host spinner clears (D6).
-fn fail(worker_tx: &Sender<ActorCommand>, correlation_id: String, reason: String) {
+fn fail(worker_tx: &nmp_core::CommandSender, correlation_id: String, reason: String) {
     let _ = worker_tx.send(ActorCommand::RecordActionFailure {
         correlation_id,
         reason,
