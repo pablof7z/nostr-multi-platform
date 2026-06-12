@@ -37,8 +37,8 @@ class TypedProjection : Table() {
                 null
             }
         }
-    val keyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val keyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val payload : nmp.transport.TypedPayload? get() = payload(nmp.transport.TypedPayload())
     fun payload(obj: nmp.transport.TypedPayload) : nmp.transport.TypedPayload? {
         val o = __offset(6)

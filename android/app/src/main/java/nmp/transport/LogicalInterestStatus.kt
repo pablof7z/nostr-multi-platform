@@ -37,8 +37,8 @@ class LogicalInterestStatus : Table() {
                 null
             }
         }
-    val keyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val keyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val state : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class LogicalInterestStatus : Table() {
                 null
             }
         }
-    val stateAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val stateAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val refcount : UInt
         get() {
             val o = __offset(8)
@@ -76,8 +76,8 @@ class LogicalInterestStatus : Table() {
                 null
             }
         }
-    val cacheCoverageAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(12, 1)
-    fun cacheCoverageInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 12, 1)
+    val cacheCoverageAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
+    fun cacheCoverageInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
     val warmingUntilMs : ULong?
         get() {
             val o = __offset(14)
