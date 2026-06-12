@@ -7,9 +7,10 @@
 //!    returns within ≤ 2× the budget wall-time.  This is the guard against the O(store)
 //!    actor-stall described in V-117 part A.
 //!
-//! 2. `gc_phase1_cursor_advances_incrementally` — with a tight event-count budget (5),
-//!    verifies that two successive passes cover *different* events rather than both
-//!    restarting from the top.  Proves the resumable cursor mechanism.
+//! 2. `gc_expiry_index_advances_incrementally` — with a tight event-count budget (5),
+//!    verifies that two successive passes cover *different* expired events rather than
+//!    both restarting from the beginning of the expiry index.  Proves the V-118
+//!    expiry-index range scan advances across budget-bounded passes.
 //!
 //! 3. `gc_tombstone_purge_gate_suppresses_redundant_scans` — inserts tombstones, runs
 //!    two gc passes in the same "hour" (same `now_secs`), and asserts the second pass
@@ -38,6 +39,14 @@
 //! 8. `v118_expiry_index_backfill_on_reopen` — opening an existing store (pre-index)
 //!    triggers a one-time backfill; after reopen gc_step correctly reaps events that
 //!    were inserted before the index existed.
+//!
+//! 9. `v118_backfill_runs_once` — the backfill migration gate: after the first open
+//!    the `domain_versions` key is present; a second open skips the O(store) scan
+//!    and the expiry index is still intact.
+//!
+//! 10. `v118_bulk_delete_by_author_removes_index_entries` — bulk delete via
+//!    `by_author` cleans up expiry-index entries for expiring events O(1) per event.
+//!    After the bulk delete no orphaned index entry causes a phantom reap.
 
 #![cfg(feature = "lmdb-backend")]
 
@@ -137,17 +146,22 @@ fn gc_step_50k_manual() {
     );
 }
 
-// ─── Test 2: Phase-1 cursor advances incrementally ───────────────────────────
+// ─── Test 2: expiry-index advances across budget-bounded passes ──────────────
 
 /// With a tight event-count budget (5), two successive `gc_step` passes must
-/// cover *different* events — the second pass must not restart from the top.
+/// cover *different* expired events — the second pass must not restart from
+/// the beginning of the expiry index.
+///
+/// Renamed from `gc_phase1_cursor_advances_incrementally` (the V-117 cursor is
+/// gone; this now tests the V-118 expiry-index range scan's progress across
+/// budget-bounded passes).
 ///
 /// Proof strategy: insert 20 events with EXPIRATION tags that gc would reap.
 /// Pass 1 with budget=5 reaps at most 5.  Pass 2 with budget=5 must reap
-/// another set; if the cursor did not advance, it would try to re-reap already-
-/// deleted events (finding 0) instead of advancing to new ones.
+/// another set; if the index restarted from zero it would find already-reaped
+/// entries (deleted from the main store) and return 0.
 #[test]
-fn gc_phase1_cursor_advances_incrementally() {
+fn gc_expiry_index_advances_incrementally() {
     use nostr::prelude::*;
 
     let (store, _dir) = open_tmp();
@@ -197,17 +211,18 @@ fn gc_phase1_cursor_advances_incrementally() {
         budget.max_events_per_step,
     );
 
-    // Pass 2: must reap additional events (cursor advanced).
+    // Pass 2: must reap additional events (index advanced past already-reaped).
     let report2 = store.gc_step(budget, gc_now).expect("pass 2");
     let reaped_pass2 = report2.expired_reaped;
 
-    // If the cursor did NOT advance, pass 2 would find the same events already
-    // deleted and return 0.  With the fix it must find and reap new events.
+    // If the index DID restart from zero, pass 2 would find the same index entries
+    // (already deleted from the main store) and reap nothing.  With the V-118
+    // expiry-index the range scan starts past the already-deleted keys.
     let total_reaped = reaped_pass1 + reaped_pass2;
     assert!(
         total_reaped > reaped_pass1,
-        "cursor must advance: pass1={reaped_pass1}, pass2={reaped_pass2}, \
-         total={total_reaped}. If cursor reset, pass 2 would find deleted events only.",
+        "expiry index must advance: pass1={reaped_pass1}, pass2={reaped_pass2}, \
+         total={total_reaped}. Index must not restart from zero on each gc pass.",
     );
 }
 
@@ -618,5 +633,173 @@ fn v118_expiry_index_backfill_on_reopen() {
         "V-118 backfill: event inserted in session 1 must be reaped in session 2 \
          (backfill populated the expiry index on reopen). expired_reaped={}",
         report.expired_reaped,
+    );
+}
+
+// ─── Test 9: backfill migration gate — runs exactly once ─────────────────────
+
+/// The migration gate in `backfill_expiry_index` must:
+///
+/// 1. On the first open of a fresh store: run the backfill (scan events, write
+///    index entries) then set the `domain_versions` key `b"nmp-expiry-index"`.
+/// 2. On every subsequent open: find the key already set, skip the O(store)
+///    scan entirely, and leave the expiry index intact.
+///
+/// Proof: open store, insert an expiring event, close, reopen, verify the event
+/// is still reaped by gc_step (the index survived the gate-skipped open).
+#[test]
+fn v118_backfill_runs_once() {
+    use nostr::prelude::*;
+    use tempfile::tempdir;
+    use crate::LmdbEventStore;
+
+    let dir = tempdir().expect("tempdir");
+    let base_ts = 1_700_000_000u64;
+    let exp_ts = base_ts + 100;
+    let gc_now = exp_ts + 1;
+
+    // Session 1: fresh store — backfill runs (empty scan), version key written.
+    {
+        let store = LmdbEventStore::open(dir.path()).expect("open session 1");
+        let keys = Keys::generate();
+        let ev = EventBuilder::text_note("once-test")
+            .custom_created_at(Timestamp::from_secs(base_ts))
+            .tag(Tag::expiration(Timestamp::from_secs(exp_ts)))
+            .sign_with_keys(&keys)
+            .expect("sign");
+        let json = ev.try_as_json().expect("json");
+        let raw: crate::types::RawEvent = serde_json::from_str(&json).expect("parse");
+        store
+            .insert(verified(raw), &"wss://r/".into(), base_ts * 1_000)
+            .expect("insert session 1");
+        // Drop → LMDB flushes to disk.
+    }
+
+    // Session 2: reopen — backfill gate finds the version key and returns early.
+    // The expiry index was populated in Session 1 at insert time.
+    {
+        let _store = LmdbEventStore::open(dir.path()).expect("open session 2");
+    }
+
+    // Session 3: third open — version key still present; index intact.
+    // gc_step must reap the expiring event, proving the index survived.
+    let store3 = LmdbEventStore::open(dir.path()).expect("open session 3");
+    let budget = GcBudget {
+        max_events_per_step: 1000,
+        max_duration_ms: 60_000,
+        max_total_events: usize::MAX,
+    };
+    let report = store3.gc_step(budget, gc_now).expect("gc_step session 3");
+    assert_eq!(
+        report.expired_reaped, 1,
+        "v118_backfill_runs_once: expiry index must survive multiple reopens \
+         (backfill gate skips redundant scans). expired_reaped={}",
+        report.expired_reaped,
+    );
+
+    // A second gc pass must find nothing more.
+    let report2 = store3.gc_step(budget, gc_now).expect("gc_step session 3 pass 2");
+    assert_eq!(
+        report2.expired_reaped, 0,
+        "v118_backfill_runs_once: no phantom reaps after second pass, got {}",
+        report2.expired_reaped,
+    );
+}
+
+// ─── Test 10: bulk delete by_author removes expiry-index entries ──────────────
+
+/// Bulk `DeleteFilter::ByAuthor` must remove expiry-index entries for each
+/// deleted event so that no orphaned entries cause phantom reaps on the next
+/// gc pass.
+///
+/// Proof: insert 4 events from one author (2 with expiry tags, 2 without) plus
+/// 1 expiring event from a DIFFERENT author.  Delete all events from the first
+/// author.  Run gc_step past the expiry timestamps.  Assert only 1 event reaped
+/// (the other author's — no orphaned index entries from the deleted author).
+#[test]
+fn v118_bulk_delete_by_author_removes_index_entries() {
+    use nostr::prelude::*;
+
+    let (store, _dir) = open_tmp();
+
+    let base_ts = 1_700_000_000u64;
+    let exp_ts_x = base_ts + 50;
+    let exp_ts_y = base_ts + 100;
+    let gc_now   = base_ts + 200; // past both expiry timestamps
+
+    let keys_victim = Keys::generate();
+    let keys_other  = Keys::generate();
+
+    // Insert 2 expiring events from the victim author.
+    let mut victim_pubkey_bytes = [0u8; 32];
+    for i in 0..2usize {
+        let exp_ts = if i == 0 { exp_ts_x } else { exp_ts_y };
+        let ev = EventBuilder::text_note(format!("expiring-victim-{i}"))
+            .custom_created_at(Timestamp::from_secs(base_ts + i as u64))
+            .tag(Tag::expiration(Timestamp::from_secs(exp_ts)))
+            .sign_with_keys(&keys_victim)
+            .expect("sign");
+        let json = ev.try_as_json().expect("json");
+        let raw: crate::types::RawEvent = serde_json::from_str(&json).expect("parse");
+        victim_pubkey_bytes.copy_from_slice(&raw.pubkey_bytes().expect("pk"));
+        store
+            .insert(verified(raw), &"wss://r/".into(), base_ts * 1_000)
+            .expect("insert victim expiring");
+    }
+    // Insert 2 non-expiring events from the same victim author.
+    for i in 0..2usize {
+        let ev = EventBuilder::text_note(format!("plain-victim-{i}"))
+            .custom_created_at(Timestamp::from_secs(base_ts + 10 + i as u64))
+            .sign_with_keys(&keys_victim)
+            .expect("sign");
+        let json = ev.try_as_json().expect("json");
+        let raw: crate::types::RawEvent = serde_json::from_str(&json).expect("parse");
+        store
+            .insert(verified(raw), &"wss://r/".into(), base_ts * 1_000)
+            .expect("insert victim plain");
+    }
+
+    // Insert 1 expiring event from a DIFFERENT author (must survive the bulk delete).
+    let ev_other = EventBuilder::text_note("expiring-other")
+        .custom_created_at(Timestamp::from_secs(base_ts))
+        .tag(Tag::expiration(Timestamp::from_secs(exp_ts_x)))
+        .sign_with_keys(&keys_other)
+        .expect("sign");
+    let json_other = ev_other.try_as_json().expect("json");
+    let raw_other: crate::types::RawEvent = serde_json::from_str(&json_other).expect("parse");
+    let id_other = raw_other.id_bytes().expect("id");
+    store
+        .insert(verified(raw_other), &"wss://r/".into(), base_ts * 1_000)
+        .expect("insert other");
+
+    // Bulk-delete all events from the victim author.
+    let deleted = store
+        .delete_by_filter(crate::types::DeleteFilter::ByAuthor(victim_pubkey_bytes))
+        .expect("delete_by_filter");
+    assert!(deleted >= 4, "expected at least 4 deletions, got {deleted}");
+
+    // gc_step past both expiry timestamps.
+    let budget = GcBudget {
+        max_events_per_step: 1000,
+        max_duration_ms: 60_000,
+        max_total_events: usize::MAX,
+    };
+    let report = store.gc_step(budget, gc_now).expect("gc_step");
+
+    // The victim's expiring events are already deleted — their expiry-index
+    // entries must have been removed by delete_by_filter (O(1) per event via
+    // expiry_index_delete_exact), so gc_step must NOT reap them as phantoms.
+    // Only the other author's event is reaped (1 event).
+    assert_eq!(
+        report.expired_reaped, 1,
+        "bulk delete must have removed victim's expiry-index entries; \
+         only the other author's event should be reaped. expired_reaped={}",
+        report.expired_reaped,
+    );
+
+    // The other author's event must now be gone (reaped by gc).
+    assert!(
+        store.get_by_id(&id_other).expect("get_by_id").is_none(),
+        "other author's event must be reaped by gc",
     );
 }
