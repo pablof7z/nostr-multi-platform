@@ -15,23 +15,33 @@
 //! tests below.
 
 use super::*;
-use crate::projection::tap::MarmotIngestTap;
+use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT};
 use crate::projection::{ops, state::MarmotProjection};
 
 use crate::service::MarmotService;
 use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;
+use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::{
-    CapabilityEnvelope, CapabilityModule, CapabilityRequest, KeyringCapability, KeyringRequest,
-    KeyringResult,
+    CapabilityEnvelope, CapabilityModule, CapabilityRequest, IngestParser, KeyringCapability,
+    KeyringRequest, KeyringResult,
 };
-use nmp_core::RawEventObserver;
 use nostr::{JsonUtil, Keys};
 use serde_json::json;
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
+
+/// Parse a gift-wrap JSON string into a `VerifiedEvent` for use with `IngestParser::parse`.
+///
+/// Performs full Schnorr verification via `VerifiedEvent::try_from_raw`.
+/// Panics if the JSON is malformed or the signature does not verify — acceptable in
+/// tests where the event was just constructed with real keys.
+fn gift_wrap_to_verified(json: &str) -> VerifiedEvent {
+    let raw: RawEvent = serde_json::from_str(json).expect("gift_wrap_json must deserialize to RawEvent");
+    VerifiedEvent::try_from_raw(raw).expect("gift_wrap_json must pass Schnorr verification")
+}
 
 fn in_memory(keys: Keys) -> MarmotService {
     let storage = MdkSqliteStorage::new_in_memory().expect("in-memory mls storage");
@@ -374,9 +384,9 @@ fn unknown_op_and_bad_json_degrade() {
     assert_eq!(r["ok"], json!(false));
 }
 
-// ── Inbound ingest seam (raw-event tap) ──────────────────────────────────
+// ── Inbound ingest seam (IngestParser — raw-tap PR-2) ────────────────────
 
-/// Simulate the kernel raw-event tap delivering a signed kind:1059
+/// Simulate the kernel `IngestParser` delivering a signed kind:1059
 /// gift-wrap welcome: it must reach `MarmotService` via the SAME shared
 /// `ingest_signed_event_core` the dispatch op uses, and Bob's snapshot
 /// must then show a pending welcome — with NO Swift / dispatch call (the
@@ -384,7 +394,7 @@ fn unknown_op_and_bad_json_degrade() {
 /// via the two-party in-memory pattern (the `nmp_nip59` path), exactly as
 /// `crates/nmp-marmot/src/tests.rs` does.
 #[test]
-fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
+fn ingest_parser_kind_1059_welcome_reaches_service_and_snapshot() {
     let alice_keys = Keys::generate();
     let bob_keys = Keys::generate();
 
@@ -399,7 +409,7 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
     // Alice creates the group inviting Bob, then gift-wraps the kind:444
     // welcome rumor to Bob (real NIP-59 path → signed kind:1059).
     let config = NostrGroupConfigData::new(
-        "Tap Ingest Test".to_string(),
+        "Parser Ingest Test".to_string(),
         "inbound".to_string(),
         None,
         None,
@@ -418,38 +428,39 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
     let gift_json = gift.as_json();
     let gift_id_hex = gift.id.to_hex();
 
-    // Bob's projection + the tap the FFI register path would install.
+    // Bob's projection + the IngestParser the FFI register path would install.
     let bob_proj = Arc::new(MarmotProjection::new(bob_service, true));
-    let tap = MarmotIngestTap::new(Arc::clone(&bob_proj));
+    let parser = MarmotIngestParser::new(Arc::clone(&bob_proj));
 
     // Pre-condition: no pending welcomes yet.
     assert!(bob_proj.snapshot(0).pending_welcomes.is_empty());
 
-    // Kernel delivers the verbatim signed kind:1059 to the tap.
-    tap.on_raw_event(1059, &gift_json);
+    // Kernel dispatcher delivers the VerifiedEvent to the parser.
+    let verified = gift_wrap_to_verified(&gift_json);
+    parser.parse(&verified);
 
     // The snapshot read (unchanged, no Swift call) now surfaces it.
     let snap = bob_proj.snapshot(1);
     assert_eq!(
         snap.pending_welcomes.len(),
         1,
-        "tap-delivered welcome must surface in snapshot: {snap:?}"
+        "parser-delivered welcome must surface in snapshot: {snap:?}"
     );
     let row = &snap.pending_welcomes[0];
     assert_eq!(row.id_hex, gift_id_hex);
-    assert_eq!(row.group_name, "Tap Ingest Test");
+    assert_eq!(row.group_name, "Parser Ingest Test");
     assert_eq!(row.inviter_npub, alice_keys.public_key().to_hex());
 
     // Idempotent / D6: a duplicate relay echo of the same gift-wrap is a
-    // silent no-op on the tap (never panics, snapshot stays consistent).
-    tap.on_raw_event(1059, &gift_json);
+    // silent no-op on the parser (never panics, snapshot stays consistent).
+    parser.parse(&verified);
     assert_eq!(bob_proj.snapshot(2).pending_welcomes.len(), 1);
 
     // The back-compat dispatch op drives the SAME shared core against the
     // SAME projection (its key store has Bob's key package; a separate
     // service would not — KP state is per-storage). `unwrap_and_process_
     // welcome` is idempotent, so re-ingesting via the op succeeds and the
-    // row is still present — proving the tap and the op share one path.
+    // row is still present — proving the parser and the op share one path.
     let r = bob_proj
         .with_inner(|h| {
             ops::dispatch(
@@ -468,27 +479,111 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
     assert_eq!(bob_proj.snapshot(3).pending_welcomes.len(), 1);
 }
 
-/// D6: the tap silently no-ops on garbage / unsupported-kind input — no
-/// panic across the actor boundary, snapshot unaffected.
+/// D6: the parser silently no-ops on a malformed / non-reconstructable event.
+/// A `VerifiedEvent` already passed Schnorr verification so the JSON serialization
+/// and nostr::Event parse always succeed in practice; D6 degrades on kind:444
+/// (admitted by filter, deliberately skipped by the core).
 #[test]
-fn raw_tap_malformed_and_unsupported_are_silent() {
+fn ingest_parser_unsupported_kind_is_silent() {
     let proj = Arc::new(MarmotProjection::new(in_memory(Keys::generate()), true));
-    let tap = MarmotIngestTap::new(Arc::clone(&proj));
+    let parser = MarmotIngestParser::new(Arc::clone(&proj));
 
-    tap.on_raw_event(1059, "not json at all");
-    tap.on_raw_event(1059, "{}");
-    // kind:444 is admitted by the filter but a deliberate skip in the core.
-    tap.on_raw_event(
-        444,
-        &nostr::EventBuilder::new(nostr::Kind::Custom(444), "x")
-            .sign_with_keys(&Keys::generate())
-            .unwrap()
-            .as_json(),
-    );
+    // kind:444 is in TAP_KINDS (admitted by the per-kind registrations) but
+    // is a deliberate skip in `ingest_signed_event_core` — the parser must
+    // produce no snapshot side-effects and never panic.
+    let kind444_json = nostr::EventBuilder::new(nostr::Kind::Custom(444), "x")
+        .sign_with_keys(&Keys::generate())
+        .unwrap()
+        .as_json();
+    let raw: RawEvent =
+        serde_json::from_str(&kind444_json).expect("kind:444 event must deserialize to RawEvent");
+    let verified = VerifiedEvent::try_from_raw(raw).expect("kind:444 must pass verification");
+    parser.parse(&verified);
 
     let snap = proj.snapshot(0);
     assert!(snap.pending_welcomes.is_empty());
     assert!(snap.groups.is_empty());
+}
+
+/// PR-2 coexistence test: both the NIP-17 DM inbox parser (slot
+/// `"nip17.dm_inbox"`) and the Marmot parser (slot `"marmot"`) are
+/// registered for kind:1059 and both fire when a gift-wrap event arrives.
+///
+/// Uses `EventIngestDispatcher` directly (no kernel actor needed) to prove
+/// the slot-keyed coexistence. A separate end-to-end test confirms Marmot
+/// state mutation through the full ingest path.
+#[test]
+fn ingest_parser_kind_1059_coexistence_both_parsers_fire() {
+    use nmp_core::substrate::EventIngestDispatcher;
+
+    let mut dispatcher = EventIngestDispatcher::new();
+
+    // Slot "nip17.dm_inbox" — a capturing parser to stand in for
+    // DmInboxProjection (avoids the circular dep on nmp-nip17).
+    struct CapturingParser {
+        fired: Mutex<bool>,
+    }
+    impl IngestParser for CapturingParser {
+        fn parse(&self, _evt: &VerifiedEvent) {
+            *self.fired.lock().unwrap() = true;
+        }
+    }
+    let dm_parser = Arc::new(CapturingParser { fired: Mutex::new(false) });
+    let marmot_parser = Arc::new(CapturingParser { fired: Mutex::new(false) });
+
+    dispatcher.replace_kind_parser(1059, "nip17.dm_inbox", dm_parser.clone());
+    dispatcher.replace_kind_parser(1059, MARMOT_INGEST_SLOT, marmot_parser.clone());
+    assert_eq!(dispatcher.registration_count(), 2, "both slots registered");
+
+    // Build a real signed kind:1059 event.
+    let sender = Keys::generate();
+    let receiver = Keys::generate();
+    let (gift_json, _) = {
+        use nmp_nip59::{gift_wrap_with_signer, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
+        use nostr::{EventBuilder, Kind, Tag, Timestamp};
+        let rumor = EventBuilder::new(Kind::from_u16(14), "coexistence test")
+            .tags(vec![Tag::public_key(receiver.public_key())])
+            .custom_created_at(Timestamp::from(1_700_000_000u64))
+            .build(sender.public_key());
+        let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
+        let envelope = gift_wrap_with_signer(
+            &signer,
+            &receiver.public_key(),
+            &rumor,
+            Timestamp::from(1_700_000_000u64),
+        )
+        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
+        .expect("gift_wrap succeeds with local keys");
+        let tag_vecs: Vec<Vec<String>> = envelope
+            .tags
+            .iter()
+            .map(|t: &nostr::Tag| t.as_slice().to_vec())
+            .collect();
+        let json = serde_json::json!({
+            "id": envelope.id.to_hex(),
+            "pubkey": envelope.pubkey.to_hex(),
+            "created_at": envelope.created_at.as_secs(),
+            "kind": envelope.kind.as_u16(),
+            "tags": tag_vecs,
+            "content": envelope.content.clone(),
+            "sig": envelope.sig.to_string(),
+        })
+        .to_string();
+        let id = envelope.id.to_hex();
+        (json, id)
+    };
+
+    let verified = gift_wrap_to_verified(&gift_json);
+    dispatcher.dispatch(&verified);
+
+    assert!(
+        *dm_parser.fired.lock().unwrap(),
+        "NIP-17 DM inbox parser must fire for kind:1059 (slot 'nip17.dm_inbox')"
+    );
+    assert!(
+        *marmot_parser.fired.lock().unwrap(),
+        "Marmot parser must fire for kind:1059 (slot 'marmot')"
+    );
 }
 
 // ── ADR-0025 retirement / dispatch_action → MarmotMlsOpHandler ─────────

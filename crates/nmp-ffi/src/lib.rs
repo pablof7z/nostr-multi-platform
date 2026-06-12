@@ -1600,21 +1600,35 @@ impl NmpApp {
         }
     }
 
-    /// Replace all [`IngestParser`]s for `kind` with a single new `parser`.
+    /// Slot-keyed replace: evict the prior parser registered under `slot_key`
+    /// for `kind` (if any), install `parser` under the same slot, and return
+    /// the previous parser for that slot. Parsers registered under other slot
+    /// keys are untouched.
     ///
     /// Used by lifecycle-managed singleton parsers (e.g. the NIP-17 DM inbox
     /// parser — swapped to a fresh projection instance on account switch so
-    /// accumulated in-memory messages are cleared). Returns the previous parsers,
-    /// if any. D6 — a poisoned dispatcher lock is a silent no-op.
+    /// accumulated in-memory messages are cleared). D6 — a poisoned dispatcher
+    /// lock is a silent no-op returning `None`.
     pub fn replace_ingest_parser(
         &self,
         kind: u32,
+        slot_key: &'static str,
         parser: std::sync::Arc<dyn nmp_core::substrate::IngestParser>,
-    ) -> Vec<std::sync::Arc<dyn nmp_core::substrate::IngestParser>> {
+    ) -> Option<std::sync::Arc<dyn nmp_core::substrate::IngestParser>> {
         if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
-            d.replace_kind_parser(kind, parser)
+            d.replace_kind_parser(kind, slot_key, parser)
         } else {
-            Vec::new()
+            None
+        }
+    }
+
+    /// Remove the parser registered under `slot_key` for `kind`, if any.
+    /// Used by teardown paths (e.g. Marmot sign-out) to clear a
+    /// lifecycle-managed slot without installing a replacement.
+    /// D6 — a poisoned dispatcher lock is a silent no-op.
+    pub fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
+        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+            d.remove_kind_parser_slot(kind, slot_key);
         }
     }
 
@@ -2416,9 +2430,14 @@ impl nmp_core::substrate::AppHost for NmpApp {
     fn replace_ingest_parser(
         &self,
         kind: u32,
+        slot_key: &'static str,
         parser: Arc<dyn nmp_core::substrate::IngestParser>,
-    ) -> Vec<Arc<dyn nmp_core::substrate::IngestParser>> {
-        NmpApp::replace_ingest_parser(self, kind, parser)
+    ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
+        NmpApp::replace_ingest_parser(self, kind, slot_key, parser)
+    }
+
+    fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
+        NmpApp::unregister_ingest_parser(self, kind, slot_key);
     }
 
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {

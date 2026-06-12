@@ -127,21 +127,39 @@ pub trait AppHost: ActionRegistrar {
 
     fn register_ingest_parser(&self, kind: u32, parser: Arc<dyn IngestParser>);
 
-    /// Replace all [`IngestParser`]s for `kind` with a single new `parser`,
-    /// returning the previous parsers. Mirrors the lifecycle semantics of
-    /// [`Self::swap_dm_inbox_observer`]: call-sites that own a singleton
-    /// lifecycle-managed parser (e.g. the NIP-17 DM inbox parser — fresh
-    /// projection on account switch) use this instead of
-    /// [`Self::register_ingest_parser`] so repeated registration does not
-    /// accumulate stale parsers in the per-kind bucket.
+    /// Slot-keyed replace: evict the prior parser registered under `slot_key`
+    /// for `kind` (if any), then install `parser` under the same slot. Parsers
+    /// registered under **other** slot keys (or via [`Self::register_ingest_parser`]
+    /// with no slot key) are untouched.
     ///
-    /// D6 — a poisoned dispatcher lock is a silent no-op returning an empty
-    /// `Vec` (the registration is dropped; existing parsers are preserved).
+    /// Used by lifecycle-managed singleton seams — each caller owns a unique
+    /// `slot_key` (e.g. `"nip17.dm_inbox"` or `"marmot"`) and re-registrations
+    /// only evict the caller's own prior entry. Multiple lifecycle-managed parsers
+    /// on the same kind (e.g. the NIP-17 DM inbox and Marmot on kind:1059)
+    /// coexist safely because they own distinct slots.
+    ///
+    /// Returns the previous parser for `(kind, slot_key)`, or `None` when this is
+    /// the first registration for that slot. D6 — a poisoned dispatcher lock is a
+    /// silent no-op returning `None` (the registration is dropped; existing parsers
+    /// are preserved).
+    ///
+    /// **Slot keys MUST be globally unique across crates.** A second component
+    /// reusing an existing slot name silently evicts the peer's parser. Choose a
+    /// fully-qualified reverse-domain key (e.g. `"nip17.dm_inbox"`, `"marmot"`)
+    /// that cannot collide with any other crate's registration.
     fn replace_ingest_parser(
         &self,
         kind: u32,
+        slot_key: &'static str,
         parser: Arc<dyn IngestParser>,
-    ) -> Vec<Arc<dyn IngestParser>>;
+    ) -> Option<Arc<dyn IngestParser>>;
+
+    /// Remove the parser registered under `slot_key` for `kind`, if any.
+    ///
+    /// Used by teardown paths (e.g. Marmot sign-out without re-register) to
+    /// clear a lifecycle-managed slot. D6 — a poisoned dispatcher lock is a
+    /// silent no-op.
+    fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str);
 
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn DmInboxRelayLookup>);
 
