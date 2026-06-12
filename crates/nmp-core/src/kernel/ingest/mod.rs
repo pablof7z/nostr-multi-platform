@@ -29,7 +29,9 @@
 mod auth_handlers;
 mod closed;
 mod contacts;
-mod helpers;
+// `pub(in crate::kernel)`: shares `kernel_event_from_nostr` with the
+// local-publish-intent path (read-your-writes fan-out, one construction site).
+pub(in crate::kernel) mod helpers;
 mod profile;
 mod timeline;
 mod timeline_order;

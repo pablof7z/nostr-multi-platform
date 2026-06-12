@@ -36,7 +36,21 @@ impl Kernel {
             outcome,
             Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
         ) {
+            // Read-your-writes (FINDING A): route the locally-published kind:3
+            // through the EXACT sequence the relay ingest arm uses
+            // (`ingest/mod.rs` kind:3) — `ingest_contacts` then the observer
+            // fan-out — so `FollowListProjection` / `ActiveFollowSet` reflect
+            // the follow/unfollow immediately, without waiting for the relay
+            // echo (which dedups to `Duplicate` and never re-fires fan-out) or
+            // an account switch / restart. `kernel_event` is built before the
+            // `ingest_contacts(event)` move, via the same single construction
+            // site the relay arm uses, so the local event and its later relay
+            // echo carry byte-identical observer payloads. D4: the fan-out is
+            // gated on the `Inserted | Replaced` outcome above — the duplicate
+            // relay echo does not re-fire it.
+            let kernel_event = super::ingest::helpers::kernel_event_from_nostr(&event);
             self.ingest_contacts(event);
+            self.notify_event_observers(&kernel_event);
             self.changed_since_emit = true;
         }
     }
