@@ -1632,6 +1632,32 @@ impl NmpApp {
         }
     }
 
+    /// Slot-keyed replace for a kind range.  Mirrors
+    /// [`Self::replace_ingest_parser`] but registers against a `Range<u32>`
+    /// instead of a single kind — used by all-kinds parsers (e.g. the
+    /// chirp-tui debug raw-event cache). D6 — a poisoned dispatcher lock is a
+    /// silent no-op returning `None`.
+    pub fn replace_ingest_parser_range(
+        &self,
+        range: std::ops::Range<u32>,
+        slot_key: &'static str,
+        parser: std::sync::Arc<dyn nmp_core::substrate::IngestParser>,
+    ) -> Option<std::sync::Arc<dyn nmp_core::substrate::IngestParser>> {
+        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+            d.replace_range_parser(range, slot_key, parser)
+        } else {
+            None
+        }
+    }
+
+    /// Remove the range-parser registered under `slot_key`, if any.
+    /// D6 — a poisoned dispatcher lock is a silent no-op.
+    pub fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
+        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+            d.remove_range_parser_slot(slot_key);
+        }
+    }
+
     /// V-40 — install the kernel's [`nmp_core::substrate::DmInboxRelayLookup`]
     /// handle. The per-app crate (today `nmp-nip17::register_actions`)
     /// hands in a concrete `DmRelayCache`; the same `Arc` is the writer
@@ -2438,6 +2464,19 @@ impl nmp_core::substrate::AppHost for NmpApp {
 
     fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
         NmpApp::unregister_ingest_parser(self, kind, slot_key);
+    }
+
+    fn replace_ingest_parser_range(
+        &self,
+        range: std::ops::Range<u32>,
+        slot_key: &'static str,
+        parser: Arc<dyn nmp_core::substrate::IngestParser>,
+    ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
+        NmpApp::replace_ingest_parser_range(self, range, slot_key, parser)
+    }
+
+    fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
+        NmpApp::unregister_ingest_parser_range(self, slot_key);
     }
 
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
