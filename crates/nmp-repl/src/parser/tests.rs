@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use super::*;
-use crate::ast::{BudgetPatch, Command, FilterAst, RefreshScope, SeedInput, ShowTopic, Value, VarName};
+use crate::ast::{Command, RefreshScope, SeedInput, ShowTopic, Value, VarName};
 
 #[test]
 fn empty_line_is_noop() {
