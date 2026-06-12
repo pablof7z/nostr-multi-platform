@@ -170,13 +170,6 @@ impl WasmRuntime {
         &self.snapshot_callback
     }
 
-    /// Native test-side shim — the wasm-bindgen `NmpWasmRuntime` only
-    /// exposes the `wasm32` method, but the protocol-conformance tests run
-    /// on native CI and need a no-op equivalent so the test target compiles
-    /// without `#[cfg]` fences in every fixture.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn set_snapshot_callback(&mut self, _callback: Option<()>) {}
-
     /// Process one `WorkerRequest` and return the events to forward back to
     /// JS. Total — never panics. Returns `Err` only for caller-side validation
     /// failures (`InvalidConfig`); kernel-side rejections surface as
@@ -241,11 +234,10 @@ impl WasmRuntime {
 
         // Drive the pure kernel through its `Start` action — same reducer
         // entry point `dispatch_kernel_action` calls on the native actor
-        // thread, byte-for-byte. The returned `Started { rev }` is the
-        // ground truth for the runtime's own monotonic counter.
+        // thread, byte-for-byte.
         let started = self.reducer.borrow_mut().reduce(KernelAction::Start);
-        let rev = match started {
-            KernelUpdate::Started { rev } => rev,
+        match started {
+            KernelUpdate::Started { .. } => {}
             other => {
                 return Err(WasmRuntimeError::KernelContract(format!(
                     "expected Started after KernelAction::Start, got {other:?}"
@@ -253,12 +245,24 @@ impl WasmRuntime {
             }
         };
 
+        let relay_bootstrap =
+            relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
+
+        // Seed the kernel's configured-relay lanes so `make_update_frame`
+        // emits real relay-status rows and the `configured_relays` typed
+        // projection. Must run before the first snapshot (below) and before
+        // spawning drivers (which read the same rows for their URLs).
+        self.reducer.borrow_mut().set_configured_relays(
+            relay_bootstrap
+                .iter()
+                .map(|e| (e.url.clone(), e.role.clone()))
+                .collect(),
+        );
+
         {
             let mut meta = self.meta.borrow_mut();
             meta.started = true;
-            meta.rev = rev;
-            meta.relay_bootstrap =
-                relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
+            meta.relay_bootstrap = relay_bootstrap;
             meta.database_name = config.database_name;
         }
 
@@ -286,8 +290,8 @@ impl WasmRuntime {
         relay_pool::close_drivers(&self.relays);
 
         let stopped = self.reducer.borrow_mut().reduce(KernelAction::Stop);
-        let rev = match stopped {
-            KernelUpdate::Stopped { rev } => rev,
+        match stopped {
+            KernelUpdate::Stopped { .. } => {}
             other => {
                 return Err(WasmRuntimeError::KernelContract(format!(
                     "expected Stopped after KernelAction::Stop, got {other:?}"
@@ -296,7 +300,6 @@ impl WasmRuntime {
         };
         {
             let mut meta = self.meta.borrow_mut();
-            meta.rev = rev;
             meta.started = false;
         }
         Ok(vec![WorkerEvent::RuntimeStatus {
@@ -432,15 +435,11 @@ impl WasmRuntime {
         if let Some(kernel_action) = kernel_action_from_dispatch(&action) {
             let update = self.reducer.borrow_mut().reduce(kernel_action);
             match update {
-                KernelUpdate::Started { rev } => {
-                    let mut meta = self.meta.borrow_mut();
-                    meta.rev = rev;
-                    meta.started = true;
+                KernelUpdate::Started { .. } => {
+                    self.meta.borrow_mut().started = true;
                 }
-                KernelUpdate::Stopped { rev } => {
-                    let mut meta = self.meta.borrow_mut();
-                    meta.rev = rev;
-                    meta.started = false;
+                KernelUpdate::Stopped { .. } => {
+                    self.meta.borrow_mut().started = false;
                 }
                 _ => {}
             }
@@ -460,10 +459,11 @@ impl WasmRuntime {
     }
 
     /// Build a binary `WorkerEvent::UpdateBytes` from the current kernel +
-    /// meta state. The legacy JSON snapshot builder remains only for native
-    /// tests and non-update diagnostics; runtime snapshot transport is bytes.
-    fn snapshot_event(&self) -> WorkerEvent {
-        let bytes = build_snapshot_bytes(&self.reducer.borrow(), &self.meta.borrow());
+    /// meta state. Delegates to `build_snapshot_bytes` which calls
+    /// `make_update_frame` — the kernel is the sole author of the encoded
+    /// frame (rev, relay statuses, typed projections).
+    fn snapshot_event(&mut self) -> WorkerEvent {
+        let bytes = build_snapshot_bytes(&mut self.reducer.borrow_mut(), &self.meta.borrow());
         WorkerEvent::UpdateBytes { bytes }
     }
 
@@ -536,7 +536,12 @@ impl WasmRuntime {
             .await
         }
     }
+
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+#[path = "runtime/test_support.rs"]
+mod test_support;
 
 fn relay_bootstrap_from_config(
     relays: Vec<String>,

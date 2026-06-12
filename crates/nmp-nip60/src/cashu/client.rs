@@ -95,7 +95,7 @@ impl MintClient {
     ///
     /// Per NUT-02: `fee = ceil(n * input_fee_ppk / 1000)`.
     pub fn compute_fee(n_inputs: u64, input_fee_ppk: u64) -> u64 {
-        (n_inputs * input_fee_ppk + 999) / 1000
+        (n_inputs * input_fee_ppk).div_ceil(1000)
     }
 
     // ─── Mint quote (NUT-04) ──────────────────────────────────────────────

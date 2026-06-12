@@ -324,7 +324,7 @@ mod tests {
         let initials = avatar_initials(&npub);
         assert_eq!(initials.len(), 2, "initials must be 2 chars");
         assert!(
-            initials.chars().all(|c| c.is_ascii()),
+            initials.is_ascii(),
             "initials must be ASCII, got: {initials}"
         );
         assert_eq!(

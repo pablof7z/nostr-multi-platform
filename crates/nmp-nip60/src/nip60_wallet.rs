@@ -800,10 +800,8 @@ impl Nip60WalletHandle {
                 .collect();
 
             for event in &events_to_sync {
-                if !present.contains(&event.id) {
-                    if publish_event(relay, event).is_ok() {
-                        pushed += 1;
-                    }
+                if !present.contains(&event.id) && publish_event(relay, event).is_ok() {
+                    pushed += 1;
                 }
             }
 
