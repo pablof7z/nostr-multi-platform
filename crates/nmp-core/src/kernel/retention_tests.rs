@@ -43,8 +43,8 @@
 //! | view-command emit gate       | per-dispatch `emit_now`            | unconditional | `maybe_emit_after_dispatch` skips when `running=false` (this fix — load-bearing) |
 //! | `claim_profile`              | `profile_claims[pk]: BTreeSet`     | unbounded  | `MAX_CLAIMS_PER_PUBKEY=256` — drop-newest + `claim_drops_total` |
 //! | latency sketch (harness)     | `Vec<u64>` per-sample              | unbounded  | fixed 32-bucket log2 histogram (`s2_dispatch_flood.rs::LatencyHistogram`) — 256 B per thread |
-//! | `open_author`                | `selected_author: Option`          | bounded    | O(1) — single-slot refcounted              |
-//! | `close_author`               | `wire_subs`                        | n/a in S2  | not exercised when `running=false` (no relays connected; no REQ emitted) |
+//! | (was: `open_author`)         | deleted — V-112 (ADR-0042)         | —          | —                                          |
+//! | (was: `close_author`)        | deleted — V-112 (ADR-0042)         | —          | —                                          |
 //! | `release_profile`            | `profile_claims[pk]` (remove)      | bounded    | shrinking only                              |
 //! | `open_firehose_tag`          | `diagnostic_firehose: Option`      | bounded    | O(1) — single-slot refcounted              |
 //! | `Kernel::log`                | `logs: VecDeque`                   | bounded    | hard cap 80 (`status.rs:314`)               |
@@ -59,8 +59,9 @@
 //! unit tests below pin the drop-newest semantics for the pathological cases.
 //!
 //! Production paths that DO populate `wire_subs` (post-`Start`) are bounded
-//! by the view-close paths (`close_subscriptions_with_prefixes`) and the
-//! per-view refcount in `selected_author`/`selected_thread`.
+//! by the planner CLOSE diff (`drain_lifecycle_tick` behind `close_interest`)
+//! and the interest registry refcount. (V-112: the legacy
+//! `close_subscriptions_with_prefixes` view-close path was deleted.)
 //!
 //! ## T133 — `wire_subs` row eviction
 //!
@@ -73,15 +74,16 @@
 //!
 //! | Trigger                          | Action                          |
 //! |----------------------------------|---------------------------------|
-//! | `close_subscriptions_with_prefixes` (view-close) | `HashMap::remove` after CLOSE outbound |
 //! | EOSE for non-keep sub (oneshot)  | `HashMap::remove` after CLOSE outbound |
 //! | CLOSED (relay-initiated)         | `HashMap::remove` (no outbound)        |
 //! | `relay_closed` (per-URL socket teardown) | `wire_subs.retain(relay_url != …)` |
 //! | `relay_closed_all` (global pool drain)   | `wire_subs.retain(role != …)`      |
 //! | `relay_failed` (transient)       | no eviction — `state="retrying"` may resume |
 //!
-//! Pinned by `view_close_evicts_wire_subs_to_zero` and
-//! `eose_evicts_wire_sub_row` below; the diagnostic-filter call sites at
+//! Pinned by `eose_evicts_wire_sub_row` and `closed_frame_evicts_wire_sub_row`
+//! below; `view_close_evicts_wire_subs_to_zero` deleted (V-112 — used
+//! `open_author`/`close_author` which are deleted). The diagnostic-filter
+//! call sites at
 //! `status.rs:27` / `requests/mod.rs:25,39,80` remain (defense-in-depth —
 //! they cost nothing once the row is gone).
 
@@ -350,56 +352,11 @@ fn claim_flood_does_not_grow_unbounded() {
 
 // ── T133: wire_subs row eviction ─────────────────────────────────────────────
 
-/// T133 — repeated open/close cycles must not grow `wire_subs`. Pre-T133 each
-/// `close_author` marked rows `state="closed"` but never removed them; the
-/// table grew linearly with cycle count. After T133 the row table returns to
-/// zero after each cycle, so 100 cycles leave it empty.
-#[test]
-fn view_close_evicts_wire_subs_to_zero() {
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
-
-    assert_eq!(
-        kernel.wire_subs_len_for_test(),
-        0,
-        "baseline: fresh kernel has no wire-subs"
-    );
-
-    for cycle in 0..100u32 {
-        let pk = deterministic_pubkey(cycle);
-        // open_author with can_send=true populates wire_subs via author_requests().
-        let opens = kernel.open_author(pk.clone(), std::collections::BTreeSet::from([1u32, 6u32]), true);
-        assert!(
-            !opens.is_empty(),
-            "cycle {cycle}: open_author must emit REQ frames"
-        );
-        assert!(
-            kernel.wire_subs_len_for_test() >= opens.len(),
-            "cycle {cycle}: every REQ recorded a wire_subs row"
-        );
-
-        let closes = kernel.close_author(&pk);
-        assert!(
-            !closes.is_empty(),
-            "cycle {cycle}: close_author must emit CLOSE frames"
-        );
-        // Every CLOSE outbound must correspond to an evicted row — the table
-        // must NOT carry forward into the next cycle.
-        assert_eq!(
-            kernel.wire_subs_len_for_test(),
-            0,
-            "cycle {cycle}: wire_subs row table must be empty after close"
-        );
-    }
-
-    // Final invariant: after 100 open/close cycles the table is still empty.
-    // Pre-T133 this would be ~100 × subs-per-author rows of `state="closed"`
-    // accumulated junk on the diagnostic surface.
-    assert_eq!(
-        kernel.wire_subs_len_for_test(),
-        0,
-        "100 open/close cycles must leave wire_subs empty"
-    );
-}
+// V-112 (ADR-0042): `view_close_evicts_wire_subs_to_zero` deleted.
+// That test called `kernel.open_author()` / `kernel.close_author()` (both
+// deleted). T133 view-close eviction is now exercised at the FFI layer via
+// `nmp_app_open_interest` / `nmp_app_close_interest`; the oneshot-EOSE and
+// CLOSED-frame paths below remain as the primary kernel-level T133 pins.
 
 /// T133 — EOSE for a non-keep sub (oneshot: profile-claim, author-profile,
 /// thread-ids, …) evicts the row from `wire_subs`. This is the

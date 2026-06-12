@@ -187,12 +187,12 @@ fn real_registry_emits_exactly_the_proof_keys() {
     // enum name derives from `swift_field` (`wallet` / `settingsHub`).
     assert!(out.contains("enum TypedWalletDecoder {"));
     assert!(out.contains("enum TypedSettingsHubDecoder {"));
-    // Wave C: action_results, action_stages, author_view, thread_view.
-    // Enum names derive from `swift_field`.
+    // Wave C: action_results, action_stages.
+    // V-112 (ADR-0042): author_view / thread_view deleted from registry.
     assert!(out.contains("enum TypedActionResultsDecoder {"));
     assert!(out.contains("enum TypedActionStagesDecoder {"));
-    assert!(out.contains("enum TypedAuthorViewDecoder {"));
-    assert!(out.contains("enum TypedThreadViewDecoder {"));
+    assert!(!out.contains("enum TypedAuthorViewDecoder {"), "author_view deleted — V-112");
+    assert!(!out.contains("enum TypedThreadViewDecoder {"), "thread_view deleted — V-112");
     let emitted = SNAPSHOT_PROJECTIONS
         .iter()
         .filter(|e| {
@@ -203,8 +203,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 30,
-        "exactly thirty keys have a checked-in flatc --swift reader binding \
+        emitted, 28,
+        "exactly twenty-eight keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
@@ -216,8 +216,9 @@ fn real_registry_emits_exactly_the_proof_keys() {
          NIP-46 cluster: bunker_handshake, nip46_onboarding; the Marmot \
          push-projection cluster: nmp.marmot.snapshot, nmp.marmot.messages; \
          plus the wallet (producer field-add) + settings_hub (kernel built-in) \
-         flips; Wave C: action_results, action_stages, author_view, \
-         thread_view; V-14 bunker_connection_state); if this changed, \
-         regenerate TypedProjectionDecoders.generated.swift and update this test"
+         flips; Wave C: action_results, action_stages; V-14 \
+         bunker_connection_state; V-112 author_view + thread_view deleted \
+         = 30 - 2 = 28); if this changed, regenerate \
+         TypedProjectionDecoders.generated.swift and update this test"
     );
 }

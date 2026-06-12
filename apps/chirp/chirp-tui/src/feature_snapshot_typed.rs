@@ -8,8 +8,7 @@
 
 use crate::feature_snapshot::{
     AccountLine, DmConversationLine, FeatureSnapshot, GroupLine, HistoryRelayLine, MessageLine,
-    OutboxLine, OutboxRelayLine, ProfileLine, PublishHistoryLine, RelayEditLine, SummaryLine,
-    ThreadLine, WalletLine,
+    OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine, WalletLine,
 };
 
 pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot {
@@ -125,44 +124,10 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         .map(publish_history_from_queue)
         .unwrap_or_default();
 
-    // author_view (key == schema_id == "author_view"; absent when view closed)
-    let author_profile = find(nmp_core::typed_projections::AUTHOR_VIEW_SCHEMA_ID)
-        .and_then(|b| nmp_core::typed_projections::decode_author_view(b).ok())
-        .map(|m| {
-            let display = m
-                .profile
-                .display_name
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| {
-                    if !m.pubkey.is_empty() {
-                        nmp_core::display::short_npub(&m.pubkey)
-                    } else {
-                        String::new()
-                    }
-                });
-            ProfileLine {
-                pubkey: m.pubkey,
-                display,
-                about: m.profile.about,
-                note_count: m.note_count_display,
-                action_label: m
-                    .primary_action
-                    .as_ref()
-                    .map(|a| a.label.clone())
-                    .unwrap_or_default(),
-            }
-        });
-
-    // thread_view (key == schema_id == "thread_view"; absent when view closed)
-    let thread = find(nmp_core::typed_projections::THREAD_VIEW_SCHEMA_ID)
-        .and_then(|b| nmp_core::typed_projections::decode_thread_view(b).ok())
-        .map(|m| ThreadLine {
-            focused_event_id: m.focused_event_id,
-            state: m.state,
-            previous_label: m.previous_count_label,
-            next_label: m.next_count_label,
-            item_count: m.items.len(),
-        });
+    // V-112 (ADR-0042): author_view / thread_view projections deleted; the
+    // profile pane now reads from claim_profile → claimed_profiles, and the
+    // feed pane reads from the dynamic nmp.feed.author.* / nmp.feed.thread.*
+    // FlatFeed registrations (nmp_app_chirp_open_author_feed / _open_thread_feed).
 
     // Host-registered: nmp.nip17.dm_inbox (key == "nmp.nip17.dm_inbox")
     let dm_conversations = find("nmp.nip17.dm_inbox")
@@ -276,8 +241,6 @@ pub(crate) fn feature_snapshot_from_flatbuffer(bytes: &[u8]) -> FeatureSnapshot 
         discovered_groups,
         follow_count,
         settings_hub,
-        author_profile,
-        thread,
     }
 }
 

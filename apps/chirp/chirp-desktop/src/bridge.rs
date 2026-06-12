@@ -20,15 +20,16 @@ use nmp_app_chirp::ffi::{
     nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
 };
 use nmp_app_chirp::{
-    nmp_app_cancel_bunker_handshake, nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_app_nostrconnect_uri, nmp_broker_free_string, nmp_marmot_unregister, nmp_signer_broker_init,
-    ChirpClient, ChirpHandle, MarmotHandle,
+    nmp_app_cancel_bunker_handshake, nmp_app_chirp_close_author_feed, nmp_app_chirp_close_thread_feed,
+    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_thread_feed, nmp_app_chirp_register,
+    nmp_app_chirp_unregister, nmp_app_nostrconnect_uri, nmp_broker_free_string,
+    nmp_marmot_unregister, nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle,
 };
 use nmp_nip01::NoteRecord;
 use nmp_ffi::{
     nmp_app_dispatch_action,
     nmp_app_free, nmp_app_free_string, nmp_app_load_older_feed,
-    nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline,
+    nmp_app_open_timeline,
     nmp_app_set_capability_callback,
     nmp_app_start, nmp_app_add_relay, nmp_app_remove_relay, nmp_app_retry_publish,
     nmp_app_cancel_publish, NmpApp,
@@ -171,32 +172,42 @@ impl AppRuntime {
     }
 
     pub fn open_thread(&self, event_id: &str) {
+        // M2 (ADR-0042 §5.1, V-112): use the Chirp flat-feed seam instead of the
+        // deleted `nmp_app_open_thread` → `OpenThread` kernel machinery.
         if self.app.is_null() {
             return;
         }
         if let Ok(c) = CString::new(event_id) {
-            unsafe { nmp_app_open_thread(self.app, c.as_ptr()) };
+            nmp_app_chirp_open_thread_feed(self.app, c.as_ptr());
+        }
+    }
+
+    pub fn close_thread(&self, event_id: &str) {
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(event_id) {
+            nmp_app_chirp_close_thread_feed(self.app, c.as_ptr());
         }
     }
 
     pub fn open_author(&self, pubkey: &str) {
+        // M2 (ADR-0042 §5.1, V-112): use the Chirp flat-feed seam instead of the
+        // deleted `nmp_app_open_author` → `OpenAuthor` kernel machinery.
         if self.app.is_null() {
             return;
         }
         if let Ok(c) = CString::new(pubkey) {
-            unsafe { nmp_app_open_author(self.app, c.as_ptr()) };
+            nmp_app_chirp_open_author_feed(self.app, c.as_ptr());
         }
     }
 
-    pub fn close_thread(&self) {
-        if !self.app.is_null() {
-            unsafe { nmp_app_open_timeline(self.app) };
+    pub fn close_author(&self, pubkey: &str) {
+        if self.app.is_null() {
+            return;
         }
-    }
-
-    pub fn close_author(&self) {
-        if !self.app.is_null() {
-            unsafe { nmp_app_open_timeline(self.app) };
+        if let Ok(c) = CString::new(pubkey) {
+            nmp_app_chirp_close_author_feed(self.app, c.as_ptr());
         }
     }
 

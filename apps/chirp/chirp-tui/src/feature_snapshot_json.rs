@@ -9,8 +9,7 @@ use serde_json::Value;
 
 use crate::feature_snapshot::{
     relay_count_subtitle, AccountLine, DmConversationLine, GroupLine, HistoryRelayLine, MessageLine,
-    OutboxLine, OutboxRelayLine, ProfileLine, PublishHistoryLine, RelayEditLine, SummaryLine,
-    ThreadLine, WalletLine,
+    OutboxLine, OutboxRelayLine, PublishHistoryLine, RelayEditLine, SummaryLine, WalletLine,
 };
 
 pub(crate) fn accounts_from(projections: &Value) -> Vec<AccountLine> {
@@ -210,59 +209,8 @@ pub(crate) fn follow_count_from(projections: &Value) -> usize {
         .map_or(0, Vec::len)
 }
 
-pub(crate) fn profile_from(value: Option<&Value>) -> Option<ProfileLine> {
-    let value = value?;
-    if value.is_null() {
-        return None;
-    }
-    let profile = value.get("profile").unwrap_or(value);
-    let pubkey = {
-        let outer = first_nonempty(value, &["pubkey"]);
-        if outer.is_empty() {
-            string_field(profile, "pubkey")
-        } else {
-            outer
-        }
-    };
-    // aim.md §2: ProfileCard ships `display_name: Option<String>` (None
-    // when no kind:0); the TUI is the presentation layer, so when
-    // display_name is null we fall back to abbreviating the raw hex
-    // pubkey ourselves.
-    let display = first_nonempty(profile, &["display_name", "displayName"]);
-    let display = if display.is_empty() && !pubkey.is_empty() {
-        nmp_core::display::short_npub(&pubkey)
-    } else {
-        display
-    };
-    Some(ProfileLine {
-        pubkey,
-        display,
-        about: string_field(profile, "about"),
-        note_count: first_nonempty(value, &["note_count_display", "noteCountDisplay"]),
-        action_label: value
-            .get("primary_action")
-            .or_else(|| value.get("primaryAction"))
-            .map(|a| string_field(a, "label"))
-            .unwrap_or_default(),
-    })
-}
-
-pub(crate) fn thread_from(value: Option<&Value>) -> Option<ThreadLine> {
-    let value = value?;
-    if value.is_null() {
-        return None;
-    }
-    Some(ThreadLine {
-        focused_event_id: first_nonempty(value, &["focused_event_id", "focusedEventId"]),
-        state: string_field(value, "state"),
-        previous_label: first_nonempty(value, &["previous_count_label", "previousCountLabel"]),
-        next_label: first_nonempty(value, &["next_count_label", "nextCountLabel"]),
-        item_count: value
-            .get("items")
-            .and_then(Value::as_array)
-            .map_or(0, Vec::len),
-    })
-}
+// V-112 (ADR-0042): profile_from / thread_from deleted — the author_view /
+// thread_view projections they decoded are removed from the kernel.
 
 pub(crate) fn summary_from(value: Option<&Value>) -> SummaryLine {
     value.map_or_else(SummaryLine::default, |v| SummaryLine {

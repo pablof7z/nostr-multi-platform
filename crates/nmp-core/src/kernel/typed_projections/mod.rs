@@ -59,7 +59,7 @@
 
 mod accounts_fb;
 mod active_account_fb;
-mod author_view_fb;
+// V-112 (ADR-0042): author_view_fb / thread_view_fb deleted.
 mod builtins_publish;
 mod builtins_views;
 mod configured_relays_fb;
@@ -69,7 +69,6 @@ mod publish_outbox_fb;
 mod publish_queue_fb;
 mod relay_role_options_fb;
 mod settings_hub_fb;
-mod thread_view_fb;
 // Wave C profile/event cluster (appended; see `builtins_profiles.rs`).
 mod builtins_profiles;
 mod claimed_events_fb;
@@ -125,12 +124,8 @@ pub(crate) use publish_outbox_fb::encode_publish_outbox;
 // envelope constants) live in the PUBLIC block below so they are not declared
 // twice in this module's namespace.
 pub(crate) use publish_queue_fb::encode_publish_queue;
-// Wave C identity + views cluster (`accounts` / `active_account` / `profile` /
-// `author_view` / `thread_view`). The DTO→Model mappings live in
-// `builtins_views.rs` (heavier nested rows + the two conditional view pushes),
-// where the `pub(super)`/`pub(crate)` DTO types are reachable. `ProfileCardModel`
-// (from `profile_fb`) and `TimelineItemModel` (from `thread_view_fb`) are the
-// shared row shapes the `author_view` codec reuses.
+// Wave C identity + views cluster (`accounts` / `active_account` / `profile`).
+// V-112 (ADR-0042): `author_view` / `thread_view` FlatBuffer codecs deleted.
 pub use accounts_fb::{
     AccountSummaryRow, AccountsModel, ACCOUNTS_FILE_IDENTIFIER, ACCOUNTS_SCHEMA_ID,
     ACCOUNTS_SCHEMA_VERSION,
@@ -141,20 +136,10 @@ pub use active_account_fb::{
     ACTIVE_ACCOUNT_SCHEMA_VERSION,
 };
 pub(crate) use active_account_fb::encode_active_account;
-pub use author_view_fb::{
-    AuthorViewModel, ProfileActionModel, ProfileDispatchSpecModel, AUTHOR_VIEW_FILE_IDENTIFIER,
-    AUTHOR_VIEW_SCHEMA_ID, AUTHOR_VIEW_SCHEMA_VERSION,
-};
-pub(crate) use author_view_fb::encode_author_view;
 pub use profile_fb::{
     ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
 };
 pub(crate) use profile_fb::encode_profile;
-pub use thread_view_fb::{
-    ThreadViewModel, TimelineItemModel, THREAD_VIEW_FILE_IDENTIFIER, THREAD_VIEW_SCHEMA_ID,
-    THREAD_VIEW_SCHEMA_VERSION,
-};
-pub(crate) use thread_view_fb::encode_thread_view;
 // Wave C profile/event cluster (`mention_profiles` / `claimed_profiles` /
 // `claimed_events` / `resolved_profiles`). The map-entry / row types
 // (`MentionProfileRow`, `ClaimedEventRow`) and the shared `ProfileCardModel`
@@ -166,10 +151,11 @@ pub use claimed_events_fb::{
     CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
 };
 pub(crate) use claimed_events_fb::encode_claimed_events;
-pub(crate) use claimed_profiles_fb::{
-    encode_claimed_profiles, ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER,
-    CLAIMED_PROFILES_SCHEMA_ID, CLAIMED_PROFILES_SCHEMA_VERSION,
+pub use claimed_profiles_fb::{
+    ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER, CLAIMED_PROFILES_SCHEMA_ID,
+    CLAIMED_PROFILES_SCHEMA_VERSION,
 };
+pub(crate) use claimed_profiles_fb::encode_claimed_profiles;
 pub(crate) use mention_profiles_fb::{
     encode_mention_profiles, MentionProfileRow, MentionProfilesModel,
     MENTION_PROFILES_FILE_IDENTIFIER, MENTION_PROFILES_SCHEMA_ID, MENTION_PROFILES_SCHEMA_VERSION,
@@ -211,10 +197,13 @@ pub use signed_events_fb::{
 #[cfg(test)]
 pub(crate) use relay_role_options_fb::decode_relay_role_options;
 // Wave C profile/event cluster — `decode_claimed_events` promoted to unconditional
-// pub (nmp-gallery typed-sidecar migration); the others remain test-only.
+// pub (nmp-gallery typed-sidecar migration); `decode_claimed_profiles` promoted
+// to unconditional pub (V-112 follow-up: the claimed_profiles sidecar is the
+// direct observable of `claim_profile`, read out-of-tree via
+// `nmp_core::typed_projections` — see the app-template `validate_claim_profile`
+// example); `decode_mention_profiles` remains test-only.
 pub use claimed_events_fb::decode_claimed_events;
-#[cfg(test)]
-pub(crate) use claimed_profiles_fb::decode_claimed_profiles;
+pub use claimed_profiles_fb::decode_claimed_profiles;
 #[cfg(test)]
 pub(crate) use mention_profiles_fb::decode_mention_profiles;
 pub use resolved_profiles_fb::decode_resolved_profiles;
@@ -265,8 +254,7 @@ pub use active_account_fb::decode_active_account;
 pub use configured_relays_fb::decode_configured_relays;
 pub use settings_hub_fb::decode_settings_hub;
 pub use profile_fb::decode_profile;
-pub use author_view_fb::decode_author_view;
-pub use thread_view_fb::decode_thread_view;
+// V-112 (ADR-0042): decode_author_view / decode_thread_view deleted.
 pub use publish_outbox_fb::decode_publish_outbox;
 pub use outbox_summary_fb::decode_outbox_summary;
 
@@ -291,15 +279,15 @@ impl super::Kernel {
     /// D6: pure encode, no panics, no allocations beyond the buffers; called on
     /// the actor thread inside the snapshot tick (D8: non-blocking).
     pub(in crate::kernel) fn builtin_typed_projections(&self) -> Vec<TypedProjectionData> {
-        // 6 relay/settings/publish built-ins + up to 5 identity/views built-ins
-        // (`accounts` / `active_account` / `profile` always; `author_view` /
-        // `thread_view` only when open) + 4 profile/event built-ins
+        // 6 relay/settings/publish built-ins + 3 identity built-ins
+        // (`accounts` / `active_account` / `profile`) + 4 profile/event built-ins
         // (`mention_profiles` / `claimed_profiles` / `claimed_events` /
         // `resolved_profiles`, all unconditional) + up to 5 action-lifecycle /
         // diagnostics built-ins (`relay_diagnostics` unconditional once captured;
         // `action_results` / `signed_events` / `action_stages` /
         // `action_lifecycle` present only when captured this tick).
-        let mut out = Vec::with_capacity(20);
+        // V-112 (ADR-0042): author_view / thread_view conditional built-ins deleted.
+        let mut out = Vec::with_capacity(18);
 
         // `configured_relays` — encoded from the SAME `AppRelay` slice the JSON
         // path serialises (`configured_relays_snapshot()`).
@@ -357,11 +345,9 @@ impl super::Kernel {
         // types are reachable, but they stay under the same owner.
         out.extend(self.publish_cluster_typed_projections());
 
-        // Wave C identity + views cluster (`accounts` / `active_account` /
-        // `profile` unconditionally; `author_view` / `thread_view` only when the
-        // respective view is open — D5). Extracted to `builtins_views.rs` to keep
-        // this file under the LOC ceiling (heavier nested DTO→Model mappings +
-        // the two conditional pushes), but kept under the same owner.
+        // Wave C identity cluster (`accounts` / `active_account` / `profile`
+        // unconditionally). V-112 (ADR-0042): `author_view` / `thread_view`
+        // conditional pushes deleted. Extracted to `builtins_views.rs`.
         out.extend(self.views_cluster_typed_projections());
 
         // Wave C profile/event cluster (`mention_profiles` / `claimed_profiles` /

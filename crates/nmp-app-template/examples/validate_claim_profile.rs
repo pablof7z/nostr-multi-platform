@@ -14,22 +14,17 @@
 //! `Unroutable`, and `claim_profile` is a no-op (no REQ ever reaches the
 //! wire). This example needs the canonical composition.
 //!
-//! Observation surface: the snapshot has no top-level `"profiles"` key —
-//! the kernel `profiles` cache only reaches the callback through
-//! projections. We call `nmp_app_open_author` alongside the claim so the
-//! cached profile surfaces through `projections.author_view.profile`
-//! (`Kernel::profile_card_for`). `open_author` also fetches kind:0
-//! (`BootstrapSeed::Discovery`); `claim_profile` uses
-//! `BootstrapSeed::IndexerOnly`. Both hit the same `purplepag.es`
-//! fallback; the snapshot can't tell which leg delivered first.
-//!
-//! Runtime wire frame: FlatBuffers `nmp.transport.UpdateFrame`. The example
-//! decodes the typed `author_view` sidecar for its local CLI assertions
+//! Observation surface: the typed `claimed_profiles` FlatBuffers sidecar
 //! (PR-B #991/#979: the generic JSON payload no longer exists on the wire).
+//! When a claimed profile's `has_profile` becomes `true`, the kind:0 fetch
+//! succeeded and the display name is available.
+//!
+//! V-68 / V-112 (ADR-0042): `nmp_app_open_author` / `author_view` projection
+//! deleted. This example was updated to observe via the typed `claimed_profiles`
+//! sidecar instead.
 
 use nmp_ffi::{
-    nmp_app_claim_profile, nmp_app_free, nmp_app_new, nmp_app_open_author,
-    nmp_app_set_update_callback, nmp_app_start,
+    nmp_app_claim_profile, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start,
 };
 use std::ffi::{c_void, CString};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -52,24 +47,27 @@ extern "C" fn update_cb(context: *mut c_void, payload: *const u8, len: usize) {
     let _ = tx.send(bytes.to_vec());
 }
 
-/// Decode the typed `author_view` sidecar off a raw frame and return the
+/// Decode the typed `claimed_profiles` sidecar off a raw frame and return the
 /// claimed profile's non-empty display name, if present for `pubkey`.
 fn find_display_name(frame: &[u8], pubkey: &str) -> Option<String> {
-    use nmp_core::typed_projections::{decode_author_view, AUTHOR_VIEW_SCHEMA_ID};
+    use nmp_core::typed_projections::{decode_claimed_profiles, CLAIMED_PROFILES_SCHEMA_ID};
 
     let typed = nmp_core::decode_snapshot_typed_projections(frame).ok()?;
-    let view = typed
+    let entry = typed
         .iter()
-        .find(|t| t.key == AUTHOR_VIEW_SCHEMA_ID)
-        .and_then(|t| decode_author_view(&t.payload).ok())?;
-    if view.profile.pubkey != pubkey {
-        return None;
-    }
-    view.profile.display_name.filter(|s| !s.is_empty())
+        .find(|t| t.key == CLAIMED_PROFILES_SCHEMA_ID)
+        .and_then(|t| decode_claimed_profiles(&t.payload).ok())?;
+    entry
+        .entries
+        .iter()
+        .find(|(pk, card)| pk == pubkey && card.has_profile)
+        .and_then(|(_, card)| card.display_name.as_ref())
+        .filter(|s| !s.is_empty())
+        .cloned()
 }
 
 fn dump_last_snapshot(frame: &[u8]) {
-    use nmp_core::typed_projections::{decode_author_view, AUTHOR_VIEW_SCHEMA_ID};
+    use nmp_core::typed_projections::{decode_claimed_profiles, CLAIMED_PROFILES_SCHEMA_ID};
 
     if frame.is_empty() {
         eprintln!("  (no snapshot ticks observed)");
@@ -92,11 +90,11 @@ fn dump_last_snapshot(frame: &[u8]) {
         .and_then(|typed| {
             typed
                 .iter()
-                .find(|t| t.key == AUTHOR_VIEW_SCHEMA_ID)
-                .and_then(|t| decode_author_view(&t.payload).ok())
+                .find(|t| t.key == CLAIMED_PROFILES_SCHEMA_ID)
+                .and_then(|t| decode_claimed_profiles(&t.payload).ok())
         })
     {
-        eprintln!("  typed author_view = {view:?}");
+        eprintln!("  typed claimed_profiles = {view:?}");
     }
 }
 
@@ -119,7 +117,6 @@ fn main() -> std::process::ExitCode {
     let consumer_c = CString::new(CONSUMER_ID).expect("consumer has no NUL");
     println!("validate_claim_profile: claiming pubkey {PABLOF7Z_PUBKEY}");
     nmp_app_claim_profile(app, pubkey_c.as_ptr(), consumer_c.as_ptr(), 0);
-    nmp_app_open_author(app, pubkey_c.as_ptr()); // observation hook
 
     let started = Instant::now();
     let mut ticks = 0usize;
@@ -147,7 +144,7 @@ fn main() -> std::process::ExitCode {
                         "OK: received kind:0 in {:?} after {ticks} snapshot tick(s)",
                         started.elapsed()
                     );
-                    println!("    surface       = author_view.profile.display_name");
+                    println!("    surface       = claimed_profiles.display_name");
                     println!("    display_name  = {name:?}");
                     println!("    payload bytes = {}", last_payload.len());
                     exit_code = std::process::ExitCode::from(0);

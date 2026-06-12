@@ -721,11 +721,8 @@ fn ingest_timeline_event_from_subscribed_author_stores_event() {
 #[test]
 fn ingest_timeline_event_from_non_subscribed_author_is_dropped() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // No active account, no selected_author → no implicit gate openings.
-    assert!(
-        kernel.author_view.selected_author.is_none(),
-        "precondition: no selected author"
-    );
+    // No active account — no implicit gate openings.
+    // V-112 (ADR-0042): selected_author assertion removed with AuthorViewState.
 
     let keys = ::nostr::Keys::generate();
     let event = signed_note(&keys, "note from a stranger", 1_700_000_100);
@@ -796,7 +793,7 @@ fn ingest_timeline_event_duplicate_is_not_double_stored() {
 //
 // `should_store_event` must admit an inbound event when it matches the
 // `InterestShape` of ANY active registered interest — not only the bespoke
-// follow-set / `author_view` / sub-id-prefix clauses. This makes a generic
+// follow-set / sub-id-prefix clauses (V-112: `author_view` deleted). This makes a generic
 // `open_interest` REQ functional end-to-end: a non-followed author's notes (or
 // an arbitrary `#t` hashtag feed) reach `self.events` and the
 // `notify_event_observers` fan-out (so `nmp-feed` can expose them) WITHOUT

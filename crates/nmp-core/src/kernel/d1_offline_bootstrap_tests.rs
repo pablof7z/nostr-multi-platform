@@ -7,20 +7,16 @@
 //! This test exercises the real offline read path:
 //!
 //! 1. Seed the in-memory store with a kind:1 event — NO relays connected.
-//! 2. Open the author view for the seeded author so a content-bearing view
-//!    projection is live.
-//! 3. Call `make_update_json_for_test` and assert the seeded event id AND content
-//!    appear in `projections.author_view.items`.
+//! 2. Call `ingest_pre_verified_event` + `sort_timeline_deferred` to populate
+//!    the in-memory `events` and `timeline` caches exactly as the actor does.
+//! 3. Assert the seeded event id appears in `kernel.events` and `kernel.timeline`.
 //!
-//! The test FAILS if the offline store-read/projection path breaks because the
-//! assertion checks concrete seeded content, not just structural JSON presence.
-//!
-//! Issue #920 (Step 3A): the home-feed projection cluster (`projections.timeline`)
-//! was removed from the kernel. The D1 offline-bootstrap PROPERTY is unchanged —
-//! `self.timeline`, `self.events`, `ingest_pre_verified_event`, and
-//! `sort_timeline_deferred` all remain — so this test moved its observation
-//! window off the deleted home feed onto the still-live `author_view` items
-//! projection (a `Vec<TimelineItem>`, same content-bearing shape).
+//! V-112 (ADR-0042): the previous observation window via
+//! `projections.author_view.items` was deleted together with `AuthorViewState`.
+//! The D1 property is unchanged — `self.timeline`, `self.events`, and
+//! `ingest_pre_verified_event` all remain — so the test now observes them
+//! directly (same fields `ingest_tests.rs` uses) rather than going through the
+//! deleted projection.
 //!
 //! See `docs/product-spec/offline-first.md` §7 and
 //! `docs/wiki/d1-snapshot-before-relay-io.md`.
@@ -37,19 +33,20 @@ const SEED_AUTHOR: &str =
 const SEED_CONTENT: &str =
     "offline-first proof: this note was stored before any relay connected";
 
-/// D1 assertion: a kernel with locally-stored events emits those events in a
-/// content-bearing view projection BEFORE any relay I/O.
+/// D1 assertion: a kernel with locally-stored events reflects them in the
+/// `events` cache and `timeline` ordering BEFORE any relay I/O.
 ///
 /// The test seeds a kind:1 note into the kernel's in-memory store with ZERO
-/// relay connections, opens the author view for that author, and asserts that
-/// the seeded event id and content appear in `projections.author_view.items`.
+/// relay connections and asserts that the seeded event id appears in both
+/// `kernel.events` (the flat id→StoredEvent lookup map) and `kernel.timeline`
+/// (the ordered id deque used for home-feed and FlatFeed projections).
 ///
-/// Falsifiability: if the offline store-read path or the author-view projection
-/// breaks, `projections.author_view.items` will be empty or missing the seeded
-/// entry, and the `assert_eq!(items.len(), 1)` / id / content assertions will
-/// fail. The tautological structural-presence check (`!projections.is_empty()`)
-/// has been deliberately replaced with content-level assertions that cannot pass
-/// on a kernel whose store-read path is severed.
+/// Falsifiability: if the offline store-read path or the ingest_pre_verified
+/// dispatch breaks, `kernel.events` will be empty or missing the seeded entry,
+/// and the `kernel.events.contains_key(SEED_NOTE_ID)` assertion will fail. The
+/// tautological structural-presence check has been deliberately replaced with
+/// content-level assertions that cannot pass on a kernel whose ingest path is
+/// severed.
 #[test]
 fn d1_offline_store_content_appears_in_snapshot_without_relays() {
     // Construct a kernel — zero relay connections, zero relay URLs configured.
@@ -77,60 +74,41 @@ fn d1_offline_store_content_appears_in_snapshot_without_relays() {
     );
     kernel.sort_timeline_deferred();
 
-    // Open the author view for the seeded author so a content-bearing view
-    // projection is emitted in the snapshot (D5 bounding rule: view-dependent
-    // keys are absent until a view is subscribed). `author_items` reads the
-    // seeded note straight from the offline store — no relay I/O.
-    kernel.open_author(
-        SEED_AUTHOR.to_string(),
-        std::collections::BTreeSet::from([1u32, 6u32]),
-        false,
+    // ── D1 content assertion ──────────────────────────────────────────────────
+    // The `events` read-cache must carry the seeded note verbatim, proving the
+    // offline store-read path (store.insert → events.insert) is intact BEFORE
+    // any relay dial.
+    assert!(
+        kernel.events.contains_key(SEED_NOTE_ID),
+        "D1: kernel.events must contain the seeded note before any relay connects; \
+         events keys: {:?}",
+        kernel.events.keys().collect::<Vec<_>>()
     );
 
-    // Emit the snapshot — same call the actor makes on every kernel tick.
+    let stored = &kernel.events[SEED_NOTE_ID];
+    assert_eq!(
+        stored.id, SEED_NOTE_ID,
+        "D1: stored event id must match the seeded id"
+    );
+    assert_eq!(
+        stored.content, SEED_CONTENT,
+        "D1: stored event content must match the seeded content"
+    );
+
+    // The `timeline` deque (the ordering projection) must also carry the id,
+    // confirming `sort_timeline_deferred` ran without relay I/O.
+    assert!(
+        kernel.timeline.iter().any(|id| id == SEED_NOTE_ID),
+        "D1: kernel.timeline must contain the seeded note id after sort_timeline_deferred; \
+         timeline: {:?}",
+        kernel.timeline.iter().collect::<Vec<_>>()
+    );
+
+    // The diagnostic metric must agree — read it through the snapshot JSON to
+    // avoid accessing the private `metric_note_events` field directly.
     let snapshot_json = kernel.make_update_json_for_test(true);
     let snap: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
-
-    // ── D1 content assertion ──────────────────────────────────────────────────
-    // The author-view items projection must contain exactly the seeded note.
-    // Any regression in the offline store-read path (store.insert, events
-    // HashMap, or the author-view projection in update/views.rs) will produce an
-    // empty or absent array and fail here.
-    let items = snap["projections"]["author_view"]["items"]
-        .as_array()
-        .unwrap_or_else(|| {
-            panic!(
-                "D1: projections.author_view.items must be a JSON array with offline-stored \
-                 content; got snapshot projections keys: {:?}",
-                snap["projections"]
-                    .as_object()
-                    .map(|o| o.keys().collect::<Vec<_>>())
-                    .unwrap_or_default()
-            )
-        });
-
-    assert_eq!(
-        items.len(),
-        1,
-        "D1: exactly one seeded note must appear in the author view before any relay connects; \
-         got {} items",
-        items.len()
-    );
-
-    assert_eq!(
-        items[0]["id"].as_str(),
-        Some(SEED_NOTE_ID),
-        "D1: the projected author-view item must carry the seeded event id"
-    );
-
-    assert_eq!(
-        items[0]["content"].as_str(),
-        Some(SEED_CONTENT),
-        "D1: the projected author-view item must carry the seeded event content"
-    );
-
-    // The diagnostic metric must agree with the projection.
     assert_eq!(
         snap["metrics"]["note_events"].as_u64(),
         Some(1),

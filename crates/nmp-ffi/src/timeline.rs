@@ -1,6 +1,10 @@
-//! Timeline / profile FFI wrappers — open/close author + thread, generic
-//! `open_interest`/`close_interest` (the M2 hashtag-feed replacement),
-//! `nostr:` URI routing, and profile claim/release.
+//! Timeline / profile FFI wrappers — generic `open_interest`/`close_interest`
+//! (the M2 feed seam, ADR-0042), `nostr:` URI routing, and profile claim/release.
+//!
+//! V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
+//! `nmp_app_open_thread`, `nmp_app_close_thread` deleted here; apps now call
+//! their own per-app seam (e.g. `nmp_app_chirp_open_author_feed`) which
+//! registers a `FlatFeed` and calls `nmp_app_open_interest` for kernel admission.
 //!
 //! Split out of `ffi/mod.rs` to keep both files under the 300-LOC soft cap.
 //! These reuse the parent module's validated-argument helpers (`app_ref`,
@@ -10,71 +14,8 @@
 
 use super::{app_ref, c_string_argument, NmpApp};
 use nmp_core::ActorCommand;
-use nmp_core::__ffi_internal::{is_hex_id, is_hex_pubkey};
+use nmp_core::__ffi_internal::is_hex_pubkey;
 use std::ffi::{c_char, c_int};
-
-/// C ABI symbol kept stable (Swift / Kotlin / TUI call it). Internally it
-/// sends `ActorCommand::OpenAuthor` with the Chirp-specific social kinds
-/// {1, 6} — the host-declared kind set that `nmp-core` no longer hardcodes
-/// (D0-clean). V-68 Stage 2 (#911): replace with
-/// `nmp_app_open_interest(filter_json, consumer_id, scope)` once the ADR is
-/// written and merged.
-///
-/// D0-precedent: mirrors `nmp_app_open_thread` (below) and
-/// `nmp_app_open_timeline` in `identity.rs`, both of which already carry
-/// `BTreeSet::from([1u32, 6u32])` with the same rationale. The C signature
-/// is UNCHANGED — no `NmpCore.h` / `KernelBridge.swift` churn required.
-#[no_mangle]
-pub extern "C" fn nmp_app_open_author(app: *mut NmpApp, pubkey: *const c_char) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(pubkey) = c_string_argument(pubkey) else {
-        return;
-    };
-    if !is_hex_pubkey(&pubkey) {
-        return;
-    }
-
-    app.send_cmd(ActorCommand::OpenAuthor {
-        pubkey,
-        // Chirp's social author-note kinds. The substrate carries these as
-        // opaque filter data; nmp-core is kind-agnostic (D0). See
-        // `nmp_app_open_thread` and `nmp_app_open_timeline` in identity.rs
-        // for the identical pattern on the thread-reply and follow-feed paths.
-        kinds: std::collections::BTreeSet::from([1u32, 6u32]),
-    });
-}
-
-/// C ABI symbol kept stable (Swift / Kotlin / TUI call it). Internally it
-/// sends `ActorCommand::OpenThread` with the Chirp-specific social kinds
-/// {1, 6} — the host-declared kind set that `nmp-core` no longer hardcodes
-/// (D0-clean). V-68 Stage 2 (#911): replace with
-/// `nmp_app_open_interest(filter_json, consumer_id, scope)` once the ADR is
-/// written and merged.
-///
-/// D0-precedent: mirrors `nmp_app_open_timeline` in `identity.rs`, which
-/// already carries `BTreeSet::from([1u32, 6u32])` with the same rationale.
-#[no_mangle]
-pub extern "C" fn nmp_app_open_thread(app: *mut NmpApp, event_id: *const c_char) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(event_id) = c_string_argument(event_id) else {
-        return;
-    };
-    if !is_hex_id(&event_id) {
-        return;
-    }
-
-    app.send_cmd(ActorCommand::OpenThread {
-        event_id,
-        // Chirp's social reply kinds. The substrate carries these as opaque
-        // filter data; nmp-core is kind-agnostic (D0). See `nmp_app_open_timeline`
-        // in identity.rs for the identical pattern on the follow-feed path.
-        kinds: std::collections::BTreeSet::from([1u32, 6u32]),
-    });
-}
 
 /// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
 /// interest. The generic replacement for `nmp_app_open_author` /
@@ -303,33 +244,7 @@ pub extern "C" fn nmp_app_release_event(
     app.send_cmd(ActorCommand::ReleaseEvent { uri, consumer_id });
 }
 
-#[no_mangle]
-pub extern "C" fn nmp_app_close_author(app: *mut NmpApp, pubkey: *const c_char) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(pubkey) = c_string_argument(pubkey) else {
-        return;
-    };
-    if !is_hex_pubkey(&pubkey) {
-        return;
-    }
-
-    app.send_cmd(ActorCommand::CloseAuthor { pubkey });
-}
-
-#[no_mangle]
-pub extern "C" fn nmp_app_close_thread(app: *mut NmpApp, event_id: *const c_char) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(event_id) = c_string_argument(event_id) else {
-        return;
-    };
-    if !is_hex_id(&event_id) {
-        return;
-    }
-
-    app.send_cmd(ActorCommand::CloseThread { event_id });
-}
+// V-68 / V-112 (ADR-0042): nmp_app_close_author / nmp_app_close_thread deleted.
+// Apps use their per-app seam (nmp_app_chirp_close_author_feed etc.) which
+// releases the FlatFeed and calls nmp_app_close_interest for kernel cleanup.
 

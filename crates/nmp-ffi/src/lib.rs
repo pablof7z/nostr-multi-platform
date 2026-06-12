@@ -143,9 +143,10 @@ pub use storage::nmp_app_set_storage_path;
 pub use snapshot::nmp_app_register_snapshot_projection;
 #[cfg(feature = "native")]
 pub use timeline::{
-    nmp_app_claim_event, nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_interest,
-    nmp_app_close_thread, nmp_app_open_author, nmp_app_open_interest, nmp_app_open_thread,
-    nmp_app_open_uri, nmp_app_release_event, nmp_app_release_profile,
+    // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
+    // nmp_app_open_thread, nmp_app_close_thread deleted from timeline.rs.
+    nmp_app_claim_event, nmp_app_claim_profile, nmp_app_close_interest,
+    nmp_app_open_interest, nmp_app_open_uri, nmp_app_release_event, nmp_app_release_profile,
 };
 
 // ── test-support delta ───────────────────────────────────────────────────

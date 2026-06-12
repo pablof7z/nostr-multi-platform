@@ -161,7 +161,7 @@ pub struct TypedSidecar {
 /// order. Order is load-bearing (the generated file is byte-diffed against
 /// the committed copy by the `codegen-drift` CI gate).
 ///
-/// This slice has 36 entries (locked by `registry_size_is_locked`). Adding or
+/// This slice has 34 entries (locked by `registry_size_is_locked`). Adding or
 /// removing a member here changes the generated Swift — the CI gate will refuse
 /// stale output until the regenerated file is committed.
 pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
@@ -439,8 +439,8 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_ActionLifecycleSnapshot"),
         }),
     },
-    // D0 views cluster — `profile`, `timeline`, `author_view`,
-    // `thread_view`, plus the per-tick `inserted` / `updated` / `removed`
+    // D0 views cluster — `profile`, `timeline` (V-112: author_view / thread_view
+    // deleted), plus the per-tick `inserted` / `updated` / `removed`
     // timeline deltas.
     SnapshotProjectionEntry {
         json_key: "profile",
@@ -484,40 +484,11 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: None,
         }),
     },
-    SnapshotProjectionEntry {
-        json_key: "author_view",
-        swift_field: "authorView",
-        swift_type: "AuthorProfileSnapshot",
-        typed_sidecar: Some(TypedSidecar {
-            key: "author_view",
-            schema_id: "author_view",
-            file_identifier: "KAVW",
-            // Wave C (V-68 stage 1): `flatc --swift` reader
-            // (`nmp_kernel_AuthorViewSnapshot`) generated in this PR. Uses shared
-            // `nmp_kernel_ProfileCard` (from `ProfileCard.generated.swift`) and
-            // `nmp_kernel_TimelineItem` (from `TimelineItem.generated.swift`).
-            // NOTE: this binding becomes deletable when V-68 Stage 2 ships (the
-            // dedicated `author_view` projection is removed in favour of composing
-            // existing projections). See `TypedProjectionGlue.authorView`.
-            swift_reader_type: Some("nmp_kernel_AuthorViewSnapshot"),
-        }),
-    },
-    SnapshotProjectionEntry {
-        json_key: "thread_view",
-        swift_field: "threadView",
-        swift_type: "ThreadView",
-        typed_sidecar: Some(TypedSidecar {
-            key: "thread_view",
-            schema_id: "thread_view",
-            file_identifier: "KTVW",
-            // Wave C (V-68 stage 1): `flatc --swift` reader
-            // (`nmp_kernel_ThreadViewSnapshot`) generated in this PR. Uses shared
-            // `nmp_kernel_TimelineItem` (from `TimelineItem.generated.swift`).
-            // NOTE: this binding becomes deletable when V-68 Stage 2 ships.
-            // See `TypedProjectionGlue.threadView`.
-            swift_reader_type: Some("nmp_kernel_ThreadViewSnapshot"),
-        }),
-    },
+    // V-112 (ADR-0042): author_view (KAVW, AuthorProfileSnapshot) and
+    // thread_view (KTVW, ThreadView) entries deleted — typed sidecars removed
+    // with AuthorViewState / ThreadViewState. KernelTypes.generated.swift still
+    // has these fields as optionals (JSON fallback, always nil now); the generated
+    // Swift files AuthorView.generated.swift / ThreadView.generated.swift are deleted.
     SnapshotProjectionEntry {
         json_key: "inserted",
         swift_field: "inserted",
@@ -683,9 +654,9 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         }),
     },
     // Pre-merged profile map (PR #812) — replaces the per-shell merge of
-    // `claimed_profiles` / `author_view.profile` / `mention_profiles`. Keyed
+    // `claimed_profiles` / `mention_profiles` (V-112: author_view deleted). Keyed
     // by pubkey, one `ProfileCard` per profile the kernel can resolve, applying
-    // the canonical precedence (claimed > author_view > mention) once in Rust
+    // the canonical precedence (claimed > mention) once in Rust
     // (`kernel/update/projections.rs`). Same Rust type as `claimed_profiles`
     // (`BTreeMap<String, ProfileCard>`), so it round-trips through the existing
     // Swift `ProfileCard` exactly like `claimed_profiles` does. Chirp reads
@@ -864,12 +835,14 @@ mod tests {
     /// silent.
     #[test]
     fn registry_size_is_locked() {
-        // 36 entries: 35 prior + `bunker_connection_state` (V-14 step b, closes #963).
+        // 34 entries: 36 (incl. `bunker_connection_state`, V-14 step b, #963)
+        // minus `author_view` (KAVW) and `thread_view` (KTVW), removed by
+        // V-112 (ADR-0042).
         // Bump this (and add a new SnapshotProjectionEntry above) when a new
         // projection is wired.
         assert_eq!(
             SNAPSHOT_PROJECTIONS.len(),
-            36,
+            34,
             "registry size changed — regenerate KernelTypes.generated.swift and update this test"
         );
     }

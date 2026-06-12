@@ -111,56 +111,11 @@ fn snapshot_carries_advancing_last_tick_ms() {
     );
 }
 
-// Issue #920 (Step 3A): the home-feed projection cluster (`timeline` /
-// `inserted` / `updated` / `removed`) was deleted from the kernel. The tests
-// that exercised it directly — `timeline_event_appears_in_snapshot_items_after_ingest`,
-// `timeline_projection_respects_visible_limit`,
-// `timeline_item_picks_up_profile_after_later_kind0_ingest`, and
-// `mention_profiles_projection_covers_home_timeline_when_no_view_open` — were
-// removed with it. The `timeline_item()` profile-join logic those tests covered
-// lives on via `author_view` / `thread_view` (issue #911's domain) and is
-// exercised by `d1_offline_bootstrap_tests` and the author/thread view tests.
 
-// ─── D5 view-dependent projection bounding ────────────────────────────────────
-
-/// D5 (`docs/product-spec/doctrine.md §D5`): view-dependent snapshot keys must
-/// be absent when no view is subscribed. This test verifies the snapshot cluster
-/// shrinks correctly — `author_view` and `thread_view` must both be absent from
-/// a fresh kernel that has no open views, and `author_view` must appear once an
-/// author view is opened.
-///
-/// Issue #920 (Step 3A): the home-feed cluster (`timeline` / `inserted` /
-/// `updated` / `removed`) was removed from the kernel, so the timeline-open and
-/// timeline-close phases this test used to cover are gone — the remaining D5
-/// bounding is for `author_view` / `thread_view`.
-#[test]
-fn d5_view_dependent_keys_absent_when_no_view_open() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "a note");
-
-    // Phase 1: no views open — the view-dependent keys must be absent.
-    let snap = snapshot(&mut kernel);
-    for key in &["author_view", "thread_view"] {
-        assert!(
-            snap["projections"][key].is_null(),
-            "D5: `{key}` must be absent when no view is open",
-        );
-    }
-
-    // Phase 2: open an author view → author_view must appear.
-    kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
-    let snap = snapshot(&mut kernel);
-    assert!(
-        !snap["projections"]["author_view"].is_null(),
-        "D5: `author_view` must appear after open_author",
-    );
-    // thread_view still absent — no thread view opened.
-    assert!(
-        snap["projections"]["thread_view"].is_null(),
-        "D5: `thread_view` must remain absent when no thread view is open",
-    );
-}
+// V-112 (ADR-0042): d5_view_dependent_keys_absent_when_no_view_open deleted —
+// author_view / thread_view projection bounding is removed with those projections.
+// The open_author / open_thread methods and AuthorViewState / ThreadViewState are
+// deleted from the kernel; per-app FlatFeed owns the view lifecycle.
 
 // ─── kind:0 profile metadata → profile card projection ───────────────────────
 
@@ -529,126 +484,15 @@ fn outbox_summary_projects_sending_counters_and_strings() {
     assert_eq!(summary["retrying"].as_u64(), Some(0));
 }
 
-#[test]
-fn author_view_projects_edit_action_for_active_profile() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(ACCOUNT.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
+// V-112 (ADR-0042): author_view_projects_edit_action_for_active_profile,
+// author_view_projects_follow_action_for_non_active_profile,
+// author_view_projects_unfollow_when_active_contacts_include_author,
+// profile_action_follow_carries_nmp_follow_dispatch_spec,
+// profile_action_unfollow_carries_nmp_unfollow_dispatch_spec,
+// profile_action_edit_profile_has_no_dispatch_spec,
+// author_view_carries_note_count_display_string — all deleted.
+// author_view projection and profile_action_for() removed from kernel.
 
-    let snap = snapshot(&mut kernel);
-    let action = &snap["projections"]["author_view"]["primary_action"];
-    assert_eq!(action["kind"].as_str(), Some("edit_profile"));
-    assert_eq!(action["label"].as_str(), Some("Edit"));
-    assert_eq!(action["target_pubkey"].as_str(), Some(ACCOUNT));
-}
-
-#[test]
-fn author_view_projects_follow_action_for_non_active_profile() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
-
-    let snap = snapshot(&mut kernel);
-    let action = &snap["projections"]["author_view"]["primary_action"];
-    assert_eq!(action["kind"].as_str(), Some("follow"));
-    assert_eq!(action["label"].as_str(), Some("Follow"));
-    assert_eq!(action["target_pubkey"].as_str(), Some(FOLLOW_A));
-}
-
-#[test]
-fn author_view_projects_unfollow_when_active_contacts_include_author() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.prepopulate_seed_contacts(ACCOUNT.to_string(), vec![FOLLOW_A.to_string()]);
-    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
-
-    let snap = snapshot(&mut kernel);
-    let action = &snap["projections"]["author_view"]["primary_action"];
-    assert_eq!(action["kind"].as_str(), Some("unfollow"));
-    assert_eq!(action["label"].as_str(), Some("Unfollow"));
-    assert_eq!(action["target_pubkey"].as_str(), Some(FOLLOW_A));
-}
-
-/// Profile-action dispatch shape: follow/unfollow must carry the registered
-/// ActionModule namespace + pre-serialised body so the shell wires the button
-/// straight into `nmp_app_dispatch_action`. Mirrors aim.md §4.4 — writes flow
-/// through registered actions, never through a Swift `switch action.kind`.
-#[test]
-fn profile_action_follow_carries_nmp_follow_dispatch_spec() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
-
-    let snap = snapshot(&mut kernel);
-    let action = &snap["projections"]["author_view"]["primary_action"];
-    assert_eq!(action["kind"].as_str(), Some("follow"));
-    assert_eq!(action["icon_name"].as_str(), Some("person.badge.plus"));
-    let dispatch = &action["dispatch"];
-    assert!(
-        !dispatch.is_null(),
-        "follow action must carry a dispatch spec"
-    );
-    assert_eq!(dispatch["namespace"].as_str(), Some("nmp.follow"));
-    let body_json = dispatch["body_json"]
-        .as_str()
-        .expect("body_json must be a string");
-    let body: serde_json::Value = serde_json::from_str(body_json).expect("body_json must parse");
-    assert_eq!(body["pubkey"].as_str(), Some(FOLLOW_A));
-}
-
-#[test]
-fn profile_action_unfollow_carries_nmp_unfollow_dispatch_spec() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.prepopulate_seed_contacts(ACCOUNT.to_string(), vec![FOLLOW_A.to_string()]);
-    kernel.open_author(FOLLOW_A.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
-
-    let snap = snapshot(&mut kernel);
-    let action = &snap["projections"]["author_view"]["primary_action"];
-    assert_eq!(action["kind"].as_str(), Some("unfollow"));
-    assert_eq!(action["icon_name"].as_str(), Some("person.badge.minus"));
-    let dispatch = &action["dispatch"];
-    assert_eq!(dispatch["namespace"].as_str(), Some("nmp.unfollow"));
-    let body_json = dispatch["body_json"]
-        .as_str()
-        .expect("body_json must be a string");
-    let body: serde_json::Value = serde_json::from_str(body_json).expect("body_json must parse");
-    assert_eq!(body["pubkey"].as_str(), Some(FOLLOW_A));
-}
-
-/// `edit_profile` is the only local-UI intent — it opens a sheet, it is not a
-/// write — so `dispatch` is explicitly absent. The shell branches on
-/// presence-of-dispatch, not on `kind`, killing the Swift `switch action.kind`.
-#[test]
-fn profile_action_edit_profile_has_no_dispatch_spec() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(ACCOUNT.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
-
-    let snap = snapshot(&mut kernel);
-    let action = &snap["projections"]["author_view"]["primary_action"];
-    assert_eq!(action["kind"].as_str(), Some("edit_profile"));
-    assert_eq!(action["icon_name"].as_str(), Some("square.and.pencil"));
-    assert!(
-        action["dispatch"].is_null(),
-        "edit_profile is a local-UI intent — must not carry a dispatch spec"
-    );
-}
-
-/// `author_view.note_count_display` is the Rust-formatted post-count string
-/// the shell binds verbatim — killing the `Text("\(items.count)")` Swift
-/// interpolation that derived display state from the items array.
-#[test]
-fn author_view_carries_note_count_display_string() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.active_account = Some(ACCOUNT.to_string());
-    kernel.open_author(ACCOUNT.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
-
-    let snap = snapshot(&mut kernel);
-    let av = &snap["projections"]["author_view"];
-    assert_eq!(av["note_count"].as_u64(), Some(0));
-    assert_eq!(av["note_count_display"].as_str(), Some("0"));
-}
 
 /// `profile.npub_short` is the truncated copy-button form — Rust owns the
 /// truncation policy (`<first10>…<last8>`), no Swift `truncatedNpub` helper.
@@ -676,38 +520,9 @@ fn profile_card_carries_raw_pubkey_and_npub() {
     );
 }
 
-/// `projections.mention_profiles` mirrors the per-author display fields the
-/// open author-view items carry — replacing the Swift `Dictionary(items.map …
-/// MentionProfile(...))` derivation at `ProfileView.swift:28-40`. Empty `{}`
-/// when no author view is open (D1: key always present).
-#[test]
-fn mention_profiles_projection_carries_each_author_in_author_view() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.active_account = Some(ACCOUNT.to_string());
-    ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "hello world");
-    kernel.open_author(ACCOUNT.to_string(), std::collections::BTreeSet::from([1u32, 6u32]), false);
 
-    let snap = snapshot(&mut kernel);
-    let mp = &snap["projections"]["mention_profiles"];
-    assert!(mp.is_object(), "mention_profiles must be a JSON object");
-    let entry = &mp[ACCOUNT];
-    assert!(
-        !entry.is_null(),
-        "mention_profiles must carry an entry for the author of the open author-view"
-    );
-    // Raw fields per aim.md §2: pubkey (hex), display_name + picture_url as Option<String>.
-    assert_eq!(entry["pubkey"].as_str(), Some(ACCOUNT));
-    assert!(
-        entry["display_name"].is_null(),
-        "no kind:0 → display_name null"
-    );
-    assert!(
-        entry["picture_url"].is_null(),
-        "no kind:0 → picture_url null"
-    );
-    assert!(entry.get("avatar_initials").is_none());
-    assert!(entry.get("avatar_color").is_none());
-}
+// V-112 (ADR-0042): mention_profiles_projection_carries_each_author_in_author_view
+// deleted — mention_profiles now comes from claimed_profiles (component-owned claiming).
 
 #[test]
 fn mention_profiles_projection_empty_when_no_visible_items_or_views() {
@@ -780,7 +595,7 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
 // `mention_profiles_projection_covers_home_timeline_when_no_view_open` and
 // `timeline_item_picks_up_profile_after_later_kind0_ingest` — were removed with
 // it. The `timeline_item()` profile-join those tests covered is exercised through
-// `author_view` / `thread_view` (issue #911) and `d1_offline_bootstrap_tests`.
+// `d1_offline_bootstrap_tests` (V-112: author_view / thread_view deleted).
 
 // ─── kind:3 contacts → metrics projection ────────────────────────────────────
 

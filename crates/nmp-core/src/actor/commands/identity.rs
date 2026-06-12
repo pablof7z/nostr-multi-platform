@@ -892,23 +892,20 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
     }
 }
 
-/// Retarget the timeline to the active account: reuse the kernel's existing
-/// `open_author` path against the active pubkey (cheap correct retarget;
-/// kind:3 follow fan-out is a documented follow-up).
+/// Retarget the timeline to the active account.
+///
+/// V-112 (ADR-0042): `open_author()` deleted from kernel. Profile subscription
+/// is now owned by the host (nmp_app_chirp_open_author_feed). This function
+/// now only wires the follow-feed retarget (set_follow_feed_kinds is called by
+/// the contact-list subscription path). Returning empty vec is correct: the
+/// host triggers author-feed open via the FFI layer on navigation.
 pub(super) fn retarget_timeline(
     identity: &IdentityRuntime,
-    kernel: &mut Kernel,
-    relays_ready: bool,
+    _kernel: &mut Kernel,
+    _relays_ready: bool,
 ) -> Vec<OutboundMessage> {
-    match identity.active_pubkey() {
-        // Reuse the kernel's already-stored follow-feed kinds as the author-note
-        // kind set for this retarget. At sign-in time these may be empty (host
-        // hasn't called open_timeline yet); the FFI shim's subsequent
-        // `nmp_app_open_author` call will overwrite with the correct declared set.
-        // D0: no social-kind literal lives in nmp-core.
-        Some(pk) => kernel.open_author(pk, kernel.follow_feed_kinds.clone(), relays_ready),
-        None => Vec::new(),
-    }
+    let _ = identity; // keep for callers that pass it; no retarget needed here
+    Vec::new()
 }
 
 /// Unified sign-in reducer. Adds a signer from `source` and, when

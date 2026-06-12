@@ -142,8 +142,8 @@ final class KernelHandle {
     /// `{"kinds":[1,6],"authors":["<hex>"]}`); `consumerID` refcounts owners so
     /// repeated opens of the same filter share one live subscription; `scope`
     /// is `.activeAccount` (re-route on switch) or `.global` (account-agnostic).
-    /// Generic replacement for the deleted `openFirehose` (and, post-#911, for
-    /// `openAuthor` / `openThread`).
+    /// Generic replacement for the deleted `openFirehose`. V-112 (ADR-0042):
+    /// `openAuthor` / `openThread` now delegate to the chirp feed seam below.
     func openInterest(filterJSON: String, consumerID: String, scope: InterestScope) {
         filterJSON.withCString { filterPtr in
             consumerID.withCString { consumerPtr in
@@ -714,14 +714,10 @@ final class KernelHandle {
             // there is the steady-state — the generic JSON `null` fallback applies.
             let typedWallet = TypedWalletDecoder.decode(from: envelopes)
             let typedSettingsHub = TypedSettingsHubDecoder.decode(from: envelopes)
-            // Wave C: action_results, action_stages, author_view, thread_view.
-            // Each returns nil when its sidecar is absent/malformed → the generic
-            // `projections.<field>` JSON path stays active (ADR-0037 Commitment 4).
-            // No read sites wired yet — foundation only.
+            // Wave C: action_results, action_stages.
+            // V-112 (ADR-0042): author_view / thread_view typed sidecars deleted.
             let typedActionResults = TypedActionResultsDecoder.decode(from: envelopes)
             let typedActionStages = TypedActionStagesDecoder.decode(from: envelopes)
-            let typedAuthorView = TypedAuthorViewDecoder.decode(from: envelopes)
-            let typedThreadView = TypedThreadViewDecoder.decode(from: envelopes)
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(typedEnvelope?.rev ?? 0) activeAccount=\(typedActiveAccount ?? "nil")")
             return .snapshot(
@@ -755,8 +751,7 @@ final class KernelHandle {
                     typedSettingsHub: typedSettingsHub,
                     typedActionResults: typedActionResults,
                     typedActionStages: typedActionStages,
-                    typedAuthorView: typedAuthorView,
-                    typedThreadView: typedThreadView,
+                    // V-112 (ADR-0042): typedAuthorView / typedThreadView removed.
                     typedEnvelope: typedEnvelope,
                     flatFeeds: flatFeeds,
                     payloadBytes: data.count,
@@ -994,18 +989,9 @@ struct KernelUpdateResult {
     /// wired yet (foundation only; wire typed-first in `KernelModel.apply` as
     /// follow-up).
     let typedActionStages: [String: [ActionStageEntry]]?
-    /// Wave C (V-68 stage 1): Typed `author_view` projection decode (`KAVW`).
-    /// `nil` ⇒ generic `projections.author_view` JSON fallback. Uses shared
-    /// `nmp_kernel_ProfileCard` + `nmp_kernel_TimelineItem` readers. NOTE: no read
-    /// site wired yet (foundation only; wire typed-first in `KernelModel.apply` as
-    /// follow-up). Binding becomes deletable when V-68 Stage 2 ships.
-    let typedAuthorView: AuthorProfileSnapshot?
-    /// Wave C (V-68 stage 1): Typed `thread_view` projection decode (`KTVW`).
-    /// `nil` ⇒ generic `projections.thread_view` JSON fallback. Uses shared
-    /// `nmp_kernel_TimelineItem` reader. NOTE: no read site wired yet (foundation
-    /// only; wire typed-first in `KernelModel.apply` as follow-up). Binding
-    /// becomes deletable when V-68 Stage 2 ships.
-    let typedThreadView: ThreadView?
+    // V-112 (ADR-0042): typedAuthorView (AuthorProfileSnapshot) and
+    // typedThreadView (ThreadView) deleted — author_view / thread_view typed
+    // sidecars removed with AuthorViewState / ThreadViewState.
     /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
     /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
     /// `logs`), read directly off the `SnapshotFrame` table. Non-nil when the
@@ -1603,23 +1589,11 @@ struct Nip46Onboarding: Decodable, Equatable {
 
 // ─── Domain types shared across the UI ───────────────────────────────────
 
-struct ThreadView: Decodable, Equatable {
-    let focusedEventId: String
-    let rootEventId: String
-    let state: String
-    let items: [TimelineItem]
-    let previousCount: Int
-    let nextCount: Int
-    /// Pre-formatted "Show N earlier note(s)" string. Empty when `previousCount == 0`.
-    /// Rust owns pluralization — host renders verbatim (aim.md §6 anti-pattern #1).
-    /// Optional for forward-compatibility with older kernel builds that predate
-    /// the field; the host treats `nil` as the empty string (D1 — never branch on
-    /// missing protocol output, render placeholder instead).
-    let previousCountLabel: String?
-    /// Pre-formatted "N more repl{y,ies}" string. Empty when `nextCount == 0`.
-    /// Same rationale as `previousCountLabel`.
-    let nextCountLabel: String?
-}
+// V-112 (ADR-0042): `ThreadView` Decodable deleted — the `thread_view`
+// projection (and its `threadView` field on the generated
+// `SnapshotProjections`) was removed with the kernel author/thread view
+// stack. Thread rendering reads the per-app FlatFeed
+// (`nmp_app_chirp_open_thread_feed`).
 
 // `AccountSummary` moved to `Generated/KernelTypes.generated.swift` (V6
 // Stage 1, plan §6b). Rust source: `nmp-core/src/kernel/identity_state.rs`
@@ -2055,17 +2029,12 @@ struct ProfileAction: Decodable, Equatable {
     let dispatch: ProfileDispatchSpec?
 }
 
-struct AuthorProfileSnapshot: Decodable, Equatable {
-    let pubkey: String
-    let state: String
-    let profile: ProfileCard
-    let items: [TimelineItem]
-    let noteCount: Int
-    /// Compatibility count token from the author projection. New presentation
-    /// code should prefer `noteCount` for localized/pluralized labels.
-    let noteCountDisplay: String
-    let primaryAction: ProfileAction?
-}
+// V-112 (ADR-0042): `AuthorProfileSnapshot` Decodable deleted — the
+// `author_view` projection (and its `authorView` field on the generated
+// `SnapshotProjections`) was removed with the kernel author/thread view
+// stack. Author rendering reads the per-app FlatFeed
+// (`nmp_app_chirp_open_author_feed`); `ProfileAction` /
+// `ProfileDispatchSpec` above stay (used by `ProfileView`).
 
 // `TimelineItem` moved to `Generated/KernelTypes.generated.swift` (V6
 // Stage 3 partial, plan §6d — F-05). Rust source:

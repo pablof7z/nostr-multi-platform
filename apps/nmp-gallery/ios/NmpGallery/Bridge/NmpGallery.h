@@ -42,13 +42,6 @@ void nmp_app_stop(void *app);
 void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id, int force);
 void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
 
-// Open an author view on `pubkey`. The kernel fetches kind:10002 + kind:0
-// from discovery relays and surfaces the resolved `ProfileCard` under
-// `projections.author_view.profile` in the push-callback snapshot. Refcounted
-// — paired with `nmp_app_close_author`.
-void nmp_app_open_author(void *app, const char *pubkey);
-void nmp_app_close_author(void *app, const char *pubkey);
-
 // ── Event claim / release (kind-dispatch embed) ──────────────────────────
 
 // Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted per

@@ -263,20 +263,12 @@ fn builtins_emit_without_any_host_typed_registration() {
     assert!(keys.contains("publish_queue"));
     assert!(keys.contains("publish_outbox"));
     assert!(keys.contains("outbox_summary"));
-    // Wave C identity + views cluster: accounts / active_account / profile are
-    // unconditional; the two view built-ins are absent on a fresh kernel (no
-    // author / thread view open — D5).
+    // Wave C identity cluster: accounts / active_account / profile are
+    // unconditional.
+    // V-112 (ADR-0042): author_view / thread_view deleted from typed sidecars.
     assert!(keys.contains("accounts"));
     assert!(keys.contains("active_account"));
     assert!(keys.contains("profile"));
-    assert!(
-        !keys.contains("author_view"),
-        "author_view is omitted when no author view is open (D5)"
-    );
-    assert!(
-        !keys.contains("thread_view"),
-        "thread_view is omitted when no thread view is open (D5)"
-    );
     // Wave C profile/event cluster: all four are unconditional (`{}` when empty),
     // so they appear even on a fresh kernel.
     assert!(keys.contains("mention_profiles"));

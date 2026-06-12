@@ -24,12 +24,12 @@ void nmp_app_start(void *app, unsigned int events_per_second, unsigned int visib
 void nmp_app_configure(void *app, unsigned int events_per_second, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_stop(void *app);
 void nmp_app_reset(void *app);
-void nmp_app_open_author(void *app, const char *pubkey);
-void nmp_app_open_thread(void *app, const char *event_id);
+// V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_open_thread deleted.
+// Use nmp_app_chirp_open_author_feed / nmp_app_chirp_open_thread_feed below.
+//
 // M2 (ADR-0042) — generic feed-subscription surface. Replaces the deleted
 // open_firehose_tag verb (a hashtag feed is now open_interest with
-// {"kinds":[1],"#t":["<tag>"]}, scope Global); the author/thread verbs above
-// remain until #911 retires their frozen FFI symbols. `filter_json` is a
+// {"kinds":[1],"#t":["<tag>"]}, scope Global). `filter_json` is a
 // verbatim NIP-01 REQ filter (e.g. {"kinds":[1,6],"authors":["<hex>"]}); the
 // app owns the kind set (D0). `consumer_id` refcounts owners across call sites
 // passing the same filter; `scope` is 0 = ActiveAccount (re-route on switch),
@@ -59,8 +59,8 @@ void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer
 // pass `0` for background claims.
 void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id, int force);
 void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
-void nmp_app_close_author(void *app, const char *pubkey);
-void nmp_app_close_thread(void *app, const char *event_id);
+// V-68 / V-112 (ADR-0042): nmp_app_close_author, nmp_app_close_thread deleted.
+// Use nmp_app_chirp_close_author_feed / nmp_app_chirp_close_thread_feed below.
 
 // T66a — identity / publish / multi-account / relay-edit. None return a
 // value; outcomes (incl. validation failures) arrive via the snapshot's
@@ -391,7 +391,7 @@ void nmp_app_chirp_unregister(void *handle);
 // ── M2 per-open flat author / thread feeds (ADR-0042 §5.1, V-112) ─────────
 //
 // Replace the deleted `author_view` / `thread_view` snapshot projections (and
-// the `nmp_app_open_author` / `nmp_app_open_thread` symbols above). Each open
+// the deleted `nmp_app_open_author` / `nmp_app_open_thread` symbols). Each open
 // registers a flat `FlatFeed` under a per-consumer snapshot key AND pushes the
 // kernel interest that admits the matching kind:1/6 into storage; each close
 // tears both down. The `{1,6}` note-kind policy lives host-side in

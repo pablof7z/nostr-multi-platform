@@ -1,12 +1,10 @@
 //! Host-declared follow-feed timeline ingest.
 //!
-//! Covers event storage, deduplication, timeline ordering, thread hydration
-//! queue management, and the seed-timeline open gate.
+//! Covers event storage, deduplication, timeline ordering, and the
+//! seed-timeline open gate. (V-112: thread hydration queue management moved
+//! app-side with the legacy thread view stack.)
 
-use super::super::{
-    event_references, referenced_event_ids, Instant, Kernel, NostrEvent, OutboundMessage,
-    RelayRole, StoredEvent,
-};
+use super::super::{Instant, Kernel, NostrEvent, OutboundMessage, RelayRole, StoredEvent};
 use super::{event_short_id, raw_event_from_nostr, raw_tap_should_fire};
 
 impl Kernel {
@@ -220,7 +218,8 @@ impl Kernel {
         if sub_id.starts_with("diag-firehose-") {
             self.diagnostic_firehose.events = self.diagnostic_firehose.events.saturating_add(1);
         }
-        self.enqueue_thread_hydration_from_event(&event.id);
+        // V-112 (ADR-0042): enqueue_thread_hydration_from_event call deleted —
+        // thread hydration is now handled by the per-app FlatFeed.
         if self.timeline_authors.contains(&event.pubkey) || sub_id.starts_with("diag-firehose-") {
             self.insert_timeline_id_sorted(event.id);
             self.timing
@@ -232,15 +231,11 @@ impl Kernel {
     }
 
     pub(in crate::kernel) fn should_store_event(&self, sub_id: &str, event: &NostrEvent) -> bool {
+        // V-112 (ADR-0042): author_view.selected_author clause + author-notes-/
+        // thread-ids-/thread-replies- sub_id prefix clauses deleted. These were
+        // admission gates for the legacy author_view/thread_view state machine; the
+        // FlatFeed seam uses open_interest which is covered by matches_active_open_interest.
         self.timeline_authors.contains(&event.pubkey)
-            || self
-                .author_view
-                .selected_author
-                .as_ref()
-                .is_some_and(|interest| interest.key == event.pubkey)
-            || sub_id.starts_with("author-notes-")
-            || sub_id.starts_with("thread-ids-")
-            || sub_id.starts_with("thread-replies-")
             || sub_id.starts_with("diag-firehose-")
             // T82/T104: a discovered quoted-note / referenced event arrives on
             // its oneshot sub — it must be stored so the missing reference is
@@ -284,36 +279,6 @@ impl Kernel {
                     &event.tags,
                 )
             })
-    }
-
-    pub(in crate::kernel) fn enqueue_thread_hydration_from_event(&mut self, event_id: &str) {
-        let Some(selected) = self
-            .thread_view
-            .selected_thread
-            .as_ref()
-            .map(|interest| interest.key.clone())
-        else {
-            return;
-        };
-        let Some(event) = self.events.get(event_id).cloned() else {
-            return;
-        };
-        let root = self
-            .thread_root_id(&selected)
-            .unwrap_or_else(|| selected.clone());
-        let is_related = event.id == selected
-            || event.id == root
-            || event_references(&event, &selected)
-            || event_references(&event, &root);
-        if !is_related {
-            return;
-        }
-
-        self.enqueue_thread_reply_target(event.id.clone());
-        for id in referenced_event_ids(&event) {
-            self.enqueue_thread_id(id.clone());
-            self.enqueue_thread_reply_target(id);
-        }
     }
 
     /// T140 — follow-feed open milestone + pending profile-claim flush.

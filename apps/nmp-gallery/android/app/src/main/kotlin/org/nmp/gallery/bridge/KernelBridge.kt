@@ -48,15 +48,6 @@ class KernelBridge {
     fun registryJson(): String = nativeRegistryJson()
 
     /**
-     * Open the author view for [pubkey]. Triggers kind:0 + kind:10002 fetch
-     * and populates `projections.author_view` on every snapshot tick.
-     * Mirrors `nmp_app_open_author` from the iOS shell.
-     */
-    fun openAuthor(pubkey: String) {
-        if (handle != 0L) nativeOpenAuthor(handle, pubkey)
-    }
-
-    /**
      * Demand-driven kind:0 fetch claim — see KernelBridge.swift /
      * `nmp_app_claim_profile`. Idempotent per (pubkey, consumerId);
      * matching [releaseProfile] required when the view disappears.
@@ -114,7 +105,6 @@ class KernelBridge {
     private external fun nativeGalleryRegister(handle: Long)
     private external fun nativeShowcaseReferencesJson(): String
     private external fun nativeRegistryJson(): String
-    private external fun nativeOpenAuthor(handle: Long, pubkey: String)
     private external fun nativeStart(handle: Long, eventsPerSec: Int, visibleLimit: Int, emitHz: Int)
     private external fun nativeStop(handle: Long)
     private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)

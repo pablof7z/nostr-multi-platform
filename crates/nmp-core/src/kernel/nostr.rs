@@ -8,7 +8,7 @@
 //! NMP API.
 
 use super::types::AuthorRelayList;
-use super::{BTreeSet, Deserialize, HashSet, Profile, StoredEvent};
+use super::{Deserialize, HashSet, Profile};
 // `UNIX_EPOCH`, `Duration`, `DateTime`, `Local`, `SystemTime` are only consumed
 // by `format_timestamp` / `now_hms` below, both `#[cfg(feature = "native")]` —
 // the imports are gated to match so `--no-default-features` (wasm32) compiles.
@@ -151,51 +151,12 @@ pub(super) fn parse_relay_list(
     list
 }
 
-pub(super) fn event_references(event: &StoredEvent, event_id: &str) -> bool {
-    event.tags.iter().any(|tag| {
-        tag.first().map(String::as_str) == Some("e") && tag.get(1).is_some_and(|id| id == event_id)
-    })
-}
-
-pub(super) fn referenced_event_ids(event: &StoredEvent) -> BTreeSet<String> {
-    event
-        .tags
-        .iter()
-        .filter_map(|tag| {
-            if tag.first().map(String::as_str) == Some("e") {
-                tag.get(1).filter(|id| is_hex_id(id)).cloned()
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
-pub(super) fn root_event_id(event: &StoredEvent) -> Option<String> {
-    marked_event_ref(event, "root")
-}
-
-pub(super) fn first_event_ref(event: &StoredEvent) -> Option<String> {
-    event.tags.iter().find_map(|tag| {
-        if tag.first().map(String::as_str) == Some("e") {
-            tag.get(1).filter(|id| is_hex_id(id)).cloned()
-        } else {
-            None
-        }
-    })
-}
-
-pub(super) fn marked_event_ref(event: &StoredEvent, marker: &str) -> Option<String> {
-    event.tags.iter().find_map(|tag| {
-        if tag.first().map(String::as_str) == Some("e")
-            && tag.get(3).map(String::as_str) == Some(marker)
-        {
-            tag.get(1).filter(|id| is_hex_id(id)).cloned()
-        } else {
-            None
-        }
-    })
-}
+// V-112 (ADR-0042): the NIP-10 thread-tag helpers (`event_references`,
+// `referenced_event_ids`, `root_event_id`, `first_event_ref`,
+// `marked_event_ref`) were deleted — their only consumers were the legacy
+// `thread_items()` / `open_view_pins()` thread-hydration paths, retired with
+// the author/thread view stack. Thread composition is app-side now
+// (per-app FlatFeed over the generic `open_interest` seam).
 
 pub(super) fn short_hex(value: &str) -> String {
     if value.len() < 12 {

@@ -43,43 +43,11 @@ pub(crate) mod profile_card_generated {
     pub use inner::nmp::kernel::*;
 }
 
-// SHARED FlatBuffers `TimelineItem` row type, mounted at the crate root so the
-// view-cluster generated bindings can resolve it.
-//
-// `author_view.fbs` and `thread_view.fbs` both `include "timeline_item.fbs"`.
-// `flatc` (no `--gen-all`) emits `TimelineItem` ONLY into
-// `timeline_item_generated.rs` and drops `use crate::timeline_item_generated::*`
-// into each per-key `*_generated.rs`. This wrapper hides the generated
-// `pub mod nmp` inside `inner` and flat-re-exports the `nmp::kernel` leaf types
-// at the module root — the per-key generated files' glob then resolves
-// `TimelineItem` / `TimelineItemArgs` by short name. Mirrors the
-// `profile_card_generated` precedent above.
-#[allow(
-    clippy::all,
-    dead_code,
-    deprecated,
-    missing_docs,
-    non_camel_case_types,
-    non_snake_case,
-    unsafe_code,
-    unused_imports
-)]
-pub(crate) mod timeline_item_generated {
-    mod inner {
-        #![allow(
-            clippy::all,
-            dead_code,
-            deprecated,
-            missing_docs,
-            non_camel_case_types,
-            non_snake_case,
-            unsafe_code,
-            unused_imports
-        )]
-        include!("kernel/typed_projections/generated/timeline_item_generated.rs");
-    }
-    pub use inner::nmp::kernel::*;
-}
+// V-112 (ADR-0042): the shared FlatBuffers `TimelineItem` row cluster
+// (`timeline_item.fbs`, `timeline_item_generated.rs`, and the
+// `timeline_item_generated` wrapper mod that mirrored
+// `profile_card_generated` above) was deleted — its only consumers were the
+// retired `author_view.fbs` / `thread_view.fbs` typed projections.
 
 // V6 Stage 1 — Swift `Decodable` emitter input surface. Feature-gated:
 // `cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas`

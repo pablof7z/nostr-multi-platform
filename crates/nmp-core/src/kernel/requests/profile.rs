@@ -1,4 +1,8 @@
-//! Profile, author, and diagnostic-firehose request builders.
+//! Profile, and diagnostic-firehose request builders.
+//!
+//! V-68 / V-112 (ADR-0042): `open_author`, `close_author`, `author_requests`
+//! deleted. Author view state now lives in the per-app FlatFeed registered by
+//! `nmp_app_chirp_open_author_feed`. Profile claim/release remain here.
 //!
 //! # Debt A — routing through the substrate router
 //!
@@ -35,11 +39,8 @@
 //! interest registration once the wire-emitter, `InterestRegistry`, and
 //! trigger-based recompilation infrastructure land (M2 full migration):
 //!
-//! - `open_author`         → register three `LogicalInterests`; call `compiler.recompile()`
 //! - `claim_profile`       → register `LogicalInterest` { kinds:[0], limit:1 }; dedup via registry
 //! - `release_profile`     → unregister `LogicalInterest` by `InterestId`
-//! - `close_author`        → drop interests by `InterestId`; `recompile(Trigger::ViewClose)`
-//! - `author_requests`     → disappears (replaced by `open_author` interest registration)
 //! - `profile_claim_request` → disappears (compiler routes via Stage 1+2)
 //! - `pending_profile_requests` → disappears (compiler handles deferred relay reconnect)
 //! - `open_firehose_tag` / `firehose_requests` → DONE (ADR-0042, V-112 PR2):
@@ -51,7 +52,7 @@
 //! wire-emitter's `emit_req(relay_url, sub_id, filter)` call.
 
 use super::super::mailboxes::BootstrapSeed;
-use super::super::{json, short_hex, truncate, Kernel, OutboundMessage, RelayRole, ViewInterest};
+use super::super::{json, short_hex, truncate, Kernel, OutboundMessage, RelayRole};
 use crate::stable_hash::stable_hash64;
 
 /// Stable 8-hex-char suffix for a relay URL — used to disambiguate fan-out
@@ -83,41 +84,6 @@ mod tests {
 }
 
 impl Kernel {
-    pub(crate) fn open_author(
-        &mut self,
-        pubkey: String,
-        kinds: std::collections::BTreeSet<u32>,
-        can_send: bool,
-    ) -> Vec<OutboundMessage> {
-        match self.author_view.selected_author.as_mut() {
-            Some(interest) if interest.key == pubkey => {
-                interest.refcount = interest.refcount.saturating_add(1);
-            }
-            _ => {
-                self.author_view.selected_author = Some(ViewInterest {
-                    key: pubkey.clone(),
-                    refcount: 1,
-                });
-            }
-        }
-        // Store kinds BEFORE the `can_send` branch so the deferred-relay path
-        // (where `request_pending=true` is drained later by
-        // `pending_view_requests` → `author_requests`) sees the correct kinds
-        // even though no `kinds` value is in scope at that deferred call site.
-        // Mirrors the identical pattern in `open_thread` / `ThreadViewState::reply_kinds`.
-        self.author_view.note_kinds = kinds;
-        self.author_view.request_pending = true;
-        self.changed_since_emit = true;
-        self.log(format!("open author view {}", short_hex(&pubkey)));
-
-        if can_send {
-            self.author_requests()
-        } else {
-            self.log("author view request queued until relay connects");
-            Vec::new()
-        }
-    }
-
     pub(crate) fn claim_profile(
         &mut self,
         pubkey: String,
@@ -254,30 +220,6 @@ impl Kernel {
         ));
     }
 
-    pub(crate) fn close_author(&mut self, pubkey: &str) -> Vec<OutboundMessage> {
-        let Some(interest) = self.author_view.selected_author.as_mut() else {
-            return Vec::new();
-        };
-        if interest.key != pubkey {
-            return Vec::new();
-        }
-        interest.refcount = interest.refcount.saturating_sub(1);
-        if interest.refcount > 0 {
-            self.changed_since_emit = true;
-            return Vec::new();
-        }
-
-        self.author_view.selected_author = None;
-        self.author_view.request_pending = false;
-        self.changed_since_emit = true;
-        self.log(format!("close author view {}", short_hex(pubkey)));
-        self.close_subscriptions_with_prefixes(&[
-            "author-profile-",
-            "author-notes-",
-            "author-relays-",
-        ])
-    }
-
     pub(crate) fn pending_profile_claim_requests(&mut self) -> Vec<OutboundMessage> {
         // Collect valid pending authors: not already fetched/inflight.
         let authors: Vec<String> = self
@@ -391,117 +333,4 @@ impl Kernel {
         requests
     }
 
-    pub(crate) fn author_requests(&mut self) -> Vec<OutboundMessage> {
-        let Some(pubkey) = self
-            .author_view
-            .selected_author
-            .as_ref()
-            .map(|interest| interest.key.clone())
-        else {
-            self.author_view.request_pending = false;
-            return Vec::new();
-        };
-
-        self.author_view.request_pending = false;
-        self.author_view.seq = self.author_view.seq.saturating_add(1);
-        self.profile_requests.requested.insert(pubkey.clone());
-        let seq = self.author_view.seq;
-
-        // T105: kind:10002 + kind:0 are outbox-direction discovery fetches
-        // — the author publishes those replaceable events to their declared
-        // write relays. The router's `route_publish` shape returns the
-        // author's NIP-65 write set (lane 1) for warm authors; cold-start
-        // falls back to the full discovery bootstrap seed (indexer +
-        // content) via lane 7. Historically `author_requests` always
-        // issued these probes against `bootstrap_discovery_relays()`
-        // regardless of warm/cold — Debt A makes the warm-author case
-        // route to the resolved write set (D3 outbox), which is the
-        // semantically honest place to read the author's own kind:10002
-        // back from.
-        //
-        // kind:1/6 (the author's notes) is also outbox-direction — the
-        // author's write set is where their notes live (T105). Lane 7
-        // fires with the full discovery seed for cold-start.
-        let mut requests = Vec::new();
-
-        let relays_discovery = self.route_outbox_subscription_relays(
-            stable_hash64(("author-relays", pubkey.as_str(), seq)),
-            pubkey.as_str(),
-            crate::kinds::KIND_RELAY_LIST,
-            BootstrapSeed::Discovery,
-        );
-        let profile_discovery = self.route_outbox_subscription_relays(
-            stable_hash64(("author-profile-kind0", pubkey.as_str(), seq)),
-            pubkey.as_str(),
-            0,
-            BootstrapSeed::Discovery,
-        );
-        // Both legs target the same outbox URL set for any one author
-        // (the kind value doesn't change the write-set lookup under the
-        // current lane-1 algorithm); we issue separate router calls so
-        // the trace projection records the per-kind decision. We emit a
-        // paired set of REQs per resolved URL so the per-seed sub-id
-        // format is preserved.
-        let discovery_urls: std::collections::BTreeSet<String> = relays_discovery
-            .iter()
-            .chain(profile_discovery.iter())
-            .cloned()
-            .collect();
-        for seed in &discovery_urls {
-            let tag = relay_tag(seed);
-            requests.push(self.req_for_relay(
-                RelayRole::Indexer,
-                seed.clone(),
-                &format!("author-relays-{seq}-{tag}"),
-                &format!("selected author NIP-65 {}", short_hex(&pubkey)),
-                json!({"kinds":[crate::kinds::KIND_RELAY_LIST],"authors":[pubkey.clone()],"limit":1}),
-            ));
-            requests.push(self.req_for_relay(
-                RelayRole::Indexer,
-                seed.clone(),
-                &format!("author-profile-{seq}-{tag}"),
-                &format!("selected author kind:0 {}", short_hex(&pubkey)),
-                json!({"kinds":[0],"authors":[pubkey.clone()],"limit":1}),
-            ));
-        }
-
-        // Author notes — outbox-direction (T105 publish lane).
-        // Router lane 1 returns the author's resolved write set for warm
-        // authors; lane 7 fallback fires with the full discovery seed
-        // for cold-start.
-        //
-        // V-68 Stage 2 (author-half): `note_kinds` is read from stored state
-        // rather than a hardcoded literal so the kernel is kind-agnostic (D0).
-        // The host (nmp-ffi shim) declares the kind set; nmp-core carries it as
-        // opaque filter data. Extract before the mutable
-        // `route_outbox_subscription_relays` / `req_for_relay` calls to satisfy
-        // the borrow checker — mirrors the identical pattern in
-        // `maybe_open_thread_hydration` (thread-half precedent).
-        let note_kinds: Vec<u32> = self.author_view.note_kinds.iter().copied().collect();
-        // No kinds declared (e.g. `retarget_timeline` fires before the host has
-        // called `nmp_app_open_timeline`/`open_author`, so `follow_feed_kinds`
-        // is still empty) → emit no author-notes REQ rather than a malformed
-        // `"kinds":[]` filter on the wire. A later `open_author` with a real
-        // kind set re-issues correctly.
-        if !note_kinds.is_empty() {
-            let notes_urls = self.route_outbox_subscription_relays(
-                stable_hash64(("author-notes", pubkey.as_str(), seq)),
-                pubkey.as_str(),
-                1,
-                BootstrapSeed::Discovery,
-            );
-            for relay_url in notes_urls {
-                let tag = relay_tag(&relay_url);
-                requests.push(self.req_for_relay(
-                    RelayRole::Content,
-                    relay_url,
-                    &format!("author-notes-{seq}-{tag}"),
-                    &format!("selected author notes {}", short_hex(&pubkey)),
-                    json!({"kinds":note_kinds,"authors":[pubkey.clone()],"limit":100}),
-                ));
-            }
-        }
-        requests.append(&mut self.maybe_open_thread_hydration());
-        requests
-    }
 }

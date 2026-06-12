@@ -8,10 +8,11 @@
 //! The symbols remain `#[no_mangle] pub extern "C"` on the nmp-core side so
 //! they are still reachable from Swift/C unchanged.
 
+// V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
+// nmp_app_open_thread, nmp_app_close_thread deleted from nmp-ffi.
 pub(crate) use nmp_ffi::{
-    nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free,
-    nmp_app_inject_signed_events, nmp_app_new, nmp_app_open_author, nmp_app_release_profile,
-    nmp_app_set_update_callback, NmpApp,
+    nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_inject_signed_events,
+    nmp_app_new, nmp_app_release_profile, nmp_app_set_update_callback, NmpApp,
 };
 // nmp_app_inject_pre_verified_events is retained for possible future harness use
 // but S3/S4/S5 all use nmp_app_inject_signed_events (T44 round-4).

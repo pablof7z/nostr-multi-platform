@@ -30,22 +30,32 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     let pubkey = &state.profile_pubkey;
     let avatar_color = author_color(pubkey);
 
-    // Extract profile data from feature snapshot.
-    let (display_name, about, note_count) = if let Some(profile) = &state.features.author_profile {
-        let name = if profile.display.is_empty() {
-            short_pubkey(pubkey)
-        } else {
-            profile.display.clone()
-        };
-        let bio = if profile.about.is_empty() {
-            String::new()
-        } else {
-            profile.about.clone()
-        };
-        let count = profile.note_count.clone();
-        (name, bio, count)
+    // V-112 (ADR-0042): author_view projection deleted; derive profile display
+    // data from the ProfileWire attached to the author's timeline rows (populated
+    // by claim_profile → resolved_profiles). Note count is the visible-row count.
+    let author_wire = state
+        .rows
+        .iter()
+        .find(|r| r.author_pubkey == *pubkey)
+        .map(|r| &r.author_profile);
+    let display_name = author_wire
+        .and_then(|w| w.display_name.as_deref())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| short_pubkey(pubkey));
+    let about = author_wire
+        .and_then(|w| w.about.as_deref())
+        .unwrap_or("")
+        .to_string();
+    let note_count_n = state
+        .rows
+        .iter()
+        .filter(|r| r.depth == 0 && r.author_pubkey == *pubkey)
+        .count();
+    let note_count = if note_count_n > 0 {
+        note_count_n.to_string()
     } else {
-        (short_pubkey(pubkey), String::new(), String::new())
+        String::new()
     };
 
     let sections = Layout::vertical([
