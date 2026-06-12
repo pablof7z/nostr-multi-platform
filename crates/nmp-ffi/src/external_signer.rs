@@ -420,6 +420,20 @@ mod tests {
         Nip55Driver::new(tx, transport)
     }
 
+    /// Unwrap the next inbox mail as an `ActorCommand` (tests only send
+    /// commands through the driver; relay mail is structurally impossible
+    /// here).
+    fn try_recv_cmd(
+        rx: &std::sync::mpsc::Receiver<nmp_core::ActorMail>,
+    ) -> Result<ActorCommand, std::sync::mpsc::TryRecvError> {
+        rx.try_recv().map(|mail| match mail {
+            nmp_core::ActorMail::Command(cmd) => cmd,
+            nmp_core::ActorMail::Relay(_) => {
+                panic!("unexpected relay mail in external-signer test")
+            }
+        })
+    }
+
     /// Handler that acks every external_signer dispatch and records the
     /// payload into a process-global so tests can assert on the request.
     /// (FFI-shaped `extern "C" fn` cannot capture state — the keyring mock
@@ -477,13 +491,13 @@ mod tests {
     fn signin_loop_resolves_add_signer_and_sign_round_trip() {
         let _g = SERIAL.lock().unwrap();
         DISPATCHED.lock().unwrap().clear();
-        let (tx, rx) = mpsc::channel();
-        let driver = make_driver(tx);
+        let (raw_tx, rx) = mpsc::channel::<nmp_core::ActorMail>();
+        let driver = make_driver(nmp_core::CommandSender::new(raw_tx));
 
         // 1. signin → awaiting_approval + a get_public_key dispatch with the
         //    permission batch (Rust decides what to ask for — D2).
         driver.signin(Some("com.greenart7c3.nostrsigner".to_string()));
-        match rx.try_recv().expect("state command sent") {
+        match try_recv_cmd(&rx).expect("state command sent") {
             ActorCommand::Nip55SignerStateChanged { state, .. } => {
                 assert_eq!(state, "awaiting_approval");
             }
@@ -511,7 +525,7 @@ mod tests {
         };
         driver.deliver(&serde_json::to_string(&reply).unwrap());
 
-        let handle = match rx.try_recv().expect("AddSigner sent") {
+        let handle = match try_recv_cmd(&rx).expect("AddSigner sent") {
             ActorCommand::AddSigner {
                 source: nmp_core::SignerSource::RemoteHandle(handle),
                 make_active,
@@ -524,7 +538,7 @@ mod tests {
         assert_eq!(handle.signer_kind(), "nip55");
         assert_eq!(handle.pubkey_hex(), keys.public_key().to_hex());
         assert_eq!(handle.sign_timeout(), Duration::from_secs(90));
-        match rx.try_recv().expect("ready state sent") {
+        match try_recv_cmd(&rx).expect("ready state sent") {
             ActorCommand::Nip55SignerStateChanged { state, .. } => assert_eq!(state, "ready"),
             other => panic!("expected ready state, got {other:?}"),
         }
@@ -587,11 +601,11 @@ mod tests {
     fn rejected_connect_reports_failed_state() {
         let _g = SERIAL.lock().unwrap();
         DISPATCHED.lock().unwrap().clear();
-        let (tx, rx) = mpsc::channel();
-        let driver = make_driver(tx);
+        let (raw_tx, rx) = mpsc::channel::<nmp_core::ActorMail>();
+        let driver = make_driver(nmp_core::CommandSender::new(raw_tx));
 
         driver.signin(None);
-        let _awaiting = rx.try_recv().expect("awaiting state");
+        let _awaiting = try_recv_cmd(&rx).expect("awaiting state");
         let connect_request = last_dispatched_request();
 
         let reply = ExternalSignerResponse {
@@ -603,7 +617,7 @@ mod tests {
         };
         driver.deliver(&serde_json::to_string(&reply).unwrap());
 
-        match rx.try_recv().expect("failed state sent") {
+        match try_recv_cmd(&rx).expect("failed state sent") {
             ActorCommand::Nip55SignerStateChanged { state, reason } => {
                 assert_eq!(state, "failed");
                 assert_eq!(reason.as_deref(), Some("user cancelled"));
@@ -611,7 +625,7 @@ mod tests {
             other => panic!("expected failed state, got {other:?}"),
         }
         assert!(
-            rx.try_recv().is_err(),
+            try_recv_cmd(&rx).is_err(),
             "no AddSigner on a rejected connect"
         );
     }
@@ -619,18 +633,18 @@ mod tests {
     #[test]
     fn malformed_response_is_dropped_silently() {
         let _g = SERIAL.lock().unwrap();
-        let (tx, rx) = mpsc::channel();
-        let driver = make_driver(tx);
+        let (raw_tx, rx) = mpsc::channel::<nmp_core::ActorMail>();
+        let driver = make_driver(nmp_core::CommandSender::new(raw_tx));
         driver.deliver("not-json");
-        assert!(rx.try_recv().is_err(), "malformed response sends nothing");
+        assert!(try_recv_cmd(&rx).is_err(), "malformed response sends nothing");
     }
 
     #[test]
     fn restore_reconstructs_signer_without_interaction() {
         let _g = SERIAL.lock().unwrap();
         DISPATCHED.lock().unwrap().clear();
-        let (tx, rx) = mpsc::channel();
-        let driver = make_driver(tx);
+        let (raw_tx, rx) = mpsc::channel::<nmp_core::ActorMail>();
+        let driver = make_driver(nmp_core::CommandSender::new(raw_tx));
 
         let keys = nostr::Keys::generate();
         // `SignerPayload` serde form: `{"kind":"nip55","body":{…}}` — the
@@ -646,7 +660,7 @@ mod tests {
         });
         driver.restore(&payload.to_string());
 
-        match rx.try_recv().expect("AddSigner sent") {
+        match try_recv_cmd(&rx).expect("AddSigner sent") {
             ActorCommand::AddSigner {
                 source: nmp_core::SignerSource::RemoteHandle(handle),
                 make_active,
