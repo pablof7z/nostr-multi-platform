@@ -582,6 +582,11 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.active_local_keys()
     }
 
+    fn active_pubkey(&self) -> nmp_core::slots::ActiveAccountSlot {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.active_account_handle()
+    }
+
     fn actor_sender(&self) -> std::sync::mpsc::Sender<nmp_core::ActorCommand> {
         let app: &NmpApp = unsafe { &*self.app };
         app.actor_sender()
@@ -630,6 +635,16 @@ impl<S> AppHost for NmpAppBuilder<S> {
     fn set_nostrconnect_bootstrap_relay(&self, url: String) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_nostrconnect_bootstrap_relay(url);
+    }
+
+    fn register_identity_change_observer<F>(&self, f: F)
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static,
+    {
+        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
+        // `&self` is safe — all AppHost methods take `&self`.
+        let app: &NmpApp = unsafe { &*self.app };
+        app.register_identity_change_observer(f);
     }
 }
 

@@ -66,7 +66,9 @@ use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
 };
 use nmp_core::store::VerifiedEvent;
-use nmp_core::substrate::{BoundedMessageMap, IngestParser, ViewDependencies, MAX_PROJECTION_MESSAGES};
+use nmp_core::substrate::{
+    BoundedMessageMap, IngestParser, ViewDependencies, MAX_PROJECTION_MESSAGES,
+};
 use nmp_core::{KindFilter, RawEventObserver};
 use nmp_kinds::KIND_CHAT_MESSAGE;
 use nmp_nip59::KIND_GIFT_WRAP;
@@ -275,7 +277,29 @@ impl DmInboxProjection {
                 .then_with(|| b.peer_pubkey.cmp(&a.peer_pubkey))
         });
 
-        DmInboxSnapshot { conversations, remote_signer_unsupported }
+        DmInboxSnapshot {
+            conversations,
+            remote_signer_unsupported,
+        }
+    }
+
+    /// Clear all accumulated messages, making the inbox empty.
+    ///
+    /// Called on account switch to ensure the previous account's decrypted
+    /// DMs cannot appear in the new account's snapshot (issue #1138 —
+    /// cross-account privacy leak). After this call `snapshot()` returns
+    /// [`DmInboxSnapshot::empty`] until new messages arrive via
+    /// [`IngestParser::parse`] or [`RawEventObserver::on_raw_event`].
+    ///
+    /// D6 — a poisoned mutex is a silent no-op; the stale messages remain
+    /// until the lock is recovered (a process-internal error, not a caller
+    /// concern).
+    pub fn clear(&self) {
+        if let Ok(mut messages) = self.messages.lock() {
+            *messages = nmp_core::substrate::BoundedMessageMap::new(
+                nmp_core::substrate::MAX_PROJECTION_MESSAGES,
+            );
+        }
     }
 
     /// Snapshot as a `serde_json::Value` — the exact shape a host
@@ -285,8 +309,9 @@ impl DmInboxProjection {
     /// collapses to `{"conversations": []}` rather than propagating.
     #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
-        serde_json::to_value(self.snapshot())
-            .unwrap_or_else(|_| serde_json::json!({ "conversations": [], "remote_signer_unsupported": false }))
+        serde_json::to_value(self.snapshot()).unwrap_or_else(
+            |_| serde_json::json!({ "conversations": [], "remote_signer_unsupported": false }),
+        )
     }
 
     /// Decrypt and store one accepted kind:1059 envelope. Returns `true` when
@@ -418,7 +443,12 @@ impl IngestParser for DmInboxProjection {
     /// (one JSON serialisation, one in-process NIP-44 unseal, one map insert).
     /// D6 — every failure is a silent no-op.
     fn parse(&self, evt: &VerifiedEvent) {
-        debug_assert_eq!(evt.raw().kind, KIND_GIFT_WRAP, "dispatcher misconfigured: DmInboxProjection IngestParser received kind {}", evt.raw().kind);
+        debug_assert_eq!(
+            evt.raw().kind,
+            KIND_GIFT_WRAP,
+            "dispatcher misconfigured: DmInboxProjection IngestParser received kind {}",
+            evt.raw().kind
+        );
         // Reconstruct the verbatim signed NIP-01 JSON from the RawEvent.
         // `RawEvent` derives `Serialize` with the exact NIP-01 field order,
         // so this is lossless — no field is dropped.

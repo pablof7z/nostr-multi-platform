@@ -38,6 +38,7 @@
 
 pub(crate) mod auth_gate;
 pub(crate) mod inbox;
+pub(crate) mod interest_builder;
 pub(crate) mod oneshot;
 pub(crate) mod pool;
 pub(crate) mod registry;

@@ -1,6 +1,7 @@
 use super::*;
 use crate::app::VIEW_PROFILE;
 use crate::nip19::{encode_nevent, encode_npub, NeventData};
+use std::collections::BTreeSet;
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
@@ -272,5 +273,132 @@ fn idle_tick_does_not_set_dirty_flag() {
         !r.changed_since_emit(),
         "idle tick must not dirty the kernel — would cause spurious snapshot pushes"
     );
+}
+
+// ─── PR-3 feed-verb surface acceptance tests ─────────────────────────────
+//
+// Pin that the four new KernelReducer methods introduced in PR-3 honour their
+// public contracts:
+//
+// • `open_interest`   — cold-open emits REQ inline (drain_lifecycle_outbound
+//                       is called before returning so frames go out against
+//                       already-connected relays immediately).
+// • `close_interest`  — last-owner removal emits CLOSE inline.
+// • `set_follow_feed_kinds` — total (D6: empty or non-empty, no panic).
+// • `set_active_account`   — total (D6: valid or empty pubkey, no panic);
+//                            sets active_account projection and returns
+//                            outbound without panicking.
+
+const FILTER_KINDS_1: &str = r#"{"kinds":[1]}"#;
+const CONSUMER: &str = "chirp-web-home";
+
+#[test]
+fn open_interest_with_connected_relay_emits_req_inline() {
+    // Contract: calling open_interest after a relay is connected must return
+    // at least one outbound frame whose text contains "REQ" — the sub is
+    // wired immediately (inline drain), not deferred to the next tick.
+    let mut r = KernelReducer::new();
+    r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
+    let _ = r.reduce(KernelAction::Start);
+    let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+
+    let out = r.open_interest(FILTER_KINDS_1, CONSUMER, 0);
+
+    assert!(
+        !out.is_empty(),
+        "open_interest must emit at least one frame when a relay is connected"
+    );
+    assert!(
+        out.iter().any(|m| m.text.contains("REQ")),
+        "open_interest must emit a REQ frame; got: {:?}",
+        out.iter().map(|m| &m.text).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn close_interest_after_open_emits_close_inline() {
+    // Contract: the CLOSE frame flows through the inline drain so the host
+    // does not need to call tick() to get the relay-side unsubscribe.
+    let mut r = KernelReducer::new();
+    r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
+    let _ = r.reduce(KernelAction::Start);
+    let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+    // Open first so there is an active owner to remove.
+    let _ = r.open_interest(FILTER_KINDS_1, CONSUMER, 0);
+
+    let out = r.close_interest(FILTER_KINDS_1, CONSUMER, 0);
+
+    assert!(
+        !out.is_empty(),
+        "close_interest must emit at least one frame when closing an open sub"
+    );
+    assert!(
+        out.iter().any(|m| m.text.contains("CLOSE")),
+        "close_interest must emit a CLOSE frame; got: {:?}",
+        out.iter().map(|m| &m.text).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn open_interest_malformed_filter_is_silent_no_panic() {
+    // D6 — malformed filter_json must be silently dropped, not a panic.
+    let mut r = KernelReducer::new();
+    r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
+    let _ = r.reduce(KernelAction::Start);
+    let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+    // Garbage JSON must not panic.
+    let out = r.open_interest("not valid json {{{", CONSUMER, 0);
+    // Silently dropped — no REQ emitted for unparseable input.
+    assert!(
+        out.iter().all(|m| !m.text.contains("REQ")),
+        "malformed filter must not produce a REQ"
+    );
+}
+
+#[test]
+fn set_follow_feed_kinds_is_total() {
+    // D6 — total: empty set, populated set, called before or after
+    // start/relay-connect must never panic.
+    let mut r = KernelReducer::new();
+    // Before start / relay connect — must not panic.
+    let _ = r.set_follow_feed_kinds(BTreeSet::new());
+    let _ = r.set_follow_feed_kinds([1u32, 6u32].into_iter().collect());
+
+    // After start + relay connected — must not panic.
+    r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
+    let _ = r.reduce(KernelAction::Start);
+    let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+    let _ = r.set_follow_feed_kinds([1u32, 6u32].into_iter().collect());
+    let _ = r.set_follow_feed_kinds(BTreeSet::new());
+    // Pass: no panic.
+}
+
+#[test]
+fn set_active_account_is_total() {
+    // D6 — total: valid hex pubkey, empty string — must not panic and must
+    // return without unwinding.
+    let mut r = KernelReducer::new();
+    let out = r.set_active_account(PK.to_string());
+    // With no relays configured, active_account_bootstrap_requests is empty
+    // and the lifecycle outbound is empty, so the result is empty.
+    // The key assertion is the absence of a panic.
+    let _ = out; // may be empty
+
+    // Also valid with empty string (D6).
+    let _ = r.set_active_account(String::new());
+    // Pass: no panic.
+}
+
+#[test]
+fn set_active_account_with_relay_does_not_panic() {
+    // Extended coverage: with a relay connected, set_active_account must
+    // still return without panicking. The result may be empty (no contacts
+    // to fan-out) but the method must be callable at any point.
+    let mut r = KernelReducer::new();
+    r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
+    let _ = r.reduce(KernelAction::Start);
+    let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
+    let _ = r.set_active_account(PK.to_string());
+    // Pass: no panic.
 }
 

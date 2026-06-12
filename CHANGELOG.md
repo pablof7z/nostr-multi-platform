@@ -5,6 +5,68 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.6.0 — 2026-06-12
+
+**BREAKING (C-ABI)**: `nmp_app_free_string` and `nmp_broker_free_string` are
+RETIRED, replaced by a single `nmp_free_string` (V-114 #1044, PR #1135) —
+every consumer that frees NMP-returned strings must rename the call (one-line
+mechanical change; same semantics). One NEW symbol: `nmp_app_composition_report`.
+Rust API is additive; `register_defaults()` behavior is unchanged.
+
+### Added
+
+- **ADR-0049 — defaults yield; composition is observable** (#1185).
+  `ActionRegistry::register_default::<M>()` is an entry-or-insert *yielding*
+  registration: the canonical defaults (nip02/nip17/nip57/nip65) now back off
+  when the app already claimed the namespace, **regardless of call order**
+  (Spring `@ConditionalOnMissingBean` posture). App-path `register_action`
+  keeps insert semantics but fails loudly (`debug_assert!`) on app-over-app
+  collisions in dev/test builds; soft + recorded in release (D6). Every
+  AppHost registration (actions, ingest parsers, snapshot projections, the
+  last-writer-wins slots, dropped late wiring) is recorded in a composition
+  ledger queryable via the new `nmp_app_composition_report` FFI symbol —
+  the previously documented-but-absent `LateWiring` diagnostic now exists.
+- **`nmp-defaults` tier split + typed config** (#1180).
+  `register_substrate(app, gate)` is the always-on correctness floor (routing
+  substrate, kind:10002 parser, publish resolver, forward policy, coverage
+  hook + NIP-77 negentropy runtime); `register_defaults_with(app, NmpDefaults)`
+  layers toggleable social defaults (`social`/`dms`/`zaps`/`longform`) on top
+  and makes the previously hardcoded `CoverageGate` and nostrconnect bootstrap
+  relay overridable config fields — fixing the gate-desync where overriding
+  the coverage hook post-hoc desynced it from the negentropy runtime.
+  Non-social consumers can now compose a routable app without the social bundle.
+- **NIP-51 mute list in the composition root** (#1181): `MuteListProjection`
+  observer + `nmp.nip51.mute_list` diagnostic projection wired into the
+  `social` tier; `register_mute_runtime` exported for apps needing the `Arc`
+  to wire timeline suppression.
+- **ADR-0048 NIP-55 external signer** Stages 2–3 (#1153, #1165, #1166): Android
+  login-block + Chirp sign-in, proof lanes, DM send via the seal seam.
+- **Android**: Keystore keyring capability + synchronous capability routing +
+  identity restore (#1188); Marmot leave/invite/remove/clear_pending parity
+  with typed action envelopes (#1186).
+- **nmp-wasm**: browser runtime executes without panicking (PR-W1 #1150), real
+  wasm build deployed for chirp-web (PR-W2 #1176), interest/contact-feed
+  dispatch verbs + viewer-pubkey hand-off (PR-3 #1177).
+
+### Fixed
+
+- Publish to AUTH-required relays parks until `Authenticated` instead of
+  failing (#1192).
+- Bunker accounts activate WOT/DM-relay/zap-receipt runtimes (pubkey-only
+  identity accessor, #1191).
+- `DmInboxProjection` cleared on account switch (#1184).
+- Pre-verified inject path feeds the `IngestParser` dispatcher — closes the
+  #1137 regression (#1160).
+- NIP-57: bolt11 amount validated before auto-pay (#1189).
+- CI: file-size gate was a silent no-op on PRs (#1178).
+
+### Removed
+
+- **C-ABI**: `nmp_app_free_string` + `nmp_broker_free_string` retired into one
+  `nmp_free_string` (V-114 #1044, PR #1135). Migration: rename the call.
+
+---
+
 ## nmp-v0.5.0 — 2026-06-12
 
 **BREAKING (C-ABI + Rust API).** Four breaking changes since v0.4.0; all require

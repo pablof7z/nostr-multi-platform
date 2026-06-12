@@ -3,16 +3,23 @@
 
 use super::*;
 use nmp_core::planner::InterestLifecycle;
-use nmp_core::slots::new_active_local_keys_slot;
+use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};
 use nostr::Keys;
 
 fn author(n: u16) -> String {
     format!("{n:064x}")
 }
 
-fn active_slot(keys: &Keys) -> ActiveLocalKeysSlot {
-    let slot = new_active_local_keys_slot();
-    *slot.lock().unwrap() = Some(keys.clone());
+/// Build a pubkey-only active-account slot holding `keys`' hex pubkey.
+///
+/// This is the canonical fixture: the slot carries ONLY the hex pubkey
+/// string (`ActiveAccountSlot`), exactly as the kernel populates it for
+/// EVERY backend including bunker (remote-signer) accounts. The secret
+/// `nostr::Keys` are never present — proving the runtime activates from
+/// identity alone.
+fn active_slot(keys: &Keys) -> ActiveAccountSlot {
+    let slot = new_active_account_slot();
+    *slot.lock().unwrap() = Some(keys.public_key().to_hex());
     slot
 }
 
@@ -27,6 +34,30 @@ fn contact_event(event_author: &str, follows: usize) -> KernelEvent {
             .collect(),
         content: String::new(),
     }
+}
+
+/// Finding C — bunker (remote-signer-only) accounts must activate WOT
+/// bootstrap. The kernel writes the active pubkey into `ActiveAccountSlot`
+/// for every backend, including bunker, while the local-keys slot stays
+/// `None` (no secret material in-process). This proves the runtime resolves
+/// its active pubkey and pushes the bootstrap interest from the pubkey slot
+/// alone — the whole point of the least-privilege identity accessor.
+#[test]
+fn bunker_only_account_activates_wot_bootstrap() {
+    let keys = Keys::generate();
+    let active = keys.public_key().to_hex();
+    let (tx, rx) = std::sync::mpsc::channel();
+    // Pubkey-only slot: Some(hex), zero secret keys — the bunker shape.
+    let runtime = WotBootstrapRuntime::new(active_slot(&keys), tx);
+
+    runtime.on_kernel_event(&contact_event(&active, 8));
+
+    let cmd = rx.recv().expect("bunker account must still push WOT bootstrap");
+    let ActorCommand::PushInterest(interest) = cmd else {
+        panic!("expected PushInterest for a bunker-only account");
+    };
+    assert_eq!(interest.id, active_follow_graph_interest_id());
+    assert_eq!(interest.shape.authors.len(), 8);
 }
 
 #[test]

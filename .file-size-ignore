@@ -28,6 +28,10 @@ docs/perf/codex-reviews/**
 # Smoke-test fixture (intentionally oversized; exercised by --force-include)
 crates/nmp-testing/fixtures/file-size-gate/oversized.rs
 
+# Append-only release ledger: grows by design with every release; the
+# cohesion rationale of the LOC gate does not apply to a chronological log.
+CHANGELOG.md
+
 # UniFFI-generated Swift bindings (machine-generated, not hand-authored)
 ios/*/Sources/*/Core/Generated/*.swift
 
