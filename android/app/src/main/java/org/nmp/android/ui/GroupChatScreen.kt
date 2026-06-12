@@ -50,9 +50,10 @@ import org.nmp.android.model.MarmotMessage
  * the sent message reappears on the next snapshot tick via the push projection
  * (D8 — no poll, no optimistic local echo).
  *
- * The overflow menu (mirrors iOS `toolbarContent`): Invite members, Members list
- * (per-member Remove), Leave group (with confirm). Clear pending surfaced when
- * the snapshot signals orphaned commits (mirrors iOS `pendingCommitFailureAffordance`).
+ * The overflow menu wires the iOS `MarmotBridge` op surface (Invite, Remove,
+ * Leave, clear-pending). The Android UI additionally exposes Remove (per-member),
+ * clear-pending, and a leave-confirm dialog that iOS exposes only at the bridge —
+ * iOS surfaces only Invite + (unconfirmed) Leave in its `toolbarContent`.
  */
 @Composable
 internal fun GroupChatView(
@@ -89,7 +90,8 @@ internal fun GroupChatView(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // Overflow menu — mirrors iOS toolbarContent
+            // Overflow menu — wires the iOS MarmotBridge op surface (iOS UI
+            // surfaces only Invite + unconfirmed Leave in its toolbarContent).
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(Icons.Filled.MoreVert, contentDescription = "Group options")
@@ -120,9 +122,10 @@ internal fun GroupChatView(
         }
         HorizontalDivider()
 
-        // Pending-commit failure affordance (mirrors iOS `pendingCommitFailureAffordance`).
-        // Surfaced when the snapshot signals orphaned commits — matches GroupListScreen
-        // WarningBanner gate (snapshot.orphanedCommitCount > 0) forwarded by caller.
+        // Pending-commit failure affordance. Wires the iOS MarmotBridge.clearPending
+        // op (unwired in iOS UI) into a Clear-pending button. Surfaced when the
+        // snapshot signals orphaned commits — matches the GroupListScreen
+        // WarningBanner gate (snapshot.orphanedCommitCount > 0), forwarded by caller.
         if (hasOrphanedCommit) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -206,7 +209,8 @@ internal fun GroupChatView(
         )
     }
 
-    // Members sheet — per-member Remove (mirrors iOS MarmotMembersSheet with Remove)
+    // Members sheet — per-member Remove. Wires the iOS MarmotBridge.remove op
+    // (unwired in iOS UI; iOS MarmotMembersSheet is read-only) into the list.
     if (showMembers) {
         MarmotMembersDialog(
             members = group.members,
@@ -217,7 +221,9 @@ internal fun GroupChatView(
         )
     }
 
-    // Leave-group confirmation (mirrors iOS destructive Button(role: .destructive))
+    // Leave-group confirmation. Android adds a confirm dialog that iOS lacks:
+    // iOS MarmotGroupChatView.swift:202-209 dispatches leave directly with NO
+    // confirmation. This guards an irreversible MLS SelfRemove behind a prompt.
     if (showLeaveConfirm) {
         AlertDialog(
             onDismissRequest = { showLeaveConfirm = false },
@@ -266,9 +272,9 @@ private fun GroupMessageBubble(message: MarmotMessage) {
 }
 
 /**
- * Members sheet with per-member Remove action — mirrors iOS
- * `MarmotMembersSheet` (which has a per-member Remove button in its
- * iOS counterpart that the owner had in MarmotGroupChatView.swift).
+ * Members sheet with per-member Remove action. Wires the iOS
+ * `MarmotBridge.remove` op (unwired in iOS UI — the iOS `MarmotMembersSheet`
+ * is read-only) into the members list.
  */
 @Composable
 internal fun MarmotMembersDialog(
