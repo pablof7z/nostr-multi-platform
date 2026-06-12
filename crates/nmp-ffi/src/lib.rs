@@ -1598,6 +1598,24 @@ impl NmpApp {
         }
     }
 
+    /// Replace all [`IngestParser`]s for `kind` with a single new `parser`.
+    ///
+    /// Used by lifecycle-managed singleton parsers (e.g. the NIP-17 DM inbox
+    /// parser — swapped to a fresh projection instance on account switch so
+    /// accumulated in-memory messages are cleared). Returns the previous parsers,
+    /// if any. D6 — a poisoned dispatcher lock is a silent no-op.
+    pub fn replace_ingest_parser(
+        &self,
+        kind: u32,
+        parser: std::sync::Arc<dyn nmp_core::substrate::IngestParser>,
+    ) -> Vec<std::sync::Arc<dyn nmp_core::substrate::IngestParser>> {
+        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+            d.replace_kind_parser(kind, parser)
+        } else {
+            Vec::new()
+        }
+    }
+
     /// V-40 — install the kernel's [`nmp_core::substrate::DmInboxRelayLookup`]
     /// handle. The per-app crate (today `nmp-nip17::register_actions`)
     /// hands in a concrete `DmRelayCache`; the same `Arc` is the writer
@@ -2391,6 +2409,14 @@ impl nmp_core::substrate::AppHost for NmpApp {
         parser: Arc<dyn nmp_core::substrate::IngestParser>,
     ) {
         NmpApp::register_ingest_parser(self, kind, parser);
+    }
+
+    fn replace_ingest_parser(
+        &self,
+        kind: u32,
+        parser: Arc<dyn nmp_core::substrate::IngestParser>,
+    ) -> Vec<Arc<dyn nmp_core::substrate::IngestParser>> {
+        NmpApp::replace_ingest_parser(self, kind, parser)
     }
 
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {

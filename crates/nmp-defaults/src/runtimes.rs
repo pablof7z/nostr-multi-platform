@@ -42,7 +42,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::AppHost;
-use nmp_core::{read_eligible_relay_urls, ActorCommand, AppRelaySlot, RawEventObserver};
+use nmp_core::{read_eligible_relay_urls, ActorCommand, AppRelaySlot};
 use nmp_nip17::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
     DmRuntimeEffect, DmRuntimeState,
@@ -98,17 +98,29 @@ pub fn register_dm_runtime(app: &impl AppHost) {
 }
 
 fn register_inbox_projection(app: &impl AppHost) {
+    // PR-1 of the raw-tap retirement ladder (rule A5): the DM inbox projection
+    // now rides the substrate `IngestParser` seam instead of the raw-event tap.
+    // `replace_ingest_parser` atomically swaps out any previously registered
+    // kind:1059 parser (e.g. from a prior account — fresh projection = fresh
+    // in-memory state), so account-switch teardown is implicit in the replace.
+    //
+    // The raw-event tap (`register_raw_event_observer` / `swap_dm_inbox_observer`)
+    // is NO LONGER used for the DM inbox. The raw tap still fires for kind:1059
+    // because Marmot (`nmp-marmot`) registers its own raw observer for that kind
+    // (unaffected by this change). Cache-serve feeds the IngestParser via
+    // `EventIngestDispatcher::dispatch` in addition to the existing
+    // `notify_raw_event_observers` fan-out (dual fan-out preserved until PR-2).
     let projection = Arc::new(DmInboxProjection::new(app.active_local_keys()));
-    let observer_id = app.register_raw_event_observer(
-        DmInboxProjection::kind_filter(),
-        Arc::clone(&projection) as Arc<dyn RawEventObserver>,
+
+    // Register as IngestParser for kind:1059 (NIP-59 gift-wrap). `replace_ingest_parser`
+    // drops any prior DM inbox parser in the same atomic write-lock step, ensuring
+    // exactly one parser survives for this kind (single-slot lifecycle).
+    // The kind literal is 1059 per NIP-59; nmp-defaults is a composition crate
+    // entitled to name NIP kind numbers directly.
+    app.replace_ingest_parser(
+        1059_u32, // kind:1059 — NIP-59 gift-wrap
+        Arc::clone(&projection) as Arc<dyn nmp_core::substrate::IngestParser>,
     );
-    if observer_id.0 == 0 {
-        return;
-    }
-    if let Some(prev) = app.swap_dm_inbox_observer(Some(observer_id)) {
-        app.unregister_raw_event_observer(prev);
-    }
 
     // Typed FlatBuffers sidecar (ADR-0037, Wave A), registered ALONGSIDE the
     // generic `Value` projection under the same key (additive — a `NDMI`-aware

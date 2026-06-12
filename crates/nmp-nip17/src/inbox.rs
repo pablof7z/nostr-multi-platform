@@ -65,7 +65,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
 };
-use nmp_core::substrate::{BoundedMessageMap, ViewDependencies, MAX_PROJECTION_MESSAGES};
+use nmp_core::store::VerifiedEvent;
+use nmp_core::substrate::{BoundedMessageMap, IngestParser, ViewDependencies, MAX_PROJECTION_MESSAGES};
 use nmp_core::{KindFilter, RawEventObserver};
 use nmp_kinds::KIND_CHAT_MESSAGE;
 use nmp_nip59::KIND_GIFT_WRAP;
@@ -393,6 +394,38 @@ impl RawEventObserver for DmInboxProjection {
 
     fn on_raw_event_with_source(&self, _kind: u32, json: &str, source_relay_url: Option<&str>) {
         let _ = self.ingest_gift_wrap(json, source_relay_url);
+    }
+}
+
+impl IngestParser for DmInboxProjection {
+    /// Receive a kind:1059 gift-wrap from the substrate ingest dispatcher.
+    ///
+    /// The dispatcher registration guarantees `kind == 1059`; the `debug_assert`
+    /// below is the defence-in-depth guard. The event has already passed
+    /// Schnorr signature verification at the ingest gate — no re-verify needed.
+    /// We reconstruct the verbatim signed JSON that [`Self::ingest_gift_wrap`]
+    /// needs (NIP-44 decryption requires the `sig` field) via a plain
+    /// `serde_json::to_string` of the [`nmp_core::store::RawEvent`] that
+    /// [`VerifiedEvent::raw`] exposes.
+    ///
+    /// Source relay provenance is unavailable at the `IngestParser` seam today
+    /// (the dispatcher API carries only the `VerifiedEvent`); relay-delivered
+    /// events therefore accumulate no `source_relays` entries via this path.
+    /// The `RawEventObserver` path (still wired until PR-2 removes the raw tap)
+    /// continues to populate `source_relays` for live relay delivery.
+    ///
+    /// D3/D8 — runs synchronously on the actor thread; bounded per-event work
+    /// (one JSON serialisation, one in-process NIP-44 unseal, one map insert).
+    /// D6 — every failure is a silent no-op.
+    fn parse(&self, evt: &VerifiedEvent) {
+        debug_assert_eq!(evt.raw().kind, KIND_GIFT_WRAP, "dispatcher misconfigured: DmInboxProjection IngestParser received kind {}", evt.raw().kind);
+        // Reconstruct the verbatim signed NIP-01 JSON from the RawEvent.
+        // `RawEvent` derives `Serialize` with the exact NIP-01 field order,
+        // so this is lossless — no field is dropped.
+        let Ok(json) = serde_json::to_string(evt.raw()) else {
+            return;
+        };
+        let _ = self.ingest_gift_wrap(&json, None);
     }
 }
 

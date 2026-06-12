@@ -493,6 +493,15 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.register_ingest_parser(kind, parser);
     }
 
+    fn replace_ingest_parser(
+        &self,
+        kind: u32,
+        parser: Arc<dyn nmp_core::substrate::IngestParser>,
+    ) -> Vec<Arc<dyn nmp_core::substrate::IngestParser>> {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.replace_ingest_parser(kind, parser)
+    }
+
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_dm_inbox_relay_lookup(lookup);
