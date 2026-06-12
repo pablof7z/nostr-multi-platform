@@ -222,10 +222,7 @@ impl ActionModule for ZapAction {
             correlation_id: Some(correlation_id.to_string()),
         })));
         #[cfg(not(feature = "native"))]
-        {
-            let _ = (unsigned, action, send);
-            record_action_failure(send, correlation_id, "zap not available on this platform".into());
-        }
+        { let _ = (unsigned, action); record_action_failure(send, correlation_id, "zap not available on this platform".into()); }
         Ok(())
     }
 }
