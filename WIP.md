@@ -48,3 +48,5 @@ branches `worktree-nmp-gallery-desktop`, `codex/*-zap-cleanup`, `feat/chirp-tui-
 `feat/component-update`, `feat/step-12-nmp-marmot-return-to-crates`,
 `refactor/substrate-d0-leaks-batch`, etc. gone). Also dropped the dead
 `docs/BACKLOG.md` link (file no longer exists; the queue lives in GitHub Issues).
+
+- 2026-06-12 — **Golden-fixture + bindings drift hygiene** (closes #1093). PR #1103. Branch: `fix/1093-golden-drift-hygiene`. Worktree: agent-abdd89796377818b5. Three items: (1) Rust-side drift assertion for tier3 golden fixture, (2) Kotlin flatc drift gate script + CI wire, (3) stale docstring fix in KernelModel.kt.
