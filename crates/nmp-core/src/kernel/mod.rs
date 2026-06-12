@@ -72,6 +72,8 @@ mod cache_serve;
 mod cache_serve_budget_tests;
 #[cfg(test)]
 mod cache_serve_tests;
+#[cfg(test)]
+mod cache_serve_universal_tests;
 pub(crate) mod closed_reason;
 mod discovery;
 #[cfg(test)]
@@ -1913,26 +1915,90 @@ impl Kernel {
         let watermark_fn: crate::subs::WatermarkFn =
             Arc::new(move |shape: &crate::planner::InterestShape| {
                 // ADR-0045 §6 invariant: no watermark floor without
-                // cache-serve coverage for the same shape. A tag-/address-/
-                // event-id-filtered shape would be floored by a SUPERSET scan
-                // (the per-author newest ignores the tag dimension), so the
-                // floor could sit ABOVE stored tagged events the projections
-                // never received — and E1 serve does not cover those shapes,
-                // so nothing would backfill them. Refuse the floor; the relay
-                // re-sends in full (over-fetch is safe, under-render is not).
-                // Pinned by cache_serve_tests::
-                // e1_watermark_serve_invariant_shapes_are_aligned.
-                if !shape.tags.is_empty()
-                    || !shape.addresses.is_empty()
-                    || !shape.event_ids.is_empty()
-                {
+                // cache-serve coverage for the same shape.
+                //
+                // E2/E3 now covers: Ptag (kind:1059 DM inbox + mentions),
+                // Etag (thread replies), KindDtag (addressable/long-form).
+                // Their floors are enabled below. The structural guard
+                // `cache_serve_budget_tests::e3_structural_floored_implies_served`
+                // asserts floored⇒served for every shape this function floors.
+                //
+                // event_ids shapes are still refused: id-pointer loads are
+                // one-shot, already handled at ingest, and do not map to a
+                // cache-serve index scan.
+                // Multi-tag / multi-value shapes remain refused (shape_to_store_queries
+                // in queries.rs only covers single-tag-single-value).
+                if !shape.event_ids.is_empty() {
                     return None;
                 }
-                // `InterestShape::{authors,kinds}` are `BTreeSet`s.
                 let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
                 if kinds.is_empty() {
                     return None;
                 }
+
+                // ── E3: address-pointer (NaddrCoord → KindDtag) ────────────
+                // Watermark = newest stored event matching any coord in the set.
+                if !shape.addresses.is_empty() {
+                    let mut newest: Option<u64> = None;
+                    for coord in &shape.addresses {
+                        let d_tag = coord.d_tag.as_bytes().to_vec();
+                        let q = crate::store::StoreQuery::KindDtag {
+                            kind: coord.kind,
+                            d_tag,
+                            since: None,
+                            until: None,
+                        };
+                        let mut ts: Option<u64> = None;
+                        let _ = watermark_store.query_visit(&q, 1, &mut |ev| {
+                            ts = Some(ev.raw.created_at);
+                            std::ops::ControlFlow::Break(())
+                        });
+                        if let Some(t) = ts {
+                            newest = Some(newest.map_or(t, |prev| prev.max(t)));
+                        }
+                    }
+                    return newest;
+                }
+
+                // ── E2/E3: single-tag-single-value (Etag / Ptag) ───────────
+                if !shape.tags.is_empty() {
+                    // Only floor single-key single-value tag shapes (the same
+                    // constraint shape_to_store_queries enforces — multi-key or
+                    // multi-value shapes stay unfloored so the relay re-sends).
+                    if shape.tags.len() != 1 {
+                        return None;
+                    }
+                    let (tag_key, values) = shape.tags.iter().next().unwrap(); // doctrine-allow: D6 — infallible: len!=1 guard above ensures exactly one entry; BTreeMap::iter().next() is always Some
+                    if values.len() != 1 {
+                        return None;
+                    }
+                    let target_hex = values.iter().next().unwrap(); // doctrine-allow: D6 — infallible: len!=1 guard above ensures exactly one value; BTreeSet::iter().next() is always Some
+                    if let Some(target) = hex_to_pubkey_bytes(target_hex) {
+                        let q = if tag_key == "e" {
+                            crate::store::StoreQuery::Etag {
+                                target,
+                                kinds: kinds.clone(),
+                            }
+                        } else if tag_key == "p" {
+                            crate::store::StoreQuery::Ptag {
+                                target,
+                                kinds: kinds.clone(),
+                            }
+                        } else {
+                            // Unrecognized tag key: refuse floor, relay re-sends.
+                            return None;
+                        };
+                        let mut ts: Option<u64> = None;
+                        let _ = watermark_store.query_visit(&q, 1, &mut |ev| {
+                            ts = Some(ev.raw.created_at);
+                            std::ops::ControlFlow::Break(())
+                        });
+                        return ts;
+                    }
+                    return None;
+                }
+
+                // ── E1: author+kind or KindTime ─────────────────────────────
                 // Zero-author shapes: no safe per-author floor exists.
                 if shape.authors.is_empty() {
                     return None;

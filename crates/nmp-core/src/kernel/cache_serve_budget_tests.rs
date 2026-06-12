@@ -194,15 +194,20 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
         "single-author shape with stored events must be floored — otherwise \
          the floored⇒served assertion is vacuous"
     );
-    // Regression direction: the tagged shape must NOT be floored, because E1
-    // serve does not cover it (the superset author-newest floor would be
-    // unsafe — see watermark_fn).
+    // The shape_tagged uses "abc" as the event id (3 chars, not 64-char hex).
+    // hex decode fails → both serve and watermark return None/empty — the
+    // floored⇒served invariant holds vacuously for this specific shape.
+    // E3 covers properly-encoded #e target shapes (see e3_structural_floored_implies_served).
+    assert!(
+        shape_to_store_queries(&shape_tagged).is_empty(),
+        "shape_tagged with 3-char target → no queries (hex decode fails)"
+    );
     assert!(
         kernel
             .lifecycle
             .watermark_for_shape_for_test(&shape_tagged)
             .is_none(),
-        "tagged shapes must not be floored while cache-serve does not cover them"
+        "shape_tagged with 3-char target → no watermark floor (hex decode fails)"
     );
 
     // ── Structural variant mapping (E1 shape → StoreQuery) ─────────────────
@@ -225,14 +230,148 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
 
     assert!(
         shape_to_store_queries(&shape_no_kinds).is_empty(),
-        "0 kinds → no queries (not covered by E1)"
-    );
-    assert!(
-        shape_to_store_queries(&shape_tagged).is_empty(),
-        "tagged shapes → no queries (E2/E3)"
+        "0 kinds → no queries (not covered by any increment)"
     );
     assert!(
         shape_to_store_queries(&shape_event_ids).is_empty(),
-        "event-id shapes → no queries (E2/E3)"
+        "event-id shapes → no queries (not covered)"
+    );
+}
+
+// ─── E3. Structural floored⇒served guard ────────────────────────────────────
+
+/// ADR-0045 §6 — E3 extension: the floored⇒served invariant now holds for
+/// Etag (threads), Ptag (DM inbox / mentions), and KindDtag (addressable) as
+/// well as the E1 author+kind shapes.
+///
+/// This test uses properly 64-char-hex targets so that `hex_to_pubkey_bytes`
+/// succeeds and real `StoreQuery` variants are produced. It asserts the
+/// invariant structurally: every shape that `watermark_fn` floors ALSO has a
+/// non-empty `shape_to_store_queries` result — the seam identity check the ADR
+/// §6 demands.
+#[test]
+fn e3_structural_floored_implies_served() {
+    use crate::planner::{InterestShape, NaddrCoord};
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let keys = ::nostr::Keys::generate();
+    let author = keys.public_key().to_hex();
+    // 64-char event id for Etag target
+    let event_id_hex = hex_pk("e1");
+    // 64-char pubkey for Ptag target
+    let ptag_hex = hex_pk("fa");
+
+    kernel.timeline_authors.insert(author.clone());
+    seed_events(&mut kernel, &keys, 2, 1_700_000_000);
+
+    // ── E2/E3: #p tag + kind:1059 (DM inbox) ────────────────────────────────
+    let mut shape_dm_inbox = InterestShape {
+        kinds: BTreeSet::from([1059u32]),
+        ..Default::default()
+    };
+    shape_dm_inbox
+        .tags
+        .insert("p".to_string(), BTreeSet::from([ptag_hex.clone()]));
+
+    // ── E3: #p tag + kind:9735 (mention/zap) ─────────────────────────────────
+    let mut shape_ptag_mention = InterestShape {
+        kinds: BTreeSet::from([9735u32]),
+        ..Default::default()
+    };
+    shape_ptag_mention
+        .tags
+        .insert("p".to_string(), BTreeSet::from([ptag_hex.clone()]));
+
+    // ── E3: #e tag + kind:1 (thread reply) ───────────────────────────────────
+    let mut shape_etag_thread = InterestShape {
+        kinds: BTreeSet::from([1u32]),
+        ..Default::default()
+    };
+    shape_etag_thread
+        .tags
+        .insert("e".to_string(), BTreeSet::from([event_id_hex.clone()]));
+
+    // ── E3: addressable (kind:30023 long-form) ────────────────────────────────
+    let mut shape_address = InterestShape {
+        kinds: BTreeSet::from([30023u32]),
+        ..Default::default()
+    };
+    shape_address.addresses.insert(NaddrCoord {
+        pubkey: author.clone(),
+        kind: 30023,
+        d_tag: "my-article".to_string(),
+    });
+
+    // The invariant: for every shape where watermark floors, serve also covers.
+    // Note: the watermark returns None for shapes with NO stored events
+    // (so these cases are vacuously satisfied — there is nothing to floor).
+    // The important structural property is that serve IS non-empty for all of them.
+    let cases: [(&str, &InterestShape); 4] = [
+        ("DM inbox (#p+1059)", &shape_dm_inbox),
+        ("#p mention/zap", &shape_ptag_mention),
+        ("#e thread reply", &shape_etag_thread),
+        ("addressable long-form", &shape_address),
+    ];
+    for (name, shape) in &cases {
+        let floored = kernel
+            .lifecycle
+            .watermark_for_shape_for_test(shape)
+            .is_some();
+        let served = !shape_to_store_queries(shape).is_empty();
+        assert!(
+            !floored || served,
+            "§6 E3 violated for `{name}`: watermark floors but serve does not cover — \
+             stored events above the floor would never reach projections"
+        );
+        // Non-vacuity for serve coverage: all E3 shapes MUST produce queries.
+        assert!(
+            served,
+            "E3 shape `{name}` must produce a non-empty StoreQuery list"
+        );
+    }
+
+    // ── Structural variant mapping (E2/E3 shapes → StoreQuery) ──────────────
+    let dm_queries = shape_to_store_queries(&shape_dm_inbox);
+    assert_eq!(dm_queries.len(), 1, "DM inbox shape → 1 Ptag query");
+    assert!(matches!(&dm_queries[0], StoreQuery::Ptag { .. }));
+
+    let mention_queries = shape_to_store_queries(&shape_ptag_mention);
+    assert_eq!(mention_queries.len(), 1, "#p mention → 1 Ptag query");
+    assert!(matches!(&mention_queries[0], StoreQuery::Ptag { .. }));
+
+    let thread_queries = shape_to_store_queries(&shape_etag_thread);
+    assert_eq!(thread_queries.len(), 1, "#e thread → 1 Etag query");
+    assert!(matches!(&thread_queries[0], StoreQuery::Etag { .. }));
+
+    let addr_queries = shape_to_store_queries(&shape_address);
+    assert_eq!(addr_queries.len(), 1, "addressable → 1 KindDtag query");
+    assert!(matches!(&addr_queries[0], StoreQuery::KindDtag { .. }));
+
+    // Multi-tag / multi-value shapes remain uncovered (refused by
+    // shape_to_store_queries — the relay delivers in full for these).
+    let mut shape_multi_tag = InterestShape {
+        kinds: BTreeSet::from([1u32]),
+        ..Default::default()
+    };
+    shape_multi_tag
+        .tags
+        .insert("e".to_string(), BTreeSet::from([event_id_hex.clone()]));
+    shape_multi_tag
+        .tags
+        .insert("p".to_string(), BTreeSet::from([ptag_hex.clone()]));
+    assert!(
+        shape_to_store_queries(&shape_multi_tag).is_empty(),
+        "multi-tag shape → no queries (not covered)"
+    );
+
+    // event_ids still uncovered.
+    let mut shape_event_ids2 = InterestShape {
+        kinds: BTreeSet::from([1u32]),
+        ..Default::default()
+    };
+    shape_event_ids2.event_ids.insert(event_id_hex);
+    assert!(
+        shape_to_store_queries(&shape_event_ids2).is_empty(),
+        "event-id shapes → no queries (not covered)"
     );
 }

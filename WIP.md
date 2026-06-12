@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **ADR-0045 E2+E3: universal cache-serve** (closes #1086). Branch: `feat/adr-0045-e2-e3-universal-cache-serve`. Worktree: agent-a54c6bd081be959d9. E2: Ptag kind:1059 DM serve through shared decrypt seam. E3: Etag/KindDtag/Ptag-mention shapes, watermark floor restoration, structural floored⇒served guard, universal acceptance test.
+
 - 2026-06-12 — **Remove dead seed_accounts test fixture from nmp-core**. Branch: `chore/nmp-core-remove-dead-seed-accounts`. Worktree: /home/pablo/Work/nostrmultiplatform (root checkout). Removes `SeedAccount` struct and `seed_accounts()` fn — zero call sites, `#[cfg(test)] #[allow(dead_code)]` items carried over from 2026-05-18 kernel mod split.
 
 - 2026-06-12 — **ADR-0045 Rev 2: single-mechanism cache-serve (owner correction)**. Branch: `adr-0045-rev2-single-mechanism-cache-serve`. Worktree: agent-a229248b7c12f575c. Supersedes §9 staged-by-domain rollout; amends decision to ONE always-on store-serve seam (cold/warm/offline/online, every LogicalInterest); preserves Rev 1 technical findings; updates issue #1086; restates v1 recommendation as "does universal cache-serve gate v1?".
