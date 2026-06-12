@@ -1845,7 +1845,7 @@ pub(super) fn handle_relay_event(
     // the actor's self-sender so a spawned nmp-nip11 fetch can post
     // `ActorCommand::SetRelayInfo` back into the loop.
     relay_connected_hook: &crate::substrate::RelayConnectedHookSlot,
-    command_tx_self: &Sender<ActorCommand>,
+    command_tx_self: &super::CommandSender,
     relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
     pool: &Pool,

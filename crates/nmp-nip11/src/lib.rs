@@ -64,7 +64,7 @@ mod tests {
     use nmp_core::substrate::{
         fan_relay_connected, new_relay_connected_hook_slot, install_relay_connected_hook,
     };
-    use nmp_core::ActorCommand;
+    use nmp_core::CommandSender;
 
     /// End-to-end of the hook seam without a real `AppHost`: install the
     /// `Nip11FetchHook` on a bare slot, fan a connect, and assert the hook
@@ -75,7 +75,8 @@ mod tests {
     fn installed_hook_runs_on_fan_without_panicking() {
         let slot = new_relay_connected_hook_slot();
         install_relay_connected_hook(&slot, Arc::new(Nip11FetchHook::new()));
-        let (tx, _rx) = std::sync::mpsc::channel::<ActorCommand>();
+        let (raw_tx, _rx) = std::sync::mpsc::channel();
+        let tx = CommandSender::new(raw_tx);
         fan_relay_connected(&slot, "not-a-relay", false, &tx);
         // Give the spawned worker a moment to run and exit on the unmappable
         // URL; nothing should be posted back.
