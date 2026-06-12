@@ -636,7 +636,7 @@ fn v118_expiry_index_backfill_on_reopen() {
     );
 }
 
-// ─── Test 9: backfill migration gate — runs exactly once ─────────────────────
+// ─── Test 9: backfill migration gate — key written, stable across reopens ─────
 
 /// The migration gate in `backfill_expiry_index` must:
 ///
@@ -645,10 +645,12 @@ fn v118_expiry_index_backfill_on_reopen() {
 /// 2. On every subsequent open: find the key already set, skip the O(store)
 ///    scan entirely, and leave the expiry index intact.
 ///
-/// Proof: open store, insert an expiring event, close, reopen, verify the event
-/// is still reaped by gc_step (the index survived the gate-skipped open).
+/// This test directly observes the gate by reading `inner.domain_versions`
+/// after the first open to assert the `nmp-expiry-index` key is present,
+/// then verifies the index survives three reopens by asserting gc_step still
+/// reaps the expected event on the third open.
 #[test]
-fn v118_backfill_runs_once() {
+fn v118_backfill_gate_key_written_and_stable_across_reopens() {
     use nostr::prelude::*;
     use tempfile::tempdir;
     use crate::LmdbEventStore;
@@ -658,11 +660,30 @@ fn v118_backfill_runs_once() {
     let exp_ts = base_ts + 100;
     let gc_now = exp_ts + 1;
 
-    // Session 1: fresh store — backfill runs (empty scan), version key written.
+    // Session 1: fresh store — backfill runs (empty scan because the event is
+    // inserted AFTER open), version key written on open.
     {
         let store = LmdbEventStore::open(dir.path()).expect("open session 1");
+
+        // Directly verify that the gate key was written into domain_versions
+        // on this first open.
+        {
+            let txn = store.inner.env.read_txn().expect("read_txn");
+            let val = store
+                .inner
+                .domain_versions
+                .get(&txn, b"nmp-expiry-index")
+                .expect("domain_versions get")
+                .map(|v| v.to_vec());
+            assert!(
+                val.is_some(),
+                "v118: backfill gate key `nmp-expiry-index` must be present in \
+                 domain_versions after the first store open",
+            );
+        }
+
         let keys = Keys::generate();
-        let ev = EventBuilder::text_note("once-test")
+        let ev = EventBuilder::text_note("gate-test")
             .custom_created_at(Timestamp::from_secs(base_ts))
             .tag(Tag::expiration(Timestamp::from_secs(exp_ts)))
             .sign_with_keys(&keys)
@@ -676,9 +697,21 @@ fn v118_backfill_runs_once() {
     }
 
     // Session 2: reopen — backfill gate finds the version key and returns early.
-    // The expiry index was populated in Session 1 at insert time.
+    // The expiry index was populated in Session 1 at insert time (not by backfill).
     {
-        let _store = LmdbEventStore::open(dir.path()).expect("open session 2");
+        let store2 = LmdbEventStore::open(dir.path()).expect("open session 2");
+        // Gate key must still be present after the gate-skipped open.
+        let txn = store2.inner.env.read_txn().expect("read_txn");
+        let val = store2
+            .inner
+            .domain_versions
+            .get(&txn, b"nmp-expiry-index")
+            .expect("domain_versions get session 2")
+            .map(|v| v.to_vec());
+        assert!(
+            val.is_some(),
+            "v118: gate key must persist across reopens (session 2)",
+        );
     }
 
     // Session 3: third open — version key still present; index intact.
@@ -692,16 +725,16 @@ fn v118_backfill_runs_once() {
     let report = store3.gc_step(budget, gc_now).expect("gc_step session 3");
     assert_eq!(
         report.expired_reaped, 1,
-        "v118_backfill_runs_once: expiry index must survive multiple reopens \
+        "v118_backfill_gate: expiry index must survive multiple reopens \
          (backfill gate skips redundant scans). expired_reaped={}",
         report.expired_reaped,
     );
 
-    // A second gc pass must find nothing more.
+    // A second gc pass must find nothing more (no phantom reaps).
     let report2 = store3.gc_step(budget, gc_now).expect("gc_step session 3 pass 2");
     assert_eq!(
         report2.expired_reaped, 0,
-        "v118_backfill_runs_once: no phantom reaps after second pass, got {}",
+        "v118_backfill_gate: no phantom reaps after second pass, got {}",
         report2.expired_reaped,
     );
 }

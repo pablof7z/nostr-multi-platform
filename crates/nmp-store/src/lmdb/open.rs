@@ -115,6 +115,13 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
 /// Key used in the `domain_versions` sub-db to record that the V-118 expiry
 /// index backfill has completed for this store.  Once this key is present the
 /// O(store) scan is skipped on every subsequent open.
+///
+/// **Keyspace note**: this key intentionally shares the `nmp-domain-versions`
+/// sub-db with the host-namespace version keys written by
+/// `domain.rs::run_migrations`.  Those callers use arbitrary user-supplied
+/// namespace strings as keys; this constant relies on the repository-wide
+/// `nmp-` prefix reservation (all internal NMP sub-db names start with `nmp-`)
+/// to guarantee no host namespace can collide with this value.
 const EXPIRY_INDEX_BACKFILL_KEY: &[u8] = b"nmp-expiry-index";
 
 /// Populate the expiry index for any events already in the store that have an
