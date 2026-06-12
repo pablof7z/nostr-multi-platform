@@ -126,6 +126,10 @@ pub struct WasmRuntime {
     /// `wasm32`-only: native tests never construct drivers.
     #[cfg(target_arch = "wasm32")]
     relays: Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
+    /// PR-2 — 1 Hz tick timer. Dropping cancels the JS `setInterval`.
+    /// `start()` fills it; `stop()` clears it. `wasm32`-only.
+    #[cfg(target_arch = "wasm32")]
+    tick_interval: Option<gloo_timers::callback::Interval>,
 }
 
 impl Default for WasmRuntime {
@@ -137,6 +141,8 @@ impl Default for WasmRuntime {
             snapshot_callback: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
             relays: Rc::new(RefCell::new(Vec::new())),
+            #[cfg(target_arch = "wasm32")]
+            tick_interval: None,
         }
     }
 }
@@ -246,7 +252,7 @@ impl WasmRuntime {
         };
 
         let relay_bootstrap =
-            relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
+            crate::protocol::relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
 
         // Seed the kernel's configured-relay lanes so `make_update_frame`
         // emits real relay-status rows and the `configured_relays` typed
@@ -266,10 +272,18 @@ impl WasmRuntime {
             meta.database_name = config.database_name;
         }
 
-        // V-01 Stage 3 — spawn one `BrowserRelayDriver` per relay URL on
-        // wasm32. Native builds skip this path entirely.
+        // V-01 Stage 3 / PR-2 — spawn relay drivers and start the 1 Hz tick
+        // timer on wasm32. Native builds skip both.
         #[cfg(target_arch = "wasm32")]
-        self.spawn_relay_drivers()?;
+        {
+            self.spawn_relay_drivers()?;
+            self.tick_interval = Some(crate::tick::start_tick_interval(
+                Rc::clone(&self.reducer),
+                Rc::clone(&self.relays),
+                Rc::clone(&self.snapshot_callback),
+                Rc::clone(&self.meta),
+            ));
+        }
 
         Ok(vec![
             WorkerEvent::RuntimeStatus {
@@ -281,6 +295,9 @@ impl WasmRuntime {
     }
 
     fn stop(&mut self, correlation_id: String) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
+        // PR-2: cancel tick before relay teardown; no in-flight tick against partial pool.
+        #[cfg(target_arch = "wasm32")]
+        { self.tick_interval = None; }
         // Tear down every live relay driver — closing the JS sockets and
         // dropping the parked closures so the user-agent reclaims them.
         // Order matters: close sockets BEFORE driving the kernel `Stop`,
@@ -542,22 +559,6 @@ impl WasmRuntime {
 #[cfg(not(target_arch = "wasm32"))]
 #[path = "runtime/test_support.rs"]
 mod test_support;
-
-fn relay_bootstrap_from_config(
-    relays: Vec<String>,
-    relay_bootstrap: Vec<crate::protocol::RelayBootstrapEntry>,
-) -> Vec<crate::protocol::RelayBootstrapEntry> {
-    if !relay_bootstrap.is_empty() {
-        return relay_bootstrap;
-    }
-    relays
-        .into_iter()
-        .map(|url| crate::protocol::RelayBootstrapEntry {
-            url,
-            role: "both".to_string(),
-        })
-        .collect()
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WasmRuntimeError {

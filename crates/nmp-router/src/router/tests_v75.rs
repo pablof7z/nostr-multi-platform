@@ -126,7 +126,7 @@ fn publish_lane7_fallback_traces_empty_lanes_then_app_relay_fallback() {
     // Confirm Lane 7 actually resolved the app relay.
     assert!(
         r.relays
-            .get(&"wss://app.example".to_string())
+            .get("wss://app.example")
             .map(|s| s.iter().any(|src| matches!(
                 src,
                 RoutingSource::AppRelay { mode: AppRelayMode::Fallback }

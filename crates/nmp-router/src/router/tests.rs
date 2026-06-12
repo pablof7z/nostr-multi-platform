@@ -357,7 +357,7 @@ fn route_subscription_includes_indexer_lane_for_kind_10002_kind_0_kind_3() {
             vec![&"wss://indexer.example".to_string()],
             "kind {kind} subscription must include the indexer URL"
         );
-        let sources = r.relays.get(&"wss://indexer.example".to_string()).unwrap();
+        let sources = r.relays.get("wss://indexer.example").unwrap();
         assert!(
             sources.contains(&RoutingSource::Indexer),
             "kind {kind} indexer URL must carry RoutingSource::Indexer attribution; got {sources:?}"

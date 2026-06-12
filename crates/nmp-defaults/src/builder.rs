@@ -496,10 +496,16 @@ impl<S> AppHost for NmpAppBuilder<S> {
     fn replace_ingest_parser(
         &self,
         kind: u32,
+        slot_key: &'static str,
         parser: Arc<dyn nmp_core::substrate::IngestParser>,
-    ) -> Vec<Arc<dyn nmp_core::substrate::IngestParser>> {
+    ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
         let app: &NmpApp = unsafe { &*self.app };
-        app.replace_ingest_parser(kind, parser)
+        app.replace_ingest_parser(kind, slot_key, parser)
+    }
+
+    fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.unregister_ingest_parser(kind, slot_key);
     }
 
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {

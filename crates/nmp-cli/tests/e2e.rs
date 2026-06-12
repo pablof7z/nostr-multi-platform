@@ -150,7 +150,7 @@ fn full_registry_workflow() {
     assert_eq!(
         render_identity_sha_install,
         sha256_hex_of(&fs::read_to_string(
-            &app.join("Components/SwiftUI/RenderIdentifiable.swift")
+            app.join("Components/SwiftUI/RenderIdentifiable.swift")
         ).unwrap()),
         "render-identity lock sha must match on-disk content"
     );

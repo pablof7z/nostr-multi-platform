@@ -23,9 +23,8 @@ use crate::substrate::KernelEvent;
 
 /// One store-served event collected during the immutable-borrow phase of
 /// `serve_chunk`. Extended with `sig` (the Schnorr signature) so that
-/// kind:1059 events (and any other raw-observer targets) can be re-serialized
-/// as verbatim NIP-01 JSON by `feed_served_event` when firing
-/// `notify_raw_event_observers`.
+/// the `VerifiedEvent` can be reconstructed for the `IngestParser` dispatcher
+/// without re-running Schnorr verification.
 pub(super) struct CollectedEvent {
     pub(super) id: String,
     pub(super) author: String,
@@ -33,14 +32,14 @@ pub(super) struct CollectedEvent {
     pub(super) created_at: u64,
     pub(super) tags: Vec<Vec<String>>,
     pub(super) content: String,
-    /// Schnorr signature (lowercase hex, 128 chars). Preserved so the raw
-    /// observer path can reconstruct the verbatim signed event without
-    /// re-verification. The signature was verified at the original ingest gate
-    /// (`VerifiedEvent::try_from_raw`) — replaying it here does not expand the
-    /// trust boundary.
+    /// Schnorr signature (lowercase hex, 128 chars). Preserved so the
+    /// `IngestParser` dispatcher path can reconstruct the verbatim signed
+    /// event without re-verification. The signature was verified at the
+    /// original ingest gate (`VerifiedEvent::try_from_raw`) — replaying it
+    /// here does not expand the trust boundary.
     pub(super) sig: String,
     /// Whether this served event should be dispatched through
-    /// `notify_raw_event_observers` in addition to `notify_event_observers`.
+    /// the `IngestParser` dispatcher in addition to `notify_event_observers`.
     /// Set at collection time from the `PendingCacheServe::needs_raw_dispatch`
     /// flag (which was derived at enqueue time from `shape_needs_raw_observer_dispatch`).
     pub(super) needs_raw_dispatch: bool,
@@ -184,14 +183,19 @@ impl Kernel {
     /// same seam relay-delivered events use after `Inserted | Replaced`
     /// (ADR-0045 §2, step 3).
     ///
-    /// For shapes that need raw observer dispatch (kind:1059 DM gift-wraps),
-    /// fires BOTH:
-    /// - `notify_raw_event_observers` — for Marmot and any other raw-tap
-    ///   consumers that still ride the raw observer until PR-2 of the rawtap
-    ///   retirement ladder. KEPT until PR-2 removes the raw tap entirely.
-    /// - `ingest_dispatcher.dispatch()` — for `IngestParser` consumers (e.g.
-    ///   the NIP-17 `DmInboxProjection` migrated to the parser seam in PR-1).
-    ///   Dual fan-out is intentional during the PR-1/PR-2 transition window.
+    /// For shapes that need ingest-parser dispatch (kind:1059 DM gift-wraps):
+    /// - `ingest_dispatcher.dispatch()` — both the NIP-17 `DmInboxProjection`
+    ///   (migrated to IngestParser in PR-1) and the Marmot `MarmotIngestParser`
+    ///   (migrated in PR-2) receive the event via this path. No raw-observer
+    ///   fan-out is needed — all former raw-tap consumers now ride IngestParser.
+    ///
+    /// Note: the live ingest path (`kernel/ingest/mod.rs`) STILL calls
+    /// `notify_raw_event_observers` for chirp-tui debug and external hl mirror
+    /// consumers. Those are LIVE relay delivery consumers and are NOT touched
+    /// by this PR. The `needs_raw_dispatch` flag and `sig` field are retained
+    /// here because they are used to reconstruct the `VerifiedEvent` for the
+    /// `IngestParser` dispatcher (which needs the `sig` to be present in the
+    /// raw fields for gift-wrap decryption).
     pub(super) fn feed_served_event(&mut self, ev: CollectedEvent) {
         let cached = StoredEvent {
             id: ev.id.clone(),
@@ -223,21 +227,17 @@ impl Kernel {
         };
         self.notify_event_observers(&kernel_event);
 
-        // E2 + PR-1 dual fan-out: for kinds that need raw observer dispatch
-        // (kind:1059 DM gift-wraps), fire BOTH the raw-observer tap AND the
-        // ingest-dispatcher. During the PR-1/PR-2 transition window:
-        //   • `notify_raw_event_observers` — Marmot + any other raw-tap
-        //     consumer still riding the raw observer (removed in PR-2).
-        //   • `ingest_dispatcher.dispatch()` — NIP-17 `DmInboxProjection`
-        //     (migrated to IngestParser in PR-1) and future IngestParser
-        //     consumers. The `VerifiedEvent` is reconstructed from the
-        //     already-verified raw fields (trust boundary: the store only holds
-        //     events that passed `try_from_raw`; re-verification would be
-        //     prohibitively expensive on cache-serve).
+        // E2 — IngestParser dispatch for kinds that need it (kind:1059 DM
+        // gift-wraps). All former raw-tap consumers (NIP-17 DM inbox + Marmot)
+        // now ride `IngestParser` (PR-1 + PR-2). No raw-observer fan-out is
+        // emitted from this path. The `VerifiedEvent` is reconstructed from the
+        // already-verified raw fields (trust boundary: the store only holds
+        // events that passed `try_from_raw`; re-verification would be
+        // prohibitively expensive on cache-serve).
         //
-        // PR-2 removes the `notify_raw_event_observers` call in this block
-        // once Marmot is migrated to IngestParser. At that point the `raw`
-        // construction and `needs_raw_dispatch` flag also become redundant.
+        // The live ingest path (`kernel/ingest/mod.rs`) continues to call
+        // `notify_raw_event_observers` for chirp-tui / hl mirror consumers
+        // (LIVE relay delivery consumers — NOT touched by this PR).
         if ev.needs_raw_dispatch {
             let raw = RawEvent {
                 id: ev.id.clone(),
@@ -249,20 +249,8 @@ impl Kernel {
                 sig: ev.sig.clone(),
             };
 
-            // Fan 1 — raw-observer tap (Marmot + transition consumers).
-            // `notify_raw_event_observers` is a fast no-op when no registration
-            // exists for this kind (the `raw_event_observers_idle_for_kind`
-            // guard is preserved here — PR-2 removes the entire block).
-            // Empty string source relay — local-store provenance, no relay URL.
-            if !self.raw_event_observers_idle_for_kind(ev.kind) {
-                self.notify_raw_event_observers(&raw, "");
-            }
-
-            // Fan 2 — ingest-dispatcher (`IngestParser` seam). Reconstruct a
-            // `VerifiedEvent` from the already-verified raw fields. This skips
-            // re-verification: store events passed `try_from_raw` at original
-            // ingest; re-running Schnorr verify on every cache-serve step would
-            // be O(events × sessions) overhead. `from_store_verified_unchecked`
+            // `IngestParser` seam — reconstruct a `VerifiedEvent` from the
+            // already-verified raw fields. `from_store_verified_unchecked`
             // documents this trust boundary explicitly.
             let verified = __nmp_core_internal::from_store_verified_unchecked(raw);
             if let Ok(d) = self.ingest_dispatcher.read() {
