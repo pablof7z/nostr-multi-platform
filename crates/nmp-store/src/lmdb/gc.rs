@@ -22,23 +22,24 @@
 //! No tombstone is written for LRU-evicted events: they remain valid Nostr
 //! events and may be re-fetched from a relay.
 //!
-//! V-117 Phase-1 resumable cursor:
+//! V-118 Phase-1 expiration index (replaces the V-117 cursor):
 //!
-//! Phase 1 (NIP-40 reaper) used to iterate the WHOLE store with no duration
-//! check, causing O(store) actor stalls on large existing stores.  The fix
-//! checks `max_duration_ms` inside the scan loop and persists a cursor
-//! (`gc_phase1_cursor` on `Inner`) so each pass continues from the oldest
-//! event it reached last time rather than restarting from the top.  After a
-//! complete sweep the cursor resets to `None` so newly inserted (newer)
-//! events are visited on the next pass.
+//! V-117 bounded the NIP-40 reaper with a `max_duration_ms` gate plus a cursor
+//! keyed on `created_at`.  That cursor had a real defect (#1097): a block of
+//! non-expired events sharing one `created_at` larger than one budget pass
+//! parked the cursor forever, so Phase 1 never reached older expired events.
 //!
-//! Cursor semantics: store the `created_at` timestamp (unix seconds) of the
-//! last-scanned event as the `until` bound for the next pass.  Events sharing
-//! that exact timestamp may be re-scanned on the next pass — this is correct
-//! (re-checking a non-expired event is a no-op) and avoids complex per-id
-//! tracking.
+//! V-118 removes the cursor.  A dedicated `nmp-expiry-index` sub-db keyed
+//! `expiry_ts(8 BE) || event_id(32)` is maintained by insert + every delete
+//! path (backfilled once on open for pre-V-118 stores — see
+//! `open.rs::backfill_expiry_index`).  Phase 1 is now an O(expired) range scan
+//! over that index for `expiry_ts ≤ now_secs`; non-expired events are invisible
+//! to it, so a large non-expired block can never stall progress.  The budgets
+//! still apply, and lowest-expiry-first key order means the next pass continues
+//! from where the previous stopped — no cursor state to persist.
 
 use std::collections::BTreeSet;
+use std::ops::Bound;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -95,6 +96,61 @@ pub(super) fn lru_delete(
     Ok(())
 }
 
+// ─── Expiry-index helpers (V-118, #1097) ─────────────────────────────────────
+
+/// Key encoding for the expiry index: 8-byte BE u64 expiry_ts || 32-byte event_id.
+///
+/// Big-endian, NOT inverted, so lower timestamps sort first.  A range scan for
+/// all entries with `expiry_ts ≤ now` is `(Unbounded, Excluded([now+1; 0..0]))`.
+pub(super) fn expiry_index_key(expiry_ts: u64, id: &EventId) -> [u8; 40] {
+    let mut k = [0u8; 40];
+    k[..8].copy_from_slice(&expiry_ts.to_be_bytes());
+    k[8..].copy_from_slice(id);
+    k
+}
+
+/// Write `expiry_ts → event_id` into the expiry index within an existing write txn.
+pub(super) fn expiry_index_put(
+    inner: &Arc<Inner>,
+    txn: &mut heed::RwTxn,
+    expiry_ts: u64,
+    id: &EventId,
+) -> Result<(), StoreError> {
+    let key = expiry_index_key(expiry_ts, id);
+    inner
+        .expiry_index
+        .put(txn, &key, &[])
+        .map_err(|e| StoreError::Io(format!("expiry_index put: {e}")))
+}
+
+/// Remove the expiry-index entry for `id` within an existing write txn using
+/// the known `expiry_ts`.
+///
+/// O(1): constructs the exact 40-byte key and issues a single LMDB delete.
+/// Returns `Ok(())` immediately if `expiry_ts` is `None` (the event carries no
+/// expiration tag and therefore has no index entry).
+///
+/// Replaces the old `expiry_index_delete_id` which did an O(index) linear scan
+/// because callers didn't always know the expiry timestamp.  All delete paths
+/// now retrieve the expiry from the event before deleting it, enabling O(1)
+/// cleanup.
+pub(super) fn expiry_index_delete_exact(
+    inner: &Arc<Inner>,
+    txn: &mut heed::RwTxn,
+    expiry_ts: Option<u64>,
+    id: &EventId,
+) -> Result<(), StoreError> {
+    let Some(exp) = expiry_ts else {
+        return Ok(()); // No expiration tag → no index entry to remove.
+    };
+    let key = expiry_index_key(exp, id);
+    inner
+        .expiry_index
+        .delete(txn, &key)
+        .map_err(|e| StoreError::Io(format!("expiry_index delete_exact: {e}")))?;
+    Ok(())
+}
+
 // ─── gc_step ─────────────────────────────────────────────────────────────────
 
 /// One bounded GC pass.
@@ -109,118 +165,50 @@ pub(super) fn gc_step(
     let start = std::time::Instant::now();
     let mut report = GcReport::default();
 
-    // ── Phase 1: Reap NIP-40 expired events ──────────────────────────────
+    // ── Phase 1: Reap NIP-40 expired events (V-118 expiry index, #1097) ──────
     //
-    // V-117 fix: check max_duration_ms inside the scan loop, and persist a
-    // resumable cursor so a large store is swept incrementally rather than
-    // restarting from the top on every pass.
-    //
-    // Cursor discipline:
-    //  - `cursor` = `Some(T)` means the previous pass stopped at an event
-    //    with `created_at == T`.  We resume with `until(T)` which includes
-    //    events at exactly T (correct: if they expired since the last pass
-    //    they will be reaped; if they didn't, the check is a no-op).
-    //  - `cursor` = `None` means start from the newest event.
-    //  - After a full sweep (we reach the bottom of the store without hitting
-    //    the budget), the cursor is reset to `None` so the next pass re-scans
-    //    from the top, catching newly inserted events.
-    //
-    // KNOWN LIMITATION (V-118, GitHub issue #1097): because `until(T)` is an
-    // inclusive bound, a block of NON-expired events sharing one `created_at`
-    // that is larger than one budget pass parks the cursor at `T` forever —
-    // every pass re-scans the same prefix and Phase 1 never reaches older
-    // events.  Narrow (needs a bulk import with thousands of events on one
-    // second) but real.  The durable fix is an `(expiry_ts → event_id)`
-    // expiration index that removes this cursor entirely; see #1097.
+    // O(expired) range scan over `nmp-expiry-index` for keys with
+    // `expiry_ts ≤ now_secs` (encoding: expiry_ts(8 BE) || event_id(32)).  The
+    // scan runs from the index start up to — but not including — the key
+    // `[now_secs + 1; 0..0]`.  See the module-level doc for the full rationale.
     {
-        let cursor_secs: Option<u64> = *inner
-            .gc_phase1_cursor
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        // Snapshot and unlock immediately — the scan is read-only and the
-        // cursor update at the end of the block re-locks briefly.
-
-        let filter = match cursor_secs {
-            Some(t) => Filter::new().until(Timestamp::from_secs(t)),
-            None => Filter::new(),
+        // Upper bound: first key after every entry expired by `now_secs`
+        // (saturating add so `now_secs == u64::MAX` degenerates to "scan all").
+        let upper: [u8; 40] = {
+            let mut k = [0u8; 40];
+            k[..8].copy_from_slice(&now_secs.saturating_add(1).to_be_bytes());
+            k
         };
-
-        let expired: Vec<EventId> = {
-            let mut out = Vec::new();
+        // Collect expired (index_key, event_id) up to budget in a read txn.
+        let to_reap: Vec<([u8; 40], EventId)> = {
             let txn = inner
-                .lmdb
+                .env
                 .read_txn()
                 .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
-            let iter = inner
-                .lmdb
-                .query(&txn, filter)
-                .map_err(|e| StoreError::Io(format!("query: {e}")))?;
-
-            let mut last_created_at: Option<u64> = None;
-            let mut hit_budget_or_end = false;
-
-            for ev in iter {
-                // Duration gate: check budget BEFORE deserializing the next event.
-                // This bounds actor-thread stall time even for huge stores.
+            let range = (Bound::Unbounded, Bound::Excluded(upper.as_slice()));
+            let mut out: Vec<([u8; 40], EventId)> = Vec::new();
+            for entry in inner
+                .expiry_index
+                .range(&txn, &range)
+                .map_err(|e| StoreError::Io(format!("expiry_index range: {e}")))?
+            {
                 if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
-                    hit_budget_or_end = true;
-                    // Advance cursor to the last event's created_at so the next
-                    // pass resumes just below it.  If we never saw an event
-                    // (budget too tight, ~0 ms) keep the old cursor so we make
-                    // forward progress on the next tick.
-                    if let Some(t) = last_created_at {
-                        *inner
-                            .gc_phase1_cursor
-                            .lock()
-                            .unwrap_or_else(|p| p.into_inner()) = Some(t);
-                    }
                     break;
                 }
-
-                let owned: nostr::Event = ev.into_owned();
-                last_created_at = Some(owned.created_at.as_secs());
-
-                if let Some(exp_tag) = owned.tags.iter().find(|t| {
-                    t.as_slice()
-                        .first()
-                        .map(|s| s == "expiration")
-                        .unwrap_or(false)
-                }) {
-                    if let Some(val) = exp_tag.as_slice().get(1) {
-                        if let Ok(exp) = val.parse::<u64>() {
-                            if exp <= now_secs {
-                                let mut id = [0u8; 32];
-                                id.copy_from_slice(owned.id.as_bytes());
-                                out.push(id);
-                            }
-                        }
-                    }
+                let (k, _) =
+                    entry.map_err(|e| StoreError::Io(format!("expiry_index entry: {e}")))?;
+                if k.len() != 40 {
+                    continue;
                 }
-
+                let mut key_arr = [0u8; 40];
+                key_arr.copy_from_slice(k);
+                let mut id = [0u8; 32];
+                id.copy_from_slice(&k[8..]);
+                out.push((key_arr, id));
                 if out.len() >= budget.max_events_per_step {
-                    hit_budget_or_end = true;
-                    // Event-count budget hit: persist cursor so we resume after
-                    // the current position next pass.
-                    if let Some(t) = last_created_at {
-                        *inner
-                            .gc_phase1_cursor
-                            .lock()
-                            .unwrap_or_else(|p| p.into_inner()) = Some(t);
-                    }
                     break;
                 }
             }
-
-            // If we consumed the entire iterator without hitting a budget,
-            // reset the cursor so the next pass re-starts from the top
-            // (catching any newly inserted events).
-            if !hit_budget_or_end {
-                *inner
-                    .gc_phase1_cursor
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner()) = None;
-            }
-
             out
         };
 
@@ -229,7 +217,13 @@ pub(super) fn gc_step(
                 .env
                 .write_txn()
                 .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
-            for id in &expired {
+            for (index_key, id) in &to_reap {
+                // Remove the index entry first (we already hold its exact key).
+                inner
+                    .expiry_index
+                    .delete(&mut txn, index_key.as_slice())
+                    .map_err(|e| StoreError::Io(format!("expiry del: {e}")))?;
+                // Delete the event from the main store + NMP secondaries.
                 let f = Filter::new().id(nostr::EventId::from_slice(id)
                     .map_err(|e| StoreError::Encoding(format!("id: {e}")))?);
                 inner
