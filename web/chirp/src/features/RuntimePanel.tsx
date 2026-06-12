@@ -24,6 +24,10 @@ export function RuntimePanel(props: {
       </Show>
       <section class="runtime-card connection-card">
         <div class="card-heading"><Settings size={19} /><h2>Connection</h2></div>
+        {/* nmp-runtime-status testid is intentionally unasserted in boot.spec.ts
+            pre-bindings-regen: decodeUpdateFrameBytes throws on zeroed payload
+            so status shows degraded even when real wasm runs. Post-#1209 the
+            Playwright assertion will check for a non-degraded value here. */}
         <StatusLine icon={<Signal size={17} />} label="Runtime" value={labelRuntimeStatus(props.snapshot.status)} testId="nmp-runtime-status" />
         <StatusLine icon={<Database size={17} />} label="Database" value={runtimeConnection.databaseName} />
         <StatusLine

@@ -107,7 +107,7 @@ jobs:
       #   (2) nmp-bridge-kind is not "in-process fallback" — Worker path active.
       #   (3) fixture relay received ≥1 WS connection from the browser.
       # NOTE: relay-row-from-snapshot (decoded Connected status) is deferred to
-      # issue #1007 — TypeScript FlatBuffers bindings pre-date PR-B and expose
+      # issue #1209 — TypeScript FlatBuffers bindings pre-date PR-B and expose
       # only the deprecated zeroed payload field, not typed_projections.
       # `npx playwright install --with-deps chromium` downloads the Playwright-
       # bundled Chromium binary plus its OS dependencies into the runner's

@@ -36,11 +36,16 @@
  * `payload`; all projection data is now in `typed_projections` (field 2)
  * and Tier-3 fields such as `relay_statuses:[RelayStatus]` (field 10).
  * Decoding the relay-connected state from a live snapshot therefore
- * requires regenerating the TypeScript bindings — tracked as issue #1007
+ * requires regenerating the TypeScript bindings — tracked as issue #1209
  * (post-v1).  The relay-row DOM assertion (relay URL + "Connected" from
  * a decoded snapshot) is intentionally deferred to that issue rather than
  * faked here.  Assertion 3 above proves the same relay I/O fact from the
  * relay side without needing snapshot decoding.
+ * The web cannot yet decode or render any real snapshot data —
+ * `decodeUpdateFrameBytes` throws on the zeroed `payload`, so the UI shows
+ * a degraded Runtime status until the TS bindings are regenerated (see
+ * #1209).  This boot smoke proves the runtime BOOTS and connects, not that
+ * the UI renders live data.
  * ──────────────────────────────────────────────────────────────────────
  *
  * The fixture relay (fixture-relay.ts) runs in the Node test process and
