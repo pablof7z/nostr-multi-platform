@@ -2034,7 +2034,7 @@ impl Kernel {
     pub fn now_secs(&self) -> u64 {
         self.clock
             .now()
-            .duration_since(std::time::UNIX_EPOCH)
+            .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0)
     }
@@ -2047,7 +2047,7 @@ impl Kernel {
     pub(crate) fn now_ms(&self) -> u64 {
         self.clock
             .now()
-            .duration_since(std::time::UNIX_EPOCH)
+            .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0)
     }
