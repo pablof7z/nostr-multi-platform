@@ -73,11 +73,8 @@ When that package is absent, the worker emits
 `wasm_bridge_unavailable` and falls back to `DegradedRuntime` with
 `browser_bridge_unavailable` status.
 
-The wasm facade is intentionally lightweight: it proves the browser uses the
-same Rust-owned action contract, relay defaults, and Chirp snapshot shape. Full
-live relay I/O still belongs to the shared actor driver; `nmp-core` does not
-yet compile to browser wasm on this toolchain because native crypto C
-dependencies fail for `wasm32-unknown-unknown`.
+The wasm facade proves the browser uses the same Rust-owned action contract,
+relay defaults, and Chirp snapshot shape.
 
 ## NMP Worker Protocol
 

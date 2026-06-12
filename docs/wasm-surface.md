@@ -144,7 +144,7 @@ Serialised with `"action"` tag (`serde(tag = "action", rename_all = "snake_case"
 
 | `action` | Payload fields | Notes |
 |---|---|---|
-| `"publish_note"` | `content: String`, `reply_to_id?: String` | Maps to `nmp.publish / PublishRaw { kind: 1 }`. `reply_to_id` is accepted but currently ignored (host builds NIP-10 tags). |
+| `"publish_note"` | `content: String`, `reply_to_id?: String` | Maps to `nmp.publish / PublishRaw { kind: 1 }`. `reply_to_id` is accepted in the struct; on the async path a non-null value returns `CapabilityFailure` with reason `publish_path_not_wired_for_kind: nmp.publish.reply` — replies are not yet wired. |
 | `"react"` | `target_event_id: String`, `reaction?: String` (default `"+"`) | Maps to `nmp.nip25.react`. |
 | `"follow"` | `pubkey: String` | Maps to `nmp.follow`. |
 | `"unfollow"` | `pubkey: String` | Maps to `nmp.unfollow`. |
@@ -228,5 +228,3 @@ work across both surfaces.
   serialises as `"chirp_action"` — a residual Chirp-ism. Rename to
   `"app_action"` (or a framework-namespaced equivalent) in a future
   breaking-wire-version bump.
-- **Parity fixtures.** Cross-platform snapshot comparison between web, iOS,
-  Android, desktop, and TUI for the same action history is unimplemented.

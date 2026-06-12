@@ -78,7 +78,7 @@ tests and diagnostics, but is routed out of the JSON path on wasm32 at the
 Hosts must never synthesise product state to hide a missing or incomplete
 runtime. When the runtime cannot complete an operation it returns a stable,
 pattern-matchable reason string in a `CapabilityFailure` event (see
-`docs/wasm-surface.md` §3). The `DegradedMode` enum in the protocol vocabulary
+`docs/wasm-surface.md` §5). The `DegradedMode` enum in the protocol vocabulary
 (`BrowserActorDriverMissing`, `CapabilityRejected`, `ProtocolMismatch`) is
 available for `RuntimeStatus::Degraded` emissions when a host needs to surface
 a lifecycle-level degradation; failure modes at the individual-action level
@@ -102,7 +102,7 @@ there is no separate callback-per-dispatch.
   is intentional: it points the integration at the correct entrypoint.
 - **IndexedDB persistence is not yet wired.** The kernel still runs in memory
   and resets on page reload. This is not a design decision — it is follow-on
-  work (see `docs/wasm-surface.md` §5).
+  work (see `docs/wasm-surface.md` §7).
 - **`#[serde(rename = "chirp_action")]` on `WorkerRequest::AppAction`** is a
   residual Chirp-ism in the wire format. The type tag serialises as
   `"chirp_action"` on the wire today. Renaming it to a framework-neutral tag
