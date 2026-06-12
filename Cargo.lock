@@ -4443,12 +4443,17 @@ dependencies = [
 name = "nmp-app-chirp-web"
 version = "0.6.2"
 dependencies = [
+ "console_error_panic_hook",
+ "js-sys",
  "nmp-core",
  "nmp-feed",
  "nmp-nip01",
  "nmp-nip02",
  "nmp-threading",
  "nmp-wasm",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

@@ -49,7 +49,7 @@ the hero.
 ## 1. Ground truth — what `nmp-wasm` exposes today
 
 The worker protocol is `crates/nmp-wasm/src/protocol.rs`; the wasm-bindgen
-surface is `crates/nmp-wasm/src/lib.rs` (`NmpWasmRuntime`).
+surface is `apps/chirp/nmp-app-chirp-web/src/wasm_binding.rs` (`NmpWasmRuntime`).
 
 | Surface | Where | Notes |
 |---|---|---|

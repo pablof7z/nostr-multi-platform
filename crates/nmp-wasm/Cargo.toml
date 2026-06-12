@@ -9,6 +9,7 @@ description = "Browser-facing NMP worker protocol and wasm runtime facade."
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+
 [dependencies]
 # V-01 Phase 1b: nmp-core compiled with `default-features = false` so the
 # wasm32 build sees only the pure kernel + ActorCommand data type + substrate
