@@ -251,7 +251,13 @@ impl MarmotHandle {
     /// targeted `extern "C"` cluster bloat in the iOS bridge).
     pub fn dispatch(&self, action: &Value) -> Value {
         self.projection
-            .with_inner(|h| crate::projection::ops::dispatch(h, action, now_secs()))
+            // `correlation_id` is `None` here because the in-process
+            // Rust-native path (REPL / TUI / integration tests) has no
+            // action-registry correlation. The deferred-pending path only
+            // activates when a `correlation_id` is present (the typed
+            // dispatch pipeline from the host via `DispatchHostOp`), so
+            // callers on this path still get the old terminal soft-fail.
+            .with_inner(|h| crate::projection::ops::dispatch(h, action, now_secs(), None))
             .unwrap_or_else(|| json!({
                 "ok": false,
                 "error": "projection mutex poisoned",
@@ -629,3 +635,6 @@ mod tests;
 
 #[cfg(test)]
 mod autopublish_tests;
+
+#[cfg(test)]
+mod deferred_kp_tests;

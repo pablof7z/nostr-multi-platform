@@ -118,6 +118,7 @@ use crate::projection::display;
 use crate::projection::payload::{
     KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
 };
+use crate::projection::pending::{PendingOp, PendingOpsStore, RetryOutcome, StoreResult};
 
 /// Marmot KeyPackage kinds (mirrors `nmp_marmot::interest`; kept local so
 /// this crate does not reach into `nmp-marmot` internals).
@@ -158,6 +159,9 @@ struct Inner {
     /// Set once at construction; never flipped back to `false`. Surfaced in
     /// the snapshot so the host can warn the user and block group features.
     keyring_unavailable: bool,
+    /// Pending ops deferred because invitee KPs were not yet in the cache.
+    /// Re-tried on every KP ingest; expired via wall-clock gate (D8).
+    pending_ops: PendingOpsStore,
 }
 
 /// Owned Marmot projection. `Mutex` because `on_kernel_event` takes `&self`
@@ -219,6 +223,7 @@ impl MarmotProjection {
                 group_relays: HashMap::new(),
                 app: std::ptr::null_mut(),
                 keyring_unavailable,
+                pending_ops: PendingOpsStore::new(),
             }),
         }
     }
@@ -556,6 +561,99 @@ impl<'a> InnerHandle<'a> {
             sent += 1;
         }
         sent
+    }
+
+    // ── Pending-op management (deferred KP-gated ops) ───────────────────
+
+    /// Park a KP-blocked op in the pending store. Returns the [`StoreResult`]
+    /// so `ops` can decide whether to surface "pending" or "duplicate pending".
+    ///
+    /// `op_tag` is the `"create_group"` / `"invite"` discriminator.
+    /// `missing_pubkeys_hex` must NOT be empty (callers only call this when
+    /// at least one KP is unavailable).
+    pub(crate) fn park_pending_op(
+        &mut self,
+        correlation_id: String,
+        action_json: String,
+        op_tag: &str,
+        missing_pubkeys_hex: Vec<String>,
+        now_secs: u64,
+    ) -> StoreResult {
+        self.inner.pending_ops.store(
+            correlation_id,
+            action_json,
+            op_tag,
+            missing_pubkeys_hex,
+            now_secs,
+        )
+    }
+
+    /// After a KP event for `pubkey_hex` is cached, check whether any pending
+    /// ops are now unblocked. Returns ready ops as [`RetryOutcome`]s and
+    /// removes them from the store (caller is responsible for re-dispatch
+    /// and recording the terminal verdict via the actor command channel).
+    ///
+    /// Also evicts expired ops and pushes terminal `record_action_failure`
+    /// commands for them (wall-clock gate; `now_secs` from the event timestamp
+    /// or system clock — always provided by the ingest path, never by a timer).
+    pub(crate) fn handle_key_package_cached(
+        &mut self,
+        pubkey_hex: &str,
+        now_secs: u64,
+    ) -> Vec<RetryOutcome> {
+        self.evict_expired_pending(now_secs);
+        self.inner.pending_ops.retry_for_pubkey(pubkey_hex)
+    }
+
+    /// Evict expired pending ops and push terminal failure commands for each.
+    /// No-op when the actor channel is absent (test path).
+    fn evict_expired_pending(&mut self, now_secs: u64) {
+        let expired: Vec<PendingOp> = self.inner.pending_ops.check_expired(now_secs);
+        for op in expired {
+            self.push_actor_command(nmp_core::ActorCommand::RecordActionFailure {
+                correlation_id: op.correlation_id,
+                reason: "key_package_unavailable".to_string(),
+            });
+        }
+    }
+
+    /// Send an [`nmp_core::ActorCommand`] back into the actor's own command
+    /// channel. Used to record deferred terminal verdicts from within the
+    /// ingest path (which runs on the actor thread). D8-safe because the
+    /// underlying `mpsc::Sender::send` is non-blocking for an unbounded
+    /// channel; the actor drains it on the next iteration.
+    ///
+    /// No-op when `app` is null (the test projection — no actor channel).
+    pub(crate) fn push_actor_command(&self, cmd: nmp_core::ActorCommand) {
+        let Some(app) = self.app() else {
+            return;
+        };
+        // `actor_sender()` clones the `Sender` end of the unbounded mpsc
+        // channel the actor owns. Sending here cannot block or deadlock.
+        let _ = app.actor_sender().send(cmd);
+    }
+
+    /// Snapshot view: collect pending op descriptors for the snapshot
+    /// (PR-2 extends this into the FlatBuffers sidecar; for PR-1 it is
+    /// only consumed by tests). Returns `(correlation_id, op_tag, missing_count)`.
+    #[must_use]
+    #[allow(dead_code)] // consumed by snapshot tests; PR-2 wires this into the FlatBuffers sidecar.
+    pub(crate) fn pending_op_summaries(&self) -> Vec<(String, String, usize)> {
+        self.inner
+            .pending_ops
+            .iter()
+            .map(|op| {
+                let op_tag = serde_json::from_str::<serde_json::Value>(&op.action_json)
+                    .ok()
+                    .and_then(|v| v.get("op").and_then(|s| s.as_str()).map(str::to_owned))
+                    .unwrap_or_default();
+                (
+                    op.correlation_id.clone(),
+                    op_tag,
+                    op.missing_pubkeys.len(),
+                )
+            })
+            .collect()
     }
 
     /// Cache an incoming gift-wrap as a pending Welcome (no MLS type held).

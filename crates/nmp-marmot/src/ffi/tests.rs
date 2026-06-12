@@ -177,6 +177,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
                 &json!({ "op": "publish_key_package",
                          "relays": ["wss://t.relay"] }),
                 1_000,
+                        None,
             )
         })
         .unwrap();
@@ -204,6 +205,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
                 1_001,
+                        None,
             )
         })
         .unwrap();
@@ -232,6 +234,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
                          "group_id_hex": group_id_hex,
                          "text": "hello marmot" }),
                 1_003,
+                        None,
             )
         })
         .unwrap();
@@ -265,6 +268,7 @@ fn create_group_without_key_packages_reports_seam() {
                     "invitee_npubs": ["abc"],
                 }),
                 1,
+                        None,
             )
         })
         .unwrap();
@@ -305,6 +309,7 @@ fn create_group_partial_key_package_set_reports_only_missing_invitees() {
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
                 1,
+                        None,
             )
         })
         .unwrap();
@@ -338,6 +343,7 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
                     "relays": ["wss://t.relay"],
                 }),
                 1,
+                        None,
             )
         })
         .unwrap()["group_id_hex"]
@@ -359,6 +365,7 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
                 2,
+                        None,
             )
         })
         .unwrap();
@@ -373,13 +380,13 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
 fn unknown_op_and_bad_json_degrade() {
     let proj = MarmotProjection::new(in_memory(Keys::generate()), true);
     let r = proj
-        .with_inner(|h| ops::dispatch(h, &json!({ "op": "frobnicate" }), 1))
+        .with_inner(|h| ops::dispatch(h, &json!({ "op": "frobnicate" }), 1, None))
         .unwrap();
     assert_eq!(r["ok"], json!(false));
     assert!(r["error"].as_str().unwrap().contains("unknown op"));
 
     let r = proj
-        .with_inner(|h| ops::dispatch(h, &json!({ "no_op": true }), 1))
+        .with_inner(|h| ops::dispatch(h, &json!({ "no_op": true }), 1, None))
         .unwrap();
     assert_eq!(r["ok"], json!(false));
 }
@@ -467,6 +474,7 @@ fn ingest_parser_kind_1059_welcome_reaches_service_and_snapshot() {
                 h,
                 &json!({ "op": "ingest_signed_event", "event_json": gift_json }),
                 3,
+                        None,
             )
         })
         .unwrap();
@@ -786,6 +794,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
                     "text": "parity proof",
                 }),
                 1_001,
+                        None,
             )
         })
         .expect("projection mutex should not be poisoned");
@@ -844,6 +853,7 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
                 h,
                 &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
                 1_000,
+                        None,
             )
         })
         .unwrap();
@@ -861,6 +871,7 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
                 1_001,
+                        None,
             )
         })
         .unwrap();
@@ -890,6 +901,7 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
                     "text": "all-groups map test",
                 }),
                 1_002,
+                        None,
             )
         })
         .unwrap();
@@ -943,6 +955,7 @@ fn projection_slot_cleared_on_unregister_emits_empty() {
             h,
             &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
+                None,
         )
     });
     let create_r = proj
@@ -957,6 +970,7 @@ fn projection_slot_cleared_on_unregister_emits_empty() {
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
                 1_001,
+                        None,
             )
         })
         .unwrap();

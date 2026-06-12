@@ -71,6 +71,7 @@ use std::collections::BTreeSet;
 use mdk_core::prelude::{GroupId, NostrGroupConfigData};
 
 use crate::projection::payload::MarmotMessageRow;
+use crate::projection::pending::StoreResult;
 use crate::projection::state::{hex_encode, parse_signed_event, InnerHandle};
 
 /// `{"ok":false,"error":"…"}` — local copy of the FFI shell's `err`
@@ -220,23 +221,82 @@ fn fill_key_packages_from_cache(
     (needs, fetch_pubkeys)
 }
 
-fn missing_key_package_result(
-    h: &InnerHandle<'_>,
+/// When a KP-gated op hits `key_package_unavailable` AND a `correlation_id`
+/// is available (the action came from the typed dispatch pipeline), park the
+/// op in the pending store and return a `{"pending":true}` envelope instead of
+/// a terminal failure.
+///
+/// The `DispatchHostOp` arm in `nmp-core` interprets `{"pending":true}` as
+/// "leave the action in `Requested` state; the handler will record the
+/// terminal verdict later". When no `correlation_id` is available (REPL /
+/// tests), fall back to the old terminal `{"ok":false}` response.
+///
+/// Single-flight: if the SAME op + missing-pubkeys fingerprint is already
+/// parked, the duplicate is rejected and we return a `{"pending":true}`
+/// referencing the already-pending `correlation_id` — no double-create.
+fn park_or_report_kp_unavailable(
+    h: &mut InnerHandle<'_>,
+    action_value: &Value,
+    op_tag: &str,
     needs: Vec<String>,
     fetch_pubkeys: &[PublicKey],
+    correlation_id: Option<&str>,
+    now_secs: u64,
 ) -> Value {
+    // Always fire the fetch interest (idempotent at the kernel planner level).
     let fetch_requested = h.request_key_package_fetch(fetch_pubkeys);
-    // The presentation layer formats the missing pubkeys for display
-    // (aim.md §2 — backend ships raw hex; shells own abbreviation).
     let needs_pubkeys_hex: Vec<String> = fetch_pubkeys.iter().map(PublicKey::to_hex).collect();
-    json!({
-        "ok": false,
-        "error": "key_package_unavailable",
-        "needs": needs,
-        "needs_pubkeys_hex": needs_pubkeys_hex,
-        "fetch_requested": fetch_requested,
-        "hint": "key package lookup was requested; results arrive via the kernel tap"
-    })
+
+    let Some(cid) = correlation_id else {
+        // No correlation_id — the call came from outside the typed dispatch
+        // pipeline (REPL / in-process tests). Fall back to the old terminal
+        // soft-fail: the caller has no spinner to keep alive.
+        return json!({
+            "ok": false,
+            "error": "key_package_unavailable",
+            "needs": needs,
+            "needs_pubkeys_hex": needs_pubkeys_hex,
+            "fetch_requested": fetch_requested,
+            "hint": "key package lookup was requested; results arrive via the kernel tap",
+        });
+    };
+
+    let action_json = serde_json::to_string(action_value)
+        .unwrap_or_else(|_| action_value.to_string());
+
+    let store_result = h.park_pending_op(
+        cid.to_string(),
+        action_json,
+        op_tag,
+        needs_pubkeys_hex.clone(),
+        now_secs,
+    );
+
+    match store_result {
+        StoreResult::Stored => {
+            // `{"pending":true}` — no `ok` field. The `DispatchHostOp` arm
+            // checks for `"pending":true` BEFORE the `ok` routing so it
+            // skips recording a terminal verdict and leaves the action in
+            // `Requested` state.
+            json!({
+                "pending": true,
+                "correlation_id": cid,
+                "needs_pubkeys_hex": needs_pubkeys_hex,
+                "fetch_requested": fetch_requested,
+            })
+        }
+        StoreResult::Duplicate { existing_correlation_id } => {
+            // An identical op is already pending. Reject the duplicate —
+            // the host's spinner for the first dispatch is still alive.
+            json!({
+                "pending": true,
+                "duplicate": true,
+                "correlation_id": existing_correlation_id,
+                "needs_pubkeys_hex": needs_pubkeys_hex,
+                "fetch_requested": fetch_requested,
+            })
+        }
+    }
 }
 
 /// Newest-N decrypted application messages for one group, newest first.
@@ -269,15 +329,27 @@ pub fn group_messages(
 }
 
 /// Route + execute one dispatch op envelope.
-pub fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
+///
+/// `correlation_id` is the action-registry–minted id for this dispatch. It is
+/// forwarded to KP-gated ops (`create_group` / `invite`) so they can park a
+/// pending op under the SAME id; the terminal verdict is later recorded under
+/// that id when the KPs arrive (or on expiry). Callers that do not come from
+/// the typed action pipeline (REPL / tests) may pass `None` — those callers
+/// should not attempt to create groups when invitee KPs are missing.
+pub fn dispatch(
+    h: &mut InnerHandle<'_>,
+    v: &Value,
+    now_secs: u64,
+    correlation_id: Option<&str>,
+) -> Value {
     let op = match str_field(v, "op") {
         Ok(o) => o,
         Err(e) => return err(&e),
     };
     let r: Result<Value, String> = match op {
         "publish_key_package" => publish_key_package(h, v, now_secs),
-        "create_group" => create_group(h, v),
-        "invite" => invite(h, v),
+        "create_group" => create_group(h, v, now_secs, correlation_id),
+        "invite" => invite(h, v, now_secs, correlation_id),
         "send" => send(h, v),
         "leave" => leave(h, v),
         "remove" => remove(h, v),
@@ -290,10 +362,19 @@ pub fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
     match r {
         Ok(mut ok) => {
             if let Value::Object(map) = &mut ok {
-                // Handlers may set an explicit `ok:false` for soft-fail
-                // envelopes (e.g. the KeyPackage-cache seam). Only inject
-                // the success flag when the handler did not decide.
-                map.entry("ok").or_insert(Value::Bool(true));
+                // `{"pending":true}` envelopes must NOT receive an `ok` field:
+                // the `DispatchHostOp` arm checks `"pending":true` to decide
+                // whether to skip the terminal verdict; injecting `ok:true`
+                // would short-circuit that check and cause a spurious success
+                // record before the deferred op completes.
+                //
+                // For all other handlers, inject `ok:true` only when the
+                // handler has not already decided (e.g. soft-fail paths set
+                // `ok:false` explicitly).
+                let is_pending = map.get("pending").and_then(Value::as_bool).unwrap_or(false);
+                if !is_pending {
+                    map.entry("ok").or_insert(Value::Bool(true));
+                }
             }
             ok
         }
@@ -396,7 +477,12 @@ fn wrap_and_publish_welcomes(
     Ok(out)
 }
 
-fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
+fn create_group(
+    h: &mut InnerHandle<'_>,
+    v: &Value,
+    now_secs: u64,
+    correlation_id: Option<&str>,
+) -> Result<Value, String> {
     let name = str_field(v, "name")?.to_string();
     let description = v
         .get("description")
@@ -418,7 +504,15 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         let (needs, fetch_pubkeys) =
             fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
         if !needs.is_empty() {
-            return Ok(missing_key_package_result(h, needs, &fetch_pubkeys));
+            return Ok(park_or_report_kp_unavailable(
+                h,
+                v,
+                "create_group",
+                needs,
+                &fetch_pubkeys,
+                correlation_id,
+                now_secs,
+            ));
         }
     }
     let admins = vec![h.service().public_key()];
@@ -447,7 +541,12 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     }))
 }
 
-fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
+fn invite(
+    h: &mut InnerHandle<'_>,
+    v: &Value,
+    now_secs: u64,
+    correlation_id: Option<&str>,
+) -> Result<Value, String> {
     let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
     let invitee_npubs = resolve_invitees(v);
     let mut kp_events = signed_key_package_events(v)?;
@@ -458,7 +557,15 @@ fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         let (needs, fetch_pubkeys) =
             fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
         if !needs.is_empty() {
-            return Ok(missing_key_package_result(h, needs, &fetch_pubkeys));
+            return Ok(park_or_report_kp_unavailable(
+                h,
+                v,
+                "invite",
+                needs,
+                &fetch_pubkeys,
+                correlation_id,
+                now_secs,
+            ));
         }
     }
     let group_id_hex = hex_encode(gid.as_slice());
@@ -628,6 +735,7 @@ fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> 
 pub(crate) fn ingest_signed_event_core(
     h: &mut InnerHandle<'_>,
     event: &nostr::Event,
+    now_secs: u64,
 ) -> Result<Option<Value>, String> {
     let kind = event.kind.as_u16();
     if kind == 1059 {
@@ -661,9 +769,52 @@ pub(crate) fn ingest_signed_event_core(
         // shared MarmotService cache (protocol logic, not Chirp-specific).
         // Any NMP app's tap can call this; create_group/add_members use it
         // as a fallback when the caller supplies no explicit kp_events.
+        let pubkey_hex = event.pubkey.to_hex();
         h.service().cache_key_package(event.clone());
+        // After caching, re-check any pending ops that were blocked on this
+        // pubkey's KP. Ready ops are re-dispatched and their terminal verdicts
+        // are recorded via the actor command channel (D8 — no polling, no
+        // timer; this fires exactly once per KP arrival). Expiry is also
+        // checked here (wall-clock gate; `now_secs` is caller-supplied so
+        // tests can use synthetic time without spurious expiry evictions).
+        let ready = h.handle_key_package_cached(&pubkey_hex, now_secs);
+        for outcome in ready {
+            // Re-run the original op through the full dispatch path.
+            // `correlation_id` is Some so deferred verdicts are NOT written
+            // again if the op still lacks some other KP — that shouldn't happen
+            // (the pending store only fires when the missing set is empty) but
+            // the dispatch path is defensive anyway.
+            let op_value: Value = serde_json::from_str(&outcome.action_json)
+                .unwrap_or_else(|_| json!({"op": "__invalid__"}));
+            let result = dispatch(h, &op_value, now_secs, Some(&outcome.correlation_id));
+            // Record the terminal verdict under the ORIGINAL correlation_id.
+            // `{"pending":true}` means re-dispatch hit yet another missing KP
+            // (should not happen — the pending store only returns an op when
+            // the missing set is empty — but guard defensively).
+            let ok = result.get("ok").and_then(Value::as_bool);
+            let pending = result.get("pending").and_then(Value::as_bool).unwrap_or(false);
+            if !pending {
+                let cmd = if ok == Some(true) {
+                    nmp_core::ActorCommand::RecordActionSuccess {
+                        correlation_id: outcome.correlation_id,
+                        result_json: None,
+                    }
+                } else {
+                    let reason = result
+                        .get("error")
+                        .and_then(Value::as_str)
+                        .unwrap_or("deferred op failed")
+                        .to_string();
+                    nmp_core::ActorCommand::RecordActionFailure {
+                        correlation_id: outcome.correlation_id,
+                        reason,
+                    }
+                };
+                h.push_actor_command(cmd);
+            }
+        }
         Ok(Some(
-            json!({ "kind": kind, "cached": true, "author": event.pubkey.to_hex() }),
+            json!({ "kind": kind, "cached": true, "author": pubkey_hex }),
         ))
     } else {
         // Defensive: the tap filter also admits kind:444 (and a bad
@@ -681,7 +832,11 @@ pub(crate) fn ingest_signed_event_core(
 fn ingest_signed_event(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let json = str_field(v, "event_json")?;
     let event = parse_signed_event(json)?;
-    match ingest_signed_event_core(h, &event)? {
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    match ingest_signed_event_core(h, &event, now_secs)? {
         Some(payload) => Ok(payload),
         None => Err(format!(
             "ingest_signed_event: unsupported kind {} (expect 445 or 1059)",

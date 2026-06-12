@@ -122,7 +122,7 @@ impl HostOpHandler for MarmotMlsOpHandler {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         self.projection
-            .with_inner(|h| ops::dispatch(h, &legacy_envelope, now_secs))
+            .with_inner(|h| ops::dispatch(h, &legacy_envelope, now_secs, Some(_correlation_id)))
             .unwrap_or_else(|| serde_json::json!({
                 "ok": false,
                 "error": "MarmotMlsOpHandler: projection mutex poisoned",
