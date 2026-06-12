@@ -93,7 +93,7 @@ impl IndexerRepublishPolicy {
             .map(|entries| {
                 entries
                     .iter()
-                    .any(|entry| indexer_urls.iter().any(|url| *url == entry.relay_url))
+                    .any(|entry| indexer_urls.contains(&entry.relay_url))
             })
             .unwrap_or(false)
     }
