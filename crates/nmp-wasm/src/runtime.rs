@@ -54,7 +54,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use nmp_core::{KernelAction, KernelReducer, KernelUpdate};
+use nmp_core::{KernelAction, KernelReducer, KernelUpdate, OutboundMessage};
 use nmp_signers::Signer;
 
 #[cfg(target_arch = "wasm32")]
@@ -63,8 +63,9 @@ use crate::relay_pool;
 use nmp_network::browser_driver::BrowserRelayDriver;
 
 use crate::dispatch_routing::{
-    browser_driver_missing_reason, claim_dispatch_from_action, kernel_action_from_dispatch,
-    write_path_unavailable_reason, ClaimDispatch,
+    browser_driver_missing_reason, claim_dispatch_from_action, execute_claim_dispatch,
+    execute_interest_dispatch, interest_dispatch_from_action, kernel_action_from_dispatch,
+    write_path_unavailable_reason,
 };
 use crate::protocol::{
     ActionDispatch, AppAction, CapabilityFailure, RuntimeStatus, SetSigner, StartConfig,
@@ -353,14 +354,22 @@ impl WasmRuntime {
     /// surfaces as `ActionAccepted` with `action_type = "nmp.set_signer"`
     /// so the host can resolve a spinner the same way it does for any
     /// other dispatched action.
+    ///
+    /// PR-3 viewer-pubkey hand-off: on success the pubkey from the signer
+    /// request is fed into the kernel via `set_active_account` so
+    /// contact-feed resolution and bootstrap interests know whose follows
+    /// to load without waiting for a separate `set_active_account` action.
     fn set_signer(&mut self, request: SetSigner) -> Vec<WorkerEvent> {
         match signer_slot::install_from_request(&request) {
             Ok(signer) => {
                 self.signer = Some(signer);
-                vec![WorkerEvent::ActionAccepted {
-                    action_type: "nmp.set_signer".to_string(),
-                    correlation_id: request.correlation_id,
-                }]
+                let outbound =
+                    self.reducer.borrow_mut().set_active_account(request.pubkey_hex.clone());
+                self.fan_outbound(outbound);
+                self.accepted_with_snapshot(
+                    "nmp.set_signer".to_string(),
+                    request.correlation_id,
+                )
             }
             Err(error) => vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
                 capability: "nmp.set_signer".to_string(),
@@ -368,6 +377,29 @@ impl WasmRuntime {
                 reason: error.detail(),
             })],
         }
+    }
+
+    /// Fan `outbound` messages to live relay drivers (wasm32) or drop them
+    /// (native — the driver pool does not exist in test builds).
+    fn fan_outbound(&self, outbound: Vec<OutboundMessage>) {
+        #[cfg(target_arch = "wasm32")]
+        crate::publish_path::fan_out_outbound(&self.relays, &outbound);
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = outbound;
+    }
+
+    /// Build an `[ActionAccepted, UpdateBytes]` pair for a successful
+    /// synchronous dispatch. Used by every arm that fans outbound and then
+    /// returns the standard acknowledgement + snapshot.
+    fn accepted_with_snapshot(
+        &mut self,
+        action_type: String,
+        correlation_id: String,
+    ) -> Vec<WorkerEvent> {
+        vec![
+            WorkerEvent::ActionAccepted { action_type, correlation_id },
+            self.snapshot_event(),
+        ]
     }
 
     fn app_action(
@@ -384,89 +416,30 @@ impl WasmRuntime {
     }
 
     fn dispatch(&mut self, action: ActionDispatch) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        // ── F-CR-00 claim arm ─────────────────────────────────────────────────
-        //
-        // Claim/release operations are NOT `KernelAction`s — they live on the
-        // `KernelReducer` surface directly. Check for them BEFORE the
-        // `kernel_action_from_dispatch` arm so they do not fall through to the
-        // write-path-unavailable path.
-        //
-        // `can_send` mirrors the native `claim_send_gate` semantics: true when
-        // any relay lane has reported `Connected` to `handle_relay_connected`.
-        // Using `KernelReducer::any_relay_connected` rather than driver socket
-        // state avoids the lost-fetch trap (driver `current_socket.is_some()`
-        // fires at dial time, before the kernel learns of `Connected`; the REQ
-        // would be emitted then dropped with no re-queue — see `claim_send_gate`
-        // comment in `actor/relay_mgmt.rs`).
-        //
-        // The returned `Vec<OutboundMessage>` is already `partition_auth_paused`
-        // inside the `KernelReducer` methods; we fan it out here rather than
-        // in the kernel so the wasm relay-driver pool sees it. Release calls
-        // always return empty vecs and the fan-out becomes a no-op.
-        //
-        // Synchronous — claims need no async signer Promise path.
+        // F-CR-00 claim arm: claim/release refcounts (see execute_claim_dispatch
+        // in dispatch_routing.rs for the full rationale / `can_send` contract).
         if let Some(claim) = claim_dispatch_from_action(&action) {
             let can_send = self.reducer.borrow().any_relay_connected();
-            let outbound = {
-                let mut r = self.reducer.borrow_mut();
-                match claim {
-                    ClaimDispatch::ClaimProfile { pubkey, consumer_id } => {
-                        // F-TTL — web components self-claim on mount; these are
-                        // background/`.onAppear`-equivalent claims, so `force =
-                        // false` (the lazy, TTL-gated path). User-navigation
-                        // force-refresh is a native-Swift-app feature.
-                        r.claim_profile(pubkey, consumer_id, can_send, false)
-                    }
-                    ClaimDispatch::ReleaseProfile { pubkey, consumer_id } => {
-                        r.release_profile(&pubkey, &consumer_id)
-                    }
-                    ClaimDispatch::ClaimEvent { uri, consumer_id } => {
-                        r.claim_event(uri, consumer_id, can_send, false)
-                    }
-                    ClaimDispatch::ReleaseEvent { uri, consumer_id } => {
-                        r.release_event(&uri, &consumer_id)
-                    }
-                }
-            };
-            // Fan the outbound REQ frames to live relay drivers (wasm32 only).
-            // On native targets `fan_out_outbound` is a no-op shim.
-            #[cfg(target_arch = "wasm32")]
-            crate::publish_path::fan_out_outbound(&self.relays, &outbound);
-            #[cfg(not(target_arch = "wasm32"))]
-            let _ = outbound;
-            return Ok(vec![
-                WorkerEvent::ActionAccepted {
-                    action_type: action.action_type,
-                    correlation_id: action.correlation_id,
-                },
-                self.snapshot_event(),
-            ]);
+            let outbound = execute_claim_dispatch(&mut self.reducer.borrow_mut(), claim, can_send);
+            self.fan_outbound(outbound);
+            return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));
         }
-
-        // Generic `ActionDispatch` covers everything `AppAction` does plus the
-        // kernel-namespaced actions (`nmp.open_uri`, `nmp.kernel.diagnostics`,
-        // ...) the bible specifies. The kernel-namespaced ones map directly to
-        // `KernelAction` variants and run through `KernelReducer::reduce`; the
-        // app-namespaced ones (anything that emits a signed event) hit the
-        // same write-path-unavailable wall as `app_action` above.
+        // PR-3 feed-verb arm: open/close generic interests + contact-feed.
+        if let Some(interest) = interest_dispatch_from_action(&action) {
+            let outbound = execute_interest_dispatch(&mut self.reducer.borrow_mut(), interest);
+            self.fan_outbound(outbound);
+            return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));
+        }
+        // Kernel-namespace actions (`nmp.kernel.start`, `open_uri`, etc.) map
+        // to `KernelAction` variants and run through `KernelReducer::reduce`.
         if let Some(kernel_action) = kernel_action_from_dispatch(&action) {
             let update = self.reducer.borrow_mut().reduce(kernel_action);
             match update {
-                KernelUpdate::Started { .. } => {
-                    self.meta.borrow_mut().started = true;
-                }
-                KernelUpdate::Stopped { .. } => {
-                    self.meta.borrow_mut().started = false;
-                }
+                KernelUpdate::Started { .. } => { self.meta.borrow_mut().started = true; }
+                KernelUpdate::Stopped { .. } => { self.meta.borrow_mut().started = false; }
                 _ => {}
             }
-            return Ok(vec![
-                WorkerEvent::ActionAccepted {
-                    action_type: action.action_type,
-                    correlation_id: action.correlation_id,
-                },
-                self.snapshot_event(),
-            ]);
+            return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));
         }
         Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
             capability: action.action_type,

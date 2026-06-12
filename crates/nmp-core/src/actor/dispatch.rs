@@ -494,60 +494,19 @@ impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<
     }
 }
 
-/// M2 (ADR-0042) — build the `(SubIdentity, LogicalInterest)` pair for an
-/// `OpenInterest` / `CloseInterest` command from the raw FFI arguments.
+/// M2 (ADR-0042) — thin shim delegating to the always-compiled
+/// [`crate::subs::interest_builder::build_interest_pair`].
 ///
-/// Shared by both arms so an open and its matching close land on the SAME
-/// registry `(scope, key)` slot: the `SubKey` is the hash of the parsed
-/// `InterestShape` (order-independent — see `InterestShape::from_filter_json`),
-/// the `SubOwnerKey` is the hash of `consumer_id`, and the `SubScope` folds
-/// `ActiveAccount` → `Global` (the registry's existing `legacy_scope`
-/// convention — the registry's `SubScope` has no `ActiveAccount` variant, so
-/// the real `InterestScope::ActiveAccount` rides on the `LogicalInterest`
-/// instead, where the compiler reads it to re-route on account switch).
-///
-/// Returns `None` when `filter_json` is not a valid NIP-01 filter object (D6 —
-/// the arm treats it as a silent no-op).
+/// Kept here so the existing `OpenInterest` / `CloseInterest` dispatch arms
+/// and their unit tests in this file are unchanged. Logic lives in
+/// `subs::interest_builder` so the wasm32 `KernelReducer` path can reach it
+/// without pulling in the `#[cfg(feature = "native")]`-gated `actor` module.
 fn build_open_interest(
     filter_json: &str,
     consumer_id: &str,
     scope: u32,
 ) -> Option<(crate::subs::SubIdentity, crate::planner::LogicalInterest)> {
-    use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
-    use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
-
-    let shape = crate::planner::InterestShape::from_filter_json(filter_json)?;
-
-    // `0` = ActiveAccount (re-route on switch), anything else = Global.
-    let interest_scope = if scope == 0 {
-        InterestScope::ActiveAccount
-    } else {
-        InterestScope::Global
-    };
-
-    // Registry key: the SubScope mirrors `InterestRegistry::legacy_scope`
-    // (ActiveAccount shares the Global slot space until per-account isolation
-    // resolves the active pubkey). The real account-context lives on the
-    // LogicalInterest below.
-    let sub_scope = SubScope::Global;
-    // Fold the scope discriminant into the key so an ActiveAccount and a Global
-    // open of the *same* filter never collide on one slot (they route
-    // differently).
-    let key = SubKey::builder("open-interest")
-        .with(&shape)
-        .with(scope)
-        .finish();
-    let identity = SubIdentity::new(SubOwnerKey::new(consumer_id), key, sub_scope);
-
-    let interest = LogicalInterest {
-        scope: interest_scope,
-        shape,
-        // `open_interest` is always a tailing feed subscription (never OneShot).
-        lifecycle: InterestLifecycle::Tailing,
-        ..LogicalInterest::default()
-    };
-
-    Some((identity, interest))
+    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope)
 }
 
 pub(super) fn dispatch_command(
