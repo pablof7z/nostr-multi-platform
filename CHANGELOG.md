@@ -12,7 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 pinning this revision.
 
 **Android consumers must skip v0.3.0 and pin v0.4.0 directly.** v0.3.0
-shipped with Android completely dark (#1084 / V-113): the Android
+shipped with Android completely dark (#1084 / V-116): the Android
 `KernelUpdateFrameDecoder` was not rebuilt for the typed-frame wire introduced
 in v0.3.0 and emitted no snapshot updates. v0.4.0 fixes this with a full
 rebuild from Tier-3 typed fields + sidecars (#1092).
