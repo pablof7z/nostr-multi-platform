@@ -23,8 +23,10 @@ use nmp_app_chirp::{
 };
 
 mod action;
+mod capability;
 mod external_signer;
 mod flat_feed;
+mod identity;
 mod marmot;
 mod platform;
 mod session;

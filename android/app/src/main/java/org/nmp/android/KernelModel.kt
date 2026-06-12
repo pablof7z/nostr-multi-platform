@@ -1,5 +1,6 @@
 package org.nmp.android
 
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -94,6 +95,42 @@ class KernelModel : ViewModel() {
     /** Unregister on activity teardown (the launcher is being released). */
     fun unregisterExternalSignerHandler() {
         externalSignerHandler = null
+    }
+
+    /**
+     * Android Keystore keyring capability handler. Registered synchronously
+     * before [start] calls identity-restore so the keyring is live when the
+     * kernel reads the persisted nsec.
+     *
+     * Initialised lazily on the first [start] call so the [Context] is not
+     * required at ViewModel construction time. Callers must invoke
+     * [startWithContext] instead of [start] when identity-restore is needed.
+     */
+    @Volatile
+    private var keystoreKeyringCapability: KeystoreKeyringCapability? = null
+
+    /**
+     * Start the kernel with a storage path and an Android [Context] for the
+     * Keystore keyring capability. Registers the keyring handler BEFORE
+     * calling identity-restore so the persisted secret can be retrieved on
+     * cold start. Prefer this over the context-free [start] when the app
+     * manages sign-in state across restarts.
+     *
+     * [testNsec] is null in production; pass only in headless UI tests.
+     */
+    fun startWithContext(
+        context: Context,
+        storagePath: String? = null,
+        testNsec: String? = null,
+    ) {
+        if (started) return
+        keystoreKeyringCapability = KeystoreKeyringCapability(context.applicationContext)
+        bridge.setCapabilityHandler(keystoreKeyringCapability!!)
+        start(storagePath)
+        bridge.identityRestore(
+            dbDir = storagePath ?: context.filesDir.path,
+            testNsec = testNsec,
+        )
     }
 
     fun start(storagePath: String? = null) {
