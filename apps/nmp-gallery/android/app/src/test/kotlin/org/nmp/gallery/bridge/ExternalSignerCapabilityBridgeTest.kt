@@ -11,6 +11,7 @@ import org.nmp.gallery.registry.ExternalSignerRequest
 import org.nmp.gallery.registry.ExternalSignerResponse
 import org.nmp.gallery.registry.Nip55Permission
 import org.nmp.gallery.registry.buildAmberPermissionsJsonInternal
+import org.nmp.gallery.registry.selectAmberResultValue
 import org.nmp.gallery.registry.shouldUseContentResolver
 
 /**
@@ -267,6 +268,62 @@ class ExternalSignerCapabilityBridgeTest {
         // get_public_key has no colon variant — just the method name
         val result = buildAmberPermissionsJsonInternal(listOf(Nip55Permission("get_public_key")))
         assertEquals("""[{"type":"get_public_key"}]""", result)
+    }
+
+    // ── selectAmberResultValue — Stage-4 sign_event regression ───────────
+    //
+    // Amber's RESULT_OK reply for `sign_event` carries the signature hex in
+    // `result` and the FULL signed-event JSON in `event`. Rust verifies the
+    // complete event (id + schnorr sig), so the bridge must hand back the
+    // `event` extra for sign_event and `result` for everything else.
+
+    @Test
+    fun signEventPrefersEventExtra() {
+        val signedJson = """{"id":"abc","pubkey":"def","sig":"012"}"""
+        assertEquals(
+            signedJson,
+            selectAmberResultValue("sign_event", eventExtra = signedJson, resultExtra = "sighex"),
+        )
+    }
+
+    @Test
+    fun signEventFallsBackToResultWhenEventBlank() {
+        assertEquals(
+            "sighex",
+            selectAmberResultValue("sign_event", eventExtra = "", resultExtra = "sighex"),
+        )
+        assertEquals(
+            "sighex",
+            selectAmberResultValue("sign_event", eventExtra = null, resultExtra = "sighex"),
+        )
+    }
+
+    @Test
+    fun getPublicKeyUsesResultExtra() {
+        // Amber sets event == result for get_public_key, but the contract is
+        // `result`; the bridge must not depend on the duplication.
+        assertEquals(
+            "pubkeyhex",
+            selectAmberResultValue("get_public_key", eventExtra = "pubkeyhex", resultExtra = "pubkeyhex"),
+        )
+        assertEquals(
+            "pubkeyhex",
+            selectAmberResultValue("get_public_key", eventExtra = null, resultExtra = "pubkeyhex"),
+        )
+    }
+
+    @Test
+    fun encryptUsesResultExtra() {
+        assertEquals(
+            "ciphertext",
+            selectAmberResultValue("nip44_encrypt", eventExtra = null, resultExtra = "ciphertext"),
+        )
+    }
+
+    @Test
+    fun missingExtrasYieldNull() {
+        assertNull(selectAmberResultValue("sign_event", eventExtra = null, resultExtra = null))
+        assertNull(selectAmberResultValue("get_public_key", eventExtra = "x", resultExtra = null))
     }
 
     // ── KNOWN_NOSTR_SIGNERS contract ──────────────────────────────────────

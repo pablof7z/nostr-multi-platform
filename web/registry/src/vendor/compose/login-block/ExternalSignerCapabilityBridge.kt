@@ -225,6 +225,32 @@ internal fun shouldUseContentResolver(request: ExternalSignerRequest): Boolean =
  * Extracted as a pure top-level function so unit tests exercise the SAME
  * logic `dispatchIntent` executes (no test-side copies).
  */
+/**
+ * Select the reply value from an Amber `RESULT_OK` Intent (Stage-4 emulator
+ * finding #3).
+ *
+ * Amber's `IntentUtils.sendResult` sets:
+ *  - `result` extra — signature hex for `sign_event`; pubkey for
+ *    `get_public_key`; ciphertext/plaintext for encrypt/decrypt.
+ *  - `event` extra — the full signed-event JSON (`sign_event` replies).
+ *
+ * Rust's `parse_signed_event_response` verifies id + schnorr signature on the
+ * COMPLETE event, so `sign_event` must return the `event` extra; everything
+ * else uses `result`. Mechanical extra selection, not policy (D7).
+ *
+ * Extracted as a pure top-level function so unit tests exercise the SAME
+ * logic the Activity Result callback executes (no test-side copies).
+ */
+internal fun selectAmberResultValue(
+    method: String,
+    eventExtra: String?,
+    resultExtra: String?,
+): String? = if (method == "sign_event") {
+    eventExtra.takeUnless { it.isNullOrBlank() } ?: resultExtra
+} else {
+    resultExtra
+}
+
 internal fun buildAmberPermissionsJsonInternal(permissions: List<Nip55Permission>): String {
     val sb = StringBuilder("[")
     permissions.forEachIndexed { idx, perm ->
@@ -300,11 +326,19 @@ class ExternalSignerCapabilityBridge(
      * Activity Result launcher registered for the `nostrsigner:` Intent.
      *
      * Android delivers the signer's reply as `Activity.RESULT_OK` with
-     * extras:
-     * - `"result"` — the raw string value (pubkey / signed-event JSON /
-     *   ciphertext).
+     * extras (Amber `IntentUtils.sendResult`):
+     * - `"result"` — the raw string value. For `sign_event` this is the
+     *   SIGNATURE HEX ONLY; for `get_public_key` the pubkey; for
+     *   encrypt/decrypt the ciphertext/plaintext.
+     * - `"event"` — the full signed-event JSON (`sign_event` replies).
+     *   Rust's `parse_signed_event_response` verifies id + schnorr sig on
+     *   the complete event, so this extra — not `result` — is the value a
+     *   `sign_event` reply must carry (Stage-4 emulator finding #3).
      * - `"package"` — the signer app's package name (present on
      *   `get_public_key` replies; Amber-specific).
+     * - `"rejected"` — boolean; Amber returns `RESULT_OK` with this flag
+     *   (instead of `RESULT_CANCELED`) when the user rejects with a
+     *   remember-choice. Reported as `Rejected`.
      *
      * `RESULT_CANCELED` means the user navigated back without approving —
      * reported as `Rejected`.
@@ -331,9 +365,22 @@ class ExternalSignerCapabilityBridge(
 
             val response = if (result.resultCode == Activity.RESULT_OK) {
                 val data = result.data
-                val rawResult = data?.getStringExtra("result")
+                val rawResult = selectAmberResultValue(
+                    method = method,
+                    eventExtra = data?.getStringExtra("event"),
+                    resultExtra = data?.getStringExtra("result"),
+                )
                 val signerPackage = data?.getStringExtra("package")
-                if (rawResult != null) {
+                if (data?.getBooleanExtra("rejected", false) == true) {
+                    // Amber reports remembered rejections as RESULT_OK +
+                    // `rejected: true` (not RESULT_CANCELED).
+                    ExternalSignerResponse(
+                        correlationId = correlationId,
+                        outcome = ExternalSignerOutcome.Rejected(
+                            reason = "signer rejected the request",
+                        ),
+                    )
+                } else if (rawResult != null) {
                     ExternalSignerResponse(
                         correlationId = correlationId,
                         outcome = ExternalSignerOutcome.Ok(result = rawResult),
@@ -411,31 +458,41 @@ class ExternalSignerCapabilityBridge(
     private fun dispatchIntent(request: ExternalSignerRequest) {
         val methodTag = request.method.toNostrSignerMethod()
 
-        // NIP-55 Intent — Amber (v6.x) reads ALL parameters from Intent
-        // extras, not from the URI query string. The URI scheme is
-        // `nostrsigner:` (the base scheme only); Amber's SignerActivity
+        // NIP-55 Intent — Amber (v6.x) reads the method PAYLOAD from the
+        // Intent data URI (`nostrsigner:<url-encoded payload>`) and every
+        // other parameter from Intent extras. Amber's SignerActivity
         // branches on the presence of `Browser.EXTRA_APPLICATION_ID` to
         // choose between URI-query parsing and extras parsing. We do NOT
         // set that extra, so extras-based parsing is always used.
         //
         // Amber requires:
+        //   intent.data             = nostrsigner:<Uri.encode(payload)>
+        //                             (unsigned-event JSON / ciphertext / …;
+        //                             bare `nostrsigner:` when payload empty)
         //   extras["type"]          = method tag string (mandatory)
+        //   extras["id"]            = caller request id (echoed in the reply)
         //   extras["returnType"]    = "signature" | "event" (default: signature)
-        //   extras["payload"]       = method payload (unsigned-event JSON / plaintext / …)
         //   extras["current_user"]  = current user pubkey hex (if known)
         //   extras["pubkey"]        = counterparty pubkey hex (for encrypt/decrypt)
         //   extras["permissions"]   = JSON array string in Amber format (first call only)
         //
-        // Stage-4 fix: switched from URI-query-param encoding to extras.
-        // Bug: `nostrsigner:get_public_key?type=get_public_key&…` was parsed
-        // as extras-path (no Browser.EXTRA_APPLICATION_ID), but extras had no
-        // `type` key → SignerType.INVALID → "malformed nostrsigner request".
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("nostrsigner:"))
+        // Stage-4 fixes (each found by a failing emulator round):
+        //  1. `type` must be an extra, not a URI query param — Amber's
+        //     extras-path saw no `type` key → SignerType.INVALID →
+        //     "malformed nostrsigner request" (get_public_key round).
+        //  2. The payload must ride the data URI, not a `payload` extra —
+        //     Amber's `IntentUtils.getIntentDataFromIntent` reads
+        //     `intent.data.toString().replace("nostrsigner:", "")` and never
+        //     looks at a `payload` extra; an empty URI made
+        //     `getUnsignedEvent("")` throw → the same "malformed" dialog
+        //     (sign_event round). `Uri.encode` is mandatory: Amber URL-decodes
+        //     only when its `isUrlEncoded` regex matches, and encoding also
+        //     keeps JSON `?`/`#` characters from being parsed as URI structure.
+        val uriPayload = if (request.payload.isNotEmpty()) Uri.encode(request.payload) else ""
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("nostrsigner:$uriPayload"))
         intent.putExtra("type", methodTag)
+        intent.putExtra("id", request.correlationId)
         intent.putExtra("returnType", "signature")
-        if (request.payload.isNotEmpty()) {
-            intent.putExtra("payload", request.payload)
-        }
         if (request.currentUser != null) {
             intent.putExtra("current_user", request.currentUser)
         }

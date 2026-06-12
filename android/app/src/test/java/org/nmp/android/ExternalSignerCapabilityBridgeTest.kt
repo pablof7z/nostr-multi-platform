@@ -199,6 +199,38 @@ class ExternalSignerCapabilityBridgeTest {
         assertEquals("[]", result)
     }
 
+    // ── selectAmberResultValue — Stage-4 sign_event regression ───────────
+
+    @Test
+    fun signEventPrefersEventExtra() {
+        val signedJson = """{"id":"abc","pubkey":"def","sig":"012"}"""
+        assertEquals(
+            signedJson,
+            selectAmberResultValue("sign_event", eventExtra = signedJson, resultExtra = "sighex"),
+        )
+    }
+
+    @Test
+    fun signEventFallsBackToResultWhenEventBlank() {
+        assertEquals(
+            "sighex",
+            selectAmberResultValue("sign_event", eventExtra = "", resultExtra = "sighex"),
+        )
+    }
+
+    @Test
+    fun getPublicKeyUsesResultExtra() {
+        assertEquals(
+            "pubkeyhex",
+            selectAmberResultValue("get_public_key", eventExtra = null, resultExtra = "pubkeyhex"),
+        )
+    }
+
+    @Test
+    fun missingExtrasYieldNull() {
+        assertNull(selectAmberResultValue("sign_event", eventExtra = null, resultExtra = null))
+    }
+
     // ── KNOWN_NOSTR_SIGNERS ───────────────────────────────────────────────
 
     @Test
