@@ -29,10 +29,10 @@ crates/nmp-codegen/src/swift_projections_registry.rs	921
 crates/nmp-codegen/src/swift.rs	613
 crates/nmp-core/src/actor/commands/identity.rs	1562
 crates/nmp-core/src/actor/commands/publish.rs	742
-crates/nmp-core/src/actor/commands/remote_signer_tests.rs	1160
+crates/nmp-core/src/actor/commands/remote_signer_tests.rs	1162
 crates/nmp-core/src/actor/commands/tests.rs	2270
 crates/nmp-core/src/actor/dispatch.rs	2544
-crates/nmp-core/src/actor/mod.rs	2360
+crates/nmp-core/src/actor/mod.rs	2383
 crates/nmp-core/src/actor/pending_sign.rs	573
 crates/nmp-core/src/actor/relay_mgmt.rs	534
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	587
@@ -43,9 +43,9 @@ crates/nmp-core/src/kernel/claim_expansion_ingest_tests.rs	710
 crates/nmp-core/src/kernel/discovery_tests.rs	604
 crates/nmp-core/src/kernel/event_claim_tests.rs	560
 crates/nmp-core/src/kernel/ingest_tests.rs	952
-crates/nmp-core/src/kernel/ingest/mod.rs	746
+crates/nmp-core/src/kernel/ingest/mod.rs	748
 crates/nmp-core/src/kernel/mailboxes.rs	506
-crates/nmp-core/src/kernel/mod.rs	2892
+crates/nmp-core/src/kernel/mod.rs	2797
 crates/nmp-core/src/kernel/publish_engine_tests.rs	852
 crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	840
 crates/nmp-core/src/kernel/retention_tests.rs	546
@@ -56,7 +56,7 @@ crates/nmp-core/src/kernel/state_projection_tests.rs	742
 crates/nmp-core/src/kernel/test_support.rs	538
 crates/nmp-core/src/kernel/tests.rs	708
 crates/nmp-core/src/kernel/types.rs	866
-crates/nmp-core/src/lib.rs	578
+crates/nmp-core/src/lib.rs	591
 crates/nmp-core/src/publish/engine/tests.rs	506
 crates/nmp-core/src/subs/lifecycle_tests.rs	965
 crates/nmp-core/src/subs/wire.rs	543
@@ -68,7 +68,7 @@ crates/nmp-defaults/src/builder.rs	695
 crates/nmp-defaults/src/runtimes.rs	559
 crates/nmp-ffi/src/action/tests.rs	977
 crates/nmp-ffi/src/external_signer.rs	665
-crates/nmp-ffi/src/lib.rs	2905
+crates/nmp-ffi/src/lib.rs	2947
 crates/nmp-marmot/src/ffi.rs	634
 crates/nmp-marmot/src/ffi/tests.rs	996
 crates/nmp-marmot/src/projection/ops.rs	713
@@ -127,7 +127,7 @@ docs/perf/pending-user-decisions.md	1406
 docs/research/applesauce-app-relay-model.md	535
 docs/testing/nmpui-website-screenshot-checklist.md	574
 ios/Chirp/Chirp/Bridge/KernelBridge.swift	2126
-ios/Chirp/Chirp/Bridge/KernelModel.swift	1051
+ios/Chirp/Chirp/Bridge/KernelModel.swift	1034
 ios/Chirp/Chirp/Bridge/MarmotBridge.swift	550
 ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift	961
 ios/Chirp/ChirpTests/OpFeedDecoderTests.swift	552

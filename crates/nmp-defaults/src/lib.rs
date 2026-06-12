@@ -105,11 +105,13 @@ use nmp_core::substrate::AppHost;
 pub mod builder;
 pub mod op_feed_defaults;
 pub(crate) mod relay_config;
+pub mod relay_info_probe;
 pub mod runtimes;
 pub mod tiers;
 pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, RunConfig, StorageSet, Unstarted};
+pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
 pub use runtimes::register_mute_runtime;
 pub use tiers::{register_substrate, NmpDefaults};

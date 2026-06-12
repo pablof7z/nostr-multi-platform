@@ -134,3 +134,67 @@ fn relay_row_event_count_uses_session_transport_counter_after_subs_close() {
     assert_eq!(row.total_events_rx, 1);
     assert_eq!(row.total_events_display, "1");
 }
+
+#[test]
+fn set_relay_info_surfaces_on_diagnostics_row() {
+    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::substrate::RelayInfoDoc;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let url = "wss://relay.example/";
+    kernel.relay_connecting_url(RelayRole::Content, url);
+    kernel.relay_connected_url(RelayRole::Content, url);
+
+    // No document yet — the row's `info` is absent.
+    let before = kernel.relay_diagnostics_snapshot();
+    let row_before = before
+        .relays
+        .iter()
+        .find(|r| r.relay_url == "wss://relay.example")
+        .expect("connected URL must appear");
+    assert!(row_before.info.is_none(), "info absent before fetch");
+
+    // ADR-0051 — fold a fetched document onto the URL (the actor's
+    // `SetRelayInfo` dispatch arm does exactly this).
+    let doc = RelayInfoDoc {
+        url: url.to_string(),
+        name: Some("Example".to_string()),
+        icon: Some("https://relay.example/icon.png".to_string()),
+        supported_nips: vec![1, 11, 42],
+        limitation_auth_required: Some(true),
+        ..RelayInfoDoc::default()
+    };
+    kernel.set_relay_info(url, doc);
+
+    let after = kernel.relay_diagnostics_snapshot();
+    let row = after
+        .relays
+        .iter()
+        .find(|r| r.relay_url == "wss://relay.example")
+        .expect("connected URL must appear");
+    let info = row.info.as_ref().expect("info present after set_relay_info");
+    assert_eq!(info.name.as_deref(), Some("Example"));
+    assert_eq!(info.icon.as_deref(), Some("https://relay.example/icon.png"));
+    assert_eq!(info.supported_nips, vec![1, 11, 42]);
+    assert_eq!(info.auth_required, Some(true));
+}
+
+#[test]
+fn relay_info_freshness_gate() {
+    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::substrate::RelayInfoDoc;
+    use std::time::Duration;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let url = "wss://relay.example/";
+    kernel.relay_connecting_url(RelayRole::Content, url);
+    kernel.relay_connected_url(RelayRole::Content, url);
+
+    // No doc → never fresh.
+    assert!(!kernel.relay_info_is_fresh(url, Duration::from_secs(300)));
+    kernel.set_relay_info(url, RelayInfoDoc::for_url(url));
+    // Just stored → fresh under any reasonable TTL.
+    assert!(kernel.relay_info_is_fresh(url, Duration::from_secs(300)));
+    // Zero TTL → immediately stale (boundary exclusive on the "fresh" side).
+    assert!(!kernel.relay_info_is_fresh(url, Duration::from_secs(0)));
+}

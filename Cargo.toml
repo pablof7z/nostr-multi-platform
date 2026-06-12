@@ -15,6 +15,7 @@ members = [
     "crates/nmp-marmot",
     "crates/nmp-nip01",
     "crates/nmp-nip02",
+    "crates/nmp-nip11",
     "crates/nmp-nip17",
     "crates/nmp-nip18",
     "crates/nmp-nip29",

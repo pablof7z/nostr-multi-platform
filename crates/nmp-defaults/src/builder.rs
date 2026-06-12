@@ -484,6 +484,14 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.add_relay_text_interceptor(interceptor);
     }
 
+    fn add_relay_connected_hook(
+        &self,
+        hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.add_relay_connected_hook(hook);
+    }
+
     fn register_ingest_parser(
         &self,
         kind: u32,

@@ -27,6 +27,14 @@ nostr = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
 tracing = "0.1"
+# D20 — wasm-safe time shim. `web-time 1.1.0` provides drop-in replacements
+# for `std::time::{Instant, SystemTime, UNIX_EPOCH}` backed by
+# `performance.now()` / `Date.now()` on wasm32-unknown-unknown. On native
+# targets `web-time` re-exports `std::time` verbatim (zero-cost, zero-drift).
+# `MemEventStore::gc_step` uses `Instant` only for its wall-clock budget check
+# (`max_duration_ms`); that path is wasm-reachable (nmp-store → nmp-core →
+# nmp-wasm), so the bare `std::time::Instant::now()` call panicked at runtime.
+web-time = "1.1"
 
 # LMDB backend deps — feature-gated. The fork at crates/nmp-nostr-lmdb carries
 # the env-injection seam (ADR-0011); heed / nostr-database are the underlying

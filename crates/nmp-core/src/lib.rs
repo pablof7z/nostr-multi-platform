@@ -487,6 +487,7 @@ pub mod testing {
                 crate::actor::new_raw_event_observer_slot(),
                 crate::kernel::new_snapshot_projection_slot(),
                 crate::substrate::new_relay_text_interceptor_slot(),
+                crate::substrate::new_relay_connected_hook_slot(),
                 crate::actor::new_bunker_handshake_slot(),
                 crate::actor::new_signer_state_slot(),
                 crate::kernel::new_app_relay_slot(),

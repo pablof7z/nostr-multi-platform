@@ -31,7 +31,9 @@
 
 pub mod action;
 mod crypto;
+pub mod payment_store;
 pub mod protocol;
+mod reconcile;
 pub mod runtime;
 pub mod status;
 pub mod wire;
@@ -40,6 +42,7 @@ pub use action::{
     WalletAction, WalletConnectAction, WalletConnectModule, WalletDisconnectAction,
     WalletDisconnectModule, WalletPayInvoiceModule,
 };
+pub use payment_store::{FsPaymentStore, PaymentRecord, PaymentState, PaymentStoreError};
 pub use protocol::{
     dispatch_nwc_relay_text, WalletConnectCommand, WalletDisconnectCommand,
     WalletPayInvoiceCommand,

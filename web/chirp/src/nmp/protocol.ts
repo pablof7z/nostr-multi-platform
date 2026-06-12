@@ -4,6 +4,10 @@ export type WorkerRequest =
       type: "start";
       app_id: string;
       relays?: string[];
+      /** Explicit relay bootstrap list; when non-empty the wasm runtime uses
+       *  it verbatim and ignores `relays`. Used by the Playwright boot smoke
+       *  to point the runtime at the fixture relay instead of the chirp defaults. */
+      relay_bootstrap?: { url: string; role: string }[];
       database_name: string;
       correlation_id: string;
     }

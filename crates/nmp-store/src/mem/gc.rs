@@ -15,6 +15,12 @@
 
 use std::collections::HashSet;
 
+// D20 — use the wasm-safe Instant shim rather than std::time::Instant
+// directly. On wasm32-unknown-unknown `std::time::Instant::now()` panics;
+// `crate::time::Instant` resolves to `web_time::Instant` (performance.now())
+// on wasm32 and to `std::time::Instant` on native (zero-cost re-export).
+use crate::time::Instant;
+
 use super::{access_remove, bytes_to_hex, relay_index_remove, MemEventStore, TOMBSTONE_MAX_AGE_SECS};
 use crate::types::{EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
@@ -38,7 +44,7 @@ pub(super) fn gc_step_with_pins(
     now_secs: u64,
     pins: &HashSet<EventId>,
 ) -> Result<GcReport, StoreError> {
-    let start = std::time::Instant::now();
+    let start = Instant::now();
     let mut st = store.lock()?;
     let mut report = GcReport::default();
 
@@ -154,7 +160,7 @@ pub(super) fn gc_step_with_pins(
 }
 
 #[inline]
-fn finish(start: std::time::Instant, mut report: GcReport) -> Result<GcReport, StoreError> {
+fn finish(start: Instant, mut report: GcReport) -> Result<GcReport, StoreError> {
     report.duration_ms = start.elapsed().as_millis() as u32;
     Ok(report)
 }
