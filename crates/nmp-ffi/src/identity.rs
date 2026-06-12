@@ -116,18 +116,9 @@ pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char, m
     let Some(secret) = c_string_argument(secret).map(zeroize::Zeroizing::new) else {
         return;
     };
-    let is_active = make_active != 0;
-    // Gaining a local signing key as the active account ⇒ flag set.
-    // The flag is consumed (atomic swap) in register_with_keys, so a
-    // re-register of an account that already published does not spam new
-    // key packages — the flag is only set at sign-in, consumed at register.
-    if is_active {
-        app.set_pending_mls_autopublish(true);
-    }
-    app.send_cmd(ActorCommand::AddSigner {
-        source: nmp_core::SignerSource::LocalNsec(secret),
-        make_active: is_active,
-    });
+    // Route through `add_signer` so the "active local key ⇒ arm MLS
+    // autopublish" rule lives in exactly one place (D4); see `NmpApp::add_signer`.
+    app.add_signer(nmp_core::SignerSource::LocalNsec(secret), make_active != 0);
 }
 
 /// Connect a NIP-46 bunker signer.

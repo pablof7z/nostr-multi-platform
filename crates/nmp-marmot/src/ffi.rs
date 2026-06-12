@@ -266,18 +266,6 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn publish_key_package_on_register(handle: *mut MarmotHandle) {
-    let Some(handle) = (unsafe { handle.as_ref() }) else {
-        return;
-    };
-    let action = json!({ "op": "publish_key_package" });
-    // TODO(PR-2): surface this Err via last_op_error snapshot — the result
-    // (e.g. "no write relays configured") is swallowed today.
-    let _ = handle
-        .projection
-        .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs()));
-}
-
 /// Inner registration logic shared by `nmp_marmot_register` and
 /// `nmp_marmot_register_active`. `app` must be non-null and valid.
 ///
@@ -507,13 +495,8 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
         app,
     }));
 
-    // Shared autopublish tail (PR-4): every local-key sign-in path sets
-    // `pending_mls_autopublish`; consuming it HERE (shared by both register
-    // entry points) makes every account MLS-capable on register. `take_*` is a
-    // one-shot atomic swap, so a re-register does NOT republish.
-    if app_ref.take_pending_mls_autopublish() {
-        publish_key_package_on_register(handle);
-    }
+    // Shared autopublish tail (PR-4) — see `autopublish` module.
+    autopublish::maybe_autopublish_on_register(app_ref, handle);
 
     handle
 }
@@ -638,6 +621,8 @@ pub(crate) fn c_str_opt(ptr: *const c_char) -> Option<String> {
         .ok()
         .map(|s| s.to_owned())
 }
+
+mod autopublish;
 
 #[cfg(test)]
 mod tests;

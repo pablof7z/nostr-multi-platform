@@ -2088,8 +2088,7 @@ impl NmpApp {
     /// Set the one-shot MLS-autopublish intent (consumed by
     /// [`Self::take_pending_mls_autopublish`] in `register_with_keys`).
     pub(crate) fn set_pending_mls_autopublish(&self, enabled: bool) {
-        self.pending_mls_autopublish
-            .store(enabled, Ordering::Release);
+        self.pending_mls_autopublish.store(enabled, Ordering::Release);
     }
 
     /// Reads the one-shot MLS-autopublish intent and clears it in the same
@@ -2115,27 +2114,24 @@ impl NmpApp {
         self.tx.clone()
     }
 
-    /// Add a signer through the actor-owned identity reducer. The unified
-    /// entry point that replaced the per-source `sign_in_nsec` /
-    /// `sign_in_bunker` / `add_remote_signer` methods.
+    /// Add a signer through the actor-owned identity reducer — the unified entry
+    /// point that replaced `sign_in_nsec` / `sign_in_bunker` / `add_remote_signer`.
     ///
     /// `make_active` activates the resulting account once it resolves (for a
     /// `BunkerUri` source the flag is stashed across the async handshake
-    /// round-trip; see [`nmp_core::SignerSource`]).
+    /// round-trip; see [`nmp_core::SignerSource`]). PR-4 (D4 — one place): an
+    /// active local-key sign-in is the single fact that arms MLS autopublish,
+    /// consumed by `nmp_marmot_register[_active]`; bunker/non-active do not.
     pub fn add_signer(&self, source: nmp_core::SignerSource, make_active: bool) {
-        self.send_cmd(ActorCommand::AddSigner {
-            source,
-            make_active,
-        });
+        if make_active && matches!(source, nmp_core::SignerSource::LocalNsec(_)) {
+            self.set_pending_mls_autopublish(true);
+        }
+        self.send_cmd(ActorCommand::AddSigner { source, make_active });
     }
 
-    /// Restore an app-scoped local secret from the keyring capability or use
-    /// an injected test secret, then sign it in through the identity reducer.
-    ///
-    /// Retained (not deleted with the bare `sign_in_nsec` wrapper) because it
-    /// owns the keyring-restore integration that `nmp-marmot` and the host
-    /// shells depend on. Rewired onto the unified `AddSigner` command — a
-    /// restored local secret always activates its account.
+    /// Restore an app-scoped local secret from the keyring capability or use an
+    /// injected test secret, then sign it in (always active) via `add_signer`.
+    /// Owns the keyring-restore integration `nmp-marmot` + host shells depend on.
     pub fn restore_local_nsec_from_keyring(
         &self,
         account_id: &str,
@@ -2145,8 +2141,7 @@ impl NmpApp {
             Some(secret) => Some(secret),
             None => self.recall_local_nsec(account_id),
         }?;
-        // Gaining a local signing key ⇒ autopublish on next register (PR-4).
-        self.set_pending_mls_autopublish(true);
+        // `add_signer` arms MLS autopublish for this active local-key sign-in.
         self.add_signer(
             nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
             true,
@@ -2155,11 +2150,8 @@ impl NmpApp {
     }
 
     /// Persist a newly-imported local secret through the keyring capability,
-    /// then sign it in through the identity reducer.
-    ///
-    /// Retained (not deleted with the bare `sign_in_nsec` wrapper) because it
-    /// owns the keyring-persist integration that `nmp-marmot` and the host
-    /// shells depend on. Rewired onto the unified `AddSigner` command.
+    /// then sign it in (always active) via `add_signer`. Owns the keyring-persist
+    /// integration `nmp-marmot` + host shells depend on.
     #[must_use]
     pub fn sign_in_local_nsec_with_keyring(&self, account_id: &str, secret: String) -> String {
         let req = nmp_core::substrate::KeyringIdentityWiring::persist_secret(
@@ -2168,8 +2160,7 @@ impl NmpApp {
             &secret,
         );
         let _ = self.dispatch_capability(&req);
-        // Gaining a local signing key ⇒ autopublish on next register (PR-4).
-        self.set_pending_mls_autopublish(true);
+        // `add_signer` arms MLS autopublish for this active local-key sign-in.
         self.add_signer(
             nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
             true,
