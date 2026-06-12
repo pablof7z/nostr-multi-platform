@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **K1 signer-session capability port (ADR-0050 + staged implementation)** (advances #961/#960). Stage 1 branch: `adr-0050-signer-session-port` (ADR only). Worktree: agent-a397f0e0f6f51909e. Subsequent stages (port verbs + mailbox completions + drain unification, gift-wrap chain, gift-unwrap, decrypt policy) land as separate PRs per the ADR's staged plan; this entry covers the whole arc and is removed when the final stage merges.
+
 - 2026-06-12 — **Android Keystore keyring capability + synchronous capability routing + identity restore (PR 1 of Marmot-keyring ladder)**. PR #1188. Branch: `feat/android-keyring-capability`. Worktree: agent-a432ddceb0cd2757c. New `capability.rs` + `identity.rs` modules in nmp-android-ffi; `session.rs` `capability_handler` slot; external_signer trampoline namespace router; `KeystoreKeyringCapability.kt` (AES-256-GCM AndroidKeyStore); `KernelBridge.setCapabilityHandler` + `identityRestore`; `KernelModel.startWithContext`.
 
 - 2026-06-12 — **PR-W2: build and deploy real nmp-wasm in Chirp Web** (follows PR-W1 / #1150). Branch: `feat/chirp-web-build-real-wasm`. Worktree: agent-a73fab19a44acce01. Deletes stale checked-in wasm artifact; gitignores generated output; wires wasm-pack build into chirp-web.yml CI and Vercel deploy command.
