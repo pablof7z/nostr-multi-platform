@@ -143,70 +143,102 @@ pub fn new_bunker_handshake_slot() -> BunkerHandshakeSlot {
     Arc::new(Mutex::new(None))
 }
 
-/// NIP-46 bunker relay-layer connection state — the app noun projected onto
-/// the snapshot under `projections["bunker_connection_state"]`. V-14 step b.
+/// Generalised remote-signer health projection — the app noun projected onto
+/// the snapshot under `projections["signer_state"]`.
 ///
-/// D0: this is an app-shaped noun (relay connection state for the NIP-46
-/// bunker session) — NOT a typed `KernelSnapshot` field. The actor writes it
-/// to a [`BunkerConnectionStateSlot`]; a built-in snapshot projection
-/// serializes it into `projections` every tick.
+/// **ADR-0048 D6**: replaces the NIP-46-only `bunker_connection_state` with a
+/// single canonical "remote signer health" surface keyed by `signer_kind`.
+/// Hosts render one status row regardless of whether the active signer is NIP-46
+/// or NIP-55 (Amber). `signer_kind` drives the label; `state` drives the badge
+/// colour; `is_*` flags gate affordances without string-matching `state`.
 ///
-/// Distinct from [`BunkerHandshakeDto`] (which tracks the NIP-46
-/// connect/get_public_key protocol state). This DTO tracks the relay
-/// transport health after the handshake is complete — i.e. whether the
-/// relay socket that the established bunker session rides on is currently
-/// `"connected"`, `"reconnecting"` (transient flap, auto-reconnect in
-/// progress), or `"failed"` (permanent error, session bricked).
+/// **NIP-46 states:** `"ready"`, `"reconnecting"`, `"failed"` (relay transport
+/// health — identical semantics as the former `bunker_connection_state`).
 ///
-/// `Deserialize` is retained so Swift codegen / round-trip tests can decode
-/// it.
+/// **NIP-55 states:** `"ready"`, `"awaiting_approval"` (Intent round-trip in
+/// flight; drives "Waiting for Amber…" inline), `"unavailable"` (signer app not
+/// installed / uninstalled mid-session), `"failed"` (rejected / mismatch /
+/// timeout — permanent; host prompts re-auth).
+///
+/// `Deserialize` is retained so Swift codegen / round-trip tests can decode it.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[doc(hidden)]
-pub struct BunkerConnectionStateDto {
-    /// `"connected"` | `"reconnecting"` | `"failed"`
+pub struct SignerStateDto {
+    /// `"nip46"` | `"nip55"` | `"local"`. Stable label the host uses to pick
+    /// the right icon/copy without string-matching on `state`.
+    pub(crate) signer_kind: String,
+    /// `"ready"` | `"awaiting_approval"` | `"reconnecting"` | `"unavailable"` | `"failed"`.
     pub(crate) state: String,
-    /// Optional human-readable reason (error message on reconnecting/failed).
+    /// Optional human-readable reason (error message on degraded/failed states).
     pub(crate) reason: Option<String>,
-    /// `true` when `state == "connected"`.
-    pub(crate) is_connected: bool,
-    /// `true` when `state == "reconnecting"` (transient flap, auto-reconnect
-    /// in progress). Hosts show a reconnecting indicator on this signal.
+    /// `true` when `state == "ready"`.
+    pub(crate) is_ready: bool,
+    /// `true` when `state == "awaiting_approval"` (NIP-55 Intent round-trip in
+    /// flight — drives "Waiting for Amber…" inline affordance).
+    pub(crate) is_awaiting_approval: bool,
+    /// `true` when `state == "reconnecting"` (NIP-46 transient relay flap).
     pub(crate) is_reconnecting: bool,
-    /// `true` when `state == "failed"` (permanent error, session bricked).
-    /// Hosts prompt re-auth on this signal.
+    /// `true` when `state == "unavailable"` (NIP-55 signer app not installed /
+    /// uninstalled mid-session). Host prompts the user to install or pick a
+    /// different signer.
+    pub(crate) is_unavailable: bool,
+    /// `true` when `state == "failed"` (permanent error — rejected / mismatch /
+    /// relay handshake failed). Host prompts re-auth.
     pub(crate) is_failed: bool,
 }
 
-impl BunkerConnectionStateDto {
-    /// Construct from a state wire token + optional reason, pre-computing all
-    /// derived boolean flags. Centralising the derivation here ensures shells
-    /// never reconstruct the flags from `state` (aim.md §6 / AP1).
-    pub(crate) fn new(state: String, reason: Option<String>) -> Self {
-        let is_connected = state == "connected";
+impl SignerStateDto {
+    /// Construct from a signer kind + state wire token + optional reason,
+    /// pre-computing all derived boolean flags. Centralising derivation here
+    /// ensures shells never reconstruct the flags from `state` (aim.md §6 / AP1).
+    pub(crate) fn new(signer_kind: String, state: String, reason: Option<String>) -> Self {
+        let is_ready = state == "ready";
+        let is_awaiting_approval = state == "awaiting_approval";
         let is_reconnecting = state == "reconnecting";
+        let is_unavailable = state == "unavailable";
         let is_failed = state == "failed";
         Self {
+            signer_kind,
             state,
             reason,
-            is_connected,
+            is_ready,
+            is_awaiting_approval,
             is_reconnecting,
+            is_unavailable,
             is_failed,
         }
     }
+
+    /// Build a NIP-46 state from the relay-layer connection state token.
+    ///
+    /// Maps the old `bunker_connection_state` tokens (`"connected"`,
+    /// `"reconnecting"`, `"failed"`) into the unified `signer_state` surface.
+    /// `"connected"` maps to `"ready"` for consistency with NIP-55 naming.
+    pub(crate) fn from_nip46_connection_state(state: &str, reason: Option<String>) -> Self {
+        // Map legacy token "connected" → "ready" so both NIP-46 and NIP-55 share
+        // the "ready" state name.
+        let canonical_state = if state == "connected" {
+            "ready".to_string()
+        } else {
+            state.to_string()
+        };
+        Self::new("nip46".to_string(), canonical_state, reason)
+    }
 }
 
-/// Shared bunker-connection-state slot. Parallels [`BunkerHandshakeSlot`].
+/// Shared signer-state slot (ADR-0048 D6 generalisation of the former
+/// bunker-connection-state slot).
 ///
-/// `None` (the default) means no bunker session is active (the projection
-/// then contributes JSON `null` under `"bunker_connection_state"`).
+/// `None` (the default) means no remote signer session is active (the
+/// projection then contributes JSON `null` under `"signer_state"`).
 #[doc(hidden)]
-pub type BunkerConnectionStateSlot = Arc<Mutex<Option<BunkerConnectionStateDto>>>;
+pub type SignerStateSlot = Arc<Mutex<Option<SignerStateDto>>>;
 
-/// Construct a fresh, empty [`BunkerConnectionStateSlot`].
+/// Construct a fresh, empty [`SignerStateSlot`].
 ///
 /// `pub` so `nmp-ffi`'s `nmp_app_new` can build the slot; the actor is the
 /// sole writer (D4).
-pub fn new_bunker_connection_state_slot() -> BunkerConnectionStateSlot {
+pub fn new_signer_state_slot() -> SignerStateSlot {
     Arc::new(Mutex::new(None))
 }
 
@@ -391,13 +423,14 @@ pub(crate) struct IdentityRuntime {
     /// snapshot projection reads it. D0: NIP-46 remote signing is an app noun,
     /// so handshake state is NOT a typed `KernelSnapshot` field.
     bunker_handshake: BunkerHandshakeSlot,
-    /// Shared output slot for the bunker relay-layer connection-state projection.
+    /// Shared output slot for the unified remote-signer health projection
+    /// (ADR-0048 D6 — generalises the former `bunker_connection_state`).
     /// Parallels `bunker_handshake`. The actor is the sole writer (D4); the
-    /// built-in `"bunker_connection_state"` snapshot projection reads it.
-    /// V-14 step b: gives the host visibility into relay flaps after the
-    /// handshake completes so it can show a reconnecting indicator or
-    /// prompt re-auth rather than silently bricking the session.
-    bunker_connection_state: BunkerConnectionStateSlot,
+    /// built-in `"signer_state"` snapshot projection reads it. Gives the host
+    /// visibility into NIP-46 relay flaps and NIP-55 signer availability so it
+    /// can show a degraded indicator or prompt re-auth rather than silently
+    /// bricking the session.
+    signer_state: SignerStateSlot,
     /// Stashed `make_active` flag for an in-flight `bunker://` handshake.
     ///
     /// `AddSigner { source: BunkerUri, make_active }` starts an async broker
@@ -411,24 +444,21 @@ pub(crate) struct IdentityRuntime {
 }
 
 impl IdentityRuntime {
-    /// Construct an identity runtime bound to shared bunker slots.
+    /// Construct an identity runtime bound to shared projection slots.
     ///
-    /// `bunker_handshake` and `bunker_connection_state` are the `Arc<Mutex<…>>`
-    /// slots the actor writes into and the built-in snapshot projections read
-    /// from. The two `Arc` clones share one inner `Mutex` each, so an actor
-    /// write is visible to the projection closure on the next tick without
-    /// crossing the FFI boundary.
-    pub(crate) fn new(
-        bunker_handshake: BunkerHandshakeSlot,
-        bunker_connection_state: BunkerConnectionStateSlot,
-    ) -> Self {
+    /// `bunker_handshake` and `signer_state` are the `Arc<Mutex<…>>` slots the
+    /// actor writes into and the built-in snapshot projections read from. The
+    /// two `Arc` clones share one inner `Mutex` each, so an actor write is
+    /// visible to the projection closure on the next tick without crossing the
+    /// FFI boundary.
+    pub(crate) fn new(bunker_handshake: BunkerHandshakeSlot, signer_state: SignerStateSlot) -> Self {
         Self {
             keys: HashMap::new(),
             remote_signers: HashMap::new(),
             order: Vec::new(),
             active: None,
             bunker_handshake,
-            bunker_connection_state,
+            signer_state,
             pending_bunker_make_active: false,
         }
     }
@@ -458,23 +488,23 @@ impl IdentityRuntime {
             .clone()
     }
 
-    /// Write the latest bunker relay-layer connection state into the shared
+    /// Write the latest remote-signer health into the shared `signer_state`
     /// projection slot (D4: actor is sole writer). A poisoned mutex recovers via
     /// `into_inner` rather than panicking the actor thread (D6).
-    pub(crate) fn set_bunker_connection_state(&self, value: Option<BunkerConnectionStateDto>) {
+    pub(crate) fn set_signer_state(&self, value: Option<SignerStateDto>) {
         let mut slot = self
-            .bunker_connection_state
+            .signer_state
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = value;
     }
 
-    /// Test-only read of the current bunker-connection-state projection state.
+    /// Test-only read of the current signer-state projection value.
     ///
     /// Production code never reads this slot through the runtime.
     #[cfg(test)]
-    pub(crate) fn bunker_connection_state_for_test(&self) -> Option<BunkerConnectionStateDto> {
-        self.bunker_connection_state
+    pub(crate) fn signer_state_for_test(&self) -> Option<SignerStateDto> {
+        self.signer_state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
@@ -578,6 +608,41 @@ impl IdentityRuntime {
             return Some(handle.signer_kind());
         }
         self.active_keys().map(|_| "local")
+    }
+
+    /// Wall-clock deadline for the active account's next parked sign op.
+    ///
+    /// Reads `RemoteSignerHandle::sign_timeout()` for remote signers (NIP-46 =
+    /// 5s default, NIP-55 = 90s). Returns `PENDING_SIGN_TIMEOUT` for local
+    /// accounts and when no account is active (local sign ops are `Ready` and
+    /// never park, so the deadline is unused — the default is safe). This is the
+    /// ADR-0048 D3 per-op deadline mechanism: dispatch arms call this instead of
+    /// hard-coding `PENDING_SIGN_TIMEOUT` so a NIP-55 signer gets its 90s budget
+    /// without changing the global constant.
+    pub(crate) fn active_sign_deadline(&self) -> std::time::Instant {
+        let duration = self
+            .active_remote()
+            .map(|h| h.sign_timeout())
+            .unwrap_or(nmp_signer_iface::PENDING_SIGN_TIMEOUT);
+        std::time::Instant::now() + duration
+    }
+
+    /// Wall-clock deadline for a parked sign op on a SPECIFIC account.
+    ///
+    /// The account-addressed sibling of [`Self::active_sign_deadline`]:
+    /// publish paths that sign via `sign_with_account_nonblocking(pubkey, …)`
+    /// must read the budget of THAT account's signer — the active account may
+    /// be a different backend with a different budget. `None` falls back to
+    /// the active account (matching `sign_active_nonblocking`).
+    pub(crate) fn sign_deadline_for(&self, pubkey: Option<&str>) -> std::time::Instant {
+        let handle = match pubkey {
+            Some(pk) => self.remote_signers.get(pk).map(|h| h.as_ref()),
+            None => self.active_remote(),
+        };
+        let duration = handle
+            .map(|h| h.sign_timeout())
+            .unwrap_or(nmp_signer_iface::PENDING_SIGN_TIMEOUT);
+        std::time::Instant::now() + duration
     }
 
     /// Resolve a [`SignerForSeal`][nmp_nip59::SignerForSeal] for the active
@@ -1319,6 +1384,48 @@ pub(crate) fn remove_account(
     Vec::new()
 }
 
+/// Update the `"signer_state"` projection when the NIP-46 relay-layer
+/// connection state changes. V-14 step b, generalised by ADR-0048 D6.
+///
+/// `state` is one of `"connected"` | `"reconnecting"` | `"failed"`.
+/// `"connected"` is mapped to `"ready"` in the unified `SignerStateDto` surface
+/// so NIP-46 and NIP-55 share the same state vocabulary.
+/// `reason` carries the error message for `"reconnecting"` and `"failed"`.
+///
+/// D0: the connection state is an app noun — written to the shared
+/// [`SignerStateSlot`] (read by the `"signer_state"` snapshot projection)
+/// instead of a typed `KernelSnapshot` field. The slot write does NOT flip
+/// `changed_since_emit`, so the kernel is marked dirty explicitly — otherwise
+/// the refreshed projection could sit unemitted until an unrelated kernel
+/// mutation triggered a tick.
+pub(crate) fn bunker_connection_state_changed(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+    state: String,
+    reason: Option<String>,
+) {
+    identity.set_signer_state(Some(SignerStateDto::from_nip46_connection_state(
+        &state, reason,
+    )));
+    kernel.mark_changed_since_emit();
+}
+
+/// Update the `"signer_state"` projection for a NIP-55 signer event.
+///
+/// ADR-0048 D6: called from the capability-bridge result path when the host
+/// reports a NIP-55 operation outcome that affects the long-lived signer
+/// health (e.g. signer unavailable, rejected, awaiting approval).
+#[allow(dead_code)] // production caller lands with ADR-0048 Stage 2 (Kotlin capability bridge)
+pub(crate) fn nip55_signer_state_changed(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+    state: String,
+    reason: Option<String>,
+) {
+    identity.set_signer_state(Some(SignerStateDto::new("nip55".to_string(), state, reason)));
+    kernel.mark_changed_since_emit();
+}
+
 /// Broker adapter → actor: latest NIP-46 handshake progress. Stage `"idle"`
 /// clears the projection; everything else replaces it.
 ///
@@ -1328,28 +1435,6 @@ pub(crate) fn remove_account(
 /// NOT flip `changed_since_emit`, so the kernel is marked dirty explicitly —
 /// otherwise the refreshed projection could sit unemitted until an unrelated
 /// kernel mutation triggered a tick.
-/// Update the `"bunker_connection_state"` projection when the relay-layer
-/// connection state changes. V-14 step b.
-///
-/// `state` is one of `"connected"` | `"reconnecting"` | `"failed"`.
-/// `reason` carries the error message for `"reconnecting"` and `"failed"`.
-///
-/// D0: the connection state is an app noun — written to the shared
-/// [`BunkerConnectionStateSlot`] (read by the `"bunker_connection_state"`
-/// snapshot projection) instead of a typed `KernelSnapshot` field. The slot
-/// write does NOT flip `changed_since_emit`, so the kernel is marked dirty
-/// explicitly — otherwise the refreshed projection could sit unemitted until
-/// an unrelated kernel mutation triggered a tick.
-pub(crate) fn bunker_connection_state_changed(
-    identity: &IdentityRuntime,
-    kernel: &mut Kernel,
-    state: String,
-    reason: Option<String>,
-) {
-    identity.set_bunker_connection_state(Some(BunkerConnectionStateDto::new(state, reason)));
-    kernel.mark_changed_since_emit();
-}
-
 pub(crate) fn bunker_handshake_progress(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,

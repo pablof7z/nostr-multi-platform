@@ -29,14 +29,17 @@ struct AccountsView: View {
                 }
             }
 
-            // V-14 / #963: bunker relay-connection health row. Only rendered
-            // when a bunker session is active (`bunkerConnectionState` is nil
-            // for local-key-only accounts). `isConnected` is the happy path;
-            // `isReconnecting` prompts the user to wait; `isFailed` prompts
-            // re-authentication. Rust pre-computes every flag (ADR-0032 pattern).
-            if let connState = model.bunkerConnectionState {
-                Section("Signer relay") {
-                    BunkerConnectionStateRow(connectionState: connState)
+            // ADR-0048 D6 (generalises V-14 / #963): remote-signer health row.
+            // Only rendered when a remote-signer session is active
+            // (`signerState` is nil for local-key-only accounts). Covers BOTH
+            // NIP-46 bunker sessions and NIP-55 (Amber) sessions — the row
+            // header is picked from `signerKind`. `isReady` is the happy path;
+            // `isAwaitingApproval`/`isReconnecting` prompt the user to wait;
+            // `isUnavailable`/`isFailed` prompt re-authentication. Rust
+            // pre-computes every flag (ADR-0032 pattern).
+            if let signerState = model.signerState {
+                Section(signerState.signerKind == "nip55" ? "External signer" : "Signer relay") {
+                    SignerStateRow(signerState: signerState)
                 }
             }
 
@@ -305,50 +308,71 @@ private struct AddAccountSheet: View {
     }
 }
 
-// MARK: - BunkerConnectionStateRow (V-14 / #963)
+// MARK: - SignerStateRow (ADR-0048 D6, generalises V-14 / #963)
 
-/// Shows the live relay-layer health of the active bunker session.
+/// Shows the live health of the active remote-signer session — NIP-46 bunker
+/// relay state or NIP-55 (Amber) external-signer state.
 ///
-/// Only rendered when `model.bunkerConnectionState` is non-nil (i.e. an NIP-46
-/// remote signer is active). Rust pre-computes `isConnected` / `isReconnecting`
-/// / `isFailed` from the relay socket state (`nmp-signer-broker`). Swift renders
-/// verbatim (ADR-0032 / relay_diagnostics pattern): no string-compare on `state`.
+/// Only rendered when `model.signerState` is non-nil (i.e. a remote signer is
+/// active). Rust pre-computes `isReady` / `isAwaitingApproval` /
+/// `isReconnecting` / `isUnavailable` / `isFailed` (NIP-46: relay socket state
+/// from `nmp-signer-broker`; NIP-55: Intent/ContentResolver outcomes). Swift
+/// renders verbatim (ADR-0032 / relay_diagnostics pattern): no string-compare
+/// on `state`.
 ///
-/// Three states drive distinct UX:
-/// - `isConnected` → green `circle.fill` + "Connected" label.
-/// - `isReconnecting` → amber `arrow.clockwise.circle` + "Reconnecting…". The
-///   user should wait; auto-reconnect is in progress. `reason` surfaced as
-///   secondary text when present.
-/// - `isFailed` → red `exclamationmark.triangle.fill` + "Connection failed". The
-///   session is bricked; the user should re-authenticate. `reason` surfaced as
-///   secondary text when present.
-private struct BunkerConnectionStateRow: View {
-    let connectionState: BunkerConnectionState
+/// The states drive distinct UX:
+/// - `isReady` → green `circle.fill` + "Connected" label.
+/// - `isAwaitingApproval` → spinner + "Waiting for approval…". A NIP-55 Intent
+///   round-trip is in flight; the user should approve in the signer app.
+/// - `isReconnecting` → spinner + "Reconnecting…". The user should wait;
+///   auto-reconnect is in progress. `reason` surfaced as secondary text.
+/// - `isUnavailable` → red `exclamationmark.triangle.fill` + "Signer
+///   unavailable". The signer app is missing; the user should reinstall or
+///   re-authenticate. `reason` surfaced as secondary text.
+/// - `isFailed` → red `exclamationmark.triangle.fill` + "Connection failed".
+///   The session is bricked; the user should re-authenticate. `reason`
+///   surfaced as secondary text.
+private struct SignerStateRow: View {
+    let signerState: SignerState
+
+    /// Degraded-terminal grouping: both `unavailable` and `failed` render the
+    /// red prompt-re-auth treatment.
+    private var isDegradedTerminal: Bool {
+        signerState.isFailed || signerState.isUnavailable
+    }
+
+    /// Transient in-progress grouping: both `awaiting_approval` and
+    /// `reconnecting` render the live spinner.
+    private var isInProgress: Bool {
+        signerState.isAwaitingApproval || signerState.isReconnecting
+    }
 
     private var statusIcon: String {
-        if connectionState.isFailed { return "exclamationmark.triangle.fill" }
-        if connectionState.isReconnecting { return "arrow.clockwise.circle.fill" }
+        if isDegradedTerminal { return "exclamationmark.triangle.fill" }
+        if isInProgress { return "arrow.clockwise.circle.fill" }
         return "circle.fill"
     }
 
     private var statusColor: Color {
-        if connectionState.isFailed { return ChirpColor.danger }
-        if connectionState.isReconnecting { return ChirpColor.warning }
+        if isDegradedTerminal { return ChirpColor.danger }
+        if isInProgress { return ChirpColor.warning }
         return ChirpColor.success
     }
 
     private var statusLabel: String {
-        if connectionState.isFailed { return "Connection failed" }
-        if connectionState.isReconnecting { return "Reconnecting…" }
+        if signerState.isUnavailable { return "Signer unavailable" }
+        if signerState.isFailed { return "Connection failed" }
+        if signerState.isAwaitingApproval { return "Waiting for approval…" }
+        if signerState.isReconnecting { return "Reconnecting…" }
         return "Connected"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                if connectionState.isReconnecting {
-                    // Use an animated spinner for the transient reconnecting
-                    // state so the user can see live progress.
+                if isInProgress {
+                    // Use an animated spinner for the transient states so the
+                    // user can see live progress.
                     ProgressView()
                         .controlSize(.small)
                         .tint(statusColor)
@@ -358,14 +382,14 @@ private struct BunkerConnectionStateRow: View {
                         .imageScale(.small)
                 }
                 Text(statusLabel)
-                    .foregroundStyle(connectionState.isFailed
+                    .foregroundStyle(isDegradedTerminal
                                      ? ChirpColor.danger
                                      : ChirpColor.textPrimary)
             }
-            if let reason = connectionState.reason, !reason.isEmpty {
+            if let reason = signerState.reason, !reason.isEmpty {
                 Text(reason)
                     .font(.caption)
-                    .foregroundStyle(connectionState.isFailed
+                    .foregroundStyle(isDegradedTerminal
                                      ? ChirpColor.danger
                                      : ChirpColor.textSecondary)
                     .lineLimit(2)
@@ -373,8 +397,8 @@ private struct BunkerConnectionStateRow: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Bunker relay: \(statusLabel)")
-        .accessibilityIdentifier("bunker-connection-state-row")
+        .accessibilityLabel("Signer: \(statusLabel)")
+        .accessibilityIdentifier("signer-state-row")
     }
 }
 

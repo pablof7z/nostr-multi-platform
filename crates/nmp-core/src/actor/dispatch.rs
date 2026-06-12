@@ -742,12 +742,19 @@ pub(super) fn dispatch_command(
                             .record_signed_event_return(&correlation_id, Err(e.to_string()));
                     }
                     None => {
-                        // Remote (NIP-46) signer parked — resolved by the idle
-                        // loop into the `signed_events` projection. `op` was
-                        // moved out of `sign_result`, so reconstruct the park
-                        // from the (unconsumed) `Pending` op.
-                        ctx.pending_sign_returns
-                            .push(PendingSignReturn::new(op, correlation_id.clone()));
+                        // Remote (NIP-46 / NIP-55) signer parked — resolved by
+                        // the idle loop into the `signed_events` projection. Use
+                        // the active signer's per-op deadline so NIP-55's 90s
+                        // budget applies without touching PENDING_SIGN_TIMEOUT
+                        // (ADR-0048 D3).
+                        let deadline = ctx.identity.active_sign_deadline();
+                        ctx.pending_sign_returns.push(
+                            PendingSignReturn::new(
+                                op,
+                                correlation_id.clone(),
+                                deadline,
+                            ),
+                        );
                     }
                 },
             }
@@ -789,14 +796,19 @@ pub(super) fn dispatch_command(
                         continuation.call(Err(e.to_string()));
                     }
                     None => {
-                        // Remote (NIP-46) signer — `Pending`. Park with the
-                        // continuation sink; the idle-loop drain invokes the
+                        // Remote (NIP-46 / NIP-55) signer — `Pending`. Park with
+                        // the continuation sink; the idle-loop drain invokes the
                         // continuation when the broker turns the request around
-                        // (or on timeout, with an `Err`). `op` was moved out of
-                        // `sign_result`, so reconstruct the park from the
-                        // unconsumed `Pending` op.
-                        ctx.pending_sign_returns
-                            .push(PendingSignReturn::with_continuation(op, continuation));
+                        // (or on timeout, with an `Err`). Use per-signer deadline
+                        // so NIP-55's 90s budget applies (ADR-0048 D3).
+                        let deadline = ctx.identity.active_sign_deadline();
+                        ctx.pending_sign_returns.push(
+                            PendingSignReturn::with_continuation(
+                                op,
+                                continuation,
+                                deadline,
+                            ),
+                        );
                     }
                 },
             }
@@ -2357,10 +2369,10 @@ mod nip65_auto_publish_tests {
     }
 
     fn fresh_identity() -> IdentityRuntime {
-        use crate::actor::new_bunker_connection_state_slot;
+        use crate::actor::new_signer_state_slot;
         IdentityRuntime::new(
             new_bunker_handshake_slot(),
-            new_bunker_connection_state_slot(),
+            new_signer_state_slot(),
         )
     }
 

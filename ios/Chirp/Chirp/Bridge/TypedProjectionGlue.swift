@@ -562,22 +562,24 @@ enum TypedProjectionGlue {
         )
     }
 
-    // MARK: bunker_connection_state → BunkerConnectionState (V-14 / #963)
+    // MARK: signer_state → SignerState (ADR-0048 D6, generalises V-14 / #963)
 
-    /// Map the typed `bunker_connection_state` sidecar (`KBCS` /
-    /// `nmp_kernel_BunkerConnectionState`) to the `BunkerConnectionState` value
-    /// consumed by `AccountsView` and `KernelModel`. Mirrors `bunkerHandshake`
-    /// above: Rust pre-computes every flag; Swift renders verbatim. The `reason`
-    /// field uses a `has_reason` companion (FlatBuffers optional-string pattern)
-    /// so a missing reason is `nil`, not an empty string.
-    static func bunkerConnectionState(
-        _ reader: nmp_kernel_BunkerConnectionState
-    ) -> BunkerConnectionState {
-        BunkerConnectionState(
+    /// Map the typed `signer_state` sidecar (`KSST` / `nmp_kernel_SignerState`)
+    /// to the `SignerState` value consumed by `AccountsView` and `KernelModel`.
+    /// Covers both NIP-46 and NIP-55 backends (`signerKind` discriminates).
+    /// Mirrors `bunkerHandshake` above: Rust pre-computes every flag; Swift
+    /// renders verbatim. The `reason` field uses a `has_reason` companion
+    /// (FlatBuffers optional-string pattern) so a missing reason is `nil`, not
+    /// an empty string.
+    static func signerState(_ reader: nmp_kernel_SignerState) -> SignerState {
+        SignerState(
+            signerKind: reader.signerKind ?? "",
             state: reader.state ?? "",
             reason: reader.hasReason ? (reader.reason ?? "") : nil,
-            isConnected: reader.isConnected,
+            isReady: reader.isReady,
+            isAwaitingApproval: reader.isAwaitingApproval,
             isReconnecting: reader.isReconnecting,
+            isUnavailable: reader.isUnavailable,
             isFailed: reader.isFailed
         )
     }

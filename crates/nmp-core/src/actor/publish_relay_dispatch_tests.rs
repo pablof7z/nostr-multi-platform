@@ -113,7 +113,7 @@ fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
         route_state();
     let mut identity = IdentityRuntime::new(
         new_bunker_handshake_slot(),
-        crate::actor::new_bunker_connection_state_slot(),
+        crate::actor::new_signer_state_slot(),
     );
     let relays = vec![(UNSEEN_RELAY.to_string(), "write".to_string())];
     let outbound = create_account(

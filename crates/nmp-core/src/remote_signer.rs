@@ -1,34 +1,49 @@
 //! `RemoteSignerHandle` — the actor-facing trait for signers whose key material
-//! lives outside the kernel (NIP-46 today; NIP-07, hardware wallets future).
+//! lives outside the kernel (NIP-46 today; NIP-55/hardware-wallets future).
 //!
 //! Implementations live in `nmp-signers` (which depends on `nmp-core`, so it
 //! can see this trait). The actor only ever holds `Box<dyn RemoteSignerHandle>`
 //! — keeping doctrine **D0** intact (`nmp-core` must not import `nmp-signers`).
 
+use std::time::Duration;
+
 use nmp_signer_iface::SignerOp;
 
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
-/// Trait the actor uses to drive remote signers (NIP-46 etc.).
+/// Trait the actor uses to drive remote signers (NIP-46, NIP-55, etc.).
 ///
 /// Signing is potentially async — `sign` returns a `SignerOp<SignedEvent>`
 /// that the actor polls or awaits via its existing publish-queue plumbing.
 ///
-/// `deliver_relay_event` is the inbound hook: when the relay subscription
-/// produces a kind:24133 event addressed to the local ephemeral pubkey, the
-/// actor calls this so the signer can resolve a pending RPC by id.
+/// `deliver_response` is the inbound hook: when a relay subscription
+/// produces a kind:24133 event (NIP-46), or the capability bridge reports a
+/// result (NIP-55), the actor calls this so the signer can resolve a pending
+/// op by correlation id. Content-agnostic: the already-decoded JSON is passed
+/// verbatim to the signer.
 pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     /// The user's pubkey (hex). Synchronous + cached after handshake.
     fn pubkey_hex(&self) -> String;
 
-    /// Stable label for the snapshot (`"nip46"`, `"nip07"`, …).
+    /// Stable label for the snapshot (`"nip46"`, `"nip55"`, …).
     fn signer_kind(&self) -> &'static str;
 
     /// Opaque JSON payload the actor can place in secure storage and later
-    /// hand back to the broker. `None` means the signer cannot be restored
-    /// without user interaction.
+    /// hand back to the broker/factory. `None` means the signer cannot be
+    /// restored without user interaction.
     fn persistence_payload_json(&self) -> Option<String> {
         None
+    }
+
+    /// Per-op deadline budget for parked sign operations.
+    ///
+    /// Default is 5s (correct for a NIP-46 relay RPC). `Nip55Signer` overrides
+    /// to 90s because an Android Intent round-trip requires the user to
+    /// foreground Amber and tap approve (ADR-0048 D3). The actor reads this via
+    /// the handle it already holds; the constant itself lives in
+    /// `nmp-signer-iface` (not here) so `nmp-core` never sees a NIP-55 noun.
+    fn sign_timeout(&self) -> Duration {
+        nmp_signer_iface::PENDING_SIGN_TIMEOUT
     }
 
     /// Sign an unsigned event template. Returns a `SignerOp` so remote
@@ -45,7 +60,7 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     /// `sign()`, which takes the substrate `&UnsignedEvent`.
     ///
     /// Returns `SignerOp::Ready(Ok(ciphertext))` for in-memory signers;
-    /// `SignerOp::Pending(..)` for NIP-46 bunkers (asynchronous RPC).
+    /// `SignerOp::Pending(..)` for remote signers (asynchronous RPC/IPC).
     fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> SignerOp<String>;
 
     /// NIP-44 decrypt `ciphertext` from `sender_pubkey`. Used for inbound
@@ -55,10 +70,22 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     /// `&str`-vs-`&PublicKey` and `SignerOp` rationale.
     fn nip44_decrypt(&self, sender_pubkey: &str, ciphertext: &str) -> SignerOp<String>;
 
-    /// Hand an inbound NIP-46 RPC response event to the signer. JSON is the
-    /// already-decrypted RPC payload body (`{"id":"...","result":"..."}`).
-    /// No-op for signers that don't have a relay-driven response path.
-    fn deliver_rpc_response(&self, response_json: &str);
+    /// Hand an inbound response to the signer for correlation-keyed dispatch.
+    ///
+    /// - **NIP-46**: `response_json` is the already-decrypted kind:24133 RPC
+    ///   body (`{"id":"...","result":"..."}`).
+    /// - **NIP-55**: `response_json` is the serialized
+    ///   [`nmp_signer_iface::ExternalSignerResponse`] from the capability bridge.
+    ///
+    /// No-op for signers that don't have an async response path (e.g. local
+    /// key signer). Implementations silently drop malformed input so a bad
+    /// frame degrades into the originating operation's normal timeout rather
+    /// than poisoning the signer state.
+    ///
+    /// Named `deliver_response` (not `deliver_rpc_response`) because NIP-55
+    /// is not RPC-based. This is the ADR-0048 hard-break rename; no compat
+    /// alias is provided (no-compat-aliases rule).
+    fn deliver_response(&self, response_json: &str);
 
     /// Called by the actor before the signer is removed. Implementations that
     /// hold in-flight async requests should resolve them with an error so

@@ -239,7 +239,7 @@ mod tests {
         fn nip44_decrypt(&self, _: &str, _: &str) -> SignerOp<String> {
             SignerOp::err(SignerError::Backend("unused in tests".to_string()))
         }
-        fn deliver_rpc_response(&self, _: &str) {}
+        fn deliver_response(&self, _: &str) {}
     }
 
     /// End-to-end gift-wrap through the adapter: the seal step routes
@@ -311,7 +311,7 @@ mod tests {
             fn nip44_decrypt(&self, _: &str, _: &str) -> SignerOp<String> {
                 SignerOp::err(SignerError::Backend("unused".to_string()))
             }
-            fn deliver_rpc_response(&self, _: &str) {}
+            fn deliver_response(&self, _: &str) {}
         }
         let handle: Arc<dyn RemoteSignerHandle> = Arc::new(BadPubkeySigner);
         assert!(RemoteSignerForSeal::new(handle).is_none());
@@ -341,7 +341,7 @@ mod tests {
             fn nip44_decrypt(&self, _: &str, _: &str) -> SignerOp<String> {
                 SignerOp::err(SignerError::Backend("unused".to_string()))
             }
-            fn deliver_rpc_response(&self, _: &str) {}
+            fn deliver_response(&self, _: &str) {}
         }
         let pk = Keys::generate().public_key().to_hex();
         let handle: Arc<dyn RemoteSignerHandle> = Arc::new(FailingSigner { pk });

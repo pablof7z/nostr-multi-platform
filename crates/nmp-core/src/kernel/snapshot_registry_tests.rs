@@ -157,6 +157,60 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
     );
 }
 
+/// Pin [`KERNEL_BUILTIN_PROJECTION_KEYS`] against the actual insertion code:
+/// every key a no-host-projection tick emits must be listed in the const, and
+/// the const must not list a key the kernel can no longer produce (the
+/// conditional drain-on-emit keys — `action_results` / `signed_events` /
+/// `action_stages` / `action_lifecycle` — are absent on an idle tick, so the
+/// reverse check exempts exactly that documented quartet).
+///
+/// This is what keeps the registry-coverage gate in `nmp-app-chirp`
+/// (`every_codegen_registry_key_is_registered_at_runtime`) honest: that gate
+/// treats const membership as "the kernel produces this key", which is only
+/// sound while this test pins the const to the real insertion sites.
+#[test]
+fn builtin_projection_keys_const_matches_runtime() {
+    use crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");
+    let emitted: std::collections::BTreeSet<&str> = parsed
+        .get("projections")
+        .and_then(|p| p.as_object())
+        .expect("projections map present")
+        .keys()
+        .map(String::as_str)
+        .collect();
+
+    // Forward: every emitted built-in key is declared in the const.
+    for key in &emitted {
+        assert!(
+            KERNEL_BUILTIN_PROJECTION_KEYS.contains(key),
+            "kernel emitted built-in projection key {key:?} that is missing from \
+             KERNEL_BUILTIN_PROJECTION_KEYS — add it so the registry-coverage \
+             gate keeps seeing the full producer surface"
+        );
+    }
+
+    // Reverse: every const key is either emitted on an idle tick or one of the
+    // four documented drain-on-emit conditionals.
+    let conditional = [
+        "action_results",
+        "signed_events",
+        "action_stages",
+        "action_lifecycle",
+    ];
+    for key in KERNEL_BUILTIN_PROJECTION_KEYS {
+        assert!(
+            emitted.contains(key) || conditional.contains(key),
+            "KERNEL_BUILTIN_PROJECTION_KEYS lists {key:?}, but an idle tick does \
+             not emit it and it is not a documented drain-on-emit conditional — \
+             the const has drifted from snapshot_projections_with_publish_cluster"
+        );
+    }
+}
+
 /// A projection registered on the shared slot AFTER it was bound onto the
 /// kernel still fires: the slot is `Arc`-shared, so a later registration
 /// through any clone is visible to the next tick (the production FFI path

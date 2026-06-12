@@ -8,7 +8,7 @@
 //!
 //! - `sign` delegates to the existing `Signer::sign` impl, which already
 //!   returns `SignerOp<SignedEvent>` with mapper-validated responses.
-//! - `deliver_rpc_response` is the inbound RPC hook: it delegates decoded
+//! - `deliver_response` is the inbound RPC hook: it delegates decoded
 //!   response ingestion to `Nip46Signer::ingest_rpc_response`.
 //!
 //! Per **D6** (no panics across FFI), this file never `unwrap()`s or panics on
@@ -64,7 +64,7 @@ impl RemoteSignerHandle for Nip46Signer {
         <Self as Nip44>::decrypt(self, &sender, ciphertext)
     }
 
-    fn deliver_rpc_response(&self, response_json: &str) {
+    fn deliver_response(&self, response_json: &str) {
         self.ingest_rpc_response(response_json);
     }
 

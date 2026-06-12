@@ -239,7 +239,7 @@ fn capability_result_ready_dropped_for_removed_account() {
 
     let mut identity = IdentityRuntime::new(
         commands::new_bunker_handshake_slot(),
-        commands::new_bunker_connection_state_slot(),
+        commands::new_signer_state_slot(),
     );
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
@@ -327,7 +327,7 @@ fn capability_result_ready_error_toasts_for_present_account() {
 
     let mut identity = IdentityRuntime::new(
         commands::new_bunker_handshake_slot(),
-        commands::new_bunker_connection_state_slot(),
+        commands::new_signer_state_slot(),
     );
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 

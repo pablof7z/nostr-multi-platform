@@ -39,10 +39,11 @@ extension KernelModel {
     var logs: [String] { typedEnvelope?.logs ?? [] }
     var bunkerHandshake: BunkerHandshake? { typedBunkerHandshake }
     var nip46Onboarding: Nip46Onboarding? { typedNip46Onboarding }
-    /// V-14 / #963: relay-layer bunker connection health. `nil` while no bunker
-    /// session is active (local-key accounts). Drives `BunkerConnectionStateRow`
-    /// in `AccountsView` and any future banner/badge on bunker accounts.
-    var bunkerConnectionState: BunkerConnectionState? { typedBunkerConnectionState }
+    /// ADR-0048 D6: unified remote-signer health (generalises the V-14 / #963
+    /// bunker connection health). `nil` while no remote-signer session is
+    /// active (local-key accounts). Drives `SignerStateRow` in `AccountsView`
+    /// for BOTH NIP-46 bunker and NIP-55 (Amber) accounts.
+    var signerState: SignerState? { typedSignerState }
     var actionLifecycle: ActionLifecycleSnapshot? { typedActionLifecycle }
 
     var mentionProfiles: [String: MentionProfile] {

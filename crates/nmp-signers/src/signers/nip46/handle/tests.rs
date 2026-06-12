@@ -62,9 +62,9 @@ fn signer_kind_is_nip46() {
 }
 
 #[test]
-fn deliver_rpc_response_resolves_pending_sign() {
+fn deliver_response_resolves_pending_sign() {
     // Round-trip: start a sign() (Pending), feed back a real signed event
-    // via deliver_rpc_response, observe the mapper-validated output.
+    // via deliver_response, observe the mapper-validated output.
     let remote_user = LocalKeySigner::generate();
     let remote_pubkey = remote_user.pubkey();
     let (signer, transport) = build_signer_with_remote(&remote_user);
@@ -106,7 +106,7 @@ fn deliver_rpc_response_resolves_pending_sign() {
         "result": result_body,
     })
     .to_string();
-    RemoteSignerHandle::deliver_rpc_response(&signer, &envelope);
+    RemoteSignerHandle::deliver_response(&signer, &envelope);
 
     let signed = op
         .wait(Duration::from_secs(2))
@@ -117,7 +117,7 @@ fn deliver_rpc_response_resolves_pending_sign() {
 }
 
 #[test]
-fn deliver_rpc_response_with_error_field_routes_rejected() {
+fn deliver_response_with_error_field_routes_rejected() {
     let remote_user = LocalKeySigner::generate();
     let (signer, transport) = build_signer_with_remote(&remote_user);
 
@@ -136,7 +136,7 @@ fn deliver_rpc_response_with_error_field_routes_rejected() {
         "error": "user denied",
     })
     .to_string();
-    RemoteSignerHandle::deliver_rpc_response(&signer, &envelope);
+    RemoteSignerHandle::deliver_response(&signer, &envelope);
 
     let err = op
         .wait(Duration::from_secs(2))
@@ -177,7 +177,7 @@ fn disconnect_drains_pending_immediately() {
 }
 
 #[test]
-fn deliver_rpc_response_with_invalid_json_is_dropped() {
+fn deliver_response_with_invalid_json_is_dropped() {
     // D6: invalid JSON must not panic.  We also assert that a subsequent
     // valid envelope still resolves — the signer is not poisoned.
     let remote_user = LocalKeySigner::generate();
@@ -194,9 +194,9 @@ fn deliver_rpc_response_with_invalid_json_is_dropped() {
     let rpc_id = transport.sent.lock().unwrap()[0].id.clone();
 
     // Garbage in — silent drop.
-    RemoteSignerHandle::deliver_rpc_response(&signer, "not json {{");
+    RemoteSignerHandle::deliver_response(&signer, "not json {{");
     // Missing id — silent drop.
-    RemoteSignerHandle::deliver_rpc_response(&signer, r#"{"result":"x"}"#);
+    RemoteSignerHandle::deliver_response(&signer, r#"{"result":"x"}"#);
 
     // Now a real error envelope must still land.
     let envelope = serde_json::json!({
@@ -204,7 +204,7 @@ fn deliver_rpc_response_with_invalid_json_is_dropped() {
         "error": "later",
     })
     .to_string();
-    RemoteSignerHandle::deliver_rpc_response(&signer, &envelope);
+    RemoteSignerHandle::deliver_response(&signer, &envelope);
 
     let err = op
         .wait(Duration::from_secs(2))
@@ -213,10 +213,10 @@ fn deliver_rpc_response_with_invalid_json_is_dropped() {
 }
 
 #[test]
-fn deliver_rpc_response_prefers_result_when_error_is_null() {
+fn deliver_response_prefers_result_when_error_is_null() {
     // Some bunkers always include both fields; an explicit `error: null`
     // means "no error" — the `result` must win.  This pins the null-error
-    // branch of `deliver_rpc_response`.
+    // branch of `deliver_response`.
     let remote_user = LocalKeySigner::generate();
     let remote_pubkey = remote_user.pubkey();
     let (signer, transport) = build_signer_with_remote(&remote_user);
@@ -250,7 +250,7 @@ fn deliver_rpc_response_prefers_result_when_error_is_null() {
         "result": result_body,
     })
     .to_string();
-    RemoteSignerHandle::deliver_rpc_response(&signer, &envelope);
+    RemoteSignerHandle::deliver_response(&signer, &envelope);
 
     let signed = op
         .wait(Duration::from_secs(2))
@@ -259,7 +259,7 @@ fn deliver_rpc_response_prefers_result_when_error_is_null() {
 }
 
 #[test]
-fn deliver_rpc_response_with_unknown_id_is_dropped() {
+fn deliver_response_with_unknown_id_is_dropped() {
     // A response addressed to an id we never registered must be a silent
     // no-op — no panic, and the genuinely-pending op stays pending.
     let remote_user = LocalKeySigner::generate();
@@ -279,7 +279,7 @@ fn deliver_rpc_response_with_unknown_id_is_dropped() {
         "result": "whatever",
     })
     .to_string();
-    RemoteSignerHandle::deliver_rpc_response(&signer, &envelope);
+    RemoteSignerHandle::deliver_response(&signer, &envelope);
 
     // The real op must still be pending — the stray response did not
     // resolve it.
