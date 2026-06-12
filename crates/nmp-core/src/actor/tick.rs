@@ -7,6 +7,52 @@ use crate::update_envelope::UpdateFrameBytes;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
+/// D8 — hard ceiling on the snapshot-emit rate.
+///
+/// A host MAY request any `emit_hz` value but the actor MUST NOT spin faster
+/// than 60 Hz.  Above this rate the snapshot serialisation cost begins to
+/// measurably compete with relay ingest on the actor thread, and the
+/// additional frames carry no useful new state for any 60-fps display.
+///
+/// Any `emit_hz` above this value is silently clamped to `EMIT_HZ_MAX` by
+/// [`clamp_emit_hz`] (called in the `Start` and `Configure` dispatch arms).
+/// A kernel log line is emitted so the violation is observable in diagnostics
+/// (D6: no panics at configuration time).
+pub const EMIT_HZ_MAX: u32 = 60;
+
+/// Clamp a host-supplied `emit_hz` to the D8 ceiling.
+///
+/// Returns `(clamped_hz, was_clamped)`.  Callers use the boolean to decide
+/// whether to emit a kernel log line.  The returned value is always in
+/// `[1, EMIT_HZ_MAX]` — the lower bound comes from [`emit_interval`]'s
+/// existing `hz.max(1)` guard; the upper bound is the new D8 gate.
+#[inline]
+pub(super) fn clamp_emit_hz(hz: u32) -> (u32, bool) {
+    if hz > EMIT_HZ_MAX {
+        (EMIT_HZ_MAX, true)
+    } else {
+        (hz, false)
+    }
+}
+
+/// Clamp a host-supplied `emit_hz` to the D8 ceiling, emitting a kernel log
+/// line (D6: observable, not a panic) when a clamp occurs.
+///
+/// `site` names the dispatch arm (`"Start"` / `"Configure"`) for the log line.
+/// Returns the clamped value to store in the actor's `emit_hz`. This is the
+/// single entry point the `Start` and `Configure` arms call so the clamp +
+/// logging policy lives in one place.
+pub(super) fn clamp_emit_hz_logged(kernel: &mut Kernel, requested_hz: u32, site: &str) -> u32 {
+    let (hz, was_clamped) = clamp_emit_hz(requested_hz);
+    if was_clamped {
+        kernel.log(format!(
+            "D8: {site} emit_hz={requested_hz} exceeds the {EMIT_HZ_MAX} Hz \
+             ceiling — clamped to {hz} Hz"
+        ));
+    }
+    hz
+}
+
 /// Compute how long the actor loop should block on `relay_rx.recv_timeout`.
 ///
 /// When the kernel has un-emitted changes and we are running, returns the
@@ -87,6 +133,11 @@ pub(super) fn maybe_emit_after_dispatch(
 }
 
 // ── D8 regression test ───────────────────────────────────────────────────────
+
+// D8 emit_hz ceiling tests — kept beside `tick.rs` (off the ratcheted
+// `actor/mod.rs` module list) so this PR does not touch that file.
+#[cfg(all(test, feature = "native"))]
+mod emit_hz_clamp_tests;
 
 #[cfg(test)]
 mod tests {

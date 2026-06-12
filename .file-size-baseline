@@ -30,7 +30,7 @@ crates/nmp-core/src/actor/commands/identity.rs	1562
 crates/nmp-core/src/actor/commands/publish.rs	742
 crates/nmp-core/src/actor/commands/remote_signer_tests.rs	1164
 crates/nmp-core/src/actor/commands/tests.rs	2270
-crates/nmp-core/src/actor/dispatch.rs	2572
+crates/nmp-core/src/actor/dispatch.rs	2471
 crates/nmp-core/src/actor/mod.rs	2406
 crates/nmp-core/src/actor/pending_sign.rs	573
 crates/nmp-core/src/actor/relay_mgmt.rs	534
@@ -50,7 +50,6 @@ crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	840
 crates/nmp-core/src/kernel/retention_tests.rs	546
 crates/nmp-core/src/kernel/routing_trace_dto.rs	532
 crates/nmp-core/src/kernel/snapshot_registry_tests.rs	866
-crates/nmp-core/src/kernel/snapshot_registry.rs	515
 crates/nmp-core/src/kernel/state_projection_tests.rs	742
 crates/nmp-core/src/kernel/test_support.rs	538
 crates/nmp-core/src/kernel/tests.rs	708

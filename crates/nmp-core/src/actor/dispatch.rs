@@ -63,7 +63,7 @@ use super::relay_mgmt::{
     shutdown_relay_worker, spawn_missing_relays,
 };
 use super::session_persistence;
-use super::tick::{emit_now, maybe_emit_after_dispatch};
+use super::tick::{clamp_emit_hz_logged, emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
@@ -385,114 +385,13 @@ pub(super) struct ActorContext<'a> {
     pub(super) raw_event_observers_handle: &'a crate::actor::RawEventObserverSlot,
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// Debt C — capability adapters for `ProtocolCommandContext`.
-//
-// The `Protocol(cmd)` arm constructs these to bridge the actor's
-// kernel + identity references into the typed capability traits the
-// substrate `ProtocolCommandContext` consumes. Lifetimes are bound to
-// the dispatch arm's stack frame; the adapters never outlive their
-// `RefCell` borrow targets.
-// ────────────────────────────────────────────────────────────────────────
-
-struct KernelClockAdapter<'a> {
-    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
-}
-
-// SAFETY: the dispatch arm constructs and drops the adapter on the
-// actor thread; the `&RefCell<&mut Kernel>` reference never crosses a
-// thread boundary. The `Send + Sync` claim is needed because the
-// substrate trait carries the bound (`dyn KernelClock` lives behind
-// `&dyn` in `ProtocolCommandContext`), but the adapter is held only
-// for the dispatch arm's stack frame.
-unsafe impl<'a> Send for KernelClockAdapter<'a> {}
-unsafe impl<'a> Sync for KernelClockAdapter<'a> {}
-
-impl<'a> crate::substrate::KernelClock for KernelClockAdapter<'a> {
-    fn now_secs(&self) -> u64 {
-        self.kernel.borrow().now_secs()
-    }
-}
-
-struct LocalSignerAccessAdapter<'a> {
-    identity: &'a std::cell::RefCell<&'a IdentityRuntime>,
-}
-
-unsafe impl<'a> Send for LocalSignerAccessAdapter<'a> {}
-unsafe impl<'a> Sync for LocalSignerAccessAdapter<'a> {}
-
-impl<'a> crate::substrate::LocalSignerAccess for LocalSignerAccessAdapter<'a> {
-    fn active_local_keys(&self) -> Option<nostr::Keys> {
-        self.identity.borrow().active_local_keys().cloned()
-    }
-    fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
-        self.identity.borrow().active_signer_for_seal()
-    }
-}
-
-struct ErrorSurfaceAdapter<'a> {
-    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
-}
-
-unsafe impl<'a> Send for ErrorSurfaceAdapter<'a> {}
-unsafe impl<'a> Sync for ErrorSurfaceAdapter<'a> {}
-
-impl<'a> crate::substrate::ErrorSurface for ErrorSurfaceAdapter<'a> {
-    fn set_last_error_toast(&self, message: Option<String>) {
-        if let Ok(mut k) = self.kernel.try_borrow_mut() {
-            k.set_last_error_toast(message);
-        }
-    }
-    fn record_action_failure(&self, correlation_id: String, reason: String) {
-        if let Ok(mut k) = self.kernel.try_borrow_mut() {
-            k.record_action_failure(correlation_id, reason);
-        }
-    }
-}
-
-struct ActionStageTrackerAdapter<'a> {
-    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
-}
-
-unsafe impl<'a> Send for ActionStageTrackerAdapter<'a> {}
-unsafe impl<'a> Sync for ActionStageTrackerAdapter<'a> {}
-
-impl<'a> crate::substrate::ActionStageTracker for ActionStageTrackerAdapter<'a> {
-    fn record_requested(&self, correlation_id: &str) {
-        if let Ok(mut k) = self.kernel.try_borrow_mut() {
-            k.record_action_stage(
-                correlation_id,
-                crate::kernel::action_stages::ActionStage::Requested,
-                None,
-            );
-        }
-    }
-}
-
-/// Debt-C-follow-up — bridge the kernel's `outbox_router` slot into the
-/// substrate [`crate::substrate::RecipientRelayLookup`] capability. NIP-57
-/// LNURL fetcher consumes this to populate the kind:9734 `relays` tag
-/// (recipient's NIP-65 write set + cold-start fallback) without naming
-/// `OutboxRouter` or the substrate `MailboxCache` directly.
-struct RecipientRelayLookupAdapter<'a> {
-    kernel: &'a std::cell::RefCell<&'a mut Kernel>,
-}
-
-unsafe impl<'a> Send for RecipientRelayLookupAdapter<'a> {}
-unsafe impl<'a> Sync for RecipientRelayLookupAdapter<'a> {}
-
-impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<'a> {
-    fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String> {
-        // Kernel read; no mutation required. `try_borrow` keeps the
-        // adapter total in the presence of a re-entrant kernel borrow on
-        // the dispatch arm (defensive — production has no such cycle).
-        self.kernel
-            .try_borrow()
-            .ok()
-            .map(|k| k.recipient_publish_relays(recipient, kind))
-            .unwrap_or_default()
-    }
-}
+// Debt C — capability adapters for `ProtocolCommandContext`, extracted to
+// a submodule so this file stays within its LOC ceiling.
+mod substrate_adapters;
+use substrate_adapters::{
+    ActionStageTrackerAdapter, ErrorSurfaceAdapter, KernelClockAdapter,
+    LocalSignerAccessAdapter, RecipientRelayLookupAdapter,
+};
 
 /// M2 (ADR-0042) — thin shim delegating to the always-compiled
 /// [`crate::subs::interest_builder::build_interest_pair`].
@@ -516,11 +415,11 @@ pub(super) fn dispatch_command(
     match command {
         ActorCommand::Start {
             visible_limit,
-            emit_hz: hz,
+            emit_hz: requested_hz,
             initial_relays,
         } => {
             *ctx.running = true;
-            *ctx.emit_hz = hz;
+            *ctx.emit_hz = clamp_emit_hz_logged(ctx.kernel, requested_hz, "Start"); // D8 ceiling
             *ctx.startup_sent = false;
             ctx.kernel.set_visible_limit(visible_limit);
             // Seed the app-declared initial relay configuration into
@@ -580,9 +479,9 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::Configure {
             visible_limit,
-            emit_hz: hz,
+            emit_hz: requested_hz,
         } => {
-            *ctx.emit_hz = hz;
+            *ctx.emit_hz = clamp_emit_hz_logged(ctx.kernel, requested_hz, "Configure"); // D8 ceiling
             ctx.kernel.set_visible_limit(visible_limit);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())

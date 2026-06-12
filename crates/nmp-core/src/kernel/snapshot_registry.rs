@@ -93,96 +93,10 @@ impl ChangeGate for AtomicU64 {
     }
 }
 
-/// A registered generic projection: the closure plus the optional change-gate
-/// memo that lets `run` skip re-invoking the closure when the gate is unchanged.
-///
-/// - `f` — the host projection closure (always present).
-/// - `gate` — `None` for the default always-run registration
-///   ([`SnapshotRegistry::register`]); `Some` for the gated variant
-///   ([`SnapshotRegistry::register_gated`]).
-/// - `memo` — interior-mutable per-key cache of `(last witnessed gate value,
-///   last produced value)`. Interior mutability (a `Mutex`) is required because
-///   [`SnapshotRegistry::run`] takes `&self` (it is driven from `make_update`
-///   through a shared `&self` kernel path); threading `&mut` all the way through
-///   `make_update` would ripple a borrow change across the whole emit path. The
-///   `Mutex` is contended only by the single actor thread that drives `run`, so
-///   it is effectively uncontended in production. `None` until the first run
-///   populates it; ignored entirely when `gate` is `None`.
-struct ProjectionEntry {
-    f: ProjectionFn,
-    gate: Option<Arc<dyn ChangeGate>>,
-    memo: Mutex<Option<(u64, serde_json::Value)>>,
-}
-
-impl ProjectionEntry {
-    /// An ungated (always-run) entry — the default registration semantics.
-    fn ungated(f: ProjectionFn) -> Self {
-        Self {
-            f,
-            gate: None,
-            memo: Mutex::new(None),
-        }
-    }
-
-    /// A gated entry — `run` consults `gate` and may serve `memo` instead of
-    /// invoking `f`.
-    fn gated(gate: Arc<dyn ChangeGate>, f: ProjectionFn) -> Self {
-        Self {
-            f,
-            gate: Some(gate),
-            memo: Mutex::new(None),
-        }
-    }
-
-    /// Produce this entry's value for the current tick.
-    ///
-    /// Returns `Some(value)` on success; `None` when the closure panicked (D15:
-    /// every host-supplied closure invocation is wrapped in [`catch_unwind`] so
-    /// a panicking projection can never unwind the actor thread). The caller
-    /// ([`SnapshotRegistry::run`]) omits the key from the snapshot when `None`
-    /// is returned, exactly as if the key had never been registered.
-    ///
-    /// Ungated: always invokes the closure (legacy semantics, unchanged).
-    /// Gated: if the gate value matches the memoized value, clones and returns
-    /// the cached value WITHOUT invoking the closure; otherwise invokes the
-    /// closure, caches `(gate_value, value)`, and returns it. A panicking
-    /// gated closure leaves the prior memo intact (not overwritten), so the
-    /// next clean gate still serves the last good cached value.
-    fn value_for_tick(&self) -> Option<serde_json::Value> {
-        let Some(gate) = self.gate.as_ref() else {
-            // Ungated: the default always-run path — never touches the memo.
-            // D15: host-supplied closure invocation wrapped in catch_unwind.
-            return catch_unwind(AssertUnwindSafe(|| (self.f)())).ok();
-        };
-
-        let gate_value = gate.current();
-        // Fast path: a clean gate serves the cached value without invoking `f`.
-        // The memo mutex is contended only by the single actor thread, so this
-        // lock is effectively uncontended. A poisoned memo (defensive — the lock
-        // is always released before `f` runs, so a closure panic can never
-        // poison it) collapses to a fresh run.
-        if let Ok(memo) = self.memo.lock() {
-            if let Some((cached_gate, cached_value)) = memo.as_ref() {
-                if *cached_gate == gate_value {
-                    return Some(cached_value.clone());
-                }
-            }
-        }
-
-        // Dirty (or never run): invoke `f` inside catch_unwind (D15), then
-        // memoize for the next tick on success. `f` runs OUTSIDE the memo lock
-        // so a slow/panicking closure never holds the memo mutex. On panic,
-        // return `None` (key omitted this tick) and leave the prior memo intact.
-        let value = match catch_unwind(AssertUnwindSafe(|| (self.f)())) {
-            Ok(v) => v,
-            Err(_) => return None,
-        };
-        if let Ok(mut memo) = self.memo.lock() {
-            *memo = Some((gate_value, value.clone()));
-        }
-        Some(value)
-    }
-}
+// `ProjectionEntry` — the per-key closure + change-gate memo machinery,
+// extracted to a submodule to keep this file within its LOC ceiling.
+mod entry;
+use entry::ProjectionEntry;
 
 /// A host-registered **typed** projection closure — the FlatBuffers-sidecar
 /// counterpart to [`ProjectionFn`].
@@ -221,6 +135,18 @@ pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send 
 /// a lock.
 pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
 
+// D5 — registration-count ceilings and the loud-no-op admission helpers
+// (`MAX_SNAPSHOT_PROJECTIONS` / `MAX_TICK_OBSERVERS` + `admit_keyed` /
+// `admit_additive`). Extracted to a `pub` submodule so the registry file stays
+// within its LOC ceiling; the constants are part of the public D5 contract.
+pub mod bounds;
+use bounds::{admit_additive, admit_keyed};
+
+// D5 — registration-count ceiling tests (kept beside the registry, off the
+// `kernel/mod.rs` module list, so this PR does not touch that ratcheted file).
+#[cfg(test)]
+mod bounds_tests;
+
 /// Registry of host-supplied snapshot projections.
 ///
 /// Keyed by `String` so re-registering the same key replaces the old closure
@@ -258,13 +184,28 @@ impl SnapshotRegistry {
     /// projection serializes a large structure that rarely changes, prefer
     /// [`Self::register_gated`] to skip re-running it on ticks where its inputs
     /// did not change.
+    ///
+    /// D5: if this is a **new** key and the registry already holds
+    /// [`MAX_SNAPSHOT_PROJECTIONS`] entries, the registration is silently
+    /// dropped and a `tracing::warn!` diagnostic is emitted (D6: no panic).
     pub fn register(
         &mut self,
         key: impl Into<String>,
         f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
     ) {
+        let key = key.into();
+        // D5: admit a new key only when below the ceiling; re-registering an
+        // existing key is always allowed (it just replaces the closure).
+        if !admit_keyed(
+            self.projections.len(),
+            self.projections.contains_key(&key),
+            &key,
+            "snapshot projection",
+        ) {
+            return;
+        }
         self.projections
-            .insert(key.into(), ProjectionEntry::ungated(Box::new(f)));
+            .insert(key, ProjectionEntry::ungated(Box::new(f)));
     }
 
     /// Register a **change-gated** projection closure under `key`.
@@ -284,14 +225,26 @@ impl SnapshotRegistry {
     ///
     /// Last-writer-wins by `key`, exactly like [`Self::register`]; re-registering
     /// (gated or ungated) replaces the entry and discards any prior memo.
+    ///
+    /// D5: same [`MAX_SNAPSHOT_PROJECTIONS`] ceiling as [`Self::register`];
+    /// re-registering an existing key is always allowed.
     pub fn register_gated(
         &mut self,
         key: impl Into<String>,
         gate: Arc<dyn ChangeGate>,
         f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
     ) {
+        let key = key.into();
+        if !admit_keyed(
+            self.projections.len(),
+            self.projections.contains_key(&key),
+            &key,
+            "snapshot projection",
+        ) {
+            return;
+        }
         self.projections
-            .insert(key.into(), ProjectionEntry::gated(gate, Box::new(f)));
+            .insert(key, ProjectionEntry::gated(gate, Box::new(f)));
     }
 
     /// Run every registered projection and collect the results into the map
@@ -351,12 +304,25 @@ impl SnapshotRegistry {
     /// fall back to the generic `Value` subtree (ADR-0037 Commitment 4).
     /// Registering the same key twice replaces the first — last-writer-wins, with
     /// no duplicate-closure CPU cost on subsequent ticks.
+    ///
+    /// D5: same [`MAX_SNAPSHOT_PROJECTIONS`] ceiling as [`Self::register`],
+    /// applied independently to the typed registry.  Re-registering an existing
+    /// key is always allowed.
     pub fn register_typed(
         &mut self,
         key: impl Into<String>,
         f: impl Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
     ) {
-        self.typed_projections.insert(key.into(), Box::new(f));
+        let key = key.into();
+        if !admit_keyed(
+            self.typed_projections.len(),
+            self.typed_projections.contains_key(&key),
+            &key,
+            "typed snapshot projection",
+        ) {
+            return;
+        }
+        self.typed_projections.insert(key, Box::new(f));
     }
 
     /// Run every registered typed projection and collect the results into the
@@ -398,7 +364,13 @@ impl SnapshotRegistry {
     /// Registrations are additive (no key, no replace-by-key); each fires on
     /// every tick. D8: the closure runs inside the snapshot tick and MUST be
     /// non-blocking.
+    ///
+    /// D5: if the observer list already holds [`MAX_TICK_OBSERVERS`] entries the
+    /// registration is a loud no-op (D6: `tracing::warn!`, no panic).
     pub fn register_tick_observer(&mut self, f: impl Fn() + Send + Sync + 'static) {
+        if !admit_additive(self.tick_observers.len()) {
+            return;
+        }
         self.tick_observers.push(Box::new(f));
     }
 
