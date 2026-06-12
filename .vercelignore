@@ -4,11 +4,6 @@ android/
 android/**
 ios/
 ios/**
-/apps/chirp/chirp-desktop/
-/apps/chirp/chirp-tui/
-/apps/chirp/nmp-app-chirp/
-/apps/nmp-gallery/
-/apps/nmp-wallet-poc/
 tools/
 tools/**
 /scripts/

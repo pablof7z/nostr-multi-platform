@@ -48,10 +48,21 @@ rustup target add wasm32-unknown-unknown
 # ---------------------------------------------------------------------------
 # 2. Ensure wasm-pack 0.13.1
 #    Pinned to match the wasm-bindgen version in crates/nmp-wasm/Cargo.toml.
+#    Use the pre-built binary when possible (saves ~1-2 min vs cargo-install).
 # ---------------------------------------------------------------------------
 if ! command -v wasm-pack &>/dev/null; then
-    echo "[build] wasm-pack not found — installing 0.13.1..."
-    cargo install wasm-pack --version 0.13.1 --locked
+    echo "[build] wasm-pack not found — fetching pre-built 0.13.1 binary..."
+    WASM_PACK_URL="https://github.com/rustwasm/wasm-pack/releases/download/v0.13.1/wasm-pack-v0.13.1-x86_64-unknown-linux-musl.tar.gz"
+    WASM_PACK_TMP=$(mktemp -d)
+    if curl -fsSL "$WASM_PACK_URL" | tar -xz -C "$WASM_PACK_TMP"; then
+        install -m 0755 "$WASM_PACK_TMP"/wasm-pack-v0.13.1-x86_64-unknown-linux-musl/wasm-pack \
+            "$HOME/.cargo/bin/wasm-pack"
+        rm -rf "$WASM_PACK_TMP"
+    else
+        echo "[build] pre-built binary failed — falling back to cargo install..."
+        rm -rf "$WASM_PACK_TMP"
+        cargo install wasm-pack --version 0.13.1 --locked
+    fi
 fi
 
 # ---------------------------------------------------------------------------
