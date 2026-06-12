@@ -87,27 +87,13 @@ pub(crate) fn unsupported_signer_backend_reason(backend: &SignerBackend) -> Stri
     )
 }
 
-/// Fan a publish-engine outbound batch out to the matching browser-relay
-/// drivers. Same URL-match pattern `relay_pool::build_sink` uses for the
-/// inbound→outbound (kernel-reply) path — extracted here so the publish path
-/// and the relay-pool sink share one implementation.
-///
-/// The sink is wasm32-only because the underlying `BrowserRelayDriver` is
-/// wasm32-only (the native runtime never instantiates one). On native targets
-/// this module exposes a no-op shim so the call sites in `runtime.rs` stay
-/// shim-free.
-#[cfg(target_arch = "wasm32")]
-pub(crate) fn fan_out_outbound(
-    drivers: &Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
-    outbound: &[OutboundMessage],
-) {
-    let drivers = drivers.borrow();
-    for message in outbound {
-        if let Some(driver) = drivers.iter().find(|d| d.url() == message.relay_url()) {
-            let _ = driver.send_text(message.text());
-        }
-    }
-}
+// The fan-out helper previously lived here with a `.find()` loop (first
+// matching driver only), which dropped frames addressed to `"both"`-role
+// URLs that spawn two drivers sharing the same relay URL (issue #1143 fix 2).
+// It has been unified into `crate::relay_pool::fan_out_outbound`, which uses
+// `.filter()` so every matching driver receives the frame.  All callers
+// (`tick::start_tick_interval`, `runtime::WasmRuntime::fan_outbound`, and
+// `publish_app_action` below) now route through that single implementation.
 
 /// V-01 Stage 3c — async publish path executed inside a `js_sys::Promise`.
 ///
@@ -233,7 +219,7 @@ pub(crate) async fn publish_app_action(
         let mut r = reducer.borrow_mut();
         r.publish_signed_event(&signed, &[], Some(correlation_id.clone()))
     };
-    fan_out_outbound(&drivers, &outbound);
+    crate::relay_pool::fan_out_outbound(&drivers, &outbound);
 
     // Push a fresh snapshot so the host sees the new publish-queue entry
     // (status: "accepted_locally") immediately. The same helper the relay

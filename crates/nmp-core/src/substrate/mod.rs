@@ -53,6 +53,8 @@ mod keyring;
 pub mod placeholder;
 mod protocol;
 mod raw_event_forwarding;
+mod relay_connected;
+mod relay_info;
 mod relay_intercept;
 mod relay_score_store;
 mod req_intercept;
@@ -107,6 +109,11 @@ pub use protocol::{
 pub use raw_event_forwarding::{
     RawEventForwardPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
 };
+pub use relay_connected::{
+    fan_relay_connected, install_relay_connected_hook, new_relay_connected_hook_slot,
+    RelayConnectedHook, RelayConnectedHookSlot,
+};
+pub use relay_info::RelayInfoDoc;
 pub use relay_intercept::{
     new_relay_text_interceptor_slot, RelayTextInterceptor, RelayTextInterceptorSlot,
 };

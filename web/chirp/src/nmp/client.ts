@@ -36,7 +36,9 @@ export const runtimeConnection: RuntimeConnection = {
 export type NmpClient = {
   snapshot(): RuntimeSnapshot;
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
-  start(): Promise<RuntimeSnapshot>;
+  /** Start the runtime. Pass `relays` to override the built-in chirp relay
+   *  list (used by the Playwright smoke test to inject the fixture relay). */
+  start(relays?: string[]): Promise<RuntimeSnapshot>;
   dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
   dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
   dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
@@ -135,7 +137,7 @@ abstract class BaseClient implements NmpClient {
     return snapshot;
   }
 
-  abstract start(): Promise<RuntimeSnapshot>;
+  abstract start(relays?: string[]): Promise<RuntimeSnapshot>;
   abstract dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
   dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot> {
     return this.dispatch(command.actionType, command.payload);
@@ -167,13 +169,23 @@ class WorkerNmpClient extends BaseClient {
     } satisfies WorkerRequest);
   }
 
-  async start(): Promise<RuntimeSnapshot> {
+  async start(relays?: string[]): Promise<RuntimeSnapshot> {
     await this.helloReady;
+    // When relay URLs are supplied (e.g. from the Playwright smoke test via
+    // the ?relay= query parameter), pass them as relay_bootstrap so the wasm
+    // runtime uses them instead of its built-in chirp defaults. The wasm
+    // StartConfig serde-defaults relay_bootstrap to the chirp list, so the
+    // explicit non-empty array takes precedence (relay_bootstrap_from_config).
+    const relayBootstrap =
+      relays && relays.length > 0
+        ? relays.map((url) => ({ url, role: "both" as const }))
+        : undefined;
     return this.request({
       type: "start",
       app_id: runtimeConnection.appId,
       database_name: runtimeConnection.databaseName,
       correlation_id: "web-start",
+      ...(relayBootstrap ? { relay_bootstrap: relayBootstrap } : {}),
     });
   }
 
@@ -241,7 +253,8 @@ class InProcessNmpClient extends BaseClient {
     });
   }
 
-  async start(): Promise<RuntimeSnapshot> {
+  async start(_relays?: string[]): Promise<RuntimeSnapshot> {
+    // Degraded runtime ignores relays — relay connectivity is not available.
     return this.send({
       type: "start",
       app_id: runtimeConnection.appId,

@@ -85,7 +85,7 @@ jobs:
   # Rust+Swift pin of 25.12.19). Regenerate locally per the instructions in
   # ci/check-kotlin-flatc-drift.sh.
   #
-  # TypeScript/web bindings drift gate: deferred to post-v1 (#1007).
+  # TypeScript/web bindings drift gate: deferred to post-v1 (#1209).
   kotlin-flatc-drift:
     name: Kotlin flatc drift (android/app/src/main/java/nmp/transport/*.kt vs nmp_update.fbs)
     runs-on: ubuntu-latest

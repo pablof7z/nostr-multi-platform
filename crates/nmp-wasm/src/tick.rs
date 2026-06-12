@@ -16,8 +16,9 @@
 //! loop. Each tick:
 //!
 //! 1. Calls `tick_once` — borrows, ticks, reads dirty flag, drops borrow.
-//! 2. Fans the outbound batch through `publish_path::fan_out_outbound` to live
-//!    relay drivers.
+//! 2. Fans the outbound batch through `relay_pool::fan_out_outbound` to live
+//!    relay drivers (the single canonical fan-out that uses `.filter()` so
+//!    every matching driver on a `"both"`-role URL receives the frame).
 //! 3. **Iff** `dirty` — pushes a snapshot through the registered JS callback
 //!    (`snapshot::push_snapshot_if_callback`). Idle ticks with no state change
 //!    skip the push, avoiding spurious JS-heap allocations and upstream
@@ -67,7 +68,7 @@ pub(crate) fn start_tick_interval(
 ) -> gloo_timers::callback::Interval {
     gloo_timers::callback::Interval::new(1_000, move || {
         let (outbound, dirty) = tick_once(&reducer);
-        crate::publish_path::fan_out_outbound(&drivers, &outbound);
+        crate::relay_pool::fan_out_outbound(&drivers, &outbound);
         if dirty {
             crate::snapshot::push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
         }

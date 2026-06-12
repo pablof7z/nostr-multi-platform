@@ -848,6 +848,18 @@ pub enum ActorCommand {
         correlation_id: String,
         reason: String,
     },
+    /// Store a fetched relay-information document on the kernel's per-URL
+    /// transport row (ADR-0051). Posted by the `nmp-nip11` fetch worker; the
+    /// dispatch arm folds the parsed `RelayInfoDoc` via
+    /// [`Kernel::set_relay_info`] so the `relay_diagnostics` projection
+    /// surfaces it. `nmp-core` names no NIP-11 noun — it carries the
+    /// substrate-generic `RelayInfoDoc` (D0); malformed JSON is a no-op (D6).
+    SetRelayInfo {
+        /// The relay URL the document was fetched for (canonicalised on store).
+        relay_url: String,
+        /// `RelayInfoDoc` serialised via `RelayInfoDoc::to_json`.
+        doc_json: String,
+    },
     /// Record a terminal `Accepted` stage for `correlation_id` on
     /// behalf of an off-thread worker whose success outcome is observed
     /// outside the publish engine. The symmetric counterpart to
@@ -1142,6 +1154,8 @@ pub fn run_actor(
         // V-38: the wallet runtime + status slot moved to `nmp-nip47`. The
         // actor only carries a substrate-generic relay-text interceptor slot.
         crate::substrate::new_relay_text_interceptor_slot(),
+        // ADR-0051: throwaway relay-connected hook slot (no FFI surface here).
+        crate::substrate::new_relay_connected_hook_slot(),
         // D0: NIP-46 remote signing is an app noun — likewise a private
         // throwaway bunker-handshake slot (no FFI surface to register the
         // `"bunker_handshake"` projection here).
@@ -1248,6 +1262,8 @@ pub fn run_actor_with_lifecycle_observer(
         // V-38: wallet moved to `nmp-nip47`; backwards-compat shim threads a
         // throwaway substrate relay-text interceptor slot.
         crate::substrate::new_relay_text_interceptor_slot(),
+        // ADR-0051: throwaway relay-connected hook slot (no FFI surface here).
+        crate::substrate::new_relay_connected_hook_slot(),
         // D0: NIP-46 remote signing is an app noun — private throwaway
         // bunker-handshake slot (no FFI surface here).
         new_bunker_handshake_slot(),
@@ -1344,6 +1360,11 @@ pub fn run_actor_with_observers(
     // actor calls `interceptor.on_relay_text(...)` for every inbound text
     // frame. `None` (the default) is a no-op.
     relay_text_interceptor: crate::substrate::RelayTextInterceptorSlot,
+    // ADR-0051: relay-connected hook slot. Protocol-crate runtimes (today
+    // `nmp-nip11`) install here at host init; the actor calls
+    // `fan_relay_connected(...)` on every `PoolEvent::Opened`. Empty = no-op;
+    // `nmp-core` names no NIP-11 noun (D0).
+    relay_connected_hook: crate::substrate::RelayConnectedHookSlot,
     // D0: NIP-46 remote signing is an app noun — the shared bunker-handshake
     // slot. One `Arc` clone is captured by the built-in `"bunker_handshake"`
     // snapshot-projection closure on the `NmpApp`; this one is handed to the
@@ -2051,6 +2072,8 @@ pub fn run_actor_with_observers(
                         event,
                         &mut kernel,
                         &relay_text_interceptor,
+                        &relay_connected_hook,
+                        &command_tx_self,
                         &mut relay_controls,
                         &mut slot_to_url,
                         &pool,
