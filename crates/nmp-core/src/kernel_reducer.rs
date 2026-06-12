@@ -444,6 +444,7 @@ impl KernelReducer {
 
 mod composition_seams;
 mod feed_verbs;
+mod react;
 mod reply;
 
 impl Default for KernelReducer {
@@ -467,3 +468,7 @@ mod tests_feed_verbs;
 #[cfg(test)]
 #[path = "kernel_reducer/tests_reply_tags.rs"]
 mod tests_reply_tags;
+
+#[cfg(test)]
+#[path = "kernel_reducer/tests_react.rs"]
+mod tests_react;

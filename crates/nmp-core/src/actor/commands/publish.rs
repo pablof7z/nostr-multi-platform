@@ -539,33 +539,21 @@ pub(crate) fn react(
         // dispatch correlation_id (no-op for `None` callers).
         return toast_no_account(kernel, "react", correlation_id);
     };
-    if !crate::kernel::is_hex_id(target_event_id) {
-        // Broken-promise fix: surface the rejection under the dispatch
-        // correlation_id so the host spinner does not hang.
-        return fail_publish(
-            kernel,
-            "react: malformed target event id".to_string(),
-            correlation_id,
-        );
-    }
-    let content = if reaction.trim().is_empty() {
-        "+".to_string()
-    } else {
-        reaction.to_string()
-    };
-    // NIP-25 §1: a kind:7 reaction SHOULD carry both an `e` tag (the reacted-to
-    // event) and a `p` tag (that event's author) so the author's relays route
-    // the reaction to their notification inbox. Without the `p` tag the author
-    // never learns the reaction happened.
-    //
-    // D6: the author pubkey is resolved from the kernel read-cache. If the
-    // target event isn't cached (`None`) we still publish the reaction with
-    // just the `e` tag — degraded but valid NIP-25 — rather than panicking or
-    // refusing the publish.
-    let mut tags = vec![vec!["e".to_string(), target_event_id.to_string()]];
-    if let Some(author) = kernel.event_author(target_event_id) {
-        tags.push(vec!["p".to_string(), author]);
-    }
+    // Build NIP-25 tags + normalised content via the shared builder.
+    // `reaction_tags` returns None for invalid hex — surface as fail_publish
+    // so the broken-promise fix records the terminal under the dispatch id.
+    let author = kernel.event_author(target_event_id);
+    let (tags, content) =
+        match crate::tags::reaction_tags(target_event_id, author.as_deref(), reaction) {
+            Some(t) => t,
+            None => {
+                return fail_publish(
+                    kernel,
+                    "react: malformed target event id".to_string(),
+                    correlation_id,
+                );
+            }
+        };
     let unsigned = UnsignedEvent {
         pubkey,
         kind: 7,
