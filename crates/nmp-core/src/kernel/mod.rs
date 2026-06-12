@@ -2123,17 +2123,10 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        // #1090 Stage 1 — derive the store-tier pin set from live kernel state
-        // (timeline + event_claims + active open-interest registry) and pass it
-        // to the store so Phase-2 LRU eviction never drops an event the snapshot
-        // still references.  The pin set is ephemeral: recomputed every pass,
-        // never persisted (the old persisted-claims sub-dbs were deleted).
+        // #1090 Stage 1 — derive the ephemeral store-tier pin set (see
+        // `derive_store_pin_set`) and thread it into Phase-2 LRU eviction.
         let pins = self.derive_store_pin_set();
-        match self.store.gc_step_with_pins(
-            crate::store::GcBudget::production(),
-            now_secs,
-            &pins,
-        ) {
+        match self.store.gc_step_with_pins(crate::store::GcBudget::production(), now_secs, &pins) {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
