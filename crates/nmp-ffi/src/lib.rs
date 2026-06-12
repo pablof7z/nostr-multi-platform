@@ -2636,6 +2636,10 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::active_local_keys(self)
     }
 
+    fn active_pubkey(&self) -> nmp_core::slots::ActiveAccountSlot {
+        NmpApp::active_account_handle(self)
+    }
+
     fn actor_sender(&self) -> Sender<ActorCommand> {
         NmpApp::actor_sender(self)
     }

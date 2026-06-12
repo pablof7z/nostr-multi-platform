@@ -582,6 +582,11 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.active_local_keys()
     }
 
+    fn active_pubkey(&self) -> nmp_core::slots::ActiveAccountSlot {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.active_account_handle()
+    }
+
     fn actor_sender(&self) -> std::sync::mpsc::Sender<nmp_core::ActorCommand> {
         let app: &NmpApp = unsafe { &*self.app };
         app.actor_sender()
