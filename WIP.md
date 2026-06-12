@@ -19,8 +19,6 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-12 — **PR 3: Android Marmot op parity + serialized action envelopes + KernelModel split** (V-109 ladder). Branch: `feat/android-marmot-parity`. Worktree: agent-a314e73c295c88940. Extracts marmot section of KernelModel into MarmotActions.kt; typed @Serializable envelope DTOs replacing hand-rolled escapeJson; new ops leave/invite/removeMembers/clearPending; GroupChatScreen overflow menu + MarmotInviteDialog UI; Android unit tests for wire shape.
-
 - 2026-06-12 — **PR-W2: build and deploy real nmp-wasm in Chirp Web** (follows PR-W1 / #1150). Branch: `feat/chirp-web-build-real-wasm`. Worktree: agent-a73fab19a44acce01. Deletes stale checked-in wasm artifact; gitignores generated output; wires wasm-pack build into chirp-web.yml CI and Vercel deploy command.
 
 - 2026-06-12 — **ADR-0048 Stage 2 CI follow-ups: NIP-55 proof lanes + packageName wire + Primal** (advances #1124). Branch: `ci/nip55-proof-lanes-stage2-followups`. Worktree: agent-a8ed4888dc6a20824. Four new CI lanes (gallery android-junit, nmp-ffi --features external-signer, nmp-android-ffi cargo test, nmp-app-gallery --features android-ffi check); `packageName` field on `NostrSignerInfo`; Primal in `KNOWN_NOSTR_SIGNERS` + manifests; all 5 vendor copies updated (drift gate enforces byte-identity).
