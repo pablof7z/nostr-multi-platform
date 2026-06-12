@@ -28,9 +28,18 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             FROM_REF="${{ github.event.pull_request.base.sha }}"
             TO_REF="${{ github.event.pull_request.head.sha }}"
+            # On a PR, trust the baseline as it exists at the PR base: a PR must
+            # not both grow an over-limit file and raise its baseline in the same
+            # reviewable diff.
+            BASELINE_REF="$FROM_REF"
           else
             FROM_REF="${{ github.event.before }}"
             TO_REF="${{ github.sha }}"
+            # On a push, trust the baseline in the pushed commit itself. The
+            # branch already contains any merge / baseline refresh, so comparing
+            # its files against the PREVIOUS commit's stale baseline would raise
+            # false "expansion" failures for legitimately-refreshed entries.
+            BASELINE_REF="$TO_REF"
           fi
 
           # Initial push events use an all-zero "before" SHA.
@@ -38,7 +47,9 @@ jobs:
             FROM_REF="$(git rev-list --max-parents=0 "$TO_REF")"
           fi
 
-          bash .githooks/check-file-size.sh --from-ref "$FROM_REF" --to-ref "$TO_REF"
+          bash .githooks/check-file-size.sh \
+            --from-ref "$FROM_REF" --to-ref "$TO_REF" \
+            --baseline-ref "$BASELINE_REF"
 
       - name: Smoke test — fixture must trigger hard-cap report
         run: |

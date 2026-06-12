@@ -13,6 +13,10 @@
 #                      Without this flag the full tracked tree is checked (CI mode).
 #   --from-ref REF     Check only files changed from REF..TO_REF.
 #   --to-ref REF       Required with --from-ref.
+#   --baseline-ref REF Read the hard-cap baseline from this git ref instead of
+#                      FROM_REF. Use TO_REF for push events (self-consistent
+#                      tree) and FROM_REF/PR-base for pull_request events
+#                      (anti-cheat on baseline raises).
 #   --dry-run          Report violations but exit 0 (used by smoke tests).
 #   --baseline-file F  Read hard-cap baseline from F instead of .file-size-baseline.
 #                      Used by smoke tests.
@@ -31,6 +35,7 @@ DRY_RUN=0
 CHANGED_ONLY=0
 FROM_REF=""
 TO_REF=""
+BASELINE_REF=""
 BASELINE_FILE_OVERRIDE=""
 FORCE_INCLUDES=()
 
@@ -41,6 +46,7 @@ while [[ $# -gt 0 ]]; do
         --changed-only)  CHANGED_ONLY=1; shift ;;
         --from-ref)      FROM_REF="$2"; shift 2 ;;
         --to-ref)        TO_REF="$2"; shift 2 ;;
+        --baseline-ref)  BASELINE_REF="$2"; shift 2 ;;
         --baseline-file) BASELINE_FILE_OVERRIDE="$2"; shift 2 ;;
         --force-include) FORCE_INCLUDES+=("$2"); shift 2 ;;
         --) shift; break ;;
@@ -137,16 +143,25 @@ load_baseline_from_stream() {
     done
 }
 
-if [[ -n "$FROM_REF" && -z "$BASELINE_FILE_OVERRIDE" ]]; then
-    # Prefer the baseline as it existed at FROM_REF so a change cannot both grow
-    # an over-limit file and raise its baseline in the same diff. But when
-    # FROM_REF predates the baseline file (e.g. the root-commit fallback used for
-    # a branch's first push, where github.event.before is all-zero), no baseline
-    # exists at that ref. Falling through to an empty baseline there would make
-    # the gate fail on the entire pre-existing debt. In that case fall back to
-    # the working-tree baseline, which represents current-master debt.
-    if git -C "$REPO_ROOT" cat-file -e "$FROM_REF:.file-size-baseline" 2>/dev/null; then
-        load_baseline_from_stream < <(git -C "$REPO_ROOT" show "$FROM_REF:.file-size-baseline")
+# Decide which git ref's baseline to trust.
+#   --baseline-ref REF  explicit choice (workflow passes this).
+#   otherwise           fall back to FROM_REF for ref-diff runs.
+# Reading the baseline from a ref (rather than the working tree) prevents a
+# change from both growing an over-limit file AND raising its own baseline in
+# the same reviewable diff. The correct ref depends on the event:
+#   * pull_request: read from the PR BASE (FROM_REF) — the reviewer-approved
+#     starting point. A PR that grows a file must not silently raise its base.
+#   * push: read from the pushed commit itself (TO_REF) — the branch already
+#     contains the merge/baseline-refresh, so comparing its files against a
+#     stale PREVIOUS-commit baseline produces false "expansion" failures for
+#     legitimately-refreshed entries. The pushed tree must be self-consistent.
+# When the chosen ref predates the baseline file entirely (e.g. the root-commit
+# fallback used for a branch's first push), fall back to the working-tree
+# baseline, which represents current debt.
+BASELINE_SOURCE_REF="${BASELINE_REF:-$FROM_REF}"
+if [[ -n "$BASELINE_SOURCE_REF" && -z "$BASELINE_FILE_OVERRIDE" ]]; then
+    if git -C "$REPO_ROOT" cat-file -e "$BASELINE_SOURCE_REF:.file-size-baseline" 2>/dev/null; then
+        load_baseline_from_stream < <(git -C "$REPO_ROOT" show "$BASELINE_SOURCE_REF:.file-size-baseline")
     elif [[ -f "$BASELINE_FILE" ]]; then
         load_baseline_from_stream < "$BASELINE_FILE"
     fi
