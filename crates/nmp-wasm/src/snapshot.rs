@@ -17,9 +17,11 @@
 //!
 //! # Substrate-grade (D0)
 //!
-//! No app nouns. The FlatBuffers frame mirrors what the native actor emits;
-//! the snapshot payload carries only protocol-neutral fields
-//! (schema version, kernel rev, started flag, relay diagnostics).
+//! No app nouns. The FlatBuffers frame is kernel-authored: `make_update_frame`
+//! builds the complete Tier-3 envelope (relay statuses, wire subs, metrics,
+//! error toasts) **plus** the Tier-2 typed-projection sidecar (configured
+//! relays, publish queue, …). The snapshot payload carries only
+//! protocol-neutral fields.
 //!
 //! # wasm→JS transport
 //!
@@ -33,12 +35,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nmp_core::{
-    encode_snapshot_frame, KernelReducer, RelayStatusEntry, SnapshotEnvelope,
-    SNAPSHOT_SCHEMA_VERSION,
-};
-
-use crate::protocol::RelayBootstrapEntry;
+use nmp_core::KernelReducer;
 
 /// Shared metadata the runtime and the relay-pool sink BOTH read from when
 /// building a snapshot envelope.
@@ -54,75 +51,44 @@ use crate::protocol::RelayBootstrapEntry;
 /// single source of truth for snapshot inputs; the snapshot builder reads
 /// them, the runtime mutates them on `Start` / `Stop`.
 pub(crate) struct RuntimeMeta {
-    /// Mirrors the kernel's own `rev` field (visible through
-    /// `KernelUpdate::Started { rev }`). Bumped on every successful
-    /// kernel-driven update so hosts can apply the monotonic-revision
-    /// guard rule.
-    pub(crate) rev: u64,
-    /// `Start` flips this to `true`; `Stop` flips it back.
+    /// `Start` flips this to `true`; `Stop` flips it back. Forwarded to
+    /// `make_update_frame(running)` so the kernel encodes the correct
+    /// running state in the Tier-3 envelope.
     pub(crate) started: bool,
-    /// Relay bootstrap captured at `Start` time. Surfaces on the snapshot as
-    /// the `relay_diagnostics` projection so the host can verify the start
-    /// handshake. Cleared on a fresh runtime (empty Vec) before `Start`.
-    pub(crate) relay_bootstrap: Vec<RelayBootstrapEntry>,
     /// Database name captured at `Start` time. Echoed through the snapshot
     /// so hosts can verify the start handshake. The pure kernel never sees
     /// a database (no IndexedDB binding yet — Stage 3b follow-up).
     pub(crate) database_name: String,
+    /// Relay bootstrap captured at `Start` time. Used to seed the kernel's
+    /// configured-relay lanes (via `set_configured_relays`) and to spawn
+    /// the `BrowserRelayDriver` instances on wasm32. Cleared on a fresh
+    /// runtime before `Start`.
+    pub(crate) relay_bootstrap: Vec<crate::protocol::RelayBootstrapEntry>,
 }
 
 impl RuntimeMeta {
     pub(crate) fn new() -> Self {
         Self {
-            rev: 0,
             started: false,
-            relay_bootstrap: Vec::new(),
             database_name: String::new(),
+            relay_bootstrap: Vec::new(),
         }
     }
 }
 
-/// Encode the current kernel + runtime metadata as one FlatBuffers update
-/// frame, using the typed Tier-3 envelope (PR-B #991/#979: the generic
-/// `payload:Value` JSON tree no longer exists on the wire).
+/// Encode the current kernel state as one FlatBuffers update frame.
 ///
-/// The relay bootstrap captured at `Start` surfaces on the Tier-3
-/// `relay_statuses` vector (role + url + `"configured"` connection state —
-/// the only state the wasm runtime can honestly claim until Stage 3b wires
-/// per-relay connection-state observation). `database_name` is a
-/// start-handshake echo with no Tier-3 slot; hosts verify the handshake via
-/// the synchronous `runtime_status` worker event instead.
-pub(crate) fn build_snapshot_bytes(_reducer: &KernelReducer, meta: &RuntimeMeta) -> Vec<u8> {
-    encode_snapshot_frame(&build_snapshot_envelope(meta), &[])
-}
-
-/// Build the typed [`SnapshotEnvelope`] from the runtime metadata. Shared by
-/// [`build_snapshot_bytes`] and the native unit tests (which assert on the
-/// envelope struct directly — same fields, no wire hop).
-pub(crate) fn build_snapshot_envelope(meta: &RuntimeMeta) -> SnapshotEnvelope {
-    SnapshotEnvelope {
-        rev: meta.rev,
-        kernel_schema_version: SNAPSHOT_SCHEMA_VERSION,
-        running: meta.started,
-        update_kind: "ViewBatch".to_string(),
-        relay_statuses: meta
-            .relay_bootstrap
-            .iter()
-            .map(|relay| RelayStatusEntry {
-                role: relay.role.clone(),
-                relay_url: relay.url.clone(),
-                // "configured" is the only status the wasm runtime can
-                // honestly claim until Stage 3b wires per-relay
-                // connection-state observation through the kernel's
-                // `RelayHealth` snapshot projection. The native runtime
-                // surfaces "connected" / "degraded" / "permanent_failure"
-                // here once the equivalent observer is exposed.
-                connection: "configured".to_string(),
-                ..Default::default()
-            })
-            .collect(),
-        ..Default::default()
-    }
+/// Delegates entirely to [`KernelReducer::make_update_frame`], which builds
+/// the complete Tier-3 envelope (relay statuses from real `RelayHealth` data,
+/// wire subscriptions, metrics, error toasts) **and** the Tier-2
+/// typed-projection sidecar (configured relays, publish queue, …). The kernel
+/// is the sole author of the revision counter (`rev` bumps monotonically inside
+/// `make_update`), so the host's monotonic-rev guard continues to work unchanged.
+///
+/// `meta.started` is forwarded as the `running` flag so the envelope reflects
+/// the current lifecycle state.
+pub(crate) fn build_snapshot_bytes(reducer: &mut KernelReducer, meta: &RuntimeMeta) -> Vec<u8> {
+    reducer.make_update_frame(meta.started)
 }
 
 /// Push a snapshot envelope through the JS callback the host registered via
@@ -151,7 +117,7 @@ pub(crate) fn push_snapshot_if_callback(
     reducer: &Rc<RefCell<KernelReducer>>,
     meta: &Rc<RefCell<RuntimeMeta>>,
 ) {
-    let bytes = build_snapshot_bytes(&reducer.borrow(), &meta.borrow());
+    let bytes = build_snapshot_bytes(&mut reducer.borrow_mut(), &meta.borrow());
     push_bytes_if_callback(callback, &bytes);
 }
 
