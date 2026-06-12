@@ -78,6 +78,10 @@ fun ProfileScreen(
     }
 
     val shortPubkey = abbreviateMiddle(pubkey.ifEmpty { "unknown" }, prefix = 8, suffix = 8)
+    // ADR-0032 / V-115: `npub` no longer sent by the projection (always "").
+    // `takeIf { it.isNotEmpty() }` short-circuits to shortPubkey fallback.
+    // TODO(V-115 follow-up): call nmp_app_encode_profile(app, pubkey) here
+    //   for a real bech32 label, matching iOS ProfileView behaviour.
     val npubLabel = profileCard
         ?.npub
         ?.takeIf { it.isNotEmpty() }
