@@ -134,7 +134,9 @@ impl EmbedStore {
 
         // Unknown/unsupported kind → graceful neutral card (S-E02). This
         // is a context-independent fact (a property of the event kind).
+        // kind:9802 (NIP-84 highlight) is a first-class embed kind.
         let known = kind == 1
+            || kind == 9802
             || kind == 30023
             || kind == 30000
             || kind == 30003
