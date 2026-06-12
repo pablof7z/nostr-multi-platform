@@ -271,6 +271,10 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
         return;
     };
     let action = json!({ "op": "publish_key_package" });
+    // TODO(PR-2): surface this Err via last_op_error snapshot — today the
+    // publish_key_package result (e.g. "no write relays configured") is
+    // swallowed, so a sign-in with no relays yet configured silently produces
+    // no key package with no host-visible diagnostic.
     let _ = handle
         .projection
         .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs()));

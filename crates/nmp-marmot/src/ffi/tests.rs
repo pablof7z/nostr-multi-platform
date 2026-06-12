@@ -1037,16 +1037,11 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     let app_ref = unsafe { &*app };
 
     // Sign in as active — this is the path that was broken before PR-4.
+    // `nmp_app_signin_nsec(make_active=1)` is the entry point that sets the
+    // `pending_mls_autopublish` flag; we exercise it directly rather than
+    // poking the raw setter, so this test asserts the real end-to-end contract.
     let nsec = CString::new(TEST_NSEC).unwrap();
     nmp_ffi::nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
-
-    // Precondition: sign-in must have set the flag.
-    assert!(
-        app_ref.take_pending_mls_autopublish(),
-        "nmp_app_signin_nsec(make_active=1) must set pending_mls_autopublish"
-    );
-    // Restore the flag for `nmp_marmot_register` to consume.
-    app_ref.set_pending_mls_autopublish(true);
 
     let tmp = std::env::temp_dir().join(format!(
         "nmp_marmot_pr4_test_{:?}",
@@ -1055,7 +1050,10 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     let _ = std::fs::create_dir_all(&tmp);
     let db_dir = CString::new(tmp.to_string_lossy().as_bytes()).unwrap();
 
-    // `nmp_marmot_register` must consume the flag in `register_with_keys`.
+    // `nmp_marmot_register` must consume the flag set by sign-in, inside
+    // `register_with_keys`. We do NOT read the flag before register (a
+    // `take_*` would itself consume it) — the post-register assertion below
+    // is what proves the flag was both set by sign-in AND consumed by register.
     let handle = nmp_marmot_register(app, nsec.as_ptr(), db_dir.as_ptr());
     assert!(
         !handle.is_null(),
@@ -1063,15 +1061,17 @@ fn register_after_signin_nsec_consumes_autopublish_flag() {
     );
 
     // The flag must be false now — register_with_keys consumed it (atomic swap).
-    // This is the invariant that proves the autopublish path was entered.
-    // (The publish itself may silently fail in a test with no relays configured;
-    // that path is tested by round_trip_publish_create_snapshot_send_messages.)
+    // Because the ONLY thing that set it was `nmp_app_signin_nsec` above, this
+    // single assertion proves BOTH halves of the contract: sign-in set the flag
+    // and register consumed it. (The publish itself may silently fail in a test
+    // with no relays configured; that path is covered by
+    // round_trip_publish_create_snapshot_send_messages.)
     assert!(
         !app_ref.take_pending_mls_autopublish(),
-        "pending_mls_autopublish must be consumed by nmp_marmot_register \
-         (PR-4 regression check: nmp_marmot_register previously skipped the \
-         autopublish tail, leaving nsec-signed-in accounts unable to receive \
-         MLS group invitations)"
+        "pending_mls_autopublish must be set by nmp_app_signin_nsec and \
+         consumed by nmp_marmot_register (PR-4 regression check: \
+         nmp_marmot_register previously skipped the autopublish tail, leaving \
+         nsec-signed-in accounts unable to receive MLS group invitations)"
     );
 
     nmp_marmot_unregister(handle);

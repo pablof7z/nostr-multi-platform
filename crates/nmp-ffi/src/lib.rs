@@ -2095,7 +2095,7 @@ impl NmpApp {
     /// Rule: **gaining a local signing key ⇒ flag set**. The flag is consumed
     /// (atomic swap) in `register_with_keys`, so re-register on an account
     /// that already published does NOT spam new key packages.
-    pub fn set_pending_mls_autopublish(&self, enabled: bool) {
+    pub(crate) fn set_pending_mls_autopublish(&self, enabled: bool) {
         self.pending_mls_autopublish
             .store(enabled, Ordering::Release);
     }
