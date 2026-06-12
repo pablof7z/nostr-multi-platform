@@ -19,6 +19,7 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+
 - 2026-06-12 — **ADR-0048 Stage 2 CI follow-ups: NIP-55 proof lanes + packageName wire + Primal** (advances #1124). Branch: `ci/nip55-proof-lanes-stage2-followups`. Worktree: agent-a8ed4888dc6a20824. Four new CI lanes (gallery android-junit, nmp-ffi --features external-signer, nmp-android-ffi cargo test, nmp-app-gallery --features android-ffi check); `packageName` field on `NostrSignerInfo`; Primal in `KNOWN_NOSTR_SIGNERS` + manifests; all 5 vendor copies updated (drift gate enforces byte-identity).
 
 - 2026-06-12 — **ADR-0048 Stage 2: NIP-55 login-block + Chirp sign-in UI + kernel↔host seam** (advances #1124 Stage 2). PR #1153. Branch: `feat/adr-0048-stage-2-nip55-login-block`. Worktree: agent-a2f4d8fa7fa943858. Full capability seam (Nip55Driver + CapabilitySignerTransport in nmp-ffi, Nip55Connect in nmp-signers, Nip55SignerStateChanged + external_signer_hook + nip55 persist/restore in nmp-core, JNI trampoline + nativeSignInNip55/NextSignerRequest/DeliverSignerResponse in both Android shims); Kotlin ExternalSignerCapability bridge wired in gallery + Chirp; gallery `login-block` Compose component (real flow); Chirp SignInScreen Amber row; registry metadata + CLI registry mirror; vendor drift gate; loop tests.
