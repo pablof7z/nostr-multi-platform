@@ -186,6 +186,28 @@ pub struct PendingOpRow {
     /// Rust-owned display string (e.g. "Waiting for key packages (1)…"). The
     /// projection owns formatting; native renders verbatim.
     pub display_label: String,
+    /// Wall-clock seconds since the op was parked (`now_secs - created_at`),
+    /// computed fresh at snapshot time. Gives the host temporal context to
+    /// show elapsed wait time / fade a spinner as the 60 s deadline nears.
+    #[serde(default)]
+    pub age_secs: u64,
+}
+
+/// The most recent terminal op FAILURE surfaced in the snapshot — a
+/// deferred-op expiry or a failed retry. Raw data only (aim.md §2): `reason`
+/// is the machine code (e.g. `"key_package_unavailable"`); native maps it to
+/// a banner string. `op` + `correlation_id` let the host correlate the
+/// failure with the action it dispatched; `at_secs` is when it was recorded.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct LastOpError {
+    /// Failing op tag ("create_group" | "invite").
+    pub op: String,
+    /// Machine code, e.g. "key_package_unavailable".
+    pub reason: String,
+    /// Wall-clock second the failure was recorded.
+    pub at_secs: u64,
+    /// correlation_id of the failed action.
+    pub correlation_id: String,
 }
 
 /// Complete snapshot hosts consume via the `nmp.marmot.snapshot` push projection.
@@ -243,12 +265,12 @@ pub struct MarmotSnapshot {
     /// older hosts that do not read this field degrade gracefully.
     #[serde(default)]
     pub pending_ops: Vec<PendingOpRow>,
-    /// Most recent terminal op failure reason, or `None` when no op has
-    /// failed this session. The projection clears this when a successful
-    /// op completes (TBD in a follow-up). Additive — older hosts degrade
-    /// gracefully.
+    /// Most recent terminal op failure, or `None` when no op has failed this
+    /// session. Set by the projection on deferred-op expiry / failed retry and
+    /// CLEARED when the next marmot op succeeds, so the banner never lingers
+    /// stale. Additive — older hosts degrade gracefully.
     #[serde(default)]
-    pub last_op_error: Option<String>,
+    pub last_op_error: Option<LastOpError>,
 }
 
 impl MarmotSnapshot {

@@ -258,18 +258,18 @@ pub fn dispatch(
     match r {
         Ok(mut ok) => {
             if let Value::Object(map) = &mut ok {
-                // `{"pending":true}` envelopes must NOT receive an `ok` field:
-                // the `DispatchHostOp` arm checks `"pending":true` to decide
-                // whether to skip the terminal verdict; injecting `ok:true`
-                // would short-circuit that check and cause a spurious success
-                // record before the deferred op completes.
-                //
-                // For all other handlers, inject `ok:true` only when the
-                // handler has not already decided (e.g. soft-fail paths set
-                // `ok:false` explicitly).
+                // `{"pending":true}` envelopes must NOT get an `ok` field — the
+                // `DispatchHostOp` arm keys off `"pending":true` to skip the
+                // terminal verdict; injecting `ok:true` would force a spurious
+                // success. Otherwise inject `ok:true` unless the handler already
+                // decided (soft-fail paths set `ok:false` explicitly).
                 let is_pending = map.get("pending").and_then(Value::as_bool).unwrap_or(false);
                 if !is_pending {
                     map.entry("ok").or_insert(Value::Bool(true));
+                }
+                // A genuinely successful op clears any stale error banner.
+                if !is_pending && map.get("ok").and_then(Value::as_bool) == Some(true) {
+                    h.clear_last_op_error();
                 }
             }
             ok

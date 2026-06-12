@@ -1,10 +1,11 @@
 //! Deferred KP-gated op management for [`super::state::InnerHandle`].
 //!
-//! Split out of `state.rs` / `ops.rs` (LOC ceiling) as a cohesive
-//! sub-concern: parking ops blocked on missing peer KeyPackages, retrying
-//! them when the KP arrives, expiring them on a wall-clock edge, and recording
-//! the terminal verdict. See [`super::pending::PendingOpsStore`] for the
-//! underlying store and its expiry / single-flight rules.
+//! Split out of `state.rs` (LOC ceiling) as a cohesive sub-concern: parking
+//! ops blocked on missing peer KeyPackages, retrying them when the KP arrives,
+//! expiring them on a wall-clock edge, and recording the terminal verdict +
+//! the snapshot-visible `last_op_error` banner. See
+//! [`super::pending::PendingOpsStore`] for the underlying store and its expiry
+//! / single-flight rules.
 //!
 //! This is a continuation `impl InnerHandle` block — it reaches into the
 //! `pub(super)` `inner` field and the `pub(super)` `app()` accessor on
@@ -13,8 +14,35 @@
 use nostr::PublicKey;
 use serde_json::{json, Value};
 
-use super::pending::{PendingOp, RetryOutcome, StoreResult};
-use super::state::InnerHandle;
+use super::payload::{LastOpError, PendingOpRow};
+use super::pending::{PendingOp, PendingOpsStore, RetryOutcome, StoreResult};
+use super::state::{op_tag_of, InnerHandle};
+
+/// Build the snapshot-visible [`PendingOpRow`]s from the pending-op store.
+/// `now_secs` drives the per-row `age_secs` (elapsed wait since the op was
+/// parked). The `display_label` is Rust-owned (aim.md §2 — the projection
+/// owns formatting; native renders verbatim).
+#[must_use]
+pub(super) fn pending_op_rows(store: &PendingOpsStore, now_secs: u64) -> Vec<PendingOpRow> {
+    store
+        .iter()
+        .map(|op| {
+            let op_tag = op_tag_of(&op.action_json);
+            let missing_count = u32::try_from(op.missing_pubkeys.len()).unwrap_or(u32::MAX);
+            let display_label = format!("Waiting for key packages ({missing_count})\u{2026}");
+            // `saturating_sub` guards against a snapshot whose `now_secs`
+            // predates the park time (clock skew / synthetic test time).
+            let age_secs = now_secs.saturating_sub(op.created_at_secs);
+            PendingOpRow {
+                correlation_id: op.correlation_id.clone(),
+                op_tag,
+                missing_count,
+                display_label,
+                age_secs,
+            }
+        })
+        .collect()
+}
 
 impl InnerHandle<'_> {
     // ── Pending-op management (deferred KP-gated ops) ───────────────────
@@ -104,9 +132,12 @@ impl InnerHandle<'_> {
 
     /// After a KP event for `pubkey_hex` is cached, check whether any pending
     /// ops are now unblocked. Returns ready ops as [`RetryOutcome`]s and
-    /// removes them from the store (caller re-dispatches + records the
-    /// verdict). Also evicts expired ops (wall-clock gate; `now_secs` always
-    /// caller-supplied, never a timer).
+    /// removes them from the store (caller is responsible for re-dispatch
+    /// and recording the terminal verdict via the actor command channel).
+    ///
+    /// Also evicts expired ops and pushes terminal `record_action_failure`
+    /// commands for them (wall-clock gate; `now_secs` from the event timestamp
+    /// or system clock — always provided by the ingest path, never by a timer).
     pub(crate) fn handle_key_package_cached(
         &mut self,
         pubkey_hex: &str,
@@ -129,14 +160,14 @@ impl InnerHandle<'_> {
             // handled defensively (skip the terminal write).
             let op_value: Value = serde_json::from_str(&outcome.action_json)
                 .unwrap_or_else(|_| json!({ "op": "__invalid__" }));
-            let result =
-                super::ops::dispatch(self, &op_value, now_secs, Some(&outcome.correlation_id));
+            let result = super::ops::dispatch(self, &op_value, now_secs, Some(&outcome.correlation_id));
             let ok = result.get("ok").and_then(Value::as_bool);
             let pending = result.get("pending").and_then(Value::as_bool).unwrap_or(false);
             if pending {
                 continue;
             }
             let cmd = if ok == Some(true) {
+                // `dispatch()` already cleared the error banner on success.
                 nmp_core::ActorCommand::RecordActionSuccess {
                     correlation_id: outcome.correlation_id,
                     result_json: None,
@@ -147,6 +178,17 @@ impl InnerHandle<'_> {
                     .and_then(Value::as_str)
                     .unwrap_or("deferred op failed")
                     .to_string();
+                let op_tag = op_value
+                    .get("op")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string();
+                self.record_last_op_failure(
+                    op_tag,
+                    reason.clone(),
+                    outcome.correlation_id.clone(),
+                    now_secs,
+                );
                 nmp_core::ActorCommand::RecordActionFailure {
                     correlation_id: outcome.correlation_id,
                     reason,
@@ -166,6 +208,16 @@ impl InnerHandle<'_> {
     pub(super) fn evict_expired_pending(&mut self, now_secs: u64) {
         let expired: Vec<PendingOp> = self.inner.pending_ops.check_expired(now_secs);
         for op in expired {
+            // Record the terminal failure as the snapshot-visible last op
+            // error BEFORE forwarding the actor command, so a snapshot taken
+            // on this same edge already reflects it.
+            let op_tag = op_tag_of(&op.action_json);
+            self.record_last_op_failure(
+                op_tag,
+                "key_package_unavailable".to_string(),
+                op.correlation_id.clone(),
+                now_secs,
+            );
             self.push_actor_command(nmp_core::ActorCommand::RecordActionFailure {
                 correlation_id: op.correlation_id,
                 reason: "key_package_unavailable".to_string(),
@@ -173,16 +225,43 @@ impl InnerHandle<'_> {
         }
     }
 
+    /// Record the most recent terminal op failure for the snapshot banner.
+    /// Overwrites any prior failure (only the latest is surfaced).
+    pub(crate) fn record_last_op_failure(
+        &mut self,
+        op: String,
+        reason: String,
+        correlation_id: String,
+        at_secs: u64,
+    ) {
+        self.inner.last_op_error = Some(LastOpError {
+            op,
+            reason,
+            at_secs,
+            correlation_id,
+        });
+    }
+
+    /// Clear the snapshot-visible last op error. Called when a marmot op
+    /// completes successfully so a stale failure banner does not linger.
+    pub(crate) fn clear_last_op_error(&mut self) {
+        self.inner.last_op_error = None;
+    }
+
     /// Send an [`nmp_core::ActorCommand`] back into the actor's own command
-    /// channel. D8-safe — the unbounded `mpsc::Sender::send` is non-blocking;
-    /// the actor drains it next iteration. No-op when `app` is null (test
-    /// projection — no actor channel).
+    /// channel. Used to record deferred terminal verdicts from within the
+    /// ingest path (which runs on the actor thread). D8-safe because the
+    /// underlying `mpsc::Sender::send` is non-blocking for an unbounded
+    /// channel; the actor drains it on the next iteration.
+    ///
+    /// No-op when `app` is null (the test projection — no actor channel).
     pub(crate) fn push_actor_command(&mut self, cmd: nmp_core::ActorCommand) {
         // Test capture seam: record a lightweight `(verdict, correlation_id)`
         // projection of the command stream so unit tests can assert EXACTLY
         // ONE terminal verdict per correlation_id without a live `NmpApp`.
-        // `ActorCommand` is not `Clone`, so we project the two fields the test
-        // cares about before the move-by-value send. Compiled out in prod.
+        // `ActorCommand` is not `Clone`, so we project the two fields the
+        // test cares about before the move-by-value send below. Production
+        // builds compile this branch out entirely.
         #[cfg(test)]
         {
             match &cmd {
@@ -203,31 +282,32 @@ impl InnerHandle<'_> {
         let Some(app) = self.app() else {
             return;
         };
+        // `actor_sender()` clones the `Sender` end of the unbounded mpsc
+        // channel the actor owns. Sending here cannot block or deadlock.
         let _ = app.actor_sender().send(cmd);
     }
 
     /// Snapshot view: collect pending op descriptors as
-    /// `(correlation_id, op_tag, missing_count)`, consumed by tests.
+    /// `(correlation_id, op_tag, missing_count)`. The full snapshot uses the
+    /// richer `PendingOpRow` directly; this tuple form is consumed by tests.
     #[must_use]
-    #[allow(dead_code)] // consumed by deferred-op tests.
+    #[allow(dead_code)] // consumed by deferred-op tests; the snapshot path builds PendingOpRow itself.
     pub(crate) fn pending_op_summaries(&self) -> Vec<(String, String, usize)> {
         self.inner
             .pending_ops
             .iter()
             .map(|op| {
-                let op_tag = serde_json::from_str::<Value>(&op.action_json)
-                    .ok()
-                    .and_then(|v| v.get("op").and_then(|s| s.as_str()).map(str::to_owned))
-                    .unwrap_or_default();
+                let op_tag = op_tag_of(&op.action_json);
                 (op.correlation_id.clone(), op_tag, op.missing_pubkeys.len())
             })
             .collect()
     }
 
-    /// Test-only: drain the captured `(verdict, correlation_id)` command stream
-    /// recorded by [`Self::push_actor_command`]. Lets a test assert the EXACT
-    /// terminal-verdict sequence (one per correlation_id) across retry-success
-    /// / expiry / expiry-then-late-KP flows without a live `NmpApp`.
+    /// Test-only: drain the captured `(verdict, correlation_id)` command
+    /// stream recorded by [`Self::push_actor_command`]. Lets a test assert the
+    /// EXACT terminal-verdict sequence (one per correlation_id) across
+    /// retry-success / expiry / expiry-then-late-KP flows without a live
+    /// `NmpApp` actor channel.
     #[cfg(test)]
     pub(crate) fn drain_captured_commands(&mut self) -> Vec<(&'static str, String)> {
         std::mem::take(&mut self.inner.captured_commands)

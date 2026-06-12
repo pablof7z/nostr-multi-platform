@@ -20,8 +20,7 @@ import kotlin.math.sign
 
 /**
  * One parked (deferred) op waiting for a peer's KP to arrive.
- * Mirrors `(correlation_id, op_tag, missing_count)` from
- * `crate::projection::state::InnerHandle::pending_op_summaries`.
+ * Mirrors `crate::projection::payload::PendingOpRow`.
  */
 @Suppress("unused")
 class PendingOpRow : Table() {
@@ -42,8 +41,8 @@ class PendingOpRow : Table() {
                 null
             }
         }
-    val correlationIdAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun correlationIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val correlationIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun correlationIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val opTag : String?
         get() {
             val o = __offset(6)
@@ -53,8 +52,8 @@ class PendingOpRow : Table() {
                 null
             }
         }
-    val opTagAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun opTagInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val opTagAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun opTagInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val missingCount : UInt
         get() {
             val o = __offset(8)
@@ -69,28 +68,35 @@ class PendingOpRow : Table() {
                 null
             }
         }
-    val displayLabelAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun displayLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val displayLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun displayLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
+    val ageSecs : ULong
+        get() {
+            val o = __offset(12)
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
+        }
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
+        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsPendingOpRow(_bb: ByteBuffer): PendingOpRow = getRootAsPendingOpRow(_bb, PendingOpRow())
         fun getRootAsPendingOpRow(_bb: ByteBuffer, obj: PendingOpRow): PendingOpRow {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createPendingOpRow(builder: FlatBufferBuilder, correlationIdOffset: Int, opTagOffset: Int, missingCount: UInt, displayLabelOffset: Int) : Int {
-            builder.startTable(4)
+        fun createPendingOpRow(builder: FlatBufferBuilder, correlationIdOffset: Int, opTagOffset: Int, missingCount: UInt, displayLabelOffset: Int, ageSecs: ULong) : Int {
+            builder.startTable(5)
+            addAgeSecs(builder, ageSecs)
             addDisplayLabel(builder, displayLabelOffset)
             addMissingCount(builder, missingCount)
             addOpTag(builder, opTagOffset)
             addCorrelationId(builder, correlationIdOffset)
             return endPendingOpRow(builder)
         }
-        fun startPendingOpRow(builder: FlatBufferBuilder) = builder.startTable(4)
+        fun startPendingOpRow(builder: FlatBufferBuilder) = builder.startTable(5)
         fun addCorrelationId(builder: FlatBufferBuilder, correlationId: Int) = builder.addOffset(0, correlationId, 0)
         fun addOpTag(builder: FlatBufferBuilder, opTag: Int) = builder.addOffset(1, opTag, 0)
         fun addMissingCount(builder: FlatBufferBuilder, missingCount: UInt) = builder.addInt(2, missingCount.toInt(), 0)
         fun addDisplayLabel(builder: FlatBufferBuilder, displayLabel: Int) = builder.addOffset(3, displayLabel, 0)
+        fun addAgeSecs(builder: FlatBufferBuilder, ageSecs: ULong) = builder.addLong(4, ageSecs.toLong(), 0)
         fun endPendingOpRow(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

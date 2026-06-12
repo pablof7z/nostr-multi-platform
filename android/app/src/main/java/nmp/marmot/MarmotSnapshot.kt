@@ -94,8 +94,8 @@ class MarmotSnapshot : Table() {
                 null
             }
         }
-    val invitesChipLabelAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(16, 1)
-    fun invitesChipLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 16, 1)
+    val invitesChipLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
+    fun invitesChipLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     val isRegistered : Boolean
         get() {
             val o = __offset(18)
@@ -124,32 +124,25 @@ class MarmotSnapshot : Table() {
         get() {
             val o = __offset(24); return if (o != 0) __vector_len(o) else 0
         }
-    val hasLastOpError : Boolean
-        get() {
-            val o = __offset(26)
-            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
+    val lastOpError : nmp.marmot.LastOpError? get() = lastOpError(nmp.marmot.LastOpError())
+    fun lastOpError(obj: nmp.marmot.LastOpError) : nmp.marmot.LastOpError? {
+        val o = __offset(26)
+        return if (o != 0) {
+            obj.__assign(__indirect(o + bb_pos), bb)
+        } else {
+            null
         }
-    val lastOpError : String?
-        get() {
-            val o = __offset(28)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val lastOpErrorAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(28, 1)
-    fun lastOpErrorInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 28, 1)
+    }
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
+        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsMarmotSnapshot(_bb: ByteBuffer): MarmotSnapshot = getRootAsMarmotSnapshot(_bb, MarmotSnapshot())
         fun getRootAsMarmotSnapshot(_bb: ByteBuffer, obj: MarmotSnapshot): MarmotSnapshot {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
         fun MarmotSnapshotBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "NMMS")
-        fun createMarmotSnapshot(builder: FlatBufferBuilder, schemaVersion: UInt, groupsOffset: Int, pendingWelcomesOffset: Int, keyPackageOffset: Int, cachedKpPubkeysOffset: Int, hasInvitesChipLabel: Boolean, invitesChipLabelOffset: Int, isRegistered: Boolean, orphanedCommitCount: UInt, keyringUnavailable: Boolean, pendingOpsOffset: Int, hasLastOpError: Boolean, lastOpErrorOffset: Int) : Int {
-            builder.startTable(13)
+        fun createMarmotSnapshot(builder: FlatBufferBuilder, schemaVersion: UInt, groupsOffset: Int, pendingWelcomesOffset: Int, keyPackageOffset: Int, cachedKpPubkeysOffset: Int, hasInvitesChipLabel: Boolean, invitesChipLabelOffset: Int, isRegistered: Boolean, orphanedCommitCount: UInt, keyringUnavailable: Boolean, pendingOpsOffset: Int, lastOpErrorOffset: Int) : Int {
+            builder.startTable(12)
             addLastOpError(builder, lastOpErrorOffset)
             addPendingOps(builder, pendingOpsOffset)
             addOrphanedCommitCount(builder, orphanedCommitCount)
@@ -159,13 +152,12 @@ class MarmotSnapshot : Table() {
             addPendingWelcomes(builder, pendingWelcomesOffset)
             addGroups(builder, groupsOffset)
             addSchemaVersion(builder, schemaVersion)
-            addHasLastOpError(builder, hasLastOpError)
             addKeyringUnavailable(builder, keyringUnavailable)
             addIsRegistered(builder, isRegistered)
             addHasInvitesChipLabel(builder, hasInvitesChipLabel)
             return endMarmotSnapshot(builder)
         }
-        fun startMarmotSnapshot(builder: FlatBufferBuilder) = builder.startTable(13)
+        fun startMarmotSnapshot(builder: FlatBufferBuilder) = builder.startTable(12)
         fun addSchemaVersion(builder: FlatBufferBuilder, schemaVersion: UInt) = builder.addInt(0, schemaVersion.toInt(), 2)
         fun addGroups(builder: FlatBufferBuilder, groups: Int) = builder.addOffset(1, groups, 0)
         fun createGroupsVector(builder: FlatBufferBuilder, data: IntArray) : Int {
@@ -209,8 +201,7 @@ class MarmotSnapshot : Table() {
             return builder.endVector()
         }
         fun startPendingOpsVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
-        fun addHasLastOpError(builder: FlatBufferBuilder, hasLastOpError: Boolean) = builder.addBoolean(11, hasLastOpError, false)
-        fun addLastOpError(builder: FlatBufferBuilder, lastOpError: Int) = builder.addOffset(12, lastOpError, 0)
+        fun addLastOpError(builder: FlatBufferBuilder, lastOpError: Int) = builder.addOffset(11, lastOpError, 0)
         fun endMarmotSnapshot(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o
