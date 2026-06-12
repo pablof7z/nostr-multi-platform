@@ -39,6 +39,7 @@ use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::build::ZapRequest;
+#[cfg(feature = "native")]
 use crate::lnurl::FetchLnurlInvoiceCommand;
 
 /// Wire shape for `nmp.nip57.zap` — the JSON body a host passes to
@@ -212,6 +213,7 @@ impl ActionModule for ZapAction {
                 return Ok(());
             }
         };
+        #[cfg(feature = "native")]
         send(ActorCommand::Protocol(Box::new(FetchLnurlInvoiceCommand {
             unsigned,
             recipient_pubkey: action.recipient_pubkey,
@@ -219,6 +221,8 @@ impl ActionModule for ZapAction {
             amount_msats: action.amount_msats,
             correlation_id: Some(correlation_id.to_string()),
         })));
+        #[cfg(not(feature = "native"))]
+        { let _ = (unsigned, action); record_action_failure(send, correlation_id, "zap not available on this platform".into()); }
         Ok(())
     }
 }

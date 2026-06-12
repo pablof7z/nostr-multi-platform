@@ -28,7 +28,7 @@ pub use typed_wire::{
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
 };
 pub use wiring::{
-    build_actor_claim_sink, register_op_feed, ActorCommandDispatch, OpFeedEngine,
+    build_actor_claim_sink, pointer_to_uri, register_op_feed, ActorCommandDispatch, OpFeedEngine,
     OP_FEED_SNAPSHOT_KEY,
 };
 

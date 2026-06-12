@@ -1,41 +1,7 @@
-//! Browser-side runtime built on the pure `KernelReducer` from `nmp-core`.
+//! Browser-side runtime (`WasmRuntime`) backed by `KernelReducer`, the
+//! wasm32 relay pool, the signer slot, and the snapshot-callback push channel.
 //!
-//! # V-01 Stage 3b status
-//!
-//! Stage 3 (read path) shipped the live relay transport: `WasmRuntime` drives
-//! a real [`nmp_core::KernelReducer`] AND, on `wasm32`, owns a pool of
-//! [`nmp_network::browser_driver::BrowserRelayDriver`]s — one
-//! `web_sys::WebSocket` per (URL, role) pair. Inbound relay frames arrive on
-//! the JS event loop, route through `KernelReducer::handle_relay_frame`
-//! (wrapped by the [`crate::relay_pool::build_handlers`] callback bag), and
-//! the resulting outbound is fanned back out over the same sockets.
-//!
-//! Stage 3b (this commit) adds the **signer install path** and the **async
-//! snapshot push channel**:
-//!
-//! - [`crate::protocol::WorkerRequest::SetSigner`] installs an
-//!   `Arc<dyn nmp_signers::Signer>` into the runtime's signer slot. The only
-//!   wired kind today is `"nip07"`, which the host first handshakes
-//!   asynchronously through JS (`window.nostr.getPublicKey()`) before sending
-//!   the wasm-side install request with the cached pubkey hex.
-//! - The `NmpWasmRuntime::set_snapshot_callback` wasm-bindgen method stores
-//!   a `js_sys::Function` the relay-pool sink invokes whenever an inbound
-//!   relay frame mutates kernel state. The callback receives the same binary
-//!   update event shape `handle()` returns synchronously, so the JS
-//!   event-handling code does not branch on push vs. pull.
-//!
-//! What Stage 3b deliberately does NOT do (Stage 3c follow-up):
-//!
-//! - **In-process publish path.** App-level writes (PublishNote / React /
-//!   Follow / Unfollow) need a `KernelReducer` surface that takes a
-//!   `SignedEvent` and routes it through `PublishEngine`. That surface does
-//!   not yet exist — the native path goes through `ActorCommand` which is
-//!   `feature = "native"`-gated. Until that lands, app writes return
-//!   `signer_not_installed` (no signer in the slot) or `publish_path_not_wired`
-//!   (signer present but no kernel-publish surface to feed it through).
-//! - **IndexedDB store.** Kernel still runs in memory, resets on page reload.
-//!
-//! # What is real (Stage 3 + Stage 3b combined)
+//! # Current capabilities
 //!
 //! - `Start` / `Stop` dispatch through `KernelReducer::reduce` and produce
 //!   real `KernelUpdate` values.
@@ -123,6 +89,9 @@ pub struct WasmRuntime {
     /// warning the symmetric struct layout otherwise triggers there.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     snapshot_callback: Rc<RefCell<Option<SnapshotCallback>>>,
+    /// PR-4 post-tick drain — fired AFTER `tick_once`'s `borrow_mut` drops.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    post_tick_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
     /// Live `web_sys::WebSocket` drivers — one per relay URL in the bootstrap.
     /// `wasm32`-only: native tests never construct drivers.
     #[cfg(target_arch = "wasm32")]
@@ -140,6 +109,7 @@ impl Default for WasmRuntime {
             meta: Rc::new(RefCell::new(RuntimeMeta::new())),
             signer: None,
             snapshot_callback: Rc::new(RefCell::new(None)),
+            post_tick_drain: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
             relays: Rc::new(RefCell::new(Vec::new())),
             #[cfg(target_arch = "wasm32")]
@@ -152,6 +122,19 @@ impl WasmRuntime {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Install the post-tick drain hook — fires AFTER `tick_once`'s
+    /// `borrow_mut` is released, so the drain can safely call
+    /// `reducer.borrow_mut()`. Subsequent calls replace the prior drain.
+    pub fn install_post_tick_drain(&self, drain: Rc<dyn Fn()>) {
+        *self.post_tick_drain.borrow_mut() = Some(drain);
+    }
+
+    /// Return an `Rc` clone of the reducer for composition-root closures.
+    #[must_use]
+    pub fn reducer_handle(&self) -> Rc<RefCell<KernelReducer>> {
+        Rc::clone(&self.reducer)
     }
 
     /// Install (or clear, with `None`) the snapshot push callback. Wasm32
@@ -283,6 +266,7 @@ impl WasmRuntime {
                 Rc::clone(&self.relays),
                 Rc::clone(&self.snapshot_callback),
                 Rc::clone(&self.meta),
+                Rc::clone(&self.post_tick_drain),
             ));
         }
 
