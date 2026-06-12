@@ -315,10 +315,19 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
         Some("Signup User"),
         "own profile must render from the local kind:0 publish intent before relay echo"
     );
+    // Single-mechanism (ADR-0045 Rev 2, #1193): the local kind:0 publish now
+    // takes the store-first ingest path (`verify_and_persist` + `ingest_profile`),
+    // so the own profile is canonical in `self.profiles` immediately — no
+    // separate `local_profile_intents` overlay. `metrics.profile_events` is
+    // `self.profiles.len()` (a state-cardinality diagnostic, NOT a
+    // relay-ingest provenance counter — that distinction is carried honestly
+    // by the store's `local://publish` source tag, and the later relay echo
+    // dedups to `Duplicate` so it is still counted exactly once). Knowing one
+    // profile after a local kind:0 publish is the correct value.
     assert_eq!(
         snap["metrics"]["profile_events"].as_u64(),
-        Some(0),
-        "local kind:0 publish intent must not be counted as a relay-ingested profile event"
+        Some(1),
+        "local kind:0 publish lands the own profile in the store-first read cache (single mechanism)"
     );
 }
 

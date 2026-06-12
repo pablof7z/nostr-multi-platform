@@ -15,7 +15,7 @@
 //! `RelayConnectedHook` lifts that reaction out of `nmp-core`: on
 //! `PoolEvent::Opened` the actor reaches into the host-installed slot and gives
 //! each registered hook the freshly-connected URL plus an owned
-//! `Sender<ActorCommand>` it can hand to a spawned worker (the canonical
+//! [`CommandSender`] clone it can hand to a spawned worker (the canonical
 //! off-thread-fetch → post-result-back pattern). The trait is substrate-generic;
 //! `nmp-core` never names `nmp-nip11` (D0).
 //!
@@ -26,16 +26,15 @@
 //! perform blocking I/O inline. The worker posts its result back through the
 //! cloned sender after the actor loop has moved on.
 
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
-use crate::ActorCommand;
+use crate::actor::CommandSender;
 
 /// A protocol-crate-owned hook the actor calls when a relay socket opens.
 ///
 /// The hook decides for itself whether to act (e.g. `nmp-nip11` checks its
 /// per-URL TTL before spawning a fetch). It is handed the canonical relay URL
-/// and a `Sender<ActorCommand>` clone for posting follow-up commands back into
+/// and a [`CommandSender`] clone for posting follow-up commands back into
 /// the actor loop.
 ///
 /// `Send + Sync` so the slot can be a shared `Arc<dyn …>` cloned to the FFI
@@ -43,8 +42,8 @@ use crate::ActorCommand;
 pub trait RelayConnectedHook: Send + Sync + 'static {
     /// React to `relay_url` having just connected. MUST NOT block (D8): spawn a
     /// worker and return. `command_sender` is an owned clone the worker keeps to
-    /// post results (e.g. [`ActorCommand::SetRelayInfo`]) back into the actor
-    /// loop.
+    /// post results (e.g. [`crate::ActorCommand::SetRelayInfo`]) back into the
+    /// actor loop.
     ///
     /// `is_reconnect` is `false` on the first `Opened` for a URL and `true` on
     /// every subsequent reconnect — hooks that only need a one-shot fetch can
@@ -53,7 +52,7 @@ pub trait RelayConnectedHook: Send + Sync + 'static {
         &self,
         relay_url: &str,
         is_reconnect: bool,
-        command_sender: Sender<ActorCommand>,
+        command_sender: CommandSender,
     );
 }
 
@@ -86,7 +85,7 @@ pub fn fan_relay_connected(
     slot: &RelayConnectedHookSlot,
     relay_url: &str,
     is_reconnect: bool,
-    command_sender: &Sender<ActorCommand>,
+    command_sender: &CommandSender,
 ) {
     let hooks: Vec<Arc<dyn RelayConnectedHook>> = match slot.lock() {
         Ok(guard) => guard.clone(),
@@ -117,7 +116,7 @@ mod tests {
             &self,
             _relay_url: &str,
             is_reconnect: bool,
-            _command_sender: Sender<ActorCommand>,
+            _command_sender: CommandSender,
         ) {
             self.calls.fetch_add(1, Ordering::SeqCst);
             *self.last_reconnect.lock().unwrap() = Some(is_reconnect);
@@ -144,7 +143,8 @@ mod tests {
             }),
         );
 
-        let (tx, _rx) = std::sync::mpsc::channel::<ActorCommand>();
+        let (tx_mail, _rx_mail) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
+        let tx = CommandSender::new(tx_mail);
         fan_relay_connected(&slot, "wss://relay.example", true, &tx);
 
         assert_eq!(calls.load(Ordering::SeqCst), 2);
@@ -154,14 +154,15 @@ mod tests {
     #[test]
     fn empty_slot_is_a_noop() {
         let slot = new_relay_connected_hook_slot();
-        let (tx, _rx) = std::sync::mpsc::channel::<ActorCommand>();
+        let (tx_mail, _rx_mail) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
+        let tx = CommandSender::new(tx_mail);
         // Must not panic with no hooks installed.
         fan_relay_connected(&slot, "wss://relay.example", false, &tx);
     }
 
     struct PanickingHook;
     impl RelayConnectedHook for PanickingHook {
-        fn on_relay_connected(&self, _u: &str, _r: bool, _s: Sender<ActorCommand>) {
+        fn on_relay_connected(&self, _u: &str, _r: bool, _s: CommandSender) {
             panic!("hook adapter panicked");
         }
     }
@@ -170,7 +171,8 @@ mod tests {
     fn panicking_hook_does_not_unwind_the_caller() {
         let slot = new_relay_connected_hook_slot();
         install_relay_connected_hook(&slot, Arc::new(PanickingHook));
-        let (tx, _rx) = std::sync::mpsc::channel::<ActorCommand>();
+        let (tx_mail, _rx_mail) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
+        let tx = CommandSender::new(tx_mail);
         // catch_unwind inside fan_relay_connected must contain the panic.
         fan_relay_connected(&slot, "wss://relay.example", false, &tx);
     }
