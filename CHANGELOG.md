@@ -5,6 +5,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Watermark floors restored for tagged and addressable shapes** (ADR-0045 E2+E3, closes #1086).
+  E1 (#1107) conservatively refused to floor tag- and address-filtered shapes
+  (`InterestShape::Ptag`, `Etag`, `KindDtag`) because the cache-serve seam did
+  not cover them. E2 adds Ptag → `StoreQuery::Ptag` (kind:1059 DM inbox
+  gift-wraps, routed through `notify_raw_event_observers` so
+  `DmInboxProjection` receives the full sig-bearing JSON — one decrypt path
+  shared with live relay delivery). E3 adds Etag (thread replies), KindDtag
+  (addressable / long-form articles), and Ptag-mentions. Now that every floored
+  shape is covered by serve, the watermark floor is re-enabled for those shapes.
+  The structural invariant "no floor without serve coverage" is enforced by the
+  new `e3_structural_floored_implies_served` seam-identity test.
+
+---
+
 ## nmp-v0.4.0 — 2026-06-12
 
 **BREAKING (C-ABI).** Four `nmp_app_*` C-ABI symbols are removed (see
