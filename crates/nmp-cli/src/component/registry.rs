@@ -3,7 +3,15 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const BUILTIN_REGISTRY: &str = include_str!("../../registry/registry.toml");
+// The catalog is split by platform target (file-size rule); merge order must
+// match REGISTRY_SECTION_FILES in crate::registry_manifest.
+const BUILTIN_REGISTRY_SECTIONS: &[&str] = &[
+    include_str!("../../registry/registry.toml"),
+    include_str!("../../registry/registry.swiftui.toml"),
+    include_str!("../../registry/registry.compose.toml"),
+    include_str!("../../registry/registry.tui.toml"),
+    include_str!("../../registry/registry.desktop.toml"),
+];
 const BUILTIN_FILES: &[(&str, &str)] = &[
     (
         "swiftui/content-core/NostrContentRenderer.swift",
@@ -220,11 +228,10 @@ impl Registry {
                     path.clone()
                 };
                 let root = manifest.parent().unwrap_or(Path::new(".")).to_path_buf();
-                let content = fs::read_to_string(&manifest)
-                    .map_err(|e| format!("{}: {e}", manifest.display()))?;
+                let content = crate::registry_manifest::read_manifest_with_sections(&manifest)?;
                 (content, RegistryRoot::Filesystem(root))
             }
-            None => (BUILTIN_REGISTRY.to_string(), RegistryRoot::Builtin),
+            None => (BUILTIN_REGISTRY_SECTIONS.join("\n"), RegistryRoot::Builtin),
         };
         let parsed = toml::from_str::<RegistryManifest>(&manifest)
             .map_err(|e| format!("invalid component registry: {e}"))?;

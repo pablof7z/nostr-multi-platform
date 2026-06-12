@@ -1,0 +1,218 @@
+# Split from registry.toml by platform target (file-size rule: 500 LOC hard
+# ceiling). This file holds ONLY [[components]] blocks; schema_version and
+# registry_id live in registry.toml. The loader merges registry.toml with
+# every registry.<target>.toml in this directory (see REGISTRY_SECTION_FILES).
+
+[[components]]
+id = "tui/content-core"
+version = "0.1.1"
+target = "tui"
+description = "Ratatui ContentTreeWire mirror and helpers for app-owned Nostr content widgets."
+[[components.files]]
+source = "tui/content-core/content_tree_wire.rs"
+target = "src/components/nostr_content/content_tree_wire.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-core/content_render_data.rs"
+target = "src/components/nostr_content/content_render_data.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-core/ratatui_text_wrap.rs"
+target = "src/components/nostr_content/ratatui_text_wrap.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-minimal"
+version = "0.1.1"
+target = "tui"
+description = "Minimal Ratatui Nostr content renderer with inline text, mentions, links, and hashtags."
+dependencies = ["tui/content-core", "tui/content-mention-chip"]
+[[components.files]]
+source = "tui/content-minimal/nostr_minimal_content.rs"
+target = "src/components/nostr_content/nostr_minimal_content.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-mention-chip"
+version = "0.1.1"
+target = "tui"
+description = "Inline Ratatui profile mention chip for kernel-projected mention URIs."
+dependencies = ["tui/content-core"]
+[[components.files]]
+source = "tui/content-mention-chip/nostr_mention_chip.rs"
+target = "src/components/nostr_content/nostr_mention_chip.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-media-grid"
+version = "0.1.1"
+target = "tui"
+description = "Display-only Ratatui media grid for kernel-projected URLs with optional ratatui-image protocols."
+dependencies = ["tui/content-core"]
+[[components.files]]
+source = "tui/content-media-grid/nostr_media_grid.rs"
+target = "src/components/nostr_content/nostr_media_grid.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-quote-card"
+version = "0.1.1"
+target = "tui"
+description = "Ratatui quote/event reference card with claimed event content and optional inline media."
+dependencies = ["tui/content-core"]
+[[components.files]]
+source = "tui/content-quote-card/nostr_quote_card.rs"
+target = "src/components/nostr_content/nostr_quote_card.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-kind-registry"
+version = "0.1.0"
+target = "tui"
+description = "Ratatui kind-dispatch registry for embedded Nostr events, including default short-note and unknown-kind renderers."
+dependencies = ["tui/content-core"]
+[[components.files]]
+source = "tui/content-kind-registry/mod.rs"
+target = "src/components/nostr_content/content_kind_registry/mod.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/kind_renderer.rs"
+target = "src/components/nostr_content/content_kind_registry/kind_renderer.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/embed_chrome_container.rs"
+target = "src/components/nostr_content/content_kind_registry/embed_chrome_container.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/embedded_event.rs"
+target = "src/components/nostr_content/content_kind_registry/embedded_event.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-kind-30023"
+version = "0.1.0"
+target = "tui"
+description = "Long-form article (NIP-23, kind:30023) — DefaultArticleRenderer shipped inside tui/content-kind-registry."
+dependencies = ["tui/content-kind-registry"]
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-kind-9802"
+version = "0.1.0"
+target = "tui"
+description = "Highlight (NIP-84, kind:9802) — DefaultHighlightRenderer shipped inside tui/content-kind-registry."
+dependencies = ["tui/content-kind-registry"]
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
+role = "source"
+
+[[components]]
+id = "tui/content-view"
+version = "0.1.3"
+target = "tui"
+description = "Full Ratatui ContentTreeWire renderer with reactive mentions, quote cards, and inline media."
+dependencies = [
+    "tui/content-core",
+    "tui/content-kind-registry",
+    "tui/content-mention-chip",
+    "tui/content-media-grid",
+    "tui/content-quote-card",
+]
+[[components.files]]
+source = "tui/content-view/nostr_content_view.rs"
+target = "src/components/nostr_content/nostr_content_view.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-view/nostr_content_widget.rs"
+target = "src/components/nostr_content/nostr_content_widget.rs"
+role = "source"
+# Jetpack Compose user profile components. `compose/user-avatar` owns the shared
+# `ProfileWire` mirror for the smaller profile display components.
+# -----------------------------------------------------------------------------
+
+[[components]]
+id = "tui/user-core"
+version = "0.1.0"
+target = "tui"
+description = "Shared Ratatui ProfileWire mirror for Rust-owned user profile projections."
+[[components.files]]
+source = "tui/user-core/profile_wire.rs"
+target = "src/components/nostr_user/profile_wire.rs"
+role = "source"
+
+[[components]]
+id = "tui/user-avatar"
+version = "0.1.1"
+target = "tui"
+description = "Reference-first Ratatui terminal avatar that claims its profile projection and falls back to deterministic initials."
+dependencies = ["tui/user-core"]
+[[components.files]]
+source = "tui/user-avatar/nostr_avatar.rs"
+target = "src/components/nostr_user/nostr_avatar.rs"
+role = "source"
+
+[[components]]
+id = "tui/user-name"
+version = "0.1.0"
+target = "tui"
+description = "Inline Ratatui profile display-name widget with Rust-formatted npub fallback."
+dependencies = ["tui/user-core"]
+[[components.files]]
+source = "tui/user-name/nostr_profile_name.rs"
+target = "src/components/nostr_user/nostr_profile_name.rs"
+role = "source"
+
+[[components]]
+id = "tui/user-nip05"
+version = "0.1.0"
+target = "tui"
+description = "Ratatui NIP-05 verified identity badge that renders only when an identifier is present."
+dependencies = ["tui/user-core"]
+[[components.files]]
+source = "tui/user-nip05/nostr_nip05_badge.rs"
+target = "src/components/nostr_user/nostr_nip05_badge.rs"
+role = "source"
+
+[[components]]
+id = "tui/user-npub"
+version = "0.1.0"
+target = "tui"
+description = "Display-only Ratatui npub chip for Rust-truncated bech32 identity strings."
+dependencies = ["tui/user-core"]
+[[components.files]]
+source = "tui/user-npub/nostr_npub_chip.rs"
+target = "src/components/nostr_user/nostr_npub_chip.rs"
+role = "source"
+
+[[components]]
+id = "tui/user-card"
+version = "0.1.1"
+target = "tui"
+description = "Compact Ratatui author card composed from ratatui-image avatar, profile name, and optional NIP-05 badge."
+dependencies = [
+    "tui/user-core",
+    "tui/user-avatar",
+    "tui/user-name",
+    "tui/user-nip05",
+]
+[[components.files]]
+source = "tui/user-card/nostr_user_card.rs"
+target = "src/components/nostr_user/nostr_user_card.rs"
+role = "source"
+
+# -----------------------------------------------------------------------------
+# Desktop (iced) user components.
+# Mirror the TUI surface: `desktop/user-core` owns the shared `ProfileWire`
+# mirror; the display widgets depend on it. `desktop/user-avatar` is
+# self-contained (deterministic tint + image Handle, no ProfileWire). Host apps
+# own image decoding (`iced::widget::image::Handle`), clipboard writes, and
+# navigation.
+# -----------------------------------------------------------------------------
