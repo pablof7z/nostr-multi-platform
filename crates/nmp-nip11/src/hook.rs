@@ -9,16 +9,15 @@
 //!
 //! D8: `on_relay_connected` runs on the actor thread and only ever *spawns* a
 //! worker; the blocking `ureq` GET happens on the new thread, which posts the
-//! result back through the cloned `Sender<ActorCommand>` as
-//! [`ActorCommand::SetRelayInfo`].
+//! result back through the cloned [`CommandSender`] (the ADR-0050 §D3a waking
+//! inbox handle) as [`ActorCommand::SetRelayInfo`].
 
 use std::collections::HashMap;
-use std::sync::mpsc::Sender;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_core::substrate::RelayConnectedHook;
-use nmp_core::ActorCommand;
+use nmp_core::{ActorCommand, CommandSender};
 
 use crate::fetch::fetch_relay_info_blocking;
 
@@ -86,7 +85,7 @@ impl RelayConnectedHook for Nip11FetchHook {
         &self,
         relay_url: &str,
         _is_reconnect: bool,
-        command_sender: Sender<ActorCommand>,
+        command_sender: CommandSender,
     ) {
         if !self.should_fetch(relay_url, Instant::now()) {
             return;
