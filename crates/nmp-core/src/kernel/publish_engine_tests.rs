@@ -18,9 +18,9 @@
 //! sleeps. The four bullets the spec calls out:
 //! 1. Successful multi-relay publish: engine settles each per-relay to Ok →
 //!    snapshot `recent_ok` carries the relay set.
-//! 2. AUTH-REQUIRED on one relay, OK on the other: reauth path schedules a
-//!    retry (engine fires it on tick), settles on the second attempt;
-//!    untouched relay stays Ok.
+//! 2. AUTH-REQUIRED on one relay, OK on the other: the auth relay PARKS
+//!    (availability gate, no retry budget) until it reaches `Authenticated`,
+//!    then re-dispatches and settles; untouched relay stays Ok.
 //! 3. Transient failure × 3: 1s backoff → 4s backoff → give-up;
 //!    `FailedAfterRetries` row appears on the snapshot.
 //! 4. Restart with a Pending row: build a second Kernel sharing the same
@@ -147,12 +147,16 @@ fn t117_successful_multi_relay_publish_lands_in_engine_recent_ok() {
 }
 
 #[test]
-fn t117_auth_required_on_one_relay_reauths_and_other_unaffected() {
-    // Bullet 2: relay r1 returns OK-false with `auth-required` on attempt 1.
-    // The engine's `apply_ack` routes that to `Reauth` (delay_ms = 0,
-    // next_attempt = 2). The kernel ticks the engine; the engine fires a
-    // retry (one new frame queued for r1). The second attempt succeeds.
-    // Meanwhile r2 sees a clean OK on the original attempt and is untouched.
+fn t117_auth_required_on_one_relay_parks_until_authenticated_other_unaffected() {
+    // Finding B: relay r1 returns OK-false `auth-required` on attempt 1. The
+    // engine PARKS r1 — it does NOT burn a retry budget (the seconds-scale
+    // challenge→sign→AUTH→OK round-trip never completes inside a fast retry
+    // tick, so a budgeted retry would settle a false terminal failure). r1 is
+    // demoted to durable Pending and marked unavailable for publish; a plain
+    // tick must NOT re-dispatch it. Only when the kernel calls
+    // `mark_publish_relay_available(r1)` — the effect of r1 reaching
+    // `RelayAuthState::Authenticated` — does the parked publish re-dispatch and
+    // succeed. r2 sees a clean OK on its original attempt and is untouched.
     let author = "44".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
@@ -161,33 +165,53 @@ fn t117_auth_required_on_one_relay_reauths_and_other_unaffected() {
         kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     assert_eq!(outbound.len(), 2);
 
-    // r1: AUTH-REQUIRED on attempt 1 (no retry frames flushed yet — the
-    // engine's Reauth verdict moves the row to RelayError + schedules
-    // pending_retries[r1] = now (delay_ms = 0)).
-    let retry_now = kernel.handle_publish_ok_at(
+    // r1: AUTH-REQUIRED on attempt 1 → PARK. `on_ack` routes the park through
+    // the availability gate (mark_relay_unavailable); it never schedules a
+    // retry, so no frames flush here.
+    let park_frames = kernel.handle_publish_ok_at(
         WRITE_R1,
         ok_payload(&signed.id, false, "auth-required: please AUTH"),
         100,
     );
-    // Reauth's delay_ms = 0 means the very next dispatch_pending fires the
-    // retry on the same on_ack call (apply_ack → dispatch on schedule). The
-    // engine in `on_ack` runs `apply_verdict` but does NOT call
-    // `dispatch_pending`; that happens on `tick`. So no retry frames yet.
     assert!(
-        retry_now.is_empty(),
-        "on_ack does not eagerly dispatch retries"
+        park_frames.is_empty(),
+        "parking emits no retry frames — re-dispatch is event-driven off Authenticated"
     );
 
-    // r2: clean OK on attempt 1.
+    // r2: clean OK on attempt 1 — settles Ok, untouched by r1's park.
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 110);
 
-    // Tick — pending_retries[r1] = 100 + 0 = 100; now = 200 fires the
-    // reauth-retry dispatch. The queue dispatcher receives the second frame.
-    let retry_frames = kernel.tick_publish_engine(200);
-    let retry_urls: Vec<String> = retry_frames.iter().map(|m| m.relay_url.clone()).collect();
-    assert_eq!(retry_urls, vec![WRITE_R1.to_string()]);
+    // A plain retry tick must NOT re-dispatch the parked r1 (it is unavailable
+    // until it authenticates). No frames queued.
+    let tick_frames = kernel.tick_publish_engine(200);
+    assert!(
+        tick_frames.is_empty(),
+        "a parked auth relay is not re-dispatched by a retry tick: {tick_frames:?}"
+    );
+    // The publish is still in flight (not terminally failed by an auth budget).
+    let snap = kernel.publish_status_snapshot();
+    assert!(
+        snap.recent_errors.is_empty(),
+        "parked publish has not failed: {:?}",
+        snap.recent_errors
+    );
+    assert!(
+        snap.recent_ok.is_empty(),
+        "publish not complete yet — r1 still parked awaiting auth"
+    );
 
-    // Inject the OK for the retry attempt.
+    // r1 reaches `Authenticated` → the kernel re-opens the availability gate.
+    // This is exactly what `handle_auth_ok` does on the Authenticated
+    // transition; the parked publish re-dispatches r1 (one new frame).
+    let redispatch = kernel.mark_publish_relay_available(WRITE_R1);
+    let redispatch_urls: Vec<String> = redispatch.iter().map(|m| m.relay_url.clone()).collect();
+    assert_eq!(
+        redispatch_urls,
+        vec![WRITE_R1.to_string()],
+        "authenticated relay re-dispatches exactly the parked publish"
+    );
+
+    // Inject the OK for the re-dispatched attempt now that r1 is authenticated.
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 210);
 
     let snap = kernel.publish_status_snapshot();

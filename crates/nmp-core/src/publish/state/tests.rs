@@ -138,7 +138,6 @@ fn attempt_reports_inner_counter_for_in_progress_states() {
 fn retry_policy_default_matches_documented_values() {
     let p = RetryPolicy::default();
     assert_eq!(p.transient_max_retries, 3);
-    assert_eq!(p.auth_required_max_retries, 1);
     assert_eq!(p.backoff_base_ms, 1_000);
     assert_eq!(p.backoff_factor, 4);
 }

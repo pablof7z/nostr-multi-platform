@@ -307,12 +307,16 @@ fn nip42_kernel_replays_pending_reqs_on_auth() {
 // than publish-engine policy. A second signer invocation cycle drives
 // back to Authenticated.
 //
-// The publish engine in `crates/nmp-core/src/publish/` carries its OWN
-// `AckClass::AuthRequired` retry policy for outbound publishes — pinned
-// independently by `crates/nmp-core/src/publish/tests.rs` (per-relay
-// state machine tests). Both code paths are intentional per
-// `docs/perf/m5/nip42.md` "coordination notes" — this test exercises
-// the kernel side; publish/tests.rs exercises the publish-engine side.
+// The publish engine in `crates/nmp-core/src/publish/` handles an
+// outbound `auth-required` ack by PARKING the publish (demoting the relay
+// to durable Pending via the availability gate) until the socket reaches
+// `Authenticated`, at which point this very handler re-opens the gate via
+// `mark_publish_relay_available` — pinned independently by
+// `crates/nmp-core/src/publish/engine/auth_park_tests.rs` and the
+// `t117_auth_required_on_one_relay_parks_until_authenticated_*` kernel
+// test. Both code paths are intentional per `docs/perf/m5/nip42.md`
+// "coordination notes" — this test exercises the kernel AUTH FSM side;
+// the publish tests exercise the publish-engine park/re-dispatch side.
 
 #[test]
 fn nip42_kernel_publish_retry_on_auth_required() {

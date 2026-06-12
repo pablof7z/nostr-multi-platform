@@ -271,7 +271,18 @@ impl Kernel {
             //      never buffered, so the gate flush above is empty for them.
             //      handle_reconnect re-issues the full current plan to the relay.
             let replay = self.lifecycle.handle_reconnect(relay_url);
-            wire_frames_to_outbound(replay, role)
+            let mut out = wire_frames_to_outbound(replay, role);
+            // Finding B: a publish that hit `auth-required` on this relay was
+            // PARKED (demoted to durable Pending in `unavailable_relays`) instead
+            // of burning a retry budget. The relay is now authenticated, so it
+            // can take the EVENT — re-dispatch the parked publish through the
+            // SAME availability gate that reconnect uses for the read side. This
+            // mirrors `kernel_reducer::handle_relay_connected`'s
+            // `mark_publish_relay_available` call; both the read (REQ replay) and
+            // write (publish re-dispatch) sides recover off one event-driven
+            // transition (D8: no sleep/poll, no parallel auth-park mechanism).
+            out.extend(self.mark_publish_relay_available(delivering_relay_url));
+            out
         } else {
             wire_frames_to_outbound(_gate_flushed, role)
         }
