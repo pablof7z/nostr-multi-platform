@@ -10,6 +10,7 @@ import org.nmp.gallery.registry.ExternalSignerOutcome
 import org.nmp.gallery.registry.ExternalSignerRequest
 import org.nmp.gallery.registry.ExternalSignerResponse
 import org.nmp.gallery.registry.Nip55Permission
+import org.nmp.gallery.registry.buildAmberPermissionsJsonInternal
 import org.nmp.gallery.registry.shouldUseContentResolver
 
 /**
@@ -218,6 +219,54 @@ class ExternalSignerCapabilityBridgeTest {
             forceInteractive = false,
         )
         assertTrue(shouldUseContentResolver(req))
+    }
+
+    // ── buildAmberPermissionsJsonInternal — Stage-4 regression ───────────
+    //
+    // Before the Stage-4 fix, dispatchIntent appended permissions to the URI
+    // query string as `[{"kind":"sign_event:1"}]` (our internal format). Amber
+    // expects Intent extras with `[{"type":"sign_event","kind":1}]`.
+    // These tests pin the corrected encoding.
+
+    @Test
+    fun buildAmberPermissionsJson_signEvent_kindSplit() {
+        // "sign_event:1" → {"type":"sign_event","kind":1}
+        val result = buildAmberPermissionsJsonInternal(listOf(Nip55Permission("sign_event:1")))
+        assertEquals("""[{"type":"sign_event","kind":1}]""", result)
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_noColonMethod() {
+        // "nip44_encrypt" → {"type":"nip44_encrypt"}
+        val result = buildAmberPermissionsJsonInternal(listOf(Nip55Permission("nip44_encrypt")))
+        assertEquals("""[{"type":"nip44_encrypt"}]""", result)
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_multiplePermissions() {
+        val perms = listOf(
+            Nip55Permission("sign_event:1"),
+            Nip55Permission("nip44_encrypt"),
+            Nip55Permission("nip44_decrypt"),
+        )
+        val result = buildAmberPermissionsJsonInternal(perms)
+        assertEquals(
+            """[{"type":"sign_event","kind":1},{"type":"nip44_encrypt"},{"type":"nip44_decrypt"}]""",
+            result,
+        )
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_emptyList() {
+        val result = buildAmberPermissionsJsonInternal(emptyList())
+        assertEquals("[]", result)
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_getPublicKey() {
+        // get_public_key has no colon variant — just the method name
+        val result = buildAmberPermissionsJsonInternal(listOf(Nip55Permission("get_public_key")))
+        assertEquals("""[{"type":"get_public_key"}]""", result)
     }
 
     // ── KNOWN_NOSTR_SIGNERS contract ──────────────────────────────────────

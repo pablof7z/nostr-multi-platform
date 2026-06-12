@@ -214,6 +214,42 @@ internal fun shouldUseContentResolver(request: ExternalSignerRequest): Boolean =
         request.permissions.any { p -> p.kind.startsWith(request.method.toPermissionKind()) }
 
 /**
+ * Build the Amber-specific permissions JSON array from a `Nip55Permission` list.
+ *
+ * Our internal format: `kind` is a combined string like `"sign_event:1"`,
+ * `"nip44_encrypt"`, etc.
+ *
+ * Amber expects: `[{"type":"sign_event","kind":1},{"type":"nip44_encrypt"}]`
+ * — a separate `type` (method) and optional integer `kind` (event kind).
+ *
+ * Extracted as a pure top-level function so unit tests exercise the SAME
+ * logic `dispatchIntent` executes (no test-side copies).
+ */
+internal fun buildAmberPermissionsJsonInternal(permissions: List<Nip55Permission>): String {
+    val sb = StringBuilder("[")
+    permissions.forEachIndexed { idx, perm ->
+        if (idx > 0) sb.append(",")
+        val combined = perm.kind
+        val colonIdx = combined.indexOf(':')
+        if (colonIdx >= 0) {
+            // "sign_event:1" → type="sign_event", kind=1
+            val typePart = combined.substring(0, colonIdx)
+            val kindPart = combined.substring(colonIdx + 1).toIntOrNull()
+            if (kindPart != null) {
+                sb.append("""{"type":"$typePart","kind":$kindPart}""")
+            } else {
+                sb.append("""{"type":"$typePart"}""")
+            }
+        } else {
+            // "nip44_encrypt" → type="nip44_encrypt"
+            sb.append("""{"type":"$combined"}""")
+        }
+    }
+    sb.append("]")
+    return sb.toString()
+}
+
+/**
  * D7 host adapter for the `external_signer` capability namespace.
  *
  * Receives fully-built `ExternalSignerRequest` objects from Rust, fires
@@ -374,25 +410,46 @@ class ExternalSignerCapabilityBridge(
 
     private fun dispatchIntent(request: ExternalSignerRequest) {
         val methodTag = request.method.toNostrSignerMethod()
-        // NIP-55 Intent URI: nostrsigner:<method>?<params>
-        val uriBuilder = StringBuilder("nostrsigner:$methodTag")
-        uriBuilder.append("?compressionType=none&returnType=signature")
-        uriBuilder.append("&type=$methodTag")
+
+        // NIP-55 Intent — Amber (v6.x) reads ALL parameters from Intent
+        // extras, not from the URI query string. The URI scheme is
+        // `nostrsigner:` (the base scheme only); Amber's SignerActivity
+        // branches on the presence of `Browser.EXTRA_APPLICATION_ID` to
+        // choose between URI-query parsing and extras parsing. We do NOT
+        // set that extra, so extras-based parsing is always used.
+        //
+        // Amber requires:
+        //   extras["type"]          = method tag string (mandatory)
+        //   extras["returnType"]    = "signature" | "event" (default: signature)
+        //   extras["payload"]       = method payload (unsigned-event JSON / plaintext / …)
+        //   extras["current_user"]  = current user pubkey hex (if known)
+        //   extras["pubkey"]        = counterparty pubkey hex (for encrypt/decrypt)
+        //   extras["permissions"]   = JSON array string in Amber format (first call only)
+        //
+        // Stage-4 fix: switched from URI-query-param encoding to extras.
+        // Bug: `nostrsigner:get_public_key?type=get_public_key&…` was parsed
+        // as extras-path (no Browser.EXTRA_APPLICATION_ID), but extras had no
+        // `type` key → SignerType.INVALID → "malformed nostrsigner request".
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("nostrsigner:"))
+        intent.putExtra("type", methodTag)
+        intent.putExtra("returnType", "signature")
+        if (request.payload.isNotEmpty()) {
+            intent.putExtra("payload", request.payload)
+        }
         if (request.currentUser != null) {
-            uriBuilder.append("&current_user=${Uri.encode(request.currentUser)}")
+            intent.putExtra("current_user", request.currentUser)
         }
         if (request.counterparty != null) {
-            uriBuilder.append("&pubkey=${Uri.encode(request.counterparty)}")
+            intent.putExtra("pubkey", request.counterparty)
         }
         if (request.permissions.isNotEmpty()) {
-            val permsJson = bridgeJson.encodeToString(request.permissions)
-            uriBuilder.append("&permissions=${Uri.encode(permsJson)}")
-        }
-        if (request.payload.isNotEmpty()) {
-            uriBuilder.append("&payload=${Uri.encode(request.payload)}")
+            // Amber expects `[{"type":"sign_event","kind":1},{"type":"nip44_encrypt"}]`.
+            // Our `Nip55Permission.kind` is a combined string ("sign_event:1",
+            // "nip44_encrypt", etc.) — expand it to the Amber shape.
+            val permsJson = buildAmberPermissionsJson(request.permissions)
+            intent.putExtra("permissions", permsJson)
         }
 
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uriBuilder.toString()))
         // Include the package hint so Amber auto-routes when multiple
         // nostrsigner-scheme handlers are installed.
         request.signerPackage?.let { pkg -> intent.setPackage(pkg) }
@@ -419,6 +476,9 @@ class ExternalSignerCapabilityBridge(
             onResult(bridgeJson.encodeToString(resp))
         }
     }
+
+    private fun buildAmberPermissionsJson(permissions: List<Nip55Permission>): String =
+        buildAmberPermissionsJsonInternal(permissions)
 
     // ── ContentResolver fast-path ─────────────────────────────────────
 

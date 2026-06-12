@@ -165,6 +165,40 @@ class ExternalSignerCapabilityBridgeTest {
         assertFalse(shouldUseContentResolver(req))
     }
 
+    // ── buildAmberPermissionsJsonInternal — Stage-4 regression ───────────
+
+    @Test
+    fun buildAmberPermissionsJson_signEvent_kindSplit() {
+        val result = buildAmberPermissionsJsonInternal(listOf(Nip55Permission("sign_event:1")))
+        assertEquals("""[{"type":"sign_event","kind":1}]""", result)
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_noColonMethod() {
+        val result = buildAmberPermissionsJsonInternal(listOf(Nip55Permission("nip44_encrypt")))
+        assertEquals("""[{"type":"nip44_encrypt"}]""", result)
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_multiplePermissions() {
+        val perms = listOf(
+            Nip55Permission("sign_event:1"),
+            Nip55Permission("nip44_encrypt"),
+            Nip55Permission("nip44_decrypt"),
+        )
+        val result = buildAmberPermissionsJsonInternal(perms)
+        assertEquals(
+            """[{"type":"sign_event","kind":1},{"type":"nip44_encrypt"},{"type":"nip44_decrypt"}]""",
+            result,
+        )
+    }
+
+    @Test
+    fun buildAmberPermissionsJson_emptyList() {
+        val result = buildAmberPermissionsJsonInternal(emptyList())
+        assertEquals("[]", result)
+    }
+
     // ── KNOWN_NOSTR_SIGNERS ───────────────────────────────────────────────
 
     @Test

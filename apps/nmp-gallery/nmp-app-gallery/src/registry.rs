@@ -61,18 +61,24 @@ mod tests {
     fn registry_parses() {
         let reg = registry();
         assert_eq!(reg.schema, "nmp.gallery.registry/1");
-        assert_eq!(reg.sections.len(), 4);
+        assert_eq!(reg.sections.len(), 5);
 
         // Verify we have all expected sections
         let section_ids: Vec<&str> = reg.sections.iter().map(|s| s.id.as_str()).collect();
+        assert!(section_ids.contains(&"auth"));
         assert!(section_ids.contains(&"relay"));
         assert!(section_ids.contains(&"user"));
         assert!(section_ids.contains(&"content"));
         assert!(section_ids.contains(&"embeds"));
 
-        // Total component count should be 16
+        // Total component count should be 17 (auth/login-block added in Stage 4)
         let total_components: usize = reg.sections.iter().map(|s| s.components.len()).sum();
-        assert_eq!(total_components, 16);
+        assert_eq!(total_components, 17);
+
+        // Verify auth section has login-block component (ADR-0048 Stage 4)
+        let auth_section = reg.sections.iter().find(|s| s.id == "auth").unwrap();
+        assert_eq!(auth_section.components.len(), 1);
+        assert_eq!(auth_section.components[0].id, "login-block");
 
         // Verify relay section has relay-list component
         let relay_section = reg.sections.iter().find(|s| s.id == "relay").unwrap();
