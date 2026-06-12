@@ -20,7 +20,6 @@ apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/NostrConte
 apps/nmp-gallery/desktop/src/gallery.rs	649
 apps/nmp-gallery/tui/src/main.rs	748
 apps/nmp-gallery/tui/src/render.rs	532
-CHANGELOG.md	953
 crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	617
 crates/nmp-cli/registry/compose/login-block/ExternalSignerCapabilityBridge.kt	529
 crates/nmp-cli/registry/registry.toml	659
@@ -38,7 +37,7 @@ crates/nmp-core/src/actor/pending_sign.rs	573
 crates/nmp-core/src/actor/relay_mgmt.rs	534
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	587
 crates/nmp-core/src/kernel/action_registry/tests.rs	742
-crates/nmp-core/src/kernel/auth_tests.rs	761
+crates/nmp-core/src/kernel/auth_tests.rs	765
 crates/nmp-core/src/kernel/cache_serve_universal_tests.rs	594
 crates/nmp-core/src/kernel/claim_expansion_ingest_tests.rs	710
 crates/nmp-core/src/kernel/discovery_tests.rs	604
@@ -47,7 +46,7 @@ crates/nmp-core/src/kernel/ingest_tests.rs	952
 crates/nmp-core/src/kernel/ingest/mod.rs	746
 crates/nmp-core/src/kernel/mailboxes.rs	506
 crates/nmp-core/src/kernel/mod.rs	2892
-crates/nmp-core/src/kernel/publish_engine_tests.rs	828
+crates/nmp-core/src/kernel/publish_engine_tests.rs	852
 crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	840
 crates/nmp-core/src/kernel/retention_tests.rs	546
 crates/nmp-core/src/kernel/routing_trace_dto.rs	532

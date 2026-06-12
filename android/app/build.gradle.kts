@@ -29,7 +29,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true // required for BuildConfig.DEBUG (E2E test seams gate)
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
     // .so files are produced by cargo-ndk into src/main/jniLibs (see cargoNdk).
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")

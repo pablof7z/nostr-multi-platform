@@ -195,6 +195,42 @@ pub fn new_publish_resolver_slot() -> PublishResolverSlot {
     Arc::new(Mutex::new(None))
 }
 
+// ─── Kernel-clock injection (test-support only) ─────────────────────────────
+//
+// Per-app injectable wall-clock. Production never writes this slot, so the
+// kernel keeps its `SystemClock` default. The test-support FFI seam
+// `NmpApp::set_kernel_clock_for_test` writes an `Arc<dyn Clock>` here; the
+// actor reads it once right after kernel construction (and on `Reset`) and
+// applies it via `Kernel::set_clock`. This lets end-to-end FFI tests that
+// publish two replaceable events stamp strictly-increasing `created_at`
+// deterministically (no wall-clock sleep — D8), exactly mirroring the existing
+// in-crate `Kernel::set_clock` deterministic-replay seam.
+//
+// `Arc<dyn Clock>` is `Send + Sync` (the `Clock` trait requires `Sync` so the
+// host thread that may advance a test clock and the actor thread that reads it
+// can share one `Arc`). The slot is always compiled (a bare `Option` costs
+// nothing on the production path) but only ever written by the test-support
+// FFI method.
+pub type KernelClockSlot = Arc<Mutex<Option<Arc<dyn crate::kernel::Clock>>>>;
+
+/// Construct a fresh, empty [`KernelClockSlot`].
+#[must_use]
+pub fn new_kernel_clock_slot() -> KernelClockSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// Erase a concrete [`crate::kernel::MonotonicSecondClock`] to the
+/// `Arc<dyn Clock>` the [`KernelClockSlot`] stores. Test-support only: lets
+/// the `nmp-ffi` `NmpApp::set_kernel_clock_for_test` seam install a deterministic
+/// clock without naming the crate-private `Clock` trait directly.
+#[cfg(any(test, feature = "test-support"))]
+#[must_use]
+pub fn erase_kernel_clock(
+    clock: Arc<crate::kernel::MonotonicSecondClock>,
+) -> Arc<dyn crate::kernel::Clock> {
+    clock
+}
+
 // ─── Raw-event forwarding policy factory ──────────────────────────────────
 //
 // Per-app raw signed-event forwarding policy factory. `nmp-core` owns the

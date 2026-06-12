@@ -142,4 +142,65 @@ records which `#[ignore]` lines you removed.
   modes (`firehose-bench live`) are opt-in and run against real relays only
   for on-device evidence, never as a gate's correctness oracle.
 
+## E2E shell seams — relay override + headless sign-in
+
+Two deterministic seams let CI / device test harnesses point the live app shells
+at a local relay (e.g. `nak serve`) and inject a test identity **without
+human interaction**. Both follow the thin-shell rule: all parsing and relay
+policy live in Rust; the platform shells ferry the raw strings verbatim.
+
+### iOS — environment variables (XCUITest + `xcodebuild` launch args)
+
+| Env var | Format | Behaviour |
+|---|---|---|
+| `NMP_TEST_NSEC` | `nsec1…` bech32 | Skip keyring restore; sign in with this nsec |
+| `NMP_TEST_RELAYS` | `[["ws://…","role"],…]` JSON | Replace default relay bootstrap with this set |
+
+Both are read in `KernelModel.start()`. When `NMP_TEST_RELAYS` is absent the
+production defaults (`wss://r.f7z.io` + `wss://purplepag.es`) are used. When
+present the JSON array **entirely replaces** the defaults — no merging.
+
+Example XCUITest launch arg:
+
+```swift
+app.launchEnvironment["NMP_TEST_NSEC"] = "nsec1..."
+app.launchEnvironment["NMP_TEST_RELAYS"] = #"[["ws://127.0.0.1:10547","both"]]"#
+```
+
+### Android — intent extras (`adb shell am start`)
+
+| Extra key | Type | Behaviour |
+|---|---|---|
+| `nmp.test_nsec` | String | Skip keyring restore; sign in with this nsec |
+| `nmp.test_relays` | String | Replace default relay bootstrap with this set |
+
+Both extras are read in `MainActivity.onCreate()` and are **only honoured in
+debug builds** (`BuildConfig.DEBUG`). Kotlin passes them verbatim to
+`KernelModel.startWithContext(testNsec, testRelays)` → `KernelBridge.seedRelays`.
+Parsing the relay JSON and calling `nmp_app_add_relay` happens in Rust
+(`nmp-android-ffi/src/relay_seeding.rs`).
+
+Example adb invocation:
+
+```bash
+adb shell am start -n org.nmp.android/.MainActivity \
+    -e nmp.test_nsec "nsec1..." \
+    -e nmp.test_relays '[["ws://127.0.0.1:10547","both"]]'
+```
+
+### Relay format
+
+Both platforms share the same JSON shape: a JSON array of two-element string
+arrays `[url, role]` where role is one of `"both"`, `"read"`, `"write"`, or
+`"indexer"`. Example with a local `nak serve` relay and a remote indexer:
+
+```json
+[["ws://127.0.0.1:10547","both"],["wss://purplepag.es","indexer"]]
+```
+
+Rust validates each entry through `nmp_app_add_relay`; a malformed entry is
+silently skipped (D6). If the entire JSON array is malformed or empty, Rust
+falls back to the Chirp reference relay set so the kernel is never left without
+any relay.
+
 See also: [06 — Reactivity contract (D8)](06-reactivity-contract.md) · [21 — The framework-magic contract](21-framework-magic.md) · [22 — Doctrine compliance checklist](22-doctrine-checklist.md)
