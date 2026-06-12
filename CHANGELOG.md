@@ -5,6 +5,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.6.1 — 2026-06-12
+
+**Additive C-ABI change**: one NEW symbol, `nmp_app_probe_relay_info` (no
+existing symbol changed or removed). Rust API is additive.
+
+### Added
+
+- **ADR-0051 — first-class NIP-11 relay information** (#1195). New `nmp-nip11`
+  protocol crate owns the full NIP-11 lifecycle: when a relay connects, a
+  `RelayConnectedHook` (new substrate seam, fanned on `PoolEvent::Opened`)
+  fetches the relay's information document on an off-actor worker (`ureq`,
+  10s budget, 64 KiB body cap, per-URL 5-minute TTL) and posts it back via
+  `ActorCommand::SetRelayInfo`. The parsed document (name, description, icon,
+  pubkey, contact, software, version, supported_nips, payment/auth/
+  restricted-writes limitation flags) surfaces as the `info` child on every
+  `relay_diagnostics` row — serde JSON and the `KRDG` typed FlatBuffers
+  sidecar both carry it, so consumer apps render relay names and icons with
+  zero HTTP, JSON, or NIP-11 awareness of their own. On-demand
+  `nmp_nip11::probe_relay_info` (Rust) and `nmp_app_probe_relay_info` (C-ABI,
+  callback-borrowed string) cover add-relay preview flows for relays not yet
+  in the pool. `nmp-core` names no NIP-11 noun and imports no HTTP crate
+  (D0); `nmp-wasm` stays `ureq`-free.
+
+### Fixed
+
+- **CI hygiene** (#1213): `.file-size-baseline` refreshed for seven
+  pre-existing over-cap files grown by recent merges (the #1192/#1196
+  ratchet-drift pattern).
+
 ## nmp-v0.6.0 — 2026-06-12
 
 **BREAKING (C-ABI)**: `nmp_app_free_string` and `nmp_broker_free_string` are
