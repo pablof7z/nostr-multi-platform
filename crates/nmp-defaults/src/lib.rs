@@ -119,6 +119,7 @@ pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, RunConfig, StorageSet, Unstarted};
 pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
+pub use runtimes::register_mute_runtime;
 
 /// Wire the canonical NMP composition into `app`.
 ///
@@ -331,6 +332,22 @@ pub fn register_defaults(app: &mut impl AppHost) {
     nmp_wot::register_runtime(app);
     runtimes::register_dm_runtime(app);
     runtimes::register_zap_receipts_runtime(app);
+
+    // ── NIP-51 mute-list observer ────────────────────────────────────────
+    //
+    // Installs `MuteListProjection` as a `KernelEventObserver` for kind:10000
+    // and registers the `"nmp.nip51.mute_list"` diagnostic snapshot projection.
+    // Returns an `Arc<MuteListProjection>` — callers building a
+    // `ModularTimelineProjection` must call `timeline.set_suppression(mute)` with
+    // it after calling `register_defaults`. `register_defaults` cannot do that
+    // itself because `AppHost` has no `set_suppression` seam (the timeline
+    // projection is app-owned, not framework-owned).
+    //
+    // The return value is intentionally dropped here: `register_defaults` is
+    // a fire-and-forget conveniences-bundle. Apps that need the
+    // `Arc<MuteListProjection>` to wire `set_suppression` should call
+    // `register_mute_runtime(app)` directly instead of relying on this path.
+    let _ = runtimes::register_mute_runtime(app);
 
     // ── NIP-23 long-form TYPED snapshot projection (A5 root-cause fix) ────
     //
