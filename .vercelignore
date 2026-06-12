@@ -4,12 +4,10 @@ android/
 android/**
 ios/
 ios/**
-apps/
-apps/**
 tools/
 tools/**
-scripts/
-scripts/**
+/scripts/
+/scripts/**
 docs/
 docs/**
 .github/
