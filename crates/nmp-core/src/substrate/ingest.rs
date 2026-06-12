@@ -42,9 +42,16 @@ pub trait IngestParser: Send + Sync {
 /// range that includes it is called twice (this matches the trait's
 /// "MUST be side-effect-free against kernel state" contract — duplicate
 /// dispatch is the parser's problem, not the dispatcher's).
+///
+/// Per-kind entries are stored as `(slot_key, parser)` pairs where `slot_key`
+/// is `None` for slot-less registrations (via [`Self::register_kind`]) and
+/// `Some(key)` for lifecycle-managed registrations (via
+/// [`Self::replace_kind_parser`]). This allows multiple lifecycle-managed
+/// parsers to coexist on the same kind without silently evicting each other —
+/// each owns exactly one named slot.
 #[derive(Default)]
 pub struct EventIngestDispatcher {
-    by_kind: HashMap<u32, Vec<Arc<dyn IngestParser>>>,
+    by_kind: HashMap<u32, Vec<(Option<&'static str>, Arc<dyn IngestParser>)>>,
     by_range: Vec<(Range<u32>, Arc<dyn IngestParser>)>,
 }
 
@@ -54,38 +61,47 @@ impl EventIngestDispatcher {
         Self::default()
     }
 
+    /// Append a parser for `kind`. Multiple calls with the same kind
+    /// accumulate parsers; all fire on each matching event. Use
+    /// [`Self::replace_kind_parser`] for lifecycle-managed singleton seams.
     pub fn register_kind(&mut self, kind: u32, parser: Arc<dyn IngestParser>) {
-        self.by_kind.entry(kind).or_default().push(parser);
+        self.by_kind.entry(kind).or_default().push((None, parser));
     }
 
-    /// Replace **all** parsers registered for `kind` with a single new one.
+    /// Slot-keyed replace for `kind`: evict the prior parser registered
+    /// under `slot_key` (if any) for `kind`, then install `parser` under
+    /// the same slot. Parsers registered under **other** slot keys (or via
+    /// [`Self::register_kind`] with no slot key) are **not** touched.
     ///
     /// Used by lifecycle-managed singleton seams (e.g. the NIP-17 DM inbox
     /// parser, which must be swapped to a fresh projection instance on account
     /// switch so accumulated in-memory messages are cleared). Returns the
-    /// previous parsers for that kind, if any, so callers can confirm whether
-    /// a replacement actually happened (useful in tests).
+    /// previous parser for `(kind, slot_key)`, if any, so callers can confirm
+    /// whether a replacement actually happened (useful in tests).
     ///
-    /// Distinct from [`Self::register_kind`] which appends; this method is a
-    /// single-slot write — only one parser for `kind` survives the call.
+    /// Multiple lifecycle-managed parsers can safely coexist on the same kind
+    /// (e.g. the NIP-17 DM inbox under `"nip17.dm_inbox"` and Marmot under
+    /// `"marmot"` both on kind:1059). Each slot key acts as an independent
+    /// lifecycle scope — a re-registration for one slot never evicts the other.
     ///
-    /// ## PR-2 forward-compatibility warning
-    ///
-    /// This method uses **replace-ALL-for-kind** semantics: every existing parser
-    /// for `kind` is evicted and replaced by the single `parser` argument. A
-    /// second lifecycle-managed parser for the same kind (e.g. Marmot's kind-1059
-    /// parser arriving in raw-tap PR-2) MUST NOT use this method — calling it a
-    /// second time would silently evict the first parser, breaking the peer
-    /// registration. PR-2 converts this seam to slot-keyed replace (each caller
-    /// owns a named slot; only that slot is swapped). Until that migration lands,
-    /// each kind MUST have at most one `replace_kind_parser` caller.
+    /// Distinct from [`Self::register_kind`] which appends with no slot key.
     pub fn replace_kind_parser(
         &mut self,
         kind: u32,
+        slot_key: &'static str,
         parser: Arc<dyn IngestParser>,
-    ) -> Vec<Arc<dyn IngestParser>> {
-        let prev = self.by_kind.remove(&kind).unwrap_or_default();
-        self.by_kind.insert(kind, vec![parser]);
+    ) -> Option<Arc<dyn IngestParser>> {
+        let bucket = self.by_kind.entry(kind).or_default();
+        // Find and evict any prior entry with the same slot_key.
+        let prev = if let Some(pos) = bucket
+            .iter()
+            .position(|(key, _)| *key == Some(slot_key))
+        {
+            Some(bucket.remove(pos).1)
+        } else {
+            None
+        };
+        bucket.push((Some(slot_key), parser));
         prev
     }
 
@@ -98,7 +114,7 @@ impl EventIngestDispatcher {
     pub fn dispatch(&self, evt: &VerifiedEvent) {
         let kind = evt.raw().kind;
         if let Some(parsers) = self.by_kind.get(&kind) {
-            for p in parsers {
+            for (_, p) in parsers {
                 p.parse(evt);
             }
         }
@@ -234,31 +250,68 @@ mod tests {
     fn replace_kind_parser_swaps_single_slot() {
         let mut d = EventIngestDispatcher::new();
         let old = CapturingParser::new();
-        let new = CapturingParser::new();
+        let new_p = CapturingParser::new();
 
-        // Register two old parsers for kind 42.
-        d.register_kind(42, old.clone());
-        d.register_kind(42, old.clone());
-        assert_eq!(d.registration_count(), 2);
+        // Register an old parser under slot "a" for kind 42.
+        d.replace_kind_parser(42, "a", old.clone());
+        assert_eq!(d.registration_count(), 1);
 
-        // Replace: only the new parser survives.
-        let prev = d.replace_kind_parser(42, new.clone());
-        assert_eq!(prev.len(), 2, "both old parsers returned as previous");
+        // Replace: only the new parser survives under slot "a".
+        let prev = d.replace_kind_parser(42, "a", new_p.clone());
+        assert!(prev.is_some(), "old parser returned as previous");
         assert_eq!(d.registration_count(), 1, "exactly one parser remains after replace");
 
         d.dispatch(&evt(42));
-        assert_eq!(old.kinds(), Vec::<u32>::new(), "old parsers must NOT fire after replace");
-        assert_eq!(new.kinds(), vec![42], "new parser must fire after replace");
+        assert_eq!(old.kinds(), Vec::<u32>::new(), "old parser must NOT fire after replace");
+        assert_eq!(new_p.kinds(), vec![42], "new parser must fire after replace");
     }
 
     #[test]
-    fn replace_kind_parser_on_empty_slot_returns_empty() {
+    fn replace_kind_parser_on_empty_slot_returns_none() {
         let mut d = EventIngestDispatcher::new();
         let p = CapturingParser::new();
-        let prev = d.replace_kind_parser(9999, p.clone());
-        assert!(prev.is_empty(), "replacing an absent kind returns empty vec");
+        let prev = d.replace_kind_parser(9999, "slot-a", p.clone());
+        assert!(prev.is_none(), "replacing an absent slot returns None");
         assert_eq!(d.registration_count(), 1);
         d.dispatch(&evt(9999));
         assert_eq!(p.kinds(), vec![9999]);
+    }
+
+    #[test]
+    fn two_slots_on_one_kind_coexist() {
+        let mut d = EventIngestDispatcher::new();
+        let p_a = CapturingParser::new();
+        let p_b = CapturingParser::new();
+
+        d.replace_kind_parser(1059, "nip17.dm_inbox", p_a.clone());
+        d.replace_kind_parser(1059, "marmot", p_b.clone());
+        assert_eq!(d.registration_count(), 2, "both slots registered");
+
+        d.dispatch(&evt(1059));
+        assert_eq!(p_a.kinds(), vec![1059], "slot-a parser must fire");
+        assert_eq!(p_b.kinds(), vec![1059], "slot-b parser must fire");
+    }
+
+    #[test]
+    fn per_slot_replacement_does_not_evict_peer_slot() {
+        let mut d = EventIngestDispatcher::new();
+        let p_a1 = CapturingParser::new();
+        let p_a2 = CapturingParser::new();
+        let p_b = CapturingParser::new();
+
+        // Register both slots.
+        d.replace_kind_parser(1059, "nip17.dm_inbox", p_a1.clone());
+        d.replace_kind_parser(1059, "marmot", p_b.clone());
+        assert_eq!(d.registration_count(), 2);
+
+        // Re-register slot "a" (account switch) — slot "b" must survive.
+        let evicted = d.replace_kind_parser(1059, "nip17.dm_inbox", p_a2.clone());
+        assert!(evicted.is_some(), "prior slot-a parser returned");
+        assert_eq!(d.registration_count(), 2, "slot count stays 2 after slot-a replace");
+
+        d.dispatch(&evt(1059));
+        assert_eq!(p_a1.kinds(), Vec::<u32>::new(), "old slot-a parser must NOT fire");
+        assert_eq!(p_a2.kinds(), vec![1059], "new slot-a parser must fire");
+        assert_eq!(p_b.kinds(), vec![1059], "slot-b parser must STILL fire after slot-a replace");
     }
 }

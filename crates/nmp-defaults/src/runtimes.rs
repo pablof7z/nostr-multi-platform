@@ -112,13 +112,15 @@ fn register_inbox_projection(app: &impl AppHost) {
     // `notify_raw_event_observers` fan-out (dual fan-out preserved until PR-2).
     let projection = Arc::new(DmInboxProjection::new(app.active_local_keys()));
 
-    // Register as IngestParser for kind:1059 (NIP-59 gift-wrap). `replace_ingest_parser`
-    // drops any prior DM inbox parser in the same atomic write-lock step, ensuring
-    // exactly one parser survives for this kind (single-slot lifecycle).
+    // Register as IngestParser for kind:1059 (NIP-59 gift-wrap), under the
+    // "nip17.dm_inbox" slot key. Slot-keyed replace ensures only the prior DM
+    // inbox parser is evicted on account switch — Marmot's "marmot" slot parser
+    // (registered in PR-2 of the raw-tap retirement ladder) is untouched.
     // The kind literal is 1059 per NIP-59; nmp-defaults is a composition crate
     // entitled to name NIP kind numbers directly.
     app.replace_ingest_parser(
         1059_u32, // kind:1059 — NIP-59 gift-wrap
+        "nip17.dm_inbox",
         Arc::clone(&projection) as Arc<dyn nmp_core::substrate::IngestParser>,
     );
 
