@@ -5,13 +5,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## Unreleased (nmp-v0.3.1)
+## nmp-v0.4.0 — 2026-06-12
+
+**BREAKING (C-ABI).** Four `nmp_app_*` C-ABI symbols are removed (see
+**Removed** below). Rev-pinned consumers on v0.3.x must migrate before
+pinning this revision.
+
+**Android consumers must skip v0.3.0 and pin v0.4.0 directly.** v0.3.0
+shipped with Android completely dark (#1084 / V-116): the Android
+`KernelUpdateFrameDecoder` was not rebuilt for the typed-frame wire introduced
+in v0.3.0 and emitted no snapshot updates. v0.4.0 fixes this with a full
+rebuild from Tier-3 typed fields + sidecars (#1092).
 
 ### Removed (BREAKING)
 
-- **Legacy author/thread C-ABI open surfaces deleted** (V-68 / V-112, ADR-0042;
-  closes #958, #957). The following `nmp_app_*` symbols are **removed** from
-  `nmp-ffi` and `NmpCore.h`:
+- **Legacy author/thread C-ABI open surfaces deleted** (V-68 / V-112,
+  ADR-0042; closes #958, #957). The following `nmp_app_*` symbols are
+  **removed** from `nmp-ffi` and `NmpCore.h` (#1100):
   - `nmp_app_open_author`
   - `nmp_app_close_author`
   - `nmp_app_open_thread`
@@ -19,10 +29,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
   These carried the hardcoded Chirp social-kind default `{1,6}` inside the
   generic FFI layer (a D0 violation) and drove the kernel-resident
-  `AuthorViewState` / `ThreadViewState` machine, which is also deleted along
-  with the `author_view` (KAVW) and `thread_view` (KTVW) typed projections,
-  their FlatBuffers schemas (`author_view.fbs`, `thread_view.fbs`,
-  `timeline_item.fbs`), and the generated Swift readers.
+  `AuthorViewState` / `ThreadViewState` state machine, which is also deleted
+  along with the `author_view` (KAVW) and `thread_view` (KTVW) typed
+  projections, their FlatBuffers schemas (`author_view.fbs`,
+  `thread_view.fbs`, `timeline_item.fbs`), and the generated Swift readers.
+  The projection registry drops from 36 to 34 total keys (28 with Swift typed
+  decode stubs).
 
   **Migration**: open author/thread feeds through the generic seam —
   `nmp_app_open_interest(filter_json, consumer_id, scope)` with a verbatim
@@ -32,6 +44,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (see `nmp_app_chirp_open_author_feed` / `nmp_app_chirp_open_thread_feed`
   for the per-app FlatFeed pattern). Profile hydration is component-owned via
   `nmp_app_claim_profile` / `nmp_app_release_profile`.
+
+  The `claimed_profiles` decode cluster is promoted to the public typed
+  surface as part of this migration (#1100 fix round).
+
+### Fixed
+
+- **Android completely dark at v0.3.0 — rebuilt frame decoder from typed
+  channels** (closes #1084, #1092). The Android `KernelUpdateFrameDecoder`
+  was rewritten from Tier-3 typed fields and sidecars, with a
+  real-kernel-frame golden fixture test to prevent silent regression.
+  **Android consumers must skip v0.3.0 and pin v0.4.0.**
+
+- **gc_step honest budgets** — resumable Phase-1 cursor, O(1) Phase-2 count,
+  hourly Phase-3 gate (closes #1085, #1094). The LRU event-count ceiling
+  (`HOT_EVENT_CEILING`) is disabled until store-claims are wired (re-enable
+  tracked in #1090; cursor livelock edge case tracked in #1097). Snapshot
+  perf gate tightened ~17× to 15 ms / 8 ms from the prior 250 ms / 150 ms
+  stale ceilings (#1094).
+
+- **Author-aware watermark rewrite** — multi-author shapes no longer starve
+  new follows' backfill (closes #1087, #1091).
+
+### Added
+
+- **Kernel RAM-tier bounds** — events, profiles, and seed_contacts stores now
+  enforce HWM eviction with open-interest pin sets (HWMs: events=1 000,
+  profiles=2 000, seed_contacts=32), driven from `run_gc_step` (closes #1088,
+  #1096).
+
+- **Bunker connection state surfaced on iOS and Android** — new `KBCS`
+  (`bunker_connection_state`) typed projection via FlatBuffers, emitted by the
+  actor and decoded by per-platform generated decoders (closes #963 / V-14,
+  #1098). Follow-up label/tone ADR-0032 conformance tracked in #1099.
+
+- **ADR-0045 store→projection replay accepted** (staged, #1095 / #1086). The
+  ADR is merged; implementation is tracked separately.
+
+### Docs / Product
+
+- Zap work declared post-v1 by owner decision (#1089).
 
 ---
 
