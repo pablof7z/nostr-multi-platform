@@ -282,7 +282,7 @@ fn malformed_hint_url_silently_dropped() {
 
     // The malformed hint must NOT produce a relay entry.
     assert!(
-        plan.per_relay.get("http://not-a-relay.example").is_none(),
+        !plan.per_relay.contains_key("http://not-a-relay.example"),
         "malformed hint must not produce a relay entry",
     );
     // Alice has no valid route → still unroutable (hint was the only potential route).
