@@ -138,8 +138,17 @@ load_baseline_from_stream() {
 }
 
 if [[ -n "$FROM_REF" && -z "$BASELINE_FILE_OVERRIDE" ]]; then
+    # Prefer the baseline as it existed at FROM_REF so a change cannot both grow
+    # an over-limit file and raise its baseline in the same diff. But when
+    # FROM_REF predates the baseline file (e.g. the root-commit fallback used for
+    # a branch's first push, where github.event.before is all-zero), no baseline
+    # exists at that ref. Falling through to an empty baseline there would make
+    # the gate fail on the entire pre-existing debt. In that case fall back to
+    # the working-tree baseline, which represents current-master debt.
     if git -C "$REPO_ROOT" cat-file -e "$FROM_REF:.file-size-baseline" 2>/dev/null; then
         load_baseline_from_stream < <(git -C "$REPO_ROOT" show "$FROM_REF:.file-size-baseline")
+    elif [[ -f "$BASELINE_FILE" ]]; then
+        load_baseline_from_stream < "$BASELINE_FILE"
     fi
 elif [[ -f "$BASELINE_FILE" ]]; then
     load_baseline_from_stream < "$BASELINE_FILE"
