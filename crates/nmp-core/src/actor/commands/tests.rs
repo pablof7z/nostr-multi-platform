@@ -2187,6 +2187,33 @@ fn close_contact_feed_withdraws_follow_interests_and_emits_close() {
         kernel.timeline_authors.is_empty(),
         "close_contact_feed must clear timeline_authors"
     );
+
+    // D5 symmetry: take a snapshot after close and assert that the timeline /
+    // delta-projection cluster is absent — mirroring the pre-open assertions
+    // at tests.rs:1932-1950.  The headline design claim is that D5 gating is
+    // symmetric: the cluster appears on open and disappears again on close.
+    let post_close_json = kernel.make_update_json_for_test(true);
+    let post_close: serde_json::Value =
+        serde_json::from_str(&post_close_json).expect("post-close snapshot must be valid JSON");
+    let post_projections = post_close
+        .get("projections")
+        .expect("snapshot must carry the projections map");
+    assert!(
+        post_projections.get("timeline").is_none(),
+        "D5: timeline must be absent after close_contact_feed"
+    );
+    assert!(
+        post_projections.get("inserted").is_none(),
+        "D5: inserted must be absent after close_contact_feed"
+    );
+    assert!(
+        post_projections.get("updated").is_none(),
+        "D5: updated must be absent after close_contact_feed"
+    );
+    assert!(
+        post_projections.get("removed").is_none(),
+        "D5: removed must be absent after close_contact_feed"
+    );
 }
 
 /// `open_contact_feed` with an empty kinds set acts as a clear (same as close):
