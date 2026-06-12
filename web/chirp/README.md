@@ -78,3 +78,26 @@ same Rust-owned action contract, relay defaults, and Chirp snapshot shape. Full
 live relay I/O still belongs to the shared actor driver; `nmp-core` does not
 yet compile to browser wasm on this toolchain because native crypto C
 dependencies fail for `wasm32-unknown-unknown`.
+
+## NMP Worker Protocol
+
+`web/chirp` is a consumer of the framework-level WASM worker contract defined
+in `crates/nmp-wasm`. The framework contract is documented at:
+
+- **ADR-0047** (`docs/decisions/0047-browser-worker-runtime.md`) — the
+  decision: Worker-loop-as-actor, sync read path, async write path, binary
+  snapshot frames, honest degraded modes.
+- **`docs/wasm-surface.md`** — the living reference: `WorkerRequest` /
+  `WorkerEvent` tables, dispatch paths, snapshot callback, degraded-mode
+  vocabulary.
+
+This shell treats `RuntimeStatus` as first-class UI state: the worker surfaces
+`runtime_status` events rather than synthesising a healthy-looking UI while
+capability gaps exist.
+
+### Parity fixtures (follow-on)
+
+Cross-platform snapshot comparison between this web shell and iOS, Android,
+desktop, and TUI for the same action history is not yet implemented. When it
+lands it will compare `UpdateFrame` bytes produced by the wasm runtime against
+those produced by the native actor for the same action sequence.
