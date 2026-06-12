@@ -312,6 +312,21 @@ pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, kinds_json: *const
     app.send_cmd(nmp_core::ActorCommand::OpenContactFeed { kinds });
 }
 
+/// ADR-0042 amendment (2026-06-12) — close the contact-feed subscription.
+///
+/// Withdraws all follow-feed M2 interests from the lifecycle registry;
+/// `drain_lifecycle_tick` emits CLOSE frames for any live REQs on the next
+/// idle tick. D6: a null `app` is a silent no-op.
+///
+/// D8: fire-and-forget; the actor processes the command asynchronously.
+#[no_mangle]
+pub extern "C" fn nmp_app_close_contact_feed(app: *mut NmpApp) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    app.send_cmd(nmp_core::ActorCommand::CloseContactFeed);
+}
+
 #[cfg(test)]
 mod kinds_parse_tests {
     use super::parse_kinds_json;
@@ -390,20 +405,5 @@ mod kinds_parse_tests {
         assert!(parse_kinds_json("1").is_none());
         assert!(parse_kinds_json("null").is_none());
     }
-}
-
-/// ADR-0042 amendment (2026-06-12) — close the contact-feed subscription.
-///
-/// Withdraws all follow-feed M2 interests from the lifecycle registry;
-/// `drain_lifecycle_tick` emits CLOSE frames for any live REQs on the next
-/// idle tick. D6: a null `app` is a silent no-op.
-///
-/// D8: fire-and-forget; the actor processes the command asynchronously.
-#[no_mangle]
-pub extern "C" fn nmp_app_close_contact_feed(app: *mut NmpApp) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    app.send_cmd(nmp_core::ActorCommand::CloseContactFeed);
 }
 
