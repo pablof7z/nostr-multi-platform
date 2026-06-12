@@ -25,9 +25,11 @@ use nmp_nip47::{
 ///
 /// `on_idle_tick` implements two wall-clock-gated sweeps (D8 — no sleep/loop):
 ///
-/// 1. **V-64 TTL sweep** — expires `pending_payments` entries older than
-///    `PENDING_PAYMENT_TTL_SECS` and records them as timed-out action
-///    failures. Fires even when the NWC relay is completely silent.
+/// 1. **TTL sweep (double-pay-safe)** — transitions `pending_payments` entries
+///    older than `PENDING_PAYMENT_TTL_SECS` to the durable `Unknown` state for
+///    `lookup_invoice` reconciliation on reconnect, instead of recording a
+///    failure (a TTL elapsing never means the HTLC failed). Fires even when the
+///    NWC relay is completely silent.
 ///
 /// 2. **V-79 heartbeat** — sends a `get_info` probe at
 ///    `HEARTBEAT_CADENCE_SECS` cadence. On `HEARTBEAT_MAX_FAILURES`
@@ -52,7 +54,7 @@ impl RelayTextInterceptor for WalletInterceptor {
         let now_secs = kernel.now_secs();
 
         // ── Phase 1: run sweeps inside the lock, collect results ──────────────
-        let (failures, heartbeat, ready_frames) = {
+        let (heartbeat, ready_frames) = {
             let Ok(mut guard) = self.runtime.lock() else {
                 return Vec::new();
             };
@@ -60,8 +62,12 @@ impl RelayTextInterceptor for WalletInterceptor {
                 return Vec::new();
             };
 
-            // V-64: sweep expired pending_payments.
-            let failures = rt.sweep_expired_payments(now_secs, nmp_nip47::PENDING_PAYMENT_TTL_SECS);
+            // Double-pay-safe TTL sweep: transitions expired pending_payments to
+            // the durable `Unknown` state (for `lookup_invoice` reconciliation on
+            // reconnect) instead of recording failures. A TTL elapsing never
+            // means the HTLC failed — so the returned outcomes are observational
+            // only and we deliberately do NOT call record_action_failure on them.
+            let _swept = rt.sweep_expired_payments(now_secs, nmp_nip47::PENDING_PAYMENT_TTL_SECS);
 
             // V-79: heartbeat tick — pure wall-clock gated, Kernel-free.
             let heartbeat = rt.tick_heartbeat(
@@ -70,15 +76,10 @@ impl RelayTextInterceptor for WalletInterceptor {
                 nmp_nip47::HEARTBEAT_MAX_FAILURES,
             );
             let ready_frames = heartbeat.ready_frames.clone();
-            (failures, heartbeat, ready_frames)
+            (heartbeat, ready_frames)
         }; // lock dropped
 
         // ── Phase 2: Kernel-touching work (lock released) ─────────────────────
-
-        // Record payment timeouts.
-        for (cid, reason) in failures {
-            kernel.record_action_failure(cid, reason);
-        }
 
         let mut outbound = ready_frames;
 
@@ -127,7 +128,18 @@ pub(crate) fn register_nip47_wallet(app: &mut NmpApp) {
 
     // 3. Wallet runtime — held inside an `Arc<Mutex<Option<WalletRuntime>>>`
     //    handle the `ProtocolCommand` impls and the interceptor both lock.
-    let runtime = WalletRuntime::new(status_slot);
+    let mut runtime = WalletRuntime::new(status_slot);
+
+    // Install the durable payment store when a persistent storage path is
+    // configured (it is set before `nmp_app_start` on every real shell). This
+    // activates the double-pay-safe write-before-enqueue + tri-state
+    // reconciliation path: in-flight payments survive a process kill and a
+    // TTL/disconnect transitions them to `Unknown` (never `Failed`) so a
+    // `lookup_invoice` on reconnect settles them to the true outcome.
+    if let Some(storage_path) = app.storage_path_for_start() {
+        runtime.set_payment_store(nmp_nip47::FsPaymentStore::new(storage_path));
+    }
+
     let handle: WalletRuntimeHandle = new_wallet_runtime_handle();
     if let Ok(mut guard) = handle.lock() {
         *guard = Some(runtime);
