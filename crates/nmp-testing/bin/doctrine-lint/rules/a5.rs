@@ -44,6 +44,11 @@ pub const ID: &str = "A5";
 
 /// Token that triggers the rule when found on a production non-comment line
 /// outside the seam definition files.
+///
+/// Note: this token is a suffix of `unregister_raw_event_observer(`. The
+/// `check` function anchors the match by rejecting occurrences where the
+/// preceding character is an ASCII identifier character (`a–z`, `A–Z`, `0–9`,
+/// or `_`), so `unregister_raw_event_observer(` does **not** trigger the rule.
 const BANNED_TOKEN: &str = "register_raw_event_observer(";
 
 /// True iff `path` is one of the seam's own definition files — the places
@@ -110,18 +115,29 @@ pub fn check(
     let mut hits = Vec::new();
     let mut start = 0;
     while let Some(rel) = line[start..].find(BANNED_TOKEN) {
-        let col = start + rel + 1; // 1-indexed
-        hits.push((
-            col,
-            "in-repo call to `register_raw_event_observer` outside the seam definition files \
-             violates rule A5: derive state via `register_ingest_parser` (fires on cache-served \
-             replay + slot-keyed replace); the raw tap is verbatim-forwarding only"
-                .to_string(),
-            "replace with `register_ingest_parser` or `replace_ingest_parser` (slot-keyed) \
-             for state-derivation; reserve the raw tap for verbatim signed-frame forwarding \
-             to external stores/bridges only"
-                .to_string(),
-        ));
+        let abs = start + rel;
+        // Anchor: reject if the character immediately before the token is an
+        // ASCII identifier character (a–z, A–Z, 0–9, _).  This prevents
+        // `unregister_raw_event_observer(` — which contains BANNED_TOKEN as a
+        // suffix — from triggering a false positive.
+        let preceded_by_ident = abs > 0 && {
+            let prev = line.as_bytes()[abs - 1];
+            prev.is_ascii_alphanumeric() || prev == b'_'
+        };
+        if !preceded_by_ident {
+            let col = abs + 1; // 1-indexed
+            hits.push((
+                col,
+                "in-repo call to `register_raw_event_observer` outside the seam definition files \
+                 violates rule A5: derive state via `register_ingest_parser` (fires on cache-served \
+                 replay + slot-keyed replace); the raw tap is verbatim-forwarding only"
+                    .to_string(),
+                "replace with `register_ingest_parser` or `replace_ingest_parser` (slot-keyed) \
+                 for state-derivation; reserve the raw tap for verbatim signed-frame forwarding \
+                 to external stores/bridges only"
+                    .to_string(),
+            ));
+        }
         start += rel + BANNED_TOKEN.len();
     }
     hits
@@ -151,6 +167,22 @@ mod tests {
             hits[0].1.contains("register_ingest_parser"),
             "message must name register_ingest_parser; got: {}",
             hits[0].1
+        );
+    }
+
+    #[test]
+    fn does_not_flag_unregister_raw_event_observer() {
+        // `unregister_raw_event_observer(` contains BANNED_TOKEN as a suffix;
+        // the anchor must prevent a false positive here.
+        let hits = check(
+            "    app.unregister_raw_event_observer(id);",
+            false,
+            false,
+        );
+        assert!(
+            hits.is_empty(),
+            "unregister_raw_event_observer must NOT be flagged by A5; got: {:?}",
+            hits
         );
     }
 

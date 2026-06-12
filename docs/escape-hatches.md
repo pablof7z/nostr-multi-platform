@@ -2,7 +2,7 @@
 
 The NMP framework guards the kernel behind doctrine seams (D0–D8). Most app
 code should never need to cross these seams directly. This document catalogs
-the **four escape hatches** — production-level lanes that callers can use to
+the **five escape hatches** — production-level lanes that callers can use to
 reach below the framework guarantees — and explains when each is appropriate.
 
 Use these only when the framework's normal seams genuinely cannot serve your
@@ -108,6 +108,53 @@ the Schnorr + id-hash verification gate.
 **When appropriate:** Integration tests and REPL-driven diagnostics only.
 Never call these from production app code; the `test-support` feature flag
 prevents accidental inclusion.
+
+---
+
+## 5. IngestParser — `register_ingest_parser` / `replace_ingest_parser`
+
+**Module:** `crates/nmp-core/src/kernel/ingest/mod.rs`  
+**Rust API:** `NmpApp::register_ingest_parser` / `NmpApp::replace_ingest_parser`  
+**C ABI:** none — Rust-only seam
+
+**What it is:** A slot-keyed, sig-bearing inbound parse seam. Each parser is
+registered under a `(kind, slot_name)` key; the kernel calls your closure for
+every accepted event of that kind and passes the full sig-bearing JSON. On cold
+start, cache-served replay fires the same closure path as live relay delivery —
+so a single implementation handles both cases.
+
+**What it gives you:**
+- Full sig-bearing JSON (id + pubkey + created_at + kind + tags + content +
+  **sig**) for each accepted event whose kind matches your registration.
+- `Inserted` / `Replaced` / `Ephemeral` delivery signals so your parser can
+  distinguish first-write from slot-lifecycle replace.
+- Cache-served replay: when the kernel serves events from the local store on
+  cold start, your parser fires identically to live ingest — no special-casing.
+- Slot-keyed lifecycle: `replace_ingest_parser` atomically swaps the parser
+  under an existing slot without tearing down and re-registering interest; use
+  for identity-switch flows (e.g. NIP-17 DM inbox re-key on account change).
+
+**Slot-uniqueness warning:** Each `(kind, slot_name)` pair must be globally
+unique within the running app instance. Registering two parsers under the same
+slot silently replaces the first. Use namespaced slot names (e.g.
+`"nip17.dm_inbox"`) to avoid collisions.
+
+**When appropriate:** Whenever you need to derive in-process state from
+inbound events — decrypt gift-wraps, build projections, accumulate per-kind
+views, or feed an external projection that must also see cached events on cold
+start. This is the **preferred path over the raw event tap** for any consumer
+that does more than forward a verbatim signed frame.
+
+**What it bypasses:**
+- D3 — your parser runs outside the kernel's typed projection dispatch; the
+  parsed output must be stored and projected by your own code.
+
+**Does NOT bypass:**
+- D1 — the kernel only calls your parser for events that arrived via a wired
+  subscription interest; you still need a matching `LogicalInterest` registered
+  (typically via an `ActionModule` or a `register_raw_event_observer` interest).
+- D8 — the parser closure runs inline on the ingest path; it must be cheap and
+  non-blocking.
 
 ---
 

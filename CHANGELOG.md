@@ -7,7 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## nmp-v0.5.0 — 2026-06-12
 
-**BREAKING (C-ABI + Rust API).** Three breaking changes since v0.4.0; all require
+**BREAKING (C-ABI + Rust API).** Four breaking changes since v0.4.0; all require
 migration before pinning this revision (see **Removed** below).
 
 **ADR-0045 COMPLETE — v1 exit criterion satisfied.** Offline / second-launch
@@ -82,6 +82,12 @@ delivers a single event.
   `nmp_broker_free_string(ptr)` call with `nmp_free_string(ptr)`. No semantic
   change — identical CString::from_raw free path; the symbol name is the only
   break.
+
+- **`swap_dm_inbox_observer` removed** from `AppHost` and `NmpApp` (with
+  `DmInboxObserverIdSlot` + `new_dm_inbox_observer_id_slot`) — dead since the
+  DM inbox moved to the slot-keyed `IngestParser`. **Migration**: use
+  `replace_ingest_parser(1059, "nip17.dm_inbox", …)` /
+  `unregister_ingest_parser`. C-ABI unchanged.
 
 ### Fixed
 
