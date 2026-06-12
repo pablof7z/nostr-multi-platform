@@ -169,7 +169,15 @@ impl InterestRegistry {
 
     // ─── Legacy bridge helpers ───────────────────────────────────────────────
 
-    fn legacy_key(id: &InterestId) -> SubKey {
+    /// The `SubKey` minted for interests registered via the legacy `push`
+    /// path (`InterestId` → `SubKey` bridge).
+    ///
+    /// `pub(crate)` (ADR-0045 E1 review item 8): the cache-serve completion
+    /// key for `push`-registered follow-feed interests must be derived from
+    /// the SAME key the registry mints — a hand-copied derivation at the
+    /// serve site would silently diverge if this ever changes (single source
+    /// of truth; the R2.1 single-mechanism correction cuts both ways).
+    pub(crate) fn legacy_key(id: &InterestId) -> SubKey {
         SubKey::builder("legacy-interest-id").with(id.0).finish()
     }
 

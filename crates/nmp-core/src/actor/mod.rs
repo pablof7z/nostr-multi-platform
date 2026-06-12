@@ -2199,6 +2199,17 @@ pub fn run_actor_with_observers(
             kernel.run_gc_step();
             last_gc = Instant::now();
         }
+        // ADR-0045 §5 — chunked continuation for store-cache serves. Drains
+        // ONE aggregate per-tick budget chunk (`cache_serve_tick_budget`,
+        // 2× the visible window) across ALL pending serves, resuming
+        // partially-completed interests via their per-query cursor. Like the
+        // gc tick above this piggybacks the existing ≤250 ms `compute_wait`
+        // wake — no new sleep loop, no timer thread (D8 / "no polling").
+        // An empty queue costs one bool check. Runs BEFORE the `flush_due`
+        // emit below, so served events land in this tick's snapshot (D1).
+        if running && kernel.has_pending_cache_serves() {
+            kernel.run_cache_serve_step();
+        }
         // ── Poll parked NIP-46 remote sign ops ───────────────────────────
         // Non-blocking per D8: `SignerOp::poll` is a `try_recv`. Each parked
         // op is checked once per tick — completed ones publish their signed

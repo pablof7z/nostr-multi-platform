@@ -63,6 +63,15 @@ mod claim_expansion_seam;
 mod claim_expansion_tests;
 #[cfg(test)]
 mod claim_expansion_tick_tests;
+// ADR-0045 E1 — store-cache serve seam. The first half of the one event-
+// acquisition mechanism: at interest-open time, query the store for the
+// newest-N events matching the interest's shape and feed them through the
+// post-store projection-dispatch path (not store.insert — see ADR §1.2).
+mod cache_serve;
+#[cfg(test)]
+mod cache_serve_budget_tests;
+#[cfg(test)]
+mod cache_serve_tests;
 pub(crate) mod closed_reason;
 mod discovery;
 #[cfg(test)]
@@ -1209,6 +1218,29 @@ pub struct Kernel {
     /// `SystemTime::now()`, so replay/tests stay deterministic.
     last_gc: Option<crate::store::GcReport>,
     last_gc_at_ms: Option<u64>,
+    /// ADR-0045 E1 — completion set for store-cache serve.
+    ///
+    /// Each entry is a `completion_key` (stable hash of interest scope-key +
+    /// shape content). An interest whose key is in this set has already had its
+    /// stored events served into projections (one-shot per key) and will not be
+    /// re-served on subsequent recompiles (relay reconnect, follow-list change).
+    ///
+    /// Cleared on account-switch / kernel reset so the next identity's interests
+    /// get a fresh serve. Populated when a queued serve **finishes** (see
+    /// [`Kernel::run_cache_serve_step`]).
+    ///
+    /// `HashSet<u64>` — only completion keys; bounded by the number of distinct
+    /// interests ever opened in a session (in practice O(visible-views × 10)).
+    pub(in crate::kernel) served_interest_shapes: HashSet<u64>,
+    /// ADR-0045 §5 — continuation queue for store-cache serves.
+    ///
+    /// [`Kernel::enqueue_cache_serve`] pushes; [`Kernel::run_cache_serve_step`]
+    /// drains under ONE shared per-tick budget, resuming partially-completed
+    /// serves (per-query `until` cursor) on subsequent actor ticks. This is
+    /// the chunked continuation ADR §5 mandates so a cold start with hundreds
+    /// of per-follow interests never bursts unbounded synchronous work on the
+    /// actor thread (the #1085 lesson at the aggregate level).
+    pub(in crate::kernel) pending_cache_serves: VecDeque<cache_serve::PendingCacheServe>,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -1880,6 +1912,22 @@ impl Kernel {
         let watermark_store = Arc::clone(&store);
         let watermark_fn: crate::subs::WatermarkFn =
             Arc::new(move |shape: &crate::planner::InterestShape| {
+                // ADR-0045 §6 invariant: no watermark floor without
+                // cache-serve coverage for the same shape. A tag-/address-/
+                // event-id-filtered shape would be floored by a SUPERSET scan
+                // (the per-author newest ignores the tag dimension), so the
+                // floor could sit ABOVE stored tagged events the projections
+                // never received — and E1 serve does not cover those shapes,
+                // so nothing would backfill them. Refuse the floor; the relay
+                // re-sends in full (over-fetch is safe, under-render is not).
+                // Pinned by cache_serve_tests::
+                // e1_watermark_serve_invariant_shapes_are_aligned.
+                if !shape.tags.is_empty()
+                    || !shape.addresses.is_empty()
+                    || !shape.event_ids.is_empty()
+                {
+                    return None;
+                }
                 // `InterestShape::{authors,kinds}` are `BTreeSet`s.
                 let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
                 if kinds.is_empty() {
@@ -2082,6 +2130,8 @@ impl Kernel {
             store_open_failure,
             last_gc: None,
             last_gc_at_ms: None,
+            served_interest_shapes: HashSet::new(),
+            pending_cache_serves: VecDeque::new(),
             _not_send: PhantomData,
         };
         if let Some(store) = store_bundle.relay_score_store {
@@ -2652,6 +2702,12 @@ impl Kernel {
     /// `CloseInterest` dispatch arms (open calls this; close calls
     /// [`Kernel::close_interest_sub`]).
     ///
+    /// ADR-0045 E1: when the interest is newly installed, also serve stored
+    /// events matching the interest's shape directly into projections — the
+    /// first half of the one event-acquisition mechanism. The serve is
+    /// one-shot per (key, shape-content) hash so reconnect recompiles do not
+    /// re-replay what the projection already has.
+    ///
     /// Returns `true` iff the interest was newly installed (the caller may use
     /// this for diagnostics; the trigger enqueue is handled here so the two
     /// dispatch arms cannot drift on the "trigger only on change" invariant).
@@ -2660,12 +2716,28 @@ impl Kernel {
         identity: crate::subs::SubIdentity,
         interest: crate::planner::LogicalInterest,
     ) -> bool {
+        // ADR-0045 E1: capture the shape and key before moving `interest` into
+        // the registry (borrow checker: ensure_sub takes ownership of interest).
+        let shape_for_serve = interest.shape.clone();
+        let key_for_serve = identity.key;
+
         let newly_installed = self.lifecycle.registry_mut().ensure_sub(identity, interest);
         if newly_installed {
             self.lifecycle
                 .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
                     reason: crate::subs::InvalidateReason::External("open-interest".to_string()),
                 });
+            // ADR-0045 E1 — queue a store-cache serve for this shape, then
+            // drain ONE aggregate-budget chunk synchronously so the next
+            // snapshot carries store data (D1). Anything beyond the per-tick
+            // budget stays queued and continues on the actor tick (§5
+            // chunked continuation).
+            let completion_key = cache_serve::completion_key_for_interest(
+                &key_for_serve,
+                &shape_for_serve,
+            );
+            self.enqueue_cache_serve(&shape_for_serve, completion_key);
+            self.run_cache_serve_step();
         }
         newly_installed
     }
