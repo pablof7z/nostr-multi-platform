@@ -63,6 +63,13 @@ mod claim_expansion_seam;
 mod claim_expansion_tests;
 #[cfg(test)]
 mod claim_expansion_tick_tests;
+// ADR-0045 E1 — store-cache serve seam. The first half of the one event-
+// acquisition mechanism: at interest-open time, query the store for the
+// newest-N events matching the interest's shape and feed them through the
+// post-store projection-dispatch path (not store.insert — see ADR §1.2).
+mod cache_serve;
+#[cfg(test)]
+mod cache_serve_tests;
 pub(crate) mod closed_reason;
 mod discovery;
 #[cfg(test)]
@@ -1205,6 +1212,19 @@ pub struct Kernel {
     /// `SystemTime::now()`, so replay/tests stay deterministic.
     last_gc: Option<crate::store::GcReport>,
     last_gc_at_ms: Option<u64>,
+    /// ADR-0045 E1 — completion set for store-cache serve.
+    ///
+    /// Each entry is a `completion_key` (stable hash of interest scope-key +
+    /// shape content). An interest whose key is in this set has already had its
+    /// stored events served into projections (one-shot per key) and will not be
+    /// re-served on subsequent recompiles (relay reconnect, follow-list change).
+    ///
+    /// Cleared on account-switch / kernel reset so the next identity's interests
+    /// get a fresh serve. Populated by [`Kernel::cache_serve_for_interest`].
+    ///
+    /// `HashSet<u64>` — only completion keys; bounded by the number of distinct
+    /// interests ever opened in a session (in practice O(visible-views × 10)).
+    pub(in crate::kernel) served_interest_shapes: HashSet<u64>,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -2078,6 +2098,7 @@ impl Kernel {
             store_open_failure,
             last_gc: None,
             last_gc_at_ms: None,
+            served_interest_shapes: HashSet::new(),
             _not_send: PhantomData,
         };
         if let Some(store) = store_bundle.relay_score_store {
@@ -2648,6 +2669,12 @@ impl Kernel {
     /// `CloseInterest` dispatch arms (open calls this; close calls
     /// [`Kernel::close_interest_sub`]).
     ///
+    /// ADR-0045 E1: when the interest is newly installed, also serve stored
+    /// events matching the interest's shape directly into projections — the
+    /// first half of the one event-acquisition mechanism. The serve is
+    /// one-shot per (key, shape-content) hash so reconnect recompiles do not
+    /// re-replay what the projection already has.
+    ///
     /// Returns `true` iff the interest was newly installed (the caller may use
     /// this for diagnostics; the trigger enqueue is handled here so the two
     /// dispatch arms cannot drift on the "trigger only on change" invariant).
@@ -2656,12 +2683,23 @@ impl Kernel {
         identity: crate::subs::SubIdentity,
         interest: crate::planner::LogicalInterest,
     ) -> bool {
+        // ADR-0045 E1: capture the shape and key before moving `interest` into
+        // the registry (borrow checker: ensure_sub takes ownership of interest).
+        let shape_for_serve = interest.shape.clone();
+        let key_for_serve = identity.key;
+
         let newly_installed = self.lifecycle.registry_mut().ensure_sub(identity, interest);
         if newly_installed {
             self.lifecycle
                 .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
                     reason: crate::subs::InvalidateReason::External("open-interest".to_string()),
                 });
+            // ADR-0045 E1 — serve stored events matching this shape.
+            let completion_key = cache_serve::completion_key_for_interest(
+                &key_for_serve,
+                &shape_for_serve,
+            );
+            self.cache_serve_for_interest(&shape_for_serve, completion_key);
         }
         newly_installed
     }

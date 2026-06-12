@@ -19,6 +19,8 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
+- 2026-06-12 — **ADR-0045 E1: store-cache serve seam** (closes #1086). Branch: `feat/adr-0045-e1-cache-serve`. Worktree: agent-a204deb3329f4b504. New `kernel/cache_serve.rs` + `cache_serve_tests.rs` (6 tests); hooks into `open_interest_sub` + `sync_follow_feed_interests`; `clear_served_interest_shapes` on account-switch. Stage E1 covers `AuthorKind` + `KindTime` shapes. Doctrine lint + workspace build clean.
+
 - 2026-06-12 — **ADR-0045 Rev 2: single-mechanism cache-serve (owner correction)**. Branch: `adr-0045-rev2-single-mechanism-cache-serve`. Worktree: agent-a229248b7c12f575c. Supersedes §9 staged-by-domain rollout; amends decision to ONE always-on store-serve seam (cold/warm/offline/online, every LogicalInterest); preserves Rev 1 technical findings; updates issue #1086; restates v1 recommendation as "does universal cache-serve gate v1?".
 
 - 2026-06-12 — **Release nmp-v0.4.0** (version bump 0.3.0→0.4.0, CHANGELOG). Branch: `release/nmp-v0.4.0`. PR #1101. Worktree: agent-a86437222f2953564. C-ABI break (4 symbols removed by #1100) + Android dark fix (#1092) warrant minor bump over 0.3.1.
