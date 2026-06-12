@@ -12,14 +12,29 @@ export function RuntimePanel(props: {
 }) {
   return (
     <aside class="inspector" aria-label="Runtime inspector">
+      {/* PR-W3 smoke-test observable: present iff the wasm emitted at least one
+          binary snapshot frame (update_bytes). DegradedRuntime NEVER emits
+          update_bytes, so this element's presence proves real wasm is running.
+          visually-hidden but accessible — consumed by Playwright assertions. */}
+      <Show when={props.snapshot.latestUpdateBytes !== undefined}>
+        <span
+          data-testid="nmp-has-snapshot"
+          style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap"
+        >has-snapshot</span>
+      </Show>
       <section class="runtime-card connection-card">
         <div class="card-heading"><Settings size={19} /><h2>Connection</h2></div>
-        <StatusLine icon={<Signal size={17} />} label="Runtime" value={labelRuntimeStatus(props.snapshot.status)} />
+        {/* nmp-runtime-status testid is intentionally unasserted in boot.spec.ts
+            pre-bindings-regen: decodeUpdateFrameBytes throws on zeroed payload
+            so status shows degraded even when real wasm runs. Post-#1209 the
+            Playwright assertion will check for a non-degraded value here. */}
+        <StatusLine icon={<Signal size={17} />} label="Runtime" value={labelRuntimeStatus(props.snapshot.status)} testId="nmp-runtime-status" />
         <StatusLine icon={<Database size={17} />} label="Database" value={runtimeConnection.databaseName} />
         <StatusLine
           icon={<HardDrive size={17} />}
           label="Bridge"
           value={props.snapshot.clientRuntime === "in_process_fallback" ? "in-process fallback" : `worker v${protocolVersion}`}
+          testId="nmp-bridge-kind"
         />
         <button type="button" onClick={props.onStart} disabled={props.starting}>
           {props.starting ? <RefreshCw size={18} /> : <CheckCircle2 size={18} />}
@@ -30,7 +45,7 @@ export function RuntimePanel(props: {
         <div class="card-heading"><Radio size={18} /><h2>Relays</h2></div>
         <Show when={props.feature.relayDiagnostics.length > 0} fallback={<p>Waiting for Rust relay diagnostics.</p>}>
           <For each={props.feature.relayDiagnostics}>
-            {(relay) => <div class="relay-row"><span>{relay.url}</span><small>{relay.role} · {relay.status}</small></div>}
+            {(relay) => <div class="relay-row" data-testid="relay-row"><span>{relay.url}</span><small>{relay.role} · {relay.status}</small></div>}
           </For>
         </Show>
       </section>
@@ -58,8 +73,8 @@ export function RuntimePanel(props: {
   );
 }
 
-function StatusLine(props: { icon: JSX.Element; label: string; value: string }) {
-  return <div class="status-line"><span class="status-icon">{props.icon}</span><span>{props.label}</span><strong>{props.value}</strong></div>;
+function StatusLine(props: { icon: JSX.Element; label: string; value: string; testId?: string }) {
+  return <div class="status-line"><span class="status-icon">{props.icon}</span><span>{props.label}</span><strong data-testid={props.testId}>{props.value}</strong></div>;
 }
 
 function EventLog(props: { events: WorkerEvent[] }) {
