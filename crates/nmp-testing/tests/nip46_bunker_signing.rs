@@ -50,7 +50,7 @@ use nmp_core::typed_projections::{
     decode_accounts, decode_active_account, decode_publish_queue, ACCOUNTS_SCHEMA_ID,
     ACTIVE_ACCOUNT_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_ID,
 };
-use nmp_core::{decode_snapshot_typed_projections, ActorCommand, RemoteSignerHandle};
+use nmp_core::{decode_snapshot_typed_projections, ActorCommand, ActorMail, CommandSender, RemoteSignerHandle};
 use nmp_signer_iface::SignerError;
 use nostr::{Event, Keys};
 
@@ -87,8 +87,8 @@ fn bunker_sign_event_round_trip_on_the_wire() {
     // Actor sender stand-in: the broker is going to send
     // `BunkerHandshakeProgress` events here (we ignore them) and one
     // `AddRemoteSigner` once the handshake completes.
-    let (actor_tx, actor_rx) = mpsc::channel::<ActorCommand>();
-    let broker = broker_for_actor(actor_tx);
+    let (actor_inbox_tx, actor_rx) = mpsc::channel::<ActorMail>();
+    let broker = broker_for_actor(CommandSender::new(actor_inbox_tx));
 
     // ── Drive the handshake ────────────────────────────────────────────
     broker.start_handshake(bunker_uri);
@@ -161,7 +161,8 @@ fn bunker_sign_event_round_trip_on_the_wire() {
 fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     use std::sync::mpsc;
 
-    use nmp_core::testing::{run_actor, ActorCommand};
+    use nmp_core::testing::run_actor;
+    use nmp_core::{ActorCommand, ActorMail, CommandSender};
 
     let bunker_keys = Keys::generate();
     let user_keys = Keys::generate();
@@ -175,7 +176,8 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
         mock.ws_url(),
     );
 
-    let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+    let (cmd_inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
+    let cmd_tx = CommandSender::new(cmd_inbox_tx);
     let (upd_tx, upd_rx) = mpsc::channel::<Vec<u8>>();
     let actor_self_tx = cmd_tx.clone();
     let actor_handle = std::thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
@@ -284,18 +286,18 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
 /// Block on `actor_rx` until an `AddRemoteSigner` arrives; return the boxed
 /// handle.  All other commands (progress, …) are drained and dropped.
 fn wait_for_add_remote_signer(
-    actor_rx: &mpsc::Receiver<ActorCommand>,
+    actor_rx: &mpsc::Receiver<ActorMail>,
     timeout: Duration,
 ) -> Option<Box<dyn RemoteSignerHandle>> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;
         match actor_rx.recv_timeout(remaining) {
-            Ok(ActorCommand::AddSigner {
+            Ok(ActorMail::Command(ActorCommand::AddSigner {
                 source: nmp_core::SignerSource::RemoteHandle(handle),
                 ..
-            }) => return Some(handle),
-            Ok(ActorCommand::BunkerHandshakeProgress { stage, message }) => {
+            })) => return Some(handle),
+            Ok(ActorMail::Command(ActorCommand::BunkerHandshakeProgress { stage, message })) => {
                 if stage == "failed" {
                     panic!("bunker handshake failed: {stage}: {message:?}");
                 }

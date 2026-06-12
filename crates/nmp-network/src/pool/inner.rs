@@ -58,8 +58,13 @@ pub(super) struct PoolInner {
     pub(super) slots: Vec<Option<SlotState>>,
     /// URL → slot id. Lookup keyed by canonicalized URL.
     pub(super) url_to_slot: HashMap<RelayUrl, u32>,
-    /// Event sink handed to [`super::Pool::new`].
-    pub(super) events: Sender<PoolEvent>,
+    /// Event sink handed to [`super::Pool::new`]. A `Box<dyn PoolEventSink>`
+    /// so the actor can deliver relay events onto its unified command/relay
+    /// inbox (ADR-0050 §D3a) while other callers keep handing in a plain
+    /// `Sender<PoolEvent>` (blanket impl). Pushed under the inner lock — the
+    /// underlying channel `send` is an unbounded non-blocking enqueue, so this
+    /// holds the lock only for the push, never for I/O.
+    pub(super) events: Box<dyn super::PoolEventSink>,
     /// Worker→translator channel; one shared sender cloned to every
     /// spawned worker.
     pub(super) worker_event_tx: Sender<RelayEvent>,
@@ -74,7 +79,10 @@ impl PoolInner {
         self.shutdown
     }
 
-    pub(super) fn new(config: PoolConfig, events: Sender<PoolEvent>) -> Arc<Mutex<Self>> {
+    pub(super) fn new(
+        config: PoolConfig,
+        events: Box<dyn super::PoolEventSink>,
+    ) -> Arc<Mutex<Self>> {
         let (worker_event_tx, worker_event_rx) = mpsc::channel::<RelayEvent>();
         let inner = Arc::new(Mutex::new(Self {
             slots: Vec::new(),
@@ -275,8 +283,11 @@ impl PoolInner {
         // the original `events` sender here breaks the cycle so the
         // dispatcher's `recv()` resolves once the translator finishes
         // draining post-shutdown events.
-        let (dead_events_tx, _dead_events_rx) = mpsc::channel();
-        self.events = dead_events_tx;
+        // Replacing the boxed sink drops the original one held here; if it
+        // wraps an `mpsc::Sender` (the blanket impl), that releases the
+        // consumer-side `recv()` exactly as before.
+        let (dead_events_tx, _dead_events_rx) = mpsc::channel::<PoolEvent>();
+        self.events = Box::new(dead_events_tx);
     }
 
     pub(super) fn snapshot(&self) -> PoolSnapshot {
@@ -331,13 +342,12 @@ fn translator_loop(
             Some(ev) => ev,
             None => continue,
         };
-        let events_tx = guard.events.clone();
-        drop(guard);
-        if events_tx.send(pool_event).is_err() {
-            // Consumer dropped the receiver — no point translating
-            // further events.
-            break;
-        }
+        // Deliver under the lock: the sink's enqueue is a non-blocking,
+        // unbounded channel push, so this never holds the lock across I/O.
+        // `send_event` swallows a gone-consumer error (ADR-0050 §D3a); the
+        // translator stops naturally when its workers exit and the
+        // `worker_event_rx.recv()` above returns `Err` on the next poll.
+        guard.events.send_event(pool_event);
     }
 }
 

@@ -187,11 +187,11 @@ fn full_constructor_threads_capabilities() {
         seen: Mutex::new(Vec::new()),
         respond: vec!["wss://r.example".to_string()],
     };
-    let (tx, rx) = mpsc::channel::<ActorCommand>();
+    let (tx, rx) = mpsc::channel::<crate::actor::ActorMail>();
 
     let ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
         send: &send,
-        command_sender: tx,
+        command_sender: crate::actor::CommandSender::new(tx),
         clock: &clock,
         signers: &signers,
         dms: &dms,
@@ -228,7 +228,7 @@ fn full_constructor_threads_capabilities() {
     let cloned = ctx.command_sender_clone();
     cloned.send(ActorCommand::Shutdown).expect("send");
     match rx.recv().unwrap() {
-        ActorCommand::Shutdown => (),
+        crate::actor::ActorMail::Command(ActorCommand::Shutdown) => (),
         other => panic!("expected Shutdown, got {other:?}"),
     }
 }

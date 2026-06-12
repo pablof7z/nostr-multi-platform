@@ -114,7 +114,7 @@ impl ExternalSignerTransport for CapabilitySignerTransport {
 /// registry, and the actor re-entry channel.
 #[derive(Debug)]
 pub(crate) struct Nip55Driver {
-    tx: Sender<ActorCommand>,
+    tx: nmp_core::CommandSender,
     transport: Arc<CapabilitySignerTransport>,
     pending_connect: Mutex<Option<Nip55Connect>>,
     /// Live signers (shared with the actor via [`ArcNip55Signer`]). Responses
@@ -124,7 +124,7 @@ pub(crate) struct Nip55Driver {
 }
 
 impl Nip55Driver {
-    pub(crate) fn new(tx: Sender<ActorCommand>, transport: Arc<CapabilitySignerTransport>) -> Self {
+    pub(crate) fn new(tx: nmp_core::CommandSender, transport: Arc<CapabilitySignerTransport>) -> Self {
         Self {
             tx,
             transport,
@@ -413,7 +413,7 @@ mod tests {
     /// native handler that acks every dispatch (the role the Android JNI
     /// trampoline plays) and records the `payload_json` so tests can assert
     /// on the exact request Rust built.
-    fn make_driver(tx: Sender<ActorCommand>) -> Nip55Driver {
+    fn make_driver(tx: nmp_core::CommandSender) -> Nip55Driver {
         let slot = nmp_core::__ffi_internal::new_capability_callback_slot();
         install_dispatch_ack(&slot);
         let transport = Arc::new(CapabilitySignerTransport { callback: slot });

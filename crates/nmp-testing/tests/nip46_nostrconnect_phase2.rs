@@ -42,7 +42,7 @@ mod common;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use nmp_core::ActorCommand;
+use nmp_core::{ActorCommand, ActorMail, CommandSender};
 use nostr::Keys;
 
 use crate::common::broker_adapter::broker_for_actor;
@@ -59,8 +59,8 @@ fn nostrconnect_happy_path_emits_add_remote_signer() {
     let mock = MockNostrConnectSigner::spawn(user_keys.clone())
         .expect("mock nostrconnect signer must spawn on 127.0.0.1");
 
-    let (actor_tx, actor_rx) = mpsc::channel::<ActorCommand>();
-    let broker = broker_for_actor(actor_tx);
+    let (actor_inbox_tx, actor_rx) = mpsc::channel::<ActorMail>();
+    let broker = broker_for_actor(CommandSender::new(actor_inbox_tx));
 
     // ── Generate URI + start listening ───────────────────────────────────
     // `start_nostrconnect_handshake` returns the URI synchronously and spawns
@@ -100,8 +100,8 @@ fn nostrconnect_wrong_secret_fails_handshake() {
     let mock = MockNostrConnectSigner::spawn(user_keys.clone())
         .expect("mock nostrconnect signer must spawn");
 
-    let (actor_tx, actor_rx) = mpsc::channel::<ActorCommand>();
-    let broker = broker_for_actor(actor_tx);
+    let (actor_inbox_tx, actor_rx) = mpsc::channel::<ActorMail>();
+    let broker = broker_for_actor(CommandSender::new(actor_inbox_tx));
 
     let relay_url = mock.ws_url();
     let uri = broker.start_nostrconnect_handshake(relay_url);
@@ -119,14 +119,14 @@ fn nostrconnect_wrong_secret_fails_handshake() {
             None => break,
         };
         match actor_rx.recv_timeout(remaining.min(Duration::from_millis(200))) {
-            Ok(ActorCommand::BunkerHandshakeProgress { stage, .. }) if stage == "failed" => {
+            Ok(ActorMail::Command(ActorCommand::BunkerHandshakeProgress { stage, .. })) if stage == "failed" => {
                 saw_failed = true;
                 break;
             }
-            Ok(ActorCommand::AddSigner {
+            Ok(ActorMail::Command(ActorCommand::AddSigner {
                 source: nmp_core::SignerSource::RemoteHandle(_),
                 ..
-            }) => {
+            })) => {
                 saw_add_remote = true;
                 break;
             }
@@ -148,18 +148,18 @@ fn nostrconnect_wrong_secret_fails_handshake() {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 fn wait_for_add_remote_signer(
-    actor_rx: &mpsc::Receiver<ActorCommand>,
+    actor_rx: &mpsc::Receiver<ActorMail>,
     timeout: Duration,
 ) -> Option<Box<dyn nmp_core::RemoteSignerHandle>> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;
         match actor_rx.recv_timeout(remaining) {
-            Ok(ActorCommand::AddSigner {
+            Ok(ActorMail::Command(ActorCommand::AddSigner {
                 source: nmp_core::SignerSource::RemoteHandle(handle),
                 ..
-            }) => return Some(handle),
-            Ok(ActorCommand::BunkerHandshakeProgress { stage, message }) => {
+            })) => return Some(handle),
+            Ok(ActorMail::Command(ActorCommand::BunkerHandshakeProgress { stage, message })) => {
                 if stage == "failed" {
                     panic!("nostrconnect handshake failed: {stage}: {message:?}");
                 }

@@ -39,7 +39,6 @@
 //! FlatBuffers sidecars (ADR-0037, Wave A): `nmp.nip17.dm_inbox` (`NDMI`) and
 //! `nmp.nip17.dm_relay_list` (`NDRL`).
 
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::AppHost;
@@ -272,7 +271,7 @@ struct DmRuntimeController {
     /// populated for every backend including bunker. The reconciler needs
     /// identity only, never secret key material.
     active_pubkey: nmp_core::slots::ActiveAccountSlot,
-    tx: Sender<ActorCommand>,
+    tx: nmp_core::CommandSender,
     state: Mutex<DmRuntimeState>,
 }
 
@@ -388,7 +387,7 @@ struct ZapReceiptsRuntimeController {
     /// populated for every backend including bunker. Identity only — never
     /// secret key material.
     active_pubkey: nmp_core::slots::ActiveAccountSlot,
-    tx: Sender<ActorCommand>,
+    tx: nmp_core::CommandSender,
     last_pushed_pubkey: Mutex<Option<String>>,
 }
 

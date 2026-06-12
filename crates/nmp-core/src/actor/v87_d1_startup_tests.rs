@@ -24,17 +24,18 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use crate::actor::{run_actor, ActorCommand};
+    use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
     use crate::update_envelope::{decode_snapshot_envelope, SnapshotEnvelope};
 
     // ─── helper ─────────────────────────────────────────────────────────────
 
     fn spawn_actor() -> (
-        mpsc::Sender<ActorCommand>,
+        CommandSender,
         mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
     ) {
-        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+        let (inbox_tx, cmd_rx) = mpsc::channel::<ActorMail>();
+        let cmd_tx = CommandSender::new(inbox_tx);
         let (upd_tx, upd_rx) = mpsc::channel::<crate::update_envelope::UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
         thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));

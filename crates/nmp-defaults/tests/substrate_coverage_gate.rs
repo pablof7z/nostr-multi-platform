@@ -31,7 +31,7 @@
 //! deliberately assert the runtime's *presence* here, not its internal decision.
 
 use std::ops::Range;
-use std::sync::mpsc::{channel, Sender};
+use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::planner::{CompiledPlan, RelayPlan};
@@ -201,7 +201,7 @@ impl AppHost for GateSpy {
         unreachable!("register_substrate does not read the active pubkey");
     }
 
-    fn actor_sender(&self) -> Sender<ActorCommand> {
+    fn actor_sender(&self) -> nmp_core::CommandSender {
         unreachable!("register_substrate does not read the actor sender");
     }
 
@@ -324,5 +324,5 @@ fn coverage_hook_honours_custom_cap_and_negentropy_runtime_is_installed() {
 // `AppHost` impl signatures.
 #[allow(dead_code)]
 fn _assert_channel_types() {
-    let (_tx, _rx): (Sender<ActorCommand>, _) = channel();
+    let (_tx, _rx): (std::sync::mpsc::Sender<nmp_core::ActorMail>, _) = channel();
 }

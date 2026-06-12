@@ -7,7 +7,6 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, OnceLock};
 
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
@@ -53,7 +52,7 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) {
     });
 }
 
-fn handle_broker_event(tx: &Sender<ActorCommand>, event: BrokerEvent) {
+fn handle_broker_event(tx: &nmp_core::CommandSender, event: BrokerEvent) {
     let cmd = match event {
         BrokerEvent::Progress { stage, message } => {
             ActorCommand::BunkerHandshakeProgress { stage, message }

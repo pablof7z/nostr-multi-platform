@@ -206,7 +206,7 @@ fn contains_test_pred(line: &str) -> bool {
     if line.contains("test-support") && line.contains("cfg(") {
         return true;
     }
-    if line.contains("cfg(any(")
+    if (line.contains("cfg(any(") || line.contains("cfg(all("))
         && (line.contains("(test,")
             || line.contains(", test,")
             || line.contains(", test)")

@@ -6,6 +6,23 @@ use nmp_core::planner::InterestLifecycle;
 use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};
 use nostr::Keys;
 
+/// ADR-0050 §D3a — the runtime now sends through a `CommandSender` over an
+/// `ActorMail` inbox. Build the pair and unwrap commands for the assertions.
+fn wot_channel() -> (
+    nmp_core::CommandSender,
+    std::sync::mpsc::Receiver<nmp_core::ActorMail>,
+) {
+    let (tx, rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
+    (nmp_core::CommandSender::new(tx), rx)
+}
+
+fn unwrap_mail(mail: nmp_core::ActorMail) -> ActorCommand {
+    match mail {
+        nmp_core::ActorMail::Command(cmd) => cmd,
+        other => panic!("expected ActorMail::Command, got {other:?}"),
+    }
+}
+
 fn author(n: u16) -> String {
     format!("{n:064x}")
 }
@@ -46,13 +63,13 @@ fn contact_event(event_author: &str, follows: usize) -> KernelEvent {
 fn bunker_only_account_activates_wot_bootstrap() {
     let keys = Keys::generate();
     let active = keys.public_key().to_hex();
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = wot_channel();
     // Pubkey-only slot: Some(hex), zero secret keys — the bunker shape.
     let runtime = WotBootstrapRuntime::new(active_slot(&keys), tx);
 
     runtime.on_kernel_event(&contact_event(&active, 8));
 
-    let cmd = rx.recv().expect("bunker account must still push WOT bootstrap");
+    let cmd = unwrap_mail(rx.recv().expect("bunker account must still push WOT bootstrap"));
     let ActorCommand::PushInterest(interest) = cmd else {
         panic!("expected PushInterest for a bunker-only account");
     };
@@ -64,12 +81,12 @@ fn bunker_only_account_activates_wot_bootstrap() {
 fn active_kind3_pushes_large_one_shot_wot_interest() {
     let keys = Keys::generate();
     let active = keys.public_key().to_hex();
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = wot_channel();
     let runtime = WotBootstrapRuntime::new(active_slot(&keys), tx);
 
     runtime.on_kernel_event(&contact_event(&active, 1_052));
 
-    let cmd = rx.recv().expect("wot bootstrap command");
+    let cmd = unwrap_mail(rx.recv().expect("wot bootstrap command"));
     let ActorCommand::PushInterest(interest) = cmd else {
         panic!("expected PushInterest");
     };
@@ -87,12 +104,12 @@ fn active_kind3_pushes_large_one_shot_wot_interest() {
 fn account_switch_snapshot_withdraws_previous_bootstrap() {
     let keys = Keys::generate();
     let active = keys.public_key().to_hex();
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = wot_channel();
     let slot = active_slot(&keys);
     let runtime = WotBootstrapRuntime::new(Arc::clone(&slot), tx);
 
     runtime.on_kernel_event(&contact_event(&active, 30));
-    let _ = rx.recv().expect("initial push");
+    let _ = unwrap_mail(rx.recv().expect("initial push"));
     *slot.lock().unwrap() = None;
 
     // Both registered projection closures call `current_snapshot()` every tick.
@@ -103,7 +120,7 @@ fn account_switch_snapshot_withdraws_previous_bootstrap() {
     let _ = runtime.snapshot_json();
     let _ = runtime.snapshot_typed();
 
-    let cmd = rx.recv().expect("withdraw command");
+    let cmd = unwrap_mail(rx.recv().expect("withdraw command"));
     let ActorCommand::WithdrawInterest(id) = cmd else {
         panic!("expected WithdrawInterest");
     };
@@ -122,7 +139,7 @@ fn account_switch_snapshot_withdraws_previous_bootstrap() {
 fn snapshot_typed_lands_live_runtime_state_in_the_sidecar_and_round_trips() {
     let keys = Keys::generate();
     let active = keys.public_key().to_hex();
-    let (tx, _rx) = std::sync::mpsc::channel();
+    let (tx, _rx) = wot_channel();
     let runtime = WotBootstrapRuntime::new(active_slot(&keys), tx);
 
     runtime.on_kernel_event(&contact_event(&active, 12));
@@ -150,7 +167,7 @@ fn snapshot_typed_lands_live_runtime_state_in_the_sidecar_and_round_trips() {
 #[test]
 fn typed_and_json_projections_emit_in_lockstep() {
     let keys = Keys::generate();
-    let (tx, _rx) = std::sync::mpsc::channel();
+    let (tx, _rx) = wot_channel();
     let runtime = WotBootstrapRuntime::new(active_slot(&keys), tx);
 
     // No account event yet: generic projection is still non-Null (active
