@@ -44,18 +44,18 @@ use crate::profile_card_generated as pc;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const CLAIMED_PROFILES_SCHEMA_ID: &str = "claimed_profiles";
+pub const CLAIMED_PROFILES_SCHEMA_ID: &str = "claimed_profiles";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
-pub(crate) const CLAIMED_PROFILES_FILE_IDENTIFIER: &[u8; 4] = b"KCPR";
+pub const CLAIMED_PROFILES_FILE_IDENTIFIER: &[u8; 4] = b"KCPR";
 /// Wire schema version. Bump on any breaking change to `claimed_profiles.fbs`.
-pub(crate) const CLAIMED_PROFILES_SCHEMA_VERSION: u32 = 1;
+pub const CLAIMED_PROFILES_SCHEMA_VERSION: u32 = 1;
 
 /// The `"claimed_profiles"` read model — the `pubkey -> ProfileCard` map
 /// flattened to a key-sorted vector of `(key, value)` entries.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct ClaimedProfilesModel {
+pub struct ClaimedProfilesModel {
     /// `(key, value)` entries, sorted by `key` (BTreeMap order, matches JSON).
-    pub(crate) entries: Vec<(String, ProfileCardModel)>,
+    pub entries: Vec<(String, ProfileCardModel)>,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -128,7 +128,6 @@ pub(crate) fn encode_claimed_profiles(model: &ClaimedProfilesModel) -> Vec<u8> {
 /// Decode the SHARED generated `ProfileCard` table (`include`d from
 /// `profile_card.fbs`) into a [`ProfileCardModel`] (mirrors
 /// `profile_fb::profile_card_from_fb`; both read the same `pc::ProfileCard`).
-#[cfg(test)]
 fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey().unwrap_or_default().to_string(),
@@ -151,8 +150,14 @@ fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
 /// Decode typed FlatBuffers bytes (as produced by [`encode_claimed_profiles`])
 /// back into a [`ClaimedProfilesModel`]. Returns an error string on any
 /// malformed input.
-#[cfg(test)]
-pub(crate) fn decode_claimed_profiles(bytes: &[u8]) -> Result<ClaimedProfilesModel, String> {
+///
+/// Promoted to unconditional `pub` (V-112 follow-up): `claim_profile` is the
+/// component-owned profile-hydration verb, and the `claimed_profiles` typed
+/// sidecar is its direct observable — out-of-tree Rust consumers (e.g. the
+/// `nmp-app-template` `validate_claim_profile` example) read it through
+/// `nmp_core::typed_projections`, mirroring the `decode_claimed_events` /
+/// `decode_resolved_profiles` promotions from PR-B.
+pub fn decode_claimed_profiles(bytes: &[u8]) -> Result<ClaimedProfilesModel, String> {
     if bytes.len() < 8 || !fb::claimed_profiles_snapshot_buffer_has_identifier(bytes) {
         return Err("missing KCPR file identifier".to_string());
     }

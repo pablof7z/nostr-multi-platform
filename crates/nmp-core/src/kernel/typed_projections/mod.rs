@@ -151,10 +151,11 @@ pub use claimed_events_fb::{
     CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
 };
 pub(crate) use claimed_events_fb::encode_claimed_events;
-pub(crate) use claimed_profiles_fb::{
-    encode_claimed_profiles, ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER,
-    CLAIMED_PROFILES_SCHEMA_ID, CLAIMED_PROFILES_SCHEMA_VERSION,
+pub use claimed_profiles_fb::{
+    ClaimedProfilesModel, CLAIMED_PROFILES_FILE_IDENTIFIER, CLAIMED_PROFILES_SCHEMA_ID,
+    CLAIMED_PROFILES_SCHEMA_VERSION,
 };
+pub(crate) use claimed_profiles_fb::encode_claimed_profiles;
 pub(crate) use mention_profiles_fb::{
     encode_mention_profiles, MentionProfileRow, MentionProfilesModel,
     MENTION_PROFILES_FILE_IDENTIFIER, MENTION_PROFILES_SCHEMA_ID, MENTION_PROFILES_SCHEMA_VERSION,
@@ -196,10 +197,13 @@ pub use signed_events_fb::{
 #[cfg(test)]
 pub(crate) use relay_role_options_fb::decode_relay_role_options;
 // Wave C profile/event cluster — `decode_claimed_events` promoted to unconditional
-// pub (nmp-gallery typed-sidecar migration); the others remain test-only.
+// pub (nmp-gallery typed-sidecar migration); `decode_claimed_profiles` promoted
+// to unconditional pub (V-112 follow-up: the claimed_profiles sidecar is the
+// direct observable of `claim_profile`, read out-of-tree via
+// `nmp_core::typed_projections` — see the app-template `validate_claim_profile`
+// example); `decode_mention_profiles` remains test-only.
 pub use claimed_events_fb::decode_claimed_events;
-#[cfg(test)]
-pub(crate) use claimed_profiles_fb::decode_claimed_profiles;
+pub use claimed_profiles_fb::decode_claimed_profiles;
 #[cfg(test)]
 pub(crate) use mention_profiles_fb::decode_mention_profiles;
 pub use resolved_profiles_fb::decode_resolved_profiles;
