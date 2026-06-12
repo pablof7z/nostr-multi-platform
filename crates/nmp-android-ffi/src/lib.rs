@@ -29,7 +29,8 @@ mod platform;
 mod session;
 mod signer;
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account, nmp_app_new,
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_create_new_account,
+    nmp_app_encode_profile, nmp_app_free_string, nmp_app_new,
     nmp_app_open_timeline, nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay,
     nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, NmpApp,
 };
@@ -232,6 +233,49 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseProfile(
     s.with_app(|app| {
         nmp_app_release_profile(app, pubkey.as_ptr(), consumer_id.as_ptr());
     });
+}
+
+/// Encode a hex pubkey as a NIP-19 display identifier (`nprofile1…` or
+/// `npub1…`). Wraps the existing `nmp_app_encode_profile` C-ABI symbol —
+/// no new NMP C-ABI surface.
+///
+/// Returns a Kotlin `String` (or `null` when the handle is dead / the
+/// pubkey is unusable). Follows the same `*mut c_char` → `jstring` pattern
+/// as `nativeNostrConnectUri` in `signer.rs`.
+///
+/// D6: a null handle or a malformed pubkey degrades gracefully (returns
+/// `null` — the Kotlin caller falls back to its own short-hex rendering).
+/// Never panics across the JNI seam.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeEncodeProfile(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    pubkey: JString,
+) -> jni::sys::jstring {
+    use std::ffi::CStr;
+    use std::ptr;
+    let Some(s) = session_arc(handle) else {
+        return ptr::null_mut();
+    };
+    let Some(pubkey_c) = jstring_to_cstring(&mut env, &pubkey) else {
+        return ptr::null_mut();
+    };
+    let Some(raw_ptr) = s.with_app(|app| nmp_app_encode_profile(app, pubkey_c.as_ptr())) else {
+        return ptr::null_mut();
+    };
+    if raw_ptr.is_null() {
+        return ptr::null_mut();
+    }
+    let encoded = unsafe { CStr::from_ptr(raw_ptr) }
+        .to_string_lossy()
+        .into_owned();
+    // SAFETY: `nmp_app_free_string` is the documented free for C-strings
+    // allocated by `nmp_app_encode_profile` (nip19_ffi.rs).
+    nmp_app_free_string(raw_ptr);
+    env.new_string(encoded)
+        .map(|s| s.into_raw())
+        .unwrap_or(ptr::null_mut())
 }
 
 /// Build a Chirp action dispatch spec from typed user intent.
