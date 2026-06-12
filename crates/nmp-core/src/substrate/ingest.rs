@@ -49,10 +49,15 @@ pub trait IngestParser: Send + Sync {
 /// [`Self::replace_kind_parser`]). This allows multiple lifecycle-managed
 /// parsers to coexist on the same kind without silently evicting each other —
 /// each owns exactly one named slot.
+///
+/// Range entries are stored as `(range, slot_key, parser)` triples where
+/// `slot_key` is `None` for slot-less registrations (via
+/// [`Self::register_range`]) and `Some(key)` for lifecycle-managed
+/// registrations (via [`Self::replace_range_parser`]).
 #[derive(Default)]
 pub struct EventIngestDispatcher {
     by_kind: HashMap<u32, Vec<(Option<&'static str>, Arc<dyn IngestParser>)>>,
-    by_range: Vec<(Range<u32>, Arc<dyn IngestParser>)>,
+    by_range: Vec<(Range<u32>, Option<&'static str>, Arc<dyn IngestParser>)>,
 }
 
 impl EventIngestDispatcher {
@@ -133,8 +138,56 @@ impl EventIngestDispatcher {
         Some(removed)
     }
 
+    /// Append a slot-less parser for all events whose kind falls in `range`.
+    /// Multiple calls accumulate parsers; all fire on each matching event.
+    /// Use [`Self::replace_range_parser`] for lifecycle-managed singleton seams.
     pub fn register_range(&mut self, range: Range<u32>, parser: Arc<dyn IngestParser>) {
-        self.by_range.push((range, parser));
+        self.by_range.push((range, None, parser));
+    }
+
+    /// Slot-keyed replace for a kind range: evict the prior range-parser
+    /// registered under `slot_key` (if any), then install `parser` under the
+    /// same slot. Only the entry with a matching `slot_key` is evicted; all
+    /// other range registrations are untouched.
+    ///
+    /// Used by lifecycle-managed all-kinds parsers (e.g. a debug raw-event
+    /// cache that needs to cover every kind). Returns the previous parser for
+    /// `slot_key`, or `None` when this is the first registration for that
+    /// slot. D6 — callers should hold the dispatcher write-lock.
+    ///
+    /// **Slot keys MUST be globally unique across crates.** Choose a
+    /// fully-qualified reverse-domain key (e.g. `"chirp-tui.raw-cache"`) that
+    /// cannot collide with any other crate's registration.
+    pub fn replace_range_parser(
+        &mut self,
+        range: Range<u32>,
+        slot_key: &'static str,
+        parser: Arc<dyn IngestParser>,
+    ) -> Option<Arc<dyn IngestParser>> {
+        let prev = if let Some(pos) = self
+            .by_range
+            .iter()
+            .position(|(_, key, _)| *key == Some(slot_key))
+        {
+            Some(self.by_range.remove(pos).2)
+        } else {
+            None
+        };
+        self.by_range.push((range, Some(slot_key), parser));
+        prev
+    }
+
+    /// Remove the range-parser registered under `slot_key`, if any. Returns
+    /// the evicted parser, or `None` when no entry with that slot key exists.
+    pub fn remove_range_parser_slot(
+        &mut self,
+        slot_key: &'static str,
+    ) -> Option<Arc<dyn IngestParser>> {
+        let pos = self
+            .by_range
+            .iter()
+            .position(|(_, key, _)| *key == Some(slot_key))?;
+        Some(self.by_range.remove(pos).2)
     }
 
     /// Fan `evt` to every parser registered for its kind. Called by the
@@ -146,7 +199,7 @@ impl EventIngestDispatcher {
                 p.parse(evt);
             }
         }
-        for (range, p) in &self.by_range {
+        for (range, _, p) in &self.by_range {
             if range.contains(&kind) {
                 p.parse(evt);
             }
@@ -155,6 +208,8 @@ impl EventIngestDispatcher {
 
     /// Number of parser registrations (for diagnostics + tests). Counts each
     /// per-kind and per-range registration once, not per kind matched.
+    /// Range entries registered via [`Self::replace_range_parser`] (slot-keyed)
+    /// are counted the same as those registered via [`Self::register_range`].
     #[must_use]
     pub fn registration_count(&self) -> usize {
         self.by_kind.values().map(Vec::len).sum::<usize>() + self.by_range.len()
@@ -341,5 +396,167 @@ mod tests {
         assert_eq!(p_a1.kinds(), Vec::<u32>::new(), "old slot-a parser must NOT fire");
         assert_eq!(p_a2.kinds(), vec![1059], "new slot-a parser must fire");
         assert_eq!(p_b.kinds(), vec![1059], "slot-b parser must STILL fire after slot-a replace");
+    }
+
+    // ── range-slot tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn replace_range_parser_swaps_single_slot() {
+        let mut d = EventIngestDispatcher::new();
+        let old = CapturingParser::new();
+        let new_p = CapturingParser::new();
+
+        d.replace_range_parser(0..u32::MAX, "chirp-tui.raw-cache", old.clone());
+        assert_eq!(d.registration_count(), 1);
+
+        let prev = d.replace_range_parser(0..u32::MAX, "chirp-tui.raw-cache", new_p.clone());
+        assert!(prev.is_some(), "old range parser returned as previous");
+        assert_eq!(d.registration_count(), 1, "exactly one range registration after replace");
+
+        d.dispatch(&evt(1));
+        assert_eq!(old.kinds(), Vec::<u32>::new(), "evicted parser must NOT fire");
+        assert_eq!(new_p.kinds(), vec![1], "new parser must fire");
+    }
+
+    #[test]
+    fn replace_range_parser_on_empty_slot_returns_none() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        let prev = d.replace_range_parser(0..u32::MAX, "chirp-tui.raw-cache", p.clone());
+        assert!(prev.is_none(), "first registration returns None");
+        assert_eq!(d.registration_count(), 1);
+        d.dispatch(&evt(42));
+        assert_eq!(p.kinds(), vec![42]);
+    }
+
+    #[test]
+    fn remove_range_parser_slot_evicts_and_silences() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+
+        d.replace_range_parser(0..u32::MAX, "chirp-tui.raw-cache", p.clone());
+        assert_eq!(d.registration_count(), 1);
+
+        let evicted = d.remove_range_parser_slot("chirp-tui.raw-cache");
+        assert!(evicted.is_some(), "returns evicted parser");
+        assert_eq!(d.registration_count(), 0, "registration count drops to 0");
+
+        d.dispatch(&evt(1));
+        assert_eq!(p.kinds(), Vec::<u32>::new(), "evicted range parser must NOT fire");
+    }
+
+    #[test]
+    fn remove_range_parser_slot_missing_returns_none() {
+        let mut d = EventIngestDispatcher::new();
+        assert!(d.remove_range_parser_slot("no-such-slot").is_none());
+    }
+
+    #[test]
+    fn range_slot_does_not_evict_slot_less_range() {
+        let mut d = EventIngestDispatcher::new();
+        let slotless = CapturingParser::new();
+        let slotted = CapturingParser::new();
+
+        // A slot-less range registered via register_range must survive.
+        d.register_range(0..u32::MAX, slotless.clone());
+        d.replace_range_parser(0..u32::MAX, "chirp-tui.raw-cache", slotted.clone());
+        assert_eq!(d.registration_count(), 2);
+
+        d.dispatch(&evt(7));
+        assert_eq!(slotless.kinds(), vec![7], "slot-less range must still fire");
+        assert_eq!(slotted.kinds(), vec![7], "slot-keyed range must also fire");
+    }
+
+    #[test]
+    fn range_all_kinds_fires_on_every_kind() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        d.replace_range_parser(0..u32::MAX, "chirp-tui.raw-cache", p.clone());
+
+        d.dispatch(&evt(0));
+        d.dispatch(&evt(1));
+        d.dispatch(&evt(10_050));
+        d.dispatch(&evt(u32::MAX - 1));
+
+        assert_eq!(p.kinds(), vec![0, 1, 10_050, u32::MAX - 1]);
+    }
+
+    // ── dispatcher coverage tests ────────────────────────────────────────────
+
+    /// (a) A slot-keyed range-parser AND a kind-slot parser both fire when a
+    /// single event matches both registrations.
+    ///
+    /// Scenario: `"chirp-tui.raw-cache"` covers `0..u32::MAX`; `"marmot"`
+    /// covers kind:1059 specifically. An event of kind:1059 must trigger both.
+    #[test]
+    fn slot_keyed_range_and_kind_slot_both_fire_on_one_event() {
+        let mut d = EventIngestDispatcher::new();
+        let range_p = CapturingParser::new();
+        let kind_p = CapturingParser::new();
+
+        d.replace_range_parser(0..u32::MAX, "chirp-tui.raw-cache", range_p.clone());
+        d.replace_kind_parser(1059, "marmot", kind_p.clone());
+
+        d.dispatch(&evt(1059));
+
+        assert_eq!(range_p.kinds(), vec![1059], "range parser must fire");
+        assert_eq!(kind_p.kinds(), vec![1059], "kind-slot parser must fire");
+    }
+
+    /// (b) Two overlapping distinct slot-keyed ranges both fire; replacing
+    /// one slot does not touch the other (per-slot isolation).
+    ///
+    /// Scenario: slot `"crate-a"` covers `0..20_000`, slot `"crate-b"` covers
+    /// `10_000..30_000`. Both cover kind:15000. After replacing `"crate-a"`,
+    /// the new parser fires and the old does not; `"crate-b"` is unaffected.
+    #[test]
+    fn two_overlapping_distinct_slot_keyed_ranges_fire_independently() {
+        let mut d = EventIngestDispatcher::new();
+        let a1 = CapturingParser::new();
+        let a2 = CapturingParser::new();
+        let b = CapturingParser::new();
+
+        d.replace_range_parser(0..20_000, "crate-a", a1.clone());
+        d.replace_range_parser(10_000..30_000, "crate-b", b.clone());
+        assert_eq!(d.registration_count(), 2);
+
+        // Both fire on kind:15000 (falls in both ranges).
+        d.dispatch(&evt(15_000));
+        assert_eq!(a1.kinds(), vec![15_000], "slot-a fires before replace");
+        assert_eq!(b.kinds(), vec![15_000], "slot-b fires before replace");
+
+        // Replace slot-a — slot-b must survive untouched.
+        let prev = d.replace_range_parser(0..20_000, "crate-a", a2.clone());
+        assert!(prev.is_some(), "prior slot-a parser returned on replace");
+        assert_eq!(d.registration_count(), 2, "still exactly 2 range registrations");
+
+        d.dispatch(&evt(15_000));
+        assert_eq!(a1.kinds(), vec![15_000], "old slot-a must NOT fire after replace");
+        assert_eq!(a2.kinds(), vec![15_000], "new slot-a must fire");
+        assert_eq!(b.kinds(), vec![15_000, 15_000], "slot-b must fire both times");
+    }
+
+    /// (c) An empty range (`5..5`) never fires, regardless of what event kind
+    /// is dispatched. An empty `Range<u32>` contains no elements.
+    #[test]
+    fn empty_range_never_fires() {
+        let mut d = EventIngestDispatcher::new();
+        let p = CapturingParser::new();
+        // Register the empty range via the slot-keyed path (exercising that
+        // codepath; register_range would work equally).
+        d.replace_range_parser(5..5, "empty-slot", p.clone());
+        assert_eq!(d.registration_count(), 1, "registration is recorded");
+
+        // Dispatch several events — none should match the empty range.
+        d.dispatch(&evt(4));
+        d.dispatch(&evt(5)); // just past the empty range
+        d.dispatch(&evt(6));
+        d.dispatch(&evt(0));
+        d.dispatch(&evt(u32::MAX - 1));
+
+        assert!(
+            p.kinds().is_empty(),
+            "parser behind empty range must never fire"
+        );
     }
 }

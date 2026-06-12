@@ -209,11 +209,11 @@ use nmp_core::__ffi_internal::{
 // `register_snapshot_projection("wallet", …)` itself.
 use nmp_core::slots::{
     event_by_id_from_store, new_active_account_slot, new_active_local_keys_slot,
-    new_dm_inbox_observer_id_slot, new_event_store_slot, new_mls_local_nsec_slot,
+    new_event_store_slot, new_mls_local_nsec_slot,
     new_nostrconnect_bootstrap_relay_slot, new_publish_resolver_slot,
     new_raw_event_forward_policy_slot, new_routing_substrate_slot, new_routing_trace_slot,
     new_singleton_event_observer_id_slot, new_storage_path_slot, ActiveAccountSlot,
-    ActiveLocalKeysSlot, DmInboxObserverIdSlot, EventStoreSlot, MlsLocalNsecSlot,
+    ActiveLocalKeysSlot, EventStoreSlot, MlsLocalNsecSlot,
     NostrConnectBootstrapRelaySlot, PublishResolverSlot, RawEventForwardPolicySlot,
     RoutingSubstrateSlot, RoutingTraceSlot, SingletonEventObserverIdSlot, StoragePathSlot,
 };
@@ -240,9 +240,9 @@ pub(crate) struct UpdateCallbackRegistration {
 
 // Step 11 final — the slot type aliases + constructors that used to live
 // here (MlsLocalNsecSlot, ActiveLocalKeysSlot, StoragePathSlot,
-// RoutingTraceSlot, RoutingSubstrateSlot, DmInboxObserverIdSlot,
-// SingletonEventObserverIdSlot, and their `new_*_slot` constructors) moved
-// to `nmp-core::slots` so the actor (a crate-private module inside
+// RoutingTraceSlot, RoutingSubstrateSlot, SingletonEventObserverIdSlot,
+// and their `new_*_slot` constructors) moved to `nmp-core::slots` so the
+// actor (a crate-private module inside
 // `nmp-core`) can still name them after the FFI extraction. The aliases
 // are imported through the `use nmp_core::slots::*` block at the top of
 // this file.
@@ -390,19 +390,6 @@ pub struct NmpApp {
     /// Both paths mutate the same `Mutex<…>` the actor reads. Delivers the
     /// verbatim flat NIP-01 signed event (`sig` included), kind-filtered.
     raw_event_observers: RawEventObserverSlot,
-    /// Previously-installed NIP-17 DM-inbox raw-event observer id, for the
-    /// idempotent re-invoke contract on the per-app crate's
-    /// `register_dm_inbox` entry point. The per-app crate (e.g. `nmp-app-chirp`)
-    /// swaps the slot atomically via [`Self::swap_dm_inbox_observer`]:
-    /// the previous id is taken out, the new observer is registered, and the
-    /// new id is stored back — so a re-invoke unregisters the prior observer
-    /// before installing the new one, instead of stacking a fresh observer on
-    /// every sign-in / account-switch cycle.
-    ///
-    /// Protocol-named (not chirp-named) because it tracks a NIP-17 surface;
-    /// any host wiring a single DM-inbox per app shares this contract. A
-    /// multi-inbox host would need a handle-returning variant instead.
-    nip17_dm_inbox_observer_id: DmInboxObserverIdSlot,
     /// Singleton kernel-event observer-id slot used by per-app crates that
     /// register exactly one auxiliary `KernelEventObserver` per app and want
     /// the registration to be idempotent across re-invokes — see
@@ -783,14 +770,12 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // (`set_raw_event_observers_handle`).
     let raw_event_observers = new_raw_event_observer_slot();
     let actor_raw_event_observers = Arc::clone(&raw_event_observers);
-    // Per-app idempotency slots — track the previously-installed observer id
-    // for single-instance auxiliary observer registrations a per-app crate
-    // (e.g. `nmp-app-chirp`) wires through `swap_dm_inbox_observer` /
-    // `swap_singleton_event_observer`. NOT shared with the actor thread —
-    // the actor never reads these; only the FFI side calls the swap
-    // accessors. Owned by `NmpApp`, dropped with it (so the slot dies with
+    // Per-app idempotency slot — tracks the previously-installed singleton
+    // kernel-event observer id for a per-app crate that wants exactly one
+    // auxiliary `KernelEventObserver` per app. NOT shared with the actor
+    // thread — the actor never reads this; only the FFI side calls the swap
+    // accessor. Owned by `NmpApp`, dropped with it (so the slot dies with
     // the app — no global aliasing across `nmp_app_free`).
-    let nip17_dm_inbox_observer_id = new_dm_inbox_observer_id_slot();
     let singleton_event_observer_id = new_singleton_event_observer_id_slot();
     // Host-extensible snapshot output slot. Same shared-`Arc` pattern: the
     // `NmpApp` keeps one clone (Rust + C-ABI registration entry points), the
@@ -1154,7 +1139,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         lifecycle_observer,
         event_observers,
         raw_event_observers,
-        nip17_dm_inbox_observer_id,
         singleton_event_observer_id,
         configured_relays,
         initial_relays_for_start: Mutex::new(Vec::new()),
@@ -1640,6 +1624,32 @@ impl NmpApp {
         }
     }
 
+    /// Slot-keyed replace for a kind range.  Mirrors
+    /// [`Self::replace_ingest_parser`] but registers against a `Range<u32>`
+    /// instead of a single kind — used by all-kinds parsers (e.g. the
+    /// chirp-tui debug raw-event cache). D6 — a poisoned dispatcher lock is a
+    /// silent no-op returning `None`.
+    pub fn replace_ingest_parser_range(
+        &self,
+        range: std::ops::Range<u32>,
+        slot_key: &'static str,
+        parser: std::sync::Arc<dyn nmp_core::substrate::IngestParser>,
+    ) -> Option<std::sync::Arc<dyn nmp_core::substrate::IngestParser>> {
+        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+            d.replace_range_parser(range, slot_key, parser)
+        } else {
+            None
+        }
+    }
+
+    /// Remove the range-parser registered under `slot_key`, if any.
+    /// D6 — a poisoned dispatcher lock is a silent no-op.
+    pub fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
+        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+            d.remove_range_parser_slot(slot_key);
+        }
+    }
+
     /// V-40 — install the kernel's [`nmp_core::substrate::DmInboxRelayLookup`]
     /// handle. The per-app crate (today `nmp-nip17::register_actions`)
     /// hands in a concrete `DmRelayCache`; the same `Arc` is the writer
@@ -2033,13 +2043,24 @@ impl NmpApp {
         Arc::clone(&self.event_observers)
     }
 
-    /// Register a typed Rust raw signed-event observer with a kind filter
-    /// (empty filter → all kinds). Returns an opaque id the caller retains
-    /// to unregister via [`Self::unregister_raw_event_observer`]. Used by
-    /// per-app / protocol crates that need the verbatim signed event
-    /// (`sig` included) — e.g. an inbound-ingest seam that must hand the
-    /// whole signed event to its own state machine. D0 — `nmp-core` never
-    /// names the protocol; this trait is the generic seam.
+    /// Register a typed Rust raw signed-event observer for **verbatim
+    /// forwarding only** (rule A5).
+    ///
+    /// The tap delivers the exact signed NIP-01 frame (`sig` included) for
+    /// every accepted live-ingest event whose kind matches the filter (empty
+    /// filter → all kinds). It fires on live ingest (including `Duplicate`
+    /// outcomes) and does **NOT** fire on cache-served replay.
+    ///
+    /// **To derive in-process state or projections, use
+    /// `register_ingest_parser` instead.** The `IngestParser` seam fires on
+    /// cache-served replay and supports slot-keyed replace for lifecycle-
+    /// managed singleton parsers. Use the raw tap exclusively when the `sig`
+    /// field must be forwarded verbatim to an external store or relay bridge
+    /// (e.g. the `hl` app's nostrdb mirror).
+    ///
+    /// Returns an opaque id required to unregister via
+    /// [`Self::unregister_raw_event_observer`]. D0 — `nmp-core` never names
+    /// the protocol; this seam is the generic verbatim-forwarding lane.
     #[must_use]
     pub fn register_raw_event_observer(
         &self,
@@ -2065,46 +2086,13 @@ impl NmpApp {
         Arc::clone(&self.raw_event_observers)
     }
 
-    /// Atomically swap the per-app's NIP-17 DM-inbox raw-observer id slot:
-    /// store `new` and return whatever was previously installed there.
-    ///
-    /// Used by per-app crates (e.g. `nmp-app-chirp`) to make their
-    /// `register_dm_inbox` entry point idempotent across re-invokes (sign-in,
-    /// account switch). Recipe:
-    ///
-    /// ```ignore
-    /// let new_id = app.register_raw_event_observer(filter, projection);
-    /// if new_id.0 == 0 { return; }
-    /// if let Some(prev) = app.swap_dm_inbox_observer(Some(new_id)) {
-    ///     app.unregister_raw_event_observer(prev);
-    /// }
-    /// ```
-    ///
-    /// The swap-then-unregister order is deliberate: storing the new id first
-    /// means a host that aborts between register and unregister still has the
-    /// new observer live (no inbox-gap window), and the take-and-set under a
-    /// single lock acquisition makes the previous id impossible to lose to a
-    /// concurrent re-invoke. A poisoned mutex degrades to `None` (D6).
-    #[must_use]
-    pub fn swap_dm_inbox_observer(
-        &self,
-        new: Option<RawEventObserverId>,
-    ) -> Option<RawEventObserverId> {
-        let mut guard = self.nip17_dm_inbox_observer_id.lock().ok()?;
-        let prev = guard.take();
-        *guard = new;
-        prev
-    }
-
     /// Atomically swap the per-app's singleton kernel-event observer-id slot:
     /// store `new` and return whatever was previously installed there.
     ///
-    /// Mirrors [`Self::swap_dm_inbox_observer`] for the typed
-    /// [`KernelEventObserver`] fan-out (in contrast to the raw signed-event
-    /// tap). Same idempotent-re-invoke contract: a per-app crate that wires
-    /// exactly one auxiliary `KernelEventObserver` per app uses this slot
-    /// to ensure a second registration unregisters the first one before
-    /// installing itself. A poisoned mutex degrades to `None` (D6).
+    /// Idempotent-re-invoke contract: a per-app crate that wires exactly one
+    /// auxiliary `KernelEventObserver` per app uses this slot to ensure a
+    /// second registration unregisters the first one before installing itself.
+    /// A poisoned mutex degrades to `None` (D6).
     ///
     /// The slot is substrate-generic (D0 — the kernel never names the app
     /// noun); the per-app crate decides what protocol surface the singleton
@@ -2127,7 +2115,7 @@ impl NmpApp {
     /// relay subscriptions — kind:1059 `#p <pubkey>` for gift-wrap Welcome
     /// delivery, per-group kind:445 feeds, etc. The kernel emits REQ frames
     /// on the next compile pass; matching inbound events then flow through the
-    /// raw-event tap automatically, with no Swift polling needed.
+    /// registered `IngestParser` seams automatically, with no Swift polling needed.
     pub fn push_interest(&self, interest: nmp_core::planner::LogicalInterest) {
         self.send_cmd(ActorCommand::PushInterest(interest));
     }
@@ -2448,6 +2436,19 @@ impl nmp_core::substrate::AppHost for NmpApp {
         NmpApp::unregister_ingest_parser(self, kind, slot_key);
     }
 
+    fn replace_ingest_parser_range(
+        &self,
+        range: std::ops::Range<u32>,
+        slot_key: &'static str,
+        parser: Arc<dyn nmp_core::substrate::IngestParser>,
+    ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
+        NmpApp::replace_ingest_parser_range(self, range, slot_key, parser)
+    }
+
+    fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
+        NmpApp::unregister_ingest_parser_range(self, slot_key);
+    }
+
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         NmpApp::set_dm_inbox_relay_lookup(self, lookup);
     }
@@ -2533,13 +2534,6 @@ impl nmp_core::substrate::AppHost for NmpApp {
 
     fn unregister_raw_event_observer(&self, id: RawEventObserverId) {
         NmpApp::unregister_raw_event_observer(self, id);
-    }
-
-    fn swap_dm_inbox_observer(
-        &self,
-        new: Option<RawEventObserverId>,
-    ) -> Option<RawEventObserverId> {
-        NmpApp::swap_dm_inbox_observer(self, new)
     }
 
     fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {

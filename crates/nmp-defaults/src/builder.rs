@@ -508,6 +508,21 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.unregister_ingest_parser(kind, slot_key);
     }
 
+    fn replace_ingest_parser_range(
+        &self,
+        range: std::ops::Range<u32>,
+        slot_key: &'static str,
+        parser: Arc<dyn nmp_core::substrate::IngestParser>,
+    ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.replace_ingest_parser_range(range, slot_key, parser)
+    }
+
+    fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.unregister_ingest_parser_range(slot_key);
+    }
+
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_dm_inbox_relay_lookup(lookup);
@@ -605,14 +620,6 @@ impl<S> AppHost for NmpAppBuilder<S> {
     fn unregister_raw_event_observer(&self, id: nmp_core::RawEventObserverId) {
         let app: &NmpApp = unsafe { &*self.app };
         app.unregister_raw_event_observer(id);
-    }
-
-    fn swap_dm_inbox_observer(
-        &self,
-        new: Option<nmp_core::RawEventObserverId>,
-    ) -> Option<nmp_core::RawEventObserverId> {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.swap_dm_inbox_observer(new)
     }
 
     fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {

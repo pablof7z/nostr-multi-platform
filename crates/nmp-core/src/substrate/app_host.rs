@@ -7,6 +7,7 @@
 //! `nmp-ffi::NmpApp` is one implementation, not the type every reusable crate
 //! has to name.
 
+use std::ops::Range;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
@@ -161,6 +162,30 @@ pub trait AppHost: ActionRegistrar {
     /// silent no-op.
     fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str);
 
+    /// Slot-keyed replace for a kind range: evict the prior range-parser
+    /// registered under `slot_key` (if any), then install `parser` covering
+    /// `range`. Parsers registered under other slot keys or via the slot-less
+    /// [`Self::register_ingest_parser`] are untouched.
+    ///
+    /// Used by parsers that need to receive every kind (e.g. an all-kinds
+    /// debug raw-event cache). Returns the previous parser for `slot_key`, or
+    /// `None` when this is the first registration for that slot. D6 — a
+    /// poisoned dispatcher lock is a silent no-op returning `None`.
+    ///
+    /// **Slot keys MUST be globally unique across crates.** Choose a
+    /// fully-qualified reverse-domain key (e.g. `"chirp-tui.raw-cache"`) that
+    /// cannot collide with any other crate's registration.
+    fn replace_ingest_parser_range(
+        &self,
+        range: Range<u32>,
+        slot_key: &'static str,
+        parser: Arc<dyn IngestParser>,
+    ) -> Option<Arc<dyn IngestParser>>;
+
+    /// Remove the range-parser registered under `slot_key`, if any. D6 — a
+    /// poisoned dispatcher lock is a silent no-op.
+    fn unregister_ingest_parser_range(&self, slot_key: &'static str);
+
     fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn DmInboxRelayLookup>);
 
     /// H4 — install the read-only [`MailboxCache`] handle the host's NIP-19
@@ -214,6 +239,19 @@ pub trait AppHost: ActionRegistrar {
         new: Option<KernelEventObserverId>,
     ) -> Option<KernelEventObserverId>;
 
+    /// Register a raw signed-event observer for **verbatim forwarding only**.
+    ///
+    /// The tap delivers the exact signed NIP-01 frame (including `sig`) for
+    /// every accepted live-ingest event matching `kinds`. It fires on live
+    /// ingest (including `Duplicate` outcomes) but does **NOT** fire on
+    /// cache-served replay.
+    ///
+    /// **State derivation belongs on `register_ingest_parser` (rule A5),
+    /// not here.** The `IngestParser` seam fires on cache-served replay
+    /// (since PR-1/#1137 + PR-2/#1145) and supports slot-keyed replace for
+    /// lifecycle-managed singleton parsers. Use the raw tap exclusively when
+    /// the `sig` field must be forwarded verbatim to an external store or
+    /// relay bridge (e.g. the `hl` app's nostrdb mirror).
     fn register_raw_event_observer(
         &self,
         kinds: KindFilter,
@@ -221,9 +259,6 @@ pub trait AppHost: ActionRegistrar {
     ) -> RawEventObserverId;
 
     fn unregister_raw_event_observer(&self, id: RawEventObserverId);
-
-    fn swap_dm_inbox_observer(&self, new: Option<RawEventObserverId>)
-        -> Option<RawEventObserverId>;
 
     fn configured_relays_handle(&self) -> AppRelaySlot;
 
