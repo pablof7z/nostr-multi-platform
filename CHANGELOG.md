@@ -5,6 +5,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.6.2 — 2026-06-13
+
+**No `nmp_app_*` C-ABI symbol change.** Additive release — existing FFI callers
+do not need call-site changes.
+
+### Added
+
+- **NIP-55 (Amber) Android signing complete — ADR-0048 Stage 4 E2E passed**
+  (#1183, closes #1124). The registry `login-block` component is now
+  `compose: stable`: signer detection (Amber + Primal), "Sign in with Amber"
+  driving the full kernel flow (pubkey-only account, 90s interactive deadline,
+  `signer_state` projection), DM send via the ADR-0026 seal seam, and an
+  emulator-verified publish — kind:1 `11652d49…20a76a` signed by the
+  Amber-held key, relay-fetched and schnorr-verified. Amber wire fixes shipped
+  in the vendored Kotlin bridge (payload in the `nostrsigner:` data URI,
+  type/params as Intent extras, `{"type","kind"}` permissions JSON, full-event
+  reply via the `event` extra, `rejected` handling). E2E runbook:
+  `docs/testing/adr-0048-nip55-amber-e2e-runbook.md`. Android consumers:
+  vendor the three login-block Kotlin files (`ExternalSignerWire.kt`,
+  `AmberIntentCodec.kt`, `ExternalSignerCapabilityBridge.kt`) + the
+  `<queries>` manifest entries, register the bridge, and call
+  `nmp_app_signin_nip55` / `nmp_app_deliver_external_signer_response`
+  (`external-signer` feature on `nmp-ffi`).
+- **wasm NIP-10 reply write path** (PR-5, #1214).
+
+### Changed
+
+- **D5/D8 runtime enforcement** (#1203): `emit_hz` is clamped to
+  `EMIT_HZ_MAX = 60` with a D6 log line on clamp (graceful, not a panic);
+  snapshot-bound enforcement per D5. Apps requesting >60Hz now get 60.
+
 ## nmp-v0.6.1 — 2026-06-12
 
 **Additive C-ABI change**: one NEW symbol, `nmp_app_probe_relay_info` (no
