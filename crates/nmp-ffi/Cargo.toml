@@ -45,8 +45,18 @@ test-support = ["nmp-core/test-support", "native"]
 # Re-export deltas the Android JNI shim consumes (currently inert — the
 # native feature already exposes every Rust-path symbol the JNI shim
 # names; the feature is retained for parity with the previous nmp-core
-# feature posture). `android-ffi` implies `native`.
-android-ffi = ["native"]
+# ADR-0048 — NIP-55 external-signer driver (`nmp_external_signer_init`,
+# `nmp_app_signin_nip55`, `nmp_app_deliver_external_signer_response`).
+# Separate from `signer-broker` so the NIP-46 relay-broker graph is not
+# pulled in by hosts that only need the capability-bridge transport.
+external-signer = [
+    "native",
+    "dep:nmp-signer-iface",
+    "dep:nmp-signers",
+]
+# feature posture). `android-ffi` implies `native` + the NIP-55 driver (the
+# external-signer capability is an Android surface — ADR-0048 Stage 2).
+android-ffi = ["native", "external-signer"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core", default-features = false }

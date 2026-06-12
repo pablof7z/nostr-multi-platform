@@ -921,6 +921,11 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        ActorCommand::Nip55SignerStateChanged { state, reason } => {
+            commands::nip55_signer_state_changed(ctx.identity, ctx.kernel, state, reason);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::PublishRawEvent {
             kind,
             tags,

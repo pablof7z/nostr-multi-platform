@@ -34,7 +34,8 @@ pub mod op;
 pub use error::SignerError;
 pub use external_signer_transport::{
     ExternalSignerMethod, ExternalSignerOutcome, ExternalSignerRequest, ExternalSignerResponse,
-    ExternalSignerTransport, Nip55Permission, EXTERNAL_SIGN_TIMEOUT, PENDING_SIGN_TIMEOUT,
+    ExternalSignerTransport, Nip55Permission, EXTERNAL_SIGNER_NAMESPACE, EXTERNAL_SIGN_TIMEOUT,
+    PENDING_SIGN_TIMEOUT,
 };
 pub use nip46_transport::{Nip46Rpc, Nip46Transport};
 pub use op::SignerOp;

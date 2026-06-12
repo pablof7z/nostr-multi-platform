@@ -556,7 +556,7 @@ impl<R: ParentResolver> Grouper<R> {
     fn sort_blocks_newest_first(&mut self) {
         let by_id = &self.by_id;
         self.blocks
-            .sort_by(|a, b| block_sort_key(b, by_id).cmp(&block_sort_key(a, by_id)));
+            .sort_by_key(|b| std::cmp::Reverse(block_sort_key(b, by_id)));
     }
 
     fn reindex_delta(&self, delta: GroupDelta, event_id: &str) -> Option<GroupDelta> {

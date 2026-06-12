@@ -1415,7 +1415,6 @@ pub(crate) fn bunker_connection_state_changed(
 /// ADR-0048 D6: called from the capability-bridge result path when the host
 /// reports a NIP-55 operation outcome that affects the long-lived signer
 /// health (e.g. signer unavailable, rejected, awaiting approval).
-#[allow(dead_code)] // production caller lands with ADR-0048 Stage 2 (Kotlin capability bridge)
 pub(crate) fn nip55_signer_state_changed(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
@@ -1504,6 +1503,31 @@ pub(crate) fn restore_bunker_session(
         kernel.set_last_error_toast(Some(
             "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
         ));
+    }
+}
+
+/// ADR-0048 D4 — restore a persisted NIP-55 account on cold start.
+///
+/// Unlike the bunker restore there is no handshake: the payload is
+/// pubkey-only, so the registered driver hook synchronously reconstructs
+/// the `Nip55Signer` and enqueues `AddSigner { RemoteHandle, .. }` back to
+/// the actor. A missing hook degrades to a toast (D6) — defence against
+/// init-order bugs, exactly like the bunker path.
+pub(crate) fn restore_nip55_session(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+    payload_json: &str,
+) {
+    if !crate::external_signer_hook::invoke_external_signer_restore_hook(payload_json) {
+        identity.set_signer_state(Some(SignerStateDto::new(
+            "nip55".to_string(),
+            "unavailable".to_string(),
+            Some("NIP-55 driver not initialised".to_string()),
+        )));
+        kernel.set_last_error_toast(Some(
+            "NIP-55 driver not initialised — call nmp_external_signer_init".to_string(),
+        ));
+        kernel.mark_changed_since_emit();
     }
 }
 

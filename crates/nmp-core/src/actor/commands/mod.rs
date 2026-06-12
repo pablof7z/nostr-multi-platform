@@ -104,12 +104,12 @@ mod tests;
 #[cfg(feature = "native")]
 pub(super) use identity::{
     add_signer, bunker_connection_state_changed, bunker_handshake_progress, create_account,
-    remove_account, restore_bunker_session, switch_active, IdentityRuntime,
+    remove_account, restore_bunker_session, restore_nip55_session, switch_active, IdentityRuntime,
 };
-// ADR-0048 D6: the NIP-55 writer into the shared `signer_state` slot. Its
-// production caller is the Stage 2 Kotlin capability bridge; until that lands
-// the only callers are the `signer_state` projection tests.
-#[cfg(all(test, feature = "native"))]
+// ADR-0048 D6: the NIP-55 writer into the shared `signer_state` slot, driven
+// by the `ActorCommand::Nip55SignerStateChanged` dispatch arm (Stage 2 —
+// emitted by the nmp-ffi NIP-55 driver when the host capability bridge
+// reports an outcome).
 pub(super) use identity::nip55_signer_state_changed;
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot + its
 // constructor are re-exported (crate-wide) so the `ffi` module can build the

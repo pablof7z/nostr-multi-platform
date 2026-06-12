@@ -6,7 +6,7 @@ name: native-tests
 # contract: `codegen-drift.yml` catches a diff in the *generated* decoder files,
 # but only these tests prove the *hand-written* native decode/render code still
 # works against the new projection shape. This workflow gates the Android JUnit
-# suite — the one suite that is unblocked (JVM-only, no emulator, no Rust
+# suites — the one suite class that is unblocked (JVM-only, no emulator, no Rust
 # cross-compile, ubuntu runner).
 #
 # Phase staging (see #973):
@@ -21,6 +21,9 @@ name: native-tests
 # triggers; `crates/nmp-codegen/**` and `crates/nmp-core/**` are included because
 # the nmp-core projection types are the single source of truth the Kotlin
 # decoders mirror — a change there is precisely when the consumer tests must run.
+# `apps/nmp-gallery/android/**` and `crates/nmp-app-gallery/**` are included so
+# the gallery JUnit suite (VendorDriftGateTest + NIP-55 login-block tests) runs
+# whenever the gallery's Kotlin or Rust code changes.
 
 on:
   push:
@@ -28,7 +31,9 @@ on:
     paths:
       - ".github/workflows/native-tests.yml"
       - "android/**"
+      - "apps/nmp-gallery/android/**"
       - "crates/nmp-android-ffi/**"
+      - "crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
   pull_request:
@@ -36,13 +41,15 @@ on:
     paths:
       - ".github/workflows/native-tests.yml"
       - "android/**"
+      - "apps/nmp-gallery/android/**"
       - "crates/nmp-android-ffi/**"
+      - "crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
 
 jobs:
   android-junit:
-    name: Android JUnit (JVM unit tests)
+    name: Chirp Android JUnit (JVM unit tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -83,4 +90,61 @@ jobs:
           path: |
             android/app/build/reports/tests/testDebugUnitTest
             android/app/build/test-results/testDebugUnitTest
+          if-no-files-found: ignore
+
+  gallery-android-junit:
+    # ADR-0048 Stage 2 — NIP-55 proof gate (advances #1124).
+    #
+    # The gallery is the canonical source of the `login-block` component; Chirp,
+    # the web registry, and the CLI registry carry vendored copies. The
+    # VendorDriftGateTest in this suite enforces byte-identical vendoring.
+    # The ExternalSignerCapabilityBridgeTest and NostrLoginBlockStateTest exercise
+    # the D7 transport-selection predicate and the signer-state rendering logic.
+    #
+    # The gallery Android app is a *standalone* Gradle project rooted at
+    # `apps/nmp-gallery/android/` (its own `settings.gradle.kts` with
+    # `rootProject.name = "NmpGalleryAndroid"`). It is NOT a module of the Chirp
+    # multi-module project in `android/`, so the Chirp `android-junit` job does
+    # not cover it. This is the dedicated gallery lane.
+    #
+    # Execution: pure JVM tests. The gallery build.gradle.kts does NOT wire
+    # `preBuild dependsOn cargoNdk` (unlike Chirp), so the `-x cargoNdk` flag
+    # is NOT used here — it would cause "task not found" failure. The tests
+    # are purely Kotlin JVM and do not load any native library.
+    # Verified locally: 5 test classes / 18 tests green.
+    name: Gallery Android JUnit (JVM unit tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The gallery is a standalone Gradle project (apps/nmp-gallery/android/).
+      # Its :app module has testDebugUnitTest wired to the five test classes:
+      # VendorDriftGateTest, ExternalSignerCapabilityBridgeTest,
+      # ExternalSignerLoopContractTest, NostrLoginBlockStateTest, and
+      # NmpUpdateFrameDecoderTest. All are pure JVM; no native library is loaded.
+      #
+      # NOTE: The gallery project does NOT have a `cargoNdk` task (unlike
+      # Chirp). The build.gradle.kts does not wire `preBuild dependsOn cargoNdk`.
+      # `-x cargoNdk` is omitted here to avoid "task not found" failure.
+      - name: Run Gallery Android JVM unit tests
+        working-directory: apps/nmp-gallery/android
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Upload gallery test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gallery-android-junit-report
+          path: |
+            apps/nmp-gallery/android/app/build/reports/tests/testDebugUnitTest
+            apps/nmp-gallery/android/app/build/test-results/testDebugUnitTest
           if-no-files-found: ignore

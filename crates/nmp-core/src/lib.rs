@@ -1,6 +1,7 @@
 mod actor;
 mod app;
 pub mod bunker_hook;
+pub mod external_signer_hook;
 
 // SHARED FlatBuffers `ProfileCard` row type, mounted at the crate root so the
 // profile-cluster generated bindings can resolve it.
@@ -190,6 +191,9 @@ pub use app::{
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
+pub use external_signer_hook::{
+    register_external_signer_hook, ExternalSignerHookFn, ExternalSignerHookRequest,
+};
 // Step 11 final — `NmpApp` opaque handle + the `nmp_app_*` symbol family
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.

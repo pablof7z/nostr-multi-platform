@@ -23,6 +23,7 @@ use nmp_app_chirp::{
 };
 
 mod action;
+mod external_signer;
 mod flat_feed;
 mod marmot;
 mod platform;
@@ -61,7 +62,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
         "nmp_app_chirp_register with null viewer must succeed"
     );
     let session = Arc::new(Session::new(app, chirp));
-    insert_session(session)
+    let handle = insert_session(session);
+    // ADR-0048 Stage 2 — register the external-signer capability trampoline
+    // (context = registry handle id, assigned above) + init the NIP-55 driver.
+    if handle != 0 {
+        external_signer::install(app, handle);
+    }
+    handle
 }
 
 #[no_mangle]

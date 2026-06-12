@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.gallery.bridge.GalleryModel
 import org.nmp.gallery.navigation.GalleryNavigation
+import org.nmp.gallery.registry.ExternalSignerCapabilityBridge
 import org.nmp.gallery.registry.LocalNostrProfileHost
 import org.nmp.gallery.registry.NostrProfileHost
 
@@ -27,8 +28,23 @@ import org.nmp.gallery.registry.NostrProfileHost
 class MainActivity : ComponentActivity() {
     private val model: GalleryModel by viewModels()
 
+    /**
+     * ADR-0048 Stage 2 — D7 host adapter for the `external_signer`
+     * capability. Owns the Activity Result launcher (registered in
+     * `onCreate`, before first `onStart`); raw results route back to Rust
+     * via [GalleryModel.deliverSignerResponse].
+     */
+    private lateinit var signerBridge: ExternalSignerCapabilityBridge
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        signerBridge = ExternalSignerCapabilityBridge(this) { responseJson ->
+            model.deliverSignerResponse(responseJson)
+        }
+        signerBridge.register()
+        model.registerExternalSignerHandler { requestJson ->
+            signerBridge.handleJson(requestJson)
+        }
         setContent {
             val profiles by model.profileMap.collectAsStateWithLifecycle()
             val latestProfiles = rememberUpdatedState(profiles)
@@ -53,5 +69,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        model.unregisterExternalSignerHandler()
+        signerBridge.unregister()
+        super.onDestroy()
     }
 }

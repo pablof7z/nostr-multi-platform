@@ -52,6 +52,10 @@ mod raw_event_tap;
 mod relay_config;
 #[cfg(feature = "signer-broker")]
 mod signer_broker;
+// ADR-0048 Stage 2 — NIP-55 external-signer driver (capability-bridge
+// transport + first-connect flow + actor re-entry).
+#[cfg(feature = "external-signer")]
+mod external_signer;
 // V-51 phase 2 — routing-trace FFI snapshot accessor
 // (`nmp_app_recent_routing_decisions`). Pull-only diagnostic surface; not
 // folded into the snapshot tick.
@@ -140,6 +144,10 @@ pub use routing_trace::nmp_app_recent_routing_decisions;
 #[cfg(feature = "signer-broker")]
 pub use signer_broker::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,
+};
+#[cfg(feature = "external-signer")]
+pub use external_signer::{
+    nmp_app_deliver_external_signer_response, nmp_app_signin_nip55, nmp_external_signer_init,
 };
 #[cfg(feature = "native")]
 pub use storage::nmp_app_set_storage_path;

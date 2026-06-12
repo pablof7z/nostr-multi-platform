@@ -17,10 +17,14 @@ use jni::sys::{jbyteArray, jint, jlong, jstring};
 use jni::JNIEnv;
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_event, nmp_app_claim_profile, nmp_app_dispatch_action,
-    nmp_app_free, nmp_app_new, nmp_app_release_event, nmp_app_release_profile,
-    nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, nmp_free_string, NmpApp,
+    nmp_app_add_relay, nmp_app_claim_event, nmp_app_claim_profile,
+    nmp_app_deliver_external_signer_response, nmp_app_dispatch_action, nmp_app_free, nmp_app_new,
+    nmp_app_release_event, nmp_app_release_profile, nmp_app_set_capability_callback,
+    nmp_app_set_update_callback, nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
+    nmp_external_signer_init, nmp_free_string, NmpApp,
 };
+
+use nmp_core::__ffi_internal::capability_error_envelope;
 
 /// Owns the kernel handle, snapshot receiver, and boxed sender held by the
 /// kernel callback. Freed exactly once in `nativeFree`.
@@ -28,6 +32,11 @@ pub(crate) struct GallerySession {
     pub(crate) app: *mut NmpApp,
     rx: Receiver<Vec<u8>>,
     tx: *mut Sender<Vec<u8>>,
+    /// ADR-0048 Stage 2 — outbound NIP-55 `ExternalSignerRequest` JSON
+    /// payloads, pushed by the capability trampoline and drained by Kotlin
+    /// via `nativeNextSignerRequest` (same channel shape as updates).
+    signer_rx: Receiver<String>,
+    signer_tx: *mut Sender<String>,
 }
 
 // SAFETY: GallerySession is transferred to Kotlin as a jlong handle; access
@@ -44,6 +53,49 @@ extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
     let tx = unsafe { &*(context as *const Sender<Vec<u8>>) };
     let owned = unsafe { std::slice::from_raw_parts(bytes, len) }.to_vec();
     let _ = tx.send(owned);
+}
+
+/// Capability trampoline (ADR-0048 Stage 2). `external_signer` requests are
+/// pushed onto the session's signer channel and acked with
+/// `{"status":"dispatched"}`; everything else gets the same error envelope a
+/// missing handler would (no Android keyring capability exists yet). Context
+/// is the boxed signer `Sender` — same ownership pattern as `on_update`.
+extern "C" fn on_capability_request(
+    context: *mut c_void,
+    request_json: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    if context.is_null() || request_json.is_null() {
+        return std::ptr::null_mut();
+    }
+    let request = unsafe { CStr::from_ptr(request_json) }
+        .to_string_lossy()
+        .into_owned();
+    let parsed: serde_json::Value = serde_json::from_str(&request).unwrap_or_default();
+    if parsed.get("namespace").and_then(|v| v.as_str()) != Some("external_signer") {
+        return to_c_string(capability_error_envelope(&request, "unsupported-on-android"));
+    }
+    let Some(payload) = parsed.get("payload_json").and_then(|v| v.as_str()) else {
+        return to_c_string(capability_error_envelope(&request, "missing-payload"));
+    };
+    let tx = unsafe { &*(context as *const Sender<String>) };
+    if tx.send(payload.to_string()).is_err() {
+        return to_c_string(capability_error_envelope(&request, "session-closed"));
+    }
+    let envelope = serde_json::json!({
+        "namespace": "external_signer",
+        "correlation_id": parsed
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+        "result_json": r#"{"status":"dispatched"}"#,
+    });
+    to_c_string(envelope.to_string())
+}
+
+fn to_c_string(value: String) -> *mut std::os::raw::c_char {
+    CString::new(value)
+        .unwrap_or_else(|_| c"{}".to_owned())
+        .into_raw()
 }
 
 fn session_ref<'a>(handle: jlong) -> Option<&'a GallerySession> {
@@ -73,7 +125,19 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
     let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
     let tx = Box::into_raw(Box::new(tx));
     nmp_app_set_update_callback(app, tx as *mut c_void, Some(on_update));
-    let session = Box::new(GallerySession { app, rx, tx });
+    // ADR-0048 Stage 2 — external-signer capability trampoline + NIP-55
+    // driver init (gallery hosts the canonical login-block component).
+    let (signer_tx, signer_rx) = std::sync::mpsc::channel::<String>();
+    let signer_tx = Box::into_raw(Box::new(signer_tx));
+    nmp_app_set_capability_callback(app, signer_tx as *mut c_void, Some(on_capability_request));
+    nmp_external_signer_init(app);
+    let session = Box::new(GallerySession {
+        app,
+        rx,
+        tx,
+        signer_rx,
+        signer_tx,
+    });
     Box::into_raw(session) as jlong
 }
 
@@ -89,8 +153,10 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeFree(
     let s = unsafe { Box::from_raw(handle as *mut GallerySession) };
     unsafe {
         nmp_app_set_update_callback(s.app, std::ptr::null_mut(), None);
+        nmp_app_set_capability_callback(s.app, std::ptr::null_mut(), None);
         nmp_app_free(s.app);
         drop(Box::from_raw(s.tx));
+        drop(Box::from_raw(s.signer_tx));
     }
 }
 
@@ -329,4 +395,85 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAc
         Ok(js) => js.into_raw(),
         Err(_) => null,
     }
+}
+
+// ── NIP-55 external signer (ADR-0048 Stage 2) ─────────────────────────────
+
+/// Blocking timed drain of the outbound NIP-55 request channel. Same return
+/// contract as `nativeNextUpdate`: `null` = idle tick, a `String` = one
+/// `ExternalSignerRequest` JSON, `IllegalStateException` = channel closed
+/// (the Kotlin reader MUST stop).
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNextSignerRequest<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    timeout_ms: jlong,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    let Some(s) = session_ref(handle) else {
+        return null;
+    };
+    let timeout = Duration::from_millis(timeout_ms.max(0) as u64);
+    match s.signer_rx.recv_timeout(timeout) {
+        Ok(payload) => match env.new_string(payload) {
+            Ok(js) => js.into_raw(),
+            Err(_) => null,
+        },
+        Err(RecvTimeoutError::Timeout) => null,
+        Err(RecvTimeoutError::Disconnected) => {
+            let _ = env.throw_new(
+                "java/lang/IllegalStateException",
+                "gallery signer request channel disconnected",
+            );
+            null
+        }
+    }
+}
+
+/// Begin a NIP-55 sign-in. `signer_package` may be null ("let the OS
+/// resolver pick"); Rust builds the `get_public_key` + permission-batch
+/// request (D7 — Kotlin reports user intent only).
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeSignInNip55(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    signer_package: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let package = {
+        let obj: &jni::objects::JObject = AsRef::<jni::objects::JObject>::as_ref(&signer_package);
+        if obj.as_raw().is_null() {
+            None
+        } else {
+            jstring_to_cstring(&mut env, &signer_package)
+        }
+    };
+    nmp_app_signin_nip55(
+        s.app,
+        package
+            .as_ref()
+            .map_or(std::ptr::null(), |value| value.as_ptr()),
+    );
+}
+
+/// Report a raw `ExternalSignerResponse` JSON back to the Rust driver
+/// (D7 — verbatim; the driver owns correlation routing and all policy).
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDeliverSignerResponse(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    response_json: JString,
+) {
+    let Some(s) = session_ref(handle) else {
+        return;
+    };
+    let Some(response) = jstring_to_cstring(&mut env, &response_json) else {
+        return;
+    };
+    nmp_app_deliver_external_signer_response(s.app, response.as_ptr());
 }

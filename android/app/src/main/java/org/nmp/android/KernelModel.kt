@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import org.nmp.android.model.AccountSummary
@@ -87,7 +88,29 @@ class KernelModel : ViewModel() {
 
     private var started = false
     private var readerJob: Job? = null
+    private var signerReaderJob: Job? = null
     private var lastLoadMoreCursor: TimelineWindowCursor? = null
+
+    /**
+     * ADR-0048 Stage 2 — the host adapter that executes NIP-55 capability
+     * requests (`ExternalSignerCapabilityBridge.handleJson`). Registered by
+     * the activity (it owns the Activity Result launcher); the signer reader
+     * loop hands each drained request JSON to this handler on Main (Intent
+     * launches require the main thread). Null = no activity registered yet;
+     * the request is dropped and degrades to a Rust-side timeout (D6).
+     */
+    @Volatile
+    private var externalSignerHandler: ((requestJson: String) -> Unit)? = null
+
+    /** Register the activity-owned NIP-55 request handler. */
+    fun registerExternalSignerHandler(handler: (requestJson: String) -> Unit) {
+        externalSignerHandler = handler
+    }
+
+    /** Unregister on activity teardown (the launcher is being released). */
+    fun unregisterExternalSignerHandler() {
+        externalSignerHandler = null
+    }
 
     fun start(storagePath: String? = null) {
         if (started) return
@@ -116,6 +139,28 @@ class KernelModel : ViewModel() {
                 _state.value = decoded
                 _snapshotCount.value += 1
                 _lastSnapshotAtMs.value = System.currentTimeMillis()
+            }
+        }
+        // ADR-0048 Stage 2 — drain Rust-built NIP-55 capability requests and
+        // hand them to the activity-registered bridge on Main (Intent
+        // launches require the main thread). Same blocking-timed-drain shape
+        // as the update reader above.
+        signerReaderJob = viewModelScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                val requestJson = try {
+                    bridge.nextSignerRequest()
+                } catch (e: IllegalStateException) {
+                    Log.i(TAG, "signer request channel closed: ${e.message}")
+                    break
+                } ?: continue
+                val handler = externalSignerHandler
+                if (handler == null) {
+                    // No activity registered — drop; the Rust op times out
+                    // and surfaces a D6 toast. Never queue stale Intents.
+                    Log.w(TAG, "NIP-55 request dropped: no capability bridge registered")
+                    continue
+                }
+                withContext(Dispatchers.Main) { handler(requestJson) }
             }
         }
     }
@@ -259,6 +304,29 @@ class KernelModel : ViewModel() {
     /** Sign in with a NIP-46 bunker URI through the Rust signer broker. */
     fun signInBunker(uri: String) {
         bridge.signInBunker(uri)
+    }
+
+    /**
+     * ADR-0048 Stage 2 — begin a NIP-55 sign-in with the given detected
+     * signer. Kotlin reports user intent only; Rust builds the
+     * `get_public_key` + permission-batch request (D7) and routes it back
+     * through the registered capability bridge.
+     */
+    fun signInWithAmber(signer: NostrSignerInfo) {
+        // Pass the explicit packageName (the APK identifier used for Intent
+        // routing and the signer_package wire field). Falls back to
+        // contentAuthority for signers where they coincide (e.g. Amber),
+        // but the two fields are logically distinct — future signers
+        // (e.g. Primal) have a packageName that differs from contentAuthority.
+        bridge.signInNip55(signer.packageName ?: signer.contentAuthority)
+    }
+
+    /**
+     * ADR-0048 Stage 2 — route a raw `ExternalSignerResponse` JSON from the
+     * capability bridge back to the Rust NIP-55 driver (D7: verbatim).
+     */
+    fun deliverSignerResponse(responseJson: String) {
+        bridge.deliverSignerResponse(responseJson)
     }
 
     fun cancelBunkerHandshake() {
@@ -489,11 +557,14 @@ class KernelModel : ViewModel() {
     override fun onCleared() {
         val job = readerJob
         readerJob = null
+        val signerJob = signerReaderJob
+        signerReaderJob = null
         started = false
         bridge.stop()
         bridge.closeUpdates()
         runBlocking {
             job?.cancelAndJoin()
+            signerJob?.cancelAndJoin()
         }
         bridge.free()
         super.onCleared()

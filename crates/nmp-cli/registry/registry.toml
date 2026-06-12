@@ -495,6 +495,19 @@ dependencies = [
 source = "compose/user-card/NostrUserCard.kt"
 target = "Components/NostrUser/NostrUserCard.kt"
 role = "source"
+[[components]]
+id = "compose/login-block"
+version = "0.1.0"
+target = "compose"
+description = "Login UI with Amber (NIP-55) signer detection, one-tap sign-in cards, and manual key entry fallback (ADR-0048 Stage 2)."
+[[components.files]]
+source = "compose/login-block/NostrLoginBlock.kt"
+target = "Components/Auth/NostrLoginBlock.kt"
+role = "source"
+[[components.files]]
+source = "compose/login-block/ExternalSignerCapabilityBridge.kt"
+target = "Components/Auth/ExternalSignerCapabilityBridge.kt"
+role = "source"
 # -----------------------------------------------------------------------------
 # Ratatui user profile widgets. `tui/user-avatar` accepts pubkeys through a
 # `NostrProfileHost` adapter and owns the visible profile claim; host apps own
