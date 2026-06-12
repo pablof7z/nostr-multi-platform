@@ -20,13 +20,27 @@ CRATE_DIR="$REPO_ROOT/crates/nmp-wasm"
 OUT_DIR="$WEB_CHIRP_DIR/public/nmp-wasm"
 
 # ---------------------------------------------------------------------------
+# 0. Ensure clang (required by secp256k1-sys when cross-compiling to wasm32)
+# ---------------------------------------------------------------------------
+if ! command -v clang &>/dev/null; then
+    echo "[build] clang not found — installing via dnf..."
+    dnf install -y clang
+fi
+
+# ---------------------------------------------------------------------------
 # 1. Ensure Rust toolchain
 # ---------------------------------------------------------------------------
 if ! command -v cargo &>/dev/null; then
     echo "[build] Rust not found — installing via rustup..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         | sh -s -- -y --no-modify-path
-    export PATH="$HOME/.cargo/bin:$PATH"
+    # Source the env file if present, then fall back to exporting bin dir.
+    # shellcheck disable=SC1091
+    if [ -f "$HOME/.cargo/env" ]; then
+        source "$HOME/.cargo/env"
+    else
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
 fi
 
 rustup target add wasm32-unknown-unknown
