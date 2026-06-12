@@ -266,16 +266,6 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn publish_key_package_on_register(handle: *mut MarmotHandle) {
-    let Some(handle) = (unsafe { handle.as_ref() }) else {
-        return;
-    };
-    let action = json!({ "op": "publish_key_package" });
-    let _ = handle
-        .projection
-        .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs()));
-}
-
 /// Inner registration logic shared by `nmp_marmot_register` and
 /// `nmp_marmot_register_active`. `app` must be non-null and valid.
 ///
@@ -498,12 +488,17 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     let pubkey_hex = keys.public_key().to_hex();
     app_ref.push_interest(crate::interest::giftwrap_inbox_interest(&pubkey_hex));
 
-    Box::into_raw(Box::new(MarmotHandle {
+    let handle = Box::into_raw(Box::new(MarmotHandle {
         projection,
         projection_slot,
         observer_id,
         app,
-    }))
+    }));
+
+    // Shared autopublish tail (PR-4) — see `autopublish` module.
+    autopublish::maybe_autopublish_on_register(app_ref, handle);
+
+    handle
 }
 
 /// Register a Marmot projection against `app`.
@@ -570,11 +565,8 @@ pub extern "C" fn nmp_marmot_register_active(
         return std::ptr::null_mut();
     };
     let db_path = format!("{}/marmot-mls-state.sqlite", dir.trim_end_matches('/'));
-    let handle = register_with_keys(app, keys, &db_path);
-    if !handle.is_null() && app_ref.take_pending_mls_autopublish() {
-        publish_key_package_on_register(handle);
-    }
-    handle
+    // Autopublish is handled in the shared register_with_keys tail.
+    register_with_keys(app, keys, &db_path)
 }
 
 /// Drop the observer registration and free the handle. Idempotent: null is
@@ -630,5 +622,10 @@ pub(crate) fn c_str_opt(ptr: *const c_char) -> Option<String> {
         .map(|s| s.to_owned())
 }
 
+mod autopublish;
+
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod autopublish_tests;
