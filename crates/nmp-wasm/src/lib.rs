@@ -35,6 +35,10 @@ mod dispatch_routing;
 mod publish_path;
 mod signer_slot;
 mod snapshot;
+// PR-2 — 1 Hz periodic tick driver. `tick_once` is always-compiled so the
+// native `tick_for_test` helper exercises the same coalescing path as the
+// wasm32 timer closure. `start_tick_interval` is wasm32-gated.
+mod tick;
 
 pub use protocol::{
     ActionDispatch, AppAction, AppActionDispatch, CapabilityFailure, CapabilityResult, ClientHello,

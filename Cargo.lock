@@ -4979,6 +4979,7 @@ dependencies = [
 name = "nmp-wasm"
 version = "0.5.0"
 dependencies = [
+ "gloo-timers",
  "js-sys",
  "nmp-chirp-config",
  "nmp-core",
