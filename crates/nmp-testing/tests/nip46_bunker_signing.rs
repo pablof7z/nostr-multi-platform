@@ -96,6 +96,25 @@ fn bunker_sign_event_round_trip_on_the_wire() {
     let handle = wait_for_add_remote_signer(&actor_rx, Duration::from_secs(10))
         .expect("AddRemoteSigner must arrive on the actor channel");
 
+    // ADR-0050 §D3b: the broker's steady-state dispatcher no longer calls
+    // `ingest_rpc_response` directly — the completion sink posts
+    // `DeliverSignerResponse` into the actor inbox and the actor's dispatch
+    // arm fans the body out to the remote handles. This test has no actor
+    // loop, so emulate that fan-out with a pump thread (the exact role
+    // `dispatch_command`'s DeliverSignerResponse arm plays in production).
+    // The pump exits when every sender (broker + local clones) is dropped.
+    let handle: std::sync::Arc<dyn RemoteSignerHandle> = std::sync::Arc::from(handle);
+    let pump_handle = std::sync::Arc::clone(&handle);
+    std::thread::spawn(move || {
+        while let Ok(mail) = actor_rx.recv() {
+            if let ActorMail::Command(ActorCommand::DeliverSignerResponse { response_json }) =
+                mail
+            {
+                pump_handle.deliver_response(&response_json);
+            }
+        }
+    });
+
     assert_eq!(
         handle.pubkey_hex(),
         user_pubkey_hex,

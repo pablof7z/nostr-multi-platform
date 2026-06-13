@@ -7,61 +7,35 @@
 //!
 //! ## Outbound relay seam — CLOSED (publish direction)
 //!
-//! Every op that produces relay-bound events now publishes them
-//! INTERNALLY via [`crate::projection::publish`] (the workspace-internal
-//! `nmp_ffi::NmpApp::publish_signed_explicit` kernel API, called against
-//! the retained `&NmpApp`) — there is no Swift relay path. Per-kind
-//! routing:
+//! Every op publishes its relay-bound events INTERNALLY via
+//! [`crate::projection::publish`] (`nmp_ffi::NmpApp::publish_signed_explicit`
+//! against the retained `&NmpApp`) — no Swift relay path. Per-kind routing:
+//! kind:445 → `publish_group_pinned` (group's relay-pinned list; a cache
+//! MISS degrades to author-outbox `Auto`); kind:30443 + kind:443 key-package
+//! → `publish_explicit` (`Auto` / NIP-65 outbox), dual-published; kind:1059
+//! gift-wrap Welcome → the GROUP's relays as a documented inbox-routing
+//! APPROXIMATION (published verbatim, NIP-59 ephemeral key, never re-signed).
+//! Publish is fire-and-forget (success == "submitted"); the op result's
+//! signed event JSON is INFORMATIONAL only.
 //!
-//! * **kind:445** (group message / commit / evolution_event / post-join
-//!   self-update) → `publish_group_pinned` → the group's configured relay
-//!   list (`Explicit`). Marmot groups are relay-pinned. The relay list is
-//!   recovered from the `create_group` envelope and
-//!   `Welcome::group_relays`; a cache MISS degrades to author-outbox
-//!   `Auto` (documented limitation — those events previously did not reach
-//!   relays at all, so this is strictly better, not a regression).
-//! * **kind:30443 + kind:443** key-package → `publish_explicit`
-//!   (`Auto` / NIP-65 outbox is correct for key packages). BOTH are
-//!   dual-published through 2026-05-31.
-//! * **kind:1059** gift-wrap Welcome → the Chirp layer has no NIP-65
-//!   inbox-relay resolver for invitees, so these route to the GROUP's
-//!   relays as a documented inbox-routing APPROXIMATION (group members
-//!   fetch from there). The gift-wrap is already signed with an ephemeral
-//!   key (NIP-59) — published verbatim, never re-signed.
+//! ## Inbound ingest seam — CLOSED (receive direction)
 //!
-//! Publish is fire-and-forget: success == "submitted to the kernel
-//! publish pipeline". The op result still carries the signed event JSON
-//! but it is now INFORMATIONAL only.
-//!
-//! ## Inbound ingest seam — CLOSED (this is the receive direction)
-//!
-//! [`ingest_signed_event_core`] is the single code path that drives a
-//! signed inbound event into `MarmotService` (kind:1059 →
-//! `unwrap_and_process_welcome`; kind:445 → `process_message`; seed the
-//! `group_id→relays` cache from `Welcome::group_relays`). It now has TWO
-//! callers sharing that one path: the automatic
-//! [`crate::projection::tap`] raw-event observer (registered against the
-//! retained `*mut NmpApp` in `nmp_marmot_register`; the kernel
-//! delivers every accepted inbound signed kind:1059/445 to it) and the
-//! back-compat `{"op":"ingest_signed_event"}` dispatch op. The tap makes
-//! welcomes / messages received from relays surface in the next
-//! `nmp_marmot_snapshot` with no Swift involvement. This was
-//! the last open seam.
+//! [`ingest_signed_event_core`] is the single path driving a signed inbound
+//! event into `MarmotService` (kind:1059 → `unwrap_and_process_welcome`;
+//! kind:445 → `process_message`; kind:443/30443 → cache KP + retry deferred
+//! ops). Two callers share it: the automatic [`crate::projection::tap`]
+//! raw-event observer and the back-compat `{"op":"ingest_signed_event"}`
+//! dispatch op.
 //!
 //! ## Pending-commit discipline (mdk-api.md §7.7)
 //!
-//! `create_group` / `add_members` / `remove_members` / `self_update`
-//! produce an MLS pending commit that MUST be resolved exactly once.
-//! Resolution policy (unchanged — publish is still fire-and-forget so we
-//! cannot observe relay success/failure synchronously):
-//!
-//! * The signed `evolution_event` / `welcome_rumors` / gift-wraps are
-//!   fully built, submitted to the kernel publish pipeline, then we
-//!   `commit()` the pending change eagerly (the events are produced +
-//!   handed to the kernel). If a relay publish later fails, the caller
-//!   re-dispatches the op (idempotent for `send`; for group-state ops a
-//!   fresh `self_update`/`invite` re-converges the epoch). We never wedge
-//!   the group, and `clear` is reachable via the `clear_pending` op.
+//! `create_group` / `add_members` / `remove_members` / `self_update` produce
+//! an MLS pending commit that MUST be resolved exactly once. Since publish is
+//! fire-and-forget (no synchronous relay success/failure), we build + submit
+//! the signed `evolution_event` / `welcome_rumors` / gift-wraps then `commit()`
+//! the pending change EAGERLY. A later relay failure → the caller re-dispatches
+//! (idempotent for `send`; a fresh `self_update`/`invite` re-converges the
+//! epoch). We never wedge the group; `clear` is reachable via `clear_pending`.
 //! * `leave_group` is SelfRemove: `commit()` is a documented no-op there.
 
 use nostr::{EventBuilder, JsonUtil, Kind, PublicKey, RelayUrl};
@@ -220,24 +194,6 @@ fn fill_key_packages_from_cache(
     (needs, fetch_pubkeys)
 }
 
-fn missing_key_package_result(
-    h: &InnerHandle<'_>,
-    needs: Vec<String>,
-    fetch_pubkeys: &[PublicKey],
-) -> Value {
-    let fetch_requested = h.request_key_package_fetch(fetch_pubkeys);
-    // The presentation layer formats the missing pubkeys for display
-    // (aim.md §2 — backend ships raw hex; shells own abbreviation).
-    let needs_pubkeys_hex: Vec<String> = fetch_pubkeys.iter().map(PublicKey::to_hex).collect();
-    json!({
-        "ok": false,
-        "error": "key_package_unavailable",
-        "needs": needs,
-        "needs_pubkeys_hex": needs_pubkeys_hex,
-        "fetch_requested": fetch_requested,
-        "hint": "key package lookup was requested; results arrive via the kernel tap"
-    })
-}
 
 /// Newest-N decrypted application messages for one group, newest first.
 ///
@@ -269,15 +225,27 @@ pub fn group_messages(
 }
 
 /// Route + execute one dispatch op envelope.
-pub fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
+///
+/// `correlation_id` is the action-registry–minted id for this dispatch. It is
+/// forwarded to KP-gated ops (`create_group` / `invite`) so they can park a
+/// pending op under the SAME id; the terminal verdict is later recorded under
+/// that id when the KPs arrive (or on expiry). Callers that do not come from
+/// the typed action pipeline (REPL / tests) may pass `None` — those callers
+/// should not attempt to create groups when invitee KPs are missing.
+pub fn dispatch(
+    h: &mut InnerHandle<'_>,
+    v: &Value,
+    now_secs: u64,
+    correlation_id: Option<&str>,
+) -> Value {
     let op = match str_field(v, "op") {
         Ok(o) => o,
         Err(e) => return err(&e),
     };
     let r: Result<Value, String> = match op {
         "publish_key_package" => publish_key_package(h, v, now_secs),
-        "create_group" => create_group(h, v),
-        "invite" => invite(h, v),
+        "create_group" => create_group(h, v, now_secs, correlation_id),
+        "invite" => invite(h, v, now_secs, correlation_id),
         "send" => send(h, v),
         "leave" => leave(h, v),
         "remove" => remove(h, v),
@@ -290,10 +258,19 @@ pub fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
     match r {
         Ok(mut ok) => {
             if let Value::Object(map) = &mut ok {
-                // Handlers may set an explicit `ok:false` for soft-fail
-                // envelopes (e.g. the KeyPackage-cache seam). Only inject
-                // the success flag when the handler did not decide.
-                map.entry("ok").or_insert(Value::Bool(true));
+                // `{"pending":true}` envelopes must NOT get an `ok` field — the
+                // `DispatchHostOp` arm keys off `"pending":true` to skip the
+                // terminal verdict; injecting `ok:true` would force a spurious
+                // success. Otherwise inject `ok:true` unless the handler already
+                // decided (soft-fail paths set `ok:false` explicitly).
+                let is_pending = map.get("pending").and_then(Value::as_bool).unwrap_or(false);
+                if !is_pending {
+                    map.entry("ok").or_insert(Value::Bool(true));
+                }
+                // A genuinely successful op clears any stale error banner.
+                if !is_pending && map.get("ok").and_then(Value::as_bool) == Some(true) {
+                    h.clear_last_op_error();
+                }
             }
             ok
         }
@@ -337,37 +314,24 @@ fn publish_key_package(
     }))
 }
 
-/// NIP-59 gift-wrap each kind:444 welcome rumor for its invitee and
-/// publish the resulting signed kind:1059 INTERNALLY.
+/// NIP-59 gift-wrap each kind:444 welcome rumor for its invitee and publish
+/// the resulting signed kind:1059 INTERNALLY.
 ///
-/// Recipient pairing: `welcome_rumors[i]` is paired with
-/// `kp_events[i].pubkey` — the key-package event's author IS the invitee
-/// MDK built that welcome for. This is the ground truth MDK used (more
-/// reliable than the `invitee_npubs` hint, which is caller-supplied and
-/// may be reordered / approximate). If the lengths diverge we still wrap
-/// every rumor we can pair and skip the rest (best-effort; never panic).
+/// Recipient pairing: `welcome_rumors[i]` pairs with `kp_events[i].pubkey`
+/// (the KP author IS the invitee MDK built that welcome for — ground truth,
+/// more reliable than the caller-supplied `invitee_npubs` hint). Length
+/// divergence → wrap every pairable rumor, skip the tail (never panic).
 ///
-/// Inbox-routing APPROXIMATION (documented limitation): the Chirp Rust
-/// layer has no NIP-65 inbox-relay resolver for arbitrary invitees, so
-/// the kind:1059 is published to the GROUP's relays rather than the
-/// recipient's personal inbox relays. Group members fetch welcomes from
-/// the group relays, so delivery still converges; a dedicated inbox
-/// resolver would tighten this.
+/// Inbox-routing APPROXIMATION: no NIP-65 inbox resolver for invitees, so the
+/// kind:1059 goes to the GROUP's relays (members fetch from there). **D10
+/// provenance guard**: a group-relay cache miss does NOT degrade to
+/// author-outbox `Auto` — [`publish_to`](crate::projection::publish::publish_to)
+/// refuses an unpinned kind:1059 (it would leak the Welcome's existence to the
+/// author's public outbox). The signed JSON still appears in the INFORMATIONAL
+/// return; only the wire dispatch is suppressed.
 ///
-/// **D10 provenance guard** — a group-relay cache miss (`group_relays` is
-/// empty) NO LONGER degrades to author-outbox `Auto`. The
-/// [`publish_to`](crate::projection::publish::publish_to) guard refuses to
-/// dispatch a kind:1059 envelope without an explicit relay pin (publishing
-/// it to the author's public NIP-65 outbox would leak the existence of an
-/// MLS Welcome to every public relay the author advertises). The signed
-/// kind:1059 JSON still appears in the INFORMATIONAL return so callers
-/// have ground-truth audit of what was built; only the wire dispatch is
-/// suppressed. To restore delivery in that edge case the group's relays
-/// must be cached (`cache_group_relays`) before the welcomes go out.
-///
-/// Returns the signed kind:1059 JSONs (INFORMATIONAL only — already
-/// submitted). A `wrap_welcome` failure is surfaced as `Err` (D6 → the
-/// op result becomes `{"ok":false,...}`; no panic crosses the FFI).
+/// Returns the signed kind:1059 JSONs (INFORMATIONAL — already submitted). A
+/// `wrap_welcome` failure → `Err` (D6 → `{"ok":false,...}`; no panic crosses FFI).
 fn wrap_and_publish_welcomes(
     h: &InnerHandle<'_>,
     group_relays: &[RelayUrl],
@@ -396,7 +360,12 @@ fn wrap_and_publish_welcomes(
     Ok(out)
 }
 
-fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
+fn create_group(
+    h: &mut InnerHandle<'_>,
+    v: &Value,
+    now_secs: u64,
+    correlation_id: Option<&str>,
+) -> Result<Value, String> {
     let name = str_field(v, "name")?.to_string();
     let description = v
         .get("description")
@@ -418,7 +387,14 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         let (needs, fetch_pubkeys) =
             fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
         if !needs.is_empty() {
-            return Ok(missing_key_package_result(h, needs, &fetch_pubkeys));
+            return Ok(h.park_or_report_kp_unavailable(
+                v,
+                "create_group",
+                needs,
+                &fetch_pubkeys,
+                correlation_id,
+                now_secs,
+            ));
         }
     }
     let admins = vec![h.service().public_key()];
@@ -447,7 +423,12 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     }))
 }
 
-fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
+fn invite(
+    h: &mut InnerHandle<'_>,
+    v: &Value,
+    now_secs: u64,
+    correlation_id: Option<&str>,
+) -> Result<Value, String> {
     let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
     let invitee_npubs = resolve_invitees(v);
     let mut kp_events = signed_key_package_events(v)?;
@@ -458,7 +439,14 @@ fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         let (needs, fetch_pubkeys) =
             fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
         if !needs.is_empty() {
-            return Ok(missing_key_package_result(h, needs, &fetch_pubkeys));
+            return Ok(h.park_or_report_kp_unavailable(
+                v,
+                "invite",
+                needs,
+                &fetch_pubkeys,
+                correlation_id,
+                now_secs,
+            ));
         }
     }
     let group_id_hex = hex_encode(gid.as_slice());
@@ -628,6 +616,7 @@ fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> 
 pub(crate) fn ingest_signed_event_core(
     h: &mut InnerHandle<'_>,
     event: &nostr::Event,
+    now_secs: u64,
 ) -> Result<Option<Value>, String> {
     let kind = event.kind.as_u16();
     if kind == 1059 {
@@ -661,9 +650,15 @@ pub(crate) fn ingest_signed_event_core(
         // shared MarmotService cache (protocol logic, not Chirp-specific).
         // Any NMP app's tap can call this; create_group/add_members use it
         // as a fallback when the caller supplies no explicit kp_events.
+        let pubkey_hex = event.pubkey.to_hex();
         h.service().cache_key_package(event.clone());
+        // After caching, re-run any pending ops unblocked by this KP and age
+        // out expired ones (D8 wall-clock gate; `now_secs` is caller-supplied
+        // so tests can use synthetic time). The retry + terminal-verdict
+        // bookkeeping lives in the `deferred` module.
+        h.retry_unblocked_ops(&pubkey_hex, now_secs);
         Ok(Some(
-            json!({ "kind": kind, "cached": true, "author": event.pubkey.to_hex() }),
+            json!({ "kind": kind, "cached": true, "author": pubkey_hex }),
         ))
     } else {
         // Defensive: the tap filter also admits kind:444 (and a bad
@@ -681,7 +676,11 @@ pub(crate) fn ingest_signed_event_core(
 fn ingest_signed_event(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let json = str_field(v, "event_json")?;
     let event = parse_signed_event(json)?;
-    match ingest_signed_event_core(h, &event)? {
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    match ingest_signed_event_core(h, &event, now_secs)? {
         Some(payload) => Ok(payload),
         None => Err(format!(
             "ingest_signed_event: unsupported kind {} (expect 445 or 1059)",

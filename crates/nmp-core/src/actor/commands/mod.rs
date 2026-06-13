@@ -58,7 +58,7 @@
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 mod conformance_support;
 // V-01 Phase 1c: these handler submodules sit on the native actor runtime
-// (they consume `PendingSign`, drive the publish engine, run the LNURL HTTP
+// (they consume `ParkedOp`, drive the publish engine, run the LNURL HTTP
 // worker, etc.). Gated behind `native` to match `mod relay_worker` and the
 // `pub fn run_actor*` family in `actor/mod.rs`. The observer slots
 // (`event_observer`, `raw_event_observer`, `lifecycle`) stay always-compiled
@@ -71,6 +71,9 @@ mod conformance_support;
 // Box::new(SendGiftWrappedDmCommand { ... }))`.
 mod event_observer;
 mod identity;
+// ADR-0050 §D1 NIP-44 cipher helpers (split from `identity.rs` for file-size).
+#[cfg(feature = "native")]
+mod cipher;
 mod lifecycle;
 #[cfg(feature = "native")]
 mod publish;
@@ -124,6 +127,13 @@ pub(crate) use identity::build_nip46_onboarding_dto;
 // them as `commands::sign_active_nonblocking` / `commands::sign_with_account_nonblocking`.
 #[cfg(feature = "native")]
 pub(super) use identity::{sign_active_nonblocking, sign_with_account_nonblocking};
+// ADR-0050 §D1 — the cipher port verbs (`Nip44EncryptForAccount` /
+// `Nip44DecryptForAccount`) reach these non-blocking NIP-44 helpers as
+// `commands::nip44_encrypt_nonblocking` / `commands::nip44_decrypt_nonblocking`,
+// the cipher siblings of the sign helpers above (in the `cipher` submodule to
+// keep `identity.rs` within budget).
+#[cfg(feature = "native")]
+pub(super) use cipher::{nip44_decrypt_nonblocking, nip44_encrypt_nonblocking};
 // `new_bunker_handshake_slot` + `BunkerHandshakeSlot` reach `nmp-ffi` through
 // `nmp_core::__ffi_internal::*`. The slot type is `#[doc(hidden)] pub` (the
 // inner `BunkerHandshakeDto` likewise) so `nmp_app_new` can construct an

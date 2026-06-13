@@ -349,4 +349,44 @@ impl Kernel {
             .filter(|pk| is_hex_pubkey(pk))
             .collect()
     }
+
+    /// Latest kind:3 follow set for the active account, distinguishing
+    /// "not loaded" from "loaded but empty".
+    ///
+    /// Returns `Some(pubkeys)` when the active account's kind:3 contact list
+    /// IS present in the store — even when no valid `p` tags survive the
+    /// hex-validation filter (legitimately empty follow list → `Some(vec![])`).
+    ///
+    /// Returns `None` when:
+    /// - No active account is set, **or**
+    /// - The active account's kind:3 has not been ingested yet.
+    ///
+    /// This is the safety gate for wasm Follow / Unfollow: callers MUST
+    /// receive `Some` before editing the follow set. Publishing an edit when
+    /// `None` is returned would risk silently wiping an unloaded contact list.
+    ///
+    /// Note: the list is uncapped — the 500-entry `TIMELINE_AUTHOR_LIMIT` cap
+    /// is for subscription author REQs, not contact-list editing. Capping here
+    /// would silently drop follows ≥501 on every edit.
+    #[must_use]
+    pub(crate) fn try_current_follows(&self) -> Option<Vec<String>> {
+        let author_hex = self.active_account_pubkey()?;
+        let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
+        let Ok(mut iter) = self.store.scan_by_author_kind(&author, &[3], None, None, 1) else {
+            return None;
+        };
+        let Some(Ok(stored)) = iter.next() else {
+            // kind:3 not yet ingested — None, not empty.
+            return None;
+        };
+        let follows = stored
+            .raw
+            .tags
+            .iter()
+            .filter(|t: &&Vec<String>| t.first().map(String::as_str) == Some("p"))
+            .filter_map(|t| t.get(1).cloned())
+            .filter(|pk| is_hex_pubkey(pk))
+            .collect();
+        Some(follows)
+    }
 }

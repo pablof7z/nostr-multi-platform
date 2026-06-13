@@ -76,9 +76,29 @@ table KeyPackageStatus {
   action_label:string;      // "Publish key package" / "Rotate key package"
 }
 
+/// One parked (deferred) op waiting for a peer's KP to arrive.
+/// Mirrors `crate::projection::payload::PendingOpRow`.
+table PendingOpRow {
+  correlation_id:string;    // original action correlation_id
+  op_tag:string;            // "create_group" | "invite"
+  missing_count:uint32;     // remaining missing KP count
+  display_label:string;     // Rust-owned display string (e.g. "Waiting for key packages (1)…")
+  age_secs:uint64;          // wall-clock seconds since the op was parked (now - created_at)
+}
+
+/// The most recent terminal op FAILURE (deferred-op expiry or a failed
+/// retry). Mirrors `crate::projection::payload::LastOpError`. Raw data only
+/// (aim.md §2): `reason` is the machine code, native maps it to a banner.
+table LastOpError {
+  op:string;                // failing op tag ("create_group" | "invite")
+  reason:string;            // machine code, e.g. "key_package_unavailable"
+  at_secs:uint64;           // wall-clock second the failure was recorded
+  correlation_id:string;    // correlation_id of the failed action
+}
+
 // The complete snapshot. Mirrors `crate::projection::payload::MarmotSnapshot`.
 table MarmotSnapshot {
-  schema_version:uint32 = 1;       // mirrors SCHEMA_VERSION
+  schema_version:uint32 = 2;       // mirrors SCHEMA_VERSION; bumped for pending_ops addition
   groups:[MarmotGroupRow];
   pending_welcomes:[PendingWelcomeRow];
   key_package:KeyPackageStatus;
@@ -88,6 +108,8 @@ table MarmotSnapshot {
   is_registered:bool;              // built against a registered signing identity
   orphaned_commit_count:uint32;    // V-61 dropped-handle diagnostic
   keyring_unavailable:bool;        // V-62 in-memory-credential-store diagnostic
+  pending_ops:[PendingOpRow];      // ops parked waiting for peer KPs (deferred completion)
+  last_op_error:LastOpError;       // most recent terminal op failure (absent table = none)
 }
 
 root_type MarmotSnapshot;

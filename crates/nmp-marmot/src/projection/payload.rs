@@ -172,6 +172,44 @@ impl KeyPackageStatus {
     }
 }
 
+/// Summary of one pending (deferred) op waiting for a peer's KP to arrive.
+/// Surfaced in the snapshot so native can render "Waiting for key packages…"
+/// state without polling. Rust owns the `display_label` string.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct PendingOpRow {
+    /// Original action correlation_id minted when the op was dispatched.
+    pub correlation_id: String,
+    /// Op tag ("create_group" | "invite") for display branching.
+    pub op_tag: String,
+    /// Number of peer KPs still missing.
+    pub missing_count: u32,
+    /// Rust-owned display string (e.g. "Waiting for key packages (1)…"). The
+    /// projection owns formatting; native renders verbatim.
+    pub display_label: String,
+    /// Wall-clock seconds since the op was parked (`now_secs - created_at`),
+    /// computed fresh at snapshot time. Gives the host temporal context to
+    /// show elapsed wait time / fade a spinner as the 60 s deadline nears.
+    #[serde(default)]
+    pub age_secs: u64,
+}
+
+/// The most recent terminal op FAILURE surfaced in the snapshot — a
+/// deferred-op expiry or a failed retry. Raw data only (aim.md §2): `reason`
+/// is the machine code (e.g. `"key_package_unavailable"`); native maps it to
+/// a banner string. `op` + `correlation_id` let the host correlate the
+/// failure with the action it dispatched; `at_secs` is when it was recorded.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct LastOpError {
+    /// Failing op tag ("create_group" | "invite").
+    pub op: String,
+    /// Machine code, e.g. "key_package_unavailable".
+    pub reason: String,
+    /// Wall-clock second the failure was recorded.
+    pub at_secs: u64,
+    /// correlation_id of the failed action.
+    pub correlation_id: String,
+}
+
 /// Complete snapshot hosts consume via the `nmp.marmot.snapshot` push projection.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MarmotSnapshot {
@@ -221,6 +259,18 @@ pub struct MarmotSnapshot {
     /// gracefully.
     #[serde(default)]
     pub keyring_unavailable: bool,
+    /// Ops parked in the deferred-completion store, waiting for peer KPs.
+    /// Empty when no ops are pending. Native renders each row's `display_label`
+    /// verbatim alongside the relevant group action's spinner. Additive —
+    /// older hosts that do not read this field degrade gracefully.
+    #[serde(default)]
+    pub pending_ops: Vec<PendingOpRow>,
+    /// Most recent terminal op failure, or `None` when no op has failed this
+    /// session. Set by the projection on deferred-op expiry / failed retry and
+    /// CLEARED when the next marmot op succeeds, so the banner never lingers
+    /// stale. Additive — older hosts degrade gracefully.
+    #[serde(default)]
+    pub last_op_error: Option<LastOpError>,
 }
 
 impl MarmotSnapshot {
@@ -243,6 +293,8 @@ impl MarmotSnapshot {
             is_registered: false,
             orphaned_commit_count: 0,
             keyring_unavailable: false,
+            pending_ops: Vec::new(),
+            last_op_error: None,
         }
     }
 }

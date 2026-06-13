@@ -2000,6 +2000,10 @@ struct WalletStatusData: Decodable, Equatable {
     let isReady: Bool
     /// `status == "connecting" || status == "ready"` pre-computed in Rust.
     let isConnected: Bool
+    /// ADR-0032 / #623: pre-computed label, bound verbatim (thin-shell rule).
+    let statusLabel: String
+    /// ADR-0032 / #623: tone `"active"|"warning"|"error"|"inactive"` → colour.
+    let statusTone: String
 }
 
 /// Profile summary card. Raw kind:0 metadata fields — `displayName` and
@@ -2020,10 +2024,6 @@ struct ProfileCard: Decodable, Equatable {
     let pictureUrl: String?
     let nip05: String
     let about: String
-    /// True when a kind:0 metadata event has been received for this
-    /// pubkey. False means the card is a placeholder pending relay
-    /// response.
-    let hasProfile: Bool
     /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
     /// from kind:0. `nil` when the user has no lightning address or their
     /// kind:0 hasn't arrived. The zap button is shown only when this is

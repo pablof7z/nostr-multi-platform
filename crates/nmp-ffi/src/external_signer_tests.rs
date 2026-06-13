@@ -150,7 +150,7 @@ fn signin_loop_resolves_add_signer_and_sign_round_trip() {
     };
     assert_eq!(handle.signer_kind(), "nip55");
     assert_eq!(handle.pubkey_hex(), keys.public_key().to_hex());
-    assert_eq!(handle.sign_timeout(), Duration::from_secs(90));
+    assert_eq!(handle.op_timeout(), Duration::from_secs(90));
     match rx.try_recv().expect("ready state sent") {
         ActorCommand::Nip55SignerStateChanged { state, .. } => assert_eq!(state, "ready"),
         other => panic!("expected ready state, got {other:?}"),
@@ -187,6 +187,19 @@ fn signin_loop_resolves_add_signer_and_sign_round_trip() {
         signer_package: None,
     };
     driver.deliver(&serde_json::to_string(&sign_reply).unwrap());
+
+    // ADR-0050 §D3b: a NIP-55 op reply no longer resolves the parked op on the
+    // bridge thread — `deliver` sends a `DeliverSignerResponse` command, and the
+    // actor's dispatch arm fans it out to the remote handles on the actor
+    // thread. Model that here: pull the command and apply it to the handle (the
+    // same `deliver_to_remote_signers` → `deliver_response` path the kernel
+    // runs).
+    match rx.try_recv().expect("DeliverSignerResponse command sent") {
+        ActorCommand::DeliverSignerResponse { response_json } => {
+            handle.deliver_response(&response_json);
+        }
+        other => panic!("expected DeliverSignerResponse, got {other:?}"),
+    }
 
     let resolved = op
         .wait(Duration::from_secs(2))

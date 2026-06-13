@@ -28,7 +28,6 @@ class TypedProfilesDecoderTest {
         pubkey: String,
         displayName: String?,
         pictureUrl: String?,
-        hasProfile: Boolean,
         lnurl: String?,
     ): Int {
         val pubkeyOff = builder.createString(pubkey)
@@ -47,7 +46,6 @@ class TypedProfilesDecoderTest {
             pxOff,
             nip05Off,
             aboutOff,
-            hasProfile,
             lnurl != null,
             lnurlOff,
         )
@@ -56,11 +54,11 @@ class TypedProfilesDecoderTest {
     private fun resolvedBuffer(): ByteArray {
         val builder = FlatBufferBuilder(512)
         val keyA = builder.createString(hex(0x01))
-        val cardA = profileCardOffset(builder, hex(0x01), "Alice", "https://a/p.png", true, "alice@ln")
+        val cardA = profileCardOffset(builder, hex(0x01), "Alice", "https://a/p.png", "alice@ln")
         val entryA = ResolvedProfileEntry.createResolvedProfileEntry(builder, keyA, cardA)
         val keyB = builder.createString(hex(0x02))
         // displayName / pictureUrl / lnurl absent → has_* == false → null.
-        val cardB = profileCardOffset(builder, hex(0x02), null, null, false, null)
+        val cardB = profileCardOffset(builder, hex(0x02), null, null, null)
         val entryB = ResolvedProfileEntry.createResolvedProfileEntry(builder, keyB, cardB)
         val entries = ResolvedProfilesSnapshot.createEntriesVector(builder, intArrayOf(entryA, entryB))
         val snap = ResolvedProfilesSnapshot.createResolvedProfilesSnapshot(builder, entries)
@@ -71,7 +69,7 @@ class TypedProfilesDecoderTest {
     private fun claimedBuffer(): ByteArray {
         val builder = FlatBufferBuilder(256)
         val key = builder.createString(hex(0x07))
-        val card = profileCardOffset(builder, hex(0x07), "Carol", null, true, null)
+        val card = profileCardOffset(builder, hex(0x07), "Carol", null, null)
         val entry = ClaimedProfileEntry.createClaimedProfileEntry(builder, key, card)
         val entries = ClaimedProfilesSnapshot.createEntriesVector(builder, intArrayOf(entry))
         val snap = ClaimedProfilesSnapshot.createClaimedProfilesSnapshot(builder, entries)
@@ -88,14 +86,12 @@ class TypedProfilesDecoderTest {
         val a = map.getValue(hex(0x01))
         assertEquals("Alice", a.displayName)
         assertEquals("https://a/p.png", a.pictureUrl)
-        assertEquals(true, a.hasProfile)
         assertEquals("alice@ln", a.lnurl)
         val b = map.getValue(hex(0x02))
         // has_* == false round-trips to null (ADR-0032).
         assertNull(b.displayName)
         assertNull(b.pictureUrl)
         assertNull(b.lnurl)
-        assertEquals(false, b.hasProfile)
     }
 
     @Test

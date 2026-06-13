@@ -53,26 +53,13 @@
 //!   `MarmotService` errors all degrade to `null` / `{"ok":false}` rather
 //!   than panicking across the FFI.
 //!
-//! ## Outbound relay seam — CLOSED
+//! ## Relay seams — CLOSED
 //!
-//! Where an op produces events that must reach relays
-//! (`publish_key_package`'s kind:30443/443, `create_group` /
-//! `invite`'s kind:445 commit + kind:1059 gift-wraps, `send`'s kind:445,
-//! `accept_welcome`'s post-join kind:445 self-update), this crate performs
-//! the `MarmotService` op and then publishes the signed events INTERNALLY
-//! via [`crate::projection::publish`] (the workspace-internal
-//! `nmp_ffi::NmpApp::publish_signed_explicit` kernel API, called against
-//! the retained `&NmpApp`). There is NO Swift relay path — that hook never
-//! existed (see `MarmotBridge.swift`). The result still carries the signed
-//! event JSON (`event` / `events` / `evolution_event` / `welcome_rumors`)
-//! but it is now INFORMATIONAL only; publish already happened
-//! (fire-and-forget — success == "submitted to the kernel publish
-//! pipeline"). Routing per kind: kind:445 → group-pinned relays
-//! (`Explicit`, cache miss → `Auto`); kind:30443/443 → author outbox
-//! (`Auto`); kind:1059 gift-wrap → group relays as a documented
-//! inbox-routing approximation. The MDK pending-commit is still resolved
-//! here (commit eagerly because the events are produced + submitted;
-//! clear-on-failure is exposed via the `clear_pending` op).
+//! Both directions are closed in [`crate::projection`]: ops publish their
+//! signed events INTERNALLY via [`crate::projection::publish`] (no Swift relay
+//! path ever existed), and inbound events arrive via the per-kind
+//! `IngestParser` below. See `crate::projection::ops` / `state` for the
+//! per-kind routing + pending-commit detail.
 //!
 //! ## Inbound ingest seam — CLOSED
 //!
@@ -250,8 +237,12 @@ impl MarmotHandle {
     /// and not subject to ADR-0025's bespoke-FFI prohibition (which
     /// targeted `extern "C"` cluster bloat in the iOS bridge).
     pub fn dispatch(&self, action: &Value) -> Value {
+        // `correlation_id` is `None`: this in-process path (REPL / TUI / tests)
+        // has no action-registry correlation, so the deferred-pending path
+        // stays off (callers get the old terminal soft-fail); it activates only
+        // for the typed `DispatchHostOp` pipeline, which supplies an id.
         self.projection
-            .with_inner(|h| crate::projection::ops::dispatch(h, action, now_secs()))
+            .with_inner(|h| crate::projection::ops::dispatch(h, action, now_secs(), None))
             .unwrap_or_else(|| json!({
                 "ok": false,
                 "error": "projection mutex poisoned",
@@ -629,3 +620,9 @@ mod tests;
 
 #[cfg(test)]
 mod autopublish_tests;
+
+#[cfg(test)]
+mod deferred_kp_tests;
+
+#[cfg(test)]
+mod deferred_snapshot_tests;

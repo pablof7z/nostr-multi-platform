@@ -6,7 +6,7 @@
 //! - Sign round-trip through the real `Signer::sign` path.
 //! - Pending-park behaviour (pending op polls to `None`; resolves once response
 //!   arrives; drains on disconnect).
-//! - 90s per-op deadline reported by `RemoteSignerHandle::sign_timeout()`.
+//! - 90s per-op deadline reported by `RemoteSignerHandle::op_timeout()`.
 //! - Permission batch on first-connect `get_public_key`.
 //! - Pubkey-only persistence round-trip (save → `SignerPayload::Nip55` →
 //!   `Nip55Signer::from_payload`).
@@ -189,15 +189,15 @@ fn make_signer_with_pubkey(
 // Tests
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// `sign_timeout()` must return 90s — the NIP-55 Intent round-trip budget.
+/// `op_timeout()` must return 90s — the NIP-55 Intent round-trip budget.
 #[test]
-fn sign_timeout_is_90s() {
+fn op_timeout_is_90s() {
     let local = LocalKeySigner::generate();
     let (signer, _transport) = make_signer_with_pubkey(local.pubkey());
     assert_eq!(
-        signer.sign_timeout(),
+        RemoteSignerHandle::op_timeout(&signer),
         EXTERNAL_SIGN_TIMEOUT,
-        "Nip55Signer must report 90s sign_timeout (ADR-0048 D3)"
+        "Nip55Signer must report 90s op_timeout (ADR-0050 D4)"
     );
 }
 

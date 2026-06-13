@@ -134,7 +134,7 @@ struct ProfileView: View {
                 .font(.title)
                 .foregroundStyle(.primary)
 
-            if profile?.hasProfile == true, let nip05 = profile?.nip05, !nip05.isEmpty {
+            if let nip05 = profile?.nip05, !nip05.isEmpty {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: 13, weight: .semibold))
@@ -159,7 +159,7 @@ struct ProfileView: View {
             }
             .buttonStyle(.plain)
 
-            if profile?.hasProfile == true, let about = profile?.about, !about.isEmpty {
+            if let about = profile?.about, !about.isEmpty {
                 Text(about)
                     .font(.body)
                     .foregroundStyle(.secondary)

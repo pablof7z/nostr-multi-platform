@@ -43,6 +43,11 @@ data class SnapshotProjections(
     @SerialName("nmp.nip17.dm_inbox") val dmInbox: DmInboxSnapshot? = null,
     @SerialName("wallet_status") val walletStatus: String? = null,
     @SerialName("wallet_balance") val walletBalance: String? = null,
+    // ADR-0032 / #623: pre-computed by the typed WalletStatus decoder so the UI
+    // never branches on raw protocol strings (thin-shell rule). `null` when no
+    // wallet is configured on this snapshot tick.
+    val walletLabel: String? = null,
+    val walletTone: String? = null,
     @SerialName("relay_role_options") val relayRoleOptions: List<RelayRoleOption> = emptyList(),
     @SerialName("claimed_profiles") val claimedProfiles: Map<String, ProfileCard> = emptyMap(),
     @SerialName("mention_profiles") val mentionProfiles: Map<String, ProfileCard> = emptyMap(),
@@ -89,7 +94,6 @@ data class ProfileCard(
     val pictureUrl: String? = null,
     val nip05: String = "",
     val about: String = "",
-    val hasProfile: Boolean = false,
     val lnurl: String? = null,
 )
 

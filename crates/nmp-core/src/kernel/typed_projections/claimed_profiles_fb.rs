@@ -85,7 +85,6 @@ pub(super) fn create_profile_card<'a>(
             picture_url,
             nip05: Some(nip05),
             about: Some(about),
-            has_profile: card.has_profile,
             has_lnurl: card.lnurl.is_some(),
             lnurl,
         },
@@ -141,7 +140,6 @@ fn profile_card_from_fb(card: pc::ProfileCard<'_>) -> ProfileCardModel {
             .then(|| card.picture_url().unwrap_or_default().to_string()),
         nip05: card.nip05().unwrap_or_default().to_string(),
         about: card.about().unwrap_or_default().to_string(),
-        has_profile: card.has_profile(),
         lnurl: card
             .has_lnurl()
             .then(|| card.lnurl().unwrap_or_default().to_string()),

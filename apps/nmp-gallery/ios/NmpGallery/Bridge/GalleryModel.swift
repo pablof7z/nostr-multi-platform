@@ -79,7 +79,6 @@ private struct ResolvedProfileWire: Decodable {
     let pictureUrl: String?
     let nip05: String?
     let about: String?
-    let hasProfile: Bool?
 }
 
 /// Snapshot wire-shape pushed through `nmp_app_set_update_callback`. The

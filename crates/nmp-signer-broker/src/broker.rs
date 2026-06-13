@@ -46,6 +46,12 @@ const BUNKER_SUB_ID: &str = "nmp-bunker";
 pub struct BunkerBroker {
     events: Arc<BrokerEventHandler>,
     active: Mutex<Option<ActiveSession>>,
+    /// ADR-0050 §D3b completion sink, installed once by the host adapter via
+    /// [`BunkerBroker::set_completion_sink`] and bound onto each session's
+    /// transport in `install_completed_signer`. `None` until the host installs
+    /// it (the host always does at broker init). The broker never names
+    /// `ActorCommand` (D0) — it sees only the opaque `Fn(String)`.
+    completion_sink: Mutex<Option<crate::CompletionSink>>,
 }
 
 struct ActiveSession {
@@ -67,7 +73,19 @@ impl BunkerBroker {
         Arc::new(Self {
             events,
             active: Mutex::new(None),
+            completion_sink: Mutex::new(None),
         })
+    }
+
+    /// Install the ADR-0050 §D3b completion sink (host → `DeliverSignerResponse`
+    /// command). Bound onto each session's transport when the signer is
+    /// installed, so every steady-state kind:24133 reply is routed to the actor
+    /// inbox instead of being resolved on the dispatcher thread. Call once at
+    /// broker init; subsequent sessions reuse it.
+    pub fn set_completion_sink(&self, sink: crate::CompletionSink) {
+        if let Ok(mut slot) = self.completion_sink.lock() {
+            *slot = Some(sink);
+        }
     }
 
     /// Begin handshake for a `bunker://` URI. Returns immediately; the
@@ -320,6 +338,17 @@ impl BunkerBroker {
         inbound_rx: mpsc::Receiver<Value>,
     ) {
         transport.bind_signer(&signer);
+
+        // ADR-0050 §D3b: route this session's steady-state RPC replies through
+        // the completion sink (host → `DeliverSignerResponse`) rather than the
+        // dispatcher thread. Bound here so a session that completes before the
+        // host installs the sink still picks it up on the next install; if the
+        // sink is unset the transport drops replies to a clean op timeout (D6).
+        if let Ok(slot) = self.completion_sink.lock() {
+            if let Some(sink) = slot.as_ref() {
+                transport.bind_completion_sink(Arc::clone(sink));
+            }
+        }
 
         // Stash the signer on the active session so cancel() can tear it
         // down deterministically even after the host adapter receives its

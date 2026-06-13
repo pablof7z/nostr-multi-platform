@@ -317,8 +317,8 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
     );
     assert_eq!(
         snap["metrics"]["profile_events"].as_u64(),
-        Some(0),
-        "local kind:0 publish intent must not be counted as a relay-ingested profile event"
+        Some(1),
+        "local kind:0 publish lands the own profile in the store-first read cache (single mechanism)"
     );
 }
 

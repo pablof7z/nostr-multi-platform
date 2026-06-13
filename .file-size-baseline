@@ -32,7 +32,6 @@ crates/nmp-core/src/actor/commands/remote_signer_tests.rs	1166
 crates/nmp-core/src/actor/commands/tests.rs	2270
 crates/nmp-core/src/actor/dispatch.rs	2471
 crates/nmp-core/src/actor/mod.rs	2482
-crates/nmp-core/src/actor/pending_sign.rs	573
 crates/nmp-core/src/actor/relay_mgmt.rs	534
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	588
 crates/nmp-core/src/kernel/action_registry/tests.rs	742

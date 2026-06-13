@@ -150,13 +150,6 @@ pub(super) struct ProfileCard {
     pub(super) picture_url: Option<String>,
     pub(super) nip05: String,
     pub(super) about: String,
-    /// True when a kind:0 metadata event has been received for this
-    /// pubkey. False means the profile card is a placeholder pending
-    /// relay response. Note: derivable from
-    /// `display_name.is_some() || picture_url.is_some() || !nip05.is_empty()`;
-    /// retained as an explicit signal for shells that want the single
-    /// boolean.
-    pub(super) has_profile: bool,
     /// Pre-extracted lightning address (`lud16`) / LNURL (`lud06`) from
     /// this pubkey's kind:0 metadata. `None` when no kind:0 has arrived
     /// or the user has no lightning address. The zap button in the shell
@@ -168,8 +161,7 @@ pub(super) struct ProfileCard {
 impl ProfileCard {
     /// Build a card from a lightweight `mention_profiles` payload.
     /// `nip05`/`about` are empty, `lnurl` is None — the mention projection
-    /// never carries them. `has_profile` is true iff at least one display
-    /// field is present.
+    /// never carries them.
     pub(in crate::kernel) fn from_mention(pubkey: &str, m: &MentionProfilePayload) -> Self {
         Self {
             pubkey: pubkey.to_string(),
@@ -177,7 +169,6 @@ impl ProfileCard {
             picture_url: m.picture_url.clone(),
             nip05: String::new(),
             about: String::new(),
-            has_profile: m.display_name.is_some() || m.picture_url.is_some(),
             lnurl: None,
         }
     }

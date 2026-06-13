@@ -69,7 +69,10 @@ use nmp_nwc::NwcMethod;
 use crate::crypto::{build_event_json, sign_nwc_request, sign_with};
 use crate::payment_store::{FsPaymentStore, PaymentRecord, PaymentState};
 use crate::reconcile::{correct_unresolved_record, settle_payment_failure, settle_payment_success};
-use crate::status::{format_sats_display, NwcConnectionState, WalletStatus, WalletStatusSlot};
+use crate::status::{
+    format_sats_display, status_label, status_tone, NwcConnectionState, WalletStatus,
+    WalletStatusSlot,
+};
 
 /// TTL for inflight `pay_invoice` requests. Entries older than this are
 /// swept by the idle-tick hook and reported as timed-out failures via
@@ -701,8 +704,9 @@ fn wallet_disconnect_inner(
     };
     if let Ok(mut slot) = wallet.status_slot.lock() {
         let balance_sats = conn.balance_msats.map(|m| m / 1000);
+        let wire = "disconnected";
         *slot = Some(WalletStatus {
-            status: "disconnected".to_string(),
+            status: wire.to_string(),
             relay_url: conn.relay_url.clone(),
             wallet_npub: conn.wallet_npub.clone(),
             wallet_pubkey_hex: conn.wallet_pubkey_hex.clone(),
@@ -713,6 +717,8 @@ fn wallet_disconnect_inner(
             is_ready: false,
             is_connected: false,
             connection_state: None,
+            status_label: status_label(wire),
+            status_tone: status_tone(wire),
         });
     }
     match close_msg_opt {
@@ -1135,6 +1141,8 @@ fn sync_wallet_status(wallet: &WalletRuntime, kernel: &mut Kernel) {
     let status = wallet.connection.as_ref().map(|c| {
         let balance_sats = c.balance_msats.map(|m| m / 1000);
         WalletStatus {
+            status_label: status_label(&c.status),
+            status_tone: status_tone(&c.status),
             status: c.status.clone(),
             relay_url: c.relay_url.clone(),
             wallet_npub: c.wallet_npub.clone(),

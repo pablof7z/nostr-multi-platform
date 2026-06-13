@@ -177,13 +177,18 @@ impl Nip55Driver {
             return;
         }
 
-        // Op reply for a live signer — fan out; unknown correlation ids are
-        // dropped inside `deliver_external_response` (D6).
-        if let Ok(signers) = self.signers.lock() {
-            for signer in signers.iter() {
-                signer.deliver_external_response(response_json);
-            }
-        }
+        // Op reply for a live signer (ADR-0050 §D3b). Instead of fanning out to
+        // the signer handles on THIS (bridge) thread, send a
+        // `DeliverSignerResponse` command so the fan-out runs on the actor
+        // thread (D4 single-writer) and the parked op resolves the same loop
+        // iteration the inbox wakes on (no ≤250ms tick dependence, §D3a). The
+        // dispatch arm fans to the remote handles via
+        // `deliver_external_response`; unknown correlation ids are dropped (D6).
+        // The connect/handshake path above is unchanged — it still completes on
+        // the bridge thread via the `AddSigner { RemoteHandle }` re-entry.
+        let _ = self.tx.send(ActorCommand::DeliverSignerResponse {
+            response_json: response_json.to_string(),
+        });
     }
 
     fn complete_connect(&self, connect: Nip55Connect, response: &ExternalSignerResponse) {
@@ -274,10 +279,10 @@ impl RemoteSignerHandle for ArcNip55Signer {
         RemoteSignerHandle::persistence_payload_json(&*self.0)
     }
 
-    /// 90s Intent-round-trip budget (ADR-0048 D3) — MUST delegate so the
-    /// parked op carries the NIP-55 deadline, not the 5s NIP-46 default.
-    fn sign_timeout(&self) -> std::time::Duration {
-        RemoteSignerHandle::sign_timeout(&*self.0)
+    /// 90s Intent-round-trip budget (ADR-0048 D3 / ADR-0050 D4) — MUST delegate
+    /// so the parked op carries the NIP-55 deadline, not the 5s NIP-46 default.
+    fn op_timeout(&self) -> std::time::Duration {
+        RemoteSignerHandle::op_timeout(&*self.0)
     }
 
     fn sign(&self, unsigned: &UnsignedEvent) -> SignerOp<SignedEvent> {
