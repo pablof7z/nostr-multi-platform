@@ -314,6 +314,7 @@ class TypedAccountsDecoderTest {
             /* lastPlannerErrorOffset = */ 0,
             /* storeOpenFailureOffset = */ 0,
             /* noConfiguredRelays = */ null,
+            /* negentropySyncStatsOffset = */ 0,
         )
         val frame = UpdateFrame.createUpdateFrame(b, FrameKind.Snapshot, snapshot, 0)
         UpdateFrame.finishUpdateFrameBuffer(b, frame)

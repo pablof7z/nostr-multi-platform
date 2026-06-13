@@ -119,6 +119,9 @@ mod local_publish_intent;
 #[cfg(test)]
 mod local_publish_intent_tests;
 mod mailboxes;
+#[cfg(any(test, feature = "test-support"))]
+mod negentropy_test_support;
+mod negentropy_types;
 mod nostr;
 #[cfg(test)]
 mod outbox_tests;
@@ -243,6 +246,8 @@ mod tests;
 mod tier3_encode;
 #[cfg(test)]
 mod tier3_envelope_tests;
+#[cfg(test)]
+mod tier3_negentropy_tests;
 #[cfg(test)]
 mod timeline_order_tests;
 #[cfg(test)]
