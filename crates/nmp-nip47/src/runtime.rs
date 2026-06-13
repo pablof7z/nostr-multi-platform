@@ -1,9 +1,11 @@
 //! NIP-47 Nostr Wallet Connect actor-side runtime.
 //!
 //! Moved from `nmp-core::actor::commands::wallet` in V-38. The runtime lives
-//! on the actor thread; the actor reaches into it via the
-//! [`WalletRuntimeHandle`] slot installed via
-//! `nmp_core::NmpApp::set_wallet_runtime_handle`.
+//! behind a [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`).
+//! Each wallet `ActionModule` value and the `WalletInterceptor` hold their own
+//! `Arc` clone of the handle, obtained at composition time via
+//! [`crate::register::register_wallet`] (ADR-0052 rung 5.2 — register-by-value,
+//! no process-global install).
 //!
 //! D0: `nmp-core` no longer depends on `nmp-nwc`. D6: every error path
 //! surfaces as a `last_error_toast` + `WalletStatus::status = "error"`,

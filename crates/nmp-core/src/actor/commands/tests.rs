@@ -1804,13 +1804,14 @@ fn sign_in_bunker_seeds_handshake_progress() {
     // progress immediately. The broker (Stage 4) drives the real handshake
     // and pushes subsequent progress via `BunkerHandshakeProgress`.
     //
-    // Stage 4 also added a fallback: if no broker hook is registered, the
+    // Stage 4 also added a fallback: if no broker hook is installed, the
     // actor clears the seeded "connecting" stage and surfaces a toast.
-    // Register a no-op hook here so the test exercises the happy path.
+    // ADR-0052 §D3 — install a no-op hook into THIS runtime's per-app slot so
+    // the test exercises the happy path (no process-global state).
     use std::sync::Arc;
-    crate::bunker_hook::register_bunker_hook(Arc::new(|_uri| {}));
 
     let (mut id, mut kernel) = fresh();
+    id.install_bunker_hook_for_test(Arc::new(|_req| {}));
     let pk = "c".repeat(64);
     sign_in_bunker(
         &mut id,
@@ -1838,42 +1839,32 @@ fn sign_in_bunker_rejects_malformed_uri() {
 
 #[test]
 fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
-    // Stage 4: if the broker hook is not registered when a URI arrives, the
-    // actor clears the seeded "connecting" stage and surfaces a toast so the
-    // user knows the bunker subsystem is missing. In normal flow the broker
-    // registers its hook at startup, before any URI can be submitted.
+    // Stage 4: if no broker hook is installed when a URI arrives, the actor
+    // clears the seeded "connecting" stage and surfaces a toast so the user
+    // knows the bunker subsystem is missing. In normal flow the broker installs
+    // its hook at startup, before any URI can be submitted.
     //
-    // NOTE: the bunker hook is process-global static state. This test runs
-    // in the same process as `sign_in_bunker_seeds_handshake_progress`,
-    // which registers a no-op hook. We explicitly re-register a hook that
-    // panics if called so that an accidental dispatch path here surfaces
-    // loudly; then we use a uniquely-shaped URI and assert the kernel state.
-    //
-    // To exercise the *no-hook* path deterministically we'd need a way to
-    // unregister; the current `register_bunker_hook` only supports replace.
-    // We document the behaviour via the integration test in the broker
-    // crate instead (which constructs its own kernel + actor without ever
-    // calling `register_bunker_hook`).
-    //
-    // Placeholder assertion: when a hook IS registered (as set up by the
-    // earlier test in this module), the seeded "connecting" stage stays
-    // visible — the broker takes over from there.
-    use std::sync::Arc;
-    crate::bunker_hook::register_bunker_hook(Arc::new(|_uri| {}));
-
+    // ADR-0052 §D3 — the hook is now a PER-APP slot (no process-global), so
+    // this test can exercise the *no-hook* path deterministically: a fresh
+    // `IdentityRuntime` starts with an empty bunker hook slot. (The old global
+    // design could not — its `OnceLock` stayed fired from a sibling test.)
     let (mut id, mut kernel) = fresh();
+    // Deliberately install NO hook.
     let pk = "d".repeat(64);
     sign_in_bunker(
         &mut id,
         &mut kernel,
         &format!("bunker://{pk}?relay=wss://r.example"),
     );
-    // Either the broker hook ran (and we left "connecting" seeded) OR the
-    // broker isn't registered (and we cleared the slot + toasted). Both are
-    // valid post-conditions for this end-to-end path; the only unacceptable
-    // outcome is a panic.
-    let _ = id.bunker_handshake_for_test();
-    let _ = kernel.last_error_toast_snapshot();
+    // No broker installed → the seeded "connecting" stage is cleared and a
+    // toast naming the missing init call is surfaced (D6: error becomes state).
+    assert!(
+        id.bunker_handshake_for_test().is_none(),
+        "no-hook path must clear the seeded handshake progress"
+    );
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|t| t.contains("broker not initialised")));
 }
 
 #[test]
