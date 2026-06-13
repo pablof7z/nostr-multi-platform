@@ -7,16 +7,12 @@
 
 /// Production hot-set event ceiling (`docs/design/lmdb/gc.md` §2: default 10,000).
 ///
-/// NOTE: `GcBudget::production()` intentionally does NOT use this constant yet.
-/// #1090 Stage 1 wires the kernel-derived pin set into
-/// [`EventStore::gc_step_with_pins`], but re-enabling the finite ceiling is
-/// deferred to Stage 3 (blocked on the Stage-2 watermark-coherence decision).
-/// Until then a finite ceiling could still evict events the snapshot references
-/// if the derived pin set under-covers, so `production()` keeps eviction off.
-/// Stage 3 restores `production().max_total_events = HOT_EVENT_CEILING`.
-///
-/// The constant is retained so the eviction CODE and its tests continue to
-/// compile and remain exercisable.
+/// [`GcBudget::production`] sets `max_total_events = HOT_EVENT_CEILING` so the
+/// on-device GC pass evicts least-recently-accessed un-pinned events down to
+/// this ceiling (#1090 Stage 3). Floor-coherence is guaranteed by
+/// `Kernel::derive_store_pin_set`, which pins every stored event at or below
+/// each active floored shape's `since`-floor (#1090 Stage 2) so LRU eviction
+/// cannot punch a hole the floored self-healing REQ will never re-request.
 pub const HOT_EVENT_CEILING: usize = 10_000;
 
 /// Production per-step event budget (`docs/design/lmdb/gc.md` §3).
@@ -33,10 +29,11 @@ pub const GC_MAX_DURATION_MS: u32 = 50;
 ///
 /// [`GcBudget::default`] uses the design-doc schedule values
 /// (`max_events_per_step = 2000`, `max_duration_ms = 50`) with
-/// `max_total_events = usize::MAX` (LRU eviction disabled — backward-compatible).
-/// [`GcBudget::production`] is the on-device call-site budget — currently
-/// identical to `default()`: the LRU ceiling stays **disabled** until the
-/// Stage-2 watermark-coherence decision lands (#1090 Stage 3).
+/// `max_total_events = usize::MAX` (LRU eviction disabled — used by tests that
+/// want only expiry/tombstone reaping, never on-device).
+/// [`GcBudget::production`] is the on-device call-site budget: identical scan
+/// bounds, but `max_total_events = HOT_EVENT_CEILING` so the LRU ceiling is
+/// enforced (#1090 Stage 3).
 /// See `docs/design/lmdb/gc.md` §3.
 #[derive(Clone, Copy, Debug)]
 pub struct GcBudget {
@@ -46,12 +43,11 @@ pub struct GcBudget {
     /// `gc_step` evicts least-recently-accessed events (by access-sequence counter)
     /// down to this ceiling.  Only un-pinned (unclaimed) events are eligible.
     ///
-    /// Both `GcBudget::default()` and [`GcBudget::production`] currently leave
-    /// this `usize::MAX` (eviction disabled).  #1090 Stage 1 supplies the
-    /// kernel-derived pin set to [`EventStore::gc_step_with_pins`]; re-enabling
-    /// the finite ceiling is Stage 3, blocked on the Stage-2 watermark-coherence
-    /// decision (until then a finite ceiling could over-evict if the derived pin
-    /// set under-covers the live snapshot working set).
+    /// [`GcBudget::default()`] leaves this `usize::MAX` (eviction disabled) for
+    /// tests; [`GcBudget::production`] sets it to [`HOT_EVENT_CEILING`]. The
+    /// kernel-derived pin set passed to [`EventStore::gc_step_with_pins`]
+    /// (#1090 Stage 1) plus floor-coherent pinning (#1090 Stage 2) guarantee no
+    /// live working-set or floored-shape event is eligible for eviction.
     pub max_total_events: usize,
 }
 
@@ -60,8 +56,7 @@ impl Default for GcBudget {
     ///
     /// This is the single source of truth for the `2000 / 50ms` scan bounds the
     /// doc quotes. The production call site uses [`GcBudget::production`], which
-    /// currently delegates to these exact values (LRU ceiling disabled pending
-    /// #1090).
+    /// keeps these scan bounds but enables the finite LRU ceiling.
     fn default() -> Self {
         Self {
             max_events_per_step: GC_MAX_EVENTS_PER_STEP,
@@ -74,20 +69,15 @@ impl Default for GcBudget {
 impl GcBudget {
     /// The on-device production budget used by the actor's 60-second idle-tick gc pass.
     ///
-    /// LRU ceiling is intentionally **disabled** (`max_total_events = usize::MAX`).
-    /// #1090 Stage 1 threads the kernel-derived pin set into
-    /// [`EventStore::gc_step_with_pins`], but re-enabling the finite ceiling is
-    /// Stage 3 (blocked on the Stage-2 watermark-coherence decision).  Until then
-    /// a finite ceiling could over-evict if the derived pin set under-covers the
-    /// live snapshot working set.
-    ///
-    /// The eviction code (Phase 2 in `lmdb/gc.rs`) is kept and tested via unit tests
-    /// that pass an explicit finite ceiling — it is only the production budget that
-    /// is temporarily reverted here.
+    /// Same scan bounds as [`GcBudget::default`], with the LRU ceiling enabled
+    /// (`max_total_events = HOT_EVENT_CEILING`). Floor-coherence is guaranteed by
+    /// `Kernel::derive_store_pin_set` (#1090 Stage 2), so eviction never punches a
+    /// hole below an active floored shape's `since`-floor.
     pub fn production() -> Self {
-        // max_total_events = usize::MAX disables Phase-2 LRU eviction.
-        // Re-enable with `max_total_events: HOT_EVENT_CEILING` in #1090 Stage 3.
-        Self::default()
+        Self {
+            max_total_events: HOT_EVENT_CEILING,
+            ..Self::default()
+        }
     }
 }
 

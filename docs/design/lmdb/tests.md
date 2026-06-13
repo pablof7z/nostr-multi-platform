@@ -88,7 +88,7 @@ fn insert_kind30023_writes_dtag_time_index() {
 | Foreign kind:5 ignored | `store_kind5_foreign.rs` | [§2.7](tests/insert.md#27-foreign-kind5-ignored-71-row-kind-5--foreign-clause) |
 | Kind:5 `a`-tag before target | `store_kind5_addr_tombstone.rs` | [§2.7a](tests/insert.md#27a-kind5-a-tag-delete-arriving-before-the-target-event) |
 | NIP-40 expiration scheduled + reaped | `store_nip40_expiration.rs` | §2.8 below |
-| Watermarks survive restart | `store_watermarks.rs` | §2.9 below |
+| Watermarks survive restart | _(removed — #1090)_ | §2.9 below |
 | Claim/release; GC drops un-claimed | `store_gc_claims.rs` | §2.10 below |
 | `nmp dump` round-trip byte-identical | `store_dump_roundtrip.rs` | §2.11 below |
 | Migration v0→v1; rollback on N+1 fail | `store_domain_migration.rs` | [§2.12](tests/migration.md#212-domain-migration-success--failure-master-doc-6) |
@@ -110,15 +110,19 @@ File: `crates/nmp-testing/tests/store_nip40_expiration.rs`
 - Insert an event with `expiration` already in the past — assert `InsertOutcome::Rejected { reason: ExpiredOnArrival }`.
 - Restart store; insert new event with `expiration` at `now + 1`; assert the reaper picks it up after restart (the `idx_expires` cursor scan is the source of truth — no separate timer needs to survive restart).
 
-### 2.9 Watermarks (§7.1 "Sync watermarks")
+### 2.9 Watermarks (§7.1 "Sync watermarks") — REMOVED (#1090)
 
-File: `crates/nmp-testing/tests/store_watermarks.rs`
-
-- Write a watermark; read it back; assert equal.
-- Restart store; read again; assert preserved.
-- Test `coverage()`: row with `synced_up_to = now - 60s` → `Coverage::CompleteAsOf` (under default 300s staleness); row with `synced_up_to = now - 600s` → `Coverage::PartialUpTo`; missing row → `Coverage::Unknown`.
-- `list_watermarks_for_relay("wss://a/")` returns only rows for that relay.
-- Concurrent writes to the same key (simulated): last-writer-wins, no row corruption.
+The persisted-watermark store machinery (`WatermarkKey` / `WatermarkRow` /
+`SyncMethod` / `Coverage`, the `nmp-watermarks` sub-db, the
+`read_watermark` / `write_watermark` / `coverage` / `list_watermarks_for_relay`
+`EventStore` trait methods, and the `store_watermarks.rs` test) had **zero
+production callers** and was deleted in #1090 Stage 3 (a hard break — no compat
+shims). The live `since`-floor for subscriptions is content-derived at runtime
+by the kernel's `watermark_fn` (`crates/nmp-core/src/kernel/mod.rs`), which
+queries the store for the newest stored event per shape — it does not read any
+persisted watermark row. If an M4 NIP-77 negentropy sync feature later needs
+persisted coverage bookmarks, it should be re-designed against the then-current
+schema rather than resurrected from this removed code.
 
 ### 2.10 Claims + GC (§7.1 "GC")
 
