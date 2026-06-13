@@ -23,11 +23,14 @@ use super::super::{nmp_app_chirp_register, ChirpHandle, NmpRegisterStatus};
 /// last `send()` call in a `RefCell<Option<_>>`, silently dropping
 /// multi-command executors (e.g. `PushInterest` followed by
 /// `RecordActionSuccess`).
-pub(super) fn run_module_execute<M: ActionModule>(
+pub(super) fn run_module_execute<M: ActionModule + Default>(
     input: M::Action,
 ) -> Result<Vec<ActorCommand>, String> {
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-    M::execute(input, "test-cid", &|cmd| {
+    // ADR-0052 rung 5.2: `execute` takes `&self` (the module value carries its
+    // dependencies). The NIP-29 test modules probed here are stateless unit
+    // structs, so a `Default`-constructed instance is the canonical handle.
+    M::default().execute(input, "test-cid", &|cmd| {
         captured.borrow_mut().push(cmd);
     })?;
     Ok(captured.into_inner())

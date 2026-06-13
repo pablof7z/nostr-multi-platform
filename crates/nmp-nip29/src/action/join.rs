@@ -49,6 +49,7 @@ fn join_group_plan(action: &JoinGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_JOIN_REQUEST, content, tags)
 }
 
+#[derive(Default)]
 pub struct JoinGroupAction;
 impl ActionModule for JoinGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.join";

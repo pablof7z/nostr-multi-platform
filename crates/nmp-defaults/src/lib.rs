@@ -110,7 +110,7 @@ pub mod runtimes;
 pub mod tiers;
 pub mod topic_articles;
 
-pub use builder::{NmpAppBuilder, RunConfig, StorageSet, Unstarted};
+pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
 pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use op_feed_defaults::{register_op_feed_defaults, OpFeedDefaults};
 pub use runtimes::register_mute_runtime;

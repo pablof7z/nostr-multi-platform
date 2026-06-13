@@ -25,11 +25,13 @@ use std::ffi::{CStr, CString};
 /// landed on this instance.
 #[test]
 fn with_wallet_wires_stack_before_start() {
-    // with_wallet() returns NmpAppBuilder<Unstarted>, so .in_memory().start()
-    // compiles and runs — the install-before-dispatch ordering is type-enforced.
+    // with_wallet() returns NmpAppBuilder<Unstarted>, so .in_memory() →
+    // projection decision → .start() compiles and runs — the
+    // install-before-dispatch ordering is type-enforced.
     let app = NmpAppBuilder::new()
         .with_wallet()
         .in_memory()
+        .consume_all_builtin_projections()
         .start(RunConfig::default());
     assert!(!app.is_null(), "start() after with_wallet() returned null");
 
@@ -64,6 +66,7 @@ fn with_wallet_composes_with_register_defaults_and_storage() {
         builder
             .with_wallet()
             .storage_path("/tmp/nmp_test_v95_wallet")
+            .consume_all_builtin_projections()
             .start(RunConfig::default())
     };
     assert!(!app.is_null());

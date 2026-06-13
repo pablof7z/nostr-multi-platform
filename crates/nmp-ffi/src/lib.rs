@@ -1545,7 +1545,7 @@ impl NmpApp {
         // (additive semantics keep it safe as-is, the assert is a developer
         // early-warning).
         debug_assert!(
-            !self.started.load(Ordering::Acquire),
+            !self.started.load(Ordering::SeqCst),
             "declare_consumed_projections called after nmp_app_start — \
              the declared set must be complete before the kernel emits its \
              first real frame (ADR-0053 Decision 5 / init-only invariant)"
@@ -1560,9 +1560,14 @@ impl NmpApp {
     ///
     /// Returns `false` when no keys have been declared (the "no opinion / no
     /// narrowing" state — every Tier-2 built-in is emitted). Returns `true`
-    /// once any key has been declared. Intended for the `debug_assert!` in the
-    /// production builder (`NmpAppBuilder::start`) and for the one-time warn in
-    /// `nmp_app_start`. A poisoned registry mutex returns `false` (D6).
+    /// once any key has been declared. Two consumers read it: the one-time
+    /// `tracing::warn!` in `nmp_app_start` (the C-ABI-path backstop), and the
+    /// `nmp-defaults` builder tests that assert the typestate methods
+    /// (`declare_consumed_projections` vs `consume_all_builtin_projections`)
+    /// produce the expected narrowing state. (The app-facing builder enforces
+    /// the *decision* at compile time via its typestate — there is no runtime
+    /// `debug_assert!` on the builder path.) A poisoned registry mutex returns
+    /// `false` (D6).
     #[must_use]
     pub fn consumed_projections_are_narrowing(&self) -> bool {
         self.snapshot_projections
