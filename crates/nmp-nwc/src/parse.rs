@@ -105,7 +105,6 @@ impl NwcUri {
     /// (`ParseError::UnknownParam { key }`). The latter guards against silent config drops:
     /// a typo such as `relays=wss://…` would otherwise be accepted as a parse success with
     /// no relay configured, causing the wallet connection to fail with no explanation.
-    #[must_use]
     pub fn parse(uri: &str) -> Result<Self, ParseError> {
         const SCHEME: &str = "nostr+walletconnect://";
         let uri = uri.trim();

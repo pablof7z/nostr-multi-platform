@@ -78,7 +78,6 @@ impl std::error::Error for NwcBuildError {}
 ///
 /// Returns `NwcBuildError` if the secret or pubkey are not valid secp256k1 keys
 /// or if NIP-44 encryption fails.
-#[must_use]
 pub fn request_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -99,7 +98,6 @@ pub fn request_content(
 /// # Errors
 ///
 /// Returns `NwcBuildError` if key parsing or encryption fails.
-#[must_use]
 pub fn get_balance_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -117,7 +115,6 @@ pub fn get_balance_content(
 /// # Errors
 ///
 /// Returns `NwcBuildError` if key parsing or encryption fails.
-#[must_use]
 pub fn get_info_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
@@ -135,7 +132,6 @@ pub fn get_info_content(
 /// # Errors
 ///
 /// Returns `NwcBuildError` if key parsing, params serialization, or encryption fails.
-#[must_use]
 pub fn pay_invoice_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
