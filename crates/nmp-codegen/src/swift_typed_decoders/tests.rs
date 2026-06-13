@@ -77,11 +77,16 @@ fn emitted_decoder_matches_envelope_by_key_and_schema_id() {
 #[test]
 fn emitted_decoder_decodes_into_the_flatc_reader_type() {
     let out = render_typed_decoders(&mixed_registry());
+    // Buffers are trusted (in-process FFI); use unchecked getRoot, not
+    // getCheckedRoot, to skip the O(N) Verifier walk on the 4 Hz hot path.
     assert!(
-        out.contains("guard let reader: nmp_kernel_ActiveAccountSnapshot = try? getCheckedRoot("),
-        "must getCheckedRoot into the named flatc reader struct; got:\n{out}"
+        out.contains("let reader: nmp_kernel_ActiveAccountSnapshot = getRoot(byteBuffer: &buffer)"),
+        "must use unchecked getRoot into the named flatc reader struct; got:\n{out}"
     );
-    assert!(out.contains("fileId: fileIdentifier"));
+    assert!(
+        !out.contains("getCheckedRoot"),
+        "getCheckedRoot must not appear in generated output (use getRoot instead); got:\n{out}"
+    );
 }
 
 #[test]

@@ -8,7 +8,7 @@ import Foundation
 ///
 /// The generated `TypedProjectionDecoders.generated.swift` owns the mechanical
 /// half of every typed-sidecar decoder: the `key`+`schemaId` envelope lookup
-/// and the `getCheckedRoot(fileId:)` decode into the reader struct. The reader
+/// and the unchecked `getRoot(byteBuffer:)` decode into the reader struct. The reader
 /// struct's field layout (the FlatBuffer *wire*) does NOT field-align with the
 /// Chirp *domain* type — the domain types are field-subsets of the wire, carry
 /// `has_*` companion-bool optionals, and (for thick keys) nested sub-buffers.
