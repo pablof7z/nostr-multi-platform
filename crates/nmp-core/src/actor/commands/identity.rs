@@ -409,12 +409,10 @@ pub(crate) type IdentityId = String;
 /// first) — the user explicitly added a remote handle, so route through it.
 pub(crate) struct IdentityRuntime {
     keys: HashMap<IdentityId, Keys>,
-    // ADR-0026 Phase 2: stored as `Arc<dyn>` (not `Box<dyn>`) so the
-    // active handle can be cloned into the `SignerForSeal` adapter
-    // returned by `active_signer_for_seal` — gift-wrap (NIP-17 DMs;
-    // future NIP-57 zaps) drives the seal step through the trait object
-    // and the trait requires `'static + Send + Sync`, which only an
-    // owned `Arc` clone satisfies.
+    // Stored as `Arc<dyn>` (not `Box<dyn>`) so a handle can be cloned for
+    // shared ownership where a `'static` owned reference is needed (broker
+    // wiring). The ADR-0026 `SignerForSeal` adapter that originally motivated
+    // the `Arc` is deleted (ADR-0050 §D5 — gift-wrap now signs through the port).
     remote_signers: HashMap<IdentityId, std::sync::Arc<dyn RemoteSignerHandle>>,
     order: Vec<IdentityId>,
     active: Option<IdentityId>,
@@ -550,13 +548,11 @@ impl IdentityRuntime {
     ///
     /// Returns `None` both when no account is active AND when the active
     /// account is a remote (NIP-46) signer — a remote signer holds no local
-    /// secret key, so callers that need raw key material (NIP-59 gift-wrap)
-    /// must surface a graceful error for that case rather than assuming a key.
-    ///
-    /// This is the deliberate seam for the `SendGiftWrappedDm` actor arm:
-    /// `gift_wrap` requires `&Keys`, and `sign_active_nonblocking` (which
-    /// transparently routes to a remote signer) cannot satisfy that — sealing
-    /// the rumor is not a single "sign this event" operation.
+    /// secret key. Backend-transparent signing (incl. the NIP-17 gift-wrap DM
+    /// chain after ADR-0050 §D5) goes through the actor's signer port
+    /// (`SignEventForAccount` / `Nip44EncryptForAccount`), which routes both
+    /// backends; this accessor is for the residual local-only consumers
+    /// (e.g. Marmot's MLS identity) that genuinely hold `&Keys`.
     pub(crate) fn active_local_keys(&self) -> Option<&Keys> {
         self.active_keys()
     }
@@ -566,16 +562,6 @@ impl IdentityRuntime {
             .as_ref()
             .and_then(|id| self.remote_signers.get(id))
             .map(std::convert::AsRef::as_ref)
-    }
-
-    /// Like [`active_remote`] but returns a cloned `Arc` so the caller can
-    /// take owned shared access. Used by [`active_signer_for_seal`] to
-    /// hand the `SignerForSeal` adapter a `'static` handle.
-    fn active_remote_arc(&self) -> Option<std::sync::Arc<dyn RemoteSignerHandle>> {
-        self.active
-            .as_ref()
-            .and_then(|id| self.remote_signers.get(id))
-            .cloned()
     }
 
     pub(crate) fn active_pubkey(&self) -> Option<String> {
@@ -665,29 +651,6 @@ impl IdentityRuntime {
         std::time::Instant::now() + duration
     }
 
-    /// Resolve a [`SignerForSeal`][nmp_nip59::SignerForSeal] for the active
-    /// account — the ADR-0026 seal-step seam gift-wrap producers consume via
-    /// `nmp_nip59::gift_wrap_with_signer`. Local accounts hand back an
-    /// `Arc<Keys>` (the blanket impl); remote accounts wrap in
-    /// [`RemoteSignerForSeal`][super::remote_signer_for_seal::RemoteSignerForSeal]
-    /// (ADR-0026 Phase 2; a malformed bunker pubkey graceful-degrades to `None`).
-    /// `None` when no account is active. Centralising raw-key access here keeps
-    /// `commands/dm.rs` D13-clean.
-    pub(crate) fn active_signer_for_seal(
-        &self,
-    ) -> Option<std::sync::Arc<dyn nmp_nip59::SignerForSeal>> {
-        if let Some(remote) = self.active_remote_arc() {
-            return super::remote_signer_for_seal::RemoteSignerForSeal::new(remote).map(
-                |adapter| {
-                    std::sync::Arc::new(adapter) as std::sync::Arc<dyn nmp_nip59::SignerForSeal>
-                },
-            );
-        }
-        if let Some(keys) = self.active_keys() {
-            return Some(std::sync::Arc::new(keys.clone()));
-        }
-        None
-    }
 }
 
 /// Build a signed event over a fixed `Keys`. Mirrors the
