@@ -57,5 +57,10 @@
 //! per the spec. That consolidation is a future clean-up step, not v1 scope.
 
 pub mod projection;
+pub mod wire;
 
 pub use projection::{MuteListProjection, MuteListSnapshot};
+pub use wire::mute_list_fb::{
+    decode_mute_list, encode_mute_list, MUTE_LIST_FILE_IDENTIFIER, MUTE_LIST_SCHEMA_ID,
+    MUTE_LIST_SCHEMA_VERSION,
+};

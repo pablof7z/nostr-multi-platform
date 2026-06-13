@@ -72,7 +72,7 @@ use nmp_kinds::KIND_MUTE_LIST;
 use serde::Serialize;
 
 /// Snapshot shape — the full mute list for diagnostic / export purposes.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
 pub struct MuteListSnapshot {
     /// Muted author pubkeys (hex).
     pub muted_pubkeys: Vec<String>,
