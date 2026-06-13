@@ -106,7 +106,7 @@ fn paysent_persist_failure_blocks_payment_enqueue() {
 #[test]
 fn sync_wallet_status_writes_slot_and_marks_dirty_on_success() {
     let slot = new_wallet_status_slot();
-    let mut rt = WalletRuntime::new(slot);
+    let rt = WalletRuntime::new(slot);
     // No connection — status becomes None; the slot write must still succeed.
     let mut kernel = nmp_core::Kernel::testing_new(64);
     sync_wallet_status(&rt, &mut kernel);
