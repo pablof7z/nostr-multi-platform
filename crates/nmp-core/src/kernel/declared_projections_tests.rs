@@ -11,8 +11,8 @@
 //! - the drain-on-emit keys (`action_results` …) still work when declared;
 //! - `relay_diagnostics` — the headline waste — is omitted unless declared.
 
-use super::snapshot_registry::new_snapshot_projection_slot;
-use super::*;
+use crate::kernel::snapshot_registry::new_snapshot_projection_slot;
+use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
 /// Drive one tick and return the parsed `projections` JSON object.
@@ -28,7 +28,10 @@ fn projections_json(kernel: &mut Kernel) -> serde_json::Map<String, serde_json::
 }
 
 /// A kernel with a bound (empty-declared) registry slot — the production wiring.
-fn kernel_with_slot() -> (Kernel, super::snapshot_registry::SnapshotProjectionSlot) {
+fn kernel_with_slot() -> (
+    Kernel,
+    crate::kernel::snapshot_registry::SnapshotProjectionSlot,
+) {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let slot = new_snapshot_projection_slot();
     kernel.set_snapshot_projection_handle(slot.clone());
@@ -84,8 +87,14 @@ fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
     let projections = projections_json(&mut kernel);
 
     // Declared keys present.
-    assert!(projections.contains_key("profile"), "declared `profile` present");
-    assert!(projections.contains_key("accounts"), "declared `accounts` present");
+    assert!(
+        projections.contains_key("profile"),
+        "declared `profile` present"
+    );
+    assert!(
+        projections.contains_key("accounts"),
+        "declared `accounts` present"
+    );
     assert!(
         projections.contains_key("resolved_profiles"),
         "declared `resolved_profiles` present"
@@ -99,7 +108,12 @@ fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
         projections.keys().collect::<Vec<_>>()
     );
     // Other undeclared built-ins gated out too.
-    for key in ["publish_queue", "settings_hub", "claimed_profiles", "active_account"] {
+    for key in [
+        "publish_queue",
+        "settings_hub",
+        "claimed_profiles",
+        "active_account",
+    ] {
         assert!(
             !projections.contains_key(key),
             "undeclared built-in {key:?} must be omitted; got keys {:?}",
@@ -130,7 +144,10 @@ fn declared_set_gates_typed_sidecar_in_lockstep_with_json() {
     // Declared keys: present in both wire forms.
     for key in ["profile", "configured_relays"] {
         assert!(json_keys.contains(key), "declared {key:?} in JSON map");
-        assert!(typed_keys.contains(key), "declared {key:?} in typed sidecar");
+        assert!(
+            typed_keys.contains(key),
+            "declared {key:?} in typed sidecar"
+        );
     }
     // Undeclared `relay_diagnostics`: absent in both.
     assert!(
@@ -194,7 +211,10 @@ fn declared_drain_on_emit_key_surfaces_when_settled() {
     slot.lock()
         .unwrap()
         .declare_consumed_projections(["action_results"]);
-    kernel.record_action_success("corr-1".to_string(), Some(r#"{"event_id":"a"}"#.to_string()));
+    kernel.record_action_success(
+        "corr-1".to_string(),
+        Some(r#"{"event_id":"a"}"#.to_string()),
+    );
     let projections = projections_json(&mut kernel);
     assert!(
         projections.contains_key("action_results"),
@@ -209,7 +229,10 @@ fn declared_drain_on_emit_key_surfaces_when_settled() {
         .lock()
         .unwrap()
         .declare_consumed_projections(["profile"]); // narrowing, excludes action_results
-    kernel2.record_action_success("corr-2".to_string(), Some(r#"{"event_id":"b"}"#.to_string()));
+    kernel2.record_action_success(
+        "corr-2".to_string(),
+        Some(r#"{"event_id":"b"}"#.to_string()),
+    );
     let p2 = projections_json(&mut kernel2);
     assert!(
         !p2.contains_key("action_results"),

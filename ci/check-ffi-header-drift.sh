@@ -95,6 +95,10 @@ FFI_FILE_ROOTS=(
     # test file, same posture as marmot/ffi/tests.rs).
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/mod.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/actions.rs"
+    # ADR-0053 host-declared projection consumption set
+    # (nmp_app_chirp_declare_consumed_projections): the single static call both
+    # shells use to declare Chirp's consumed Tier-2 built-ins.
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/declared_projections.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/handle.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/helpers.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/identity.rs"

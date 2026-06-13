@@ -147,6 +147,13 @@ use bounds::{admit_additive, admit_keyed};
 pub mod declared;
 pub use declared::DeclaredProjections;
 
+// ADR-0053 — end-to-end gating proofs. Mounted here (not from `kernel/mod.rs`)
+// via `#[path]` so the kernel god-module stays at its size baseline. The test
+// file uses absolute `crate::kernel::` paths so the mount point is irrelevant.
+#[cfg(test)]
+#[path = "declared_projections_tests.rs"]
+mod declared_projections_tests;
+
 // D5 — registration-count ceiling tests (kept beside the registry, off the
 // `kernel/mod.rs` module list, so this PR does not touch that ratcheted file).
 #[cfg(test)]

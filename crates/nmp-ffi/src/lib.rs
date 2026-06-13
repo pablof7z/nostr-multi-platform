@@ -26,6 +26,7 @@ mod active_account_handle_tests;
 // V-83 — `NmpApp::event_by_id()` synchronous event-read tests (real event
 // ingest driven through the actor thread; publish-back slot survives Reset).
 mod action;
+mod app_host_impl; // ADR-0053: `impl AppHost for NmpApp` extracted here (LOC ceiling).
 mod capability;
 // Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
 // by any NMP FFI function must be freed via `nmp_free_string`.
@@ -161,7 +162,7 @@ pub use signer_broker::{
 };
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
-pub use snapshot::nmp_app_register_snapshot_projection;
+pub use snapshot::{nmp_app_declare_consumed_projections, nmp_app_register_snapshot_projection};
 #[cfg(feature = "native")]
 pub use storage::nmp_app_set_storage_path;
 #[cfg(feature = "native")]
@@ -941,8 +942,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `NmpApp::set_kernel_clock_for_test` setter ever writes it. The actor
     // reads its clone once after kernel construction and applies it via
     // `Kernel::set_clock`.
-    let kernel_clock: nmp_core::slots::KernelClockSlot =
-        nmp_core::slots::new_kernel_clock_slot();
+    let kernel_clock: nmp_core::slots::KernelClockSlot = nmp_core::slots::new_kernel_clock_slot();
     let actor_kernel_clock = Arc::clone(&kernel_clock);
     // Raw signed-event forwarding policy factory slot. Default `None`; the
     // app template installs the indexer-republish policy through this seam.
@@ -2045,10 +2045,7 @@ impl NmpApp {
     /// deterministically — no wall-clock sleep (D8). Production never calls
     /// this (the slot stays `None`; the kernel keeps its `SystemClock`).
     #[cfg(any(test, feature = "test-support"))]
-    pub fn set_kernel_clock_for_test(
-        &self,
-        clock: std::sync::Arc<nmp_core::MonotonicSecondClock>,
-    ) {
+    pub fn set_kernel_clock_for_test(&self, clock: std::sync::Arc<nmp_core::MonotonicSecondClock>) {
         if let Ok(mut slot) = self.kernel_clock.lock() {
             *slot = Some(nmp_core::slots::erase_kernel_clock(clock));
         }
@@ -2128,7 +2125,8 @@ impl NmpApp {
     /// Set the one-shot MLS-autopublish intent (consumed by
     /// [`Self::take_pending_mls_autopublish`] in `register_with_keys`).
     pub(crate) fn set_pending_mls_autopublish(&self, enabled: bool) {
-        self.pending_mls_autopublish.store(enabled, Ordering::Release);
+        self.pending_mls_autopublish
+            .store(enabled, Ordering::Release);
     }
 
     /// Reads the one-shot MLS-autopublish intent and clears it in the same
@@ -2184,7 +2182,10 @@ impl NmpApp {
         if make_active && matches!(source, nmp_core::SignerSource::LocalNsec(_)) {
             self.set_pending_mls_autopublish(true);
         }
-        self.send_cmd(ActorCommand::AddSigner { source, make_active });
+        self.send_cmd(ActorCommand::AddSigner {
+            source,
+            make_active,
+        });
     }
 
     /// Remove an identity through the actor-owned identity reducer.
@@ -2576,216 +2577,6 @@ impl nmp_core::substrate::ActionRegistrar for NmpApp {
         module: M,
     ) -> bool {
         NmpApp::register_default_action(self, module)
-    }
-}
-
-impl nmp_core::substrate::AppHost for NmpApp {
-    fn register_snapshot_projection<K, F>(&self, key: K, f: F)
-    where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static,
-    {
-        NmpApp::register_snapshot_projection(self, key, f);
-    }
-
-    fn register_snapshot_projection_gated<K, F>(
-        &self,
-        key: K,
-        gate: Arc<dyn nmp_core::ChangeGate>,
-        f: F,
-    ) where
-        K: Into<String>,
-        F: Fn() -> serde_json::Value + Send + Sync + 'static,
-    {
-        NmpApp::register_snapshot_projection_gated(self, key, gate, f);
-    }
-
-    fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
-    where
-        K: Into<String>,
-        F: Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
-    {
-        NmpApp::register_typed_snapshot_projection(self, key, f);
-    }
-
-    fn register_snapshot_tick_observer<F>(&self, f: F)
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        NmpApp::register_snapshot_tick_observer(self, f);
-    }
-
-    fn declare_consumed_projections<I, K>(&self, keys: I)
-    where
-        I: IntoIterator<Item = K>,
-        K: Into<String>,
-    {
-        NmpApp::declare_consumed_projections(self, keys);
-    }
-
-    fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
-        NmpApp::set_coverage_hook(self, hook);
-    }
-
-    fn set_req_frame_interceptor(
-        &self,
-        interceptor: Arc<dyn nmp_core::substrate::ReqFrameInterceptor>,
-    ) {
-        NmpApp::set_req_frame_interceptor(self, interceptor);
-    }
-
-    fn add_relay_text_interceptor(
-        &self,
-        interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
-    ) {
-        NmpApp::add_relay_text_interceptor(self, interceptor);
-    }
-
-    fn add_relay_connected_hook(
-        &self,
-        hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>,
-    ) {
-        NmpApp::add_relay_connected_hook(self, hook);
-    }
-
-    fn register_ingest_parser(
-        &self,
-        kind: u32,
-        parser: Arc<dyn nmp_core::substrate::IngestParser>,
-    ) {
-        NmpApp::register_ingest_parser(self, kind, parser);
-    }
-
-    fn replace_ingest_parser(
-        &self,
-        kind: u32,
-        slot_key: &'static str,
-        parser: Arc<dyn nmp_core::substrate::IngestParser>,
-    ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
-        NmpApp::replace_ingest_parser(self, kind, slot_key, parser)
-    }
-
-    fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
-        NmpApp::unregister_ingest_parser(self, kind, slot_key);
-    }
-
-    fn replace_ingest_parser_range(
-        &self,
-        range: std::ops::Range<u32>,
-        slot_key: &'static str,
-        parser: Arc<dyn nmp_core::substrate::IngestParser>,
-    ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
-        NmpApp::replace_ingest_parser_range(self, range, slot_key, parser)
-    }
-
-    fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
-        NmpApp::unregister_ingest_parser_range(self, slot_key);
-    }
-
-    fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
-        NmpApp::set_dm_inbox_relay_lookup(self, lookup);
-    }
-
-    fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
-        NmpApp::set_mailbox_cache_reader(self, cache);
-    }
-
-    fn set_routing_substrate<F>(&self, factory: F)
-    where
-        F: Fn(
-                Arc<dyn nmp_core::substrate::RoutingTraceObserver>,
-            ) -> (
-                Arc<dyn nmp_core::substrate::OutboxRouter>,
-                Arc<dyn nmp_core::substrate::MailboxCache>,
-            ) + Send
-            + Sync
-            + 'static,
-    {
-        NmpApp::set_routing_substrate(self, factory);
-    }
-
-    fn set_publish_resolver_factory<F>(&self, factory: F)
-    where
-        F: Fn(
-                Arc<dyn nmp_core::store::EventStore>,
-                nmp_core::slots::IndexerRelaysSlot,
-                nmp_core::slots::LocalWriteRelaysSlot,
-                nmp_core::slots::ActiveAccountSlot,
-            ) -> Arc<dyn nmp_core::publish::OutboxResolver>
-            + Send
-            + Sync
-            + 'static,
-    {
-        NmpApp::set_publish_resolver_factory(self, factory);
-    }
-
-    fn set_raw_event_forward_policy_factory<F>(&self, factory: F)
-    where
-        F: Fn(
-                nmp_core::substrate::RawEventForwardPolicyContext,
-            ) -> Vec<Arc<dyn nmp_core::substrate::RawEventForwardPolicy>>
-            + Send
-            + Sync
-            + 'static,
-    {
-        NmpApp::set_raw_event_forward_policy_factory(self, factory);
-    }
-
-    fn active_local_keys(&self) -> nmp_core::slots::ActiveLocalKeysSlot {
-        NmpApp::active_local_keys(self)
-    }
-
-    fn active_pubkey(&self) -> nmp_core::slots::ActiveAccountSlot {
-        NmpApp::active_account_handle(self)
-    }
-
-    fn actor_sender(&self) -> nmp_core::CommandSender {
-        NmpApp::actor_sender(self)
-    }
-
-    fn register_event_observer(
-        &self,
-        observer: Arc<dyn KernelEventObserver>,
-    ) -> KernelEventObserverId {
-        NmpApp::register_event_observer(self, observer)
-    }
-
-    fn unregister_event_observer(&self, id: KernelEventObserverId) {
-        NmpApp::unregister_event_observer(self, id);
-    }
-
-    fn swap_singleton_event_observer(
-        &self,
-        new: Option<KernelEventObserverId>,
-    ) -> Option<KernelEventObserverId> {
-        NmpApp::swap_singleton_event_observer(self, new)
-    }
-
-    fn register_raw_event_observer(
-        &self,
-        kinds: KindFilter,
-        observer: Arc<dyn RawEventObserver>,
-    ) -> RawEventObserverId {
-        NmpApp::register_raw_event_observer(self, kinds, observer)
-    }
-
-    fn unregister_raw_event_observer(&self, id: RawEventObserverId) {
-        NmpApp::unregister_raw_event_observer(self, id);
-    }
-
-    fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
-        NmpApp::configured_relays_handle(self)
-    }
-
-    fn set_nostrconnect_bootstrap_relay(&self, url: String) {
-        NmpApp::set_nostrconnect_bootstrap_relay(self, url)
-    }
-
-    fn register_identity_change_observer<F>(&self, f: F)
-    where
-        F: Fn(Option<String>) + Send + Sync + 'static,
-    {
-        NmpApp::register_identity_change_observer(self, f);
     }
 }
 

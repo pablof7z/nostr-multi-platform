@@ -224,8 +224,6 @@ pub(crate) mod snapshot_registry;
 #[cfg(test)]
 mod snapshot_registry_tests;
 #[cfg(test)]
-mod declared_projections_tests;
-#[cfg(test)]
 mod state_projection_tests;
 mod status;
 mod store_init;
