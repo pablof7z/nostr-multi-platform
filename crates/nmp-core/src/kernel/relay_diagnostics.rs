@@ -33,7 +33,6 @@
 
 use serde::Serialize;
 use std::collections::BTreeMap;
-use crate::time::{Instant, SystemTime, UNIX_EPOCH};
 
 mod format;
 
@@ -236,19 +235,11 @@ impl Kernel {
     /// Build the diagnostics roll-up. Called from
     /// `snapshot_projections_with_publish_cluster` in `update.rs`.
     pub(super) fn relay_diagnostics_snapshot(&self) -> RelayDiagnosticsSnapshot {
-        // Unix epoch ms, read ONCE per snapshot so every row in this tick
-        // uses the same wall-clock reference. This is the only place in the
-        // projection that reads a clock — the raw ms-since-kernel-start
-        // values in RelayStatus / WireSubscriptionStatus are converted here
-        // to stable Unix epoch milliseconds and passed through as-is to the
-        // shells. Shells format "Xs ago" at render time (aim.md §62).
-        let now_ms = self.now_since_start_ms();
-        let unix_now_ms: u64 = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis()
-            .try_into()
-            .unwrap_or(u64::MAX);
+        // Fixed wall-clock anchor from kernel start (NO live clock read here):
+        // raw ms-since-start markers are lifted to STABLE Unix-ms by adding it,
+        // so an unchanged relay serializes byte-identically every 4 Hz tick (no
+        // per-second churn, no per-ms jitter). Shells format at render (§62).
+        let started_unix_ms = self.timing.started_unix_ms.unwrap_or(0);
 
         // Pre-compute statuses keyed by relay URL so each row can be filled
         // without a per-row linear scan back through `relay_statuses`.
@@ -285,7 +276,7 @@ impl Kernel {
             .map(|url| {
                 let status = by_url.get(&url);
                 let subs = subs_by_url.remove(&url).unwrap_or_default();
-                build_relay_row(url, status, subs, now_ms, unix_now_ms)
+                build_relay_row(url, status, subs, started_unix_ms)
             })
             .collect();
 
@@ -304,39 +295,28 @@ impl Kernel {
 
         RelayDiagnosticsSnapshot { relays, interests }
     }
-
-    /// Milliseconds since `started_at`. Returns 0 if the kernel never
-    /// started (so callers degrade gracefully rather than panicking across
-    /// the FFI boundary, D6).
-    fn now_since_start_ms(&self) -> u128 {
-        match self.timing.started_at {
-            Some(started) => Instant::now().duration_since(started).as_millis(),
-            None => 0,
-        }
-    }
 }
 
-/// Convert a `ms-since-kernel-start` value to a Unix epoch millisecond `u64`.
+/// Lift a `ms-since-kernel-start` event marker to Unix epoch ms, anchored to
+/// the wall clock captured once at kernel start: `started_unix_ms + event_ms`.
 ///
-/// `unix_now_ms` is the wall-clock "now" in Unix epoch ms (read once per
-/// snapshot); `now_ms` is the kernel-monotonic "now" in ms-since-start.
-/// Returns `None` when `event_ms == 0` (sentinel for "never observed") or
-/// when the result would underflow (clock skew).
-fn elapsed_to_unix_ms(unix_now_ms: u64, now_ms: u128, event_ms: u128) -> Option<u64> {
+/// Purely a function of two fixed inputs, so a given event always maps to the
+/// SAME Unix timestamp no matter when the snapshot is taken — this determinism
+/// is what makes the projection byte-stable (the regression this fixes).
+/// Returns `None` when `event_ms == 0` (sentinel for "never observed").
+fn event_to_unix_ms(started_unix_ms: u64, event_ms: u128) -> Option<u64> {
     if event_ms == 0 {
         return None;
     }
-    let elapsed = now_ms.saturating_sub(event_ms);
-    let elapsed_sat: u64 = elapsed.try_into().unwrap_or(u64::MAX);
-    Some(unix_now_ms.saturating_sub(elapsed_sat))
+    let event_sat: u64 = event_ms.try_into().unwrap_or(u64::MAX);
+    Some(started_unix_ms.saturating_add(event_sat))
 }
 
 fn build_relay_row(
     relay_url: String,
     status: Option<&RelayStatus>,
     subs: Vec<WireSubscriptionStatus>,
-    now_ms: u128,
-    unix_now_ms: u64,
+    started_unix_ms: u64,
 ) -> RelayDiagnosticsRow {
     // Synthetic row for an outbox-only URL with no `RelayStatus` lane —
     // mirrors the old Swift `syntheticRelayStatus` helper but stays Rust-
@@ -364,8 +344,7 @@ fn build_relay_row(
             0,
             0,
             subs,
-            now_ms,
-            unix_now_ms,
+            started_unix_ms,
             None,
         );
     };
@@ -409,8 +388,7 @@ fn build_relay_row(
         bytes_rx,
         bytes_tx,
         subs,
-        now_ms,
-        unix_now_ms,
+        started_unix_ms,
         info,
     )
 }
@@ -430,8 +408,7 @@ fn finish_row(
     bytes_rx: u64,
     bytes_tx: u64,
     subs: Vec<WireSubscriptionStatus>,
-    now_ms: u128,
-    unix_now_ms: u64,
+    started_unix_ms: u64,
     info: Option<RelayDiagnosticsInfo>,
 ) -> RelayDiagnosticsRow {
     let total_sub_count = subs.len() as u32;
@@ -441,7 +418,7 @@ fn finish_row(
 
     let wire_subs = subs
         .into_iter()
-        .map(|s| build_wire_sub(s, now_ms, unix_now_ms))
+        .map(|s| build_wire_sub(s, started_unix_ms))
         .collect();
 
     RelayDiagnosticsRow {
@@ -470,9 +447,9 @@ fn finish_row(
             None
         },
         last_connected_ms: last_connected_raw
-            .and_then(|ms| elapsed_to_unix_ms(unix_now_ms, now_ms, ms)),
+            .and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
         last_event_ms: last_event_raw
-            .and_then(|ms| elapsed_to_unix_ms(unix_now_ms, now_ms, ms)),
+            .and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
         last_notice,
         last_error,
         wire_subs,
@@ -480,7 +457,7 @@ fn finish_row(
     }
 }
 
-fn build_wire_sub(s: WireSubscriptionStatus, now_ms: u128, unix_now_ms: u64) -> RelayDiagnosticsWireSub {
+fn build_wire_sub(s: WireSubscriptionStatus, started_unix_ms: u64) -> RelayDiagnosticsWireSub {
     let consumer_count_label = match s.logical_consumer_count {
         0 => String::new(),
         1 => "1 consumer".to_string(),
@@ -498,9 +475,9 @@ fn build_wire_sub(s: WireSubscriptionStatus, now_ms: u128, unix_now_ms: u64) -> 
         consumer_count_label,
         events_rx_display,
         eose_observed: s.eose_at_ms.is_some(),
-        opened_ms: elapsed_to_unix_ms(unix_now_ms, now_ms, s.opened_at_ms).unwrap_or(unix_now_ms),
-        last_event_ms: s.last_event_at_ms.and_then(|ms| elapsed_to_unix_ms(unix_now_ms, now_ms, ms)),
-        eose_ms: s.eose_at_ms.and_then(|ms| elapsed_to_unix_ms(unix_now_ms, now_ms, ms)),
+        opened_ms: event_to_unix_ms(started_unix_ms, s.opened_at_ms).unwrap_or(started_unix_ms),
+        last_event_ms: s.last_event_at_ms.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
+        eose_ms: s.eose_at_ms.and_then(|ms| event_to_unix_ms(started_unix_ms, ms)),
         close_reason: s.close_reason,
         wire_id: s.wire_id,
         relay_url: s.relay_url,

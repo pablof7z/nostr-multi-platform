@@ -5,10 +5,12 @@
 //! `action_lifecycle` / `relay_diagnostics`) differ from every prior Wave C
 //! built-in: their producing accessors must NOT be invoked from the typed path,
 //! because they DRAIN (`action_results` / `signed_events`), run a wall-clock TTL
-//! sweep (`action_lifecycle`), are mutated mid-tick by the `action_results` drain
-//! (`action_stages`), or pre-format wall-clock-relative labels against an
-//! internal `now` (`relay_diagnostics`). So each is CAPTURED once at its
-//! JSON-insertion site in
+//! sweep (`action_lifecycle`), or are mutated mid-tick by the `action_results`
+//! drain (`action_stages`). `relay_diagnostics` is the cheap-but-non-trivial
+//! roll-up of the full relay/wire-sub tree; it is captured once for the same
+//! divergence-safety reason (the JSON and typed forms must read the SAME struct
+//! in the SAME tick) and to avoid rebuilding the whole tree twice per tick. So
+//! each is CAPTURED once at its JSON-insertion site in
 //! [`snapshot_projections_with_publish_cluster`](super::super::Kernel::snapshot_projections_with_publish_cluster)
 //! into a per-tick `Kernel` field, and this cluster encodes the typed sidecar
 //! from that captured value — guaranteeing the JSON and typed forms read the SAME

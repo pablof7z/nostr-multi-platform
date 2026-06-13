@@ -42,8 +42,8 @@ class RelayDiagnosticsInfo : Table() {
                 null
             }
         }
-    val nameAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun nameInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val nameAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun nameInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val hasDescription : Boolean
         get() {
             val o = __offset(8)
@@ -58,8 +58,8 @@ class RelayDiagnosticsInfo : Table() {
                 null
             }
         }
-    val descriptionAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun descriptionInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val descriptionAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun descriptionInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     val hasIcon : Boolean
         get() {
             val o = __offset(12)
@@ -74,8 +74,8 @@ class RelayDiagnosticsInfo : Table() {
                 null
             }
         }
-    val iconAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(14, 1)
-    fun iconInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 14, 1)
+    val iconAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
+    fun iconInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
     val hasPubkey : Boolean
         get() {
             val o = __offset(16)
@@ -90,8 +90,8 @@ class RelayDiagnosticsInfo : Table() {
                 null
             }
         }
-    val pubkeyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(18, 1)
-    fun pubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 18, 1)
+    val pubkeyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
+    fun pubkeyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
     val hasContact : Boolean
         get() {
             val o = __offset(20)
@@ -106,8 +106,8 @@ class RelayDiagnosticsInfo : Table() {
                 null
             }
         }
-    val contactAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(22, 1)
-    fun contactInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 22, 1)
+    val contactAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(22, 1)
+    fun contactInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 22, 1)
     val hasSoftware : Boolean
         get() {
             val o = __offset(24)
@@ -122,8 +122,8 @@ class RelayDiagnosticsInfo : Table() {
                 null
             }
         }
-    val softwareAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(26, 1)
-    fun softwareInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 26, 1)
+    val softwareAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(26, 1)
+    fun softwareInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 26, 1)
     val hasVersion : Boolean
         get() {
             val o = __offset(28)
@@ -138,8 +138,8 @@ class RelayDiagnosticsInfo : Table() {
                 null
             }
         }
-    val versionAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(30, 1)
-    fun versionInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 30, 1)
+    val versionAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(30, 1)
+    fun versionInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 30, 1)
     fun supportedNips(j: Int) : UInt {
         val o = __offset(32)
         return if (o != 0) {
@@ -152,8 +152,8 @@ class RelayDiagnosticsInfo : Table() {
         get() {
             val o = __offset(32); return if (o != 0) __vector_len(o) else 0
         }
-    val supportedNipsAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(32, 4)
-    fun supportedNipsInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 32, 4)
+    val supportedNipsAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(32, 4)
+    fun supportedNipsInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 32, 4)
     val hasPaymentRequired : Boolean
         get() {
             val o = __offset(34)
@@ -185,7 +185,7 @@ class RelayDiagnosticsInfo : Table() {
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
         }
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
+        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsRelayDiagnosticsInfo(_bb: ByteBuffer): RelayDiagnosticsInfo = getRootAsRelayDiagnosticsInfo(_bb, RelayDiagnosticsInfo())
         fun getRootAsRelayDiagnosticsInfo(_bb: ByteBuffer, obj: RelayDiagnosticsInfo): RelayDiagnosticsInfo {
             _bb.order(ByteOrder.LITTLE_ENDIAN)

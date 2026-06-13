@@ -1,18 +1,58 @@
 use super::*;
+use crate::time::Instant;
 
 #[test]
-fn elapsed_to_unix_ms_conversions() {
+fn event_to_unix_ms_conversions() {
     // 0 event_ms → None (sentinel for "never observed").
-    assert_eq!(elapsed_to_unix_ms(1_000_000, 50_000, 0), None);
-    // event 10_000ms ago wall-clock: unix result = unix_now - 10_000.
+    assert_eq!(event_to_unix_ms(1_000_000, 0), None);
+    // event 40_000ms after start → anchor + offset.
+    assert_eq!(event_to_unix_ms(1_000_000, 40_000), Some(1_040_000));
+    // the conversion is a pure function of (anchor, offset): the SAME inputs
+    // always map to the SAME output — this determinism is what makes the
+    // projection byte-stable across snapshots (no live clock read).
     assert_eq!(
-        elapsed_to_unix_ms(1_000_000, 50_000, 40_000),
-        Some(990_000)
+        event_to_unix_ms(1_000_000, 40_000),
+        event_to_unix_ms(1_000_000, 40_000)
     );
-    // future event (event_ms > now_ms) saturates to unix_now.
+    // overflow on the u128→u64 narrowing saturates rather than panicking (D6).
     assert_eq!(
-        elapsed_to_unix_ms(1_000_000, 50_000, 60_000),
-        Some(1_000_000)
+        event_to_unix_ms(10, u128::from(u64::MAX) + 5),
+        Some(u64::MAX)
+    );
+}
+
+/// The regression gate this whole change exists for: two consecutive
+/// `relay_diagnostics_snapshot()` calls with NO intervening relay event MUST
+/// serialize to BYTE-IDENTICAL output. Before the started-at wall-clock anchor
+/// (Opus review #4), the builder read `SystemTime::now()` + `Instant::now()`
+/// fresh each call, so a fixed event's timestamp jittered ~1ms tick-to-tick and
+/// this would be flaky. With the anchor it is deterministic by construction.
+#[test]
+fn snapshot_is_byte_stable_without_intervening_event() {
+    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // `start()` captures the wall-clock anchor; required for the conversion.
+    kernel.start();
+    kernel.relay_connecting_url(RelayRole::Content, "wss://relay.example/");
+    kernel.relay_connected_url(RelayRole::Content, "wss://relay.example/");
+    kernel.record_transport_event(
+        RelayRole::Content,
+        "wss://relay.example/",
+        Instant::now(),
+    );
+
+    let first = serde_json::to_vec(&kernel.relay_diagnostics_snapshot())
+        .expect("snapshot serializes");
+    // Burn a little wall-clock time to prove the output does NOT track "now".
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let second = serde_json::to_vec(&kernel.relay_diagnostics_snapshot())
+        .expect("snapshot serializes");
+
+    assert_eq!(
+        first, second,
+        "relay_diagnostics must serialize byte-identically when no relay \
+         event intervened (aim.md §62 — no clock churn in the projection)"
     );
 }
 

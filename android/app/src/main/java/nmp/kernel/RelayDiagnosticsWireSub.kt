@@ -37,8 +37,8 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val wireIdAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun wireIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val wireIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun wireIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val shortWireId : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val shortWireIdAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun shortWireIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val shortWireIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun shortWireIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val relayUrl : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val relayUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val relayUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val filterSummary : String?
         get() {
             val o = __offset(10)
@@ -70,8 +70,8 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val filterSummaryAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun filterSummaryInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val filterSummaryAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun filterSummaryInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     val stateLabel : String?
         get() {
             val o = __offset(12)
@@ -81,8 +81,8 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val stateLabelAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(12, 1)
-    fun stateLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 12, 1)
+    val stateLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
+    fun stateLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
     val stateTone : String?
         get() {
             val o = __offset(14)
@@ -92,8 +92,8 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val stateToneAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(14, 1)
-    fun stateToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 14, 1)
+    val stateToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
+    fun stateToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
     val consumerCountLabel : String?
         get() {
             val o = __offset(16)
@@ -103,8 +103,8 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val consumerCountLabelAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(16, 1)
-    fun consumerCountLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 16, 1)
+    val consumerCountLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
+    fun consumerCountLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     val hasEventsRxDisplay : Boolean
         get() {
             val o = __offset(18)
@@ -119,8 +119,8 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val eventsRxDisplayAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(20, 1)
-    fun eventsRxDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 20, 1)
+    val eventsRxDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(20, 1)
+    fun eventsRxDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 20, 1)
     val eoseObserved : Boolean
         get() {
             val o = __offset(22)
@@ -155,10 +155,10 @@ class RelayDiagnosticsWireSub : Table() {
                 null
             }
         }
-    val closeReasonAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(32, 1)
-    fun closeReasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 32, 1)
+    val closeReasonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(32, 1)
+    fun closeReasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 32, 1)
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
+        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsRelayDiagnosticsWireSub(_bb: ByteBuffer): RelayDiagnosticsWireSub = getRootAsRelayDiagnosticsWireSub(_bb, RelayDiagnosticsWireSub())
         fun getRootAsRelayDiagnosticsWireSub(_bb: ByteBuffer, obj: RelayDiagnosticsWireSub): RelayDiagnosticsWireSub {
             _bb.order(ByteOrder.LITTLE_ENDIAN)

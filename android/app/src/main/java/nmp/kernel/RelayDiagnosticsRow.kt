@@ -37,8 +37,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val relayUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val relayUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val shortUrl : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val shortUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun shortUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val shortUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun shortUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val roleLabel : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val roleLabelAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun roleLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val roleLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun roleLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val roleTone : String?
         get() {
             val o = __offset(10)
@@ -70,8 +70,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val roleToneAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(10, 1)
-    fun roleToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 10, 1)
+    val roleToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun roleToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     val connectionLabel : String?
         get() {
             val o = __offset(12)
@@ -81,8 +81,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val connectionLabelAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(12, 1)
-    fun connectionLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 12, 1)
+    val connectionLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
+    fun connectionLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
     val connectionTone : String?
         get() {
             val o = __offset(14)
@@ -92,8 +92,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val connectionToneAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(14, 1)
-    fun connectionToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 14, 1)
+    val connectionToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
+    fun connectionToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
     val authLabel : String?
         get() {
             val o = __offset(16)
@@ -103,8 +103,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val authLabelAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(16, 1)
-    fun authLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 16, 1)
+    val authLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(16, 1)
+    fun authLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 16, 1)
     val authTone : String?
         get() {
             val o = __offset(18)
@@ -114,8 +114,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val authToneAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(18, 1)
-    fun authToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 18, 1)
+    val authToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
+    fun authToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
     val totalSubCount : UInt
         get() {
             val o = __offset(20)
@@ -145,8 +145,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val totalEventsDisplayAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(28, 1)
-    fun totalEventsDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 28, 1)
+    val totalEventsDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(28, 1)
+    fun totalEventsDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 28, 1)
     val reconnectCount : UInt
         get() {
             val o = __offset(30)
@@ -166,8 +166,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val bytesRxDisplayAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(34, 1)
-    fun bytesRxDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 34, 1)
+    val bytesRxDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(34, 1)
+    fun bytesRxDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 34, 1)
     val hasBytesTxDisplay : Boolean
         get() {
             val o = __offset(36)
@@ -182,8 +182,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val bytesTxDisplayAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(38, 1)
-    fun bytesTxDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 38, 1)
+    val bytesTxDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(38, 1)
+    fun bytesTxDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 38, 1)
     val lastConnectedMs : ULong
         get() {
             val o = __offset(40)
@@ -208,8 +208,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val lastNoticeAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(46, 1)
-    fun lastNoticeInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 46, 1)
+    val lastNoticeAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(46, 1)
+    fun lastNoticeInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 46, 1)
     val hasLastError : Boolean
         get() {
             val o = __offset(48)
@@ -224,8 +224,8 @@ class RelayDiagnosticsRow : Table() {
                 null
             }
         }
-    val lastErrorAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(50, 1)
-    fun lastErrorInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 50, 1)
+    val lastErrorAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(50, 1)
+    fun lastErrorInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 50, 1)
     fun wireSubs(j: Int) : nmp.kernel.RelayDiagnosticsWireSub? = wireSubs(nmp.kernel.RelayDiagnosticsWireSub(), j)
     fun wireSubs(obj: nmp.kernel.RelayDiagnosticsWireSub, j: Int) : nmp.kernel.RelayDiagnosticsWireSub? {
         val o = __offset(52)
@@ -249,7 +249,7 @@ class RelayDiagnosticsRow : Table() {
         }
     }
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
+        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsRelayDiagnosticsRow(_bb: ByteBuffer): RelayDiagnosticsRow = getRootAsRelayDiagnosticsRow(_bb, RelayDiagnosticsRow())
         fun getRootAsRelayDiagnosticsRow(_bb: ByteBuffer, obj: RelayDiagnosticsRow): RelayDiagnosticsRow {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
