@@ -1,0 +1,37 @@
+namespace nmp.nip51;
+
+// Typed FlatBuffers wire for the `nmp.nip51.mute_list` snapshot projection.
+//
+// The producer is the `MuteListProjection` closure registered in
+// `crates/nmp-defaults/src/runtimes/mute_runtime.rs` (`register_mute_runtime`),
+// which serialises the active account's `MuteListSnapshot { muted_pubkeys:
+// Vec<String>, muted_event_ids: Vec<String> }`. That generic `Value` projection
+// stays the source of truth (still registered via `register_snapshot_projection`);
+// this buffer is emitted ALONGSIDE it in every `SnapshotFrame`'s
+// `typed_projections` sidecar (ADR-0037). A host with a `NMUT` decoder prefers
+// this typed payload; an un-updated host falls back to the generic `Value`
+// subtree. Purely additive.
+//
+// Field-for-field mirror (raw protocol values only, ADR-0032):
+//   * `muted_pubkeys: Vec<String>`  -> a FlatBuffers vector of 64-char lowercase
+//     hex author pubkeys, in the producer's (sorted) order.
+//   * `muted_event_ids: Vec<String>` -> a FlatBuffers vector of 64-char lowercase
+//     hex event ids, in the producer's (sorted) order.
+// Both arrays are empty when no active account or no kind:10000 has arrived yet
+// (the same shape the generic JSON projection emits) — no presence flags are
+// needed because empty and absent are the same observable state.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-nip51/src/wire/generated \
+//         crates/nmp-nip51/schema/mute_list.fbs
+
+table MuteListSnapshot {
+  // The active account's muted author pubkeys (NIP-51 kind:10000 `p` tags), hex.
+  muted_pubkeys:[string];
+  // The active account's muted event ids (NIP-51 kind:10000 `e` tags), hex.
+  muted_event_ids:[string];
+}
+
+file_identifier "NMUT";
+root_type MuteListSnapshot;
