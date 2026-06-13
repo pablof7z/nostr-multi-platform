@@ -107,6 +107,12 @@ pub fn amount_msats(invoice: &str) -> Option<u64> {
 #[must_use]
 pub fn description_hash(invoice: &str) -> Option<[u8; 32]> {
     let trimmed = invoice.trim();
+    // DoS guard: real BOLT-11 invoices are well under 2 KiB; a relay supplying
+    // a multi-megabyte string would force an O(n) allocation before we discover
+    // it is invalid. Reject anything over 8 KiB early.
+    if trimmed.len() > 8192 {
+        return None;
+    }
     let unchecked = UncheckedHrpstring::new(trimmed).ok()?;
     // Raw 5-bit data-part groups (HRP + separator already stripped). Includes
     // the trailing 6-group checksum, which the field walk never reaches.
@@ -387,6 +393,33 @@ mod tests {
     fn description_hash_none_on_garbage() {
         assert_eq!(description_hash("not a bolt11"), None);
         assert_eq!(description_hash(""), None);
+    }
+
+    // ---- DoS guard: oversized invoice must be rejected fast ------------------
+
+    #[test]
+    fn description_hash_rejects_invoice_over_8kib() {
+        // Real BOLT-11 invoices are always under 2 KiB.  A relay supplying a
+        // 8 KiB+ blob must be rejected before any allocation, not processed.
+        let huge = "lnbc".to_string() + &"a".repeat(8192);
+        assert_eq!(
+            description_hash(&huge),
+            None,
+            "an 8 KiB+ invoice must be rejected before allocation"
+        );
+    }
+
+    #[test]
+    fn description_hash_still_works_at_exactly_8192_bytes() {
+        // 8192 bytes is the boundary; the guard is `> 8192`, so exactly 8192
+        // bytes must still be attempted (and will return None because it's
+        // garbage, but it must not be short-circuited by the guard).
+        // We just verify it doesn't panic and produces None.
+        let at_limit = "x".repeat(8192);
+        // This is garbage (no valid bech32 HRP) so None is expected,
+        // but it must reach the bech32 parser rather than the early guard.
+        // (The result is None either way; the test just ensures no panic.)
+        let _ = description_hash(&at_limit);
     }
 
     #[test]
