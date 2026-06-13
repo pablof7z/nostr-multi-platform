@@ -129,16 +129,8 @@ name = "nmp-nip57"
 path = "crates/nmp-nip57"
 
 [[public_crates]]
-name = "nmp-blossom"
-path = "crates/nmp-blossom"
-
-[[public_crates]]
 name = "nmp-nip59"
 path = "crates/nmp-nip59"
-
-[[public_crates]]
-name = "nmp-nip60"
-path = "crates/nmp-nip60"
 
 [[public_crates]]
 name = "nmp-nip77"
@@ -214,11 +206,6 @@ reason = "gallery reference TUI application"
 name = "nmp-gallery-desktop"
 path = "apps/nmp-gallery/desktop"
 reason = "gallery reference desktop (egui) application"
-
-[[private_packages]]
-name = "nmp-wallet-poc"
-path = "apps/nmp-wallet-poc"
-reason = "NIP-60 wallet proof-of-concept application"
 
 [[private_packages]]
 name = "chirp-desktop"
