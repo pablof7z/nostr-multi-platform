@@ -93,16 +93,16 @@ trait ErasedActionModule: Send + Sync {
     ) -> Result<(), String>;
 }
 
-/// Zero-sized adapter binding a concrete [`ActionModule`] `M` to the
-/// dyn-safe [`ErasedActionModule`] facade. Holds no state — every method is
-/// a static call into `M` with serde translation on the boundary.
-struct ActionModuleAdapter<M: ActionModule>(std::marker::PhantomData<M>);
-
-impl<M: ActionModule> Default for ActionModuleAdapter<M> {
-    fn default() -> Self {
-        Self(std::marker::PhantomData)
-    }
-}
+/// Adapter binding a concrete [`ActionModule`] `M` to the dyn-safe
+/// [`ErasedActionModule`] facade.
+///
+/// ADR-0052 rung 5.2: the adapter holds the module **by value** (was a ZST
+/// `PhantomData<M>`). This lets a stateful module own its dependencies (an
+/// `Arc<WalletRuntimeHandle>`, an `Arc<DmRelayCache>`, …) captured by the host
+/// at composition time, so `start`/`execute` reach that state through
+/// `&self.0` rather than a process-global. Stateless modules are unit-shaped
+/// values, so this stays effectively zero-cost for them.
+struct ActionModuleAdapter<M: ActionModule>(M);
 
 impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
     fn start(
@@ -112,9 +112,9 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
     ) -> Result<Option<ActionId>, ActionRejection> {
         let action: M::Action = serde_json::from_str(action_json)
             .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-        // Query preferred id before moving `action` into `M::start`.
+        // Query preferred id before moving `action` into `start`.
         let preferred_id = M::preferred_action_id(&action);
-        M::start(ctx, action)?;
+        self.0.start(ctx, action)?;
         Ok(preferred_id)
     }
 
@@ -125,7 +125,7 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String> {
         let action: M::Action = serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-        M::execute(action, correlation_id, send)
+        self.0.execute(action, correlation_id, send)
     }
 }
 
@@ -218,7 +218,10 @@ impl ActionRegistry {
     /// `M::start` handles validation and `M::execute` handles execution — both
     /// under the same `M::NAMESPACE`, so namespace mismatch between validator
     /// and executor is structurally impossible (ADR-0027).
-    pub fn register<M: ActionModule + 'static>(&mut self) {
+    ///
+    /// ADR-0052 rung 5.2: takes the module **value** so a stateful module
+    /// stores its captured dependencies in the registry.
+    pub fn register<M: ActionModule + 'static>(&mut self, module: M) {
         let provider = std::any::type_name::<M>();
         let prior = self.provenance.get(M::NAMESPACE).copied();
         let disposition = match prior {
@@ -242,7 +245,7 @@ impl ActionRegistry {
 
         self.modules.insert(
             M::NAMESPACE.to_string(),
-            Box::new(ActionModuleAdapter::<M>::default()),
+            Box::new(ActionModuleAdapter(module)),
         );
         self.provenance
             .insert(M::NAMESPACE.to_string(), (Provenance::App, provider));
@@ -272,7 +275,11 @@ impl ActionRegistry {
     /// under a default namespace BEFORE `register_defaults` runs is no longer
     /// silently overwritten — the inverted, order-dependent behaviour ADR-0049
     /// fixes.
-    pub fn register_default<M: ActionModule + 'static>(&mut self) -> bool {
+    ///
+    /// ADR-0052 rung 5.2: takes the module **value**. When the namespace is
+    /// already claimed the value is dropped (the existing registration wins),
+    /// exactly as before — only the storage shape changed.
+    pub fn register_default<M: ActionModule + 'static>(&mut self, module: M) -> bool {
         let provider = std::any::type_name::<M>();
         if let Some((_, existing_provider)) = self.provenance.get(M::NAMESPACE).copied() {
             // Already claimed — yield. Record the yield for the report.
@@ -289,7 +296,7 @@ impl ActionRegistry {
         }
         self.modules.insert(
             M::NAMESPACE.to_string(),
-            Box::new(ActionModuleAdapter::<M>::default()),
+            Box::new(ActionModuleAdapter(module)),
         );
         self.provenance
             .insert(M::NAMESPACE.to_string(), (Provenance::Default, provider));
@@ -442,12 +449,12 @@ impl ActionRegistry {
 }
 
 impl ActionRegistrar for ActionRegistry {
-    fn register_action<M: ActionModule + 'static>(&mut self) {
-        self.register::<M>();
+    fn register_action<M: ActionModule + 'static>(&mut self, module: M) {
+        self.register(module);
     }
 
-    fn register_default_action<M: ActionModule + 'static>(&mut self) -> bool {
-        self.register_default::<M>()
+    fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
+        self.register_default(module)
     }
 }
 
@@ -479,7 +486,7 @@ fn new_action_id(now_ms: u64) -> ActionId {
 /// module lives in `nmp-nip47` and the host crate registers it from there.
 pub fn default_registry() -> ActionRegistry {
     let mut registry = ActionRegistry::new();
-    registry.register::<crate::publish::PublishModule>();
+    registry.register(crate::publish::PublishModule);
     registry
 }
 

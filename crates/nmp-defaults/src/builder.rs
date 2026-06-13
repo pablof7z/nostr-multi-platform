@@ -2,27 +2,13 @@
 //!
 //! # V-94 — compile-time enforcement of pre-start ordering
 //!
-//! The problem: `nmp_app_new()` allocates an un-started `NmpApp`; every
-//! wiring setter (`set_routing_substrate`, `register_action`, etc.) must be
-//! called **before** `nmp_app_start` sends the first `ActorCommand::Start`.
-//! The actor reads all wiring slots once, at kernel-construction time; any
-//! setter called *after* that point is silently ignored (D6). Up to this PR
-//! ordering was enforced by prose only (18 "MUST be called before
-//! `nmp_app_start`" doc-block sites in `nmp-ffi/src/lib.rs`).
-//!
-//! # Design decisions (V-94 ABI fork — resolved in task brief)
-//!
-//! The task explicitly chose the **consume-and-return typestate** approach:
+//! The problem: every wiring setter (`set_routing_substrate`,
+//! `register_action`, …) must run **before** `nmp_app_start` — the actor reads
+//! all wiring slots once at kernel construction; a later setter is silently
+//! ignored (D6). The **consume-and-return typestate** enforces this in Rust:
 //! `start(self, config)` moves the builder, so no setter is reachable
-//! post-start in Rust. This is stronger than an in-place `started` flag
-//! (which would still compile at the wrong call site) and stronger than a
-//! runtime check (which fires at runtime, not compile time).
-//!
-//! The **C-ABI boundary** (`nmp_app_start`, `nmp_app_set_*`) is outside the
-//! reach of Rust's type system. Swift/Kotlin hosts driving raw C-ABI symbols
-//! get no compile-time guarantee here. A runtime late-wiring diagnostic
-//! (`KernelDiagnostic::LateWiring`) is the correct complement for that surface
-//! — it is **not** implemented in this PR (scope: Rust composition roots only).
+//! post-start. The C-ABI boundary (`nmp_app_*`) is outside Rust's type system;
+//! a runtime late-wiring diagnostic is the complement there (not in this PR).
 //!
 //! # Type-state chain
 //!
@@ -401,11 +387,27 @@ impl NmpAppBuilder<StorageSet> {
 // run before `start()`, which the typestate already guarantees.
 
 impl<S> ActionRegistrar for NmpAppBuilder<S> {
-    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
+    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
         // SAFETY: `self.app` non-null (builder invariant). Exclusive borrow via
         // `&mut self` ⇒ no aliasing.
         let app: &mut NmpApp = unsafe { &mut *self.app };
-        app.register_action::<M>();
+        app.register_action(module);
+    }
+
+    /// Route the yielding-default path to `NmpApp::register_default_action` (the
+    /// kernel's true entry-or-insert semantics), NOT the trait default — which
+    /// delegates to the *app* path and would record every canonical NMP default
+    /// as an app registration, so a later app-path override of the same
+    /// namespace (e.g. ADR-0052 rung 5.2's `register_zap_with_wallet`) trips the
+    /// app-over-app collision `debug_assert!` instead of cleanly replacing a
+    /// `Provenance::Default` entry (ADR-0049 Part 1).
+    fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> bool {
+        // SAFETY: as `register_action` above.
+        let app: &mut NmpApp = unsafe { &mut *self.app };
+        app.register_default_action(module)
     }
 }
 

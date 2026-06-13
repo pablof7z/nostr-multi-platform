@@ -48,10 +48,12 @@ pub fn register(app: &mut impl AppHost) {
     nmp_defaults::register_defaults(app);
 
     // 2. Register this app's own modules here, e.g.:
-    //    app.register_action::<EntryActionModule>();
-    //    (See `nmp-defaults`'s `register_defaults` source for how the
-    //    canonical NIP modules are wired — your app modules follow the same
-    //    `AppHost` seam.)
+    //    app.register_action(EntryActionModule);
+    //    (ADR-0052: `register_action` takes the module VALUE — a stateful
+    //    module owns its dependencies, captured here at composition time.
+    //    See `nmp-defaults`'s `register_defaults` source for how the canonical
+    //    NIP modules are wired — your app modules follow the same `AppHost`
+    //    seam.)
 }
 
 /// The app module identifier. Namespaces below derive from it.
@@ -178,6 +180,7 @@ impl ActionModule for EntryActionModule {
     type Action = Action;
 
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -188,6 +191,7 @@ impl ActionModule for EntryActionModule {
     }
 
     fn execute(
+        &self,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::ActorCommand),
@@ -229,7 +233,8 @@ mod tests {
     #[test]
     fn action_rejects_empty_label() {
         let mut ctx = ActionContext::default();
-        let result = EntryActionModule::start(
+        // ADR-0052: `start` takes `&self`; call on the (unit) module value.
+        let result = EntryActionModule.start(
             &mut ctx,
             Action::Add {
                 id: "1".to_string(),

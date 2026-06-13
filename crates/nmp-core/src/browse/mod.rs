@@ -105,7 +105,7 @@ impl ActionModule for BrowseRelayModule {
 
     type Action = BrowseRelayAction;
 
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         match &action {
             BrowseRelayAction::Open {
                 relay_url,
@@ -132,6 +132,7 @@ impl ActionModule for BrowseRelayModule {
     }
 
     fn execute(
+        &self,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),

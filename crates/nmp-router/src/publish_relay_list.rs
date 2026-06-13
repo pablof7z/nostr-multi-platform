@@ -263,7 +263,7 @@ impl ActionModule for PublishRelayListAction {
     /// is a destructive operation and should not be reachable via the
     /// "publish my list" verb. A host wanting to explicitly clear the
     /// list needs its own explicit verb (this v1 does not ship one).
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.relays.is_empty() {
             return Err(ActionRejection::Invalid(
                 "empty NIP-65 relay list — refusing to publish a kind:10002 \
@@ -285,6 +285,7 @@ impl ActionModule for PublishRelayListAction {
     }
 
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -315,7 +316,7 @@ impl ActionModule for PublishRelayListAction {
 /// **yielding default** (ADR-0049 Part 1): an app may pre-empt it regardless of
 /// call order.
 pub fn register_actions(app: &mut impl ActionRegistrar) {
-    app.register_default_action::<PublishRelayListAction>();
+    app.register_default_action(PublishRelayListAction);
 }
 
 #[cfg(test)]

@@ -14,32 +14,30 @@ impl NmpAppBuilder<Unstarted> {
     ///
     /// # V-95 / issue #619 — install-before-dispatch made type-enforceable
     ///
-    /// The wallet runtime must be installed before any `nmp.wallet.*` action
-    /// dispatches: `WalletConnectModule::execute` /
-    /// `WalletDisconnectModule::execute` / `WalletPayInvoiceModule::execute`
-    /// all read the process-wide runtime handle via `active_wallet_runtime`,
-    /// and return a runtime error if it was never installed. Previously the
-    /// install lived in an app crate (`nmp-app-chirp::wallet_runtime`) with no
-    /// compile-time ordering guarantee.
+    /// The wallet runtime must be wired before any `nmp.wallet.*` action
+    /// dispatches. ADR-0052 rung 5.2: the three wallet `ActionModule`s are
+    /// registered BY VALUE, each owning a clone of the per-app
+    /// `WalletRuntimeHandle` `register_wallet` creates — there is no
+    /// process-global. Previously the wiring lived in an app crate
+    /// (`nmp-app-chirp::wallet_runtime`) with no compile-time ordering
+    /// guarantee.
     ///
-    /// Folding the install into the builder makes it a *config-phase* step:
+    /// Folding the wiring into the builder makes it a *config-phase* step:
     /// because `start()` consumes the builder by move, a Rust caller cannot
-    /// reach `start()` without `.with_wallet()` having already installed the
-    /// runtime. The ordering contract is now expressed in the type system, not
-    /// in prose.
+    /// reach `start()` without `.with_wallet()` having already registered the
+    /// modules. The ordering contract is expressed in the type system.
     ///
     /// The durable [`FsPaymentStore`](nmp_nip47::FsPaymentStore) is installed
     /// automatically when a persistent storage path is configured — i.e. when
     /// `.storage_path(p)` was called before this step (or
     /// `nmp_app_set_storage_path` was driven through the C-ABI). With
-    /// `.in_memory()` (no path), the runtime tracks payments in memory only,
-    /// exactly as before.
+    /// `.in_memory()` (no path), the runtime tracks payments in memory only.
     ///
-    /// Idempotent at the process level: the underlying
-    /// `install_wallet_runtime` is a one-shot `OnceLock`; a second
-    /// `.with_wallet()` (e.g. across two builders in one test process) is a
-    /// silent no-op for the install (the first handle wins) while still
-    /// registering this builder's action modules + projections.
+    /// Per-instance (ADR-0052 rung 5.2): two builders in one process now get
+    /// two INDEPENDENT wallet runtimes (no shared global), so a second
+    /// `.with_wallet()` wires a distinct runtime rather than silently yielding.
+    /// The returned per-app handle is threaded into the NIP-57 zap auto-chain
+    /// (`register_zap_with_wallet`) so a zap pays through THIS app's runtime.
     #[must_use]
     pub fn with_wallet(mut self) -> Self {
         // Read the host-configured storage path off the un-started app so the
@@ -49,7 +47,12 @@ impl NmpAppBuilder<Unstarted> {
         let storage_path = unsafe { &*self.app }.storage_path_for_start();
         // `register_wallet` takes `&mut impl AppHost`; the builder implements
         // `AppHost`, so it wires every registration against this builder's app.
-        nmp_nip47::register_wallet(&mut self, storage_path);
+        // It returns the per-app `WalletRuntimeHandle` (ADR-0052 rung 5.2).
+        let wallet_runtime = nmp_nip47::register_wallet(&mut self, storage_path);
+        // Thread the handle into the NIP-57 zap auto-chain: the app-path
+        // override of the handle-less zap default `register_defaults` installs
+        // (ADR-0049), so a zap pays through this builder's wallet runtime.
+        nmp_nip57::register_zap_with_wallet(&mut self, wallet_runtime);
         self
     }
 }

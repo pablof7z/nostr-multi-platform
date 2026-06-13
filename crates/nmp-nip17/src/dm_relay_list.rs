@@ -125,7 +125,7 @@ impl ActionModule for PublishDmRelayListAction {
     /// destructive operation and should not be reachable via the "publish my
     /// list" verb (a host wanting to clear the list needs its own explicit
     /// verb, which this v1 does not ship).
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.relays.is_empty() {
             return Err(ActionRejection::Invalid(
                 "empty DM-relay list — refusing to publish a kind:10050 \
@@ -146,6 +146,7 @@ impl ActionModule for PublishDmRelayListAction {
         Ok(())
     }
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -306,14 +307,14 @@ mod tests {
         let input = PublishDmRelayListInput {
             relays: vec!["wss://relay.example".to_string()],
         };
-        assert!(PublishDmRelayListAction::start(&mut ctx(), input).is_ok());
+        assert!(PublishDmRelayListAction.start(&mut ctx(), input).is_ok());
     }
 
     #[test]
     fn start_rejects_empty_relay_list() {
         let input = PublishDmRelayListInput { relays: Vec::new() };
         assert!(matches!(
-            PublishDmRelayListAction::start(&mut ctx(), input),
+            PublishDmRelayListAction.start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -327,7 +328,7 @@ mod tests {
             relays: vec!["not a url".to_string(), "http://nope".to_string()],
         };
         assert!(matches!(
-            PublishDmRelayListAction::start(&mut ctx(), input),
+            PublishDmRelayListAction.start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -370,7 +371,7 @@ mod tests {
         let input = PublishDmRelayListInput {
             relays: vec!["wss://inbox.example".to_string()],
         };
-        PublishDmRelayListAction::execute(input, "test-cid", &|cmd| {
+        PublishDmRelayListAction.execute(input, "test-cid", &|cmd| {
             captured.borrow_mut().push(cmd);
         })
         .expect("execute must not fail");
