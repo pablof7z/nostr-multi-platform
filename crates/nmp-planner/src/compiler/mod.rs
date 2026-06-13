@@ -42,6 +42,60 @@ use plan_id::compute_plan_id;
 /// Version of the merge lattice — bump when Rule semantics change.
 const MERGE_LATTICE_VERSION: u8 = 1;
 
+/// Total, owned, `Ord` sort key for a `(shape, lifecycle)` entry, used to
+/// canonicalize the order of Stage-3 merge inputs so the greedy first-fit
+/// loop is input-order-independent (see the call site in
+/// `compile_with_context`).
+///
+/// The primary key follows the design spec: `(lifecycle, kinds, since, until,
+/// limit)`. The remaining shape fields (authors, tags, event_ids, addresses,
+/// relay_pin, p_tag_routing) are appended as tie-breakers so the ordering is
+/// *total* — two distinct entries that share the primary key still sort
+/// deterministically, leaving no residual order-dependence in the greedy
+/// merge. `InterestLifecycle` and `PTagRouting` lack `Ord`, so they are mapped
+/// to stable small-integer discriminants here.
+type CanonicalMergeKey = (
+    u8,                               // lifecycle discriminant
+    Vec<u32>,                         // kinds (sorted — BTreeSet iteration order)
+    Option<u64>,                      // since
+    Option<u64>,                      // until
+    Option<u32>,                      // limit
+    Vec<String>,                      // authors
+    Vec<(String, Vec<String>)>,       // tags (key → values)
+    Vec<String>,                      // event_ids
+    Vec<crate::interest::NaddrCoord>, // addresses
+    Option<String>,                   // relay_pin
+    u8,                               // p_tag_routing discriminant
+);
+
+fn canonical_merge_key(shape: &InterestShape, lifecycle: &InterestLifecycle) -> CanonicalMergeKey {
+    let lifecycle_ord = match lifecycle {
+        InterestLifecycle::Tailing => 0u8,
+        InterestLifecycle::OneShot => 1u8,
+    };
+    let p_tag_ord = match shape.p_tag_routing {
+        crate::interest::PTagRouting::Nip65ReadRelays => 0u8,
+        crate::interest::PTagRouting::Nip17DmRelays => 1u8,
+    };
+    (
+        lifecycle_ord,
+        shape.kinds.iter().copied().collect(),
+        shape.since,
+        shape.until,
+        shape.limit,
+        shape.authors.iter().cloned().collect(),
+        shape
+            .tags
+            .iter()
+            .map(|(k, vs)| (k.clone(), vs.iter().cloned().collect()))
+            .collect(),
+        shape.event_ids.iter().cloned().collect(),
+        shape.addresses.iter().cloned().collect(),
+        shape.relay_pin.clone(),
+        p_tag_ord,
+    )
+}
+
 // ─── SubscriptionCompiler ────────────────────────────────────────────────────
 
 /// The subscription compiler.
@@ -279,7 +333,7 @@ impl<'a> SubscriptionCompiler<'a> {
         for (relay_url, entries) in relay_entries {
             let mut role_tags: BTreeSet<RoutingSource> = BTreeSet::new();
             // Shape + lifecycle + all source lanes + originating interest id.
-            let shaped: Vec<(
+            let mut shaped: Vec<(
                 InterestShape,
                 InterestLifecycle,
                 BTreeSet<RoutingSource>,
@@ -288,6 +342,21 @@ impl<'a> SubscriptionCompiler<'a> {
                 .into_iter()
                 .map(partition::RelayEntry::into_shape)
                 .collect();
+
+            // Canonical pre-sort: the greedy first-fit merge below is
+            // input-order-dependent — pairwise non-transitive refusals (e.g. a
+            // tag/id/address union that overflows the per-filter cap) mean the
+            // grouping the loop produces depends on the order entries are
+            // visited, yielding nondeterministic REQ counts / possible filter
+            // explosion across recompiles. Sorting by a canonical key first
+            // makes the output a pure function of the entry SET, independent of
+            // arrival order. Primary key per the design: (lifecycle, kinds,
+            // since, until, limit); the remaining shape fields are appended as
+            // tie-breakers so the order is total (no residual order-dependence
+            // when the primary key ties).
+            shaped.sort_by(|a, b| {
+                canonical_merge_key(&a.0, &a.1).cmp(&canonical_merge_key(&b.0, &b.1))
+            });
 
             let mut sub_shapes: Vec<(InterestShape, InterestLifecycle, Vec<InterestId>)> =
                 Vec::new();
@@ -382,3 +451,7 @@ impl<'a> SubscriptionCompiler<'a> {
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "order_independence_tests.rs"]
+mod order_independence_tests;

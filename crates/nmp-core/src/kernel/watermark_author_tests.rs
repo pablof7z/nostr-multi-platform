@@ -66,7 +66,11 @@ fn insert_event(
         sig: "aa".repeat(64),
     };
     store
-        .insert(VerifiedEvent::from_raw_unchecked(raw), &"wss://r0/".to_string(), 0)
+        .insert(
+            VerifiedEvent::from_raw_unchecked(raw),
+            &"wss://r0/".to_string(),
+            0,
+        )
         .expect("insert must succeed");
 }
 
@@ -76,9 +80,7 @@ fn two_author_interest(id: u64, author_a: &str, author_b: &str) -> LogicalIntere
         id: InterestId(id),
         scope: InterestScope::Global,
         shape: InterestShape {
-            authors: [pubkey(author_a), pubkey(author_b)]
-                .into_iter()
-                .collect(),
+            authors: [pubkey(author_a), pubkey(author_b)].into_iter().collect(),
             kinds: [1u32].into_iter().collect(),
             ..Default::default()
         },
@@ -104,6 +106,30 @@ fn one_author_interest(id: u64, author: &str) -> LogicalInterest {
     }
 }
 
+/// A two-author interest carrying an explicit `since` floor (below the
+/// watermark under test). Defect 2: the watermark rewrite only RAISES an
+/// existing floor — a `since=None` interest stays unbounded — so tests that
+/// assert the author-aware watermark VALUE surfaces as a `since` must seed an
+/// existing floor for the rewrite to raise.
+fn two_author_interest_with_since(
+    id: u64,
+    author_a: &str,
+    author_b: &str,
+    since: u64,
+) -> LogicalInterest {
+    let mut i = two_author_interest(id, author_a, author_b);
+    i.shape.since = Some(since);
+    i
+}
+
+/// A single-author interest carrying an explicit `since` floor (below the
+/// watermark under test). See `two_author_interest_with_since`.
+fn one_author_interest_with_since(id: u64, author: &str, since: u64) -> LogicalInterest {
+    let mut i = one_author_interest(id, author);
+    i.shape.since = Some(since);
+    i
+}
+
 /// Extract every `since` value from REQ frames in a filter JSON string.
 fn since_from_filter(filter_json: &str) -> Option<u64> {
     // filter_json looks like `{"kinds":[1],"authors":[...],"since":1234}`.
@@ -111,7 +137,9 @@ fn since_from_filter(filter_json: &str) -> Option<u64> {
     let needle = "\"since\":";
     let start = filter_json.find(needle)? + needle.len();
     let rest = &filter_json[start..];
-    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
     rest[..end].parse().ok()
 }
 
@@ -165,10 +193,7 @@ fn multi_author_no_floor_when_any_author_has_no_events() {
         .expect("compile");
     let filters = req_filters_from_frames(&frames);
 
-    assert!(
-        !filters.is_empty(),
-        "expected REQ frames; got {frames:?}"
-    );
+    assert!(!filters.is_empty(), "expected REQ frames; got {frames:?}");
     // The merged shape has authors [A, B] — since B has no events the floor
     // is unsafe and the watermark_fn must return None.
     let multi_author_filters: Vec<&String> = filters
@@ -214,13 +239,18 @@ fn multi_author_since_is_min_of_per_author_watermarks() {
     // Both authors share relay r1 so the planner produces a single merged
     // sub-shape rather than per-relay shapes; raise the budget so no relay
     // is dropped.
-    kernel.lifecycle_mut().set_selection_budget(usize::MAX, usize::MAX);
+    kernel
+        .lifecycle_mut()
+        .set_selection_budget(usize::MAX, usize::MAX);
 
     let mailboxes = mailboxes_for(&[("a", 1), ("b", 1)]);
+    // Defect 2: seed an explicit floor (10, below the watermark) so the
+    // author-aware watermark value can RAISE it; a None-since interest would
+    // stay unbounded regardless of the watermark.
     kernel
         .lifecycle_mut()
         .registry_mut()
-        .push(two_author_interest(2, "a", "b"));
+        .push(two_author_interest_with_since(2, "a", "b", 10));
 
     let frames = kernel
         .lifecycle_mut()
@@ -234,7 +264,7 @@ fn multi_author_since_is_min_of_per_author_watermarks() {
         assert_eq!(
             since,
             Some(51),
-            "since must be min(50,100)+1 = 51; got {f}"
+            "since must be raised to min(50,100)+1 = 51; got {f}"
         );
     }
 }
@@ -251,10 +281,12 @@ fn single_author_watermark_unchanged_after_fix() {
     insert_event(&store, "a", 200, 0x04);
 
     let mailboxes = mailboxes_for(&[("a", 3)]);
+    // Defect 2: seed an explicit floor (10, below the watermark) so the
+    // single-author watermark can RAISE it to newest+1.
     kernel
         .lifecycle_mut()
         .registry_mut()
-        .push(one_author_interest(3, "a"));
+        .push(one_author_interest_with_since(3, "a", 10));
 
     let frames = kernel
         .lifecycle_mut()
@@ -268,7 +300,7 @@ fn single_author_watermark_unchanged_after_fix() {
         assert_eq!(
             since,
             Some(201),
-            "single-author watermark must be newest+1 = 201; got {f}"
+            "single-author watermark must raise the floor to newest+1 = 201; got {f}"
         );
     }
 }

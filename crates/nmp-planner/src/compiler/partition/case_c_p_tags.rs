@@ -106,16 +106,34 @@ pub(super) fn route(
 /// no per-pubkey narrowing happens on the bootstrap landing because the
 /// bootstrap relay is a shared cold-start pad, not a per-recipient mailbox.
 ///
+/// Inbox discovery: every tagged pubkey is `request_probe`d (mirroring
+/// [`super::inbox_helper::route_p_tags_to_inbox`]'s fail-closed probe). The
+/// bootstrap relay is a temporary cold-start pad — without the probe the
+/// active account's kind:10002 would never be fetched, the next recompile
+/// would have no inbox to re-route on, and the interest would stay stuck on
+/// the bootstrap pad forever (DM-inbox discovery broken). The gate's
+/// pre-condition guarantees EVERY tagged pubkey lacks a cached inbox, so all
+/// of them are probed.
+///
 /// Signature mirrors [`super::case_d_no_author::route_bootstrap_content`]
-/// (the Stage 1 sibling) verbatim: `&LogicalInterest` in, four-lane relay
-/// accumulator out — no intermediate wrapper types. Symmetry with the
-/// existing helper is the readability invariant.
+/// (the Stage 1 sibling): `&LogicalInterest` in, four-lane relay accumulator
+/// out — plus the `MailboxCache` the probe needs (same dependency the
+/// regular inbox routes carry). Symmetry with the existing helper is the
+/// readability invariant.
 pub(super) fn route_bootstrap_content_inbox(
     interest: &LogicalInterest,
+    p_tag_values: &BTreeSet<Pubkey>,
     base_shape: &InterestShape,
     bootstrap_content_relays: &[RelayUrl],
+    mailbox_cache: &dyn MailboxCache,
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
 ) {
+    // Fire inbox discovery for every tagged pubkey so the next recompile can
+    // re-route off the bootstrap pad onto the real NIP-65 inbox relays.
+    for pk in p_tag_values {
+        mailbox_cache.request_probe(pk);
+    }
+
     let mut per_relay: BTreeMap<RelayUrl, BTreeSet<RoutingSource>> = BTreeMap::new();
     for relay in bootstrap_content_relays {
         per_relay
@@ -162,5 +180,5 @@ pub(super) fn every_tagged_pubkey_lacks_nip65_inbox(
 }
 
 #[cfg(test)]
-#[path = "case_c_p_tags/tests.rs"]
+#[path = "case_c_p_tags/tests/mod.rs"]
 mod tests;

@@ -178,14 +178,16 @@ fn replay_applies_t129_watermark_to_since() {
         },
     );
 
-    // Watermark at 1700 — every replay REQ must carry since=1701.
+    // Watermark at 1700 — the replay must RAISE the interest's existing
+    // `since` floor to 1701. Defect 2: a None-since interest stays unbounded,
+    // so the interest seeds an explicit floor (1000, below the watermark) for
+    // the replay rewrite to raise.
     kernel
         .lifecycle_mut()
         .set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
-    kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .push(timeline_interest(7, author));
+    let mut interest = timeline_interest(7, author);
+    interest.shape.since = Some(1000);
+    kernel.lifecycle_mut().registry_mut().push(interest);
     let _ = kernel
         .lifecycle_mut()
         .recompile_and_diff(&mailboxes)

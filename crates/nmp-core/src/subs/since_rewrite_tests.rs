@@ -245,9 +245,7 @@ fn two_author_interest(id: u64, author_a: &str, author_b: &str) -> LogicalIntere
         id: InterestId(id),
         scope: InterestScope::Global,
         shape: InterestShape {
-            authors: [pubkey(author_a), pubkey(author_b)]
-                .into_iter()
-                .collect(),
+            authors: [pubkey(author_a), pubkey(author_b)].into_iter().collect(),
             kinds: [1u32].into_iter().collect(),
             ..Default::default()
         },

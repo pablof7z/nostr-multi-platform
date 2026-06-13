@@ -1,103 +1,13 @@
-//! PD-033-C planner extension — Case C bootstrap-content inbox fallback.
-//!
-//! Mirrors the matrix in `case_d_no_author.rs::pd033c_*` (Stage 1
-//! precedent): positive route, scope=Account counterpoint, lifecycle=OneShot
-//! counterpoint, p_tag_routing=Nip17DmRelays counterpoint (fail-closed
-//! preserved), partial inbox cache counterpoint (gate refuses), empty
-//! bootstrap counterpoint (fall through to fail-closed), and plan_id
-//! stability under bootstrap toggle.
-//!
-//! The headline contract: a `Tailing + Global + #p (Nip65ReadRelays)`
-//! interest whose tagged pubkey has no cached NIP-65 inbox AND
-//! `bootstrap_content_relays` is non-empty routes to the bootstrap content
-//! lane, lane = `UserConfigured(Bootstrap)`. This is the silent-loss
-//! regression Stage 2 of PD-033-C exposes for the kernel's self-zap-receipts
-//! subscription (`kind:9735 #p=[self_pk]` on `RelayRole::Content`).
+//! Routing-decision matrix for the Case C bootstrap-content inbox fallback:
+//! positive route, the counterpoints that must NOT trigger the gate, and
+//! plan-id stability under bootstrap toggle. See the parent module doc.
+
+use super::{p_tag_interest, pk, self_zap_receipts_interest};
 use crate::{
-    compiler::{InMemoryMailboxCache, MailboxCache, MailboxSnapshot, SubscriptionCompiler},
-    interest::{
-        InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, PTagRouting,
-        Pubkey,
-    },
+    compiler::{InMemoryMailboxCache, MailboxSnapshot, SubscriptionCompiler},
+    interest::{InterestLifecycle, InterestScope, PTagRouting},
     plan::{RoutingSource, UserConfiguredCategory},
 };
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Mutex;
-
-/// A `MailboxCache` that records every `request_probe` call so tests can
-/// assert inbox discovery actually fires. `get`/`dm_inbox_relays` always
-/// return `None` (no cached inbox) so the cold-start bootstrap gate is the
-/// path under test. `Mutex` (not `RefCell`) because the trait bound is
-/// `Send + Sync`.
-#[derive(Default)]
-struct ProbeRecordingCache {
-    probed: Mutex<BTreeSet<Pubkey>>,
-}
-
-impl ProbeRecordingCache {
-    fn probed(&self) -> BTreeSet<Pubkey> {
-        self.probed.lock().expect("probe lock").clone()
-    }
-}
-
-impl MailboxCache for ProbeRecordingCache {
-    fn get(&self, _pubkey: &Pubkey) -> Option<MailboxSnapshot> {
-        None
-    }
-    fn snapshot_all(&self) -> Vec<(Pubkey, MailboxSnapshot)> {
-        Vec::new()
-    }
-    fn generation(&self) -> u64 {
-        0
-    }
-    fn request_probe(&self, pubkey: &Pubkey) {
-        self.probed.lock().expect("probe lock").insert(pubkey.clone());
-    }
-}
-
-/// Deterministic 64-char hex pubkey fixture from a short label.
-fn pk(s: &str) -> String {
-    format!("{s:0>64}").chars().take(64).collect()
-}
-
-/// Build a `#p`-only interest with the given `p_tag_routing` mode.
-/// Defaults to kind:9735 (the self-zap-receipts shape) and the canonical
-/// `Tailing + Global` lifecycle/scope that the dispatcher gate keys on.
-fn p_tag_interest(
-    id: u64,
-    tagged: &[&str],
-    routing: PTagRouting,
-    lifecycle: InterestLifecycle,
-    scope: InterestScope,
-) -> LogicalInterest {
-    let mut tags: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    let values: BTreeSet<String> = tagged.iter().map(|p| pk(p)).collect();
-    tags.insert("p".to_string(), values);
-    LogicalInterest {
-        id: InterestId(id),
-        scope,
-        shape: InterestShape {
-            kinds: [9735u32].into_iter().collect(),
-            tags,
-            limit: Some(50),
-            p_tag_routing: routing,
-            ..Default::default()
-        },
-        hints: Vec::new(),
-        lifecycle,
-        is_indexer_discovery: false,
-    }
-}
-
-fn self_zap_receipts_interest() -> LogicalInterest {
-    p_tag_interest(
-        1,
-        &["self"],
-        PTagRouting::Nip65ReadRelays,
-        InterestLifecycle::Tailing,
-        InterestScope::Global,
-    )
-}
 
 // ── PD-033-C — bootstrap inbox lane (§4.3 — Stage 2 precursor) ──────────
 
@@ -425,63 +335,6 @@ fn pd033c_p_tag_empty_inbox_snapshot_treated_as_no_inbox() {
     assert!(
         plan.per_relay.contains_key("wss://bootstrap.example"),
         "an empty inbox snapshot must be treated as no-inbox by the gate"
-    );
-}
-
-/// Defect 1 regression — the bootstrap-inbox path MUST call
-/// `mailbox_cache.request_probe(pk)` for EVERY tagged pubkey. Without the
-/// probe, NIP-65 inbox discovery never fires and the cold-start bootstrap
-/// relay stays sticky forever (DM-inbox discovery broken): the next
-/// recompile has no kind:10002 to re-route on, so the interest is stuck on
-/// the shared bootstrap pad indefinitely.
-///
-/// The bootstrap-inbox gate is only reached when EVERY tagged pubkey lacks a
-/// cached inbox, so EVERY tagged pubkey must be probed.
-#[test]
-fn pd033c_bootstrap_inbox_probes_every_tagged_pubkey() {
-    let cache = ProbeRecordingCache::default();
-    let bootstrap_content = vec!["wss://bootstrap.example".to_string()];
-    let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
-        &cache,
-        &[],
-        &[],
-        &[],
-        &bootstrap_content,
-        &[],
-    );
-
-    // Two tagged pubkeys, neither with a cached inbox → bootstrap path.
-    let interest = p_tag_interest(
-        1,
-        &["bob", "carol"],
-        PTagRouting::Nip65ReadRelays,
-        InterestLifecycle::Tailing,
-        InterestScope::Global,
-    );
-
-    let plan = compiler.compile(&[interest]).expect("compile");
-
-    // The bootstrap lane still carries the REQ (the existing contract).
-    assert!(
-        plan.per_relay.contains_key("wss://bootstrap.example"),
-        "bootstrap content relay must still carry the #p Tailing REQ"
-    );
-
-    // …AND a probe was requested for BOTH tagged pubkeys so the next
-    // recompile can re-route off the bootstrap pad onto real inbox relays.
-    let probed = cache.probed();
-    assert!(
-        probed.contains(&pk("bob")),
-        "bootstrap-inbox path must request_probe(bob); got {probed:?}"
-    );
-    assert!(
-        probed.contains(&pk("carol")),
-        "bootstrap-inbox path must request_probe(carol); got {probed:?}"
-    );
-    assert_eq!(
-        probed.len(),
-        2,
-        "exactly the two tagged pubkeys must be probed; got {probed:?}"
     );
 }
 
