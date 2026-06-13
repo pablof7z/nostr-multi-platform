@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 #
-# TypeScript flatc codegen-drift gate (issue #1209, extended by PR-F2).
+# TypeScript flatc codegen-drift gate (issue #1209, extended by PR-F2, PR-F3).
 #
 # The checked-in TypeScript bindings at
 #   web/chirp/src/nmp/generated/nmp/
-# cover five schemas:
+# cover seven schemas in three groups:
 #   transport  — crates/nmp-core/schema/nmp_update.fbs
 #   feed        — crates/nmp-nip01/schema/op_feed.fbs
 #              + crates/nmp-nip01/schema/timeline_snapshot.fbs
 #              + crates/nmp-content/schema/content_tree.fbs
 #              + crates/nmp-feed/schema/feed_home.fbs
+#   KRPR        — crates/nmp-core/schema/profile_card.fbs
+#              + crates/nmp-core/schema/resolved_profiles.fbs
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
 # ci/check-flatbuffers-version-pins.sh and web/chirp/package.json).
 #
-# This script regenerates ALL five schemas with the PINNED flatc version into
+# This script regenerates ALL seven schemas with the PINNED flatc version into
 # one temp dir and fails on any file difference so checked-in bindings can
 # never drift from the schemas. The version is intentionally different from the
 # Rust+Swift pin (25.12.19) and the Kotlin pin (25.2.10); see the comment at
@@ -35,7 +37,15 @@
 #          crates/nmp-nip01/schema/op_feed.fbs \
 #          crates/nmp-content/schema/content_tree.fbs \
 #          crates/nmp-feed/schema/feed_home.fbs
-#   4. Verify the output with this script.
+#   4. # KRPR schema bindings (profile_card.fbs must be listed explicitly —
+#      # resolved_profiles.fbs includes it via `include "profile_card.fbs"`;
+#      # without --gen-all flatc only emits profile-card.ts when it is a root
+#      # argument, not when it is reached via include):
+#      flatc --ts -o web/chirp/src/nmp/generated/ \
+#          -I crates/nmp-core/schema \
+#          crates/nmp-core/schema/profile_card.fbs \
+#          crates/nmp-core/schema/resolved_profiles.fbs
+#   5. Verify the output with this script.
 #      (requires flatc 25.9.23 — the Web/TypeScript runtime pin)
 
 set -euo pipefail
@@ -51,6 +61,11 @@ FEED_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-nip01/schema/op_feed.fbs"
   "${REPO_ROOT}/crates/nmp-content/schema/content_tree.fbs"
   "${REPO_ROOT}/crates/nmp-feed/schema/feed_home.fbs"
+)
+KERNEL_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-core/schema"
+KERNEL_SCHEMAS=(
+  "${REPO_ROOT}/crates/nmp-core/schema/profile_card.fbs"
+  "${REPO_ROOT}/crates/nmp-core/schema/resolved_profiles.fbs"
 )
 CHECKED_IN_DIR="${REPO_ROOT}/web/chirp/src/nmp/generated/nmp"
 
@@ -97,6 +112,14 @@ flatc --ts -o "${TMP_DIR}" \
     -I "${FEED_INCLUDE_DIR}" \
     "${FEED_SCHEMAS[@]}"
 
+# ── KRPR schemas (profile_card + resolved_profiles → nmp/kernel/) ────────────
+# profile_card.fbs must be listed as a root argument: resolved_profiles.fbs
+# includes it via `include "profile_card.fbs"`, but without --gen-all flatc
+# only emits profile-card.ts when the file is an explicit root argument.
+flatc --ts -o "${TMP_DIR}" \
+    -I "${KERNEL_SCHEMA_DIR}" \
+    "${KERNEL_SCHEMAS[@]}"
+
 GENERATED_DIR="${TMP_DIR}/nmp"
 
 if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
@@ -113,8 +136,13 @@ if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
     echo "      crates/nmp-nip01/schema/op_feed.fbs \\" >&2
     echo "      crates/nmp-content/schema/content_tree.fbs \\" >&2
     echo "      crates/nmp-feed/schema/feed_home.fbs" >&2
+    echo "  # KRPR schemas:" >&2
+    echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
+    echo "      -I crates/nmp-core/schema \\" >&2
+    echo "      crates/nmp-core/schema/profile_card.fbs \\" >&2
+    echo "      crates/nmp-core/schema/resolved_profiles.fbs" >&2
     echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Web/TypeScript runtime pin)" >&2
     exit 1
 fi
 
-echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed bindings in sync)"
+echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR bindings in sync)"

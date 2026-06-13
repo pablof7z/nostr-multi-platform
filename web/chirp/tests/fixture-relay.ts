@@ -217,6 +217,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
   // by `collect_unknown_refs`, which only runs on kind:1/6 timeline events),
   // so the discovery oneshot that fetches kind:0 profiles would never include
   // Bob — leaving his display name in the attribution badge unresolved.
+  // Tracked as a potential runtime kernel gap in issue #1257.
   const noteB = finalizeEvent(
     {
       kind: 1,

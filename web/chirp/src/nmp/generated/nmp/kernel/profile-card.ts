@@ -67,25 +67,20 @@ about(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-hasProfile():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
 hasLnurl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 lnurl():string|null
 lnurl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lnurl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startProfileCard(builder:flatbuffers.Builder) {
-  builder.startObject(11);
+  builder.startObject(10);
 }
 
 static addPubkey(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.Offset) {
@@ -116,16 +111,12 @@ static addAbout(builder:flatbuffers.Builder, aboutOffset:flatbuffers.Offset) {
   builder.addFieldOffset(7, aboutOffset, 0);
 }
 
-static addHasProfile(builder:flatbuffers.Builder, hasProfile:boolean) {
-  builder.addFieldInt8(8, +hasProfile, +false);
-}
-
 static addHasLnurl(builder:flatbuffers.Builder, hasLnurl:boolean) {
-  builder.addFieldInt8(9, +hasLnurl, +false);
+  builder.addFieldInt8(8, +hasLnurl, +false);
 }
 
 static addLnurl(builder:flatbuffers.Builder, lnurlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(10, lnurlOffset, 0);
+  builder.addFieldOffset(9, lnurlOffset, 0);
 }
 
 static endProfileCard(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -133,7 +124,7 @@ static endProfileCard(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createProfileCard(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.Offset, hasDisplayName:boolean, displayNameOffset:flatbuffers.Offset, hasPictureUrl:boolean, pictureUrlOffset:flatbuffers.Offset, nip05Offset:flatbuffers.Offset, aboutOffset:flatbuffers.Offset, hasProfile:boolean, hasLnurl:boolean, lnurlOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createProfileCard(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.Offset, hasDisplayName:boolean, displayNameOffset:flatbuffers.Offset, hasPictureUrl:boolean, pictureUrlOffset:flatbuffers.Offset, nip05Offset:flatbuffers.Offset, aboutOffset:flatbuffers.Offset, hasLnurl:boolean, lnurlOffset:flatbuffers.Offset):flatbuffers.Offset {
   ProfileCard.startProfileCard(builder);
   ProfileCard.addPubkey(builder, pubkeyOffset);
   ProfileCard.addHasDisplayName(builder, hasDisplayName);
@@ -142,7 +133,6 @@ static createProfileCard(builder:flatbuffers.Builder, pubkeyOffset:flatbuffers.O
   ProfileCard.addPictureUrl(builder, pictureUrlOffset);
   ProfileCard.addNip05(builder, nip05Offset);
   ProfileCard.addAbout(builder, aboutOffset);
-  ProfileCard.addHasProfile(builder, hasProfile);
   ProfileCard.addHasLnurl(builder, hasLnurl);
   ProfileCard.addLnurl(builder, lnurlOffset);
   return ProfileCard.endProfileCard(builder);
