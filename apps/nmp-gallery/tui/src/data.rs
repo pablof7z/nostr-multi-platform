@@ -295,7 +295,6 @@ mod live_profile_map_tests {
             picture_url: Some("https://example.com/a.png".to_string()),
             nip05: "name@example.com".to_string(),
             about: "merged once in the kernel".to_string(),
-            has_profile: true,
             lnurl: None,
         };
         let snapshot = typed_snapshot_with_profile(pubkey, card);

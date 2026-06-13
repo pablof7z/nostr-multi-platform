@@ -152,7 +152,5 @@ pub struct ProfileCard {
     #[serde(default)]
     pub about: String,
     #[serde(default)]
-    pub has_profile: bool,
-    #[serde(default)]
     pub lnurl: Option<String>,
 }

@@ -16,7 +16,7 @@
 //!
 //! Observation surface: the typed `claimed_profiles` FlatBuffers sidecar
 //! (PR-B #991/#979: the generic JSON payload no longer exists on the wire).
-//! When a claimed profile's `has_profile` becomes `true`, the kind:0 fetch
+//! When a claimed profile's `display_name` becomes non-empty, the kind:0 fetch
 //! succeeded and the display name is available.
 //!
 //! V-68 / V-112 (ADR-0042): `nmp_app_open_author` / `author_view` projection
@@ -60,7 +60,7 @@ fn find_display_name(frame: &[u8], pubkey: &str) -> Option<String> {
     entry
         .entries
         .iter()
-        .find(|(pk, card)| pk == pubkey && card.has_profile)
+        .find(|(pk, _)| pk == pubkey)
         .and_then(|(_, card)| card.display_name.as_ref())
         .filter(|s| !s.is_empty())
         .cloned()

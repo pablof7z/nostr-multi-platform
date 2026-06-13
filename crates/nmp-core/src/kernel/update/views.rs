@@ -169,7 +169,6 @@ impl Kernel {
                 || placeholder_about.to_string(),
                 |profile| truncate(&profile.about.replace('\n', " "), 220),
             ),
-            has_profile: profile.is_some(),
             // NIP-57 — pre-extracted lightning address / LNURL from
             // kind:0 (lud16 preferred over lud06). `None` when no
             // kind:0 has arrived OR the metadata had no lnurl.

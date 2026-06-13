@@ -67,7 +67,6 @@ final class ProfileNameFallbackTests: XCTestCase {
             pictureUrl: nil,
             nip05: "",
             about: "",
-            hasProfile: displayName != nil,
             lnurl: nil)
     }
 

@@ -89,7 +89,6 @@ data class ProfileCard(
     val pictureUrl: String? = null,
     val nip05: String = "",
     val about: String = "",
-    val hasProfile: Boolean = false,
     val lnurl: String? = null,
 )
 
