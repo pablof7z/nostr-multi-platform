@@ -7,8 +7,9 @@ import FlatBuffers
 /// These pin the iOS Swift FlatBuffers decoder (`TypedHomeFeedDecoder`) against
 /// the EXACT golden bytes B1 froze in
 /// `crates/nmp-nip01/tests/fixtures/op_feed_{populated,empty}_v1.fb.hex`
-/// (produced by `nmp_nip01::encode_op_feed_snapshot`). The hex is embedded
-/// inline so the test needs no bundle-resource wiring or simulator.
+/// (produced by `nmp_nip01::encode_op_feed_snapshot`). The golden hex + hex
+/// helpers live in the shared `OpFeedTestFixtures`, so the test needs no
+/// bundle-resource wiring or simulator.
 ///
 /// PARITY CONTRACT: the typed decoder must produce the same `ChirpTimelineSnapshot`
 /// model the generic `Value` path produces, so `HomeFeedView` renders either
@@ -16,42 +17,24 @@ import FlatBuffers
 /// decoder) and `relationCounts` (typed sub-table) are now populated by the
 /// typed path (ADR-0038 Stage T4). The prior `XCTAssertNil` assertions that
 /// documented the gap are updated to assert populated values.
+///
+/// The D0 typed repost-signal contract (`ChirpEventCard.isRepost`) is covered
+/// in the focused `OpFeedRepostDecoderTests`.
 final class OpFeedDecoderTests: XCTestCase {
 
-    /// 32-byte hex id from a single byte, mirroring the Rust fixture's
-    /// `hex32(byte)` helper (`"03"` -> `"0303…03"`, 64 chars).
-    private func hex32(_ byte: UInt8) -> String {
-        String(format: "%02x", byte).repeated(32)
-    }
-
-    private func data(fromHex hex: String) -> Data {
-        let compact = hex.unicodeScalars.filter { !CharacterSet.whitespacesAndNewlines.contains($0) }
-        let chars = Array(String(String.UnicodeScalarView(compact)))
-        XCTAssertEqual(chars.count % 2, 0, "hex fixture must contain whole bytes")
-        var bytes = [UInt8]()
-        bytes.reserveCapacity(chars.count / 2)
-        var index = chars.startIndex
-        while index < chars.endIndex {
-            let pair = String(chars[index ... chars.index(after: index)])
-            guard let byte = UInt8(pair, radix: 16) else {
-                XCTFail("invalid hex pair \(pair)")
-                return Data()
-            }
-            bytes.append(byte)
-            index = chars.index(index, offsetBy: 2)
-        }
-        return Data(bytes)
-    }
+    private func hex32(_ byte: UInt8) -> String { OpFeedTestFixtures.hex32(byte) }
+    private func data(fromHex hex: String) -> Data { OpFeedTestFixtures.data(fromHex: hex) }
 
     // ── Populated fixture ──────────────────────────────────────────────────
 
     func testPopulatedFixtureDecodesToParityModel() throws {
         let snapshot = try XCTUnwrap(
-            TypedHomeFeedDecoder.decode(bytes: data(fromHex: Self.populatedHex)),
+            TypedHomeFeedDecoder.decode(bytes: data(fromHex: OpFeedTestFixtures.populatedHex)),
             "NOFS populated golden fixture must decode")
 
         // Two root cards: a plain thread root (id 0x03) with two attributions,
-        // and a repost-keyed root (id 0x09) with no attribution.
+        // and a repost-keyed root (id 0x09) with no attribution. (The repost
+        // card's isRepost contract is asserted in OpFeedRepostDecoderTests.)
         XCTAssertEqual(snapshot.cards.count, 2)
 
         let root = snapshot.cards[0]
@@ -64,9 +47,6 @@ final class OpFeedDecoderTests: XCTestCase {
         // root_card() has absent display mirrors (has_* == false).
         XCTAssertNil(root.card.authorDisplayName)
         XCTAssertNil(root.card.authorPictureUrl)
-        // D0 typed repost signal: a plain root has no `reposted_by`, so
-        // isRepost is false (NOT re-derived from kind in the view).
-        XCTAssertFalse(root.card.isRepost, "plain root must not be flagged repost")
 
         // ADR-0038 Stage T4: contentTree and relationCounts are now populated
         // by the typed NFCT decoder. The prior nil assertions documented the gap;
@@ -99,18 +79,6 @@ final class OpFeedDecoderTests: XCTestCase {
         XCTAssertNil(root.attribution[1].authorDisplayName)
         XCTAssertNil(root.attribution[1].authorPictureUrl)
 
-        let repost = snapshot.cards[1]
-        XCTAssertEqual(repost.card.id, hex32(0x09))
-        XCTAssertEqual(repost.card.kind, 6)
-        // D0 typed repost signal: the fixture card carries `reposted_by`, so
-        // isRepost is true. This is the field ThreadNoteRow reads instead of
-        // `card.kind == 6` — and it stays correct for the OP-centric feed where
-        // a repost card can carry the *original* note's kind (not 6).
-        XCTAssertTrue(repost.card.isRepost, "card with reposted_by must be flagged repost")
-        XCTAssertEqual(repost.card.authorDisplayName, "Alice")
-        XCTAssertEqual(repost.card.authorPictureUrl, "https://example.com/a.png")
-        XCTAssertTrue(repost.attribution.isEmpty)
-
         // Page reconstructed from the embedded NFWM feed-window sub-buffer.
         let page = try XCTUnwrap(snapshot.page, "populated fixture carries a FeedPage")
         XCTAssertEqual(page.limit, 50)
@@ -125,7 +93,7 @@ final class OpFeedDecoderTests: XCTestCase {
 
     func testEmptyFixtureDecodesToEmptyModel() throws {
         let snapshot = try XCTUnwrap(
-            TypedHomeFeedDecoder.decode(bytes: data(fromHex: Self.emptyHex)),
+            TypedHomeFeedDecoder.decode(bytes: data(fromHex: OpFeedTestFixtures.emptyHex)),
             "NOFS empty golden fixture must decode")
         XCTAssertTrue(snapshot.cards.isEmpty)
         XCTAssertNil(snapshot.page, "empty snapshot has no paging envelope")
@@ -141,13 +109,13 @@ final class OpFeedDecoderTests: XCTestCase {
             schemaId: "nmp.nip01.timeline",
             schemaVersion: 1,
             fileIdentifier: "NFTS",
-            payload: data(fromHex: Self.emptyHex))
+            payload: data(fromHex: OpFeedTestFixtures.emptyHex))
         XCTAssertNil(TypedHomeFeedDecoder.decode(from: [envelope]))
     }
 
     func testWrongFileIdentifierBytesFallBack() {
         // A buffer whose file identifier is not NOFS fails getCheckedRoot → nil.
-        var garbled = data(fromHex: Self.emptyHex)
+        var garbled = data(fromHex: OpFeedTestFixtures.emptyHex)
         garbled[4] = UInt8(ascii: "X") // clobber the "NOFS" identifier region
         XCTAssertNil(TypedHomeFeedDecoder.decode(bytes: garbled))
     }
@@ -198,7 +166,7 @@ final class OpFeedDecoderTests: XCTestCase {
             schemaId: TypedHomeFeedDecoder.schemaId,
             schemaVersion: 1,
             fileIdentifier: TypedHomeFeedDecoder.fileIdentifier,
-            payload: data(fromHex: Self.populatedHex))
+            payload: data(fromHex: OpFeedTestFixtures.populatedHex))
 
         let merged = KernelUpdateFrameDecoder.overlayTypedFlatFeeds(json: json, typed: [typedEnvelope])
 
@@ -222,11 +190,11 @@ final class OpFeedDecoderTests: XCTestCase {
         // (a) right key, WRONG schema id → ignored.
         let wrongSchema = TypedProjectionEnvelope(
             key: authorKey, schemaId: "nmp.nip01.timeline", schemaVersion: 1,
-            fileIdentifier: "NFTS", payload: data(fromHex: Self.populatedHex))
+            fileIdentifier: "NFTS", payload: data(fromHex: OpFeedTestFixtures.populatedHex))
         // (b) right schema id, NON-feed key (home) → not a dynamic feed, ignored.
         let homeKey = TypedProjectionEnvelope(
             key: "nmp.feed.home", schemaId: TypedHomeFeedDecoder.schemaId, schemaVersion: 1,
-            fileIdentifier: TypedHomeFeedDecoder.fileIdentifier, payload: data(fromHex: Self.populatedHex))
+            fileIdentifier: TypedHomeFeedDecoder.fileIdentifier, payload: data(fromHex: OpFeedTestFixtures.populatedHex))
         // (c) right key + schema id, MALFORMED bytes → decode nil, JSON kept.
         let malformed = TypedProjectionEnvelope(
             key: authorKey, schemaId: TypedHomeFeedDecoder.schemaId, schemaVersion: 1,
@@ -505,7 +473,7 @@ final class OpFeedDecoderTests: XCTestCase {
         var fbb = FlatBufferBuilder(initialSize: 2048)
 
         // Typed NOFS sidecar under the dynamic thread key.
-        let bytes = [UInt8](data(fromHex: Self.populatedHex))
+        let bytes = [UInt8](data(fromHex: OpFeedTestFixtures.populatedHex))
         let typedPayload = nmp_transport_TypedPayload.createTypedPayload(
             &fbb,
             schemaIdOffset: fbb.create(string: TypedHomeFeedDecoder.schemaId),
@@ -542,20 +510,5 @@ final class OpFeedDecoderTests: XCTestCase {
         }
         return nmp_transport_Value.createValue(
             &fbb, kind: .map, mapVectorOffset: fbb.createVector(ofOffsets: pairs))
-    }
-
-    // ── Golden bytes (B1 fixtures, verbatim) ─────────────────────────────────
-
-    private static let emptyHex =
-        "100000004e4f46530800080000000400080000000400000000000000"
-
-    private static let populatedHex =
-        "1c0000004e4f46530000000000000e001000000008000c00060007000e00000000000101c400000004000000b8000000100000004e46574d08000e000400080008000000280000000c000000000006000c00040006000000d2040000000000000c001c000c000800070014000c000000000000011c000000320000000000000002000000000000000800100008000400080000000c00000000f1536500000000400000003039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303900000000020000007004000004000000fcf8ffff30000000040000000000000000002200440008000c0010001400380018001c00200024000600280007002c00300034002200000000000101b80100006c010000d403000006000000500100003c00000024000000e8020000240100000001000028010000e401000000f15365000000000000000074f9ffff0c000000040000000000000000000000d0000000140000004e46435400000a00100008000c0007000a000000000000021c00000004000000040000000000000001000000020000000300000004000000800000005c0000003c0000001000000000000a000c000700000008000a00000000000004040000001400000068747470733a2f2f6578616d706c652e636f6d2f00000000ccffffff0400000001000000200000000c000c0007000000000008000c0000000000000304000000050000006e6f737472000000080008000000040008000000040000000600000068656c6c6f2000001900000068747470733a2f2f6578616d706c652e636f6d2f612e706e6700000005000000416c6963650000000b00000068656c6c6f20776f726c64000b00000068656c6c6f20776f726c6400400000003032303230323032303230323032303230323032303230323032303230323032303230323032303230323032303230323032303230323032303230323032303200000000400000003039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303900001200240008000c00060010000700140018001200000000000101480000008c0000003400000010000000c0ae446500000000000000001900000068747470733a2f2f6578616d706c652e636f6d2f612e706e6700000005000000416c69636500000040000000343234323432343234323432343234323432343234323432343234323432343234323432343234323432343234323432343234323432343234323432343234320000000090fcffff000101013c00000028000000040000001900000068747470733a2f2f6578616d706c652e636f6d2f612e706e670000000a0000006e70756231616c696365000005000000416c6963650000000c001400040008000c0010000c000000c4000000300000001400000004000000ecf9ffff08000e000000040008000000010000000000000000000a000c000700000008000a00000000000001040000009efaffff5c00000010000000040000000100000065000000400000006161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616100000000150000006e6d702e7265616374696f6e732e73756d6d617279000000080010000000040008000000020000000000000000000000c4fdffff000101013c00000028000000040000001900000068747470733a2f2f6578616d706c652e636f6d2f612e706e670000000a0000006e70756231616c696365000005000000416c69636500000064fdffff680200000400000002000000f80000001800000014001c000400080000000000000000000c0010001400000060000000a40000001000000095f453650000000000000000400000003931393139313931393139313931393139313931393139313931393139313931393139313931393139313931393139313931393139313931393139313931393100000000400000003131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313131313100000000bcfbffff00000001040000000a0000006e707562316361726f6c00001400280008000c00060010000700140018001c00140000000000010194000000e800000038000000140000003c00000094f4536500000000000000001900000068747470733a2f2f6578616d706c652e636f6d2f612e706e6700000005000000416c696365000000400000003930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393039303930393000000000400000003130313031303130313031303130313031303130313031303130313031303130313031303130313031303130313031303130313031303130313031303130313000000000100014000500080006000c000700100010000000000101013c00000028000000040000001900000068747470733a2f2f6578616d706c652e636f6d2f612e706e670000000a0000006e70756231616c696365000005000000416c69636500000020003000040008000c0010002800140018001c00200000000000000000002400200000008c01000040010000b00200000100000020010000340000001c000000c4010000fc000000f4f253650000000008000c0004000800080000000c000000040000000000000000000000d0000000140000004e46435400000a00100008000c0007000a000000000000021c00000004000000040000000000000001000000020000000300000004000000800000005c0000003c0000001000000000000a000c000700000008000a00000000000004040000001400000068747470733a2f2f6578616d706c652e636f6d2f00000000ccffffff0400000001000000200000000c000c0007000000000008000c0000000000000304000000050000006e6f737472000000080008000000040008000000040000000600000068656c6c6f2000000d000000612074687265616420726f6f740000000d000000612074687265616420726f6f740000004000000030343034303430343034303430343034303430343034303430343034303430343034303430343034303430343034303430343034303430343034303430343034000000004000000030333033303330333033303330333033303330333033303330333033303330333033303330333033303330333033303330333033303330333033303330333033000000000c001600040008000c0010000c000000bc000000ac000000a00000001000000000000a000e000700000008000a000000000000011000000000000a001000040008000c000a0000005c000000100000000400000001000000650000004000000030333033303330333033303330333033303330333033303330333033303330333033303330333033303330333033303330333033303330333033303330333033000000000e0000006e6d702e6e697035372e7a6170730000fcffffff040004000400000008000c00000004000800000001000000000000000c000c0000000000070008000c0000000000000104000000080000006e70756231626f6200000000"
-}
-
-private extension String {
-    /// Repeat the receiver `count` times (`"ab".repeated(2) == "abab"`).
-    func repeated(_ count: Int) -> String {
-        String(repeating: self, count: count)
     }
 }
