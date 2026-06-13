@@ -60,6 +60,13 @@ android-ffi = ["native", "external-signer"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core", default-features = false }
+# D0/ADR-0034 embed-sidecar: nmp-ffi sits above both nmp-core and nmp-content
+# in the DAG (nmp-content → nmp-core; nmp-ffi → nmp-core). Adding the edge
+# nmp-ffi → nmp-content is acyclic and legal. It lets nmp-ffi call
+# `resolve_embed_projection` on claimed events and emit the pre-resolved
+# `claimed_event_embeds` typed JSON sidecar so shells decode-only (no Swift/Kotlin
+# resolver duplicate). See issue #1283 and the RECOMMENDATION posted there.
+nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-signer-broker = { path = "../nmp-signer-broker", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
