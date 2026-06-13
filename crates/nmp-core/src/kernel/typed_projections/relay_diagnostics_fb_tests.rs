@@ -27,8 +27,8 @@ fn sample() -> RelayDiagnosticsModel {
             reconnect_count: 1,
             bytes_rx_display: Some("4 KB".to_string()),
             bytes_tx_display: None,
-            last_connected_display: Some("3s ago".to_string()),
-            last_event_display: None,
+            last_connected_ms: 1_700_000_003_000,
+            last_event_ms: 0,
             last_notice: Some("rate limited".to_string()),
             last_error: None,
             wire_subs: vec![WireSubRow {
@@ -41,9 +41,9 @@ fn sample() -> RelayDiagnosticsModel {
                 consumer_count_label: "1 consumer".to_string(),
                 events_rx_display: Some("42".to_string()),
                 eose_observed: true,
-                opened_display: "10s ago".to_string(),
-                last_event_display: Some("5s ago".to_string()),
-                eose_display: Some("8s ago".to_string()),
+                opened_ms: 1_700_000_000_000,
+                last_event_ms: 1_700_000_005_000,
+                eose_ms: 1_700_000_008_000,
                 close_reason: None,
             }],
             info: Some(InfoRow {

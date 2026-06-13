@@ -134,19 +134,21 @@ pub fn avatar_color_hex(pubkey_hex: &str) -> String {
 
 /// Abbreviated `"X ago"` relative-time label for a Unix-seconds timestamp.
 ///
-/// Mirrors the bucketing used by the relay-diagnostics `format_ago_ms`
-/// helper so every surface speaks the same dialect (`"3s ago"` /
-/// `"12m ago"` / `"5h ago"` / `"2d ago"`).
+/// The canonical `"Xs ago"` / `"Xm ago"` / `"Xh ago"` / `"Xd ago"` dialect
+/// shared by every surface that renders a relative time. This is a
+/// PRESENTATION helper (ADR-0032): projection builders must never call it —
+/// they emit raw Unix-epoch timestamps and the shells (iOS / Android / the
+/// Rust TUI's `relay_settings::format::format_ms_ago`) format at render time
+/// (aim.md §62). The relay-diagnostics projection used to embed pre-formatted
+/// labels via a `format_ago_ms` helper; that helper was deleted when the
+/// projection switched to raw `*_ms` fields.
 ///
 /// `now_secs` is the wall-clock "now" in Unix seconds — injected so the
-/// snapshot path stays deterministic in tests and the helper itself does
-/// no I/O. Projection callers read `SystemTime::now()` once per snapshot
-/// tick and thread it through; this helper never reaches for a clock.
+/// helper itself does no I/O and stays deterministic in tests.
 ///
 /// When `then_secs == 0` or the message is "in the future" relative to
 /// `now_secs` (clock skew, or a sender stamp slightly ahead of the
-/// receiver), the label is `"now"` — matching the relay-diagnostics
-/// convention.
+/// receiver), the label is `"now"`.
 #[must_use]
 pub fn format_ago_secs(now_secs: u64, then_secs: u64) -> String {
     if then_secs == 0 || now_secs <= then_secs {

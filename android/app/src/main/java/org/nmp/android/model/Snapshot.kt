@@ -119,8 +119,9 @@ data class RelayDiagnosticsRow(
     val reconnectCount: Int = 0,
     val bytesRxDisplay: String? = null,
     val bytesTxDisplay: String? = null,
-    val lastConnectedDisplay: String? = null,
-    val lastEventDisplay: String? = null,
+    // aim.md §62: raw Unix-ms on wire; shells format at render time.
+    val lastConnectedMs: Long = 0,
+    val lastEventMs: Long = 0,
     val lastNotice: String? = null,
     val lastError: String? = null,
     val wireSubs: List<RelayDiagnosticsWireSub> = emptyList(),
@@ -169,9 +170,10 @@ data class RelayDiagnosticsWireSub(
     val consumerCountLabel: String = "",
     val eventsRxDisplay: String? = null,
     val eoseObserved: Boolean = false,
-    val openedDisplay: String = "",
-    val lastEventDisplay: String? = null,
-    val eoseDisplay: String? = null,
+    // aim.md §62: raw Unix-ms on wire; shells format at render time.
+    val openedMs: Long = 0,
+    val lastEventMs: Long = 0,
+    val eoseMs: Long = 0,
     val closeReason: String? = null,
 )
 

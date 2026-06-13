@@ -52,8 +52,9 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         // path distinguishes nil-vs-empty exactly like the JSON `null`.
         XCTAssertEqual(row.bytesRxDisplay, "12 KB (typed)")
         XCTAssertNil(row.bytesTxDisplay)
-        XCTAssertEqual(row.lastConnectedDisplay, "9s ago (typed)")
-        XCTAssertNil(row.lastEventDisplay)
+        // Raw Unix-ms timestamps (aim.md §62: no pre-formatted strings on wire).
+        XCTAssertEqual(row.lastConnectedMs, 1_700_000_003_000)
+        XCTAssertEqual(row.lastEventMs, 0)
         XCTAssertNil(row.lastNotice)
         XCTAssertEqual(row.lastError, "typed boom")
 
@@ -68,9 +69,10 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         XCTAssertEqual(sub.consumerCountLabel, "1 consumer (typed)")
         XCTAssertEqual(sub.eventsRxDisplay, "34 (typed)")
         XCTAssertTrue(sub.eoseObserved)
-        XCTAssertEqual(sub.openedDisplay, "1m ago (typed)")
-        XCTAssertNil(sub.lastEventDisplay)
-        XCTAssertNil(sub.eoseDisplay)
+        // Raw Unix-ms timestamps — rendered by the shell at display time.
+        XCTAssertEqual(sub.openedMs, 1_700_000_060_000)
+        XCTAssertEqual(sub.lastEventMs, 0)
+        XCTAssertEqual(sub.eoseMs, 0)
         XCTAssertNil(sub.closeReason)
 
         // ADR-0051: this row carries no `info` child table (the `info: null`
@@ -254,7 +256,8 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         var fbb = FlatBufferBuilder(initialSize: 2048)
 
         // Nested wire-sub: `events_rx_display` present; `last_event` / `eose` /
-        // `close_reason` absent.
+        // `close_reason` absent (zero sentinel = "never observed").
+        // aim.md §62: raw Unix-ms on wire, no pre-formatted strings.
         let subWireId = fbb.create(string: "typed-wire-1")
         let subShort = fbb.create(string: "tw1…")
         let subRelayUrl = fbb.create(string: "wss://typed-diag.example")
@@ -263,7 +266,6 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         let subStateTone = fbb.create(string: "ok")
         let subConsumer = fbb.create(string: "1 consumer (typed)")
         let subEventsRx = fbb.create(string: "34 (typed)")
-        let subOpened = fbb.create(string: "1m ago (typed)")
         let sub = nmp_kernel_RelayDiagnosticsWireSub.createRelayDiagnosticsWireSub(
             &fbb,
             wireIdOffset: subWireId,
@@ -276,14 +278,14 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
             hasEventsRxDisplay: true,
             eventsRxDisplayOffset: subEventsRx,
             eoseObserved: true,
-            openedDisplayOffset: subOpened,
-            hasLastEventDisplay: false,
-            hasEoseDisplay: false,
+            openedMs: 1_700_000_060_000,
+            lastEventMs: 0,
+            eoseMs: 0,
             hasCloseReason: false)
         let wireSubsVec = fbb.createVector(ofOffsets: [sub])
 
         // Relay row: `bytes_rx` / `last_connected` / `last_error` present;
-        // `bytes_tx` / `last_event` / `last_notice` absent.
+        // `bytes_tx` / `last_event` / `last_notice` absent (zero = never).
         let relayUrl = fbb.create(string: "wss://typed-diag.example")
         let shortUrl = fbb.create(string: "typed-diag")
         let roleLabel = fbb.create(string: "Typed Content")
@@ -294,7 +296,6 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         let authTone = fbb.create(string: "ok")
         let totalEventsDisplay = fbb.create(string: "4.2K (typed)")
         let bytesRx = fbb.create(string: "12 KB (typed)")
-        let lastConnected = fbb.create(string: "9s ago (typed)")
         let lastError = fbb.create(string: "typed boom")
         let row = nmp_kernel_RelayDiagnosticsRow.createRelayDiagnosticsRow(
             &fbb,
@@ -315,9 +316,8 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
             hasBytesRxDisplay: true,
             bytesRxDisplayOffset: bytesRx,
             hasBytesTxDisplay: false,
-            hasLastConnectedDisplay: true,
-            lastConnectedDisplayOffset: lastConnected,
-            hasLastEventDisplay: false,
+            lastConnectedMs: 1_700_000_003_000,
+            lastEventMs: 0,
             hasLastNotice: false,
             hasLastError: true,
             lastErrorOffset: lastError,
@@ -419,8 +419,8 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
             reconnectCount: 0,
             hasBytesRxDisplay: false,
             hasBytesTxDisplay: false,
-            hasLastConnectedDisplay: false,
-            hasLastEventDisplay: false,
+            lastConnectedMs: 0,
+            lastEventMs: 0,
             hasLastNotice: false,
             hasLastError: false,
             infoOffset: info)

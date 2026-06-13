@@ -2100,10 +2100,9 @@ impl Kernel {
     }
 
     /// Current wall-clock time as milliseconds since the Unix epoch, read
-    /// through the injected [`Clock`]. Used by the `action_stages` mirror
-    /// so per-stage timestamps survive `FixedClock` injection and
-    /// stay deterministic in tests/replay. A pre-epoch clock collapses to
-    /// `0` (D6 — never panics).
+    /// through the injected [`Clock`] so `FixedClock` keeps it deterministic
+    /// (used by the `action_stages` mirror and the `start()` wall anchor). A
+    /// pre-epoch clock collapses to `0` (D6 — never panics).
     pub(crate) fn now_ms(&self) -> u64 {
         self.clock
             .now()
@@ -2435,6 +2434,7 @@ impl Kernel {
     pub(crate) fn start(&mut self) {
         if self.timing.started_at.is_none() {
             self.timing.started_at = Some(Instant::now());
+            self.timing.started_unix_ms = Some(self.now_ms()); // D9 wall anchor
         }
         self.changed_since_emit = true;
         self.log("starting role-aware nmp demo slice");

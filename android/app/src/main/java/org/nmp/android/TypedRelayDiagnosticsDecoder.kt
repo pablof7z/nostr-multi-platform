@@ -95,8 +95,9 @@ object TypedRelayDiagnosticsDecoder {
             reconnectCount = row.reconnectCount.toInt(),
             bytesRxDisplay = if (row.hasBytesRxDisplay) row.bytesRxDisplay else null,
             bytesTxDisplay = if (row.hasBytesTxDisplay) row.bytesTxDisplay else null,
-            lastConnectedDisplay = if (row.hasLastConnectedDisplay) row.lastConnectedDisplay else null,
-            lastEventDisplay = if (row.hasLastEventDisplay) row.lastEventDisplay else null,
+            // aim.md §62: raw Unix-ms on wire; shells format at render time.
+            lastConnectedMs = row.lastConnectedMs.toLong(),
+            lastEventMs = row.lastEventMs.toLong(),
             lastNotice = if (row.hasLastNotice) row.lastNotice else null,
             lastError = if (row.hasLastError) row.lastError else null,
             wireSubs = wireSubs,
@@ -138,9 +139,10 @@ object TypedRelayDiagnosticsDecoder {
         consumerCountLabel = sub.consumerCountLabel ?: "",
         eventsRxDisplay = if (sub.hasEventsRxDisplay) sub.eventsRxDisplay else null,
         eoseObserved = sub.eoseObserved,
-        openedDisplay = sub.openedDisplay ?: "",
-        lastEventDisplay = if (sub.hasLastEventDisplay) sub.lastEventDisplay else null,
-        eoseDisplay = if (sub.hasEoseDisplay) sub.eoseDisplay else null,
+        // aim.md §62: raw Unix-ms on wire; shells format at render time.
+        openedMs = sub.openedMs.toLong(),
+        lastEventMs = sub.lastEventMs.toLong(),
+        eoseMs = sub.eoseMs.toLong(),
         closeReason = if (sub.hasCloseReason) sub.closeReason else null,
     )
 
