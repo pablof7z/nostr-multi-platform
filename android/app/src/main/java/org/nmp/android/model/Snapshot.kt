@@ -124,6 +124,38 @@ data class RelayDiagnosticsRow(
     val lastNotice: String? = null,
     val lastError: String? = null,
     val wireSubs: List<RelayDiagnosticsWireSub> = emptyList(),
+    // ADR-0051 — the relay's NIP-11 information document. `null` until
+    // `nmp-nip11` has fetched it (or the relay serves no document); the typed
+    // wire carries this as an OPTIONAL child table (presence is the
+    // discriminator — no `has_info` flag), and the JSON path as `info: null`.
+    val info: RelayDiagnosticsInfo? = null,
+)
+
+/**
+ * ADR-0051 relay-information document (NIP-11), Android peer of iOS
+ * `RelayDiagnosticsInfo`. Field-for-field mirror of the kernel projection
+ * (`crates/nmp-core/src/kernel/relay_diagnostics.rs::RelayDiagnosticsInfo`).
+ *
+ * Every `Option<String>` collapses to `null` when absent (byte-faithful to the
+ * typed wire's `has_*`-companion semantics and the JSON path's `null`). The
+ * three `limitation` booleans are tri-state (`null` = the relay did not
+ * advertise the limitation). `supportedNips` is a possibly-empty list. The
+ * presentation layer renders these directly — no HTTP, no JSON, no NIP-11
+ * awareness (thin-shell rule).
+ */
+@Serializable
+data class RelayDiagnosticsInfo(
+    val name: String? = null,
+    val description: String? = null,
+    val icon: String? = null,
+    val pubkey: String? = null,
+    val contact: String? = null,
+    val software: String? = null,
+    val version: String? = null,
+    @SerialName("supported_nips") val supportedNips: List<Int> = emptyList(),
+    @SerialName("payment_required") val paymentRequired: Boolean? = null,
+    @SerialName("auth_required") val authRequired: Boolean? = null,
+    @SerialName("restricted_writes") val restrictedWrites: Boolean? = null,
 )
 
 @Serializable

@@ -19,6 +19,9 @@ struct RelayDetailView: View {
         ScrollView {
             VStack(spacing: 24) {
                 statusSection
+                if let info = row.info {
+                    infoSection(info)
+                }
                 subsOverviewSection
                 if !row.wireSubs.isEmpty {
                     wireSubsSection
@@ -137,6 +140,111 @@ struct RelayDetailView: View {
         }
     }
 
+    // ADR-0051 — NIP-11 relay information document. Every field is a
+    // pre-decoded value off `row.info` (the Rust `relay_diagnostics` projection
+    // surfaces the parsed document); the view only renders values it is handed.
+    // Absent fields (`nil`) are omitted — byte-faithful to the typed wire's
+    // `has_*` / JSON `null` semantics. NO parsing, NO HTTP, NO NIP-11 awareness
+    // in the shell (aim.md §4.5 thin-shell rule).
+    private func infoSection(_ info: RelayDiagnosticsInfo) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Relay Info")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            let rows = infoRows(info)
+            VStack(spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { index, entry in
+                    if index > 0 {
+                        RelayDetailDivider()
+                    }
+                    RelayDetailRow(label: entry.label) { entry.value }
+                }
+            }
+            .padding(.horizontal, 12)
+        }
+    }
+
+    /// Present NIP-11 fields as label/value rows, in document order. A field
+    /// absent on `row.info` (`nil`) is skipped; the booleans render their carried
+    /// tri-state value (omitted when not advertised). Pure presentation — the
+    /// values themselves are decided by the Rust projection.
+    private func infoRows(_ info: RelayDiagnosticsInfo) -> [RelayInfoEntry] {
+        var rows: [RelayInfoEntry] = []
+        if let name = info.name {
+            rows.append(.init(label: "Name", value: AnyView(
+                Text(name)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.trailing)
+            )))
+        }
+        if let description = info.description {
+            rows.append(.init(label: "Description", value: AnyView(
+                Text(description)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+            )))
+        }
+        if let software = info.software {
+            rows.append(.init(label: "Software", value: AnyView(
+                Text(software)
+                    .font(.body.monospaced())
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+            )))
+        }
+        if let version = info.version {
+            rows.append(.init(label: "Version", value: AnyView(
+                Text(version)
+                    .font(.body.monospaced())
+                    .foregroundStyle(.secondary)
+            )))
+        }
+        if let contact = info.contact {
+            rows.append(.init(label: "Contact", value: AnyView(
+                Text(contact)
+                    .font(.body.monospaced())
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+            )))
+        }
+        if let pubkey = info.pubkey {
+            rows.append(.init(label: "Pubkey", value: AnyView(
+                Text(pubkey)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            )))
+        }
+        if !info.supportedNips.isEmpty {
+            rows.append(.init(label: "Supported NIPs", value: AnyView(
+                Text(info.supportedNips.map(String.init).joined(separator: ", "))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+            )))
+        }
+        if let payment = info.paymentRequired {
+            rows.append(.init(label: "Payment Required", value: AnyView(capabilityValue(payment))))
+        }
+        if let auth = info.authRequired {
+            rows.append(.init(label: "Auth Required", value: AnyView(capabilityValue(auth))))
+        }
+        if let restricted = info.restrictedWrites {
+            rows.append(.init(label: "Restricted Writes", value: AnyView(capabilityValue(restricted))))
+        }
+        return rows
+    }
+
+    @ViewBuilder
+    private func capabilityValue(_ value: Bool) -> some View {
+        Text(value ? "Yes" : "No")
+            .font(.body.monospaced())
+            .foregroundStyle(value ? ChirpColor.warning : ChirpColor.textSecondary)
+    }
+
     private var subsOverviewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Subscription Overview")
@@ -192,6 +300,14 @@ struct RelayDetailView: View {
             .padding(.horizontal, 12)
         }
     }
+}
+
+/// A single label/value row in the NIP-11 relay-info section. The `value` is a
+/// pre-built passive view (no policy) — the section renders these in order with
+/// dividers between them.
+private struct RelayInfoEntry {
+    let label: String
+    let value: AnyView
 }
 
 private struct RelayMetricTile: View {

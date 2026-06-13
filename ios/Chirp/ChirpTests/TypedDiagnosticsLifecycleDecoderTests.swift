@@ -73,6 +73,11 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         XCTAssertNil(sub.eoseDisplay)
         XCTAssertNil(sub.closeReason)
 
+        // ADR-0051: this row carries no `info` child table (the `info: null`
+        // case — no NIP-11 document fetched yet), so it decodes to nil. Table
+        // presence is the discriminator (no `has_info` flag).
+        XCTAssertNil(row.info)
+
         XCTAssertEqual(snap.interests.count, 1)
         let interest = snap.interests[0]
         XCTAssertEqual(interest.key, "typed-interest")
@@ -81,6 +86,57 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         XCTAssertEqual(interest.refcount, 3)
         XCTAssertEqual(interest.cacheCoverage, "typed 80%")
         XCTAssertEqual(interest.relayUrls, ["wss://typed-a", "wss://typed-b"])
+    }
+
+    /// ADR-0051: a row carrying a fully-populated NIP-11 `info` child table
+    /// decodes field-for-field (name/description/icon/pubkey/contact/software/
+    /// version), the `supported_nips` uint vector, and the three tri-state
+    /// limitation flags. Values DIFFER from any plausible default so a pass
+    /// proves the typed `info` path wired through.
+    func testTypedRelayDiagnosticsInfoDecodes() throws {
+        let envelope = TypedProjectionEnvelope(
+            key: TypedRelayDiagnosticsDecoder.key,
+            schemaId: TypedRelayDiagnosticsDecoder.schemaId,
+            schemaVersion: 1,
+            fileIdentifier: TypedRelayDiagnosticsDecoder.fileIdentifier,
+            payload: buildRelayDiagnosticsWithInfo(full: true))
+        let snap = try XCTUnwrap(TypedRelayDiagnosticsDecoder.decode(from: [envelope]))
+        let info = try XCTUnwrap(snap.relays[0].info, "populated info table must decode")
+        XCTAssertEqual(info.name, "Typed Relay")
+        XCTAssertEqual(info.description, "Typed description")
+        XCTAssertEqual(info.icon, "https://typed.example/icon.png")
+        XCTAssertEqual(info.pubkey, "typed-pubkey-hex")
+        XCTAssertEqual(info.contact, "typed@example.com")
+        XCTAssertEqual(info.software, "typed-strfry")
+        XCTAssertEqual(info.version, "9.9.9-typed")
+        XCTAssertEqual(info.supportedNips, [1, 11, 42])
+        XCTAssertEqual(info.paymentRequired, true)
+        XCTAssertEqual(info.authRequired, false)
+        XCTAssertEqual(info.restrictedWrites, true)
+    }
+
+    /// `has_* == false` (and absent limitation presence bits) lift to nil,
+    /// byte-faithful to the JSON `null`. Only `name` + `auth_required` advertised.
+    func testTypedRelayDiagnosticsPartialInfoLeavesAbsentFieldsNil() throws {
+        let envelope = TypedProjectionEnvelope(
+            key: TypedRelayDiagnosticsDecoder.key,
+            schemaId: TypedRelayDiagnosticsDecoder.schemaId,
+            schemaVersion: 1,
+            fileIdentifier: TypedRelayDiagnosticsDecoder.fileIdentifier,
+            payload: buildRelayDiagnosticsWithInfo(full: false))
+        let snap = try XCTUnwrap(TypedRelayDiagnosticsDecoder.decode(from: [envelope]))
+        let info = try XCTUnwrap(snap.relays[0].info)
+        XCTAssertEqual(info.name, "Minimal Typed Relay")
+        XCTAssertNil(info.description)
+        XCTAssertNil(info.icon)
+        XCTAssertNil(info.pubkey)
+        XCTAssertNil(info.contact)
+        XCTAssertNil(info.software)
+        XCTAssertNil(info.version)
+        XCTAssertEqual(info.supportedNips, [])
+        XCTAssertNil(info.paymentRequired)
+        XCTAssertEqual(info.authRequired, true)
+        XCTAssertNil(info.restrictedWrites)
     }
 
     func testAbsentRelayDiagnosticsSidecarFallsBack() {
@@ -295,6 +351,83 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
     private func buildEmptyRelayDiagnostics() -> Data {
         var fbb = FlatBufferBuilder(initialSize: 128)
         let root = nmp_kernel_RelayDiagnosticsSnapshot.createRelayDiagnosticsSnapshot(&fbb)
+        nmp_kernel_RelayDiagnosticsSnapshot.finish(&fbb, end: root)
+        return fbb.data
+    }
+
+    /// Build a KRDG buffer with one relay row carrying an ADR-0051 NIP-11 `info`
+    /// child table. `full == true` populates every field; `full == false` carries
+    /// only `name` + `auth_required` (the rest `has_* == false` → nil).
+    private func buildRelayDiagnosticsWithInfo(full: Bool) -> Data {
+        var fbb = FlatBufferBuilder(initialSize: 2048)
+
+        let info: Offset
+        if full {
+            let iName = fbb.create(string: "Typed Relay")
+            let iDesc = fbb.create(string: "Typed description")
+            let iIcon = fbb.create(string: "https://typed.example/icon.png")
+            let iPubkey = fbb.create(string: "typed-pubkey-hex")
+            let iContact = fbb.create(string: "typed@example.com")
+            let iSoftware = fbb.create(string: "typed-strfry")
+            let iVersion = fbb.create(string: "9.9.9-typed")
+            let nipsVec = fbb.createVector([UInt32(1), UInt32(11), UInt32(42)])
+            info = nmp_kernel_RelayDiagnosticsInfo.createRelayDiagnosticsInfo(
+                &fbb,
+                hasName: true, nameOffset: iName,
+                hasDescription: true, descriptionOffset: iDesc,
+                hasIcon: true, iconOffset: iIcon,
+                hasPubkey: true, pubkeyOffset: iPubkey,
+                hasContact: true, contactOffset: iContact,
+                hasSoftware: true, softwareOffset: iSoftware,
+                hasVersion: true, versionOffset: iVersion,
+                supportedNipsVectorOffset: nipsVec,
+                hasPaymentRequired: true, paymentRequired: true,
+                hasAuthRequired: true, authRequired: false,
+                hasRestrictedWrites: true, restrictedWrites: true)
+        } else {
+            let iName = fbb.create(string: "Minimal Typed Relay")
+            info = nmp_kernel_RelayDiagnosticsInfo.createRelayDiagnosticsInfo(
+                &fbb,
+                hasName: true, nameOffset: iName,
+                hasAuthRequired: true, authRequired: true)
+        }
+
+        let relayUrl = fbb.create(string: "wss://typed-info.example")
+        let shortUrl = fbb.create(string: "typed-info")
+        let roleLabel = fbb.create(string: "Typed Content")
+        let roleTone = fbb.create(string: "primary")
+        let connLabel = fbb.create(string: "Typed Connected")
+        let connTone = fbb.create(string: "ok")
+        let authLabel = fbb.create(string: "Typed OK")
+        let authTone = fbb.create(string: "ok")
+        let totalEventsDisplay = fbb.create(string: "0 (typed)")
+        let row = nmp_kernel_RelayDiagnosticsRow.createRelayDiagnosticsRow(
+            &fbb,
+            relayUrlOffset: relayUrl,
+            shortUrlOffset: shortUrl,
+            roleLabelOffset: roleLabel,
+            roleToneOffset: roleTone,
+            connectionLabelOffset: connLabel,
+            connectionToneOffset: connTone,
+            authLabelOffset: authLabel,
+            authToneOffset: authTone,
+            totalSubCount: 0,
+            activeSubCount: 0,
+            eosedSubCount: 0,
+            totalEventsRx: 0,
+            totalEventsDisplayOffset: totalEventsDisplay,
+            reconnectCount: 0,
+            hasBytesRxDisplay: false,
+            hasBytesTxDisplay: false,
+            hasLastConnectedDisplay: false,
+            hasLastEventDisplay: false,
+            hasLastNotice: false,
+            hasLastError: false,
+            infoOffset: info)
+        let relaysVec = fbb.createVector(ofOffsets: [row])
+
+        let root = nmp_kernel_RelayDiagnosticsSnapshot.createRelayDiagnosticsSnapshot(
+            &fbb, relaysVectorOffset: relaysVec)
         nmp_kernel_RelayDiagnosticsSnapshot.finish(&fbb, end: root)
         return fbb.data
     }

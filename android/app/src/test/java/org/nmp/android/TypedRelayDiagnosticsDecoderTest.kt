@@ -1,6 +1,7 @@
 package org.nmp.android
 
 import com.google.flatbuffers.FlatBufferBuilder
+import nmp.kernel.RelayDiagnosticsInfo
 import nmp.kernel.RelayDiagnosticsInterest
 import nmp.kernel.RelayDiagnosticsRow
 import nmp.kernel.RelayDiagnosticsSnapshot
@@ -82,6 +83,55 @@ class TypedRelayDiagnosticsDecoderTest {
         assertEquals(listOf("wss://a.relay", "wss://b.relay"), interest.relayUrls)
     }
 
+    @Test
+    fun rowWithoutInfoTableDecodesNullInfo() {
+        // ADR-0051: the `info` child table is optional; a row that omits it (the
+        // JSON `info: null` case — no document fetched yet) must decode to a null
+        // `info`, not a default-filled struct.
+        val out = requireNotNull(TypedRelayDiagnosticsDecoder.decode(diagnosticsBuffer()))
+        assertNull(out.relays[0].info)
+    }
+
+    @Test
+    fun rowWithFullInfoTableDecodesAllFields() {
+        // ADR-0051: a fully-populated NIP-11 info document decodes field-for-field
+        // (name/description/icon/pubkey/contact/software/version), the
+        // supported_nips uint vector, and the three tri-state limitation flags.
+        val out = requireNotNull(TypedRelayDiagnosticsDecoder.decode(diagnosticsBufferWithInfo()))
+        val info = requireNotNull(out.relays[0].info)
+        assertEquals("Example Relay", info.name)
+        assertEquals("A test relay", info.description)
+        assertEquals("https://relay.example.com/icon.png", info.icon)
+        assertEquals("abcd1234", info.pubkey)
+        assertEquals("admin@relay.example.com", info.contact)
+        assertEquals("strfry", info.software)
+        assertEquals("1.0.0", info.version)
+        assertEquals(listOf(1, 11, 42), info.supportedNips)
+        assertEquals(true, info.paymentRequired)
+        assertEquals(false, info.authRequired)
+        assertEquals(true, info.restrictedWrites)
+    }
+
+    @Test
+    fun rowWithPartialInfoTableLeavesAbsentFieldsNull() {
+        // `has_* == false` (and the limitation flags' presence bits) lift to null,
+        // byte-faithful to the JSON path's `null`. Here only `name` and
+        // `auth_required` are advertised.
+        val out = requireNotNull(TypedRelayDiagnosticsDecoder.decode(diagnosticsBufferWithPartialInfo()))
+        val info = requireNotNull(out.relays[0].info)
+        assertEquals("Minimal Relay", info.name)
+        assertNull(info.description)
+        assertNull(info.icon)
+        assertNull(info.pubkey)
+        assertNull(info.contact)
+        assertNull(info.software)
+        assertNull(info.version)
+        assertEquals(emptyList<Int>(), info.supportedNips)
+        assertNull(info.paymentRequired)
+        assertEquals(true, info.authRequired)
+        assertNull(info.restrictedWrites)
+    }
+
     // ── builders ───────────────────────────────────────────────────────────────
 
     private fun diagnosticsBuffer(): ByteArray {
@@ -157,6 +207,92 @@ class TypedRelayDiagnosticsDecoderTest {
         val interestsVec = RelayDiagnosticsSnapshot.createInterestsVector(b, intArrayOf(interest))
 
         val snap = RelayDiagnosticsSnapshot.createRelayDiagnosticsSnapshot(b, relaysVec, interestsVec)
+        RelayDiagnosticsSnapshot.finishRelayDiagnosticsSnapshotBuffer(b, snap)
+        return b.sizedByteArray()
+    }
+
+    /** A snapshot with a single relay row carrying a fully-populated NIP-11 info. */
+    private fun diagnosticsBufferWithInfo(): ByteArray = relayWithInfoBuffer(full = true)
+
+    /** A snapshot whose relay row carries only `name` + `auth_required`. */
+    private fun diagnosticsBufferWithPartialInfo(): ByteArray = relayWithInfoBuffer(full = false)
+
+    @OptIn(kotlin.ExperimentalUnsignedTypes::class)
+    private fun relayWithInfoBuffer(full: Boolean): ByteArray {
+        val b = FlatBufferBuilder(1024)
+
+        // info child table
+        val info: Int
+        if (full) {
+            val iName = b.createString("Example Relay")
+            val iDesc = b.createString("A test relay")
+            val iIcon = b.createString("https://relay.example.com/icon.png")
+            val iPubkey = b.createString("abcd1234")
+            val iContact = b.createString("admin@relay.example.com")
+            val iSoftware = b.createString("strfry")
+            val iVersion = b.createString("1.0.0")
+            val nipsVec = RelayDiagnosticsInfo.createSupportedNipsVector(b, uintArrayOf(1u, 11u, 42u))
+            RelayDiagnosticsInfo.startRelayDiagnosticsInfo(b)
+            RelayDiagnosticsInfo.addHasName(b, true)
+            RelayDiagnosticsInfo.addName(b, iName)
+            RelayDiagnosticsInfo.addHasDescription(b, true)
+            RelayDiagnosticsInfo.addDescription(b, iDesc)
+            RelayDiagnosticsInfo.addHasIcon(b, true)
+            RelayDiagnosticsInfo.addIcon(b, iIcon)
+            RelayDiagnosticsInfo.addHasPubkey(b, true)
+            RelayDiagnosticsInfo.addPubkey(b, iPubkey)
+            RelayDiagnosticsInfo.addHasContact(b, true)
+            RelayDiagnosticsInfo.addContact(b, iContact)
+            RelayDiagnosticsInfo.addHasSoftware(b, true)
+            RelayDiagnosticsInfo.addSoftware(b, iSoftware)
+            RelayDiagnosticsInfo.addHasVersion(b, true)
+            RelayDiagnosticsInfo.addVersion(b, iVersion)
+            RelayDiagnosticsInfo.addSupportedNips(b, nipsVec)
+            RelayDiagnosticsInfo.addHasPaymentRequired(b, true)
+            RelayDiagnosticsInfo.addPaymentRequired(b, true)
+            RelayDiagnosticsInfo.addHasAuthRequired(b, true)
+            RelayDiagnosticsInfo.addAuthRequired(b, false)
+            RelayDiagnosticsInfo.addHasRestrictedWrites(b, true)
+            RelayDiagnosticsInfo.addRestrictedWrites(b, true)
+            info = RelayDiagnosticsInfo.endRelayDiagnosticsInfo(b)
+        } else {
+            val iName = b.createString("Minimal Relay")
+            RelayDiagnosticsInfo.startRelayDiagnosticsInfo(b)
+            RelayDiagnosticsInfo.addHasName(b, true)
+            RelayDiagnosticsInfo.addName(b, iName)
+            // description/icon/pubkey/contact/software/version: has_* default false
+            // supported_nips: absent vector → empty list
+            // payment/restricted: has_* default false; only auth advertised
+            RelayDiagnosticsInfo.addHasAuthRequired(b, true)
+            RelayDiagnosticsInfo.addAuthRequired(b, true)
+            info = RelayDiagnosticsInfo.endRelayDiagnosticsInfo(b)
+        }
+
+        // relay row carrying the info table
+        val relayUrl = b.createString("wss://relay.example.com")
+        val shortUrl = b.createString("relay.example.com")
+        val roleLabel = b.createString("Read/Write")
+        val roleTone = b.createString("active")
+        val connLabel = b.createString("Connected")
+        val connTone = b.createString("active")
+        val authLabel = b.createString("Authenticated")
+        val authTone = b.createString("active")
+        val totalEvents = b.createString("0 events")
+        RelayDiagnosticsRow.startRelayDiagnosticsRow(b)
+        RelayDiagnosticsRow.addRelayUrl(b, relayUrl)
+        RelayDiagnosticsRow.addShortUrl(b, shortUrl)
+        RelayDiagnosticsRow.addRoleLabel(b, roleLabel)
+        RelayDiagnosticsRow.addRoleTone(b, roleTone)
+        RelayDiagnosticsRow.addConnectionLabel(b, connLabel)
+        RelayDiagnosticsRow.addConnectionTone(b, connTone)
+        RelayDiagnosticsRow.addAuthLabel(b, authLabel)
+        RelayDiagnosticsRow.addAuthTone(b, authTone)
+        RelayDiagnosticsRow.addTotalEventsDisplay(b, totalEvents)
+        RelayDiagnosticsRow.addInfo(b, info)
+        val row = RelayDiagnosticsRow.endRelayDiagnosticsRow(b)
+        val relaysVec = RelayDiagnosticsSnapshot.createRelaysVector(b, intArrayOf(row))
+
+        val snap = RelayDiagnosticsSnapshot.createRelayDiagnosticsSnapshot(b, relaysVec, 0)
         RelayDiagnosticsSnapshot.finishRelayDiagnosticsSnapshotBuffer(b, snap)
         return b.sizedByteArray()
     }
