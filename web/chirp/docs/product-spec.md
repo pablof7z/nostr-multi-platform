@@ -53,7 +53,7 @@ surface is `apps/chirp/nmp-app-chirp-web/src/wasm_binding.rs` (`NmpWasmRuntime`)
 
 | Surface | Where | Notes |
 |---|---|---|
-| `Hello` / `Start` / `Stop` lifecycle, protocol v1 | `protocol.rs:6-30`, `runtime.rs:185-306` | `Start` spawns one live WebSocket `BrowserRelayDriver` per (URL, role) lane with native-equivalent reconnect/backoff (`relay_pool.rs:242-264`); default relays come from `nmp-chirp-config` (`protocol.rs:42-45`) |
+| `Hello` / `Start` / `Stop` lifecycle, protocol v1 | `protocol.rs:6-30`, `runtime.rs:185-306` | `Start` spawns one live WebSocket `BrowserRelayDriver` per (URL, role) lane with native-equivalent reconnect/backoff (`relay_pool.rs:242-264`); the host supplies `relays` + `relay_bootstrap` explicitly (relay policy is host policy, not framework default — #1125); Chirp's web defaults live in `web/chirp/src/chirpConfig.ts` |
 | `SetSigner` (kind `"nip07"` only) | `protocol.rs:26`, `protocol.rs:181-196`, `runtime.rs:336-351` | Host does `window.nostr.getPublicKey()` itself; other kinds honestly rejected (`unsupported_signer_kind`) |
 | Async write path: `dispatch_app_action_async` | `lib.rs:188-215`, `publish_path.rs:145-252` | **`PublishNote` kind:1 top-level only.** Replies fail closed (`publish_path.rs:190-196`); `React`/`Follow`/`Unfollow` fail closed (`publish_path.rs:158-172`, issue #1007); non-NIP-07 backends fail closed (`publish_path.rs:82-88`). Correlation id threads into the publish engine (`publish_path.rs:232-235`) |
 | Claims: `nmp.kernel.claim_profile` / `release_profile` / `claim_event` / `release_event` | `dispatch_routing.rs:62-86`, `runtime.rs:388-424` | Emit real REQs through the live driver pool; F-TTL `force` is hardcoded `false` (`runtime.rs:393-399`) |

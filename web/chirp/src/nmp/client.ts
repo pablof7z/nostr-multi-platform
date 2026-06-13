@@ -14,6 +14,11 @@ import {
 } from "./protocol";
 import type { RuntimeCommand } from "./actions";
 import {
+  CHIRP_RELAY_BOOTSTRAP,
+  chirpDefaultRelayUrls,
+  type ChirpRelayBootstrapEntry,
+} from "../chirpConfig";
+import {
   decodeUpdateFrameBytes,
   SNAPSHOT_SCHEMA_VERSION,
   UpdateFrameDecodeError,
@@ -60,6 +65,33 @@ export const runtimeConnection: RuntimeConnection = {
   appId: "chirp",
   databaseName: "chirp-web",
 };
+
+/** Resolve the `relays` + `relay_bootstrap` the Chirp web host supplies in the
+ *  Start request. Relay policy is host policy (#1125): the nmp-wasm protocol
+ *  has no built-in defaults, so the host always sends an explicit list.
+ *
+ *  When `overrideRelays` is supplied (e.g. the Playwright smoke test via the
+ *  `?relay=` query parameter), those URLs replace the Chirp defaults. Each is
+ *  given role "both,indexer" (not just "both") so a single injected relay also
+ *  serves profile-claim discovery requests (BootstrapSeed::IndexerOnly) —
+ *  "both" alone excludes the indexer lane, so a relay supplied via ?relay=
+ *  would otherwise silently receive no kind:0 claim REQs. Otherwise the host
+ *  sends its own Chirp relay defaults (mirrors nmp-chirp-config). */
+export function chirpStartRelays(overrideRelays?: string[]): {
+  relays: string[];
+  relay_bootstrap: ChirpRelayBootstrapEntry[];
+} {
+  if (overrideRelays && overrideRelays.length > 0) {
+    return {
+      relays: overrideRelays,
+      relay_bootstrap: overrideRelays.map((url) => ({ url, role: "both,indexer" })),
+    };
+  }
+  return {
+    relays: chirpDefaultRelayUrls(),
+    relay_bootstrap: CHIRP_RELAY_BOOTSTRAP,
+  };
+}
 
 export type NmpClient = {
   snapshot(): RuntimeSnapshot;
@@ -265,27 +297,14 @@ class WorkerNmpClient extends BaseClient {
 
   async start(relays?: string[]): Promise<RuntimeSnapshot> {
     await this.helloReady;
-    // When relay URLs are supplied (e.g. from the Playwright smoke test via
-    // the ?relay= query parameter), pass them as relay_bootstrap so the wasm
-    // runtime uses them instead of its built-in chirp defaults. The wasm
-    // StartConfig serde-defaults relay_bootstrap to the chirp list, so the
-    // explicit non-empty array takes precedence (relay_bootstrap_from_config).
-    //
-    // Use "both,indexer" (not just "both") so a single injected relay also
-    // serves profile-claim discovery requests (BootstrapSeed::IndexerOnly).
-    // "both" alone excludes the indexer lane — bootstrap_urls_for_role(Indexer)
-    // only matches relays whose role includes "indexer" — so without this a
-    // relay supplied via ?relay= would silently receive no kind:0 claim REQs.
-    const relayBootstrap =
-      relays && relays.length > 0
-        ? relays.map((url) => ({ url, role: "both,indexer" }))
-        : undefined;
+    const { relays: startRelays, relay_bootstrap } = chirpStartRelays(relays);
     return this.request({
       type: "start",
       app_id: runtimeConnection.appId,
+      relays: startRelays,
+      relay_bootstrap,
       database_name: runtimeConnection.databaseName,
       correlation_id: "web-start",
-      ...(relayBootstrap ? { relay_bootstrap: relayBootstrap } : {}),
     });
   }
 
@@ -302,7 +321,7 @@ class WorkerNmpClient extends BaseClient {
   async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {
     await this.helloReady;
     return this.request({
-      type: "chirp_action",
+      type: "app_action",
       action,
       correlation_id: `web-${Date.now()}`,
     });
@@ -363,11 +382,15 @@ class InProcessNmpClient extends BaseClient {
     });
   }
 
-  async start(_relays?: string[]): Promise<RuntimeSnapshot> {
-    // Degraded runtime ignores relays — relay connectivity is not available.
+  async start(relays?: string[]): Promise<RuntimeSnapshot> {
+    // Degraded runtime ignores relays — relay connectivity is not available —
+    // but the wire type still requires explicit host relay policy (#1125).
+    const { relays: startRelays, relay_bootstrap } = chirpStartRelays(relays);
     return this.send({
       type: "start",
       app_id: runtimeConnection.appId,
+      relays: startRelays,
+      relay_bootstrap,
       database_name: runtimeConnection.databaseName,
       correlation_id: "web-start",
     });
@@ -384,7 +407,7 @@ class InProcessNmpClient extends BaseClient {
 
   async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {
     return this.send({
-      type: "chirp_action",
+      type: "app_action",
       action,
       correlation_id: `web-${Date.now()}`,
     });
