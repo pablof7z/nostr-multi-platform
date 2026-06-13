@@ -2,13 +2,10 @@
 //!
 //! Split from `kernel/mod.rs` to keep it under the file-size gate.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::store::{EventStore, MemEventStore};
 use crate::substrate::RelayAuthorScoreStore;
-
-use super::types::Profile;
 
 pub(super) struct EventStoreBundle {
     pub(super) store: Arc<dyn EventStore>,
@@ -139,26 +136,4 @@ pub(super) fn resolve_storage_path(storage_path: Option<&str>) -> Option<String>
     storage_path
         .map(str::to_owned)
         .or_else(|| std::env::var("NMP_LMDB_PATH").ok())
-}
-
-pub(super) fn load_profile_intents(
-    publish_store: &Arc<dyn crate::publish::PublishStore>,
-) -> HashMap<String, Profile> {
-    let mut intents = HashMap::new();
-    let Ok(records) = publish_store.load_pending() else {
-        return intents;
-    };
-    for record in records {
-        let Some(profile) = super::nostr::parse_profile_intent(&record.event) else {
-            continue;
-        };
-        let pubkey = record.event.unsigned.pubkey;
-        let should_replace = intents
-            .get(&pubkey)
-            .is_none_or(|existing: &Profile| existing.created_at <= profile.created_at);
-        if should_replace {
-            intents.insert(pubkey, profile);
-        }
-    }
-    intents
 }

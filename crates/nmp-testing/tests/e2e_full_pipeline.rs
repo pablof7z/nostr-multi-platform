@@ -49,19 +49,18 @@ const PER_TEST_TIMEOUT_SECS: u64 = 5;
 //   1. Boot the kernel actor.
 //   2. Sign in as alice (establishes an active account with a local key signer).
 //   3. Dispatch PublishProfile with display_name = "Alice".
-//      — `publish_profile` builds + signs the kind:0 locally, then calls
-//        `record_local_publish_intent`, which populates
-//        `local_profile_intents[alice_pk]`.  This is the production path
-//        for the active account's profile card — the same path a relay echo
-//        of the published kind:0 would eventually update via `ingest_profile`.
+//      — `publish_profile` signs the kind:0 locally, then
+//        `record_local_publish_intent` routes it (since #1193, ADR-0045 Rev 2
+//        single-mechanism) through `verify_and_persist` + `ingest_profile`
+//        into the canonical `profiles` cache — the EXACT relay-ingest sequence.
+//        The later relay echo dedups to `Duplicate` (no-op).
 //   4. Force a snapshot emit (MarkChangedSinceEmit).
 //   5. Drain the update channel; assert the typed `profile` sidecar's
 //      display_name == "Alice".
 //
 // `profile` (not `claimed_profiles`) is the correct projection key here:
-// it is the active account's own profile card, always present in every
-// snapshot (D1), and populated by `local_profile_intents` after the
-// active account publishes its kind:0.
+// the active account's own profile card, present in every snapshot (D1),
+// populated immediately by the store-first local-publish path.
 #[test]
 fn cold_open_profile_view_full_pipeline() {
     use nmp_core::decode_snapshot_typed_projections;
@@ -94,7 +93,8 @@ fn cold_open_profile_view_full_pipeline() {
     // Step 2: Publish alice's profile.
     // Actor dispatch: PublishProfile → publish_profile() → sign locally →
     // publish_signed_with_correlation → record_local_publish_intent →
-    // local_profile_intents[alice_pk] = Profile { display: "Alice", ... }
+    // verify_and_persist + ingest_profile → profiles[alice_pk] =
+    // Profile { display: "Alice", ... }
     let mut fields = serde_json::Map::new();
     fields.insert(
         "display_name".to_string(),

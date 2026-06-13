@@ -178,15 +178,12 @@ impl Kernel {
     }
 
     pub(super) fn profile_for_pubkey(&self, pubkey: &str) -> Option<&Profile> {
-        match (
-            self.profiles.get(pubkey),
-            self.local_profile_intents.get(pubkey),
-        ) {
-            (Some(stored), Some(intent)) if intent.created_at > stored.created_at => Some(intent),
-            (Some(stored), _) => Some(stored),
-            (None, Some(intent)) => Some(intent),
-            (None, None) => None,
-        }
+        // Single-mechanism (ADR-0045 Rev 2, #1193): the `local_profile_intents`
+        // overlay was retired. Locally-published kind:0 profiles now land in
+        // `self.profiles` via `verify_and_persist` + `ingest_profile` at publish
+        // time (identical to the relay ingest arm), so this read needs no
+        // overlay merge.
+        self.profiles.get(pubkey)
     }
 
     // V-112 (ADR-0042): profile_action_for() deleted — it was called only from
