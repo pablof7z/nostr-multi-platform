@@ -25,6 +25,7 @@
 //! the simulated invocation completes. On old code (no `Condvar` wait), the
 //! setter would return immediately regardless of in-flight state.
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -182,6 +183,82 @@ fn set_callback_returns_immediately_when_no_callback_in_flight() {
         elapsed < Duration::from_millis(500),
         "setter blocked unexpectedly: {elapsed:?}"
     );
+}
+
+/// Bug 3 (D6 fail-loud): a poisoned `inner` lock must NOT cause the listener to
+/// silently skip delivering the update frame to the host (that freezes the UI).
+///
+/// Pre-fix the listener used `let Ok(mut guard) = inner.lock() else { continue };`
+/// so a poisoned mutex meant the registration was never read and the foreign
+/// callback was never invoked. The fix recovers the still-valid inner state via
+/// `unwrap_or_else(|e| e.into_inner())`. This test poisons the lock, then runs
+/// the exact recovery dance the production listener uses and asserts the
+/// callback still fires.
+#[test]
+fn poisoned_lock_still_fires_callback() {
+    // A callback that bumps the AtomicU32 pointed at by `context`.
+    extern "C" fn counting_callback(context: *mut std::ffi::c_void, _bytes: *const u8, _len: usize) {
+        // SAFETY: the test passes a &AtomicU32's address as the context and
+        // keeps it alive for the duration of the call.
+        let counter = unsafe { &*(context as *const AtomicU32) };
+        counter.fetch_add(1, Ordering::SeqCst);
+    }
+
+    let fired = Arc::new(AtomicU32::new(0));
+    let gate = Arc::new(UpdateCallbackGate::new());
+    {
+        let mut inner = gate.inner.lock().unwrap();
+        inner.registration = Some(UpdateCallbackRegistration {
+            context: Arc::as_ptr(&fired) as usize,
+            callback: counting_callback,
+        });
+    }
+
+    // Poison the mutex: a thread panics while holding the lock.
+    {
+        let poison_gate = Arc::clone(&gate);
+        let _ = thread::spawn(move || {
+            let _guard = poison_gate.inner.lock().unwrap();
+            panic!("intentional poison");
+        })
+        .join();
+    }
+    assert!(
+        gate.inner.is_poisoned(),
+        "precondition: the lock must be poisoned for this test to be meaningful"
+    );
+
+    // Replicate the production listener's acquire path with the fix applied:
+    // recover the poisoned-but-valid guard instead of `continue`-ing.
+    let registration = {
+        let mut guard = gate.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let reg = guard.registration;
+        if reg.is_some() {
+            guard.in_flight += 1;
+        }
+        reg
+    };
+    let registration = registration.expect("poisoned lock must still surface the registration");
+
+    // Invoke the callback exactly as the listener does.
+    (registration.callback)(
+        registration.context as *mut std::ffi::c_void,
+        std::ptr::null(),
+        0,
+    );
+
+    assert_eq!(
+        fired.load(Ordering::SeqCst),
+        1,
+        "callback must fire even after the listener lock was poisoned (no silent skip)"
+    );
+
+    // The decrement path must also recover from poison so in_flight is balanced.
+    {
+        let mut guard = gate.inner.lock().unwrap_or_else(|e| e.into_inner());
+        guard.in_flight = guard.in_flight.saturating_sub(1);
+        assert_eq!(guard.in_flight, 0, "in_flight must be balanced after recovery");
+    }
 }
 
 /// Verify that `in_flight` is only incremented when a registration is present.

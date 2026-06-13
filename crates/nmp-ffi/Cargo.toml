@@ -67,6 +67,9 @@ nmp-signers = { path = "../nmp-signers", optional = true }
 nostr = { workspace = true, features = ["nip44", "nip59"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
+# Structured logging for D6 fail-loud diagnostics (e.g. recovering a poisoned
+# update-listener lock instead of silently dropping the host callback).
+tracing = "0.1"
 zeroize = { workspace = true }
 
 [dev-dependencies]
