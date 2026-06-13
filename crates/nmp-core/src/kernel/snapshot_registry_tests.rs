@@ -780,6 +780,7 @@ fn _wallet_projection_moved_to_nmp_nip47() {
         status: "ready".to_string(),
         relay_url: "wss://wallet.example/".to_string(),
         wallet_npub: "npub1walletexample".to_string(),
+        wallet_pubkey_hex: "ab".repeat(32),
         balance_msats: Some(21_000),
         balance_sats: Some(21),
         balance_sats_display: Some("21".to_string()),
@@ -790,6 +791,10 @@ fn _wallet_projection_moved_to_nmp_nip47() {
         wallet_npub_short: "npub1walle…xample".to_string(),
         is_ready: true,
         is_connected: true,
+        connection_state: None,
+        // ADR-0032 / #623: pre-computed display fields.
+        status_label: "Ready".to_string(),
+        status_tone: "active".to_string(),
     });
     let connected: serde_json::Value =
         serde_json::from_str(&kernel.make_update_json_for_test(true)).expect("snapshot json");

@@ -877,16 +877,48 @@ enum TypedProjectionGlue {
     /// `balanceSats` (`Int?`, widened from the wire `uint64`) are `nil` when
     /// their companion is `false`, byte-identical to the JSON path.
     static func wallet(_ reader: nmp_nip47_WalletStatus) -> WalletStatusData {
-        WalletStatusData(
-            status: reader.status ?? "",
+        let rawStatus = reader.status ?? ""
+        // `statusLabel` / `statusTone` are tail-appended (additive). If absent
+        // (older buffer without these fields), fall back to re-deriving from
+        // `rawStatus` — identical to what the Rust decode path does (D1).
+        let label = reader.statusLabel ?? Self.derivedStatusLabel(rawStatus)
+        let tone  = reader.statusTone  ?? Self.derivedStatusTone(rawStatus)
+        return WalletStatusData(
+            status: rawStatus,
             relayUrl: reader.relayUrl ?? "",
             walletPubkeyHex: reader.walletPubkeyHex ?? "",
             walletNpub: reader.walletNpub ?? "",
             balanceMsats: reader.hasBalanceMsats ? reader.balanceMsats : nil,
             balanceSats: reader.hasBalanceSats ? Int(reader.balanceSats) : nil,
             isReady: reader.isReady,
-            isConnected: reader.isConnected
+            isConnected: reader.isConnected,
+            statusLabel: label,
+            statusTone: tone
         )
+    }
+
+    /// Derive the display label from the raw wire status token. Mirrors the
+    /// Rust `status_label()` function — only needed when decoding an older
+    /// buffer that predates the tail-appended fields.
+    private static func derivedStatusLabel(_ wire: String) -> String {
+        switch wire {
+        case "connecting":    return "Connecting"
+        case "ready":         return "Ready"
+        case "error":         return "Error"
+        case "disconnected":  return "Disconnected"
+        default:              return "Unknown"
+        }
+    }
+
+    /// Derive the semantic tone from the raw wire status token. Mirrors the
+    /// Rust `status_tone()` function — only needed when decoding an older buffer.
+    private static func derivedStatusTone(_ wire: String) -> String {
+        switch wire {
+        case "ready":       return "active"
+        case "connecting":  return "warning"
+        case "error":       return "error"
+        default:            return "inactive"
+        }
     }
 
     // MARK: settings_hub → [String: Int]

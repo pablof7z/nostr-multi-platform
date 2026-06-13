@@ -23,6 +23,15 @@ namespace nmp.nip47;
 // has no `include`, so generate plainly:
 //   flatc --rust -o crates/nmp-nip47/src/wire/generated \
 //         crates/nmp-nip47/schema/wallet_status.fbs
+//
+// Regenerate Swift bindings (FlatBuffers 25.12.19):
+//   flatc --swift -o ios/Chirp/Chirp/Bridge/Generated \
+//         crates/nmp-nip47/schema/wallet_status.fbs
+//
+// Regenerate Kotlin bindings (FlatBuffers 25.12.19, same pin as Rust/Swift
+// for the nip47 schema — distinct from nmp_update.fbs which uses 25.2.10):
+//   flatc --kotlin -o android/app/src/main/java \
+//         crates/nmp-nip47/schema/wallet_status.fbs
 
 // Coarse-grained NWC transport-health state (`nmp_nip47::NwcConnectionState`).
 enum NwcConnectionState:ubyte { Connected = 0, Reconnecting = 1, TransportLost = 2 }
@@ -56,6 +65,14 @@ table WalletStatus {
   // in the serde struct). Tail-appended (wire-compatible additive field) so an
   // older host that predates it still decodes every prior field.
   wallet_pubkey_hex:string;
+  // ADR-0032 / #623: pre-computed human-readable label for the current status.
+  // Values: "Connecting" | "Ready" | "Error" | "Disconnected" | "Unknown".
+  // Tail-appended — older hosts ignore it; new hosts bind it verbatim.
+  status_label:string;
+  // ADR-0032 / #623: semantic tone for the current status.
+  // Values: "active" | "warning" | "error" | "inactive".
+  // Tail-appended — older hosts ignore it; new hosts map tone → colour/icon.
+  status_tone:string;
 }
 
 file_identifier "NWST";

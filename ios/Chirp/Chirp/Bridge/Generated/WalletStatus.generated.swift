@@ -48,6 +48,8 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     case hasConnectionState = 28
     case connectionState = 30
     case walletPubkeyHex = 32
+    case statusLabel = 34
+    case statusTone = 36
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -73,7 +75,11 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
   public var connectionState: nmp_nip47_NwcConnectionState { let o = _accessor.offset(VTOFFSET.connectionState.v); return o == 0 ? .connected : nmp_nip47_NwcConnectionState(rawValue: _accessor.readBuffer(of: UInt8.self, at: o)) ?? .connected }
   public var walletPubkeyHex: String? { let o = _accessor.offset(VTOFFSET.walletPubkeyHex.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var walletPubkeyHexSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.walletPubkeyHex.v) }
-  public static func startWalletStatus(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 15) }
+  public var statusLabel: String? { let o = _accessor.offset(VTOFFSET.statusLabel.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var statusLabelSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.statusLabel.v) }
+  public var statusTone: String? { let o = _accessor.offset(VTOFFSET.statusTone.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var statusToneSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.statusTone.v) }
+  public static func startWalletStatus(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 17) }
   public static func add(status: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: status, at: VTOFFSET.status.p) }
   public static func add(relayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayUrl, at: VTOFFSET.relayUrl.p) }
   public static func add(walletNpub: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: walletNpub, at: VTOFFSET.walletNpub.p) }
@@ -95,6 +101,8 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
    at: VTOFFSET.hasConnectionState.p) }
   public static func add(connectionState: nmp_nip47_NwcConnectionState, _ fbb: inout FlatBufferBuilder) { fbb.add(element: connectionState.rawValue, def: 0, at: VTOFFSET.connectionState.p) }
   public static func add(walletPubkeyHex: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: walletPubkeyHex, at: VTOFFSET.walletPubkeyHex.p) }
+  public static func add(statusLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: statusLabel, at: VTOFFSET.statusLabel.p) }
+  public static func add(statusTone: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: statusTone, at: VTOFFSET.statusTone.p) }
   public static func endWalletStatus(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createWalletStatus(
     _ fbb: inout FlatBufferBuilder,
@@ -112,7 +120,9 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     isConnected: Bool = false,
     hasConnectionState: Bool = false,
     connectionState: nmp_nip47_NwcConnectionState = .connected,
-    walletPubkeyHexOffset walletPubkeyHex: Offset = Offset()
+    walletPubkeyHexOffset walletPubkeyHex: Offset = Offset(),
+    statusLabelOffset statusLabel: Offset = Offset(),
+    statusToneOffset statusTone: Offset = Offset()
   ) -> Offset {
     let __start = nmp_nip47_WalletStatus.startWalletStatus(&fbb)
     nmp_nip47_WalletStatus.add(status: status, &fbb)
@@ -130,6 +140,8 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     nmp_nip47_WalletStatus.add(hasConnectionState: hasConnectionState, &fbb)
     nmp_nip47_WalletStatus.add(connectionState: connectionState, &fbb)
     nmp_nip47_WalletStatus.add(walletPubkeyHex: walletPubkeyHex, &fbb)
+    nmp_nip47_WalletStatus.add(statusLabel: statusLabel, &fbb)
+    nmp_nip47_WalletStatus.add(statusTone: statusTone, &fbb)
     return nmp_nip47_WalletStatus.endWalletStatus(&fbb, start: __start)
   }
 
@@ -150,6 +162,8 @@ public struct nmp_nip47_WalletStatus: FlatBufferTable, FlatbuffersVectorInitiali
     try _v.visit(field: VTOFFSET.hasConnectionState.p, fieldName: "hasConnectionState", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.connectionState.p, fieldName: "connectionState", required: false, type: nmp_nip47_NwcConnectionState.self)
     try _v.visit(field: VTOFFSET.walletPubkeyHex.p, fieldName: "walletPubkeyHex", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.statusLabel.p, fieldName: "statusLabel", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.statusTone.p, fieldName: "statusTone", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }
