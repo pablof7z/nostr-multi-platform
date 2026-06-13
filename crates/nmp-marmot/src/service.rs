@@ -28,9 +28,10 @@
 //!
 //! [`wrap_welcome`](MarmotService::wrap_welcome) /
 //! [`unwrap_and_process_welcome`](MarmotService::unwrap_and_process_welcome)
-//! drive the gift-wrap via `nmp_nip59::{gift_wrap, unwrap_gift_wrap}` (the
-//! M11.5 key-boundary seam). The kind:444 rumor → kind:1059 gift-wrap → unwrap
-//! → `process_welcome` → `accept_welcome` flow is fully exercised in-crate.
+//! drive the gift-wrap via `nmp_nip59::{gift_wrap_local, unwrap_gift_wrap}` (the
+//! M11.5 key-boundary seam — Marmot is local-key-only by construction). The
+//! kind:444 rumor → kind:1059 gift-wrap → unwrap → `process_welcome` →
+//! `accept_welcome` flow is fully exercised in-crate.
 //!
 //! `openmls` is NEVER imported directly — only `mdk_core::prelude` re-exports.
 
@@ -467,20 +468,18 @@ impl MarmotService {
     /// `receiver` is the invitee's Nostr pubkey. The returned signed kind:1059
     /// event is published to the invitee's NIP-65 inbox relays.
     ///
-    /// Goes through the ADR-0026 `SignerForSeal` seam
-    /// (`nmp_nip59::gift_wrap_with_signer`) — `nostr::Keys` has a blanket
-    /// `SignerForSeal` impl that resolves every `SignerOp` synchronously, so
-    /// for the local-keys path this call is sync end-to-end and `wait`
-    /// returns immediately without spawning the driver thread.
+    /// Marmot is local-key-only by construction (it holds its own MLS identity
+    /// `Keys`), so this seals + wraps synchronously through the pure
+    /// `nmp_nip59::gift_wrap_local` composition (ADR-0050 §D5 — the
+    /// `SignerForSeal` trait + driver-thread execution model is gone). No port,
+    /// no thread, no `SignerOp`.
     pub fn wrap_welcome(
         &self,
         receiver: &PublicKey,
         welcome_rumor: UnsignedEvent,
     ) -> Result<Event> {
-        let signer: Arc<dyn nmp_nip59::SignerForSeal> = Arc::new(self.keys.clone());
         let tweaked = nostr::Timestamp::tweaked(nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK);
-        nmp_nip59::gift_wrap_with_signer(&signer, receiver, &welcome_rumor, tweaked)
-            .wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)
+        nmp_nip59::gift_wrap_local(&self.keys, receiver, &welcome_rumor, tweaked)
             .map_err(|e| MarmotError::GiftWrap(e.to_string()))
     }
 

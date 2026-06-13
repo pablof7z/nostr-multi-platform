@@ -63,9 +63,10 @@
 //! ## Welcome (kind:444) delivery + NIP-59
 //!
 //! The service drives NIP-59 gift-wrap / unwrap of kind:444 Welcome rumors
-//! through `nmp_nip59::{gift_wrap, unwrap_gift_wrap}` (the M11.5 key-boundary
-//! seam — caller holds `nostr::Keys`). NIP-59 stays a generic gift-wrap
-//! crate with no Marmot nouns (D0); the Welcome-specific wiring lives here.
+//! through `nmp_nip59::{gift_wrap_local, unwrap_gift_wrap}` (the M11.5
+//! key-boundary seam — caller holds `nostr::Keys`). NIP-59 stays a generic
+//! gift-wrap crate with no Marmot nouns (D0); the Welcome-specific wiring lives
+//! here.
 //!
 //! ## Relay routing
 //!
