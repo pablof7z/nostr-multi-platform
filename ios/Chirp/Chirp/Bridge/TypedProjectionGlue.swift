@@ -455,7 +455,7 @@ enum TypedProjectionGlue {
     /// `conversations` → `[DmConversation]`, each carrying its `messages` →
     /// `[DmMessage]`. The Rust projection owns ALL ordering (conversations
     /// newest-thread-first, messages oldest-first) and the `isOutgoing` /
-    /// `remoteSignerUnsupported` classification — the shell re-sorts NOTHING
+    /// `decryptState` classification — the shell re-sorts NOTHING
     /// (thin-shell rule). `replyTo` is an `Option<String>` on the wire
     /// (`has_reply_to` companion bool); preserved as `nil` when absent so the
     /// typed value is byte-identical to the JSON path's `null`. `sourceRelays`
@@ -480,7 +480,11 @@ enum TypedProjectionGlue {
                     }
                 )
             },
-            remoteSignerUnsupported: reader.remoteSignerUnsupported
+            // §D7 — `decryptState` is a required string on the wire; an absent /
+            // empty value maps to "unavailable" (the safe "host hides the screen"
+            // default, never a misleading "ok"), matching the Rust decoder.
+            decryptState: (reader.decryptState?.isEmpty == false) ? reader.decryptState! : "unavailable",
+            undecryptedCount: reader.undecryptedCount
         )
     }
 

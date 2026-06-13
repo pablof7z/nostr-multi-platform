@@ -57,9 +57,17 @@ table DmConversation {
 table DmInboxSnapshot {
   // Conversations, ordered by most-recent message (newest thread first).
   conversations:[DmConversation];
-  // `true` when the active account uses a remote signer that cannot unseal
-  // gift-wraps — the inbox is always empty in that case.
-  remote_signer_unsupported:bool;
+  // ADR-0050 §D7 decrypt-pipeline policy state (errors-as-state, D6) — the
+  // tri-state that REPLACED the old `remote_signer_unsupported:bool`. Stable
+  // wire tokens: "unavailable" (no active account → host hides the DM screen),
+  // "limited" (active account, `undecrypted_count > 0`: bunker backfill pending
+  // or throttled by the bounded per-account decrypt queue — NOT a silent drop),
+  // "ok" (active account, everything decrypted).
+  decrypt_state:string;
+  // ADR-0050 §D7 — count of envelopes admitted-but-not-yet-decrypted plus those
+  // not admitted because the per-account bound was full. Non-zero exactly when
+  // decrypt_state == "limited"; the host renders "N still decrypting".
+  undecrypted_count:uint32;
 }
 
 file_identifier "NDMI";
