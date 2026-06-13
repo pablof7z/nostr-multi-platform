@@ -276,7 +276,17 @@ pub(super) fn shape_is_ephemeral_only(shape: &InterestShape) -> bool {
 }
 
 /// In-place rewrite of every non-ephemeral sub-shape's `since` to
-/// `max(existing_since, watermark + 1)`.
+/// `max(existing_since, watermark + 1)`, but ONLY when the shape already
+/// carries an explicit `since` (`Some(t)`).
+///
+/// Owner decision #1281 (2026-06-13): a `since=None` ("all-time / backfill")
+/// interest is EXEMPT from the T129 watermark rewrite. Raising None to
+/// `watermark+1` would silently prevent the relay from returning events older
+/// than the local store watermark, defeating backfill. The optimisation is
+/// only applied when the caller already expressed a lower bound (`Some(t)`):
+/// in that case we raise the floor to `max(t, watermark + 1)` so the relay
+/// does not re-send events already on disk, but we never introduce a new
+/// lower bound where none existed.
 ///
 /// The rewrite is purely a value mutation — `canonical_filter_hash` is left
 /// untouched so the wire-emitter's diff treats a re-opened sub as the same
@@ -297,14 +307,18 @@ pub(super) fn apply_watermark_rewrite(
             if shape_is_ephemeral_only(&sub_shape.shape) {
                 continue;
             }
+            // #1281: since=None means "all-time / backfill" — exempt from rewrite.
+            // Only raise an existing Some(t) floor toward the watermark.
+            let Some(existing) = sub_shape.shape.since else {
+                continue;
+            };
             let Some(watermark) = watermark_fn(&sub_shape.shape) else {
                 continue;
             };
             let floor = watermark.saturating_add(1);
-            sub_shape.shape.since = Some(match sub_shape.shape.since {
-                Some(existing) if existing >= floor => existing,
-                _ => floor,
-            });
+            if floor > existing {
+                sub_shape.shape.since = Some(floor);
+            }
         }
     }
 }
