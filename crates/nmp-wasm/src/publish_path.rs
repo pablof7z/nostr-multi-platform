@@ -269,8 +269,6 @@ pub(crate) async fn publish_app_action(
         // npub/bech32/garbage targets before touching the follow list.
         // Canonicalize to lowercase so uppercase-hex doesn't create duplicate
         // or fail-to-remove against an already-lowercase entry.
-        // Known data-loss gap (relay hints / petnames / content not preserved):
-        // see issue #1246.
         if !is_hex_pubkey(pubkey) {
             return WorkerEvent::CapabilityFailure(CapabilityFailure {
                 capability: action_type,
@@ -291,16 +289,17 @@ pub(crate) async fn publish_app_action(
         }
         let cached_pubkey = signer.pubkey();
 
-        // Safety gate: read the active account's current follow list before the
-        // sign await. `None` means the kind:3 has not been ingested yet — fail
-        // closed to prevent silently overwriting an unloaded contact list.
-        // The borrow is dropped before the await (RefCell borrow discipline).
-        let current_follows = {
+        // Safety gate: read the active account's FULL existing kind:3 raw event
+        // (every tag verbatim + content) before the sign await. `None` means
+        // the kind:3 has not been ingested yet — fail closed to prevent
+        // silently overwriting an unloaded contact list. The borrow is dropped
+        // before the await (RefCell borrow discipline).
+        let current_kind3 = {
             let r = reducer.borrow();
-            r.try_current_follows()
+            r.try_current_kind3_event()
         };
-        let current_follows = match current_follows {
-            Some(list) => list,
+        let (current_tags, current_content) = match current_kind3 {
+            Some(event) => event,
             None => {
                 return WorkerEvent::CapabilityFailure(CapabilityFailure {
                     capability: action_type,
@@ -310,23 +309,20 @@ pub(crate) async fn publish_app_action(
             }
         };
 
-        // Edit the follow list using the shared canonical builders.
-        let new_follows = if is_add {
-            nmp_core::tags::follow_list_after_add(&current_follows, &pubkey)
+        // Splice ONLY the `p` section via the shared canonical editors — every
+        // non-`p` tag, every existing follow's relay-hint + petname, and the
+        // original content are preserved on re-publish (issue #1246a).
+        let tags = if is_add {
+            nmp_core::tags::kind3_tags_after_add(&current_tags, &pubkey)
         } else {
-            nmp_core::tags::follow_list_after_remove(&current_follows, &pubkey)
+            nmp_core::tags::kind3_tags_after_remove(&current_tags, &pubkey)
         };
-
-        let tags: Vec<Vec<String>> = new_follows
-            .iter()
-            .map(|p| vec!["p".to_string(), p.clone()])
-            .collect();
 
         let unsigned = nmp_core::substrate::UnsignedEvent {
             pubkey: cached_pubkey.to_hex(),
             kind: 3,
             tags,
-            content: String::new(),
+            content: current_content,
             created_at: now_secs,
         };
 

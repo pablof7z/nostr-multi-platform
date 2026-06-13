@@ -327,29 +327,6 @@ impl Kernel {
         self.events.get(event_id_hex).map(|e| e.author.clone())
     }
 
-    /// Latest kind:3 follow set for `author_hex` (hex pubkeys from `p` tags),
-    /// read from the shared store. Empty if no kind:3 is known yet.
-    #[must_use]
-    pub(crate) fn current_follows(&self, author_hex: &str) -> Vec<String> {
-        let Some(author) = crate::kernel::hex_to_pubkey_bytes(author_hex) else {
-            return Vec::new();
-        };
-        let Ok(mut iter) = self.store.scan_by_author_kind(&author, &[3], None, None, 1) else {
-            return Vec::new();
-        };
-        let Some(Ok(stored)) = iter.next() else {
-            return Vec::new();
-        };
-        stored
-            .raw
-            .tags
-            .iter()
-            .filter(|t: &&Vec<String>| t.first().map(String::as_str) == Some("p"))
-            .filter_map(|t| t.get(1).cloned())
-            .filter(|pk| is_hex_pubkey(pk))
-            .collect()
-    }
-
     /// Latest kind:3 follow set for the active account, distinguishing
     /// "not loaded" from "loaded but empty".
     ///
@@ -370,6 +347,31 @@ impl Kernel {
     /// would silently drop follows ≥501 on every edit.
     #[must_use]
     pub(crate) fn try_current_follows(&self) -> Option<Vec<String>> {
+        let (tags, _content) = self.try_current_kind3_event()?;
+        let follows = tags
+            .iter()
+            .filter(|t: &&Vec<String>| t.first().map(String::as_str) == Some("p"))
+            .filter_map(|t| t.get(1).cloned())
+            .filter(|pk| is_hex_pubkey(pk))
+            .collect();
+        Some(follows)
+    }
+
+    /// Return the active account's FULL existing kind:3 raw event — every tag
+    /// verbatim (`Vec<Vec<String>>`, including relay-hint and petname columns
+    /// on `p` tags and every non-`p` tag) plus the original `content` string —
+    /// so a follow-list edit can splice ONLY the `p` section and re-publish
+    /// without discarding the rest of the user's contact list (issue #1246).
+    ///
+    /// Fails closed: returns `None` when no active account is set OR the active
+    /// account's kind:3 has not been ingested yet — the SAME safety gate as
+    /// [`Self::try_current_follows`]. Callers MUST receive `Some` before
+    /// editing; publishing an edit built from `None` would silently wipe an
+    /// unloaded contact list. The tag set is uncapped (a cap is a subscription
+    /// concern, not a contact-list-editing one — capping here would silently
+    /// drop follows ≥501 on every edit).
+    #[must_use]
+    pub(crate) fn try_current_kind3_event(&self) -> Option<(Vec<Vec<String>>, String)> {
         let author_hex = self.active_account_pubkey()?;
         let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
         let Ok(mut iter) = self.store.scan_by_author_kind(&author, &[3], None, None, 1) else {
@@ -379,14 +381,6 @@ impl Kernel {
             // kind:3 not yet ingested — None, not empty.
             return None;
         };
-        let follows = stored
-            .raw
-            .tags
-            .iter()
-            .filter(|t: &&Vec<String>| t.first().map(String::as_str) == Some("p"))
-            .filter_map(|t| t.get(1).cloned())
-            .filter(|pk| is_hex_pubkey(pk))
-            .collect();
-        Some(follows)
+        Some((stored.raw.tags.clone(), stored.raw.content.clone()))
     }
 }
