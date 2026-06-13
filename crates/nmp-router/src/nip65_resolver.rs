@@ -52,7 +52,6 @@ use nmp_core::slots::{
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
 use nmp_core::store::{EventStore, PubKey, StoredEvent};
-use tracing;
 
 /// Maximum distinct `#p` pubkeys that still get recipient inbox fan-out.
 ///
