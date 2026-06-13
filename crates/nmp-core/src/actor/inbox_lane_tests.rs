@@ -86,15 +86,21 @@ fn commands_are_served_before_relay_mail() {
         "both commands drained on the priority lane"
     );
     assert!(!result.drain.hit_budget());
-    // Only now does a relay event surface — and it comes from the backlog
-    // (the relay mail stashed while draining commands), zero wait.
+    // Only now do the relay events surface — both stashed into the backlog
+    // while the command lane was drained (#1264 two-step relay drain: the
+    // production loop serves them via `drain_backlog_batch` before the single
+    // blocking wait, never from `next_after_drain`).
+    let backlog = scheduler.drain_backlog_batch();
+    assert_eq!(
+        backlog.len(),
+        2,
+        "both interleaved relay events were stashed for the relay lane"
+    );
+    // With the backlog now empty the inbox channel is exhausted too: the next
+    // step is `Idle` (open inbox, nothing queued), not another relay event.
     assert!(matches!(
         scheduler.next_after_drain(&inbox, Duration::ZERO),
-        LoopStep::Relay(_)
-    ));
-    assert!(matches!(
-        scheduler.next_after_drain(&inbox, Duration::ZERO),
-        LoopStep::Relay(_)
+        LoopStep::Idle
     ));
 }
 
@@ -125,12 +131,15 @@ fn command_burst_yields_to_relay_at_budget() {
         result.drain.hit_budget(),
         "budget reached → relay_wait is ZERO"
     );
-    // The relay event seen before the budget was hit is served immediately
-    // (from the backlog), proving relay is not starved by the command flood.
-    assert!(matches!(
-        scheduler.next_after_drain(&inbox, Duration::ZERO),
-        LoopStep::Relay(_)
-    ));
+    // The relay event seen before the budget was hit was stashed into the
+    // backlog (served by the production loop's `drain_backlog_batch` right
+    // after this drain), proving relay is not starved by the command flood.
+    let backlog = scheduler.drain_backlog_batch();
+    assert_eq!(
+        backlog.len(),
+        1,
+        "the relay event seen during the command drain was stashed, not dropped"
+    );
     // Leftover commands remain in the channel for the next iteration (tx
     // kept alive — the live actor holds the relay sink, so the inbox does
     // not disconnect while draining).
