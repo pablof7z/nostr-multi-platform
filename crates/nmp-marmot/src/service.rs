@@ -566,6 +566,23 @@ impl MarmotService {
         self.mdk.get_members(group_id).map_err(MarmotError::from)
     }
 
+    /// The relay-pinned relay URLs for a group, as persisted in the MDK SQLite
+    /// store. Used on restart to re-seed the in-memory `group_relays` cache and
+    /// re-push per-group kind:445 interests (the post-restart live-receive fix).
+    ///
+    /// Returns an empty `Vec` for a group whose relays have never been written
+    /// (consistent with the in-memory cache miss behaviour in
+    /// `InnerHandle::group_relays`). The caller skips empty relay sets — no
+    /// subscription is pushed, matching the existing empty-guard in
+    /// `InnerHandle::cache_group_relays`.
+    #[must_use]
+    pub fn group_relays(&self, group_id: &GroupId) -> Result<Vec<RelayUrl>> {
+        self.mdk
+            .get_relays(group_id)
+            .map(|set| set.into_iter().collect())
+            .map_err(MarmotError::from)
+    }
+
     /// MLS leaf-index → pubkey map. Backs `MarmotGroupRow.members` leaf indices.
     pub fn group_leaf_map(
         &self,
