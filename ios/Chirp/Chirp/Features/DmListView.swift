@@ -25,11 +25,14 @@ struct DmListView: View {
 
     var body: some View {
         Group {
-            if store.remoteSignerUnsupported {
-                bunkerUnsupportedState
-            } else if store.conversations.isEmpty {
+            if store.isUnavailable {
+                // §D7 "unavailable": no active account — host hides the DM screen.
+                unavailableState
+            } else if store.conversations.isEmpty && !store.isLimited {
                 emptyState
             } else {
+                // §D7 "limited" renders the list WITH a "still decrypting" banner
+                // (errors-as-state) rather than hiding pending messages.
                 conversationList
             }
         }
@@ -46,7 +49,9 @@ struct DmListView: View {
                 }
                 .accessibilityLabel("New message")
                 .accessibilityIdentifier("dm-new-message-button")
-                .disabled(store.remoteSignerUnsupported)
+                // Only disabled with no active account (§D7 "unavailable"); a
+                // bunker account CAN now send/decrypt (ADR-0050 §D6).
+                .disabled(store.isUnavailable)
             }
         }
         .sheet(isPresented: $showCompose) {
@@ -66,20 +71,40 @@ struct DmListView: View {
         }
     }
 
-    private var bunkerUnsupportedState: some View {
+    private var unavailableState: some View {
         ScrollView {
             ChirpPlaceholder(
                 systemImage: "exclamationmark.lock.fill",
                 title: "DMs unavailable",
-                subtitle: "End-to-end encrypted DMs require a local key.\nBunker (NIP-46) accounts cannot decrypt messages yet."
+                subtitle: "Sign in to an account to send and read end-to-end encrypted messages."
             )
             .frame(minHeight: 360)
         }
     }
 
+    /// ADR-0050 §D7 "limited" banner — a bunker backfill is pending or throttled
+    /// by the bounded per-account decrypt queue. Surfaced as state (the count is
+    /// never silently dropped), shown above whatever has already decrypted.
+    private var decryptingBanner: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("^[\(Int(store.undecryptedCount)) message](inflect: true) still decrypting…")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .accessibilityIdentifier("dm-decrypting-banner")
+    }
+
     private var conversationList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
+                if store.isLimited && store.undecryptedCount > 0 {
+                    decryptingBanner
+                }
                 // The projection emits conversations newest-thread-first;
                 // render in that order — no Swift-side re-sort (thin-shell).
                 ForEach(store.conversations) { conversation in
