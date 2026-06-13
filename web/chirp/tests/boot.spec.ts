@@ -24,7 +24,7 @@
  *   3. The fixture relay received at least one inbound WebSocket
  *      connection from the browser.  The relay URL was injected as
  *      `?relay=<url>` and forwarded to `client.start()` as
- *      `relay_bootstrap`, overriding the hardcoded chirp defaults.
+ *      `relay_bootstrap`, overriding the host-supplied chirp defaults.
  *      DegradedRuntime never dials any relays — relay connections are
  *      opened exclusively by the real wasm runtime via nmp-core's relay
  *      pool.  Observed from the Node.js relay side (not the DOM) so no
@@ -46,7 +46,7 @@
  * The fixture relay (fixture-relay.ts) runs in the Node test process and
  * listens on a random loopback port.  The app receives the relay URL via
  * the `?relay=` query parameter, which App.tsx reads and passes to
- * client.start() as relay_bootstrap, overriding the hardcoded chirp URLs.
+ * client.start() as relay_bootstrap, overriding the host-supplied chirp URLs.
  */
 
 import { test, expect } from "@playwright/test";

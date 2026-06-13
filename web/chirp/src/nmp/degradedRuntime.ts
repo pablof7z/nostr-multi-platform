@@ -32,7 +32,7 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
-      case "chirp_action":
+      case "app_action":
         return [
           {
             type: "capability_failure",

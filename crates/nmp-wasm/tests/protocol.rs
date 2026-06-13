@@ -18,30 +18,8 @@ fn hello_round_trips_through_json() {
     assert_eq!(decoded, request);
 }
 
-#[test]
-fn start_config_uses_shared_chirp_defaults_when_web_omits_relays() {
-    let decoded: WorkerRequest = serde_json::from_value(serde_json::json!({
-        "type": "start",
-        "app_id": "chirp",
-        "database_name": "chirp-dev",
-        "correlation_id": "start-1"
-    }))
-    .unwrap();
-
-    assert_eq!(
-        decoded,
-        WorkerRequest::Start(StartConfig {
-            app_id: "chirp".to_string(),
-            relays: nmp_chirp_config::chirp_default_relay_urls(),
-            relay_bootstrap: nmp_chirp_config::chirp_default_relay_bootstrap()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
-            database_name: "chirp-dev".to_string(),
-            correlation_id: "start-1".to_string(),
-        })
-    );
-}
+// The `StartConfig` relay-policy deserialization contract (#1125) lives in
+// `tests/start_config.rs` to keep this file under the 500-LOC hard cap.
 
 #[test]
 fn start_runs_browser_wasm_facade_with_shared_relay_defaults() {
@@ -103,7 +81,7 @@ fn invalid_protocol_is_rejected_before_start() {
 }
 
 #[test]
-fn chirp_action_publish_note_maps_to_kernel_publish_raw_action() {
+fn app_action_publish_note_maps_to_kernel_publish_raw_action() {
     // The WASM worker protocol still exposes a `PublishNote` app-action verb,
     // but it now lowers to the generic core `PublishRaw` (kind:1) envelope —
     // the kind:1-specific `PublishAction::PublishNote` was removed in #906.
@@ -131,9 +109,9 @@ fn chirp_action_publish_note_maps_to_kernel_publish_raw_action() {
 }
 
 #[test]
-fn chirp_action_react_defaults_to_like_without_host_policy() {
+fn app_action_react_defaults_to_like_without_host_policy() {
     let request: WorkerRequest = serde_json::from_value(json!({
-        "type": "chirp_action",
+        "type": "app_action",
         "correlation_id": "react-1",
         "action": {
             "action": "react",
@@ -143,7 +121,7 @@ fn chirp_action_react_defaults_to_like_without_host_policy() {
     .unwrap();
 
     let WorkerRequest::AppAction(action) = request else {
-        panic!("expected chirp action request");
+        panic!("expected app action request");
     };
     let dispatch = action.into_action_dispatch();
 
@@ -158,7 +136,7 @@ fn chirp_action_react_defaults_to_like_without_host_policy() {
 }
 
 #[test]
-fn chirp_action_uses_same_generic_worker_event_path() {
+fn app_action_uses_same_generic_worker_event_path() {
     let mut runtime = WasmRuntime::new();
 
     let events = runtime
@@ -201,11 +179,11 @@ fn start_emits_flatbuffer_snapshot_update_from_real_kernel() {
     let events = runtime
         .handle(WorkerRequest::Start(StartConfig {
             app_id: "chirp".to_string(),
-            relays: nmp_chirp_config::chirp_default_relay_urls(),
-            relay_bootstrap: nmp_chirp_config::chirp_default_relay_bootstrap()
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            relays: vec!["wss://relay.example".to_string()],
+            relay_bootstrap: vec![RelayBootstrapEntry {
+                url: "wss://relay.example".to_string(),
+                role: "both,indexer".to_string(),
+            }],
             database_name: "chirp-dev".to_string(),
             correlation_id: "start-1".to_string(),
         }))

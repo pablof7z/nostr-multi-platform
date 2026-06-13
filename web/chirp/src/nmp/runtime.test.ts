@@ -44,6 +44,8 @@ describe("DegradedRuntime protocol flow", () => {
       runtime.handle({
         type: "start",
         app_id: "chirp",
+        relays: ["wss://relay.example"],
+        relay_bootstrap: [{ url: "wss://relay.example", role: "both,indexer" }],
         database_name: "chirp-test",
         correlation_id: "start-1",
       }),
@@ -112,7 +114,7 @@ describe("createNmpClient fallback", () => {
     });
     expect(dispatched.events[0]).toMatchObject({
       type: "capability_failure",
-      capability: "chirp_action",
+      capability: "app_action",
       reason: "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
     });
   });
@@ -408,11 +410,13 @@ describe("worker runtime bridge", () => {
     await sendWorkerRequest(harness, {
       type: "start",
       app_id: "chirp",
+      relays: ["wss://relay.example"],
+      relay_bootstrap: [{ url: "wss://relay.example", role: "both,indexer" }],
       database_name: "chirp-test",
       correlation_id: "start-1",
     });
     await sendWorkerRequest(harness, {
-      type: "chirp_action",
+      type: "app_action",
       action: publishNoteAction("hello"),
       correlation_id: "dispatch-1",
     });
@@ -430,7 +434,7 @@ describe("worker runtime bridge", () => {
       },
       {
         type: "capability_failure",
-        capability: "chirp_action",
+        capability: "app_action",
         correlation_id: "dispatch-1",
         reason: events[0].type === "error" ? events[0].message : "",
       },

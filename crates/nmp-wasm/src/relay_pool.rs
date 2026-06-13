@@ -188,8 +188,9 @@ pub(crate) fn build_handlers(
 /// driver pool should open for that URL.
 ///
 /// V-01 Stage 3c — parses the same `RelayRole`-bearing role grammar the
-/// native bootstrap uses (see `nmp-core/src/relay.rs` and
-/// `nmp-chirp-config`):
+/// native bootstrap uses (see `nmp-core/src/relay.rs`). The role grammar is
+/// host-supplied via `StartConfig.relay_bootstrap`; the framework defines no
+/// relay defaults of its own:
 ///
 /// | role string                | lanes spawned                  |
 /// |----------------------------|--------------------------------|
