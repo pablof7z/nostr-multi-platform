@@ -27,7 +27,9 @@ use crate::action::{
     ReactInGroupAction,
 };
 use crate::group_id::GroupId;
-use crate::projection::{DiscoveredGroupsProjection, GroupChatProjection};
+use crate::projection::{
+    DiscoveredGroupsProjection, GroupChatProjection, GroupDefaultsProjection,
+};
 
 /// Wire a [`GroupChatProjection`] for `group_id` into `app`.
 ///
@@ -128,6 +130,45 @@ pub fn wire_group_discovery(app: &NmpApp, relay_url: String) {
 
     app.register_snapshot_projection("nmp.nip29.discovered_groups", move || {
         projection.snapshot_json()
+    });
+}
+
+/// Wire the crate-owned NIP-29 group-create defaults projection into `app`.
+///
+/// Exposes [`GroupDefaultsProjection::snapshot`] under
+/// `"nmp.nip29.group_defaults"` as both a typed FlatBuffers sidecar
+/// (`NGDF`, ADR-0037) and the generic `Value` projection (the permanent
+/// fallback). The projection carries the suggested public-group relay URL
+/// (issue #626) sourced from the crate-owned
+/// [`crate::projection::DEFAULT_PUBLIC_GROUP_RELAY_URL`] constant, so every host
+/// shell reads the same default off the kernel snapshot instead of hardcoding
+/// it in the shell.
+///
+/// Output-only: unlike [`wire_group_chat`] / [`wire_group_discovery`] this
+/// projection observes no kernel events — its snapshot is a pure function of
+/// the crate constant — so no [`KernelEventObserver`] is registered. `app` must
+/// outlive the registration.
+pub fn wire_group_defaults(app: &NmpApp) {
+    // Typed FlatBuffers sidecar (ADR-0037), registered ALONGSIDE the generic
+    // `Value` projection under the same key. A `NGDF`-aware host prefers this
+    // typed payload; an un-updated host falls back to the generic `Value`
+    // subtree (the permanent fallback). Additive — un-updated hosts unaffected.
+    app.register_typed_snapshot_projection("nmp.nip29.group_defaults", || {
+        let snapshot = GroupDefaultsProjection::new().snapshot();
+        Some(nmp_core::TypedProjectionData {
+            key: "nmp.nip29.group_defaults".to_string(),
+            schema_id: crate::wire::group_defaults_fb::GROUP_DEFAULTS_SCHEMA_ID.to_string(),
+            schema_version: crate::wire::group_defaults_fb::GROUP_DEFAULTS_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(
+                crate::wire::group_defaults_fb::GROUP_DEFAULTS_FILE_IDENTIFIER,
+            )
+            .into_owned(),
+            payload: crate::wire::group_defaults_fb::encode_group_defaults_snapshot(&snapshot),
+        })
+    });
+
+    app.register_snapshot_projection("nmp.nip29.group_defaults", || {
+        GroupDefaultsProjection::new().snapshot_json()
     });
 }
 

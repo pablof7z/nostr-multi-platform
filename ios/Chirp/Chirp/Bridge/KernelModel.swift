@@ -88,6 +88,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published private(set) var typedZaps: ZapsAggregateSnapshot?
     @Published private(set) var typedGroupChat: GroupChatSnapshot?
     @Published private(set) var typedDiscoveredGroups: DiscoveredGroupsSnapshot?
+    /// Typed `nmp.nip29.group_defaults` sidecar (`NGDF`, #626) — the crate-owned
+    /// suggested public-group relay URL. `nil` ⇒ the `groupDefaults` accessor
+    /// collapses to `.empty` and `NewGroupSheet` seeds an empty relay field.
+    @Published private(set) var typedGroupDefaults: GroupDefaultsSnapshot?
     /// Typed profile-cluster sidecars (`KPRF` / `KCPR` / `KRPR`). `nil` ⇒ the
     /// `profile` / `claimedProfiles` / `resolvedProfileCards` accessors collapse
     /// to nil / `[:]`.
@@ -775,6 +779,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedZaps = result.typedZaps
         typedGroupChat = result.typedGroupChat
         typedDiscoveredGroups = result.typedDiscoveredGroups
+        typedGroupDefaults = result.typedGroupDefaults
         typedProfile = result.typedProfile
         typedClaimedProfiles = result.typedClaimedProfiles
         typedResolvedProfiles = result.typedResolvedProfiles
@@ -927,6 +932,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedZaps = nil
         typedGroupChat = nil
         typedDiscoveredGroups = nil
+        typedGroupDefaults = nil
         typedProfile = nil
         typedClaimedProfiles = nil
         typedResolvedProfiles = nil

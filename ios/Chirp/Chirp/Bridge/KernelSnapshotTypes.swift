@@ -147,6 +147,29 @@ struct DiscoveredGroupsSnapshot: Decodable, Equatable {
     static let empty = DiscoveredGroupsSnapshot(hostRelayUrl: "", groups: [])
 }
 
+// ─── NIP-29 group-create defaults read model (#626) ───────────────────────
+//
+// Mirror of `nmp-nip29`'s `GroupDefaultsSnapshot` — the shape the crate-owned
+// `GroupDefaultsProjection` serialises under the snapshot key
+// `"nmp.nip29.group_defaults"`. Thin-shell rule: the suggested public-group
+// relay URL is a NIP-29 protocol fact OWNED BY RUST (the `nmp-nip29` constant
+// `DEFAULT_PUBLIC_GROUP_RELAY_URL`), surfaced here so `NewGroupSheet` pre-fills
+// it without hardcoding a protocol URL in the shell (issue #626). Swift only
+// reads `suggestedRelayUrl` into the editable `TextField` binding.
+
+/// The serialised read-model `NewGroupSheet` seeds its public-group relay
+/// field from. `suggestedRelayUrl` is the crate-owned default; the user may
+/// overwrite it before creating the group.
+///
+/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
+/// maps the kernel's `"suggested_relay_url"` to `suggestedRelayUrl`
+/// automatically.
+struct GroupDefaultsSnapshot: Decodable, Equatable {
+    let suggestedRelayUrl: String
+
+    static let empty = GroupDefaultsSnapshot(suggestedRelayUrl: "")
+}
+
 // ─── NIP-57 zap aggregate read model ──────────────────────────────────────
 //
 // Mirror of `nmp-nip57`'s `ZapsAggregateSnapshot` / `ZapCount` — the shape

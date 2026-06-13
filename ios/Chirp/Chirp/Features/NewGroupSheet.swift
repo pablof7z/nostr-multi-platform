@@ -37,7 +37,18 @@ struct NewGroupSheet: View {
     @State private var name = ""
     @State private var groupDescription = ""
     @State private var inviteeText = ""
-    @State private var publicRelayUrl = "wss://relay.groups.nip29.com"
+    // #626: the suggested public-group relay URL is a NIP-29 protocol fact owned
+    // by Rust (the `nmp-nip29` crate constant `DEFAULT_PUBLIC_GROUP_RELAY_URL`),
+    // surfaced on the kernel snapshot under `"nmp.nip29.group_defaults"`. This
+    // field starts EMPTY and is seeded from `model.groupDefaults.suggestedRelayUrl`
+    // once that projection lands (see `seedRelayUrlIfNeeded`) — never a hardcoded
+    // Swift literal. Swift keeps only the editable `TextField` binding; the user
+    // may overwrite the pre-filled value.
+    @State private var publicRelayUrl = ""
+    /// `true` once the kernel-suggested relay URL has been seeded into
+    /// `publicRelayUrl`, so a later snapshot tick (or a user edit) never
+    /// re-seeds over an existing value.
+    @State private var didSeedRelayUrl = false
     @State private var publicLocalId = ""
 
     // ── Async feedback state ──────────────────────────────────────────────
@@ -77,7 +88,26 @@ struct NewGroupSheet: View {
                 }
             }
             .onChange(of: model.actionLifecycle) { resolveTerminal() }
+            // #626: seed the relay field from the kernel-projected default.
+            // `onAppear` covers the case where the snapshot already carries it;
+            // `onChange` covers the late-arriving first tick (empty until then).
+            .onAppear { seedRelayUrlIfNeeded() }
+            .onChange(of: model.groupDefaults.suggestedRelayUrl) { seedRelayUrlIfNeeded() }
         }
+    }
+
+    /// Seed `publicRelayUrl` from the kernel-projected NIP-29 group default
+    /// (`model.groupDefaults.suggestedRelayUrl`, #626) exactly once, and only
+    /// while the field is still untouched. The field is empty until the
+    /// projection's first snapshot tick lands; once a non-empty suggestion
+    /// arrives it pre-fills, after which a user edit (or a later tick) never
+    /// overwrites the value.
+    private func seedRelayUrlIfNeeded() {
+        guard !didSeedRelayUrl, publicRelayUrl.isEmpty else { return }
+        let suggested = model.groupDefaults.suggestedRelayUrl
+        guard !suggested.isEmpty else { return }
+        publicRelayUrl = suggested
+        didSeedRelayUrl = true
     }
 
     // ── Sections ──────────────────────────────────────────────────────────

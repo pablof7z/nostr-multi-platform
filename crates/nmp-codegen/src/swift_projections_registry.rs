@@ -597,6 +597,25 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_nip29_DiscoveredGroupsSnapshot"),
         }),
     },
+    SnapshotProjectionEntry {
+        json_key: "nmp.nip29.group_defaults",
+        swift_field: "groupDefaults",
+        swift_type: "GroupDefaultsSnapshot",
+        typed_sidecar: Some(TypedSidecar {
+            key: "nmp.nip29.group_defaults",
+            schema_id: "nmp.nip29.group_defaults",
+            file_identifier: "NGDF",
+            // #626: the crate-owned NIP-29 public-group create defaults (the
+            // suggested host relay URL). Host-registered producer in
+            // `apps/chirp/.../ffi/register.rs`
+            // (`nmp_nip29::register::wire_group_defaults` →
+            // `register_typed_snapshot_projection("nmp.nip29.group_defaults", …)`).
+            // The `flatc --swift` reader (`nmp_nip29_GroupDefaultsSnapshot`) ships
+            // from `crates/nmp-nip29/schema/group_defaults.fbs`. Flat copy:
+            // `{ suggested_relay_url }`. See `TypedProjectionGlue.groupDefaults`.
+            swift_reader_type: Some("nmp_nip29_GroupDefaultsSnapshot"),
+        }),
+    },
     // `nmp.nip57.zaps` has no `_`, so the post-transform key is identical
     // — but declaring the `CodingKeys` enum overrides synthesised raw
     // values, so the case still needs the explicit literal.
@@ -839,14 +858,14 @@ mod tests {
     /// silent.
     #[test]
     fn registry_size_is_locked() {
-        // 34 entries: 36 (incl. `bunker_connection_state`, V-14 step b, #963)
+        // 35 entries: 36 (incl. `bunker_connection_state`, V-14 step b, #963)
         // minus `author_view` (KAVW) and `thread_view` (KTVW), removed by
-        // V-112 (ADR-0042).
+        // V-112 (ADR-0042), plus `nmp.nip29.group_defaults` (#626).
         // Bump this (and add a new SnapshotProjectionEntry above) when a new
         // projection is wired.
         assert_eq!(
             SNAPSHOT_PROJECTIONS.len(),
-            34,
+            35,
             "registry size changed — regenerate KernelTypes.generated.swift and update this test"
         );
     }
@@ -894,13 +913,14 @@ mod tests {
             .map(|e| e.json_key)
             .filter(|k| k.contains('.'))
             .collect();
-        // Nine dotted keys. `nmp.feed.home` is a NOFS typed sidecar decoded by
+        // Ten dotted keys. `nmp.feed.home` is a NOFS typed sidecar decoded by
         // the hand-written `TypedHomeFeedDecoder` (`swift_reader_type: None`) —
         // not a JSON `SnapshotProjections` field, so it has no `XCTAssertNotNil`
         // in the Swift conformance test, but it IS a dotted registry key.
         let expected = [
             "nmp.nip29.group_chat",
             "nmp.nip29.discovered_groups",
+            "nmp.nip29.group_defaults",
             "nmp.nip17.dm_inbox",
             "nmp.follow_list",
             "nmp.nip57.zaps",
