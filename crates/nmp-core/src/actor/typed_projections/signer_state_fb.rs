@@ -40,7 +40,7 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const SIGNER_STATE_SCHEMA_ID: &str = "signer_state";
+pub const SIGNER_STATE_SCHEMA_ID: &str = "signer_state";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub(crate) const SIGNER_STATE_FILE_IDENTIFIER: &[u8; 4] = b"KSST";
 /// Wire schema version. Bump on any breaking change to `signer_state.fbs`.
@@ -49,30 +49,30 @@ pub(crate) const SIGNER_STATE_SCHEMA_VERSION: u32 = 1;
 /// A field-for-field mirror of the serialised `SignerStateDto` — the value the
 /// `"signer_state"` JSON projection serialises when the slot is `Some`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SignerStateModel {
+pub struct SignerStateModel {
     /// `"nip46"` | `"nip55"` | `"local"`.
-    pub(crate) signer_kind: String,
+    pub signer_kind: String,
     /// `"ready"` | `"awaiting_approval"` | `"reconnecting"` | `"unavailable"`
     /// | `"failed"`.
-    pub(crate) state: String,
+    pub state: String,
     /// Optional human-readable reason (error message on degraded states).
-    pub(crate) reason: Option<String>,
+    pub reason: Option<String>,
     /// `state == "ready"`.
-    pub(crate) is_ready: bool,
+    pub is_ready: bool,
     /// `state == "awaiting_approval"` (NIP-55 Intent round-trip in flight).
-    pub(crate) is_awaiting_approval: bool,
+    pub is_awaiting_approval: bool,
     /// `state == "reconnecting"`.
-    pub(crate) is_reconnecting: bool,
+    pub is_reconnecting: bool,
     /// `state == "unavailable"` (NIP-55 signer app missing).
-    pub(crate) is_unavailable: bool,
+    pub is_unavailable: bool,
     /// `state == "failed"`.
-    pub(crate) is_failed: bool,
+    pub is_failed: bool,
     /// Pre-computed display label (ADR-0032 / #1099). Rendered verbatim by
     /// shells; mirrors `SignerStateDto::status_label`.
-    pub(crate) status_label: String,
+    pub status_label: String,
     /// Pre-computed display tone — `"active"` | `"warning"` | `"error"` |
     /// `"inactive"` (ADR-0032 / #1099). Mirrors `SignerStateDto::status_tone`.
-    pub(crate) status_tone: String,
+    pub status_tone: String,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -111,9 +111,9 @@ pub(crate) fn encode_signer_state(model: &SignerStateModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_signer_state`])
 /// back into a [`SignerStateModel`]. Returns an error string on any malformed
-/// input. Used by in-crate tests to verify round-trip integrity.
-#[cfg(test)]
-pub(crate) fn decode_signer_state(bytes: &[u8]) -> Result<SignerStateModel, String> {
+/// input. Available to sibling crates (e.g. desktop shells) for decoding the
+/// `"signer_state"` typed sidecar from a snapshot frame.
+pub fn decode_signer_state(bytes: &[u8]) -> Result<SignerStateModel, String> {
     if bytes.len() < 8 || !fb::signer_state_buffer_has_identifier(bytes) {
         return Err("missing KSST file identifier".to_string());
     }

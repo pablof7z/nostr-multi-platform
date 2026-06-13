@@ -163,9 +163,8 @@ pub(crate) use identity::SignerStateDto;
 // ADR-0032 / #1099: the typed `signer_state` FlatBuffers decoder reuses this
 // label/tone derivation as its forward-compat fallback for buffers that predate
 // the tail-appended `status_label` / `status_tone` fields — one source of truth.
-// The decoder (`decode_signer_state`) is itself `#[cfg(test)]`, so the
-// re-export is test-only too (no unused-import warning in production builds).
-#[cfg(test)]
+// Promoted to always-on: `decode_signer_state` is now `pub` (not test-only) so
+// external shells can decode the typed sidecar from snapshot frames.
 pub(crate) use signer_state_label::signer_state_label_and_tone;
 // V-01 Phase 1c: lifecycle handler consumes the native dispatch path.
 #[cfg(feature = "native")]

@@ -15,10 +15,10 @@ use egui::{
 use std::collections::HashMap;
 
 use crate::bridge::AppRuntime;
-use crate::render::{effective_content, hex_color, note_body};
+use crate::render::{hex_color, note_body};
 use crate::snapshot::{
-    ActionStageRow, AppRelay, DmConversationSnapshot, ModularTimelineSnapshot, ProfileCard,
-    Snapshot, TimelineEventCard,
+    ActionStageRow, DmConversationSnapshot, ModularTimelineSnapshot, ProfileCard, Snapshot,
+    TimelineEventCard,
 };
 use nmp_chirp_config;
 
@@ -38,22 +38,22 @@ pub enum AppTab {
 }
 
 pub struct DesktopApp {
-    bridge: AppRuntime,
-    latest: Arc<Mutex<Option<Snapshot>>>,
-    tab: AppTab,
-    compose: String,
-    selected_dm_pubkey: Option<String>,
-    dm_compose: String,
-    nsec_input: String,
-    bunker_relay_input: String,
-    bunker_uri: Option<String>,
-    new_relay_url: String,
-    new_relay_role: String,
-    edit_display_name: String,
-    edit_about: String,
-    edit_picture: String,
-    show_edit_profile: bool,
-    nwc_input: String,
+    pub(crate) bridge: AppRuntime,
+    pub(crate) latest: Arc<Mutex<Option<Snapshot>>>,
+    pub(crate) tab: AppTab,
+    pub(crate) compose: String,
+    pub(crate) selected_dm_pubkey: Option<String>,
+    pub(crate) dm_compose: String,
+    pub(crate) nsec_input: String,
+    pub(crate) bunker_relay_input: String,
+    pub(crate) bunker_uri: Option<String>,
+    pub(crate) new_relay_url: String,
+    pub(crate) new_relay_role: String,
+    pub(crate) edit_display_name: String,
+    pub(crate) edit_about: String,
+    pub(crate) edit_picture: String,
+    pub(crate) show_edit_profile: bool,
+    pub(crate) nwc_input: String,
 }
 
 impl DesktopApp {
@@ -460,325 +460,6 @@ impl DesktopApp {
             });
     }
 
-    fn settings_view(&mut self, ui: &mut Ui, snap: &Snapshot) {
-        ui.heading("Settings");
-        ui.separator();
-
-        // Account section
-        ui.label(RichText::new("Account").strong());
-        if let Some(ref pk) = snap.active_account {
-            let name = snap
-                .profile
-                .display_name
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .unwrap_or("(no name)");
-            ui.label(format!("Name: {name}"));
-            ui.label(format!("Pubkey: {}", nmp_core::display::short_npub(pk)));
-        } else {
-            ui.label("No active account.");
-            ui.horizontal(|ui| {
-                if ui.button("Create new account").clicked() {
-                    self.bridge.create_account(
-                        [("name".to_string(), "New User".to_string())].into(),
-                        nmp_chirp_config::chirp_default_relay_bootstrap()
-                            .iter()
-                            .map(|e| (e.url.to_string(), e.role.to_string()))
-                            .collect(),
-                    );
-                    self.bridge.open_timeline();
-                }
-            });
-            ui.horizontal(|ui| {
-                ui.add(
-                    TextEdit::singleline(&mut self.nsec_input)
-                        .hint_text("nsec1… or hex secret")
-                        .desired_width(260.0)
-                        .password(true),
-                );
-                if ui.button("Sign in").clicked() && !self.nsec_input.trim().is_empty() {
-                    self.bridge.sign_in_nsec(self.nsec_input.trim().to_string());
-                    self.nsec_input.clear();
-                    self.bridge.open_timeline();
-                }
-            });
-        }
-
-        // Bunker login section
-        if snap.active_account.is_none() {
-            ui.horizontal(|ui| {
-                ui.add(
-                    TextEdit::singleline(&mut self.bunker_relay_input)
-                        .hint_text("wss://relay.example.com")
-                        .desired_width(260.0),
-                );
-                if ui.button("Connect with bunker").clicked() {
-                    match self.bridge.connect_bunker(self.bunker_relay_input.trim()) {
-                        Ok(uri) => self.bunker_uri = Some(uri),
-                        Err(e) => eprintln!("bunker connect error: {e}"),
-                    }
-                }
-            });
-            if let Some(ref uri) = self.bunker_uri {
-                ui.label(RichText::new("Scan or paste nostrconnect:// URI:").small());
-                ui.text_edit_singleline(&mut uri.clone());
-                if ui.button("Cancel").clicked() {
-                    self.bridge.cancel_bunker_handshake();
-                    self.bunker_uri = None;
-                }
-            }
-        }
-
-        // Edit profile section
-        if let Some(ref _pk) = snap.active_account {
-            ui.add_space(12.0);
-            ui.separator();
-            if !self.show_edit_profile {
-                if ui.button("Edit Profile").clicked() {
-                    self.show_edit_profile = true;
-                    // Populate fields from current profile
-                    self.edit_display_name = snap
-                        .profile
-                        .display_name
-                        .as_deref()
-                        .unwrap_or("")
-                        .to_string();
-                    self.edit_about = snap.profile.about.clone();
-                    self.edit_picture = snap
-                        .profile
-                        .picture_url
-                        .as_deref()
-                        .unwrap_or("")
-                        .to_string();
-                }
-            } else {
-                ui.label(RichText::new("Edit Profile").strong());
-                ui.horizontal(|ui| {
-                    ui.label("Name:");
-                    ui.text_edit_singleline(&mut self.edit_display_name);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("About:");
-                    ui.text_edit_multiline(&mut self.edit_about);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Picture URL:");
-                    ui.text_edit_singleline(&mut self.edit_picture);
-                });
-                ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
-                        let _ = self.bridge.publish_profile(
-                            &self.edit_display_name,
-                            &self.edit_about,
-                            &self.edit_picture,
-                        );
-                        self.show_edit_profile = false;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.show_edit_profile = false;
-                        self.edit_display_name.clear();
-                        self.edit_about.clear();
-                        self.edit_picture.clear();
-                    }
-                });
-            }
-        }
-
-        ui.add_space(12.0);
-        ui.separator();
-
-        // Wallet section
-        ui.label(RichText::new("Wallet (NIP-47)").strong());
-        ui.horizontal(|ui| {
-            ui.add(
-                TextEdit::singleline(&mut self.nwc_input)
-                    .hint_text("nostr+walletconnect://...")
-                    .desired_width(340.0),
-            );
-            if ui.button("Connect").clicked() && !self.nwc_input.trim().is_empty() {
-                match self.bridge.wallet_connect(self.nwc_input.trim()) {
-                    Ok(_) => {
-                        self.nwc_input.clear();
-                    }
-                    Err(e) => eprintln!("wallet connect error: {e}"),
-                }
-            }
-        });
-        if ui.button("Disconnect Wallet").clicked() {
-            match self.bridge.wallet_disconnect() {
-                Ok(_) => {}
-                Err(e) => eprintln!("wallet disconnect error: {e}"),
-            }
-        }
-
-        ui.add_space(12.0);
-        ui.separator();
-
-        // Relays section
-        ui.label(RichText::new("Relays").strong());
-        let rows: Vec<AppRelay> = snap.projection("configured_relays").unwrap_or_default();
-        egui::Grid::new("relay_grid")
-            .num_columns(4)
-            .spacing([12.0, 4.0])
-            .show(ui, |ui| {
-                ui.label(RichText::new("URL").small().strong());
-                ui.label(RichText::new("Role").small().strong());
-                ui.label(RichText::new("Status").small().strong());
-                ui.label(RichText::new("").small());
-                ui.end_row();
-                for r in &rows {
-                    ui.label(&r.url);
-                    ui.label(RichText::new(relay_role_label(&r.role)));
-                    let status = snap
-                        .relay_statuses
-                        .iter()
-                        .find(|s| s.relay_url == r.url)
-                        .map(|s| s.connection.clone())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    ui.label(RichText::new(status).small());
-                    if ui.small_button("✕").clicked() {
-                        self.bridge.remove_relay(&r.url);
-                    }
-                    ui.end_row();
-                }
-            });
-
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            ui.add(
-                TextEdit::singleline(&mut self.new_relay_url)
-                    .hint_text("wss://relay.example.com")
-                    .desired_width(220.0),
-            );
-            egui::ComboBox::from_id_source("relay_role")
-                .selected_text(&self.new_relay_role)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.new_relay_role, "both".to_string(), "both");
-                    ui.selectable_value(&mut self.new_relay_role, "read".to_string(), "read");
-                    ui.selectable_value(&mut self.new_relay_role, "write".to_string(), "write");
-                    ui.selectable_value(&mut self.new_relay_role, "indexer".to_string(), "indexer");
-                });
-            if ui.button("Add relay").clicked() && !self.new_relay_url.trim().is_empty() {
-                self.bridge
-                    .add_relay(self.new_relay_url.trim(), &self.new_relay_role);
-                self.new_relay_url.clear();
-            }
-        });
-    }
-
-    fn diagnostics_panel(&self, ui: &mut Ui, snap: &Snapshot) {
-        ui.heading("Routing & Relay Diagnostics");
-        ui.separator();
-
-        // Relay summary
-        let connected_count = snap
-            .relay_statuses
-            .iter()
-            .filter(|r| {
-                r.connection.eq_ignore_ascii_case("connected")
-                    || r.connection.eq_ignore_ascii_case("ready")
-            })
-            .count();
-        ui.label(
-            RichText::new(format!(
-                "Relays: {}/{} connected",
-                connected_count,
-                snap.relay_statuses.len()
-            ))
-            .strong(),
-        );
-        ui.add_space(8.0);
-
-        // Relay list with status
-        ui.label(
-            RichText::new("Relay Status")
-                .strong()
-                .color(Color32::from_rgb(96, 165, 250)),
-        );
-        ui.add_space(4.0);
-
-        ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .max_height(300.0)
-            .show(ui, |ui| {
-                egui::Grid::new("diagnostics_relays")
-                    .num_columns(4)
-                    .spacing([12.0, 6.0])
-                    .show(ui, |ui| {
-                        ui.label(RichText::new("Relay").strong());
-                        ui.label(RichText::new("Role").strong());
-                        ui.label(RichText::new("Status").strong());
-                        ui.label(RichText::new("Events").strong());
-                        ui.end_row();
-
-                        for relay in &snap.relay_statuses {
-                            // Status dot
-                            let (dot_char, dot_color) = Self::status_color(&relay.connection);
-                            ui.label(RichText::new(dot_char).color(dot_color));
-
-                            // URL (shortened)
-                            let display_url = if relay.relay_url.len() > 30 {
-                                format!("{}…", &relay.relay_url[..27])
-                            } else {
-                                relay.relay_url.clone()
-                            };
-                            ui.label(display_url).on_hover_text(&relay.relay_url);
-
-                            // Role
-                            let role_color = match relay.role.as_str() {
-                                "read" => Color32::from_rgb(96, 165, 250),
-                                "write" => Color32::from_rgb(34, 197, 94),
-                                "indexer" => Color32::from_rgb(168, 85, 247),
-                                _ => Color32::from_rgb(107, 114, 128),
-                            };
-                            ui.label(RichText::new(&relay.role).color(role_color));
-
-                            // Status
-                            let status_color = if relay.connection.eq_ignore_ascii_case("connected")
-                                || relay.connection.eq_ignore_ascii_case("ready")
-                            {
-                                Color32::from_rgb(74, 222, 128)
-                            } else if relay.connection.eq_ignore_ascii_case("disconnected")
-                                || relay.connection.eq_ignore_ascii_case("down")
-                            {
-                                Color32::from_rgb(248, 113, 113)
-                            } else {
-                                Color32::from_rgb(249, 115, 22)
-                            };
-                            ui.label(RichText::new(&relay.connection).color(status_color));
-
-                            // Event count
-                            ui.label(RichText::new(relay.events_rx.to_string()).weak().small());
-
-                            ui.end_row();
-                        }
-                    });
-            });
-
-        ui.add_space(16.0);
-        ui.separator();
-        ui.add_space(8.0);
-
-        // Metrics summary
-        ui.label(
-            RichText::new("Snapshot Metrics")
-                .strong()
-                .color(Color32::from_rgb(96, 165, 250)),
-        );
-        ui.add_space(4.0);
-
-        ui.horizontal(|ui| {
-            ui.label(format!("Total events received: {}", snap.metrics.events_rx));
-            ui.separator();
-            ui.label(format!("Note events: {}", snap.metrics.note_events));
-            ui.separator();
-            ui.label(format!("Visible items: {}", snap.metrics.visible_items));
-        });
-
-        ui.add_space(8.0);
-        ui.label(format!("Snapshot revision: {}", snap.rev));
-    }
-
     fn outbox_panel(&mut self, ui: &mut Ui, snap: &Snapshot) {
         ui.heading("Publish Outbox");
         ui.separator();
@@ -818,6 +499,8 @@ impl DesktopApp {
                                 .on_hover_text(&row.correlation_id);
 
                             // Status
+                            let is_terminal =
+                                matches!(row.stage.as_str(), "published" | "failed" | "error");
                             let status_color = match row.stage.as_str() {
                                 "publishing" => Color32::from_rgb(249, 115, 22),
                                 "published" => Color32::from_rgb(74, 222, 128),
@@ -844,6 +527,13 @@ impl DesktopApp {
                             });
 
                             ui.end_row();
+
+                            // Ack terminal stages after they have been shown
+                            // once so the kernel evicts them from action_stages
+                            // and the outbox sidecar stops accumulating entries.
+                            if is_terminal {
+                                self.bridge.ack_action_stage(&row.correlation_id);
+                            }
                         }
                     });
             });
@@ -960,7 +650,7 @@ impl DesktopApp {
         }
     }
 
-    fn status_color(connection: &str) -> (char, Color32) {
+    pub(crate) fn status_color(connection: &str) -> (char, Color32) {
         let lower = connection.to_ascii_lowercase();
         if lower.contains("connected") || lower == "ready" || lower == "open" {
             ('●', Color32::from_rgb(74, 222, 128))
@@ -1040,8 +730,11 @@ fn feed_card(
                             ui.label(RichText::new(&created_at_display).weak().small());
                         });
                     });
-                    let (text, is_repost) = effective_content(&card.content);
-                    if is_repost {
+                    // The kernel projection already unwraps kind:6 reposts
+                    // before the card reaches the shell — `content` is never
+                    // raw kind:6 JSON here.  Use the typed `reposted_by` field
+                    // for the repost badge instead of JSON-parsing `content`.
+                    if card.reposted_by.is_some() {
                         ui.label(
                             RichText::new("↩ repost")
                                 .small()
@@ -1049,14 +742,20 @@ fn feed_card(
                                 .color(Color32::from_rgb(148, 163, 184)),
                         );
                     }
+                    let text = &card.content;
                     if !text.is_empty() {
-                        // Clickable body → open thread on the card's event id.
-                        let response = ui.label(text.as_ref());
-                        if response.clicked() {
+                        // Render rich body; treat any click anywhere on it as
+                        // "open thread".  note_body renders an
+                        // `horizontal_wrapped` group of inline widgets — we
+                        // capture the response of the whole group by wrapping in
+                        // a `ui.scope` and checking `response.response.clicked()`.
+                        let scope = ui.scope(|ui| {
+                            note_body(ui, text.as_ref());
+                        });
+                        if scope.response.interact(egui::Sense::click()).clicked() {
                             *tab = AppTab::Thread(card.id.clone());
                             bridge.open_thread(&card.id);
                         }
-                        note_body(ui, text.as_ref());
                     }
                     // Like / Zap row.
                     ui.horizontal(|ui| {
@@ -1073,7 +772,7 @@ fn feed_card(
         });
 }
 
-fn relay_role_label(role: &str) -> &str {
+pub(crate) fn relay_role_label(role: &str) -> &str {
     match role {
         "both" => "Both",
         "read" => "Read",

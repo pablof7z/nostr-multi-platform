@@ -405,6 +405,19 @@ impl AppRuntime {
         }
     }
 
+    /// Acknowledge a terminal action stage so the kernel evicts it from the
+    /// `action_stages` map.  Must be called after a `"published"`, `"failed"`,
+    /// or `"error"` stage has been shown to the user — mirrors the TUI's
+    /// `runtime.rs` `ack_action_stage` and the Android FFI pattern.
+    pub fn ack_action_stage(&self, correlation_id: &str) {
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(correlation_id) {
+            unsafe { nmp_ffi::nmp_app_ack_action_stage(self.app, c.as_ptr()) };
+        }
+    }
+
     // ------------------------------------------------------------------
     // Action dispatch
     // ------------------------------------------------------------------

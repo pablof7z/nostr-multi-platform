@@ -20,8 +20,10 @@ mod commands;
 // built-ins `"bunker_handshake"` / `"nip46_onboarding"`. Native-only: the
 // `register_typed` registration site is in `run_actor_with_observers`
 // (`#[cfg(feature = "native")]`), the only caller of these builders.
+// `pub(crate)` so the decode functions (promoted from `#[cfg(test)]`) can be
+// re-exported at the crate root via `typed_projections::decode_*`.
 #[cfg(feature = "native")]
-mod typed_projections;
+pub(crate) mod typed_projections;
 // V-01 Phase 1c: the actor *runtime* (dispatch / tick / relay management /
 // session persistence) sits on top of the native `relay_worker` and is
 // therefore native-only. `ActorCommand` (pure data), the observer slots,

@@ -36,7 +36,7 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const BUNKER_HANDSHAKE_SCHEMA_ID: &str = "bunker_handshake";
+pub const BUNKER_HANDSHAKE_SCHEMA_ID: &str = "bunker_handshake";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub(crate) const BUNKER_HANDSHAKE_FILE_IDENTIFIER: &[u8; 4] = b"KBHS";
 /// Wire schema version. Bump on any breaking change to `bunker_handshake.fbs`.
@@ -45,15 +45,15 @@ pub(crate) const BUNKER_HANDSHAKE_SCHEMA_VERSION: u32 = 1;
 /// A field-for-field mirror of the SERIALISED `BunkerHandshakeDto` — the value
 /// the `"bunker_handshake"` JSON projection serialises when the slot is `Some`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct BunkerHandshakeModel {
-    pub(crate) stage: String,
-    pub(crate) message: Option<String>,
-    pub(crate) is_idle: bool,
-    pub(crate) is_in_flight: bool,
-    pub(crate) is_failed: bool,
-    pub(crate) is_terminal_success: bool,
-    pub(crate) can_cancel: bool,
-    pub(crate) stage_label: String,
+pub struct BunkerHandshakeModel {
+    pub stage: String,
+    pub message: Option<String>,
+    pub is_idle: bool,
+    pub is_in_flight: bool,
+    pub is_failed: bool,
+    pub is_terminal_success: bool,
+    pub can_cancel: bool,
+    pub stage_label: String,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -88,10 +88,9 @@ pub(crate) fn encode_bunker_handshake(model: &BunkerHandshakeModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_bunker_handshake`])
 /// back into a [`BunkerHandshakeModel`]. Returns an error string on any
-/// malformed input. In-crate tests decode the typed sidecar (PR-B: the JSON
-/// payload is no longer emitted).
-#[cfg(test)]
-pub(crate) fn decode_bunker_handshake(bytes: &[u8]) -> Result<BunkerHandshakeModel, String> {
+/// malformed input. Available to sibling crates (e.g. desktop shells) for
+/// decoding the `"bunker_handshake"` typed sidecar from a snapshot frame.
+pub fn decode_bunker_handshake(bytes: &[u8]) -> Result<BunkerHandshakeModel, String> {
     if bytes.len() < 8 || !fb::bunker_handshake_buffer_has_identifier(bytes) {
         return Err("missing KBHS file identifier".to_string());
     }

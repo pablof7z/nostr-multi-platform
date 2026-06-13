@@ -59,3 +59,13 @@ pub use super::typed_projections::{
     decode_signed_events, SignedEventRow, SignedEventsModel, SIGNED_EVENTS_FILE_IDENTIFIER,
     SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
 };
+// Actor-owned Tier-1 signer projections (closure-path, native-only).
+// Promoted from `#[cfg(test)]` so external shells (chirp-desktop, Android) can
+// decode the "signer_state", "bunker_handshake", and "nip46_onboarding" typed
+// sidecars from snapshot frames (mirrors the Android #1286 gap fix).
+#[cfg(feature = "native")]
+pub use crate::actor::typed_projections::{
+    decode_bunker_handshake, decode_nip46_onboarding, decode_signer_state,
+    BunkerHandshakeModel, Nip46OnboardingModel, SignerAppRow, SignerStateModel,
+    BUNKER_HANDSHAKE_SCHEMA_ID, NIP46_ONBOARDING_SCHEMA_ID, SIGNER_STATE_SCHEMA_ID,
+};

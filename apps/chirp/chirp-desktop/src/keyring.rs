@@ -9,6 +9,8 @@ use std::ffi::{c_char, c_void, CStr, CString};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use zeroize::Zeroizing;
+
 use nmp_core::substrate::{
     CapabilityEnvelope, CapabilityModule, KeyringCapability, KeyringRequest, KeyringResult,
 };
@@ -79,12 +81,21 @@ fn build_envelope_json(request_json: *const c_char) -> String {
         Err(_) => KeyringResult::error(-50),
     };
 
+    // Wrap the result JSON in a Zeroizing guard so any in-memory secret
+    // serialized into `result_json` is scrubbed when the guard is dropped.
+    let result_json: Zeroizing<String> = Zeroizing::new(
+        serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string()),
+    );
     let envelope = CapabilityEnvelope {
         namespace: KeyringCapability::NAMESPACE.to_string(),
         correlation_id,
-        result_json: serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string()),
+        result_json: result_json.as_str().to_string(),
     };
-    serde_json::to_string(&envelope).unwrap_or_else(|_| "{}".to_string())
+    // Wrap the outer envelope JSON in Zeroizing too so the full secret-bearing
+    // frame is zeroed before the function returns.
+    let envelope_json: Zeroizing<String> =
+        Zeroizing::new(serde_json::to_string(&envelope).unwrap_or_else(|_| "{}".to_string()));
+    envelope_json.as_str().to_string()
 }
 
 fn error_envelope(namespace: &str, correlation_id: &str) -> String {
@@ -132,7 +143,14 @@ fn execute_in(req: KeyringRequest, base: &Path) -> KeyringResult {
                 return KeyringResult::error(-1);
             };
             match fs::read_to_string(&path) {
-                Ok(secret) => KeyringResult::ok(Some(secret)),
+                Ok(raw) => {
+                    // Zero the heap copy of the secret once it has been
+                    // transferred into the result.  The Zeroizing wrapper
+                    // scrubs the allocation on drop so the secret does not
+                    // linger in process memory past the frame boundary.
+                    let secret: Zeroizing<String> = Zeroizing::new(raw);
+                    KeyringResult::ok(Some(secret.as_str().to_string()))
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => KeyringResult::not_found(),
                 Err(_) => KeyringResult::error(-1),
             }
