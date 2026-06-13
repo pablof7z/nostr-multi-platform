@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -113,13 +114,18 @@ private fun DmConversationListScreen(
             }
             HorizontalDivider()
 
-            if (dmInbox.remoteSignerUnsupported) {
-                BunkerUnsupportedState()
-            } else if (dmInbox.conversations.isEmpty()) {
+            // §D7: "unavailable" (no active account) hides the screen; "limited"
+            // (bunker backfill pending/throttled by the bounded per-account
+            // decrypt queue) renders the list WITH a "still decrypting" banner
+            // rather than hiding pending messages (errors-as-state).
+            if (dmInbox.isUnavailable) {
+                UnavailableDmState()
+            } else if (dmInbox.conversations.isEmpty() && !dmInbox.isLimited) {
                 EmptyDmState()
             } else {
                 ConversationListContent(
                     conversations = dmInbox.conversations,
+                    decryptingCount = if (dmInbox.isLimited) dmInbox.undecryptedCount else 0,
                     onSelectConversation = onSelectConversation
                 )
             }
@@ -135,8 +141,18 @@ private fun ConversationListContent(
     conversations: List<DmConversation>,
     onSelectConversation: (String) -> Unit,
     modifier: Modifier = Modifier,
+    decryptingCount: Int = 0,
 ) {
     LazyColumn(modifier.fillMaxSize()) {
+        // §D7 "limited" banner — a bunker backfill is pending or throttled by
+        // the bounded per-account decrypt queue. Surfaced as state (the count
+        // is never silently dropped), shown above whatever already decrypted.
+        if (decryptingCount > 0) {
+            item(key = "dm-decrypting-banner") {
+                DecryptingBanner(count = decryptingCount)
+                HorizontalDivider()
+            }
+        }
         itemsIndexed(conversations, key = { _, conv -> conv.peerPubkey }) { _, conversation ->
             DmConversationRow(
                 conversation = conversation,
@@ -144,6 +160,26 @@ private fun ConversationListContent(
             )
             HorizontalDivider()
         }
+    }
+}
+
+/**
+ * ADR-0050 §D7 "limited" banner: N envelopes are still decrypting (bunker
+ * backfill pending or throttled by the bounded per-account decrypt queue).
+ */
+@Composable
+private fun DecryptingBanner(count: Int) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        Spacer(Modifier.size(10.dp))
+        Text(
+            if (count == 1) "1 message still decrypting…" else "$count messages still decrypting…",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -409,10 +445,10 @@ private fun EmptyDmState() {
 }
 
 /**
- * Bunker (NIP-46) unsupported state: cannot decrypt gift-wraps.
+ * ADR-0050 §D7 "unavailable" state: no active account — hide the DM screen.
  */
 @Composable
-private fun BunkerUnsupportedState() {
+private fun UnavailableDmState() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
@@ -421,7 +457,7 @@ private fun BunkerUnsupportedState() {
             )
             Spacer(Modifier.size(8.dp))
             Text(
-                "End-to-end encrypted DMs require a local key.\nBunker (NIP-46) accounts cannot decrypt messages yet.",
+                "Sign in to an account to send and read end-to-end encrypted messages.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

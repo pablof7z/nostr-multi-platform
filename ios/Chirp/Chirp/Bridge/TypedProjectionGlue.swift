@@ -450,18 +450,15 @@ enum TypedProjectionGlue {
     // MARK: nmp.nip17.dm_inbox → DmInboxSnapshot
 
     /// Map the typed `nmp.nip17.dm_inbox` sidecar (`NDMI` /
-    /// `nmp_nip17_DmInboxSnapshot`) to the `DmInboxSnapshot` the JSON
-    /// `projections["nmp.nip17.dm_inbox"]` path yields. Nested-vector copy:
+    /// `nmp_nip17_DmInboxSnapshot`) to the JSON-path `DmInboxSnapshot`. Nested-vector copy:
     /// `conversations` → `[DmConversation]`, each carrying its `messages` →
     /// `[DmMessage]`. The Rust projection owns ALL ordering (conversations
     /// newest-thread-first, messages oldest-first) and the `isOutgoing` /
-    /// `remoteSignerUnsupported` classification — the shell re-sorts NOTHING
-    /// (thin-shell rule). `replyTo` is an `Option<String>` on the wire
-    /// (`has_reply_to` companion bool); preserved as `nil` when absent so the
-    /// typed value is byte-identical to the JSON path's `null`. `sourceRelays`
-    /// maps the wire's always-present vector to the DTO's `[String]?` (never nil
-    /// from the typed path — an empty buffer yields `[]`, matching the JSON
-    /// array; the optional exists only for the older-build JSON decode).
+    /// `decryptState` classification — the shell re-sorts NOTHING (thin-shell
+    /// rule). `replyTo` is wire `Option<String>` (`has_reply_to` bool) → `nil`
+    /// when absent, byte-identical to the JSON path's `null`. `sourceRelays`
+    /// maps the always-present vector to `[String]?` (empty buffer → `[]`; the
+    /// optional exists only for the older-build JSON decode).
     static func dmInbox(_ reader: nmp_nip17_DmInboxSnapshot) -> DmInboxSnapshot {
         DmInboxSnapshot(
             conversations: reader.conversations.map { convo in
@@ -480,7 +477,10 @@ enum TypedProjectionGlue {
                     }
                 )
             },
-            remoteSignerUnsupported: reader.remoteSignerUnsupported
+            // §D7 — empty/absent `decryptState` maps to "unavailable" (safe
+            // "hide the screen" default, never "ok"), matching the Rust decoder.
+            decryptState: (reader.decryptState?.isEmpty == false) ? reader.decryptState! : "unavailable",
+            undecryptedCount: reader.undecryptedCount
         )
     }
 

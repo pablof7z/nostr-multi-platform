@@ -47,6 +47,20 @@ pub fn register_external_signer_hook(hook: ExternalSignerHookFn) {
     }
 }
 
+/// Test-only: clear any registered hook so the "no driver" degradation
+/// branch (D6) can be exercised deterministically. Production has no
+/// unregister path (latest-registration-wins); this exists purely because
+/// `HOOK` is a process-wide static that other serialized tests register
+/// into.
+#[cfg(test)]
+pub(crate) fn clear_external_signer_hook_for_test() {
+    if let Some(slot) = HOOK.get() {
+        if let Ok(mut guard) = slot.write() {
+            *guard = None;
+        }
+    }
+}
+
 /// Crate-internal: restore a NIP-55 signer from opaque payload. Returns
 /// `true` if a hook was registered (and called); `false` otherwise so the
 /// caller can surface a fallback toast.
