@@ -402,7 +402,6 @@ enum TypedProjectionGlue {
             pictureUrl: card.hasPictureUrl ? (card.pictureUrl ?? "") : nil,
             nip05: card.nip05 ?? "",
             about: card.about ?? "",
-            hasProfile: card.hasProfile,
             lnurl: card.hasLnurl ? (card.lnurl ?? "") : nil
         )
     }

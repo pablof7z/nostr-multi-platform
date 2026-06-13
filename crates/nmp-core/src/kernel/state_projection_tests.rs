@@ -571,7 +571,7 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
         entry.get("npub").is_none(),
         "claimed_profiles entry must not carry npub — shells encode bech32"
     );
-    assert_eq!(entry["has_profile"].as_bool(), Some(false));
+    assert!(entry.get("has_profile").is_none(), "D1 #606: render-gate field removed");
     assert!(entry["display_name"].is_null());
     assert!(entry["picture_url"].is_null());
 
@@ -588,7 +588,7 @@ fn claimed_profiles_projection_refines_claimed_pubkey() {
 
     let after = snapshot(&mut kernel);
     let entry = &after["projections"]["claimed_profiles"][ACCOUNT];
-    assert_eq!(entry["has_profile"].as_bool(), Some(true));
+    assert!(entry.get("has_profile").is_none(), "D1 #606: render-gate field removed");
     assert_eq!(entry["display_name"].as_str(), Some("Claimed Profile"));
     assert_eq!(
         entry["picture_url"].as_str(),

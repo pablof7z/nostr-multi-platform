@@ -28,7 +28,6 @@ fn profile_card_model(card: &super::super::ProfileCard) -> ProfileCardModel {
         picture_url: card.picture_url.clone(),
         nip05: card.nip05.clone(),
         about: card.about.clone(),
-        has_profile: card.has_profile,
         lnurl: card.lnurl.clone(),
     }
 }

@@ -120,13 +120,12 @@ fn identity_builtins_emit_typed_sidecars_alongside_json() {
             .unwrap_or(true),
         "typed profile.display_name presence must mirror JSON null-ness"
     );
-    assert_eq!(
-        decoded_profile.has_profile,
-        json_profile
-            .get("has_profile")
-            .and_then(serde_json::Value::as_bool)
-            .expect("profile JSON must carry has_profile"),
-        "typed and JSON profile.has_profile must agree"
+    // D1 (#606): `has_profile` render-gate removed. The card carries no
+    // kernel-computed "relay data arrived" boolean on the projection boundary;
+    // the JSON snapshot must not carry the key at all.
+    assert!(
+        json_profile.get("has_profile").is_none(),
+        "profile JSON must NOT carry the removed `has_profile` render-gate field"
     );
 }
 
@@ -196,11 +195,15 @@ fn profile_cluster_builtins_emit_typed_sidecars_alongside_json() {
         cp_decoded.entries[0].0, claimed_pubkey,
         "typed claimed_profiles key must equal the claimed pubkey"
     );
-    // Placeholder card (no kind:0) → all Options None, has_profile false.
+    // D1 (#606): a placeholder card (no kind:0 ingested) decodes and renders
+    // from its raw optional fields alone — there is NO `has_profile` render-gate
+    // boolean. Every display Option is `None`; consumers pick their own
+    // fallback (abbreviated pubkey etc.) without a "loaded" flag.
     let card = &cp_decoded.entries[0].1;
     assert_eq!(card.pubkey, claimed_pubkey);
     assert_eq!(card.display_name, None);
-    assert!(!card.has_profile);
+    assert_eq!(card.picture_url, None);
+    assert_eq!(card.lnurl, None);
 
     // --- claimed_events (empty here) ----------------------------------------
     let ce_json = json_map_len("claimed_events");

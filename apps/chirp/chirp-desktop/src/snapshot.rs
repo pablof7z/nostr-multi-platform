@@ -73,8 +73,6 @@ pub struct ProfileCard {
     #[serde(default)]
     pub about: String,
     #[serde(default)]
-    pub has_profile: bool,
-    #[serde(default)]
     pub lnurl: Option<String>,
 }
 
@@ -375,7 +373,6 @@ mod tests {
                 "picture_url": null,
                 "nip05": "",
                 "about": "",
-                "has_profile": true,
                 "lnurl": null
             }
         });
