@@ -1,41 +1,11 @@
 //! V-01 Stage 3c — async publish path for app-level write actions on wasm32.
 //!
-//! Stage 3b landed the signer slot (`Option<Arc<dyn Signer>>`) and the
-//! `Nip07Signer::sign()` JS bridge; every app-level write still returned
-//! `publish_path_not_wired` because the kernel's publish surface needed
-//! exposure on `KernelReducer` and the trait-level `SignerOp::Pending(rx)`
-//! mpsc receiver could not be awaited cleanly on wasm32 (the wasm thread is
-//! the JS event-loop thread; `recv_timeout` deadlocks it, `try_recv` in a
-//! loop is a polling busy-wait and violates D8).
-//!
-//! Stage 3c closes both gaps:
-//!
-//! 1. [`nmp_core::KernelReducer::publish_signed_event`] is the new public
-//!    publish-from-signed-event surface (delegates to `Kernel::publish_signed`
-//!    + `partition_auth_paused`, byte-identical with the native actor path
-//!    `actor::commands::publish::publish_note` reaches after sign).
-//! 2. [`nmp_signers::sign_event_via_extension`] is the pure-async twin of
-//!    `Nip07Signer::sign()` — returns a real `Future<Output = Result<...>>`
-//!    the wasm Promise wrapper can `.await` through `JsFuture` (yields to JS
-//!    every await, no busy-poll).
-//!
-//! [`publish_app_action`] (this module) composes those two seams plus the
-//! relay-pool fan-out into a single `js_sys::Promise`-friendly async fn.
-//!
-//! # Scope
-//!
-//! This module wires **`PublishNote` (kind:1)** including NIP-10 threaded
-//! replies, and **`React` (kind:7)** via
-//! [`nmp_core::KernelReducer::build_reaction_draft`]. `Follow` / `Unfollow`
-//! remain scoped to an honest `publish_path_not_wired_for_kind` error —
-//! kind:3 follow-set editing requires a `try_current_follows` kernel seam to
-//! distinguish "kind:3 not yet loaded" from "zero follows", to avoid silently
-//! destroying a user's existing contact list (PR-6b).
-//!
-//! Reply tags are resolved through [`nmp_core::KernelReducer::build_reply_tags`]
-//! before the sign `.await` so no `RefCell` borrow ever lives across an async
-//! boundary. An unknown parent (event not in the local store) fails closed with
-//! a `reply_target_unknown:` reason rather than silently discarding the marker.
+//! Wires `PublishNote` (kind:1, NIP-10 replies), `React` (kind:7), and
+//! `Follow` / `Unfollow` (kind:3) through [`nmp_core::KernelReducer`] seams
+//! and [`nmp_signers::sign_event_via_extension`] (the pure-`async` NIP-07
+//! bridge). All borrows are dropped before the sign `.await` (D4/D8).
+//! Follow/Unfollow fail closed with `follow_list_not_loaded` when kind:3 has
+//! not been ingested yet; bad pubkey targets fail with `follow_target_invalid`.
 
 use nmp_signers::SignerBackend;
 
@@ -73,8 +43,7 @@ use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 pub(crate) fn write_path_not_wired_for_kind_reason(action_type: &str) -> String {
     format!(
         "publish_path_not_wired_for_kind: action {action_type:?} is not yet wired through the \
-         wasm publish path. V-01 Stage 3c first PR wired `nmp.publish` (kind:1 notes) only — \
-         Follow / Unfollow follow up. See issue #1007."
+         wasm publish path."
     )
 }
 
@@ -122,6 +91,46 @@ pub(crate) fn unsupported_signer_backend_reason(backend: &SignerBackend) -> Stri
     )
 }
 
+/// Stable error-code prefix returned when a Follow or Unfollow action cannot
+/// proceed because the active account's kind:3 contact list has not been
+/// ingested yet.
+///
+/// Publishing a kind:3 without a loaded baseline would silently wipe the
+/// user's existing contact list — so the wasm path fails closed with this
+/// reason instead. The host should wait for the contact-list snapshot
+/// projection to populate before retrying.
+///
+/// The prefix is pinned by a test below so JS host pattern-matching is stable.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) fn follow_list_not_loaded_reason() -> String {
+    "follow_list_not_loaded: the active account's kind:3 contact list has not been \
+     ingested yet. Retry after the contact-list snapshot projection is populated."
+        .to_string()
+}
+
+/// Stable error-code prefix returned when the `pubkey` target supplied to a
+/// `Follow` or `Unfollow` action is not a valid 64-hex lowercase pubkey.
+///
+/// The wasm path fails closed — signing and publishing a garbage/npub string
+/// into the user's kind:3 would pollute it; the target must be a valid hex
+/// pubkey before the follow list is edited. The prefix is pinned by a test
+/// below so JS host pattern-matching is stable.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) fn follow_target_invalid_reason(target: &str) -> String {
+    format!(
+        "follow_target_invalid: follow/unfollow target {target:?} is not a valid 64-hex pubkey. \
+         Supply a lowercase hex pubkey, not an npub or other encoding."
+    )
+}
+
+/// Local mirror of `nmp_core::kernel::nostr::is_hex_pubkey` — that function is
+/// not re-exported by `nmp-core` on wasm32 (it lives behind the native-only
+/// `__ffi_internal` module). Same 64-char ASCII-hexdigit rule as the kernel.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+fn is_hex_pubkey(v: &str) -> bool {
+    v.len() == 64 && v.chars().all(|c| c.is_ascii_hexdigit())
+}
+
 // The fan-out helper previously lived here with a `.find()` loop (first
 // matching driver only), which dropped frames addressed to `"both"`-role
 // URLs that spawn two drivers sharing the same relay URL (issue #1143 fix 2).
@@ -130,40 +139,57 @@ pub(crate) fn unsupported_signer_backend_reason(backend: &SignerBackend) -> Stri
 // (`tick::start_tick_interval`, `runtime::WasmRuntime::fan_outbound`, and
 // `publish_app_action` below) now route through that single implementation.
 
+/// Shared sign-and-publish tail for all [`publish_app_action`] arms.
+///
+/// Every arm builds its kind-specific [`UnsignedEvent`] then delegates here:
+/// 1. Await `sign_event_via_extension` (NIP-07 JS Promise — only `.await`).
+/// 2. Publish the signed event through `publish_signed_event` (short borrow).
+/// 3. Fan the outbound frame to every connected relay driver.
+/// 4. Push a fresh snapshot so the host sees the queued entry immediately.
+/// 5. Return `ActionAccepted` — per-relay verdicts arrive later via snapshots.
+///
+/// No borrow lives across the `.await` (D4/D8).
+#[cfg(target_arch = "wasm32")]
+#[allow(clippy::too_many_arguments)]
+async fn sign_and_publish(
+    unsigned: nmp_core::substrate::UnsignedEvent,
+    cached_pubkey: nmp_signers::PublicKey,
+    action_type: String,
+    correlation_id: String,
+    reducer: Rc<RefCell<KernelReducer>>,
+    drivers: Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
+    snapshot_callback: Rc<RefCell<Option<js_sys::Function>>>,
+    meta: Rc<RefCell<RuntimeMeta>>,
+) -> WorkerEvent {
+    let signed = match nmp_signers::sign_event_via_extension(cached_pubkey, unsigned).await {
+        Ok(s) => s,
+        Err(error) => {
+            return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: action_type,
+                correlation_id,
+                reason: format!("nip07_sign_failed: {error}"),
+            });
+        }
+    };
+    let outbound = {
+        let mut r = reducer.borrow_mut();
+        r.publish_signed_event(&signed, &[], Some(correlation_id.clone()))
+    };
+    crate::relay_pool::fan_out_outbound(&drivers, &outbound);
+    push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+    WorkerEvent::ActionAccepted {
+        action_type,
+        correlation_id,
+    }
+}
+
 /// V-01 Stage 3c — async publish path executed inside a `js_sys::Promise`.
 ///
-/// Lifecycle:
-/// 1. Validate the action variant. `React` (kind:7) and `PublishNote` (kind:1)
-///    are wired; `Follow` / `Unfollow` and all other variants return an honest
-///    `publish_path_not_wired_for_kind` failure inline (no sign call).
-/// 2. Validate the installed signer's backend. Non-`Nip07` backends return
-///    an `unsupported_signer_backend_for_writes` failure inline.
-/// 3. Resolve NIP-10 reply tags (if `reply_to_id` is set) via
-///    `reducer.borrow().build_reply_tags(id)` — a synchronous store lookup
-///    that returns `None` for unknown parents (fail-closed with
-///    `reply_target_unknown:` reason). Borrow is dropped before the await.
-/// 4. Build the `UnsignedEvent` (kind:1) with the resolved tags.
-/// 5. Await `nmp_signers::sign_event_via_extension(...)` — the JS Promise
-///    bridge that yields control to the JS event loop. On rejection we
-///    surface the signer error verbatim through `CapabilityFailure`.
-/// 6. Borrow the reducer briefly, call `publish_signed_event(&signed, &[])`,
-///    drop the borrow. Fan the resulting outbound through the driver pool,
-///    then push a fresh snapshot through the callback (same `push_snapshot_if_callback`
-///    helper the relay-pool sink uses on every inbound kernel mutation).
-/// 7. Resolve the Promise with `WorkerEvent::ActionAccepted` — the host's
-///    spinner clears immediately; per-relay terminal verdicts arrive later
-///    via the `action_results` projection on the next snapshot push.
-///
-/// # D4 / D8 / borrow discipline
-///
-/// - The `reducer: Rc<RefCell<KernelReducer>>` borrow is held only during
-///   the synchronous `publish_signed_event` call AFTER the `.await` resolves.
-///   No borrow lives across an `.await` boundary — that would panic on the
-///   next entry to the reducer through any other call site (snapshot push,
-///   inbound relay frame).
-/// - The single `.await` (the JS Promise) yields control to the JS event
-///   loop in the standard wasm-bindgen-futures way (`JsFuture::from(p).await`).
-///   No mpsc `recv_timeout`, no `try_recv` loop — D8 holds.
+/// Each arm validates its inputs synchronously (all borrows dropped before any
+/// `.await`), builds the kind-specific [`UnsignedEvent`], then delegates to
+/// [`sign_and_publish`] for sign / publish / fan-out / snapshot / `ActionAccepted`.
+/// Unknown variants return `publish_path_not_wired_for_kind` without signing.
+/// Non-NIP-07 signers return `unsupported_signer_backend_for_writes`.
 #[cfg(target_arch = "wasm32")]
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn publish_app_action(
@@ -177,10 +203,9 @@ pub(crate) async fn publish_app_action(
     now_secs: u64,
 ) -> WorkerEvent {
     use nmp_core::substrate::UnsignedEvent;
-    use nmp_signers::sign_event_via_extension;
 
-    // Step 1 — variant gate. React (kind:7) and PublishNote (kind:1) are
-    // wired; Follow / Unfollow remain fail-closed (PR-6b).
+    // Step 1 — variant gate: React (kind:7), Follow/Unfollow (kind:3), Note
+    // (kind:1) are wired; anything else fails closed without signing.
     let (action_type, _payload) = action.clone().into_dispatch_parts();
 
     // Step 1a — React branch. Extract data by reference before `action` is
@@ -231,38 +256,85 @@ pub(crate) async fn publish_app_action(
             created_at: now_secs,
         };
 
-        // Await the extension — only await in this path; reducer is not
-        // borrowed across it.
-        let signed = match sign_event_via_extension(cached_pubkey, unsigned).await {
-            Ok(s) => s,
-            Err(error) => {
+        return sign_and_publish(unsigned, cached_pubkey, action_type, correlation_id,
+            reducer, drivers, snapshot_callback, meta).await;
+    }
+
+    // Step 1b — Follow / Unfollow branch (kind:3). `action` was not React;
+    // check for Follow/Unfollow before falling through to Note.
+    if let AppAction::Follow { pubkey } | AppAction::Unfollow { pubkey } = &action {
+        let is_add = matches!(action, AppAction::Follow { .. });
+
+        // Hex-pubkey gate (matches native follow() in publish.rs): reject
+        // npub/bech32/garbage targets before touching the follow list.
+        // Canonicalize to lowercase so uppercase-hex doesn't create duplicate
+        // or fail-to-remove against an already-lowercase entry.
+        // Known data-loss gap (relay hints / petnames / content not preserved):
+        // see issue #1246.
+        if !is_hex_pubkey(pubkey) {
+            return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: action_type,
+                correlation_id,
+                reason: follow_target_invalid_reason(pubkey),
+            });
+        }
+        let pubkey = pubkey.to_lowercase();
+
+        // Signer backend gate — same constraint as Note and React.
+        let backend = signer.backend();
+        if !matches!(backend, SignerBackend::Nip07) {
+            return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: action_type,
+                correlation_id,
+                reason: unsupported_signer_backend_reason(&backend),
+            });
+        }
+        let cached_pubkey = signer.pubkey();
+
+        // Safety gate: read the active account's current follow list before the
+        // sign await. `None` means the kind:3 has not been ingested yet — fail
+        // closed to prevent silently overwriting an unloaded contact list.
+        // The borrow is dropped before the await (RefCell borrow discipline).
+        let current_follows = {
+            let r = reducer.borrow();
+            r.try_current_follows()
+        };
+        let current_follows = match current_follows {
+            Some(list) => list,
+            None => {
                 return WorkerEvent::CapabilityFailure(CapabilityFailure {
                     capability: action_type,
                     correlation_id,
-                    reason: format!("nip07_sign_failed: {error}"),
+                    reason: follow_list_not_loaded_reason(),
                 });
             }
         };
 
-        // Publish + fan-out. Thread `correlation_id` into the engine so
-        // per-relay terminal verdicts land in `action_results` under the
-        // dispatch id the JS host is waiting on — same contract as the Note
-        // branch below (Step 5). Without this the engine keys on the signed
-        // event id the host never sees, breaking the action-result promise.
-        let outbound = {
-            let mut r = reducer.borrow_mut();
-            r.publish_signed_event(&signed, &[], Some(correlation_id.clone()))
+        // Edit the follow list using the shared canonical builders.
+        let new_follows = if is_add {
+            nmp_core::tags::follow_list_after_add(&current_follows, &pubkey)
+        } else {
+            nmp_core::tags::follow_list_after_remove(&current_follows, &pubkey)
         };
-        crate::relay_pool::fan_out_outbound(&drivers, &outbound);
-        push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
 
-        return WorkerEvent::ActionAccepted {
-            action_type,
-            correlation_id,
+        let tags: Vec<Vec<String>> = new_follows
+            .iter()
+            .map(|p| vec!["p".to_string(), p.clone()])
+            .collect();
+
+        let unsigned = nmp_core::substrate::UnsignedEvent {
+            pubkey: cached_pubkey.to_hex(),
+            kind: 3,
+            tags,
+            content: String::new(),
+            created_at: now_secs,
         };
+
+        return sign_and_publish(unsigned, cached_pubkey, action_type, correlation_id,
+            reducer, drivers, snapshot_callback, meta).await;
     }
 
-    // Step 1b — Note branch. `action` was not React; destructure it here.
+    // Step 1c — Note branch. `action` was not React or Follow/Unfollow.
     let (content, reply_to_id) = match action {
         AppAction::PublishNote {
             content,
@@ -288,13 +360,8 @@ pub(crate) async fn publish_app_action(
     }
     let cached_pubkey = signer.pubkey();
 
-    // Step 3 — resolve NIP-10 reply tags (if replying) and build the
-    // unsigned kind:1 event.
-    //
-    // The store lookup happens HERE — before the sign `.await` — so no
-    // `RefCell` borrow lives across the async boundary (borrow discipline,
-    // kernel_reducer.rs doc §D4/D8). `build_reply_tags` takes `&self` so
-    // the borrow is released the moment the block exits.
+    // Step 3 — resolve NIP-10 reply tags synchronously (borrow dropped before
+    // the sign await, D4/D8), then build the unsigned kind:1 event.
     let tags = if let Some(ref rid) = reply_to_id {
         match reducer.borrow().build_reply_tags(rid) {
             Some(t) => t,
@@ -310,9 +377,6 @@ pub(crate) async fn publish_app_action(
         Vec::new()
     };
 
-    // Step 3 — build the unsigned kind:1 event. Tags are empty for a fresh
-    // root note; a reply carries the NIP-10 marked-form e/p tags resolved
-    // above.
     let unsigned = UnsignedEvent {
         pubkey: cached_pubkey.to_hex(),
         kind: 1,
@@ -321,50 +385,12 @@ pub(crate) async fn publish_app_action(
         created_at: now_secs,
     };
 
-    // Step 4 — await the extension. This is the only `.await` in the path;
-    // the reducer is NOT borrowed across it.
-    let signed = match sign_event_via_extension(cached_pubkey, unsigned).await {
-        Ok(s) => s,
-        Err(error) => {
-            return WorkerEvent::CapabilityFailure(CapabilityFailure {
-                capability: action_type,
-                correlation_id,
-                reason: format!("nip07_sign_failed: {error}"),
-            });
-        }
-    };
-
-    // Step 5 — synchronous publish + fan-out. Borrows are short-lived and
-    // sequential; nothing crosses an `.await`.
-    //
-    // `correlation_id` is threaded into the publish engine via
-    // `KernelReducer::publish_signed_event(... , Some(id))` so per-relay
-    // terminal verdicts land in the `action_results` projection keyed on
-    // the dispatch id the JS host knows — matching the native dispatched
-    // `publish_note` path's `publish_signed_to_with_correlation` call.
-    // Without this thread the host's partial-success UX (`"2/3 relays
-    // accepted"`) would have no key to correlate on, since the synthetic
-    // event id never leaves the wasm runtime.
-    let outbound = {
-        let mut r = reducer.borrow_mut();
-        r.publish_signed_event(&signed, &[], Some(correlation_id.clone()))
-    };
-    crate::relay_pool::fan_out_outbound(&drivers, &outbound);
-
-    // Push a fresh snapshot so the host sees the new publish-queue entry
-    // (status: "accepted_locally") immediately. The same helper the relay
-    // sink uses on every inbound frame — single source of truth for the
-    // push contract.
-    push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
-
-    // Step 6 — resolve with ActionAccepted. Per-relay terminal verdicts
-    // (OK acks) arrive later through the snapshot-push channel via the
-    // `action_results` projection drained on the next inbound that mutates
-    // kernel state.
-    WorkerEvent::ActionAccepted {
-        action_type,
-        correlation_id,
-    }
+    // Steps 4-6 — sign via NIP-07, publish + fan-out, push snapshot, return
+    // ActionAccepted. The `correlation_id` is threaded into the publish engine
+    // so per-relay verdicts land in `action_results` keyed on the dispatch id
+    // the JS host knows (matching the native `publish_note` path).
+    sign_and_publish(unsigned, cached_pubkey, action_type, correlation_id,
+        reducer, drivers, snapshot_callback, meta).await
 }
 
 // ─── native shims ────────────────────────────────────────────────────────────
@@ -380,10 +406,19 @@ mod tests {
 
     #[test]
     fn write_path_not_wired_for_kind_reason_has_stable_prefix() {
-        // React (nmp.nip25.react) is now wired; use a genuinely-unwired action.
-        let reason = write_path_not_wired_for_kind_reason("nmp.follow");
+        // React / Follow / Unfollow are now wired; use a genuinely-unwired action.
+        let reason = write_path_not_wired_for_kind_reason("nmp.hypothetical_future_verb");
         assert!(reason.starts_with("publish_path_not_wired_for_kind"));
-        assert!(reason.contains("nmp.follow"));
+        assert!(reason.contains("nmp.hypothetical_future_verb"));
+    }
+
+    #[test]
+    fn follow_list_not_loaded_reason_has_stable_prefix() {
+        let reason = follow_list_not_loaded_reason();
+        assert!(
+            reason.starts_with("follow_list_not_loaded:"),
+            "prefix must be 'follow_list_not_loaded:'; got: {reason:?}"
+        );
     }
 
     #[test]
@@ -410,5 +445,22 @@ mod tests {
             "prefix must be 'reply_target_unknown:'; got: {reason:?}"
         );
         assert!(reason.contains("deadbeef"), "reason must echo the event id");
+    }
+
+    #[test]
+    fn follow_target_invalid_reason_has_stable_prefix() {
+        // npub1 / bech32 inputs must be rejected with a stable prefix so the
+        // JS host pattern-match does not break across refactors.
+        let reason = follow_target_invalid_reason("npub1abc");
+        assert!(
+            reason.starts_with("follow_target_invalid:"),
+            "prefix must be 'follow_target_invalid:'; got: {reason:?}"
+        );
+        assert!(reason.contains("npub1abc"), "reason must echo the target");
+        // Non-64-char hex also fails.
+        let reason2 = follow_target_invalid_reason("deadbeef");
+        assert!(reason2.starts_with("follow_target_invalid:"));
+        // Valid 64-hex (lowercase) does NOT produce this reason — it passes
+        // the gate (verified via is_hex_pubkey in the wasm arm, not here).
     }
 }

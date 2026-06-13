@@ -625,14 +625,12 @@ pub(crate) fn follow(
             correlation_id,
         );
     }
-    let mut follows = kernel.current_follows(&author);
-    if add {
-        if !follows.iter().any(|p| p == pubkey) {
-            follows.push(pubkey.to_string());
-        }
+    let current = kernel.current_follows(&author);
+    let follows = if add {
+        crate::tags::follow_list_after_add(&current, pubkey)
     } else {
-        follows.retain(|p| p != pubkey);
-    }
+        crate::tags::follow_list_after_remove(&current, pubkey)
+    };
     let tags = follows
         .iter()
         .map(|p| vec!["p".to_string(), p.clone()])
