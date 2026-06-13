@@ -700,12 +700,7 @@ enum TypedGroupDefaultsDecoder {
     static func decode(bytes: Data) -> GroupDefaultsSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_nip29_GroupDefaultsSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_nip29_GroupDefaultsSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.groupDefaults`.
         return TypedProjectionGlue.groupDefaults(reader)
