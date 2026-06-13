@@ -92,16 +92,16 @@ jobs:
     # --workspace` from the repo root never touches it — a Rust-level break
     # there is otherwise invisible to CI until an Android build runs.
     #
-    # This job runs the full `cargo test` (not just `cargo check`):
-    #   - 5 unit tests in `src/` (external_signer + session)
-    #   - 2 integration tests in `tests/bridge_parity.rs` (JNI symbol parity +
-    #     Rust re-export coverage)
-    # Total: 7 tests, verified green locally.
-    #
-    # The crate is a `cdylib`, but `cargo test` still links the test binary
-    # against the host target — it does NOT require a cross-compiled .so or an
-    # Android emulator. The integration test is hermetic string-search over
-    # `include_str!` source files.
+    # This job runs THREE gates of increasing fidelity:
+    #   1. `cargo test` — host unit + integration tests (JNI symbol parity, Rust
+    #      re-export coverage, and the #1218 openssl-src pin guard). Hermetic
+    #      string-search over `include_str!` source/manifest files; links the
+    #      test binary against the host target, no NDK or emulator needed.
+    #   2. `cargo check --features marmot` — fast host-target scope check for the
+    #      Marmot feature graph (catches Rust import/trait errors).
+    #   3. `cargo ndk ... x86_64-linux-android` — a REAL single-ABI cross-compile
+    #      that exercises the vendored-OpenSSL build the APK depends on. This is
+    #      the gate that would have caught #1218 (host check #2 is blind to it).
     name: cargo test (android-ffi)
     runs-on: ubuntu-latest
     steps:
@@ -132,9 +132,40 @@ jobs:
       #
       # This step catches scope/trait/import errors (e.g. missing
       # `jstring_to_cstring` import, missing `zeroize std` feature, missing
-      # `libsqlite3-sys` vendored OpenSSL dep) on the host target without
-      # requiring NDK cross-compilation in CI. A host `cargo check --features
-      # marmot` is sufficient because the breakages are Rust scope errors, not
-      # link-time or ABI errors.
+      # `libsqlite3-sys` vendored OpenSSL dep) on the host target. It is fast
+      # because it never cross-compiles, but for that same reason it is BLIND to
+      # NDK-only failures — most notably #1218, where the vendored OpenSSL
+      # `providers/ml_kem` source failed to cross-compile for
+      # `x86_64-linux-android` under NDK 26 while the host build stayed green.
       - name: cargo check (nmp-android-ffi --features marmot)
         run: cd crates/nmp-android-ffi && cargo check --features marmot
+
+      # Real NDK cross-compile gate — closes the #1218 blind spot.
+      #
+      # The host `cargo check` above cannot see vendored-OpenSSL cross-compile
+      # breakage because no Android target is built. This step runs the SAME
+      # `cargo ndk` invocation the APK uses (android/app/build.gradle.kts), but
+      # scoped to a SINGLE ABI: `x86_64-linux-android`. x86_64 is the cheapest
+      # ABI to build in CI (native host arch — no QEMU) AND is precisely the ABI
+      # that #1218 broke, so it is the highest-signal/lowest-cost gate. A green
+      # here proves the vendored OpenSSL (pinned to a pre-ml_kem 3.4.x line)
+      # actually cross-compiles, not merely that the Rust scopes resolve.
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+          add-to-path: true
+
+      - name: Add x86_64-linux-android Rust target
+        run: rustup target add x86_64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      # `nttld/setup-ndk` exports ANDROID_NDK_HOME into the job env, which
+      # `cargo ndk` reads to locate the clang cross-toolchain — no explicit
+      # passthrough needed.
+      - name: cargo ndk cross-compile (x86_64, --features marmot)
+        run: |
+          cd crates/nmp-android-ffi
+          cargo ndk -t x86_64 -o ./jniLibs-ci build --release --features marmot

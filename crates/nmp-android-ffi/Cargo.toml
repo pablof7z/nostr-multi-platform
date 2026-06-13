@@ -24,7 +24,7 @@ crate-type = ["cdylib"]
 # makes the `nmp_marmot_*` C-ABI symbols reachable through Rust paths from the
 # JNI shim (the same symbol-retention mechanism documented at the top of
 # `src/lib.rs`).
-marmot = ["nmp-app-chirp/marmot", "dep:libsqlite3-sys"]
+marmot = ["nmp-app-chirp/marmot", "dep:libsqlite3-sys", "dep:openssl-src"]
 
 [dependencies]
 # Path-dep on the SAME kernel the iOS app consumes.
@@ -52,3 +52,27 @@ zeroize = { version = "1", features = ["std"] }
 # OpenSSL when cross-compiling for the NDK. Feature unification applies this to
 # the whole graph; only active when `marmot` is enabled.
 libsqlite3-sys = { version = "0.35", features = ["bundled-sqlcipher-vendored-openssl"], optional = true }
+
+[build-dependencies]
+# Pin the vendored-OpenSSL source consumed (transitively) by
+# `libsqlite3-sys/bundled-sqlcipher-vendored-openssl` -> `openssl-sys/vendored`.
+#
+# `openssl-sys 0.9.117` only constrains `openssl-src >= 300.2.0`, so the resolver
+# otherwise picks the newest `300.6.x+3.6.3`. OpenSSL >= 3.5.0 ships the
+# post-quantum providers (`providers/ml_kem`, `ml_dsa`, `slh_dsa`), and the
+# `ml_kem` provider source fails to cross-compile for `x86_64-linux-android`
+# under NDK 26 / clang-17 (build exits 2 in the `providers/ml_kem` phase) — see
+# #1218. SQLCipher only uses AES + SHA, never the PQ providers, so this is dead
+# weight we don't ship.
+#
+# `=300.4.2+3.4.1` is the last pre-3.5 line (OpenSSL 3.4.1): it has no ml_kem/
+# ml_dsa/slh_dsa providers at all, so it cross-compiles cleanly for ALL shipped
+# ABIs (arm64-v8a AND x86_64) under NDK 26. This is a direct `build-dependency`
+# pin rather than a `[patch]` so the version floor is enforced by the resolver
+# (manifest), not merely the lockfile (which any `cargo update` could lift).
+# Declaring it here unifies `openssl-sys`'s transitive build-dep onto this exact
+# version. The `legacy` feature mirrors what `openssl-sys/vendored` itself
+# requests, so feature unification is a no-op rather than a surprise toggle.
+# Gated behind `marmot` (via `dep:openssl-src`) so non-Marmot builds, which
+# never pull `libsqlite3-sys`/`openssl-sys`, are completely unaffected.
+openssl-src = { version = "=300.4.2", features = ["legacy"], optional = true }

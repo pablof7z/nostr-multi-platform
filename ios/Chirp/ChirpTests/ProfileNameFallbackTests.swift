@@ -62,7 +62,6 @@ final class ProfileNameFallbackTests: XCTestCase {
     private func card(pubkey: String, displayName: String?) -> ProfileCard {
         ProfileCard(
             pubkey: pubkey,
-            npub: "npub1\(String(repeating: "q", count: 58))",
             displayName: displayName,
             pictureUrl: nil,
             nip05: "",
