@@ -385,20 +385,6 @@ enum TypedProjectionGlue {
         )
     }
 
-    // MARK: nmp.nip29.group_defaults → GroupDefaultsSnapshot
-
-    /// Map the typed `nmp.nip29.group_defaults` sidecar (`NGDF` /
-    /// `nmp_nip29_GroupDefaultsSnapshot`) to the `GroupDefaultsSnapshot` the JSON
-    /// `projections["nmp.nip29.group_defaults"]` path yields (#626). Flat
-    /// single-field copy: `suggestedRelayUrl` is the crate-owned default host
-    /// relay URL for a new public group, carried verbatim (raw protocol value;
-    /// the shell pre-fills it but the user may overwrite it).
-    static func groupDefaults(
-        _ reader: nmp_nip29_GroupDefaultsSnapshot
-    ) -> GroupDefaultsSnapshot {
-        GroupDefaultsSnapshot(suggestedRelayUrl: reader.suggestedRelayUrl ?? "")
-    }
-
     // MARK: profile cluster → ProfileCard
 
     /// Map the SHARED `nmp_kernel_ProfileCard` reader (`ProfileCard.generated.swift`,
