@@ -619,6 +619,9 @@ mod autopublish;
 mod tests;
 
 #[cfg(test)]
+mod keyring_identity_tests;
+
+#[cfg(test)]
 mod autopublish_tests;
 
 #[cfg(test)]
