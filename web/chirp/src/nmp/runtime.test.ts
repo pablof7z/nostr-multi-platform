@@ -130,15 +130,11 @@ describe("shared Chirp web semantics", () => {
     });
     const decoded = decodeUpdateFrameBytes(bytes);
 
-    // Use objectContaining so the test is resilient to new fields added to
-    // DecodedUpdateFrame/DecodedRelayStatus without being brittle.
     expect(decoded).toMatchObject({
       type: "snapshot",
       schemaVersion: 1,
       running: true,
-      relayStatuses: [
-        expect.objectContaining({ url: "wss://relay.example", role: "both", status: "Connected" }),
-      ],
+      relayStatuses: [expect.objectContaining({ url: "wss://relay.example", role: "both", status: "Connected" })],
     });
   });
 
