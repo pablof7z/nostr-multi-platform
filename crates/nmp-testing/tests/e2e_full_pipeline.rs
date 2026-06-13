@@ -444,12 +444,7 @@ fn negentropy_skips_redundant_req() {
         is_indexer_discovery: false,
     };
 
-    // ── Case 1: WatermarkFn reports local store has events up to ts=1700 ────
-    // Per owner decision #1281 (T129), the watermark only RAISES an existing
-    // `since=Some(t)` floor toward the watermark — it never introduces a `since`
-    // where none existed (a `since=None` "all-time backfill" interest is exempt;
-    // see Case 2). So this case uses an interest with an explicit lower floor;
-    // the relay REQ must carry `"since":1701` — skipping already-cached events.
+    // Case 1: warm store (watermark=1700) raises an EXISTING since floor → REQ carries since=1701. Per #1281 (T129) a since=None interest is exempt (see Case 2), so this case sets an explicit floor.
     let mut warm_interest = alice_interest.clone();
     warm_interest.shape.since = Some(1);
     let mut lc_warm = SubscriptionLifecycle::new();
@@ -471,8 +466,7 @@ fn negentropy_skips_redundant_req() {
         );
     }
 
-    // ── Case 2: No WatermarkFn / cold start → relay sends everything ─────────
-    // Without a watermark the REQ must have NO `since` field (full fetch).
+    // Case 2: cold start (no watermark) → since=None stays None → REQ has no since field (full fetch).
     let mut lc_cold = SubscriptionLifecycle::new();
     lc_cold.set_watermark_fn(Arc::new(|_shape| None));
     lc_cold.registry_mut().push(alice_interest);
