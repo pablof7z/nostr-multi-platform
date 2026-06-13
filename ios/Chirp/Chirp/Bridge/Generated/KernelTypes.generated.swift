@@ -232,11 +232,6 @@ struct SnapshotProjections: Decodable, Equatable {
     let resolvedProfiles: [String: ProfileCard]?
     let claimedProfiles: [String: ProfileCard]?
     let claimedEvents: [String: ClaimedEventDto]?
-    /// Pre-resolved embed projections produced by `nmp-ffi`'s embed sidecar
-    /// (issue #1283 / ADR-0034). Each entry is an `EmbeddedEventEnvelope` with
-    /// `projection` already kind-dispatched in Rust — shells decode-only, no
-    /// Swift resolver needed. Key = `primary_id` (same as `claimedEvents`).
-    let claimedEventEmbeds: [String: EmbeddedEventEnvelope]?
     let settingsHub: [String: Int]?
     let marmotSnapshot: MarmotSnapshot?
     let marmotMessages: [String: [MarmotMessage]]?
@@ -274,7 +269,6 @@ struct SnapshotProjections: Decodable, Equatable {
         case resolvedProfiles
         case claimedProfiles
         case claimedEvents
-        case claimedEventEmbeds = "claimed_event_embeds"
         case settingsHub
         case marmotSnapshot = "nmp.marmot.snapshot"
         case marmotMessages = "nmp.marmot.messages"
