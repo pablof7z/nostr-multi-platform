@@ -4,6 +4,7 @@ import { OpFeedSnapshot, RelationCount, ReplyAttribution, RootCard } from "./gen
 import { RelationCountState } from "./generated/nmp/nip01/relation-count-state";
 import { ResolvedProfilesSnapshot } from "./generated/nmp/kernel/resolved-profiles-snapshot";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
+import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 
 // ── Schema descriptor constants (ADR-0038) ──────────────────────────────────
 
@@ -285,6 +286,62 @@ export function decodeResolvedProfiles(snapshot: SnapshotFrame): Map<string, str
         }
       }
       return result;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Decode the resolved_profiles (KRPR) typed projection into a full
+ * pubkey→ProfileWire map (display name + picture + nip05 + about + lnurl) for
+ * the registry user-* components (NostrAvatar / NostrProfileName / Nip05Badge).
+ * The name-only `decodeResolvedProfiles` above is kept for the feed-row
+ * presentation join; this carries the picture URL the avatar needs.
+ * Returns `undefined` on missing/corrupt projection (keep-last-good).
+ */
+export function decodeResolvedProfileCards(
+  snapshot: SnapshotFrame,
+): Map<string, ProfileWire> | undefined {
+  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
+    const proj = snapshot.typedProjections(i);
+    if (!proj || proj.key() !== KRPR_PROJECTION_KEY) continue;
+    const payload = proj.payload();
+    if (!payload || payload.fileIdentifier() !== KRPR_FILE_IDENTIFIER) return undefined;
+    const payloadBytes = payload.payloadArray();
+    if (!payloadBytes || payloadBytes.length === 0) return undefined;
+    try {
+      const bb = new flatbuffers.ByteBuffer(payloadBytes);
+      if (!ResolvedProfilesSnapshot.bufferHasIdentifier(bb)) return undefined;
+      const root = ResolvedProfilesSnapshot.getRootAsResolvedProfilesSnapshot(bb);
+      const out = new Map<string, ProfileWire>();
+      for (let j = 0; j < root.entriesLength(); j += 1) {
+        const entry = root.entries(j);
+        if (!entry) continue;
+        const key = entry.key();
+        const card = entry.value();
+        if (!key || !card) continue;
+        const wire: ProfileWire = { pubkey: key };
+        if (card.hasDisplayName()) {
+          const v = card.displayName();
+          if (v) wire.displayName = v;
+        }
+        if (card.hasPictureUrl()) {
+          const v = card.pictureUrl();
+          if (v) wire.pictureUrl = v;
+        }
+        const nip05 = card.nip05();
+        if (nip05) wire.nip05 = nip05;
+        const about = card.about();
+        if (about) wire.about = about;
+        if (card.hasLnurl()) {
+          const v = card.lnurl();
+          if (v) wire.lnurl = v;
+        }
+        out.set(key, wire);
+      }
+      return out;
     } catch {
       return undefined;
     }

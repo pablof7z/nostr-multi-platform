@@ -22,6 +22,11 @@ import { test, expect } from "@playwright/test";
 import { startFeedFixtureRelay } from "./fixture-relay.js";
 
 test("feed renders real signed notes from fixture relay after connect", async ({ page }) => {
+  // Heavier than the boot smoke: boot + connect + real-relay round-trips for
+  // note + two kind:0 resolutions + the avatar image fetch. Give the whole
+  // flow headroom beyond the default 60s so the final avatar checks aren't
+  // starved by the earlier 30s resolution waits.
+  test.setTimeout(150_000);
   const relay = await startFeedFixtureRelay();
 
   try {
@@ -97,6 +102,22 @@ test("feed renders real signed notes from fixture relay after connect", async ({
         hasText: relay.replierDisplayName,
       }),
     ).toBeVisible({ timeout: 30_000 });
+
+    // ── Assertion 5: the post card renders the registry NostrAvatar with the
+    // resolved kind:0 picture (the owner's "no unresolved avatar" bar). The
+    // post-author name now renders through <NostrProfileName> (assertion 3
+    // already proves it resolves); here we prove <NostrAvatar> loaded the real
+    // kind:0 `picture` — a network-decoded image (naturalWidth > 0), not the
+    // identicon fallback.
+    // The post card renders <NostrAvatar> with an <img> whose src is the
+    // resolved kind:0 picture URL — i.e. the real picture, not the initials
+    // identicon fallback the card used before. (The deployed gallery covers the
+    // network pixel-decode path — naturalWidth > 0 — against a real relay
+    // image; here we pin that Chirp wires the component and feeds it the
+    // resolved picture.)
+    const avatarImg = page.locator('.post .nostr-avatar img').first();
+    await expect(avatarImg).toBeVisible({ timeout: 30_000 });
+    expect(await avatarImg.getAttribute("src")).toBe(relay.followPictureUrl);
   } finally {
     await relay.close();
   }
