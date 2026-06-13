@@ -69,8 +69,17 @@ final class SmokeScenariosTests: XCTestCase {
     /// Swift 6 (the synchronous `setUpWithError` did not — mutating
     /// `@MainActor` state from a nonisolated context raced the FFI callback
     /// onto the wrong thread).
+    ///
+    /// We deliberately do NOT chain `try await super.setUp()`. The base
+    /// `XCTestCase.setUp() async throws` is `nonisolated`, so `await`-ing it
+    /// from this `@MainActor` override would send the non-Sendable
+    /// `XCTestCase` (`self`) across an isolation boundary — rejected by Swift 6
+    /// strict concurrency ("sending value of non-Sendable type 'XCTestCase'
+    /// risks causing data races"). The base async `setUp` is an empty no-op
+    /// (the framework drives the synchronous `setUp()`/`setUpWithError()`
+    /// chain itself before invoking the async variant), so omitting the chain
+    /// is behavior-preserving while keeping the override MainActor-isolated.
     override func setUp() async throws {
-        try await super.setUp()
         try XCTSkipUnless(
             ProcessInfo.processInfo.environment["NMP_SMOKE"] == "1",
             "Set NMP_SMOKE=1 to run the real-relay smoke scenarios "
