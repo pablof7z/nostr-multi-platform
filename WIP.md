@@ -20,6 +20,8 @@ the spec itself; this file no longer mirrors it.
 ## Active
 
 - 2026-06-12 — **K1 signer-session capability port (ADR-0050 + staged implementation)** (advances #961/#960). Stage 1 branch: `adr-0050-signer-session-port` (ADR only). Worktree: agent-a397f0e0f6f51909e. Subsequent stages (port verbs + mailbox completions + drain unification, gift-wrap chain, gift-unwrap, decrypt policy) land as separate PRs per the ADR's staged plan; this entry covers the whole arc and is removed when the final stage merges.
+- 2026-06-13 — **PR-1: deferred completion for key-package-gated marmot ops** (marmot-create-fix ladder). Branch: `feat/marmot-deferred-kp-ops`. Worktree: agent-aef3d1942024711bc. Stores pending create_group/invite ops when KPs are missing; re-runs after ingest; expiry via wall-clock gate; single-flight dedup.
+- 2026-06-13 — **PR-2: pending ops + last op error become snapshot state (NMMS)** (marmot-create-fix ladder). Branch: `feat/marmot-snapshot-op-state`. Worktree: agent-aef3d1942024711bc. Extends MarmotSnapshot + NMMS FlatBuffers with pending_ops/last_op_error.
 
 - 2026-06-12 — **PR 2 of 4: MLS DB key rides host keyring capability; drop apple-native-keyring-store** (Marmot keyring ladder). PR #1187. Branch: `refactor/marmot-capability-credential-store`. Worktree: agent-marmot-keyring. Implements `CapabilityCredentialStore` + `CapabilityCredential` (keyring-core traits over the capability socket); removes `apple-native-keyring-store` dep; rewrites `credential_store::initialize` to probe the capability handler on all platforms (no `cfg(target_os)` branches); exposes `NmpApp::capability_callback_slot()` accessor. Dispatches to the Android Keystore capability handler landed by #1188.
 

@@ -83,7 +83,7 @@ impl MarmotMlsOpHandler {
 }
 
 impl HostOpHandler for MarmotMlsOpHandler {
-    fn handle(&self, action_json: &str, _correlation_id: &str) -> serde_json::Value {
+    fn handle(&self, action_json: &str, correlation_id: &str) -> serde_json::Value {
         // (1) Parse the action JSON into the typed enum. The registry's
         // adapter already did this once before `execute` ran (which is
         // what produced the JSON we're parsing now), so `from_str` cannot
@@ -117,12 +117,20 @@ impl HostOpHandler for MarmotMlsOpHandler {
         // soft-fail envelope the legacy bespoke `nmp_marmot_dispatch`
         // symbol returned pre-PR-3, and the envelope
         // `MarmotHandle::dispatch` returns today).
+        // Marmot reads the system clock directly rather than threading the
+        // kernel's `FixedClock` seam: `HostOpHandler::handle` has no kernel
+        // handle in scope (it is a substrate-generic trait object invoked by
+        // the dispatch adapter), and the only clock consumer here is the
+        // pending-op expiry gate, which needs true wall-clock elapsed time —
+        // not the deterministic test clock — to age out parked ops. Threading
+        // `FixedClock` into the trait signature would couple every host op
+        // handler to a kernel type for a single non-deterministic read.
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
         self.projection
-            .with_inner(|h| ops::dispatch(h, &legacy_envelope, now_secs))
+            .with_inner(|h| ops::dispatch(h, &legacy_envelope, now_secs, Some(correlation_id)))
             .unwrap_or_else(|| serde_json::json!({
                 "ok": false,
                 "error": "MarmotMlsOpHandler: projection mutex poisoned",

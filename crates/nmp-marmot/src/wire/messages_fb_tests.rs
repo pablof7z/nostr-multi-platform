@@ -109,6 +109,7 @@ fn messages_all_groups_typed_round_trip_over_real_projection() {
             h,
             &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
+                None,
         )
     })
     .unwrap();
@@ -125,6 +126,7 @@ fn messages_all_groups_typed_round_trip_over_real_projection() {
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
                 1_001,
+                        None,
             )
         })
         .unwrap()["group_id_hex"]
@@ -137,6 +139,7 @@ fn messages_all_groups_typed_round_trip_over_real_projection() {
             h,
             &json!({ "op": "send", "group_id_hex": group_id_hex, "text": "hello marmot" }),
             1_003,
+                None,
         )
     })
     .unwrap();

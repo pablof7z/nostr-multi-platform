@@ -1236,15 +1236,16 @@ pub(super) fn dispatch_command(
                 }),
             };
             // Route the envelope to the action_results/action_stages mirror.
-            // Convention (matches the rest of the substrate dispatch ops):
-            // `{"ok": true, ...}` → success; anything else → failure with the
-            // `error` field as the reason (defaulting to a static string when
-            // missing so the host always sees something renderable).
-            let ok = result
-                .get("ok")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-            if ok {
+            // `{"pending":true}` means the handler deferred completion (e.g. a
+            // Marmot KP-gated op awaiting a key-package fetch): leave the action
+            // in its already-written `Requested` stage and let the handler push
+            // a later `RecordActionSuccess`/`RecordActionFailure` actor command
+            // (D8-safe — no timer, no polling). Otherwise `{"ok":true}` records
+            // success and anything else records failure (static reason fallback).
+            let flag = |k| result.get(k).and_then(serde_json::Value::as_bool).unwrap_or(false);
+            if flag("pending") {
+                // Deferred path owns the terminal write; nothing to record now.
+            } else if flag("ok") {
                 // Host-op success carries no structured result body (D0).
                 ctx.kernel.record_action_success(correlation_id, None);
             } else {
