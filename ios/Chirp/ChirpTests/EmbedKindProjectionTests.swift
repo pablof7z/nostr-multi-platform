@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Chirp
 
 // F-CR-12 — EmbedKindProjection + NostrKindRegistry unit tests.
