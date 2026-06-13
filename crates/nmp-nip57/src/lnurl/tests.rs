@@ -19,8 +19,9 @@
 
 use super::*;
 use nmp_core::substrate::{
-    ActionStageTracker, KernelClock, LocalSignerAccess, NoopErrorSurface,
-    NoopRecipientRelayLookup, ProtocolCommandContextParts, RecipientRelayLookup, SignedEvent,
+    ActionStageTracker, EmptyDmInboxRelayLookup, KernelClock, LocalSignerAccess, NoopErrorSurface,
+    NoopHostOpHandlerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopZapProfileLookup,
+    ProtocolCommandContextParts, RecipientRelayLookup, SignedEvent,
 };
 
 const RECIPIENT_HEX: &str =
@@ -147,9 +148,8 @@ impl RecipientRelayLookup for FixedRecipientLookup {
 /// capability adapters. `command_sender` backs
 /// [`ProtocolCommandContext::command_sender_clone`] — the sign-path tests pass a
 /// sender whose receiver they keep so the continuation's worker `send`s are
-/// observable; the relay-injection tests pass a throwaway (the
-/// [`ctx_with`] helper's default) since they never spawn a worker. The DM-inbox
-/// / toast / failure surfaces use the `Empty` / `Noop` defaults.
+/// observable; the relay-injection tests pass a throwaway (the [`ctx_with`]
+/// default). The DM-inbox / toast / failure / wallet / zap surfaces use Noops.
 fn ctx_with_sender<'a>(
     send: &'a dyn Fn(ActorCommand),
     command_sender: nmp_core::CommandSender,
@@ -158,15 +158,11 @@ fn ctx_with_sender<'a>(
     stages: &'a RecordingStages,
     recipients: &'a dyn RecipientRelayLookup,
 ) -> ProtocolCommandContext<'a> {
-    static EMPTY_DM: nmp_core::substrate::EmptyDmInboxRelayLookup =
-        nmp_core::substrate::EmptyDmInboxRelayLookup;
+    static EMPTY_DM: EmptyDmInboxRelayLookup = EmptyDmInboxRelayLookup;
     static ERRORS: NoopErrorSurface = NoopErrorSurface;
-    static HOST_OP: nmp_core::substrate::NoopHostOpHandlerAccess =
-        nmp_core::substrate::NoopHostOpHandlerAccess;
-    static WALLET: nmp_core::substrate::NoopWalletKernelAccess =
-        nmp_core::substrate::NoopWalletKernelAccess;
-    static ZAP: nmp_core::substrate::NoopZapProfileLookup =
-        nmp_core::substrate::NoopZapProfileLookup;
+    static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
+    static WALLET: NoopWalletKernelAccess = NoopWalletKernelAccess;
+    static ZAP: NoopZapProfileLookup = NoopZapProfileLookup;
     ProtocolCommandContext::new(ProtocolCommandContextParts {
         send,
         command_sender,
