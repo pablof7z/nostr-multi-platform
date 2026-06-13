@@ -41,6 +41,10 @@ mod active_timeline_authors;
 #[cfg(test)]
 mod active_timeline_authors_tests;
 mod auth;
+// V-06 / #960 — NIP-42 AUTH signer-binding state (local-vs-remote disjoint
+// bindings) + the `PendingAuthSign` async-AUTH queue, extracted from this file to
+// keep it within its size budget. Adds methods to `impl Kernel`.
+mod auth_sign_state;
 pub(crate) mod clock;
 #[cfg(test)]
 mod clock_injection_tests;
@@ -359,6 +363,10 @@ use crate::store::{EventStore, MemEventStore};
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::AuthDriverState;
 pub use auth::AuthSignerFn;
+// V-06 / #960 — surfaced at the kernel-module root so the `Kernel` field type and
+// the `ingest::auth_handlers` enqueue site (`super::super::PendingAuthSign`)
+// resolve exactly as they did when the struct lived in this file.
+pub use auth_sign_state::PendingAuthSign;
 use clock::SystemClock;
 // Re-export `Clock` at `crate::kernel::Clock` so the always-compiled
 // `crate::slots::KernelClockSlot` (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) can
@@ -550,32 +558,6 @@ pub(crate) const INFLIGHT_GUARD_MS: u64 = 3_600_000; // 1 hour
 pub(crate) struct RelayAuthCredentials {
     pub(crate) signer: AuthSignerFn,
     pub(crate) pubkey_hex: String,
-}
-
-/// V-06 / #960 — a NIP-42 AUTH kind:22242 that a *remote* (NIP-46 / NIP-55)
-/// account must sign through the async signer port.
-///
-/// When the active account is a remote signer, the kernel cannot sign the AUTH
-/// challenge synchronously (only the broker holds the key). Instead
-/// `handle_auth_challenge` builds the unsigned event and enqueues one of these;
-/// the actor drains `take_pending_auth_signs()` after each inbound frame, routes
-/// the `unsigned` through the same `sign_*_nonblocking` seam every other write
-/// uses, and on resolution re-enters [`Kernel::dispatch_signed_auth`]. The relay
-/// stays `ChallengeReceived` until the signed frame resolves.
-#[derive(Clone, Debug)]
-pub struct PendingAuthSign {
-    /// The relay lane the challenge arrived on (its bound credentials select the
-    /// signing account).
-    pub role: RelayRole,
-    /// The delivering relay URL — stamped on the kind:22242 `relay` tag and used
-    /// to route the signed AUTH frame back to the same socket (NIP-42 replay
-    /// binding).
-    pub relay_url: String,
-    /// The unsigned kind:22242 the remote signer must sign as-is.
-    pub unsigned: crate::substrate::UnsignedEvent,
-    /// The verbatim challenge — re-validated against the signed event on
-    /// re-entry (`validate_signed_for`).
-    pub challenge: String,
 }
 
 /// V-58 — kernel-side backoff hint for a relay URL. The kernel populates
@@ -2314,74 +2296,6 @@ impl Kernel {
     /// wallet-lane signer on disconnect.
     pub fn clear_relay_auth_signer(&mut self, role: RelayRole) {
         self.auth_signers.remove(&role);
-    }
-
-    /// Compat wrapper: bind the same identity signer to every user-identity
-    /// relay role (Content + Indexer). Replaces any previously-bound identity
-    /// signer on those roles; other roles (e.g. NWC `Wallet`) are unaffected.
-    /// FFI bridge that surfaces this from Swift is T59
-    /// (filed in `docs/perf/pending-user-decisions.md`).
-    pub(crate) fn bind_auth_signer(&mut self, pubkey_hex: String, signer: AuthSignerFn) {
-        self.auth_signers.insert(
-            RelayRole::Content,
-            RelayAuthCredentials {
-                signer: Arc::clone(&signer),
-                pubkey_hex: pubkey_hex.clone(),
-            },
-        );
-        self.auth_signers.insert(
-            RelayRole::Indexer,
-            RelayAuthCredentials { signer, pubkey_hex },
-        );
-        // Keep the local-vs-remote AUTH binding disjoint: a synchronous local
-        // signer supersedes any prior remote-pubkey binding on these lanes.
-        self.auth_remote_pubkeys.remove(&RelayRole::Content);
-        self.auth_remote_pubkeys.remove(&RelayRole::Indexer);
-    }
-
-    /// V-06 / #960 — bind the identity AUTH *pubkey* for a remote (NIP-46 /
-    /// NIP-55) account on the user-identity lanes (Content + Indexer). The
-    /// kernel knows whom to AUTH as but holds no synchronous signer, so a
-    /// challenge on these lanes enqueues a [`PendingAuthSign`] for the async
-    /// signer port rather than signing inline. Supersedes any prior synchronous
-    /// signer on these lanes (disjoint with `bind_auth_signer`).
-    pub(crate) fn bind_auth_remote(&mut self, pubkey_hex: String) {
-        self.auth_signers.remove(&RelayRole::Content);
-        self.auth_signers.remove(&RelayRole::Indexer);
-        self.auth_remote_pubkeys
-            .insert(RelayRole::Content, pubkey_hex.clone());
-        self.auth_remote_pubkeys
-            .insert(RelayRole::Indexer, pubkey_hex);
-    }
-
-    /// Compat wrapper: drop the identity signer for the user-identity roles
-    /// (Content + Indexer). Other roles (e.g. NWC `Wallet`) are unaffected —
-    /// use `clear_relay_auth_signer(role)` for per-role clearing.
-    pub(crate) fn clear_auth_signer(&mut self) {
-        self.auth_signers.remove(&RelayRole::Content);
-        self.auth_signers.remove(&RelayRole::Indexer);
-        // V-06: clear the remote AUTH-pubkey binding too — "no active account /
-        // signed out" means neither a local signer nor a remote pubkey can AUTH.
-        self.auth_remote_pubkeys.remove(&RelayRole::Content);
-        self.auth_remote_pubkeys.remove(&RelayRole::Indexer);
-    }
-
-    /// V-06 / #960 — drain the AUTH kind:22242 events awaiting a remote
-    /// signature. The actor calls this after each inbound frame and routes each
-    /// through the async signer port (D8: one non-blocking move, never a wait).
-    pub(crate) fn take_pending_auth_signs(&mut self) -> Vec<PendingAuthSign> {
-        std::mem::take(&mut self.pending_auth_signs)
-    }
-
-    /// Test-only: the per-role AUTH driver FSM state (`None` if the role has no
-    /// driver yet). Pins the NIP-42 async-AUTH state transitions in
-    /// `actor/nip42_async_auth_tests.rs`.
-    #[cfg(test)]
-    pub(crate) fn relay_auth_state_for_test(
-        &self,
-        role: RelayRole,
-    ) -> Option<crate::subs::RelayAuthState> {
-        self.auth_drivers.get(&role).map(|d| d.state.clone())
     }
 
     /// Bind the shared relay-edit rows slot so the FFI layer can read
