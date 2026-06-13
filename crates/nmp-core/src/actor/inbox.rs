@@ -26,7 +26,7 @@
 use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SendError, Sender, TryRecvError};
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(feature = "native")]
 use super::fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
 use super::ActorCommand;
 #[cfg(feature = "native")]
@@ -236,6 +236,20 @@ pub(super) struct MailScheduler {
     relay_backlog: VecDeque<PoolEvent>,
 }
 
+/// Result of one [`MailScheduler::drain_command_lane`] pass: the commands to
+/// dispatch (in arrival order, `first_command` first), the budget state used to
+/// compute the post-drain relay wait, and whether the inbox is now closed.
+#[cfg(feature = "native")]
+pub(super) struct CommandLaneDrain {
+    /// Commands drained this iteration, to be dispatched by the caller with its
+    /// `&mut kernel` / `&mut identity` borrows.
+    pub(super) commands: Vec<ActorCommand>,
+    /// Budget accounting — `relay_wait`/`hit_budget` drive the relay lane wait.
+    pub(super) drain: CommandDrain,
+    /// True when every `CommandSender` clone has dropped (actor teardown).
+    pub(super) disconnected: bool,
+}
+
 #[cfg(feature = "native")]
 impl MailScheduler {
     pub(super) fn new() -> Self {
@@ -251,24 +265,38 @@ impl MailScheduler {
         self.relay_backlog.push_back(event);
     }
 
-    /// Drain the priority command lane. Returns the [`CommandDrain`] budget
-    /// state plus each command to dispatch through `for_each_command`.
+    /// Drain the priority command lane. Replays a `first_command` (a command
+    /// dequeued by the previous iteration's blocking `recv_timeout` and held
+    /// for priority service) ahead of the channel, then non-blockingly drains
+    /// queued commands up to [`COMMAND_DRAIN_BUDGET`], stashing any relay mail
+    /// seen along the way into the backlog so it is served after the command
+    /// lane (never starved). Returns the drained commands *and* the
+    /// [`CommandDrain`] budget state so the caller can dispatch each command
+    /// with its `&mut kernel` / `&mut identity` borrows and compute the
+    /// post-drain relay wait.
     ///
-    /// Returns `Err(())` to signal the inbox is closed (actor shutdown).
-    ///
-    /// This is the executable *specification* of the command-priority +
-    /// fairness contract. The production loop in `mod.rs` implements the same
-    /// contract inline (the per-command dispatch borrows `&mut kernel`,
-    /// `&mut identity`, … and must early-return on `Shutdown`, which a closure
-    /// boundary cannot express without threading that state out of the hot
-    /// path); the inbox lane tests drive this method to lock the contract.
-    #[cfg(test)]
+    /// This is the single, non-duplicated drain: the production `run_actor`
+    /// loop routes through it (issue #1231 follow-up #3 — previously it
+    /// reimplemented the same budget/priority/backlog logic inline, which could
+    /// drift from this "executable specification" silently). Returning the
+    /// commands as a `Vec` rather than invoking a `FnMut` is what lets the
+    /// production side keep the per-command `&mut`-heavy dispatch (and its
+    /// early-return on `Shutdown`) outside the closure boundary that previously
+    /// blocked this unification.
     pub(super) fn drain_command_lane(
         &mut self,
         inbox: &Inbox,
-        mut for_each_command: impl FnMut(ActorCommand),
-    ) -> Result<CommandDrain, ()> {
+        first_command: Option<ActorCommand>,
+    ) -> CommandLaneDrain {
         let mut drain = CommandDrain::new(COMMAND_DRAIN_BUDGET);
+        let mut commands = Vec::new();
+        let mut disconnected = false;
+
+        if let Some(cmd) = first_command {
+            drain.record_command();
+            commands.push(cmd);
+        }
+
         loop {
             if !drain.can_drain_command() {
                 break;
@@ -276,7 +304,7 @@ impl MailScheduler {
             match inbox.try_recv() {
                 Ok(ActorMail::Command(cmd)) => {
                     drain.record_command();
-                    for_each_command(cmd);
+                    commands.push(cmd);
                 }
                 Ok(ActorMail::Relay(event)) => {
                     // Relay mail does not consume the command budget; stash it
@@ -284,10 +312,17 @@ impl MailScheduler {
                     self.relay_backlog.push_back(event);
                 }
                 Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => return Err(()),
+                Err(TryRecvError::Disconnected) => {
+                    disconnected = true;
+                    break;
+                }
             }
         }
-        Ok(drain)
+        CommandLaneDrain {
+            commands,
+            drain,
+            disconnected,
+        }
     }
 
     /// Decide the post-drain step: a backlog relay event (zero wait), else the
@@ -372,13 +407,15 @@ mod tests {
         tx.send(ActorMail::Relay(pool_event())).unwrap();
         tx.send(ActorMail::Command(ActorCommand::Shutdown)).unwrap();
 
-        let mut commands = 0usize;
-        let drain = scheduler
-            .drain_command_lane(&inbox, |_cmd| commands += 1)
-            .expect("inbox open during drain");
+        let result = scheduler.drain_command_lane(&inbox, None);
+        assert!(!result.disconnected, "inbox open during drain");
 
-        assert_eq!(commands, 2, "both commands drained on the priority lane");
-        assert!(!drain.hit_budget());
+        assert_eq!(
+            result.commands.len(),
+            2,
+            "both commands drained on the priority lane"
+        );
+        assert!(!result.drain.hit_budget());
         // Only now does a relay event surface — and it comes from the backlog
         // (the relay mail stashed while draining commands), zero wait.
         assert!(matches!(
@@ -406,16 +443,18 @@ mod tests {
             tx.send(ActorMail::Command(ActorCommand::Shutdown)).unwrap();
         }
 
-        let mut commands = 0usize;
-        let drain = scheduler
-            .drain_command_lane(&inbox, |_cmd| commands += 1)
-            .expect("inbox open");
+        let result = scheduler.drain_command_lane(&inbox, None);
+        assert!(!result.disconnected, "inbox open");
 
         assert_eq!(
-            commands, COMMAND_DRAIN_BUDGET,
+            result.commands.len(),
+            COMMAND_DRAIN_BUDGET,
             "the command lane stops exactly at the budget"
         );
-        assert!(drain.hit_budget(), "budget reached → relay_wait is ZERO");
+        assert!(
+            result.drain.hit_budget(),
+            "budget reached → relay_wait is ZERO"
+        );
         // The relay event seen before the budget was hit is served immediately
         // (from the backlog), proving relay is not starved by the command flood.
         assert!(matches!(
@@ -425,11 +464,13 @@ mod tests {
         // Leftover commands remain in the channel for the next iteration (tx
         // kept alive — the live actor holds the relay sink, so the inbox does
         // not disconnect while draining).
-        let mut leftover = 0usize;
-        scheduler
-            .drain_command_lane(&inbox, |_cmd| leftover += 1)
-            .expect("inbox open");
-        assert_eq!(leftover, 10, "commands beyond the budget were not dropped");
+        let leftover = scheduler.drain_command_lane(&inbox, None);
+        assert!(!leftover.disconnected, "inbox open");
+        assert_eq!(
+            leftover.commands.len(),
+            10,
+            "commands beyond the budget were not dropped"
+        );
         drop(tx);
     }
 

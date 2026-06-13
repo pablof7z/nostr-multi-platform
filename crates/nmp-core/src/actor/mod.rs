@@ -209,8 +209,6 @@ use capability_worker::{spawn_capability_worker, CapabilityWorkSender};
 #[cfg(feature = "native")]
 use dispatch::{dispatch_command, handle_relay_event, ActorContext};
 #[cfg(feature = "native")]
-use fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
-#[cfg(feature = "native")]
 use pending_sign::{resolve_parked_op, ParkedOp, PublishObligation};
 
 use crate::kernel::LifecyclePhase;
@@ -228,7 +226,7 @@ pub use continuations::{CipherContinuation, SignContinuation};
 // Native-only relay-lane scheduler + receiver wrapper. (`RelayMailSink` is
 // constructed via `CommandSender::relay_sink()`, never named here.)
 #[cfg(feature = "native")]
-use inbox::{Inbox, LoopStep, MailScheduler};
+use inbox::{CommandLaneDrain, Inbox, LoopStep, MailScheduler};
 
 #[cfg(feature = "native")]
 use relay_idle::{sweep_temporary_idle_relays, TEMPORARY_RELAY_IDLE_GRACE};
@@ -266,8 +264,6 @@ use std::collections::HashSet;
 use std::panic::{self, AssertUnwindSafe};
 #[cfg(feature = "native")]
 use std::sync::atomic::{AtomicU64, Ordering};
-#[cfg(feature = "native")]
-use std::sync::mpsc::TryRecvError;
 #[cfg(feature = "native")]
 use std::sync::mpsc::{Receiver, Sender};
 #[cfg(feature = "native")]
@@ -1968,34 +1964,22 @@ pub fn run_actor_with_observers(
         // events. Commands still get first service on every iteration, but the
         // budget prevents a sustained command stream from starving relay
         // events, subscription ticks, publish retries, and parked sign ops.
-        let mut command_drain = CommandDrain::new(COMMAND_DRAIN_BUDGET);
-        let mut inbox_disconnected = false;
-        loop {
-            if !command_drain.can_drain_command() {
-                break;
-            }
-            let command = if let Some(command) = first_command.take() {
-                command
-            } else {
-                match inbox.try_recv() {
-                    Ok(ActorMail::Command(command)) => command,
-                    Ok(ActorMail::Relay(event)) => {
-                        // Relay mail does not consume the command budget; stash
-                        // it for the relay lane below and keep draining
-                        // commands.
-                        scheduler.stash_relay(event);
-                        continue;
-                    }
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => {
-                        inbox_disconnected = true;
-                        break;
-                    }
-                }
-            };
+        // Single drain (issue #1231 follow-up #3): `MailScheduler::
+        // drain_command_lane` is now the *only* implementation of the
+        // command-priority + fairness + relay-backlog contract. It replays the
+        // held `first_command`, drains up to `COMMAND_DRAIN_BUDGET` commands,
+        // stashes any relay mail it sees, and returns the commands as a `Vec`
+        // so the `&mut kernel` / `&mut identity` per-command dispatch (which a
+        // closure boundary cannot express, hence the prior inline copy) runs
+        // here, after the drain returns.
+        let CommandLaneDrain {
+            commands,
+            drain: command_drain,
+            disconnected: inbox_disconnected,
+        } = scheduler.drain_command_lane(&inbox, first_command.take());
+        for command in commands {
             {
                 {
-                    command_drain.record_command();
                     // G-S4 — straddle counter: one command has left the channel
                     // (either the replayed `first_command`, which `command_rx
                     // .recv()` already dequeued, or a fresh `try_recv`). Mirror
