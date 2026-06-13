@@ -88,9 +88,11 @@ fn decode_snapshot_typed_round_trips_real_kernel_frame() {
         snapshot.profile.pubkey, TEST_PUBKEY_HEX,
         "the active account's profile card must round-trip its pubkey"
     );
+    // D1 (#606): no `has_profile` render-gate. Before any kind:0 arrives the
+    // card is an honest placeholder — its display fields are simply empty/None.
     assert!(
-        !snapshot.profile.has_profile,
-        "no kind:0 was ingested — has_profile must be false (honest placeholder)"
+        snapshot.profile.display_name.is_none(),
+        "no kind:0 was ingested — display_name must be None (honest placeholder)"
     );
 
     tx.send(ActorCommand::Shutdown).ok();

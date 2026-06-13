@@ -19,7 +19,6 @@ fn card(pubkey: &str, named: bool) -> ProfileCardModel {
         } else {
             String::new()
         },
-        has_profile: named,
         lnurl: named.then(|| "lnurl1def".to_string()),
     }
 }

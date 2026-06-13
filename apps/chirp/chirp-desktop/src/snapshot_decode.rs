@@ -52,7 +52,6 @@ fn profile_card_value(card: &nmp_core::typed_projections::ProfileCardModel) -> s
         "picture_url": card.picture_url,
         "nip05": card.nip05,
         "about": card.about,
-        "has_profile": card.has_profile,
         "lnurl": card.lnurl,
     })
 }
@@ -83,7 +82,6 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
             picture_url: m.picture_url,
             nip05: m.nip05,
             about: m.about,
-            has_profile: m.has_profile,
             lnurl: m.lnurl,
         })
         .unwrap_or_default();

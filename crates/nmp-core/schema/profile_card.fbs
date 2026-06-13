@@ -57,8 +57,6 @@ table ProfileCard {
   nip05:string;
   // About text (always present, empty/placeholder when no kind:0).
   about:string;
-  // True when a kind:0 metadata event has been received for this pubkey.
-  has_profile:bool;
   // Pre-extracted lightning address (lud16) / LNURL (lud06);
   // `has_lnurl == false` mirrors JSON `null`.
   has_lnurl:bool;

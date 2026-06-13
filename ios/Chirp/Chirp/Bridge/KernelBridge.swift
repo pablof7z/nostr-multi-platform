@@ -2028,10 +2028,6 @@ struct ProfileCard: Decodable, Equatable {
     let pictureUrl: String?
     let nip05: String
     let about: String
-    /// True when a kind:0 metadata event has been received for this
-    /// pubkey. False means the card is a placeholder pending relay
-    /// response.
-    let hasProfile: Bool
     /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
     /// from kind:0. `nil` when the user has no lightning address or their
     /// kind:0 hasn't arrived. The zap button is shown only when this is

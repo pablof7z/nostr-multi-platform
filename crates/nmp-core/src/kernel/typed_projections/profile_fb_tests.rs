@@ -11,7 +11,6 @@ fn populated() -> ProfileCardModel {
         picture_url: Some("https://img/alice.png".to_string()),
         nip05: "alice@example.com".to_string(),
         about: "hello".to_string(),
-        has_profile: true,
         lnurl: Some("alice@walletofsatoshi.com".to_string()),
     }
 }
@@ -25,7 +24,6 @@ fn placeholder() -> ProfileCardModel {
         picture_url: None,
         nip05: String::new(),
         about: "Waiting for kind:0 from indexer".to_string(),
-        has_profile: false,
         lnurl: None,
     }
 }
@@ -47,7 +45,6 @@ fn placeholder_card_round_trips_with_all_options_none() {
     assert!(decoded.display_name.is_none());
     assert!(decoded.picture_url.is_none());
     assert!(decoded.lnurl.is_none());
-    assert!(!decoded.has_profile);
 }
 
 #[test]

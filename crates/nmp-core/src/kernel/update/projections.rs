@@ -382,8 +382,7 @@ impl Kernel {
 
     /// `resolved_profiles` accessor — the pre-merged `pubkey -> ProfileCard` map
     /// every consumer reads. Precedence: [`Self::claimed_profiles`] (highest) →
-    /// `author_view.profile` (only-if-absent, gated on `has_profile`) →
-    /// [`Self::mention_profiles`] (lowest). Always present as `{}` when empty
+    /// [`Self::mention_profiles`] (lowest, only-if-absent). Always present as `{}` when empty
     /// (D1); BTreeMap for deterministic key ordering.
     ///
     /// Recomputes `claimed_profiles` / `mention_profiles` internally rather than
