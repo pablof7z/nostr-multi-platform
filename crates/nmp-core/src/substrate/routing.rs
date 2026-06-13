@@ -184,6 +184,19 @@ pub struct RoutingContext<'a> {
 #[derive(Clone, Debug, Default)]
 pub struct RoutedRelaySet {
     pub relays: BTreeMap<RelayUrl, BTreeSet<RoutingSource>>,
+    /// Per-relay kind scope. When a relay's URL appears as a key here, the
+    /// REQ/EVENT frame sent to that relay MUST be filtered to ONLY these
+    /// kinds — overriding the originating interest's full kind set. An absent
+    /// key means "use the full interest kind set" (the common case).
+    ///
+    /// Lane 6 (Indexer) populates this with the discovery-kind subset on a
+    /// mixed-kind interest: an interest carrying `[1, 3]` fires lane 6 because
+    /// kind:3 is a discovery kind, but only kind:3 belongs on the indexer —
+    /// kind:1 notes must not leak there. Recording the scope here keeps the
+    /// indexer relay in the routed set (so it is reachable) while constraining
+    /// the kinds it actually receives. Callers that build the wire frame
+    /// consult [`Self::kind_scope_for`] to apply the constraint.
+    pub kind_overrides: BTreeMap<RelayUrl, BTreeSet<u32>>,
 }
 
 impl RoutedRelaySet {
@@ -210,13 +223,43 @@ impl RoutedRelaySet {
                     via: ClassRoutingPath::Explicit,
                 });
         }
-        Self { relays }
+        Self {
+            relays,
+            kind_overrides: BTreeMap::new(),
+        }
     }
 
     /// Insert `url` attributed to `source` (additive; multiple sources for
     /// the same URL coexist in the inner set).
     pub fn add(&mut self, url: RelayUrl, source: RoutingSource) {
         self.relays.entry(url).or_default().insert(source);
+    }
+
+    /// Insert `url` attributed to `source` AND record a per-relay kind scope
+    /// (additive — kinds union with any scope already recorded for `url`).
+    ///
+    /// Use this instead of [`Self::add`] when a relay must only receive a
+    /// subset of the originating interest's kinds. Lane 6 (Indexer) calls
+    /// this with the discovery-kind subset so a mixed `[1, 3]` interest sends
+    /// only kind:3 (not the kind:1 notes) to the indexer relay. The relay is
+    /// still a full member of `relays`; the scope only constrains the kinds
+    /// the frame-builder emits to it (see [`Self::kind_scope_for`]).
+    pub fn add_with_kind_scope(
+        &mut self,
+        url: RelayUrl,
+        source: RoutingSource,
+        kinds: BTreeSet<u32>,
+    ) {
+        self.relays.entry(url.clone()).or_default().insert(source);
+        self.kind_overrides.entry(url).or_default().extend(kinds);
+    }
+
+    /// The per-relay kind scope for `url`, if one was recorded via
+    /// [`Self::add_with_kind_scope`]. `None` means "no override — use the
+    /// originating interest's full kind set" (the common case).
+    #[must_use]
+    pub fn kind_scope_for(&self, url: &RelayUrl) -> Option<&BTreeSet<u32>> {
+        self.kind_overrides.get(url)
     }
 
     #[must_use]

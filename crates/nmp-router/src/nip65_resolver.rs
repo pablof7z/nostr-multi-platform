@@ -47,6 +47,7 @@ use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::publish::{
     OutboxResolver, PublishTarget, RelaySelectionReason, RelayUrl, ResolvedRelay,
 };
+use nmp_core::substrate::BlockedRelaySet;
 use nmp_core::slots::{
     new_active_account_slot, new_indexer_relays_slot, new_local_write_relays_slot,
     ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
@@ -162,11 +163,15 @@ impl OutboxResolver for Nip65OutboxResolver {
         p_tags: &[String],
         target: &PublishTarget,
         kind: u32,
+        blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay> {
-        // 1. Explicit targets win — the caller has opted out per D3.
+        // 1. Explicit targets win — the caller has opted out per D3 — but a
+        //    blocked relay is blocked even when explicitly named (blocking is
+        //    a privacy decision the resolver honours unconditionally).
         if let PublishTarget::Explicit { relays } = target {
             return relays
                 .iter()
+                .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
                     reason: RelaySelectionReason::Explicit,
@@ -252,6 +257,17 @@ impl OutboxResolver for Nip65OutboxResolver {
                 }
             }
         }
+
+        // 5. Blocked-relay post-filter (kind:10006). The author told us to
+        //    never publish to these relays; honour it across EVERY lane above
+        //    (author write set, local-config fallback, discovery indexers,
+        //    recipient inboxes). Without this an author's events leaked to a
+        //    relay they explicitly blocked — the subscribe-side router has
+        //    always filtered blocked relays per-lane; the publish-side
+        //    resolver must too. Canonicalisation parity (kind:10002 ingest now
+        //    canonicalises URLs, matching the blocked cache's canonical keys)
+        //    makes this `contains` check match across host-case differences.
+        out.retain(|r| !blocked.contains(&r.url));
 
         out
     }
@@ -339,3 +355,7 @@ fn is_relay_url(url: &str) -> bool {
 #[cfg(test)]
 #[path = "nip65_resolver/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "nip65_resolver/blocked_tests.rs"]
+mod blocked_tests;

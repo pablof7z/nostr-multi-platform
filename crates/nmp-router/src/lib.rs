@@ -45,6 +45,8 @@
 
 mod blocked_relays;
 mod cache;
+mod canonical;
+mod discovery;
 mod indexer_republish;
 mod ingest;
 mod nip65_resolver;

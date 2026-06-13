@@ -26,7 +26,7 @@ use nmp_core::publish::{
     PublishTarget, RelayDispatcher, RelaySelectionReason, RelayUrl, ReplayDispatcher,
     ResolvedRelay, RetryPolicy,
 };
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_core::substrate::{BlockedRelaySet, SignedEvent, UnsignedEvent};
 
 fn signed(id: &str, author: &str, kind: u32) -> SignedEvent {
     SignedEvent {
@@ -68,17 +68,23 @@ impl OutboxResolver for FixedResolver {
         _p_tags: &[String],
         target: &PublishTarget,
         _kind: u32,
+        blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay> {
         if let PublishTarget::Explicit { relays } = target {
             return relays
                 .iter()
+                .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
                     reason: RelaySelectionReason::Explicit,
                 })
                 .collect();
         }
-        self.0.clone()
+        self.0
+            .iter()
+            .filter(|r| !blocked.contains(&r.url))
+            .cloned()
+            .collect()
     }
 }
 
