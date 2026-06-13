@@ -17,7 +17,8 @@
 //!   where it IS observable: the `create_group` envelope (`relays`) and the
 //!   `Welcome::group_relays` set recovered on accept/gift-wrap ingest. A MISS
 //!   degrades the publish to author-outbox `Auto` (documented limitation).
-//! * the deferred-op store — see [`crate::projection::deferred`].
+//! * the deferred-op store + last-op-error banner — see
+//!   [`crate::projection::deferred`].
 //!
 //! ## Relay seams — both CLOSED
 //!
@@ -62,7 +63,7 @@
 //!    op re-runs on KP arrival, recording its verdict under the original
 //!    `correlation_id`. Parked ops expire on a wall-clock edge (60 s).
 //!    Callers may still pass an explicit `signed_key_package_events_json`
-//!    array to bypass the cache.
+//!    array to bypass the cache entirely.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -76,7 +77,7 @@ use crate::service::MarmotService;
 
 use crate::projection::display;
 use crate::projection::payload::{
-    KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
+    KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
 };
 use crate::projection::pending::PendingOpsStore;
 
@@ -97,6 +98,7 @@ struct CachedWelcome {
     group_name: String,
     inviter_npub: String,
 }
+
 
 pub(super) struct Inner {
     service: MarmotService,
@@ -122,6 +124,14 @@ pub(super) struct Inner {
     /// Pending ops deferred because invitee KPs were not yet in the cache.
     /// Re-tried on every KP ingest; expired via wall-clock gate (D8).
     pub(super) pending_ops: PendingOpsStore,
+    /// The most recent terminal op FAILURE (deferred-op expiry or a failed
+    /// retry), or `None` when no op has failed or the last failure was
+    /// superseded by a later success. Surfaced verbatim in the snapshot
+    /// (`MarmotSnapshot::last_op_error`) so a host can show a one-line error
+    /// banner without subscribing to the action-status stream. Set by
+    /// `record_last_op_failure`, cleared by `clear_last_op_error` on the next
+    /// successful op.
+    pub(super) last_op_error: Option<LastOpError>,
     /// Test-only capture of every terminal verdict routed through
     /// [`InnerHandle::push_actor_command`], as `(verdict, correlation_id)`
     /// where `verdict` is `"success"` or `"failure"`. In production the
@@ -183,6 +193,7 @@ impl MarmotProjection {
                 app: std::ptr::null_mut(),
                 keyring_unavailable,
                 pending_ops: PendingOpsStore::new(),
+                last_op_error: None,
                 #[cfg(test)]
                 captured_commands: Vec::new(),
             }),
@@ -378,6 +389,10 @@ impl MarmotProjection {
         let cached_kp_pubkeys = inner.service.cached_kp_pubkeys();
         let orphaned_commit_count = inner.service.orphaned_commit_count();
         let keyring_unavailable = inner.keyring_unavailable;
+        // Deferred-op snapshot rows + the last-op-error banner are built by the
+        // `deferred` sub-module (the owner of all pending-op shape decisions).
+        let pending_ops = super::deferred::pending_op_rows(&inner.pending_ops, now_secs);
+        let last_op_error = inner.last_op_error.clone();
         MarmotSnapshot {
             groups,
             pending_welcomes,
@@ -387,6 +402,8 @@ impl MarmotProjection {
             is_registered: true,
             orphaned_commit_count,
             keyring_unavailable,
+            pending_ops,
+            last_op_error,
         }
     }
 }
@@ -435,10 +452,10 @@ impl<'a> InnerHandle<'a> {
     ///
     /// # SAFETY
     ///
-    /// `inner.app` is the live `*mut NmpApp` retained by the host Marmot
-    /// handle for the handle's lifetime (non-null only after `set_app`). See
-    /// the `unsafe impl Send/Sync` block at the top of this file for the full
-    /// soundness argument (the `Drop` → `Shutdown` + `join` fence).
+    /// `inner.app` is the live `*mut NmpApp` retained by the host handle for
+    /// its lifetime (non-null only after `set_app`). See the `unsafe impl
+    /// Send/Sync` block at the top of this file for the full soundness
+    /// argument (the `Drop` → `Shutdown` + `join` fence).
     pub(super) fn app(&self) -> Option<&NmpApp> {
         if self.inner.app.is_null() {
             return None;
@@ -528,8 +545,6 @@ impl<'a> InnerHandle<'a> {
         sent
     }
 
-    // ── Pending-op management (deferred KP-gated ops) ───────────────────
-
     /// Cache an incoming gift-wrap as a pending Welcome (no MLS type held).
     pub(crate) fn cache_welcome(
         &mut self,
@@ -615,6 +630,15 @@ impl KernelEventObserver for MarmotProjection {
 #[must_use]
 pub(crate) fn parse_signed_event(json: &str) -> Result<Event, String> {
     Event::from_json(json).map_err(|e| format!("invalid signed event json: {e}"))
+}
+
+/// Extract the `"op"` tag from a stored action-JSON envelope, or
+/// `"unknown"` if it cannot be parsed. Used to label a `LastOpError`.
+pub(super) fn op_tag_of(action_json: &str) -> String {
+    serde_json::from_str::<serde_json::Value>(action_json)
+        .ok()
+        .and_then(|v| v.get("op").and_then(|s| s.as_str()).map(str::to_owned))
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 pub(crate) fn hex_encode(bytes: &[u8]) -> String {

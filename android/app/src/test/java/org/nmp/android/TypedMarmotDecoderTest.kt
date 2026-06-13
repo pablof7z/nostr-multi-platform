@@ -66,12 +66,21 @@ class TypedMarmotDecoderTest {
         val cached = builder.createString(hex(0x05))
         val cachedVec = FbMarmotSnapshot.createCachedKpPubkeysVector(builder, intArrayOf(cached))
         val chip = builder.createString("1 invite")
+        // v2 (schema_version 2) adds pending_ops:[PendingOpRow] and a structured
+        // last_op_error:LastOpError table. This wire-layer test exercises the
+        // empty/absent shape: an empty pending_ops vector and an absent
+        // last_op_error (offset 0). The consumer-side decoding of these fields
+        // lands with the Android shell-feedback work (PR #1239); here we only
+        // prove the v2 buffer encodes and the existing subtables still decode.
+        val pendingOpsVec = FbMarmotSnapshot.createPendingOpsVector(builder, IntArray(0))
         val snap = FbMarmotSnapshot.createMarmotSnapshot(
             builder, schemaVersion, groups, welcomes, kp, cachedVec,
             true, chip, // has_invites_chip_label / invites_chip_label
             true, // is_registered
             0u, // orphaned_commit_count
             false, // keyring_unavailable
+            pendingOpsVec, // pending_ops (empty)
+            0, // last_op_error (absent table)
         )
         FbMarmotSnapshot.finishMarmotSnapshotBuffer(builder, snap)
         return builder.sizedByteArray()

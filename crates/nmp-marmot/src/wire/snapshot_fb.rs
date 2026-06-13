@@ -38,7 +38,7 @@ pub mod generated;
 use generated::nmp::marmot as fb;
 
 use crate::projection::payload::{
-    KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
+    KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotSnapshot, PendingOpRow, PendingWelcomeRow,
 };
 use nmp_core::TypedProjectionData;
 
@@ -48,8 +48,10 @@ pub const PROJECTION_KEY: &str = "nmp.marmot.snapshot";
 pub const SCHEMA_ID: &str = "nmp.marmot.snapshot";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const FILE_IDENTIFIER: &[u8; 4] = b"NMMS";
-/// Wire schema version. Bump on any breaking change to `marmot_snapshot.fbs`.
-pub const SCHEMA_VERSION: u32 = 1;
+/// Wire schema version. Bump on any additive or breaking change to `marmot_snapshot.fbs`.
+/// v2: added `PendingOpRow` (with `age_secs`) + `LastOpError` tables and the
+/// `pending_ops` / `last_op_error` fields on `MarmotSnapshot`.
+pub const SCHEMA_VERSION: u32 = 2;
 
 // --- typed-projection envelope -------------------------------------------
 
@@ -104,6 +106,18 @@ pub fn encode_marmot_snapshot(snapshot: &MarmotSnapshot) -> Vec<u8> {
         .as_ref()
         .map(|s| fbb.create_string(s));
 
+    let pending_op_offsets: Vec<_> = snapshot
+        .pending_ops
+        .iter()
+        .map(|op| encode_pending_op_row(&mut fbb, op))
+        .collect();
+    let pending_ops = fbb.create_vector(&pending_op_offsets);
+
+    let last_op_error = snapshot
+        .last_op_error
+        .as_ref()
+        .map(|e| encode_last_op_error(&mut fbb, e));
+
     let root = fb::MarmotSnapshot::create(
         &mut fbb,
         &fb::MarmotSnapshotArgs {
@@ -117,6 +131,8 @@ pub fn encode_marmot_snapshot(snapshot: &MarmotSnapshot) -> Vec<u8> {
             is_registered: snapshot.is_registered,
             orphaned_commit_count: snapshot.orphaned_commit_count,
             keyring_unavailable: snapshot.keyring_unavailable,
+            pending_ops: Some(pending_ops),
+            last_op_error,
         },
     );
     fb::finish_marmot_snapshot_buffer(&mut fbb, root);
@@ -124,6 +140,43 @@ pub fn encode_marmot_snapshot(snapshot: &MarmotSnapshot) -> Vec<u8> {
 }
 
 type Off<'a, T> = flatbuffers::WIPOffset<T>;
+
+fn encode_pending_op_row<'a>(
+    fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
+    op: &PendingOpRow,
+) -> Off<'a, fb::PendingOpRow<'a>> {
+    let correlation_id = fbb.create_string(&op.correlation_id);
+    let op_tag = fbb.create_string(&op.op_tag);
+    let display_label = fbb.create_string(&op.display_label);
+    fb::PendingOpRow::create(
+        fbb,
+        &fb::PendingOpRowArgs {
+            correlation_id: Some(correlation_id),
+            op_tag: Some(op_tag),
+            missing_count: op.missing_count,
+            display_label: Some(display_label),
+            age_secs: op.age_secs,
+        },
+    )
+}
+
+fn encode_last_op_error<'a>(
+    fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
+    e: &LastOpError,
+) -> Off<'a, fb::LastOpError<'a>> {
+    let op = fbb.create_string(&e.op);
+    let reason = fbb.create_string(&e.reason);
+    let correlation_id = fbb.create_string(&e.correlation_id);
+    fb::LastOpError::create(
+        fbb,
+        &fb::LastOpErrorArgs {
+            op: Some(op),
+            reason: Some(reason),
+            at_secs: e.at_secs,
+            correlation_id: Some(correlation_id),
+        },
+    )
+}
 
 fn encode_group_row<'a>(
     fbb: &mut flatbuffers::FlatBufferBuilder<'a>,
@@ -221,6 +274,11 @@ pub fn decode_marmot_snapshot(bytes: &[u8]) -> Result<MarmotSnapshot, String> {
         .map(|v| v.iter().map(str::to_string).collect())
         .unwrap_or_default();
 
+    let pending_ops = root
+        .pending_ops()
+        .map(|v| v.iter().map(decode_pending_op_row).collect())
+        .unwrap_or_default();
+
     Ok(MarmotSnapshot {
         groups,
         pending_welcomes,
@@ -233,7 +291,28 @@ pub fn decode_marmot_snapshot(bytes: &[u8]) -> Result<MarmotSnapshot, String> {
         is_registered: root.is_registered(),
         orphaned_commit_count: root.orphaned_commit_count(),
         keyring_unavailable: root.keyring_unavailable(),
+        pending_ops,
+        last_op_error: root.last_op_error().map(decode_last_op_error),
     })
+}
+
+fn decode_pending_op_row(op: fb::PendingOpRow<'_>) -> PendingOpRow {
+    PendingOpRow {
+        correlation_id: op.correlation_id().unwrap_or_default().to_string(),
+        op_tag: op.op_tag().unwrap_or_default().to_string(),
+        missing_count: op.missing_count(),
+        display_label: op.display_label().unwrap_or_default().to_string(),
+        age_secs: op.age_secs(),
+    }
+}
+
+fn decode_last_op_error(e: fb::LastOpError<'_>) -> LastOpError {
+    LastOpError {
+        op: e.op().unwrap_or_default().to_string(),
+        reason: e.reason().unwrap_or_default().to_string(),
+        at_secs: e.at_secs(),
+        correlation_id: e.correlation_id().unwrap_or_default().to_string(),
+    }
 }
 
 fn decode_group_row(g: fb::MarmotGroupRow<'_>) -> MarmotGroupRow {

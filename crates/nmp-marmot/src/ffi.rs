@@ -623,3 +623,6 @@ mod autopublish_tests;
 
 #[cfg(test)]
 mod deferred_kp_tests;
+
+#[cfg(test)]
+mod deferred_snapshot_tests;
