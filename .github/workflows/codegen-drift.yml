@@ -14,6 +14,20 @@ name: codegen-drift
 #
 # See `docs/architecture-audit/v6-codegen-plan.md` §5d and `crates/
 # nmp-codegen/src/swift.rs` for the emitter itself.
+#
+# This workflow also hosts the per-language `flatc` binding drift gates that
+# byte-diff the checked-in FlatBuffers bindings against a fresh pinned-flatc
+# run, so .fbs schemas and their Rust/Swift/Kotlin/TS bindings can never
+# silently drift apart:
+#   rust-flatc-drift            nmp_update.fbs            (Rust,   25.12.19)
+#   swift-flatc-drift           all `.fbs` Swift bindings (Swift,  25.12.19)
+#   kotlin-flatc-drift          nmp_update.fbs (transport)
+#                               + every nmp.kernel root schema (kernel, #1288)
+#                                                         (Kotlin, 25.2.10)
+#   typescript-flatc-drift      transport + feed + KRPR   (TS,     25.9.23)
+#   marmot-{rust,swift,kotlin}-flatc-drift
+#                               marmot_{snapshot,messages}.fbs (#1240)
+# Each gate's script prints exact regenerate-locally instructions on failure.
 
 on:
   push:
@@ -104,14 +118,16 @@ jobs:
       - name: Check Swift FlatBuffers bindings are in sync with the schemas
         run: bash ci/check-swift-flatc-drift.sh
 
-  # Issue #1093 — Kotlin flatc transport-binding drift gate. The checked-in
-  # Kotlin bindings at android/app/src/main/java/nmp/transport/*.kt must be
-  # identical to a fresh `flatc --kotlin` run over nmp_update.fbs, with flatc
-  # pinned to the Android/Kotlin runtime pin (25.2.10, distinct from the
+  # Issue #1093 (transport) + issue #1288 (kernel) — Kotlin flatc binding drift
+  # gate. The checked-in Kotlin bindings at android/app/src/main/java/nmp/transport/*.kt
+  # (from nmp_update.fbs) AND android/app/src/main/java/nmp/kernel/*.kt (from every
+  # `namespace nmp.kernel` root schema in crates/nmp-core/schema/*.fbs, derived by
+  # grep — not hard-coded) must be identical to a fresh `flatc --kotlin` run, with
+  # flatc pinned to the Android/Kotlin runtime pin (25.2.10, distinct from the
   # Rust+Swift pin of 25.12.19). Regenerate locally per the instructions in
   # ci/check-kotlin-flatc-drift.sh.
   kotlin-flatc-drift:
-    name: Kotlin flatc drift (android/app/src/main/java/nmp/transport/*.kt vs nmp_update.fbs)
+    name: Kotlin flatc drift (android/.../nmp/{transport,kernel}/*.kt vs schemas)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -124,7 +140,7 @@ jobs:
           sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
           flatc --version
 
-      - name: Check Kotlin transport bindings are in sync with the schema
+      - name: Check Kotlin transport + kernel bindings are in sync with the schemas
         run: bash ci/check-kotlin-flatc-drift.sh
 
       # Issue #1093 — golden fixture parity gate. The two copies of
@@ -160,3 +176,65 @@ jobs:
 
       - name: Check TypeScript transport bindings are in sync with the schema
         run: bash ci/check-ts-flatc-drift.sh
+
+  # Issue #1240 — marmot (NMMS) flatc binding drift gates. The marmot schemas
+  # crates/nmp-marmot/schema/marmot_{snapshot,messages}.fbs drive checked-in
+  # Rust, Swift, and Kotlin bindings that were NOT gated before #1240 (PR #1235
+  # added PendingOpRow/LastOpError and hand-regenerated all three). These three
+  # jobs apply the proven nmp_update.fbs drift-gate pattern to the marmot schemas
+  # on each platform, reusing the same pinned-flatc install steps and the same
+  # per-platform pins (Rust+Swift 25.12.19, Kotlin 25.2.10) as the gates above.
+  marmot-rust-flatc-drift:
+    name: Marmot Rust flatc drift (marmot_*_generated.rs vs marmot_*.fbs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install pinned flatc 25.12.19
+        run: |
+          curl -fsSL -o /tmp/flatc.zip \
+            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.clang++-18.zip
+          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
+          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
+          flatc --version
+
+      - name: Check Rust marmot bindings are in sync with the schemas
+        run: bash ci/check-marmot-flatc-drift.sh rust
+
+  marmot-swift-flatc-drift:
+    name: Marmot Swift flatc drift (Marmot{Snapshot,Messages}.generated.swift vs marmot_*.fbs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned flatc 25.12.19
+        run: |
+          curl -fsSL -o /tmp/flatc.zip \
+            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.clang++-18.zip
+          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
+          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
+          flatc --version
+
+      - name: Check Swift marmot bindings are in sync with the schemas
+        run: bash ci/check-marmot-flatc-drift.sh swift
+
+  marmot-kotlin-flatc-drift:
+    name: Marmot Kotlin flatc drift (android/.../nmp/marmot/*.kt vs marmot_*.fbs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned flatc 25.2.10
+        run: |
+          curl -fsSL -o /tmp/flatc.zip \
+            https://github.com/google/flatbuffers/releases/download/v25.2.10/Linux.flatc.binary.clang++-18.zip
+          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
+          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
+          flatc --version
+
+      - name: Check Kotlin marmot bindings are in sync with the schemas
+        run: bash ci/check-marmot-flatc-drift.sh kotlin

@@ -2,504 +2,673 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod marmot {
+    #[allow(unused_imports, dead_code)]
+    pub mod marmot {
 
+        pub enum MarmotMessageRowOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum MarmotMessageRowOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct MarmotMessageRow<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct MarmotMessageRow<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for MarmotMessageRow<'a> {
+            type Inner = MarmotMessageRow<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for MarmotMessageRow<'a> {
-  type Inner = MarmotMessageRow<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> MarmotMessageRow<'a> {
+            pub const VT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SENDER_PUBKEY_HEX: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_EPOCH: ::flatbuffers::VOffsetT = 12;
+            pub const VT_EPOCH: ::flatbuffers::VOffsetT = 14;
 
-impl<'a> MarmotMessageRow<'a> {
-  pub const VT_ID: ::flatbuffers::VOffsetT = 4;
-  pub const VT_SENDER_PUBKEY_HEX: ::flatbuffers::VOffsetT = 6;
-  pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
-  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 10;
-  pub const VT_HAS_EPOCH: ::flatbuffers::VOffsetT = 12;
-  pub const VT_EPOCH: ::flatbuffers::VOffsetT = 14;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MarmotMessageRow { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MarmotMessageRowArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MarmotMessageRow<'bldr>> {
+                let mut builder = MarmotMessageRowBuilder::new(_fbb);
+                builder.add_epoch(args.epoch);
+                builder.add_created_at(args.created_at);
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                if let Some(x) = args.sender_pubkey_hex {
+                    builder.add_sender_pubkey_hex(x);
+                }
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.add_has_epoch(args.has_epoch);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    MarmotMessageRow { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args MarmotMessageRowArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<MarmotMessageRow<'bldr>> {
-    let mut builder = MarmotMessageRowBuilder::new(_fbb);
-    builder.add_epoch(args.epoch);
-    builder.add_created_at(args.created_at);
-    if let Some(x) = args.content { builder.add_content(x); }
-    if let Some(x) = args.sender_pubkey_hex { builder.add_sender_pubkey_hex(x); }
-    if let Some(x) = args.id { builder.add_id(x); }
-    builder.add_has_epoch(args.has_epoch);
-    builder.finish()
-  }
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(MarmotMessageRow::VT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn sender_pubkey_hex(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        MarmotMessageRow::VT_SENDER_PUBKEY_HEX,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        MarmotMessageRow::VT_CONTENT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn created_at(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(MarmotMessageRow::VT_CREATED_AT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn has_epoch(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(MarmotMessageRow::VT_HAS_EPOCH, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn epoch(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(MarmotMessageRow::VT_EPOCH, Some(0))
+                        .unwrap()
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for MarmotMessageRow<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "sender_pubkey_hex",
+                        Self::VT_SENDER_PUBKEY_HEX,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
+                    .visit_field::<bool>("has_epoch", Self::VT_HAS_EPOCH, false)?
+                    .visit_field::<u64>("epoch", Self::VT_EPOCH, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct MarmotMessageRowArgs<'a> {
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub sender_pubkey_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub created_at: u64,
+            pub has_epoch: bool,
+            pub epoch: u64,
+        }
+        impl<'a> Default for MarmotMessageRowArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MarmotMessageRowArgs {
+                    id: None,
+                    sender_pubkey_hex: None,
+                    content: None,
+                    created_at: 0,
+                    has_epoch: false,
+                    epoch: 0,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(MarmotMessageRow::VT_ID, None)}
-  }
-  #[inline]
-  pub fn sender_pubkey_hex(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(MarmotMessageRow::VT_SENDER_PUBKEY_HEX, None)}
-  }
-  #[inline]
-  pub fn content(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(MarmotMessageRow::VT_CONTENT, None)}
-  }
-  #[inline]
-  pub fn created_at(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(MarmotMessageRow::VT_CREATED_AT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn has_epoch(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(MarmotMessageRow::VT_HAS_EPOCH, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn epoch(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(MarmotMessageRow::VT_EPOCH, Some(0)).unwrap()}
-  }
-}
+        pub struct MarmotMessageRowBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotMessageRowBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotMessageRow::VT_ID, id);
+            }
+            #[inline]
+            pub fn add_sender_pubkey_hex(
+                &mut self,
+                sender_pubkey_hex: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MarmotMessageRow::VT_SENDER_PUBKEY_HEX,
+                    sender_pubkey_hex,
+                );
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MarmotMessageRow::VT_CONTENT,
+                    content,
+                );
+            }
+            #[inline]
+            pub fn add_created_at(&mut self, created_at: u64) {
+                self.fbb_
+                    .push_slot::<u64>(MarmotMessageRow::VT_CREATED_AT, created_at, 0);
+            }
+            #[inline]
+            pub fn add_has_epoch(&mut self, has_epoch: bool) {
+                self.fbb_
+                    .push_slot::<bool>(MarmotMessageRow::VT_HAS_EPOCH, has_epoch, false);
+            }
+            #[inline]
+            pub fn add_epoch(&mut self, epoch: u64) {
+                self.fbb_
+                    .push_slot::<u64>(MarmotMessageRow::VT_EPOCH, epoch, 0);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> MarmotMessageRowBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MarmotMessageRowBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MarmotMessageRow<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for MarmotMessageRow<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("sender_pubkey_hex", Self::VT_SENDER_PUBKEY_HEX, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content", Self::VT_CONTENT, false)?
-     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
-     .visit_field::<bool>("has_epoch", Self::VT_HAS_EPOCH, false)?
-     .visit_field::<u64>("epoch", Self::VT_EPOCH, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct MarmotMessageRowArgs<'a> {
-    pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub sender_pubkey_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub created_at: u64,
-    pub has_epoch: bool,
-    pub epoch: u64,
-}
-impl<'a> Default for MarmotMessageRowArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    MarmotMessageRowArgs {
-      id: None,
-      sender_pubkey_hex: None,
-      content: None,
-      created_at: 0,
-      has_epoch: false,
-      epoch: 0,
-    }
-  }
-}
+        impl ::core::fmt::Debug for MarmotMessageRow<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MarmotMessageRow");
+                ds.field("id", &self.id());
+                ds.field("sender_pubkey_hex", &self.sender_pubkey_hex());
+                ds.field("content", &self.content());
+                ds.field("created_at", &self.created_at());
+                ds.field("has_epoch", &self.has_epoch());
+                ds.field("epoch", &self.epoch());
+                ds.finish()
+            }
+        }
+        pub enum MarmotGroupMessagesOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub struct MarmotMessageRowBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotMessageRowBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotMessageRow::VT_ID, id);
-  }
-  #[inline]
-  pub fn add_sender_pubkey_hex(&mut self, sender_pubkey_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotMessageRow::VT_SENDER_PUBKEY_HEX, sender_pubkey_hex);
-  }
-  #[inline]
-  pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotMessageRow::VT_CONTENT, content);
-  }
-  #[inline]
-  pub fn add_created_at(&mut self, created_at: u64) {
-    self.fbb_.push_slot::<u64>(MarmotMessageRow::VT_CREATED_AT, created_at, 0);
-  }
-  #[inline]
-  pub fn add_has_epoch(&mut self, has_epoch: bool) {
-    self.fbb_.push_slot::<bool>(MarmotMessageRow::VT_HAS_EPOCH, has_epoch, false);
-  }
-  #[inline]
-  pub fn add_epoch(&mut self, epoch: u64) {
-    self.fbb_.push_slot::<u64>(MarmotMessageRow::VT_EPOCH, epoch, 0);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MarmotMessageRowBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    MarmotMessageRowBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<MarmotMessageRow<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        pub struct MarmotGroupMessages<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl ::core::fmt::Debug for MarmotMessageRow<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("MarmotMessageRow");
-      ds.field("id", &self.id());
-      ds.field("sender_pubkey_hex", &self.sender_pubkey_hex());
-      ds.field("content", &self.content());
-      ds.field("created_at", &self.created_at());
-      ds.field("has_epoch", &self.has_epoch());
-      ds.field("epoch", &self.epoch());
-      ds.finish()
-  }
-}
-pub enum MarmotGroupMessagesOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> ::flatbuffers::Follow<'a> for MarmotGroupMessages<'a> {
+            type Inner = MarmotGroupMessages<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-pub struct MarmotGroupMessages<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> MarmotGroupMessages<'a> {
+            pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
+            pub const VT_MESSAGES: ::flatbuffers::VOffsetT = 6;
 
-impl<'a> ::flatbuffers::Follow<'a> for MarmotGroupMessages<'a> {
-  type Inner = MarmotGroupMessages<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MarmotGroupMessages { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MarmotGroupMessagesArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MarmotGroupMessages<'bldr>> {
+                let mut builder = MarmotGroupMessagesBuilder::new(_fbb);
+                if let Some(x) = args.messages {
+                    builder.add_messages(x);
+                }
+                if let Some(x) = args.group_id_hex {
+                    builder.add_group_id_hex(x);
+                }
+                builder.finish()
+            }
 
-impl<'a> MarmotGroupMessages<'a> {
-  pub const VT_GROUP_ID_HEX: ::flatbuffers::VOffsetT = 4;
-  pub const VT_MESSAGES: ::flatbuffers::VOffsetT = 6;
+            #[inline]
+            pub fn group_id_hex(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        MarmotGroupMessages::VT_GROUP_ID_HEX,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn messages(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotMessageRow<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotMessageRow>>,
+                    >>(MarmotGroupMessages::VT_MESSAGES, None)
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    MarmotGroupMessages { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args MarmotGroupMessagesArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<MarmotGroupMessages<'bldr>> {
-    let mut builder = MarmotGroupMessagesBuilder::new(_fbb);
-    if let Some(x) = args.messages { builder.add_messages(x); }
-    if let Some(x) = args.group_id_hex { builder.add_group_id_hex(x); }
-    builder.finish()
-  }
+        impl ::flatbuffers::Verifiable for MarmotGroupMessages<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "group_id_hex",
+                        Self::VT_GROUP_ID_HEX,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<MarmotMessageRow>>,
+                    >>("messages", Self::VT_MESSAGES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct MarmotGroupMessagesArgs<'a> {
+            pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub messages: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotMessageRow<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for MarmotGroupMessagesArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MarmotGroupMessagesArgs {
+                    group_id_hex: None,
+                    messages: None,
+                }
+            }
+        }
 
+        pub struct MarmotGroupMessagesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotGroupMessagesBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MarmotGroupMessages::VT_GROUP_ID_HEX,
+                    group_id_hex,
+                );
+            }
+            #[inline]
+            pub fn add_messages(
+                &mut self,
+                messages: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<MarmotMessageRow<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MarmotGroupMessages::VT_MESSAGES,
+                    messages,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> MarmotGroupMessagesBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MarmotGroupMessagesBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MarmotGroupMessages<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-  #[inline]
-  pub fn group_id_hex(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(MarmotGroupMessages::VT_GROUP_ID_HEX, None)}
-  }
-  #[inline]
-  pub fn messages(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotMessageRow<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotMessageRow>>>>(MarmotGroupMessages::VT_MESSAGES, None)}
-  }
-}
+        impl ::core::fmt::Debug for MarmotGroupMessages<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MarmotGroupMessages");
+                ds.field("group_id_hex", &self.group_id_hex());
+                ds.field("messages", &self.messages());
+                ds.finish()
+            }
+        }
+        pub enum MarmotMessagesOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-impl ::flatbuffers::Verifiable for MarmotGroupMessages<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("group_id_hex", Self::VT_GROUP_ID_HEX, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<MarmotMessageRow>>>>("messages", Self::VT_MESSAGES, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct MarmotGroupMessagesArgs<'a> {
-    pub group_id_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub messages: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotMessageRow<'a>>>>>,
-}
-impl<'a> Default for MarmotGroupMessagesArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    MarmotGroupMessagesArgs {
-      group_id_hex: None,
-      messages: None,
-    }
-  }
-}
+        pub struct MarmotMessages<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct MarmotGroupMessagesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotGroupMessagesBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_group_id_hex(&mut self, group_id_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotGroupMessages::VT_GROUP_ID_HEX, group_id_hex);
-  }
-  #[inline]
-  pub fn add_messages(&mut self, messages: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<MarmotMessageRow<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotGroupMessages::VT_MESSAGES, messages);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MarmotGroupMessagesBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    MarmotGroupMessagesBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<MarmotGroupMessages<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        impl<'a> ::flatbuffers::Follow<'a> for MarmotMessages<'a> {
+            type Inner = MarmotMessages<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl ::core::fmt::Debug for MarmotGroupMessages<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("MarmotGroupMessages");
-      ds.field("group_id_hex", &self.group_id_hex());
-      ds.field("messages", &self.messages());
-      ds.finish()
-  }
-}
-pub enum MarmotMessagesOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> MarmotMessages<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_GROUPS: ::flatbuffers::VOffsetT = 6;
 
-pub struct MarmotMessages<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MarmotMessages { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MarmotMessagesArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MarmotMessages<'bldr>> {
+                let mut builder = MarmotMessagesBuilder::new(_fbb);
+                if let Some(x) = args.groups {
+                    builder.add_groups(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                builder.finish()
+            }
 
-impl<'a> ::flatbuffers::Follow<'a> for MarmotMessages<'a> {
-  type Inner = MarmotMessages<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(MarmotMessages::VT_SCHEMA_VERSION, Some(1))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn groups(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotGroupMessages<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<MarmotGroupMessages>,
+                        >,
+                    >>(MarmotMessages::VT_GROUPS, None)
+                }
+            }
+        }
 
-impl<'a> MarmotMessages<'a> {
-  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-  pub const VT_GROUPS: ::flatbuffers::VOffsetT = 6;
+        impl ::flatbuffers::Verifiable for MarmotMessages<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<MarmotGroupMessages>,
+                        >,
+                    >>("groups", Self::VT_GROUPS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct MarmotMessagesArgs<'a> {
+            pub schema_version: u32,
+            pub groups: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<MarmotGroupMessages<'a>>,
+                    >,
+                >,
+            >,
+        }
+        impl<'a> Default for MarmotMessagesArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MarmotMessagesArgs {
+                    schema_version: 1,
+                    groups: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    MarmotMessages { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args MarmotMessagesArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<MarmotMessages<'bldr>> {
-    let mut builder = MarmotMessagesBuilder::new(_fbb);
-    if let Some(x) = args.groups { builder.add_groups(x); }
-    builder.add_schema_version(args.schema_version);
-    builder.finish()
-  }
+        pub struct MarmotMessagesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotMessagesBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_
+                    .push_slot::<u32>(MarmotMessages::VT_SCHEMA_VERSION, schema_version, 1);
+            }
+            #[inline]
+            pub fn add_groups(
+                &mut self,
+                groups: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<MarmotGroupMessages<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MarmotMessages::VT_GROUPS,
+                    groups,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> MarmotMessagesBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MarmotMessagesBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MarmotMessages<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
+        impl ::core::fmt::Debug for MarmotMessages<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MarmotMessages");
+                ds.field("schema_version", &self.schema_version());
+                ds.field("groups", &self.groups());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `MarmotMessages`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_marmot_messages_unchecked`.
+        pub fn root_as_marmot_messages(
+            buf: &[u8],
+        ) -> Result<MarmotMessages<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<MarmotMessages>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `MarmotMessages` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_marmot_messages_unchecked`.
+        pub fn size_prefixed_root_as_marmot_messages(
+            buf: &[u8],
+        ) -> Result<MarmotMessages<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<MarmotMessages>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `MarmotMessages` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_marmot_messages_unchecked`.
+        pub fn root_as_marmot_messages_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<MarmotMessages<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<MarmotMessages<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `MarmotMessages` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_marmot_messages_unchecked`.
+        pub fn size_prefixed_root_as_marmot_messages_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<MarmotMessages<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<MarmotMessages<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a MarmotMessages and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `MarmotMessages`.
+        pub unsafe fn root_as_marmot_messages_unchecked(buf: &[u8]) -> MarmotMessages<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<MarmotMessages>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed MarmotMessages and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `MarmotMessages`.
+        pub unsafe fn size_prefixed_root_as_marmot_messages_unchecked(
+            buf: &[u8],
+        ) -> MarmotMessages<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<MarmotMessages>(buf) }
+        }
+        pub const MARMOT_MESSAGES_IDENTIFIER: &str = "NMMG";
 
-  #[inline]
-  pub fn schema_version(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(MarmotMessages::VT_SCHEMA_VERSION, Some(1)).unwrap()}
-  }
-  #[inline]
-  pub fn groups(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotGroupMessages<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotGroupMessages>>>>(MarmotMessages::VT_GROUPS, None)}
-  }
-}
+        #[inline]
+        pub fn marmot_messages_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, MARMOT_MESSAGES_IDENTIFIER, false)
+        }
 
-impl ::flatbuffers::Verifiable for MarmotMessages<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<MarmotGroupMessages>>>>("groups", Self::VT_GROUPS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct MarmotMessagesArgs<'a> {
-    pub schema_version: u32,
-    pub groups: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<MarmotGroupMessages<'a>>>>>,
-}
-impl<'a> Default for MarmotMessagesArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    MarmotMessagesArgs {
-      schema_version: 1,
-      groups: None,
-    }
-  }
-}
+        #[inline]
+        pub fn marmot_messages_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, MARMOT_MESSAGES_IDENTIFIER, true)
+        }
 
-pub struct MarmotMessagesBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MarmotMessagesBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(MarmotMessages::VT_SCHEMA_VERSION, schema_version, 1);
-  }
-  #[inline]
-  pub fn add_groups(&mut self, groups: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<MarmotGroupMessages<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MarmotMessages::VT_GROUPS, groups);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MarmotMessagesBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    MarmotMessagesBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<MarmotMessages<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn finish_marmot_messages_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<MarmotMessages<'a>>,
+        ) {
+            fbb.finish(root, Some(MARMOT_MESSAGES_IDENTIFIER));
+        }
 
-impl ::core::fmt::Debug for MarmotMessages<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("MarmotMessages");
-      ds.field("schema_version", &self.schema_version());
-      ds.field("groups", &self.groups());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `MarmotMessages`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_marmot_messages_unchecked`.
-pub fn root_as_marmot_messages(buf: &[u8]) -> Result<MarmotMessages<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<MarmotMessages>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `MarmotMessages` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_marmot_messages_unchecked`.
-pub fn size_prefixed_root_as_marmot_messages(buf: &[u8]) -> Result<MarmotMessages<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<MarmotMessages>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `MarmotMessages` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_marmot_messages_unchecked`.
-pub fn root_as_marmot_messages_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<MarmotMessages<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<MarmotMessages<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `MarmotMessages` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_marmot_messages_unchecked`.
-pub fn size_prefixed_root_as_marmot_messages_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<MarmotMessages<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<MarmotMessages<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a MarmotMessages and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `MarmotMessages`.
-pub unsafe fn root_as_marmot_messages_unchecked(buf: &[u8]) -> MarmotMessages<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<MarmotMessages>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed MarmotMessages and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `MarmotMessages`.
-pub unsafe fn size_prefixed_root_as_marmot_messages_unchecked(buf: &[u8]) -> MarmotMessages<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<MarmotMessages>(buf) }
-}
-pub const MARMOT_MESSAGES_IDENTIFIER: &str = "NMMG";
-
-#[inline]
-pub fn marmot_messages_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, MARMOT_MESSAGES_IDENTIFIER, false)
-}
-
-#[inline]
-pub fn marmot_messages_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, MARMOT_MESSAGES_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_marmot_messages_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<MarmotMessages<'a>>) {
-  fbb.finish(root, Some(MARMOT_MESSAGES_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_marmot_messages_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<MarmotMessages<'a>>) {
-  fbb.finish_size_prefixed(root, Some(MARMOT_MESSAGES_IDENTIFIER));
-}
-}  // pub mod marmot
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_marmot_messages_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<MarmotMessages<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(MARMOT_MESSAGES_IDENTIFIER));
+        }
+    } // pub mod marmot
+} // pub mod nmp

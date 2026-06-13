@@ -31,14 +31,22 @@ class SignerState : Table() {
     val signerKind : String?
         get() {
             val o = __offset(4)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val signerKindAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
     fun signerKindInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val state : String?
         get() {
             val o = __offset(6)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val stateAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
     fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
@@ -50,7 +58,11 @@ class SignerState : Table() {
     val reason : String?
         get() {
             val o = __offset(10)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val reasonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
     fun reasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
@@ -82,14 +94,22 @@ class SignerState : Table() {
     val statusLabel : String?
         get() {
             val o = __offset(22)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val statusLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(22, 1)
     fun statusLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 22, 1)
     val statusTone : String?
         get() {
             val o = __offset(24)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val statusToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(24, 1)
     fun statusToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 24, 1)

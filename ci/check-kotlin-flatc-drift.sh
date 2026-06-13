@@ -1,26 +1,40 @@
 #!/usr/bin/env bash
 #
-# Kotlin flatc codegen-drift gate (issue #1093).
+# Kotlin flatc codegen-drift gate (issue #1093, extended for #1288).
 #
-# The checked-in Kotlin transport bindings at
-#   android/app/src/main/java/nmp/transport/*.kt
-# are the flatc output for crates/nmp-core/schema/nmp_update.fbs, generated
-# with flatc 25.2.10 (the Android/Kotlin runtime pin — see
-# ci/check-flatbuffers-version-pins.sh and android/app/build.gradle.kts).
+# The checked-in Kotlin bindings cover two groups, both generated with flatc
+# 25.2.10 (the Android/Kotlin runtime pin — see ci/check-flatbuffers-version-pins.sh
+# and android/app/build.gradle.kts):
+#   transport — android/app/src/main/java/nmp/transport/*.kt
+#               (flatc output for crates/nmp-core/schema/nmp_update.fbs)
+#   kernel    — android/app/src/main/java/nmp/kernel/*.kt   (issue #1288)
+#               (flatc output for every `namespace nmp.kernel` root schema in
+#                crates/nmp-core/schema/*.fbs — signer_state, action_lifecycle,
+#                action_stages, action_results, relay_diagnostics, accounts, …)
 #
 # This script regenerates the Kotlin bindings with the PINNED flatc version and
-# fails on any file difference — so the schema and the Kotlin bindings can never
+# fails on any file difference — so the schemas and the Kotlin bindings can never
 # drift apart again.  The version mismatch is intentional: the Kotlin runtime
 # pin (25.2.10) is different from the Rust+Swift pin (25.12.19); see the comment
 # at the top of crates/nmp-core/schema/nmp_update.fbs for the rationale.
+#
+# The kernel root list is DERIVED, not hard-coded: it is `grep -l
+# 'namespace nmp.kernel' crates/nmp-core/schema/*.fbs`, so a new nmp.kernel
+# projection schema is gated automatically the moment it is added.
 #
 # Usage: ci/check-kotlin-flatc-drift.sh
 # Requires: flatc 25.2.10 on PATH.
 #
 # To regenerate after an intentional schema change:
 #   1. Install flatc 25.2.10 (https://github.com/google/flatbuffers/releases/tag/v25.2.10).
-#   2. flatc --kotlin -o android/app/src/main/java/ \
+#   2. # Transport binding:
+#      flatc --kotlin -o android/app/src/main/java/ \
 #          crates/nmp-core/schema/nmp_update.fbs
+#      # Kernel bindings (every nmp.kernel root schema; -I lets cross-schema
+#      # includes resolve):
+#      flatc --kotlin -o android/app/src/main/java/ \
+#          -I crates/nmp-core/schema \
+#          $(grep -l 'namespace nmp.kernel' crates/nmp-core/schema/*.fbs)
 #   3. Verify the output with this script.
 
 set -euo pipefail
@@ -31,6 +45,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 EXPECTED_FLATC_VERSION="25.2.10"
 SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/nmp_update.fbs"
 CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/transport"
+KERNEL_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-core/schema"
+KERNEL_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/kernel"
 
 # ── flatc availability + version guard ──────────────────────────────────────
 
@@ -64,6 +80,7 @@ fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+# ── Transport bindings (nmp_update.fbs → nmp/transport/) ────────────────────
 flatc --kotlin -o "${TMP_DIR}" "${SCHEMA}"
 GENERATED_DIR="${TMP_DIR}/nmp/transport"
 
@@ -78,4 +95,64 @@ if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
     exit 1
 fi
 
-echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, bindings in sync)"
+# ── Kernel bindings (issue #1288) — every `namespace nmp.kernel` root schema
+#    in crates/nmp-core/schema/*.fbs → nmp/kernel/. The root list is DERIVED by
+#    grepping the namespace, never hard-coded, so a new nmp.kernel projection
+#    schema is gated automatically. `-I` resolves cross-schema includes (e.g.
+#    resolved_profiles.fbs includes profile_card.fbs).
+#
+#    The Android shell wires typed decoders for a SUBSET of the nmp.kernel
+#    projections (the rest are gated on Rust/Swift but not yet rendered on
+#    Android). So the assertion is: every checked-in nmp/kernel/*.kt MUST be
+#    byte-identical to its fresh-generated counterpart (catching the silent
+#    drift class of #1288), and a checked-in table that vanished from the fresh
+#    output is also a failure. flatc emitting EXTRA tables for not-yet-wired
+#    projections is not drift — those simply have no checked-in decoder to gate.
+KERNEL_SCHEMAS=()
+while IFS= read -r schema; do
+    KERNEL_SCHEMAS+=("${schema}")
+done < <(grep -l 'namespace nmp.kernel' "${KERNEL_SCHEMA_DIR}"/*.fbs | sort)
+
+if [[ "${#KERNEL_SCHEMAS[@]}" -eq 0 ]]; then
+    echo "kotlin-flatc-drift: no 'namespace nmp.kernel' schemas found under" >&2
+    echo "  ${KERNEL_SCHEMA_DIR} — the derivation grep is broken." >&2
+    exit 1
+fi
+
+flatc --kotlin -o "${TMP_DIR}" -I "${KERNEL_SCHEMA_DIR}" "${KERNEL_SCHEMAS[@]}"
+KERNEL_GENERATED_DIR="${TMP_DIR}/nmp/kernel"
+
+kernel_drift=0
+kernel_checked=0
+for checked_in in "${KERNEL_CHECKED_IN_DIR}"/*.kt; do
+    base="$(basename "${checked_in}")"
+    fresh="${KERNEL_GENERATED_DIR}/${base}"
+    if [[ ! -f "${fresh}" ]]; then
+        echo "kotlin-flatc-drift: checked-in kernel binding ${base} has no" >&2
+        echo "  counterpart in a fresh flatc run over the nmp.kernel schemas —" >&2
+        echo "  its source table was renamed or removed from the schema." >&2
+        kernel_drift=$((kernel_drift + 1))
+        continue
+    fi
+    if ! diff -u "${checked_in}" "${fresh}"; then
+        echo "kotlin-flatc-drift: kernel binding ${base} drifted from a fresh run." >&2
+        kernel_drift=$((kernel_drift + 1))
+        continue
+    fi
+    kernel_checked=$((kernel_checked + 1))
+done
+
+if [[ "${kernel_drift}" -ne 0 ]]; then
+    echo "" >&2
+    echo "kotlin-flatc-drift: ${kernel_drift} kernel binding(s) drifted from a fresh" >&2
+    echo "'flatc --kotlin' run over the nmp.kernel root schemas. Regenerate with:" >&2
+    echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
+    echo "      -I crates/nmp-core/schema \\" >&2
+    echo "      \$(grep -l 'namespace nmp.kernel' crates/nmp-core/schema/*.fbs)" >&2
+    echo "then keep only the .kt files Android actually wires (the gate diffs the" >&2
+    echo "checked-in subset, not every emitted table)." >&2
+    echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
+    exit 1
+fi
+
+echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + ${kernel_checked} kernel bindings in sync)"
