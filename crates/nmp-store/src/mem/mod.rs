@@ -57,7 +57,7 @@ mod tests;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
-use super::types::{EventId, ProvenanceEntry, RelayUrl, StoredEvent, TombstoneRow, WatermarkRow};
+use super::types::{EventId, ProvenanceEntry, RelayUrl, StoredEvent, TombstoneRow};
 use super::StoreError;
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -102,9 +102,6 @@ pub(super) struct MemState {
     /// V-52: used by `EventStore::list_events_seen_on`.
     pub(super) relay_index: HashMap<RelayUrl, BTreeSet<String>>,
 
-    /// Watermarks: (`filter_hash_hex`, `relay_url`) → `WatermarkRow`.
-    pub(super) watermarks: HashMap<(String, String), WatermarkRow>,
-
     /// F-TTL replaceable freshness: `ReplaceableKey` → `check_again_after_unix_ms`.
     ///
     /// Parity with the LMDB backend's `replaceable_freshness` sub-db so the
@@ -119,7 +116,6 @@ pub(super) struct MemState {
     pub(super) domain_versions: HashMap<&'static str, u32>,
 
     // ─── LRU access tracking (V-60) ──────────────────────────────────────────
-
     /// Monotonically-increasing counter.  Incremented by one on every insert
     /// and every point-read (get_by_id).  Using a counter rather than wall-clock
     /// ms avoids a D7 surface on the read path while still producing a strict
@@ -142,7 +138,6 @@ impl MemState {
             addr_tombstones: HashMap::new(),
             provenance: HashMap::new(),
             relay_index: HashMap::new(),
-            watermarks: HashMap::new(),
             replaceable_freshness: HashMap::new(),
             domain_data: HashMap::new(),
             domain_versions: HashMap::new(),
@@ -266,7 +261,11 @@ pub(super) fn relay_index_remove(st: &mut MemState, id_hex: &str) {
         .iter_mut()
         .filter_map(|(url, ids)| {
             ids.remove(id_hex);
-            if ids.is_empty() { Some(url.clone()) } else { None }
+            if ids.is_empty() {
+                Some(url.clone())
+            } else {
+                None
+            }
         })
         .collect();
     for url in empty_relays {

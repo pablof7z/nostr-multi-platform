@@ -23,8 +23,7 @@ use std::ops::ControlFlow;
 use super::{access_stamp, bytes_to_hex, MemEventStore};
 use crate::events::EventIter;
 use crate::types::{
-    Coverage, DumpFormat, DumpStats, EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent,
-    TombstoneRow, WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
+    DumpFormat, DumpStats, EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, TombstoneRow,
 };
 use crate::StoreError;
 
@@ -360,62 +359,6 @@ pub(super) fn provenance_for(
     Ok(st.provenance.get(&hex).cloned().unwrap_or_default())
 }
 
-// ─── Watermarks ──────────────────────────────────────────────────────────────
-
-pub(super) fn read_watermark(
-    store: &MemEventStore,
-    key: &WatermarkKey,
-) -> Result<Option<WatermarkRow>, StoreError> {
-    let st = store.lock()?;
-    let wm_key = (bytes_to_hex(&key.filter_hash), key.relay_url.clone());
-    Ok(st.watermarks.get(&wm_key).cloned())
-}
-
-pub(super) fn write_watermark(store: &MemEventStore, row: WatermarkRow) -> Result<(), StoreError> {
-    let mut st = store.lock()?;
-    let wm_key = (
-        bytes_to_hex(&row.key.filter_hash),
-        row.key.relay_url.clone(),
-    );
-    st.watermarks.insert(wm_key, row);
-    Ok(())
-}
-
-pub(super) fn coverage(
-    store: &MemEventStore,
-    key: &WatermarkKey,
-    now_secs: u64,
-) -> Result<Coverage, StoreError> {
-    let row = read_watermark(store, key)?;
-    let Some(row) = row else {
-        return Ok(Coverage::Unknown);
-    };
-    // Staleness window is coverage policy; defined once next to the `Coverage`
-    // type so the mem + lmdb backends cannot drift. `now_secs` is threaded in
-    // from the caller (D7 — the kernel owns the wall clock; lower layers
-    // receive time, they do not read it).
-    let age = now_secs.saturating_sub(row.updated_at);
-    if age <= COVERAGE_STALENESS_WINDOW_SECS {
-        Ok(Coverage::CompleteAsOf(row.synced_up_to))
-    } else {
-        Ok(Coverage::PartialUpTo(row.synced_up_to))
-    }
-}
-
-pub(super) fn list_watermarks_for_relay<'a>(
-    store: &'a MemEventStore,
-    relay_url: &str,
-) -> Result<Box<dyn Iterator<Item = Result<WatermarkRow, StoreError>> + Send + 'a>, StoreError> {
-    let st = store.lock()?;
-    let rows: Vec<WatermarkRow> = st
-        .watermarks
-        .values()
-        .filter(|r| r.key.relay_url == relay_url)
-        .cloned()
-        .collect();
-    Ok(Box::new(rows.into_iter().map(Ok)))
-}
-
 // ─── Dump ────────────────────────────────────────────────────────────────────
 
 pub(super) fn dump(
@@ -461,25 +404,6 @@ pub(super) fn dump(
         out.write_all(&bytes)
             .map_err(|e| StoreError::Io(e.to_string()))?;
         stats.tombstones += 1;
-    }
-
-    // Dump watermarks in deterministic order.
-    let mut wm_keys: Vec<&(String, String)> = st.watermarks.keys().collect();
-    wm_keys.sort();
-    for k in wm_keys {
-        let r = &st.watermarks[k];
-        let line = serde_json::json!({
-            "type": "watermark",
-            "filter_hash": &r.key.filter_hash.iter().map(|b| format!("{b:02x}")).collect::<String>(),
-            "relay_url": &r.key.relay_url,
-            "synced_up_to": r.synced_up_to,
-        })
-        .to_string();
-        let bytes = (line + "\n").into_bytes();
-        stats.bytes_written += bytes.len() as u64;
-        out.write_all(&bytes)
-            .map_err(|e| StoreError::Io(e.to_string()))?;
-        stats.watermarks += 1;
     }
 
     // Dump domain rows in deterministic order (namespace, key).
