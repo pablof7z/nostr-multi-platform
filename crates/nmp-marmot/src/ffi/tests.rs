@@ -563,7 +563,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
 
     // The two-line wiring `register_with_keys` performs for the
     // dispatch_action seam:
-    app_mut.register_action::<MarmotActionModule>();
+    app_mut.register_action(MarmotActionModule);
     let handler =
         Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::HostOpHandler>;
     app_mut.set_host_op_handler(handler);
@@ -642,7 +642,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     let app = nmp_ffi::nmp_app_new();
     // SAFETY: nmp_app_new never returns null.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action::<MarmotActionModule>();
+    app_mut.register_action(MarmotActionModule);
     let handler =
         Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::HostOpHandler>;
     app_mut.set_host_op_handler(handler);

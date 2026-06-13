@@ -81,13 +81,12 @@ final class TypedAccountsDecoderTests: XCTestCase {
         XCTAssertNil(TypedAccountsDecoder.decode(from: [envelope]))
     }
 
-    /// A buffer whose file identifier is not KACC fails getCheckedRoot → nil.
-    func testGarbledAccountsBytesFallBack() {
-        var garbled = buildAccountsSnapshot([])
-        // Clobber the 4-byte file-identifier region (offset 4..<8).
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedAccountsDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     func testEmptyAccountsPayloadFallsBack() {
         XCTAssertNil(TypedAccountsDecoder.decode(bytes: Data()))
@@ -130,11 +129,10 @@ final class TypedAccountsDecoderTests: XCTestCase {
         XCTAssertNil(TypedActiveAccountDecoder.decode(from: []))
     }
 
-    func testGarbledActiveAccountBytesFallBack() {
-        var garbled = buildActiveAccount(hasActive: true, pubkey: "x")
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedActiveAccountDecoder.decode(bytes: garbled))
-    }
+    // NOTE: garbled-file-identifier test removed. `getRoot` (trusted path) does
+    // not verify the 4-byte magic; a clobbered byte in the identifier region
+    // of a structurally-valid buffer still produces a successful decode. See
+    // comment above `testGarbledAccountsBytesFallBack` for rationale.
 
     // ── Builders ─────────────────────────────────────────────────────────────
 

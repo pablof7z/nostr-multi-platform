@@ -11,13 +11,13 @@ use std::collections::BTreeSet;
 
 use crate::planner::{
     apply_selection_with_lookup, CompiledPlan, InterestId, InterestLifecycle, InterestShape,
-    MailboxCache, PlannerError, SubscriptionCompiler,
+    LogicalInterest, MailboxCache, PlannerError, SubscriptionCompiler,
 };
 use crate::stable_hash::stable_hash64;
 use nmp_planner::RelayAuthorScoreLookup;
 
 use super::trigger::CompileTrigger;
-use super::wire::{plan_diff, WireFrame};
+use super::wire::{lifecycle_for_shape, plan_diff, WireFrame};
 use super::{SubscriptionLifecycle, MAILBOX_PROBE_BATCH};
 
 impl SubscriptionLifecycle {
@@ -122,8 +122,13 @@ impl SubscriptionLifecycle {
         // store has even fresher events. We intentionally do NOT recompute
         // `canonical_filter_hash` here — sub_id stability is the feature
         // (`planner/mod.rs::canonical_filter_hash` docs the rationale).
+        //
+        // The interests slice is forwarded so apply_watermark_rewrite can
+        // resolve each sub-shape's lifecycle: Tailing since=None is narrowed
+        // (live feed, skip already-cached events); non-Tailing since=None
+        // stays None (backfill/oneshot, full history requested — #1281 intent).
         if let Some(wm) = self.watermark_fn.as_ref() {
-            apply_watermark_rewrite(&mut plan, wm.as_ref());
+            apply_watermark_rewrite(&mut plan, wm.as_ref(), &interests);
         }
 
         let prior = self.current_plan.as_ref();
@@ -278,6 +283,26 @@ pub(super) fn shape_is_ephemeral_only(shape: &InterestShape) -> bool {
 /// In-place rewrite of every non-ephemeral sub-shape's `since` to
 /// `max(existing_since, watermark + 1)`.
 ///
+/// The rewrite is lifecycle-aware (#1281 refinement):
+///
+/// - **`Tailing` + `since=None`**: the interest is a live feed that wants
+///   events from now onward. The rewrite IS applied — `since` is set to
+///   `watermark + 1` so the relay does not re-send already-cached events.
+///   This is the core T129 optimisation for ongoing subscriptions.
+///
+/// - **non-`Tailing` (OneShot/backfill) + `since=None`**: the caller
+///   explicitly requested full history ("all-time / backfill"). Raising
+///   `None` to `watermark+1` would silently prevent the relay from returning
+///   events older than the local store watermark, defeating backfill.
+///   These interests are EXEMPT — `since` stays `None`.
+///
+/// - **`since=Some(t)` (any lifecycle)**: the optimisation always applies —
+///   raise the existing floor to `max(t, watermark + 1)` so the relay does
+///   not re-send events already on disk.
+///
+/// The `interests` slice is needed to resolve each sub-shape's lifecycle via
+/// its `originating_interests` IDs (mirrors `wire::lifecycle_for_shape`).
+///
 /// The rewrite is purely a value mutation — `canonical_filter_hash` is left
 /// untouched so the wire-emitter's diff treats a re-opened sub as the same
 /// `sub_id` it had before (the watermark moves between recompiles, but the
@@ -291,20 +316,43 @@ pub(super) fn shape_is_ephemeral_only(shape: &InterestShape) -> bool {
 pub(super) fn apply_watermark_rewrite(
     plan: &mut CompiledPlan,
     watermark_fn: &(dyn Fn(&InterestShape) -> Option<u64> + Send + Sync),
+    interests: &[LogicalInterest],
 ) {
     for relay_plan in plan.per_relay.values_mut() {
         for sub_shape in &mut relay_plan.sub_shapes {
             if shape_is_ephemeral_only(&sub_shape.shape) {
                 continue;
             }
+            if sub_shape.shape.since.is_none() {
+                // #1281 (lifecycle-aware): only apply T129 narrowing for Tailing
+                // interests. A Tailing+None interest is a live feed — we narrow it
+                // to watermark+1 so the relay skips already-cached events.
+                // A non-Tailing+None interest (backfill/oneshot) must stay None so
+                // the relay returns full history, not just events newer than the
+                // local watermark.
+                let lifecycle = lifecycle_for_shape(sub_shape, interests);
+                if lifecycle != InterestLifecycle::Tailing {
+                    continue;
+                }
+                // Tailing + since=None: apply T129 narrowing.
+                let Some(watermark) = watermark_fn(&sub_shape.shape) else {
+                    continue;
+                };
+                sub_shape.shape.since = Some(watermark.saturating_add(1));
+                continue;
+            }
+            // since=Some(t): raise the existing floor toward watermark+1.
+            // The is_none() branch above continues, so since is always Some here.
+            let Some(existing) = sub_shape.shape.since else {
+                continue;
+            };
             let Some(watermark) = watermark_fn(&sub_shape.shape) else {
                 continue;
             };
             let floor = watermark.saturating_add(1);
-            sub_shape.shape.since = Some(match sub_shape.shape.since {
-                Some(existing) if existing >= floor => existing,
-                _ => floor,
-            });
+            if floor > existing {
+                sub_shape.shape.since = Some(floor);
+            }
         }
     }
 }

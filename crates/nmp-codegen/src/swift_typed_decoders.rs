@@ -25,9 +25,12 @@
 //! type:
 //!
 //! - **Generated (this module):** the envelope lookup (`key`+`schema_id`) and
-//!   `getCheckedRoot(fileId:)` that yields the reader struct. This is the first
-//!   ~12 lines of every `TypedHomeFeedDecoder`-shaped decoder, replicated per
-//!   key. That is the debt worth generating away.
+//!   unchecked `getRoot(byteBuffer:)` that yields the reader struct. The O(N)
+//!   FlatBuffers Verifier is explicitly skipped because all buffers are produced
+//!   by our own Rust kernel microseconds before decode across a trusted
+//!   in-process FFI boundary — verifying them is pure wasted CPU on the 4 Hz
+//!   hot path. This is the first ~10 lines of every `TypedHomeFeedDecoder`-shaped
+//!   decoder, replicated per key. That is the debt worth generating away.
 //! - **Hand-written glue (per key, NOT generated):** the
 //!   `<reader> -> <domain>` mapping, declared as a `TypedProjectionGlue`
 //!   static. The generated decoder calls into it. For thin keys the glue is a
@@ -76,10 +79,12 @@ const HEADER: &str = "\
 //
 // V6 Stage 4 (consumer-side). Each enum below is the GENERATED mechanical half
 // of one projection's typed-sidecar decoder: the `key`+`schemaId` lookup over
-// `[TypedProjectionEnvelope]` and the `getCheckedRoot(fileId:)` decode into the
-// `flatc --swift` reader struct. The reader→Chirp-domain mapping is the
-// HAND-WRITTEN `TypedProjectionGlue` seam (see
-// `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift`).
+// `[TypedProjectionEnvelope]` and the `getRoot(byteBuffer:)` (unchecked) decode
+// into the `flatc --swift` reader struct. Buffers arrive over a trusted
+// in-process FFI boundary (Rust kernel → Swift shell, same process/memory);
+// running the O(buffer) FlatBuffers Verifier on the 4 Hz hot path is pure waste.
+// The reader→Chirp-domain mapping is the HAND-WRITTEN `TypedProjectionGlue` seam
+// (see `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift`).
 //
 // Only projection keys whose `flatc --swift` reader binding is checked into the
 // Chirp target appear here. The rest need their binding generated first.
@@ -193,10 +198,14 @@ fn render_one_decoder(entry: &SnapshotProjectionEntry, out: &mut String) {
     out.push_str("    }\n");
     out.push('\n');
 
-    // Raw-bytes entry point — the GENERATED scaffold: getCheckedRoot into the
-    // reader struct, then hand into the hand-written glue. `getCheckedRoot`
-    // verifies the file identifier AND structural integrity in one pass; any
-    // failure surfaces as nil (the `try?`), honouring the fallback contract.
+    // Raw-bytes entry point — the GENERATED scaffold: unchecked getRoot into
+    // the reader struct, then hand into the hand-written glue.  Buffers arrive
+    // over a trusted in-process FFI boundary (Rust kernel → Swift shell, same
+    // process/memory); the O(N) FlatBuffers Verifier walk is pure wasted CPU
+    // on the 4 Hz hot path.  The key+schemaId routing above already selects
+    // the right sub-buffer, and any gross wiring error surfaces as nil/empty
+    // via the glue rather than a crash.  getRoot is infallible so no try? is
+    // needed; the `!bytes.isEmpty` guard above handles the only "no data" case.
     out.push_str(&format!(
         "    /// Decode a raw `{}` FlatBuffers buffer into the Chirp domain value.\n",
         sidecar.file_identifier
@@ -207,13 +216,8 @@ fn render_one_decoder(entry: &SnapshotProjectionEntry, out: &mut String) {
     out.push_str("        guard !bytes.isEmpty else { return nil }\n");
     out.push_str("        var buffer = ByteBuffer(data: bytes)\n");
     out.push_str(&format!(
-        "        guard let reader: {reader} = try? getCheckedRoot(\n"
+        "        let reader: {reader} = getRoot(byteBuffer: &buffer)\n"
     ));
-    out.push_str("            byteBuffer: &buffer,\n");
-    out.push_str("            fileId: fileIdentifier\n");
-    out.push_str("        ) else {\n");
-    out.push_str("            return nil\n");
-    out.push_str("        }\n");
     out.push_str(&format!(
         "        // Hand-written glue (NOT generated): map the `flatc --swift` reader\n",
     ));

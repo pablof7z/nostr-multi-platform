@@ -12,7 +12,10 @@ The builder is one agent in one session. Follow steps in order. Push per rung vi
 
 ## 1. The load-bearing builder work: extending the FFI surface
 
-`crates/nmp-core/src/ffi.rs` currently exposes only timeline-reading commands (M1-era). Pulse needs sign-in, publish, account switching, and relay editing. **Without these, no SwiftUI screen can do anything.** This is the largest single chunk of new code.
+At the time this historical Pulse plan was written, `crates/nmp-core/src/ffi.rs`
+exposed only timeline-reading commands (M1-era). Pulse needed sign-in, publish,
+account switching, and relay editing. **Without these, no SwiftUI screen could
+do anything.** This was the largest single chunk of new code.
 
 For each new function:
 1. Add a variant to `ActorCommand` in `crates/nmp-core/src/actor/mod.rs`.
@@ -40,7 +43,8 @@ void nmp_app_remove_account(void *app, const char *identity_id);
 // Publishing (kernel resolves outbox automatically per D3)
 //
 // Optional-string convention (matches existing c_string_argument semantics in
-// crates/nmp-core/src/ffi.rs): NULL pointer OR empty string OR whitespace-only
+// the M1-era crates/nmp-core/src/ffi.rs): NULL pointer OR empty string OR
+// whitespace-only
 // is treated as "absent". The kernel's command handler decides the absent
 // behavior: for reply_to here, absent = top-level note. A NEW helper
 // `c_optional_string_argument` returns Option<String> rather than collapsing

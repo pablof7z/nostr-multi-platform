@@ -20,53 +20,34 @@
 //!
 //! # Surfaces threaded through `ProtocolCommandContext`
 //!
-//! - [`ProtocolCommandContext::now_secs`] — D7 — kernel owns the wall clock.
-//!   The executor passes `created_at = 0` as a sentinel; this command
-//!   re-stamps before signing (mirrors the
-//!   `PublishUnsignedEventToRelays` precedent).
-//! - [`ProtocolCommandContext::recipient_publish_relays`] — V-07: the
-//!   substrate seam (Debt-C-follow-up) the kernel-side adapter wires
-//!   through its injected `outbox_router` slot to resolve the recipient's
-//!   NIP-65 write set (with router lane-7 / lane-6 cold-start fallback).
-//!   `inject_recipient_relays` consumes this to populate the kind:9734
-//!   `relays` tag so the LN provider knows where to publish the kind:9735
-//!   zap receipt (NIP-57 § "Appendix F").
-//! - [`ProtocolCommandContext::sign_event_for_account`] — V-78 reconcile: signs
-//!   the kind:9734 with the active account through the unified
-//!   `ActorCommand::SignEventForAccount` port (ADR-0043 Decision 2). The actor
-//!   dispatch arm resolves BOTH backends behind the port — a local nsec signs
-//!   inline (`SignerOp::Ready`); a NIP-46 bunker parks (`SignerOp::Pending`) and
-//!   the idle-loop drain resolves it — then invokes the continuation with the
-//!   resolved `SignedEvent` (or an error string). This command's worker never
-//!   sees a `SignerOp` and never branches on backend; only a genuinely absent
-//!   account surfaces an `Err` to the continuation, which fails closed.
-//! - [`ProtocolCommandContext::record_action_stage_requested`] — track the
-//!   `Requested` stage against the host's `correlation_id` (when supplied)
-//!   so the stage observer sees the transition before the worker thread
-//!   posts the terminal.
-//! - [`ProtocolCommandContext::send`] — re-enter the actor loop with the
-//!   follow-up `ActorCommand`s (`Protocol(WalletPayInvoiceCommand)`,
-//!   `ShowToast`, `RecordActionFailure`).
+//! - `now_secs` — D7 (kernel owns the clock): the executor passes
+//!   `created_at = 0`; this command re-stamps before signing.
+//! - `recipient_publish_relays` — V-07: resolves the recipient's NIP-65 write
+//!   set (via the kernel-side `outbox_router` slot, router cold-start
+//!   fallback); `inject_recipient_relays` populates the kind:9734 `relays` tag
+//!   (NIP-57 § "Appendix F").
+//! - `sign_event_for_account` — V-78: signs the kind:9734 via the unified
+//!   `SignEventForAccount` port (ADR-0043), which resolves local-nsec (inline)
+//!   and bunker (idle-loop drain) behind one seam; the worker never sees a
+//!   `SignerOp`. Only a genuinely absent account fails closed.
+//! - `record_action_stage_requested` — tracks the `Requested` stage against the
+//!   host `correlation_id` before the worker posts the terminal.
+//! - `send` — re-enters the actor loop with the follow-up `ActorCommand`s.
 //!
 //! # D8 — no blocking on the actor thread
 //!
-//! The actor thread DISPATCHES the kind:9734 sign through the
-//! `SignEventForAccount` port and returns immediately. The continuation runs
-//! on the actor thread too (inline for a local nsec, from the idle-loop drain
-//! for a bunker) and MUST NOT block — its sole job is to SPAWN the HTTP worker
+//! The actor thread dispatches the kind:9734 sign through the
+//! `SignEventForAccount` port and returns immediately. The continuation (inline
+//! for a local nsec, idle-loop drain for a bunker) MUST NOT block — it only
+//! SPAWNs the HTTP worker
 //! `std::thread` carrying the already-signed kind:9734. The worker thread:
 //!
-//! 1. Decodes the LNURL (bech32) or lightning-address (`user@domain`) input
-//!    into a `https://…/.well-known/lnurlp/<user>` URL via
-//!    [`pay::lnurl_to_well_known_url`].
-//! 2. HTTP GET that URL → parse `{ "callback": "…", "minSendable": …,
-//!    "maxSendable": …, "allowsNostr": …, "nostrPubkey": … }`.
-//! 3. HTTP GET `{callback}?amount=<msats>&nostr=<urlencoded-signed-9734>` →
-//!    parse `{ "pr": "lnbc…" }`.
-//! 4. Send the follow-up [`ActorCommand`]s back through the cloned
-//!    [`Sender<ActorCommand>`]: `Protocol(WalletPayInvoiceCommand)` on a
-//!    fetched invoice, or `ShowToast` + `RecordActionFailure` for LNURL
-//!    failures and missing-wallet failures.
+//! 1. Decode the LNURL / lightning-address input → `.well-known/lnurlp` URL
+//!    ([`pay::lnurl_to_well_known_url`]).
+//! 2. GET that URL → `{ callback, minSendable, maxSendable, nostrPubkey, … }`.
+//! 3. GET `{callback}?amount=<msats>&nostr=<urlencoded-signed-9734>` → `{ pr }`.
+//! 4. Send follow-up [`ActorCommand`]s: `Protocol(WalletPayInvoiceCommand)` on
+//!    a fetched invoice, else `ShowToast` + `RecordActionFailure`.
 //!
 //! Because the port resolves the sign before the worker spawns, the worker
 //! never holds a `SignerOp` and never waits on the signer — it receives the
@@ -74,13 +55,13 @@
 //!
 //! # NWC payment handoff
 //!
-//! After the bolt11 is fetched, the worker checks `nmp_nip47::active_wallet_runtime()`.
-//! If a wallet runtime is installed, it dispatches `WalletPayInvoiceCommand`
-//! carrying the bolt11 and the zap's `correlation_id`. The kind:23195 NWC
-//! response handler then closes the action stage — success or failure — so
-//! the host's spinner resolves only when the payment is confirmed by the
-//! wallet, not merely when the invoice is fetched. If no wallet is installed
-//! the action records a `Failed` terminal immediately with a descriptive reason.
+//! After the bolt11 is fetched, the worker uses the per-app
+//! `WalletRuntimeHandle` that `ZapAction` captured at composition time
+//! (ADR-0052 rung 5.2 — no process-global): with a handle it dispatches
+//! `WalletPayInvoiceCommand` carrying the bolt11 + the zap's `correlation_id`;
+//! with none it records a "no wallet connected" failure. The kind:23195 NWC
+//! response handler then closes the action stage, so the host spinner resolves
+//! only on wallet confirmation, not on invoice fetch.
 
 mod pay;
 mod validation;
@@ -145,6 +126,13 @@ pub struct FetchLnurlInvoiceCommand {
     /// spinner clears. `None` means a direct caller with no spinner —
     /// only the `ShowToast` follow-up is sent.
     pub correlation_id: Option<String>,
+    /// ADR-0052 rung 5.2: the per-app NWC wallet runtime handle the zap
+    /// auto-chain pays through — captured by `ZapAction` at composition time,
+    /// not read from a process-global (so two `NmpApp`s zap independently).
+    /// `None` when no wallet was wired; the worker then records a "no wallet
+    /// connected" failure (the pre-rung `active_wallet_runtime() == None`
+    /// behaviour).
+    pub runtime: Option<nmp_nip47::WalletRuntimeHandle>,
 }
 
 impl ProtocolCommand for FetchLnurlInvoiceCommand {
@@ -158,6 +146,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
             lnurl_or_address,
             amount_msats,
             correlation_id,
+            runtime,
         } = *self;
 
         // Resolve the LN destination. Shells may omit `lnurl_or_address`
@@ -254,7 +243,14 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                     return;
                 }
             };
-            spawn_lnurl_worker(worker_tx, lnurl_or_address, amount_msats, signed_json, correlation_id);
+            spawn_lnurl_worker(
+                worker_tx,
+                lnurl_or_address,
+                amount_msats,
+                signed_json,
+                correlation_id,
+                runtime,
+            );
         });
 
         Ok(())
@@ -263,27 +259,31 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
 
 /// Spawn the off-actor HTTP worker that runs the two-leg LNURL-pay round-trip
 /// for an already-signed kind:9734 (serialized as `signed_json`). `std::thread`
-/// (not tokio) — `nmp-nip57` has no async runtime and the actor itself is
-/// `std::thread`-based. The worker owns clones of everything it needs; nothing
-/// references the actor's mutable state. D8: zero blocking on the actor thread —
+/// (not tokio); the worker owns clones of everything it needs and never touches
+/// the actor's mutable state. D8: zero blocking on the actor thread —
 /// this function only *spawns*; the blocking HTTP work happens on the new
 /// thread.
 ///
-/// On a fetched invoice the worker hands the bolt11 to the NWC wallet so the
-/// kind:23195 response handler closes the `nmp.nip57.zap` action stage on wallet
-/// confirmation; if no wallet runtime is installed (or the LNURL legs fail) it
-/// posts a `ShowToast` + `RecordActionFailure` so the host spinner resolves with
-/// a clear reason instead of hanging.
+/// On a fetched invoice the worker hands the bolt11 to the NWC wallet (the
+/// kind:23195 response closes the `nmp.nip57.zap` stage on confirmation); on a
+/// missing wallet or LNURL failure it posts `ShowToast` + `RecordActionFailure`
+/// so the host spinner resolves with a clear reason.
 fn spawn_lnurl_worker(
     worker_tx: nmp_core::CommandSender,
     lnurl_or_address: String,
     amount_msats: u64,
     signed_json: String,
     correlation_id: Option<String>,
+    runtime: Option<nmp_nip47::WalletRuntimeHandle>,
 ) {
     std::thread::spawn(move || {
         match fetch_lnurl_invoice_blocking(&lnurl_or_address, amount_msats, &signed_json) {
-            Ok(bolt11) => match nmp_nip47::active_wallet_runtime() {
+            // ADR-0052 rung 5.2: pay through the per-app `runtime` handle
+            // `ZapAction` captured (no process-global). `Some` → mint a
+            // `WalletPayInvoiceCommand` (its own no-connection branch reports a
+            // disconnected wallet); `None` → no wallet wired, record the
+            // "no wallet connected" failure so the host spinner resolves.
+            Ok(bolt11) => match runtime {
                 Some(runtime) => {
                     let _ = worker_tx.send(ActorCommand::Protocol(Box::new(
                         nmp_nip47::WalletPayInvoiceCommand {

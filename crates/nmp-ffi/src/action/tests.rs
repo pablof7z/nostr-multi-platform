@@ -242,14 +242,13 @@ use std::sync::{
     Arc,
 };
 
-// ─── Typed test ActionModule structs shared across the seam-proof
-// tests. ADR-0027 collapsed the dual-seam closure path; every host
-// registration is now `app.register_action::<M>()` against a typed module.
+// ─── Typed test ActionModule structs shared across the seam-proof tests.
+// ADR-0027 collapsed the dual-seam closure path; every host registration is
+// `app.register_action(M)` against a typed module value (ADR-0052 rung 5.2).
 
-/// Greeting test module — succeeds and records that `execute` ran. The
-/// `flag` lives in a `static` `OnceLock` because `ActionModule::execute`
-/// is a static method with no `&self` (the codegen contract); the test
-/// reads the flag back after `register_action::<TestGreetingModule>()`.
+/// Greeting test module — succeeds and records that `execute` ran via a
+/// process `static` flag the test reads back after
+/// `register_action(TestGreetingModule)`.
 static GREETING_CALLED: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 /// Reset and return the shared "called" flag for the greeting module.
@@ -264,12 +263,14 @@ impl nmp_core::substrate::ActionModule for TestGreetingModule {
     const NAMESPACE: &'static str = "test.greeting"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         _action: Self::Action,
     ) -> Result<(), ActionRejection> {
         Ok(())
     }
     fn execute(
+        &self,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::ActorCommand),
@@ -285,12 +286,14 @@ impl nmp_core::substrate::ActionModule for TestFailingModule {
     const NAMESPACE: &'static str = "test.failing"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         _action: Self::Action,
     ) -> Result<(), ActionRejection> {
         Ok(())
     }
     fn execute(
+        &self,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::ActorCommand),
@@ -306,12 +309,14 @@ impl nmp_core::substrate::ActionModule for TestTodoModule {
     const NAMESPACE: &'static str = "test.todo"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         _action: Self::Action,
     ) -> Result<(), ActionRejection> {
         Ok(())
     }
     fn execute(
+        &self,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::ActorCommand),
@@ -327,6 +332,7 @@ impl nmp_core::substrate::ActionModule for TestTodoRejectModule {
     const NAMESPACE: &'static str = "test.todo_reject"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         _action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -335,6 +341,7 @@ impl nmp_core::substrate::ActionModule for TestTodoRejectModule {
         ))
     }
     fn execute(
+        &self,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::ActorCommand),
@@ -350,12 +357,14 @@ impl nmp_core::substrate::ActionModule for TestPanicModule {
     const NAMESPACE: &'static str = "test.panic"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         _action: Self::Action,
     ) -> Result<(), ActionRejection> {
         Ok(())
     }
     fn execute(
+        &self,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::ActorCommand),
@@ -378,7 +387,7 @@ fn host_registered_executor_dispatches_successfully() {
     // SAFETY: `nmp_app_new` never returns null; the pointer is valid
     // until `nmp_app_free` below, and no other reference aliases it here.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action::<TestGreetingModule>();
+    app_mut.register_action(TestGreetingModule);
 
     // `test_execute_action` drives the registry's `execute` path
     // directly — `dispatch_action`'s `start()` validation runs through
@@ -403,7 +412,7 @@ fn host_registered_executor_propagates_error() {
     let app = nmp_app_new();
     // SAFETY: see `host_registered_executor_dispatches_successfully`.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action::<TestFailingModule>();
+    app_mut.register_action(TestFailingModule);
 
     let err = app_mut
         .test_execute_action("test.failing", "{}")
@@ -420,7 +429,7 @@ fn unregistered_namespace_after_host_registration_still_errs() {
     let app = nmp_app_new();
     // SAFETY: see `host_registered_executor_dispatches_successfully`.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action::<TestGreetingModule>();
+    app_mut.register_action(TestGreetingModule);
 
     let err = app_mut
         .test_execute_action("test.unregistered", "{}")
@@ -445,7 +454,7 @@ fn host_registered_module_and_executor_enables_dispatch_action() {
     // SAFETY: `nmp_app_new` never returns null; the pointer is valid
     // until `nmp_app_free` below, and no other reference aliases it here.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action::<TestTodoModule>();
+    app_mut.register_action(TestTodoModule);
 
     // Now `dispatch_action` should succeed end-to-end.
     let out = dispatch_action_json(
@@ -470,7 +479,7 @@ fn host_registered_module_can_reject_action() {
     let app = nmp_app_new();
     // SAFETY: see `host_registered_module_and_executor_enables_dispatch_action`.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action::<TestTodoRejectModule>();
+    app_mut.register_action(TestTodoRejectModule);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.todo_reject", "{}");
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -619,28 +628,15 @@ fn c_abi_register_action_result_observer_null_args_are_noop() {
     nmp_app_free(app);
 }
 
-/// "send-then-panic orphan" finding.
-///
-/// An executor that panics (or returns `Err`) *after* the registry minted
-/// the correlation_id used to orphan the entry under
-/// `MAX_TRACKED_CORRELATIONS` eviction: the host received the id in the
-/// error envelope but the kernel never produced an `action_stages`
-/// entry to ACK.
-///
-/// THE CONTRACT now is twofold:
-///   1. The error envelope MUST carry both `correlation_id` and `error`
-///      so the host can drive the ACK lifecycle.
-///   2. The actor MUST receive a `RecordActionFailure` command with that
-///      same correlation_id so a `Failed` terminal stage lands in the
-///      `action_stages` mirror on the next snapshot tick.
-///
-/// This test asserts #1 directly (the envelope shape) and #2 indirectly
-/// via the actor queue-depth counter — the FFI thread cannot block on
-/// the actor's snapshot emission inside a unit test (the actor thread
-/// publishes on its own cadence), so the projection observation is
-/// covered by `record_action_failure_records_failed_stage_in_mirror`
-/// in `kernel/action_stages_tests.rs`. The end-to-end seam from the FFI
-/// thread → command → kernel is the new fan-out.
+/// "send-then-panic orphan" finding: an executor that panics/`Err`s after the
+/// registry minted the correlation_id. Contract: (1) the error envelope carries
+/// both `correlation_id` and `error`; (2) the actor receives a
+/// `RecordActionFailure` with that id so a `Failed` terminal lands in
+/// `action_stages`. This test asserts #1 (envelope shape) directly and #2
+/// indirectly via the actor queue-depth counter — the FFI thread can't block on
+/// the actor's snapshot cadence in a unit test, so the projection side is
+/// covered by `record_action_failure_records_failed_stage_in_mirror` in
+/// `kernel/action_stages_tests.rs`.
 #[test]
 fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
     let app = nmp_app_new();
@@ -652,7 +648,7 @@ fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
     // panicked")`. The new dispatch path must then (a) still include the
     // minted correlation_id in the envelope and (b) enqueue a
     // `RecordActionFailure` on the actor channel.
-    app_mut.register_action::<TestPanicModule>();
+    app_mut.register_action(TestPanicModule);
 
     // Snapshot the monotone send counter before dispatch. Unlike
     // `queue_depth` (which the actor drains concurrently), `send_cmd_count`
@@ -762,6 +758,7 @@ impl nmp_core::substrate::ActionModule for TestHostOpModule {
     const NAMESPACE: &'static str = "test.host_op"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         _action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -771,6 +768,7 @@ impl nmp_core::substrate::ActionModule for TestHostOpModule {
     /// typed action to JSON and hand it to the actor's `DispatchHostOp`
     /// arm. No state access — the handler owns that.
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(nmp_core::ActorCommand),
@@ -835,7 +833,7 @@ fn dispatch_host_op_routes_action_json_to_installed_handler() {
     // production order is: host init wires both the handler AND the
     // module before any `nmp_app_dispatch_action` arrives.
     app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
-    app_mut.register_action::<TestHostOpModule>();
+    app_mut.register_action(TestHostOpModule);
 
     let out = dispatch_action_json(
         // SAFETY: `nmp_app_new` never returns null.
@@ -912,7 +910,7 @@ fn dispatch_host_op_without_handler_still_returns_correlation_id() {
     // arm itself records the Failed terminal; the FFI return is still
     // a normal `correlation_id` envelope because `start()` and the
     // `execute()` enqueue both succeed.
-    app_mut.register_action::<TestHostOpModule>();
+    app_mut.register_action(TestHostOpModule);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -949,7 +947,7 @@ fn dispatch_host_op_routes_handler_failure_through_terminal_path() {
     // SAFETY: see the happy-path test.
     let app_mut = unsafe { &mut *app };
     app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
-    app_mut.register_action::<TestHostOpModule>();
+    app_mut.register_action(TestHostOpModule);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();

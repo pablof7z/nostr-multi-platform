@@ -1,7 +1,7 @@
 # 17 — iOS shell: SwiftUI consumes the kernel
 
-**Status: SHIPS** (legacy raw C FFI on master) · FlatBuffers transport target
-in progress · Audience: builders
+**Status: SHIPS** (raw C FFI + binary FlatBuffers update callback) · Audience:
+builders
 
 The kernel is the brain. SwiftUI is a **dumb render of a snapshot the kernel
 hands you**. The platform never owns state, never decides retry policy, never
@@ -9,15 +9,15 @@ gates content on "is it loaded yet?". This section shows the exact bridge that
 ships today in `ios/Chirp` (the active kernel-wired iOS app) and the rules
 that keep it doctrine-clean.
 
-## The bridge — legacy raw C FFI today, FlatBuffers target
+## The bridge — raw C calls, FlatBuffers updates
 
 There is no UniFFI on master (that is M14; see
-[15 — Codegen and FFI](15-codegen-and-ffi.md)). iOS calls the hand-written
-`extern "C"` surface in `crates/nmp-core/src/ffi.rs:44-275`
-(`nmp_app_new`, `nmp_app_start`, `nmp_app_open_author`, `nmp_app_close_thread`,
-…). On master, one C callback delivers updates as a single JSON string. The
-transport migration replaces that callback payload with the canonical
-FlatBuffers update schema; JSON is not retained as a runtime fallback.
+[15 — Codegen and FFI](15-codegen-and-ffi.md)). iOS calls the `extern "C"`
+surface exported by `crates/nmp-ffi` (`nmp_app_new`, `nmp_app_start`,
+`nmp_app_dispatch_action`, Chirp feed wrappers, capability callbacks, etc.).
+One C callback delivers binary `nmp.transport.UpdateFrame` bytes with file
+identifier `NMPU`. The frame is FlatBuffers-only: `Snapshot` or `Panic`, with no
+JSON snapshot fallback.
 
 ### `KernelHandle` — the thin wrapper (annotated)
 
@@ -41,22 +41,22 @@ final class KernelHandle {
             raw, Unmanaged.passUnretained(sink).toOpaque(), nmpUpdateCallback)
     }
 
-    func openAuthor(pubkey: String) {                  // a command. NO return value.
-        pubkey.withCString { nmp_app_open_author(raw, $0) }   // fire-and-forget
+    func openAuthorFeed(pubkey: String) {              // a command. NO return value.
+        pubkey.withCString { nmp_app_chirp_open_author_feed(raw, $0) }
     }
-    // decode(): update bytes → generated FlatBuffers reader → KernelUpdate shadow
+    // decode(): UpdateFrame bytes → generated FlatBuffers readers → KernelModel shadow
 }
 ```
 
-Every command method is **fire-and-forget** — `nmp_app_open_author` returns
+Every command method is **fire-and-forget** — `nmp_app_chirp_open_author_feed` returns
 `void`. There is no synchronous "give me the result". State change arrives only
 later, via the callback, as a fresh snapshot. That is the actor model (see
 [04 — Actor model (TEA on one thread)](04-actor-and-tea.md)) crossing FFI intact.
 
 The C callback (`KernelBridge.swift:101-110`) is invoked **on a Rust thread**.
-In the legacy path it decodes JSON; in the FlatBuffers target it reads the
-generated buffer. In both cases `KernelModel` hops to `@MainActor` before
-touching any `@Published` (`KernelModel.swift:48-53`):
+It copies the borrowed bytes, decodes the generated FlatBuffers frame, and then
+`KernelModel` hops to `@MainActor` before touching any `@Published`
+(`KernelModel.swift:48-53`):
 
 ```swift
 kernel.listen { [weak self] result in
@@ -70,10 +70,10 @@ kernel.listen { [weak self] result in
 relay frame → kernel actor ingests → reverse-index delta → emit pacer
    │  (one snapshot per emit tick, paced by emit_hz)
    ▼
-encode `AppUpdate` / `KernelUpdate` as a FlatBuffers frame
+encode `nmp.transport.UpdateFrame` as FlatBuffers
    │
    ▼  callback(context, bytes)                       ── Rust thread
-KernelHandle.decode(): generated FlatBuffers reader → KernelUpdateResult
+KernelHandle.decode(): generated FlatBuffers readers → KernelUpdateResult
    │
    ▼  Task { @MainActor }                            ── hop to main
 KernelModel.apply(result):
@@ -84,11 +84,9 @@ KernelModel.apply(result):
 SwiftUI observes @Published change → diffs view tree → re-renders rows
 ```
 
-The kernel emits a **whole snapshot** (`KernelUpdate`,
-`KernelBridge.swift:119-138`: `items`, `authorView`, `relayStatuses`,
-`logicalInterests`, `metrics`, …) plus delta hints (`inserted`/`updated`/
-`removed`). SwiftUI's own structural diffing turns "replace the array" into
-minimal row updates — you do not hand-patch.
+The kernel emits a **whole snapshot frame**: typed envelope fields plus typed
+projection sidecars. SwiftUI's own structural diffing turns "replace the model
+slot" into minimal row updates — you do not hand-patch.
 
 ## FlatBuffers update shape + the rev guard
 
@@ -118,41 +116,36 @@ guard** and never derive UI truth from anything but the latest applied snapshot.
 > (`ProfileViews.swift:41-46`). Caching the *render input* briefly is fine;
 > caching *facts* the kernel owns is the D4 violation.
 
-## Reading a snapshot projection in `apply()`
+## Reading a typed projection in `apply()`
 
-> **Disambiguation.** "Snapshot projection" here is the named-state-slice
-> mechanism — a value delivered under its key in `snapshot.projections[key]`
-> (registered Rust-side via `register_snapshot_projection`; see
+> **Disambiguation.** "Snapshot projection" here means an app/module-owned slice
+> delivered under its key in `SnapshotFrame.typed_projections` (registered
+> Rust-side via `register_typed_snapshot_projection`; see
 > [15 — Codegen and FFI](15-codegen-and-ffi.md)). It is **not** the ViewModule
-> view-delta system, and it is **not** the SwiftUI `authorViewCache` *projection
-> cache* mentioned at the rev-guard nuance above — those are unrelated uses of
-> the word.
+> view-delta system, and it is **not** the SwiftUI `authorViewCache` projection
+> cache mentioned at the rev-guard nuance above.
 
 The named typed fields in `apply()` (`items`, `profile`, `relayStatuses`) are
-the kernel's built-in slices. App- and module-owned state arrives in the **same
-frame** under `snapshot.projections["nmp.your.key"]` — you read it right
-alongside the named fields, decode it, and assign it to an `@Published`
-property. Chirp's NIP-02 follow list is the precedent:
+the kernel's built-in slices. App- and module-owned state arrives in the same
+frame as keyed typed sidecars — you read the sidecar bytes by key, decode them
+with the generated Swift decoder, and assign the resulting value wholesale to an
+`@Published` property. Chirp's OP feed typed sidecar is the precedent:
 
 ```swift
-// ios/Chirp/Chirp/Bridge/KernelBridge.swift:884 — a computed accessor reads
-// the projection off the decoded snapshot by its registered key.
-var followList: FollowListSnapshot? { projections?.followList }   // projections["nmp.follow_list"]
+// KernelUpdateFrameDecoder extracts the sidecars from SnapshotFrame.typedProjections.
+let typedProjections = extractTypedProjections(from: snapshot)
+let homeFeed = TypedHomeFeedDecoder.decode(from: typedProjections)
 
-// ios/Chirp/Chirp/Bridge/KernelModel.swift:614 — consumed in apply(), every tick.
+// KernelModel.apply consumes decoded typed values every accepted rev.
 private func apply(result: KernelUpdateResult) {
     guard result.update.rev > rev else { return }   // same rev guard — drop reorders
-    rev = update.rev
-    items = update.items                             // built-in named field
-    // …then the projection slice, decoded + assigned wholesale:
-    followList.apply(snapshot: update.followList, activePubkey: update.activeAccount)
+    rev = result.update.rev
+    relayStatuses = result.update.relayStatuses      // envelope field
+    homeFeed = result.update.homeFeed                // typed projection sidecar
 }
 ```
 
-The decode path is the same FlatBuffers reader as every other field
-(`KernelUpdateFrameDecoder.swift:43-56` reads `SnapshotFrame.payload` and
-decodes the `projections` object into the shadow model). A projection slice is
-**not special at read time** — it obeys every chapter rule:
+Projection reads obey the same rules as every other snapshot field:
 
 - **Wholesale-replace** the projection on every snapshot; never merge or append
   into the prior value (D4).
@@ -161,13 +154,7 @@ decodes the `projections` object into the shadow model). A projection slice is
 - **Render placeholders, not spinners** — an absent projection key means "not
   populated yet", which renders the D1 placeholder, never a loading gate.
 - **Never derive UI truth** from anything but the latest applied snapshot;
-  `projections[key]` is a shadow of kernel-owned state, not a cache you mutate.
-
-> Typed FlatBuffers projections (ADR-0037) are a **different read site**:
-> `snapshot.typedProjections` (`KernelUpdateFrameDecoder.swift:74`,
-> e.g. `TypedHomeFeedDecoder` at `KernelBridge.swift:533`), not
-> `projections[key]`. Use the `projections[key]` read above for the common
-> named-JSON-slice case.
+  typed projections are shadows of kernel-owned state, not caches you mutate.
 
 ## What a kernel-consuming SwiftUI view looks like
 
@@ -178,7 +165,7 @@ appear/disappear. No business logic, no fallbacks. The D1 pattern — render a
 ```swift
 // ProfileViews.swift:51 — never "if missing { ProgressView() }"
 ProfileCardView(profile: view?.profile ?? .placeholder(pubkey: pubkey))
-// .task { model.openAuthor(pubkey:) }  /  .onDisappear { model.closeAuthor }
+// .task { model.openAuthorFeed(pubkey:) } / .onDisappear { model.closeAuthorFeed(pubkey:) }
 ```
 
 `ProfileInterestAvatar` (`SharedViews.swift:47-73`) claims the profile interest
