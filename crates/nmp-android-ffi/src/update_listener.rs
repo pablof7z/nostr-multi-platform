@@ -4,7 +4,7 @@
 //! Mirrors the synchronous [`crate::capability::SyncCapabilityHandler`]
 //! JNI-upcall pattern and the gallery's `android_push::GalleryUpdateListener`.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use jni::objects::GlobalRef;
 use jni::JavaVM;
@@ -64,4 +64,8 @@ impl UpdatePushListener {
 }
 
 /// Session-owned slot for the JNI push update listener.
-pub(crate) type UpdateListenerSlot = Mutex<Option<UpdatePushListener>>;
+///
+/// Wrapped in `Arc` so `on_update` can snapshot the listener reference,
+/// drop the lock, and then invoke `push` without holding the mutex across
+/// the JNI boundary (deadlock prevention — see session.rs `on_update`).
+pub(crate) type UpdateListenerSlot = Mutex<Option<Arc<UpdatePushListener>>>;
