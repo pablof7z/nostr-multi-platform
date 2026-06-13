@@ -40,6 +40,8 @@ mod provenance;
 #[cfg(feature = "lmdb-backend")]
 mod query;
 #[cfg(feature = "lmdb-backend")]
+mod query_relay_index;
+#[cfg(feature = "lmdb-backend")]
 mod store_impl;
 #[cfg(feature = "lmdb-backend")]
 mod tombstones;
