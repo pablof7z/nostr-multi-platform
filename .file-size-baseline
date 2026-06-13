@@ -81,7 +81,7 @@ crates/nmp-nip17/src/inbox.rs	544
 crates/nmp-nip17/src/inbox/tests.rs	510
 crates/nmp-nip47/src/runtime.rs	1246
 crates/nmp-nip57/src/decode.rs	500
-crates/nmp-nip57/src/lnurl/mod.rs	682
+crates/nmp-nip57/src/lnurl/mod.rs	665
 crates/nmp-nip57/src/lnurl/tests.rs	819
 crates/nmp-nip60/src/nip60_wallet.rs	923
 crates/nmp-nostr-lmdb/src/lib_tests.rs	875

@@ -219,6 +219,51 @@ function isEnabled(value) {
   return ["1", "true", "yes", "required"].includes(String(value || "").toLowerCase());
 }
 
+/// True when the script is executing inside a GitHub Actions runner.
+function inGithubActions() {
+  return process.env.GITHUB_ACTIONS === "true";
+}
+
+/// True when an operator has explicitly opted into skipping the gate in CI.
+/// Empty / unset means the gate is *required* in CI — the safe default.
+function reviewOptionalInCi() {
+  return String(process.env.ARCHITECTURE_REVIEW_OPTIONAL || "").toLowerCase() === "true";
+}
+
+/// Centralised "the gate cannot actually run" decision. Called from every site
+/// where the review would otherwise be silently skipped (missing provider,
+/// missing model, missing API key, or a runtime failure).
+///
+/// Behaviour:
+/// - Inside GitHub Actions (`GITHUB_ACTIONS === 'true'`), refusing to run is a
+///   hard failure: a silently-fabricated "pass" would let unreviewed code merge
+///   under a green check. The process exits 1 with a clear stderr message —
+///   UNLESS `ARCHITECTURE_REVIEW_OPTIONAL === 'true'`, in which case the skip is
+///   announced as a warning and the process exits 0.
+/// - Outside CI (local runs, ad-hoc tooling) the gate was never authoritative,
+///   so this is a no-op and the caller is free to write a skipped report and
+///   return 0 as before.
+///
+/// `exitCode` lets the runtime-error path request exit code 1 while the
+/// unconfigured-gate path uses the same default. Returns `false` when the caller
+/// should continue with its local skip behaviour.
+function failLoudIfGateRequiredInCi(reason, { exitCode = 1 } = {}) {
+  if (!inGithubActions()) {
+    return false;
+  }
+  if (reviewOptionalInCi()) {
+    console.warn(
+      `architecture-review: skipped in CI (${reason}) — ARCHITECTURE_REVIEW_OPTIONAL=true`
+    );
+    process.exit(0);
+  }
+  console.error(
+    `ERROR: architecture-review gate cannot run in CI (${reason}). ` +
+      `Set ARCHITECTURE_REVIEW_OPTIONAL=true to allow skipping.`
+  );
+  process.exit(exitCode);
+}
+
 function skippedReview(reason) {
   return {
     verdict: "pass",
@@ -254,6 +299,8 @@ async function main() {
   const outPath = args.out || "architecture-review.json";
   if (!provider) {
     if (!required) {
+      // In CI a missing provider must not silently fabricate a pass.
+      failLoudIfGateRequiredInCi("provider is not configured");
       fs.writeFileSync(
         outPath,
         `${JSON.stringify(skippedReview("provider is not configured"), null, 2)}\n`
@@ -272,6 +319,8 @@ async function main() {
   }
   if (provider !== "mock" && !model) {
     if (!required) {
+      // In CI a missing model must not silently fabricate a pass.
+      failLoudIfGateRequiredInCi("model is not configured");
       fs.writeFileSync(
         outPath,
         `${JSON.stringify(skippedReview("model is not configured"), null, 2)}\n`
@@ -332,8 +381,12 @@ main().catch((error) => {
   if (isEnabled(process.env.ARCHITECTURE_REVIEW_REQUIRED)) {
     console.error(`architecture-review: ${error.message}`);
     process.exit(2);
-  } else {
-    console.warn(`architecture-review: skipped (not required) — ${error.message}`);
-    process.exit(0);
   }
+  // Not flagged REQUIRED, but a runtime failure inside CI (e.g. a missing API
+  // key, a provider HTTP error, or malformed model output) still means the gate
+  // did not actually run. Fail loud so the green check is never fabricated —
+  // unless an operator has set ARCHITECTURE_REVIEW_OPTIONAL=true.
+  failLoudIfGateRequiredInCi(error.message);
+  console.warn(`architecture-review: skipped (not required) — ${error.message}`);
+  process.exit(0);
 });

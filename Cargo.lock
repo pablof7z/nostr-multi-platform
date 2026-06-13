@@ -4814,6 +4814,7 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
+ "sha2",
  "tracing",
  "ureq",
 ]

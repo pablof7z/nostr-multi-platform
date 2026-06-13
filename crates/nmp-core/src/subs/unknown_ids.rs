@@ -35,16 +35,55 @@ use std::collections::BTreeSet;
 use crate::planner::interest::EventId;
 use crate::planner::Pubkey;
 
+/// Hard cap on the number of pending unknown ids retained **per set**
+/// (pubkeys and event ids are capped independently).
+///
+/// `UnknownIds` is fed straight from untrusted relay traffic: every `p`/`e`/`q`
+/// tag on every ingested event that references a missing id lands here until the
+/// actor drains it into a oneshot fetch. A hostile or merely chatty relay can
+/// emit events that reference thousands of distinct ids faster than the actor
+/// can drain them, so without a bound the set grows without limit (D5 — resident
+/// state must be capacity-bounded).
+///
+/// When a set is at capacity a **new** id is dropped rather than evicting an
+/// existing one (oldest-first retention). This is the right trade-off for a
+/// discovery set: the ids already pending are ones we have committed to
+/// fetching; throwing them away to admit flood entries would let an attacker
+/// starve real discovery. A dropped id is not lost forever — if it is
+/// referenced again after the set has drained below the cap it is re-collected
+/// on the next ingest.
+pub const MAX_UNKNOWN_IDS: usize = 500;
+
 /// Insertion-time-deduplicated set of referenced-but-missing ids.
 ///
 /// Two disjoint sets (pubkeys vs event ids) so the actor can shape distinct
 /// oneshot filters (`kinds:[0]` for profiles, id-filters for events). Both use
 /// `BTreeSet` so [`UnknownIds::drain`] yields a deterministic order (D8 — plan
 /// stability when the actor turns drained ids into interests).
+///
+/// Each set is hard-capped at [`MAX_UNKNOWN_IDS`]; see that constant for the
+/// flood-resistance rationale.
 #[derive(Default, Debug)]
 pub struct UnknownIds {
     pubkeys: BTreeSet<Pubkey>,
     event_ids: BTreeSet<EventId>,
+}
+
+/// Insert `value` into `set` iff doing so would not exceed [`MAX_UNKNOWN_IDS`].
+///
+/// Returns `true` when the value ends up in the set (newly inserted *or* already
+/// present), `false` when the set was at capacity and `value` was a new id that
+/// got dropped. A value already in the set never counts against the cap a second
+/// time, so an at-capacity set still accepts re-references to ids it holds.
+fn try_insert_capped<T: Ord>(set: &mut BTreeSet<T>, value: T) -> bool {
+    if set.contains(&value) {
+        return true;
+    }
+    if set.len() >= MAX_UNKNOWN_IDS {
+        return false;
+    }
+    set.insert(value);
+    true
 }
 
 impl UnknownIds {
@@ -87,7 +126,7 @@ impl UnknownIds {
                     if self.event_ids.contains(value) || has_event(value) {
                         continue;
                     }
-                    self.event_ids.insert(value.to_string());
+                    try_insert_capped(&mut self.event_ids, value.to_string());
                 }
                 "p" => {
                     if !is_hex64(value) {
@@ -96,7 +135,7 @@ impl UnknownIds {
                     if self.pubkeys.contains(value) || has_pubkey(value) {
                         continue;
                     }
-                    self.pubkeys.insert(value.to_string());
+                    try_insert_capped(&mut self.pubkeys, value.to_string());
                 }
                 _ => {}
             }
@@ -113,7 +152,7 @@ impl UnknownIds {
         if !is_hex64(id) || self.event_ids.contains(id) || has_event(id) {
             return;
         }
-        self.event_ids.insert(id.to_string());
+        try_insert_capped(&mut self.event_ids, id.to_string());
     }
 
     /// Record a single referenced pubkey if missing. Mirror of
@@ -125,7 +164,7 @@ impl UnknownIds {
         if !is_hex64(pk) || self.pubkeys.contains(pk) || has_pubkey(pk) {
             return;
         }
-        self.pubkeys.insert(pk.to_string());
+        try_insert_capped(&mut self.pubkeys, pk.to_string());
     }
 
     /// Drain every pending unknown id, emptying the collector. Returns the
@@ -163,13 +202,24 @@ fn is_hex64(s: &str) -> bool {
 impl UnknownIds {
     /// Re-insert event ids that were drained but not yet issued as REQs.
     /// Called by the kernel when it can only open a subset of batches this tick.
+    ///
+    /// Honours [`MAX_UNKNOWN_IDS`]: a put-back that would exceed the cap drops
+    /// the surplus ids. In practice the cap is never hit on this path (the
+    /// remainder being put back was itself drained from an already-capped set),
+    /// but routing every insert through the same gate keeps the bound an
+    /// invariant rather than a property of one code path.
     pub fn put_back_events(&mut self, ids: impl IntoIterator<Item = EventId>) {
-        self.event_ids.extend(ids);
+        for id in ids {
+            try_insert_capped(&mut self.event_ids, id);
+        }
     }
 
-    /// Re-insert pubkeys that were drained but not yet issued as REQs.
+    /// Re-insert pubkeys that were drained but not yet issued as REQs. Honours
+    /// [`MAX_UNKNOWN_IDS`] the same way [`Self::put_back_events`] does.
     pub fn put_back_pubkeys(&mut self, pks: impl IntoIterator<Item = Pubkey>) {
-        self.pubkeys.extend(pks);
+        for pk in pks {
+            try_insert_capped(&mut self.pubkeys, pk);
+        }
     }
 }
 
@@ -245,6 +295,95 @@ mod tests {
             |_| false,
         );
         assert!(u.is_empty());
+    }
+
+    /// A relay flood that references far more distinct ids than the cap must
+    /// not grow either set past [`MAX_UNKNOWN_IDS`], and the ids collected
+    /// *first* must survive (oldest-first retention — new entries are dropped at
+    /// capacity, existing ones are kept).
+    #[test]
+    fn flood_is_capped_and_keeps_first_inserted() {
+        let mut u = UnknownIds::new();
+        let n = MAX_UNKNOWN_IDS + 50;
+
+        // 64-hex ids whose lexicographic order matches insertion order, so the
+        // BTreeSet's stored order is the insertion order and "first inserted
+        // survives" is verifiable. Each id is a zero-padded index in hex.
+        let id_for = |i: usize| -> String { format!("{i:064x}") };
+
+        for i in 0..n {
+            // Two distinct value spaces so event-ids and pubkeys are disjoint.
+            u.note_event(&id_for(i), |_| false);
+            u.note_pubkey(&id_for(i + n), |_| false);
+        }
+
+        let (events, pubkeys) = u.drain();
+
+        // Each set is independently capped.
+        assert_eq!(
+            events.len(),
+            MAX_UNKNOWN_IDS,
+            "event-id set must be hard-capped at MAX_UNKNOWN_IDS under flood"
+        );
+        assert_eq!(
+            pubkeys.len(),
+            MAX_UNKNOWN_IDS,
+            "pubkey set must be hard-capped at MAX_UNKNOWN_IDS under flood"
+        );
+
+        // Oldest-first retention: the FIRST MAX_UNKNOWN_IDS ids inserted are the
+        // ones that survive; the surplus (inserted after the cap was hit) is
+        // dropped. drain() returns BTreeSet order == insertion order here.
+        let expected_events: Vec<String> = (0..MAX_UNKNOWN_IDS).map(id_for).collect();
+        assert_eq!(
+            events, expected_events,
+            "the first-inserted event ids must survive, surplus dropped"
+        );
+        let expected_pubkeys: Vec<String> =
+            (0..MAX_UNKNOWN_IDS).map(|i| id_for(i + n)).collect();
+        assert_eq!(
+            pubkeys, expected_pubkeys,
+            "the first-inserted pubkeys must survive, surplus dropped"
+        );
+    }
+
+    /// At capacity, a re-reference to an id the set already holds is still
+    /// accepted (it does not count against the cap a second time) — so an
+    /// already-pending id is never spuriously rejected by the flood guard.
+    #[test]
+    fn at_capacity_existing_ids_still_accepted() {
+        let mut u = UnknownIds::new();
+        let id_for = |i: usize| -> String { format!("{i:064x}") };
+        for i in 0..MAX_UNKNOWN_IDS {
+            u.note_event(&id_for(i), |_| false);
+        }
+        // Set is now full. Re-referencing an existing id is a no-op success.
+        u.note_event(&id_for(0), |_| false);
+        // A brand-new id is dropped.
+        u.note_event(&id_for(MAX_UNKNOWN_IDS + 1), |_| false);
+
+        let (events, _) = u.drain();
+        assert_eq!(events.len(), MAX_UNKNOWN_IDS);
+        assert!(
+            events.contains(&id_for(0)),
+            "an already-pending id stays pending even at capacity"
+        );
+        assert!(
+            !events.contains(&id_for(MAX_UNKNOWN_IDS + 1)),
+            "a new id is dropped once the set is at capacity"
+        );
+    }
+
+    /// `put_back_*` re-insertion also honours the cap — it routes through the
+    /// same gate as the collect path, so a put-back can never breach the bound.
+    #[test]
+    fn put_back_respects_cap() {
+        let mut u = UnknownIds::new();
+        let id_for = |i: usize| -> String { format!("{i:064x}") };
+        // Fill via put_back directly with more than the cap.
+        let ids: Vec<String> = (0..MAX_UNKNOWN_IDS + 25).map(id_for).collect();
+        u.put_back_events(ids);
+        assert_eq!(u.pending_len(), MAX_UNKNOWN_IDS);
     }
 
     #[test]

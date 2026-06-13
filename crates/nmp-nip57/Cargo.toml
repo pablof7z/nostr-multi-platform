@@ -42,6 +42,11 @@ serde_json = "1"
 ureq = { version = "2", optional = true, default-features = false, features = ["tls", "json"] }
 bech32 = "0.11"
 nostr = { workspace = true }
+# NIP-57 description-hash validation: the bolt11 `h` field must equal
+# SHA-256(zap-request JSON) before the wallet auto-pays. Uses the audited
+# `sha2` implementation (same version the rest of the workspace pins) — never
+# hand-rolled crypto. Always-compiled: the check is pure and wasm-safe.
+sha2 = "0.10"
 # Diagnostic logger for the LNURL worker (matches the rest of nmp-core's
 # tracing usage). Always available — `tracing` is in the lockfile via
 # nostr already, so this adds nothing new.
