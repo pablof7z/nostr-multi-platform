@@ -15,16 +15,26 @@
 //!
 //! # Composition
 //!
-//! Host code (an `nmp-app-*` crate, or the FFI surface in `nmp-core::ffi::
-//! wallet`) constructs the [`WalletStatusSlot`] and a
-//! [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`), then:
+//! The single entry point is [`register_wallet`], which performs all wiring
+//! during the app's config phase (before the kernel starts). It:
 //!
-//! * registers [`WalletPayInvoiceModule`] on its `ActionRegistry`;
-//! * installs the runtime handle into the actor through
-//!   [`nmp_core::NmpApp::set_wallet_runtime_handle`];
-//! * captures one `Arc` clone of [`WalletStatusSlot`] in the `"wallet"`
-//!   snapshot-projection closure registered via
-//!   [`nmp_core::NmpApp::register_snapshot_projection`].
+//! * constructs a [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`)
+//!   and seeds it with a fresh [`WalletRuntime`];
+//! * registers the three wallet `ActionModule` values
+//!   ([`WalletConnectModule`] / [`WalletDisconnectModule`] /
+//!   [`WalletPayInvoiceModule`]) — each owns an `Arc` clone of the handle
+//!   (ADR-0052 rung 5.2: register-by-value, no process-global);
+//! * installs a `WalletInterceptor` (implementing the substrate-generic
+//!   `RelayTextInterceptor` trait) via `app.add_relay_text_interceptor` — the
+//!   interceptor holds its own `Arc` clone of the handle and drives inbound
+//!   kind:23195 decoding plus the V-79 heartbeat / TTL sweeps on every actor
+//!   idle tick;
+//! * registers the generic `"wallet"` snapshot-projection closure and the
+//!   typed `"wallet"` sidecar via [`wallet_typed_projection`].
+//!
+//! Two `NmpApp` instances in one process therefore drive fully independent
+//! wallet runtimes — the deleted `ACTIVE_WALLET_RUNTIME` process-global is
+//! gone (ADR-0052 rung 5.2).
 //!
 //! D0: the kernel never names "wallet" / "NWC" / "kind:23194" — those nouns
 //! live entirely here.
