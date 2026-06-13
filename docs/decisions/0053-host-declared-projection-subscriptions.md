@@ -263,12 +263,22 @@ for the life of the app, with no opt-out.
   `builtin_typed_projections`), leaving the envelope structure untouched so the
   manifest redesign can layer on without conflict. If the two efforts must touch the
   same envelope structure, the manifest redesign owns it and this gate scopes into it.
-- **Drift protection.** The producer-completeness gate
-  (`every_codegen_registry_key_is_registered_at_runtime`) already cross-checks
-  `SNAPSHOT_PROJECTIONS` against runtime producers. We extend the model so the shells'
-  declared set is generated from the same registry — a shell decoding a key it never
-  declares (or declaring a key it never decodes) is caught by an extended gate rather
-  than silently going dark.
+- **Drift protection.** A bidirectional gate in `nmp-app-chirp`'s
+  `declared_projections` test module enforces that the declared set cannot drift from
+  what Chirp actually decodes:
+  - **Direction 1** (`every_chirp_declared_key_is_a_kernel_builtin`): every key in
+    `CHIRP_CONSUMED_BUILTIN_PROJECTIONS` must exist in `KERNEL_BUILTIN_PROJECTION_KEYS`.
+    A producer-side rename that ships without updating the declared list trips this at
+    test time.
+  - **Direction 2** (`every_codegen_decoded_builtin_is_declared`): every Tier-2 built-in
+    key that has a codegen-generated Swift decoder in `SNAPSHOT_PROJECTIONS` must be in
+    `CHIRP_CONSUMED_BUILTIN_PROJECTIONS`. A new Tier-2 built-in added to the codegen
+    registry without updating the declared list trips this at test time — preventing the
+    key from silently going dark once Chirp narrows.
+  Together the two directions ensure the declared set equals the decoded set for the
+  codegen-driven Tier-2 built-ins, matching the ADR's original "cannot drift by
+  construction" intent. Keys decoded outside the codegen registry (e.g. Android-only
+  JSON consumers like `mention_profiles`) remain covered by direction 1 alone.
 
 ## Out of scope (explicitly deferred — the real D1 hazard ADR-0039 worried about)
 
@@ -294,10 +304,14 @@ for the life of the app, with no opt-out.
   declaring host gets identical narrowing either way). The interest-set semantic
   ("empty = no opinion = no narrowing") is the established pattern for the relay
   interest lattice and profile/event claims, is not a shim (it is a sound permanent
-  rule), and still delivers the full win to every host that declares. If a future
-  milestone wants to *require* declaration, a `debug_assert` / doctrine-lint that a
-  production host's declared set is non-empty can be added on top — without changing
-  this semantic.
+  rule), and still delivers the full win to every host that declares. The production
+  enforcement layer is now built: a one-time `tracing::warn!` in `nmp_app_start`
+  (`crates/nmp-ffi/src/lib.rs`) fires in ALL configurations (production, test, TUI/desktop
+  C-ABI callers) when a host starts without declaring any consumed projections. Because
+  `tracing::warn!` does not fail tests, it correctly covers test consumers that legitimately
+  have no opinion (ADR-0053 Decision 4 / empty=permissive semantic). The kernel-primitive
+  empty=permissive semantic is preserved at every consumer that bypasses the production
+  builder (chirp-tui, chirp-desktop, tests).
 - **Gate ALL projections (Tier-1 + Tier-2) on the declared set.** Rejected as
   redundant and risk-additive: Tier-1 already self-gates by registration, and the
   dynamic feeds need *lifecycle* gating (add/remove), not a static declared set.
