@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19.
+//! Doctrine-lint — grep-based static analyzer enforcing A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/{a5,d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19}.rs` for
+//! per-line opt-out comment, and `rules/{a5,d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -63,7 +63,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
-use rules::{a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d6, d7, d8, d9};
+use rules::{a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -132,6 +132,7 @@ fn main() -> ExitCode {
                 &cfg.d16_extra_scopes,
                 &cfg.d17_extra_scopes,
                 &cfg.d19_extra_scopes,
+                &cfg.d20_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
             ) {
@@ -144,7 +145,7 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19"
+        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20"
     };
     finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
@@ -207,6 +208,7 @@ fn scan_one_file(
     d16_extra_scopes: &[String],
     d17_extra_scopes: &[String],
     d19_extra_scopes: &[String],
+    d20_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -246,6 +248,10 @@ fn scan_one_file(
     // D19 — display-formatting banned from kernel projection builders.
     // Scope is `kernel/update/`, `kernel/types.rs`, `kernel/publish_outbox.rs`.
     let d19_in_scope = d19_file_in_scope(path, d19_extra_scopes);
+    // D20 — no raw `std::time::Instant`/`SystemTime` on the wasm-compiled path.
+    // Scope is the wasm-reachable crates (minus the two time shims and the
+    // native-only actor/relay_worker/lmdb subtrees).
+    let d20_in_scope = d20_file_in_scope(path, d20_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
     let mut d10_tracker = d10::PrivatePublishTracker::default();
@@ -600,6 +606,28 @@ fn scan_one_file(
                 });
             }
         }
+        // D20 — no raw `std::time::Instant`/`SystemTime` on the wasm-compiled
+        // path (#1173, #1161). `std::time::*::now()` PANICS on wasm32; the
+        // wasm-reachable crates must import from the `crate::time` web-time
+        // shim. Scope is the wasm-reachable crates minus the two shims and the
+        // native-only actor/relay_worker/lmdb subtrees. Test-only files
+        // (`d6_test_file`) and #[cfg(test)] bodies (`sl.in_test_cfg`) are
+        // exempt — tests never run on wasm32. Skipped in --workspace-d8.
+        if !workspace_d8 && d20_in_scope && !d6_test_file {
+            for (col, msg, suggested) in d20::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows(sl.text, d20::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d20::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
         // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
         // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
         // doctrine applies to all non-test code under `nmp-core`. Reuses
@@ -760,6 +788,21 @@ fn d13_file_extra_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 /// Mirrors `d17_file_in_scope`.
 fn d19_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if d19::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff D20 should scan `path` — either the file is inside a wasm-reachable
+/// crate's `src/` tree via `d20::file_in_scope` (which already exempts the two
+/// time shims and the native-only `actor/**`, `relay_worker/**`,
+/// `nmp-store/src/lmdb/**` subtrees), or the caller opted-in via
+/// `--d20-extra-scope <fragment>` (the fixture smoke test stages a positive
+/// fixture under `target/` outside any `crates/nmp-*/src/` tree). Mirrors
+/// `d19_file_in_scope`.
+fn d20_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d20::file_in_scope(path) {
         return true;
     }
     let s = path.to_string_lossy().replace('\\', "/");
