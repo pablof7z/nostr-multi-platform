@@ -48,7 +48,7 @@ function RelayRow(props: { relay: DecodedRelayStatus }) {
       </div>
       <div class="ins-relay-stats">
         <span class="mono" data-testid="relay-bytes-tx">tx {fmtBigint(r.bytesTx)} B</span>
-        <span class="mono">rx {fmtBigint(r.bytesRx)} B</span>
+        <span class="mono" data-testid="relay-bytes-rx">rx {fmtBigint(r.bytesRx)} B</span>
         <span class="mono">ev {fmtBigint(r.eventsRx)}</span>
         <span class="mono">subs {fmtBigint(r.activeWireSubs)}</span>
         <Show when={r.reconnectCount > 0}>
