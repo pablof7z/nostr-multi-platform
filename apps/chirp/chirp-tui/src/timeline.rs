@@ -175,7 +175,7 @@ fn sorted_keys(value: &Value) -> Value {
     match value {
         Value::Object(map) => {
             let mut entries: Vec<(&String, &Value)> = map.iter().collect();
-            entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+            entries.sort_by_key(|(left, _)| *left);
             Value::Object(
                 entries
                     .into_iter()
