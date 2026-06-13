@@ -58,6 +58,8 @@
 //! `keyring_unavailable = true` in the snapshot, which is visible to the
 //! host. The ordering invariant is therefore self-enforcing.
 
+use zeroize::Zeroizing;
+
 use keyring_core::{
     api::{CredentialApi, CredentialPersistence, CredentialStoreApi},
     set_default_store,
@@ -161,10 +163,12 @@ fn uuid_correlation() -> u64 {
 impl CredentialApi for CapabilityCredential {
     fn set_secret(&self, secret: &[u8]) -> KeyringResult<()> {
         use base64::Engine as _;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(secret);
+        // Wrap in `Zeroizing` so the base64 string is wiped from the heap when
+        // this function returns (the key bytes must not linger in freed memory).
+        let encoded = Zeroizing::new(base64::engine::general_purpose::STANDARD.encode(secret));
         let result = self.dispatch(KeyringRequest::Store {
             account_id: self.account_id.clone(),
-            secret: encoded,
+            secret: encoded.as_str().to_owned(),
         });
         match result.status {
             KeyringStatus::Ok => Ok(()),
@@ -180,9 +184,14 @@ impl CredentialApi for CapabilityCredential {
         });
         match result.status {
             KeyringStatus::Ok => {
-                let encoded = result.secret.as_deref().unwrap_or("");
+                // Wrap the incoming string in `Zeroizing` so the base64-encoded
+                // key bytes are wiped from the heap when we return.  The decoded
+                // `Vec<u8>` is returned to mdk-sqlite-storage; the caller is
+                // responsible for the lifetime of those bytes.
+                let encoded: Zeroizing<String> =
+                    Zeroizing::new(result.secret.unwrap_or_default());
                 base64::engine::general_purpose::STANDARD
-                    .decode(encoded)
+                    .decode(encoded.as_str())
                     .map_err(|_| platform_failure(Some(-50)))
             }
             // ONLY explicit not_found maps to NoEntry.  This is critical:

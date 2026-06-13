@@ -668,14 +668,15 @@ pub(crate) fn ingest_signed_event_core(
     }
 }
 
-/// Lossy-observer seam back-compat op. Now a thin alias over
-/// [`ingest_signed_event_core`] (the raw-event tap is the automatic
-/// caller of the same core). Kept so existing tests / any Swift call
-/// site that still dispatches `{"op":"ingest_signed_event"}` keep
-/// working; an unsupported kind here is still surfaced as an error.
+/// Back-compat op alias over [`ingest_signed_event_core`]. Kept for tests and
+/// any Swift call site still dispatching `{"op":"ingest_signed_event"}`.
 fn ingest_signed_event(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let json = str_field(v, "event_json")?;
     let event = parse_signed_event(json)?;
+    // Untrusted JSON input: verify Schnorr sig + id before handing to MDK.
+    event
+        .verify()
+        .map_err(|e| format!("ingest_signed_event: event verification failed: {e}"))?;
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
