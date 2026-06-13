@@ -10,10 +10,21 @@ use nmp_signers::Nip46Signer;
 
 /// Construct a broker that reports events into the actor command inbox
 /// (ADR-0050 §D3a: sends through a [`CommandSender`], waking the actor).
+///
+/// Mirrors the production wiring in `nmp-ffi/src/signer_broker.rs`: besides
+/// the event-to-command translation, the ADR-0050 §D3b completion sink is
+/// installed so the broker's steady-state inbound dispatcher delivers
+/// decrypted RPC bodies as `ActorCommand::DeliverSignerResponse` (the broker
+/// no longer calls `ingest_rpc_response` directly).
 pub fn broker_for_actor(tx: CommandSender) -> Arc<BunkerBroker> {
-    BunkerBroker::new(Arc::new(move |event| {
+    let sink_tx = tx.clone();
+    let broker = BunkerBroker::new(Arc::new(move |event| {
         let _ = tx.send(actor_command_from_event(event));
-    }))
+    }));
+    broker.set_completion_sink(Arc::new(move |response_json: String| {
+        let _ = sink_tx.send(ActorCommand::DeliverSignerResponse { response_json });
+    }));
+    broker
 }
 
 fn actor_command_from_event(event: BrokerEvent) -> ActorCommand {
