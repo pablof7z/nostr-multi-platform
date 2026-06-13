@@ -12,7 +12,27 @@ import {
   type ChirpAction,
 } from "./protocol";
 import type { RuntimeCommand } from "./actions";
-import { decodeUpdateFrameBytes, SNAPSHOT_SCHEMA_VERSION, UpdateFrameDecodeError, type DecodedRelayStatus } from "./updateFrame";
+import {
+  decodeUpdateFrameBytes,
+  SNAPSHOT_SCHEMA_VERSION,
+  UpdateFrameDecodeError,
+  type DecodedLogicalInterest,
+  type DecodedMetrics,
+  type DecodedRelayStatus,
+  type DecodedWireSub,
+} from "./updateFrame";
+
+/** Full Tier-3 snapshot data decoded from the most recent FlatBuffers frame. */
+export type DecodedSnapshot = {
+  rev: bigint;
+  lastTickMs: bigint;
+  metrics: DecodedMetrics | null;
+  logicalInterests: DecodedLogicalInterest[];
+  wireSubscriptions: DecodedWireSub[];
+  storeOpenFailure: string | null;
+  lastErrorToast: string | null;
+  lastErrorCategory: string | null;
+};
 
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
@@ -29,6 +49,8 @@ export type RuntimeSnapshot = {
    *  undefined before any snapshot arrives. Empty array means the kernel
    *  has no relays configured yet. */
   latestRelayStatuses?: DecodedRelayStatus[];
+  /** Full Tier-3 decoded snapshot for the Inspector panels. Keep-last-good. */
+  latestDecodedSnapshot?: DecodedSnapshot;
   /** Decoded home feed items from the nmp.feed.home typed projection.
    *  Populated after the first snapshot that contains the projection; undefined
    *  before any projection arrives. Keep-last-good: only overwritten when a
@@ -89,6 +111,7 @@ abstract class BaseClient implements NmpClient {
   private events: WorkerEvent[] = [];
   private latestUpdateBytes: Uint8Array | undefined;
   private latestRelayStatuses: DecodedRelayStatus[] | undefined;
+  private latestDecodedSnapshot: DecodedSnapshot | undefined;
   private latestFeedItems: FeedItem[] | undefined;
   private latestResolvedProfiles: Map<string, string> | undefined;
   private status: RuntimeStatus = "ready";
@@ -103,6 +126,7 @@ abstract class BaseClient implements NmpClient {
       events: [...this.events],
       latestUpdateBytes: this.latestUpdateBytes,
       latestRelayStatuses: this.latestRelayStatuses,
+      latestDecodedSnapshot: this.latestDecodedSnapshot,
       feedItems: this.latestFeedItems,
       resolvedProfiles: this.latestResolvedProfiles,
     };
@@ -133,6 +157,17 @@ abstract class BaseClient implements NmpClient {
             // Tier-3 relay statuses: surfaced directly from the FlatBuffers
             // envelope without going through the typed-projection sidecar.
             this.latestRelayStatuses = decoded.relayStatuses;
+            // Full Tier-3 snapshot stored for the Inspector panels.
+            this.latestDecodedSnapshot = {
+              rev: decoded.rev,
+              lastTickMs: decoded.lastTickMs,
+              metrics: decoded.metrics,
+              logicalInterests: decoded.logicalInterests,
+              wireSubscriptions: decoded.wireSubscriptions,
+              storeOpenFailure: decoded.storeOpenFailure,
+              lastErrorToast: decoded.lastErrorToast,
+              lastErrorCategory: decoded.lastErrorCategory,
+            };
             // running() mirrors the kernel's run-state; prefer the explicit
             // Tier-3 field over waiting for a separate runtime_status event
             // so the UI reflects live kernel state on every frame.
@@ -179,7 +214,7 @@ abstract class BaseClient implements NmpClient {
         }
       }
     }
-    this.events = [event, ...this.events].slice(0, 8);
+    this.events = [event, ...this.events].slice(0, 32);
     const snapshot = this.snapshot();
     for (const listener of this.listeners) {
       listener(snapshot);

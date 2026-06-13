@@ -11,7 +11,7 @@ button, textarea, input { font: inherit; }
 .app-shell {
   display: grid;
   min-height: 100vh;
-  grid-template-columns: 220px minmax(420px, 1fr) 340px;
+  grid-template-columns: 220px minmax(420px, 1fr) 36px;
 }
 
 .sidebar {
@@ -173,6 +173,7 @@ button:disabled { cursor: not-allowed; opacity: 0.6; }
 .status-banner strong { font-size: 24px; }
 .status-banner span { color: #60707d; overflow-wrap: anywhere; }
 
+/* .inspector retained for legacy reference; new inspector uses .nmp-inspector from inspector.css */
 .inspector { background: #f8fafb; padding: 18px 14px; overflow: auto; }
 .runtime-card {
   border: 1px solid #dce3e8;

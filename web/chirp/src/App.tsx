@@ -7,7 +7,7 @@ import {
 } from "./nmp/snapshot";
 import { ChatsPanel, GroupsPanel, SettingsPanel, WalletPanel } from "./features/FeaturePanels";
 import { HomePanel } from "./features/HomePanel";
-import { RuntimePanel } from "./features/RuntimePanel";
+import { NmpInspector } from "./features/inspector/Inspector";
 import { Sidebar, type AppTab } from "./features/Sidebar";
 
 // NIP-07 browser extension interface (window.nostr — EIP-1193-style extension).
@@ -130,7 +130,7 @@ export default function App() {
           </Match>
         </Switch>
       </section>
-      <RuntimePanel snapshot={snapshot()} feature={feature()} starting={starting()} onStart={start} />
+      <NmpInspector snapshot={snapshot()} starting={starting()} onStart={start} />
     </main>
   );
 }
