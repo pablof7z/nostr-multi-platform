@@ -65,6 +65,27 @@ fn inject_note(kernel: &mut Kernel, id: &str, pubkey: &str, created_at: u64) {
     kernel.ingest_pre_verified_event(RelayRole::Content, "", verified);
 }
 
+/// Ingest one kind:1 note tagged with an `e` reference (for Etag queries).
+fn inject_note_with_etag(
+    kernel: &mut Kernel,
+    id: &str,
+    pubkey: &str,
+    created_at: u64,
+    etag_target: &str,
+) {
+    let raw = RawEvent {
+        id: id.to_string(),
+        pubkey: pubkey.to_string(),
+        created_at,
+        kind: 1,
+        tags: vec![vec!["e".to_string(), etag_target.to_string()]],
+        content: format!("note {id}"),
+        sig: "a".repeat(128),
+    };
+    let verified = VerifiedEvent::from_raw_unchecked(raw);
+    kernel.ingest_pre_verified_event(RelayRole::Content, "", verified);
+}
+
 /// Convert a 64-hex id string into a store `EventId` ([u8; 32]).
 fn id_bytes(hex: &str) -> crate::store::EventId {
     let parsed = ::nostr::prelude::EventId::from_hex(hex).expect("valid hex id");
@@ -106,7 +127,7 @@ fn derive_store_pin_set_pins_events_below_shape_floor() {
     // permanently (the floored REQ asks only for created_at > 300).
     kernel.events.clear();
 
-    let pins = kernel.derive_store_pin_set();
+    let (pins, _complete) = kernel.derive_store_pin_set();
 
     // The newest event would survive LRU on its own merit; the hole risk is
     // the OLD and MID events, both below the floor (300). Stage 2 must pin them
@@ -120,6 +141,163 @@ fn derive_store_pin_set_pins_events_below_shape_floor() {
         "e_mid (created_at=200, below floor=300) must be pinned from the store scan"
     );
 }
+
+// ── #1348 — D8 scan budget for Etag/Ptag ─────────────────────────────────────
+
+/// #1348 — `derive_store_pin_set` returns `complete = true` when the store has
+/// few events well within `PIN_SCAN_MAX_EVENTS`. Common-path regression guard:
+/// the bool must be `true` for small stores so the caller does not
+/// unnecessarily skip LRU eviction.
+#[test]
+fn derive_store_pin_set_returns_complete_for_small_stores() {
+    let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
+    pin_clock(&mut kernel, T0_SECS + 10_000);
+
+    let author = make_pubkey(8_001);
+    let e_old = format!("{:0>64x}", 0xE10001u64);
+    let e_new = format!("{:0>64x}", 0xE10002u64);
+    inject_note(&mut kernel, &e_old, &author, 100);
+    inject_note(&mut kernel, &e_new, &author, 300);
+
+    open_interest(
+        &mut kernel,
+        &format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#),
+        "complete-flag-test",
+    );
+
+    kernel.events.clear();
+    let (pins, complete) = kernel.derive_store_pin_set();
+
+    assert!(
+        complete,
+        "derive_store_pin_set must return complete=true for a small store \
+         well within PIN_SCAN_MAX_EVENTS"
+    );
+    assert!(
+        pins.contains(&id_bytes(&e_old)),
+        "e_old must be pinned in the complete case"
+    );
+}
+
+/// #1348 — when `pin_shape_events_below_floor` exhausts the `max_events` budget
+/// before visiting all Etag-matching events, it returns `PinScanOutcome::Truncated`.
+/// The pinned count must not exceed the budget: events beyond the cap are
+/// unvisited and must NOT be in the pin set (safety: the caller defers eviction).
+#[test]
+fn pin_scan_truncated_returns_truncated_outcome_and_stays_within_budget() {
+    use super::floor::{pin_shape_events_below_floor, shape_floor, PinScanOutcome};
+    use crate::planner::InterestShape;
+    use std::collections::HashSet;
+
+    let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
+    pin_clock(&mut kernel, T0_SECS + 10_000);
+
+    // A 64-hex target id (not a pubkey — Etag scans accept any 32-byte value
+    // as the target). Use a deterministic value.
+    let etag_target = format!("{:0>64x}", 0xABCD1234u64);
+    let pubkey = make_pubkey(8_002);
+
+    // Ingest 3 events tagged with the same `e` target.
+    // budget = 2, so 3 events guarantees truncation.
+    let budget = 2usize;
+    let n = budget + 1;
+    let ids: Vec<String> = (0..n as u64)
+        .map(|i| format!("{:0>64x}", 0xDD0010u64 + i))
+        .collect();
+    for (i, id) in ids.iter().enumerate() {
+        inject_note_with_etag(&mut kernel, id, &pubkey, 100 + i as u64 * 100, &etag_target);
+    }
+
+    // Build an Etag-shape filter: {"kinds":[1],"#e":["<target>"]}
+    // Use r##"..."## so the `"#` in `"#e"` does not terminate the raw string.
+    let filter_json = format!(
+        r##"{{"kinds":[1],"#e":["{}"]}}"##,
+        etag_target
+    );
+    let shape = InterestShape::from_filter_json(&filter_json).expect("valid Etag filter");
+
+    let floor = shape_floor(&shape, kernel.store.as_ref())
+        .expect("floor must exist: events are stored");
+
+    let mut pins: HashSet<crate::store::EventId> = HashSet::new();
+    let outcome =
+        pin_shape_events_below_floor(&shape, floor, kernel.store.as_ref(), &mut pins, budget);
+
+    assert_eq!(
+        outcome,
+        PinScanOutcome::Truncated,
+        "scan with budget={budget} against {n} events must be Truncated"
+    );
+    assert!(
+        pins.len() <= budget,
+        "truncated scan must pin at most budget={budget} events, got {}",
+        pins.len()
+    );
+}
+
+/// #1348 — coherence: when pin scan is truncated, `derive_store_pin_set`
+/// returns `complete = false`, and `run_gc_step` must not evict any store
+/// events that tick (LRU eviction deferred).
+///
+/// We verify the coherence guarantee indirectly: after running a GC step
+/// whose pin scan is forcibly considered incomplete (by clearing events so
+/// the scan has nothing to do but having no interest set up → scan is vacuously
+/// complete), we confirm no event that was in the store is lost.
+///
+/// NOTE: we cannot force truncation through the public `run_gc_step` interface
+/// with a MemEventStore holding fewer events than `PIN_SCAN_MAX_EVENTS`, so we
+/// test the `complete = false` path through `derive_store_pin_set`'s API shape:
+/// the prior test exercises `pin_shape_events_below_floor` truncation directly;
+/// this test verifies that when `run_gc_step` has `complete = true` (small
+/// store), it still correctly executes the full pass and records a GC report.
+#[test]
+fn run_gc_step_succeeds_and_records_report_after_pin_scan() {
+    let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
+    pin_clock(&mut kernel, T0_SECS + 10_000);
+
+    let author = make_pubkey(8_003);
+    let e_old = format!("{:0>64x}", 0xF10001u64);
+    let e_new = format!("{:0>64x}", 0xF10002u64);
+    inject_note(&mut kernel, &e_old, &author, 100);
+    inject_note(&mut kernel, &e_new, &author, 300);
+
+    open_interest(
+        &mut kernel,
+        &format!(r#"{{"kinds":[1],"authors":["{author}"]}}"#),
+        "gc-step-budget-test",
+    );
+
+    // run_gc_step must succeed (return Some) and record a report.
+    let report = kernel
+        .run_gc_step()
+        .expect("run_gc_step must succeed against the in-memory store");
+
+    // No events expired — lru_evicted may be 0 since store is small.
+    // The critical invariant: the call completed and the report is populated.
+    assert!(
+        report.duration_ms < 10_000,
+        "gc step must complete well within 10 s, got {}ms",
+        report.duration_ms
+    );
+
+    // Below-floor event must still be in the store — not evicted.
+    let e_old_bytes = {
+        let parsed = ::nostr::prelude::EventId::from_hex(&e_old).unwrap();
+        let mut out = [0u8; 32];
+        out.copy_from_slice(parsed.as_bytes());
+        out
+    };
+    assert!(
+        kernel
+            .store
+            .get_by_id(&e_old_bytes)
+            .expect("store lookup must not error")
+            .is_some(),
+        "e_old (below floor) must not be evicted when the pin scan is complete"
+    );
+}
+
+// ── Original tests (unchanged signature, updated for derive_store_pin_set return type) ─
 
 /// A stored event for an author with NO active interest must NOT be pinned by
 /// the floor-coherent extension (it has no floored shape to protect it).
@@ -148,7 +326,7 @@ fn derive_store_pin_set_does_not_pin_events_with_no_active_interest() {
     // Drop RAM holders so only the store + the floor-coherent scan can pin.
     kernel.events.clear();
 
-    let pins = kernel.derive_store_pin_set();
+    let (pins, _complete) = kernel.derive_store_pin_set();
 
     assert!(
         pins.contains(&id_bytes(&a_old)),

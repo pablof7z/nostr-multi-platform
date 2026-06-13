@@ -2121,10 +2121,10 @@ impl Kernel {
     /// purge) was dead on every device (audit Finding 1).
     ///
     /// - **Budget**: [`GcBudget::production`] — `2000` events / `50 ms` scan
-    ///   bounds with the LRU ceiling **disabled** (`max_total_events =
-    ///   usize::MAX`): store-claims have no production callers yet, so a finite
-    ///   ceiling would silently evict live events (V-117). GitHub issue #1090
-    ///   tracks wiring claims and re-enabling `HOT_EVENT_CEILING` (`gc.md` §3).
+    ///   bounds, LRU ceiling at [`crate::store::HOT_EVENT_CEILING`] (10 000
+    ///   events, enabled by #1090 Stage 3 / #1327). When the floor-coherent
+    ///   pin scan is truncated by its D8 budget, [`Self::derive_store_gc_inputs`]
+    ///   returns a no-eviction budget so LRU is skipped this tick (#1348).
     /// - **`now_secs`**: read through the injected [`Clock`] via
     ///   [`Self::now_secs`] (D7/D9 — the store never reads the clock; the kernel
     ///   threads it in, so replay/tests stay deterministic).
@@ -2153,13 +2153,11 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        // #1090 Stage 1 — derive the ephemeral store-tier pin set (see
-        // `derive_store_pin_set`) and thread it into Phase-2 LRU eviction.
-        let pins = self.derive_store_pin_set();
-        match self
-            .store
-            .gc_step_with_pins(crate::store::GcBudget::production(), now_secs, &pins)
-        {
+        // #1090 Stage 1 — derive the ephemeral store-tier pin set and the
+        // matching budget (#1348 truncation→no-eviction decision lives in
+        // `derive_store_gc_inputs`), then thread both into Phase-2 LRU eviction.
+        let (pins, gc_budget) = self.derive_store_gc_inputs();
+        match self.store.gc_step_with_pins(gc_budget, now_secs, &pins) {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
