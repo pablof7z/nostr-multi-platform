@@ -445,10 +445,16 @@ fn negentropy_skips_redundant_req() {
     };
 
     // ── Case 1: WatermarkFn reports local store has events up to ts=1700 ────
-    // The relay REQ must carry `"since":1701` — skipping already-cached events.
+    // Per owner decision #1281 (T129), the watermark only RAISES an existing
+    // `since=Some(t)` floor toward the watermark — it never introduces a `since`
+    // where none existed (a `since=None` "all-time backfill" interest is exempt;
+    // see Case 2). So this case uses an interest with an explicit lower floor;
+    // the relay REQ must carry `"since":1701` — skipping already-cached events.
+    let mut warm_interest = alice_interest.clone();
+    warm_interest.shape.since = Some(1);
     let mut lc_warm = SubscriptionLifecycle::new();
     lc_warm.set_watermark_fn(Arc::new(|_shape| Some(1700)));
-    lc_warm.registry_mut().push(alice_interest.clone());
+    lc_warm.registry_mut().push(warm_interest);
     let frames_warm = lc_warm
         .recompile_and_diff(&mailboxes)
         .expect("warm compile");
