@@ -6,7 +6,9 @@
 use std::collections::HashSet;
 use std::ops::ControlFlow;
 
-use super::{delete, domain, dump as dump_mod, gc, insert, query, LmdbEventStore};
+use super::{
+    delete, domain, dump as dump_mod, gc, insert, query, query_relay_index, LmdbEventStore,
+};
 use crate::events::{DomainHandle, EventIter, EventStore};
 use crate::types::{
     DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
@@ -110,6 +112,10 @@ impl EventStore for LmdbEventStore {
 
     fn provenance_for(&self, id: &EventId) -> Result<Vec<ProvenanceEntry>, StoreError> {
         query::provenance_for(&self.inner, id)
+    }
+
+    fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError> {
+        query_relay_index::list_events_seen_on(&self.inner, relay_url)
     }
 
     fn insert(

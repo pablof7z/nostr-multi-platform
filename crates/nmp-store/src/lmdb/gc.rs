@@ -166,7 +166,7 @@ pub(super) fn gc_step(
                     .lmdb
                     .delete(&mut txn, f)
                     .map_err(|e| StoreError::Io(format!("del: {e}")))?;
-                provenance::delete(inner.provenance, &mut txn, id)?;
+                provenance::delete(inner.provenance, inner.relay_index, &mut txn, id)?;
                 lru_delete(inner, &mut txn, id)?;
                 // Bug-2 fix: delete stale replaceable_freshness row.
                 if let Some(fk) = freshness_key {
@@ -290,7 +290,7 @@ pub(super) fn gc_step(
                         .lmdb
                         .delete(&mut txn, f)
                         .map_err(|e| StoreError::Io(format!("lru evict del: {e}")))?;
-                    provenance::delete(inner.provenance, &mut txn, id)?;
+                    provenance::delete(inner.provenance, inner.relay_index, &mut txn, id)?;
                     lru_delete(inner, &mut txn, id)?;
                     // V-118: clean expiry-index using the known expiry timestamp.
                     expiry_index_delete_exact(inner, &mut txn, expiry, id)?;

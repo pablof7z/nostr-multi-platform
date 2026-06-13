@@ -212,32 +212,30 @@ for_each_backend!(
             )
             .unwrap();
 
-        // MemEventStore supports list_events_seen_on; LMDB returns NotSupported.
-        // Only verify the index on the mem backend.
-        match h.store.list_events_seen_on(relay) {
-            Ok(present_ids) => {
-                // ids[0] and ids[1] were evicted → must NOT appear in the index.
-                assert!(
-                    !present_ids.contains(&ids[0]),
-                    "evicted event ids[0] must not appear in relay index"
-                );
-                assert!(
-                    !present_ids.contains(&ids[1]),
-                    "evicted event ids[1] must not appear in relay index"
-                );
-                // ids[2] and ids[3] survived.
-                assert!(
-                    present_ids.contains(&ids[2]),
-                    "surviving event ids[2] must appear in relay index"
-                );
-                assert!(
-                    present_ids.contains(&ids[3]),
-                    "surviving event ids[3] must appear in relay index"
-                );
-            }
-            // LMDB returns NotSupported — skip the index assertions.
-            Err(_) => {}
-        }
+        // Both backends maintain the relay-origin reverse index (V-52, #969):
+        // the LRU-evicted ids must leave it, the survivors must remain.
+        let present_ids = h
+            .store
+            .list_events_seen_on(relay)
+            .expect("list_events_seen_on is implemented on both backends");
+        // ids[0] and ids[1] were evicted → must NOT appear in the index.
+        assert!(
+            !present_ids.contains(&ids[0]),
+            "evicted event ids[0] must not appear in relay index"
+        );
+        assert!(
+            !present_ids.contains(&ids[1]),
+            "evicted event ids[1] must not appear in relay index"
+        );
+        // ids[2] and ids[3] survived.
+        assert!(
+            present_ids.contains(&ids[2]),
+            "surviving event ids[2] must appear in relay index"
+        );
+        assert!(
+            present_ids.contains(&ids[3]),
+            "surviving event ids[3] must appear in relay index"
+        );
     }
 );
 
