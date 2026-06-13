@@ -157,6 +157,22 @@ pub(crate) fn read_embed_sidecar(slot: &EmbedSidecarSlot) -> Value {
         .unwrap_or_else(|| Value::Object(serde_json::Map::new()))
 }
 
+/// Register the `claimed_event_embeds` JSON snapshot projection on `app`.
+///
+/// The closure captures a clone of `app.embed_sidecar` and reads it on every
+/// tick. On the first tick (before the listener thread has processed any frame)
+/// the slot is `None` and the closure emits `{}` (D1: always present). After the
+/// first frame the slot holds the pre-resolved map. D8: pure `Mutex::lock` read,
+/// non-blocking. D0: kind dispatch lives in `nmp-content`; this is a thin reader.
+///
+/// Called once at app-init (see `nmp_app_new`). Keeping the registration body
+/// here — rather than inline in `lib.rs` — keeps the already-over-cap `lib.rs`
+/// from growing (AGENTS.md file-size anti-cheat).
+pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp) {
+    let slot = Arc::clone(&app.embed_sidecar);
+    app.register_snapshot_projection("claimed_event_embeds", move || read_embed_sidecar(&slot));
+}
+
 // ── Unit tests ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]

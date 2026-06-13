@@ -69,12 +69,7 @@ mod routing_trace;
 // (`nmp_app_composition_report`). Pull-only diagnostic surface; not folded into
 // the snapshot tick.
 mod composition_report;
-// Issue #1283 / ADR-0034 embed-sidecar: resolve claimed-event embeds in nmp-ffi
-// (one layer above nmp-core and nmp-content, the only layer that may import both)
-// and emit `claimed_event_embeds` as a typed JSON sidecar.  Shells decode this
-// instead of re-implementing the Rust `match kind` resolver (D0 — no duplicate
-// kind dispatch in Swift/Kotlin).
-mod embed_sidecar;
+mod embed_sidecar; // Issue #1283 / ADR-0034 embed-sidecar (see module doc).
 mod snapshot;
 mod storage;
 mod timeline;
@@ -769,22 +764,8 @@ pub struct NmpApp {
     /// content) so the wallet pay-invoice FFI shim can short-circuit a
     /// same-bolt11 retap before it crosses into `nmp-nip47`.
     pub(crate) inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
-    /// Issue #1283 / ADR-0034 embed-sidecar: pre-resolved `claimed_event_embeds`
-    /// JSON map (`primary_id -> EmbeddedEventEnvelope` with typed projection).
-    ///
-    /// Written by the update-listener thread after each frame arrives: it decodes
-    /// the KCEV FlatBuffer from the frame, calls `nmp_content::resolve_embed_projection`
-    /// on every claimed-event row (all in-process, non-blocking), and stores the
-    /// resulting `primary_id -> EmbeddedEventEnvelope` JSON map here.  The
-    /// registered `register_snapshot_projection("claimed_event_embeds", …)` closure
-    /// reads from this slot on the NEXT tick (one-tick lag — see `embed_sidecar`
-    /// module doc).
-    ///
-    /// Shared `Arc` between `NmpApp` (holds this clone for shutdown-safe reads),
-    /// the listener thread (writes after each frame), and the snapshot-projection
-    /// closure (reads on each tick).  `None` before the first frame arrives; `Some`
-    /// thereafter (empty-map `{}` when no events are claimed this frame).
-    embed_sidecar: embed_sidecar::EmbedSidecarSlot,
+    // Issue #1283 / ADR-0034 embed-sidecar slot (see `embed_sidecar` module doc).
+    pub(crate) embed_sidecar: embed_sidecar::EmbedSidecarSlot,
 }
 
 impl Drop for NmpApp {
@@ -1166,19 +1147,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             let _ = update_tx_panic.send(frame);
         }
     });
-    // Issue #1283 / ADR-0034 embed-sidecar: shared slot for pre-resolved embed
-    // projections.  The listener thread writes it after each frame; the snapshot
-    // projection closure reads it on the next tick (one-tick lag — acceptable
-    // for an async push-model embed flow).  Two `Arc` clones: one for the
-    // listener thread, one stored on `NmpApp` (for lifetime) + captured by the
-    // projection closure via a third clone registered below.
-    let embed_sidecar = embed_sidecar::new_embed_sidecar_slot();
+    let embed_sidecar = embed_sidecar::new_embed_sidecar_slot(); // Issue #1283.
     let listener_embed_sidecar = Arc::clone(&embed_sidecar);
-
     let update_listener = thread::spawn(move || {
         while let Ok(update) = update_rx.recv() {
-            // Issue #1283: decode the KCEV sidecar, resolve embeds, update slot.
-            // D6: silent no-op on any error.  D8: pure in-process Rust — no I/O.
             embed_sidecar::update_embed_sidecar_from_frame(&update, &listener_embed_sidecar);
             notify_identity_change_observers(
                 &listener_active_account,
@@ -1339,12 +1311,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // content); the wallet runtime that consumes the dispatched action
         // moved to `crates/nmp-nip47`.
         inflight_bolt11: Mutex::new(std::collections::HashMap::new()),
-        // Issue #1283 — pre-resolved `claimed_event_embeds` sidecar slot.
-        // The listener thread clone (`listener_embed_sidecar`) is captured in
-        // the closure above and writes the slot after every frame.  This clone
-        // is kept on the struct for lifetime purposes (keeps the `Arc` alive)
-        // and is re-cloned for the projection closure registered below.
-        embed_sidecar,
+        embed_sidecar, // Issue #1283 — `claimed_event_embeds` sidecar slot.
     };
 
     // V-38: the `"wallet"` snapshot projection moved to `crates/nmp-nip47`.
@@ -1356,20 +1323,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `run_actor_with_observers` (at the actor wiring site), not here: it
     // reads the actor-owned bunker-handshake slot, so every actor consumer
     // (FFI or test) gets the projection without a separate FFI step.
-
-    // Issue #1283 / ADR-0034 embed-sidecar: register the `claimed_event_embeds`
-    // JSON snapshot projection.  The closure captures a clone of the embed-sidecar
-    // slot and reads it on every tick.  On the first tick (before the listener
-    // thread has processed any frame) the slot is `None`; the closure emits `{}`
-    // (D1: always present, empty in the cold-start).  After the first frame the
-    // slot holds the pre-resolved map and each tick emits fresh embed projections.
-    // D8: pure `Mutex::lock` read — non-blocking on the actor thread.
-    // D0: kind dispatch lives in `nmp-content`; this closure is a thin reader.
-    let projection_embed_sidecar = Arc::clone(&app.embed_sidecar);
-    app.register_snapshot_projection("claimed_event_embeds", move || {
-        embed_sidecar::read_embed_sidecar(&projection_embed_sidecar)
-    });
-
+    embed_sidecar::install_embed_sidecar_projection(&app); // Issue #1283.
     Box::into_raw(Box::new(app))
 }
 
