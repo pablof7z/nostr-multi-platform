@@ -93,6 +93,86 @@ fn resolves_unknown_kind_with_raw_tags() {
 }
 
 #[test]
+fn resolves_profile_with_display_name_precedence() {
+    // #1299: NIP-01/24 precedence is `display_name` > `displayName` > `name`.
+    // The old in-Swift resolver had this inverted (`name` first); the Rust
+    // resolver is now authoritative and correct.
+    let ev = make_event(
+        &"aa".repeat(32),
+        &"aa".repeat(32),
+        0,
+        r#"{"name":"snake_name","display_name":"Canonical Name","picture":"https://x.com/a.jpg"}"#,
+        vec![],
+    );
+    let ctx = RenderContext::new();
+    match resolve_embed_projection(&ev, &ctx) {
+        EmbedKindProjection::Profile(p) => {
+            assert_eq!(
+                p.display_name.as_deref(),
+                Some("Canonical Name"),
+                "display_name must win over name (#1299)"
+            );
+            assert_eq!(p.picture_url.as_deref(), Some("https://x.com/a.jpg"));
+        }
+        other => panic!("expected Profile, got {other:?}"),
+    }
+}
+
+#[test]
+fn resolves_profile_camel_alias_beats_name() {
+    let ev = make_event(
+        &"bb".repeat(32),
+        &"bb".repeat(32),
+        0,
+        r#"{"name":"snake","displayName":"Camel Name"}"#,
+        vec![],
+    );
+    let ctx = RenderContext::new();
+    match resolve_embed_projection(&ev, &ctx) {
+        EmbedKindProjection::Profile(p) => {
+            assert_eq!(
+                p.display_name.as_deref(),
+                Some("Camel Name"),
+                "displayName alias must win over name (#1299)"
+            );
+        }
+        other => panic!("expected Profile, got {other:?}"),
+    }
+}
+
+#[test]
+fn resolves_profile_falls_back_to_name() {
+    let ev = make_event(
+        &"cc".repeat(32),
+        &"cc".repeat(32),
+        0,
+        r#"{"name":"only-name"}"#,
+        vec![],
+    );
+    let ctx = RenderContext::new();
+    match resolve_embed_projection(&ev, &ctx) {
+        EmbedKindProjection::Profile(p) => {
+            assert_eq!(p.display_name.as_deref(), Some("only-name"));
+        }
+        other => panic!("expected Profile, got {other:?}"),
+    }
+}
+
+#[test]
+fn resolves_profile_empty_content_is_pubkey_only() {
+    let ev = make_event(&"dd".repeat(32), &"dd".repeat(32), 0, "", vec![]);
+    let ctx = RenderContext::new();
+    match resolve_embed_projection(&ev, &ctx) {
+        EmbedKindProjection::Profile(p) => {
+            assert_eq!(p.pubkey, "dd".repeat(32));
+            assert_eq!(p.display_name, None, "empty content ⇒ no name (D6, no panic)");
+            assert_eq!(p.picture_url, None);
+        }
+        other => panic!("expected Profile, got {other:?}"),
+    }
+}
+
+#[test]
 fn render_context_wire_roundtrip() {
     let mut ctx = RenderContext::with_max_depth(3);
     ctx.visited.push("deadbeef".to_string());

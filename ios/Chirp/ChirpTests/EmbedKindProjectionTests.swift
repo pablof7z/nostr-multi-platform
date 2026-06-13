@@ -2,22 +2,20 @@ import XCTest
 import SwiftUI
 @testable import Chirp
 
-// F-CR-12 — EmbedKindProjection + NostrKindRegistry unit tests.
+// EmbedKindProjection + NostrKindRegistry + EmbedHost unit tests.
 //
-// These tests exercise:
-//   1. EmbedHost.resolve() dispatches to the correct EmbedKindProjection variant
-//      for kinds 0, 1, 9802, 30023, and an unknown kind (the five projection
-//      variants: Profile, ShortNote, Highlight, Article, Unknown).
-//   2. NostrKindRegistry.resolve() returns the registered renderer for each
-//      variant and falls back to the default renderer for Unknown.
-//   3. EmbeddedEventEnvelope carries collapse state correctly.
+// Issue #1283 Phase 1: the in-Swift `match kind` embed RESOLVER was deleted —
+// kind dispatch + tag/JSON parsing now lives in Rust
+// (`nmp_content::resolve_embed_projection`), covered by the Rust codec +
+// nmp-ffi round-trip tests. So these tests no longer exercise resolution; they
+// exercise what Swift still owns:
+//   1. EmbedHost stores the pre-resolved `[String: EmbeddedEventEnvelope]` map
+//      decoded from the typed sidecar (decode-only — no resolution).
+//   2. NostrKindRegistry.resolve() returns the registered renderer per variant
+//      and falls back to the default renderer for Unknown.
+//   3. EmbeddedEventEnvelope carries collapse / depth state correctly.
 //
-// These tests are PURE UNIT TESTS — no FFI, no kernel, no relays.
-// They validate the Swift-side dispatch tables that mirror the Rust
-// `nmp_content::embed_projection::EmbedKindProjection` wire contract.
-//
-// The native-tests CI lane (or a manual `xcodebuild test -scheme ChirpTests`)
-// validates this file; xcodebuild is NOT run here per issue #988 scope.
+// PURE UNIT TESTS — no FFI, no kernel, no relays.
 
 @MainActor
 final class EmbedKindProjectionTests: XCTestCase {
@@ -28,324 +26,144 @@ final class EmbedKindProjectionTests: XCTestCase {
     private let sampleId     = String(repeating: "b", count: 64)
     private let sampleTime: UInt64 = 1_700_000_000
 
-    /// Build a ClaimedEventDto for testing.
-    private func dto(
-        id: String? = nil,
-        pubkey: String? = nil,
-        kind: Int,
-        content: String,
-        tags: [[String]] = []
-    ) -> ClaimedEventDto {
-        ClaimedEventDto(
-            id: id ?? sampleId,
-            authorPubkey: pubkey ?? samplePubkey,
-            kind: kind,
-            createdAt: Int(sampleTime),
-            content: content,
-            tags: tags
-        )
-    }
-
     // EmbedHost is @Observable; we create one per test to keep state isolated.
     private func freshHost() -> EmbedHost { EmbedHost() }
 
-    // MARK: - Dispatch: kind:0 → Profile
-
-    func testKind0DispatchesToProfile() {
-        let host = freshHost()
-        let meta = #"{"name":"Alice","display_name":"Alice NMP","picture":"https://nmp.test/alice.png"}"#
-        let d = dto(kind: 0, content: meta)
-        host.update(claimedEvents: [sampleId: d])
-
-        let envelope = host.envelopeForPrimaryID(sampleId)
-        XCTAssertNotNil(envelope, "kind:0 must produce an envelope")
-        guard case .profile(let p) = envelope?.projection else {
-            return XCTFail("kind:0 must resolve to .profile, got \(String(describing: envelope?.projection))")
-        }
-        XCTAssertEqual(p.pubkey, samplePubkey)
-        XCTAssertEqual(p.displayName, "Alice NMP", "display_name wins over name")
-        XCTAssertEqual(p.pictureUrl, "https://nmp.test/alice.png")
+    /// Wrap a projection in the FFI-sidecar envelope shape (the shape the typed
+    /// decoder produces — see `TypedProjectionGlue.claimedEventEmbeds`).
+    private func envelope(_ projection: EmbedKindProjection, primaryId: String? = nil) -> EmbeddedEventEnvelope {
+        EmbeddedEventEnvelope(uri: "", primaryId: primaryId ?? sampleId, projection: projection)
     }
 
-    func testKind0FallsBackToNameWhenDisplayNameAbsent() {
+    // MARK: - EmbedHost decode-only storage
+
+    func testEmbedHostStoresEnvelopeByPrimaryID() {
         let host = freshHost()
-        let meta = #"{"name":"bob"}"#
-        let d = dto(kind: 0, content: meta)
-        host.update(claimedEvents: [sampleId: d])
+        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(
+            id: sampleId, authorPubkey: samplePubkey, createdAt: sampleTime, content: "Hello nostr!"
+        ))
+        host.update(envelopes: [sampleId: envelope(proj)])
 
-        guard case .profile(let p) = host.envelopeForPrimaryID(sampleId)?.projection else {
-            return XCTFail("expected .profile")
-        }
-        XCTAssertEqual(p.displayName, "bob")
-    }
-
-    // MARK: - Dispatch: kind:1 → ShortNote
-
-    func testKind1DispatchesToShortNote() {
-        let host = freshHost()
-        let d = dto(kind: 1, content: "Hello nostr!")
-        host.update(claimedEvents: [sampleId: d])
-
-        guard case .shortNote(let n) = host.envelopeForPrimaryID(sampleId)?.projection else {
-            return XCTFail("kind:1 must resolve to .shortNote")
+        let stored = host.envelopeForPrimaryID(sampleId)
+        XCTAssertNotNil(stored, "host must store the envelope")
+        guard case .shortNote(let n) = stored?.projection else {
+            return XCTFail("expected .shortNote, got \(String(describing: stored?.projection))")
         }
         XCTAssertEqual(n.id, sampleId)
-        XCTAssertEqual(n.authorPubkey, samplePubkey)
         XCTAssertEqual(n.content, "Hello nostr!")
         XCTAssertEqual(n.createdAt, sampleTime)
     }
 
-    func testKind1ExtractsMediaUrls() {
+    func testEmbedHostResolvesByURI() {
         let host = freshHost()
-        let content = "check this out https://nmp.test/photo.jpg cool right"
-        let d = dto(kind: 1, content: content)
-        host.update(claimedEvents: [sampleId: d])
+        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(id: sampleId, authorPubkey: samplePubkey))
+        let env = EmbeddedEventEnvelope(uri: "nostr:note1abc", primaryId: sampleId, projection: proj)
+        host.update(envelopes: [sampleId: env])
 
-        guard case .shortNote(let n) = host.envelopeForPrimaryID(sampleId)?.projection else {
-            return XCTFail("expected .shortNote")
-        }
-        XCTAssertEqual(n.mediaUrls, ["https://nmp.test/photo.jpg"])
+        XCTAssertNotNil(host.envelopeForURI("nostr:note1abc"), "lookup by uri must succeed")
+        XCTAssertNotNil(host.envelopeForURI(sampleId), "lookup by primaryId must succeed")
     }
 
-    // MARK: - Dispatch: kind:9802 → Highlight
-
-    func testKind9802DispatchesToHighlight() {
+    func testEmbedHostEmptyUpdateKeepsPreviousMap() {
         let host = freshHost()
-        let tags: [[String]] = [
-            ["a", "30023:\(samplePubkey):my-article"],
-            ["context", "surrounding text"],
-            ["r", "https://blog.nmp.test/my-article"],
+        let proj = EmbedKindProjection.profile(ProfileProjection(pubkey: samplePubkey))
+        host.update(envelopes: [sampleId: envelope(proj)])
+        // An empty/nil update must NOT clear the map (stable, not flicker).
+        host.update(envelopes: [:])
+        host.update(envelopes: nil)
+        XCTAssertEqual(host.count, 1, "empty/nil updates must keep the previous map")
+    }
+
+    func testEmbedHostStoresAllFiveVariants() {
+        let host = freshHost()
+        let envelopes: [String: EmbeddedEventEnvelope] = [
+            "n": envelope(.shortNote(ShortNoteProjection(id: "n", authorPubkey: samplePubkey)), primaryId: "n"),
+            "a": envelope(.article(ArticleProjection(id: "a", authorPubkey: samplePubkey)), primaryId: "a"),
+            "h": envelope(.highlight(HighlightProjection(id: "h", authorPubkey: samplePubkey)), primaryId: "h"),
+            "p": envelope(.profile(ProfileProjection(pubkey: samplePubkey)), primaryId: "p"),
+            "u": envelope(.unknown(UnknownProjection(kind: 30402, authorPubkey: samplePubkey)), primaryId: "u"),
         ]
-        let d = dto(kind: 9802, content: "backpressure is a feature", tags: tags)
-        host.update(claimedEvents: [sampleId: d])
-
-        guard case .highlight(let h) = host.envelopeForPrimaryID(sampleId)?.projection else {
-            return XCTFail("kind:9802 must resolve to .highlight")
-        }
-        XCTAssertEqual(h.id, sampleId)
-        XCTAssertEqual(h.authorPubkey, samplePubkey)
-        XCTAssertEqual(h.highlightedText, "backpressure is a feature")
-        XCTAssertEqual(h.sourceEventAddr, "30023:\(samplePubkey):my-article")
-        XCTAssertEqual(h.context, "surrounding text")
-        XCTAssertEqual(h.sourceUrl, "https://blog.nmp.test/my-article")
-        XCTAssertNil(h.sourceEventId, "no e tag → sourceEventId is nil")
-    }
-
-    func testKind9802MinimalHighlight() {
-        let host = freshHost()
-        let d = dto(kind: 9802, content: "plain highlight text")
-        host.update(claimedEvents: [sampleId: d])
-
-        guard case .highlight(let h) = host.envelopeForPrimaryID(sampleId)?.projection else {
-            return XCTFail("expected .highlight")
-        }
-        XCTAssertEqual(h.highlightedText, "plain highlight text")
-        XCTAssertNil(h.sourceEventId)
-        XCTAssertNil(h.sourceEventAddr)
-        XCTAssertNil(h.sourceUrl)
-        XCTAssertNil(h.context)
-    }
-
-    // MARK: - Dispatch: kind:30023 → Article
-
-    func testKind30023DispatchesToArticle() {
-        let host = freshHost()
-        let tags: [[String]] = [
-            ["d", "backpressure-is-a-feature"],
-            ["title", "Backpressure Is A Feature"],
-            ["summary", "Why your relay should push back."],
-            ["image", "https://nmp.test/hero.png"],
-        ]
-        let d = dto(kind: 30023, content: "# Backpressure\n\nBody here.", tags: tags)
-        host.update(claimedEvents: [sampleId: d])
-
-        guard case .article(let a) = host.envelopeForPrimaryID(sampleId)?.projection else {
-            return XCTFail("kind:30023 must resolve to .article")
-        }
-        XCTAssertEqual(a.id, sampleId)
-        XCTAssertEqual(a.dTag, "backpressure-is-a-feature")
-        XCTAssertEqual(a.title, "Backpressure Is A Feature")
-        XCTAssertEqual(a.summary, "Why your relay should push back.")
-        XCTAssertEqual(a.heroImageUrl, "https://nmp.test/hero.png")
-    }
-
-    func testKind30023MissingOptionalTags() {
-        let host = freshHost()
-        let tags: [[String]] = [["d", "minimal-article"]]
-        let d = dto(kind: 30023, content: "No title or summary.", tags: tags)
-        host.update(claimedEvents: [sampleId: d])
-
-        guard case .article(let a) = host.envelopeForPrimaryID(sampleId)?.projection else {
-            return XCTFail("expected .article")
-        }
-        XCTAssertEqual(a.dTag, "minimal-article")
-        XCTAssertNil(a.title)
-        XCTAssertNil(a.summary)
-        XCTAssertNil(a.heroImageUrl)
-    }
-
-    // MARK: - Dispatch: unknown kind → Unknown
-
-    func testUnknownKindDispatchesToUnknown() {
-        let host = freshHost()
-        let tags: [[String]] = [
-            ["price", "42"],
-            ["alt", "a classified listing"],
-        ]
-        let d = dto(kind: 30402, content: "Classified ad body", tags: tags)
-        host.update(claimedEvents: [sampleId: d])
-
-        guard case .unknown(let u) = host.envelopeForPrimaryID(sampleId)?.projection else {
-            return XCTFail("kind:30402 must resolve to .unknown")
-        }
-        XCTAssertEqual(u.kind, 30402)
-        XCTAssertEqual(u.content, "Classified ad body")
-        XCTAssertEqual(u.altText, "a classified listing")
-        XCTAssertEqual(u.tags.count, 2)
-    }
-
-    func testKind40DispatchesToUnknown() {
-        let host = freshHost()
-        let d = dto(kind: 40, content: #"{"name":"nmp-dev"}"#)
-        host.update(claimedEvents: [sampleId: d])
-
-        guard case .unknown(let u) = host.envelopeForPrimaryID(sampleId)?.projection else {
-            return XCTFail("kind:40 must resolve to .unknown (IRC channel)")
-        }
-        XCTAssertEqual(u.kind, 40)
+        host.update(envelopes: envelopes)
+        XCTAssertEqual(host.count, 5)
+        if case .shortNote = host.envelopeForPrimaryID("n")?.projection {} else { XCTFail("n must be shortNote") }
+        if case .article = host.envelopeForPrimaryID("a")?.projection {} else { XCTFail("a must be article") }
+        if case .highlight = host.envelopeForPrimaryID("h")?.projection {} else { XCTFail("h must be highlight") }
+        if case .profile = host.envelopeForPrimaryID("p")?.projection {} else { XCTFail("p must be profile") }
+        if case .unknown = host.envelopeForPrimaryID("u")?.projection {} else { XCTFail("u must be unknown") }
     }
 
     // MARK: - NostrKindRegistry dispatch
 
     func testRegistryResolvesShortNoteRenderer() {
         let registry = NostrKindRegistry.makeDefault()
-        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(
-            id: sampleId, authorPubkey: samplePubkey
-        ))
-        let renderer = registry.resolve(proj)
-        XCTAssertTrue(renderer is DefaultShortNoteRenderer, "shortNote must use DefaultShortNoteRenderer")
+        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(id: sampleId, authorPubkey: samplePubkey))
+        XCTAssertTrue(registry.resolve(proj) is DefaultShortNoteRenderer)
     }
 
     func testRegistryResolvesArticleRenderer() {
         let registry = NostrKindRegistry.makeDefault()
-        let proj = EmbedKindProjection.article(ArticleProjection(
-            id: sampleId, authorPubkey: samplePubkey
-        ))
-        let renderer = registry.resolve(proj)
-        XCTAssertTrue(renderer is DefaultArticleRenderer, "article must use DefaultArticleRenderer")
+        let proj = EmbedKindProjection.article(ArticleProjection(id: sampleId, authorPubkey: samplePubkey))
+        XCTAssertTrue(registry.resolve(proj) is DefaultArticleRenderer)
     }
 
     func testRegistryResolvesHighlightRenderer() {
         let registry = NostrKindRegistry.makeDefault()
-        let proj = EmbedKindProjection.highlight(HighlightProjection(
-            id: sampleId, authorPubkey: samplePubkey
-        ))
-        let renderer = registry.resolve(proj)
-        XCTAssertTrue(renderer is DefaultHighlightRenderer, "highlight must use DefaultHighlightRenderer")
+        let proj = EmbedKindProjection.highlight(HighlightProjection(id: sampleId, authorPubkey: samplePubkey))
+        XCTAssertTrue(registry.resolve(proj) is DefaultHighlightRenderer)
     }
 
     func testRegistryResolvesProfileRenderer() {
         let registry = NostrKindRegistry.makeDefault()
         let proj = EmbedKindProjection.profile(ProfileProjection(pubkey: samplePubkey))
-        let renderer = registry.resolve(proj)
-        XCTAssertTrue(renderer is DefaultProfileRenderer, "profile must use DefaultProfileRenderer")
+        XCTAssertTrue(registry.resolve(proj) is DefaultProfileRenderer)
     }
 
     func testRegistryFallsBackToUnknownRendererForUnregisteredKind() {
         let registry = NostrKindRegistry.makeDefault()
-        let proj = EmbedKindProjection.unknown(UnknownProjection(
-            kind: 30402, authorPubkey: samplePubkey
-        ))
-        let renderer = registry.resolve(proj)
-        XCTAssertTrue(renderer is DefaultUnknownRenderer, "unknown kind must use DefaultUnknownRenderer")
+        let proj = EmbedKindProjection.unknown(UnknownProjection(kind: 30402, authorPubkey: samplePubkey))
+        XCTAssertTrue(registry.resolve(proj) is DefaultUnknownRenderer)
     }
 
     func testRegistryUsesCustomRendererWhenRegistered() {
         let registry = NostrKindRegistry.makeDefault()
-        let custom = StubRenderer()
-        registry.registerUnknown(kind: 30402, renderer: custom)
-        let proj = EmbedKindProjection.unknown(UnknownProjection(
-            kind: 30402, authorPubkey: samplePubkey
-        ))
-        let renderer = registry.resolve(proj)
-        XCTAssertTrue(renderer is StubRenderer, "registered custom renderer must win over fallback")
+        registry.registerUnknown(kind: 30402, renderer: StubRenderer())
+        let proj = EmbedKindProjection.unknown(UnknownProjection(kind: 30402, authorPubkey: samplePubkey))
+        XCTAssertTrue(registry.resolve(proj) is StubRenderer, "registered custom renderer must win")
     }
 
-    // MARK: - EmbeddedEventEnvelope collapse state
+    // MARK: - EmbeddedEventEnvelope collapse / depth state
 
     func testEnvelopeNonCollapsedByDefault() {
-        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(
-            id: sampleId, authorPubkey: samplePubkey
-        ))
-        let envelope = EmbeddedEventEnvelope(
-            uri: "nostr:note1abc",
-            primaryId: sampleId,
-            projection: proj
-        )
-        XCTAssertFalse(envelope.collapsed)
-        XCTAssertNil(envelope.collapseReason)
+        let env = envelope(.shortNote(ShortNoteProjection(id: sampleId, authorPubkey: samplePubkey)))
+        XCTAssertFalse(env.collapsed)
+        XCTAssertNil(env.collapseReason)
     }
 
-    func testEnvelopeCarriesCollapseReasonForDepthLimit() {
-        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(
-            id: sampleId, authorPubkey: samplePubkey
-        ))
-        let envelope = EmbeddedEventEnvelope(
-            uri: "nostr:note1abc",
-            primaryId: sampleId,
-            projection: proj,
-            collapsed: true,
-            collapseReason: "depth_limit"
+    func testEnvelopeCarriesCollapseReason() {
+        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(id: sampleId, authorPubkey: samplePubkey))
+        let env = EmbeddedEventEnvelope(
+            uri: "nostr:note1abc", primaryId: sampleId, projection: proj,
+            collapsed: true, collapseReason: "depth_limit"
         )
-        XCTAssertTrue(envelope.collapsed)
-        XCTAssertEqual(envelope.collapseReason, "depth_limit")
-    }
-
-    func testEnvelopeCarriesCollapseReasonForCycle() {
-        let proj = EmbedKindProjection.article(ArticleProjection(
-            id: sampleId, authorPubkey: samplePubkey
-        ))
-        let envelope = EmbeddedEventEnvelope(
-            uri: "nostr:naddr1abc",
-            primaryId: sampleId,
-            projection: proj,
-            collapsed: true,
-            collapseReason: "cycle"
-        )
-        XCTAssertEqual(envelope.collapseReason, "cycle")
+        XCTAssertTrue(env.collapsed)
+        XCTAssertEqual(env.collapseReason, "depth_limit")
     }
 
     func testEnvelopeDepthAndMaxDepthSurfaced() {
-        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(
-            id: sampleId, authorPubkey: samplePubkey
-        ))
-        let envelope = EmbeddedEventEnvelope(
-            uri: "nostr:note1abc",
-            primaryId: sampleId,
-            depth: 3,
-            maxDepth: 4,
-            projection: proj
+        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(id: sampleId, authorPubkey: samplePubkey))
+        let env = EmbeddedEventEnvelope(
+            uri: "nostr:note1abc", primaryId: sampleId, depth: 3, maxDepth: 4, projection: proj
         )
-        XCTAssertEqual(envelope.depth, 3)
-        XCTAssertEqual(envelope.maxDepth, 4)
+        XCTAssertEqual(env.depth, 3)
+        XCTAssertEqual(env.maxDepth, 4)
     }
 
     // MARK: - NoteContentView registry-path smoke test (#1179)
     //
-    // Verifies that NoteContentView no longer passes quoteCardProvider to
-    // NostrContentView. When a NostrKindRegistry + EmbedHost are bound in the
-    // environment, event-ref nodes in the content tree must flow through the
-    // EmbeddedEvent/registry path, not the legacy NostrQuoteCard path.
-    //
-    // The structural proof: NostrContentView.eventRefView enters the registry
-    // branch when (nostrKindRegistry != nil && (embedHost != nil || embedClaimSink
-    // != nil)). NoteContentView omitting quoteCardProvider means the legacy branch
-    // can only be reached when the environment provides no registry — the correct
-    // fallback for contexts that haven't wired the registry (e.g. bare previews).
+    // Verifies that an eventRef node flows through the EmbeddedEvent/registry
+    // path when a NostrKindRegistry + EmbedHost are bound in the environment.
 
     func testNoteContentViewRendersEventRefThroughRegistryPath() throws {
-        // Build a content tree with one eventRef node so NostrContentView's
-        // eventRefView dispatch is exercised.
         let eventID = String(repeating: "c", count: 64)
         let tree = ContentTreeWire(
             nodes: [
@@ -364,16 +182,13 @@ final class EmbedKindProjectionTests: XCTestCase {
         )
 
         let host = EmbedHost()
-        // Pre-populate the host so EmbeddedEvent has an envelope to resolve.
-        let d = dto(id: eventID, kind: 1, content: "quoted note text")
-        host.update(claimedEvents: [eventID: d])
+        // Pre-populate the host with a decoded envelope (decode-only path).
+        let proj = EmbedKindProjection.shortNote(ShortNoteProjection(
+            id: eventID, authorPubkey: samplePubkey, createdAt: sampleTime, content: "quoted note text"
+        ))
+        host.update(envelopes: [eventID: EmbeddedEventEnvelope(uri: "", primaryId: eventID, projection: proj)])
 
         let registry = NostrKindRegistry.makeDefault()
-
-        // NoteContentView must render without crash when the registry path is
-        // active. The ImageRenderer is the same oracle used by
-        // NoteContentRenderingTests — a non-nil UIImage proves no assertion
-        // or fatal error was hit during the render walk.
         let view = NoteContentView(content: "", contentTree: tree)
             .environmentObject(ChirpRouter())
             .environment(\.nostrKindRegistry, registry)
@@ -383,15 +198,9 @@ final class EmbedKindProjectionTests: XCTestCase {
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         renderer.proposedSize = ProposedViewSize(width: 320, height: nil)
-        // ImageRenderer may return nil in a headless test host (no WindowServer).
-        // Use XCTSkip rather than XCTFail so CI doesn't block on environment
-        // limitations — the render attempt itself validates the code path
-        // compiles and the view graph is well-formed.
         guard renderer.uiImage != nil else {
             throw XCTSkip("SwiftUI ImageRenderer did not produce an image in this test host")
         }
-        // If we get here the view rendered through the registry path without
-        // triggering any quoteCardModel / NostrQuoteCard legacy code.
     }
 }
 
