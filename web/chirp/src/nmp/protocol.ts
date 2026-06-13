@@ -28,7 +28,17 @@ export type WorkerRequest =
       correlation_id: string;
       payload: unknown;
     }
-  | { type: "stop"; correlation_id: string };
+  | { type: "stop"; correlation_id: string }
+  /** V-01 Stage 3b — install a NIP-07 signer.
+   *  The browser host calls window.nostr.getPublicKey() first, then sends
+   *  this request so the wasm runtime's install path stays synchronous.
+   *  kind: "nip07" (the only kind wired in Stage 3b). */
+  | {
+      type: "set_signer";
+      kind: string;
+      pubkey_hex: string;
+      correlation_id: string;
+    };
 
 export type RuntimeStatus =
   | "ready"
@@ -67,8 +77,9 @@ export function eventCorrelationId(event: WorkerEvent): string | undefined {
   switch (event.type) {
     case "runtime_status":
     case "action_accepted":
-    case "capability_failure":
     case "error":
+      return event.correlation_id;
+    case "capability_failure":
       return event.correlation_id;
     case "hello_accepted":
     case "update_bytes":

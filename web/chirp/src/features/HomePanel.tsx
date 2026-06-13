@@ -1,5 +1,5 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
-import { MessageSquare, Repeat2, Reply, Send, Star, UserRound } from "lucide-solid";
+import { MessageSquare, Reply, Send, Star, UserRound, Repeat2, CornerDownRight } from "lucide-solid";
 import {
   claimProfileCommand,
   followCommand,
@@ -16,6 +16,12 @@ export function HomePanel(props: {
   revision?: number;
   onPublish: (content: string, replyToId: string | null) => Promise<void>;
   onCommand: (command: RuntimeCommand) => Promise<void>;
+  /** Fire-and-forget dispatch for profile claim/release — does not update the
+   *  snapshot signal so Post remount churn does not prevent display-name
+   *  resolution. Falls back to onCommand when absent. */
+  onClaimCommand?: (command: RuntimeCommand) => void;
+  onConnect?: () => void;
+  signerConnected?: boolean;
 }) {
   const [draft, setDraft] = createSignal("");
   const [replyToId, setReplyToId] = createSignal<string | null>(null);
@@ -35,6 +41,9 @@ export function HomePanel(props: {
           <p class="eyebrow">NMP snapshot {props.revision === undefined ? "pending" : `rev ${props.revision}`}</p>
           <h1>Home</h1>
         </div>
+        <Show when={!props.signerConnected && props.onConnect}>
+          <ConnectPrompt onConnect={props.onConnect!} />
+        </Show>
       </header>
       <div class="composer">
         <Show when={replyToId()}>
@@ -63,6 +72,7 @@ export function HomePanel(props: {
               onProfile={() => props.onCommand(openProfileCommand(item.authorPubkey ?? item.pubkey ?? ""))}
               onThread={() => props.onCommand(openThreadCommand(item.id))}
               onCommand={props.onCommand}
+              onClaimCommand={props.onClaimCommand}
             />
           )}
         </For>
@@ -75,7 +85,19 @@ function EmptyTimeline() {
   return (
     <div class="empty-state">
       <MessageSquare size={22} />
-      <p>No Rust snapshot has produced timeline rows yet.</p>
+      <p>No feed items yet — connect a signer and open the contact feed.</p>
+    </div>
+  );
+}
+
+function ConnectPrompt(props: { onConnect: () => void }) {
+  const hasExtension = typeof window !== "undefined" && "nostr" in window;
+  return (
+    <div class="connect-prompt" data-testid="connect-prompt">
+      {hasExtension
+        ? <button type="button" class="connect-btn" data-testid="connect-btn" onClick={props.onConnect}>Connect</button>
+        : <span class="connect-hint">Install a NIP-07 signer to load your feed.</span>
+      }
     </div>
   );
 }
@@ -88,6 +110,7 @@ function Post(props: {
   onProfile: () => void;
   onThread: () => void;
   onCommand: (command: RuntimeCommand) => Promise<void>;
+  onClaimCommand?: (command: RuntimeCommand) => void;
 }) {
   // F-CR-00 — component-owned profile claim.
   //
@@ -103,14 +126,34 @@ function Post(props: {
   // no point dispatching a claim we know will be a no-op).
   const authorPubkey = props.item.authorPubkey ?? props.item.pubkey ?? "";
   const consumerId = `chirp-web-author-${props.item.id}`;
+  // Prefer the quiet claim/release dispatcher (no setSnapshot, no re-render churn).
+  const claim = (cmd: RuntimeCommand) => {
+    if (props.onClaimCommand) {
+      props.onClaimCommand(cmd);
+    } else {
+      void props.onCommand(cmd);
+    }
+  };
 
   if (authorPubkey) {
-    onMount(() => {
-      void props.onCommand(claimProfileCommand(authorPubkey, consumerId));
-    });
-    onCleanup(() => {
-      void props.onCommand(releaseProfileCommand(authorPubkey, consumerId));
-    });
+    onMount(() => claim(claimProfileCommand(authorPubkey, consumerId)));
+    onCleanup(() => claim(releaseProfileCommand(authorPubkey, consumerId)));
+  }
+
+  // F-CR-00 extension — claim attribution badge author profiles.
+  //
+  // Each attribution badge carries an author pubkey; claim it so the kernel
+  // fetches kind:0 and the feed engine refreshes the attribution display name
+  // via apply_profile. Consumer id is stable per (item, badge author) pair.
+  // Use the quiet dispatcher so claim/release bookkeeping does not trigger
+  // snapshot-signal updates that would remount Post components in a loop.
+  for (const badge of props.item.attribution ?? []) {
+    if (badge.authorPubkey) {
+      const badgeConsumerId = `chirp-web-attr-${props.item.id}-${badge.authorPubkey}`;
+      const badgePubkey = badge.authorPubkey;
+      onMount(() => claim(claimProfileCommand(badgePubkey, badgeConsumerId)));
+      onCleanup(() => claim(releaseProfileCommand(badgePubkey, badgeConsumerId)));
+    }
   }
 
   const author = () => displayAuthor(props.item);
@@ -119,10 +162,25 @@ function Post(props: {
       <button type="button" class="avatar" title="Open profile" onClick={props.onProfile}>{author().slice(0, 1).toUpperCase()}</button>
       <div class="post-body">
         <button type="button" class="post-meta" onClick={props.onProfile}>
-          <strong>{author()}</strong>
+          <strong data-testid="post-author">{author()}</strong>
           <span>{props.item.relativeTime ?? labelTime(props.item.createdAt)}</span>
         </button>
-        <p>{props.item.content ?? ""}</p>
+        <p data-testid="post-content">{props.item.content ?? ""}</p>
+        <Show when={props.item.attribution && props.item.attribution.length > 0}>
+          <div class="attribution-list" data-testid="attribution-list">
+            <For each={props.item.attribution}>
+              {(badge) => (
+                <span class="attribution-badge" data-testid="attribution-badge">
+                  <CornerDownRight size={12} />
+                  <span class="attribution-name">
+                    {badge.authorDisplayName ?? shortKey(badge.authorPubkey)}
+                  </span>
+                  {" replied"}
+                </span>
+              )}
+            </For>
+          </div>
+        </Show>
         <div class="post-stats">
           <span>{countLabel(props.item.relationCounts?.replies)} replies</span>
           <span>{countLabel(props.item.relationCounts?.reactions)} reactions</span>
