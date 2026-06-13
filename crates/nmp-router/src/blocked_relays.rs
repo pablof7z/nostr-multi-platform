@@ -54,6 +54,8 @@ use nmp_core::store::VerifiedEvent;
 use nmp_core::substrate::{BlockedRelayLookup, BlockedRelaySet, IngestParser};
 use nmp_kinds::KIND_BLOCKED_RELAYS;
 
+use crate::canonical::canonicalize_relay_url;
+
 // ─── InMemoryBlockedRelayCache ──────────────────────────────────────────────
 
 /// Per-account blocked-relay cache. Single writer is [`Kind10006Parser`];
@@ -183,23 +185,6 @@ fn parse_blocked_relay_list(tags: &[Vec<String>]) -> Vec<String> {
     }
 
     relays
-}
-
-/// Canonicalise a `wss://` relay URL: lowercase scheme + host, strip the
-/// empty-path trailing slash. Identical shape to the helpers in
-/// `crate::ingest` (kind:10002) and `nmp_nip17::kind10050_parser` so
-/// cache keys across all three NIP-51-adjacent caches collide cleanly.
-fn canonicalize_relay_url(url: &str) -> String {
-    const PREFIX: &str = "wss://";
-    debug_assert!(url.starts_with(PREFIX));
-    let rest = &url[PREFIX.len()..];
-    let (host_port, path) = match rest.find('/') {
-        Some(idx) => (&rest[..idx], &rest[idx..]),
-        None => (rest, ""),
-    };
-    let canonical_host = host_port.to_lowercase();
-    let canonical_path = if path == "/" { "" } else { path };
-    format!("{PREFIX}{canonical_host}{canonical_path}")
 }
 
 #[cfg(test)]

@@ -213,7 +213,13 @@ fn outbox_resolves_to_kind10002_writes() {
         .expect("insert kind:10002");
 
     let resolver = Nip65OutboxResolver::with_default_fallback(store);
-    let resolved = resolver.resolve(&author_hex, &[], &PublishTarget::Auto, 1);
+    let resolved = resolver.resolve(
+        &author_hex,
+        &[],
+        &PublishTarget::Auto,
+        1,
+        &nmp_core::substrate::BlockedRelaySet::new(),
+    );
     let resolved_urls: std::collections::BTreeSet<&str> =
         resolved.iter().map(|r| r.url.as_str()).collect();
 

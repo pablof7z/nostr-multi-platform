@@ -52,19 +52,8 @@ use nmp_core::substrate::{
     UserConfiguredCategory,
 };
 
+use crate::discovery::{indexer_kind_scope, is_discovery_kind};
 use crate::relay_admission::{PrivateNetworkPolicy, RelayAdmissionPolicy};
-
-/// Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
-/// (contacts), kind:10000–19999 (NIP-51 lists, INCLUDING kind:10002
-/// relay-list). The indexer lane is ALWAYS-ON for these kinds — it
-/// stacks on top of the per-author NIP-65 set so that newer versions of
-/// these replaceable events published to relays NOT in the cached set
-/// can still be discovered (defeating the kind:10002 self-sealing
-/// loop).
-#[inline]
-fn is_discovery_kind(kind: u32) -> bool {
-    kind == 0 || kind == 3 || (10_000..20_000).contains(&kind)
-}
 
 /// Tag keys whose third column carries a relay-hint URL: `e` (event ref),
 /// `p` (pubkey ref), `a` (NIP-33 address ref), `q` (NIP-18 quote ref).
@@ -596,23 +585,30 @@ impl OutboxRouter for GenericOutboxRouter {
             }
 
             // Lane 6 — Indexer (ALWAYS-ON for any discovery kind in the
-            // interest shape): kind:0 profile, kind:3 contacts, kind:
-            // 10000–19999 NIP-51 lists, INCLUDING kind:10002 relay-list
-            // itself. Per router spec §3.1 lane 6 the indexer set STACKS
-            // on top of lane 1 — it is the structural defeat of the
-            // kind:10002 self-sealing loop (a cached stale kind:10002
-            // would otherwise keep refreshing only against the stale
-            // relays; asking the operator's indexers in parallel lets a
-            // newer kind:10002 published elsewhere still arrive).
+            // interest shape, spec §3.1): stacks on top of lane 1 and defeats
+            // the kind:10002 self-sealing loop (a stale cached kind:10002 would
+            // otherwise refresh only against its own stale relays). An attempt
+            // is emitted only when the lane applies (a discovery kind present).
             //
-            // An attempt is only emitted when the lane applies (discovery kinds).
+            // Indexer-leak fix: a mixed discovery/content interest (e.g.
+            // `[1, 3]`) fires on kind:3 but must NOT send kind:1 notes to the
+            // indexer. `indexer_kind_scope` returns `Some(subset)` to scope it
+            // to the discovery kinds, `None` for an all-discovery interest.
             if interest.shape.kinds.iter().any(|k| is_discovery_kind(*k)) {
+                let scope = indexer_kind_scope(&interest.shape.kinds);
                 let mut lane_count = 0usize;
                 for url in ctx.session_keys.indexer_relays.iter() {
                     if ctx.blocked_relays.contains(url) {
                         continue;
                     }
-                    out.add(url.clone(), RoutingSource::Indexer);
+                    match &scope {
+                        Some(kinds) => out.add_with_kind_scope(
+                            url.clone(),
+                            RoutingSource::Indexer,
+                            kinds.clone(),
+                        ),
+                        None => out.add(url.clone(), RoutingSource::Indexer),
+                    }
                     if tracing_active {
                         lane_count += 1;
                     }
@@ -710,3 +706,7 @@ mod tests_v75;
 #[cfg(test)]
 #[path = "router/tests_v52.rs"]
 mod tests_v52;
+
+#[cfg(test)]
+#[path = "router/tests_indexer_scope.rs"]
+mod tests_indexer_scope;
