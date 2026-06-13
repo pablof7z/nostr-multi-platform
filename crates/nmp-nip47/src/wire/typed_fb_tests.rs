@@ -18,6 +18,8 @@ fn full_status() -> WalletStatus {
         is_ready: true,
         is_connected: true,
         connection_state: Some(NwcConnectionState::Connected),
+        status_label: "Ready".to_string(),
+        status_tone: "active".to_string(),
     }
 }
 
@@ -44,6 +46,8 @@ fn round_trips_disconnected_status_with_all_options_none() {
         is_ready: false,
         is_connected: false,
         connection_state: None,
+        status_label: "Disconnected".to_string(),
+        status_tone: "inactive".to_string(),
     };
     let bytes = encode_wallet_status(&status);
     let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
@@ -94,4 +98,74 @@ fn decode_rejects_buffer_without_identifier() {
 fn schema_constants_match_the_fbs() {
     assert_eq!(SCHEMA_ID, "nmp.nip47.wallet");
     assert_eq!(SCHEMA_VERSION, 1);
+}
+
+// ADR-0032 / #623: label and tone round-trip through the FlatBuffers wire.
+
+#[test]
+fn status_label_and_tone_round_trip_for_connecting() {
+    let status = WalletStatus {
+        status: "connecting".to_string(),
+        relay_url: String::new(),
+        wallet_npub: String::new(),
+        wallet_pubkey_hex: String::new(),
+        balance_msats: None,
+        balance_sats: None,
+        balance_sats_display: None,
+        wallet_npub_short: String::new(),
+        is_ready: false,
+        is_connected: true,
+        connection_state: None,
+        status_label: "Connecting".to_string(),
+        status_tone: "warning".to_string(),
+    };
+    let bytes = encode_wallet_status(&status);
+    let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
+    assert_eq!(decoded.status_label, "Connecting");
+    assert_eq!(decoded.status_tone, "warning");
+}
+
+#[test]
+fn status_label_and_tone_round_trip_for_ready() {
+    let status = full_status();
+    let bytes = encode_wallet_status(&status);
+    let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
+    assert_eq!(decoded.status_label, "Ready");
+    assert_eq!(decoded.status_tone, "active");
+}
+
+#[test]
+fn status_label_and_tone_round_trip_for_error() {
+    let mut status = full_status();
+    status.status = "error".to_string();
+    status.status_label = "Error".to_string();
+    status.status_tone = "error".to_string();
+    status.is_ready = false;
+    let bytes = encode_wallet_status(&status);
+    let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
+    assert_eq!(decoded.status_label, "Error");
+    assert_eq!(decoded.status_tone, "error");
+}
+
+#[test]
+fn status_label_and_tone_round_trip_for_disconnected() {
+    let status = WalletStatus {
+        status: "disconnected".to_string(),
+        relay_url: String::new(),
+        wallet_npub: String::new(),
+        wallet_pubkey_hex: String::new(),
+        balance_msats: None,
+        balance_sats: None,
+        balance_sats_display: None,
+        wallet_npub_short: String::new(),
+        is_ready: false,
+        is_connected: false,
+        connection_state: None,
+        status_label: "Disconnected".to_string(),
+        status_tone: "inactive".to_string(),
+    };
+    let bytes = encode_wallet_status(&status);
+    let decoded = decode_wallet_status(&bytes).expect("decode must succeed");
+    assert_eq!(decoded.status_label, "Disconnected");
+    assert_eq!(decoded.status_tone, "inactive");
 }

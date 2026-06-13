@@ -31,8 +31,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
-import org.nmp.android.model.isWalletConnectedStatus
-import org.nmp.android.model.isWalletReadyStatus
 
 /**
  * Wallet (NIP-47 / NWC) connection screen for Android Chirp.
@@ -45,6 +43,12 @@ import org.nmp.android.model.isWalletReadyStatus
  * - Balance display when connected
  *
  * Material3 styling, mirrors TimelineScreen patterns.
+ *
+ * ADR-0032 / #623: `walletLabel` and `walletTone` are pre-computed by Rust
+ * (via [TypedWalletDecoder]) so this composable never branches on raw protocol
+ * strings (thin-shell rule). `walletLabel` is rendered verbatim; `walletTone`
+ * is mapped to a [Color] by [colorForTone] — the only presentation concern
+ * remaining in this layer.
  */
 @Composable
 fun WalletScreen(model: KernelModel, modifier: Modifier = Modifier) {
@@ -52,15 +56,12 @@ fun WalletScreen(model: KernelModel, modifier: Modifier = Modifier) {
     var nwcUri by remember { mutableStateOf("") }
     var isConnecting by remember { mutableStateOf(false) }
 
-    // Wallet status from snapshot (if available)
-    val walletStatus = s.projections?.walletStatus ?: ""
-    val isConnected = isWalletConnectedStatus(walletStatus)
-    val statusLabel = when {
-        isWalletReadyStatus(walletStatus) -> "Ready"
-        walletStatus.equals("connecting", ignoreCase = true) -> "Connecting"
-        walletStatus.isBlank() -> "Not connected"
-        else -> walletStatus.replaceFirstChar { it.titlecase() }
-    }
+    // ADR-0032 / #623: bind pre-computed label and tone — no raw-string
+    // branching in Kotlin (thin-shell rule). Both are null when no wallet
+    // is configured on this snapshot tick (tone "inactive" ≡ not connected).
+    val walletLabel = s.projections?.walletLabel
+    val walletTone  = s.projections?.walletTone
+    val isConnected = walletTone != null && walletTone != "inactive"
     val balance = s.projections?.walletBalance ?: ""
 
     Box(modifier.fillMaxSize()) {
@@ -105,7 +106,11 @@ fun WalletScreen(model: KernelModel, modifier: Modifier = Modifier) {
                         )
                         Spacer(Modifier.size(4.dp))
                         Text(
-                            statusLabel,
+                            // `walletLabel` is null only when no wallet is configured
+                            // (snapshot carries no wallet projection at all). "Not
+                            // connected" is the only display-layer default — tone
+                            // remains null so `isConnected` stays false.
+                            walletLabel ?: "Not connected",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (isConnected) {
@@ -224,6 +229,21 @@ fun WalletScreen(model: KernelModel, modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+/**
+ * Map a pre-computed `statusTone` string to a [Color].
+ *
+ * The tone vocabulary is `"active"` | `"warning"` | `"error"` | `"inactive"`
+ * (ADR-0032 / #623). No other protocol-string knowledge lives here — the Rust
+ * projection owns the mapping from wire status to tone (thin-shell rule).
+ */
+@Suppress("UnusedPrivateMember")
+private fun colorForTone(tone: String?): Color = when (tone) {
+    "active"  -> Color(0xFF4CAF50)   // green — mirrors ChirpColor.success
+    "warning" -> Color(0xFFFFC107)   // amber — mirrors ChirpColor.zap
+    "error"   -> Color(0xFFF44336)   // red   — mirrors ChirpColor.danger
+    else      -> Color(0xFF9E9E9E)   // neutral grey
 }
 
 /**

@@ -90,14 +90,24 @@ class TypedDmWalletRelayDecoderTest {
 
     // ── wallet ───────────────────────────────────────────────────────────────
 
-    private fun walletBuffer(balanceDisplay: String?): ByteArray {
+    private fun walletBuffer(
+        balanceDisplay: String?,
+        wireStatus: String = "ready",
+        statusLabel: String? = "Ready",
+        statusTone: String? = "active",
+    ): ByteArray {
         val builder = FlatBufferBuilder(256)
-        val status = builder.createString("ready")
+        val status = builder.createString(wireStatus)
         val relayUrl = builder.createString("wss://nwc.example")
         val npub = builder.createString("npub1wallet")
         val balDisp = if (balanceDisplay != null) builder.createString(balanceDisplay) else 0
         val npubShort = builder.createString("npub1wa…et")
         val pkHex = builder.createString(hex(0x44))
+        // ADR-0032 / #623: status_label + status_tone are tail-appended additive
+        // fields. Offset 0 omits them — exercising the decoder's forward-compat
+        // fallback (re-derive from the wire status token).
+        val labelOff = if (statusLabel != null) builder.createString(statusLabel) else 0
+        val toneOff = if (statusTone != null) builder.createString(statusTone) else 0
         val w = FbWalletStatus.createWalletStatus(
             builder,
             status,
@@ -110,6 +120,8 @@ class TypedDmWalletRelayDecoderTest {
             true, true, // is_ready, is_connected
             false, 0u, // connection_state
             pkHex,
+            labelOff,
+            toneOff,
         )
         FbWalletStatus.finishWalletStatusBuffer(builder, w)
         return builder.sizedByteArray()
@@ -127,6 +139,56 @@ class TypedDmWalletRelayDecoderTest {
         val out = requireNotNull(TypedWalletDecoder.decode(walletBuffer(null)))
         assertEquals("ready", out.status)
         assertNull(out.balanceDisplay) // has_balance_sats_display == false → null
+    }
+
+    @Test
+    fun walletReadsPreComputedLabelAndTone() {
+        // ADR-0032 / #623: when the buffer carries the tail-appended fields, the
+        // decoder surfaces them verbatim (display decisions live in Rust).
+        val out = requireNotNull(
+            TypedWalletDecoder.decode(
+                walletBuffer(
+                    balanceDisplay = "5 sats",
+                    wireStatus = "ready",
+                    statusLabel = "Ready",
+                    statusTone = "active",
+                ),
+            ),
+        )
+        assertEquals("Ready", out.statusLabel)
+        assertEquals("active", out.statusTone)
+    }
+
+    @Test
+    fun walletDerivesLabelAndToneForOlderBuffers() {
+        // ADR-0032 / #623 forward-compat: a buffer that predates the additive
+        // fields (offsets omitted) must re-derive label/tone from the wire token,
+        // mirroring the Rust status_label()/status_tone() logic (D1).
+        val connecting = requireNotNull(
+            TypedWalletDecoder.decode(
+                walletBuffer(
+                    balanceDisplay = null,
+                    wireStatus = "connecting",
+                    statusLabel = null,
+                    statusTone = null,
+                ),
+            ),
+        )
+        assertEquals("Connecting", connecting.statusLabel)
+        assertEquals("warning", connecting.statusTone)
+
+        val errored = requireNotNull(
+            TypedWalletDecoder.decode(
+                walletBuffer(
+                    balanceDisplay = null,
+                    wireStatus = "error",
+                    statusLabel = null,
+                    statusTone = null,
+                ),
+            ),
+        )
+        assertEquals("Error", errored.statusLabel)
+        assertEquals("error", errored.statusTone)
     }
 
     @Test

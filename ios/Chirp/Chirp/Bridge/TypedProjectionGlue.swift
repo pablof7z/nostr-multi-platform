@@ -864,27 +864,27 @@ enum TypedProjectionGlue {
     // MARK: wallet → WalletStatusData
 
     /// Map the typed `wallet` sidecar (`NWST` / `nmp_nip47_WalletStatus`) to the
-    /// `WalletStatusData` the JSON `projections["wallet"]` path yields. The
-    /// `wallet_pubkey_hex` field is the producer field-add that unblocked this
-    /// flip — it now ships on BOTH the JSON projection and this wire, so the
-    /// typed value is byte-identical to the JSON path. `WalletStatusData` is a
-    /// field-SUBSET of the wire: it carries no `walletNpubShort` /
-    /// `balanceSatsDisplay` / `connectionState` (the JSON `Decodable` drops them
-    /// too — field-subset, not divergence; ADR-0032 leaves bech32/abbreviation/
-    /// liveness to other surfaces). The two `has_*` companion bools reproduce
-    /// the JSON `null`-when-`None` semantics: `balanceMsats` (`UInt64?`) and
-    /// `balanceSats` (`Int?`, widened from the wire `uint64`) are `nil` when
-    /// their companion is `false`, byte-identical to the JSON path.
+    /// `WalletStatusData` the JSON `projections["wallet"]` path yields — a
+    /// field-SUBSET of the wire (no `walletNpubShort`/`balanceSatsDisplay`/
+    /// `connectionState`; ADR-0032). The `has_*` companion bools reproduce JSON
+    /// `null`-when-`None`: `balanceMsats`/`balanceSats` are `nil` when `false`.
     static func wallet(_ reader: nmp_nip47_WalletStatus) -> WalletStatusData {
-        WalletStatusData(
-            status: reader.status ?? "",
+        let rawStatus = reader.status ?? ""
+        // `statusLabel`/`statusTone` are tail-appended (additive); absent on
+        // older buffers → re-derive from `rawStatus` as the Rust path does (D1).
+        let label = reader.statusLabel ?? WalletStatusTone.derivedLabel(rawStatus)
+        let tone  = reader.statusTone  ?? WalletStatusTone.derivedTone(rawStatus)
+        return WalletStatusData(
+            status: rawStatus,
             relayUrl: reader.relayUrl ?? "",
             walletPubkeyHex: reader.walletPubkeyHex ?? "",
             walletNpub: reader.walletNpub ?? "",
             balanceMsats: reader.hasBalanceMsats ? reader.balanceMsats : nil,
             balanceSats: reader.hasBalanceSats ? Int(reader.balanceSats) : nil,
             isReady: reader.isReady,
-            isConnected: reader.isConnected
+            isConnected: reader.isConnected,
+            statusLabel: label,
+            statusTone: tone
         )
     }
 

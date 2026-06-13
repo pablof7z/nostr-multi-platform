@@ -8,16 +8,21 @@ import java.nio.ByteOrder
 private const val TAG = "TypedWalletDecoder"
 
 /**
- * The two wallet strings the Android UI renders off the `wallet` projection:
- * `WalletScreen` reads `walletStatus` (the connection status token) and
- * `walletBalance` (the pre-formatted sats display string). The full
- * `WalletStatus` wire carries more (npub, msats, connection state), but the
- * generic `payload:Value` path only ever surfaced these two — so the typed
- * decoder surfaces exactly them to keep typed/fallback observably identical.
+ * The wallet strings the Android UI renders off the `wallet` projection.
+ *
+ * ADR-0032 / #623: `statusLabel` and `statusTone` are pre-computed by Rust
+ * so the UI never branches on raw protocol strings (thin-shell rule).
+ *
+ * `WalletScreen` binds `statusLabel` verbatim and maps `statusTone` → colour
+ * without any `when`/`if` on the raw `status` token.
  */
 data class TypedWalletStrings(
     val status: String?,
     val balanceDisplay: String?,
+    /** ADR-0032 / #623: pre-computed label, e.g. "Connecting", "Ready". */
+    val statusLabel: String,
+    /** ADR-0032 / #623: semantic tone — "active"|"warning"|"error"|"inactive". */
+    val statusTone: String,
 )
 
 /**
@@ -62,14 +67,45 @@ object TypedWalletDecoder {
                 Log.e(TAG, "NWST file_identifier missing (${bytes.size} bytes)")
                 return null
             }
-            val status = FbWalletStatus.getRootAsWalletStatus(bb)
+            val ws = FbWalletStatus.getRootAsWalletStatus(bb)
+            val rawStatus = ws.status
+            // `statusLabel` / `statusTone` are tail-appended (additive). Absent
+            // on older buffers that predate #623 — fall back to deriving from
+            // `rawStatus` exactly as the Rust decode path does (D1).
+            val label = ws.statusLabel ?: deriveStatusLabel(rawStatus)
+            val tone  = ws.statusTone  ?: deriveStatusTone(rawStatus)
             TypedWalletStrings(
-                status = status.status,
-                balanceDisplay = if (status.hasBalanceSatsDisplay) status.balanceSatsDisplay else null,
+                status = rawStatus,
+                balanceDisplay = if (ws.hasBalanceSatsDisplay) ws.balanceSatsDisplay else null,
+                statusLabel = label,
+                statusTone = tone,
             )
         } catch (e: Exception) {
             Log.e(TAG, "NWST decode error: ${e.message} bytes=${bytes.size}")
             null
         }
+    }
+
+    /**
+     * Fallback: derive the display label from the raw wire token.
+     * Mirrors Rust `status_label()` — used only for pre-#623 buffers.
+     */
+    private fun deriveStatusLabel(wire: String?): String = when (wire) {
+        "connecting"   -> "Connecting"
+        "ready"        -> "Ready"
+        "error"        -> "Error"
+        "disconnected" -> "Disconnected"
+        else           -> "Unknown"
+    }
+
+    /**
+     * Fallback: derive the semantic tone from the raw wire token.
+     * Mirrors Rust `status_tone()` — used only for pre-#623 buffers.
+     */
+    private fun deriveStatusTone(wire: String?): String = when (wire) {
+        "ready"      -> "active"
+        "connecting" -> "warning"
+        "error"      -> "error"
+        else         -> "inactive"
     }
 }
