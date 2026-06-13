@@ -1,3 +1,20 @@
+/** ADR-0035 reply-attribution badge attached to a feed item. */
+import type { FeedItem, FeedCountState } from "./feedProjection";
+
+export type AttributionBadge = {
+  authorPubkey: string;
+  authorDisplayName?: string;
+  authorPictureUrl?: string;
+  replyEventId: string;
+  replyCreatedAt: number;
+};
+
+/** NIP-18 repost badge — who surfaced this note via kind:6. */
+export type RepostBadge = {
+  authorPubkey: string;
+  authorDisplayName?: string;
+};
+
 export type TimelineItem = {
   id: string;
   authorPubkey?: string;
@@ -8,6 +25,10 @@ export type TimelineItem = {
   createdAt?: number;
   relativeTime?: string;
   relationCounts?: RelationCounts;
+  /** ADR-0035 attribution badges decoded from the nmp.feed.home projection. */
+  attribution?: AttributionBadge[];
+  /** NIP-18 repost attribution — absent for plain notes. */
+  repostedBy?: RepostBadge;
 };
 
 export type RelationCounts = { replies?: CountState; reactions?: CountState; reposts?: CountState };
@@ -104,6 +125,50 @@ export function chirpTimelineFromEnvelope(envelope: unknown): ChirpTimelineSnaps
 export function displayRows(kernel: KernelSnapshot | undefined, chirp: ChirpTimelineSnapshot | undefined): TimelineItem[] {
   const timeline = timelineFromKernel(kernel);
   return timeline.length > 0 ? timeline : (chirp?.cards.map(cardFromChirpEvent) ?? []);
+}
+
+/**
+ * Convert decoded `nmp.feed.home` FeedItem[] into the TimelineItem[] shape
+ * that HomePanel renders. Used by App.tsx when the real kernel feed projection
+ * is available (the latestUpdate JSON path is the dead fallback; this is live).
+ *
+ * `FeedRelationCounts` uses `{type:"known",count}` / `{type:"loading"}` —
+ * map to `CountState` `{count}` / `{status:"loading"}` so HomePanel's
+ * `countLabel()` renders correctly.
+ *
+ * `resolvedProfiles` is the decoded `resolved_profiles` KRPR map (pubkey →
+ * display name). Root cards carry no denormalized author display copy (GH #920
+ * ADR-0032 raw-data doctrine); the presentation layer joins here instead.
+ * When absent (no profile claimed yet) `item.authorDisplayName` stays undefined
+ * and `displayAuthor` falls back to `shortKey(authorPubkey)`.
+ */
+export function feedItemsToRows(items: FeedItem[], resolvedProfiles?: Map<string, string>): TimelineItem[] {
+  return items.map((item): TimelineItem => ({
+    id: item.id,
+    authorPubkey: item.authorPubkey,
+    displayName: item.authorDisplayName ?? resolvedProfiles?.get(item.authorPubkey),
+    content: item.content,
+    createdAt: item.createdAt,
+    relationCounts: {
+      replies: toCountState(item.relationCounts.replies),
+      reactions: toCountState(item.relationCounts.reactions),
+      reposts: toCountState(item.relationCounts.reposts),
+    },
+    attribution: item.attribution.map((a) => ({
+      authorPubkey: a.authorPubkey,
+      authorDisplayName: a.authorDisplayName ?? resolvedProfiles?.get(a.authorPubkey),
+      authorPictureUrl: a.authorPictureUrl,
+      replyEventId: a.replyEventId,
+      replyCreatedAt: a.replyCreatedAt,
+    })),
+    repostedBy: item.repostedBy
+      ? { authorPubkey: item.repostedBy.authorPubkey, authorDisplayName: item.repostedBy.authorDisplayName }
+      : undefined,
+  }));
+}
+
+function toCountState(state: FeedCountState): CountState {
+  return state.type === "known" ? { count: state.count } : { status: "loading" };
 }
 
 export function displayAuthor(item: TimelineItem): string {

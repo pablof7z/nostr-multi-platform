@@ -2,6 +2,7 @@ import * as flatbuffers from "flatbuffers";
 
 import { OpFeedSnapshot, RelationCount, ReplyAttribution, RootCard } from "./generated/nmp/nip01";
 import { RelationCountState } from "./generated/nmp/nip01/relation-count-state";
+import { ResolvedProfilesSnapshot } from "./generated/nmp/kernel/resolved-profiles-snapshot";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 
 // ── Schema descriptor constants (ADR-0038) ──────────────────────────────────
@@ -10,6 +11,10 @@ const NOFS_SCHEMA_ID = "nmp.nip01.opfeed";
 const NOFS_SCHEMA_VERSION = 1;
 const NOFS_FILE_IDENTIFIER = "NOFS";
 const NOFS_PROJECTION_KEY = "nmp.feed.home";
+
+// `resolved_profiles` typed projection (KRPR) — kernel-owned profile map.
+const KRPR_FILE_IDENTIFIER = "KRPR";
+const KRPR_PROJECTION_KEY = "resolved_profiles";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -127,7 +132,8 @@ function decodeRootCard(rootCard: RootCard): FeedItem | null {
   }
 
   const attribution: FeedAttribution[] = [];
-  for (let j = 0; j < rootCard.attributionLength(); j += 1) {
+  const attrLen = rootCard.attributionLength();
+  for (let j = 0; j < attrLen; j += 1) {
     const ra = rootCard.attribution(j);
     if (ra) {
       attribution.push(decodeAttribution(ra));
@@ -219,6 +225,59 @@ export function decodeHomeFeed(snapshot: SnapshotFrame): { items: FeedItem[] } |
       return undefined;
     }
     return decodeOpFeedSnapshot(payloadBytes);
+  }
+  return undefined;
+}
+
+/**
+ * Decode the `resolved_profiles` KRPR typed projection from a `SnapshotFrame`.
+ *
+ * Returns a `Map<string, string>` mapping hex pubkey → display name for every
+ * profile entry that has a display name. Entries without a kind:0 display name
+ * (`hasDisplayName() === false`) are omitted — the caller falls back to
+ * `shortKey(pubkey)` for those.
+ *
+ * Returns `undefined` when the projection is absent or the buffer is corrupt.
+ * Callers should keep the last-good map (keep-last-good).
+ */
+export function decodeResolvedProfiles(snapshot: SnapshotFrame): Map<string, string> | undefined {
+  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
+    const proj = snapshot.typedProjections(i);
+    if (!proj || proj.key() !== KRPR_PROJECTION_KEY) {
+      continue;
+    }
+    const payload = proj.payload();
+    if (!payload || payload.fileIdentifier() !== KRPR_FILE_IDENTIFIER) {
+      return undefined;
+    }
+    const payloadBytes = payload.payloadArray();
+    if (!payloadBytes || payloadBytes.length === 0) {
+      return undefined;
+    }
+    try {
+      const bb = new flatbuffers.ByteBuffer(payloadBytes);
+      if (!ResolvedProfilesSnapshot.bufferHasIdentifier(bb)) {
+        return undefined;
+      }
+      const root = ResolvedProfilesSnapshot.getRootAsResolvedProfilesSnapshot(bb);
+      const result = new Map<string, string>();
+      for (let j = 0; j < root.entriesLength(); j += 1) {
+        const entry = root.entries(j);
+        if (!entry) continue;
+        const key = entry.key();
+        const value = entry.value();
+        if (!key || !value) continue;
+        if (value.hasDisplayName()) {
+          const displayName = value.displayName();
+          if (displayName) {
+            result.set(key, displayName);
+          }
+        }
+      }
+      return result;
+    } catch {
+      return undefined;
+    }
   }
   return undefined;
 }

@@ -1,16 +1,24 @@
 import { Match, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { publishNoteAction, type RuntimeCommand } from "./nmp/actions";
+import { publishNoteAction, openContactFeedCommand, type RuntimeCommand } from "./nmp/actions";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
 import {
-  chirpTimelineFromEnvelope,
-  displayRows,
   featureSnapshotFromEnvelope,
-  kernelSnapshotFromEnvelope,
+  feedItemsToRows,
 } from "./nmp/snapshot";
 import { ChatsPanel, GroupsPanel, SettingsPanel, WalletPanel } from "./features/FeaturePanels";
 import { HomePanel } from "./features/HomePanel";
 import { RuntimePanel } from "./features/RuntimePanel";
 import { Sidebar, type AppTab } from "./features/Sidebar";
+
+// NIP-07 browser extension interface (window.nostr — EIP-1193-style extension).
+declare global {
+  interface Window {
+    nostr?: {
+      getPublicKey(): Promise<string>;
+      signEvent(event: Record<string, unknown>): Promise<Record<string, unknown>>;
+    };
+  }
+}
 
 const client = createNmpClient();
 
@@ -18,22 +26,30 @@ export default function App() {
   const [snapshot, setSnapshot] = createSignal<RuntimeSnapshot>(client.snapshot());
   const [tab, setTab] = createSignal<AppTab>("home");
   const [starting, setStarting] = createSignal(false);
+  const [signerConnected, setSignerConnected] = createSignal(false);
+
   const unsubscribe = client.subscribe(setSnapshot);
-  const kernel = createMemo(() => kernelSnapshotFromEnvelope(snapshot().latestUpdate));
-  const chirp = createMemo(() => chirpTimelineFromEnvelope(snapshot().latestUpdate));
+
   const feature = createMemo(() => {
     const snap = snapshot();
-    const base = featureSnapshotFromEnvelope(snap.latestUpdate);
-    // Tier-3 relay_statuses are decoded directly from the FlatBuffers
-    // envelope (PR-B: the deprecated payload:Value is zeroed). Prefer them
-    // over the empty relay_diagnostics the old Value-tree path would yield.
+    // featureSnapshotFromEnvelope reads the JSON projection path (latestUpdate,
+    // which is zeroed in production since PR-B). Feed content now comes from
+    // feedItems (the nmp.feed.home typed projection). Relay diagnostics still
+    // use the Tier-3 relay_statuses field directly.
+    const base = featureSnapshotFromEnvelope(undefined);
     const tierThreeRelays = snap.latestRelayStatuses;
     if (tierThreeRelays && tierThreeRelays.length > 0) {
       return { ...base, relayDiagnostics: tierThreeRelays };
     }
     return base;
   });
-  const rows = createMemo(() => displayRows(kernel(), chirp()));
+
+  // Real home feed: decoded nmp.feed.home typed projection from each snapshot.
+  // Keep-last-good: feedItems is undefined until the first projection arrives;
+  // feedItemsToRows returns [] for undefined/empty — honest empty state.
+  // resolvedProfiles (KRPR) provides the presentation-layer join for author
+  // display names (root cards carry no denormalized display copy — GH #920).
+  const rows = createMemo(() => feedItemsToRows(snapshot().feedItems ?? [], snapshot().resolvedProfiles));
 
   onCleanup(unsubscribe);
   onMount(() => void start());
@@ -48,11 +64,41 @@ export default function App() {
     setSnapshot(await client.start(relays.length > 0 ? relays : undefined));
     setStarting(false);
   };
+
+  const connect = async () => {
+    if (!window.nostr) {
+      return;
+    }
+    try {
+      const pubkeyHex = await window.nostr.getPublicKey();
+      const snap = await client.setSigner(pubkeyHex);
+      setSnapshot(snap);
+      // Check if signer was accepted (not a capability_failure).
+      const lastEvent = snap.events[0];
+      if (lastEvent && lastEvent.type === "capability_failure") {
+        return;
+      }
+      setSignerConnected(true);
+      // Open the contact feed (kinds 1 + 6) now that the viewer pubkey is set.
+      setSnapshot(await client.dispatchCommand(openContactFeedCommand()));
+    } catch {
+      // Signer install failed; UI stays disconnected, no crash.
+    }
+  };
+
   const publish = async (content: string, replyToId: string | null) => {
     setSnapshot(await client.dispatchChirp(publishNoteAction(content, replyToId)));
   };
   const dispatch = async (command: RuntimeCommand) => {
     setSnapshot(await client.dispatchCommand(command));
+  };
+  // dispatchQuiet — fire-and-forget dispatch that does NOT update the snapshot
+  // signal. Used for profile claim/release commands so that the refcount bookkeeping
+  // in the kernel does not trigger a reactive re-render that would unmount and
+  // remount Post components (which in turn releases + re-claims profiles, causing
+  // an infinite churn loop that prevents Bob's display name from ever stabilising).
+  const dispatchQuiet = (command: RuntimeCommand): void => {
+    void client.dispatchCommand(command);
   };
 
   return (
@@ -61,7 +107,14 @@ export default function App() {
       <section class="workspace" aria-label="Chirp workspace">
         <Switch>
           <Match when={tab() === "home"}>
-            <HomePanel rows={rows()} revision={kernel()?.rev} onPublish={publish} onCommand={dispatch} />
+            <HomePanel
+              rows={rows()}
+              onPublish={publish}
+              onCommand={dispatch}
+              onClaimCommand={dispatchQuiet}
+              onConnect={connect}
+              signerConnected={signerConnected()}
+            />
           </Match>
           <Match when={tab() === "chats"}>
             <ChatsPanel feature={feature()} onCommand={dispatch} />

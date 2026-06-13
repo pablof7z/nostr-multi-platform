@@ -1,4 +1,8 @@
+import * as flatbuffers from "flatbuffers";
+
 import { DegradedRuntime } from "./degradedRuntime";
+import { decodeHomeFeed, decodeResolvedProfiles, type FeedItem } from "./feedProjection";
+import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
 import {
   eventCorrelationId,
   protocolVersion,
@@ -19,13 +23,21 @@ export type RuntimeSnapshot = {
    *                          capability_failure for every action. */
   clientRuntime: "worker" | "in_process_fallback";
   events: WorkerEvent[];
-  latestUpdate?: unknown;
   latestUpdateBytes?: Uint8Array;
   /** Per-relay status rows decoded from the Tier-3 relay_statuses field of the
    *  most recent SnapshotFrame. Populated after the first successful decode;
    *  undefined before any snapshot arrives. Empty array means the kernel
    *  has no relays configured yet. */
   latestRelayStatuses?: DecodedRelayStatus[];
+  /** Decoded home feed items from the nmp.feed.home typed projection.
+   *  Populated after the first snapshot that contains the projection; undefined
+   *  before any projection arrives. Keep-last-good: only overwritten when a
+   *  new successful decode arrives (never cleared on a corrupt frame). */
+  feedItems?: FeedItem[];
+  /** Decoded resolved_profiles (KRPR) map: hex pubkey → kind:0 display name.
+   *  Populated after the first snapshot that carries the projection and at least
+   *  one claimed profile with a kind:0. Keep-last-good. */
+  resolvedProfiles?: Map<string, string>;
 };
 
 export type RuntimeConnection = {
@@ -47,6 +59,10 @@ export type NmpClient = {
   dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
   dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
   dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
+  /** Install a NIP-07 signer. The host must call window.nostr.getPublicKey()
+   *  first and supply the resulting hex pubkey. The wasm runtime installs the
+   *  signer synchronously; subsequent write actions use it. */
+  setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
 };
 
 export function createNmpClient(): NmpClient {
@@ -71,9 +87,10 @@ export function createNmpClient(): NmpClient {
 
 abstract class BaseClient implements NmpClient {
   private events: WorkerEvent[] = [];
-  private latestUpdate: unknown;
   private latestUpdateBytes: Uint8Array | undefined;
   private latestRelayStatuses: DecodedRelayStatus[] | undefined;
+  private latestFeedItems: FeedItem[] | undefined;
+  private latestResolvedProfiles: Map<string, string> | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -84,9 +101,10 @@ abstract class BaseClient implements NmpClient {
       status: this.status,
       clientRuntime: this.clientRuntime,
       events: [...this.events],
-      latestUpdate: this.latestUpdate,
       latestUpdateBytes: this.latestUpdateBytes,
       latestRelayStatuses: this.latestRelayStatuses,
+      feedItems: this.latestFeedItems,
+      resolvedProfiles: this.latestResolvedProfiles,
     };
   }
 
@@ -121,6 +139,34 @@ abstract class BaseClient implements NmpClient {
             if (decoded.running) {
               this.status = "running";
             }
+            // Decode the nmp.feed.home typed projection from the same frame.
+            // Parse the raw bytes again to obtain the SnapshotFrame object
+            // (decodeUpdateFrameBytes only returns decoded scalars).
+            // Keep-last-good: only overwrite when decodeHomeFeed returns a
+            // result (undefined means absent/corrupt — leave previous feed).
+            try {
+              const bb = new flatbuffers.ByteBuffer(bytes);
+              if (UpdateFrame.bufferHasIdentifier(bb)) {
+                const frame = UpdateFrame.getRootAsUpdateFrame(bb);
+                if (frame.kind() === FrameKind.Snapshot) {
+                  const snap = frame.snapshot();
+                  if (snap) {
+                    const feedResult = decodeHomeFeed(snap);
+                    if (feedResult !== undefined) {
+                      this.latestFeedItems = feedResult.items;
+                    }
+                    // Decode resolved_profiles (KRPR) from the same frame.
+                    // Keep-last-good: only overwrite on a non-empty result.
+                    const profilesResult = decodeResolvedProfiles(snap);
+                    if (profilesResult !== undefined) {
+                      this.latestResolvedProfiles = profilesResult;
+                    }
+                  }
+                }
+              }
+            } catch {
+              // Corrupt inner buffer: keep last-good feed items.
+            }
           }
         } else {
           this.status = { degraded: "browser_actor_driver_missing" };
@@ -147,6 +193,7 @@ abstract class BaseClient implements NmpClient {
     return this.dispatch(command.actionType, command.payload);
   }
   abstract dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
+  abstract setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
 }
 
 class WorkerNmpClient extends BaseClient {
@@ -180,9 +227,15 @@ class WorkerNmpClient extends BaseClient {
     // runtime uses them instead of its built-in chirp defaults. The wasm
     // StartConfig serde-defaults relay_bootstrap to the chirp list, so the
     // explicit non-empty array takes precedence (relay_bootstrap_from_config).
+    //
+    // Use "both,indexer" (not just "both") so a single injected relay also
+    // serves profile-claim discovery requests (BootstrapSeed::IndexerOnly).
+    // "both" alone excludes the indexer lane — bootstrap_urls_for_role(Indexer)
+    // only matches relays whose role includes "indexer" — so without this a
+    // relay supplied via ?relay= would silently receive no kind:0 claim REQs.
     const relayBootstrap =
       relays && relays.length > 0
-        ? relays.map((url) => ({ url, role: "both" as const }))
+        ? relays.map((url) => ({ url, role: "both,indexer" }))
         : undefined;
     return this.request({
       type: "start",
@@ -209,6 +262,16 @@ class WorkerNmpClient extends BaseClient {
       type: "chirp_action",
       action,
       correlation_id: `web-${Date.now()}`,
+    });
+  }
+
+  async setSigner(pubkeyHex: string): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    return this.request({
+      type: "set_signer",
+      kind: "nip07",
+      pubkey_hex: pubkeyHex,
+      correlation_id: `web-signer-${Date.now()}`,
     });
   }
 
@@ -281,6 +344,15 @@ class InProcessNmpClient extends BaseClient {
       type: "chirp_action",
       action,
       correlation_id: `web-${Date.now()}`,
+    });
+  }
+
+  async setSigner(pubkeyHex: string): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "set_signer",
+      kind: "nip07",
+      pubkey_hex: pubkeyHex,
+      correlation_id: `web-signer-${Date.now()}`,
     });
   }
 
