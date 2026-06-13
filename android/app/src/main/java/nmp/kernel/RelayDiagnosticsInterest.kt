@@ -31,18 +31,36 @@ class RelayDiagnosticsInterest : Table() {
     val key : String?
         get() {
             val o = __offset(4)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
+    val keyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val state : String?
         get() {
             val o = __offset(6)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
+    val stateAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val stateTone : String?
         get() {
             val o = __offset(8)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
+    val stateToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun stateToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val refcount : UInt
         get() {
             val o = __offset(10)
@@ -51,8 +69,14 @@ class RelayDiagnosticsInterest : Table() {
     val cacheCoverage : String?
         get() {
             val o = __offset(12)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
+    val cacheCoverageAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
+    fun cacheCoverageInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
     fun relayUrls(j: Int) : String? {
         val o = __offset(14)
         return if (o != 0) {
@@ -72,7 +96,16 @@ class RelayDiagnosticsInterest : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun RelayDiagnosticsInterestBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "KRDG")
+        fun createRelayDiagnosticsInterest(builder: FlatBufferBuilder, keyOffset: Int, stateOffset: Int, stateToneOffset: Int, refcount: UInt, cacheCoverageOffset: Int, relayUrlsOffset: Int) : Int {
+            builder.startTable(6)
+            addRelayUrls(builder, relayUrlsOffset)
+            addCacheCoverage(builder, cacheCoverageOffset)
+            addRefcount(builder, refcount)
+            addStateTone(builder, stateToneOffset)
+            addState(builder, stateOffset)
+            addKey(builder, keyOffset)
+            return endRelayDiagnosticsInterest(builder)
+        }
         fun startRelayDiagnosticsInterest(builder: FlatBufferBuilder) = builder.startTable(6)
         fun addKey(builder: FlatBufferBuilder, key: Int) = builder.addOffset(0, key, 0)
         fun addState(builder: FlatBufferBuilder, state: Int) = builder.addOffset(1, state, 0)

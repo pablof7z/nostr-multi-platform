@@ -31,14 +31,22 @@ class LifecycleEntry : Table() {
     val correlationId : String?
         get() {
             val o = __offset(4)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val correlationIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
     fun correlationIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val stage : String?
         get() {
             val o = __offset(6)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val stageAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
     fun stageInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
@@ -50,7 +58,11 @@ class LifecycleEntry : Table() {
     val reason : String?
         get() {
             val o = __offset(10)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val reasonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
     fun reasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
@@ -61,7 +73,6 @@ class LifecycleEntry : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun LifecycleEntryBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "KALC")
         fun createLifecycleEntry(builder: FlatBufferBuilder, correlationIdOffset: Int, stageOffset: Int, hasReason: Boolean, reasonOffset: Int) : Int {
             builder.startTable(4)
             addReason(builder, reasonOffset)

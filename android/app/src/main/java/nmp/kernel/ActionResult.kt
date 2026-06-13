@@ -31,14 +31,22 @@ class ActionResult : Table() {
     val correlationId : String?
         get() {
             val o = __offset(4)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val correlationIdAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
     fun correlationIdInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val status : String?
         get() {
             val o = __offset(6)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val statusAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
     fun statusInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
@@ -50,7 +58,11 @@ class ActionResult : Table() {
     val error : String?
         get() {
             val o = __offset(10)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val errorAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
     fun errorInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
@@ -62,7 +74,11 @@ class ActionResult : Table() {
     val result : String?
         get() {
             val o = __offset(14)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val resultAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
     fun resultInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
@@ -73,7 +89,6 @@ class ActionResult : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun ActionResultBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "KARS")
         fun createActionResult(builder: FlatBufferBuilder, correlationIdOffset: Int, statusOffset: Int, hasError: Boolean, errorOffset: Int, hasResult: Boolean, resultOffset: Int) : Int {
             builder.startTable(6)
             addResult(builder, resultOffset)

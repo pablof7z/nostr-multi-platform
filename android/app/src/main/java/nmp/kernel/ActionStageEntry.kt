@@ -31,7 +31,11 @@ class ActionStageEntry : Table() {
     val stage : String?
         get() {
             val o = __offset(4)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val stageAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
     fun stageInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
@@ -43,14 +47,18 @@ class ActionStageEntry : Table() {
     val reason : String?
         get() {
             val o = __offset(8)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val reasonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
     fun reasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
-    val atMs : Long
+    val atMs : ULong
         get() {
             val o = __offset(10)
-            return if(o != 0) bb.getLong(o + bb_pos) else 0L
+            return if(o != 0) bb.getLong(o + bb_pos).toULong() else 0UL
         }
     val hasDetail : Boolean
         get() {
@@ -60,7 +68,11 @@ class ActionStageEntry : Table() {
     val detail : String?
         get() {
             val o = __offset(14)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val detailAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
     fun detailInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
@@ -71,8 +83,7 @@ class ActionStageEntry : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun ActionStageEntryBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "KAST")
-        fun createActionStageEntry(builder: FlatBufferBuilder, stageOffset: Int, hasReason: Boolean, reasonOffset: Int, atMs: Long, hasDetail: Boolean, detailOffset: Int) : Int {
+        fun createActionStageEntry(builder: FlatBufferBuilder, stageOffset: Int, hasReason: Boolean, reasonOffset: Int, atMs: ULong, hasDetail: Boolean, detailOffset: Int) : Int {
             builder.startTable(6)
             addAtMs(builder, atMs)
             addDetail(builder, detailOffset)
@@ -86,7 +97,7 @@ class ActionStageEntry : Table() {
         fun addStage(builder: FlatBufferBuilder, stage: Int) = builder.addOffset(0, stage, 0)
         fun addHasReason(builder: FlatBufferBuilder, hasReason: Boolean) = builder.addBoolean(1, hasReason, false)
         fun addReason(builder: FlatBufferBuilder, reason: Int) = builder.addOffset(2, reason, 0)
-        fun addAtMs(builder: FlatBufferBuilder, atMs: Long) = builder.addLong(3, atMs, 0L)
+        fun addAtMs(builder: FlatBufferBuilder, atMs: ULong) = builder.addLong(3, atMs.toLong(), 0)
         fun addHasDetail(builder: FlatBufferBuilder, hasDetail: Boolean) = builder.addBoolean(4, hasDetail, false)
         fun addDetail(builder: FlatBufferBuilder, detail: Int) = builder.addOffset(5, detail, 0)
         fun endActionStageEntry(builder: FlatBufferBuilder) : Int {

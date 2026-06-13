@@ -66,7 +66,7 @@ object TypedActionStagesDecoder {
                     stages.add(
                         ActionStageEntry(
                             stage = stage.stage ?: "",
-                            atMs = stage.atMs,
+                            atMs = stage.atMs.toLong(),
                             reason = if (stage.hasReason) stage.reason else null,
                         )
                     )

@@ -31,7 +31,11 @@ class ActionStagesEntry : Table() {
     val key : String?
         get() {
             val o = __offset(4)
-            return if (o != 0) __string(o + bb_pos) else null
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
         }
     val keyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
     fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
@@ -55,7 +59,6 @@ class ActionStagesEntry : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun ActionStagesEntryBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "KAST")
         fun createActionStagesEntry(builder: FlatBufferBuilder, keyOffset: Int, stagesOffset: Int) : Int {
             builder.startTable(2)
             addStages(builder, stagesOffset)
