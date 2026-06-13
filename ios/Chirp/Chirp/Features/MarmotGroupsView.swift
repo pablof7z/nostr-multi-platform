@@ -44,6 +44,44 @@ struct GroupsView: View {
 
     private var groupList: some View {
         List {
+            // Last-op-error banner — Rust-owned (op, reason) machine codes mapped
+            // to a banner by `bannerText` (aim.md §2 sanctioned mapping). Shown as
+            // the first row so it is always visible regardless of scroll position.
+            // Clears only when Rust next emits the snapshot with last_op_error ==
+            // nil; there is no shell-side clear op (informational, not dismissible).
+            if let lastErr = store.snapshot.lastOpError {
+                Section {
+                    HStack(spacing: ChirpSpace.s) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(ChirpColor.danger)
+                        Text(lastErr.bannerText)
+                            .font(.caption)
+                            .foregroundStyle(ChirpColor.danger)
+                        Spacer()
+                    }
+                    .padding(.vertical, ChirpSpace.xs)
+                }
+                .accessibilityIdentifier("groups-last-op-error")
+            }
+
+            // Pending ops — ops parked in Rust's deferred-completion store.
+            // Each row shows the Rust-owned display_label verbatim.
+            if !store.snapshot.pendingOps.isEmpty {
+                Section {
+                    ForEach(store.snapshot.pendingOps) { op in
+                        HStack(spacing: ChirpSpace.s) {
+                            ProgressView().controlSize(.small)
+                            Text(op.displayLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.vertical, ChirpSpace.xs)
+                        .accessibilityIdentifier("groups-pending-op-\(op.correlationId)")
+                    }
+                }
+            }
+
             // Pending invites chip — Rust supplies the label or nil.
             if let invitesLabel = store.invitesChipLabel {
                 NavigationLink {

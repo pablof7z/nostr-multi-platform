@@ -36,9 +36,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.nmp.android.DispatchResult
 import org.nmp.android.KernelModel
 import org.nmp.android.model.MarmotGroup
 import org.nmp.android.model.MarmotMessage
+import org.nmp.android.model.MarmotSnapshot
 
 /**
  * One Marmot (MLS) group thread — Android peer of iOS `MarmotGroupChatView`.
@@ -63,9 +66,15 @@ internal fun GroupChatView(
     onBack: () -> Unit,
     hasOrphanedCommit: Boolean = false,
 ) {
+    val s by model.state.collectAsStateWithLifecycle()
+    val snapshot = s.projections?.marmotSnapshot ?: MarmotSnapshot()
+    val lifecycle = s.projections?.actionLifecycle
+
     var draft by remember { mutableStateOf("") }
     var showMenu by remember { mutableStateOf(false) }
     var showInvite by remember { mutableStateOf(false) }
+    var inviteCid by remember { mutableStateOf<String?>(null) }
+    var inviteError by remember { mutableStateOf<String?>(null) }
     var showMembers by remember { mutableStateOf(false) }
     var showLeaveConfirm by remember { mutableStateOf(false) }
 
@@ -197,13 +206,37 @@ internal fun GroupChatView(
         }
     }
 
-    // Invite dialog
+    // Invite dialog — stays open until terminal verdict (PR-3 semantics).
     if (showInvite) {
+        val pendingOpRow = inviteCid?.let { cid ->
+            snapshot.pendingOps.firstOrNull { it.correlationId == cid }
+        }
+        // Show terminal failure reason, or the mapped snapshot.lastOpError when
+        // no cid is in flight (marmotErrorBanner — aim.md §2 sanctioned mapping).
+        val errorMsg = inviteError
+            ?: if (inviteCid == null) snapshot.lastOpError?.let { marmotErrorBanner(it) } else null
         MarmotInviteDialog(
             group = group,
-            onDismiss = { showInvite = false },
+            lifecycle = lifecycle,
+            pendingCid = inviteCid,
+            pendingOpRow = pendingOpRow,
+            errorMessage = errorMsg,
+            onDismiss = {
+                inviteCid = null
+                inviteError = null
+                showInvite = false
+            },
             onInvite = { inviteeText ->
-                model.marmot.invite(group.idHex, inviteeText)
+                inviteError = null
+                val result = model.marmot.invite(group.idHex, inviteeText)
+                when (result) {
+                    is DispatchResult.Accepted -> inviteCid = result.correlationId
+                    is DispatchResult.Failure -> inviteError = result.message
+                }
+            },
+            onAccepted = {
+                inviteCid = null
+                inviteError = null
                 showInvite = false
             },
         )

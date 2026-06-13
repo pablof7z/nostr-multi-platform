@@ -6,11 +6,15 @@ import nmp.marmot.MarmotGroupMessages as FbMarmotGroupMessages
 import nmp.marmot.MarmotGroupRow as FbMarmotGroupRow
 import nmp.marmot.MarmotMessageRow as FbMarmotMessageRow
 import nmp.marmot.MarmotMessages as FbMarmotMessages
+import nmp.marmot.LastOpError as FbLastOpError
 import nmp.marmot.MarmotSnapshot as FbMarmotSnapshot
+import nmp.marmot.PendingOpRow as FbPendingOpRow
 import nmp.marmot.PendingWelcomeRow as FbPendingWelcomeRow
 import org.nmp.android.model.MarmotGroup
 import org.nmp.android.model.MarmotKeyPackage
+import org.nmp.android.model.MarmotLastOpError
 import org.nmp.android.model.MarmotMessage
+import org.nmp.android.model.MarmotPendingOp
 import org.nmp.android.model.MarmotPendingWelcome
 import org.nmp.android.model.MarmotSnapshot
 import java.nio.ByteBuffer
@@ -50,7 +54,11 @@ object TypedMarmotDecoder {
     const val MESSAGES_SCHEMA_ID = "nmp.marmot.messages"
     const val MESSAGES_FILE_IDENTIFIER = "NMMG"
 
-    private const val SUPPORTED_SCHEMA_VERSION: UInt = 1u
+    // Snapshot (NMMS): v1 = original shape; v2 adds pending_ops + last_op_error.
+    private val SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: Set<UInt> = setOf(1u, 2u)
+
+    // Messages (NMMG): unchanged at v1.
+    private const val SUPPORTED_MESSAGES_SCHEMA_VERSION: UInt = 1u
 
     // ── snapshot ─────────────────────────────────────────────────────────────
 
@@ -69,7 +77,7 @@ object TypedMarmotDecoder {
                 return null
             }
             val snap = FbMarmotSnapshot.getRootAsMarmotSnapshot(bb)
-            if (snap.schemaVersion != SUPPORTED_SCHEMA_VERSION) return null
+            if (snap.schemaVersion !in SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS) return null
             val groups = buildList {
                 for (i in 0 until snap.groupsLength) {
                     val g = snap.groups(i) ?: continue
@@ -87,6 +95,13 @@ object TypedMarmotDecoder {
                     add(snap.cachedKpPubkeys(i) ?: continue)
                 }
             }
+            // v2 additive fields. Empty vector / absent table on v1 buffers.
+            val pendingOps = buildList {
+                for (i in 0 until snap.pendingOpsLength) {
+                    val op = snap.pendingOps(i) ?: continue
+                    add(mapPendingOp(op))
+                }
+            }
             MarmotSnapshot(
                 groups = groups,
                 pendingWelcomes = welcomes,
@@ -96,6 +111,8 @@ object TypedMarmotDecoder {
                 isRegistered = snap.isRegistered,
                 orphanedCommitCount = snap.orphanedCommitCount.toInt(),
                 keyringUnavailable = snap.keyringUnavailable,
+                pendingOps = pendingOps,
+                lastOpError = snap.lastOpError?.let { mapLastOpError(it) },
             )
         } catch (e: Exception) {
             Log.e(TAG, "NMMS decode error: ${e.message} bytes=${bytes.size}")
@@ -138,6 +155,21 @@ object TypedMarmotDecoder {
         actionLabel = kp.actionLabel ?: "",
     )
 
+    private fun mapPendingOp(op: FbPendingOpRow): MarmotPendingOp = MarmotPendingOp(
+        correlationId = op.correlationId ?: "",
+        opTag = op.opTag ?: "",
+        missingCount = op.missingCount.toInt(),
+        displayLabel = op.displayLabel ?: "",
+        ageSecs = op.ageSecs.toLong(),
+    )
+
+    private fun mapLastOpError(err: FbLastOpError): MarmotLastOpError = MarmotLastOpError(
+        op = err.op ?: "",
+        reason = err.reason ?: "",
+        atSecs = err.atSecs.toLong(),
+        correlationId = err.correlationId ?: "",
+    )
+
     // ── messages ─────────────────────────────────────────────────────────────
 
     fun decodeMessages(projections: List<TypedProjectionEnvelope>): Map<String, List<MarmotMessage>>? {
@@ -155,7 +187,7 @@ object TypedMarmotDecoder {
                 return null
             }
             val msgs = FbMarmotMessages.getRootAsMarmotMessages(bb)
-            if (msgs.schemaVersion != SUPPORTED_SCHEMA_VERSION) return null
+            if (msgs.schemaVersion != SUPPORTED_MESSAGES_SCHEMA_VERSION) return null
             val result = LinkedHashMap<String, List<MarmotMessage>>(msgs.groupsLength * 2)
             for (i in 0 until msgs.groupsLength) {
                 val group = msgs.groups(i) ?: continue

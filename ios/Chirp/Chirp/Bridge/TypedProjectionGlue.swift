@@ -793,16 +793,12 @@ enum TypedProjectionGlue {
     static func marmotSnapshot(_ reader: nmp_marmot_MarmotSnapshot) -> MarmotSnapshot {
         let keyPackage: MarmotKeyPackage = reader.keyPackage.map { kp in
             MarmotKeyPackage(
-                published: kp.published,
-                dTag: kp.hasDTag ? (kp.dTag ?? "") : nil,
-                ageSecs: kp.hasAgeSecs ? kp.ageSecs : nil,
-                stale: kp.stale,
+                published: kp.published, dTag: kp.hasDTag ? (kp.dTag ?? "") : nil,
+                ageSecs: kp.hasAgeSecs ? kp.ageSecs : nil, stale: kp.stale,
                 ageDisplay: kp.hasAgeDisplay ? (kp.ageDisplay ?? "") : nil,
-                subtitle: kp.subtitle ?? "",
-                actionLabel: kp.actionLabel ?? ""
+                subtitle: kp.subtitle ?? "", actionLabel: kp.actionLabel ?? ""
             )
         } ?? .empty
-
         return MarmotSnapshot(
             groups: reader.groups.map { g in
                 MarmotGroup(
@@ -816,18 +812,23 @@ enum TypedProjectionGlue {
                     lastMsgAt: g.hasLastMsgAt ? g.lastMsgAt : nil
                 )
             },
-            pendingWelcomes: reader.pendingWelcomes.map { w in
-                MarmotPendingWelcome(
-                    idHex: w.idHex ?? "",
-                    groupName: w.groupName ?? "",
-                    displayName: w.displayName ?? "",
-                    inviterNpub: w.inviterNpub ?? ""
-                )
+            pendingWelcomes: reader.pendingWelcomes.map {
+                MarmotPendingWelcome(idHex: $0.idHex ?? "", groupName: $0.groupName ?? "",
+                                     displayName: $0.displayName ?? "", inviterNpub: $0.inviterNpub ?? "")
             },
             keyPackage: keyPackage,
             cachedKpPubkeys: reader.cachedKpPubkeys.map { $0 ?? "" },
             invitesChipLabel: reader.hasInvitesChipLabel ? (reader.invitesChipLabel ?? "") : nil,
-            isRegistered: reader.isRegistered
+            isRegistered: reader.isRegistered,
+            pendingOps: reader.pendingOps.map { op in
+                MarmotPendingOp(correlationId: op.correlationId ?? "", opTag: op.opTag ?? "",
+                                missingCount: op.missingCount, displayLabel: op.displayLabel ?? "",
+                                ageSecs: op.ageSecs)
+            },
+            lastOpError: reader.lastOpError.map { e in
+                MarmotLastOpError(op: e.op ?? "", reason: e.reason ?? "",
+                                  atSecs: e.atSecs, correlationId: e.correlationId ?? "")
+            }
         )
     }
 

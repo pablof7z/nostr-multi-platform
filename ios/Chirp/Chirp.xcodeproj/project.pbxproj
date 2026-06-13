@@ -118,6 +118,7 @@
 		DF88BB885BF9F28670BC75A2 /* EmbedKindProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D0489622C6A26A315F81408 /* EmbedKindProjection.swift */; };
 		DFB6EABC021D572534C3AB93 /* GroupChat.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F25D41AB0F7C56A1473186BE /* GroupChat.generated.swift */; };
 		E0261E96E6ED75A89AC63364 /* RelayRoleOptions.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 550440DC731E63D13B088D60 /* RelayRoleOptions.generated.swift */; };
+		E04FAFA54A9A43858EB226CF /* MarmotModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15293C7F9947AC5629CC8A6 /* MarmotModels.swift */; };
 		E082E49B38D53ECF2328D109 /* FeedWindow.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8D6691C36F18AFB0ECF923F /* FeedWindow.generated.swift */; };
 		E101EDA23E35BF73DE717666 /* ActiveAccount.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA96E693E37FEB722083990C /* ActiveAccount.generated.swift */; };
 		E2628E82F930E2172C3B5FD5 /* RelaySeeding.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934F82D174C05045A267B4E3 /* RelaySeeding.swift */; };
@@ -253,6 +254,7 @@
 		AB6AB62ADB750E771B9F1D0F /* DiscoveredGroups.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveredGroups.generated.swift; sourceTree = "<group>"; };
 		AFCA4A8404400622F483ABF9 /* DmListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmListView.swift; sourceTree = "<group>"; };
 		AFCE56EF6CC2D5CB4D646C2D /* TypedProjectionDecoders.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedProjectionDecoders.generated.swift; sourceTree = "<group>"; };
+		B15293C7F9947AC5629CC8A6 /* MarmotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotModels.swift; sourceTree = "<group>"; };
 		B34B9F50E7C49105F1EA88D2 /* TypedPublishRelayDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedPublishRelayDecoderTests.swift; sourceTree = "<group>"; };
 		B6BA6E01703E7E522BE70DA8 /* TypedNip46ClusterDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedNip46ClusterDecoderTests.swift; sourceTree = "<group>"; };
 		B7393531CD0E7566FD3CD3DF /* TypedAppProjectionsDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedAppProjectionsDecoderTests.swift; sourceTree = "<group>"; };
@@ -513,6 +515,7 @@
 				7D80AA404D023B2E0F164E07 /* KernelModel+Projections.swift */,
 				FD470B56883794083C54B5CC /* KernelUpdateFrameDecoder.swift */,
 				D0F076F49C2C0FD895EB8D82 /* MarmotBridge.swift */,
+				B15293C7F9947AC5629CC8A6 /* MarmotModels.swift */,
 				7CE028B856FE7D32538CE605 /* ModularTimelineBridge.swift */,
 				886A82F866183EB8C3674AD1 /* NmpCore.h */,
 				24E2340660A274A48B1B782E /* NostrProfileHost.swift */,
@@ -782,6 +785,7 @@
 				8BC2E6CECB2964BCD13A6552 /* MarmotGroupsView.swift in Sources */,
 				A1F822E727F303BB5ED1ABEA /* MarmotInviteSheet.swift in Sources */,
 				AF3253EB13FDE09497D74A60 /* MarmotMessages.generated.swift in Sources */,
+				E04FAFA54A9A43858EB226CF /* MarmotModels.swift in Sources */,
 				437A9446920D0206F7D71485 /* MarmotSnapshot.generated.swift in Sources */,
 				4A7A67B2FEBC3B7EABC7238C /* ModularBlockView.swift in Sources */,
 				6BE96583DDB7BC3A89DA1D79 /* ModularTimelineBridge.swift in Sources */,

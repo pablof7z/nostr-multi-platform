@@ -7,13 +7,27 @@ private enum NewGroupKind: Int, CaseIterable, Identifiable {
     var id: Int { rawValue }
     var label: String {
         switch self {
-        case .privateGroup:
-            return "Private"
-        case .publicGroup:
-            return "Public"
+        case .privateGroup: return "Private"
+        case .publicGroup: return "Public"
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// NewGroupSheet — create a new MLS or NIP-29 group.
+//
+// For private (MLS/Marmot) groups the sheet stays OPEN after dispatch
+// until the kernel reports a terminal verdict:
+//
+//   1. Dispatch fires → `pendingCid` stashed.
+//   2. While the op is parked in `snapshot.pendingOps`, render the
+//      Rust-supplied `displayLabel` verbatim. No polling — snapshot is push.
+//   3. `recentTerminal(correlationId:)` returning `.accepted` → dismiss.
+//   4. `.failed(reason)` → show reason verbatim, re-enable (retry/cancel).
+//   5. `snapshot.lastOpError` shown as a banner when no pending cid.
+//
+// Thin-shell rule: ALL copy comes from Rust. Swift only gates dismissal.
+// ─────────────────────────────────────────────────────────────────────────
 
 struct NewGroupSheet: View {
     @EnvironmentObject private var model: KernelModel
@@ -23,49 +37,35 @@ struct NewGroupSheet: View {
     @State private var name = ""
     @State private var groupDescription = ""
     @State private var inviteeText = ""
-    /// B1: Default relay URL for user input when creating a public NIP-29 group.
-    /// This is a UI placeholder; the kernel's bootstrap relays flow through the
-    /// snapshot (`configuredRelays`, `relayStatuses`). User can modify before submit.
     @State private var publicRelayUrl = "wss://relay.groups.nip29.com"
     @State private var publicLocalId = ""
-    @State private var errorMessage: String?
-    @State private var busy = false
 
-    private var trimmedName: String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    // ── Async feedback state ──────────────────────────────────────────────
+    /// Correlation id stashed after a successful dispatch.
+    @State private var pendingCid: String?
+    /// Synchronous dispatch failure (bridge unavailable / bad JSON).
+    @State private var syncError: String?
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedDescription: String { groupDescription.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedRelayUrl: String { publicRelayUrl.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedLocalId: String { publicLocalId.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// Op currently parked in Rust's deferred-completion store for our cid.
+    private var pendingOpRow: MarmotPendingOp? {
+        guard let cid = pendingCid else { return nil }
+        return model.marmot.snapshot.pendingOps.first { $0.correlationId == cid }
     }
-    private var trimmedDescription: String {
-        groupDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    private var trimmedPublicRelayUrl: String {
-        publicRelayUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    private var trimmedPublicLocalId: String {
-        publicLocalId.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
+
+    private var isWaiting: Bool { pendingCid != nil }
 
     var body: some View {
         NavigationStack {
             Form {
                 typeSection
                 detailsSection
-
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
-                }
-
-                Section {
-                    Button {
-                        create()
-                    } label: {
-                        Text("Create group")
-                    }
-                    .disabled(createDisabled)
-                }
+                feedbackSection
+                actionSection
             }
             .scrollContentBackground(.hidden)
             .chirpScreenBackground()
@@ -76,17 +76,19 @@ struct NewGroupSheet: View {
                     Button("Cancel") { dismiss() }
                 }
             }
+            .onChange(of: model.actionLifecycle) { resolveTerminal() }
         }
     }
+
+    // ── Sections ──────────────────────────────────────────────────────────
 
     private var typeSection: some View {
         Section {
             Picker("Type", selection: $kind) {
-                ForEach(NewGroupKind.allCases) { kind in
-                    Text(kind.label).tag(kind)
-                }
+                ForEach(NewGroupKind.allCases) { k in Text(k.label).tag(k) }
             }
             .pickerStyle(.segmented)
+            .disabled(isWaiting)
         }
     }
 
@@ -95,20 +97,72 @@ struct NewGroupSheet: View {
         switch kind {
         case .privateGroup:
             Section {
-                field("Group name", text: $name, placeholder: "Trusted circle")
-                field("Description", text: $groupDescription, placeholder: "Optional")
-                membersEditor
+                field("Group name", text: $name, placeholder: "Trusted circle").disabled(isWaiting)
+                field("Description", text: $groupDescription, placeholder: "Optional").disabled(isWaiting)
+                membersEditor.disabled(isWaiting)
             }
         case .publicGroup:
             Section {
-                field("Group name", text: $name, placeholder: "Rust Nostr")
-                field("Description", text: $groupDescription, placeholder: "Optional")
+                field("Group name", text: $name, placeholder: "Rust Nostr").disabled(isWaiting)
+                field("Description", text: $groupDescription, placeholder: "Optional").disabled(isWaiting)
                 field("Relay URL", text: $publicRelayUrl, placeholder: "wss://groups.example.com")
-                    .keyboardType(.URL)
-                field("Group ID", text: $publicLocalId, placeholder: "rust-nostr")
+                    .keyboardType(.URL).disabled(isWaiting)
+                field("Group ID", text: $publicLocalId, placeholder: "rust-nostr").disabled(isWaiting)
             }
         }
     }
+
+    @ViewBuilder
+    private var feedbackSection: some View {
+        // Pending row: Rust-owned display_label rendered verbatim.
+        if let row = pendingOpRow {
+            Section {
+                HStack(spacing: ChirpSpace.s) {
+                    ProgressView().controlSize(.small)
+                    Text(row.displayLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        // Synchronous dispatch failure or terminal failure.
+        if let err = syncError {
+            Section {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(ChirpColor.danger)
+            }
+        }
+        // Last-op-error from snapshot (survives correlation window expiry).
+        // Rust-owned machine code mapped to a banner via `bannerText`.
+        if pendingCid == nil, let lastErr = model.marmot.snapshot.lastOpError {
+            Section {
+                Text(lastErr.bannerText)
+                    .font(.caption)
+                    .foregroundStyle(ChirpColor.danger)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actionSection: some View {
+        Section {
+            // Show spinner while dispatched + no pending_ops row yet.
+            if isWaiting, pendingOpRow == nil {
+                HStack(spacing: ChirpSpace.s) {
+                    ProgressView().controlSize(.small)
+                    Text("Creating…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            } else if !isWaiting {
+                Button { create() } label: { Text("Create group") }
+                    .disabled(createDisabled)
+            }
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
 
     private var membersEditor: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -132,23 +186,19 @@ struct NewGroupSheet: View {
     }
 
     private var createDisabled: Bool {
-        if busy || trimmedName.isEmpty { return true }
+        if trimmedName.isEmpty { return true }
         switch kind {
-        case .privateGroup:
-            return !model.marmot.isRegistered
-        case .publicGroup:
-            return trimmedPublicRelayUrl.isEmpty || trimmedPublicLocalId.isEmpty
+        case .privateGroup: return !model.marmot.isRegistered
+        case .publicGroup: return trimmedRelayUrl.isEmpty || trimmedLocalId.isEmpty
         }
     }
 
     private func create() {
-        busy = true
-        errorMessage = nil
+        syncError = nil
+        pendingCid = nil
         switch kind {
-        case .privateGroup:
-            createPrivateGroup()
-        case .publicGroup:
-            createPublicGroup()
+        case .privateGroup: createPrivateGroup()
+        case .publicGroup: createPublicGroup()
         }
     }
 
@@ -158,32 +208,41 @@ struct NewGroupSheet: View {
                 name: trimmedName,
                 description: trimmedDescription,
                 inviteeText: inviteeText)
-            busy = false
-            if result.ok {
-                dismiss()
-            } else if let needsDisplay = result.needsDisplay, !needsDisplay.isEmpty {
-                // Rust pre-abbreviated each npub; Swift only joins them.
-                errorMessage = "Waiting for key packages from \(needsDisplay.joined(separator: ", "))."
+            if result.ok, let cid = result.correlationId {
+                pendingCid = cid
+                // Check immediately in case terminal already landed.
+                resolveTerminal()
             } else {
-                errorMessage = result.error ?? "Could not create group"
+                syncError = result.error ?? "Could not create group"
             }
         }
     }
 
     private func createPublicGroup() {
-        let group = GroupId(
-            hostRelayUrl: trimmedPublicRelayUrl,
-            localId: trimmedPublicLocalId)
+        let group = GroupId(hostRelayUrl: trimmedRelayUrl, localId: trimmedLocalId)
         let result = model.createPublicGroup(
             group: group,
             name: trimmedName,
             about: trimmedDescription.isEmpty ? nil : trimmedDescription)
-        busy = false
         switch result {
+        case .accepted: dismiss()
+        case .failure(let message): syncError = message
+        }
+    }
+
+    /// Matches `pendingCid` against `recentTerminal` — same pattern as
+    /// RelaySettingsView and HomeFeedView. Called on every `actionLifecycle` change.
+    private func resolveTerminal() {
+        guard let cid = pendingCid,
+              let entry = model.recentTerminal(correlationId: cid) else { return }
+        pendingCid = nil
+        switch entry.stage {
         case .accepted:
             dismiss()
-        case .failure(let message):
-            errorMessage = message
+        case .failed(let reason):
+            syncError = reason.isEmpty ? "Group creation failed" : reason
+        default:
+            break
         }
     }
 

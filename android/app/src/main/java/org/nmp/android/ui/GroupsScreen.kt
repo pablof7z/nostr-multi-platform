@@ -1,32 +1,24 @@
 package org.nmp.android.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,34 +27,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.nmp.android.DispatchResult
 import org.nmp.android.KernelModel
-import org.nmp.android.model.MarmotGroup
-import org.nmp.android.model.MarmotPendingWelcome
+import org.nmp.android.model.ActionLifecycleSnapshot
 import org.nmp.android.model.MarmotSnapshot
 
 /**
  * Marmot (MLS-over-Nostr encrypted groups) screen — Android peer of the iOS
- * `MarmotGroupsView` / `MarmotStore` surface. Minimal V-109 skeleton: list
- * groups, create a group, accept/decline invites, publish the key package, and
- * send a message inside a group.
+ * `MarmotGroupsView` / `MarmotStore` surface.
  *
  * Thin-shell rule (aim.md §2): ZERO protocol logic here. State is read from the
  * `nmp.marmot.snapshot` / `nmp.marmot.messages` push projections; every write
- * is a fire-and-forget [KernelModel] call that routes through the Rust
- * `dispatch_action("nmp.marmot", …)` seam. Display strings (`displayName`,
- * `keyPackage.subtitle`, `invitesChipLabel`, `keyPackage.actionLabel`) are
- * Rust-owned and rendered verbatim.
+ * is a [KernelModel] call that routes through `dispatch_action("nmp.marmot", …)`.
  *
- * Marmot registration needs the active local signing key, so it is wired
- * reactively: whenever the active account changes, [KernelModel.registerMarmotIfNeeded]
- * is invoked with the app-support dir. A bunker/NIP-46 account has no local key,
- * so `isRegistered` stays false and the empty state explains the requirement.
+ * Create-group and invite semantics (PR-3 of marmot-create-fix ladder):
+ *   • On dispatch, stash the kernel-minted correlation id.
+ *   • While the op is parked in `snapshot.pendingOps`, show the Rust-owned
+ *     `displayLabel` verbatim. The snapshot is push-driven (D8 — no polling).
+ *   • `action_lifecycle.recentTerminal` returning `"accepted"` → dismiss.
+ *   • `"failed"` → show reason verbatim, keep dialog (user can retry/cancel).
+ *   • `snapshot.lastOpError` shown as a warning banner. It clears only when
+ *     Rust next emits `last_op_error = null` (there is no shell-side clear op).
+ *
+ * Row / dialog / banner composables live in the sibling `GroupListComponents.kt`
+ * so neither file crosses the 500-LOC hard cap (AGENTS.md).
  */
 @Composable
 fun GroupsScreen(model: KernelModel, modifier: Modifier = Modifier) {
@@ -70,9 +61,6 @@ fun GroupsScreen(model: KernelModel, modifier: Modifier = Modifier) {
     val s by model.state.collectAsStateWithLifecycle()
     val activeAccount = s.activeAccount
 
-    // Register the Marmot MLS identity once a local account is active. The dir
-    // is the canonical Android app-support location; the MLS SQLite state lives
-    // under it (`<dir>/marmot-mls-state.sqlite`).
     LaunchedEffect(activeAccount) {
         if (activeAccount.isNotEmpty()) {
             model.registerMarmotIfNeeded(context.filesDir.path)
@@ -81,6 +69,7 @@ fun GroupsScreen(model: KernelModel, modifier: Modifier = Modifier) {
 
     val snapshot = s.projections?.marmotSnapshot ?: MarmotSnapshot()
     val messagesByGroup = s.projections?.marmotMessages ?: emptyMap()
+    val lifecycle = s.projections?.actionLifecycle
 
     var selectedGroupId by remember { mutableStateOf<String?>(null) }
 
@@ -89,7 +78,6 @@ fun GroupsScreen(model: KernelModel, modifier: Modifier = Modifier) {
         if (selected != null) {
             val group = snapshot.groups.firstOrNull { it.idHex == selected }
             if (group == null) {
-                // Group disappeared (left/removed) — pop back to the list.
                 selectedGroupId = null
             } else {
                 GroupChatView(
@@ -97,8 +85,6 @@ fun GroupsScreen(model: KernelModel, modifier: Modifier = Modifier) {
                     group = group,
                     messages = messagesByGroup[selected] ?: emptyList(),
                     onBack = { selectedGroupId = null },
-                    // Forward orphaned-commit state so the in-chat affordance
-                    // mirrors the iOS `pendingCommitFailureAffordance` surface.
                     hasOrphanedCommit = snapshot.orphanedCommitCount > 0,
                 )
             }
@@ -106,6 +92,7 @@ fun GroupsScreen(model: KernelModel, modifier: Modifier = Modifier) {
             GroupListScreen(
                 model = model,
                 snapshot = snapshot,
+                lifecycle = lifecycle,
                 onSelectGroup = { selectedGroupId = it },
             )
         }
@@ -116,9 +103,29 @@ fun GroupsScreen(model: KernelModel, modifier: Modifier = Modifier) {
 private fun GroupListScreen(
     model: KernelModel,
     snapshot: MarmotSnapshot,
+    lifecycle: ActionLifecycleSnapshot?,
     onSelectGroup: (String) -> Unit,
 ) {
     var showCreate by remember { mutableStateOf(false) }
+    // Correlation id from the most recent create dispatch.
+    var createCid by remember { mutableStateOf<String?>(null) }
+    // Terminal failure reason captured at resolution time (Rust-owned, verbatim).
+    var createError by remember { mutableStateOf<String?>(null) }
+
+    // Resolve terminal verdict for the stashed create correlation id.
+    LaunchedEffect(lifecycle, createCid) {
+        val cid = createCid ?: return@LaunchedEffect
+        val terminal = lifecycle?.recentTerminal?.firstOrNull { it.correlationId == cid }
+            ?: return@LaunchedEffect
+        createCid = null
+        if (terminal.stage == "accepted") {
+            createError = null
+            showCreate = false
+        } else {
+            // "failed": keep dialog open; surface the Rust reason verbatim.
+            createError = terminal.reason
+        }
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -160,14 +167,20 @@ private fun GroupListScreen(
                 return@Column
             }
 
-            // V-62 diagnostic: MLS secrets live in process memory only.
+            // Last-op-error banner — Rust-owned (op, reason) machine codes mapped
+            // to a banner by marmotErrorBanner (aim.md §2 sanctioned mapping).
+            // Informational: clears only when Rust next emits last_op_error = null
+            // (Rust clears it on the next successful op; no shell-side clear op).
+            snapshot.lastOpError?.let { err ->
+                WarningBanner(marmotErrorBanner(err))
+            }
+
             if (snapshot.keyringUnavailable) {
                 WarningBanner(
                     "Keyring unavailable — group secrets are kept in memory only and " +
                         "will be lost on next launch.",
                 )
             }
-            // V-61 diagnostic: local MLS state may have diverged from the relay.
             if (snapshot.orphanedCommitCount > 0) {
                 WarningBanner(
                     "A group commit may not have reached the relay. Sending is blocked " +
@@ -178,17 +191,24 @@ private fun GroupListScreen(
             LazyColumn(Modifier.fillMaxSize()) {
                 item { KeyPackageRow(model, snapshot) }
 
-                if (snapshot.pendingWelcomes.isNotEmpty()) {
-                    item {
-                        SectionHeader("Invites")
+                // Pending ops — Rust-owned displayLabel rendered verbatim.
+                if (snapshot.pendingOps.isNotEmpty()) {
+                    item { GroupSectionHeader("In progress") }
+                    items(snapshot.pendingOps, key = { it.correlationId }) { op ->
+                        PendingOpRow(op)
+                        HorizontalDivider()
                     }
+                }
+
+                if (snapshot.pendingWelcomes.isNotEmpty()) {
+                    item { GroupSectionHeader("Invites") }
                     items(snapshot.pendingWelcomes, key = { it.idHex }) { welcome ->
                         PendingWelcomeRow(model, welcome)
                         HorizontalDivider()
                     }
                 }
 
-                item { SectionHeader("Your groups") }
+                item { GroupSectionHeader("Your groups") }
                 if (snapshot.groups.isEmpty()) {
                     item { EmptyGroupsHint() }
                 } else {
@@ -202,180 +222,37 @@ private fun GroupListScreen(
     }
 
     if (showCreate) {
+        // Pending op for the active cid (null when no cid stashed yet or when
+        // the op has not entered the parked state).
+        val pendingOpRow = createCid?.let { cid ->
+            snapshot.pendingOps.firstOrNull { it.correlationId == cid }
+        }
+        val isWaiting = createCid != null
         CreateGroupDialog(
-            onDismiss = { showCreate = false },
-            onCreate = { name, invitees ->
-                model.marmot.createGroup(name = name, description = "", inviteeText = invitees)
+            isWaiting = isWaiting,
+            pendingOpRow = pendingOpRow,
+            // Terminal failure reason captured by the LaunchedEffect; fall back
+            // to the mapped snapshot.lastOpError only when idle (e.g. sync reject).
+            errorMessage = createError
+                ?: if (!isWaiting) snapshot.lastOpError?.let { marmotErrorBanner(it) } else null,
+            onDismiss = {
+                createCid = null
+                createError = null
                 showCreate = false
+            },
+            onCreate = { name, invitees ->
+                createError = null
+                val result = model.marmot.createGroup(
+                    name = name, description = "", inviteeText = invitees)
+                createCid = if (result is DispatchResult.Accepted) {
+                    result.correlationId
+                } else {
+                    // Synchronous rejection — keep dialog open. The LaunchedEffect
+                    // will not fire (no cid), but lastOpError from snapshot surfaces
+                    // any Rust-side rejection reason on the next tick.
+                    null
+                }
             },
         )
     }
 }
-
-@Composable
-private fun KeyPackageRow(model: KernelModel, snapshot: MarmotSnapshot) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text("Key package", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            // Rust-owned subtitle, rendered verbatim (aim.md §6 AP1).
-            Text(
-                snapshot.keyPackage.subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(Modifier.size(8.dp))
-        OutlinedButton(onClick = { model.marmot.publishKeyPackage() }) {
-            // Rust picks the verb ("Publish key package" / "Rotate key package").
-            Text(snapshot.keyPackage.actionLabel.ifEmpty { "Publish" })
-        }
-    }
-    HorizontalDivider()
-}
-
-@Composable
-private fun PendingWelcomeRow(model: KernelModel, welcome: MarmotPendingWelcome) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(welcome.displayName, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-            Text(
-                "from ${shortHex(welcome.inviterNpub)}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        TextButton(onClick = { model.marmot.declineWelcome(welcome.idHex) }) { Text("Decline") }
-        Button(onClick = { model.marmot.acceptWelcome(welcome.idHex) }) { Text("Accept") }
-    }
-}
-
-@Composable
-private fun GroupRow(group: MarmotGroup, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Rust-derived avatar initials, rendered on a flat tile.
-        Surface(
-            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(20.dp)),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(group.initials, fontWeight = FontWeight.Bold)
-            }
-        }
-        Spacer(Modifier.size(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(group.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(
-                "${group.memberCount} members",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-@Composable
-private fun CreateGroupDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var invitees by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("New group") },
-        text = {
-            Column {
-                TextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Group name") },
-                    singleLine = true,
-                )
-                Spacer(Modifier.size(8.dp))
-                TextField(
-                    value = invitees,
-                    onValueChange = { invitees = it },
-                    label = { Text("Invite npubs (optional)") },
-                    // Raw text — Rust tokenises and validates; no parsing here.
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onCreate(name.trim(), invitees.trim()) },
-                enabled = name.trim().isNotEmpty(),
-            ) { Text("Create") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
-@Composable
-private fun SectionHeader(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-    )
-}
-
-@Composable
-private fun EmptyGroupsHint() {
-    Text(
-        "No groups yet. Tap + to create an encrypted group.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(16.dp),
-    )
-}
-
-@Composable
-private fun WarningBanner(text: String) {
-    Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onErrorContainer,
-            modifier = Modifier.padding(12.dp),
-        )
-    }
-}
-
-@Composable
-private fun NotRegisteredState(subtitle: String) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Groups unavailable", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.size(8.dp))
-            Text(
-                // Rust-owned copy ("Sign in with an nsec to enable" when no
-                // local key); rendered verbatim.
-                subtitle.ifEmpty { "Encrypted groups require a local signing key." },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 24.dp),
-            )
-        }
-    }
-}
-
-/**
- * Render-grade hex shortening (presentation only; never decides behaviour).
- * `internal` so the sibling [GroupChatView] in `GroupChatScreen.kt` reuses the
- * single canonical copy rather than duplicating it (no fragmentation).
- */
-internal fun shortHex(hex: String): String =
-    if (hex.length >= 16) "${hex.take(8)}…${hex.takeLast(8)}" else hex

@@ -66,6 +66,38 @@ data class MarmotKeyPackage(
     @SerialName("action_label") val actionLabel: String = "",
 )
 
+/**
+ * One op parked in the deferred-completion store waiting for peer key
+ * packages (schema_version 2+). Mirrors Rust `PendingOpRow`.
+ * FlatBuffers sidecar only — not @Serializable (absent from the JSON path).
+ */
+data class MarmotPendingOp(
+    val correlationId: String = "",
+    val opTag: String = "",
+    val missingCount: Int = 0,
+    /** Rust-owned display string, rendered verbatim. */
+    val displayLabel: String = "",
+    /** Wall-clock seconds since the op was parked (now - created_at). */
+    val ageSecs: Long = 0,
+)
+
+/**
+ * The most recent terminal op FAILURE (deferred-op expiry or a failed retry),
+ * or absent when none. Mirrors Rust `LastOpError`. Raw data only (aim.md §2):
+ * [reason] is a machine code; the shell maps it to a banner string.
+ * FlatBuffers sidecar only — not @Serializable.
+ */
+data class MarmotLastOpError(
+    /** Failing op tag ("create_group" | "invite"). */
+    val op: String = "",
+    /** Machine code, e.g. "key_package_unavailable". */
+    val reason: String = "",
+    /** Wall-clock second the failure was recorded. */
+    val atSecs: Long = 0,
+    /** correlation_id of the failed action. */
+    val correlationId: String = "",
+)
+
 @Serializable
 data class MarmotSnapshot(
     val groups: List<MarmotGroup> = emptyList(),
@@ -80,6 +112,18 @@ data class MarmotSnapshot(
     @SerialName("orphaned_commit_count") val orphanedCommitCount: Int = 0,
     /** V-62 diagnostic: MLS secrets are in-memory only (keyring unavailable). */
     @SerialName("keyring_unavailable") val keyringUnavailable: Boolean = false,
+    /**
+     * Ops parked waiting for peer key packages (schema_version 2+). Empty when
+     * none. FlatBuffers sidecar only — not present on the JSON path.
+     */
+    @kotlinx.serialization.Transient
+    val pendingOps: List<MarmotPendingOp> = emptyList(),
+    /**
+     * Most recent terminal op failure (schema_version 2+), or null when none.
+     * FlatBuffers sidecar only — not present on the JSON path.
+     */
+    @kotlinx.serialization.Transient
+    val lastOpError: MarmotLastOpError? = null,
 )
 
 @Serializable
