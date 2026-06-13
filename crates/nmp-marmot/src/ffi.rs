@@ -227,8 +227,9 @@ impl MarmotHandle {
     /// `AppRuntime`s — namely `chirp-repl` / `chirp-tui` / their
     /// integration tests — depend on the synchronous envelope. This
     /// accessor invokes the SAME [`crate::projection::ops::dispatch`]
-    /// entry point both seams reach (the kernel actor's `DispatchHostOp`
-    /// arm and the legacy C symbol used) without going through any FFI.
+    /// entry point both seams reach (the kernel actor's `HostOpCommand` on
+    /// the `Protocol` arm and the legacy C symbol used) without going through
+    /// any FFI.
     ///
     /// ## D0 / layering
     ///
@@ -240,7 +241,7 @@ impl MarmotHandle {
         // `correlation_id` is `None`: this in-process path (REPL / TUI / tests)
         // has no action-registry correlation, so the deferred-pending path
         // stays off (callers get the old terminal soft-fail); it activates only
-        // for the typed `DispatchHostOp` pipeline, which supplies an id.
+        // for the typed `HostOpCommand` pipeline, which supplies an id.
         self.projection
             .with_inner(|h| crate::projection::ops::dispatch(h, action, now_secs(), None))
             .unwrap_or_else(|| json!({
@@ -457,8 +458,8 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
 
     // Step 2: install the substrate-generic host-op handler against the
     // same `MarmotProjection` the observer + parser registered above are
-    // tied to. The actor's `DispatchHostOp` arm pulls this handler from
-    // the slot whenever the `MarmotActionModule::execute` body emits the
+    // tied to. The `HostOpCommand` (on the `Protocol` arm) clones this handler
+    // out of the slot whenever the `MarmotActionModule::execute` body emits the
     // command — so every `nmp.marmot` dispatch reaches the SAME shared
     // projection state that `MarmotHandle::dispatch` (the in-process
     // Rust-native accessor) mutates and that the legacy bespoke

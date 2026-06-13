@@ -720,38 +720,41 @@ fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
 //   same reasoning for `nmp_app_register_action_module`.
 
 // ──────────────────────────────────────────────────────────────────
-//                HostOpHandler + DispatchHostOp end-to-end
+//                HostOpHandler + Protocol/HostOpCommand end-to-end
 // ──────────────────────────────────────────────────────────────────
 //
 // The substrate-generic host-op seam (`NmpApp::set_host_op_handler` +
-// `ActorCommand::DispatchHostOp`) is the architecturally-correct path
-// for stateful, app-owned ops (today: `nmp-app-marmot`'s MLS service)
+// `ActorCommand::Protocol(HostOpCommand)`) is the architecturally-correct
+// path for stateful, app-owned ops (today: `nmp-app-marmot`'s MLS service)
 // through the `dispatch_action` seam. ADR-0025 named the legacy bespoke
 // `nmp_marmot_dispatch` FFI cluster as a temporary exception; that
 // cluster was deleted in ADR-0025 PR 3 (2026-05-23) and this seam is
-// now the SOLE host entry point for stateful host-op dispatch.
+// now the SOLE host entry point for stateful host-op dispatch. ADR-0052
+// §D4 (K2 rung 5.4) then merged the bespoke `ActorCommand::DispatchHostOp`
+// arm into the single `Protocol` write seam as `HostOpCommand`.
 //
 // End-to-end shape proved here:
 //
 //   1. An app crate's `ActionModule::execute` body serializes its
-//      typed action to JSON and emits `ActorCommand::DispatchHostOp
-//      { action_json, correlation_id }`.
-//   2. The actor's `DispatchHostOp` dispatch arm pulls the
-//      host-installed `HostOpHandler` out of the slot and calls
+//      typed action to JSON and emits `ActorCommand::Protocol(Box::new(
+//      host_op_command(action_json, correlation_id)))`.
+//   2. The `Protocol` dispatch arm runs the `HostOpCommand`, which clones
+//      the host-installed `HostOpHandler` out of the per-app slot (via the
+//      `HostOpHandlerAccess` capability) and calls
 //      `handle(action_json, correlation_id)`.
 //   3. The handler's return value (`{"ok":true,...}` or
-//      `{"ok":false,"error":...}`) is folded into the existing
-//      `action_stages` / `action_results` mirror via
-//      `record_action_success` / `record_action_failure`.
+//      `{"ok":false,"error":...}`) is routed into the existing
+//      `action_stages` / `action_results` mirror via re-entering
+//      `RecordActionSuccess` / `RecordActionFailure`.
 //   4. A host whose spinner is keyed on the dispatch-returned
 //      `correlation_id` sees the terminal verdict on the next
 //      snapshot tick — exactly the contract the existing
 //      `PublishModule` async-completing path delivers.
 
 /// A test-only `ActionModule` whose `execute` body emits
-/// `ActorCommand::DispatchHostOp` carrying the action JSON. This is
+/// `ActorCommand::Protocol(HostOpCommand)` carrying the action JSON. This is
 /// exactly the shape `nmp-app-marmot`'s real `MarmotActionModule`
-/// will use — the handler is the only D0-naming piece, kept in the
+/// uses — the handler is the only D0-naming piece, kept in the
 /// app crate.
 struct TestHostOpModule;
 impl nmp_core::substrate::ActionModule for TestHostOpModule {
@@ -765,8 +768,8 @@ impl nmp_core::substrate::ActionModule for TestHostOpModule {
         Ok(())
     }
     /// Mirrors the `MarmotActionModule::execute` pattern: serialize the
-    /// typed action to JSON and hand it to the actor's `DispatchHostOp`
-    /// arm. No state access — the handler owns that.
+    /// typed action to JSON and hand it to the `HostOpCommand` on the
+    /// `Protocol` arm. No state access — the handler owns that.
     fn execute(
         &self,
         action: Self::Action,
@@ -775,10 +778,13 @@ impl nmp_core::substrate::ActionModule for TestHostOpModule {
     ) -> Result<(), String> {
         let action_json =
             serde_json::to_string(&action).map_err(|e| e.to_string())?;
-        send(nmp_core::ActorCommand::DispatchHostOp {
-            action_json,
-            correlation_id: correlation_id.to_string(),
-        });
+        // ADR-0052 §D4 (K2 rung 5.4): host-op dispatch flows through the single
+        // `Protocol` write seam as `HostOpCommand` (the bespoke `DispatchHostOp`
+        // arm was deleted). The handler still lives in the per-app
+        // `HostOpHandlerSlot` set via `NmpApp::set_host_op_handler`.
+        send(nmp_core::ActorCommand::Protocol(Box::new(
+            nmp_core::substrate::host_op_command(action_json, correlation_id.to_string()),
+        )));
         Ok(())
     }
 }
@@ -969,6 +975,97 @@ fn dispatch_host_op_routes_handler_failure_through_terminal_path() {
         seen.lock().unwrap().len(),
         1,
         "handler must have been invoked exactly once"
+    );
+
+    nmp_app_free(app);
+}
+
+/// A `HostOpHandler` whose `handle` records the call (so we can witness it
+/// ran) and then PANICS. The panic must NOT unwind the actor thread.
+struct PanickingHostHandler {
+    seen: Arc<Mutex<Vec<String>>>,
+}
+impl nmp_core::substrate::HostOpHandler for PanickingHostHandler {
+    fn handle(&self, action_json: &str, _correlation_id: &str) -> serde_json::Value {
+        self.seen.lock().unwrap().push(action_json.to_string());
+        panic!("host op handler intentionally exploded");
+    }
+}
+
+/// ADR-0052 §D4 ORACLE (K2 rung 5.4) — the panicking-handler behavioural
+/// test. After the `DispatchHostOp` arm was merged into the single `Protocol`
+/// seam, a host op whose handler PANICS must still be panic-isolated: the
+/// panic is converted (whole-body `catch_unwind` on the `Protocol` arm +
+/// `HostOpCommand`'s internal handler catch) instead of unwinding the actor
+/// thread, AND the actor SURVIVES — a subsequent dispatch is still processed.
+///
+/// Witness of survival: install a panicking handler, dispatch (the handler is
+/// reached and explodes), then HOT-SWAP an ok-handler in and dispatch again.
+/// If the first panic had unwound/killed the actor thread, the second
+/// dispatch's handler would never be invoked. We poll (≤ 2 s, the same
+/// wall-clock pattern the sibling host-op tests use) for the second handler's
+/// invocation — its presence proves the actor outlived the panic.
+///
+/// FAIL-BEFORE: with the bare `cmd.run(&mut pctx)` the `Protocol` arm had
+/// before this rung, a panicking handler reached through the new `HostOpCommand`
+/// would unwind the actor thread; the second dispatch's handler would never
+/// fire and this test would hang to its 2 s deadline and fail.
+#[test]
+fn host_op_panicking_handler_is_isolated_and_actor_survives() {
+    let panic_seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let ok_seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+
+    let app = nmp_app_new();
+    // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free`.
+    let app_mut = unsafe { &mut *app };
+    app_mut.register_action(TestHostOpModule);
+
+    // 1) Install the PANICKING handler and dispatch — the handler runs and
+    //    explodes on the actor thread.
+    app_mut.set_host_op_handler(Arc::new(PanickingHostHandler {
+        seen: Arc::clone(&panic_seen),
+    }) as Arc<dyn nmp_core::substrate::HostOpHandler>);
+    let _ = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"boom"}"#);
+
+    // The panicking handler IS reached (≤ 2 s wall-clock poll).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while std::time::Instant::now() < deadline {
+        if !panic_seen.lock().unwrap().is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert_eq!(
+        panic_seen.lock().unwrap().len(),
+        1,
+        "panicking handler must have been invoked before it panicked"
+    );
+
+    // 2) Hot-swap an OK handler and dispatch AGAIN. If the panic had killed the
+    //    actor thread this dispatch's handler would never fire.
+    app_mut.set_host_op_handler(Arc::new(RecordingHostHandler {
+        seen: Arc::clone(&ok_seen),
+        respond_ok: true,
+    }) as Arc<dyn nmp_core::substrate::HostOpHandler>);
+    let _ = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"after_panic"}"#);
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while std::time::Instant::now() < deadline {
+        if !ok_seen.lock().unwrap().is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let observed = ok_seen.lock().unwrap().first().cloned();
+    let (action_json, _corr) = observed.expect(
+        "actor must SURVIVE the panicking handler — the post-panic dispatch's \
+         handler was never invoked within 2 s, so the actor thread died",
+    );
+    let parsed: serde_json::Value = serde_json::from_str(&action_json).unwrap();
+    assert_eq!(
+        parsed.get("op").and_then(|v| v.as_str()),
+        Some("after_panic"),
+        "the surviving actor processed the post-panic op"
     );
 
     nmp_app_free(app);

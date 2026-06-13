@@ -87,6 +87,8 @@ mod cipher_for_account_tests;
 #[cfg(all(test, feature = "native"))]
 mod sign_event_for_account_tests;
 #[cfg(all(test, feature = "native"))]
+mod protocol_panic_isolation_tests;
+#[cfg(all(test, feature = "native"))]
 mod tests;
 #[cfg(feature = "native")]
 mod tick;
@@ -977,49 +979,17 @@ pub enum ActorCommand {
     /// Used when reusable NMP extension state changes outside a typed kernel
     /// field (for example a registered feed viewport expanding older rows).
     MarkChangedSinceEmit,
-    /// Dispatch a stateful, host-owned action to the host-installed
-    /// [`crate::substrate::HostOpHandler`].
-    ///
-    /// This is the substrate-generic seam that lets the actor invoke ops
-    /// against app-owned state (e.g. the Marmot MLS service in
-    /// `nmp-app-marmot`, the fixture crate's TODO-list projection) without
-    /// `nmp-core` ever naming the app's nouns (D0). The producer is an
-    /// `ActionModule::execute` body in the app crate that serializes its
-    /// typed action to JSON; the handler installed by the same crate parses
-    /// the JSON back into its typed enum, runs the op, and returns a
-    /// `serde_json::Value` envelope.
-    ///
-    /// The actor's dispatch arm pulls the handler from the slot
-    /// ([`crate::NmpApp::set_host_op_handler`]), calls `handle` under
-    /// `catch_unwind` (D6 — a panicking handler maps to a `Failed` action
-    /// stage), and routes the resulting envelope:
-    ///
-    /// * `{"ok":true,...}` → [`ActorCommand::RecordActionSuccess`] for
-    ///   `correlation_id` so the host's spinner clears via the normal
-    ///   `action_stages` mirror.
-    /// * `{"ok":false,"error":"..."}` → [`ActorCommand::RecordActionFailure`]
-    ///   with the reason copied from the envelope.
-    /// * No handler installed → `Failed { reason: "no host op handler installed" }`.
-    ///
-    /// D8 — `handle` runs INLINE on the actor thread (the same thread that
-    /// ticks the kernel). The current MLS-state consumer's mutations are
-    /// SQLite-bound and typically sub-100ms; handlers whose ops routinely
-    /// exceed that should spawn a worker internally (the LNURL fetcher
-    /// pattern — see `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` for the
-    /// canonical V-41 example). See the [`crate::substrate::HostOpHandler`]
-    /// rustdoc.
-    DispatchHostOp {
-        /// JSON-encoded action body. The handler parses this into its own
-        /// typed action enum. No protocol type crosses the FFI boundary —
-        /// this is the same translation layer the legacy bespoke
-        /// `nmp_marmot_dispatch` envelope used (deleted in ADR-0025 PR 3,
-        /// 2026-05-23).
-        action_json: String,
-        /// Registry-minted dispatch correlation id (32 hex chars). Threaded
-        /// into the handler for inclusion in the result envelope and into
-        /// the `action_stages` terminal verdict.
-        correlation_id: String,
-    },
+    // ADR-0052 §D4 (K2 rung 5.4): `DispatchHostOp { action_json,
+    // correlation_id }` was DELETED. Host-op dispatch to the host-installed
+    // [`crate::substrate::HostOpHandler`] now flows through the single
+    // `Protocol` write seam as `crate::substrate::HostOpCommand`
+    // (`ActorCommand::Protocol(Box::new(host_op_command(action_json,
+    // correlation_id)))`). The persistent handler still lives in the per-app
+    // [`crate::substrate::HostOpHandlerSlot`] (set via
+    // [`crate::NmpApp::set_host_op_handler`]); the command clones it out at
+    // `run` time through the narrow `HostOpHandlerAccess` capability. Both the
+    // old arm's guarantees — whole-body `catch_unwind` and the persistent,
+    // hot-swappable handler — are preserved on the `Protocol` seam.
     /// ADR-0040 §3 — re-entry command from the serialized capability-worker
     /// thread (V-90 Site 2). The worker runs `dispatch_capability` off the
     /// actor thread and posts this command with the result; the actor applies
@@ -1391,12 +1361,14 @@ pub fn run_actor_with_observers(
     req_frame_interceptor: crate::substrate::ReqFrameInterceptorSlot,
     // Substrate-generic host-op handler slot. Set by an app crate (today
     // `nmp-app-marmot`) before `nmp_app_start` via
-    // `NmpApp::set_host_op_handler`. Read by the `DispatchHostOp` dispatch arm
-    // so a host-extensible `ActionModule` whose `execute()` body emits
-    // `ActorCommand::DispatchHostOp` can reach the app-owned state
+    // `NmpApp::set_host_op_handler`. Read by the `Protocol` dispatch arm (via
+    // the `HostOpHandlerAccess` capability) when a `HostOpCommand` runs, so a
+    // host-extensible `ActionModule` whose `execute()` body emits
+    // `ActorCommand::Protocol(HostOpCommand)` can reach the app-owned state
     // (D0 — `nmp-core` never names the app's nouns; the slot speaks JSON).
-    // `None` (the test / no-stateful-app default) makes any `DispatchHostOp`
-    // arm record a `Failed` terminal stage; nothing else changes.
+    // ADR-0052 §D4 (K2 rung 5.4) merged the bespoke `DispatchHostOp` arm into
+    // `Protocol`. `None` (the test / no-stateful-app default) makes any such
+    // command record a `Failed` terminal stage; nothing else changes.
     host_op_handler: crate::substrate::HostOpHandlerSlot,
     // V-40 — substrate `EventIngestDispatcher` slot. The `NmpApp` owns
     // the writer side (`register_ingest_parser`); this actor thread

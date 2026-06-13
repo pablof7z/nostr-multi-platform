@@ -690,11 +690,13 @@ pub struct NmpApp {
     /// Shared `Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>` with the actor
     /// thread (handed to `run_actor_with_observers`): the per-app crate
     /// writes through this clone via [`Self::set_host_op_handler`] before
-    /// `nmp_app_start`; the actor's `DispatchHostOp` dispatch arm reads
-    /// through its clone when an `ActionModule::execute` body enqueues
-    /// `ActorCommand::DispatchHostOp`. `None` (the default, and the only
-    /// state for hosts that don't bind a stateful app) makes any such command
-    /// record a `Failed` terminal stage — never a silent drop.
+    /// `nmp_app_start`; the actor's `Protocol` dispatch arm reads through its
+    /// clone (via the `HostOpHandlerAccess` capability) when an
+    /// `ActionModule::execute` body enqueues a `HostOpCommand` (ADR-0052 §D4,
+    /// K2 rung 5.4 — the bespoke `DispatchHostOp` arm was merged into
+    /// `Protocol`). `None` (the default, and the only state for hosts that
+    /// don't bind a stateful app) makes any such command record a `Failed`
+    /// terminal stage — never a silent drop.
     host_op_handler: nmp_core::substrate::HostOpHandlerSlot,
     /// V-38: substrate-generic relay-text interceptor slot. A NIP-crate
     /// runtime (today `nmp-nip47`) installs itself here so the actor can
@@ -1007,8 +1009,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_coverage_hook = Arc::clone(&coverage_hook);
     let req_frame_interceptor = nmp_core::substrate::new_req_frame_interceptor_slot();
     let actor_req_frame_interceptor = Arc::clone(&req_frame_interceptor);
-    // Substrate-generic host-op handler slot — the actor's `DispatchHostOp`
-    // dispatch arm reads from this clone. The per-app crate (today
+    // Substrate-generic host-op handler slot — the actor's `Protocol` dispatch
+    // arm reads from this clone (via the `HostOpHandlerAccess` capability) when
+    // a `HostOpCommand` runs (ADR-0052 §D4). The per-app crate (today
     // `nmp-app-marmot`) writes through `NmpApp::set_host_op_handler` before
     // `nmp_app_start`. `None` is the default and the production state for
     // every host that does not bind a stateful app crate.
@@ -1117,9 +1120,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_coverage_hook,
                 actor_req_frame_interceptor,
                 // The actor's clone of the host-op handler slot — read by the
-                // `DispatchHostOp` dispatch arm. `None` (no stateful app bound)
-                // makes any such command record a `Failed` terminal stage;
-                // never a silent drop.
+                // `Protocol` dispatch arm when a `HostOpCommand` runs (ADR-0052
+                // §D4). `None` (no stateful app bound) makes any such command
+                // record a `Failed` terminal stage; never a silent drop.
                 actor_host_op_handler,
                 // V-40 — the actor's clones of the substrate
                 // `EventIngestDispatcher` slot and the
@@ -1318,8 +1321,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // The `NmpApp`'s clone of the host-op handler slot. Written by the
         // per-app crate (today `nmp-app-marmot`) via
         // [`NmpApp::set_host_op_handler`] before `nmp_app_start`; the actor
-        // reads through its matching clone when the `DispatchHostOp` arm
-        // fires.
+        // reads through its matching clone when a `HostOpCommand` runs on the
+        // `Protocol` arm (ADR-0052 §D4).
         host_op_handler,
         // V-38: the same Arc clone the actor holds — `nmp-nip47` installs
         // its NWC runtime here.
@@ -1730,10 +1733,12 @@ impl NmpApp {
     /// Install the substrate-generic [`nmp_core::substrate::HostOpHandler`].
     ///
     /// The handler is the bridge between an [`nmp_core::substrate::ActionModule`]
-    /// whose `execute()` body emits [`ActorCommand::DispatchHostOp`]
-    /// and the app-owned state the op mutates (today: `nmp-app-marmot`'s
-    /// `MarmotService`). The actor's `DispatchHostOp` arm pulls the handler
-    /// from this slot and calls `handle(action_json, correlation_id)`.
+    /// whose `execute()` body emits an `ActorCommand::Protocol` carrying a
+    /// `nmp_core::substrate::HostOpCommand` (ADR-0052 §D4, K2 rung 5.4 — the
+    /// bespoke `DispatchHostOp` arm was merged into the single `Protocol` write
+    /// seam) and the app-owned state the op mutates (today: `nmp-app-marmot`'s
+    /// `MarmotService`). The `HostOpCommand` clones the handler out of this slot
+    /// at `run` time and calls `handle(action_json, correlation_id)`.
     ///
     /// `nmp-core` deliberately does NOT name the app's typed action enum
     /// (D0 — no Marmot / MLS / app-specific nouns in the kernel); the handler
@@ -1747,17 +1752,18 @@ impl NmpApp {
     /// the actor thread (handed to `run_actor_with_observers` at
     /// construction time). Like [`Self::set_coverage_hook`], this takes
     /// `&self`: the host may install — or replace — the handler at any
-    /// time. A second call replaces the first; the new handler is the one
-    /// the *next* `DispatchHostOp` arm picks up.
+    /// time. A second call replaces the first; the new handler is the one the
+    /// *next* `HostOpCommand` clones out of the slot at run time (account-switch
+    /// hot-swap).
     ///
     /// D6 — a poisoned slot mutex is a silent no-op (the host's handler is
     /// dropped on the floor); the slot keeps whatever value was previously
-    /// installed (or `None`, in which case the dispatch arm records the
+    /// installed (or `None`, in which case the `HostOpCommand` records the
     /// `Failed { reason: "no host op handler installed" }` terminal). MUST
     /// be called before any `nmp_app_dispatch_action` that targets a
-    /// namespace whose `ActionModule::execute` emits `DispatchHostOp` —
-    /// installing the handler late produces a stream of `Failed` terminals
-    /// for the gap, not a panic.
+    /// namespace whose `ActionModule::execute` emits a host-op `Protocol`
+    /// command — installing the handler late produces a stream of `Failed`
+    /// terminals for the gap, not a panic.
     pub fn set_host_op_handler(
         &self,
         handler: std::sync::Arc<dyn nmp_core::substrate::HostOpHandler>,

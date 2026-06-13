@@ -189,6 +189,7 @@ fn full_constructor_threads_capabilities() {
     };
     let (tx, rx) = mpsc::channel::<crate::actor::ActorMail>();
 
+    let host_op_handler = crate::substrate::protocol::NoopHostOpHandlerAccess;
     let ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
         send: &send,
         command_sender: crate::actor::CommandSender::new(tx),
@@ -198,6 +199,7 @@ fn full_constructor_threads_capabilities() {
         errors: &errors,
         stages: &stages,
         recipients: &recipients,
+        host_op_handler: &host_op_handler,
     });
 
     assert_eq!(ctx.now_secs(), 123_456);

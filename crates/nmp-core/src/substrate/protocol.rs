@@ -181,6 +181,30 @@ pub trait RecipientRelayLookup: Send + Sync {
     fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String>;
 }
 
+/// ADR-0052 §D4 — the narrow capability that reaches the per-app
+/// [`HostOpHandler`](crate::substrate::HostOpHandler) slot.
+///
+/// This is the seam K2 rung 5.4 adds so the persistent, host-installed
+/// handler (the Marmot MLS service, hot-swappable on account switch) can be
+/// expressed as a one-shot [`ProtocolCommand`] (the `HostOpCommand` in
+/// [`crate::substrate::host_op`]) instead of a bespoke
+/// `ActorCommand::DispatchHostOp` arm. The command captures NO handler itself
+/// — it asks this capability for an `Arc::clone` of whatever handler is
+/// installed *now*, so account-switch hot-swaps stay live (D2: the value the
+/// command reaches is per-app slot state, not baked into the command).
+///
+/// It is deliberately the only door the command has onto app/actor state — it
+/// does NOT hand out `&mut Kernel` (rung 5.5 owns `kernel_mut`); it returns
+/// only the opaque `Arc<dyn HostOpHandler>` (D0: no protocol type crosses).
+pub trait HostOpHandlerAccess: Send + Sync {
+    /// Clone the currently-installed handler out of the per-app slot, or
+    /// `None` if no handler was installed before the dispatch reached the
+    /// actor. The clone is taken under the slot lock and returned by value so
+    /// the long-running `handle` call never holds the slot mutex (D8 — must
+    /// not block the FFI `set_host_op_handler` writer).
+    fn current_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>>;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Noop default impls — used by `with_send_only` and as fall-throughs for
 // NIP crate tests that don't exercise a given capability surface.
@@ -242,6 +266,19 @@ impl RecipientRelayLookup for NoopRecipientRelayLookup {
     }
 }
 
+/// Noop [`HostOpHandlerAccess`] — always reports no installed handler.
+/// Mirrors the "no stateful app bound" branch (the test / no-handler default).
+/// Installed by [`with_send_only`](ProtocolCommandContext::with_send_only) and
+/// by NIP crate tests that never exercise the host-op seam.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoopHostOpHandlerAccess;
+
+impl HostOpHandlerAccess for NoopHostOpHandlerAccess {
+    fn current_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
+        None
+    }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // ProtocolCommandContext
 // ──────────────────────────────────────────────────────────────────────────
@@ -274,6 +311,10 @@ pub struct ProtocolCommandContextParts<'a> {
     pub stages: &'a dyn ActionStageTracker,
     /// V-07 recipient-relay router wrapper.
     pub recipients: &'a dyn RecipientRelayLookup,
+    /// ADR-0052 §D4 — the per-app host-op handler slot accessor. Read by the
+    /// `HostOpCommand` in [`crate::substrate::host_op`]; the noop singleton is
+    /// installed for every other command (they never call it).
+    pub host_op_handler: &'a dyn HostOpHandlerAccess,
 }
 
 /// Per-command runtime affordances handed to [`ProtocolCommand::run`].
@@ -300,6 +341,8 @@ pub struct ProtocolCommandContext<'a> {
     errors: &'a dyn ErrorSurface,
     stages: &'a dyn ActionStageTracker,
     recipients: &'a dyn RecipientRelayLookup,
+    /// ADR-0052 §D4 — per-app host-op handler slot accessor.
+    host_op_handler: &'a dyn HostOpHandlerAccess,
     /// V-38: optional `&mut Kernel` for command bodies that need to mutate
     /// kernel state synchronously on the actor thread — record action
     /// terminals, set the last-error toast, register persistent subs, mark
@@ -334,6 +377,7 @@ impl<'a> ProtocolCommandContext<'a> {
             errors,
             stages,
             recipients,
+            host_op_handler,
         } = parts;
         Self {
             send,
@@ -344,6 +388,7 @@ impl<'a> ProtocolCommandContext<'a> {
             errors,
             stages,
             recipients,
+            host_op_handler,
             kernel: None,
             outbound: None,
         }
@@ -382,6 +427,7 @@ impl<'a> ProtocolCommandContext<'a> {
         static ERRORS: NoopErrorSurface = NoopErrorSurface;
         static STAGES: NoopActionStageTracker = NoopActionStageTracker;
         static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
+        static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
         let (command_sender, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
         let command_sender = crate::actor::CommandSender::new(command_sender);
         Self::new(ProtocolCommandContextParts {
@@ -393,6 +439,7 @@ impl<'a> ProtocolCommandContext<'a> {
             errors: &ERRORS,
             stages: &STAGES,
             recipients: &RECIPIENTS,
+            host_op_handler: &HOST_OP,
         })
     }
 
@@ -495,6 +542,19 @@ impl<'a> ProtocolCommandContext<'a> {
     #[must_use]
     pub fn recipients(&self) -> &dyn RecipientRelayLookup {
         self.recipients
+    }
+
+    /// ADR-0052 §D4 — clone the currently-installed host-op handler out of the
+    /// per-app slot (`None` when none is installed). D15-wrapped: a panicking
+    /// slot accessor falls back to `None` (the genuinely-absent-handler
+    /// branch) rather than unwinding the calling `ProtocolCommand::run` frame.
+    #[must_use]
+    pub fn host_op_handler(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
+        let h = self.host_op_handler;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.current_handler()))
+            .unwrap_or(None)
     }
 
     // ── D15 catch_unwind shortcuts ──

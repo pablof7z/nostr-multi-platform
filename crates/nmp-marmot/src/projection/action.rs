@@ -48,10 +48,12 @@
 //! `MarmotActionModule::start` is the validator — it deserializes the
 //! action JSON into the typed `MarmotAction` enum and rejects malformed
 //! payloads at the boundary. `MarmotActionModule::execute` then re-serializes
-//! the typed enum and emits `ActorCommand::DispatchHostOp { action_json,
-//! correlation_id }`. The actor's `DispatchHostOp` arm pulls the host-installed
+//! the typed enum and emits `ActorCommand::Protocol(HostOpCommand { action_json,
+//! correlation_id })` (ADR-0052 §D4, K2 rung 5.4 — the bespoke `DispatchHostOp`
+//! arm was merged into the single `Protocol` write seam). The `HostOpCommand`
+//! clones the host-installed
 //! [`MarmotMlsOpHandler`](crate::projection::handler::MarmotMlsOpHandler)
-//! out of the slot and runs the op against the live `MarmotProjection`.
+//! out of the per-app slot and runs the op against the live `MarmotProjection`.
 //!
 //! Why re-serialize an already-parsed enum? Because `HostOpHandler::handle`
 //! takes `&str` (D0 — `nmp-core` cannot name `MarmotAction`); the typed enum
@@ -170,8 +172,8 @@ pub enum MarmotAction {
 /// (`PublishModule`, `nmp_nip02::ReactModule`, etc.): `start()` validates the typed
 /// action; `execute()` emits one `ActorCommand` carrying everything the
 /// actor needs to run the op. The only Marmot-specific piece is the
-/// handler the actor's `DispatchHostOp` arm reaches through the host-
-/// installed slot — see the module rustdoc.
+/// handler the `HostOpCommand` (on the `Protocol` arm) reaches through the
+/// host-installed slot — see the module rustdoc.
 pub struct MarmotActionModule;
 
 impl ActionModule for MarmotActionModule {
@@ -202,18 +204,19 @@ impl ActionModule for MarmotActionModule {
     /// `action_stages` mirror is exercised end-to-end:
     ///
     /// * the registry mints a `correlation_id` and returns it to the host;
-    /// * the actor's `DispatchHostOp` arm records `Requested` → terminal
-    ///   (`Accepted` on `ok:true`, `Failed` on `ok:false`) under that id;
+    /// * the `HostOpCommand` (on the `Protocol` arm) records `Requested` →
+    ///   terminal (`Accepted` on `ok:true`, `Failed` on `ok:false`) under
+    ///   that id;
     /// * the host's spinner clears on the next snapshot tick.
     ///
     /// Returning `false` here would skip the `action_stages` mirror writes
     /// and the host would never see a terminal verdict for a Marmot op.
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — stage transitions are recorded by the `DispatchHostOp` arm in `nmp-core/src/actor/dispatch.rs`, not here; this is the seam declaration so the registry routes the verdict.
+    fn is_async_completing() -> bool { // doctrine-allow: D12 — stage transitions are recorded by the `HostOpCommand` on the `Protocol` arm (nmp-core/src/substrate/host_op.rs), not here; this is the seam declaration so the registry routes the verdict.
         true
     }
 
-    /// Re-serialize the typed action and hand it to the actor's
-    /// `DispatchHostOp` arm. The matching handler
+    /// Re-serialize the typed action and hand it to the `HostOpCommand` on the
+    /// `Protocol` arm. The matching handler
     /// ([`crate::projection::handler::MarmotMlsOpHandler`]) installed via
     /// [`nmp_ffi::NmpApp::set_host_op_handler`] parses the JSON back out
     /// and runs the op against the live `MarmotProjection`.
@@ -232,10 +235,14 @@ impl ActionModule for MarmotActionModule {
     ) -> Result<(), String> {
         let action_json = serde_json::to_string(&action)
             .map_err(|e| format!("failed to re-serialize MarmotAction: {e}"))?;
-        send(ActorCommand::DispatchHostOp {
-            action_json,
-            correlation_id: correlation_id.to_string(),
-        });
+        // ADR-0052 §D4 (K2 rung 5.4): the bespoke `ActorCommand::DispatchHostOp`
+        // arm was deleted; host-op dispatch now flows through the single
+        // `Protocol` write seam as `HostOpCommand`. The MLS handler still lives
+        // in the per-app `HostOpHandlerSlot` (installed via
+        // `NmpApp::set_host_op_handler`); the command reaches it at run time.
+        send(ActorCommand::Protocol(Box::new(
+            nmp_core::substrate::host_op_command(action_json, correlation_id.to_string()),
+        )));
         Ok(())
     }
 }
@@ -290,13 +297,14 @@ mod tests {
         );
     }
 
-    /// `MarmotActionModule::execute` MUST emit exactly one `DispatchHostOp`
-    /// command carrying the registry-minted `correlation_id` and the
-    /// re-serialized action JSON. Mirrors the
-    /// `host_registered_executor_dispatches_successfully` shape in
-    /// `nmp-core::ffi::action::tests`.
+    /// `MarmotActionModule::execute` MUST emit exactly one `Protocol`
+    /// command (ADR-0052 §D4 — `DispatchHostOp` was merged into the single
+    /// `Protocol` write seam) carrying the registry-minted `correlation_id`
+    /// and the re-serialized action JSON. The boxed `HostOpCommand` is opaque
+    /// (a `dyn ProtocolCommand`), so we witness its payload through its
+    /// `Debug` output (the struct derives `Debug` over both fields).
     #[test]
-    fn execute_emits_one_dispatch_host_op_command_with_correlation_id() {
+    fn execute_emits_one_protocol_host_op_command_with_correlation_id() {
         use nmp_core::ActorCommand;
         use std::cell::RefCell;
 
@@ -313,22 +321,29 @@ mod tests {
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "execute must emit exactly one ActorCommand");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::DispatchHostOp {
-                action_json,
-                correlation_id,
-            } => {
-                assert_eq!(correlation_id, "corr-test-id");
-                let parsed: serde_json::Value = serde_json::from_str(&action_json).unwrap();
-                assert_eq!(
-                    parsed.get("op").and_then(|v| v.as_str()),
-                    Some("send"),
+            ActorCommand::Protocol(cmd) => {
+                // The boxed `HostOpCommand` is a `dyn ProtocolCommand`; assert
+                // its payload through `Debug` (the struct prints both fields).
+                let dbg = format!("{cmd:?}");
+                assert!(
+                    dbg.contains("HostOpCommand"),
+                    "expected a HostOpCommand, got: {dbg}"
                 );
-                assert_eq!(
-                    parsed.get("text").and_then(|v| v.as_str()),
-                    Some("hello, group"),
+                assert!(
+                    dbg.contains("corr-test-id"),
+                    "must carry the registry-minted correlation_id, got: {dbg}"
+                );
+                assert!(
+                    dbg.contains("\\\"op\\\":\\\"send\\\"")
+                        || dbg.contains(r#""op":"send""#),
+                    "must carry the re-serialized action JSON, got: {dbg}"
+                );
+                assert!(
+                    dbg.contains("hello, group"),
+                    "must carry the action body, got: {dbg}"
                 );
             }
-            other => panic!("expected DispatchHostOp, got {other:?}"),
+            other => panic!("expected ActorCommand::Protocol, got {other:?}"),
         }
     }
 
