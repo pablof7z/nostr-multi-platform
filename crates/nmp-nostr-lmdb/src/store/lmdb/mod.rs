@@ -19,7 +19,7 @@ use nostr_database::flatbuffers::FlatBufferDecodeBorrowed;
 use nostr_database::{FlatBufferBuilder, FlatBufferEncode, RejectedReason, SaveEventStatus};
 
 mod index;
-
+mod freshness_delete;
 use self::index::EventIndexKeys;
 use super::error::{Error, MigrationError};
 use super::filter::DatabaseFilter;
