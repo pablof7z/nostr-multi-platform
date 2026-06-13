@@ -47,6 +47,10 @@ mod fairness;
 // `CommandSender` to workers, and `ActorCommand` itself is always-compiled);
 // the relay-side scheduler / sink / `Inbox` are `native`-gated inside.
 mod inbox;
+// Inbox command/relay lane priority + fairness tests, extracted from `inbox.rs`
+// to keep that file under the 500 LOC hard cap (AGENTS.md).
+#[cfg(all(test, feature = "native"))]
+mod inbox_lane_tests;
 // Always-compiled port continuations (named by the always-compiled
 // `ActorCommand` sign / cipher verbs; not `native`-gated).
 mod continuations;
