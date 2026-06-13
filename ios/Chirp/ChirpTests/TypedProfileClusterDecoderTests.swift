@@ -30,7 +30,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
     // typed path is what produced them.
     private static let fullCard = CardFields(
         pubkey: "typedpubkey00",
-        npub: "npub1typed00",
         displayName: "Typed Display",
         pictureUrl: "https://typed.example/pic.png",
         nip05: "typed@example.com",
@@ -86,7 +85,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
     func testProfileCardHasFlagsMapToNilOptionals() throws {
         let placeholder = CardFields(
             pubkey: "barepk",
-            npub: "npub1bare",
             displayName: nil,
             pictureUrl: nil,
             nip05: "",
@@ -95,7 +93,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         let card = try XCTUnwrap(TypedProfileDecoder.decode(bytes: buildProfile(placeholder)))
 
         XCTAssertEqual(card.pubkey, "barepk")
-        XCTAssertEqual(card.npub, "npub1bare")
         XCTAssertNil(card.displayName)
         XCTAssertNil(card.pictureUrl)
         XCTAssertNil(card.lnurl)
@@ -206,7 +203,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
     /// Plain value mirror of the `ProfileCard` wire fields for buffer building.
     struct CardFields {
         let pubkey: String
-        let npub: String
         let displayName: String?
         let pictureUrl: String?
         let nip05: String
@@ -215,7 +211,7 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
 
         static func simple(pubkey: String, display: String) -> CardFields {
             CardFields(
-                pubkey: pubkey, npub: "npub_\(pubkey)", displayName: display,
+                pubkey: pubkey, displayName: display,
                 pictureUrl: nil, nip05: "", about: "", lnurl: nil)
         }
     }
@@ -223,7 +219,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
     private func assertEqual(_ card: ProfileCard, _ fields: CardFields,
                              file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(card.pubkey, fields.pubkey, file: file, line: line)
-        XCTAssertEqual(card.npub, fields.npub, file: file, line: line)
         XCTAssertEqual(card.displayName, fields.displayName, file: file, line: line)
         XCTAssertEqual(card.pictureUrl, fields.pictureUrl, file: file, line: line)
         XCTAssertEqual(card.nip05, fields.nip05, file: file, line: line)
@@ -235,7 +230,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
     /// Rust producer's `has_*`/value encoding.
     private func encodeCard(_ fbb: inout FlatBufferBuilder, _ c: CardFields) -> Offset {
         let pubkeyOff = fbb.create(string: c.pubkey)
-        let npubOff = fbb.create(string: c.npub)
         let displayOff = c.displayName.map { fbb.create(string: $0) } ?? Offset()
         let pictureOff = c.pictureUrl.map { fbb.create(string: $0) } ?? Offset()
         let nip05Off = fbb.create(string: c.nip05)
@@ -244,7 +238,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         return nmp_kernel_ProfileCard.createProfileCard(
             &fbb,
             pubkeyOffset: pubkeyOff,
-            npubOffset: npubOff,
             hasDisplayName: c.displayName != nil,
             displayNameOffset: displayOff,
             hasPictureUrl: c.pictureUrl != nil,
