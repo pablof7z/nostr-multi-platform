@@ -45,9 +45,9 @@ export type RuntimeSnapshot = {
    *  before any projection arrives. Keep-last-good: only overwritten when a
    *  new successful decode arrives (never cleared on a corrupt frame). */
   feedItems?: FeedItem[];
-  /** Decoded resolved_profiles (KRPR) map: hex pubkey → kind:0 display name.
-   *  Populated after the first snapshot that carries the projection and at least
-   *  one claimed profile with a kind:0. Keep-last-good. */
+  /** Decoded resolved_profiles (KRPR) map: hex pubkey -> kind:0 display name.
+   *  Populated after the first successfully decoded KRPR projection. Empty map
+   *  means the kernel currently has no resolved profile facts to expose. */
   resolvedProfiles?: Map<string, string>;
 };
 
@@ -176,34 +176,13 @@ abstract class BaseClient implements NmpClient {
                       this.latestFeedItems = feedResult.items;
                     }
                     // Decode resolved_profiles (KRPR) from the same frame.
-                    // Merge strategy: add/update entries from the new KRPR
-                    // but keep existing entries that are absent from it.
-                    // Rationale: SolidJS <For> recreates Post components
-                    // whenever feedItemsToRows returns new object references
-                    // (every snapshot frame).  Each recreation fires onCleanup
-                    // (release) before the new component's deferred onMount
-                    // (re-claim).  During that window the kernel may send a
-                    // frame with an empty or shrunken KRPR, which under the
-                    // old replace-on-any-result logic cleared display names
-                    // that had already been resolved — causing a permanent
-                    // blank for the 30 s test window.  Merging ensures that
-                    // once a pubkey → display-name entry is established it
-                    // survives brief claim/release churn.  Name updates still
-                    // propagate (set(k, v) overwrites existing entries).
-                    // Empty KRPR (all claims released) is intentionally
-                    // ignored to avoid clearing valid display names on churn.
+                    // Keep-last-good only applies to corrupt/missing projection
+                    // data (`undefined`). A successfully decoded empty map is a
+                    // real kernel snapshot and must replace the previous map so
+                    // the shell never owns stale profile facts.
                     const profilesResult = decodeResolvedProfiles(snap);
                     if (profilesResult !== undefined) {
-                      if (this.latestResolvedProfiles === undefined) {
-                        this.latestResolvedProfiles = profilesResult;
-                      } else if (profilesResult.size > 0) {
-                        const merged = new Map(this.latestResolvedProfiles);
-                        for (const [k, v] of profilesResult) {
-                          merged.set(k, v);
-                        }
-                        this.latestResolvedProfiles = merged;
-                      }
-                      // Empty profilesResult: churn gap — keep existing map.
+                      this.latestResolvedProfiles = profilesResult;
                     }
                     // Decode relay_diagnostics (KRDG) typed projection.
                     // skipDetails=true: only relay-level tones are decoded
