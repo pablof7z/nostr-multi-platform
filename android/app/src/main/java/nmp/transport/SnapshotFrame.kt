@@ -195,6 +195,15 @@ class SnapshotFrame : Table() {
             val o = __offset(40)
             return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else null
         }
+    val negentropySyncStats : nmp.transport.NegentropySyncStats? get() = negentropySyncStats(nmp.transport.NegentropySyncStats())
+    fun negentropySyncStats(obj: nmp.transport.NegentropySyncStats) : nmp.transport.NegentropySyncStats? {
+        val o = __offset(42)
+        return if (o != 0) {
+            obj.__assign(__indirect(o + bb_pos), bb)
+        } else {
+            null
+        }
+    }
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsSnapshotFrame(_bb: ByteBuffer): SnapshotFrame = getRootAsSnapshotFrame(_bb, SnapshotFrame())
@@ -202,10 +211,11 @@ class SnapshotFrame : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createSnapshotFrame(builder: FlatBufferBuilder, schemaVersion: UInt, typedProjectionsOffset: Int, rev: ULong, kernelSchemaVersion: UInt, lastTickMs: ULong, updateKindOffset: Int, running: Boolean, metricsOffset: Int, relayStatusOffset: Int, relayStatusesOffset: Int, logicalInterestsOffset: Int, wireSubscriptionsOffset: Int, logsOffset: Int, lastErrorToastOffset: Int, lastErrorCategoryOffset: Int, lastPlannerErrorOffset: Int, storeOpenFailureOffset: Int, noConfiguredRelays: Boolean?) : Int {
-            builder.startTable(19)
+        fun createSnapshotFrame(builder: FlatBufferBuilder, schemaVersion: UInt, typedProjectionsOffset: Int, rev: ULong, kernelSchemaVersion: UInt, lastTickMs: ULong, updateKindOffset: Int, running: Boolean, metricsOffset: Int, relayStatusOffset: Int, relayStatusesOffset: Int, logicalInterestsOffset: Int, wireSubscriptionsOffset: Int, logsOffset: Int, lastErrorToastOffset: Int, lastErrorCategoryOffset: Int, lastPlannerErrorOffset: Int, storeOpenFailureOffset: Int, noConfiguredRelays: Boolean?, negentropySyncStatsOffset: Int) : Int {
+            builder.startTable(20)
             addLastTickMs(builder, lastTickMs)
             addRev(builder, rev)
+            addNegentropySyncStats(builder, negentropySyncStatsOffset)
             addStoreOpenFailure(builder, storeOpenFailureOffset)
             addLastPlannerError(builder, lastPlannerErrorOffset)
             addLastErrorCategory(builder, lastErrorCategoryOffset)
@@ -224,7 +234,7 @@ class SnapshotFrame : Table() {
             addRunning(builder, running)
             return endSnapshotFrame(builder)
         }
-        fun startSnapshotFrame(builder: FlatBufferBuilder) = builder.startTable(19)
+        fun startSnapshotFrame(builder: FlatBufferBuilder) = builder.startTable(20)
         fun addSchemaVersion(builder: FlatBufferBuilder, schemaVersion: UInt) = builder.addInt(0, schemaVersion.toInt(), 1)
         fun addTypedProjections(builder: FlatBufferBuilder, typedProjections: Int) = builder.addOffset(2, typedProjections, 0)
         fun createTypedProjectionsVector(builder: FlatBufferBuilder, data: IntArray) : Int {
@@ -283,6 +293,7 @@ class SnapshotFrame : Table() {
         fun addLastPlannerError(builder: FlatBufferBuilder, lastPlannerError: Int) = builder.addOffset(16, lastPlannerError, 0)
         fun addStoreOpenFailure(builder: FlatBufferBuilder, storeOpenFailure: Int) = builder.addOffset(17, storeOpenFailure, 0)
         fun addNoConfiguredRelays(builder: FlatBufferBuilder, noConfiguredRelays: Boolean) = builder.addBoolean(18, noConfiguredRelays, false)
+        fun addNegentropySyncStats(builder: FlatBufferBuilder, negentropySyncStats: Int) = builder.addOffset(19, negentropySyncStats, 0)
         fun endSnapshotFrame(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

@@ -3418,6 +3418,7 @@ pub mod nmp {
             pub const VT_LAST_PLANNER_ERROR: ::flatbuffers::VOffsetT = 36;
             pub const VT_STORE_OPEN_FAILURE: ::flatbuffers::VOffsetT = 38;
             pub const VT_NO_CONFIGURED_RELAYS: ::flatbuffers::VOffsetT = 40;
+            pub const VT_NEGENTROPY_SYNC_STATS: ::flatbuffers::VOffsetT = 42;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -3436,6 +3437,9 @@ pub mod nmp {
                 let mut builder = SnapshotFrameBuilder::new(_fbb);
                 builder.add_last_tick_ms(args.last_tick_ms);
                 builder.add_rev(args.rev);
+                if let Some(x) = args.negentropy_sync_stats {
+                    builder.add_negentropy_sync_stats(x);
+                }
                 if let Some(x) = args.store_open_failure {
                     builder.add_store_open_failure(x);
                 }
@@ -3716,6 +3720,19 @@ pub mod nmp {
                         .get::<bool>(SnapshotFrame::VT_NO_CONFIGURED_RELAYS, None)
                 }
             }
+            #[inline]
+            pub fn negentropy_sync_stats(&self) -> Option<NegentropySyncStats<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<NegentropySyncStats>>(
+                            SnapshotFrame::VT_NEGENTROPY_SYNC_STATS,
+                            None,
+                        )
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for SnapshotFrame<'_> {
@@ -3795,6 +3812,11 @@ pub mod nmp {
                         Self::VT_NO_CONFIGURED_RELAYS,
                         false,
                     )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<NegentropySyncStats>>(
+                        "negentropy_sync_stats",
+                        Self::VT_NEGENTROPY_SYNC_STATS,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -3844,6 +3866,7 @@ pub mod nmp {
             pub last_planner_error: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub store_open_failure: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub no_configured_relays: Option<bool>,
+            pub negentropy_sync_stats: Option<::flatbuffers::WIPOffset<NegentropySyncStats<'a>>>,
         }
         impl<'a> Default for SnapshotFrameArgs<'a> {
             #[inline]
@@ -3867,6 +3890,7 @@ pub mod nmp {
                     last_planner_error: None,
                     store_open_failure: None,
                     no_configured_relays: None,
+                    negentropy_sync_stats: None,
                 }
             }
         }
@@ -4041,6 +4065,17 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_negentropy_sync_stats(
+                &mut self,
+                negentropy_sync_stats: ::flatbuffers::WIPOffset<NegentropySyncStats<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<NegentropySyncStats>>(
+                        SnapshotFrame::VT_NEGENTROPY_SYNC_STATS,
+                        negentropy_sync_stats,
+                    );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> SnapshotFrameBuilder<'a, 'b, A> {
@@ -4078,6 +4113,244 @@ pub mod nmp {
                 ds.field("last_planner_error", &self.last_planner_error());
                 ds.field("store_open_failure", &self.store_open_failure());
                 ds.field("no_configured_relays", &self.no_configured_relays());
+                ds.field("negentropy_sync_stats", &self.negentropy_sync_stats());
+                ds.finish()
+            }
+        }
+        pub enum NegentropySyncStatsOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct NegentropySyncStats<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for NegentropySyncStats<'a> {
+            type Inner = NegentropySyncStats<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> NegentropySyncStats<'a> {
+            pub const VT_ROUNDS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HAVE_IDS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NEED_IDS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_LOCAL_ITEM_COUNT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_TRANSFER_AVOIDED_BYTES: ::flatbuffers::VOffsetT = 12;
+            pub const VT_LAST_RECONCILE_AT_MS: ::flatbuffers::VOffsetT = 14;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                NegentropySyncStats { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args NegentropySyncStatsArgs,
+            ) -> ::flatbuffers::WIPOffset<NegentropySyncStats<'bldr>> {
+                let mut builder = NegentropySyncStatsBuilder::new(_fbb);
+                if let Some(x) = args.last_reconcile_at_ms {
+                    builder.add_last_reconcile_at_ms(x);
+                }
+                builder.add_transfer_avoided_bytes(args.transfer_avoided_bytes);
+                builder.add_local_item_count(args.local_item_count);
+                builder.add_need_ids(args.need_ids);
+                builder.add_have_ids(args.have_ids);
+                builder.add_rounds(args.rounds);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn rounds(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(NegentropySyncStats::VT_ROUNDS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn have_ids(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(NegentropySyncStats::VT_HAVE_IDS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn need_ids(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(NegentropySyncStats::VT_NEED_IDS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn local_item_count(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(NegentropySyncStats::VT_LOCAL_ITEM_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn transfer_avoided_bytes(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(NegentropySyncStats::VT_TRANSFER_AVOIDED_BYTES, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn last_reconcile_at_ms(&self) -> Option<u64> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(NegentropySyncStats::VT_LAST_RECONCILE_AT_MS, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for NegentropySyncStats<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u64>("rounds", Self::VT_ROUNDS, false)?
+                    .visit_field::<u64>("have_ids", Self::VT_HAVE_IDS, false)?
+                    .visit_field::<u64>("need_ids", Self::VT_NEED_IDS, false)?
+                    .visit_field::<u64>("local_item_count", Self::VT_LOCAL_ITEM_COUNT, false)?
+                    .visit_field::<u64>(
+                        "transfer_avoided_bytes",
+                        Self::VT_TRANSFER_AVOIDED_BYTES,
+                        false,
+                    )?
+                    .visit_field::<u64>(
+                        "last_reconcile_at_ms",
+                        Self::VT_LAST_RECONCILE_AT_MS,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct NegentropySyncStatsArgs {
+            pub rounds: u64,
+            pub have_ids: u64,
+            pub need_ids: u64,
+            pub local_item_count: u64,
+            pub transfer_avoided_bytes: u64,
+            pub last_reconcile_at_ms: Option<u64>,
+        }
+        impl<'a> Default for NegentropySyncStatsArgs {
+            #[inline]
+            fn default() -> Self {
+                NegentropySyncStatsArgs {
+                    rounds: 0,
+                    have_ids: 0,
+                    need_ids: 0,
+                    local_item_count: 0,
+                    transfer_avoided_bytes: 0,
+                    last_reconcile_at_ms: None,
+                }
+            }
+        }
+
+        pub struct NegentropySyncStatsBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> NegentropySyncStatsBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_rounds(&mut self, rounds: u64) {
+                self.fbb_
+                    .push_slot::<u64>(NegentropySyncStats::VT_ROUNDS, rounds, 0);
+            }
+            #[inline]
+            pub fn add_have_ids(&mut self, have_ids: u64) {
+                self.fbb_
+                    .push_slot::<u64>(NegentropySyncStats::VT_HAVE_IDS, have_ids, 0);
+            }
+            #[inline]
+            pub fn add_need_ids(&mut self, need_ids: u64) {
+                self.fbb_
+                    .push_slot::<u64>(NegentropySyncStats::VT_NEED_IDS, need_ids, 0);
+            }
+            #[inline]
+            pub fn add_local_item_count(&mut self, local_item_count: u64) {
+                self.fbb_.push_slot::<u64>(
+                    NegentropySyncStats::VT_LOCAL_ITEM_COUNT,
+                    local_item_count,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_transfer_avoided_bytes(&mut self, transfer_avoided_bytes: u64) {
+                self.fbb_.push_slot::<u64>(
+                    NegentropySyncStats::VT_TRANSFER_AVOIDED_BYTES,
+                    transfer_avoided_bytes,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_last_reconcile_at_ms(&mut self, last_reconcile_at_ms: u64) {
+                self.fbb_.push_slot_always::<u64>(
+                    NegentropySyncStats::VT_LAST_RECONCILE_AT_MS,
+                    last_reconcile_at_ms,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> NegentropySyncStatsBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                NegentropySyncStatsBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<NegentropySyncStats<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for NegentropySyncStats<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("NegentropySyncStats");
+                ds.field("rounds", &self.rounds());
+                ds.field("have_ids", &self.have_ids());
+                ds.field("need_ids", &self.need_ids());
+                ds.field("local_item_count", &self.local_item_count());
+                ds.field("transfer_avoided_bytes", &self.transfer_avoided_bytes());
+                ds.field("last_reconcile_at_ms", &self.last_reconcile_at_ms());
                 ds.finish()
             }
         }

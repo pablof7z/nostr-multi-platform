@@ -283,6 +283,73 @@ fn tailing_backfill_fetches_missing_ids_without_replacing_live_sub() {
         .contains(&id_hex(0xb2)));
 }
 
+/// GAP-5: after a successful reconcile, the kernel's `NegentropySyncStats`
+/// must have non-zero `rounds`, `have_ids`, `need_ids`, and
+/// `transfer_avoided_bytes` (kernel-computed as `(local − have) × 512`).
+///
+/// Setup: client has event_A and event_B; relay has event_B and event_C.
+/// After reconcile:
+///   `have` = [event_A] (client→relay, 1 ID)   → have_ids = 1
+///   `need` = [event_C] (relay→client, 1 ID)   → need_ids = 1
+///   `local_item_count` = 2
+///   `transfer_avoided_bytes` = (2 − 1) × 512 = 512  (event_B in both, no re-fetch)
+#[test]
+fn done_reconcile_pushes_non_zero_session_stats_to_kernel() {
+    let event_a = id(0xa1); // client-only
+    let event_b = id(0xb2); // both client and relay
+    let event_c = id(0xc3); // relay-only
+
+    let mut kernel = Kernel::testing_new(50);
+    // Insert both event_A and event_B into the kernel's local store so the
+    // reconciler loads 2 items (`local_item_count = 2`).
+    insert_cached_event(&mut kernel, event_a, &author(0), 3, 1_000);
+    insert_cached_event(&mut kernel, event_b, &author(1), 3, 2_000);
+
+    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
+    let ctx = ctx(25, &[3, 10_000]);
+
+    let opened = runtime
+        .intercept_req(&mut kernel, &ctx)
+        .expect("large filter must open NIP-77");
+    assert_eq!(opened.len(), 1);
+
+    // Relay server has event_B (shared) and event_C (relay-only).
+    let relay_items = vec![
+        SyncedItem { created_at: 2_000, id: event_b },
+        SyncedItem { created_at: 3_000, id: event_c },
+    ];
+    let mut server = negentropy_server(relay_items);
+    let mut client_payload = client_neg_payload(opened[0].text());
+
+    loop {
+        let server_payload = server.reconcile(&client_payload).expect("server reconcile");
+        let relay_msg = format!(
+            r#"["NEG-MSG","sub-large","{}"]"#,
+            hex_encode(&server_payload)
+        );
+        let out = runtime.on_relay_text(&mut kernel, "wss://relay.example", &relay_msg);
+        if let Some(next) = out.iter().find(|msg| is_client_neg_msg(msg.text())) {
+            client_payload = client_neg_payload(next.text());
+        } else {
+            break;
+        }
+    }
+
+    // After Done, the kernel must record non-zero session stats.
+    let rounds = kernel.negentropy_sync_rounds_for_test();
+    let have = kernel.negentropy_sync_have_ids_for_test();
+    let need = kernel.negentropy_sync_need_ids_for_test();
+    let avoided = kernel.negentropy_sync_transfer_avoided_bytes_for_test();
+
+    assert!(rounds > 0, "rounds must be non-zero after a completed session, got {rounds}");
+    assert!(have > 0, "have_ids must be non-zero (event_A is client-only), got {have}");
+    assert!(need > 0, "need_ids must be non-zero (event_C is relay-only), got {need}");
+    assert!(
+        avoided > 0,
+        "transfer_avoided_bytes must be non-zero (event_B in both — no re-fetch), got {avoided}"
+    );
+}
+
 fn insert_cached_event(
     kernel: &mut Kernel,
     id: [u8; 32],

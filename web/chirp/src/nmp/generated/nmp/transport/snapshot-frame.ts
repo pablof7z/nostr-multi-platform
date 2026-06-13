@@ -6,6 +6,7 @@ import * as flatbuffers from 'flatbuffers';
 
 import { LogicalInterestStatus } from '../../nmp/transport/logical-interest-status.js';
 import { Metrics } from '../../nmp/transport/metrics.js';
+import { NegentropySyncStats } from '../../nmp/transport/negentropy-sync-stats.js';
 import { RelayStatus } from '../../nmp/transport/relay-status.js';
 import { TypedProjection } from '../../nmp/transport/typed-projection.js';
 import { WireSubscriptionStatus } from '../../nmp/transport/wire-subscription-status.js';
@@ -156,8 +157,13 @@ noConfiguredRelays():boolean|null {
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : null;
 }
 
+negentropySyncStats(obj?:NegentropySyncStats):NegentropySyncStats|null {
+  const offset = this.bb!.__offset(this.bb_pos, 42);
+  return offset ? (obj || new NegentropySyncStats()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
+}
+
 static startSnapshotFrame(builder:flatbuffers.Builder) {
-  builder.startObject(19);
+  builder.startObject(20);
 }
 
 static addSchemaVersion(builder:flatbuffers.Builder, schemaVersion:number) {
@@ -290,6 +296,10 @@ static addStoreOpenFailure(builder:flatbuffers.Builder, storeOpenFailureOffset:f
 
 static addNoConfiguredRelays(builder:flatbuffers.Builder, noConfiguredRelays:boolean) {
   builder.addFieldInt8(18, +noConfiguredRelays, null);
+}
+
+static addNegentropySyncStats(builder:flatbuffers.Builder, negentropySyncStatsOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(19, negentropySyncStatsOffset, 0);
 }
 
 static endSnapshotFrame(builder:flatbuffers.Builder):flatbuffers.Offset {

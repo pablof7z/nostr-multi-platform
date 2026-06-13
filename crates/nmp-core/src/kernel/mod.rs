@@ -1183,6 +1183,11 @@ pub struct Kernel {
     /// D6: no stderr writes; diagnostic flows through the normal snapshot
     /// channel. D0: generic name ("store", not an LMDB/NIP noun).
     store_open_failure: Option<String>,
+    /// GAP-5: NIP-agnostic negentropy session statistics.  Accumulated by the
+    /// NIP-77 runtime and pushed via `set_negentropy_sync_stats` on session
+    /// completion.  Zero-default; `last_reconcile_at_ms` stamped from the
+    /// kernel's injected clock (D9) so replay/tests stay deterministic.
+    negentropy_sync_stats: types::NegentropySyncStats,
     /// #1069 — last bounded GC pass result + the kernel-clock wall-time it ran.
     /// Populated by [`Kernel::run_gc_step`] (the actor's 60-second idle-tick gc
     /// pass). `None` until the first pass runs. Observable so the GC schedule is
@@ -2019,6 +2024,7 @@ impl Kernel {
             pending_reverify: VecDeque::new(),
             reverify_subs: HashMap::new(),
             store_open_failure,
+            negentropy_sync_stats: types::NegentropySyncStats::default(),
             last_gc: None,
             last_gc_at_ms: None,
             served_interest_shapes: HashSet::new(),

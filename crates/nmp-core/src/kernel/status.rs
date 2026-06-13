@@ -105,6 +105,37 @@ impl Kernel {
         self.relay_mut(role).negentropy_probe_state = state_key.to_string();
     }
 
+    /// GAP-5 — record a completed negentropy reconciliation session. Called by
+    /// the NIP-77 runtime (`nmp-nip77`) on session completion with the raw counts
+    /// it observed. Derived fields are computed here (kernel-side per D9):
+    /// - `transfer_avoided_bytes = (local_item_count − have_ids) × AVG_EVENT_BYTES`
+    /// - `last_reconcile_at_ms` stamped from the injected clock (deterministic
+    ///   replay / tests stay consistent because `now_ms()` routes through the
+    ///   `Clock` abstraction, never raw `SystemTime::now()`).
+    ///
+    /// D0: the setter is NIP-agnostic — it takes plain integers so `nmp-core`
+    /// does not depend on any `nmp-nip77` type. D4: the kernel is the single
+    /// writer of `negentropy_sync_stats`.
+    pub fn set_negentropy_sync_stats(
+        &mut self,
+        rounds: u64,
+        have_ids: u64,
+        need_ids: u64,
+        local_item_count: u64,
+    ) {
+        use super::types::{AVG_EVENT_BYTES, NegentropySyncStats};
+        let transfer_avoided_bytes =
+            local_item_count.saturating_sub(have_ids).saturating_mul(AVG_EVENT_BYTES);
+        self.negentropy_sync_stats = NegentropySyncStats {
+            rounds,
+            have_ids,
+            need_ids,
+            local_item_count,
+            transfer_avoided_bytes,
+            last_reconcile_at_ms: Some(self.now_ms()),
+        };
+    }
+
     pub(super) fn relay_status_for(&self, role: RelayRole) -> RelayStatus {
         let relay = self.relay(role);
         let relay_url = self

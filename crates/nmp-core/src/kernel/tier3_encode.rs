@@ -18,7 +18,8 @@
 //! (absent = healthy / not-active).
 
 use super::types::{
-    KernelSnapshot, LogicalInterestStatus, Metrics, RelayStatus, WireSubscriptionStatus,
+    KernelSnapshot, LogicalInterestStatus, Metrics, NegentropySyncStats, RelayStatus,
+    WireSubscriptionStatus,
 };
 use crate::transport::wire as fb;
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
@@ -62,6 +63,7 @@ pub(crate) struct Tier3Offsets<'b> {
     pub(crate) last_planner_error: Option<WIPOffset<&'b str>>,
     pub(crate) store_open_failure: Option<WIPOffset<&'b str>>,
     pub(crate) no_configured_relays: Option<bool>,
+    pub(crate) negentropy_sync_stats: WIPOffset<fb::NegentropySyncStats<'b>>,
 }
 
 impl KernelSnapshot {
@@ -76,6 +78,8 @@ impl KernelSnapshot {
     ) -> Tier3Offsets<'b> {
         // Nested tables / vectors first (FlatBuffers builds inner offsets before
         // the table that references them).
+        let negentropy_sync_stats =
+            encode_negentropy_sync_stats(builder, &self.negentropy_sync_stats);
         let metrics = encode_metrics(builder, &self.metrics);
         let relay_status = encode_relay_status(builder, &self.relay_status);
         let relay_statuses = encode_relay_statuses(builder, &self.relay_statuses);
@@ -112,6 +116,7 @@ impl KernelSnapshot {
             last_planner_error,
             store_open_failure,
             no_configured_relays: self.no_configured_relays,
+            negentropy_sync_stats,
         }
     }
 }
@@ -294,4 +299,21 @@ fn encode_wire_subscriptions<'b>(
         })
         .collect();
     builder.create_vector(&offsets)
+}
+
+fn encode_negentropy_sync_stats<'b>(
+    builder: &mut FlatBufferBuilder<'b>,
+    stats: &NegentropySyncStats,
+) -> WIPOffset<fb::NegentropySyncStats<'b>> {
+    fb::NegentropySyncStats::create(
+        builder,
+        &fb::NegentropySyncStatsArgs {
+            rounds: stats.rounds,
+            have_ids: stats.have_ids,
+            need_ids: stats.need_ids,
+            local_item_count: stats.local_item_count,
+            transfer_avoided_bytes: stats.transfer_avoided_bytes,
+            last_reconcile_at_ms: stats.last_reconcile_at_ms,
+        },
+    )
 }

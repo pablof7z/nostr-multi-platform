@@ -192,6 +192,19 @@ table SnapshotFrame {
   last_planner_error:string;
   store_open_failure:string;
   no_configured_relays:bool = null;       // Option<bool> -> native-optional
+  negentropy_sync_stats:NegentropySyncStats; // GAP-5: absent = zero/pre-first-session
+}
+
+// GAP-5: Mirrors nmp_core::kernel::types::NegentropySyncStats.
+// Absent on the wire when the kernel is at default (no session has completed).
+// All fields default to 0; last_reconcile_at_ms defaults to null (Option<u64>).
+table NegentropySyncStats {
+  rounds:ulong;
+  have_ids:ulong;
+  need_ids:ulong;
+  local_item_count:ulong;
+  transfer_avoided_bytes:ulong;
+  last_reconcile_at_ms:ulong = null;    // Option<u64> -> native-optional
 }
 
 table PanicFrame {
