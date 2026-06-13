@@ -897,6 +897,11 @@ fn snapshot_carries_nip46_onboarding_projection() {
             bunker_slot,
             // V-14 step b: throwaway connection-state slot.
             crate::actor::new_signer_state_slot(),
+            // ADR-0052 §D3: throwaway per-app signer hook slots (this
+            // remote-signer test drives the broker through the bunker_slot
+            // shared handshake slot, not the hook seam).
+            crate::new_bunker_hook_slot(),
+            crate::new_external_signer_hook_slot(),
             // Typed slot constructor.
             crate::kernel::new_app_relay_slot(),
             Arc::new(std::sync::Mutex::new(None)),

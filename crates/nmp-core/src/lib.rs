@@ -195,10 +195,8 @@ pub use app::{
     resolve_open_uri, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError, OpenUriRouting,
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
-pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
-pub use external_signer_hook::{
-    register_external_signer_hook, ExternalSignerHookFn, ExternalSignerHookRequest,
-};
+pub use bunker_hook::{install_bunker_hook, new_bunker_hook_slot, BunkerHookFn, BunkerHookRequest, BunkerHookSlot};
+pub use external_signer_hook::{install_external_signer_hook, new_external_signer_hook_slot, ExternalSignerHookFn, ExternalSignerHookRequest, ExternalSignerHookSlot};
 // Step 11 final — `NmpApp` opaque handle + the `nmp_app_*` symbol family
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.
@@ -500,6 +498,8 @@ pub mod testing {
                 crate::substrate::new_relay_connected_hook_slot(),
                 crate::actor::new_bunker_handshake_slot(),
                 crate::actor::new_signer_state_slot(),
+                crate::new_bunker_hook_slot(), // ADR-0052 §D3 throwaway slots
+                crate::new_external_signer_hook_slot(),
                 crate::kernel::new_app_relay_slot(),
                 Arc::new(Mutex::new(None)),
                 Arc::new(Mutex::new(None)),
