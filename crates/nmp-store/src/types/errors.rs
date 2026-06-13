@@ -49,11 +49,6 @@ pub enum StoreError {
         reason: String,
     },
     UnknownNamespace(String),
-    /// The operation is not implemented by this backend.
-    ///
-    /// V-52: `list_events_seen_on` returns this for the LMDB backend until a
-    /// secondary relay-url index is implemented there (tracked in issue #969).
-    NotSupported(String),
 }
 
 impl std::fmt::Display for StoreError {
@@ -67,7 +62,6 @@ impl std::fmt::Display for StoreError {
             Self::MigrationFailed { namespace, from, to, reason } =>
                 write!(f, "schema migration failed: {namespace} v{from}->{to}: {reason}"),
             Self::UnknownNamespace(s) => write!(f, "unknown namespace: {s}"),
-            Self::NotSupported(s) => write!(f, "operation not supported by this backend: {s}"),
         }
     }
 }

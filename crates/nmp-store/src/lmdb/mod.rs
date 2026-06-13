@@ -65,6 +65,9 @@ mod tests_gc;
 // #1090 Stage-1 — derived pin set for gc_step.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_gc_stage1;
+// V-52 (#969) — relay-origin reverse index parity + persistence + backfill.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_relay_index;
 // Secondary-index integrity tests (Bug-1: kind:5 a-tag leaks; Bug-2: freshness leaks).
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_secondary_index;
@@ -158,6 +161,23 @@ mod inner {
         /// an O(expired) range scan on this index rather than an O(store) scan of
         /// all events, eliminating the same-`created_at`-block stall (#1097).
         pub(crate) expiry_index: Database<Bytes, Bytes>,
+
+        /// V-52 relay-origin reverse index: `relay_url || 0x00 || event_id(32)`
+        /// → empty (presence-only).
+        ///
+        /// Mirrors the `MemEventStore::relay_index` so `list_events_seen_on` is an
+        /// O(events-on-relay) prefix range scan on LMDB instead of an O(store)
+        /// provenance scan.  The `0x00` separator is safe: relay URLs are valid
+        /// UTF-8 (`wss://…`) and never contain a NUL byte, so the separator can
+        /// never appear inside the `relay_url` segment — every key is therefore
+        /// unambiguously decodable as `(relay_url, event_id)`.
+        ///
+        /// Maintained by: the provenance write path (`provenance::upsert` adds the
+        /// `(relay, id)` entry; `provenance::delete` removes every `(relay, id)`
+        /// entry for the id by first reading the event's provenance relays).
+        /// Backfilled once on store open for pre-V-52 databases — see
+        /// `open.rs::backfill_relay_index`.
+        pub(crate) relay_index: Database<Bytes, Bytes>,
 
         // ── GC scan state (V-117 fixes) ───────────────────────────────────────
 
@@ -302,6 +322,9 @@ impl EventStore for LmdbEventStore {
         Err(Self::not_enabled())
     }
     fn provenance_for(&self, _id: &EventId) -> Result<Vec<ProvenanceEntry>, StoreError> {
+        Err(Self::not_enabled())
+    }
+    fn list_events_seen_on(&self, _relay_url: &str) -> Result<Vec<EventId>, StoreError> {
         Err(Self::not_enabled())
     }
     fn insert(

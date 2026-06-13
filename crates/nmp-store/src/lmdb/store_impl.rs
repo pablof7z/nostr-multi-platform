@@ -113,6 +113,10 @@ impl EventStore for LmdbEventStore {
         query::provenance_for(&self.inner, id)
     }
 
+    fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError> {
+        query::list_events_seen_on(&self.inner, relay_url)
+    }
+
     fn insert(
         &self,
         event: VerifiedEvent,
