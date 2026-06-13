@@ -121,7 +121,7 @@ fn dispatch_capability_result(
 ) -> Option<String> {
     // Build a minimal ActorContext with the required fields. Relay pool,
     // relay_controls, etc. are not needed for CapabilityResultReady.
-    use crate::actor::pending_sign::PendingSign;
+    use crate::actor::pending_sign::ParkedOp;
     use crate::relay::CanonicalRelayUrl;
     use std::collections::{HashMap, HashSet};
     use std::time::Instant;
@@ -143,8 +143,7 @@ fn dispatch_capability_result(
     let mut running = true;
     let mut emit_hz = 4u32;
     let mut startup_sent = false;
-    let mut pending_signs: Vec<PendingSign> = Vec::new();
-    let mut pending_sign_returns: Vec<super::pending_sign::PendingSignReturn> = Vec::new();
+    let mut parked_ops: Vec<ParkedOp> = Vec::new();
     let coverage_hook = Arc::new(Mutex::new(None::<crate::subs::PlanCoverageHook>));
     let req_frame_interceptor = Arc::new(Mutex::new(None));
     let host_op_handler = Arc::new(Mutex::new(None));
@@ -187,8 +186,7 @@ fn dispatch_capability_result(
         mls_local_nsec: &mls_local_nsec,
         active_local_keys: &active_local_keys,
         capability_callback: slot,
-        pending_signs: &mut pending_signs,
-        pending_sign_returns: &mut pending_sign_returns,
+        parked_ops: &mut parked_ops,
         command_tx_self: command_tx,
         capability_work_tx,
         coverage_hook_slot: &coverage_hook,

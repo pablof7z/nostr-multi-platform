@@ -17,7 +17,7 @@
 //!
 //! Unlike NIP-46 (relay round-trip, < 1s), an Intent round-trip requires the
 //! user to foreground Amber and tap approve (5–30s). The per-op deadline
-//! (`RemoteSignerHandle::sign_timeout()` = 90s) exists for this reason.
+//! (`RemoteSignerHandle::op_timeout()` = 90s) exists for this reason.
 //!
 //! ## Transport choice (host-side, D7)
 //!
@@ -48,10 +48,10 @@ pub const EXTERNAL_SIGNER_NAMESPACE: &str = "external_signer";
 ///
 /// 5s — long enough for a fast / auto-approving NIP-46 bunker, short enough
 /// that a crashed broker cannot strand the publish queue. This is the baseline;
-/// individual signer kinds override it via `RemoteSignerHandle::sign_timeout()`.
+/// individual signer kinds override it via `RemoteSignerHandle::op_timeout()`.
 ///
 /// Defined here (leaf crate) so that `nmp-core/src/remote_signer.rs` can
-/// reference it in the default `sign_timeout()` impl without a feature gate —
+/// reference it in the default `op_timeout()` impl without a feature gate —
 /// `pending_sign.rs` is `#[cfg(feature = "native")]`-gated and therefore
 /// unavailable in the always-compiled trait surface.
 pub const PENDING_SIGN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -61,7 +61,7 @@ pub const PENDING_SIGN_TIMEOUT: Duration = Duration::from_secs(5);
 /// An Android Intent round-trip requires the user to foreground Amber and tap
 /// approve — 5–30s in typical usage, occasionally more if the app is cold. 90s
 /// gives ample headroom without stranding the publish queue indefinitely
-/// (ADR-0048 D3). `Nip55Signer` returns this via `RemoteSignerHandle::sign_timeout()`.
+/// (ADR-0048 D3). `Nip55Signer` returns this via `RemoteSignerHandle::op_timeout()`.
 pub const EXTERNAL_SIGN_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Methods the Rust layer can request from a NIP-55 external signer.

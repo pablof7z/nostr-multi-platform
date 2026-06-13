@@ -9,7 +9,7 @@
 use crate::actor::commands::identity::{
     sign_active_nonblocking, sign_with_account_nonblocking, IdentityRuntime,
 };
-use crate::actor::pending_sign::PendingSign;
+use crate::actor::pending_sign::ParkedOp;
 use crate::kernel::Kernel;
 use crate::kinds::KIND_GIFT_WRAP;
 use crate::publish::{validate_explicit_relays, validate_publish_target, PublishTarget};
@@ -117,7 +117,7 @@ pub(crate) fn publish_unsigned_event(
     unsigned: UnsignedEvent,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
-    pending_signs: &mut Vec<PendingSign>,
+    parked_ops: &mut Vec<ParkedOp>,
 ) -> Vec<OutboundMessage> {
     // `signer_pubkey: Some(_)` publishes under a SPECIFIC (possibly non-active)
     // account — the active-account guard is skipped (a non-active signer
@@ -130,7 +130,7 @@ pub(crate) fn publish_unsigned_event(
         return toast_no_account(kernel, "publish", correlation_id);
     }
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
-    // returns a `Pending` op that is parked in `pending_signs` and `poll()`ed
+    // returns a `Pending` op that is parked in `parked_ops` and `poll()`ed
     // by the actor's idle section — the actor thread never blocks (D8).
     let sign_result = match &signer_pubkey {
         Some(pubkey) => sign_with_account_nonblocking(identity, pubkey, &unsigned),
@@ -171,7 +171,7 @@ pub(crate) fn publish_unsigned_event(
             // the host is waiting on. The deadline is the SIGNING account's
             // per-op budget (ADR-0048 D3 — NIP-46 = 5s, NIP-55 = 90s).
             let deadline = identity.sign_deadline_for(signer_pubkey.as_deref());
-            pending_signs.push(PendingSign::new(
+            parked_ops.push(ParkedOp::publish(
                 op,
                 Vec::new(),
                 PublishTarget::Auto,
@@ -207,7 +207,7 @@ pub(crate) fn publish_unsigned_event(
 /// an empty explicit target is a caller bug, not a request to widen to `Auto`.
 ///
 /// **Remote (NIP-46) signers.** The explicit target is carried through the
-/// remote-sign park via [`PendingSign::with_target`] — without it a bunker
+/// remote-sign park via [`ParkedOp::publish`] — without it a bunker
 /// user's group event would resolve through the NIP-65 outbox once the broker
 /// responds, defeating the pin (D8: the actor still never blocks).
 pub(crate) fn publish_unsigned_event_to_relays(
@@ -217,7 +217,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
     relays: Vec<crate::publish::RelayUrl>,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
-    pending_signs: &mut Vec<PendingSign>,
+    parked_ops: &mut Vec<ParkedOp>,
 ) -> Vec<OutboundMessage> {
     // `signer_pubkey: Some(_)` publishes under a SPECIFIC (possibly non-active)
     // account — skip the active-account guard. `None` keeps the legacy
@@ -235,7 +235,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
     }
     let target = PublishTarget::Explicit { relays };
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
-    // returns a `Pending` op parked in `pending_signs` with the explicit
+    // returns a `Pending` op parked in `parked_ops` with the explicit
     // target + correlation_id attached — the actor thread never blocks (D8).
     let sign_result = match &signer_pubkey {
         Some(pubkey) => sign_with_account_nonblocking(identity, pubkey, &unsigned),
@@ -266,7 +266,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
             // survive the broker round-trip. The deadline is the SIGNING
             // account's per-op budget (ADR-0048 D3).
             let deadline = identity.sign_deadline_for(signer_pubkey.as_deref());
-            pending_signs.push(PendingSign::new(
+            parked_ops.push(ParkedOp::publish(
                 op,
                 Vec::new(),
                 target,
@@ -462,7 +462,7 @@ pub(crate) fn publish_profile(
     kernel: &mut Kernel,
     fields: serde_json::Map<String, serde_json::Value>,
     correlation_id: Option<String>,
-    pending_signs: &mut Vec<PendingSign>,
+    parked_ops: &mut Vec<ParkedOp>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
         // Broken-promise fix: `toast_no_account` records `Failed` against the
@@ -514,7 +514,7 @@ pub(crate) fn publish_profile(
             // Remote signer pending — park the op WITH its correlation_id so
             // the dispatched profile still settles under the id the host is
             // waiting on once the broker turns the sign request around.
-            pending_signs.push(PendingSign::new(
+            parked_ops.push(ParkedOp::publish(
                 op,
                 Vec::new(),
                 PublishTarget::Auto,
@@ -532,7 +532,7 @@ pub(crate) fn react(
     target_event_id: &str,
     reaction: &str,
     correlation_id: Option<String>,
-    pending_signs: &mut Vec<PendingSign>,
+    parked_ops: &mut Vec<ParkedOp>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
         // Broken-promise fix: `toast_no_account` records `Failed` against the
@@ -597,7 +597,7 @@ pub(crate) fn react(
             // Remote signer pending — park the op WITH its correlation_id so
             // the dispatched reaction still settles under the id the host is
             // waiting on once the broker turns the sign request around.
-            pending_signs.push(PendingSign::new(
+            parked_ops.push(ParkedOp::publish(
                 op,
                 Vec::new(),
                 PublishTarget::Auto,
@@ -617,7 +617,7 @@ pub(crate) fn follow(
     pubkey: &str,
     add: bool,
     correlation_id: Option<String>,
-    pending_signs: &mut Vec<PendingSign>,
+    parked_ops: &mut Vec<ParkedOp>,
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
         // Broken-promise fix: `toast_no_account` records `Failed` against the
@@ -680,7 +680,7 @@ pub(crate) fn follow(
             // Remote signer pending — park the op WITH its correlation_id so
             // the dispatched follow/unfollow still settles under the id the
             // host is waiting on once the broker turns the sign request around.
-            pending_signs.push(PendingSign::new(
+            parked_ops.push(ParkedOp::publish(
                 op,
                 Vec::new(),
                 PublishTarget::Auto,

@@ -591,6 +591,34 @@ impl IdentityRuntime {
         self.keys.contains_key(account_id) || self.remote_signers.contains_key(account_id)
     }
 
+    /// Fan an inbound remote-signer response out to every remote handle for
+    /// correlation-keyed dispatch (ADR-0050 §D3b — the `DeliverSignerResponse`
+    /// command). Each handle's `deliver_response` drops a non-matching id (the
+    /// trait contract), so a stray frame degrades into the op's normal timeout
+    /// (D6). Runs on the actor thread — single writer (D4).
+    pub(crate) fn deliver_to_remote_signers(&self, response_json: &str) {
+        for handle in self.remote_signers.values() {
+            handle.deliver_response(response_json);
+        }
+    }
+
+    /// Resolve a `signer_pubkey: Option<&str>` to its (remote handle, local
+    /// keys) pair, matching the active-vs-named lookup the sign helpers use
+    /// (remote shadows local). `pub(super)` so the sibling `cipher` module's
+    /// NIP-44 helpers route without exposing the private key maps (§D1).
+    pub(super) fn resolve_cipher_account(
+        &self,
+        signer_pubkey: Option<&str>,
+    ) -> (Option<&dyn RemoteSignerHandle>, Option<&Keys>) {
+        match signer_pubkey {
+            Some(pk) => (
+                self.remote_signers.get(pk).map(|h| h.as_ref()),
+                self.keys.get(pk),
+            ),
+            None => (self.active_remote(), self.active_keys()),
+        }
+    }
+
     /// Bech32-encode the active account's secret key (`nsec1…`). Returns
     /// `None` for remote signers (no local key) and when no account is active.
     pub(crate) fn active_nsec_bech32(&self) -> Option<String> {
@@ -610,66 +638,41 @@ impl IdentityRuntime {
         self.active_keys().map(|_| "local")
     }
 
-    /// Wall-clock deadline for the active account's next parked sign op.
-    ///
-    /// Reads `RemoteSignerHandle::sign_timeout()` for remote signers (NIP-46 =
-    /// 5s default, NIP-55 = 90s). Returns `PENDING_SIGN_TIMEOUT` for local
-    /// accounts and when no account is active (local sign ops are `Ready` and
-    /// never park, so the deadline is unused — the default is safe). This is the
-    /// ADR-0048 D3 per-op deadline mechanism: dispatch arms call this instead of
-    /// hard-coding `PENDING_SIGN_TIMEOUT` so a NIP-55 signer gets its 90s budget
-    /// without changing the global constant.
+    /// Wall-clock deadline for the active account's next parked op. Reads
+    /// `RemoteSignerHandle::op_timeout()` for remote signers (NIP-46 = 5s,
+    /// NIP-55 = 90s); `PENDING_SIGN_TIMEOUT` otherwise (local ops are `Ready`
+    /// and never park, so the default is safe). ADR-0048 D3 per-op deadline.
     pub(crate) fn active_sign_deadline(&self) -> std::time::Instant {
         let duration = self
             .active_remote()
-            .map(|h| h.sign_timeout())
+            .map(|h| h.op_timeout())
             .unwrap_or(nmp_signer_iface::PENDING_SIGN_TIMEOUT);
         std::time::Instant::now() + duration
     }
 
-    /// Wall-clock deadline for a parked sign op on a SPECIFIC account.
-    ///
-    /// The account-addressed sibling of [`Self::active_sign_deadline`]:
-    /// publish paths that sign via `sign_with_account_nonblocking(pubkey, …)`
-    /// must read the budget of THAT account's signer — the active account may
-    /// be a different backend with a different budget. `None` falls back to
-    /// the active account (matching `sign_active_nonblocking`).
+    /// Wall-clock deadline for a parked op on a SPECIFIC account — the
+    /// account-addressed sibling of [`Self::active_sign_deadline`]. Reads THAT
+    /// account's signer budget (the active account may be a different backend);
+    /// `None` falls back to the active account. ADR-0050 §D4.
     pub(crate) fn sign_deadline_for(&self, pubkey: Option<&str>) -> std::time::Instant {
         let handle = match pubkey {
             Some(pk) => self.remote_signers.get(pk).map(|h| h.as_ref()),
             None => self.active_remote(),
         };
         let duration = handle
-            .map(|h| h.sign_timeout())
+            .map(|h| h.op_timeout())
             .unwrap_or(nmp_signer_iface::PENDING_SIGN_TIMEOUT);
         std::time::Instant::now() + duration
     }
 
     /// Resolve a [`SignerForSeal`][nmp_nip59::SignerForSeal] for the active
-    /// account — the ADR-0026 seal-step seam every gift-wrap producer (NIP-17
-    /// DMs today; NIP-57 zaps and raw NIP-44 future) consumes via
-    /// `nmp_nip59::gift_wrap_with_signer`.
-    ///
-    /// Returns:
-    /// - `Some(Arc<dyn SignerForSeal>)` for a **local** account — the trait
-    ///   is satisfied by `nostr::Keys`'s blanket impl, so we hand back an
-    ///   `Arc<Keys>` (a cheap clone of the active `Keys`).
-    /// - `Some(Arc<dyn SignerForSeal>)` for a **remote (NIP-46 / NIP-07 /
-    ///   hardware)** account — ADR-0026 Phase 2. The wrapper
-    ///   [`RemoteSignerForSeal`][super::remote_signer_for_seal::
-    ///   RemoteSignerForSeal] translates between the substrate event
-    ///   shape (`RemoteSignerHandle::sign` returns
-    ///   `SignerOp<SignedEvent>`) and the seam shape
-    ///   (`SignerForSeal::sign_seal` returns `SignerOp<nostr::Event>`),
-    ///   and forwards `nip44_encrypt` directly. A bunker that publishes a
-    ///   malformed pubkey produces `None` (graceful-degrade — `dm.rs`
-    ///   surfaces a toast).
-    /// - `None` when no account is active.
-    ///
-    /// Centralising the raw-key access here keeps `commands/dm.rs`
-    /// D13-clean (Part A bans `IdentityRuntime::active_local_keys` and
-    /// `.secret_key()` on that path); identity.rs itself is the
-    /// legitimate raw-key owner.
+    /// account — the ADR-0026 seal-step seam gift-wrap producers consume via
+    /// `nmp_nip59::gift_wrap_with_signer`. Local accounts hand back an
+    /// `Arc<Keys>` (the blanket impl); remote accounts wrap in
+    /// [`RemoteSignerForSeal`][super::remote_signer_for_seal::RemoteSignerForSeal]
+    /// (ADR-0026 Phase 2; a malformed bunker pubkey graceful-degrades to `None`).
+    /// `None` when no account is active. Centralising raw-key access here keeps
+    /// `commands/dm.rs` D13-clean.
     pub(crate) fn active_signer_for_seal(
         &self,
     ) -> Option<std::sync::Arc<dyn nmp_nip59::SignerForSeal>> {
@@ -687,23 +690,11 @@ impl IdentityRuntime {
     }
 }
 
-/// Build an `AuthSignerFn`-shaped closure over a fixed `Keys`. Mirrors the
-/// `nmp-signers::LocalKeySigner::sign_now` recipe exactly (same `nostr`
-/// primitives) — kept here because D0 forbids importing `nmp-signers`.
-///
-/// # Correctness gates (D6 — errors become state, never silent truncation)
-///
-/// * **Kind range** — `unsigned.kind` is a `u32` wire type. Nostr only defines
-///   kinds in `[0, 65535]` (u16 range). A value above `u16::MAX` would silently
-///   wrap (e.g. 65559 → 23) without this check, publishing as the wrong kind.
-///   We return `Err` so the caller surfaces a toast.
-///
-/// * **Malformed tags** — `Tag::parse` may reject a tag row (e.g. empty slice,
-///   unknown tag type that the `nostr` crate refuses). Silent `filter_map` drops
-///   are a correctness hazard for a kind-agnostic publish pass-through; a
-///   protocol crate may rely on every tag it built being present in the signed
-///   event. We count failures and hard-fail with a toast wording that names the
-///   count so the caller can diagnose the source.
+/// Build a signed event over a fixed `Keys`. Mirrors the
+/// `nmp-signers::LocalKeySigner::sign_now` recipe (same `nostr` primitives) —
+/// kept here because D0 forbids importing `nmp-signers`. Two D6 correctness gates
+/// (errors-as-state, never silent truncation), detailed at the call sites below:
+/// out-of-`u16`-range kind, and any malformed tag — both hard-fail with a toast.
 pub(super) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedEvent, String> {
     // Finding 1: validate kind is within the Nostr-defined u16 range before
     // casting. kind:65559 → kind:23 would be a silent correctness violation.
@@ -753,7 +744,7 @@ pub(super) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedE
 /// thread).
 ///
 /// For a remote (NIP-46) signer it returns the `SignerOp` verbatim — typically
-/// `SignerOp::Pending`, which the caller must park (`PendingSign`) and
+/// `SignerOp::Pending`, which the caller must park (`ParkedOp`) and
 /// `poll()` on future loop ticks. For a local nsec/generated key the sign is
 /// CPU-bound and resolves immediately into `SignerOp::Ready`.
 ///

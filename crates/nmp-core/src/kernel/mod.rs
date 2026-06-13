@@ -982,7 +982,8 @@ pub struct Kernel {
     accounts: Vec<AccountSummary>,
     active_account: Option<String>,
     /// Sign-and-return results parked by the `SignEventForReturn` actor command
-    /// (`PendingSignReturn` resolution), keyed by `correlation_id`. Each entry
+    /// (`ParkedOp` `SignedEventsProjection` sink resolution), keyed by
+    /// `correlation_id`. Each entry
     /// is `Ok(signed_event_json)` — the standard flat Nostr event JSON, ready
     /// for the host to attach to an out-of-band transport — or `Err(message)`.
     ///
