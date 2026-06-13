@@ -91,6 +91,8 @@ pub(crate) fn signer_state_typed(slot: &SignerStateSlot) -> Option<TypedProjecti
         is_reconnecting: dto.is_reconnecting,
         is_unavailable: dto.is_unavailable,
         is_failed: dto.is_failed,
+        status_label: dto.status_label.clone(),
+        status_tone: dto.status_tone.clone(),
     };
     Some(TypedProjectionData {
         key: SIGNER_STATE_SCHEMA_ID.to_string(),

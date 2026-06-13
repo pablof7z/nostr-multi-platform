@@ -185,18 +185,26 @@ pub struct SignerStateDto {
     /// `true` when `state == "failed"` (permanent error — rejected / mismatch /
     /// relay handshake failed). Host prompts re-auth.
     pub(crate) is_failed: bool,
+    /// Pre-computed display label (ADR-0032 / #1099) — shells render verbatim,
+    /// never switching on `state`. See [`signer_state_label_and_tone`].
+    pub(crate) status_label: String,
+    /// Pre-computed tone: "active"|"warning"|"error"|"inactive" (ADR-0032 /
+    /// #1099). Shells map tone → colour/icon with no `state`-string knowledge.
+    pub(crate) status_tone: String,
 }
 
 impl SignerStateDto {
     /// Construct from a signer kind + state wire token + optional reason,
-    /// pre-computing all derived boolean flags. Centralising derivation here
-    /// ensures shells never reconstruct the flags from `state` (aim.md §6 / AP1).
+    /// pre-computing all derived boolean flags plus the display label/tone, so
+    /// shells never reconstruct flags or display strings from `state` (AP1).
     pub(crate) fn new(signer_kind: String, state: String, reason: Option<String>) -> Self {
+        use super::signer_state_label::signer_state_label_and_tone;
         let is_ready = state == "ready";
         let is_awaiting_approval = state == "awaiting_approval";
         let is_reconnecting = state == "reconnecting";
         let is_unavailable = state == "unavailable";
         let is_failed = state == "failed";
+        let (status_label, status_tone) = signer_state_label_and_tone(&state);
         Self {
             signer_kind,
             state,
@@ -206,6 +214,8 @@ impl SignerStateDto {
             is_reconnecting,
             is_unavailable,
             is_failed,
+            status_label,
+            status_tone,
         }
     }
 
@@ -215,8 +225,7 @@ impl SignerStateDto {
     /// `"reconnecting"`, `"failed"`) into the unified `signer_state` surface.
     /// `"connected"` maps to `"ready"` for consistency with NIP-55 naming.
     pub(crate) fn from_nip46_connection_state(state: &str, reason: Option<String>) -> Self {
-        // Map legacy token "connected" → "ready" so both NIP-46 and NIP-55 share
-        // the "ready" state name.
+        // Map legacy "connected" → "ready" so NIP-46 and NIP-55 share the name.
         let canonical_state = if state == "connected" {
             "ready".to_string()
         } else {

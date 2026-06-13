@@ -321,14 +321,10 @@ private fun AmberSignerCard(
         else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
     }
 
-    val subtitleText: String = when {
-        signerState?.isUnavailable == true -> "Signer unavailable"
-        signerState?.isFailed == true -> "Connection failed"
-        signerState?.isAwaitingApproval == true -> "Waiting for approval…"
-        signerState?.isReconnecting == true -> "Reconnecting…"
-        isReady -> "Connected"
-        else -> "Sign in with ${signer.displayName}"
-    }
+    // ADR-0032 / #1099: when a session exists, render the Rust-precomputed
+    // `statusLabel` verbatim; the no-session affordance is the only local copy.
+    val subtitleText: String = signerState?.statusLabel?.takeIf { it.isNotEmpty() }
+        ?: "Sign in with ${signer.displayName}"
 
     OutlinedCard(
         modifier = Modifier
@@ -416,17 +412,14 @@ private fun SignerStateRow(
     val isDegradedTerminal = signerState.isFailed || signerState.isUnavailable
     val isInProgress = signerState.isAwaitingApproval || signerState.isReconnecting
     val rowLabel = if (signerState.signerKind == "nip55") "External signer" else "Signer relay"
-    val statusLabel = when {
-        signerState.isUnavailable -> "Signer unavailable"
-        signerState.isFailed -> "Connection failed"
-        signerState.isAwaitingApproval -> "Waiting for approval…"
-        signerState.isReconnecting -> "Reconnecting…"
-        else -> "Connected"
-    }
-    val statusColor: Color = when {
-        isDegradedTerminal -> MaterialTheme.colorScheme.error
-        isInProgress -> Color(0xFFF59E0B) // amber-400
-        else -> Color(0xFF22C55E) // green-500
+    // ADR-0032 / #1099: bind the Rust-precomputed label verbatim and map the
+    // precomputed tone → colour — no `when` on the raw `state` token remains.
+    val statusLabel = signerState.statusLabel
+    val statusColor: Color = when (signerState.statusTone) {
+        "error" -> MaterialTheme.colorScheme.error
+        "warning" -> Color(0xFFF59E0B) // amber-400
+        "active" -> Color(0xFF22C55E) // green-500
+        else -> Color(0xFF9E9E9E) // neutral grey
     }
 
     Card(

@@ -563,23 +563,23 @@ enum TypedProjectionGlue {
 
     // MARK: signer_state → SignerState (ADR-0048 D6, generalises V-14 / #963)
 
-    /// Map the typed `signer_state` sidecar (`KSST` / `nmp_kernel_SignerState`)
-    /// to the `SignerState` value consumed by `AccountsView` and `KernelModel`.
-    /// Covers both NIP-46 and NIP-55 backends (`signerKind` discriminates).
-    /// Mirrors `bunkerHandshake` above: Rust pre-computes every flag; Swift
-    /// renders verbatim. The `reason` field uses a `has_reason` companion
-    /// (FlatBuffers optional-string pattern) so a missing reason is `nil`, not
-    /// an empty string.
+    /// Map the typed `signer_state` sidecar to `SignerState`. Rust pre-computes
+    /// every flag plus `statusLabel`/`statusTone` (ADR-0032 / #1099); Swift
+    /// renders verbatim. `reason` uses the `has_reason` companion. Label/tone are
+    /// tail-appended — derive from `state` for older buffers that lack them (D1).
     static func signerState(_ reader: nmp_kernel_SignerState) -> SignerState {
-        SignerState(
+        let state = reader.state ?? ""
+        return SignerState(
             signerKind: reader.signerKind ?? "",
-            state: reader.state ?? "",
+            state: state,
             reason: reader.hasReason ? (reader.reason ?? "") : nil,
             isReady: reader.isReady,
             isAwaitingApproval: reader.isAwaitingApproval,
             isReconnecting: reader.isReconnecting,
             isUnavailable: reader.isUnavailable,
-            isFailed: reader.isFailed
+            isFailed: reader.isFailed,
+            statusLabel: reader.statusLabel ?? SignerStateTone.derivedLabel(state),
+            statusTone: reader.statusTone ?? SignerStateTone.derivedTone(state)
         )
     }
 

@@ -228,5 +228,53 @@ class SignerStateTest {
         assertNull(default.reason)
         assertEquals("", default.signerKind)
         assertEquals("", default.state)
+        // ADR-0032 / #1099: precomputed display fields default to empty.
+        assertEquals("", default.statusLabel)
+        assertEquals("", default.statusTone)
+    }
+
+    // ── Precomputed label/tone contract (ADR-0032 / #1099) ────────────────
+
+    @Test
+    fun statusLabelAndToneDecodeVerbatim() {
+        // The Rust producer ships the precomputed display fields; the Android
+        // UI must bind them verbatim without re-deriving from `state`.
+        val raw = """
+            {
+                "signer_kind": "nip46",
+                "state": "reconnecting",
+                "reason": "connection reset by peer",
+                "is_ready": false,
+                "is_awaiting_approval": false,
+                "is_reconnecting": true,
+                "is_unavailable": false,
+                "is_failed": false,
+                "status_label": "Reconnecting…",
+                "status_tone": "warning"
+            }
+        """.trimIndent()
+        val result = json.decodeFromString<SignerState>(raw)
+        assertEquals("Reconnecting…", result.statusLabel)
+        assertEquals("warning", result.statusTone)
+    }
+
+    @Test
+    fun absentLabelAndToneDefaultToEmpty() {
+        // Older kernels (pre-#1099) omit the fields; decode must not fail and
+        // must default to empty so the UI's no-session fallback applies.
+        val raw = """
+            {
+                "signer_kind": "nip46",
+                "state": "ready",
+                "is_ready": true,
+                "is_awaiting_approval": false,
+                "is_reconnecting": false,
+                "is_unavailable": false,
+                "is_failed": false
+            }
+        """.trimIndent()
+        val result = json.decodeFromString<SignerState>(raw)
+        assertEquals("", result.statusLabel)
+        assertEquals("", result.statusTone)
     }
 }

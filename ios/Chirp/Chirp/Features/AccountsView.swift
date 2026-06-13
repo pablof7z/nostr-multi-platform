@@ -353,18 +353,12 @@ private struct SignerStateRow: View {
         return "circle.fill"
     }
 
+    // ADR-0032 / #1099: the status label and tone→colour mapping are Rust-
+    // precomputed. Swift renders `signerState.statusLabel` verbatim and maps
+    // `signerState.statusTone` → `Color` via the shared helper — no string-
+    // switch on `state` remains in this view (thin-shell rule).
     private var statusColor: Color {
-        if isDegradedTerminal { return ChirpColor.danger }
-        if isInProgress { return ChirpColor.warning }
-        return ChirpColor.success
-    }
-
-    private var statusLabel: String {
-        if signerState.isUnavailable { return "Signer unavailable" }
-        if signerState.isFailed { return "Connection failed" }
-        if signerState.isAwaitingApproval { return "Waiting for approval…" }
-        if signerState.isReconnecting { return "Reconnecting…" }
-        return "Connected"
+        SignerStateTone.color(forTone: signerState.statusTone)
     }
 
     var body: some View {
@@ -381,7 +375,7 @@ private struct SignerStateRow: View {
                         .foregroundStyle(statusColor)
                         .imageScale(.small)
                 }
-                Text(statusLabel)
+                Text(signerState.statusLabel)
                     .foregroundStyle(isDegradedTerminal
                                      ? ChirpColor.danger
                                      : ChirpColor.textPrimary)
@@ -397,7 +391,7 @@ private struct SignerStateRow: View {
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Signer: \(statusLabel)")
+        .accessibilityLabel("Signer: \(signerState.statusLabel)")
         .accessibilityIdentifier("signer-state-row")
     }
 }

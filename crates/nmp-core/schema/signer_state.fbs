@@ -67,6 +67,15 @@ table SignerState {
   // `state == "failed"` — permanent error (rejected / mismatch / timeout),
   // session bricked. Hosts prompt re-auth on this signal.
   is_failed:bool;
+  // Pre-computed display label (ADR-0032 / #1099). Shells render verbatim;
+  // no string-switch on `state`. Values: "Connected" | "Reconnecting…" |
+  // "Waiting for approval…" | "Signer unavailable" | "Connection failed" |
+  // "Unknown". Tail-appended (additive) — older hosts ignore it.
+  status_label:string;
+  // Pre-computed display tone: "active" | "warning" | "error" | "inactive".
+  // Shells map to colour/icon without any state-string knowledge (ADR-0032 /
+  // #1099). Tail-appended (additive) — older hosts ignore it.
+  status_tone:string;
 }
 
 file_identifier "KSST";
