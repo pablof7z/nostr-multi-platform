@@ -1,0 +1,278 @@
+import Foundation
+
+// Update-frame, typed snapshot envelope, dispatch-result, and create-account
+// DTOs for the KernelBridge FFI seam. Extracted from `KernelBridge.swift` so the
+// bridge file holds only `KernelHandle` (file-size hard-cap separation). These
+// are pure value types; same-module Swift files see each other without import.
+
+enum KernelDecodedUpdateFrame {
+    case snapshot(KernelUpdateResult)
+    case panic(String)
+}
+
+// ─── Typed SnapshotFrame envelope (ADR-0044 Tier-3) ───────────────────────
+
+/// The typed `SnapshotFrame` envelope fields, read DIRECTLY off the
+/// `SnapshotFrame` table (ADR-0044) — distinct from the `typed_projections`
+/// sidecar list every other `typed*` decode walks. PR #1034 added these
+/// first-class fields (`rev`, `running`, `metrics`, the relay/interest/wire
+/// vectors, `logs`) on the frame so a migrated host reads them instead of
+/// re-walking the generic JSON `payload` tree.
+///
+/// All seven fields are written by the producer as a UNIT
+/// (`encode_snapshot_with_envelope`, `kernel/update.rs`) whenever the frame
+/// carries metrics, so this whole struct is gated on the one field whose
+/// FlatBuffers accessor reports presence (`SnapshotFrame.metrics != nil`). When
+/// the gate is open the host prefers these typed values; when it is closed (a
+/// legacy frame, or the test-only `encode_snapshot_with_typed` path) the value
+/// is `nil` and every accessor falls through to the generic JSON `payload`
+/// (`snapshot?.<field>`) — ADR-0037 Commitment 4. Every value is a raw mirror
+/// of the top-level `KernelSnapshot` fields (ADR-0032), field-identical to the
+/// JSON decode. This is the LAST consumer of the generic `payload`'s top-level
+/// scalars.
+struct TypedSnapshotEnvelope: Equatable {
+    let rev: UInt64
+    let running: Bool
+    let metrics: KernelMetrics
+    let relayStatuses: [RelayStatus]
+    let logicalInterests: [LogicalInterestStatus]
+    let wireSubscriptions: [WireSubscriptionStatus]
+    let logs: [String]
+    /// Snapshot-driven error toast — read DIRECTLY off the `SnapshotFrame`
+    /// table (`last_error_toast`), the same first-class envelope tier as the
+    /// other fields. `nil` ⇒ no toast on this tick. This re-homes the last
+    /// raw whole-payload read (`update.lastErrorToast`) onto the typed
+    /// envelope; `KernelModel` copies it into its user-clearable
+    /// `lastErrorToast` slot in `apply(result:)`.
+    let lastErrorToast: String?
+}
+
+// ─── Swift-side timing wrapper ────────────────────────────────────────────
+
+struct KernelUpdateResult {
+    /// Typed home-feed decode result (ADR-0038 typed path). Non-nil when the
+    /// snapshot carried a well-formed `NOFS` typed projection that the Swift
+    /// `NFCT` decoder could fully populate. `nil` means the generic
+    /// `projections.homeFeed` fallback applies (ADR-0037 Commitment 4).
+    let typedHomeFeed: ChirpTimelineSnapshot?
+    /// Typed `accounts` projection decode (V6 Stage 4 / Wave B `KACC` sidecar).
+    /// Non-nil when the snapshot carried a well-formed `accounts` typed sidecar;
+    /// `nil` means the generic `projections.accounts` JSON fallback applies.
+    let typedAccounts: [AccountSummary]?
+    /// Typed `active_account` projection decode (V6 Stage 4 / Wave B `KACT`
+    /// sidecar). Non-nil when the snapshot carried a well-formed `active_account`
+    /// typed sidecar that resolved to an active pubkey; `nil` means either no
+    /// sidecar OR no active account — both defer to the generic
+    /// `projections.active_account` JSON fallback (parity-preserving).
+    let typedActiveAccount: String?
+    /// Typed `configured_relays` projection decode (V6 Stage 4 / Wave B `KCRL`
+    /// sidecar). `nil` ⇒ the generic `projections.configured_relays` JSON
+    /// fallback applies.
+    let typedConfiguredRelays: [AppRelay]?
+    /// Typed `relay_role_options` projection decode (`KRRO`). `nil` ⇒ generic
+    /// `projections.relay_role_options` JSON fallback.
+    let typedRelayRoleOptions: [RelayRoleOption]?
+    /// Typed `outbox_summary` projection decode (`KOXS`). `nil` ⇒ generic
+    /// `projections.outbox_summary` JSON fallback.
+    let typedOutboxSummary: OutboxSummary?
+    /// Typed `publish_outbox` projection decode (`KPBO`). `nil` ⇒ generic
+    /// `projections.publish_outbox` JSON fallback.
+    let typedPublishOutbox: [PublishOutboxItem]?
+    /// Typed `publish_queue` projection decode (`KPBQ`). The domain type is a
+    /// field-subset of the wire. `nil` ⇒ generic `projections.publish_queue`
+    /// JSON fallback.
+    let typedPublishQueue: [PublishQueueEntry]?
+    /// Typed `relay_diagnostics` projection decode (`KRDG`). `nil` ⇒ generic
+    /// `projections.relay_diagnostics` JSON fallback.
+    let typedRelayDiagnostics: RelayDiagnosticsSnapshot?
+    /// Typed `action_lifecycle` projection decode (`KALC`). `nil` ⇒ generic
+    /// `projections.action_lifecycle` JSON fallback.
+    let typedActionLifecycle: ActionLifecycleSnapshot?
+    /// Typed `nmp.follow_list` projection decode (`NF02`; envelope key
+    /// `nmp.follow_list`, schema_id `nmp.nip02.follow_list`). `nil` ⇒ generic
+    /// `projections["nmp.follow_list"]` JSON fallback.
+    let typedFollowList: FollowListSnapshot?
+    /// Typed `nmp.nip57.zaps` projection decode (`NZAP`). `nil` ⇒ generic
+    /// `projections["nmp.nip57.zaps"]` JSON fallback.
+    let typedZaps: ZapsAggregateSnapshot?
+    /// Typed `nmp.nip29.group_chat` projection decode (`NGCS`). `nil` ⇒ generic
+    /// `projections["nmp.nip29.group_chat"]` JSON fallback.
+    let typedGroupChat: GroupChatSnapshot?
+    /// Typed `nmp.nip29.discovered_groups` projection decode (`NDGS`). `nil` ⇒
+    /// generic `projections["nmp.nip29.discovered_groups"]` JSON fallback.
+    let typedDiscoveredGroups: DiscoveredGroupsSnapshot?
+    /// Typed `profile` projection decode (`KPRF`). `nil` ⇒ generic
+    /// `projections["profile"]` JSON fallback.
+    let typedProfile: ProfileCard?
+    /// Typed `claimed_profiles` projection decode (`KCPR`). `nil` ⇒ generic
+    /// `projections["claimed_profiles"]` JSON fallback.
+    let typedClaimedProfiles: [String: ProfileCard]?
+    /// Typed `resolved_profiles` projection decode (`KRPR`). `nil` ⇒ generic
+    /// `projections["resolved_profiles"]` JSON fallback.
+    let typedResolvedProfiles: [String: ProfileCard]?
+    /// Typed `nmp.nip17.dm_inbox` projection decode (`NDMI`). `nil` ⇒ generic
+    /// `projections["nmp.nip17.dm_inbox"]` JSON fallback. Routed to the
+    /// `dmInbox` store (typed-first effective value) in `KernelModel.apply`.
+    let typedDmInbox: DmInboxSnapshot?
+    /// Typed `nmp.nip17.dm_relay_list` projection decode (`NDRL`). `nil` ⇒ generic
+    /// `projections["nmp.nip17.dm_relay_list"]` JSON fallback. No Swift read
+    /// consumer yet — read through the `dmRelayList` accessor (added for parity).
+    let typedDmRelayList: DmRelayListSnapshot?
+    /// Typed `claimed_events` projection decode (`KCEV`). `nil` ⇒ generic
+    /// `projections.claimedEvents` JSON fallback. Routed to `EmbedHost.update`
+    /// (typed-first effective value) in `KernelModel.apply`.
+    let typedClaimedEvents: [String: ClaimedEventDto]?
+    /// Typed `bunker_handshake` projection decode (`KBHS`). `nil` ⇒ generic
+    /// `projections["bunker_handshake"]` JSON fallback. The producer emits no
+    /// sidecar while the handshake slot is idle, so nil is the steady state.
+    let typedBunkerHandshake: BunkerHandshake?
+    /// Typed `nip46_onboarding` projection decode (`KN46`). `nil` ⇒ generic
+    /// `projections["nip46_onboarding"]` JSON fallback. Always present from a
+    /// current kernel (the static signer-app table is emitted every tick).
+    let typedNip46Onboarding: Nip46Onboarding?
+    /// Typed `signer_state` projection decode (`KSST`). ADR-0048 D6 —
+    /// generalises the V-14 `bunker_connection_state` sidecar. `nil` while no
+    /// remote-signer session is active — the steady state for local-key
+    /// accounts; no JSON fallback available because iOS is typed-sidecar-only
+    /// (ADR-0037 §4). When non-nil, `isReady` drives the green dot,
+    /// `isAwaitingApproval` the "Waiting for Amber…" affordance,
+    /// `isReconnecting` the amber badge, and `isUnavailable`/`isFailed` the
+    /// red re-auth prompt (ADR-0032 / relay_diagnostics pattern).
+    let typedSignerState: SignerState?
+    /// Typed `nmp.marmot.snapshot` projection decode (`NMMS`, V-107 / ADR-0039).
+    /// `nil` ⇒ generic `projections["nmp.marmot.snapshot"]` JSON fallback. Routed
+    /// to `MarmotStore.apply` (typed-first effective value) in `KernelModel.apply`.
+    /// The producer emits no sidecar while signed-out, so nil is the steady state.
+    let typedMarmotSnapshot: MarmotSnapshot?
+    /// Typed `nmp.marmot.messages` projection decode (`NMMG`, V-107 / ADR-0039).
+    /// `nil` ⇒ generic `projections["nmp.marmot.messages"]` JSON fallback. The
+    /// flattened-vector wire rebuilds the `group_id_hex -> [MarmotMessage]` map.
+    /// Routed to `MarmotStore.apply` (typed-first effective value) in
+    /// `KernelModel.apply`.
+    let typedMarmotMessages: [String: [MarmotMessage]]?
+    /// Typed `wallet` projection decode (`NWST`). `nil` ⇒ generic
+    /// `projections["wallet"]` JSON fallback. Read typed-first through the
+    /// `walletStatus` accessor (`typedWallet ?? snapshot?.walletStatus`) in
+    /// `KernelModel+Projections`. The producer emits no sidecar while the wallet
+    /// is disconnected (slot is `None`), so nil is the steady state. The
+    /// `wallet_pubkey_hex` producer field-add unblocked this flip.
+    let typedWallet: WalletStatusData?
+    /// Typed `settings_hub` projection decode (`KSHB`, kernel built-in). `nil` ⇒
+    /// generic `projections["settings_hub"]` JSON fallback. The single-key
+    /// `["relay_count": Int]` dict is read typed-first through the `settingsHub`
+    /// accessor in `KernelModel+Projections` and wrapped into `SettingsHubSummary`.
+    let typedSettingsHub: [String: Int]?
+    /// Wave C: Typed `action_results` projection decode (`KARS`). `nil` ⇒ generic
+    /// `projections.action_results` JSON fallback. The per-tick drain array; maps
+    /// each `ActionResult` row to `LastActionResult`. NOTE: no read site wired yet
+    /// (foundation only; wire typed-first in `KernelModel.apply` as follow-up).
+    let typedActionResults: [LastActionResult]?
+    /// Wave C: Typed `action_stages` projection decode (`KAST`). `nil` ⇒ generic
+    /// `projections.action_stages` JSON fallback. The flat-vector wire rebuilds
+    /// the `[correlation_id: [ActionStageEntry]]` dictionary. NOTE: no read site
+    /// wired yet (foundation only; wire typed-first in `KernelModel.apply` as
+    /// follow-up).
+    let typedActionStages: [String: [ActionStageEntry]]?
+    // V-112 (ADR-0042): typedAuthorView (AuthorProfileSnapshot) and
+    // typedThreadView (ThreadView) deleted — author_view / thread_view typed
+    // sidecars removed with AuthorViewState / ThreadViewState.
+    /// ADR-0044 Tier-3: the typed `SnapshotFrame` envelope (`rev` / `running` /
+    /// `metrics` / `relayStatuses` / `logicalInterests` / `wireSubscriptions` /
+    /// `logs`), read directly off the `SnapshotFrame` table. Non-nil when the
+    /// frame carried the typed envelope (gated on `metrics`); `nil` ⇒ the
+    /// generic JSON `payload` top-level scalars apply (read through the
+    /// `KernelModel+Projections` accessors).
+    let typedEnvelope: TypedSnapshotEnvelope?
+    /// Dynamic per-screen flat feeds keyed as `nmp.feed.author.<pubkey>` or
+    /// `nmp.feed.thread.<event_id>`. These keys are opened per navigation
+    /// target, so they cannot be codegen'd as fixed projection fields.
+    let flatFeeds: [String: ChirpTimelineSnapshot]
+    let payloadBytes: Int
+    let callbackReceivedAt: ContinuousClock.Instant
+    let decodeMicros: Int
+}
+
+// ─── dispatch_action return envelope (PR-A) ───────────────────────────────
+
+/// Synchronous outcome of `nmp_app_dispatch_action`. The Rust kernel returns
+/// `{"correlation_id":"<id>"}` on accept (the action was validated, minted a
+/// correlation id, and routed to its executor), or `{"error":"<message>"}` on
+/// reject (null app, unknown namespace, malformed JSON, module validator
+/// rejection). PR-A: the Swift bridge parses this envelope so a caller can
+/// drive a spinner keyed on the correlation_id and surface the error message
+/// as a toast on the reject path.
+///
+/// The terminal verdict ("published" / "failed" / "cancelled") is a SEPARATE
+/// async signal — match the `correlation_id` against
+/// `projections["action_results"]` on subsequent snapshot ticks.
+enum DispatchResult: Equatable {
+    /// The action was accepted and enqueued. Carries the `correlation_id`
+    /// minted by `ActionRegistry::start`. V5: the kernel's
+    /// `action_lifecycle` projection automatically surfaces this id under
+    /// `inFlight` until the action settles, then under `recentTerminal`
+    /// for a 3-second window. The host does NOT maintain its own pending
+    /// set — read `model.actionLifecycle` to drive the UI.
+    case accepted(correlationId: String)
+    /// The action was rejected synchronously. Carries the human-readable
+    /// error from the Rust kernel — show it as a toast.
+    case failure(_ message: String)
+
+    var correlationId: String? {
+        if case let .accepted(id) = self { return id }
+        return nil
+    }
+
+    var errorMessage: String? {
+        if case let .failure(msg) = self { return msg }
+        return nil
+    }
+
+    /// Parse the JSON envelope returned by `nmp_app_dispatch_action`.
+    ///
+    /// The kernel's contract (`ffi/action.rs`): every non-null app returns
+    /// either `{"correlation_id":"<32-hex or event-id>"}` or
+    /// `{"error":"<reason>"}`. Anything else (malformed JSON, missing fields)
+    /// degrades to `.failure` so the caller never silently loses an action.
+    static func parse(envelope: String) -> DispatchResult {
+        guard let data = envelope.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return .failure("dispatch envelope was not a JSON object (bytes=\(envelope.utf8.count))")
+        }
+        if let correlationId = object["correlation_id"] as? String, !correlationId.isEmpty {
+            return .accepted(correlationId: correlationId)
+        }
+        if let message = object["error"] as? String {
+            return .failure(message)
+        }
+        return .failure("dispatch envelope missing both correlation_id and error (bytes=\(envelope.utf8.count))")
+    }
+}
+
+// ─── createAccount FFI payload (Codable, PR-L) ────────────────────────────
+
+/// JSON payload for `nmp_app_create_new_account` — typed wrapper for the
+/// profile metadata + onboarding relay seed list. The wire shape mirrors
+/// what the Rust FFI expects exactly: a flat profile object
+/// (`{"name":"…","about":"…"}`) and an array of two-element relay tuples
+/// (`[["wss://…", "both"], …]`).
+///
+/// PR-L: replaces the `JSONSerialization.data(withJSONObject:)` + `try!`
+/// path in `KernelBridge.createAccount` so a typed-but-impossible encode
+/// failure surfaces as a toast instead of trapping the process.
+struct CreateAccountFFIPayload: Encodable {
+    let profile: [String: String]
+    let relays: [[String]]
+
+    init(profile: [String: String], relays: [(String, String)]) {
+        self.profile = profile
+        self.relays = relays.map { [$0.0, $0.1] }
+    }
+}
+
+extension Duration {
+    var microseconds: Int {
+        let parts = components
+        return Int(parts.seconds) * 1_000_000 + Int(parts.attoseconds / 1_000_000_000_000)
+    }
+}

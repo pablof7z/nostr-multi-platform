@@ -1,0 +1,467 @@
+import Foundation
+
+// Action-lifecycle, publish-outbox, and perf-diagnostic DTOs for the
+// KernelBridge FFI seam. Extracted from `KernelBridge.swift` so the bridge file
+// holds only `KernelHandle` (file-size hard-cap separation). Pure DTOs;
+// same-module Swift files see each other without import.
+
+// ─── Perf-diagnostic types ────────────────────────────────────────────────
+//
+// `LogicalInterestStatus` and `WireSubscriptionStatus` moved to
+// `Generated/KernelTypes.generated.swift` (V6 Stage 1, plan §6b). The Rust
+// projection types in `nmp-core/src/kernel/types.rs` are now the single
+// source of truth — Swift mirrors are emitted from `schemars` schemas.
+
+// ─── Domain types shared across the UI ───────────────────────────────────
+
+// V-112 (ADR-0042): `ThreadView` Decodable deleted — the `thread_view`
+// projection (and its `threadView` field on the generated
+// `SnapshotProjections`) was removed with the kernel author/thread view
+// stack. Thread rendering reads the per-app FlatFeed
+// (`nmp_app_chirp_open_thread_feed`).
+
+// `AccountSummary` moved to `Generated/KernelTypes.generated.swift` (V6
+// Stage 1, plan §6b). Rust source: `nmp-core/src/kernel/identity_state.rs`
+// `AccountSummary`. Field docs live alongside the Rust definition.
+
+struct PublishQueueEntry: Decodable, Identifiable, Equatable {
+    let eventId: String
+    let kind: UInt32
+    let targetRelays: Int
+    let status: String
+    var id: String { eventId }
+}
+
+/// One action terminal result. Used both in the per-tick `actionResults` array
+/// (preferred) and the sticky `lastActionResult` scalar (deprecated — drops
+/// terminals when two actions settle in the same kernel tick).
+///
+/// `status` is one of `"published"`, `"failed"`, `"cancelled"`. `error` is
+/// `nil` for `published` / `cancelled` and carries a human-readable reason for
+/// `failed` (the publish engine joins per-relay reasons with `; `).
+///
+/// To clear spinners correctly: iterate `update.actionResults` each tick
+/// (direction review #29) — it drains every terminal that settled, not just
+/// the last one.
+struct LastActionResult: Decodable, Equatable {
+    let correlationId: String
+    let status: String
+    let error: String?
+}
+
+// ─── PR-G: action_stages projection wire type ────────────────────────────
+//
+// One entry in a correlation_id's stage history. The Rust side uses serde
+// `#[serde(tag = "stage", rename_all = "snake_case")]` so the `stage`
+// discriminant ships as a flat snake_case string ("requested",
+// "publishing", "accepted", "failed"). `Failed` carries a sibling
+// `reason` field; other variants do not. `at_ms` is the Unix epoch
+// millisecond stamp at recording time (kernel clock, deterministic under
+// replay). `detail` is opaque per-stage JSON the host renders verbatim
+// — `nil` when the kernel emitted no detail.
+//
+// To preserve the JSON-decoded `detail` as opaque data, we use
+// `AnyCodableValue` (an existing helper in this file) or a `JSONValue`
+// wrapper. Since the host largely doesn't introspect `detail` today, a
+// `Data?`-style passthrough is sufficient: decode as `String?` of the
+// JSON serialization. For PR-G the renderer needs only `stage` and
+// `reason`; carrying `detail` as `[String: AnyDecodable]` is future
+// work.
+
+/// One stage in an async action's lifecycle, decoded from one entry of
+/// `projections["action_stages"][<correlation_id>][i]`.
+///
+/// Construction-time decoding is forgiving: any unrecognized `stage`
+/// discriminant collapses to `.unknown(raw:)` so a future kernel stage
+/// added without a Swift counterpart does not crash the bridge (D1 —
+/// snapshot decoders must degrade gracefully on schema growth).
+enum ActionStage: Equatable {
+    case requested
+    case awaitingCapability
+    case publishing
+    case accepted
+    /// `reason` is the human-readable failure message the host renders
+    /// verbatim. Mirrors the `error` field on `LastActionResult`.
+    case failed(reason: String)
+    /// Catchall for future kernel stages — preserves the raw tag so a
+    /// diagnostic view can still display something meaningful.
+    case unknown(raw: String)
+
+    var isTerminal: Bool {
+        switch self {
+        case .accepted, .failed: return true
+        default: return false
+        }
+    }
+}
+
+/// One row in a correlation_id's stage history. The PR-G snapshot mirror
+/// projection emits a `[String: [ActionStageEntry]]` map; this struct
+/// decodes one element of the inner array.
+struct ActionStageEntry: Decodable, Equatable {
+    let stage: ActionStage
+    /// Unix epoch milliseconds — when the kernel reducer recorded the
+    /// transition. Stable under `FixedClock` for deterministic replay.
+    let atMs: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case stage
+        case atMs
+        case reason
+        // `detail` is intentionally not decoded — the bridge passes the
+        // stage forward verbatim without introspection. Future work can
+        // add a typed `detail` field per-stage.
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try container.decode(String.self, forKey: .stage)
+        atMs = try container.decode(UInt64.self, forKey: .atMs)
+        switch raw {
+        case "requested": stage = .requested
+        case "awaiting_capability", "awaitingCapability": stage = .awaitingCapability
+        case "publishing": stage = .publishing
+        case "accepted": stage = .accepted
+        case "failed":
+            let reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+            stage = .failed(reason: reason)
+        default:
+            stage = .unknown(raw: raw)
+        }
+    }
+
+    /// Memberwise initializer. The custom `init(from:)` above suppresses
+    /// Swift's synthesized memberwise init, so the Wave C typed-sidecar glue
+    /// (`TypedProjectionGlue.actionStages`) needs this explicit one to build a
+    /// row from the `flatc --swift` reader struct.
+    init(stage: ActionStage, atMs: UInt64) {
+        self.stage = stage
+        self.atMs = atMs
+    }
+}
+
+// ─── V5 thin-shell: action_lifecycle projection wire types ──────────────
+//
+// The kernel's `action_lifecycle` projection collapses the per-stage
+// `action_stages` history into the host display shape:
+// `{ in_flight: [...], recent_terminal: [...] }`. Each entry carries a
+// `correlation_id` plus the latest stage (flattened verbatim from the
+// Rust `LifecycleStage` enum — `Failed`'s `reason` lifts to a sibling
+// of `stage`). Terminal entries drop on a 3-second TTL inside the
+// kernel; the shell does not track them.
+
+/// One stage in the V5 display projection. Mirrors the Rust
+/// `LifecycleStage` enum; an unrecognized discriminant collapses to
+/// `.unknown(raw:)` so a future kernel stage added without a Swift
+/// counterpart does not crash the bridge (D1 — graceful schema growth).
+enum ActionLifecycleStage: Equatable {
+    case requested
+    case awaitingCapability
+    case publishing
+    case accepted
+    /// `reason` is the human-readable failure message the host renders
+    /// verbatim. Same field-level shape as `ActionStage.failed`.
+    case failed(reason: String)
+    /// Catchall for future kernel stages — preserves the raw tag so a
+    /// diagnostic view can still display something meaningful.
+    case unknown(raw: String)
+
+    var isTerminal: Bool {
+        switch self {
+        case .accepted, .failed: return true
+        default: return false
+        }
+    }
+}
+
+/// One row in either `inFlight` or `recentTerminal`. The Rust side
+/// flattens `stage` and `correlation_id` (and `reason` on `failed`)
+/// onto the same object, so the decoder reads them via an explicit
+/// `init(from:)` that switches on the `stage` discriminant.
+struct ActionLifecycleEntry: Decodable, Equatable, Identifiable {
+    let correlationId: String
+    let stage: ActionLifecycleStage
+
+    var id: String { correlationId }
+
+    enum CodingKeys: String, CodingKey {
+        case correlationId
+        case stage
+        case reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        correlationId = try container.decode(String.self, forKey: .correlationId)
+        let raw = try container.decode(String.self, forKey: .stage)
+        switch raw {
+        case "requested": stage = .requested
+        case "awaiting_capability", "awaitingCapability": stage = .awaitingCapability
+        case "publishing": stage = .publishing
+        case "accepted": stage = .accepted
+        case "failed":
+            let reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+            stage = .failed(reason: reason)
+        default:
+            stage = .unknown(raw: raw)
+        }
+    }
+
+    /// Memberwise initializer. The custom `init(from:)` above suppresses
+    /// Swift's synthesized memberwise init, so the V6 Stage 4 typed-sidecar glue
+    /// (`TypedProjectionGlue.actionLifecycle`) needs this explicit one to build a
+    /// row from the `flatc --swift` reader struct (mirroring the
+    /// `PublishOutboxRelay` precedent in PR #1053).
+    init(correlationId: String, stage: ActionLifecycleStage) {
+        self.correlationId = correlationId
+        self.stage = stage
+    }
+}
+
+/// V5 thin-shell display projection. The kernel handles all lifecycle
+/// bookkeeping (latest-stage-wins collapse, TTL eviction on terminals).
+/// The shell decodes this struct verbatim and renders directly — no
+/// pendingActions set, no manual ackActionStage, no PR-G2 race cache.
+struct ActionLifecycleSnapshot: Decodable, Equatable {
+    /// Correlation_ids whose latest stage is non-terminal
+    /// (`requested` / `awaitingCapability` / `publishing`). Render a
+    /// spinner per entry. Stable order: first-record first.
+    let inFlight: [ActionLifecycleEntry]
+    /// Correlation_ids that settled (`accepted` / `failed`) within the
+    /// last 3 seconds. Render a success/failure toast per entry; the
+    /// kernel drops the entry on its next emit past the TTL. Stable
+    /// order: first-record first.
+    let recentTerminal: [ActionLifecycleEntry]
+}
+
+struct PublishOutboxItem: Decodable, Identifiable, Equatable {
+    let handle: String
+    let eventId: String
+    let kind: UInt32
+    let title: String
+    let preview: String
+    // ADR-0032 / V-115: `createdAtDisplay` removed. Raw Unix-seconds timestamp;
+    // shell formats with its own locale/TZ via `UInt64.relativeTimeFromUnixSeconds`.
+    let createdAt: UInt64
+    let status: String
+    /// Pre-formatted English status label (e.g. `"Sending"`, `"Retrying"`).
+    /// Doctrine §6 anti-pattern #1: the shell renders this verbatim — it
+    /// never `switch`es on `status` to choose a label string. Always non-empty.
+    let statusLabel: String
+    /// SF Symbol name pre-classified from the Nostr `kind` in Rust. The view
+    /// passes this directly to `Image(systemName:)` — it never branches on
+    /// `kind` to pick an icon (aim.md §4.4 / §6 anti-pattern: kind-number
+    /// switches in Swift). Always non-empty (default `"doc.text"`).
+    let systemImage: String
+    /// Pre-decided "is the Retry button enabled" flag. The kernel owns the
+    /// retry-policy rule ("a row already sending cannot be retried"); the
+    /// shell binds this directly to `.disabled(!canRetry)` (RMP bible
+    /// commandment #4 — no native `if` deciding what the app should do).
+    let canRetry: Bool
+    let targetRelays: Int
+    // ADR-0032 / V-115: `targetSummary` removed. Shell composes
+    // "N relays · <time>" from `targetRelays` + `createdAt.relativeTimeFromUnixSeconds`.
+    let relays: [PublishOutboxRelay]
+
+    var id: String { handle }
+}
+
+struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
+    let relayUrl: String
+    let status: String
+    /// Pre-formatted English status label (e.g. `"Sending"`, `"Retrying"`).
+    /// Always non-empty — the shell renders this verbatim, never
+    /// `.capitalized`s the wire `status` key or switches on it.
+    let statusLabel: String
+    let attempt: UInt32
+    /// Pre-formatted "try N" badge text — empty when `attempt == 0` so the
+    /// shell renders unconditionally (D1: best-effort rendering, no
+    /// `if attempt > 0` branch). When non-empty the shell renders it as-is.
+    let attemptLabel: String
+    let message: String
+    /// Pre-formatted English reason the relay was targeted — empty string on
+    /// old kernels. Shell renders verbatim with no branching.
+    /// `skip_serializing_if = "String::is_empty"` on the Rust side means the
+    /// key is absent when empty; `decodeIfPresent` handles that transparently.
+    let relayReason: String
+
+    var id: String { relayUrl }
+
+    private enum CodingKeys: String, CodingKey {
+        case relayUrl, status, statusLabel, attempt, attemptLabel, message, relayReason
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        relayUrl = try c.decode(String.self, forKey: .relayUrl)
+        status = try c.decode(String.self, forKey: .status)
+        statusLabel = try c.decode(String.self, forKey: .statusLabel)
+        attempt = try c.decode(UInt32.self, forKey: .attempt)
+        attemptLabel = try c.decode(String.self, forKey: .attemptLabel)
+        message = try c.decode(String.self, forKey: .message)
+        relayReason = try c.decodeIfPresent(String.self, forKey: .relayReason) ?? ""
+    }
+
+    /// Memberwise initializer. The custom `init(from:)` above suppresses Swift's
+    /// synthesized memberwise init, so the V6 Stage 4 typed-sidecar glue
+    /// (`TypedProjectionGlue.publishOutbox`) needs this explicit one to build a
+    /// row from the `flatc --swift` reader struct.
+    init(
+        relayUrl: String,
+        status: String,
+        statusLabel: String,
+        attempt: UInt32,
+        attemptLabel: String,
+        message: String,
+        relayReason: String
+    ) {
+        self.relayUrl = relayUrl
+        self.status = status
+        self.statusLabel = statusLabel
+        self.attempt = attempt
+        self.attemptLabel = attemptLabel
+        self.message = message
+        self.relayReason = relayReason
+    }
+}
+
+/// Pre-formatted outbox-summary header (title + subtitle) plus per-status
+/// counters. Doctrine §6 anti-pattern #1 ("Duplicated formatting logic
+/// across platforms") + RMP bible commandment #4 ("no native business
+/// logic"). The shell binds `title` / `subtitle` directly — it never
+/// `.filter`-counts `publishOutbox` to derive them.
+struct OutboxSummary: Decodable, Equatable {
+    let title: String
+    let subtitle: String
+    let total: UInt32
+    let sending: UInt32
+    let retrying: UInt32
+    let queued: UInt32
+    let failed: UInt32
+
+    /// Empty-state fallback used when the snapshot predates the projection
+    /// (an older kernel build that ships no `outbox_summary` key). Mirrors
+    /// the Rust `outbox_summary_snapshot` empty-outbox shape so the shell
+    /// never has to reconstruct the strings.
+    static let empty = OutboxSummary(
+        title: "Nothing waiting",
+        subtitle: "Your local outbox is clear.",
+        total: 0,
+        sending: 0,
+        retrying: 0,
+        queued: 0,
+        failed: 0
+    )
+}
+
+/// Profile summary card. Raw kind:0 metadata fields — `displayName` and
+/// `pictureUrl` are `nil` until a kind:0 has arrived; the presentation
+/// layer chooses its own fallback (typically the abbreviated hex pubkey).
+/// ADR-0032.
+struct ProfileCard: Decodable, Equatable {
+    let pubkey: String
+    // ADR-0032 / V-115: `npub` (bech32) removed from wire. Shells encode
+    // bech32 via `nmp_app_encode_profile(app, pubkey)` or equivalent.
+    /// Display name from kind:0 (`display_name` / `displayName` / `name`,
+    /// first non-empty wins). `nil` when no kind:0 has arrived yet —
+    /// presentation layer renders its own fallback.
+    let displayName: String?
+    /// Picture URL from kind:0. `nil` when no kind:0 has arrived yet or
+    /// the metadata carries no `picture` field — presentation layer
+    /// chooses a placeholder strategy.
+    let pictureUrl: String?
+    let nip05: String
+    let about: String
+    /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
+    /// from kind:0. `nil` when the user has no lightning address or their
+    /// kind:0 hasn't arrived. The zap button is shown only when this is
+    /// non-nil — Rust decides zapability, the shell renders (thin-shell
+    /// rule).
+    let lnurl: String?
+}
+
+extension ProfileCard {
+    /// Display label for this profile — kind:0 display name when present,
+    /// abbreviated hex pubkey otherwise. ADR-0032 fallback owned by the
+    /// presentation layer.
+    var displayLabel: String { displayName ?? pubkey.shortHex }
+}
+
+/// Dispatch spec for a `ProfileAction` that fires a write through
+/// `nmp_app_dispatch_action`. Present for follow / unfollow, absent for the
+/// local-UI `edit_profile` intent. The shell branches on
+/// `profileAction.dispatch != nil`, never on `kind` — aim.md §4.4 forbids a
+/// Swift `switch action.kind { … }` deciding which write to perform.
+struct ProfileDispatchSpec: Decodable, Equatable {
+    let namespace: String
+    let bodyJson: String
+}
+
+struct ProfileAction: Decodable, Equatable {
+    /// Stable discriminator preserved for diagnostics/tests. The shell must
+    /// NOT switch on this — branch on `dispatch` instead.
+    let kind: String
+    let label: String
+    let targetPubkey: String
+    /// SF Symbol name the shell renders without further mapping.
+    let iconName: String
+    /// Present for write actions; absent for local intents (edit sheet).
+    let dispatch: ProfileDispatchSpec?
+}
+
+// V-112 (ADR-0042): `AuthorProfileSnapshot` Decodable deleted — the
+// `author_view` projection (and its `authorView` field on the generated
+// `SnapshotProjections`) was removed with the kernel author/thread view
+// stack. Author rendering reads the per-app FlatFeed
+// (`nmp_app_chirp_open_author_feed`); `ProfileAction` /
+// `ProfileDispatchSpec` above stay (used by `ProfileView`).
+
+// `TimelineItem` moved to `Generated/KernelTypes.generated.swift` (V6
+// Stage 3 partial, plan §6d — F-05). Rust source:
+// `nmp-core/src/kernel/types.rs::TimelineItem`. Field docs live alongside
+// the Rust definitions.
+//
+// The generated struct tightens three field-level shapes the hand-written
+// version had loosened for "older kernel snapshot" tolerance. The Rust
+// kernel always emits all of them — the `decodeIfPresent ?? default`
+// fallbacks were dead code, and the schema source of truth now sits on
+// the Rust side where it belongs:
+//
+// 1. `authorPictureUrl` was `String?`; is now `String` (Rust D1 contract:
+//    the field is always non-empty — either the kind:0 picture URL or an
+//    `identicon:<prefix>` placeholder URI).
+// 2. `isRepost`, `navTargetId`, `repostInnerContent` were
+//    `decodeIfPresent ?? false / id / ""`; the generated decoder hard-fails
+//    if any is absent. Rust `kernel/types.rs::TimelineItem` defines them
+//    as non-Option and `kernel/update.rs::timeline_items` populates them
+//    on every tick — the fallback was dead.
+// 3. `authorAvatarSource` is added as a non-optional `String`. The Rust
+//    field is `pub(super) author_avatar_source: String` (kind:0 ↔
+//    placeholder discriminator); the hand-written struct never decoded
+//    it, so consumers had no way to read the avatar provenance. Adding it
+//    is purely additive.
+//
+// The synthetic-construction call site `ModularBlockView.syntheticItem`
+// is updated to provide the new mandatory fields directly.
+
+// `KernelMetrics` and `RelayStatus` moved to
+// `Generated/KernelTypes.generated.swift` (V6 Stage 1, plan §6b). Rust
+// source: `nmp-core/src/kernel/types.rs::Metrics` /
+// `nmp-core/src/kernel/types.rs::RelayStatus`. Field docs live alongside
+// the Rust definitions.
+//
+// The generated `KernelMetrics` adds transport/drop counters the hand-written
+// shape was missing — `dispatchDropsTotal`, `claimDropsTotal`, and
+// `updateFrameDegradationsTotal` — all non-optional `UInt64`. The Rust kernel
+// always emits them
+// (`update.rs::metrics_snapshot`), so the now-stricter Swift decode is
+// safe against any live snapshot.
+//
+// The generated `RelayStatus` adds three fields the hand-written shape
+// was missing — `errorCategory: String?`, `denied: Bool`, and
+// `lastCloseReason: String?` — all currently-emitted by
+// `kernel::status::relay_status()`. The `nip77Negentropy` field tightens
+// from `String?` to `String` (Rust emits it unconditionally as
+// `"unknown" | "probing" | "supported" | "unsupported"`), and
+// `bytesRx` / `bytesTx` / `eventsRx` are tightened from optional to
+// non-optional to match the Rust definitions.
