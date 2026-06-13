@@ -9,9 +9,8 @@ use std::ops::ControlFlow;
 use super::{domain, gc, insert, query, MemEventStore};
 use crate::events::{DomainHandle, EventIter, EventStore};
 use crate::types::{
-    Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
-    WatermarkKey, WatermarkRow,
 };
 use crate::DomainMigration;
 use crate::StoreError;
@@ -128,26 +127,6 @@ impl EventStore for MemEventStore {
 
     fn delete_by_filter(&self, filter: DeleteFilter) -> Result<usize, StoreError> {
         insert::delete_by_filter(self, filter)
-    }
-
-    fn read_watermark(&self, key: &WatermarkKey) -> Result<Option<WatermarkRow>, StoreError> {
-        query::read_watermark(self, key)
-    }
-
-    fn write_watermark(&self, row: WatermarkRow) -> Result<(), StoreError> {
-        query::write_watermark(self, row)
-    }
-
-    fn coverage(&self, key: &WatermarkKey, now_secs: u64) -> Result<Coverage, StoreError> {
-        query::coverage(self, key, now_secs)
-    }
-
-    fn list_watermarks_for_relay<'a>(
-        &'a self,
-        relay_url: &str,
-    ) -> Result<Box<dyn Iterator<Item = Result<WatermarkRow, StoreError>> + Send + 'a>, StoreError>
-    {
-        query::list_watermarks_for_relay(self, relay_url)
     }
 
     fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> {

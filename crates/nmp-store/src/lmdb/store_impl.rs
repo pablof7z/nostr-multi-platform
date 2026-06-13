@@ -11,9 +11,8 @@ use super::{
 };
 use crate::events::{DomainHandle, EventIter, EventStore};
 use crate::types::{
-    Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
-    WatermarkKey, WatermarkRow,
 };
 use crate::DomainMigration;
 use crate::StoreError;
@@ -130,27 +129,6 @@ impl EventStore for LmdbEventStore {
 
     fn delete_by_filter(&self, filter: DeleteFilter) -> Result<usize, StoreError> {
         delete::delete_by_filter(&self.inner, filter)
-    }
-
-    fn read_watermark(&self, key: &WatermarkKey) -> Result<Option<WatermarkRow>, StoreError> {
-        query::read_watermark(&self.inner, key)
-    }
-
-    fn write_watermark(&self, row: WatermarkRow) -> Result<(), StoreError> {
-        query::write_watermark(&self.inner, row)
-    }
-
-    fn coverage(&self, key: &WatermarkKey, now_secs: u64) -> Result<Coverage, StoreError> {
-        query::coverage(&self.inner, key, now_secs)
-    }
-
-    fn list_watermarks_for_relay<'a>(
-        &'a self,
-        relay_url: &str,
-    ) -> Result<Box<dyn Iterator<Item = Result<WatermarkRow, StoreError>> + Send + 'a>, StoreError>
-    {
-        let rows = query::list_watermarks_for_relay(&self.inner, relay_url)?;
-        Ok(Box::new(rows.into_iter().map(Ok)))
     }
 
     fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> {

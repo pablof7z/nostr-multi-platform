@@ -1,10 +1,14 @@
+# PARKED — post-v1 (Cashu / nutzaps, issue #1001). Not a member of the default
+# workspace build (see top-level Cargo.toml [workspace] exclude). Compile on
+# demand: `cargo build --manifest-path crates/nmp-nip60/Cargo.toml`.
+# Remove from exclude and add back to [workspace] members when #1001 enters scope.
 [package]
 name = "nmp-nip60"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery. Provides a WalletBackend trait that is transparent to apps whether the user has a NIP-60 ecash wallet or a NWC-connected Lightning wallet."
+description = "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery. Provides a WalletBackend trait that is transparent to apps whether the user has a NIP-60 ecash wallet or a NWC-connected Lightning wallet. PARKED: post-v1 (Cashu / #1001)."
 
 [dependencies]
 # nostr: NIP-44 encryption for wallet events, NIP-60 event types, key ops.

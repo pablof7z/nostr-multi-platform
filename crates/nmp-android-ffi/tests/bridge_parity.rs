@@ -7,10 +7,22 @@ const ACTION_RS: &str = include_str!("../src/action.rs");
 const PLATFORM_RS: &str = include_str!("../src/platform.rs");
 const SIGNER_RS: &str = include_str!("../src/signer.rs");
 const EXTERNAL_SIGNER_RS: &str = include_str!("../src/external_signer.rs");
+// The NIP-55 signer-request push-listener JNI symbols
+// (`nativeSetSignerRequestListener`/`nativeClearSignerRequestListener`) live in
+// this module, not `lib.rs`, so the parity grep must include it.
+const SIGNER_REQUEST_LISTENER_RS: &str = include_str!("../src/signer_request_listener.rs");
 
 #[test]
 fn android_bridge_declares_parity_jni_symbols() {
-    let rust = [LIB_RS, ACTION_RS, PLATFORM_RS, SIGNER_RS, EXTERNAL_SIGNER_RS].join("\n");
+    let rust = [
+        LIB_RS,
+        ACTION_RS,
+        PLATFORM_RS,
+        SIGNER_RS,
+        EXTERNAL_SIGNER_RS,
+        SIGNER_REQUEST_LISTENER_RS,
+    ]
+    .join("\n");
     for method in [
         "SetStoragePath",
         "LifecycleForeground",
@@ -21,10 +33,14 @@ fn android_bridge_declares_parity_jni_symbols() {
         "SignInBunker",
         "CancelBunkerHandshake",
         "NostrConnectUri",
-        // ADR-0048 Stage 2 — NIP-55 external-signer seam.
+        // ADR-0048 Stage 2 — NIP-55 external-signer seam. Issue #1284 migrated
+        // the request path from the `NextSignerRequest` blocking drain to the
+        // `SetSignerRequestListener`/`ClearSignerRequestListener` JNI push
+        // callbacks (D8 — no polling), mirroring the update-listener seam.
         "SignInNip55",
         "DeliverSignerResponse",
-        "NextSignerRequest",
+        "SetSignerRequestListener",
+        "ClearSignerRequestListener",
     ] {
         let kotlin_decl = format!("native{method}(");
         assert!(

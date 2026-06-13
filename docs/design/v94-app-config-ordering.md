@@ -127,6 +127,20 @@ runtime-guard diagnostic (§3.2) covers the C-ABI path for the same defect class
 typed `Err`; the diagnostic makes the *ordering* mistake observable rather than
 only the *use* mistake).
 
+**Status (issue #619 — DONE):** the reusable wallet wiring lives in
+`nmp_nip47::register_wallet(&mut impl AppHost, storage_path)` (lifted out of the
+app-private `nmp-app-chirp::wallet_runtime`), and `nmp-defaults` exposes it as
+the typed `NmpAppBuilder::<Unstarted>::with_wallet()` builder step. Because
+`start(self, RunConfig)` consumes the builder by move, a Rust caller cannot
+reach `start()` without `.with_wallet()` having already installed the runtime —
+the install-before-dispatch ordering is now expressed in the type system, not in
+prose. The C-ABI runtime guard (`NmpApp::started: AtomicBool` set in the Start
+dispatch arm; every `nmp_app_set_*` setter records `Disposition::DroppedLateWiring`
+into the composition ledger when called post-start) was already shipped by
+ADR-0049 Part 2 and remains the irreducible backstop for raw-C-ABI hosts,
+alongside the `active_wallet_runtime()` `Err` guard in each wallet
+`ActionModule::execute`.
+
 ## 4. New crates / types
 
 - No new crate. `nmp-defaults` (exists, V-48) gains `NmpAppBuilder`.

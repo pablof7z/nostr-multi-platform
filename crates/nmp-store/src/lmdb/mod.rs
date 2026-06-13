@@ -70,6 +70,9 @@ mod tests_gc_stage1;
 // V-52 (#969) — relay-origin reverse index parity + persistence + backfill.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_relay_index;
+// #1090 Stage-3 — production budget re-enables the HOT_EVENT_CEILING.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_gc_stage3;
 // Secondary-index integrity tests (Bug-1: kind:5 a-tag leaks; Bug-2: freshness leaks).
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_secondary_index;
@@ -82,14 +85,13 @@ use super::StoreError;
 use super::events::{DomainHandle, EventIter, EventStore};
 #[cfg(not(feature = "lmdb-backend"))]
 use super::types::{
-    Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
-    WatermarkKey, WatermarkRow,
 };
 #[cfg(not(feature = "lmdb-backend"))]
-use std::collections::HashSet;
-#[cfg(not(feature = "lmdb-backend"))]
 use crate::DomainMigration;
+#[cfg(not(feature = "lmdb-backend"))]
+use std::collections::HashSet;
 #[cfg(not(feature = "lmdb-backend"))]
 use std::ops::ControlFlow;
 
@@ -122,8 +124,6 @@ mod inner {
         /// Address tombstones for param-replaceable kinds.
         /// Key: "kind:pk_hex:dtag" bytes. Value: bincode(TombstoneRow).
         pub(crate) addr_tombstones: Database<Bytes, Bytes>,
-        /// Watermarks: filter_hash(32) || relay_url bytes → bincode(WatermarkRow).
-        pub(crate) watermarks: Database<Bytes, Bytes>,
         /// Domain schema versions: namespace bytes → u32 BE.
         pub(crate) domain_versions: Database<Bytes, Bytes>,
         /// Domain data: namespace bytes || 0x00 || key bytes → value bytes.
@@ -182,7 +182,6 @@ mod inner {
         pub(crate) relay_index: Database<Bytes, Bytes>,
 
         // ── GC scan state (V-117 fixes) ───────────────────────────────────────
-
         /// Phase-3/3b tombstone-purge gate: unix_secs of the last pass that
         /// actually ran the tombstone scan.  The Phase-3 scan iterates and
         /// serde-decodes every tombstone row inside a WRITE txn — budget-bound
@@ -338,22 +337,6 @@ impl EventStore for LmdbEventStore {
         Err(Self::not_enabled())
     }
     fn delete_by_filter(&self, _filter: DeleteFilter) -> Result<usize, StoreError> {
-        Err(Self::not_enabled())
-    }
-    fn read_watermark(&self, _key: &WatermarkKey) -> Result<Option<WatermarkRow>, StoreError> {
-        Err(Self::not_enabled())
-    }
-    fn write_watermark(&self, _row: WatermarkRow) -> Result<(), StoreError> {
-        Err(Self::not_enabled())
-    }
-    fn coverage(&self, _key: &WatermarkKey, _now_secs: u64) -> Result<Coverage, StoreError> {
-        Err(Self::not_enabled())
-    }
-    fn list_watermarks_for_relay<'a>(
-        &'a self,
-        _relay_url: &str,
-    ) -> Result<Box<dyn Iterator<Item = Result<WatermarkRow, StoreError>> + Send + 'a>, StoreError>
-    {
         Err(Self::not_enabled())
     }
     fn hot_set_hint(&self, _ids: &[EventId]) -> Result<(), StoreError> {

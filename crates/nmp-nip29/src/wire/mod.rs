@@ -8,6 +8,8 @@
 //!
 //! - [`group_chat_fb`] — `"nmp.nip29.group_chat"` (`NGCS`).
 //! - [`discovered_groups_fb`] — `"nmp.nip29.discovered_groups"` (`NDGS`).
+//! - [`group_defaults_fb`] — `"nmp.nip29.group_defaults"` (`NGDF`).
 
 pub mod discovered_groups_fb;
 pub mod group_chat_fb;
+pub mod group_defaults_fb;
