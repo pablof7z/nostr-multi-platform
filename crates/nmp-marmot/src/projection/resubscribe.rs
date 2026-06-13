@@ -8,6 +8,8 @@
 //! gap by replaying the persisted group set through the existing relay-cache
 //! choke-point at registration time.
 
+use mdk_core::prelude::group_types::GroupState;
+
 use super::state::{hex_encode, InnerHandle, MarmotProjection};
 
 impl MarmotProjection {
@@ -43,6 +45,15 @@ impl MarmotProjection {
         };
 
         for group in groups {
+            // Security / correctness: only re-subscribe groups that are still
+            // Active.  Inactive groups (left or removed) must not receive live
+            // kind:445 traffic — resuming subscriptions for them would leak
+            // metadata to relays and re-open delivery channels that the user
+            // explicitly closed.
+            if group.state != GroupState::Active {
+                continue;
+            }
+
             let group_id = &group.mls_group_id;
 
             // Read the persisted relay URLs for this group from MDK.

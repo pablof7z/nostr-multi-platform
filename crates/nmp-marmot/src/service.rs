@@ -48,6 +48,7 @@ use mdk_core::prelude::{
 use mdk_core::MdkConfig;
 use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::{Event, EventBuilder, Keys, Kind, PublicKey, RelayUrl, UnsignedEvent};
+use zeroize::Zeroizing;
 
 /// Marmot KeyPackage event kinds (kept local; mirrors `crate::interest`).
 const MLS_KEY_PACKAGE_KIND: u16 = 30443;
@@ -215,6 +216,17 @@ pub struct MarmotService {
     // `pub(crate)` so the `service_reads` module can drive read projections.
     pub(crate) mdk: MDK<MdkSqliteStorage>,
     keys: Keys,
+    /// Redundant `Zeroizing` copy of the raw secret-key bytes, held purely so
+    /// that *a* copy of the secret is reliably wiped from the heap on drop.
+    ///
+    /// PARTIAL MITIGATION — same constraint as `nmp-signers` `LocalKeySigner`:
+    /// `nostr::Keys` keeps the secret in its private `secp256k1::SecretKey`
+    /// field (no `&mut` accessor) and a cached `Keypair`. `secp256k1` 0.29 has
+    /// no `zeroize` feature and `nostr` 0.44 implements neither `Zeroize` nor
+    /// `Drop`, so those copies are NOT wiped on drop. This field wipes the one
+    /// Rust-owned copy we can reach, reducing (not eliminating) recoverable
+    /// secret material in freed memory. Tracked as V-55 in GitHub issue #971.
+    _secret_bytes: Zeroizing<[u8; 32]>,
     /// `author_pubkey_hex` → most-recent full signed kind:30443/443 event for
     /// that peer. Populated by the app's raw-event tap when the kernel
     /// delivers a peer's KeyPackage. Any app using Marmot can populate this
@@ -254,6 +266,7 @@ impl MarmotService {
             .map_err(|e| MarmotError::Mdk(e.to_string()))?;
         Ok(Self {
             mdk: MDK::new(storage),
+            _secret_bytes: Zeroizing::new(keys.secret_key().to_secret_bytes()),
             keys,
             kp_cache: Mutex::new(HashMap::new()),
             orphaned_commit_count: Arc::new(AtomicU32::new(0)),
@@ -267,6 +280,7 @@ impl MarmotService {
     pub fn from_storage(storage: MdkSqliteStorage, keys: Keys, config: MdkConfig) -> Self {
         Self {
             mdk: MDK::builder(storage).with_config(config).build(),
+            _secret_bytes: Zeroizing::new(keys.secret_key().to_secret_bytes()),
             keys,
             kp_cache: Mutex::new(HashMap::new()),
             orphaned_commit_count: Arc::new(AtomicU32::new(0)),
