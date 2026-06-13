@@ -11,6 +11,8 @@ use crate::feature_snapshot::{DmConversationLine, MessageLine};
 use crate::ui::colors::{
     author_color, ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIM_TEXT, LIST_BG, SELECTED_BG,
 };
+use crate::ui::nostr_user::nostr_avatar::NostrAvatar;
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
 pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
     let cols = Layout::default()
@@ -35,80 +37,145 @@ fn render_conversation_list(frame: &mut Frame, area: Rect, state: &AppState) {
         ));
 
     let inner = block.inner(area);
-    let pane_width = inner.width as usize;
+    frame.render_widget(block, area);
 
-    let lines = if state.features.dm_conversations.is_empty() {
-        vec![
+    if state.features.dm_conversations.is_empty() {
+        let placeholder = Paragraph::new(vec![
             Line::from(""),
             Line::from(Span::styled(
                 "  No conversations yet",
                 Style::default().fg(DIM_TEXT),
             )),
-        ]
-    } else {
-        let mut all: Vec<Line<'static>> = Vec::new();
-        for (i, conv) in state.features.dm_conversations.iter().enumerate() {
-            let selected = i == state.chat_selected;
-            append_conversation_card(&mut all, conv, selected, pane_width);
-        }
-        all
-    };
-
-    let paragraph = Paragraph::new(lines)
-        .block(block)
+        ])
         .style(Style::default().bg(LIST_BG).fg(BODY_TEXT));
-    frame.render_widget(paragraph, area);
+        frame.render_widget(placeholder, inner);
+        return;
+    }
+
+    // Each conversation card is 3 rows (3 = minimum for NostrAvatar with
+    // borders to show initials: top-border + initials + bottom-border).
+    const CARD_HEIGHT: u16 = 3;
+    let mut card_y = inner.y;
+    for (i, conv) in state.features.dm_conversations.iter().enumerate() {
+        if card_y >= inner.y + inner.height {
+            break;
+        }
+        let card_height = CARD_HEIGHT.min((inner.y + inner.height).saturating_sub(card_y));
+        let card_rect = Rect {
+            x: inner.x,
+            y: card_y,
+            width: inner.width,
+            height: card_height,
+        };
+        let selected = i == state.chat_selected;
+        render_conversation_card(frame, card_rect, conv, selected);
+        card_y += CARD_HEIGHT;
+    }
 }
 
-fn append_conversation_card(
-    lines: &mut Vec<Line<'static>>,
+fn render_conversation_card(
+    frame: &mut Frame,
+    area: Rect,
     conv: &DmConversationLine,
     selected: bool,
-    pane_width: usize,
 ) {
     let row_bg = if selected { SELECTED_BG } else { LIST_BG };
-    let gutter = if selected {
-        Span::styled("\u{2503} ", Style::default().fg(ACCENT_CYAN).bg(row_bg))
-    } else {
-        Span::styled("  ", Style::default().bg(row_bg))
-    };
-    let gutter_width = 2usize;
-    let content_width = pane_width.saturating_sub(gutter_width);
 
-    // Row 1: avatar block + peer name
-    let avatar_color = author_color(&conv.peer_pubkey);
-    let avatar_span = Span::styled(
-        "\u{2588}\u{2588} ",
-        Style::default().fg(avatar_color).bg(row_bg),
-    );
-    let name_max = content_width.saturating_sub(4);
+    let gutter_width = 2u16;
+    let avatar_width = 4u16; // 2 border cols + 2 interior cols for initials
+    let text_x = area.x + gutter_width + avatar_width;
+    let text_width = area.width.saturating_sub(gutter_width + avatar_width);
+
+    // Gutter (selection indicator).
+    let gutter_rect = Rect {
+        x: area.x,
+        y: area.y,
+        width: gutter_width,
+        height: area.height,
+    };
+    let gutter_line = if selected {
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                "\u{2503} ",
+                Style::default().fg(ACCENT_CYAN).bg(row_bg),
+            )),
+            Line::from(Span::styled(
+                "\u{2503} ",
+                Style::default().fg(ACCENT_CYAN).bg(row_bg),
+            )),
+            Line::from(Span::styled(
+                "\u{2503} ",
+                Style::default().fg(ACCENT_CYAN).bg(row_bg),
+            )),
+        ])
+    } else {
+        Paragraph::new(vec![
+            Line::from(Span::styled("  ", Style::default().bg(row_bg))),
+            Line::from(Span::styled("  ", Style::default().bg(row_bg))),
+            Line::from(Span::styled("  ", Style::default().bg(row_bg))),
+        ])
+    };
+    frame.render_widget(gutter_line, gutter_rect);
+
+    // NostrAvatar — registry component; minimal ProfileWire from conversation data.
+    let peer_wire = ProfileWire {
+        pubkey: conv.peer_pubkey.clone(),
+        display_name: Some(conv.peer_display.clone()),
+        about: None,
+        picture_url: None,
+        nip05: None,
+        npub: conv.peer_pubkey.clone(),
+        npub_short: short_author(&conv.peer_pubkey),
+    };
+    let avatar_rect = Rect {
+        x: area.x + gutter_width,
+        y: area.y,
+        width: avatar_width,
+        height: area.height,
+    };
+    frame.render_widget(NostrAvatar::new(&peer_wire).image(None), avatar_rect);
+
+    // Text: row 0 = peer name, row 1 = message preview, row 2 = padding.
+    if text_width == 0 {
+        return;
+    }
+    let name_max = text_width as usize;
     let name = truncate(&conv.peer_display, name_max);
     let name_len = name.chars().count();
-    let name_span = Span::styled(
-        name,
-        Style::default()
-            .fg(avatar_color)
-            .bg(row_bg)
-            .add_modifier(Modifier::BOLD),
+    let name_pad = " ".repeat(name_max.saturating_sub(name_len));
+    let preview_str = truncate(conv.latest.replace('\n', " ").as_str(), text_width as usize);
+    let preview_len = preview_str.chars().count();
+    let preview_pad = " ".repeat((text_width as usize).saturating_sub(preview_len));
+    let text_paragraph = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled(
+                name,
+                Style::default()
+                    .fg(author_color(&conv.peer_pubkey))
+                    .bg(row_bg)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(name_pad, Style::default().bg(row_bg)),
+        ]),
+        Line::from(vec![
+            Span::styled(preview_str, Style::default().fg(DIM_TEXT).bg(row_bg)),
+            Span::styled(preview_pad, Style::default().bg(row_bg)),
+        ]),
+        Line::from(Span::styled(
+            " ".repeat(text_width as usize),
+            Style::default().bg(row_bg),
+        )),
+    ])
+    .style(Style::default().bg(row_bg));
+    frame.render_widget(
+        text_paragraph,
+        Rect {
+            x: text_x,
+            y: area.y,
+            width: text_width,
+            height: area.height,
+        },
     );
-    let pad1_len = content_width.saturating_sub(3 + name_len);
-    let pad1 = Span::styled(" ".repeat(pad1_len), Style::default().bg(row_bg));
-    lines.push(Line::from(vec![
-        gutter.clone(),
-        avatar_span,
-        name_span,
-        pad1,
-    ]));
-
-    // Row 2: last message preview
-    let preview = truncate(conv.latest.replace('\n', " ").as_str(), content_width);
-    let preview_len = preview.chars().count();
-    let pad2_len = content_width.saturating_sub(preview_len);
-    lines.push(Line::from(vec![
-        gutter,
-        Span::styled(preview, Style::default().fg(DIM_TEXT).bg(row_bg)),
-        Span::styled(" ".repeat(pad2_len), Style::default().bg(row_bg)),
-    ]));
 }
 
 fn render_message_thread(frame: &mut Frame, area: Rect, state: &AppState) {

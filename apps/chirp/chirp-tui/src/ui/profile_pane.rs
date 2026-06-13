@@ -1,11 +1,11 @@
 //! Rich profile pane — renders in the left column when Pane::Profile is focused.
 //!
 //! Layout (vertical split):
-//!   - Top 8 rows: profile header (avatar block + name/npub + bio + stats)
+//!   - Top 9 rows: profile header (avatar block + name/npub + nip05 + bio + stats)
 //!   - Remaining rows: author's posts from the current timeline
 
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Frame;
@@ -14,9 +14,12 @@ use crate::app::AppState;
 use crate::ui::colors::{
     author_color, format_age, ACCENT_CYAN, BODY_TEXT, DIMMER_TEXT, DIM_TEXT, LIST_BG,
 };
+use crate::ui::nostr_user::nostr_avatar::NostrAvatar;
+use crate::ui::nostr_user::nostr_nip05_badge::NostrNip05Badge;
 use crate::ui::nostr_user::profile_name_span;
+use crate::ui::nostr_user::profile_wire::ProfileWire;
 
-const HEADER_HEIGHT: u16 = 8;
+const HEADER_HEIGHT: u16 = 9;
 
 pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
     let sections =
@@ -28,7 +31,6 @@ pub fn render(f: &mut Frame, area: Rect, state: &AppState) {
 
 fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     let pubkey = &state.profile_pubkey;
-    let avatar_color = author_color(pubkey);
 
     // V-112 (ADR-0042): author_view projection deleted; derive profile display
     // data from the ProfileWire attached to the author's timeline rows (populated
@@ -38,15 +40,26 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
         .iter()
         .find(|r| r.author_pubkey == *pubkey)
         .map(|r| &r.author_profile);
-    let display_name = author_wire
-        .and_then(|w| w.display_name.as_deref())
+
+    // Build a minimal ProfileWire for the avatar when no rows are available yet.
+    let fallback_wire = ProfileWire {
+        pubkey: pubkey.clone(),
+        display_name: None,
+        about: None,
+        picture_url: None,
+        nip05: None,
+        npub: pubkey.clone(),
+        npub_short: short_pubkey(pubkey),
+    };
+    let profile = author_wire.unwrap_or(&fallback_wire);
+
+    let display_name = profile
+        .display_name
+        .as_deref()
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .unwrap_or_else(|| short_pubkey(pubkey));
-    let about = author_wire
-        .and_then(|w| w.about.as_deref())
-        .unwrap_or("")
-        .to_string();
+    let about = profile.about.as_deref().unwrap_or("").to_string();
     let note_count_n = state
         .rows
         .iter()
@@ -59,44 +72,17 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     };
 
     let sections = Layout::vertical([
-        Constraint::Length(3), // avatar block
+        Constraint::Length(3), // avatar (NostrAvatar widget)
         Constraint::Length(1), // name + npub
+        Constraint::Length(1), // NIP-05 badge (or empty)
         Constraint::Length(2), // bio (up to 2 lines)
         Constraint::Length(2), // stats
     ])
     .split(area);
 
-    // Avatar block — fill with colored "██" blocks, overlay name centered.
-    let avatar_bg = avatar_color;
-    let avatar_fill = "\u{2588}\u{2588}".repeat((area.width as usize / 2).max(1));
-    let avatar_block = Block::default().style(Style::default().bg(avatar_bg));
-    let name_centered = Paragraph::new(display_name.clone())
-        .style(
-            Style::default()
-                .fg(Color::White)
-                .bg(avatar_bg)
-                .add_modifier(Modifier::BOLD),
-        )
-        .alignment(ratatui::layout::Alignment::Center)
-        .block(avatar_block);
-    // Render the colored fill as background first, then overlay the name.
-    let fill_line = truncate_to_width(&avatar_fill, area.width as usize);
-    let fill_para = Paragraph::new(vec![
-        Line::from(Span::styled(
-            fill_line.clone(),
-            Style::default().fg(avatar_bg).bg(avatar_bg),
-        )),
-        Line::from(Span::styled(
-            fill_line.clone(),
-            Style::default().fg(avatar_bg).bg(avatar_bg),
-        )),
-        Line::from(Span::styled(
-            fill_line,
-            Style::default().fg(avatar_bg).bg(avatar_bg),
-        )),
-    ]);
-    f.render_widget(fill_para, sections[0]);
-    f.render_widget(name_centered, sections[0]);
+    // Avatar — registry NostrAvatar widget: initials in a pubkey-keyed colored
+    // bordered tile. Pass image=None (TUI has no profile-image cache yet).
+    f.render_widget(NostrAvatar::new(profile).image(None), sections[0]);
 
     // Name + short pubkey line.
     let npub_short = short_pubkey(pubkey);
@@ -117,6 +103,15 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     f.render_widget(
         Paragraph::new(name_line).style(Style::default().bg(LIST_BG)),
         sections[1],
+    );
+
+    // NIP-05 badge — registry NostrNip05Badge; empty row when absent.
+    let nip05_line = NostrNip05Badge::from_profile(profile)
+        .map(|badge| badge.line())
+        .unwrap_or_else(|| Line::from(""));
+    f.render_widget(
+        Paragraph::new(nip05_line).style(Style::default().bg(LIST_BG)),
+        sections[2],
     );
 
     // Bio — up to 2 lines.
@@ -140,7 +135,7 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
     };
     f.render_widget(
         Paragraph::new(bio_text).style(Style::default().bg(LIST_BG)),
-        sections[2],
+        sections[3],
     );
 
     // Stats.
@@ -175,7 +170,7 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
         .style(Style::default().bg(LIST_BG));
     f.render_widget(
         Paragraph::new(vec![stats_line1]).block(stats_block),
-        sections[3],
+        sections[4],
     );
 }
 
