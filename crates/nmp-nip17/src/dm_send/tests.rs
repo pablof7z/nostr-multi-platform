@@ -113,6 +113,7 @@ fn run_cmd(
         };
         let stages = NoopActionStageTracker;
         let recipients = NoopRecipientRelayLookup;
+        let host_op_handler = nmp_core::substrate::NoopHostOpHandlerAccess;
         let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
         let mut ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
             send: &send,
@@ -123,6 +124,7 @@ fn run_cmd(
             errors: &errors,
             stages: &stages,
             recipients: &recipients,
+            host_op_handler: &host_op_handler,
         });
         Box::new(cmd).run(&mut ctx).expect("command body returns Ok");
         rx

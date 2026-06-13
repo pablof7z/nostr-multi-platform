@@ -96,151 +96,16 @@ impl fmt::Display for ProtocolCommandError {
 
 impl std::error::Error for ProtocolCommandError {}
 
-// ──────────────────────────────────────────────────────────────────────────
-// Capability traits (Debt C — replaces the 12-positional-closure bundle)
-// ──────────────────────────────────────────────────────────────────────────
-
-/// D7 — kernel-owned wall clock. NIP commands MUST read time through this
-/// seam rather than calling `SystemTime::now` directly.
-pub trait KernelClock: Send + Sync {
-    /// Seconds since the Unix epoch.
-    fn now_secs(&self) -> u64;
-}
-
-/// Active-account local signing material. Used by NIP commands that need
-/// to mint a signature on the actor thread (NIP-57 kind:9734 signing,
-/// NIP-17 gift-wrap sealing).
-pub trait LocalSignerAccess: Send + Sync {
-    /// Active account's local `nostr::Keys`, cloned. `None` for NIP-46
-    /// bunker accounts (which sign through the actor's signer port) and when
-    /// no account is active.
-    fn active_local_keys(&self) -> Option<nostr::Keys>;
-
-    /// Active account's hex pubkey, backend-transparent (local nsec OR remote
-    /// signer). `None` when no account is active.
-    ///
-    /// ADR-0050 §D5 — the gift-wrap DM chain resolves the active account's
-    /// pubkey ONCE at step 1 through this accessor and pins every subsequent
-    /// port step with `signer_pubkey: Some(hex)`, so a mid-chain account switch
-    /// signs the seal with the originating account. Replaces `signer_for_seal`.
-    fn active_account_pubkey(&self) -> Option<String>;
-}
-
-/// NIP-17 kind:10050 DM-inbox relay reads — substrate-generic. Re-uses
-/// the existing [`crate::substrate::DmInboxRelayLookup`] trait (the same
-/// seam the planner's kernel-side `MailboxCache` adapter consults). The
-/// concrete cache lives in `nmp-nip17::DmRelayCache`; this re-export
-/// keeps the capability-trait surface consistent (one name for the
-/// DM-inbox lookup contract across the substrate).
-pub use crate::substrate::DmInboxRelayLookup as DmInboxLookup;
-
-/// D6 observable error surfaces — the `last_error_toast` projection and
-/// the `Failed` terminal action-stage recorder. NIP commands fire these
-/// on every early-exit branch so the host's spinner clears.
-pub trait ErrorSurface: Send + Sync {
-    /// Write the `last_error_toast` projection. `None` clears the toast.
-    fn set_last_error_toast(&self, message: Option<String>);
-
-    /// Record a `Failed` terminal stage for `correlation_id` with
-    /// `reason` as the failure message.
-    fn record_action_failure(&self, correlation_id: String, reason: String);
-}
-
-/// Action-stage write surface — the `Requested` transition recorded
-/// against an in-flight `correlation_id`. Idempotent.
-pub trait ActionStageTracker: Send + Sync {
-    /// Record a `Requested` stage for `correlation_id`.
-    fn record_requested(&self, correlation_id: &str);
-}
-
-/// Recipient-relay lookup surface — the substrate-level wrapper around
-/// `OutboxRouter::route_publish` that NIP commands need to materialise a
-/// recipient's "where would your followers / your own outbox publish a
-/// kind:K event under your authorship?" relay set. Concretely: the NIP-57
-/// LNURL fetcher's kind:9734 `relays` tag must carry the recipient's
-/// NIP-65 write list so the LN provider knows where to publish the
-/// kind:9735 zap receipt (NIP-57 § "Appendix F").
-///
-/// This is **not** a bare cache accessor. The kernel-side adapter drives
-/// the injected `outbox_router` slot with a synthetic publish-direction
-/// `UnsignedEvent { pubkey: recipient, kind, .. }`; the router's lane 1
-/// resolves to the cached NIP-65 write set, lane 7 falls back to the
-/// AppRelay cold-start seed. NIP crates therefore never read the
-/// substrate `MailboxCache` directly — they go through the router via
-/// this capability (Debt-A: router is the live decision authority).
-pub trait RecipientRelayLookup: Send + Sync {
-    /// Resolve the relay URLs the LN provider (or analogous downstream
-    /// publisher) should publish a `kind`-typed event authored by
-    /// `recipient` to. Empty `Vec` when the router returns `Unroutable`
-    /// (no NIP-65 cache hit AND no AppRelay seed) — the caller decides
-    /// whether to fall back further or surface the empty tag.
-    ///
-    /// `kind` is the synthetic event kind the router uses to drive
-    /// lane-6 / lane-7 discriminators; pass the kind the downstream
-    /// publication carries (e.g. `9735` for NIP-57 zap-receipt routing).
-    fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String>;
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// Noop default impls — used by `with_send_only` and as fall-throughs for
-// NIP crate tests that don't exercise a given capability surface.
-// ──────────────────────────────────────────────────────────────────────────
-
-/// Noop [`KernelClock`] — returns `0`. Used as the `with_send_only`
-/// default and by NIP crate tests that don't need a real clock.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct NoopKernelClock;
-
-impl KernelClock for NoopKernelClock {
-    fn now_secs(&self) -> u64 {
-        0
-    }
-}
-
-/// Noop [`LocalSignerAccess`] — returns `None` for both accessors.
-/// Mirrors the "not signed in" branch.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct NoopLocalSignerAccess;
-
-impl LocalSignerAccess for NoopLocalSignerAccess {
-    fn active_local_keys(&self) -> Option<nostr::Keys> {
-        None
-    }
-    fn active_account_pubkey(&self) -> Option<String> {
-        None
-    }
-}
-
-/// Noop [`ErrorSurface`] — discards toasts and failure recordings.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct NoopErrorSurface;
-
-impl ErrorSurface for NoopErrorSurface {
-    fn set_last_error_toast(&self, _message: Option<String>) {}
-    fn record_action_failure(&self, _correlation_id: String, _reason: String) {}
-}
-
-/// Noop [`ActionStageTracker`] — discards stage transitions.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct NoopActionStageTracker;
-
-impl ActionStageTracker for NoopActionStageTracker {
-    fn record_requested(&self, _correlation_id: &str) {}
-}
-
-/// Noop [`RecipientRelayLookup`] — returns an empty `Vec` for every
-/// recipient. Mirrors the "router not wired / no NIP-65 cached" branch;
-/// the [`with_send_only`](ProtocolCommandContext::with_send_only) default
-/// and NIP crate tests that don't exercise the routing surface install
-/// this singleton.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct NoopRecipientRelayLookup;
-
-impl RecipientRelayLookup for NoopRecipientRelayLookup {
-    fn recipient_publish_relays(&self, _recipient: &str, _kind: u32) -> Vec<String> {
-        Vec::new()
-    }
-}
+// Capability traits (Debt C) + their `Noop*` impls live in a sibling module
+// (file-size discipline) and are re-exported below so the
+// `crate::substrate::*` public paths are unchanged.
+#[path = "protocol/capabilities.rs"]
+mod capabilities;
+pub use capabilities::{
+    ActionStageTracker, DmInboxLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
+    LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess,
+    NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, RecipientRelayLookup,
+};
 
 // ──────────────────────────────────────────────────────────────────────────
 // ProtocolCommandContext
@@ -274,6 +139,10 @@ pub struct ProtocolCommandContextParts<'a> {
     pub stages: &'a dyn ActionStageTracker,
     /// V-07 recipient-relay router wrapper.
     pub recipients: &'a dyn RecipientRelayLookup,
+    /// ADR-0052 §D4 — the per-app host-op handler slot accessor. Read by the
+    /// `HostOpCommand` in [`crate::substrate::host_op`]; the noop singleton is
+    /// installed for every other command (they never call it).
+    pub host_op_handler: &'a dyn HostOpHandlerAccess,
 }
 
 /// Per-command runtime affordances handed to [`ProtocolCommand::run`].
@@ -300,6 +169,8 @@ pub struct ProtocolCommandContext<'a> {
     errors: &'a dyn ErrorSurface,
     stages: &'a dyn ActionStageTracker,
     recipients: &'a dyn RecipientRelayLookup,
+    /// ADR-0052 §D4 — per-app host-op handler slot accessor.
+    host_op_handler: &'a dyn HostOpHandlerAccess,
     /// V-38: optional `&mut Kernel` for command bodies that need to mutate
     /// kernel state synchronously on the actor thread — record action
     /// terminals, set the last-error toast, register persistent subs, mark
@@ -334,6 +205,7 @@ impl<'a> ProtocolCommandContext<'a> {
             errors,
             stages,
             recipients,
+            host_op_handler,
         } = parts;
         Self {
             send,
@@ -344,6 +216,7 @@ impl<'a> ProtocolCommandContext<'a> {
             errors,
             stages,
             recipients,
+            host_op_handler,
             kernel: None,
             outbound: None,
         }
@@ -382,6 +255,7 @@ impl<'a> ProtocolCommandContext<'a> {
         static ERRORS: NoopErrorSurface = NoopErrorSurface;
         static STAGES: NoopActionStageTracker = NoopActionStageTracker;
         static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
+        static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
         let (command_sender, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
         let command_sender = crate::actor::CommandSender::new(command_sender);
         Self::new(ProtocolCommandContextParts {
@@ -393,6 +267,7 @@ impl<'a> ProtocolCommandContext<'a> {
             errors: &ERRORS,
             stages: &STAGES,
             recipients: &RECIPIENTS,
+            host_op_handler: &HOST_OP,
         })
     }
 
@@ -495,6 +370,19 @@ impl<'a> ProtocolCommandContext<'a> {
     #[must_use]
     pub fn recipients(&self) -> &dyn RecipientRelayLookup {
         self.recipients
+    }
+
+    /// ADR-0052 §D4 — clone the currently-installed host-op handler out of the
+    /// per-app slot (`None` when none is installed). D15-wrapped: a panicking
+    /// slot accessor falls back to `None` (the genuinely-absent-handler
+    /// branch) rather than unwinding the calling `ProtocolCommand::run` frame.
+    #[must_use]
+    pub fn host_op_handler(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
+        let h = self.host_op_handler;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.current_handler()))
+            .unwrap_or(None)
     }
 
     // ── D15 catch_unwind shortcuts ──

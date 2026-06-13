@@ -161,6 +161,8 @@ fn ctx_with_sender<'a>(
     static EMPTY_DM: nmp_core::substrate::EmptyDmInboxRelayLookup =
         nmp_core::substrate::EmptyDmInboxRelayLookup;
     static ERRORS: NoopErrorSurface = NoopErrorSurface;
+    static HOST_OP: nmp_core::substrate::NoopHostOpHandlerAccess =
+        nmp_core::substrate::NoopHostOpHandlerAccess;
     ProtocolCommandContext::new(ProtocolCommandContextParts {
         send,
         command_sender,
@@ -170,6 +172,7 @@ fn ctx_with_sender<'a>(
         errors: &ERRORS,
         stages,
         recipients,
+        host_op_handler: &HOST_OP,
     })
 }
 

@@ -375,7 +375,7 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
     // bunker (D13 — the chain never holds raw keys; it signs through the port).
     use crate::substrate::{
         EmptyDmInboxRelayLookup, LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
-        NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
+        NoopHostOpHandlerAccess, NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
         ProtocolCommandContextParts,
     };
 
@@ -411,6 +411,7 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
     static ERRORS: NoopErrorSurface = NoopErrorSurface;
     static STAGES: NoopActionStageTracker = NoopActionStageTracker;
     static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
+    static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
     let send = |_: crate::actor::ActorCommand| {};
     let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
     let ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
@@ -422,6 +423,7 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
         errors: &ERRORS,
         stages: &STAGES,
         recipients: &RECIPIENTS,
+        host_op_handler: &HOST_OP,
     });
 
     // Backend-transparent: the active bunker's pubkey resolves through the

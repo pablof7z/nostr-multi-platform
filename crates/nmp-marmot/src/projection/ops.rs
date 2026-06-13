@@ -259,7 +259,7 @@ pub fn dispatch(
         Ok(mut ok) => {
             if let Value::Object(map) = &mut ok {
                 // `{"pending":true}` envelopes must NOT get an `ok` field — the
-                // `DispatchHostOp` arm keys off `"pending":true` to skip the
+                // `HostOpCommand` keys off `"pending":true` to skip the
                 // terminal verdict; injecting `ok:true` would force a spurious
                 // success. Otherwise inject `ok:true` unless the handler already
                 // decided (soft-fail paths set `ok:false` explicitly).

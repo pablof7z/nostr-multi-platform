@@ -23,8 +23,11 @@
 //! trait `nmp-core` defines so the actor can ask "whoever owns the app-side
 //! state, run this op for me" without knowing what the op is. The host
 //! installs an `Arc<dyn HostOpHandler>` into [`NmpApp::set_host_op_handler`];
-//! the actor's [`ActorCommand::DispatchHostOp`] arm pulls the handler from
-//! the slot and calls [`HostOpHandler::handle`].
+//! the [`crate::substrate::HostOpCommand`] (dispatched through the single
+//! `ActorCommand::Protocol` write seam — ADR-0052 §D4, K2 rung 5.4) clones the
+//! handler out of this slot at `run` time and calls [`HostOpHandler::handle`].
+//! Before rung 5.4 a bespoke `ActorCommand::DispatchHostOp` arm did this; that
+//! second write seam was deleted and merged into `Protocol`.
 //!
 //! # Naming (D0)
 //!
@@ -42,10 +45,11 @@
 //! `handle` consumes a JSON op envelope (the action body's `Action` payload,
 //! re-serialized to a string by the [`ActionModule::execute`] body) plus the
 //! registry-minted `correlation_id`, runs the op synchronously on whatever
-//! thread the actor's dispatch arm calls it from, and returns a JSON value.
-//! The actor dispatch arm wires that value into a snapshot projection keyed
-//! by `correlation_id` so the host can pick up the result on the next tick
-//! (the same pull-model contract `register_snapshot_projection` exposes).
+//! thread the `HostOpCommand` calls it from (the actor thread), and returns a
+//! JSON value. The command wires that value into the `action_stages` /
+//! `action_results` mirror keyed by `correlation_id` so the host can pick up
+//! the result on the next tick (the same pull-model contract the snapshot
+//! projection exposes).
 //!
 //! No protocol type ever crosses this boundary — the JSON string and
 //! `serde_json::Value` are the only types it speaks. The handler impl on the
@@ -54,12 +58,12 @@
 //!
 //! # D6 — no panic crosses the trait
 //!
-//! Implementations MUST NOT panic. The actor's `DispatchHostOp` arm wraps the
-//! call in `catch_unwind` (the same way `ActionRegistry::execute` does for
-//! `ActionModule::execute`), so a panic is converted to a `Failed` action
-//! stage rather than unwinding across the FFI boundary — but a well-behaved
-//! impl returns an `{"ok":false,"error":...}` envelope for soft failures
-//! instead of relying on the catch.
+//! Implementations MUST NOT panic. The [`crate::substrate::HostOpCommand`]
+//! wraps the call in `catch_unwind` (and the `Protocol` dispatch arm wraps the
+//! whole command body too — ADR-0052 §D4), so a panic is converted to a
+//! `Failed` action stage rather than unwinding the actor thread — but a
+//! well-behaved impl returns an `{"ok":false,"error":...}` envelope for soft
+//! failures instead of relying on the catch.
 //!
 //! # D8 — handlers must not block the actor thread for long
 //!
@@ -96,9 +100,9 @@ pub trait HostOpHandler: Send + Sync {
     ///   fire-and-forget ops.
     ///
     /// Returns the op result as a `serde_json::Value` — a `{"ok":true,...}` /
-    /// `{"ok":false,"error":...}` envelope by convention. The actor's
-    /// `DispatchHostOp` arm threads this value into a snapshot projection
-    /// keyed by `correlation_id`.
+    /// `{"ok":false,"error":...}` envelope by convention. The
+    /// [`crate::substrate::HostOpCommand`] threads this value into the
+    /// `action_stages` / `action_results` mirror keyed by `correlation_id`.
     ///
     /// MUST NOT panic (see D6 in the module docs).
     fn handle(&self, action_json: &str, correlation_id: &str) -> serde_json::Value;
@@ -149,7 +153,7 @@ mod tests {
         // Install the handler (the pattern `NmpApp::set_host_op_handler` uses).
         *slot.lock().unwrap() = Some(Arc::new(EchoHandler) as Arc<dyn HostOpHandler>);
 
-        // The actor's `DispatchHostOp` arm pulls the handler out under the
+        // The `HostOpHandlerAccessAdapter` pulls the handler out under the
         // lock (cloning the inner `Arc`) and calls `handle` WITHOUT holding
         // the outer mutex — proven here by dropping the guard before the call.
         let cloned = {
