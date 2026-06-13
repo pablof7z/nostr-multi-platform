@@ -12,10 +12,16 @@ use nmp_ffi::{nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_free_string
 
 use crate::{jstring_to_cstring, session_arc};
 
+/// Return `value` as a JNI `jstring`, falling back to a null pointer on any
+/// JNI failure (D6 — errors must never cross the FFI seam as a panic).
+///
+/// The previous fallback `env.new_string("{}").unwrap()` could itself panic
+/// (e.g. when the JVM is shutting down or the local-ref table is exhausted),
+/// propagating through `extern "system"` — undefined behaviour per D6.
 fn json_string(env: JNIEnv, value: &str) -> jstring {
     env.new_string(value)
-        .unwrap_or_else(|_| env.new_string("{}").unwrap())
-        .into_raw()
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// Dispatch a named action through the action registry.

@@ -362,15 +362,16 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeBuildActionSpec(
         .ok()
         .filter(|s| !s.trim().is_empty())
     else {
+        // D6: null on JNI failure — never panic through extern "system".
         return env
             .new_string(r#"{"error":"missing Chirp action intent JSON"}"#)
-            .unwrap_or_else(|_| env.new_string("{}").unwrap())
-            .into_raw();
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut());
     };
     let result = action_spec_json_for_intent(&intent);
     env.new_string(&result)
-        .unwrap_or_else(|_| env.new_string("{}").unwrap())
-        .into_raw()
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// Add a relay by URL and role string ("read", "write", or "both").

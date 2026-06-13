@@ -50,7 +50,7 @@ impl CallbackState {
 
     fn set_push_listener(&self, listener: UpdatePushListener) {
         if let Ok(mut slot) = self.push_listener.lock() {
-            *slot = Some(listener);
+            *slot = Some(Arc::new(listener));
         }
     }
 
@@ -352,13 +352,18 @@ extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
     let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
     // JNI push path (issue #614 — D8: no polling). The kernel pushes the frame
     // straight to the Kotlin listener instead of a Kotlin thread draining a
-    // 250 ms-timed channel. The `push_listener` lock serialises against the
-    // `take()` in `close_updates_locked`; combined with the update-callback
-    // quiescence gate this is UAF-safe (see `UpdatePushListener` docs).
-    if let Ok(guard) = state.push_listener.lock() {
-        if let Some(listener) = guard.as_ref() {
-            listener.push(frame);
-        }
+    // 250 ms-timed channel.
+    //
+    // Lock ordering: we snapshot an `Arc` clone under the lock, drop the lock
+    // BEFORE invoking the JNI callback. This prevents a deadlock where Kotlin
+    // re-enters a Rust JNI entry-point (or the actor) that itself tries to
+    // acquire `push_listener` — which would deadlock if the lock were still
+    // held across the upcall. Pattern mirrors nmp-ffi's update-callback
+    // quiescence loop (nmp-ffi/src/lib.rs, "option b — Condvar drain").
+    let listener_snapshot: Option<Arc<UpdatePushListener>> =
+        state.push_listener.lock().ok().and_then(|g| g.clone());
+    if let Some(listener) = listener_snapshot {
+        listener.push(frame);
     }
     // Legacy mpsc path — only the in-crate unit tests drain this now.
     state.send(frame.to_vec());
@@ -404,6 +409,10 @@ pub(crate) fn remove_session(handle: jlong) -> Option<Arc<Session>> {
     let mut registry = sessions().lock().ok()?;
     registry.remove(&handle)
 }
+
+#[cfg(test)]
+#[path = "push_listener_lock_ordering_tests.rs"]
+mod push_listener_lock_ordering_tests; // PR #1226 lock-ordering regression tests
 
 #[cfg(test)]
 mod tests {
