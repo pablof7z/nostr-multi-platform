@@ -114,7 +114,6 @@ private struct AddAccountSheet: View {
     @State private var bunkerURI = ""
     @State private var selectedTab = 0
     @State private var bunkerSubmitted = false
-    @State private var initialRemoteSignerIds: Set<String> = []
     @State private var detectedSignerApp: Nip46Onboarding.SignerApp? = nil
 
     var body: some View {
@@ -144,26 +143,20 @@ private struct AddAccountSheet: View {
                 }
             }
             .onAppear {
-                initialRemoteSignerIds = Set(
-                    model.accounts
-                        .filter(\.signerIsRemote)
-                        .map(\.id)
-                )
                 detectSignerApps()
             }
             .onChange(of: model.nip46Onboarding?.signerApps) { _, _ in
                 detectSignerApps()
             }
-            .onChange(of: model.accounts) { _, newValue in
-                guard bunkerSubmitted else { return }
-                let arrivedRemote = newValue.first { account in
-                    account.signerIsRemote && !initialRemoteSignerIds.contains(account.id)
-                }
-                if arrivedRemote != nil {
-                    bunkerSubmitted = false
-                    bunkerURI = ""
-                    dismiss()
-                }
+            // Dismiss on the kernel's typed handshake-success flag rather than
+            // diffing the accounts list (#611). `bunker_handshake` already
+            // carries `isTerminalSuccess`; Swift renders it, it never
+            // reconstructs the completion signal by polling the snapshot.
+            .onChange(of: model.bunkerHandshake?.isTerminalSuccess) { _, ready in
+                guard bunkerSubmitted, ready == true else { return }
+                bunkerSubmitted = false
+                bunkerURI = ""
+                dismiss()
             }
         }
     }
