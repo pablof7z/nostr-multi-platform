@@ -25,9 +25,8 @@ public struct nmp_kernel_ProfileCard: FlatBufferTable, FlatbuffersVectorInitiali
     case pictureUrl = 14
     case nip05 = 16
     case about = 18
-    case hasProfile = 20
-    case hasLnurl = 22
-    case lnurl = 24
+    case hasLnurl = 20
+    case lnurl = 22
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -44,11 +43,10 @@ public struct nmp_kernel_ProfileCard: FlatBufferTable, FlatbuffersVectorInitiali
   public var nip05SegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.nip05.v) }
   public var about: String? { let o = _accessor.offset(VTOFFSET.about.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var aboutSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.about.v) }
-  public var hasProfile: Bool { let o = _accessor.offset(VTOFFSET.hasProfile.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var hasLnurl: Bool { let o = _accessor.offset(VTOFFSET.hasLnurl.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var lnurl: String? { let o = _accessor.offset(VTOFFSET.lnurl.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var lnurlSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lnurl.v) }
-  public static func startProfileCard(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 11) }
+  public static func startProfileCard(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 10) }
   public static func add(pubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pubkey, at: VTOFFSET.pubkey.p) }
   public static func add(hasDisplayName: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasDisplayName, def: false,
    at: VTOFFSET.hasDisplayName.p) }
@@ -58,8 +56,6 @@ public struct nmp_kernel_ProfileCard: FlatBufferTable, FlatbuffersVectorInitiali
   public static func add(pictureUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pictureUrl, at: VTOFFSET.pictureUrl.p) }
   public static func add(nip05: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: nip05, at: VTOFFSET.nip05.p) }
   public static func add(about: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: about, at: VTOFFSET.about.p) }
-  public static func add(hasProfile: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasProfile, def: false,
-   at: VTOFFSET.hasProfile.p) }
   public static func add(hasLnurl: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasLnurl, def: false,
    at: VTOFFSET.hasLnurl.p) }
   public static func add(lnurl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lnurl, at: VTOFFSET.lnurl.p) }
@@ -73,7 +69,6 @@ public struct nmp_kernel_ProfileCard: FlatBufferTable, FlatbuffersVectorInitiali
     pictureUrlOffset pictureUrl: Offset = Offset(),
     nip05Offset nip05: Offset = Offset(),
     aboutOffset about: Offset = Offset(),
-    hasProfile: Bool = false,
     hasLnurl: Bool = false,
     lnurlOffset lnurl: Offset = Offset()
   ) -> Offset {
@@ -85,7 +80,6 @@ public struct nmp_kernel_ProfileCard: FlatBufferTable, FlatbuffersVectorInitiali
     nmp_kernel_ProfileCard.add(pictureUrl: pictureUrl, &fbb)
     nmp_kernel_ProfileCard.add(nip05: nip05, &fbb)
     nmp_kernel_ProfileCard.add(about: about, &fbb)
-    nmp_kernel_ProfileCard.add(hasProfile: hasProfile, &fbb)
     nmp_kernel_ProfileCard.add(hasLnurl: hasLnurl, &fbb)
     nmp_kernel_ProfileCard.add(lnurl: lnurl, &fbb)
     return nmp_kernel_ProfileCard.endProfileCard(&fbb, start: __start)
@@ -100,7 +94,6 @@ public struct nmp_kernel_ProfileCard: FlatBufferTable, FlatbuffersVectorInitiali
     try _v.visit(field: VTOFFSET.pictureUrl.p, fieldName: "pictureUrl", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.nip05.p, fieldName: "nip05", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.about.p, fieldName: "about", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasProfile.p, fieldName: "hasProfile", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.hasLnurl.p, fieldName: "hasLnurl", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.lnurl.p, fieldName: "lnurl", required: false, type: ForwardOffset<String>.self)
     _v.finish()

@@ -35,7 +35,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         pictureUrl: "https://typed.example/pic.png",
         nip05: "typed@example.com",
         about: "typed about text",
-        hasProfile: true,
         lnurl: "typed@walletofsatoshi.com")
 
     // MARK: - profile (KPRF)
@@ -92,7 +91,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
             pictureUrl: nil,
             nip05: "",
             about: "",
-            hasProfile: false,
             lnurl: nil)
         let card = try XCTUnwrap(TypedProfileDecoder.decode(bytes: buildProfile(placeholder)))
 
@@ -103,7 +101,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         XCTAssertNil(card.lnurl)
         XCTAssertEqual(card.nip05, "")
         XCTAssertEqual(card.about, "")
-        XCTAssertFalse(card.hasProfile)
     }
 
     // MARK: - claimed_profiles (KCPR)
@@ -214,13 +211,12 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         let pictureUrl: String?
         let nip05: String
         let about: String
-        let hasProfile: Bool
         let lnurl: String?
 
         static func simple(pubkey: String, display: String) -> CardFields {
             CardFields(
                 pubkey: pubkey, npub: "npub_\(pubkey)", displayName: display,
-                pictureUrl: nil, nip05: "", about: "", hasProfile: true, lnurl: nil)
+                pictureUrl: nil, nip05: "", about: "", lnurl: nil)
         }
     }
 
@@ -232,7 +228,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
         XCTAssertEqual(card.pictureUrl, fields.pictureUrl, file: file, line: line)
         XCTAssertEqual(card.nip05, fields.nip05, file: file, line: line)
         XCTAssertEqual(card.about, fields.about, file: file, line: line)
-        XCTAssertEqual(card.hasProfile, fields.hasProfile, file: file, line: line)
         XCTAssertEqual(card.lnurl, fields.lnurl, file: file, line: line)
     }
 
@@ -256,7 +251,6 @@ final class TypedProfileClusterDecoderTests: XCTestCase {
             pictureUrlOffset: pictureOff,
             nip05Offset: nip05Off,
             aboutOffset: aboutOff,
-            hasProfile: c.hasProfile,
             hasLnurl: c.lnurl != nil,
             lnurlOffset: lnurlOff)
     }

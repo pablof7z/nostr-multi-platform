@@ -33,9 +33,8 @@ impl<'a> ProfileCard<'a> {
   pub const VT_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
   pub const VT_NIP05: ::flatbuffers::VOffsetT = 16;
   pub const VT_ABOUT: ::flatbuffers::VOffsetT = 18;
-  pub const VT_HAS_PROFILE: ::flatbuffers::VOffsetT = 20;
-  pub const VT_HAS_LNURL: ::flatbuffers::VOffsetT = 22;
-  pub const VT_LNURL: ::flatbuffers::VOffsetT = 24;
+  pub const VT_HAS_LNURL: ::flatbuffers::VOffsetT = 20;
+  pub const VT_LNURL: ::flatbuffers::VOffsetT = 22;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -54,7 +53,6 @@ impl<'a> ProfileCard<'a> {
     if let Some(x) = args.display_name { builder.add_display_name(x); }
     if let Some(x) = args.pubkey { builder.add_pubkey(x); }
     builder.add_has_lnurl(args.has_lnurl);
-    builder.add_has_profile(args.has_profile);
     builder.add_has_picture_url(args.has_picture_url);
     builder.add_has_display_name(args.has_display_name);
     builder.finish()
@@ -111,13 +109,6 @@ impl<'a> ProfileCard<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_ABOUT, None)}
   }
   #[inline]
-  pub fn has_profile(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_PROFILE, Some(false)).unwrap()}
-  }
-  #[inline]
   pub fn has_lnurl(&self) -> bool {
     // Safety:
     // Created from valid Table for this object
@@ -146,7 +137,6 @@ impl ::flatbuffers::Verifiable for ProfileCard<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("picture_url", Self::VT_PICTURE_URL, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("nip05", Self::VT_NIP05, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("about", Self::VT_ABOUT, false)?
-     .visit_field::<bool>("has_profile", Self::VT_HAS_PROFILE, false)?
      .visit_field::<bool>("has_lnurl", Self::VT_HAS_LNURL, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("lnurl", Self::VT_LNURL, false)?
      .finish();
@@ -161,7 +151,6 @@ pub struct ProfileCardArgs<'a> {
     pub picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub nip05: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub about: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_profile: bool,
     pub has_lnurl: bool,
     pub lnurl: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
@@ -176,7 +165,6 @@ impl<'a> Default for ProfileCardArgs<'a> {
       picture_url: None,
       nip05: None,
       about: None,
-      has_profile: false,
       has_lnurl: false,
       lnurl: None,
     }
@@ -217,10 +205,6 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ProfileCardBuilder<'a, 'b, A>
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_ABOUT, about);
   }
   #[inline]
-  pub fn add_has_profile(&mut self, has_profile: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_PROFILE, has_profile, false);
-  }
-  #[inline]
   pub fn add_has_lnurl(&mut self, has_lnurl: bool) {
     self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_LNURL, has_lnurl, false);
   }
@@ -253,7 +237,6 @@ impl ::core::fmt::Debug for ProfileCard<'_> {
       ds.field("picture_url", &self.picture_url());
       ds.field("nip05", &self.nip05());
       ds.field("about", &self.about());
-      ds.field("has_profile", &self.has_profile());
       ds.field("has_lnurl", &self.has_lnurl());
       ds.field("lnurl", &self.lnurl());
       ds.finish()

@@ -1,108 +1,68 @@
 //! `MarmotProjection` — the per-app Marmot state.
 //!
-//! Owns one [`MarmotService`] (the typed MDK translation layer from
-//! `nmp-marmot`) plus the small amount of FFI-local bookkeeping that
-//! `MarmotService` does not itself surface:
+//! Owns one [`MarmotService`] (the typed MDK translation layer) plus the
+//! FFI-local bookkeeping `MarmotService` does not itself surface:
 //!
-//! * a cache of pending Welcomes keyed by kind:1059 gift-wrap event-id hex
-//!   — we store the **gift-wrap `nostr::Event`** (NOT any MLS type, so the
-//!   kernel-boundary "nmp-marmot is the sole importer of mdk-core/openmls"
-//!   gate holds) plus the display strings the snapshot needs.
-//!   `MarmotService::process_welcome` is idempotent (it returns the stored
-//!   Welcome when the wrapper id was already processed and only errors on a
-//!   *previously-failed* attempt — verified against mdk-core 0.8.0
-//!   `welcomes.rs`), so accept/decline lazily re-runs
-//!   `unwrap_and_process_welcome` to recover the `&Welcome` value those
-//!   ops require without this crate ever naming an MLS type, and
+//! * a cache of pending Welcomes keyed by kind:1059 gift-wrap event-id hex.
+//!   We store the **gift-wrap `nostr::Event`** (NOT any MLS type, so the
+//!   "nmp-marmot is the sole importer of mdk-core/openmls" boundary holds);
+//!   `process_welcome` is idempotent, so accept/decline lazily re-runs
+//!   `unwrap_and_process_welcome` to recover the `&Welcome` without naming an
+//!   MLS type.
 //! * the local key-package publication timestamp + `d` tag (snapshot
-//!   `age_secs` / `stale`), and
-//! * a `group_id_hex → Vec<RelayUrl>` cache of each group's configured
-//!   relay list. Marmot groups are relay-pinned (kind:445 commits /
-//!   messages MUST go to the group relay, not the author outbox), but
-//!   neither `MarmotService` nor `mdk-core`'s `group_types::Group`
-//!   surfaces the relay list to a non-`nmp-marmot` consumer
-//!   (`MDK::get_relays` exists but is not re-exported, and adding an
-//!   accessor would touch `nmp-marmot`). We therefore cache the relays at
-//!   the points where they ARE observable to this crate: the
-//!   `create_group` dispatch envelope (`relays` array) and the
-//!   `welcome_types::Welcome::group_relays` set recovered on
-//!   `accept_welcome` / gift-wrap ingest. A cache MISS (e.g. a group
-//!   joined in a session before this code landed) degrades the publish to
-//!   author-outbox `Auto` — documented limitation, NOT a regression
-//!   (those events previously did not reach relays at all).
+//!   `age_secs` / `stale`).
+//! * a `group_id_hex → Vec<RelayUrl>` cache of each group's relay-pinned
+//!   relay list (kind:445 commits/messages MUST go to the group relay, not
+//!   the author outbox). `mdk-core` does not surface the list, so we cache it
+//!   where it IS observable: the `create_group` envelope (`relays`) and the
+//!   `Welcome::group_relays` set recovered on accept/gift-wrap ingest. A MISS
+//!   degrades the publish to author-outbox `Auto` (documented limitation).
+//! * the deferred-op store — see [`crate::projection::deferred`].
 //!
-//! ## Outbound relay seam — CLOSED (this is the publish direction)
+//! ## Relay seams — both CLOSED
 //!
-//! The dispatch ops now publish their signed events to relays INTERNALLY
-//! via [`crate::projection::publish`] (the workspace-internal pure-Rust
-//! `nmp_ffi::NmpApp::publish_signed_explicit` kernel API, called against
-//! the retained `&NmpApp`). They no longer rely on a non-existent Swift
-//! relay path. The publish module is `unsafe`-free for publish routing. The op result still
-//! carries the signed event JSON (`event` / `events` / `evolution_event`
-//! / `welcome_rumors`) but it is now INFORMATIONAL only — publish
-//! already happened (fire-and-forget; success == "submitted to the
-//! kernel publish pipeline").
-//!
-//! ## Inbound ingest seam — CLOSED (this is the receive direction)
-//!
-//! `nmp_marmot_register` registers [`crate::projection::tap::MarmotIngestParser`]
-//! as an `IngestParser` under slot `"marmot"` for all five TAP_KINDS
-//! `[443, 444, 445, 1059, 30443]`. The kernel delivers every accepted inbound
-//! verified event of those kinds to it and it drives them through the shared
-//! `ops::ingest_signed_event_core` (kind:1059 → `unwrap_and_process_welcome`;
-//! kind:445 → `process_message`; seeds the `group_id→relays` cache).
-//! Welcomes / messages received from relays therefore surface in the next
-//! `snapshot` automatically — no Swift path, no raw-event tap.
-//! The `{"op":"ingest_signed_event"}` dispatch op remains as a back-compat
-//! alias over the same core.
+//! * **Outbound (publish).** Dispatch ops publish their signed events
+//!   INTERNALLY via [`crate::projection::publish`]
+//!   (`nmp_ffi::NmpApp::publish_signed_explicit` against the retained
+//!   `&NmpApp`). The op result still carries the signed event JSON but it
+//!   is INFORMATIONAL — publish already happened (fire-and-forget).
+//! * **Inbound (receive).** [`crate::projection::tap::MarmotIngestParser`]
+//!   drives accepted kind:445 / kind:1059 events through
+//!   `ops::ingest_signed_event_core`; received Welcomes / messages surface
+//!   in the next `snapshot` automatically (seam 2 below has the detail).
 //!
 //! ## Threading
 //!
-//! MDK is synchronous (`&self`, interior mutability). `MarmotService` is
-//! therefore sync and this projection does NOT invent threading — exactly
-//! as `nmp-marmot`'s own rustdoc states ("callers in an async context
-//! offload via the runtime's blocking bridge — not this crate's concern").
-//!
-//! This projection IS accessed from two threads concurrently: the kernel
-//! actor thread (the `KernelEventObserver` fan-out + the raw signed-event
-//! tap) and the host's FFI entry points (`snapshot` / dispatch). It does
-//! not assume a single-threaded caller — the inner `Mutex` is what makes
-//! that concurrent access sound. (An earlier revision of this comment
-//! claimed "the Swift bridge serializes every FFI call onto a single
-//! dispatch queue"; that is NOT true — Chirp's `KernelHandle` is a plain
-//! `final class` with no queue. The FFI calls happen to originate from one
-//! Swift isolation context (`@MainActor`), but the kernel callbacks do not,
-//! so the `Mutex` is load-bearing, not a belt-and-braces extra.)
+//! MDK is synchronous; `MarmotService` is sync and this projection invents
+//! no threading. It IS accessed from two threads — the kernel actor thread
+//! (`KernelEventObserver` fan-out + the ingest parser) and the host FFI
+//! entry points (`snapshot` / dispatch) — so the inner `Mutex` is
+//! load-bearing for that concurrent access, not a belt-and-braces extra.
 //!
 //! ## Seams (documented, NOT blocking — see crate task)
 //!
-//! 1. **Signer seam.** `MarmotService::new` needs `nostr::Keys`. No
-//!    kernel-level `Keys` provider exists for this crate yet, so
-//!    the host shell's Marmot register path takes the secret key
-//!    hex/nsec directly. Replace with a `KeyringCapability`-backed seam
-//!    when one lands on `NmpApp`.
+//! 1. **Signer seam.** `MarmotService::new` needs `nostr::Keys`; no
+//!    kernel-level `Keys` provider exists yet, so the host register path
+//!    takes the secret key directly. Replace with a `KeyringCapability`
+//!    seam when one lands on `NmpApp`.
 //! 2. **Lossy-observer seam — RESOLVED (inbound ingest CLOSED).** The
-//!    kernel `KernelEventObserver` fan-out delivers a [`KernelEvent`]
-//!    (id/author/kind/created_at/tags/content) — it carries NO signature,
-//!    so a signed `nostr::Event` cannot be reconstructed from it, and
-//!    `MarmotProjection::on_kernel_event` still only uses it for
-//!    *metadata* (presence of the local identity's own kind:30443/443
-//!    key-package). Actual MLS ingest of kind:445 group messages and
-//!    kind:1059 gift-wraps is now driven automatically by
-//!    [`crate::projection::tap::MarmotIngestParser`], an `IngestParser`
-//!    registered under slot `"marmot"` for all five TAP_KINDS
-//!    `[443, 444, 445, 1059, 30443]`. It reconstructs the signed
-//!    `nostr::Event` from [`nmp_core::store::VerifiedEvent::raw`] and
-//!    drives it through `ops::ingest_signed_event_core`. The
-//!    `{"op":"ingest_signed_event","event_json":"…"}` dispatch op is kept
-//!    as a back-compat alias over the SAME
-//!    `ops::ingest_signed_event_core`; it no longer requires a Swift
-//!    relay layer (none ever existed). This seam is no longer open.
-//! 3. **KeyPackage cache seam.** `create_group` / `invite` need the
-//!    invitees' *signed* kind:30443 key-package events. This crate has no
-//!    kernel cache of signed events, so those ops accept an explicit
-//!    `signed_key_package_events_json` array; absent it they return
-//!    `{"ok":false,"error":"key_package_unavailable","needs":[…]}`.
+//!    `KernelEventObserver` fan-out carries no signature, so
+//!    `on_kernel_event` uses it for *metadata* only. Actual MLS ingest of
+//!    kind:445 / kind:1059 is driven by
+//!    [`crate::projection::tap::MarmotIngestParser`] (slot `"marmot"`,
+//!    TAP_KINDS `[443, 444, 445, 1059, 30443]`), which reconstructs the
+//!    signed `nostr::Event` from [`nmp_core::store::VerifiedEvent::raw`]
+//!    and drives `ops::ingest_signed_event_core`. The
+//!    `{"op":"ingest_signed_event"}` dispatch op is a back-compat alias
+//!    over the same core.
+//! 3. **KeyPackage cache seam — deferred completion (see
+//!    [`crate::projection::deferred`]).** `create_group` / `invite` need
+//!    the invitees' signed kind:30443 key packages. When one is missing
+//!    the op is PARKED (not terminally failed): the KP fetch fires and the
+//!    op re-runs on KP arrival, recording its verdict under the original
+//!    `correlation_id`. Parked ops expire on a wall-clock edge (60 s).
+//!    Callers may still pass an explicit `signed_key_package_events_json`
+//!    array to bypass the cache.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -118,6 +78,7 @@ use crate::projection::display;
 use crate::projection::payload::{
     KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
 };
+use crate::projection::pending::PendingOpsStore;
 
 /// Marmot KeyPackage kinds (mirrors `nmp_marmot::interest`; kept local so
 /// this crate does not reach into `nmp-marmot` internals).
@@ -137,7 +98,7 @@ struct CachedWelcome {
     inviter_npub: String,
 }
 
-struct Inner {
+pub(super) struct Inner {
     service: MarmotService,
     /// kind:1059 gift-wrap-event-id hex → cached pending Welcome.
     pending_welcomes: HashMap<String, CachedWelcome>,
@@ -158,6 +119,19 @@ struct Inner {
     /// Set once at construction; never flipped back to `false`. Surfaced in
     /// the snapshot so the host can warn the user and block group features.
     keyring_unavailable: bool,
+    /// Pending ops deferred because invitee KPs were not yet in the cache.
+    /// Re-tried on every KP ingest; expired via wall-clock gate (D8).
+    pub(super) pending_ops: PendingOpsStore,
+    /// Test-only capture of every terminal verdict routed through
+    /// [`InnerHandle::push_actor_command`], as `(verdict, correlation_id)`
+    /// where `verdict` is `"success"` or `"failure"`. In production the
+    /// deferred verdict goes to the live actor channel (which needs a full
+    /// `NmpApp`); `ActorCommand` is not `Clone`, so this buffer records a
+    /// lightweight projection that still lets unit tests assert the EXACT
+    /// command stream — one terminal per correlation_id — without standing
+    /// up the actor.
+    #[cfg(test)]
+    pub(super) captured_commands: Vec<(&'static str, String)>,
 }
 
 /// Owned Marmot projection. `Mutex` because `on_kernel_event` takes `&self`
@@ -167,33 +141,22 @@ pub struct MarmotProjection {
     inner: Mutex<Inner>,
 }
 
-// SAFETY: this `unsafe impl` is REQUIRED — `register_event_observer` casts
-// `Arc<MarmotProjection>` to `Arc<dyn KernelEventObserver>`, and that trait
-// is bounded `Send + Sync`. The auto-derived `!Send`/`!Sync` comes only from
+// SAFETY: REQUIRED — `register_event_observer` casts
+// `Arc<MarmotProjection>` to `Arc<dyn KernelEventObserver>` (bounded
+// `Send + Sync`). The auto-derived `!Send`/`!Sync` comes only from
 // `Inner::app: *mut NmpApp`; every other field is already `Send + Sync`.
-//
-// The honest soundness argument (the prior comment's "Swift serializes
-// every FFI call on one dispatch queue" is FALSE — `KernelHandle` is a
-// plain `final class`, no queue):
-//
-//   * `MarmotProjection` is genuinely accessed from two threads — the
-//     kernel actor thread (`on_kernel_event`, and the `MarmotIngestParser`'s
-//     `parse` via `with_inner`) and the Swift main actor
-//     (`snapshot` / `with_inner` from the FFI ops). All such access goes
-//     through the inner `Mutex<Inner>`, which is what actually makes the
-//     cross-thread sharing sound. The `unsafe impl` only asserts that the
-//     `*mut NmpApp` field does not invalidate that.
-//   * The `app` pointer is only ever READ (to forward fire-and-forget
-//     commands to the kernel actor channel), never mutated. It cannot be
-//     dangling at the point of use: `nmp_app_free` (`NmpApp::Drop`) sends
-//     `Shutdown` and `join()`s the actor thread before freeing the
-//     allocation, and every reader of `app` here runs INLINE on that actor
-//     thread — the join fences any in-flight access.
-//
-// CALLER CONTRACT (upheld by the host FFI shell, `nmp-app-chirp`):
-// `nmp_app_free` must not run while a kernel callback that reaches this
-// projection is still executing. The in-process Rust-trait registration
-// path provides that fence via the actor join.
+// Soundness:
+//   * All cross-thread state access (kernel actor thread via
+//     `on_kernel_event` / ingest parser; Swift `@MainActor` via FFI ops)
+//     goes through the inner `Mutex<Inner>`. The `unsafe impl` only asserts
+//     the `*mut NmpApp` field does not invalidate that.
+//   * `app` is only ever READ (to forward fire-and-forget commands), never
+//     mutated, and cannot dangle: `nmp_app_free` (`NmpApp::Drop`) sends
+//     `Shutdown` + `join()`s the actor thread before freeing, and every
+//     reader runs INLINE on that thread — the join fences in-flight access.
+// CALLER CONTRACT (upheld by `nmp-app-chirp`): `nmp_app_free` must not run
+// while a kernel callback reaching this projection is still executing; the
+// in-process Rust-trait registration path provides that fence via the join.
 unsafe impl Send for MarmotProjection {}
 unsafe impl Sync for MarmotProjection {}
 
@@ -219,6 +182,9 @@ impl MarmotProjection {
                 group_relays: HashMap::new(),
                 app: std::ptr::null_mut(),
                 keyring_unavailable,
+                pending_ops: PendingOpsStore::new(),
+                #[cfg(test)]
+                captured_commands: Vec::new(),
             }),
         }
     }
@@ -325,9 +291,17 @@ impl MarmotProjection {
     /// Build the JSON snapshot. D6 — poisoned mutex → empty snapshot.
     #[must_use]
     pub fn snapshot(&self, now_secs: u64) -> MarmotSnapshot {
-        let Ok(inner) = self.inner.lock() else {
+        let Ok(mut guard) = self.inner.lock() else {
             return MarmotSnapshot::empty();
         };
+
+        // Expiry is wall-clock gated on snapshot edges as well as KP-ingest
+        // edges (D8 — no timers, no polling). Snapshots fire on every
+        // frame-producing actor tick, so a parked op whose KP never arrives
+        // still expires within a tick of its 60 s deadline. Run the same
+        // `evict_expired_pending` path here via a transient `InnerHandle`.
+        InnerHandle { inner: &mut guard }.evict_expired_pending(now_secs);
+        let inner = guard;
 
         let groups: Vec<MarmotGroupRow> = match inner.service.get_groups() {
             Ok(gs) => gs
@@ -420,7 +394,7 @@ impl MarmotProjection {
 /// Lock-scoped accessor passed to FFI dispatch handlers. Keeps the `Mutex`
 /// guard internal so handlers cannot leak it.
 pub struct InnerHandle<'a> {
-    inner: &'a mut Inner,
+    pub(super) inner: &'a mut Inner,
 }
 
 impl<'a> InnerHandle<'a> {
@@ -462,14 +436,10 @@ impl<'a> InnerHandle<'a> {
     /// # SAFETY
     ///
     /// `inner.app` is the live `*mut NmpApp` retained by the host Marmot
-    /// handle for the handle's lifetime. The host shell guarantees the
-    /// pointer is non-null only after `MarmotProjection::set_app` was
-    /// called, and that `nmp_app_free` (`NmpApp::Drop`) sends `Shutdown`
-    /// and `join()`s the actor thread before freeing the allocation —
-    /// every reader here runs inline on that actor thread, so the join
-    /// fences any in-flight access (see the `unsafe impl Send/Sync` block
-    /// at the top of this file for the full soundness argument).
-    fn app(&self) -> Option<&NmpApp> {
+    /// handle for the handle's lifetime (non-null only after `set_app`). See
+    /// the `unsafe impl Send/Sync` block at the top of this file for the full
+    /// soundness argument (the `Drop` → `Shutdown` + `join` fence).
+    pub(super) fn app(&self) -> Option<&NmpApp> {
         if self.inner.app.is_null() {
             return None;
         }
@@ -557,6 +527,8 @@ impl<'a> InnerHandle<'a> {
         }
         sent
     }
+
+    // ── Pending-op management (deferred KP-gated ops) ───────────────────
 
     /// Cache an incoming gift-wrap as a pending Welcome (no MLS type held).
     pub(crate) fn cache_welcome(

@@ -99,8 +99,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
               "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "npub": "npub1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "nip05": "",
-              "about": "",
-              "has_profile": false
+              "about": ""
             }
           },
           "nmp.marmot.snapshot": {

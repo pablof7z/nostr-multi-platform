@@ -19,10 +19,12 @@
 //!   `ops::ingest_signed_event_core`).
 
 pub mod action;
+pub mod deferred;
 pub mod display;
 pub mod handler;
 pub mod ops;
 pub mod payload;
+pub mod pending;
 pub mod publish;
 pub mod state;
 pub mod tap;

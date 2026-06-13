@@ -30,9 +30,10 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
         return;
     };
     let action = json!({ "op": "publish_key_package" });
-    // TODO(PR-2): surface this Err via last_op_error snapshot — the result
-    // (e.g. "no write relays configured") is swallowed today.
+    // `correlation_id` is `None`: this auto-publish path has no action-registry
+    // correlation, and publish_key_package is never KP-gated, so the deferred
+    // path is irrelevant here.
     let _ = handle
         .projection
-        .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs()));
+        .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs(), None));
 }

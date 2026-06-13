@@ -19,7 +19,6 @@ fn card(pubkey: &str, named: bool) -> ProfileCardModel {
         } else {
             String::new()
         },
-        has_profile: named,
         lnurl: named.then(|| "lnurl1abc".to_string()),
     }
 }
@@ -65,7 +64,6 @@ fn placeholder_card_keeps_none_options() {
     assert_eq!(got.display_name, None);
     assert_eq!(got.picture_url, None);
     assert_eq!(got.lnurl, None);
-    assert!(!got.has_profile);
 }
 
 #[test]

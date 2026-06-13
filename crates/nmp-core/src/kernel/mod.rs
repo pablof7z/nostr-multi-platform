@@ -594,10 +594,6 @@ pub struct Kernel {
     relays: HashMap<RelayRole, RelayHealth>,
     transport_relays: RelayTransportMap,
     profiles: HashMap<String, Profile>,
-    /// Locally-authored kind:0 publish intents that have not necessarily
-    /// round-tripped from a relay yet. Kept separate from `profiles` so
-    /// `metrics.profile_events` still counts only real relay/store ingest.
-    local_profile_intents: HashMap<String, Profile>,
     events: HashMap<String, StoredEvent>,
     /// Incrementally-maintained diagnostic counters for the `Metrics` snapshot
     /// fields `note_events` / `duplicate_events` / `stored_events`. Maintained
@@ -1690,7 +1686,6 @@ impl Kernel {
         let store = store_bundle.store;
         let publish_store = publish_store
             .unwrap_or_else(|| store_init::resolve_publish_store(storage_path, &store));
-        let local_profile_intents = store_init::load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         // Typed-slot constructors so the slot's purpose is visible at
         // the call site and D14 does not fire on the field declaration.
@@ -1928,7 +1923,6 @@ impl Kernel {
                 .collect(),
             transport_relays: RelayTransportMap::default(),
             profiles: HashMap::new(),
-            local_profile_intents,
             events: HashMap::new(),
             metric_note_events: 0,
             metric_duplicate_events: 0,

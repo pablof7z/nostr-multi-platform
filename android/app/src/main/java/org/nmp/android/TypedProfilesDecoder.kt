@@ -138,7 +138,6 @@ object TypedProfilesDecoder {
         pictureUrl = if (card.hasPictureUrl) card.pictureUrl else null,
         nip05 = card.nip05 ?: "",
         about = card.about ?: "",
-        hasProfile = card.hasProfile,
         lnurl = if (card.hasLnurl) card.lnurl else null,
     )
 }
