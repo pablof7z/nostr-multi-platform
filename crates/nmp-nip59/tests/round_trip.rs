@@ -10,10 +10,8 @@
 //! (no production caller used it); restoring that feature is a deliberate
 //! API change tracked outside this migration.
 
-use std::sync::Arc;
-
 use nostr::{EventBuilder, Keys, Kind, Timestamp, UnsignedEvent};
-use nmp_nip59::{gift_wrap_with_signer, unwrap_gift_wrap, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
+use nmp_nip59::{gift_wrap_local, unwrap_gift_wrap};
 
 fn alice_keys() -> Keys {
     Keys::parse("6b911fd37cdf5c81d4c0adb1ab7fa822ed253ab0ad9aa18d77257c88b29b718e").unwrap()
@@ -28,14 +26,10 @@ fn make_rumor(alice: &Keys) -> UnsignedEvent {
     EventBuilder::text_note("Hello, Bob! This is a secret.").build(alice.public_key())
 }
 
-/// Test-only shorthand: wrap `rumor` for `receiver` via the
-/// `SignerForSeal` seam. `Keys` has a blanket impl that resolves every
-/// `SignerOp` synchronously, so `.wait` returns immediately.
+/// Test-only shorthand: wrap `rumor` for `receiver` with the sender's local
+/// keys via the pure `gift_wrap_local` composition (ADR-0050 §D5).
 fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
-    let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
-    gift_wrap_with_signer(&signer, receiver, rumor, Timestamp::now())
-        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
-        .expect("gift_wrap_with_signer should succeed")
+    gift_wrap_local(sender, receiver, rumor, Timestamp::now()).expect("gift_wrap_local should succeed")
 }
 
 #[test]
