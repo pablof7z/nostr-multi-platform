@@ -232,8 +232,10 @@ pub(super) fn partition_interest(
         if is_bootstrap_inbox_eligible {
             case_c_p_tags::route_bootstrap_content_inbox(
                 interest,
+                &p_tag_values,
                 &base_shape,
                 bootstrap_content_relays,
+                mailbox_cache,
                 relay_entries,
             );
             return;

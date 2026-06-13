@@ -1,70 +1,13 @@
-//! PD-033-C planner extension — Case C bootstrap-content inbox fallback.
-//!
-//! Mirrors the matrix in `case_d_no_author.rs::pd033c_*` (Stage 1
-//! precedent): positive route, scope=Account counterpoint, lifecycle=OneShot
-//! counterpoint, p_tag_routing=Nip17DmRelays counterpoint (fail-closed
-//! preserved), partial inbox cache counterpoint (gate refuses), empty
-//! bootstrap counterpoint (fall through to fail-closed), and plan_id
-//! stability under bootstrap toggle.
-//!
-//! The headline contract: a `Tailing + Global + #p (Nip65ReadRelays)`
-//! interest whose tagged pubkey has no cached NIP-65 inbox AND
-//! `bootstrap_content_relays` is non-empty routes to the bootstrap content
-//! lane, lane = `UserConfigured(Bootstrap)`. This is the silent-loss
-//! regression Stage 2 of PD-033-C exposes for the kernel's self-zap-receipts
-//! subscription (`kind:9735 #p=[self_pk]` on `RelayRole::Content`).
+//! Routing-decision matrix for the Case C bootstrap-content inbox fallback:
+//! positive route, the counterpoints that must NOT trigger the gate, and
+//! plan-id stability under bootstrap toggle. See the parent module doc.
+
+use super::{p_tag_interest, pk, self_zap_receipts_interest};
 use crate::{
     compiler::{InMemoryMailboxCache, MailboxSnapshot, SubscriptionCompiler},
-    interest::{
-        InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, PTagRouting,
-    },
+    interest::{InterestLifecycle, InterestScope, PTagRouting},
     plan::{RoutingSource, UserConfiguredCategory},
 };
-use std::collections::{BTreeMap, BTreeSet};
-
-/// Deterministic 64-char hex pubkey fixture from a short label.
-fn pk(s: &str) -> String {
-    format!("{s:0>64}").chars().take(64).collect()
-}
-
-/// Build a `#p`-only interest with the given `p_tag_routing` mode.
-/// Defaults to kind:9735 (the self-zap-receipts shape) and the canonical
-/// `Tailing + Global` lifecycle/scope that the dispatcher gate keys on.
-fn p_tag_interest(
-    id: u64,
-    tagged: &[&str],
-    routing: PTagRouting,
-    lifecycle: InterestLifecycle,
-    scope: InterestScope,
-) -> LogicalInterest {
-    let mut tags: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    let values: BTreeSet<String> = tagged.iter().map(|p| pk(p)).collect();
-    tags.insert("p".to_string(), values);
-    LogicalInterest {
-        id: InterestId(id),
-        scope,
-        shape: InterestShape {
-            kinds: [9735u32].into_iter().collect(),
-            tags,
-            limit: Some(50),
-            p_tag_routing: routing,
-            ..Default::default()
-        },
-        hints: Vec::new(),
-        lifecycle,
-        is_indexer_discovery: false,
-    }
-}
-
-fn self_zap_receipts_interest() -> LogicalInterest {
-    p_tag_interest(
-        1,
-        &["self"],
-        PTagRouting::Nip65ReadRelays,
-        InterestLifecycle::Tailing,
-        InterestScope::Global,
-    )
-}
 
 // ── PD-033-C — bootstrap inbox lane (§4.3 — Stage 2 precursor) ──────────
 
