@@ -2,538 +2,757 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_17 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_17 {
 
+        pub enum DmMessageOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum DmMessageOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct DmMessage<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct DmMessage<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for DmMessage<'a> {
+            type Inner = DmMessage<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for DmMessage<'a> {
-  type Inner = DmMessage<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> DmMessage<'a> {
+            pub const VT_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_SENDER_PUBKEY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_REPLY_TO: ::flatbuffers::VOffsetT = 12;
+            pub const VT_REPLY_TO: ::flatbuffers::VOffsetT = 14;
+            pub const VT_IS_OUTGOING: ::flatbuffers::VOffsetT = 16;
+            pub const VT_SOURCE_RELAYS: ::flatbuffers::VOffsetT = 18;
 
-impl<'a> DmMessage<'a> {
-  pub const VT_ID: ::flatbuffers::VOffsetT = 4;
-  pub const VT_SENDER_PUBKEY: ::flatbuffers::VOffsetT = 6;
-  pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
-  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 10;
-  pub const VT_HAS_REPLY_TO: ::flatbuffers::VOffsetT = 12;
-  pub const VT_REPLY_TO: ::flatbuffers::VOffsetT = 14;
-  pub const VT_IS_OUTGOING: ::flatbuffers::VOffsetT = 16;
-  pub const VT_SOURCE_RELAYS: ::flatbuffers::VOffsetT = 18;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DmMessage { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DmMessageArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DmMessage<'bldr>> {
+                let mut builder = DmMessageBuilder::new(_fbb);
+                builder.add_created_at(args.created_at);
+                if let Some(x) = args.source_relays {
+                    builder.add_source_relays(x);
+                }
+                if let Some(x) = args.reply_to {
+                    builder.add_reply_to(x);
+                }
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                if let Some(x) = args.sender_pubkey {
+                    builder.add_sender_pubkey(x);
+                }
+                if let Some(x) = args.id {
+                    builder.add_id(x);
+                }
+                builder.add_is_outgoing(args.is_outgoing);
+                builder.add_has_reply_to(args.has_reply_to);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    DmMessage { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args DmMessageArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<DmMessage<'bldr>> {
-    let mut builder = DmMessageBuilder::new(_fbb);
-    builder.add_created_at(args.created_at);
-    if let Some(x) = args.source_relays { builder.add_source_relays(x); }
-    if let Some(x) = args.reply_to { builder.add_reply_to(x); }
-    if let Some(x) = args.content { builder.add_content(x); }
-    if let Some(x) = args.sender_pubkey { builder.add_sender_pubkey(x); }
-    if let Some(x) = args.id { builder.add_id(x); }
-    builder.add_is_outgoing(args.is_outgoing);
-    builder.add_has_reply_to(args.has_reply_to);
-    builder.finish()
-  }
+            #[inline]
+            pub fn id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DmMessage::VT_ID, None)
+                }
+            }
+            #[inline]
+            pub fn sender_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DmMessage::VT_SENDER_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DmMessage::VT_CONTENT, None)
+                }
+            }
+            #[inline]
+            pub fn created_at(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(DmMessage::VT_CREATED_AT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn has_reply_to(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(DmMessage::VT_HAS_REPLY_TO, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn reply_to(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DmMessage::VT_REPLY_TO, None)
+                }
+            }
+            #[inline]
+            pub fn is_outgoing(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(DmMessage::VT_IS_OUTGOING, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn source_relays(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DmMessage::VT_SOURCE_RELAYS, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for DmMessage<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "sender_pubkey",
+                        Self::VT_SENDER_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
+                    .visit_field::<bool>("has_reply_to", Self::VT_HAS_REPLY_TO, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "reply_to",
+                        Self::VT_REPLY_TO,
+                        false,
+                    )?
+                    .visit_field::<bool>("is_outgoing", Self::VT_IS_OUTGOING, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("source_relays", Self::VT_SOURCE_RELAYS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DmMessageArgs<'a> {
+            pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub sender_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub created_at: u64,
+            pub has_reply_to: bool,
+            pub reply_to: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub is_outgoing: bool,
+            pub source_relays: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for DmMessageArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DmMessageArgs {
+                    id: None,
+                    sender_pubkey: None,
+                    content: None,
+                    created_at: 0,
+                    has_reply_to: false,
+                    reply_to: None,
+                    is_outgoing: false,
+                    source_relays: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DmMessage::VT_ID, None)}
-  }
-  #[inline]
-  pub fn sender_pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DmMessage::VT_SENDER_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn content(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DmMessage::VT_CONTENT, None)}
-  }
-  #[inline]
-  pub fn created_at(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(DmMessage::VT_CREATED_AT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn has_reply_to(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(DmMessage::VT_HAS_REPLY_TO, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn reply_to(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DmMessage::VT_REPLY_TO, None)}
-  }
-  #[inline]
-  pub fn is_outgoing(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(DmMessage::VT_IS_OUTGOING, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn source_relays(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(DmMessage::VT_SOURCE_RELAYS, None)}
-  }
-}
+        pub struct DmMessageBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DmMessageBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(DmMessage::VT_ID, id);
+            }
+            #[inline]
+            pub fn add_sender_pubkey(&mut self, sender_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmMessage::VT_SENDER_PUBKEY,
+                    sender_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmMessage::VT_CONTENT,
+                    content,
+                );
+            }
+            #[inline]
+            pub fn add_created_at(&mut self, created_at: u64) {
+                self.fbb_
+                    .push_slot::<u64>(DmMessage::VT_CREATED_AT, created_at, 0);
+            }
+            #[inline]
+            pub fn add_has_reply_to(&mut self, has_reply_to: bool) {
+                self.fbb_
+                    .push_slot::<bool>(DmMessage::VT_HAS_REPLY_TO, has_reply_to, false);
+            }
+            #[inline]
+            pub fn add_reply_to(&mut self, reply_to: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmMessage::VT_REPLY_TO,
+                    reply_to,
+                );
+            }
+            #[inline]
+            pub fn add_is_outgoing(&mut self, is_outgoing: bool) {
+                self.fbb_
+                    .push_slot::<bool>(DmMessage::VT_IS_OUTGOING, is_outgoing, false);
+            }
+            #[inline]
+            pub fn add_source_relays(
+                &mut self,
+                source_relays: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmMessage::VT_SOURCE_RELAYS,
+                    source_relays,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> DmMessageBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DmMessageBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DmMessage<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for DmMessage<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("sender_pubkey", Self::VT_SENDER_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content", Self::VT_CONTENT, false)?
-     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
-     .visit_field::<bool>("has_reply_to", Self::VT_HAS_REPLY_TO, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reply_to", Self::VT_REPLY_TO, false)?
-     .visit_field::<bool>("is_outgoing", Self::VT_IS_OUTGOING, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("source_relays", Self::VT_SOURCE_RELAYS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct DmMessageArgs<'a> {
-    pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub sender_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub created_at: u64,
-    pub has_reply_to: bool,
-    pub reply_to: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub is_outgoing: bool,
-    pub source_relays: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for DmMessageArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    DmMessageArgs {
-      id: None,
-      sender_pubkey: None,
-      content: None,
-      created_at: 0,
-      has_reply_to: false,
-      reply_to: None,
-      is_outgoing: false,
-      source_relays: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for DmMessage<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DmMessage");
+                ds.field("id", &self.id());
+                ds.field("sender_pubkey", &self.sender_pubkey());
+                ds.field("content", &self.content());
+                ds.field("created_at", &self.created_at());
+                ds.field("has_reply_to", &self.has_reply_to());
+                ds.field("reply_to", &self.reply_to());
+                ds.field("is_outgoing", &self.is_outgoing());
+                ds.field("source_relays", &self.source_relays());
+                ds.finish()
+            }
+        }
+        pub enum DmConversationOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub struct DmMessageBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DmMessageBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmMessage::VT_ID, id);
-  }
-  #[inline]
-  pub fn add_sender_pubkey(&mut self, sender_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmMessage::VT_SENDER_PUBKEY, sender_pubkey);
-  }
-  #[inline]
-  pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmMessage::VT_CONTENT, content);
-  }
-  #[inline]
-  pub fn add_created_at(&mut self, created_at: u64) {
-    self.fbb_.push_slot::<u64>(DmMessage::VT_CREATED_AT, created_at, 0);
-  }
-  #[inline]
-  pub fn add_has_reply_to(&mut self, has_reply_to: bool) {
-    self.fbb_.push_slot::<bool>(DmMessage::VT_HAS_REPLY_TO, has_reply_to, false);
-  }
-  #[inline]
-  pub fn add_reply_to(&mut self, reply_to: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmMessage::VT_REPLY_TO, reply_to);
-  }
-  #[inline]
-  pub fn add_is_outgoing(&mut self, is_outgoing: bool) {
-    self.fbb_.push_slot::<bool>(DmMessage::VT_IS_OUTGOING, is_outgoing, false);
-  }
-  #[inline]
-  pub fn add_source_relays(&mut self, source_relays: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmMessage::VT_SOURCE_RELAYS, source_relays);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DmMessageBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    DmMessageBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<DmMessage<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        pub struct DmConversation<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl ::core::fmt::Debug for DmMessage<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("DmMessage");
-      ds.field("id", &self.id());
-      ds.field("sender_pubkey", &self.sender_pubkey());
-      ds.field("content", &self.content());
-      ds.field("created_at", &self.created_at());
-      ds.field("has_reply_to", &self.has_reply_to());
-      ds.field("reply_to", &self.reply_to());
-      ds.field("is_outgoing", &self.is_outgoing());
-      ds.field("source_relays", &self.source_relays());
-      ds.finish()
-  }
-}
-pub enum DmConversationOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> ::flatbuffers::Follow<'a> for DmConversation<'a> {
+            type Inner = DmConversation<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-pub struct DmConversation<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> DmConversation<'a> {
+            pub const VT_PEER_PUBKEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_MESSAGES: ::flatbuffers::VOffsetT = 6;
 
-impl<'a> ::flatbuffers::Follow<'a> for DmConversation<'a> {
-  type Inner = DmConversation<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DmConversation { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DmConversationArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DmConversation<'bldr>> {
+                let mut builder = DmConversationBuilder::new(_fbb);
+                if let Some(x) = args.messages {
+                    builder.add_messages(x);
+                }
+                if let Some(x) = args.peer_pubkey {
+                    builder.add_peer_pubkey(x);
+                }
+                builder.finish()
+            }
 
-impl<'a> DmConversation<'a> {
-  pub const VT_PEER_PUBKEY: ::flatbuffers::VOffsetT = 4;
-  pub const VT_MESSAGES: ::flatbuffers::VOffsetT = 6;
+            #[inline]
+            pub fn peer_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DmConversation::VT_PEER_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn messages(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmMessage<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmMessage>>,
+                    >>(DmConversation::VT_MESSAGES, None)
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    DmConversation { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args DmConversationArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<DmConversation<'bldr>> {
-    let mut builder = DmConversationBuilder::new(_fbb);
-    if let Some(x) = args.messages { builder.add_messages(x); }
-    if let Some(x) = args.peer_pubkey { builder.add_peer_pubkey(x); }
-    builder.finish()
-  }
+        impl ::flatbuffers::Verifiable for DmConversation<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "peer_pubkey",
+                        Self::VT_PEER_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<DmMessage>>,
+                    >>("messages", Self::VT_MESSAGES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DmConversationArgs<'a> {
+            pub peer_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub messages: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmMessage<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for DmConversationArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DmConversationArgs {
+                    peer_pubkey: None,
+                    messages: None,
+                }
+            }
+        }
 
+        pub struct DmConversationBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DmConversationBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_peer_pubkey(&mut self, peer_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmConversation::VT_PEER_PUBKEY,
+                    peer_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_messages(
+                &mut self,
+                messages: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<DmMessage<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmConversation::VT_MESSAGES,
+                    messages,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> DmConversationBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DmConversationBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DmConversation<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-  #[inline]
-  pub fn peer_pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DmConversation::VT_PEER_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn messages(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmMessage<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmMessage>>>>(DmConversation::VT_MESSAGES, None)}
-  }
-}
+        impl ::core::fmt::Debug for DmConversation<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DmConversation");
+                ds.field("peer_pubkey", &self.peer_pubkey());
+                ds.field("messages", &self.messages());
+                ds.finish()
+            }
+        }
+        pub enum DmInboxSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-impl ::flatbuffers::Verifiable for DmConversation<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("peer_pubkey", Self::VT_PEER_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<DmMessage>>>>("messages", Self::VT_MESSAGES, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct DmConversationArgs<'a> {
-    pub peer_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub messages: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmMessage<'a>>>>>,
-}
-impl<'a> Default for DmConversationArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    DmConversationArgs {
-      peer_pubkey: None,
-      messages: None,
-    }
-  }
-}
+        pub struct DmInboxSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct DmConversationBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DmConversationBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_peer_pubkey(&mut self, peer_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmConversation::VT_PEER_PUBKEY, peer_pubkey);
-  }
-  #[inline]
-  pub fn add_messages(&mut self, messages: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<DmMessage<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmConversation::VT_MESSAGES, messages);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DmConversationBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    DmConversationBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<DmConversation<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        impl<'a> ::flatbuffers::Follow<'a> for DmInboxSnapshot<'a> {
+            type Inner = DmInboxSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl ::core::fmt::Debug for DmConversation<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("DmConversation");
-      ds.field("peer_pubkey", &self.peer_pubkey());
-      ds.field("messages", &self.messages());
-      ds.finish()
-  }
-}
-pub enum DmInboxSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> DmInboxSnapshot<'a> {
+            pub const VT_CONVERSATIONS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_DECRYPT_STATE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_UNDECRYPTED_COUNT: ::flatbuffers::VOffsetT = 8;
 
-pub struct DmInboxSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DmInboxSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DmInboxSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DmInboxSnapshot<'bldr>> {
+                let mut builder = DmInboxSnapshotBuilder::new(_fbb);
+                builder.add_undecrypted_count(args.undecrypted_count);
+                if let Some(x) = args.decrypt_state {
+                    builder.add_decrypt_state(x);
+                }
+                if let Some(x) = args.conversations {
+                    builder.add_conversations(x);
+                }
+                builder.finish()
+            }
 
-impl<'a> ::flatbuffers::Follow<'a> for DmInboxSnapshot<'a> {
-  type Inner = DmInboxSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub fn conversations(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmConversation<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmConversation>>,
+                    >>(DmInboxSnapshot::VT_CONVERSATIONS, None)
+                }
+            }
+            #[inline]
+            pub fn decrypt_state(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DmInboxSnapshot::VT_DECRYPT_STATE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn undecrypted_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(DmInboxSnapshot::VT_UNDECRYPTED_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+        }
 
-impl<'a> DmInboxSnapshot<'a> {
-  pub const VT_CONVERSATIONS: ::flatbuffers::VOffsetT = 4;
-  pub const VT_REMOTE_SIGNER_UNSUPPORTED: ::flatbuffers::VOffsetT = 6;
+        impl ::flatbuffers::Verifiable for DmInboxSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<DmConversation>>,
+                    >>("conversations", Self::VT_CONVERSATIONS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "decrypt_state",
+                        Self::VT_DECRYPT_STATE,
+                        false,
+                    )?
+                    .visit_field::<u32>("undecrypted_count", Self::VT_UNDECRYPTED_COUNT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DmInboxSnapshotArgs<'a> {
+            pub conversations: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmConversation<'a>>>,
+                >,
+            >,
+            pub decrypt_state: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub undecrypted_count: u32,
+        }
+        impl<'a> Default for DmInboxSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DmInboxSnapshotArgs {
+                    conversations: None,
+                    decrypt_state: None,
+                    undecrypted_count: 0,
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    DmInboxSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args DmInboxSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<DmInboxSnapshot<'bldr>> {
-    let mut builder = DmInboxSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.conversations { builder.add_conversations(x); }
-    builder.add_remote_signer_unsupported(args.remote_signer_unsupported);
-    builder.finish()
-  }
+        pub struct DmInboxSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DmInboxSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_conversations(
+                &mut self,
+                conversations: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<DmConversation<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmInboxSnapshot::VT_CONVERSATIONS,
+                    conversations,
+                );
+            }
+            #[inline]
+            pub fn add_decrypt_state(&mut self, decrypt_state: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmInboxSnapshot::VT_DECRYPT_STATE,
+                    decrypt_state,
+                );
+            }
+            #[inline]
+            pub fn add_undecrypted_count(&mut self, undecrypted_count: u32) {
+                self.fbb_.push_slot::<u32>(
+                    DmInboxSnapshot::VT_UNDECRYPTED_COUNT,
+                    undecrypted_count,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> DmInboxSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DmInboxSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DmInboxSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
+        impl ::core::fmt::Debug for DmInboxSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DmInboxSnapshot");
+                ds.field("conversations", &self.conversations());
+                ds.field("decrypt_state", &self.decrypt_state());
+                ds.field("undecrypted_count", &self.undecrypted_count());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `DmInboxSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_dm_inbox_snapshot_unchecked`.
+        pub fn root_as_dm_inbox_snapshot(
+            buf: &[u8],
+        ) -> Result<DmInboxSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<DmInboxSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `DmInboxSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_dm_inbox_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_dm_inbox_snapshot(
+            buf: &[u8],
+        ) -> Result<DmInboxSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<DmInboxSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `DmInboxSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_dm_inbox_snapshot_unchecked`.
+        pub fn root_as_dm_inbox_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<DmInboxSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<DmInboxSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `DmInboxSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_dm_inbox_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_dm_inbox_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<DmInboxSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<DmInboxSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a DmInboxSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `DmInboxSnapshot`.
+        pub unsafe fn root_as_dm_inbox_snapshot_unchecked(buf: &[u8]) -> DmInboxSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<DmInboxSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed DmInboxSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `DmInboxSnapshot`.
+        pub unsafe fn size_prefixed_root_as_dm_inbox_snapshot_unchecked(
+            buf: &[u8],
+        ) -> DmInboxSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<DmInboxSnapshot>(buf) }
+        }
+        pub const DM_INBOX_SNAPSHOT_IDENTIFIER: &str = "NDMI";
 
-  #[inline]
-  pub fn conversations(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmConversation<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmConversation>>>>(DmInboxSnapshot::VT_CONVERSATIONS, None)}
-  }
-  #[inline]
-  pub fn remote_signer_unsupported(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(DmInboxSnapshot::VT_REMOTE_SIGNER_UNSUPPORTED, Some(false)).unwrap()}
-  }
-}
+        #[inline]
+        pub fn dm_inbox_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, DM_INBOX_SNAPSHOT_IDENTIFIER, false)
+        }
 
-impl ::flatbuffers::Verifiable for DmInboxSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<DmConversation>>>>("conversations", Self::VT_CONVERSATIONS, false)?
-     .visit_field::<bool>("remote_signer_unsupported", Self::VT_REMOTE_SIGNER_UNSUPPORTED, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct DmInboxSnapshotArgs<'a> {
-    pub conversations: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DmConversation<'a>>>>>,
-    pub remote_signer_unsupported: bool,
-}
-impl<'a> Default for DmInboxSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    DmInboxSnapshotArgs {
-      conversations: None,
-      remote_signer_unsupported: false,
-    }
-  }
-}
+        #[inline]
+        pub fn dm_inbox_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, DM_INBOX_SNAPSHOT_IDENTIFIER, true)
+        }
 
-pub struct DmInboxSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DmInboxSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_conversations(&mut self, conversations: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<DmConversation<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmInboxSnapshot::VT_CONVERSATIONS, conversations);
-  }
-  #[inline]
-  pub fn add_remote_signer_unsupported(&mut self, remote_signer_unsupported: bool) {
-    self.fbb_.push_slot::<bool>(DmInboxSnapshot::VT_REMOTE_SIGNER_UNSUPPORTED, remote_signer_unsupported, false);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DmInboxSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    DmInboxSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<DmInboxSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn finish_dm_inbox_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<DmInboxSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(DM_INBOX_SNAPSHOT_IDENTIFIER));
+        }
 
-impl ::core::fmt::Debug for DmInboxSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("DmInboxSnapshot");
-      ds.field("conversations", &self.conversations());
-      ds.field("remote_signer_unsupported", &self.remote_signer_unsupported());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `DmInboxSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_dm_inbox_snapshot_unchecked`.
-pub fn root_as_dm_inbox_snapshot(buf: &[u8]) -> Result<DmInboxSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<DmInboxSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `DmInboxSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_dm_inbox_snapshot_unchecked`.
-pub fn size_prefixed_root_as_dm_inbox_snapshot(buf: &[u8]) -> Result<DmInboxSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<DmInboxSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `DmInboxSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_dm_inbox_snapshot_unchecked`.
-pub fn root_as_dm_inbox_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<DmInboxSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<DmInboxSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `DmInboxSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_dm_inbox_snapshot_unchecked`.
-pub fn size_prefixed_root_as_dm_inbox_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<DmInboxSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<DmInboxSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a DmInboxSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `DmInboxSnapshot`.
-pub unsafe fn root_as_dm_inbox_snapshot_unchecked(buf: &[u8]) -> DmInboxSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<DmInboxSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed DmInboxSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `DmInboxSnapshot`.
-pub unsafe fn size_prefixed_root_as_dm_inbox_snapshot_unchecked(buf: &[u8]) -> DmInboxSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<DmInboxSnapshot>(buf) }
-}
-pub const DM_INBOX_SNAPSHOT_IDENTIFIER: &str = "NDMI";
-
-#[inline]
-pub fn dm_inbox_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, DM_INBOX_SNAPSHOT_IDENTIFIER, false)
-}
-
-#[inline]
-pub fn dm_inbox_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, DM_INBOX_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_dm_inbox_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<DmInboxSnapshot<'a>>) {
-  fbb.finish(root, Some(DM_INBOX_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_dm_inbox_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<DmInboxSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(DM_INBOX_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod nip17
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_dm_inbox_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<DmInboxSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(DM_INBOX_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod nip17
+} // pub mod nmp

@@ -41,10 +41,17 @@ class DmInboxSnapshot : Table() {
         get() {
             val o = __offset(4); return if (o != 0) __vector_len(o) else 0
         }
-    val remoteSignerUnsupported : Boolean
+    val decryptState : String?
         get() {
             val o = __offset(6)
-            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
+            return if (o != 0) __string(o + bb_pos) else null
+        }
+    val decryptStateAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun decryptStateInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
+    val undecryptedCount : Int
+        get() {
+            val o = __offset(8)
+            return if(o != 0) bb.getInt(o + bb_pos) else 0
         }
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
@@ -54,13 +61,14 @@ class DmInboxSnapshot : Table() {
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
         fun DmInboxSnapshotBufferHasIdentifier(_bb: ByteBuffer) : Boolean = __has_identifier(_bb, "NDMI")
-        fun createDmInboxSnapshot(builder: FlatBufferBuilder, conversationsOffset: Int, remoteSignerUnsupported: Boolean) : Int {
-            builder.startTable(2)
+        fun createDmInboxSnapshot(builder: FlatBufferBuilder, conversationsOffset: Int, decryptStateOffset: Int, undecryptedCount: Int) : Int {
+            builder.startTable(3)
+            addUndecryptedCount(builder, undecryptedCount)
+            addDecryptState(builder, decryptStateOffset)
             addConversations(builder, conversationsOffset)
-            addRemoteSignerUnsupported(builder, remoteSignerUnsupported)
             return endDmInboxSnapshot(builder)
         }
-        fun startDmInboxSnapshot(builder: FlatBufferBuilder) = builder.startTable(2)
+        fun startDmInboxSnapshot(builder: FlatBufferBuilder) = builder.startTable(3)
         fun addConversations(builder: FlatBufferBuilder, conversations: Int) = builder.addOffset(0, conversations, 0)
         fun createConversationsVector(builder: FlatBufferBuilder, data: IntArray) : Int {
             builder.startVector(4, data.size, 4)
@@ -70,7 +78,8 @@ class DmInboxSnapshot : Table() {
             return builder.endVector()
         }
         fun startConversationsVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(4, numElems, 4)
-        fun addRemoteSignerUnsupported(builder: FlatBufferBuilder, remoteSignerUnsupported: Boolean) = builder.addBoolean(1, remoteSignerUnsupported, false)
+        fun addDecryptState(builder: FlatBufferBuilder, decryptState: Int) = builder.addOffset(1, decryptState, 0)
+        fun addUndecryptedCount(builder: FlatBufferBuilder, undecryptedCount: Int) = builder.addInt(2, undecryptedCount, 0)
         fun endDmInboxSnapshot(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

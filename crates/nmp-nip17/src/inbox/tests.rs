@@ -29,34 +29,39 @@ fn inbox_not_signed_in() -> DmInboxProjection {
 
 #[test]
 fn fresh_inbox_yields_empty_snapshot() {
-    // No active account → empty AND remote_signer_unsupported (the host hides
-    // the DM screen). ADR-0050 §D6: the flag now means "no active account",
-    // NOT "bunker cannot decrypt" — a signed-in bunker decrypts via the port.
+    // No active account → empty + decrypt_state "unavailable" (the host hides
+    // the DM screen). ADR-0050 §D7: the tri-state replaced the old bool.
     let inbox = inbox_not_signed_in();
     let snap = inbox.snapshot();
     assert!(snap.conversations.is_empty());
-    assert!(
-        snap.remote_signer_unsupported,
-        "no active account must set the flag so the host hides the DM screen"
+    assert_eq!(
+        snap.decrypt_state, "unavailable",
+        "no active account → unavailable so the host hides the DM screen"
     );
+    assert_eq!(snap.undecrypted_count, 0);
     assert_eq!(
         inbox.snapshot_json(),
-        serde_json::json!({ "conversations": [], "remote_signer_unsupported": true })
+        serde_json::json!({
+            "conversations": [],
+            "decrypt_state": "unavailable",
+            "undecrypted_count": 0,
+        })
     );
 }
 
 #[test]
-fn signed_in_inbox_is_not_flagged_unsupported() {
-    // A signed-in account (here local; a bunker is identical at the snapshot
-    // seam — both carry a pubkey) is decrypt-capable, so the flag is false.
+fn signed_in_idle_inbox_is_ok() {
+    // A signed-in account with no pending decrypts reports "ok" (§D7). A local
+    // and a bunker account are identical at this seam when nothing is in flight.
     let bob = Keys::generate();
     let inbox = inbox_for(&bob);
     let snap = inbox.snapshot();
     assert!(snap.conversations.is_empty());
-    assert!(
-        !snap.remote_signer_unsupported,
-        "a signed-in account is decrypt-capable (§D6) — flag must be false"
+    assert_eq!(
+        snap.decrypt_state, "ok",
+        "a signed-in account with nothing pending is decrypt-ok (§D7)"
     );
+    assert_eq!(snap.undecrypted_count, 0);
 }
 
 #[test]
@@ -119,7 +124,8 @@ fn snapshot_round_trips_through_serde() {
                 source_relays: vec!["wss://r.example".to_string()],
             }],
         }],
-        remote_signer_unsupported: false,
+        decrypt_state: "ok".to_string(),
+        undecrypted_count: 0,
     };
     let encoded = serde_json::to_string(&snap).expect("serialises");
     let decoded: DmInboxSnapshot = serde_json::from_str(&encoded).expect("deserialises");
