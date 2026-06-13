@@ -35,7 +35,7 @@ use generated::nmp::kernel as fb;
 
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
 /// snapshot key (ADR-0037 shared-keyspace contract).
-pub(crate) const NIP46_ONBOARDING_SCHEMA_ID: &str = "nip46_onboarding";
+pub const NIP46_ONBOARDING_SCHEMA_ID: &str = "nip46_onboarding";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub(crate) const NIP46_ONBOARDING_FILE_IDENTIFIER: &[u8; 4] = b"KN46";
 /// Wire schema version. Bump on any breaking change to `nip46_onboarding.fbs`.
@@ -44,24 +44,24 @@ pub(crate) const NIP46_ONBOARDING_SCHEMA_VERSION: u32 = 1;
 /// One row of the static signer-app probe table — a field-for-field mirror of
 /// one SERIALISED `SignerAppDescriptor`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SignerAppRow {
-    pub(crate) scheme: String,
-    pub(crate) display_label: String,
-    pub(crate) signer_kind: String,
+pub struct SignerAppRow {
+    pub scheme: String,
+    pub display_label: String,
+    pub signer_kind: String,
 }
 
 /// A field-for-field mirror of the SERIALISED `Nip46OnboardingDto`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(crate) struct Nip46OnboardingModel {
-    pub(crate) signer_apps: Vec<SignerAppRow>,
+pub struct Nip46OnboardingModel {
+    pub signer_apps: Vec<SignerAppRow>,
     /// Typed handshake stage as a snake_case wire token; `None` when no
     /// handshake is in flight (mirrors the JSON `null`).
-    pub(crate) stage_kind: Option<String>,
-    pub(crate) progress_message: Option<String>,
-    pub(crate) is_in_flight: bool,
-    pub(crate) is_failed: bool,
-    pub(crate) is_terminal_success: bool,
-    pub(crate) can_cancel: bool,
+    pub stage_kind: Option<String>,
+    pub progress_message: Option<String>,
+    pub is_in_flight: bool,
+    pub is_failed: bool,
+    pub is_terminal_success: bool,
+    pub can_cancel: bool,
 }
 
 // --- encode ---------------------------------------------------------------
@@ -119,10 +119,9 @@ pub(crate) fn encode_nip46_onboarding(model: &Nip46OnboardingModel) -> Vec<u8> {
 
 /// Decode typed FlatBuffers bytes (as produced by [`encode_nip46_onboarding`])
 /// back into a [`Nip46OnboardingModel`]. Returns an error string on any
-/// malformed input. In-crate tests decode the typed sidecar (PR-B: the JSON
-/// payload is no longer emitted).
-#[cfg(test)]
-pub(crate) fn decode_nip46_onboarding(bytes: &[u8]) -> Result<Nip46OnboardingModel, String> {
+/// malformed input. Available to sibling crates (e.g. desktop shells) for
+/// decoding the `"nip46_onboarding"` typed sidecar from a snapshot frame.
+pub fn decode_nip46_onboarding(bytes: &[u8]) -> Result<Nip46OnboardingModel, String> {
     if bytes.len() < 8 || !fb::nip_46_onboarding_buffer_has_identifier(bytes) {
         return Err("missing KN46 file identifier".to_string());
     }

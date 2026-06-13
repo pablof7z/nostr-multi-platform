@@ -180,6 +180,78 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
         projections.insert("action_stages".to_string(), serde_json::Value::Array(rows));
     }
 
+    // signer_state — unified remote-signer health (KSST typed sidecar, ADR-0048).
+    // Absent when no remote signer is active (the JSON closure also emits null
+    // then — so no entry is added in that case, which is the correct absence
+    // signal for the Settings pane).
+    if let Some(m) =
+        find(nmp_core::typed_projections::SIGNER_STATE_SCHEMA_ID)
+            .and_then(|b| nmp_core::typed_projections::decode_signer_state(b).ok())
+    {
+        projections.insert(
+            nmp_core::typed_projections::SIGNER_STATE_SCHEMA_ID.to_string(),
+            serde_json::json!({
+                "signer_kind": m.signer_kind,
+                "state": m.state,
+                "is_ready": m.is_ready,
+                "is_failed": m.is_failed,
+                "status_label": m.status_label,
+                "status_tone": m.status_tone,
+                "reason": m.reason,
+            }),
+        );
+    }
+
+    // bunker_handshake — NIP-46 connect-QR progress (KBHS typed sidecar).
+    // Absent when no handshake is in flight (mirrors the JSON null semantics).
+    if let Some(m) =
+        find(nmp_core::typed_projections::BUNKER_HANDSHAKE_SCHEMA_ID)
+            .and_then(|b| nmp_core::typed_projections::decode_bunker_handshake(b).ok())
+    {
+        projections.insert(
+            nmp_core::typed_projections::BUNKER_HANDSHAKE_SCHEMA_ID.to_string(),
+            serde_json::json!({
+                "stage": m.stage,
+                "stage_label": m.stage_label,
+                "is_in_flight": m.is_in_flight,
+                "is_terminal_success": m.is_terminal_success,
+                "is_failed": m.is_failed,
+                "can_cancel": m.can_cancel,
+                "message": m.message,
+            }),
+        );
+    }
+
+    // nip46_onboarding — static signer-app probe table + handshake state (KN46
+    // typed sidecar).  Always emitted by the kernel (never null) so always
+    // decoded and inserted.
+    if let Some(m) =
+        find(nmp_core::typed_projections::NIP46_ONBOARDING_SCHEMA_ID)
+            .and_then(|b| nmp_core::typed_projections::decode_nip46_onboarding(b).ok())
+    {
+        let apps: Vec<serde_json::Value> = m
+            .signer_apps
+            .iter()
+            .map(|a| serde_json::json!({
+                "scheme": a.scheme,
+                "display_label": a.display_label,
+                "signer_kind": a.signer_kind,
+            }))
+            .collect();
+        projections.insert(
+            nmp_core::typed_projections::NIP46_ONBOARDING_SCHEMA_ID.to_string(),
+            serde_json::json!({
+                "signer_apps": apps,
+                "stage_kind": m.stage_kind,
+                "progress_message": m.progress_message,
+                "is_in_flight": m.is_in_flight,
+                "is_terminal_success": m.is_terminal_success,
+                "is_failed": m.is_failed,
+                "can_cancel": m.can_cancel,
+            }),
+        );
+    }
+
     // nmp.nip17.dm_inbox — DM conversations (host-registered sidecar).
     if let Some(m) = find("nmp.nip17.dm_inbox").and_then(|b| nmp_nip17::decode_dm_inbox_snapshot(b).ok())
     {
@@ -239,3 +311,87 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
 #[cfg(test)]
 #[path = "snapshot_decode_roundtrip_tests.rs"]
 mod roundtrip_tests;
+
+#[cfg(test)]
+mod signer_projection_decode_tests {
+    //! Unit tests that verify the three actor-owned signer projections
+    //! (signer_state / bunker_handshake / nip46_onboarding) round-trip through
+    //! the projections-map → Snapshot::projection::<T> path used by the
+    //! desktop Settings pane.
+    //!
+    //! These tests exercise the *JSON-materialisation* step (the
+    //! `serde_json::json!{...}` insertion that `decode_snapshot_typed` performs
+    //! after decoding the FlatBuffers sidecar) and the subsequent
+    //! `Snapshot::projection::<T>` deserialisation.  The FlatBuffers encode →
+    //! decode round-trips are already covered by the in-crate
+    //! `*_fb_tests.rs` files in nmp-core.
+
+    use crate::snapshot::{BunkerHandshakeStatus, SignerStatus};
+
+    /// Verifies that the JSON shape `decode_snapshot_typed` inserts under
+    /// `"signer_state"` can be deserialised into `SignerStatus`.
+    #[test]
+    fn signer_state_json_materialises_into_snapshot_type() {
+        let v = serde_json::json!({
+            "signer_kind": "nip46",
+            "state": "ready",
+            "is_ready": true,
+            "is_failed": false,
+            "status_label": "Connected",
+            "status_tone": "active",
+            "reason": null,
+        });
+        let status: SignerStatus = serde_json::from_value(v)
+            .expect("SignerStatus must deserialize from the signer_state projection JSON");
+        assert_eq!(status.signer_kind, "nip46");
+        assert!(status.is_ready);
+        assert!(!status.is_failed);
+        assert_eq!(status.status_label, "Connected");
+        assert_eq!(status.status_tone, "active");
+        assert!(status.reason.is_none());
+    }
+
+    /// Verifies that the JSON shape `decode_snapshot_typed` inserts under
+    /// `"bunker_handshake"` can be deserialised into `BunkerHandshakeStatus`.
+    #[test]
+    fn bunker_handshake_json_materialises_into_snapshot_type() {
+        let v = serde_json::json!({
+            "stage": "waiting_for_approval",
+            "stage_label": "Waiting for approval",
+            "is_in_flight": true,
+            "is_terminal_success": false,
+            "is_failed": false,
+            "can_cancel": true,
+            "message": "Approve in your signer app",
+        });
+        let status: BunkerHandshakeStatus = serde_json::from_value(v)
+            .expect("BunkerHandshakeStatus must deserialize from the bunker_handshake projection JSON");
+        assert_eq!(status.stage, "waiting_for_approval");
+        assert!(status.is_in_flight);
+        assert!(!status.is_terminal_success);
+        assert!(!status.is_failed);
+        assert!(status.can_cancel);
+        assert_eq!(status.message.as_deref(), Some("Approve in your signer app"));
+    }
+
+    /// Verifies that the JSON shape `decode_snapshot_typed` inserts under
+    /// `"bunker_handshake"` for a terminal-success state surfaces the correct
+    /// flags (the Settings pane uses `is_terminal_success` to clear the QR).
+    #[test]
+    fn bunker_handshake_terminal_success_surfaces_correctly() {
+        let v = serde_json::json!({
+            "stage": "complete",
+            "stage_label": "Connected!",
+            "is_in_flight": false,
+            "is_terminal_success": true,
+            "is_failed": false,
+            "can_cancel": false,
+            "message": null,
+        });
+        let status: BunkerHandshakeStatus = serde_json::from_value(v)
+            .expect("terminal-success BunkerHandshakeStatus must deserialize");
+        assert!(status.is_terminal_success);
+        assert!(!status.is_in_flight);
+        assert!(!status.is_failed);
+    }
+}

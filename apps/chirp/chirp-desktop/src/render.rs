@@ -6,25 +6,6 @@
 
 use egui::{Color32, RichText, Ui};
 use nmp_content::{tokenize_with_kind, RenderMode, Segment};
-use std::borrow::Cow;
-
-/// Extract a human-readable content string from a raw timeline content field.
-///
-/// Kind:6 reposts carry the full JSON of the reposted event as `content`.
-/// Best-effort (D1): if `content` parses as a JSON object with a `"content"`
-/// string, use that inner text; otherwise fall back to the raw string.
-/// Returns `(text, is_repost)`.
-pub fn effective_content(raw: &str) -> (Cow<'_, str>, bool) {
-    if raw.starts_with('{') {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
-            if let Some(inner) = v["content"].as_str() {
-                return (Cow::Owned(inner.to_string()), true);
-            }
-        }
-        return (Cow::Borrowed(""), true);
-    }
-    (Cow::Borrowed(raw), false)
-}
 
 /// Parse a `#rrggbb` string into an egui colour, falling back to neutral grey.
 pub fn hex_color(hex: &str) -> Color32 {

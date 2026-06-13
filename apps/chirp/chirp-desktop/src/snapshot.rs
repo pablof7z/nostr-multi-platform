@@ -262,6 +262,44 @@ pub struct DmMessage {
     pub outgoing: bool,
 }
 
+/// `bunker_handshake` projection payload — NIP-46 connect-QR progress.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct BunkerHandshakeStatus {
+    #[serde(default)]
+    pub stage: String,
+    #[serde(default)]
+    pub stage_label: String,
+    #[serde(default)]
+    pub is_in_flight: bool,
+    #[serde(default)]
+    pub is_terminal_success: bool,
+    #[serde(default)]
+    pub is_failed: bool,
+    #[serde(default)]
+    pub can_cancel: bool,
+    #[serde(default)]
+    pub message: Option<String>,
+}
+
+/// `signer_state` projection payload — unified remote-signer health status.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct SignerStatus {
+    #[serde(default)]
+    pub signer_kind: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub is_ready: bool,
+    #[serde(default)]
+    pub is_failed: bool,
+    #[serde(default)]
+    pub status_label: String,
+    #[serde(default)]
+    pub status_tone: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
 /// `action_stages` projection payload — publish lifecycle rows.
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct ActionStageRow {

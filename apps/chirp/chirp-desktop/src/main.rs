@@ -10,6 +10,7 @@ mod app;
 mod bridge;
 mod keyring;
 mod render;
+mod settings;
 mod snapshot;
 mod snapshot_decode;
 
