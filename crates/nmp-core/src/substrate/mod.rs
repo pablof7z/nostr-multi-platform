@@ -101,8 +101,9 @@ pub use keyring::{
 pub use nmp_store::{DomainMigration, MigrationTx};
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{
-    build_nip44_encrypt_for_account, build_sign_event_for_account, ActionStageTracker,
-    DmInboxLookup, ErrorSurface, KernelClock, LocalSignerAccess, NoopActionStageTracker,
+    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
+    ActionStageTracker, DmInboxLookup, ErrorSurface, KernelClock, LocalSignerAccess,
+    NoopActionStageTracker,
     NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup,
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts, ProtocolCommandError,
     RecipientRelayLookup,

@@ -11,15 +11,13 @@
 //! ## Debt C — capability traits replace a 12-arg closure bundle
 //!
 //! Pre-Debt C the dispatch arm threaded 12 individual closures into
-//! [`ProtocolCommandContext::new`] (with `#[allow(clippy::too_many_arguments)]`).
-//! The follow-up (V-41 + V-39+V-40 + V-08 bunker DM) reduced the
-//! constructor to 6 typed capability traits plus 2 channel-shaped sinks
-//! (`send`, `command_sender`). A subsequent collapse pass folded those 8
-//! positional args into a single named-field [`ProtocolCommandContextParts`]
-//! struct so the constructor takes one arg and call sites read top-to-bottom
-//! as a complete construction recipe. D11 still holds: there is exactly
-//! one public production constructor, [`ProtocolCommandContext::new`]; the
-//! test-only [`ProtocolCommandContext::with_send_only`] is gated behind
+//! [`ProtocolCommandContext::new`]. The follow-up (V-41 + V-39+V-40 + V-08
+//! bunker DM) reduced it to 6 typed capability traits plus 2 channel sinks
+//! (`send`, `command_sender`), then a collapse pass folded those 8 positional
+//! args into one named-field [`ProtocolCommandContextParts`] struct so the
+//! constructor takes one arg. D11 still holds: one public production
+//! constructor, [`ProtocolCommandContext::new`]; the test-only
+//! [`ProtocolCommandContext::with_send_only`] is gated behind
 //! `cfg(any(test, feature = "test-support"))`.
 //!
 //! Capability traits bundled by the parts struct:
@@ -643,7 +641,9 @@ pub trait ProtocolCommand: Send + fmt::Debug + 'static {
 
 #[path = "protocol/builders.rs"]
 mod builders;
-pub use builders::{build_nip44_encrypt_for_account, build_sign_event_for_account};
+pub use builders::{
+    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
+};
 
 #[cfg(test)]
 #[path = "protocol/tests.rs"]

@@ -57,3 +57,30 @@ pub fn build_nip44_encrypt_for_account(
         continuation: crate::actor::CipherContinuation::new(continuation),
     }
 }
+
+/// Build an [`ActorCommand::Nip44DecryptForAccount`] (ADR-0050 §D1) — the
+/// inbound twin of [`build_nip44_encrypt_for_account`].
+///
+/// The actor's dispatch arm decrypts `ciphertext` (encrypted FROM `peer_pubkey`)
+/// with the named (`Some(hex)`) or active (`None`) account and invokes
+/// `continuation` with the recovered plaintext or an error string — inline for a
+/// local key, from the idle-loop drain for a parked NIP-46 bunker. This is the
+/// receive-side primitive the NIP-17 DM inbox composes its two-step gift-UNWRAP
+/// chain from (ADR-0050 §D6): outer wrap decrypt → seal decrypt, so a bunker
+/// account can unseal a gift-wrap without the inbox ever holding raw `Keys`.
+///
+/// The continuation runs on the actor thread; it must only enqueue further work
+/// (D8) and receives only plaintext (D13).
+pub fn build_nip44_decrypt_for_account(
+    peer_pubkey: String,
+    ciphertext: String,
+    signer_pubkey: Option<String>,
+    continuation: impl FnOnce(Result<String, String>) + Send + 'static,
+) -> ActorCommand {
+    ActorCommand::Nip44DecryptForAccount {
+        peer_pubkey,
+        ciphertext,
+        signer_pubkey,
+        continuation: crate::actor::CipherContinuation::new(continuation),
+    }
+}
