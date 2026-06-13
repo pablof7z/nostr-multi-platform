@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.model.RelayDiagnosticsRow
 import org.nmp.android.model.RelayRoleOption
 import org.nmp.android.model.RelayStatus
 import org.nmp.android.model.canonicalRelayRoleInput
@@ -64,6 +65,13 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
     val roleOptions = state.projections?.relayRoleOptions?.takeIf { it.isNotEmpty() }
         ?: defaultRelayRoleOptions()
     val defaultRole = defaultRelayRoleValue(roleOptions)
+    // #1099 / ADR-0032: the typed `relay_diagnostics` sidecar carries
+    // Rust-precomputed `connectionLabel`/`connectionTone` per relay. Prefer it
+    // over the Tier-3 raw `connection` string switch when a matching row exists
+    // (keyed by relayUrl); fall back to `statusColors` otherwise.
+    val diagnosticsByUrl = state.projections?.relayDiagnostics?.relays
+        ?.associateBy { it.relayUrl }
+        ?: emptyMap()
 
     var newRelayUrl by remember { mutableStateOf("") }
     var newRelayRole by remember { mutableStateOf(defaultRole) }
@@ -111,7 +119,7 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
             } else {
                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                     items(relays, key = { "${it.role}:${it.relayUrl}" }) { relay ->
-                        RelayRow(relay, roleOptions) {
+                        RelayRow(relay, roleOptions, diagnosticsByUrl[relay.relayUrl]) {
                             model.removeRelay(relay.relayUrl)
                         }
                         HorizontalDivider()
@@ -156,6 +164,7 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
 private fun RelayRow(
     relay: RelayStatus,
     roleOptions: List<RelayRoleOption>,
+    diagnostics: RelayDiagnosticsRow?,
     onRemove: () -> Unit,
 ) {
     Column(
@@ -197,8 +206,16 @@ private fun RelayRow(
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                     }
-                    // Status indicator + label
-                    val (statusColor, statusLabel) = statusColors(relay.connection)
+                    // Status indicator + label. Prefer the typed
+                    // relay_diagnostics row's Rust-precomputed
+                    // connectionLabel/connectionTone (#1099 / ADR-0032); fall
+                    // back to the raw Tier-3 connection-string switch when no
+                    // matching diagnostics row is available on this tick.
+                    val (statusColor, statusLabel) = if (diagnostics != null) {
+                        toneColor(diagnostics.connectionTone) to diagnostics.connectionLabel
+                    } else {
+                        statusColors(relay.connection)
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -229,7 +246,24 @@ private fun RelayRow(
     }
 }
 
-/** Determine status indicator color and label based on connection state. */
+/**
+ * Map a Rust-precomputed semantic tone (ADR-0032) to an indicator colour.
+ * "active" = green, "warning" = amber, "error" = red, anything else = grey.
+ * The presentation layer maps tone→colour ONLY; it never inspects the raw
+ * protocol connection token (thin-shell rule).
+ */
+private fun toneColor(tone: String): Color = when (tone) {
+    "active"  -> Color(0xFF4CAF50)
+    "warning" -> Color(0xFFFFC107)
+    "error"   -> Color(0xFFF44336)
+    else      -> Color(0xFF9E9E9E)
+}
+
+/**
+ * Fallback: determine status indicator colour and label from the raw Tier-3
+ * connection string. Used only when no typed relay_diagnostics row matches
+ * this relay on the current tick (#1099).
+ */
 private fun statusColors(connection: String): Pair<Color, String> {
     return when (connection.lowercase()) {
         "connected" -> Color(0xFF4CAF50) to "Connected"

@@ -194,6 +194,16 @@ object KernelUpdateFrameDecoder {
             relayRoleOptions = TypedRelayRoleOptionsDecoder.decode(typedProjections) ?: emptyList(),
             marmotSnapshot = TypedMarmotDecoder.decodeSnapshot(typedProjections),
             marmotMessages = TypedMarmotDecoder.decodeMessages(typedProjections) ?: emptyMap(),
+            // #1099 / ADR-0048: the four typed sidecars iOS already decoded but
+            // Android never wired — the signer badge (signer_state) and Marmot
+            // dialog dismissal (action_lifecycle / action_results) were broken
+            // because these arrived only as typed buffers post-PR-B. Each falls
+            // back to null/empty when its sidecar is absent (ADR-0037).
+            signerState = TypedSignerStateDecoder.decode(typedProjections),
+            actionLifecycle = TypedActionLifecycleDecoder.decode(typedProjections),
+            actionStages = TypedActionStagesDecoder.decode(typedProjections) ?: emptyMap(),
+            actionResults = TypedActionResultsDecoder.decode(typedProjections) ?: emptyList(),
+            relayDiagnostics = TypedRelayDiagnosticsDecoder.decode(typedProjections),
         )
     }
 
