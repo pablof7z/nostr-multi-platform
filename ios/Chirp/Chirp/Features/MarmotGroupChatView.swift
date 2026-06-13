@@ -267,7 +267,7 @@ private struct MarmotMessageRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            ChirpAvatar(
+            NostrAvatar(
                 pubkey: message.senderPubkeyHex,
                 url: nil,
                 initials: message.senderPubkeyHex.displayInitials,

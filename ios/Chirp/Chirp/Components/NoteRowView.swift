@@ -147,7 +147,7 @@ struct NoteRowView: View {
         Button {
             router.push(.profile(pubkey: item.authorPubkey))
         } label: {
-            ChirpAvatar(
+            NostrAvatar(
                 pubkey: item.authorPubkey,
                 url: item.authorPictureUrl,
                 initials: authorAvatarInitials,
@@ -163,10 +163,11 @@ struct NoteRowView: View {
 
     private var authorHeader: some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(authorDisplayLabel)
-                .font(.headline)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+            // The author label is resolved across several kernel projections
+            // (the PR #823 flicker fix in `resolveAuthorLabel`); the resolved
+            // string is rendered through the shared `NostrProfileName`
+            // component via its `displayName:` initializer.
+            NostrProfileName(displayName: authorDisplayLabel)
                 .accessibilityIdentifier("timeline-author-name")
 
             Spacer(minLength: 0)

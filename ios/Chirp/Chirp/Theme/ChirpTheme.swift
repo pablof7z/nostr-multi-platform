@@ -92,87 +92,14 @@ extension View {
     }
 }
 
-/// Fades in when it appears — used by ChirpAvatar to soften image loads.
-private struct FadingImage: View {
+/// Fades in when it appears — used by `NostrAvatar` to soften image loads.
+struct FadingImage: View {
     let image: Image
     @State private var opacity: Double = 0
     var body: some View {
         image.resizable().scaledToFill()
             .opacity(opacity)
             .onAppear { withAnimation(.easeInOut(duration: 0.2)) { opacity = 1 } }
-    }
-}
-
-/// Circular avatar — uses the kernel-supplied picture URL with a
-/// plain placeholder fill + initials (D1: never blank).
-/// Manages NostrProfileHost claim/release lifecycle for the given pubkey.
-struct ChirpAvatar: View {
-    @Environment(\.nostrProfileHost) private var profileHost
-
-    let pubkey: String
-    let url: String?
-    let initials: String
-    let colorHex: String
-    var size: CGFloat = 44
-
-    @State private var generatedConsumerID: String
-    @State private var claimedPubkey: String?
-
-    init(
-        pubkey: String,
-        url: String? = nil,
-        initials: String,
-        colorHex: String,
-        size: CGFloat = 44
-    ) {
-        self.pubkey = pubkey
-        self.url = url
-        self.initials = initials
-        self.colorHex = colorHex
-        self.size = size
-        self._generatedConsumerID = State(initialValue: "chirp-avatar.\(UUID().uuidString)")
-        self._claimedPubkey = State(initialValue: nil)
-    }
-
-    var body: some View {
-        let resolvedUrl = url ?? profileHost?.profile(forPubkey: pubkey)?.pictureUrl
-
-        ZStack {
-            Circle().fill(ChirpColor.avatar(from: colorHex))
-            if let resolvedUrl, let u = URL(string: resolvedUrl) {
-                AsyncImage(url: u) { phase in
-                    if let img = phase.image {
-                        FadingImage(image: img)
-                    }
-                }
-            }
-            if resolvedUrl == nil || resolvedUrl?.isEmpty == true {
-                Text(initials)
-                    .font(.system(size: size * 0.4, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay(Circle().stroke(ChirpColor.hairlineSoft, lineWidth: 0.5))
-        .task(id: pubkey) {
-            await MainActor.run {
-                if let claimedPubkey, claimedPubkey != pubkey {
-                    profileHost?.releaseProfile(
-                        pubkey: claimedPubkey,
-                        consumerID: generatedConsumerID
-                    )
-                }
-                claimedPubkey = pubkey
-                profileHost?.claimProfile(pubkey: pubkey, consumerID: generatedConsumerID)
-            }
-        }
-        .onDisappear {
-            if let claimedPubkey {
-                profileHost?.releaseProfile(pubkey: claimedPubkey, consumerID: generatedConsumerID)
-                self.claimedPubkey = nil
-            }
-        }
     }
 }
 

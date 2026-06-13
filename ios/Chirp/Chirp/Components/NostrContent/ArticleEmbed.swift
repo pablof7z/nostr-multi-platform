@@ -58,7 +58,7 @@ struct ArticleEmbed: KindRenderer {
 
                 // Author byline.
                 HStack(spacing: 8) {
-                    ChirpAvatar(
+                    NostrAvatar(
                         pubkey: article.authorPubkey,
                         url: article.authorPictureUrl,
                         initials: article.authorPubkey.displayInitials,
