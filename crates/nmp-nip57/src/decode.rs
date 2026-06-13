@@ -146,10 +146,15 @@ fn decode_borrowed(
 fn amount_from_embedded_request(req: Option<&serde_json::Value>) -> Option<u64> {
     let tags = req?.get("tags")?.as_array()?;
     for t in tags {
-        let arr = t.as_array()?;
-        let key = arr.first()?.as_str()?;
+        // A non-array element (e.g. `null`, a string scalar) is a malformed tag
+        // from a hostile relay. Skip it — do NOT propagate `None` out of the
+        // whole function, which would silently suppress a later well-formed
+        // `["amount","<msats>"]` entry and let a forged receipt bypass the
+        // amount-mismatch guard.
+        let Some(arr) = t.as_array() else { continue };
+        let Some(key) = arr.first().and_then(|v| v.as_str()) else { continue };
         if key == "amount" {
-            let s = arr.get(1)?.as_str()?;
+            let Some(s) = arr.get(1).and_then(|v| v.as_str()) else { continue };
             return s.parse::<u64>().ok();
         }
     }
@@ -471,6 +476,77 @@ mod tests {
             Some("provider_attested_sender")
         );
         assert_eq!(r.amount_msats, Some(50_000_000));
+    }
+
+    // ---- Security: mixed-type tags must not suppress a later amount tag -----
+
+    #[test]
+    fn null_tag_before_amount_does_not_suppress_amount_extraction() {
+        // A hostile relay sends `"tags":[null,["amount","1000"]]`.  The null
+        // element is malformed but the `["amount","1000"]` that follows it is
+        // well-formed.  The amount MUST still be extracted; returning `None`
+        // would let the forgery-guard (`description_contradicted`) never fire.
+        let description = r#"{"pubkey":"real_sender","tags":[null,["amount","1000"]]}"#;
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["description".into(), description.into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        // Amount extracted despite the leading null tag.
+        assert_eq!(r.amount_msats, Some(1000));
+        // Sender is still recovered.
+        assert_eq!(r.sender_pubkey.as_deref(), Some("real_sender"));
+    }
+
+    #[test]
+    fn forged_sender_with_mismatched_amount_still_distrusted_with_mixed_type_tags() {
+        // A relay forges: embedded sender="forged", embedded amount=999, but
+        // bolt11 settles 50_000_000.  It also prepends `null` to the tags array
+        // hoping to suppress amount extraction.  The forgery guard must still
+        // fire: embedded sender must be dropped, bolt11 amount used.
+        let description =
+            r#"{"pubkey":"forged_sender","tags":[null,["amount","999"]]}"#;
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["bolt11".into(), "lnbc500u1pvj...".into()], // 50_000_000 msat
+            vec!["description".into(), description.into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        // Bolt11 amount wins.
+        assert_eq!(r.amount_msats, Some(50_000_000));
+        // Forged sender is dropped because amounts contradict.
+        assert!(
+            r.sender_pubkey.is_none(),
+            "a forged embedded sender with a contradicted amount must be dropped"
+        );
+    }
+
+    #[test]
+    fn scalar_string_tag_before_amount_is_skipped() {
+        // A string scalar (not an array) in the tags list is also malformed;
+        // the amount entry after it must still be reachable.
+        let description = r#"{"pubkey":"s","tags":["not-an-array",["amount","500"]]}"#;
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["description".into(), description.into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert_eq!(r.amount_msats, Some(500));
+    }
+
+    #[test]
+    fn non_string_amount_value_in_mixed_tags_is_skipped() {
+        // `["amount", 1000]` — the value is a number, not a string. The entry
+        // is skipped (continue) and the function returns None for the amount.
+        let description = r#"{"pubkey":"s","tags":[["amount",1000]]}"#;
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["description".into(), description.into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert!(r.amount_msats.is_none());
+        // Sender still usable.
+        assert_eq!(r.sender_pubkey.as_deref(), Some("s"));
     }
 
     #[test]
