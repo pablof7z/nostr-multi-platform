@@ -34,6 +34,10 @@ struct Session {
     filter_json: String,
     reconciler: Reconciler,
     mode: SessionMode,
+    /// Number of NEG-MSG round-trips seen in this session so far.
+    rounds: u64,
+    /// Local item count at session open (before items moved into reconciler).
+    local_item_count: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -169,6 +173,7 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
         }
         let store = kernel.event_store_handle();
         let items = filter.local_items(store.as_ref()).ok()?;
+        let local_item_count = items.len() as u64;
         let nostr_filter: Filter = serde_json::from_value(filter.value.clone()).ok()?;
         let mut reconciler = Reconciler::client(items).ok()?;
         let initial_msg = reconciler.initiate().ok()?;
@@ -179,6 +184,8 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
             filter_json: ctx.filter_json.clone(),
             reconciler,
             mode: mode.clone(),
+            rounds: 0,
+            local_item_count,
         };
         let text = messages::neg_open_text(&ctx.sub_id, nostr_filter, &initial_msg);
         self.set_relay_state(
@@ -262,6 +269,7 @@ impl RelayTextInterceptor for NegentropySyncRuntime {
                     relay_url,
                     RelayNegentropyState::Supported,
                 );
+                session.rounds = session.rounds.saturating_add(1);
                 match session.reconciler.reconcile(&msg) {
                     Ok(ReconcilerOutcome::Send(next)) => {
                         let outbound = OutboundMessage::new(
@@ -275,7 +283,13 @@ impl RelayTextInterceptor for NegentropySyncRuntime {
                         }
                         vec![outbound]
                     }
-                    Ok(ReconcilerOutcome::Done { need, .. }) => {
+                    Ok(ReconcilerOutcome::Done { have, need }) => {
+                        kernel.set_negentropy_sync_stats(
+                            session.rounds,
+                            have.len() as u64,
+                            need.len() as u64,
+                            session.local_item_count,
+                        );
                         let mut out = vec![Self::close_msg(&session)];
                         if need.is_empty() {
                             if matches!(session.mode, SessionMode::ReplaceOneShot) {

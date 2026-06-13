@@ -181,6 +181,9 @@ impl Kernel {
             } else {
                 None
             },
+            // GAP-5: NIP-agnostic negentropy session statistics. Zero-default
+            // until `set_negentropy_sync_stats` is called on session completion.
+            negentropy_sync_stats: self.negentropy_sync_stats.clone(),
             // D0: NIP-47 NWC wallet state and NIP-46 bunker handshake state are
             // no longer kernel fields — both are app nouns surfaced via
             // host-registered snapshot projections (`"wallet"` /

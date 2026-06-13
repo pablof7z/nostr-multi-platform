@@ -66,6 +66,7 @@ pub(crate) fn encode_snapshot_with_envelope(
             last_planner_error: tier3.last_planner_error,
             store_open_failure: tier3.store_open_failure,
             no_configured_relays: tier3.no_configured_relays,
+            negentropy_sync_stats: Some(tier3.negentropy_sync_stats),
         },
     );
     let root = fb::UpdateFrame::create(

@@ -5,6 +5,7 @@
 export { FrameKind } from './transport/frame-kind.js';
 export { LogicalInterestStatus } from './transport/logical-interest-status.js';
 export { Metrics } from './transport/metrics.js';
+export { NegentropySyncStats } from './transport/negentropy-sync-stats.js';
 export { Pair } from './transport/pair.js';
 export { PanicFrame } from './transport/panic-frame.js';
 export { RelayStatus } from './transport/relay-status.js';

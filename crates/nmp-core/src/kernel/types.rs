@@ -644,6 +644,9 @@ pub(crate) struct Metrics {
     pub(super) update_frame_degradations_total: u64,
 }
 
+pub(crate) use super::negentropy_types::NegentropySyncStats;
+pub(super) use super::negentropy_types::AVG_EVENT_BYTES;
+
 // ── Update envelope ───────────────────────────────────────────────────────────
 /// Full snapshot of kernel state encoded into the host update frame each tick.
 /// Named `KernelSnapshot` (not `KernelUpdate`) to avoid ambiguity with the
@@ -747,6 +750,12 @@ pub(crate) struct KernelSnapshot {
     /// pre-V-66 snapshots in the healthy case.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) no_configured_relays: Option<bool>,
+    /// GAP-5: NIP-agnostic negentropy session statistics. Accumulates across the
+    /// most-recent reconciliation session; the NIP-77 runtime pushes raw counts
+    /// via `Kernel::set_negentropy_sync_stats` on session completion. Zero-default
+    /// until the first session completes. Omitted from JSON when all counts are zero
+    /// and `last_reconcile_at_ms` is `None` (pre-first-session, wire-backwards-compat).
+    pub(super) negentropy_sync_stats: NegentropySyncStats,
     // D0: NIP-47 NWC is an app noun — there is NO typed `wallet_status` field.
     // Wallet state is surfaced through the host-registered `"wallet"` snapshot
     // projection (see `projections` below): a shell reads `projections.wallet`
