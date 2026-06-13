@@ -26,8 +26,15 @@ pub(crate) mod domain;
 mod dump;
 #[cfg(feature = "lmdb-backend")]
 mod gc;
+// Secondary-index maintenance primitives (LRU / expiry-index / freshness-key)
+// extracted from gc.rs for the 500-LOC cap; re-exported via `gc::`.
+#[cfg(feature = "lmdb-backend")]
+mod gc_index;
 #[cfg(feature = "lmdb-backend")]
 mod insert;
+// NIP-09 (kind:5) deletion handling extracted from insert.rs for the LOC cap.
+#[cfg(feature = "lmdb-backend")]
+mod insert_kind5;
 #[cfg(feature = "lmdb-backend")]
 mod provenance;
 #[cfg(feature = "lmdb-backend")]

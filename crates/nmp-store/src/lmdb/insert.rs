@@ -7,7 +7,6 @@
 
 use std::sync::Arc;
 
-use heed::RwTxn;
 use nmp_nostr_lmdb::SaveEventStatus;
 use nostr_database::FlatBufferBuilder;
 use nostr_database::RejectedReason;
@@ -112,7 +111,7 @@ pub(super) fn insert(
 
     // 6. Kind:5 — special handling, then fall through to fork's normal save.
     if event.kind == 5 {
-        let outcome = handle_kind5(inner, &mut txn, event, source, received_at_ms)?;
+        let outcome = super::insert_kind5::handle_kind5(inner, &mut txn, event, source, received_at_ms)?;
         txn.commit()
             .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
         return Ok(outcome);
@@ -330,243 +329,6 @@ fn pre_query_existing(
     }
 }
 
-/// Mem-parity kind:5 handling.
-///
-/// Walks `e`-tags and `a`-tags, removes self-deleted targets (foreign
-/// targets are silently skipped — matching `mem/insert.rs:271 continue`),
-/// writes tombstones, then stores the kind:5 event itself. Crucially we do
-/// NOT pass the foreign-tag bits to the fork's `save_event_with_txn` — we
-/// pre-filter and store the kind:5 directly via `Lmdb::store` so the fork's
-/// `handle_deletion_event` (which would reject the whole event on a foreign
-/// target) never sees them.
-fn handle_kind5(
-    inner: &Arc<Inner>,
-    txn: &mut RwTxn,
-    event: RawEvent,
-    source: &RelayUrl,
-    received_at_ms: u64,
-) -> Result<InsertOutcome, StoreError> {
-    use nostr::prelude::*;
-
-    // handle_kind5 is only called after is_structurally_valid() passes.
-    let kind5_id = event.id_bytes().expect("passed is_structurally_valid");
-    let kind5_pubkey = event.pubkey_bytes().expect("passed is_structurally_valid");
-    let kind5_at = event.created_at;
-
-    // Process `e`-tag deletes — self-deletes only.
-    for target_hex in event.e_tags() {
-        // target_hex is from an e-tag value — may be malformed. Skip if undecidable.
-        let Some(target_id_bytes) = RawEvent::hex_to_bytes32_owned(&target_hex) else {
-            continue;
-        };
-        // Author check: load target via fork; capture expiry for O(1) index cleanup.
-        let (target_is_self, target_stored, target_expiry) = match inner
-            .lmdb
-            .get_event_by_id(txn, &target_id_bytes)
-            .map_err(|e| StoreError::Io(format!("k5 get: {e}")))?
-        {
-            Some(target) => {
-                let owned = target.into_owned();
-                let is_self = owned.pubkey.as_bytes().as_slice() == kind5_pubkey.as_slice();
-                let expiry = owned.tags.expiration().map(|ts| ts.as_secs());
-                (is_self, true, expiry)
-            }
-            None => (true, false, None), // Not stored — tombstone for future arrivals.
-        };
-        if !target_is_self {
-            continue;
-        }
-
-        // Tombstone write (max-merge). We deliberately do NOT call the fork's
-        // `mark_deleted` here: when the target is not yet stored we default
-        // `target_is_self = true` (we have to record SOMETHING in case it
-        // arrives later), but a foreign kind:5 referencing Alice's still-
-        // unfetched event must NOT poison the fork's `deleted_ids` set —
-        // otherwise step 4 will drop the NMP tombstone on Alice's arrival
-        // (foreign pre-tombstone path) only to have the fork re-reject the
-        // event with `Deleted`, diverging from Mem's `Inserted` outcome.
-        // Re-delivery rejection of legitimate self-deletes is handled by
-        // the NMP per-id tombstone check in step 4 (see `applies` logic).
-        // Verified by reading fork's `save_event_with_txn` (mod.rs:461):
-        // `is_deleted` reads ONLY `deleted_ids`, which is now never written
-        // by NMP on this path.
-        let row = tombstones::kind5_row(target_id_bytes, kind5_id, kind5_pubkey, kind5_at, source);
-        tombstones::merge_per_id(inner.tombstones, txn, &target_id_bytes, row)?;
-
-        // Remove the target's primary + indexes if it was present.
-        if target_stored {
-            // The fork doesn't expose a single-id deletion; emulate by
-            // delete-by-filter on the id.
-            let filter = nostr::Filter::new().id(EventId::from_slice(&target_id_bytes)
-                .map_err(|e| StoreError::Encoding(format!("k5 id: {e}")))?);
-            inner
-                .lmdb
-                .delete(txn, filter)
-                .map_err(|e| StoreError::Io(format!("k5 delete: {e}")))?;
-            // Also drop NMP-side provenance and LRU entry.
-            provenance::delete(inner.provenance, txn, &target_id_bytes)?;
-            gc::lru_delete(inner, txn, &target_id_bytes)?;
-            // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
-            gc::expiry_index_delete_exact(inner, txn, target_expiry, &target_id_bytes)?;
-        }
-    }
-
-    // Process `a`-tag deletes — self only.
-    for addr in event.a_tags() {
-        let parts: Vec<&str> = addr.splitn(3, ':').collect();
-        if parts.len() < 3 {
-            continue;
-        }
-        let (tgt_kind_str, tgt_pk_hex, tgt_dtag) = (parts[0], parts[1], parts[2]);
-        if tgt_pk_hex != event.pubkey {
-            continue;
-        }
-        let Ok(tgt_kind) = tgt_kind_str.parse::<u32>() else {
-            continue;
-        };
-
-        // Coordinate-tombstone for future arrivals (max-merge).
-        let addr_key_bytes = tombstones::addr_key(tgt_kind, tgt_pk_hex, tgt_dtag.as_bytes());
-        let addr_row = tombstones::kind5_row(
-            [0u8; 32], // No primary id for an address-tombstone.
-            kind5_id,
-            kind5_pubkey,
-            kind5_at,
-            source,
-        );
-        tombstones::merge_addr(inner.addr_tombstones, txn, &addr_key_bytes, addr_row)?;
-
-        // Remove all matching events ≤ kind5.created_at via the fork,
-        // also cleaning up NMP-side secondaries (lru-access, provenance,
-        // expiry-index) for each removed event id (Bug-1 fix).
-        if let Ok(pk) = PublicKey::from_slice(&kind5_pubkey) {
-            let coord =
-                Coordinate::new(Kind::from(tgt_kind as u16), pk).identifier(tgt_dtag.to_string());
-            if coord.kind.is_addressable() {
-                // Pre-query the existing addressable event to get its id + expiry
-                // so we can clean NMP-side indexes in O(1) without a post-scan.
-                if let Some(existing) = inner
-                    .lmdb
-                    .find_addressable_event(txn, &coord)
-                    .map_err(|e| StoreError::Io(format!("k5 find_addressable: {e}")))?
-                {
-                    let owned = existing.into_owned();
-                    if owned.created_at <= Timestamp::from_secs(kind5_at) {
-                        let mut existing_id = [0u8; 32];
-                        existing_id.copy_from_slice(owned.id.as_bytes());
-                        let existing_expiry = owned.tags.expiration().map(|ts| ts.as_secs());
-                        inner
-                            .lmdb
-                            .remove_addressable(txn, &coord, Timestamp::from_secs(kind5_at))
-                            .map_err(|e| StoreError::Io(format!("k5 remove_addressable: {e}")))?;
-                        // Clean NMP-side secondary indexes for the removed event.
-                        provenance::delete(inner.provenance, txn, &existing_id)?;
-                        gc::lru_delete(inner, txn, &existing_id)?;
-                        gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
-                    }
-                }
-                // Delete the replaceable_freshness row for this coordinate so stale
-                // TTL data cannot cause a re-fetch to be wrongly skipped (Bug-2 fix).
-                let freshness_key = nmp_nostr_lmdb::ReplaceableKey::Parameterized {
-                    kind: tgt_kind,
-                    pubkey: kind5_pubkey,
-                    d_tag: tgt_dtag.to_string(),
-                };
-                inner
-                    .lmdb
-                    .delete_freshness(txn, &freshness_key)
-                    .map_err(|e| StoreError::Io(format!("k5 delete_freshness: {e}")))?;
-            } else if coord.kind.is_replaceable() {
-                // Pre-query the existing replaceable event.
-                if let Some(existing) = inner
-                    .lmdb
-                    .find_replaceable_event(txn, &pk, coord.kind)
-                    .map_err(|e| StoreError::Io(format!("k5 find_replaceable: {e}")))?
-                {
-                    let owned = existing.into_owned();
-                    if owned.created_at <= Timestamp::from_secs(kind5_at) {
-                        let mut existing_id = [0u8; 32];
-                        existing_id.copy_from_slice(owned.id.as_bytes());
-                        let existing_expiry = owned.tags.expiration().map(|ts| ts.as_secs());
-                        inner
-                            .lmdb
-                            .remove_replaceable(txn, &coord, Timestamp::from_secs(kind5_at))
-                            .map_err(|e| StoreError::Io(format!("k5 remove_replaceable: {e}")))?;
-                        // Clean NMP-side secondary indexes for the removed event.
-                        provenance::delete(inner.provenance, txn, &existing_id)?;
-                        gc::lru_delete(inner, txn, &existing_id)?;
-                        gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
-                    }
-                }
-                // Delete the replaceable_freshness row (Bug-2 fix).
-                let freshness_key = nmp_nostr_lmdb::ReplaceableKey::Regular {
-                    kind: tgt_kind,
-                    pubkey: kind5_pubkey,
-                };
-                inner
-                    .lmdb
-                    .delete_freshness(txn, &freshness_key)
-                    .map_err(|e| StoreError::Io(format!("k5 delete_freshness: {e}")))?;
-            }
-            // Note: we deliberately skip the fork's `mark_coordinate_deleted`
-            // for the same reason as `mark_deleted` above. Future-arrival
-            // rejection (a-tag tombstone) is handled by the NMP addr-tombstone
-            // check at step 5 — keeping the fork's `deleted_coordinates`
-            // index out of it preserves parity with Mem (which has no such
-            // index). Verified by reading fork's `save_event_with_txn`
-            // (mod.rs:468): `when_is_coordinate_deleted` reads ONLY
-            // `deleted_coordinates`, which NMP now never writes to.
-        }
-    }
-
-    // Finally, store the kind:5 event itself via the fork's low-level `store`
-    // (bypassing `save_event_with_txn`'s `handle_deletion_event` since we
-    // already did the pre-filtering + author-respecting deletion above).
-    let nostr_ev = conv::raw_to_nostr(&event)?;
-    let mut fbb = FlatBufferBuilder::with_capacity(2048);
-
-    // Double-check: don't re-store if duplicate.
-    let already = inner
-        .lmdb
-        .has_event(txn, &kind5_id)
-        .map_err(|e| StoreError::Io(format!("k5 has_event: {e}")))?;
-    if already {
-        let count = provenance::upsert(
-            inner.provenance,
-            txn,
-            &kind5_id,
-            source.clone(),
-            received_at_ms,
-        )?;
-        return Ok(InsertOutcome::Duplicate {
-            id: kind5_id,
-            sources_after: count,
-        });
-    }
-    inner
-        .lmdb
-        .store(txn, &mut fbb, &nostr_ev)
-        .map_err(|e| StoreError::Io(format!("k5 store: {e}")))?;
-    let count = provenance::upsert(
-        inner.provenance,
-        txn,
-        &kind5_id,
-        source.clone(),
-        received_at_ms,
-    )?;
-    // Stamp LRU access for the newly stored kind:5 event.
-    gc::lru_stamp(inner, txn, &kind5_id)?;
-    // V-118: index the kind:5's own expiry if present (defensive — kind:5
-    // events do not normally carry expiration tags, but keep the index honest).
-    if let Some(exp) = event.expiration() {
-        gc::expiry_index_put(inner, txn, exp, &kind5_id)?;
-    }
-    Ok(InsertOutcome::Inserted {
-        id: kind5_id,
-        sources_after: count,
-    })
-}
-
 /// Hex-eq for the deleter_pubkey check. `dp` is `[u8; 32]`; `pubkey_hex`
 /// is lowercase hex. Returns `false` for non-hex or wrong-length input.
 fn hex_eq(dp: &[u8; 32], pubkey_hex: &str) -> bool {
@@ -576,4 +338,5 @@ fn hex_eq(dp: &[u8; 32], pubkey_hex: &str) -> bool {
     }
 }
 
-// (delete_by_filter moved to `delete.rs` so this file fits the 500-LOC cap.)
+// kind:5 handling lives in `insert_kind5.rs` (LOC-cap split).
+// delete_by_filter lives in `delete.rs` (LOC-cap split).
