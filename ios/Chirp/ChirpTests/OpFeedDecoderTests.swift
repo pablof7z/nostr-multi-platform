@@ -466,9 +466,9 @@ final class OpFeedDecoderTests: XCTestCase {
 
     /// Build a snapshot frame carrying a typed NOFS op-feed sidecar under the
     /// dynamic `nmp.feed.thread.<id>` key (the #1062 wire shape) — the populated
-    /// golden bytes, the SAME descriptor `nmp.feed.home` uses. A placeholder
-    /// generic `payload` is attached only so the frame matches production shape;
-    /// the decoder no longer reads it.
+    /// golden bytes, the SAME descriptor `nmp.feed.home` uses. The generic
+    /// `payload:Value` slot was removed from the wire (PR #1082), so the frame
+    /// carries only the typed projection the decoder reads.
     private func dynamicFlatFeedUpdateFrame(eventID: String) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 2048)
 
@@ -486,29 +486,13 @@ final class OpFeedDecoderTests: XCTestCase {
             payloadOffset: typedPayload)
         let typedProjections = fbb.createVector(ofOffsets: [projection])
 
-        // Placeholder generic payload (ignored by the decoder).
-        let payload = valueMap(&fbb, [("schema_version", valueInt(&fbb, 1))])
-
         let snapshot = nmp_transport_SnapshotFrame.createSnapshotFrame(
             &fbb,
             schemaVersion: 1,
-            payloadOffset: payload,
             typedProjectionsVectorOffset: typedProjections)
         let frame = nmp_transport_UpdateFrame.createUpdateFrame(
             &fbb, kind: .snapshot, snapshotOffset: snapshot)
         nmp_transport_UpdateFrame.finish(&fbb, end: frame)
         return fbb.data
-    }
-
-    private func valueInt(_ fbb: inout FlatBufferBuilder, _ value: Int64) -> Offset {
-        nmp_transport_Value.createValue(&fbb, kind: .int, intValue: value)
-    }
-
-    private func valueMap(_ fbb: inout FlatBufferBuilder, _ entries: [(String, Offset)]) -> Offset {
-        let pairs = entries.map { key, value in
-            nmp_transport_Pair.createPair(&fbb, keyOffset: fbb.create(string: key), valueOffset: value)
-        }
-        return nmp_transport_Value.createValue(
-            &fbb, kind: .map, mapVectorOffset: fbb.createVector(ofOffsets: pairs))
     }
 }

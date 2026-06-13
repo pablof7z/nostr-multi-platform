@@ -1,8 +1,10 @@
 package org.nmp.android
 
 import android.content.Context
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.security.keystore.StrongBoxUnavailableException
 import android.util.Base64
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -240,6 +242,22 @@ class KeystoreKeyringCapability(context: Context) {
      * the second generation overwriting the alias. Any ciphertext written under
      * the first key would then fail to decrypt under the second. Serializing the
      * whole load-or-generate body makes the lazy init effectively-once.
+     *
+     * Threat-model posture (issue #1201 — iOS parity, see
+     * `docs/wiki/marmot-keyring.md`):
+     *  - `setUnlockedDeviceRequired(true)` (API 28+): the key is usable only
+     *    while the device is unlocked, WITHOUT forcing a per-use biometric/PIN
+     *    prompt. This is the behavioral analog of iOS
+     *    `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` and is fully compatible
+     *    with cold-start identity restore (the kernel restores identity after the
+     *    user has unlocked the device to launch the app, so the key is available
+     *    with no interaction).
+     *  - `setIsStrongBoxBacked(true)` (API 28+) when a StrongBox security chip is
+     *    present, falling back to TEE-backed generation on
+     *    `StrongBoxUnavailableException` for devices without one.
+     *  - We deliberately do NOT call `setUserAuthenticationRequired(true)`: that
+     *    would force a biometric/PIN prompt before identity restore could run,
+     *    regressing below iOS parity and breaking headless cold-start restore.
      */
     @Synchronized
     private fun getOrCreateKey(): SecretKey {
@@ -248,23 +266,51 @@ class KeystoreKeyringCapability(context: Context) {
             return (keyStore.getEntry(KEY_ALIAS, null) as KeyStore.SecretKeyEntry).secretKey
         }
 
+        // Try StrongBox-backed generation first; degrade gracefully to the
+        // standard TEE-backed key on devices without a StrongBox chip.
+        return try {
+            generateKey(strongBox = true)
+        } catch (_: StrongBoxUnavailableException) {
+            generateKey(strongBox = false)
+        }
+    }
+
+    /**
+     * Build the hardened [KeyGenParameterSpec] and generate the AES-256-GCM key.
+     *
+     * @param strongBox request StrongBox hardware backing (API 28+). When the
+     *   device has no StrongBox, `build()`/`generateKey()` throws
+     *   [StrongBoxUnavailableException], which the caller catches to retry with
+     *   `strongBox = false`.
+     */
+    private fun generateKey(strongBox: Boolean): SecretKey {
         val keyGenerator = KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES,
             ANDROID_KEYSTORE,
         )
-        keyGenerator.init(
-            KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-            )
-                .setKeySize(256)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                // No biometric gate — the key must be accessible on cold start
-                // for automatic identity restore without user interaction.
-                .setUserAuthenticationRequired(false)
-                .build(),
+        val builder = KeyGenParameterSpec.Builder(
+            KEY_ALIAS,
+            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
         )
+            .setKeySize(256)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            // No biometric gate — the key must be accessible on cold start
+            // for automatic identity restore without user interaction.
+            .setUserAuthenticationRequired(false)
+
+        // `setUnlockedDeviceRequired` / `setIsStrongBoxBacked` are API 28+; minSdk
+        // is 26, so guard them. On API 26–27 the key is TEE-backed without the
+        // device-unlocked constraint (best available on those platforms).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            // iOS-parity: usable only while the device is unlocked, no per-use prompt.
+            builder.setUnlockedDeviceRequired(true)
+            if (strongBox) {
+                builder.setIsStrongBoxBacked(true)
+            }
+        }
+
+        keyGenerator.init(builder.build())
         return keyGenerator.generateKey()
     }
 }
