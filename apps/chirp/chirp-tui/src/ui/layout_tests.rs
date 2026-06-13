@@ -114,7 +114,7 @@ fn settings_tab_renders_all_relay_inventory_and_raw_filters() {
             filter_summary: r#"{"kinds":[1],"limit":20}"#.to_string(),
             state_label: "Open".to_string(),
             consumer_count_label: "1 consumer".to_string(),
-            opened_display: "1s ago".to_string(),
+            opened_ms: 1_700_000_000_000,
             events_rx_display: Some("12".to_string()),
             ..Default::default()
         }],

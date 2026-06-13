@@ -1,5 +1,7 @@
 //! Relay inventory and detail panes for Settings.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -236,8 +238,8 @@ fn relay_detail_lines(state: &AppState, relay: &RelayRow, pane_width: usize) -> 
         "last",
         &format!(
             "connected {} · event {}",
-            relay.last_connected_display.as_deref().unwrap_or("never"),
-            relay.last_event_display.as_deref().unwrap_or("never")
+            format_ms_ago(relay.last_connected_ms),
+            format_ms_ago(relay.last_event_ms)
         ),
     ));
     if let Some(notice) = &relay.last_notice {
@@ -282,9 +284,9 @@ fn append_wire_sub(lines: &mut Vec<Line<'static>>, sub: &RelayWireSubRow, pane_w
     )));
     let timing = format!(
         "    opened {} · last {} · eose {}",
-        empty_dash(&sub.opened_display),
-        sub.last_event_display.as_deref().unwrap_or("never"),
-        sub.eose_display.as_deref().unwrap_or("not yet")
+        format_ms_ago(sub.opened_ms),
+        format_ms_ago(sub.last_event_ms),
+        if sub.eose_ms > 0 { format_ms_ago(sub.eose_ms) } else { "not yet".to_string() }
     );
     lines.push(Line::from(Span::styled(
         truncate(&timing, pane_width),
@@ -511,6 +513,21 @@ fn short_relay_url(url: &str) -> String {
         .unwrap_or(url)
         .trim_end_matches('/')
         .to_string()
+}
+
+/// Format a Unix-epoch-millisecond timestamp as a human-relative string at
+/// render time (aim.md §62: no pre-formatted strings on the wire).
+/// Returns "never" when `ms == 0` (the sentinel for "never observed").
+fn format_ms_ago(ms: u64) -> String {
+    if ms == 0 {
+        return "never".to_string();
+    }
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let then_secs = ms / 1_000;
+    nmp_core::display::format_ago_secs(now_secs, then_secs)
 }
 
 fn empty_dash(value: &str) -> String {

@@ -58,10 +58,12 @@ pub struct RelayRow {
     pub bytes_rx_display: Option<String>,
     #[serde(default)]
     pub bytes_tx_display: Option<String>,
+    /// Unix epoch milliseconds; 0 means "never observed". aim.md §62: no
+    /// pre-formatted strings on the wire — shells format at render time.
     #[serde(default)]
-    pub last_connected_display: Option<String>,
+    pub last_connected_ms: u64,
     #[serde(default)]
-    pub last_event_display: Option<String>,
+    pub last_event_ms: u64,
     #[serde(default)]
     pub last_notice: Option<String>,
     #[serde(default)]
@@ -91,12 +93,13 @@ pub struct RelayWireSubRow {
     pub events_rx_display: Option<String>,
     #[serde(default)]
     pub eose_observed: bool,
+    /// Unix epoch milliseconds; 0 means "never observed". aim.md §62.
     #[serde(default)]
-    pub opened_display: String,
+    pub opened_ms: u64,
     #[serde(default)]
-    pub last_event_display: Option<String>,
+    pub last_event_ms: u64,
     #[serde(default)]
-    pub eose_display: Option<String>,
+    pub eose_ms: u64,
     #[serde(default)]
     pub close_reason: Option<String>,
 }

@@ -248,8 +248,8 @@ fn relay_row_from_typed(
         reconnect_count: row.reconnect_count as u64,
         bytes_rx_display: row.bytes_rx_display,
         bytes_tx_display: row.bytes_tx_display,
-        last_connected_display: row.last_connected_display,
-        last_event_display: row.last_event_display,
+        last_connected_ms: row.last_connected_ms,
+        last_event_ms: row.last_event_ms,
         last_notice: row.last_notice,
         last_error: row.last_error,
         wire_subs: row
@@ -273,9 +273,9 @@ fn wire_sub_from_typed(
         consumer_count_label: sub.consumer_count_label,
         events_rx_display: sub.events_rx_display,
         eose_observed: sub.eose_observed,
-        opened_display: sub.opened_display,
-        last_event_display: sub.last_event_display,
-        eose_display: sub.eose_display,
+        opened_ms: sub.opened_ms,
+        last_event_ms: sub.last_event_ms,
+        eose_ms: sub.eose_ms,
         close_reason: sub.close_reason,
     }
 }
@@ -346,8 +346,8 @@ fn relays_from(projections: Option<&Value>) -> Vec<RelayRow> {
             reconnect_count: number_field(row, "reconnect_count"),
             bytes_rx_display: optional_string(row, "bytes_rx_display"),
             bytes_tx_display: optional_string(row, "bytes_tx_display"),
-            last_connected_display: optional_string(row, "last_connected_display"),
-            last_event_display: optional_string(row, "last_event_display"),
+            last_connected_ms: number_field(row, "last_connected_ms"),
+            last_event_ms: number_field(row, "last_event_ms"),
             last_notice: optional_string(row, "last_notice"),
             last_error: optional_string(row, "last_error"),
             wire_subs: relay_wire_subs_from(row),
@@ -373,9 +373,9 @@ fn relay_wire_subs_from(row: &Value) -> Vec<RelayWireSubRow> {
                 .get("eose_observed")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
-            opened_display: string_field(sub, "opened_display"),
-            last_event_display: optional_string(sub, "last_event_display"),
-            eose_display: optional_string(sub, "eose_display"),
+            opened_ms: number_field(sub, "opened_ms"),
+            last_event_ms: number_field(sub, "last_event_ms"),
+            eose_ms: number_field(sub, "eose_ms"),
             close_reason: optional_string(sub, "close_reason"),
         })
         .collect()

@@ -15,10 +15,16 @@
 //!
 //! This projection emits one `RelayDiagnosticsRow` per known relay URL with
 //! every roll-up the diagnostics screen needs (active / EOSE'd / total subs,
-//! cumulative events received, pre-formatted "Xs/m/h ago" labels for
+//! cumulative events received, raw Unix-epoch-millisecond timestamps for
 //! `last_connected_at` and `last_event_at`, pre-formatted connection /
 //! auth / role labels) plus a per-wire-subscription enriched row with the
 //! same treatment for the detail screen.
+//!
+//! Timestamp fields (`last_connected_ms`, `last_event_ms`, `opened_ms`,
+//! `eose_ms`) carry Unix epoch milliseconds (u64). Shells format them as
+//! "Xs ago" / "Xm ago" etc. at render time via platform helpers
+//! (`relativeTimeFromUnixSeconds` on iOS, `formatRelativeTime` on Android).
+//! This satisfies aim.md §62: no `format_ago_*` inside projection builders.
 //!
 //! Emitted under the snapshot `projections` key
 //! [`RELAY_DIAGNOSTICS_PROJECTION_KEY`] (`"relay_diagnostics"`). The shell
@@ -27,13 +33,13 @@
 
 use serde::Serialize;
 use std::collections::BTreeMap;
-use crate::time::Instant;
+use crate::time::{Instant, SystemTime, UNIX_EPOCH};
 
 mod format;
 
 use super::{Kernel, RelayStatus, WireSubscriptionStatus};
 use format::{
-    auth_label, auth_tone, compact_count, connection_tone, format_ago_ms, format_bytes,
+    auth_label, auth_tone, compact_count, connection_tone, format_bytes,
     interest_state_tone, role_label, role_tone, short_id, short_relay_url, state_tone, title_case,
 };
 
@@ -46,9 +52,10 @@ use format::{
 pub(super) const RELAY_DIAGNOSTICS_PROJECTION_KEY: &str = "relay_diagnostics";
 
 /// One rolled-up row per known relay URL. Every aggregate (`active_sub_count`,
-/// `eosed_sub_count`, session `total_events_rx`) is computed here; every display
-/// string (`status_label`, `last_connected_display`, `last_event_display`) is
-/// pre-formatted here. The shell renders fields directly.
+/// `eosed_sub_count`, session `total_events_rx`) is computed here. Raw Unix
+/// epoch milliseconds are carried for timestamp fields; shells format them as
+/// "Xs ago" / "Xm ago" at render time (aim.md §62 — no format_ago_* inside
+/// projection builders).
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct RelayDiagnosticsRow {
     /// Canonical relay URL — stable list identity.
@@ -92,12 +99,12 @@ pub(super) struct RelayDiagnosticsRow {
     pub(super) bytes_rx_display: Option<String>,
     /// Same for `bytes_tx`.
     pub(super) bytes_tx_display: Option<String>,
-    /// Pre-formatted relative time for the last successful connect, e.g.
-    /// `"3s ago"`. `None` when the relay never connected.
-    pub(super) last_connected_display: Option<String>,
-    /// Pre-formatted relative time for the last event received, e.g.
-    /// `"42s ago"`. `None` when no events have arrived.
-    pub(super) last_event_display: Option<String>,
+    /// Unix epoch milliseconds of the last successful connect. `None` when
+    /// the relay has never connected. Shells format as "Xs ago" at render time.
+    pub(super) last_connected_ms: Option<u64>,
+    /// Unix epoch milliseconds of the last event received. `None` when no
+    /// events have arrived. Shells format as "Xs ago" at render time.
+    pub(super) last_event_ms: Option<u64>,
     /// Most recent NIP-01 NOTICE prose, or `None`.
     pub(super) last_notice: Option<String>,
     /// Most recent error prose, or `None`.
@@ -162,7 +169,8 @@ impl RelayDiagnosticsInfo {
 }
 
 /// Enriched per-subscription view for `WireSubscriptionDetailView` and the
-/// list rows on `RelayDetailView`. Every display field is pre-formatted.
+/// list rows on `RelayDetailView`. Timestamp fields carry Unix epoch
+/// milliseconds; shells format as "Xs ago" at render time (aim.md §62).
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct RelayDiagnosticsWireSub {
     /// Full wire id (hex). Stable list identity.
@@ -184,12 +192,15 @@ pub(super) struct RelayDiagnosticsWireSub {
     pub(super) events_rx_display: Option<String>,
     /// `true` iff EOSE has been observed.
     pub(super) eose_observed: bool,
-    /// Pre-formatted relative time the sub opened.
-    pub(super) opened_display: String,
-    /// Pre-formatted relative time for the last event, or `None`.
-    pub(super) last_event_display: Option<String>,
-    /// Pre-formatted relative time for EOSE, or `None`.
-    pub(super) eose_display: Option<String>,
+    /// Unix epoch milliseconds when the subscription opened.
+    /// Shells format as "Xs ago" at render time.
+    pub(super) opened_ms: u64,
+    /// Unix epoch milliseconds of the last event received, or `None`.
+    /// Shells format as "Xs ago" at render time.
+    pub(super) last_event_ms: Option<u64>,
+    /// Unix epoch milliseconds when EOSE was observed, or `None`.
+    /// Shells format as "Xs ago" at render time.
+    pub(super) eose_ms: Option<u64>,
     /// Close reason prose (kept for the detail screen).
     pub(super) close_reason: Option<String>,
 }
@@ -225,11 +236,19 @@ impl Kernel {
     /// Build the diagnostics roll-up. Called from
     /// `snapshot_projections_with_publish_cluster` in `update.rs`.
     pub(super) fn relay_diagnostics_snapshot(&self) -> RelayDiagnosticsSnapshot {
-        // "Now since kernel start" in ms — the same time axis the kernel's
-        // `elapsed_ms()` returns. We use it to compute "X ago" labels
-        // without ever leaving ms-since-start space (avoiding the
-        // `Instant`-as-`UNIX_EPOCH` confusion that the Swift shell had).
+        // Unix epoch ms, read ONCE per snapshot so every row in this tick
+        // uses the same wall-clock reference. This is the only place in the
+        // projection that reads a clock — the raw ms-since-kernel-start
+        // values in RelayStatus / WireSubscriptionStatus are converted here
+        // to stable Unix epoch milliseconds and passed through as-is to the
+        // shells. Shells format "Xs ago" at render time (aim.md §62).
         let now_ms = self.now_since_start_ms();
+        let unix_now_ms: u64 = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .try_into()
+            .unwrap_or(u64::MAX);
 
         // Pre-compute statuses keyed by relay URL so each row can be filled
         // without a per-row linear scan back through `relay_statuses`.
@@ -266,7 +285,7 @@ impl Kernel {
             .map(|url| {
                 let status = by_url.get(&url);
                 let subs = subs_by_url.remove(&url).unwrap_or_default();
-                build_relay_row(url, status, subs, now_ms)
+                build_relay_row(url, status, subs, now_ms, unix_now_ms)
             })
             .collect();
 
@@ -287,8 +306,8 @@ impl Kernel {
     }
 
     /// Milliseconds since `started_at`. Returns 0 if the kernel never
-    /// started (so the formatter degrades to `"now"` rather than panicking
-    /// across the FFI boundary, D6).
+    /// started (so callers degrade gracefully rather than panicking across
+    /// the FFI boundary, D6).
     fn now_since_start_ms(&self) -> u128 {
         match self.timing.started_at {
             Some(started) => Instant::now().duration_since(started).as_millis(),
@@ -297,11 +316,27 @@ impl Kernel {
     }
 }
 
+/// Convert a `ms-since-kernel-start` value to a Unix epoch millisecond `u64`.
+///
+/// `unix_now_ms` is the wall-clock "now" in Unix epoch ms (read once per
+/// snapshot); `now_ms` is the kernel-monotonic "now" in ms-since-start.
+/// Returns `None` when `event_ms == 0` (sentinel for "never observed") or
+/// when the result would underflow (clock skew).
+fn elapsed_to_unix_ms(unix_now_ms: u64, now_ms: u128, event_ms: u128) -> Option<u64> {
+    if event_ms == 0 {
+        return None;
+    }
+    let elapsed = now_ms.saturating_sub(event_ms);
+    let elapsed_sat: u64 = elapsed.try_into().unwrap_or(u64::MAX);
+    Some(unix_now_ms.saturating_sub(elapsed_sat))
+}
+
 fn build_relay_row(
     relay_url: String,
     status: Option<&RelayStatus>,
     subs: Vec<WireSubscriptionStatus>,
     now_ms: u128,
+    unix_now_ms: u64,
 ) -> RelayDiagnosticsRow {
     // Synthetic row for an outbox-only URL with no `RelayStatus` lane —
     // mirrors the old Swift `syntheticRelayStatus` helper but stays Rust-
@@ -330,6 +365,7 @@ fn build_relay_row(
             0,
             subs,
             now_ms,
+            unix_now_ms,
             None,
         );
     };
@@ -339,8 +375,8 @@ fn build_relay_row(
         connection,
         auth,
         reconnect_count,
-        last_connected,
-        last_event,
+        last_connected_raw,
+        last_event_raw,
         last_notice,
         last_error,
         events_rx,
@@ -365,8 +401,8 @@ fn build_relay_row(
         connection,
         auth,
         reconnect_count,
-        last_connected,
-        last_event,
+        last_connected_raw,
+        last_event_raw,
         last_notice,
         last_error,
         events_rx,
@@ -374,6 +410,7 @@ fn build_relay_row(
         bytes_tx,
         subs,
         now_ms,
+        unix_now_ms,
         info,
     )
 }
@@ -385,8 +422,8 @@ fn finish_row(
     connection: &str,
     auth: &str,
     reconnect_count: u32,
-    last_connected: Option<u128>,
-    last_event: Option<u128>,
+    last_connected_raw: Option<u128>,
+    last_event_raw: Option<u128>,
     last_notice: Option<String>,
     last_error: Option<String>,
     events_rx: u64,
@@ -394,6 +431,7 @@ fn finish_row(
     bytes_tx: u64,
     subs: Vec<WireSubscriptionStatus>,
     now_ms: u128,
+    unix_now_ms: u64,
     info: Option<RelayDiagnosticsInfo>,
 ) -> RelayDiagnosticsRow {
     let total_sub_count = subs.len() as u32;
@@ -403,7 +441,7 @@ fn finish_row(
 
     let wire_subs = subs
         .into_iter()
-        .map(|s| build_wire_sub(s, now_ms))
+        .map(|s| build_wire_sub(s, now_ms, unix_now_ms))
         .collect();
 
     RelayDiagnosticsRow {
@@ -431,8 +469,10 @@ fn finish_row(
         } else {
             None
         },
-        last_connected_display: last_connected.map(|ms| format_ago_ms(now_ms, ms)),
-        last_event_display: last_event.map(|ms| format_ago_ms(now_ms, ms)),
+        last_connected_ms: last_connected_raw
+            .and_then(|ms| elapsed_to_unix_ms(unix_now_ms, now_ms, ms)),
+        last_event_ms: last_event_raw
+            .and_then(|ms| elapsed_to_unix_ms(unix_now_ms, now_ms, ms)),
         last_notice,
         last_error,
         wire_subs,
@@ -440,7 +480,7 @@ fn finish_row(
     }
 }
 
-fn build_wire_sub(s: WireSubscriptionStatus, now_ms: u128) -> RelayDiagnosticsWireSub {
+fn build_wire_sub(s: WireSubscriptionStatus, now_ms: u128, unix_now_ms: u64) -> RelayDiagnosticsWireSub {
     let consumer_count_label = match s.logical_consumer_count {
         0 => String::new(),
         1 => "1 consumer".to_string(),
@@ -458,9 +498,9 @@ fn build_wire_sub(s: WireSubscriptionStatus, now_ms: u128) -> RelayDiagnosticsWi
         consumer_count_label,
         events_rx_display,
         eose_observed: s.eose_at_ms.is_some(),
-        opened_display: format_ago_ms(now_ms, s.opened_at_ms),
-        last_event_display: s.last_event_at_ms.map(|ms| format_ago_ms(now_ms, ms)),
-        eose_display: s.eose_at_ms.map(|ms| format_ago_ms(now_ms, ms)),
+        opened_ms: elapsed_to_unix_ms(unix_now_ms, now_ms, s.opened_at_ms).unwrap_or(unix_now_ms),
+        last_event_ms: s.last_event_at_ms.and_then(|ms| elapsed_to_unix_ms(unix_now_ms, now_ms, ms)),
+        eose_ms: s.eose_at_ms.and_then(|ms| elapsed_to_unix_ms(unix_now_ms, now_ms, ms)),
         close_reason: s.close_reason,
         wire_id: s.wire_id,
         relay_url: s.relay_url,

@@ -55,9 +55,9 @@ fn wire_sub_row(sub: &super::super::relay_diagnostics::RelayDiagnosticsWireSub) 
         consumer_count_label: sub.consumer_count_label.clone(),
         events_rx_display: sub.events_rx_display.clone(),
         eose_observed: sub.eose_observed,
-        opened_display: sub.opened_display.clone(),
-        last_event_display: sub.last_event_display.clone(),
-        eose_display: sub.eose_display.clone(),
+        opened_ms: sub.opened_ms,
+        last_event_ms: sub.last_event_ms.unwrap_or(0),
+        eose_ms: sub.eose_ms.unwrap_or(0),
         close_reason: sub.close_reason.clone(),
     }
 }
@@ -81,8 +81,8 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
         reconnect_count: row.reconnect_count,
         bytes_rx_display: row.bytes_rx_display.clone(),
         bytes_tx_display: row.bytes_tx_display.clone(),
-        last_connected_display: row.last_connected_display.clone(),
-        last_event_display: row.last_event_display.clone(),
+        last_connected_ms: row.last_connected_ms.unwrap_or(0),
+        last_event_ms: row.last_event_ms.unwrap_or(0),
         last_notice: row.last_notice.clone(),
         last_error: row.last_error.clone(),
         wire_subs: row.wire_subs.iter().map(wire_sub_row).collect(),

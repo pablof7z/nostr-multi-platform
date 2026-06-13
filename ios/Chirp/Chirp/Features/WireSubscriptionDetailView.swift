@@ -102,22 +102,22 @@ struct WireSubscriptionDetailView: View {
                 .foregroundStyle(.primary)
             VStack(spacing: 0) {
                 SubDetailRow(label: "Opened") {
-                    Text(sub.openedDisplay)
+                    Text((sub.openedMs / 1000).relativeTimeFromUnixSeconds)
                         .font(.body.monospaced())
                         .foregroundStyle(.secondary)
                 }
-                if let last = sub.lastEventDisplay {
+                if sub.lastEventMs > 0 {
                     SubDetailDivider()
                     SubDetailRow(label: "Last Event") {
-                        Text(last)
+                        Text((sub.lastEventMs / 1000).relativeTimeFromUnixSeconds)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let eose = sub.eoseDisplay {
+                if sub.eoseMs > 0 {
                     SubDetailDivider()
                     SubDetailRow(label: "EOSE At") {
-                        Text(eose)
+                        Text((sub.eoseMs / 1000).relativeTimeFromUnixSeconds)
                             .font(.body.monospaced())
                             .foregroundStyle(ChirpColor.success)
                     }

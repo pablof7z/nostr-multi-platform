@@ -30,13 +30,11 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
     case hasEventsRxDisplay = 18
     case eventsRxDisplay = 20
     case eoseObserved = 22
-    case openedDisplay = 24
-    case hasLastEventDisplay = 26
-    case lastEventDisplay = 28
-    case hasEoseDisplay = 30
-    case eoseDisplay = 32
-    case hasCloseReason = 34
-    case closeReason = 36
+    case openedMs = 24
+    case lastEventMs = 26
+    case eoseMs = 28
+    case hasCloseReason = 30
+    case closeReason = 32
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -59,18 +57,13 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
   public var eventsRxDisplay: String? { let o = _accessor.offset(VTOFFSET.eventsRxDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var eventsRxDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.eventsRxDisplay.v) }
   public var eoseObserved: Bool { let o = _accessor.offset(VTOFFSET.eoseObserved.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var openedDisplay: String? { let o = _accessor.offset(VTOFFSET.openedDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var openedDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.openedDisplay.v) }
-  public var hasLastEventDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasLastEventDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var lastEventDisplay: String? { let o = _accessor.offset(VTOFFSET.lastEventDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var lastEventDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastEventDisplay.v) }
-  public var hasEoseDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasEoseDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var eoseDisplay: String? { let o = _accessor.offset(VTOFFSET.eoseDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var eoseDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.eoseDisplay.v) }
+  public var openedMs: UInt64 { let o = _accessor.offset(VTOFFSET.openedMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var lastEventMs: UInt64 { let o = _accessor.offset(VTOFFSET.lastEventMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var eoseMs: UInt64 { let o = _accessor.offset(VTOFFSET.eoseMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var hasCloseReason: Bool { let o = _accessor.offset(VTOFFSET.hasCloseReason.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var closeReason: String? { let o = _accessor.offset(VTOFFSET.closeReason.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var closeReasonSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.closeReason.v) }
-  public static func startRelayDiagnosticsWireSub(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 17) }
+  public static func startRelayDiagnosticsWireSub(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 15) }
   public static func add(wireId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: wireId, at: VTOFFSET.wireId.p) }
   public static func add(shortWireId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: shortWireId, at: VTOFFSET.shortWireId.p) }
   public static func add(relayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayUrl, at: VTOFFSET.relayUrl.p) }
@@ -83,13 +76,9 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
   public static func add(eventsRxDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: eventsRxDisplay, at: VTOFFSET.eventsRxDisplay.p) }
   public static func add(eoseObserved: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: eoseObserved, def: false,
    at: VTOFFSET.eoseObserved.p) }
-  public static func add(openedDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: openedDisplay, at: VTOFFSET.openedDisplay.p) }
-  public static func add(hasLastEventDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasLastEventDisplay, def: false,
-   at: VTOFFSET.hasLastEventDisplay.p) }
-  public static func add(lastEventDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastEventDisplay, at: VTOFFSET.lastEventDisplay.p) }
-  public static func add(hasEoseDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasEoseDisplay, def: false,
-   at: VTOFFSET.hasEoseDisplay.p) }
-  public static func add(eoseDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: eoseDisplay, at: VTOFFSET.eoseDisplay.p) }
+  public static func add(openedMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: openedMs, def: 0, at: VTOFFSET.openedMs.p) }
+  public static func add(lastEventMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: lastEventMs, def: 0, at: VTOFFSET.lastEventMs.p) }
+  public static func add(eoseMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: eoseMs, def: 0, at: VTOFFSET.eoseMs.p) }
   public static func add(hasCloseReason: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasCloseReason, def: false,
    at: VTOFFSET.hasCloseReason.p) }
   public static func add(closeReason: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: closeReason, at: VTOFFSET.closeReason.p) }
@@ -106,11 +95,9 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
     hasEventsRxDisplay: Bool = false,
     eventsRxDisplayOffset eventsRxDisplay: Offset = Offset(),
     eoseObserved: Bool = false,
-    openedDisplayOffset openedDisplay: Offset = Offset(),
-    hasLastEventDisplay: Bool = false,
-    lastEventDisplayOffset lastEventDisplay: Offset = Offset(),
-    hasEoseDisplay: Bool = false,
-    eoseDisplayOffset eoseDisplay: Offset = Offset(),
+    openedMs: UInt64 = 0,
+    lastEventMs: UInt64 = 0,
+    eoseMs: UInt64 = 0,
     hasCloseReason: Bool = false,
     closeReasonOffset closeReason: Offset = Offset()
   ) -> Offset {
@@ -125,11 +112,9 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
     nmp_kernel_RelayDiagnosticsWireSub.add(hasEventsRxDisplay: hasEventsRxDisplay, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(eventsRxDisplay: eventsRxDisplay, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(eoseObserved: eoseObserved, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(openedDisplay: openedDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(hasLastEventDisplay: hasLastEventDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(lastEventDisplay: lastEventDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(hasEoseDisplay: hasEoseDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsWireSub.add(eoseDisplay: eoseDisplay, &fbb)
+    nmp_kernel_RelayDiagnosticsWireSub.add(openedMs: openedMs, &fbb)
+    nmp_kernel_RelayDiagnosticsWireSub.add(lastEventMs: lastEventMs, &fbb)
+    nmp_kernel_RelayDiagnosticsWireSub.add(eoseMs: eoseMs, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(hasCloseReason: hasCloseReason, &fbb)
     nmp_kernel_RelayDiagnosticsWireSub.add(closeReason: closeReason, &fbb)
     return nmp_kernel_RelayDiagnosticsWireSub.endRelayDiagnosticsWireSub(&fbb, start: __start)
@@ -147,11 +132,9 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
     try _v.visit(field: VTOFFSET.hasEventsRxDisplay.p, fieldName: "hasEventsRxDisplay", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.eventsRxDisplay.p, fieldName: "eventsRxDisplay", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.eoseObserved.p, fieldName: "eoseObserved", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.openedDisplay.p, fieldName: "openedDisplay", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasLastEventDisplay.p, fieldName: "hasLastEventDisplay", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.lastEventDisplay.p, fieldName: "lastEventDisplay", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasEoseDisplay.p, fieldName: "hasEoseDisplay", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.eoseDisplay.p, fieldName: "eoseDisplay", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.openedMs.p, fieldName: "openedMs", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.lastEventMs.p, fieldName: "lastEventMs", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.eoseMs.p, fieldName: "eoseMs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.hasCloseReason.p, fieldName: "hasCloseReason", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.closeReason.p, fieldName: "closeReason", required: false, type: ForwardOffset<String>.self)
     _v.finish()
@@ -366,16 +349,14 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     case bytesRxDisplay = 34
     case hasBytesTxDisplay = 36
     case bytesTxDisplay = 38
-    case hasLastConnectedDisplay = 40
-    case lastConnectedDisplay = 42
-    case hasLastEventDisplay = 44
-    case lastEventDisplay = 46
-    case hasLastNotice = 48
-    case lastNotice = 50
-    case hasLastError = 52
-    case lastError = 54
-    case wireSubs = 56
-    case info = 58
+    case lastConnectedMs = 40
+    case lastEventMs = 42
+    case hasLastNotice = 44
+    case lastNotice = 46
+    case hasLastError = 48
+    case lastError = 50
+    case wireSubs = 52
+    case info = 54
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -409,12 +390,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public var hasBytesTxDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasBytesTxDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var bytesTxDisplay: String? { let o = _accessor.offset(VTOFFSET.bytesTxDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var bytesTxDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.bytesTxDisplay.v) }
-  public var hasLastConnectedDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasLastConnectedDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var lastConnectedDisplay: String? { let o = _accessor.offset(VTOFFSET.lastConnectedDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var lastConnectedDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastConnectedDisplay.v) }
-  public var hasLastEventDisplay: Bool { let o = _accessor.offset(VTOFFSET.hasLastEventDisplay.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var lastEventDisplay: String? { let o = _accessor.offset(VTOFFSET.lastEventDisplay.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var lastEventDisplaySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastEventDisplay.v) }
+  public var lastConnectedMs: UInt64 { let o = _accessor.offset(VTOFFSET.lastConnectedMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
+  public var lastEventMs: UInt64 { let o = _accessor.offset(VTOFFSET.lastEventMs.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var hasLastNotice: Bool { let o = _accessor.offset(VTOFFSET.hasLastNotice.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var lastNotice: String? { let o = _accessor.offset(VTOFFSET.lastNotice.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var lastNoticeSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastNotice.v) }
@@ -423,7 +400,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public var lastErrorSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastError.v) }
   public var wireSubs: FlatbufferVector<nmp_kernel_RelayDiagnosticsWireSub> { return _accessor.vector(at: VTOFFSET.wireSubs.v, byteSize: 4) }
   public var info: nmp_kernel_RelayDiagnosticsInfo? { let o = _accessor.offset(VTOFFSET.info.v); return o == 0 ? nil : nmp_kernel_RelayDiagnosticsInfo(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
-  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 28) }
+  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 26) }
   public static func add(relayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayUrl, at: VTOFFSET.relayUrl.p) }
   public static func add(shortUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: shortUrl, at: VTOFFSET.shortUrl.p) }
   public static func add(roleLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: roleLabel, at: VTOFFSET.roleLabel.p) }
@@ -444,12 +421,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public static func add(hasBytesTxDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasBytesTxDisplay, def: false,
    at: VTOFFSET.hasBytesTxDisplay.p) }
   public static func add(bytesTxDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: bytesTxDisplay, at: VTOFFSET.bytesTxDisplay.p) }
-  public static func add(hasLastConnectedDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasLastConnectedDisplay, def: false,
-   at: VTOFFSET.hasLastConnectedDisplay.p) }
-  public static func add(lastConnectedDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastConnectedDisplay, at: VTOFFSET.lastConnectedDisplay.p) }
-  public static func add(hasLastEventDisplay: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasLastEventDisplay, def: false,
-   at: VTOFFSET.hasLastEventDisplay.p) }
-  public static func add(lastEventDisplay: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastEventDisplay, at: VTOFFSET.lastEventDisplay.p) }
+  public static func add(lastConnectedMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: lastConnectedMs, def: 0, at: VTOFFSET.lastConnectedMs.p) }
+  public static func add(lastEventMs: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: lastEventMs, def: 0, at: VTOFFSET.lastEventMs.p) }
   public static func add(hasLastNotice: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasLastNotice, def: false,
    at: VTOFFSET.hasLastNotice.p) }
   public static func add(lastNotice: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastNotice, at: VTOFFSET.lastNotice.p) }
@@ -479,10 +452,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     bytesRxDisplayOffset bytesRxDisplay: Offset = Offset(),
     hasBytesTxDisplay: Bool = false,
     bytesTxDisplayOffset bytesTxDisplay: Offset = Offset(),
-    hasLastConnectedDisplay: Bool = false,
-    lastConnectedDisplayOffset lastConnectedDisplay: Offset = Offset(),
-    hasLastEventDisplay: Bool = false,
-    lastEventDisplayOffset lastEventDisplay: Offset = Offset(),
+    lastConnectedMs: UInt64 = 0,
+    lastEventMs: UInt64 = 0,
     hasLastNotice: Bool = false,
     lastNoticeOffset lastNotice: Offset = Offset(),
     hasLastError: Bool = false,
@@ -509,10 +480,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     nmp_kernel_RelayDiagnosticsRow.add(bytesRxDisplay: bytesRxDisplay, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(hasBytesTxDisplay: hasBytesTxDisplay, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(bytesTxDisplay: bytesTxDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(hasLastConnectedDisplay: hasLastConnectedDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(lastConnectedDisplay: lastConnectedDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(hasLastEventDisplay: hasLastEventDisplay, &fbb)
-    nmp_kernel_RelayDiagnosticsRow.add(lastEventDisplay: lastEventDisplay, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(lastConnectedMs: lastConnectedMs, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(lastEventMs: lastEventMs, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(hasLastNotice: hasLastNotice, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(lastNotice: lastNotice, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(hasLastError: hasLastError, &fbb)
@@ -542,10 +511,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     try _v.visit(field: VTOFFSET.bytesRxDisplay.p, fieldName: "bytesRxDisplay", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.hasBytesTxDisplay.p, fieldName: "hasBytesTxDisplay", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.bytesTxDisplay.p, fieldName: "bytesTxDisplay", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasLastConnectedDisplay.p, fieldName: "hasLastConnectedDisplay", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.lastConnectedDisplay.p, fieldName: "lastConnectedDisplay", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasLastEventDisplay.p, fieldName: "hasLastEventDisplay", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.lastEventDisplay.p, fieldName: "lastEventDisplay", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.lastConnectedMs.p, fieldName: "lastConnectedMs", required: false, type: UInt64.self)
+    try _v.visit(field: VTOFFSET.lastEventMs.p, fieldName: "lastEventMs", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.hasLastNotice.p, fieldName: "hasLastNotice", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.lastNotice.p, fieldName: "lastNotice", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.hasLastError.p, fieldName: "hasLastError", required: false, type: Bool.self)

@@ -365,9 +365,13 @@ struct RelayDiagnosticsWireSub: Decodable, Identifiable, Equatable {
     let consumerCountLabel: String
     let eventsRxDisplay: String?
     let eoseObserved: Bool
-    let openedDisplay: String
-    let lastEventDisplay: String?
-    let eoseDisplay: String?
+    /// Unix epoch milliseconds when the subscription opened. Shells format as
+    /// "Xs ago" at render time via `relativeTimeFromUnixSeconds` (ADR-0032).
+    let openedMs: UInt64
+    /// Unix epoch milliseconds of the last event; 0 when none.
+    let lastEventMs: UInt64
+    /// Unix epoch milliseconds when EOSE was observed; 0 when none.
+    let eoseMs: UInt64
     let closeReason: String?
     var id: String { wireId }
 }
@@ -419,8 +423,11 @@ struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     let reconnectCount: UInt32
     let bytesRxDisplay: String?
     let bytesTxDisplay: String?
-    let lastConnectedDisplay: String?
-    let lastEventDisplay: String?
+    /// Unix epoch milliseconds of the last successful connect; 0 when never
+    /// connected. Shells format as "Xs ago" via `relativeTimeFromUnixSeconds`.
+    let lastConnectedMs: UInt64
+    /// Unix epoch milliseconds of the last event received; 0 when none.
+    let lastEventMs: UInt64
     let lastNotice: String?
     let lastError: String?
     let wireSubs: [RelayDiagnosticsWireSub]

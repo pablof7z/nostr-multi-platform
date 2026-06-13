@@ -37,8 +37,8 @@ class RelayDiagnosticsInterest : Table() {
                 null
             }
         }
-    val keyAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
-    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
+    val keyAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
+    fun keyInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
     val state : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class RelayDiagnosticsInterest : Table() {
                 null
             }
         }
-    val stateAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
-    fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
+    val stateAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
+    fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
     val stateTone : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class RelayDiagnosticsInterest : Table() {
                 null
             }
         }
-    val stateToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun stateToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
+    val stateToneAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
+    fun stateToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
     val refcount : UInt
         get() {
             val o = __offset(10)
@@ -75,8 +75,8 @@ class RelayDiagnosticsInterest : Table() {
                 null
             }
         }
-    val cacheCoverageAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
-    fun cacheCoverageInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
+    val cacheCoverageAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(12, 1)
+    fun cacheCoverageInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 12, 1)
     fun relayUrls(j: Int) : String? {
         val o = __offset(14)
         return if (o != 0) {
@@ -90,7 +90,7 @@ class RelayDiagnosticsInterest : Table() {
             val o = __offset(14); return if (o != 0) __vector_len(o) else 0
         }
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
+        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
         fun getRootAsRelayDiagnosticsInterest(_bb: ByteBuffer): RelayDiagnosticsInterest = getRootAsRelayDiagnosticsInterest(_bb, RelayDiagnosticsInterest())
         fun getRootAsRelayDiagnosticsInterest(_bb: ByteBuffer, obj: RelayDiagnosticsInterest): RelayDiagnosticsInterest {
             _bb.order(ByteOrder.LITTLE_ENDIAN)

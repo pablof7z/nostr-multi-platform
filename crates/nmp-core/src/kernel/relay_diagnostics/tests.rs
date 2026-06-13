@@ -1,12 +1,19 @@
 use super::*;
 
 #[test]
-fn format_ago_buckets() {
-    assert_eq!(format_ago_ms(10_000, 9_500), "0s ago");
-    assert_eq!(format_ago_ms(60_000, 0), "now"); // then==0 means never observed
-    assert_eq!(format_ago_ms(120_000, 60_000), "1m ago");
-    assert_eq!(format_ago_ms(3_700_000, 100_000), "1h ago");
-    assert_eq!(format_ago_ms(90_000_000, 0_001), "1d ago");
+fn elapsed_to_unix_ms_conversions() {
+    // 0 event_ms → None (sentinel for "never observed").
+    assert_eq!(elapsed_to_unix_ms(1_000_000, 50_000, 0), None);
+    // event 10_000ms ago wall-clock: unix result = unix_now - 10_000.
+    assert_eq!(
+        elapsed_to_unix_ms(1_000_000, 50_000, 40_000),
+        Some(990_000)
+    );
+    // future event (event_ms > now_ms) saturates to unix_now.
+    assert_eq!(
+        elapsed_to_unix_ms(1_000_000, 50_000, 60_000),
+        Some(1_000_000)
+    );
 }
 
 #[test]

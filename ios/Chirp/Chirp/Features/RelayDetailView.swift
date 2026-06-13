@@ -101,18 +101,18 @@ struct RelayDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let connected = row.lastConnectedDisplay {
+                if row.lastConnectedMs > 0 {
                     RelayDetailDivider()
                     RelayDetailRow(label: "Last Connected") {
-                        Text(connected)
+                        Text((row.lastConnectedMs / 1000).relativeTimeFromUnixSeconds)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let lastEvent = row.lastEventDisplay {
+                if row.lastEventMs > 0 {
                     RelayDetailDivider()
                     RelayDetailRow(label: "Last Event") {
-                        Text(lastEvent)
+                        Text((row.lastEventMs / 1000).relativeTimeFromUnixSeconds)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                     }
