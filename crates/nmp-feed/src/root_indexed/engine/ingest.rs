@@ -60,7 +60,9 @@ where
     /// `supersedes_target` is preserved so the renderer still shows the
     /// "reposted by" banner. A plain (non-reposted) root just inserts.
     fn ingest_root(&self, event: &KernelEvent) {
-        let Ok(mut st) = self.state.lock() else { return };
+        let Ok(mut st) = self.state.lock() else {
+            return;
+        };
         let existing = st.roots.get(&event.id).map(|slot| {
             (
                 slot.supersedes_target.clone(),
@@ -83,7 +85,11 @@ where
             None => (self.caps.card_builder)(event, None),
         };
         let created_at = prior_created_at.map_or(event.created_at, |c| c.max(event.created_at));
-        st.roots.insert(
+        // Fix 4: when the bounded roots map is at capacity the oldest root is
+        // evicted on insert. Its attribution sub-map must be reclaimed too,
+        // otherwise `attributions` grows without bound as live roots crowd out
+        // the entries of evicted roots.
+        let (_, evicted) = st.roots.insert_returning_evicted(
             event.id.clone(),
             RootSlot {
                 card,
@@ -92,6 +98,9 @@ where
                 wrapper_event_id,
             },
         );
+        if let Some((evicted_id, _)) = evicted {
+            st.attributions.remove(&evicted_id);
+        }
         Self::drain_pending_into(&mut st, &event.id);
         self.emit_release_for(&mut st, &event.id);
     }
@@ -101,18 +110,32 @@ where
     /// the target if absent (L-1); hydrate from the pair if already local (L-5
     /// forward direction).
     fn ingest_repost(&self, wrapper: &KernelEvent, target: EventId) {
-        let Ok(mut st) = self.state.lock() else { return };
+        let Ok(mut st) = self.state.lock() else {
+            return;
+        };
         let target_event = (self.caps.event_lookup)(&target);
         let card = (self.caps.card_builder)(wrapper, target_event.as_ref());
-        st.roots.insert(
+        // Fix 1: never regress a slot's created_at — an older repost wrapper
+        // must not pull an existing root downward in feed order. (The root
+        // path in `ingest_root` already takes this max; reposts must too.)
+        let created_at = match st.roots.get(&target).map(|s| s.created_at) {
+            Some(existing) => existing.max(wrapper.created_at),
+            None => wrapper.created_at,
+        };
+        // Fix 4: reclaim the attribution sub-map of any root evicted by this
+        // insert when the bounded roots map is at capacity (see ingest_root).
+        let (_, evicted) = st.roots.insert_returning_evicted(
             target.clone(),
             RootSlot {
                 card,
-                created_at: wrapper.created_at,
+                created_at,
                 supersedes_target: Some(target.clone()),
                 wrapper_event_id: Some(wrapper.id.clone()),
             },
         );
+        if let Some((evicted_id, _)) = evicted {
+            st.attributions.remove(&evicted_id);
+        }
         Self::drain_pending_into(&mut st, &target);
         if target_event.is_none() {
             // L-1 / L-5: target not local → claim it.
@@ -160,7 +183,9 @@ where
             return;
         };
 
-        let Ok(mut st) = self.state.lock() else { return };
+        let Ok(mut st) = self.state.lock() else {
+            return;
+        };
         if st.roots.contains_key(&primary_id) {
             Self::record_attribution(&mut st.attributions, &primary_id, attribution);
         } else {

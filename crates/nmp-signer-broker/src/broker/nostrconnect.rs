@@ -59,6 +59,7 @@ impl BunkerBroker {
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                 cancel,
                 handshake_thread: Some(thread),
+                dispatcher_thread: None,
                 transport: BrokerTransport::new(
                     Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                     Keys::generate(),
@@ -84,7 +85,9 @@ impl BunkerBroker {
             let _ = inbound_tx_for_cb.send(event);
         });
 
-        if cancel.load(Ordering::Relaxed) {
+        // Acquire pairs with the Release store in `BunkerBroker::cancel()`
+        // (cross-thread happens-before; load-bearing on ARM — iOS/Android).
+        if cancel.load(Ordering::Acquire) {
             self.emit_progress("failed", Some("cancelled"));
             return;
         }

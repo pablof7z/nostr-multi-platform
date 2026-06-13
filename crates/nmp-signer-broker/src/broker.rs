@@ -58,6 +58,13 @@ struct ActiveSession {
     relay: Arc<dyn RelayClient>,
     cancel: Arc<AtomicBool>,
     handshake_thread: Option<JoinHandle<()>>,
+    /// Inbound-dispatcher thread spawned by `install_completed_signer` (routes
+    /// steady-state kind:24133 replies to the transport). Stored so `cancel()`
+    /// can join it after the handshake thread — without this handle the
+    /// dispatcher thread leaked on every session teardown, accumulating one
+    /// stuck thread per rapid reconnect. `None` until the handshake completes
+    /// and the signer is installed.
+    dispatcher_thread: Option<JoinHandle<()>>,
     /// Strong ref to the transport so the relay-event callback can reach it.
     /// Kept here so we can drop it on `cancel`.
     transport: Arc<BrokerTransport>,
@@ -115,6 +122,7 @@ impl BunkerBroker {
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                 cancel,
                 handshake_thread: Some(thread),
+                dispatcher_thread: None,
                 transport: BrokerTransport::new(
                     Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                     Keys::generate(),
@@ -142,9 +150,14 @@ impl BunkerBroker {
                     signer.drain_pending_with_error("bunker session cancelled");
                 }
             }
+            // Release store pairs with the Acquire loads in the handshake /
+            // nostrconnect loops so the cancel is guaranteed visible across
+            // threads (and ARM cores — iOS/Android — where Relaxed grants no
+            // happens-before). The reader observing `true` is thereby ordered
+            // after this store.
             session
                 .cancel
-                .store(true, std::sync::atomic::Ordering::Relaxed);
+                .store(true, std::sync::atomic::Ordering::Release);
             session.relay.shutdown();
             if let Some(handle) = session.handshake_thread {
                 // Best-effort join. Two distinct threads need to exit:
@@ -157,12 +170,20 @@ impl BunkerBroker {
                 //     idle or mid-backoff (the readiness poll wakes via the
                 //     control-channel mio::Waker; the backoff wait blocks on
                 //     a control recv_timeout that drops out on Shutdown).
-                // Residual stall window: if the worker is currently inside
-                // `tungstenite::connect()` (TCP+TLS+WS handshake), Shutdown
-                // sits in the channel until the OS-level connect timeout
-                // returns. Shared with `nmp-core::relay_worker`; tracked
-                // for resolution in GitHub Issues as a shared connection
-                // primitive with explicit connect_timeout.
+                //     A worker stuck inside the TCP+TLS+WS dial now returns
+                //     within the bounded `TCP_CONNECT_TIMEOUT` (10 s) in
+                //     `nmp-network::relay_worker::open_relay_socket`, so this
+                //     join is no longer exposed to the full OS connect timeout.
+                let _ = handle.join();
+            }
+            // Join the steady-state inbound dispatcher AFTER the handshake
+            // thread. By now the relay client is shut down (dropping the
+            // event-callback's `inbound_tx` clone) and the handshake thread has
+            // returned (dropping its original `inbound_tx`), so the dispatcher's
+            // blocking `inbound_rx.recv()` has returned `Err` and this join
+            // resolves promptly. Without this join the dispatcher thread leaked
+            // on every teardown (defect 3).
+            if let Some(handle) = session.dispatcher_thread {
                 let _ = handle.join();
             }
         }
@@ -224,7 +245,9 @@ impl BunkerBroker {
         let mut last_err: Option<String> = None;
         let conn_state_cb = self.make_connection_state_callback();
         for url in &bunker_uri.relays {
-            if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            // Acquire pairs with the Release store in `cancel()` (cross-thread
+            // happens-before; load-bearing on ARM — iOS/Android).
+            if cancel.load(std::sync::atomic::Ordering::Acquire) {
                 self.emit_progress("failed", Some("cancelled"));
                 return;
             }
@@ -350,25 +373,45 @@ impl BunkerBroker {
             }
         }
 
-        // Stash the signer on the active session so cancel() can tear it
-        // down deterministically even after the host adapter receives its
-        // own strong reference.
-        if let Ok(guard) = self.active.lock() {
-            if let Some(session) = guard.as_ref() {
+        // Spawn the inbound dispatcher: route remaining events to the
+        // transport for steady-state RPC response delivery. The thread exits
+        // on its own when every `inbound_tx` sender drops — the handshake
+        // thread's original sender (dropped when that thread returns) and the
+        // relay client's event-callback clone (dropped when `relay.shutdown()`
+        // joins the relay's own dispatcher). `cancel()` does both, then joins
+        // the handle we stash below, so the thread can never outlive the
+        // session (defect: leaked dispatcher thread under rapid reconnects).
+        let transport_for_dispatch = Arc::clone(&transport);
+        let dispatcher_thread = std::thread::Builder::new()
+            .name("nmp-broker-inbound-dispatch".to_string())
+            .spawn(move || {
+                while let Ok(event) = inbound_rx.recv() {
+                    transport_for_dispatch.dispatch_inbound(&event);
+                }
+            })
+            .ok();
+
+        // Stash the signer AND the dispatcher join handle on the active
+        // session so cancel() can tear both down deterministically even after
+        // the host adapter receives its own strong reference to the signer.
+        let mut orphaned_dispatcher = dispatcher_thread;
+        if let Ok(mut guard) = self.active.lock() {
+            if let Some(session) = guard.as_mut() {
                 if let Ok(mut slot) = session.signer.lock() {
                     *slot = Some(Arc::clone(&signer));
                 }
+                session.dispatcher_thread = orphaned_dispatcher.take();
             }
         }
-
-        // Spawn the inbound dispatcher: route remaining events to the
-        // transport for steady-state RPC response delivery.
-        let transport_for_dispatch = Arc::clone(&transport);
-        std::thread::spawn(move || {
-            while let Ok(event) = inbound_rx.recv() {
-                transport_for_dispatch.dispatch_inbound(&event);
-            }
-        });
+        // Race guard: if the session was already taken by a concurrent
+        // `cancel()` (so the stash above found no session), join the dispatcher
+        // here rather than detaching it. By this point `cancel()` has dropped
+        // the relay's event callback, so the dispatcher's `inbound_rx.recv()`
+        // has already (or will shortly) return `Err` and the join returns
+        // promptly — never a hang, never a leaked thread.
+        if let Some(handle) = orphaned_dispatcher {
+            let _ = handle.join();
+        }
 
         self.emit(BrokerEvent::SignerReady {
             signer: Arc::clone(&signer),

@@ -3,12 +3,12 @@ use crate::role::RelayRole;
 use std::collections::VecDeque;
 use std::net::TcpStream;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::Once;
 use std::thread;
 use std::time::{Duration, Instant};
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{connect, Message, WebSocket};
+use tungstenite::{Message, WebSocket};
 
+mod connect;
 mod io_ready;
 #[cfg(test)]
 mod no_polling_tests;
@@ -16,6 +16,7 @@ mod socket_io;
 #[cfg(test)]
 mod tests;
 
+use connect::open_relay_socket;
 use socket_io::{drain_relay_reads, flush_relay_writes, flush_socket_message, FlushResult};
 
 // Re-export BackoffClass so callers (Pool, tests) can name the type without
@@ -63,25 +64,10 @@ impl RelayEvent {
             | Self::Message { role, .. } => *role,
         }
     }
-
-    /// The URL of the relay this event originated on (T105 routing key).
-    pub fn relay_url(&self) -> &str {
-        match self {
-            Self::Connected { relay_url, .. }
-            | Self::Failed { relay_url, .. }
-            | Self::Closed { relay_url, .. }
-            | Self::Message { relay_url, .. } => relay_url,
-        }
-    }
-
-    pub fn generation(&self) -> u64 {
-        match self {
-            Self::Connected { generation, .. }
-            | Self::Failed { generation, .. }
-            | Self::Closed { generation, .. }
-            | Self::Message { generation, .. } => *generation,
-        }
-    }
+    // The `relay_url()` / `generation()` accessors were removed when the pool
+    // translator was reworked to pre-translate events off-lock: the variants
+    // are now destructured directly into a `PreparedEvent` in `pool::inner`,
+    // so the by-reference routing-key accessors had no remaining caller.
 }
 
 pub enum RelayCommand {
@@ -101,7 +87,7 @@ enum RelayWorkerResult {
     Shutdown,
 }
 
-type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
+pub(super) type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 
 // V-01 Stage 3: backoff/keepalive constants and helpers now live in the
 // always-compiled `relay_protocol` module so the wasm32 `BrowserRelayDriver`
@@ -492,17 +478,4 @@ fn wait_before_reconnect(
             Ok(RelayCommand::Shutdown) | Err(RecvTimeoutError::Disconnected) => return false,
         }
     }
-}
-
-fn open_relay_socket(relay_url: &str) -> Result<RelaySocket, String> {
-    install_rustls_provider();
-    let (socket, _response) = connect(relay_url).map_err(|error| error.to_string())?;
-    Ok(socket)
-}
-
-fn install_rustls_provider() {
-    static INSTALL: Once = Once::new();
-    INSTALL.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
 }

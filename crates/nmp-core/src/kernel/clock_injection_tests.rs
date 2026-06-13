@@ -141,3 +141,87 @@ fn injected_clock_makes_received_at_ms_deterministic_across_ingests() {
          received_at_ms — the deterministic-replay property",
     );
 }
+
+/// D9 — a relay-supplied event with a FUTURE `created_at` must be clamped to
+/// the kernel's `now` in the observer fan-out, so a hostile/buggy relay cannot
+/// pin an event permanently at the top of every consumer's feed. The
+/// `StoredEvent` retains the original wire timestamp for protocol correctness;
+/// only the `KernelEvent` emitted to observers is clamped.
+///
+/// A past-dated event passes through unchanged — clamping is `min(wire, now)`,
+/// never an unconditional overwrite.
+#[test]
+fn future_dated_event_created_at_clamped_to_now_in_fan_out() {
+    use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+    use crate::substrate::KernelEvent;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    /// Captures every fanned-out `KernelEvent` keyed by id so the test can read
+    /// back the observer-visible `created_at`.
+    struct CapturingObserver {
+        seen: Mutex<HashMap<String, u64>>,
+    }
+    impl KernelEventObserver for CapturingObserver {
+        fn on_kernel_event(&self, event: &KernelEvent) {
+            self.seen
+                .lock()
+                .unwrap()
+                .insert(event.id.clone(), event.created_at);
+        }
+    }
+
+    // Pin the kernel clock to a known "now" = 1_000_000 secs.
+    const NOW_SECS: u64 = 1_000_000;
+    let fixed = SystemTime::UNIX_EPOCH + Duration::from_secs(NOW_SECS);
+
+    let slot = new_event_observer_slot();
+    let observer = Arc::new(CapturingObserver {
+        seen: Mutex::new(HashMap::new()),
+    });
+    register_rust_observer(&slot, observer.clone());
+
+    let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
+    kernel.set_clock(Arc::new(FixedClock(fixed)));
+    kernel.set_event_observers_handle(slot);
+
+    // A future-dated event (now + 9999) and a past-dated event (now - 500_000),
+    // each a real Schnorr-signed kind:1 so `ingest_timeline_event` accepts it.
+    let keys = ::nostr::Keys::generate();
+    let future = signed_note(&keys, "from the future", NOW_SECS + 9_999);
+    let past = signed_note(&keys, "from the past", NOW_SECS - 500_000);
+    let future_id = future.id.clone();
+    let past_id = past.id.clone();
+
+    // `diag-firehose-` sub_id bypasses the `timeline_authors` gate.
+    kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", future);
+    kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", past);
+
+    let seen = observer.seen.lock().unwrap();
+
+    assert_eq!(
+        seen.get(&future_id).copied(),
+        Some(NOW_SECS),
+        "future-dated created_at must be clamped to now in the observer fan-out (D9)"
+    );
+    assert_eq!(
+        seen.get(&past_id).copied(),
+        Some(NOW_SECS - 500_000),
+        "past-dated created_at must pass through unchanged — clamp is min(wire, now)"
+    );
+
+    // The StoredEvent retains the ORIGINAL wire timestamp for protocol
+    // correctness; only the fan-out shape is clamped.
+    let future_bytes =
+        crate::kernel::hex_to_pubkey_bytes(&future_id).expect("event id is 64-char hex");
+    let stored = kernel
+        .store
+        .get_by_id(&future_bytes)
+        .expect("store get_by_id must not error")
+        .expect("future event ingested");
+    assert_eq!(
+        stored.raw.created_at,
+        NOW_SECS + 9_999,
+        "StoredEvent must retain the unclamped wire created_at for protocol correctness"
+    );
+}

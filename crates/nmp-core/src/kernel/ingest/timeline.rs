@@ -226,11 +226,18 @@ impl Kernel {
         // T146 — observer fan-out fires for every event that reaches the
         // in-memory read-cache; duplicates / supersessions return earlier
         // in this function and never call `notify_event_observers`.
+        let now_secs = self.now_secs();
         let kernel_event = crate::substrate::KernelEvent {
             id: cached.id.clone(),
             author: cached.author.clone(),
             kind: cached.kind,
-            created_at: cached.created_at,
+            // D9: kernel owns time — clamp relay-supplied created_at to now so a
+            // future-dated event from a hostile/buggy relay cannot pin
+            // permanently at the top of every consumer's feed. The StoredEvent
+            // retains the original timestamp for protocol correctness (NIP-01
+            // replaceable/ephemeral handling); only the observer-fan-out shape
+            // is clamped.
+            created_at: cached.created_at.min(now_secs),
             tags: cached.tags.clone(),
             content: cached.content.clone(),
         };
