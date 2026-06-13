@@ -240,6 +240,9 @@ pub mod relay_score {
 // `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
 // Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
 pub use kernel::AuthSignerFn;
+/// ADR-0052 §D5 — the public `&mut Kernel` → wallet/zap capability adapter
+/// the wallet `RelayTextInterceptor` wraps off the dispatch path.
+pub use kernel::wallet_access::KernelWalletAccess;
 // V-51 phase 4 (validation harness) — the projection's three public types
 // reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
 // is the bounded ring-buffer the kernel hands to production composition

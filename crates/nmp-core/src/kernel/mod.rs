@@ -88,6 +88,8 @@ mod cache_serve_universal_tests;
 pub(crate) mod closed_reason;
 mod diagnostic_counters;
 mod discovery;
+/// ADR-0052 §D5 — `&mut Kernel` → narrow wallet/zap capability adapter.
+pub mod wallet_access;
 #[cfg(test)]
 mod discovery_tests;
 #[cfg(test)]

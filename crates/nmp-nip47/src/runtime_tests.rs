@@ -220,9 +220,10 @@
         payments.insert("pay-d".to_string(), pending(Some("cid-d"), 1_000));
         rt.connection = Some(make_connection(payments));
 
-        // wallet_disconnect_inner needs a kernel; use the test-support kernel.
+        // wallet_disconnect_inner needs the narrow wallet kernel capability
+        // (ADR-0052 §D5); wrap the test-support kernel with `as_wallet_access`.
         let mut kernel = nmp_core::Kernel::testing_new(64);
-        let _ = wallet_disconnect_inner(&mut rt, &mut kernel);
+        let _ = wallet_disconnect_inner(&mut rt, &kernel.as_wallet_access());
 
         let unresolved = rt.payment_store.as_ref().unwrap().load_unresolved().unwrap();
         assert_eq!(unresolved.len(), 1, "the payment survives disconnect as Unknown");
@@ -283,7 +284,7 @@
             true,
             Some("preimage-xyz".to_string()),
             None,
-            &mut kernel,
+            &kernel.as_wallet_access(),
         );
         assert!(corrected, "the durable record must be found and corrected");
         // Terminal records are deleted (no longer need reconciliation).

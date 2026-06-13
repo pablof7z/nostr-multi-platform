@@ -163,6 +163,10 @@ fn ctx_with_sender<'a>(
     static ERRORS: NoopErrorSurface = NoopErrorSurface;
     static HOST_OP: nmp_core::substrate::NoopHostOpHandlerAccess =
         nmp_core::substrate::NoopHostOpHandlerAccess;
+    static WALLET: nmp_core::substrate::NoopWalletKernelAccess =
+        nmp_core::substrate::NoopWalletKernelAccess;
+    static ZAP: nmp_core::substrate::NoopZapProfileLookup =
+        nmp_core::substrate::NoopZapProfileLookup;
     ProtocolCommandContext::new(ProtocolCommandContextParts {
         send,
         command_sender,
@@ -173,6 +177,8 @@ fn ctx_with_sender<'a>(
         stages,
         recipients,
         host_op_handler: &HOST_OP,
+        wallet_kernel: &WALLET,
+        zap_profiles: &ZAP,
     })
 }
 

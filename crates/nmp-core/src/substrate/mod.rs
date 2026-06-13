@@ -106,9 +106,9 @@ pub use protocol::{
     build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
     ActionStageTracker, DmInboxLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
     LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess,
-    NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, ProtocolCommand,
-    ProtocolCommandContext, ProtocolCommandContextParts, ProtocolCommandError,
-    RecipientRelayLookup,
+    NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess,
+    NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts,
+    ProtocolCommandError, RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
 };
 pub use raw_event_forwarding::{
     RawEventForwardPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,

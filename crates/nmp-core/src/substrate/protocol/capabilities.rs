@@ -95,6 +95,80 @@ pub trait RecipientRelayLookup: Send + Sync {
     fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String>;
 }
 
+/// ADR-0052 §D5 — the narrow kernel surface the NIP-47 wallet runtime
+/// mutates on the actor thread, promoted off the deleted `kernel_mut()`
+/// escape hatch.
+///
+/// Before rung 5.5 the three wallet `ProtocolCommand`s reached the whole
+/// `&mut Kernel` through `ProtocolCommandContext::kernel_mut()` — ambient
+/// authority that defeated the narrow capability traits the context already
+/// offered. The wallet runtime helpers (`nmp_nip47::runtime`) touch exactly
+/// eight kernel methods; this trait is that closed set and nothing more, so a
+/// wallet command can no longer reach (e.g.) the event store, the planner, or
+/// the outbox router. Each method is `&self` with interior mutability in the
+/// adapter (`try_borrow_mut` on the dispatch arm's `RefCell<&mut Kernel>`),
+/// mirroring [`ErrorSurface`].
+///
+/// D0: every method names only protocol-neutral kernel primitives
+/// ([`RelayRole`](crate::RelayRole), [`AuthSignerFn`](crate::AuthSignerFn),
+/// persistent-sub ids) — no NIP-47 / wallet protocol concept crosses into
+/// `nmp-core`. The trait is consumed identically by the actor's
+/// `RelayTextInterceptor` path (which holds a real `&mut Kernel`) via
+/// [`Kernel::as_wallet_access`](crate::Kernel::as_wallet_access).
+pub trait WalletKernelAccess: Send + Sync {
+    /// Wall-clock seconds since the Unix epoch (kernel-owned clock; D7).
+    fn now_secs(&self) -> u64;
+
+    /// Write the `last_error_toast` projection. `None` clears the toast.
+    fn set_last_error_toast(&self, message: Option<String>);
+
+    /// Record a `Failed` terminal stage for `correlation_id` with `reason`.
+    fn record_action_failure(&self, correlation_id: String, reason: String);
+
+    /// Record an `Accepted` terminal stage for `correlation_id` carrying the
+    /// optional `result_json` payload (a settled `pay_invoice` preimage).
+    fn record_action_success(&self, correlation_id: String, result_json: Option<String>);
+
+    /// Bind the per-role NIP-42 auth signer (the NWC client secret signs the
+    /// `RelayRole::Wallet` lane).
+    fn set_relay_auth_signer(
+        &self,
+        role: crate::RelayRole,
+        pubkey_hex: String,
+        signer: crate::AuthSignerFn,
+    );
+
+    /// Drop the signer for `role` (wallet disconnect clears the wallet lane).
+    fn clear_relay_auth_signer(&self, role: crate::RelayRole);
+
+    /// Register `(relay_url, sub_id)` as persistent so EOSE does not auto-CLOSE
+    /// the long-lived kind:23195 listener.
+    fn register_persistent_sub(&self, relay_url: String, sub_id: String);
+
+    /// Remove `(relay_url, sub_id)` from the persistent set (disconnect).
+    fn unregister_persistent_sub(&self, relay_url: &str, sub_id: &str);
+
+    /// Mark the snapshot dirty so the next tick carries the wallet status write.
+    fn mark_changed_since_emit(&self);
+}
+
+/// ADR-0052 §D5 — the zap-specific cached-profile read, promoted off the
+/// generic [`ProtocolCommandContext`](super::ProtocolCommandContext) (where it
+/// was `lnurl_for_pubkey`, visible to *every* command) onto a dedicated
+/// capability only the NIP-57 zap path reaches.
+///
+/// Resolves the recipient's lightning address / LNURL from the kernel's cached
+/// kind:0 profile. The data lives in the kernel (it arrives at runtime), so the
+/// command cannot capture it at composition time the way it captures its wallet
+/// handle — it is a narrow read capability instead (the [`RecipientRelayLookup`]
+/// shape). D0: returns a bare `Option<String>`; no zap/NIP-57 type crosses.
+pub trait ZapProfileLookup: Send + Sync {
+    /// The recipient's lightning address / LNURL from their cached kind:0
+    /// profile, or `None` when the profile has not arrived yet or carries no
+    /// lightning address.
+    fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String>;
+}
+
 /// ADR-0052 §D4 — the narrow capability that reaches the per-app
 /// [`HostOpHandler`](crate::substrate::HostOpHandler) slot.
 ///
@@ -107,9 +181,9 @@ pub trait RecipientRelayLookup: Send + Sync {
 /// installed *now*, so account-switch hot-swaps stay live (D2: the value the
 /// command reaches is per-app slot state, not baked into the command).
 ///
-/// It is deliberately the only door the command has onto app/actor state — it
-/// does NOT hand out `&mut Kernel` (rung 5.5 owns `kernel_mut`); it returns
-/// only the opaque `Arc<dyn HostOpHandler>` (D0: no protocol type crosses).
+/// It is deliberately narrow — it does NOT hand out `&mut Kernel` (rung 5.5
+/// deleted that escape hatch entirely); it returns only the opaque
+/// `Arc<dyn HostOpHandler>` (D0: no protocol type crosses).
 pub trait HostOpHandlerAccess: Send + Sync {
     /// Clone the currently-installed handler out of the per-app slot, or
     /// `None` if no handler was installed before the dispatch reached the
@@ -188,6 +262,45 @@ pub struct NoopHostOpHandlerAccess;
 
 impl HostOpHandlerAccess for NoopHostOpHandlerAccess {
     fn current_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
+        None
+    }
+}
+
+/// Noop [`WalletKernelAccess`] — discards every wallet kernel mutation and
+/// returns `0` for the clock. Mirrors the "no kernel attached" branch (the
+/// `with_send_only` default and NIP crate tests that never drive the wallet
+/// runtime against a kernel).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoopWalletKernelAccess;
+
+impl WalletKernelAccess for NoopWalletKernelAccess {
+    fn now_secs(&self) -> u64 {
+        0
+    }
+    fn set_last_error_toast(&self, _message: Option<String>) {}
+    fn record_action_failure(&self, _correlation_id: String, _reason: String) {}
+    fn record_action_success(&self, _correlation_id: String, _result_json: Option<String>) {}
+    fn set_relay_auth_signer(
+        &self,
+        _role: crate::RelayRole,
+        _pubkey_hex: String,
+        _signer: crate::AuthSignerFn,
+    ) {
+    }
+    fn clear_relay_auth_signer(&self, _role: crate::RelayRole) {}
+    fn register_persistent_sub(&self, _relay_url: String, _sub_id: String) {}
+    fn unregister_persistent_sub(&self, _relay_url: &str, _sub_id: &str) {}
+    fn mark_changed_since_emit(&self) {}
+}
+
+/// Noop [`ZapProfileLookup`] — always reports no cached lightning address.
+/// Mirrors the "profile not arrived" branch; the `with_send_only` default and
+/// NIP crate tests that don't exercise the zap-resolve surface install this.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoopZapProfileLookup;
+
+impl ZapProfileLookup for NoopZapProfileLookup {
+    fn lnurl_for_pubkey(&self, _pubkey: &str) -> Option<String> {
         None
     }
 }

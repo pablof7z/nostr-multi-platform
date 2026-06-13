@@ -111,6 +111,93 @@ impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<
     }
 }
 
+/// ADR-0052 §D5 — bridge the actor's `&mut Kernel` into the narrow
+/// [`crate::substrate::WalletKernelAccess`] capability (the eight kernel
+/// methods the NIP-47 wallet runtime mutates on the actor thread). Replaces the
+/// deleted `ProtocolCommandContext::kernel_mut()` escape hatch: a wallet
+/// command can drive these eight and nothing else. Each method takes a
+/// transient `try_borrow_mut` so it composes with the sibling read adapters
+/// (`KernelClockAdapter` etc.) that share the same `RefCell<&mut Kernel>`
+/// across `cmd.run` — no long-lived exclusive borrow.
+pub(super) struct WalletKernelAccessAdapter<'a> {
+    pub(super) kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+unsafe impl<'a> Send for WalletKernelAccessAdapter<'a> {}
+unsafe impl<'a> Sync for WalletKernelAccessAdapter<'a> {}
+
+impl<'a> crate::substrate::WalletKernelAccess for WalletKernelAccessAdapter<'a> {
+    fn now_secs(&self) -> u64 {
+        self.kernel.try_borrow().map(|k| k.now_secs()).unwrap_or(0)
+    }
+    fn set_last_error_toast(&self, message: Option<String>) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.set_last_error_toast(message);
+        }
+    }
+    fn record_action_failure(&self, correlation_id: String, reason: String) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.record_action_failure(correlation_id, reason);
+        }
+    }
+    fn record_action_success(&self, correlation_id: String, result_json: Option<String>) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.record_action_success(correlation_id, result_json);
+        }
+    }
+    fn set_relay_auth_signer(
+        &self,
+        role: crate::RelayRole,
+        pubkey_hex: String,
+        signer: crate::AuthSignerFn,
+    ) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.set_relay_auth_signer(role, pubkey_hex, signer);
+        }
+    }
+    fn clear_relay_auth_signer(&self, role: crate::RelayRole) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.clear_relay_auth_signer(role);
+        }
+    }
+    fn register_persistent_sub(&self, relay_url: String, sub_id: String) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.register_persistent_sub(relay_url, sub_id);
+        }
+    }
+    fn unregister_persistent_sub(&self, relay_url: &str, sub_id: &str) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.unregister_persistent_sub(relay_url, sub_id);
+        }
+    }
+    fn mark_changed_since_emit(&self) {
+        if let Ok(mut k) = self.kernel.try_borrow_mut() {
+            k.mark_changed_since_emit();
+        }
+    }
+}
+
+/// ADR-0052 §D5 — bridge the actor's `&mut Kernel` into the narrow
+/// [`crate::substrate::ZapProfileLookup`] capability (the zap-only cached-kind:0
+/// lightning-address read). Replaces the generic `lnurl_for_pubkey` accessor.
+/// Kernel read only; `try_borrow` keeps the adapter total under a re-entrant
+/// borrow.
+pub(super) struct ZapProfileLookupAdapter<'a> {
+    pub(super) kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+unsafe impl<'a> Send for ZapProfileLookupAdapter<'a> {}
+unsafe impl<'a> Sync for ZapProfileLookupAdapter<'a> {}
+
+impl<'a> crate::substrate::ZapProfileLookup for ZapProfileLookupAdapter<'a> {
+    fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String> {
+        self.kernel
+            .try_borrow()
+            .ok()
+            .and_then(|k| k.lnurl_for_pubkey(pubkey))
+    }
+}
+
 /// ADR-0052 §D4 — bridge the actor's per-app
 /// [`crate::substrate::HostOpHandlerSlot`] into the substrate
 /// [`crate::substrate::HostOpHandlerAccess`] capability so the

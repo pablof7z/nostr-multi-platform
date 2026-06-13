@@ -412,6 +412,9 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
     static STAGES: NoopActionStageTracker = NoopActionStageTracker;
     static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
     static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
+    static WALLET: crate::substrate::NoopWalletKernelAccess =
+        crate::substrate::NoopWalletKernelAccess;
+    static ZAP: crate::substrate::NoopZapProfileLookup = crate::substrate::NoopZapProfileLookup;
     let send = |_: crate::actor::ActorCommand| {};
     let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
     let ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
@@ -424,6 +427,8 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
         stages: &STAGES,
         recipients: &RECIPIENTS,
         host_op_handler: &HOST_OP,
+        wallet_kernel: &WALLET,
+        zap_profiles: &ZAP,
     });
 
     // Backend-transparent: the active bunker's pubkey resolves through the

@@ -64,7 +64,6 @@
 
 use std::fmt;
 
-use crate::kernel::Kernel;
 use crate::relay::OutboundMessage;
 use crate::ActorCommand;
 
@@ -104,7 +103,8 @@ mod capabilities;
 pub use capabilities::{
     ActionStageTracker, DmInboxLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
     LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess,
-    NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, RecipientRelayLookup,
+    NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess,
+    NoopZapProfileLookup, RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -143,6 +143,12 @@ pub struct ProtocolCommandContextParts<'a> {
     /// `HostOpCommand` in [`crate::substrate::host_op`]; the noop singleton is
     /// installed for every other command (they never call it).
     pub host_op_handler: &'a dyn HostOpHandlerAccess,
+    /// ADR-0052 §D5 — the narrow wallet kernel-mutation surface (replaces the
+    /// deleted `kernel_mut()`). Only the NIP-47 wallet commands drive it.
+    pub wallet_kernel: &'a dyn WalletKernelAccess,
+    /// ADR-0052 §D5 — the zap-only cached-profile read (replaces the deleted
+    /// generic `lnurl_for_pubkey`). Only the NIP-57 zap command reads it.
+    pub zap_profiles: &'a dyn ZapProfileLookup,
 }
 
 /// Per-command runtime affordances handed to [`ProtocolCommand::run`].
@@ -171,13 +177,12 @@ pub struct ProtocolCommandContext<'a> {
     recipients: &'a dyn RecipientRelayLookup,
     /// ADR-0052 §D4 — per-app host-op handler slot accessor.
     host_op_handler: &'a dyn HostOpHandlerAccess,
-    /// V-38: optional `&mut Kernel` for command bodies that need to mutate
-    /// kernel state synchronously on the actor thread — record action
-    /// terminals, set the last-error toast, register persistent subs, mark
-    /// the snapshot dirty. `None` only in the substrate's own unit tests
-    /// that construct a context without a kernel; production dispatch
-    /// always sets it.
-    kernel: Option<&'a mut Kernel>,
+    /// ADR-0052 §D5 — narrow wallet kernel-mutation surface (replaced the
+    /// deleted `kernel: Option<&mut Kernel>` escape hatch).
+    wallet_kernel: &'a dyn WalletKernelAccess,
+    /// ADR-0052 §D5 — zap-only cached-profile read (replaced the generic
+    /// `lnurl_for_pubkey`).
+    zap_profiles: &'a dyn ZapProfileLookup,
     /// V-38: outbound-frame sink. The wallet runtime returns
     /// `Vec<OutboundMessage>` per command; the command body pushes them
     /// here so the actor's dispatch arm picks them up and routes through
@@ -192,9 +197,10 @@ impl<'a> ProtocolCommandContext<'a> {
     /// dispatch arm's stack-bound borrows of kernel + identity runtime;
     /// the resulting context's lifetime is the dispatch arm's stack frame.
     ///
-    /// V-38: `kernel` + `outbound` start as `None`; attach them via the
-    /// [`with_kernel`](Self::with_kernel) / [`with_outbound`](Self::with_outbound)
-    /// builders from the dispatch arm.
+    /// V-38: `outbound` starts as `None`; attach it via
+    /// [`with_outbound`](Self::with_outbound) from the dispatch arm. ADR-0052
+    /// §D5: the kernel handle is gone — wallet/zap commands reach their narrow
+    /// kernel surface through the `wallet_kernel` / `zap_profiles` capabilities.
     pub fn new(parts: ProtocolCommandContextParts<'a>) -> Self {
         let ProtocolCommandContextParts {
             send,
@@ -206,6 +212,8 @@ impl<'a> ProtocolCommandContext<'a> {
             stages,
             recipients,
             host_op_handler,
+            wallet_kernel,
+            zap_profiles,
         } = parts;
         Self {
             send,
@@ -217,17 +225,10 @@ impl<'a> ProtocolCommandContext<'a> {
             stages,
             recipients,
             host_op_handler,
-            kernel: None,
+            wallet_kernel,
+            zap_profiles,
             outbound: None,
         }
-    }
-
-    /// V-38 builder: attach the actor's kernel handle. The dispatch arm
-    /// calls this before invoking [`ProtocolCommand::run`].
-    #[must_use]
-    pub fn with_kernel(mut self, kernel: &'a mut Kernel) -> Self {
-        self.kernel = Some(kernel);
-        self
     }
 
     /// V-38 builder: attach an outbound-frame sink so the command body can
@@ -256,6 +257,8 @@ impl<'a> ProtocolCommandContext<'a> {
         static STAGES: NoopActionStageTracker = NoopActionStageTracker;
         static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
         static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
+        static WALLET: NoopWalletKernelAccess = NoopWalletKernelAccess;
+        static ZAP: NoopZapProfileLookup = NoopZapProfileLookup;
         let (command_sender, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
         let command_sender = crate::actor::CommandSender::new(command_sender);
         Self::new(ProtocolCommandContextParts {
@@ -268,6 +271,8 @@ impl<'a> ProtocolCommandContext<'a> {
             stages: &STAGES,
             recipients: &RECIPIENTS,
             host_op_handler: &HOST_OP,
+            wallet_kernel: &WALLET,
+            zap_profiles: &ZAP,
         })
     }
 
@@ -320,10 +325,13 @@ impl<'a> ProtocolCommandContext<'a> {
         ));
     }
 
-    /// V-38: Reborrow the actor's kernel handle. `None` only in unit tests
-    /// that constructed the context without one.
-    pub fn kernel_mut(&mut self) -> Option<&mut Kernel> {
-        self.kernel.as_deref_mut()
+    /// ADR-0052 §D5 — borrow the narrow [`WalletKernelAccess`] capability (the
+    /// NIP-47 wallet runtime's bounded kernel-mutation surface). Replaces the
+    /// deleted `kernel_mut()`: a wallet command drives its nine kernel methods
+    /// and nothing else of the kernel.
+    #[must_use]
+    pub fn wallet_kernel(&self) -> &dyn WalletKernelAccess {
+        self.wallet_kernel
     }
 
     /// V-38: Push outbound relay frames produced synchronously by the command
@@ -398,13 +406,10 @@ impl<'a> ProtocolCommandContext<'a> {
     /// Wall-clock seconds since the Unix epoch (D15-wrapped
     /// [`KernelClock::now_secs`]). Returns `0` on a panicking adapter.
     ///
-    /// When a direct `&Kernel` is attached (production dispatch), reads the
-    /// kernel's clock directly so the RefCell held by `KernelClockAdapter`
-    /// in the dispatch arm cannot trigger a double-borrow panic.
+    /// ADR-0052 §D5: always goes through the [`KernelClock`] capability — the
+    /// prior kernel-direct fast-path (which dodged the now-deleted `with_kernel`
+    /// exclusive borrow) is gone.
     pub fn now_secs(&self) -> u64 {
-        if let Some(k) = self.kernel.as_deref() {
-            return k.now_secs();
-        }
         let c = self.clock;
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.now_secs())).unwrap_or(0)
     }
@@ -500,18 +505,13 @@ impl<'a> ProtocolCommandContext<'a> {
         .unwrap_or_default()
     }
 
-    /// Return the lightning address / LNURL from the author's cached kind:0
-    /// profile. `None` when the kernel is unavailable, the profile hasn't
-    /// arrived yet, or the profile has no lightning address. Lets protocol
-    /// commands resolve the zap destination without the shell carrying it.
+    /// ADR-0052 §D5 — borrow the [`ZapProfileLookup`] capability (the zap-only
+    /// cached-profile read). Replaces the deleted generic `lnurl_for_pubkey`
+    /// accessor; the NIP-57 zap command reads its destination via
+    /// `ctx.zap_profiles().lnurl_for_pubkey(pk)`, and no other command can.
     #[must_use]
-    pub fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String> {
-        let kernel = self.kernel.as_deref()?;
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            kernel.lnurl_for_pubkey(pubkey)
-        }))
-        .ok()
-        .flatten()
+    pub fn zap_profiles(&self) -> &dyn ZapProfileLookup {
+        self.zap_profiles
     }
 }
 
