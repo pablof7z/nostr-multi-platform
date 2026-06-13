@@ -45,10 +45,11 @@ import XCTest
 ///
 /// None for the JSON `Decodable` path — every registered Rust projection that
 /// ships as a JSON `SnapshotProjections` field (`nmp.nip29.group_chat`,
-/// `nmp.nip29.discovered_groups`, `nmp.nip17.dm_inbox`, `nmp.follow_list`,
-/// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`, `claimed_profiles`,
-/// `nmp.marmot.snapshot`, `nmp.marmot.messages`) has its decoder covered by
-/// this conformance test (V-107 / ADR-0039).
+/// `nmp.nip29.discovered_groups`, `nmp.nip29.group_defaults`,
+/// `nmp.nip17.dm_inbox`, `nmp.follow_list`, `nmp.nip57.zaps`,
+/// `nmp.nip17.dm_relay_list`, `claimed_profiles`, `nmp.marmot.snapshot`,
+/// `nmp.marmot.messages`) has its decoder covered by this conformance test
+/// (V-107 / ADR-0039).
 ///
 /// One registered dotted key is DELIBERATELY out of scope here: `nmp.feed.home`
 /// is a typed FlatBuffers NOFS sidecar (`schema_id "nmp.nip01.opfeed"`,
@@ -88,6 +89,9 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
           "nmp.nip29.discovered_groups": {
             "host_relay_url": "wss://groups.example.com",
             "groups": []
+          },
+          "nmp.nip29.group_defaults": {
+            "suggested_relay_url": "wss://relay.groups.nip29.com"
           },
           "nmp.nip17.dm_inbox": {
             "conversations": []
@@ -160,6 +164,9 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
             projections.discoveredGroups,
             "SnapshotProjections.discoveredGroups decoded nil — check CodingKeys.discoveredGroups raw value matches \"nmp.nip29.discoveredGroups\" (post-convertFromSnakeCase of \"nmp.nip29.discovered_groups\")")
         XCTAssertNotNil(
+            projections.groupDefaults,
+            "SnapshotProjections.groupDefaults decoded nil — check CodingKeys.groupDefaults raw value matches \"nmp.nip29.groupDefaults\" (post-convertFromSnakeCase of \"nmp.nip29.group_defaults\")")
+        XCTAssertNotNil(
             projections.dmInbox,
             "SnapshotProjections.dmInbox decoded nil — check CodingKeys.dmInbox raw value matches \"nmp.nip17.dmInbox\" (post-convertFromSnakeCase of \"nmp.nip17.dm_inbox\")")
         XCTAssertNotNil(
@@ -217,6 +224,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
             SnapshotProjections.self, from: Data("{}".utf8))
         XCTAssertNil(projections.groupChat)
         XCTAssertNil(projections.discoveredGroups)
+        XCTAssertNil(projections.groupDefaults)
         XCTAssertNil(projections.dmInbox)
         XCTAssertNil(projections.followList)
         XCTAssertNil(projections.zaps)

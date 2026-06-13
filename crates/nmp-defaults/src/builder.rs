@@ -71,6 +71,7 @@ use nmp_core::substrate::{ActionRegistrar, AppHost};
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start, NmpApp};
 
 use crate::relay_config;
+mod wallet; // `with_wallet` (NIP-47 wiring) — child submodule; see builder/wallet.rs.
 
 /// The app-template's built-in default relay configuration.
 ///
@@ -484,10 +485,7 @@ impl<S> AppHost for NmpAppBuilder<S> {
         app.add_relay_text_interceptor(interceptor);
     }
 
-    fn add_relay_connected_hook(
-        &self,
-        hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>,
-    ) {
+    fn add_relay_connected_hook(&self, hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.add_relay_connected_hook(hook);
     }

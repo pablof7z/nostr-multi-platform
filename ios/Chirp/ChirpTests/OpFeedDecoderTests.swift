@@ -113,12 +113,12 @@ final class OpFeedDecoderTests: XCTestCase {
         XCTAssertNil(TypedHomeFeedDecoder.decode(from: [envelope]))
     }
 
-    func testWrongFileIdentifierBytesFallBack() {
-        // A buffer whose file identifier is not NOFS fails getCheckedRoot → nil.
-        var garbled = data(fromHex: OpFeedTestFixtures.emptyHex)
-        garbled[4] = UInt8(ascii: "X") // clobber the "NOFS" identifier region
-        XCTAssertNil(TypedHomeFeedDecoder.decode(bytes: garbled))
-    }
+    // NOTE: garbled-file-identifier test removed. The decode path now uses
+    // unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte "NOFS"
+    // magic is NOT verified. Clobbering the identifier region of a
+    // structurally-valid buffer still produces a successful decode (the data
+    // fields are intact). The key+schemaId routing in `decode(from:)` is the
+    // correct selection mechanism on this path, not the file identifier.
 
     func testEmptyPayloadFallsBack() { XCTAssertNil(TypedHomeFeedDecoder.decode(bytes: Data())) }
 
@@ -179,15 +179,15 @@ final class OpFeedDecoderTests: XCTestCase {
         XCTAssertEqual(merged[threadKey]?.cards.first?.card.id, "json-thread")
     }
 
-    /// No typed sidecar for the key (wrong schema id / non-feed key / malformed
-    /// bytes) → the JSON entry is the fallback, untouched.
+    /// No typed sidecar for the key (wrong schema id / non-feed key / empty
+    /// payload) → the JSON entry is the fallback, untouched.
     func testAbsentOrMalformedTypedSidecarFallsBackToJson() {
         let authorKey = "nmp.feed.author.\(hex32(0x01))"
         let json: [String: ChirpTimelineSnapshot] = [
             authorKey: ChirpTimelineSnapshot(cards: [dummyRootCard(id: "json-only")], page: nil)
         ]
 
-        // (a) right key, WRONG schema id → ignored.
+        // (a) right key, WRONG schema id → ignored by the schemaId guard.
         let wrongSchema = TypedProjectionEnvelope(
             key: authorKey, schemaId: "nmp.nip01.timeline", schemaVersion: 1,
             fileIdentifier: "NFTS", payload: data(fromHex: OpFeedTestFixtures.populatedHex))
@@ -195,13 +195,17 @@ final class OpFeedDecoderTests: XCTestCase {
         let homeKey = TypedProjectionEnvelope(
             key: "nmp.feed.home", schemaId: TypedHomeFeedDecoder.schemaId, schemaVersion: 1,
             fileIdentifier: TypedHomeFeedDecoder.fileIdentifier, payload: data(fromHex: OpFeedTestFixtures.populatedHex))
-        // (c) right key + schema id, MALFORMED bytes → decode nil, JSON kept.
-        let malformed = TypedProjectionEnvelope(
+        // (c) right key + schema id, EMPTY payload → `!bytes.isEmpty` guard returns nil.
+        // NOTE: The decode path uses unchecked `getRoot` (trusted in-process FFI);
+        // the only presence check remaining is the `!bytes.isEmpty` guard. The
+        // former "structurally invalid tiny buffer" case is not tested here because
+        // `getRoot` does not validate buffer size — use the empty-payload sentinel instead.
+        let emptyPayload = TypedProjectionEnvelope(
             key: authorKey, schemaId: TypedHomeFeedDecoder.schemaId, schemaVersion: 1,
-            fileIdentifier: TypedHomeFeedDecoder.fileIdentifier, payload: Data([0x00, 0x01, 0x02]))
+            fileIdentifier: TypedHomeFeedDecoder.fileIdentifier, payload: Data())
 
         let merged = KernelUpdateFrameDecoder.overlayTypedFlatFeeds(
-            json: json, typed: [wrongSchema, homeKey, malformed])
+            json: json, typed: [wrongSchema, homeKey, emptyPayload])
 
         XCTAssertEqual(merged.count, 1)
         XCTAssertEqual(merged[authorKey]?.cards.count, 1)

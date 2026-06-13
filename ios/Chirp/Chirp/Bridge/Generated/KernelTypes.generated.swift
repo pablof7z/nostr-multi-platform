@@ -225,6 +225,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let dmInbox: DmInboxSnapshot?
     let followList: FollowListSnapshot?
     let discoveredGroups: DiscoveredGroupsSnapshot?
+    let groupDefaults: GroupDefaultsSnapshot?
     let zaps: ZapsAggregateSnapshot?
     let dmRelayList: DmRelayListSnapshot?
     let relayDiagnostics: RelayDiagnosticsSnapshot?
@@ -266,6 +267,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case dmInbox = "nmp.nip17.dmInbox"
         case followList = "nmp.followList"
         case discoveredGroups = "nmp.nip29.discoveredGroups"
+        case groupDefaults = "nmp.nip29.groupDefaults"
         case zaps = "nmp.nip57.zaps"
         case dmRelayList = "nmp.nip17.dmRelayList"
         case relayDiagnostics

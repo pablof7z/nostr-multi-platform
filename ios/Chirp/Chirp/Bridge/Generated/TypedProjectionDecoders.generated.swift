@@ -13,10 +13,12 @@
 //
 // V6 Stage 4 (consumer-side). Each enum below is the GENERATED mechanical half
 // of one projection's typed-sidecar decoder: the `key`+`schemaId` lookup over
-// `[TypedProjectionEnvelope]` and the `getCheckedRoot(fileId:)` decode into the
-// `flatc --swift` reader struct. The reader→Chirp-domain mapping is the
-// HAND-WRITTEN `TypedProjectionGlue` seam (see
-// `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift`).
+// `[TypedProjectionEnvelope]` and the `getRoot(byteBuffer:)` (unchecked) decode
+// into the `flatc --swift` reader struct. Buffers arrive over a trusted
+// in-process FFI boundary (Rust kernel → Swift shell, same process/memory);
+// running the O(buffer) FlatBuffers Verifier on the 4 Hz hot path is pure waste.
+// The reader→Chirp-domain mapping is the HAND-WRITTEN `TypedProjectionGlue` seam
+// (see `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift`).
 //
 // Only projection keys whose `flatc --swift` reader binding is checked into the
 // Chirp target appear here. The rest need their binding generated first.
@@ -52,12 +54,7 @@ enum TypedWalletDecoder {
     static func decode(bytes: Data) -> WalletStatusData? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_nip47_WalletStatus = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_nip47_WalletStatus = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.wallet`.
         return TypedProjectionGlue.wallet(reader)
@@ -91,12 +88,7 @@ enum TypedBunkerHandshakeDecoder {
     static func decode(bytes: Data) -> BunkerHandshake? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_BunkerHandshake = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_BunkerHandshake = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.bunkerHandshake`.
         return TypedProjectionGlue.bunkerHandshake(reader)
@@ -130,12 +122,7 @@ enum TypedNip46OnboardingDecoder {
     static func decode(bytes: Data) -> Nip46Onboarding? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_Nip46Onboarding = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_Nip46Onboarding = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.nip46Onboarding`.
         return TypedProjectionGlue.nip46Onboarding(reader)
@@ -169,12 +156,7 @@ enum TypedSignerStateDecoder {
     static func decode(bytes: Data) -> SignerState? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_SignerState = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_SignerState = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.signerState`.
         return TypedProjectionGlue.signerState(reader)
@@ -208,12 +190,7 @@ enum TypedPublishQueueDecoder {
     static func decode(bytes: Data) -> [PublishQueueEntry]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_PublishQueueSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_PublishQueueSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.publishQueue`.
         return TypedProjectionGlue.publishQueue(reader)
@@ -247,12 +224,7 @@ enum TypedPublishOutboxDecoder {
     static func decode(bytes: Data) -> [PublishOutboxItem]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_PublishOutboxSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_PublishOutboxSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.publishOutbox`.
         return TypedProjectionGlue.publishOutbox(reader)
@@ -286,12 +258,7 @@ enum TypedOutboxSummaryDecoder {
     static func decode(bytes: Data) -> OutboxSummary? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_OutboxSummarySnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_OutboxSummarySnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.outboxSummary`.
         return TypedProjectionGlue.outboxSummary(reader)
@@ -325,12 +292,7 @@ enum TypedConfiguredRelaysDecoder {
     static func decode(bytes: Data) -> [AppRelay]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_ConfiguredRelaysSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_ConfiguredRelaysSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.configuredRelays`.
         return TypedProjectionGlue.configuredRelays(reader)
@@ -364,12 +326,7 @@ enum TypedRelayRoleOptionsDecoder {
     static func decode(bytes: Data) -> [RelayRoleOption]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_RelayRoleOptionsSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_RelayRoleOptionsSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.relayRoleOptions`.
         return TypedProjectionGlue.relayRoleOptions(reader)
@@ -403,12 +360,7 @@ enum TypedAccountsDecoder {
     static func decode(bytes: Data) -> [AccountSummary]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_AccountsSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_AccountsSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.accounts`.
         return TypedProjectionGlue.accounts(reader)
@@ -442,12 +394,7 @@ enum TypedActiveAccountDecoder {
     static func decode(bytes: Data) -> String? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_ActiveAccountSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_ActiveAccountSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.activeAccount`.
         return TypedProjectionGlue.activeAccount(reader)
@@ -481,12 +428,7 @@ enum TypedActionResultsDecoder {
     static func decode(bytes: Data) -> [LastActionResult]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_ActionResultsSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_ActionResultsSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.actionResults`.
         return TypedProjectionGlue.actionResults(reader)
@@ -520,12 +462,7 @@ enum TypedActionStagesDecoder {
     static func decode(bytes: Data) -> [String: [ActionStageEntry]]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_ActionStagesSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_ActionStagesSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.actionStages`.
         return TypedProjectionGlue.actionStages(reader)
@@ -559,12 +496,7 @@ enum TypedActionLifecycleDecoder {
     static func decode(bytes: Data) -> ActionLifecycleSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_ActionLifecycleSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_ActionLifecycleSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.actionLifecycle`.
         return TypedProjectionGlue.actionLifecycle(reader)
@@ -598,12 +530,7 @@ enum TypedProfileDecoder {
     static func decode(bytes: Data) -> ProfileCard? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_ProfileSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_ProfileSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.profile`.
         return TypedProjectionGlue.profile(reader)
@@ -637,12 +564,7 @@ enum TypedGroupChatDecoder {
     static func decode(bytes: Data) -> GroupChatSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_nip29_GroupChatSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_nip29_GroupChatSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.groupChat`.
         return TypedProjectionGlue.groupChat(reader)
@@ -676,12 +598,7 @@ enum TypedDmInboxDecoder {
     static func decode(bytes: Data) -> DmInboxSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_nip17_DmInboxSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_nip17_DmInboxSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.dmInbox`.
         return TypedProjectionGlue.dmInbox(reader)
@@ -715,12 +632,7 @@ enum TypedFollowListDecoder {
     static func decode(bytes: Data) -> FollowListSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_nip02_FollowListSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_nip02_FollowListSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.followList`.
         return TypedProjectionGlue.followList(reader)
@@ -754,15 +666,49 @@ enum TypedDiscoveredGroupsDecoder {
     static func decode(bytes: Data) -> DiscoveredGroupsSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_nip29_DiscoveredGroupsSnapshot = try? getCheckedRoot(
+        let reader: nmp_nip29_DiscoveredGroupsSnapshot = getRoot(byteBuffer: &buffer)
+        // Hand-written glue (NOT generated): map the `flatc --swift` reader
+        // struct to the Chirp domain type. See `TypedProjectionGlue.discoveredGroups`.
+        return TypedProjectionGlue.discoveredGroups(reader)
+    }
+}
+
+// MARK: - TypedGroupDefaultsDecoder
+// Projection `nmp.nip29.group_defaults` → typed sidecar `nmp.nip29.group_defaults` (NGDF). Domain type: `GroupDefaultsSnapshot?`.
+enum TypedGroupDefaultsDecoder {
+    /// `TypedProjection.key` the producer publishes for this projection.
+    static let key = "nmp.nip29.group_defaults"
+    /// `TypedPayload.schema_id` carried on the sidecar buffer.
+    static let schemaId = "nmp.nip29.group_defaults"
+    /// FlatBuffers `file_identifier` for `nmp_nip29_GroupDefaultsSnapshot`.
+    static let fileIdentifier = "NGDF"
+
+    /// Decode the typed `nmp.nip29.group_defaults` sidecar from the snapshot's typed-projection
+    /// envelopes into the Chirp domain value. Returns `nil` (so the host
+    /// falls back to the generic JSON `payload`) when the sidecar is absent,
+    /// carries the wrong schema, or is not a well-formed buffer.
+    static func decode(from projections: [TypedProjectionEnvelope]) -> GroupDefaultsSnapshot? {
+        guard let projection = projections.first(where: {
+            $0.key == key && $0.schemaId == schemaId
+        }), !projection.payload.isEmpty else {
+            return nil
+        }
+        return decode(bytes: projection.payload)
+    }
+
+    /// Decode a raw `NGDF` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> GroupDefaultsSnapshot? {
+        guard !bytes.isEmpty else { return nil }
+        var buffer = ByteBuffer(data: bytes)
+        guard let reader: nmp_nip29_GroupDefaultsSnapshot = try? getCheckedRoot(
             byteBuffer: &buffer,
             fileId: fileIdentifier
         ) else {
             return nil
         }
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
-        // struct to the Chirp domain type. See `TypedProjectionGlue.discoveredGroups`.
-        return TypedProjectionGlue.discoveredGroups(reader)
+        // struct to the Chirp domain type. See `TypedProjectionGlue.groupDefaults`.
+        return TypedProjectionGlue.groupDefaults(reader)
     }
 }
 
@@ -793,12 +739,7 @@ enum TypedZapsDecoder {
     static func decode(bytes: Data) -> ZapsAggregateSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_nip57_ZapsSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_nip57_ZapsSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.zaps`.
         return TypedProjectionGlue.zaps(reader)
@@ -832,12 +773,7 @@ enum TypedDmRelayListDecoder {
     static func decode(bytes: Data) -> DmRelayListSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_nip17_DmRelayListSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_nip17_DmRelayListSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.dmRelayList`.
         return TypedProjectionGlue.dmRelayList(reader)
@@ -871,12 +807,7 @@ enum TypedRelayDiagnosticsDecoder {
     static func decode(bytes: Data) -> RelayDiagnosticsSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_RelayDiagnosticsSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_RelayDiagnosticsSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.relayDiagnostics`.
         return TypedProjectionGlue.relayDiagnostics(reader)
@@ -910,12 +841,7 @@ enum TypedResolvedProfilesDecoder {
     static func decode(bytes: Data) -> [String: ProfileCard]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_ResolvedProfilesSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_ResolvedProfilesSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.resolvedProfiles`.
         return TypedProjectionGlue.resolvedProfiles(reader)
@@ -949,12 +875,7 @@ enum TypedClaimedProfilesDecoder {
     static func decode(bytes: Data) -> [String: ProfileCard]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_ClaimedProfilesSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_ClaimedProfilesSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.claimedProfiles`.
         return TypedProjectionGlue.claimedProfiles(reader)
@@ -988,12 +909,7 @@ enum TypedClaimedEventsDecoder {
     static func decode(bytes: Data) -> [String: ClaimedEventDto]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_ClaimedEventsSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_ClaimedEventsSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.claimedEvents`.
         return TypedProjectionGlue.claimedEvents(reader)
@@ -1027,12 +943,7 @@ enum TypedSettingsHubDecoder {
     static func decode(bytes: Data) -> [String: Int]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_kernel_SettingsHubSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_kernel_SettingsHubSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.settingsHub`.
         return TypedProjectionGlue.settingsHub(reader)
@@ -1066,12 +977,7 @@ enum TypedMarmotSnapshotDecoder {
     static func decode(bytes: Data) -> MarmotSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_marmot_MarmotSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_marmot_MarmotSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.marmotSnapshot`.
         return TypedProjectionGlue.marmotSnapshot(reader)
@@ -1105,12 +1011,7 @@ enum TypedMarmotMessagesDecoder {
     static func decode(bytes: Data) -> [String: [MarmotMessage]]? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let reader: nmp_marmot_MarmotMessages = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let reader: nmp_marmot_MarmotMessages = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
         // struct to the Chirp domain type. See `TypedProjectionGlue.marmotMessages`.
         return TypedProjectionGlue.marmotMessages(reader)

@@ -34,9 +34,12 @@ mod crypto;
 pub mod payment_store;
 pub mod protocol;
 mod reconcile;
+pub mod register;
 pub mod runtime;
 pub mod status;
 pub mod wire;
+
+pub use register::{register_wallet, wallet_typed_projection};
 
 pub use action::{
     WalletAction, WalletConnectAction, WalletConnectModule, WalletDisconnectAction,

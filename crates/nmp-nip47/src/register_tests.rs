@@ -4,13 +4,15 @@
 //!
 //! `wallet_typed_projection` returns exactly the `TypedProjectionData` the
 //! kernel's `SnapshotRegistry::run_typed` collects into a frame's
-//! `typed_projections` sidecar (proven end-to-end in
-//! `nmp-core/src/kernel/snapshot_registry_tests.rs`); driving it directly is
-//! the in-crate proof that the `"wallet"` closure wires the right schema
-//! identity and payload — without spinning the actor.
+//! `typed_projections` sidecar; driving it directly is the in-crate proof that
+//! the `"wallet"` closure wires the right schema identity and payload — without
+//! spinning the actor.
+//!
+//! Moved here from `nmp-app-chirp::wallet_runtime_tests` (V-95 / issue #619):
+//! the wallet composition is now app-neutral and lives in this crate.
 
-use super::wallet_typed_projection;
-use nmp_nip47::{
+use crate::register::wallet_typed_projection;
+use crate::{
     decode_wallet_status, new_wallet_status_slot, NwcConnectionState, WalletStatus,
     WALLET_STATUS_SCHEMA_ID, WALLET_STATUS_SCHEMA_VERSION,
 };

@@ -45,10 +45,10 @@ pub mod relay_scores {
 }
 pub use mem::MemEventStore;
 pub use types::{
-    Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
-    ProvenanceEntry, PubKey, RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent, SyncMethod,
-    TombstoneOrigin, TombstoneRow, VerifiedEvent, WatermarkKey, WatermarkRow, GC_MAX_DURATION_MS,
-    GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
+    DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    ProvenanceEntry, PubKey, RawEvent, RejectReason, RelayUrl, StoreQuery, StoredEvent,
+    TombstoneOrigin, TombstoneRow, VerifiedEvent, GC_MAX_DURATION_MS, GC_MAX_EVENTS_PER_STEP,
+    HOT_EVENT_CEILING,
 };
 
 // Re-export error types from types (defined there to avoid circular imports).
@@ -57,9 +57,7 @@ pub use types::{StoreError, VerifyError};
 // F-TTL — re-export replaceable freshness types from nmp-nostr-lmdb.
 // Only available when lmdb-backend is enabled (the module owns the LMDB types).
 #[cfg(feature = "lmdb-backend")]
-pub use nmp_nostr_lmdb::{
-    is_parameterized_replaceable, is_replaceable, ReplaceableKey,
-};
+pub use nmp_nostr_lmdb::{is_parameterized_replaceable, is_replaceable, ReplaceableKey};
 
 // F-TTL — stub implementations for non-lmdb builds (tests, wasm).
 // These allow the code to compile but the kernel will never use them
@@ -113,7 +111,9 @@ pub mod replaceable_stubs {
 }
 
 #[cfg(not(feature = "lmdb-backend"))]
-pub use replaceable_stubs::{is_parameterized_replaceable, is_replaceable, ReplaceableKey, ReplaceableCache};
+pub use replaceable_stubs::{
+    is_parameterized_replaceable, is_replaceable, ReplaceableCache, ReplaceableKey,
+};
 
 use std::path::PathBuf;
 
