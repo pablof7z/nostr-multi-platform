@@ -58,12 +58,12 @@ crates/nmp-core/src/publish/engine/tests.rs	506
 crates/nmp-core/src/subs/lifecycle_tests.rs	965
 crates/nmp-core/src/subs/wire.rs	543
 crates/nmp-core/src/substrate/ingest.rs	619
-crates/nmp-core/src/substrate/protocol.rs	650
+crates/nmp-core/src/substrate/protocol.rs	538
 crates/nmp-core/tests/nip19_nip21.rs	548
 crates/nmp-core/tests/nip_tag_conformance.rs	554
 crates/nmp-defaults/src/builder.rs	703
 crates/nmp-defaults/src/runtimes.rs	559
-crates/nmp-ffi/src/action/tests.rs	977
+crates/nmp-ffi/src/action/tests.rs	721
 crates/nmp-ffi/src/lib.rs	2976
 crates/nmp-marmot/src/ffi.rs	634
 crates/nmp-marmot/src/ffi/tests.rs	996

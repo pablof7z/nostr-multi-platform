@@ -1,7 +1,6 @@
 //! Marmot (MLS-over-Nostr) per-app FFI surface.
 //!
 //! Three `extern "C"` symbols Swift links against:
-//!
 //! - [`nmp_marmot_register`] — build a [`MarmotService`]
 //!   (signer seam: secret key hex/nsec passed directly; DB at
 //!   `<app_support>/marmot-mls-state.sqlite`), register the lossy
