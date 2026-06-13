@@ -181,23 +181,33 @@ mod tests {
     }
 
     #[test]
-    fn rule1_wildcard_absorbs_specific() {
-        // a is wildcard (empty), b is specific — result MUST be wildcard (empty),
-        // NOT b.kinds. Returning b.kinds would narrow the merged subscription,
-        // causing the relay to miss kinds that the wildcard side intended to match.
+    fn rule1_wildcard_does_not_absorb_specific() {
+        // Defect 4 regression: a is wildcard (empty), b is specific. Merging
+        // these would produce a kinds-less (all-kinds) filter on the wire — a
+        // privacy/bandwidth leak: the concrete side asked for {1,6} but the
+        // merged REQ would pull EVERY kind from the relay. Refuse the merge
+        // instead (mirrors Rule 9's pinned-does-not-absorb-unpinned contract).
         let a = InterestShape::default(); // kinds = empty (wildcard)
         let b = shape_with_kinds(&[1, 6]);
-        let r = merge(&a, &b, &tailing(), &tailing());
-        assert!(
-            matches!(r, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
-            "wildcard ∪ {{1,6}} must be wildcard (empty set), not {{1,6}}"
+        assert_eq!(
+            merge(&a, &b, &tailing(), &tailing()),
+            MergeOutcome::Refused,
+            "wildcard-kinds ∪ concrete-kinds must REFUSE (would over-broaden)"
+        );
+        // Symmetric: order must not matter.
+        assert_eq!(
+            merge(&b, &a, &tailing(), &tailing()),
+            MergeOutcome::Refused,
+            "concrete-kinds ∪ wildcard-kinds must REFUSE (symmetry)"
         );
     }
 
     #[test]
-    fn wildcard_unions_with_anything_stays_wildcard() {
-        // Negative-direction: wildcard merged with ANY concrete set must stay wildcard.
-        // This is the correctness test the T30 codex review flagged as missing.
+    fn rule1_wildcard_unions_with_wildcard_only() {
+        // Defect 4: wildcard merged with ANY concrete set must REFUSE (no
+        // over-broadening). Wildcard ∪ wildcard still merges — both sides
+        // already asked for all kinds, so the union is exactly wildcard with
+        // no broadening.
         let wildcard = InterestShape::default(); // kinds = empty
         for concrete_kinds in [
             vec![1u32],
@@ -206,24 +216,24 @@ mod tests {
             vec![0, 1, 3, 4, 5, 6, 7, 9, 10, 30023],
         ] {
             let concrete = shape_with_kinds(&concrete_kinds);
-            let r_ab = merge(&wildcard, &concrete, &tailing(), &tailing());
-            let r_ba = merge(&concrete, &wildcard, &tailing(), &tailing());
-            assert!(
-                matches!(r_ab, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
-                "wildcard ∪ {:?} must be wildcard (a=wildcard)",
+            assert_eq!(
+                merge(&wildcard, &concrete, &tailing(), &tailing()),
+                MergeOutcome::Refused,
+                "wildcard ∪ {:?} must refuse (a=wildcard)",
                 concrete_kinds
             );
-            assert!(
-                matches!(r_ba, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
-                "wildcard ∪ {:?} must be wildcard (b=wildcard)",
+            assert_eq!(
+                merge(&concrete, &wildcard, &tailing(), &tailing()),
+                MergeOutcome::Refused,
+                "wildcard ∪ {:?} must refuse (b=wildcard)",
                 concrete_kinds
             );
         }
-        // wildcard ∪ wildcard = wildcard
+        // wildcard ∪ wildcard = wildcard (no broadening; both want all kinds).
         let r = merge(&wildcard, &wildcard, &tailing(), &tailing());
         assert!(
             matches!(r, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
-            "wildcard ∪ wildcard must be wildcard"
+            "wildcard ∪ wildcard must stay wildcard (both already all-kinds)"
         );
     }
 
