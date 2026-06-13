@@ -23,7 +23,7 @@ use jni::objects::{JClass, JObject, JString};
 use jni::sys::jlong;
 use jni::JNIEnv;
 
-use crate::session_arc;
+use crate::{jstring_to_cstring, session_arc};
 
 /// Register a synchronous Kotlin capability handler for all non-`external_signer`
 /// namespaces (e.g. Android Keystore keyring). The `handler` object must

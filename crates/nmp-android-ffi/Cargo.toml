@@ -24,7 +24,7 @@ crate-type = ["cdylib"]
 # makes the `nmp_marmot_*` C-ABI symbols reachable through Rust paths from the
 # JNI shim (the same symbol-retention mechanism documented at the top of
 # `src/lib.rs`).
-marmot = ["nmp-app-chirp/marmot"]
+marmot = ["nmp-app-chirp/marmot", "dep:libsqlite3-sys"]
 
 [dependencies]
 # Path-dep on the SAME kernel the iOS app consumes.
@@ -43,5 +43,12 @@ serde_json = "1.0"
 # Secret zeroization for the restored nsec that crosses the JNI seam (D13).
 # This is a standalone workspace (empty `[workspace]` table above), so the dep
 # is pinned explicitly rather than inherited; the version tracks the parent
-# workspace constraint (`zeroize = "1"`, resolves to 1.8.2 in Cargo.lock).
-zeroize = "1"
+# workspace constraint. The `std` feature is required for the `Zeroize for
+# CString` impl used in identity.rs (the impl is gated behind `feature = "std"`
+# in the zeroize crate).
+zeroize = { version = "1", features = ["std"] }
+# Android has no system sqlcipher and no CommonCrypto (which Apple targets use),
+# so the bundled sqlcipher in mdk-sqlite-storage's rusqlite needs a vendored
+# OpenSSL when cross-compiling for the NDK. Feature unification applies this to
+# the whole graph; only active when `marmot` is enabled.
+libsqlite3-sys = { version = "0.35", features = ["bundled-sqlcipher-vendored-openssl"], optional = true }
