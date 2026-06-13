@@ -77,6 +77,8 @@ pub mod domain;
 pub mod interest;
 pub mod projection;
 pub mod service;
+/// `impl MarmotService` read-projection methods, split out of `service.rs`.
+mod service_reads;
 pub mod view;
 pub mod wire;
 

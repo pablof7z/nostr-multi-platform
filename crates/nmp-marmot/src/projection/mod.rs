@@ -26,5 +26,6 @@ pub mod ops;
 pub mod payload;
 pub mod pending;
 pub mod publish;
+pub mod resubscribe;
 pub mod state;
 pub mod tap;

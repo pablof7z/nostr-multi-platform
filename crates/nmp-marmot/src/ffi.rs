@@ -479,12 +479,7 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     let pubkey_hex = keys.public_key().to_hex();
     app_ref.push_interest(crate::interest::giftwrap_inbox_interest(&pubkey_hex));
 
-    // Post-restart live-receive fix: re-push per-group kind:445 interests for
-    // every group persisted in the MDK SQLite store. On first launch this is a
-    // no-op (no groups yet). On restart it seeds the in-memory group_relays
-    // cache AND re-registers the relay-pinned kind:445 interests so messages
-    // land without a create/join op this session. Idempotent: interest ids are
-    // deterministic; the kernel de-dupes. D8: one-shot, non-blocking.
+    // Post-restart live-receive fix (re-push per-group kind:445; see resubscribe.rs).
     projection.resubscribe_all_groups();
 
     let handle = Box::into_raw(Box::new(MarmotHandle {

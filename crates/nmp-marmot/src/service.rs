@@ -212,7 +212,8 @@ impl<'a> Drop for PendingGroupChange<'a> {
 /// local `nostr::Keys` used to sign KeyPackage events, gift-wrap Welcomes,
 /// and bind the MLS credential to the Nostr identity (plan §Architecture).
 pub struct MarmotService {
-    mdk: MDK<MdkSqliteStorage>,
+    // `pub(crate)` so the `service_reads` module can drive read projections.
+    pub(crate) mdk: MDK<MdkSqliteStorage>,
     keys: Keys,
     /// `author_pubkey_hex` → most-recent full signed kind:30443/443 event for
     /// that peer. Populated by the app's raw-event tap when the kernel
@@ -547,66 +548,10 @@ impl MarmotService {
     }
 
     // ── Read projections (back the Domain/View modules) ──────────────────────
-
-    /// All groups (any state). Backs `GroupList`.
-    #[must_use]
-    pub fn get_groups(&self) -> Result<Vec<group_types::Group>> {
-        self.mdk.get_groups().map_err(MarmotError::from)
-    }
-
-    /// A single group's display metadata. Backs `MarmotGroup`.
-    #[must_use]
-    pub fn get_group(&self, group_id: &GroupId) -> Result<Option<group_types::Group>> {
-        self.mdk.get_group(group_id).map_err(MarmotError::from)
-    }
-
-    /// The current member set (Nostr pubkeys). Backs `MarmotGroupRow.members`.
-    #[must_use]
-    pub fn get_members(&self, group_id: &GroupId) -> Result<std::collections::BTreeSet<PublicKey>> {
-        self.mdk.get_members(group_id).map_err(MarmotError::from)
-    }
-
-    /// The relay-pinned relay URLs for a group, as persisted in the MDK SQLite
-    /// store. Used on restart to re-seed the in-memory `group_relays` cache and
-    /// re-push per-group kind:445 interests (the post-restart live-receive fix).
-    ///
-    /// Returns an empty `Vec` for a group whose relays have never been written
-    /// (consistent with the in-memory cache miss behaviour in
-    /// `InnerHandle::group_relays`). The caller skips empty relay sets — no
-    /// subscription is pushed, matching the existing empty-guard in
-    /// `InnerHandle::cache_group_relays`.
-    #[must_use]
-    pub fn group_relays(&self, group_id: &GroupId) -> Result<Vec<RelayUrl>> {
-        self.mdk
-            .get_relays(group_id)
-            .map(|set| set.into_iter().collect())
-            .map_err(MarmotError::from)
-    }
-
-    /// MLS leaf-index → pubkey map. Backs `MarmotGroupRow.members` leaf indices.
-    pub fn group_leaf_map(
-        &self,
-        group_id: &GroupId,
-    ) -> Result<std::collections::BTreeMap<u32, PublicKey>> {
-        self.mdk.group_leaf_map(group_id).map_err(MarmotError::from)
-    }
-
-    /// Decrypted message history (unpaginated). Backs `GroupMessages`.
-    #[must_use]
-    pub fn get_messages(&self, group_id: &GroupId) -> Result<Vec<message_types::Message>> {
-        self.mdk
-            .get_messages(group_id, None)
-            .map_err(MarmotError::from)
-    }
-
-    /// Groups whose self-update (key rotation) is overdue past `threshold_secs`.
-    /// Drives the TTL re-publish path (plan §Step 3).
-    #[must_use]
-    pub fn groups_needing_self_update(&self, threshold_secs: u64) -> Result<Vec<GroupId>> {
-        self.mdk
-            .groups_needing_self_update(threshold_secs)
-            .map_err(MarmotError::from)
-    }
+    // The read-projection methods (get_groups / get_group / get_members /
+    // group_relays / group_leaf_map / get_messages / groups_needing_self_update)
+    // live in the sibling `service_reads` module — same `impl MarmotService`,
+    // same public API — to keep this file under the size cap.
 }
 
 /// The pending-commit handle returned by [`MarmotService::create_group`].
