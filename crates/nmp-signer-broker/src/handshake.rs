@@ -257,7 +257,7 @@ fn await_response(
 ) -> Result<String, HandshakeError> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
-        if cancel.load(Ordering::Relaxed) {
+        if cancel.load(Ordering::Acquire) {
             return Err(HandshakeError::Cancelled);
         }
         let remaining = deadline
@@ -446,7 +446,7 @@ fn await_nostrconnect_connect(
 ) -> Result<(String, String), HandshakeError> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
-        if cancel.load(Ordering::Relaxed) {
+        if cancel.load(Ordering::Acquire) {
             return Err(HandshakeError::Cancelled);
         }
         let remaining = deadline

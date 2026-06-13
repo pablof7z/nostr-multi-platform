@@ -69,7 +69,9 @@
 //! crate, and the actor migration follows in its own PR — three PRs
 //! that each compile independently against master.
 
+mod frame;
 mod inner;
+mod translate;
 mod types;
 
 #[cfg(test)]
@@ -87,7 +89,8 @@ pub use types::{
 // the pool's public surface without reaching into relay_protocol directly.
 pub use crate::relay_protocol::BackoffClass;
 
-use inner::{wire_frame_to_command, PoolInner};
+use frame::wire_frame_to_command;
+use inner::PoolInner;
 
 /// Narrow event-delivery seam the pool's translator thread pushes
 /// [`PoolEvent`]s into (ADR-0050 §D3a).

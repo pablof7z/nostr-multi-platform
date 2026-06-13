@@ -13,15 +13,14 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
-use tungstenite::Message;
-
 use crate::relay_protocol::{BackoffClass, KEEPALIVE_IDLE_THRESHOLD, KEEPALIVE_PONG_TIMEOUT};
 use crate::relay_worker::{spawn_relay_worker_with_keepalive, RelayCommand, RelayEvent};
 use crate::role::RelayRole;
 
+use super::translate::{apply_prepared, prepare_event};
 use super::types::{
-    ClosedReason, HealthState, PoolConfig, PoolEvent, PoolSnapshot, PoolSnapshotRow, RelayFrame,
-    RelayHandle, RelayHealth, RelayUrl, TransportError, WireFrame,
+    HealthState, PoolConfig, PoolEvent, PoolSnapshot, PoolSnapshotRow, RelayHandle, RelayHealth,
+    RelayUrl,
 };
 
 /// Canonicalize a URL the same way the actor's `CanonicalRelayUrl`
@@ -331,18 +330,33 @@ fn translator_loop(
     worker_event_rx: std::sync::mpsc::Receiver<RelayEvent>,
 ) {
     while let Ok(event) = worker_event_rx.recv() {
+        // The potentially-expensive part of translation — converting a
+        // `tungstenite::Message` into a `RelayFrame`, which JSON-parses every
+        // text frame to pre-classify NIP-42 AUTH — runs HERE, fully lock-free.
+        // Holding `PoolInner` across that parse would block every concurrent
+        // `Pool::send` (which also takes the inner lock) for the duration of a
+        // frame translate. We do it first; the lock is then only ever held for
+        // the O(1) generation check + health mutation + sink enqueue.
+        let prepared = match prepare_event(event) {
+            Some(prepared) => prepared,
+            // `Message::Frame(_)` (raw) yields no `RelayFrame`; nothing to
+            // deliver. Drop without touching the lock.
+            None => continue,
+        };
+
         let Ok(mut guard) = inner.lock() else { break };
         if guard.shutdown {
-            // After shutdown, keep draining so workers exit cleanly,
-            // but don't push events to the (possibly already-dropped)
-            // event channel.
+            // After shutdown, keep draining so workers exit cleanly, but don't
+            // push events to the (possibly already-dropped) event channel.
             continue;
         }
-        let pool_event = match translate(&mut guard, event) {
+        // O(1) critical section: validate the generation against the slot,
+        // mutate the health row, and build the `PoolEvent`.
+        let pool_event = match apply_prepared(&mut guard, prepared) {
             Some(ev) => ev,
             None => continue,
         };
-        // Deliver under the lock: the sink's enqueue is a non-blocking,
+        // Still under the lock, but the sink's enqueue is a non-blocking,
         // unbounded channel push, so this never holds the lock across I/O.
         // `send_event` swallows a gone-consumer error (ADR-0050 §D3a); the
         // translator stops naturally when its workers exit and the
@@ -351,169 +365,6 @@ fn translator_loop(
     }
 }
 
-/// Map one [`RelayEvent`] to a [`PoolEvent`], updating the slot's
-/// health row in passing. Returns `None` if the event is stale.
-fn translate(inner: &mut PoolInner, event: RelayEvent) -> Option<PoolEvent> {
-    let (slot_id, state) = locate_slot(inner, event.relay_url(), event.generation())?;
-    let h = RelayHandle {
-        slot: slot_id,
-        generation: state.generation,
-    };
-    match event {
-        RelayEvent::Connected {
-            role: _,
-            relay_url,
-            generation,
-        } => {
-            state.health.state = HealthState::Connected;
-            state.health.connect_count = state.health.connect_count.saturating_add(1);
-            state.health.last_error = None;
-            Some(PoolEvent::Opened {
-                h,
-                url: relay_url,
-                generation,
-            })
-        }
-        RelayEvent::Failed {
-            role: _,
-            relay_url: _,
-            generation,
-            error,
-        } => {
-            let permanent = crate::relay_protocol::is_permanent_error(&error);
-            state.health.failure_count = state.health.failure_count.saturating_add(1);
-            state.health.last_error = Some(error.clone());
-            if matches!(state.health.state, HealthState::Connected) {
-                state.health.state = HealthState::Reconnecting;
-            }
-            if permanent {
-                state.health.state = HealthState::Closed;
-            }
-            Some(PoolEvent::Failed {
-                h,
-                generation,
-                error: TransportError {
-                    message: error,
-                    permanent,
-                },
-            })
-        }
-        RelayEvent::Closed {
-            role: _,
-            relay_url: _,
-            generation,
-        } => {
-            // The worker emits `Closed` only after acking a Shutdown
-            // command (the normal-close path). Slot-level closes via
-            // `Pool::close` surface as `ClosedReason::Requested`; the
-            // `Pool::shutdown` bulk-close path short-circuits at the
-            // top of `translator_loop` (no per-slot event), so we
-            // never need to distinguish here.
-            state.health.state = HealthState::Closed;
-            Some(PoolEvent::Closed {
-                h,
-                generation,
-                reason: ClosedReason::Requested,
-            })
-        }
-        RelayEvent::Message {
-            role: _,
-            relay_url: _,
-            generation,
-            message,
-        } => {
-            let frame = tungstenite_to_relay_frame(message)?;
-            Some(PoolEvent::Frame {
-                h,
-                generation,
-                frame,
-            })
-        }
-    }
-}
 
-/// Find the slot for `(url, generation)` and return a mutable
-/// reference. Returns `None` if the slot has since been reused (the
-/// stored generation is higher) or the URL was never inserted.
-fn locate_slot<'a>(
-    inner: &'a mut PoolInner,
-    url: &str,
-    generation: u64,
-) -> Option<(u32, &'a mut SlotState)> {
-    // The worker emits the URL it dialled (already canonicalized by
-    // `ensure_open`), so the inner map's key matches byte-for-byte.
-    let slot_id = *inner.url_to_slot.get(url)?;
-    let state = inner.slots.get_mut(slot_id as usize)?.as_mut()?;
-    if state.generation != generation {
-        // Stale event — the slot has been reopened (or closed) since
-        // the worker emitted this event. Drop.
-        return None;
-    }
-    Some((slot_id, state))
-}
-
-/// Convert one `tungstenite::Message` into a [`RelayFrame`]. Returns
-/// `None` for the raw `Frame(_)` variant which the kernel has never
-/// observed.
-///
-/// ## Step 8 phase E — AUTH pre-classification
-///
-/// Text frames are peeked for the `["AUTH", <challenge>]` NIP-42 shape
-/// (using the dependency-free parser in `nmp-nip42-types`). A match
-/// surfaces as [`RelayFrame::Auth`]; everything else (including
-/// malformed AUTH frames with empty challenges) stays as
-/// [`RelayFrame::Text`] so the kernel's existing ingest parser handles
-/// them uniformly. This is the **only** AUTH-aware behaviour in this
-/// crate — building the kind:22242 reply event lives in `nmp-nip42`,
-/// and the per-relay pause/replay FSM lives in
-/// `nmp-core::subs::AuthGate`.
-fn tungstenite_to_relay_frame(message: Message) -> Option<RelayFrame> {
-    match message {
-        Message::Text(text) => Some(classify_text_frame(text)),
-        Message::Binary(bytes) => Some(RelayFrame::Binary(bytes)),
-        Message::Ping(_) => Some(RelayFrame::Ping),
-        Message::Pong(_) => Some(RelayFrame::Pong),
-        Message::Close(frame) => Some(RelayFrame::Close(frame.map(|f| f.reason.into_owned()))),
-        Message::Frame(_) => None,
-    }
-}
-
-/// Peek a text frame for the NIP-42 `["AUTH", <challenge>]` shape and
-/// pre-classify it as [`RelayFrame::Auth`]; fall through to
-/// [`RelayFrame::Text`] on anything else (non-AUTH frame, malformed
-/// JSON, empty challenge).
-///
-/// `pub(crate)` so the phase-E pool tests can exercise the classifier
-/// directly without spinning up a real socket.
-pub(crate) fn classify_text_frame(text: String) -> RelayFrame {
-    // Cheap fast-path: only parse JSON if the frame looks like it might
-    // be an AUTH frame (NIP-42 frames are `["AUTH", ...]` — case-sensitive).
-    if !text.contains("\"AUTH\"") {
-        return RelayFrame::Text(text);
-    }
-    let Ok(parsed) = serde_json::from_str::<Vec<serde_json::Value>>(&text) else {
-        return RelayFrame::Text(text);
-    };
-    // `relay_url` is empty here — the wire layer doesn't know its own
-    // URL (the worker is keyed by URL but the value isn't threaded into
-    // the translator), and `AuthChallenge.relay_url` is only used by
-    // the kernel for the `["relay", <url>]` tag on the kind:22242
-    // response. The kernel stamps the delivering URL from its own
-    // context (see `kernel/ingest/auth_handlers.rs` and ADR-T125).
-    // We only need `parse_auth_frame`'s shape + non-empty-challenge
-    // validation here.
-    match nmp_nip42_types::parse_auth_frame(&parsed, "") {
-        Some(challenge) => RelayFrame::Auth(challenge.challenge),
-        None => RelayFrame::Text(text),
-    }
-}
-
-/// Convert a [`WireFrame`] into the worker's `RelayCommand::Send(String)`.
-/// Today only `Text` is wire-emittable; `Binary` is reserved.
-pub(super) fn wire_frame_to_command(frame: WireFrame) -> Option<RelayCommand> {
-    match frame {
-        WireFrame::Text(text) => Some(RelayCommand::Send(text)),
-        WireFrame::Binary(_) => None,
-    }
-}
-
+// Off-lock pre-translation (`prepare_event`) and the O(1) locked apply
+// (`apply_prepared`) live in the sibling `pool::translate` module.
