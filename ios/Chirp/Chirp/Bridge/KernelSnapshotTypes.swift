@@ -333,6 +333,35 @@ struct RelayDiagnosticsWireSub: Decodable, Identifiable, Equatable {
     var id: String { wireId }
 }
 
+/// ADR-0051 relay-information document (NIP-11), mirror of the Rust
+/// `RelayDiagnosticsInfo` projection. Carried on `RelayDiagnosticsRow.info`;
+/// `nil` until `nmp-nip11` has fetched it (or the relay serves no document).
+///
+/// Thin-shell rule: pure DTO. Every `Option<String>` decodes to `nil` when the
+/// relay did not advertise the field (JSON `null` / typed `has_* == false`); the
+/// three `limitation` booleans are tri-state (`nil` = not advertised). The shell
+/// renders these directly — no HTTP, no JSON parsing, no NIP-11 awareness.
+///
+/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
+/// (`KernelHandle.decode`) maps the Rust `#[derive(Serialize)]` snake_case keys
+/// (`supported_nips` / `payment_required` / `auth_required` /
+/// `restricted_writes`) onto these camelCase properties on the JSON-fallback
+/// path. The typed path (`TypedProjectionGlue.relayDiagnosticsInfo`) builds this
+/// via the memberwise initializer and never touches the decoder.
+struct RelayDiagnosticsInfo: Decodable, Equatable {
+    let name: String?
+    let description: String?
+    let icon: String?
+    let pubkey: String?
+    let contact: String?
+    let software: String?
+    let version: String?
+    let supportedNips: [UInt32]
+    let paymentRequired: Bool?
+    let authRequired: Bool?
+    let restrictedWrites: Bool?
+}
+
 /// One rolled-up relay row.
 struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     let relayUrl: String
@@ -356,6 +385,11 @@ struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     let lastNotice: String?
     let lastError: String?
     let wireSubs: [RelayDiagnosticsWireSub]
+    /// ADR-0051 — the relay's NIP-11 information document; `nil` until
+    /// `nmp-nip11` has fetched it (or the relay serves no document). On the JSON
+    /// path this decodes from `info: null`; on the typed path the child-table
+    /// presence is the discriminator (no `has_info` flag).
+    let info: RelayDiagnosticsInfo?
     var id: String { relayUrl }
 }
 

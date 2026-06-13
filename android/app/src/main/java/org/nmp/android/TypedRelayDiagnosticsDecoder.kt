@@ -1,10 +1,12 @@
 package org.nmp.android
 
 import android.util.Log
+import nmp.kernel.RelayDiagnosticsInfo as FbInfo
 import nmp.kernel.RelayDiagnosticsInterest as FbInterest
 import nmp.kernel.RelayDiagnosticsRow as FbRow
 import nmp.kernel.RelayDiagnosticsSnapshot as FbSnapshot
 import nmp.kernel.RelayDiagnosticsWireSub as FbWireSub
+import org.nmp.android.model.RelayDiagnosticsInfo
 import org.nmp.android.model.RelayDiagnosticsInterest
 import org.nmp.android.model.RelayDiagnosticsRow
 import org.nmp.android.model.RelayDiagnosticsSnapshot
@@ -98,6 +100,31 @@ object TypedRelayDiagnosticsDecoder {
             lastNotice = if (row.hasLastNotice) row.lastNotice else null,
             lastError = if (row.hasLastError) row.lastError else null,
             wireSubs = wireSubs,
+            // ADR-0051 — the NIP-11 info document is an OPTIONAL child table:
+            // a null table means "no document fetched yet" (the JSON `info:
+            // null` case), so table presence is the discriminator (no `has_info`
+            // flag). Byte-faithful to the JSON path's `info: null`.
+            info = row.info?.let(::mapInfo),
+        )
+    }
+
+    private fun mapInfo(info: FbInfo): RelayDiagnosticsInfo {
+        val nips = ArrayList<Int>(info.supportedNipsLength)
+        for (n in 0 until info.supportedNipsLength) {
+            nips.add(info.supportedNips(n).toInt())
+        }
+        return RelayDiagnosticsInfo(
+            name = if (info.hasName) info.name else null,
+            description = if (info.hasDescription) info.description else null,
+            icon = if (info.hasIcon) info.icon else null,
+            pubkey = if (info.hasPubkey) info.pubkey else null,
+            contact = if (info.hasContact) info.contact else null,
+            software = if (info.hasSoftware) info.software else null,
+            version = if (info.hasVersion) info.version else null,
+            supportedNips = nips,
+            paymentRequired = if (info.hasPaymentRequired) info.paymentRequired else null,
+            authRequired = if (info.hasAuthRequired) info.authRequired else null,
+            restrictedWrites = if (info.hasRestrictedWrites) info.restrictedWrites else null,
         )
     }
 
