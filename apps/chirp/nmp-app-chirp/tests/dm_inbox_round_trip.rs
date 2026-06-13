@@ -10,115 +10,107 @@
 //! they run against the public `nmp-app-chirp` surface exactly as a host
 //! consumer would — same wire as the existing `tests/end_to_end.rs`.
 //!
-//! What `nmp_app_chirp_register_dm_inbox` does (apps/chirp/nmp-app-chirp/src/ffi.rs:321):
-//!   1. Grabs `app.active_local_keys()` — the shared `Arc<Mutex<Option<Keys>>>`
-//!      slot the actor writes on every identity mutation.
-//!   2. Constructs a `DmInboxProjection::new(local_keys)` bound to that slot.
-//!   3. Registers the projection as a `RawEventObserver` for kind:1059.
-//!   4. Registers a snapshot-projection closure under `"nmp.nip17.dm_inbox"`
-//!      that calls `projection.snapshot_json()` on every tick.
-//!   5. Pushes the kind:1059 `#p` gift-wrap interest when a viewer pubkey
-//!      is supplied so the kernel actually opens a REQ.
+//! ## ADR-0050 §D6 — gift-UNWRAP through the signer port
 //!
-//! The first two tests exercise steps 1+2 (the slot-binding seam) by
-//! mirroring the registration's projection construction with the SAME slot
-//! the FFI captures, then proving the gift-wrap unseal works through it.
-//! The third test drives the full FFI-only round-trip — verbatim signed-event
-//! injection through `nmp_app_inject_signed_event_json` then snapshot read
-//! through `nmp_app_read_projection_json`, both gated on `test-support`.
+//! `DmInboxProjection` no longer holds raw `nostr::Keys`; it decrypts each
+//! gift-wrap by issuing `ActorCommand::Nip44DecryptForAccount` against the
+//! active account (local OR bunker). The first two tests construct an auxiliary
+//! projection with a captured command receiver and DRIVE the emitted decrypt
+//! commands with the active local key — exactly what the actor's local-backend
+//! dispatch arm does inline. The third test signs in for real so the live actor
+//! resolves the decrypt port itself.
+
+use std::sync::mpsc::{channel, Receiver};
+use std::sync::{Arc, Mutex};
 
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
-use nmp_core::RawEventObserver;
+use nmp_core::{ActorCommand, ActorMail, CommandSender, RawEventObserver};
 use nmp_ffi::{
     nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new, nmp_app_read_projection_json,
-    nmp_free_string, NmpApp,
+    nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
 };
 use nmp_nip17::{DmInboxProjection, DmInboxSnapshot};
-use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
+use nostr::nips::nip19::ToBech32;
+use nostr::{EventBuilder, Keys, Kind, PublicKey, Tag, Timestamp};
 
 /// Build a signed kind:1059 gift-wrap envelope from `sender` to `receiver`
-/// carrying a kind:14 chat-message rumor with `content`. Mirrors the
-/// `gift_wrapped_dm` helper in `crates/nmp-nip17/src/inbox.rs` tests so
-/// the test fixtures here go through the same production primitive
-/// (`nmp_nip59::gift_wrap_with_signer`) the actor uses.
+/// carrying a kind:14 chat-message rumor with `content`, via the pure
+/// local-keys composition (`nmp_nip59::gift_wrap_local` — ADR-0050 §D5; the
+/// `SignerForSeal` execution model is gone).
 fn gift_wrapped_dm(
     sender: &Keys,
-    receiver: &nostr::PublicKey,
+    receiver: &PublicKey,
     content: &str,
     created_at: u64,
 ) -> nostr::Event {
-    let tags = vec![Tag::public_key(*receiver)];
     let rumor = EventBuilder::new(Kind::from_u16(14), content)
-        .tags(tags)
+        .tags(vec![Tag::public_key(*receiver)])
         .custom_created_at(Timestamp::from(created_at))
         .build(sender.public_key());
-    let signer: std::sync::Arc<dyn nmp_nip59::SignerForSeal> = std::sync::Arc::new(sender.clone());
-    nmp_nip59::gift_wrap_with_signer(&signer, receiver, &rumor, Timestamp::from(created_at))
-        .wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)
+    nmp_nip59::gift_wrap_local(sender, receiver, &rumor, Timestamp::from(created_at))
         .expect("gift wrap succeeds")
 }
 
-/// THE NIP-17 DM INBOX SLOT-BINDING PROOF: register the DM inbox through the
-/// FFI symbol, then construct an auxiliary `DmInboxProjection` bound to
-/// the EXACT SAME `app.active_local_keys()` slot the FFI registration
-/// captured. Write Bob's keys into the slot, ingest an Alice→Bob
-/// gift-wrap, and assert the snapshot surfaces the message.
+/// Construct an auxiliary projection whose active account is `pubkey`, returning
+/// it and the command receiver the harness drains.
+fn aux_projection(pubkey: &PublicKey) -> (DmInboxProjection, Receiver<ActorMail>) {
+    let (tx, rx) = channel::<ActorMail>();
+    let active = Arc::new(Mutex::new(Some(pubkey.to_hex())));
+    (DmInboxProjection::new(CommandSender::new(tx), active), rx)
+}
+
+/// Drain queued `Nip44DecryptForAccount` commands, decrypting locally with
+/// `keys` and invoking each continuation (mirrors the actor's local dispatch
+/// arm; each continuation enqueues the next chain step).
+fn drive_local_decrypts(rx: &Receiver<ActorMail>, keys: &Keys) {
+    while let Ok(mail) = rx.try_recv() {
+        let ActorMail::Command(ActorCommand::Nip44DecryptForAccount {
+            peer_pubkey,
+            ciphertext,
+            continuation,
+            ..
+        }) = mail
+        else {
+            continue;
+        };
+        let outcome = PublicKey::from_hex(&peer_pubkey)
+            .map_err(|e| e.to_string())
+            .and_then(|peer| {
+                nostr::nips::nip44::decrypt(keys.secret_key(), &peer, &ciphertext)
+                    .map_err(|e| e.to_string())
+            });
+        continuation.call(outcome);
+    }
+}
+
+/// THE NIP-17 DM INBOX PORT-CHAIN PROOF: register the DM inbox through the FFI
+/// symbol (proving it does not panic / take exclusive ownership), then construct
+/// an auxiliary `DmInboxProjection` whose active account is Bob, ingest an
+/// Alice→Bob gift-wrap, drive the emitted port decrypts with Bob's local key,
+/// and assert the snapshot surfaces the message.
 ///
-/// This proves:
-/// - `nmp_app_chirp_register_dm_inbox` does not panic or take exclusive
-///   ownership of the keys slot (the test reads/writes the same `Arc`).
-/// - The `Arc<Mutex<Option<Keys>>>` returned by `app.active_local_keys()`
-///   is the same slot the registered projection reads — writing Bob's
-///   keys here would also be visible to the FFI-registered projection.
-/// - The full gift-wrap → unseal → conversation projection pipeline runs
-///   through the slot a real FFI registration binds to.
-///
-/// Complementary to `dm_inbox_full_round_trip_through_ffi` below: that test
-/// proves the full FFI-driven round-trip (verbatim signed-event injection →
-/// kernel ingest → `notify_raw_event_observers` → registered observer →
-/// snapshot projection); this test proves the auxiliary-projection slot-
-/// binding contract the FFI registration relies on.
+/// This proves the gift-wrap → port-unwrap → conversation projection pipeline
+/// runs end-to-end for a local account (ADR-0050 §D6).
 #[test]
-fn dm_inbox_decrypts_through_the_shared_local_keys_slot() {
+fn dm_inbox_decrypts_through_the_signer_port() {
     let app: *mut NmpApp = nmp_app_new();
 
-    // Generate Alice (sender) and Bob (recipient / viewer) keys.
     let alice = Keys::generate();
     let bob = Keys::generate();
 
-    // Register the DM inbox through the FFI symbol exactly as Swift does
-    // at startup. This is the load-bearing call: it captures
-    // `app.active_local_keys()` into the projection it stores in the
-    // raw-event-observer slot AND the snapshot registry.
+    // Register the DM inbox through the FFI symbol exactly as Swift does at
+    // startup. Load-bearing: it must not panic.
     nmp_app_chirp_register_dm_inbox(app);
 
-    // Write Bob's keys into the SAME shared slot the FFI registration
-    // captured. In production the actor mutates this slot on every
-    // identity reducer; here the test plays the role of the actor (the
-    // public `active_local_keys()` accessor returns an `Arc` clone, and
-    // a direct write is the deterministic test surrogate for the
-    // `SignInNsec` command path).
-    // SAFETY: app came from nmp_app_new() and is live for this call.
-    let local_keys_slot = unsafe { (*app).active_local_keys() };
-    *local_keys_slot.lock().unwrap() = Some(bob.clone());
+    // Auxiliary projection with Bob as the active account.
+    let (proj, rx) = aux_projection(&bob.public_key());
 
-    // Construct an AUXILIARY projection bound to the same slot. This is
-    // the exact constructor `nmp_app_chirp_register_dm_inbox` uses
-    // (apps/chirp/nmp-app-chirp/src/ffi.rs:335). If this projection can
-    // decrypt, the slot-binding contract the FFI registration relies on
-    // is sound.
-    let aux_projection = DmInboxProjection::new(local_keys_slot);
-
-    // Build a real gift-wrap envelope (kind:1059) from Alice to Bob and
-    // drive it through the projection's `RawEventObserver` interface.
     let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "hello bob", 12345);
     let envelope_json = nostr::JsonUtil::as_json(&envelope);
-    // Fan via the trait method — the exact entry point the kernel's
-    // `notify_raw_event_observers` invokes in production.
-    <DmInboxProjection as RawEventObserver>::on_raw_event(&aux_projection, 1059, &envelope_json);
+    <DmInboxProjection as RawEventObserver>::on_raw_event(&proj, 1059, &envelope_json);
+    drive_local_decrypts(&rx, &bob);
 
-    // The conversation must surface in the snapshot under Alice's pubkey.
-    let snapshot_json = aux_projection.snapshot_json();
+    let snapshot_json = proj.snapshot_json();
     let conversations = snapshot_json
         .get("conversations")
         .and_then(|v| v.as_array())
@@ -153,47 +145,28 @@ fn dm_inbox_decrypts_through_the_shared_local_keys_slot() {
     nmp_app_free(app);
 }
 
-/// THE FFI SNAPSHOT-JSON SHAPE CONTRACT: the JSON the FFI registration
-/// surfaces under `projections["nmp.nip17.dm_inbox"]` is exactly the shape
-/// `DmInboxSnapshot` serdes to. The Swift consumer decodes this off the
-/// kernel update channel; a wire-shape drift here breaks every existing
-/// DM screen.
-///
-/// This test is a structural contract check: it captures the snapshot
-/// JSON the projection produces for a populated inbox and asserts the
-/// outer shape (`conversations` array of `DmConversation`-shaped objects)
-/// matches what `DmInboxSnapshot` deserializes from. Together with the
-/// slot-binding proof above, this nails down the wire contract a Swift
-/// caller depends on.
+/// THE FFI SNAPSHOT-JSON SHAPE CONTRACT: the JSON the projection surfaces under
+/// `projections["nmp.nip17.dm_inbox"]` is exactly the shape `DmInboxSnapshot`
+/// serdes to. The Swift consumer decodes this off the kernel update channel; a
+/// wire-shape drift here breaks every existing DM screen.
 #[test]
 fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
     let app: *mut NmpApp = nmp_app_new();
     let alice = Keys::generate();
     let bob = Keys::generate();
 
-    // Register through the FFI path (same as Swift does at startup).
     nmp_app_chirp_register_dm_inbox(app);
 
-    // Same slot the FFI registration captured.
-    // SAFETY: app came from nmp_app_new() and is live for this call.
-    let local_keys_slot = unsafe { (*app).active_local_keys() };
-    *local_keys_slot.lock().unwrap() = Some(bob.clone());
-
-    let projection = DmInboxProjection::new(local_keys_slot);
+    let (proj, rx) = aux_projection(&bob.public_key());
     let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "wire-shape check", 700);
     <DmInboxProjection as RawEventObserver>::on_raw_event(
-        &projection,
+        &proj,
         1059,
         &nostr::JsonUtil::as_json(&envelope),
     );
+    drive_local_decrypts(&rx, &bob);
 
-    // The snapshot JSON the snapshot-projection closure registered under
-    // `"nmp.nip17.dm_inbox"` returns on every tick — exactly what surfaces
-    // in `KernelSnapshot.projections["nmp.nip17.dm_inbox"]`.
-    let snapshot_value = projection.snapshot_json();
-    // Round-trip through the typed `DmInboxSnapshot`: the projection's
-    // wire shape MUST be decodable by the typed wire schema a host
-    // consumer (Swift) uses.
+    let snapshot_value = proj.snapshot_json();
     let typed: DmInboxSnapshot = serde_json::from_value(snapshot_value.clone())
         .expect("snapshot JSON must decode to DmInboxSnapshot — wire shape contract");
     assert_eq!(typed.conversations.len(), 1);
@@ -207,53 +180,33 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
         "wire-shape check"
     );
 
-    // Empty-inbox shape contract: when no local keys slot is present the
-    // snapshot surfaces `{"conversations":[], "remote_signer_unsupported":true}`,
-    // NOT JSON `null` or a missing key. The Swift decoder relies on this
-    // being a concrete object — `decodeIfPresent` handles the new field for
-    // older kernels (backward compat via V-08 Stage 2 iOS fix).
-    let empty_projection = DmInboxProjection::new(
-        // SAFETY: app is still live.
-        unsafe { (*app).active_local_keys() },
-    );
-    // Clear the slot so the projection sees "not signed in" →
-    // remote_signer_unsupported surfaces as true.
-    // SAFETY: app is still live.
-    *unsafe { (*app).active_local_keys() }.lock().unwrap() = None;
+    // Empty-inbox shape contract: with no active account the snapshot surfaces
+    // `{"conversations":[], "remote_signer_unsupported":true}` — NOT JSON `null`
+    // or a missing key. ADR-0050 §D6: the flag now means "no active account"
+    // (the host hides the DM screen), not "bunker cannot decrypt".
+    let (tx_empty, _rx_empty) = channel::<ActorMail>();
+    let empty_projection =
+        DmInboxProjection::new(CommandSender::new(tx_empty), Arc::new(Mutex::new(None)));
     let empty_json = empty_projection.snapshot_json();
     assert_eq!(
         empty_json,
         serde_json::json!({ "conversations": [], "remote_signer_unsupported": true }),
-        "empty-inbox (no local keys) must carry remote_signer_unsupported:true",
+        "empty-inbox (no active account) must carry remote_signer_unsupported:true",
     );
 
     nmp_app_free(app);
 }
 
-/// THE END-TO-END ROUND-TRIP THROUGH THE FFI REGISTRATION CHAIN.
+/// THE END-TO-END ROUND-TRIP THROUGH THE FFI REGISTRATION CHAIN + LIVE ACTOR.
 ///
-/// Proves the full kind:1059 gift-wrap → kernel ingest → `RawEventObserver`
-/// fan-out → `DmInboxProjection` → `projections["nmp.nip17.dm_inbox"]`
-/// pipeline is wired correctly, exercised entirely through the public
-/// `nmp-core` FFI surface (no private types or pub(crate) accessors).
+/// Proves the full kind:1059 gift-wrap → kernel ingest → `IngestParser` →
+/// `DmInboxProjection` → `Nip44DecryptForAccount` port (resolved INLINE by the
+/// live actor's local-backend dispatch arm) → `projections["nmp.nip17.dm_inbox"]`
+/// pipeline is wired correctly, exercised entirely through the public FFI.
 ///
-/// The previously-documented seam gap (`FIXME(nip17-e2e-test-seam)`) is now
-/// closed by two test-support additions on `nmp-core`:
-///
-/// * `kernel::Kernel::ingest_pre_verified_event` (test-support path) now also
-///   calls `notify_raw_event_observers` on `Inserted|Replaced` outcomes —
-///   the kernel-level ingest of injected events is symmetric with the
-///   production `handle_event` path.
-/// * `nmp_app_inject_signed_event_json` — verbatim signed-event injector
-///   that Schnorr-verifies and routes through `IngestPreVerifiedEvents`.
-/// * `nmp_app_read_projection_json` — runs every registered snapshot
-///   projection and returns the value at a single key as a caller-owned
-///   C string (freed via `nmp_free_string`).
-///
-/// Together these let `nmp-app-chirp` (or any per-app crate) prove its
-/// registered raw-event observers and snapshot projections fire end-to-end
-/// without leaking any internal type onto the production FFI ABI — both
-/// symbols are gated on `cfg(any(test, feature = "test-support"))`.
+/// ADR-0050 §D6: Bob signs in for REAL (`nmp_app_signin_nsec` + `nmp_app_start`)
+/// so the actor's identity runtime holds his local account and can resolve the
+/// inbox's decrypt-port commands itself — the projection never sees `Keys`.
 #[test]
 fn dm_inbox_full_round_trip_through_ffi() {
     use std::ffi::{CStr, CString};
@@ -263,77 +216,51 @@ fn dm_inbox_full_round_trip_through_ffi() {
     let alice = Keys::generate();
     let bob = Keys::generate();
 
-    // Register the DM inbox raw-event observer AND the
-    // "nmp.nip17.dm_inbox" snapshot-projection closure through the
-    // production FFI symbol — exactly the call Swift makes at startup.
+    // Register the DM inbox IngestParser + the "nmp.nip17.dm_inbox" snapshot
+    // projection through the production FFI symbol — exactly the call Swift makes
+    // at startup.
     nmp_app_chirp_register_dm_inbox(app);
 
-    // Write Bob's keys into the shared active-local-keys slot. In
-    // production the actor mutates this on every identity reducer; here
-    // the test plays the role of the actor — same surrogate the two
-    // preceding tests use.
-    //
-    // NB: `nmp_app_start` is deliberately NOT called here. The actor thread
-    // is already spawned by `nmp_app_new`, and `ActorCommand::IngestPreVerifiedEvents`
-    // is dispatched unconditionally regardless of `*ctx.running` (see
-    // `actor/dispatch.rs:958`). Calling `Start` would synchronously fire
-    // `update_local_key_slots` (`actor/dispatch.rs:213`) which clobbers
-    // `active_local_keys` with `identity.active_local_keys()` (None here,
-    // no sign-in), defeating the slot write below and causing the
-    // projection to surface `remote_signer_unsupported:true` instead of
-    // decrypting.
-    // SAFETY: app came from nmp_app_new() and is live for this call.
-    *unsafe { (*app).active_local_keys() }.lock().unwrap() = Some(bob.clone());
+    // Sign Bob in for real so the actor's identity runtime owns his local
+    // account (the decrypt port resolves the active account from the runtime,
+    // and the active-pubkey slot is populated for every backend). `Start` is
+    // required so the identity reducer runs.
+    let bob_nsec = CString::new(bob.secret_key().to_bech32().expect("nsec")).unwrap();
+    nmp_app_signin_nsec(app, bob_nsec.as_ptr(), 1);
+    nmp_app_start(app, 0, 256, 4);
+    std::thread::sleep(Duration::from_millis(200));
 
-    // Build the gift-wrap envelope (kind:1059) from Alice to Bob through the
-    // exact production primitive (`nmp_nip59::gift_wrap_with_signer`).
+    // Build the gift-wrap envelope (kind:1059) from Alice to Bob.
     let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "round-trip", 100);
     let envelope_json = nostr::JsonUtil::as_json(&envelope);
 
-    // Inject the verbatim signed event. The test-support symbol Schnorr-
-    // verifies then routes through `IngestPreVerifiedEvents`, which the
-    // actor dispatches to `kernel.ingest_pre_verified_event` — which now
-    // fans out to `notify_raw_event_observers` so the registered
-    // `DmInboxProjection` sees the kind:1059 envelope.
+    // Inject the verbatim signed event. The actor ingests it, the DmInboxProjection
+    // IngestParser fires, and the two `Nip44DecryptForAccount` commands resolve
+    // INLINE on the actor thread (Bob is local) — landing the message.
     let json_cstr = CString::new(envelope_json.as_str()).expect("envelope JSON must be NUL-free");
-    // The FFI symbol is `extern "C" fn` (no `unsafe`) with
-    // `#[allow(clippy::not_unsafe_ptr_arg_deref)]` — pointer validity is
-    // upheld by the caller, but the call itself is language-safe.
     let ok = nmp_app_inject_signed_event_json(app, json_cstr.as_ptr());
     assert!(
         ok,
         "nmp_app_inject_signed_event_json must return true for a valid gift-wrap envelope",
     );
 
-    // Give the actor thread time to drain the `IngestPreVerifiedEvents`
-    // command. Polling matches the established pattern in
-    // `tests/end_to_end.rs` (500 ms between command send and snapshot read).
+    // Give the actor thread time to drain the ingest + decrypt port chain.
     std::thread::sleep(Duration::from_millis(500));
 
-    // Read the projection JSON via the symmetric output-side seam. The
-    // function runs every registered snapshot-projection closure (same path
-    // the kernel's `make_update` drives on each tick) and returns the
-    // serialized value at the requested key.
     let key = CString::new("nmp.nip17.dm_inbox").expect("key must be NUL-free");
     let ptr = nmp_app_read_projection_json(app, key.as_ptr());
     assert!(
         !ptr.is_null(),
-        "nmp.nip17.dm_inbox projection must be registered after \
-         nmp_app_chirp_register_dm_inbox",
+        "nmp.nip17.dm_inbox projection must be registered after nmp_app_chirp_register_dm_inbox",
     );
     // SAFETY: ptr was returned by nmp_app_read_projection_json and is a
-    // heap-owned, NUL-terminated UTF-8 C string. Copy out before freeing
-    // so the borrow is decoupled from the allocation lifetime.
+    // heap-owned, NUL-terminated UTF-8 C string. Copy out before freeing.
     let json_str = unsafe { CStr::from_ptr(ptr) }
         .to_str()
         .expect("projection JSON must be valid UTF-8")
         .to_owned();
     nmp_free_string(ptr);
 
-    // Decode through the typed `DmInboxSnapshot` to assert the wire shape
-    // matches what Swift consumes off the kernel update channel — same
-    // round-trip the second test in this file proves directly on
-    // `DmInboxProjection`, now driven entirely through the public FFI.
     let snapshot: DmInboxSnapshot = serde_json::from_str(&json_str)
         .expect("nmp.nip17.dm_inbox projection must decode to DmInboxSnapshot");
     assert_eq!(

@@ -1,63 +1,36 @@
 //! F-02 cold-start DM receive-side verification (issue #977).
 //!
-//! Verifies the NIP-17 cold-start scenario:
-//!   1. Alice gift-wraps a kind:1059 and publishes it to Bob's DM relay
-//!      while Bob is **offline** (raw WebSocket publish, no NMP kernel).
-//!   2. Bob cold-starts a fresh `DmInboxProjection` (no prior state) and
-//!      subscribes with a fresh REQ (`since` absent — no watermark).
-//!   3. The relay replays the stored gift-wrap via EOSE backfill.
-//!   4. Bob's projection decrypts and surfaces the DM.
+//! Scenario: Alice gift-wraps a kind:1059 to Bob's DM relay while Bob is
+//! **offline** (raw WebSocket, no kernel); Bob then cold-starts a fresh
+//! `DmInboxProjection`, subscribes with a fresh REQ (no `since` watermark), the
+//! relay replays the stored gift-wrap via EOSE backfill, and Bob's projection
+//! decrypts + surfaces the DM. Two `#[ignore]` variants:
+//! `nip17_cold_start_receive_nak_serve` (deterministic in-process `nak serve`)
+//! and `nip17_cold_start_receive_damus` (live relay).
 //!
-//! Two variants:
-//!   - `nip17_cold_start_receive_nak_serve` — deterministic in-process relay
-//!     (`nak serve`). Verifies end-to-end without external network.
-//!   - `nip17_cold_start_receive_damus` — live relay.damus.io variant.
-//!     Same scenario over a real public relay.
+//! Complements `real_relay_nip17_roundtrip.rs` (live delivery: subscribe BEFORE
+//! publish) by exercising the *storage-replay* path a new user hits on first
+//! login (publish FIRST, subscribe LATER). The relay-transport half is covered
+//! by the round-trip test; the kernel ingest→projection→snapshot half by
+//! `dm_inbox_full_round_trip_through_ffi`. The unique risk here is subscription
+//! timing (publish-before-subscribe + EOSE backfill) + projection decryption.
 //!
-//! ## Relationship to the existing round-trip test
+//! ADR-0050 §D6: the projection decrypts through the signer port — it emits
+//! `Nip44DecryptForAccount` commands which `drive_local_decrypts` resolves with
+//! Bob's local key (exactly the actor's local-backend dispatch arm).
 //!
-//! `real_relay_nip17_roundtrip.rs` verifies live delivery: Bob subscribes
-//! BEFORE Alice publishes. This file verifies the *storage-replay* (cold-start)
-//! path: Alice publishes FIRST, Bob subscribes LATER and must receive the
-//! stored event via backfill / EOSE replay. This is the path a new user
-//! experiences on first login.
-//!
-//! ## Architectural note — coverage boundaries
-//!
-//! The test drives `DmInboxProjection` directly (its production ingest
-//! method) rather than through the full actor stack:
-//!   - The relay transport layer is already tested by `real_relay_nip17_roundtrip.rs`.
-//!   - The kernel ingest → `notify_raw_event_observers` → projection →
-//!     snapshot half is tested by `dm_inbox_full_round_trip_through_ffi`
-//!     (PR #344, apps/chirp/nmp-app-chirp/tests/dm_inbox_round_trip.rs).
-//!   - The cold-start scenario's unique risk is in the *subscription timing*
-//!     (publish-before-subscribe + EOSE backfill) and *projection
-//!     decryption*. Both are exercised here from raw relay EVENT frames.
-//!
-//! NOT covered by this test (or any other executing test as of 2026-06-11):
-//! a live-relay REQ driven through a real kernel's planner-compiled
-//! kind:1059 `#p` subscription (kind:10050 → `DmRelayCache` → planner
-//! routing) with the Schnorr-verify + store-insert gate in the loop. That
-//! junction is the F-02 closure-gate follow-up tracked on issue #977.
-//!
-//! Run both:
 //! ```bash
-//! # Deterministic (nak serve):
-//! cargo test -p nmp-testing \
-//!   --test real_relay_nip17_cold_start \
+//! cargo test -p nmp-testing --test real_relay_nip17_cold_start \
 //!   -- nip17_cold_start_receive_nak_serve --ignored --nocapture
-//!
-//! # Live relay:
-//! cargo test -p nmp-testing \
-//!   --test real_relay_nip17_cold_start \
-//!   -- nip17_cold_start_receive_damus --ignored --nocapture
 //! ```
 
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex, Once};
 use std::time::{Duration, Instant};
 
-use nmp_core::RawEventObserver;
+use std::sync::mpsc::{channel, Receiver};
+
+use nmp_core::{ActorCommand, ActorMail, CommandSender, RawEventObserver};
 use nmp_nip17::DmInboxProjection;
 use nmp_nip59::{gift_wrap_local, KIND_GIFT_WRAP};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
@@ -205,8 +178,15 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
 
     println!("[nip17-cs] PHASE 2: Bob cold-starts — new projection, no prior state");
 
-    // Fresh projection with Bob's keys. No prior messages (cold start).
-    let bob_projection = DmInboxProjection::new(Arc::new(Mutex::new(Some(bob.clone()))));
+    // Fresh projection bound to the signer port (ADR-0050 §D6). Bob's active
+    // account is a LOCAL key here; the projection emits `Nip44DecryptForAccount`
+    // commands which we drain (decrypting with Bob's local keys, exactly as the
+    // actor's local-backend dispatch arm does) once the relay delivers the
+    // envelope. The projection itself holds no `Keys`.
+    let (bob_tx, bob_rx) = channel::<ActorMail>();
+    let bob_active = Arc::new(Mutex::new(Some(bob.public_key().to_hex())));
+    let bob_projection =
+        DmInboxProjection::new(CommandSender::new(bob_tx), Arc::clone(&bob_active));
 
     // Assert it starts empty — the cold-start precondition.
     let initial_snap = bob_projection.snapshot();
@@ -341,6 +321,8 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
 
     let before_ingest = bob_projection.snapshot();
     bob_projection.on_raw_event_with_source(KIND_GIFT_WRAP, &event_json, Some(relay_url));
+    // ADR-0050 §D6: drain the emitted port decrypts with Bob's local key.
+    drive_local_decrypts(&bob_rx, &bob);
     let after_ingest = bob_projection.snapshot();
 
     if after_ingest.conversations.is_empty() {
@@ -406,6 +388,31 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
     println!("[nip17-cs] F-02 COLD-START SCENARIO: PASS");
 
     Ok(true)
+}
+
+/// Drain every `Nip44DecryptForAccount` command the projection emitted and
+/// resolve it by decrypting with `keys`' local secret — exactly what the actor's
+/// local-backend dispatch arm does inline. Each continuation enqueues the next
+/// chain step, so this walks the outer→seal→store unwrap to completion.
+fn drive_local_decrypts(rx: &Receiver<ActorMail>, keys: &Keys) {
+    while let Ok(mail) = rx.try_recv() {
+        let ActorMail::Command(ActorCommand::Nip44DecryptForAccount {
+            peer_pubkey,
+            ciphertext,
+            continuation,
+            ..
+        }) = mail
+        else {
+            continue;
+        };
+        let outcome = nostr::PublicKey::from_hex(&peer_pubkey)
+            .map_err(|e| e.to_string())
+            .and_then(|peer| {
+                nostr::nips::nip44::decrypt(keys.secret_key(), &peer, &ciphertext)
+                    .map_err(|e| e.to_string())
+            });
+        continuation.call(outcome);
+    }
 }
 
 // ─── Test variants ──────────────────────────────────────────────────────────

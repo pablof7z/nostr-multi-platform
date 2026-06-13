@@ -2,78 +2,81 @@
 //!
 //! # Overview
 //!
-//! This is the *inbound* counterpart to [`crate::build_dm_rumor`]. It is a
-//! [`RawEventObserver`](nmp_core::RawEventObserver) — the kernel's verbatim
-//! signed-event tap — registered with a kind:1059 filter. For every accepted
-//! gift-wrap envelope it:
+//! This is the *inbound* counterpart to [`crate::build_dm_rumor`]. It is an
+//! [`IngestParser`](nmp_core::substrate::IngestParser) (and, for live relay
+//! provenance, a [`RawEventObserver`](nmp_core::RawEventObserver)) registered
+//! with a kind:1059 filter. For every accepted gift-wrap envelope it:
 //!
 //! 1. Parses the verbatim wire JSON into a signed `nostr::Event` (the `sig`
 //!    is mandatory — NIP-44 decryption verifies the seal).
-//! 2. Unwraps the gift-wrap with the active account's local `nostr::Keys`
-//!    (`nmp_nip59::unwrap_gift_wrap`), yielding the sender pubkey and the
-//!    inner kind:14 rumor.
-//! 3. Accepts only kind:14 rumors, keys them by event id for idempotency,
-//!    and groups them per conversation peer.
+//! 2. Launches a two-step **port-driven** gift-UNWRAP chain (ADR-0050 §D6):
+//!    `Nip44DecryptForAccount(outer)` → `Nip44DecryptForAccount(seal)` →
+//!    a kind:14 rumor. The decrypts run on the actor thread through the
+//!    backend-transparent signer port, so a NIP-46 **bunker** account is
+//!    structurally able to unseal a gift-wrap — the inbox never holds raw
+//!    `nostr::Keys` (D13).
+//! 3. The chain's terminal continuation accepts only kind:14 rumors, keys
+//!    them by event id for idempotency, and groups them per conversation peer.
 //!
 //! The accumulated state is exposed through [`DmInboxProjection::snapshot_json`]
 //! — the exact shape a host `register_snapshot_projection` closure returns —
 //! so the inbox surfaces on every kernel snapshot tick.
 //!
-//! # Why a `RawEventObserver`, not a `KernelEventObserver`
+//! # ADR-0050 §D6 — gift-UNWRAP through the signer port
 //!
-//! The kernel's `KernelEventObserver` delivers a sig-stripped, projection-
-//! stable `KernelEvent`. NIP-44 decryption needs the *whole* signed event
-//! verbatim (`sig` included), so the inbox plugs into the parallel raw tap —
-//! the same seam other kind:1059 consumers use for the raw event tap.
+//! The projection holds a [`CommandSender`](nmp_core::CommandSender) and the
+//! pubkey-only [`ActiveAccountSlot`](nmp_core::slots::ActiveAccountSlot) — NOT
+//! raw `nostr::Keys`. Each envelope's two NIP-44 decrypts are issued as
+//! `ActorCommand::Nip44DecryptForAccount` and resolved by the actor's dispatch
+//! arm: a **local** account decrypts `nostr::nips::nip44` inside the identity
+//! runtime and the continuation runs INLINE; a **remote** (NIP-46 bunker /
+//! NIP-55) account parks and the continuation runs from the mailbox-completion
+//! drain. The inbox cannot tell which — backend transparency (V-78).
 //!
-//! # Key seam (ADR-0026 boundary)
+//! ## Account pinning + epoch guard (§D6)
 //!
-//! The projection holds an `Arc<Mutex<Option<nostr::Keys>>>` — the
-//! substrate-generic active-local-keys slot the actor writes on every
-//! identity mutation, exposed by the FFI shell as
-//! `NmpApp::active_local_keys`. When the slot is `None` the user is not
-//! signed in (or holds a remote-signer account); every incoming envelope
-//! is then a silent no-op. Bunker (NIP-46) decrypt support is gated on
-//! ADR-0026 Phase 2 — a remote signer cannot currently unseal a gift-wrap
-//! because `unwrap_gift_wrap` needs raw `Keys`.
-//!
-//! This is the NIP-17 key seam and is DELIBERATELY distinct from any
-//! other crate's key slots — each consumer owns its own slot.
+//! The chain resolves the active account's pubkey ONCE at envelope arrival and
+//! passes `signer_pubkey: Some(hex)` on every port step (never `None`), so a
+//! mid-chain account switch cannot decrypt with a different key than the one the
+//! chain started under. The terminal insert is guarded by a generation counter
+//! ([`InboxStore::generation`]) bumped by [`DmInboxProjection::clear`]: a
+//! continuation completing for a stale generation discards its plaintext instead
+//! of leaking the previous account's message into the new account's snapshot
+//! (issue #1138 cross-account privacy leak, preserved through the async chain).
 //!
 //! # D-doctrine
 //!
-//! * **D3 / D8** — `on_raw_event` runs synchronously on the actor thread
-//!   between relay frames. The work is bounded per event (one parse, one
-//!   in-process NIP-44 unseal, one map insert); no background tasks, no I/O,
-//!   no polling.
-//! * **D6** — every failure path is a silent no-op: a poisoned mutex, a
-//!   malformed envelope, an envelope addressed to someone else, a non-kind:14
-//!   rumor. Nothing panics across the actor boundary.
-//! * **D7** — an incoming rumor's `created_at` was stamped by the *sender*;
-//!   it is the real send time, not the `0` "kernel please stamp me" sentinel
-//!   the outbound builder uses. It is stored verbatim. Presentation layers
-//!   format the timestamp for display (aim.md §2 — NMP sends raw Unix
-//!   seconds, shells own date formatting).
+//! * **D3 / D8** — `ingest_gift_wrap` runs synchronously on the actor thread; it
+//!   only parses the outer envelope and enqueues ONE port command (no blocking,
+//!   no I/O, no polling). Each continuation likewise only enqueues the next step
+//!   or performs a bounded map insert.
+//! * **D6** — every failure path is a silent no-op / discard: a malformed
+//!   envelope, a decrypt failure (addressed to someone else / another protocol's
+//!   kind:1059), a non-kind:14 rumor, a poisoned mutex, a stale generation.
+//!   Nothing panics across the actor boundary.
+//! * **D7** — an incoming rumor's `created_at` was stamped by the *sender*; it is
+//!   the real send time, stored verbatim. Presentation layers format it.
+//! * **D13** — no raw `nostr::Keys` cross this crate; only ciphertext / plaintext
+//!   and a pubkey-only identity slot are observed.
 //!
 //! # Spec
 //!
 //! <https://github.com/nostr-protocol/nips/blob/master/17.md>
 
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
 };
+use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::store::VerifiedEvent;
-use nmp_core::substrate::{
-    BoundedMessageMap, IngestParser, ViewDependencies, MAX_PROJECTION_MESSAGES,
-};
-use nmp_core::{KindFilter, RawEventObserver};
-use nmp_kinds::KIND_CHAT_MESSAGE;
+use nmp_core::substrate::{IngestParser, ViewDependencies};
+use nmp_core::{CommandSender, KindFilter, RawEventObserver};
 use nmp_nip59::KIND_GIFT_WRAP;
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
+
+use store::InboxStore;
 
 /// One decrypted NIP-17 direct message, ready for a chat row.
 ///
@@ -139,14 +142,17 @@ pub struct DmConversation {
 pub struct DmInboxSnapshot {
     /// Conversations, ordered by most-recent message (newest thread first).
     pub conversations: Vec<DmConversation>,
-    /// Set to `true` when the active account uses a remote signer (NIP-46
-    /// bunker) that cannot unseal gift-wraps — the inbox will always be empty
-    /// in this case, and the host should surface a "DM inbox unavailable for
-    /// bunker accounts" message instead of an empty list.
+    /// Whether the active account can decrypt this inbox at all.
     ///
-    /// `false` when signed in with local keys (normal) or when not signed in
-    /// (the host should hide the DM screen entirely in that case). Additive
-    /// field: decoders that pre-date this field read `false` via
+    /// **ADR-0050 §D6**: with gift-UNWRAP routed through the signer port, a
+    /// remote (bunker) account is now *structurally* able to decrypt — so this
+    /// flag is no longer "bunker accounts cannot decrypt". It is `true` ONLY
+    /// when there is no active account (not signed in), in which case the host
+    /// should hide the DM screen entirely; `false` otherwise (local OR bunker).
+    /// The bounded-decrypt PRODUCT policy for bunker backfill (a count of
+    /// undecrypted envelopes + a tri-state `decrypt_state`) lands at ADR-0050
+    /// §D7 / Stage 5, which replaces this boolean with policy-driven state.
+    /// Additive field: decoders that pre-date it read `false` via
     /// `#[serde(default)]`.
     #[serde(default)]
     pub remote_signer_unsupported: bool,
@@ -165,35 +171,39 @@ impl DmInboxSnapshot {
 }
 
 /// Accumulates decrypted NIP-17 direct messages into a per-peer conversation
-/// model.
+/// model, decrypting each gift-wrap through the actor's signer port
+/// (ADR-0050 §D6).
 ///
-/// Construct with the shared active-local-keys slot
-/// (`NmpApp::active_local_keys`), register the same `Arc` as a
-/// [`RawEventObserver`] with [`Self::kind_filter`], and capture it in a
-/// snapshot-projection closure (`snapshot_json`).
+/// Construct with the actor [`CommandSender`] and the pubkey-only
+/// [`ActiveAccountSlot`], register the `Arc` as an `IngestParser` (and
+/// optionally a [`RawEventObserver`] for live relay provenance) with
+/// [`Self::kind_filter`], and capture it in a snapshot-projection closure
+/// (`snapshot_json`).
 pub struct DmInboxProjection {
-    /// Shared local-keys slot. The actor writes the active account's
-    /// `nostr::Keys` here on every identity mutation; the projection reads it
-    /// to unseal each incoming gift-wrap. `None` → not signed in / remote
-    /// signer → every envelope is a silent no-op.
-    local_keys: Arc<Mutex<Option<nostr::Keys>>>,
-    /// Accepted decrypted messages keyed by inner-rumor event id. The value
-    /// pairs the conversation peer with the message. Idempotent — a
-    /// re-delivered envelope replaces rather than duplicates. Bounded by
-    /// [`MAX_PROJECTION_MESSAGES`] so a long-running inbox cannot grow
-    /// unboundedly across a session; once full, the oldest-by-insertion
-    /// rumor is evicted, keeping per-tick snapshot serialisation O(cap).
-    messages: Mutex<BoundedMessageMap<String, (String, DmMessage)>>,
+    /// Sends `Nip44DecryptForAccount` port commands into the actor inbox
+    /// (ADR-0050 §D6). Cloned into each chain step. Cheap, `Send + Sync`.
+    tx: CommandSender,
+    /// Pubkey-only active-account slot — populated by the kernel for EVERY
+    /// backend (local AND bunker). Read once per envelope to pin the chain's
+    /// `signer_pubkey` (§D6). `None` → not signed in → silent no-op (D6); the
+    /// inbox NEVER holds secret key material (D13).
+    active_pubkey: ActiveAccountSlot,
+    /// Shared decrypt store + epoch guard, `Arc` so in-flight chains can carry a
+    /// clone into their terminal continuation.
+    store: Arc<InboxStore>,
 }
 
 impl DmInboxProjection {
-    /// Construct an inbox bound to the shared local-keys slot. The message
-    /// store starts empty; envelopes arrive via [`RawEventObserver::on_raw_event`].
+    /// Construct an inbox bound to the actor command sender and the pubkey-only
+    /// active-account slot (ADR-0050 §D6). The message store starts empty;
+    /// envelopes arrive via [`IngestParser::parse`] /
+    /// [`RawEventObserver::on_raw_event`] and decrypt through the port.
     #[must_use]
-    pub fn new(local_keys: Arc<Mutex<Option<nostr::Keys>>>) -> Self {
+    pub fn new(tx: CommandSender, active_pubkey: ActiveAccountSlot) -> Self {
         Self {
-            local_keys,
-            messages: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
+            tx,
+            active_pubkey,
+            store: Arc::new(InboxStore::new()),
         }
     }
 
@@ -201,6 +211,12 @@ impl DmInboxProjection {
     #[must_use]
     pub fn kind_filter() -> KindFilter {
         KindFilter::from_kinds([KIND_GIFT_WRAP])
+    }
+
+    /// Read the active account's hex pubkey (`None` if not signed in / poisoned
+    /// slot). The chain pins this for `signer_pubkey: Some(hex)` (§D6).
+    fn active_pubkey_hex(&self) -> Option<String> {
+        self.active_pubkey.lock().ok().and_then(|slot| slot.clone())
     }
 
     /// Snapshot the current inbox as a typed [`DmInboxSnapshot`].
@@ -214,92 +230,31 @@ impl DmInboxProjection {
     /// D6: a poisoned mutex degrades to [`DmInboxSnapshot::empty`] rather than
     /// panicking — this runs on the actor thread inside a snapshot tick.
     ///
-    /// When `local_keys` is `None` (bunker / not yet signed in), sets
-    /// `DmInboxSnapshot::remote_signer_unsupported` so the host can surface
-    /// a meaningful message instead of a misleading empty list (V-08 Stage 1).
-    /// ADR-0026 Phase 2 (Stage 3) removes the flag by wiring gift-wrap
-    /// unsealing through the remote signer RPC.
+    /// `remote_signer_unsupported` is `true` only when there is no active
+    /// account (§D6 — a bunker account CAN now decrypt structurally; the
+    /// per-account bounded-backfill policy state lands at §D7 / Stage 5).
     #[must_use]
     pub fn snapshot(&self) -> DmInboxSnapshot {
-        let Ok(messages) = self.messages.lock() else {
-            return DmInboxSnapshot::empty();
-        };
-
-        // V-08 Stage 1: detect whether decryption is impossible because the
-        // local-keys slot is absent (bunker / not signed in). A host can use
-        // this flag to show "DM inbox unavailable for bunker accounts" instead
-        // of a misleading empty-list UX. When the slot lock is poisoned we
-        // fall through to an empty-conversations snapshot (D6 degradation) and
-        // leave the flag false — a poisoned mutex is a process-internal error,
-        // not a user-visible signer constraint.
-        let remote_signer_unsupported = self
-            .local_keys
-            .lock()
-            .map(|guard| guard.is_none())
-            .unwrap_or(false);
-
-        // Group messages by conversation peer. Each message is cloned out of
-        // the bounded store; messages carry only raw protocol data
-        // (aim.md §2 — presentation layer formats timestamps and pubkeys).
-        let mut by_peer: BTreeMap<String, Vec<DmMessage>> = BTreeMap::new();
-        for (peer, msg) in messages.values() {
-            by_peer.entry(peer.clone()).or_default().push(msg.clone());
-        }
-
-        let mut conversations: Vec<DmConversation> = by_peer
-            .into_iter()
-            .map(|(peer_pubkey, mut msgs)| {
-                // Chronological within the thread — oldest first, newest
-                // last. This is the natural render order of a chat log, so
-                // the host shell never reverses. Tie-break on id ascending
-                // so the order is total even when two messages share a
-                // `created_at`.
-                msgs.sort_by(|a, b| {
-                    a.created_at
-                        .cmp(&b.created_at)
-                        .then_with(|| a.id.cmp(&b.id))
-                });
-                DmConversation {
-                    peer_pubkey,
-                    messages: msgs,
-                }
-            })
-            .collect();
-
-        // Newest conversation first — keyed on the thread's most-recent
-        // message (the last entry after the chronological sort above).
-        // Tie-break on peer pubkey descending for a total, stable order.
-        conversations.sort_by(|a, b| {
-            let a_latest = a.messages.last().map_or(0, |m| m.created_at);
-            let b_latest = b.messages.last().map_or(0, |m| m.created_at);
-            b_latest
-                .cmp(&a_latest)
-                .then_with(|| b.peer_pubkey.cmp(&a.peer_pubkey))
-        });
-
         DmInboxSnapshot {
-            conversations,
-            remote_signer_unsupported,
+            conversations: self.store.snapshot_conversations(),
+            // No active account → the host should hide the DM screen. A signed-in
+            // account (local or bunker) is decrypt-capable, so the flag is false.
+            remote_signer_unsupported: self.active_pubkey_hex().is_none(),
         }
     }
 
-    /// Clear all accumulated messages, making the inbox empty.
+    /// Clear all accumulated messages and advance the epoch, making the inbox
+    /// empty and invalidating any in-flight decrypt chain's terminal insert.
     ///
-    /// Called on account switch to ensure the previous account's decrypted
-    /// DMs cannot appear in the new account's snapshot (issue #1138 —
-    /// cross-account privacy leak). After this call `snapshot()` returns
-    /// [`DmInboxSnapshot::empty`] until new messages arrive via
-    /// [`IngestParser::parse`] or [`RawEventObserver::on_raw_event`].
+    /// Called on account switch so the previous account's decrypted DMs cannot
+    /// appear in the new account's snapshot (issue #1138). After this call
+    /// `snapshot()` returns [`DmInboxSnapshot::empty`] until new messages arrive
+    /// and decrypt under the new epoch.
     ///
-    /// D6 — a poisoned mutex is a silent no-op; the stale messages remain
-    /// until the lock is recovered (a process-internal error, not a caller
-    /// concern).
+    /// D6 — a poisoned mutex is a silent no-op for the message drop; the epoch
+    /// bump is infallible so stale chains are still discarded.
     pub fn clear(&self) {
-        if let Ok(mut messages) = self.messages.lock() {
-            *messages = nmp_core::substrate::BoundedMessageMap::new(
-                nmp_core::substrate::MAX_PROJECTION_MESSAGES,
-            );
-        }
+        self.store.clear();
     }
 
     /// Snapshot as a `serde_json::Value` — the exact shape a host
@@ -314,105 +269,48 @@ impl DmInboxProjection {
         )
     }
 
-    /// Decrypt and store one accepted kind:1059 envelope. Returns `true` when
-    /// a kind:14 rumor was extracted and retained; `false` for every silent
-    /// no-op path (not signed in, addressed to someone else, not a kind:14,
-    /// poisoned mutex). Factored out of [`RawEventObserver::on_raw_event`] so
-    /// the unit tests can assert the outcome.
+    /// Launch the port-driven gift-UNWRAP chain for one accepted kind:1059
+    /// envelope (ADR-0050 §D6). Returns `true` when the chain was LAUNCHED
+    /// (outer envelope parsed + an account is active); `false` for every
+    /// pre-launch silent no-op (malformed envelope, not signed in). The
+    /// decrypted message — if any — lands in the store asynchronously when the
+    /// chain's terminal continuation runs (inline for a local account, from the
+    /// mailbox drain for a bunker). Factored out of the observer/parser impls so
+    /// the unit tests can assert the launch outcome.
     fn ingest_gift_wrap(&self, json: &str, source_relay_url: Option<&str>) -> bool {
-        // Parse the verbatim signed event off the borrowed buffer. A
-        // malformed envelope is a silent no-op (D6).
+        // Parse the verbatim signed event off the borrowed buffer. A malformed
+        // envelope is a silent no-op (D6).
         let Ok(event) = Event::from_json(json) else {
             return false;
         };
 
-        // Resolve the active account's keys. `None` (not signed in / remote
-        // signer) or a poisoned slot → silent no-op (D6).
-        let keys: nostr::Keys = {
-            let Ok(guard) = self.local_keys.lock() else {
-                return false;
-            };
-            let Some(keys) = guard.as_ref() else {
-                return false;
-            };
-            keys.clone()
-        };
-        let local_pubkey = keys.public_key().to_hex();
-
-        // Unseal the gift-wrap. An `Err` means the envelope was not addressed
-        // to us (or is another protocol's kind:1059 traffic) — a silent no-op,
-        // never a panic (D6). `gift` is `mut` so
-        // the canonical rumor id can be computed below if absent.
-        let Ok(mut gift) = nmp_nip59::unwrap_gift_wrap(&keys, &event) else {
+        // §D6 account pinning — resolve the active pubkey ONCE. `None` (not
+        // signed in) → silent no-op (D6). NEVER reads secret key material (D13).
+        let Some(signer_hex) = self.active_pubkey_hex() else {
             return false;
         };
 
-        // Only kind:14 chat-message rumors belong in the DM inbox. Rumors
-        // of any other kind that happen to unwrap are discarded here.
-        if gift.rumor.kind.as_u16() != KIND_CHAT_MESSAGE as u16 {
-            return false;
-        }
+        // Capture the live epoch so a mid-chain account switch invalidates this
+        // chain's terminal insert (§D6).
+        let generation = self.store.generation();
 
-        let sender_pubkey = gift.sender.to_hex();
-        // The rumor's id may be `None` if the sender did not pre-compute it;
-        // `UnsignedEvent::id()` derives the canonical NIP-01 id deterministically
-        // (and memoises it). Compute it up front so the inbox always has a
-        // stable dedupe key.
-        let message_id = gift.rumor.id().to_hex();
-        let rumor = &gift.rumor;
-
-        // The conversation peer is the OTHER party. The self-copy envelope
-        // (the sender gift-wraps to their own pubkey so sent messages stay
-        // readable) carries `sender == local`; for it the peer is the `p`-tag
-        // recipient. The recipient's own copy carries `sender == them`; for it
-        // the peer is the sender.
-        let peer_pubkey = if sender_pubkey == local_pubkey {
-            match first_p_tag(rumor) {
-                Some(p) => p,
-                // A self-copy with no `p` tag is malformed — discard (D6).
-                None => return false,
-            }
-        } else {
-            sender_pubkey.clone()
-        };
-
-        // Pre-classify outgoing vs incoming so the host shell never compares
-        // pubkeys to align a bubble. The kind:13 seal authenticated
-        // `sender_pubkey`; replaying that comparison in the shell would be
-        // protocol logic leaking out (thin-shell rule).
-        let is_outgoing = sender_pubkey == local_pubkey;
-        let message = DmMessage {
-            id: message_id.clone(),
-            sender_pubkey,
-            content: rumor.content.clone(),
-            // D7: the rumor's `created_at` is the sender's real send time.
-            created_at: rumor.created_at.as_secs(),
-            reply_to: first_reply_e_tag(rumor),
-            is_outgoing,
-            source_relays: source_relays_from(source_relay_url),
-        };
-
-        // Idempotent insert — a re-delivered envelope updates source
-        // provenance rather than duplicating the message. Poisoned mutex →
-        // silent no-op (D6).
-        let Ok(mut messages) = self.messages.lock() else {
-            return false;
-        };
-        if let Some((_peer, existing)) = messages.get_mut(&message_id) {
-            merge_source_relay(&mut existing.source_relays, source_relay_url);
-            return true;
-        }
-        messages.insert(message_id, (peer_pubkey, message));
-        true
+        chain::launch_unwrap(
+            self.tx.clone(),
+            Arc::clone(&self.store),
+            signer_hex,
+            generation,
+            event,
+            source_relay_url.map(str::to_string),
+        )
     }
 }
 
 impl RawEventObserver for DmInboxProjection {
     /// One accepted inbound signed event (verbatim flat NIP-01 JSON, `sig`
     /// included). The kind filter guarantees `kind == 1059`; `ingest_gift_wrap`
-    /// does the unseal + store. Every failure is a silent no-op (D6); the
-    /// projection mutation is the load-bearing effect a later snapshot tick
-    /// surfaces.
+    /// launches the port-driven unwrap chain. Every pre-launch failure is a
+    /// silent no-op (D6); the store mutation is the load-bearing effect a later
+    /// snapshot tick surfaces.
     fn on_raw_event(&self, _kind: u32, json: &str) {
         let _ = self.ingest_gift_wrap(json, None);
     }
@@ -436,12 +334,12 @@ impl IngestParser for DmInboxProjection {
     /// Source relay provenance is unavailable at the `IngestParser` seam today
     /// (the dispatcher API carries only the `VerifiedEvent`); relay-delivered
     /// events therefore accumulate no `source_relays` entries via this path.
-    /// The `RawEventObserver` path (still wired until PR-2 removes the raw tap)
-    /// continues to populate `source_relays` for live relay delivery.
+    /// The `RawEventObserver` path continues to populate `source_relays` for
+    /// live relay delivery.
     ///
     /// D3/D8 — runs synchronously on the actor thread; bounded per-event work
-    /// (one JSON serialisation, one in-process NIP-44 unseal, one map insert).
-    /// D6 — every failure is a silent no-op.
+    /// (one JSON serialisation, one outer-envelope parse, ONE port command).
+    /// D6 — every pre-launch failure is a silent no-op.
     fn parse(&self, evt: &VerifiedEvent) {
         debug_assert_eq!(
             evt.raw().kind,
@@ -499,46 +397,18 @@ pub fn active_giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     interest
 }
 
-/// First `["p", <pubkey>]` tag value on a rumor, if any.
-fn first_p_tag(rumor: &nostr::UnsignedEvent) -> Option<String> {
-    rumor.tags.iter().find_map(|tag| {
-        let slice = tag.as_slice();
-        match slice {
-            [name, value, ..] if name == "p" => Some(value.clone()),
-            _ => None,
-        }
-    })
-}
+#[path = "inbox/store.rs"]
+mod store;
 
-/// First NIP-10 reply marker — `["e", <event-id>, <relay-hint>, "reply"]` —
-/// on a rumor, returning the referenced event id.
-fn first_reply_e_tag(rumor: &nostr::UnsignedEvent) -> Option<String> {
-    rumor.tags.iter().find_map(|tag| {
-        let slice = tag.as_slice();
-        match slice {
-            [name, value, _hint, marker, ..] if name == "e" && marker == "reply" => {
-                Some(value.clone())
-            }
-            _ => None,
-        }
-    })
-}
-
-fn source_relays_from(source_relay_url: Option<&str>) -> Vec<String> {
-    let mut relays = Vec::new();
-    merge_source_relay(&mut relays, source_relay_url);
-    relays
-}
-
-fn merge_source_relay(relays: &mut Vec<String>, source_relay_url: Option<&str>) {
-    let Some(source) = source_relay_url.filter(|source| !source.is_empty()) else {
-        return;
-    };
-    if !relays.iter().any(|existing| existing == source) {
-        relays.push(source.to_string());
-    }
-}
+#[path = "inbox/chain.rs"]
+mod chain;
 
 #[cfg(test)]
 #[path = "inbox/tests.rs"]
 mod tests;
+
+// ADR-0050 §D6 port-driven gift-UNWRAP chain tests — kept in a sibling file so
+// `inbox.rs` and `inbox/tests.rs` each stay under the 500-LOC ceiling.
+#[cfg(test)]
+#[path = "inbox/chain_tests.rs"]
+mod chain_tests;
