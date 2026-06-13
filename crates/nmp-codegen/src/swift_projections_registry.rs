@@ -597,6 +597,25 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_nip29_DiscoveredGroupsSnapshot"),
         }),
     },
+    SnapshotProjectionEntry {
+        json_key: "nmp.nip29.group_defaults",
+        swift_field: "groupDefaults",
+        swift_type: "GroupDefaultsSnapshot",
+        typed_sidecar: Some(TypedSidecar {
+            key: "nmp.nip29.group_defaults",
+            schema_id: "nmp.nip29.group_defaults",
+            file_identifier: "NGDF",
+            // #626: the crate-owned NIP-29 public-group create defaults (the
+            // suggested host relay URL). Host-registered producer in
+            // `apps/chirp/.../ffi/register.rs`
+            // (`nmp_nip29::register::wire_group_defaults` →
+            // `register_typed_snapshot_projection("nmp.nip29.group_defaults", …)`).
+            // The `flatc --swift` reader (`nmp_nip29_GroupDefaultsSnapshot`) ships
+            // from `crates/nmp-nip29/schema/group_defaults.fbs`. Flat copy:
+            // `{ suggested_relay_url }`. See `TypedProjectionGlue.groupDefaults`.
+            swift_reader_type: Some("nmp_nip29_GroupDefaultsSnapshot"),
+        }),
+    },
     // `nmp.nip57.zaps` has no `_`, so the post-transform key is identical
     // — but declaring the `CodingKeys` enum overrides synthesised raw
     // values, so the case still needs the explicit literal.
@@ -830,89 +849,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     },
 ];
 
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Locks the registry size. Anyone adding or removing an entry changes
-    /// the generated Swift; this test makes that change explicit rather than
-    /// silent.
-    #[test]
-    fn registry_size_is_locked() {
-        // 34 entries: 36 (incl. `bunker_connection_state`, V-14 step b, #963)
-        // minus `author_view` (KAVW) and `thread_view` (KTVW), removed by
-        // V-112 (ADR-0042).
-        // Bump this (and add a new SnapshotProjectionEntry above) when a new
-        // projection is wired.
-        assert_eq!(
-            SNAPSHOT_PROJECTIONS.len(),
-            34,
-            "registry size changed — regenerate KernelTypes.generated.swift and update this test"
-        );
-    }
-
-    /// Every Swift field name must be a unique lowerCamelCase identifier.
-    /// A duplicate would emit two `let` lines with the same name (Swift
-    /// compile error in the generated file) — this guards against an
-    /// accidental copy/paste regression.
-    #[test]
-    fn swift_field_names_are_unique() {
-        let mut seen = std::collections::BTreeSet::new();
-        for entry in SNAPSHOT_PROJECTIONS {
-            assert!(
-                seen.insert(entry.swift_field),
-                "duplicate swift_field {:?} in SNAPSHOT_PROJECTIONS",
-                entry.swift_field
-            );
-        }
-    }
-
-    /// Every JSON key must be unique. The kernel registers one closure per
-    /// key; declaring the same key twice on the Swift side would silently
-    /// shadow one decoder case with another.
-    #[test]
-    fn json_keys_are_unique() {
-        let mut seen = std::collections::BTreeSet::new();
-        for entry in SNAPSHOT_PROJECTIONS {
-            assert!(
-                seen.insert(entry.json_key),
-                "duplicate json_key {:?} in SNAPSHOT_PROJECTIONS",
-                entry.json_key
-            );
-        }
-    }
-
-    /// Every dotted projection key in this registry must be mirrored in the
-    /// conformance test (`SnapshotProjectionsConformanceTests.swift`) and vice
-    /// versa — except `nmp.feed.home`, the typed sidecar (see below). Adding a
-    /// dotted key requires updating both sides (and the renderer emits a
-    /// matching `CodingKeys` case for JSON-decoded keys).
-    #[test]
-    fn all_dotted_keys_are_present() {
-        let dotted: Vec<&str> = SNAPSHOT_PROJECTIONS
-            .iter()
-            .map(|e| e.json_key)
-            .filter(|k| k.contains('.'))
-            .collect();
-        // Nine dotted keys. `nmp.feed.home` is a NOFS typed sidecar decoded by
-        // the hand-written `TypedHomeFeedDecoder` (`swift_reader_type: None`) —
-        // not a JSON `SnapshotProjections` field, so it has no `XCTAssertNotNil`
-        // in the Swift conformance test, but it IS a dotted registry key.
-        let expected = [
-            "nmp.nip29.group_chat",
-            "nmp.nip29.discovered_groups",
-            "nmp.nip17.dm_inbox",
-            "nmp.follow_list",
-            "nmp.nip57.zaps",
-            "nmp.nip17.dm_relay_list",
-            "nmp.marmot.snapshot",
-            "nmp.marmot.messages",
-            "nmp.feed.home",
-        ];
-        for key in expected {
-            assert!(dotted.contains(&key), "expected dotted key {key:?} not in registry");
-        }
-        // Equal lengths + the forward-contains prove set equality.
-        assert_eq!(dotted.len(), expected.len(), "dotted keys drifted: {dotted:?}");
-    }
-}
+#[path = "swift_projections_registry_tests.rs"]
+mod tests;

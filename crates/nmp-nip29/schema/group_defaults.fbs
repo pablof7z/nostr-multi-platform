@@ -1,0 +1,39 @@
+namespace nmp.nip29;
+
+// Typed FlatBuffers wire for the NIP-29 group-defaults snapshot projection
+// (`nmp_nip29::projection::GroupDefaultsSnapshot`), schema_id
+// "nmp.nip29.group_defaults".
+//
+// This is the typed sidecar (ADR-0037) carried alongside the generic
+// `serde_json::Value` projection registered under the same key in
+// `nmp_nip29::register::wire_group_defaults`. The serde shape
+// (`GroupDefaultsProjection::snapshot_json`) stays authoritative; this buffer
+// mirrors it byte-for-byte in field semantics so a host with a `NGDF` decoder
+// can read typed accessors instead of JSON reflection. An un-updated host falls
+// back to the generic `Value` subtree (the permanent fallback from ADR-0037).
+//
+// Issue #626: this projection moves the NIP-29 public-group default relay URL
+// out of the iOS shell (a hardcoded Swift `@State` literal) into the framework.
+// The value is sourced from the crate-owned constant
+// `DEFAULT_PUBLIC_GROUP_RELAY_URL`; a host shell pre-fills its editable relay
+// field from `suggested_relay_url` and the user may overwrite it.
+//
+// Raw data only (ADR-0032): `suggested_relay_url` is a raw relay URL string,
+// not a display-formatted value.
+//
+// Regenerate the checked-in Rust + Swift bindings only with the workspace
+// FlatBuffers pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh.
+// The schema is self-contained (no `include`), so generate with plain
+// `flatc --rust` / `flatc --swift`:
+//
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/group_defaults.fbs
+
+// The serialised create-flow defaults read model.
+table GroupDefaultsSnapshot {
+  schema_version:uint32 = 1;   // mirrors GROUP_DEFAULTS_SCHEMA_VERSION
+  suggested_relay_url:string;  // crate-owned default host relay URL (#626)
+}
+
+root_type GroupDefaultsSnapshot;
+file_identifier "NGDF";
