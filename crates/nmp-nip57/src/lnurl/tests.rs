@@ -77,9 +77,7 @@ impl LocalSignerAccess for LocalSigner {
     fn active_local_keys(&self) -> Option<Keys> {
         None
     }
-    fn signer_for_seal(
-        &self,
-    ) -> Option<std::sync::Arc<dyn nmp_core::substrate::SignerForSeal>> {
+    fn active_account_pubkey(&self) -> Option<String> {
         None
     }
 }

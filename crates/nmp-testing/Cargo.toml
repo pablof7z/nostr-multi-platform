@@ -138,8 +138,8 @@ path = "tests/framework_magic_contract.rs"
 name = "real_relay_smoke"
 path = "tests/real_relay_smoke.rs"
 
-# PR #631 verification — NIP-17 gift-wrap round-trip over a real relay using
-# the post-pub(crate) `gift_wrap_with_signer` seam (Alice publishes from one
+# NIP-17 gift-wrap round-trip over a real relay using the pure
+# `nmp_nip59::gift_wrap_local` composition (Alice publishes from one
 # socket; Bob subscribes on a separate socket and decrypts).
 # `#[ignore]` by default; run explicitly:
 #   cargo test -p nmp-testing --test real_relay_nip17_roundtrip -- --ignored --nocapture

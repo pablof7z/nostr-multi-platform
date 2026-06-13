@@ -4730,8 +4730,6 @@ dependencies = [
  "nmp-core",
  "nmp-kinds",
  "nmp-nip59",
- "nmp-signer-iface",
- "nmp-signers",
  "nostr",
  "serde",
  "serde_json",
@@ -4946,7 +4944,6 @@ version = "0.6.2"
 dependencies = [
  "js-sys",
  "nmp-core",
- "nmp-nip59",
  "nmp-signer-iface",
  "nostr",
  "serde",

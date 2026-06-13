@@ -59,7 +59,7 @@ use std::time::{Duration, Instant};
 
 use nmp_core::RawEventObserver;
 use nmp_nip17::DmInboxProjection;
-use nmp_nip59::{gift_wrap_with_signer, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT, KIND_GIFT_WRAP};
+use nmp_nip59::{gift_wrap_local, KIND_GIFT_WRAP};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::util::JsonUtil as _;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
@@ -135,12 +135,10 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
         .custom_created_at(Timestamp::now())
         .build(alice.public_key());
 
-    // Gift-wrap via the ADR-0026 `SignerForSeal` seam.
-    let signer: Arc<dyn SignerForSeal> = Arc::new(alice.clone());
+    // Gift-wrap via the pure local-keys composition (ADR-0050 §D5).
     let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
-    let envelope = gift_wrap_with_signer(&signer, &bob.public_key(), &rumor, tweaked)
-        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
-        .map_err(|e| format!("gift_wrap_with_signer failed: {e}"))?;
+    let envelope = gift_wrap_local(&alice, &bob.public_key(), &rumor, tweaked)
+        .map_err(|e| format!("gift_wrap_local failed: {e}"))?;
 
     assert_eq!(envelope.kind, Kind::GiftWrap, "outer kind must be 1059");
     let envelope_id = envelope.id.to_hex();
