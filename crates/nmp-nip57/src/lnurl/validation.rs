@@ -129,7 +129,7 @@ mod tests {
     fn synth_invoice_with_h(hash: &[u8; 32]) -> String {
         let zero = Fe32::try_from(0u8).unwrap();
         let mut data: Vec<Fe32> = Vec::new();
-        data.extend(std::iter::repeat(zero).take(TIMESTAMP_FE32_GROUPS));
+        data.extend(std::iter::repeat_n(zero, TIMESTAMP_FE32_GROUPS));
         data.push(Fe32::try_from(TAG_DESCRIPTION_HASH).unwrap());
         data.push(Fe32::try_from(1u8).unwrap()); // length hi  (1<<5)
         data.push(Fe32::try_from(20u8).unwrap()); // length lo  → 52
