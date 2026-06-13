@@ -1522,14 +1522,53 @@ impl NmpApp {
     /// `relay_diagnostics` roll-up) for everything else. Additive, `&self`
     /// (lock-and-extend), intended as a host-init call before `nmp_app_start`.
     /// A poisoned registry mutex is a silent no-op (D6).
+    ///
+    /// # Init-only invariant (ADR-0053 Decision 5)
+    ///
+    /// The declared set MUST be written before the first real frame is emitted
+    /// (i.e. before `nmp_app_start`). Calling this method after `start` is
+    /// additive today (not a bug), but the ADR's D1-preservation argument
+    /// depends on the set being fixed for the process lifetime. A
+    /// `debug_assert!` enforces the invariant in debug builds; if you ever
+    /// need to remove the assert and allow post-start mutation, document
+    /// exactly why the additive-only semantics still preserve D1.
     pub fn declare_consumed_projections<I, K>(&self, keys: I)
     where
         I: IntoIterator<Item = K>,
         K: Into<String>,
     {
+        // ADR-0053 DEBT 3 — init-only invariant enforcement. The declaration
+        // must happen before `nmp_app_start` so the kernel sees the complete
+        // set from its first real frame. Additive-only semantics preserve D1
+        // (the set only grows, never shrinks), but the full set must be stable
+        // by start time. Panics in debug builds; silently allowed in release
+        // (additive semantics keep it safe as-is, the assert is a developer
+        // early-warning).
+        debug_assert!(
+            !self.started.load(Ordering::Acquire),
+            "declare_consumed_projections called after nmp_app_start — \
+             the declared set must be complete before the kernel emits its \
+             first real frame (ADR-0053 Decision 5 / init-only invariant)"
+        );
         if let Ok(mut registry) = self.snapshot_projections.lock() {
             registry.declare_consumed_projections(keys);
         }
+    }
+
+    /// ADR-0053 — whether the host has declared at least one consumed Tier-2
+    /// built-in projection key (i.e. narrowing is in effect).
+    ///
+    /// Returns `false` when no keys have been declared (the "no opinion / no
+    /// narrowing" state — every Tier-2 built-in is emitted). Returns `true`
+    /// once any key has been declared. Intended for the `debug_assert!` in the
+    /// production builder (`NmpAppBuilder::start`) and for the one-time warn in
+    /// `nmp_app_start`. A poisoned registry mutex returns `false` (D6).
+    #[must_use]
+    pub fn consumed_projections_are_narrowing(&self) -> bool {
+        self.snapshot_projections
+            .lock()
+            .map(|r| r.declared_projections().is_narrowing())
+            .unwrap_or(false)
     }
 
     /// Register a **change-gated** snapshot projection — the perf-aware
@@ -2735,6 +2774,34 @@ pub extern "C" fn nmp_app_start(
         .lock()
         .map(|g| g.clone())
         .unwrap_or_default();
+
+    // ADR-0053 DEBT 2 — one-time warn when a production app starts without
+    // declaring any consumed projections. An empty declared set means "no
+    // narrowing": the kernel will serialize every Tier-2 built-in
+    // (including the expensive `relay_diagnostics` roll-up) into every
+    // snapshot at full 4Hz, even though many of those keys are never read
+    // by any screen. This is expensive and defeats the ADR-0053 optimization.
+    //
+    // Chirp and other NMP apps call `declare_consumed_projections` (or the
+    // shell-side `nmp_app_declare_consumed_projections` / the Rust builder's
+    // `AppHost::declare_consumed_projections`) before `nmp_app_start`. An
+    // empty set at start time means the wiring step was omitted.
+    //
+    // The kernel primitive's empty=permissive semantic is intentional (test
+    // helpers, chirp-tui, chirp-desktop legitimately have no opinion — see
+    // ADR-0053 Decision 4). This warn fires only at the FFI boundary (the
+    // production-app entry path) where a non-narrowing set is an omission.
+    if !app.consumed_projections_are_narrowing() {
+        tracing::warn!(
+            "nmp_app_start: host declared no consumed projections — the kernel \
+             will serialize all {} Tier-2 built-in projections on every tick \
+             (including relay_diagnostics). Call \
+             `nmp_app_declare_consumed_projections` / \
+             `AppHost::declare_consumed_projections` before start to opt into \
+             the ADR-0053 optimization (ADR-0053 DEBT 2).",
+            nmp_core::KERNEL_BUILTIN_PROJECTION_KEYS.len(),
+        );
+    }
 
     // ADR-0049 Part 2 — mark the app started BEFORE sending Start. From this
     // point the actor reads every wiring slot once at kernel construction, so a

@@ -375,6 +375,15 @@ impl NmpAppBuilder<StorageSet> {
         // SAFETY: `app` non-null; not yet started.
         unsafe { &*app }.set_initial_relays_for_start(initial_relays);
 
+        // ADR-0053 DEBT 2 enforcement: `nmp_app_start` (reached below) emits a
+        // `tracing::warn!` if no consumed projections have been declared, which
+        // fires in all configurations including production. The warn signals
+        // that the host is getting the full Tier-2 built-in firehose (empty =
+        // no narrowing per ADR-0053 Decision 4). Test consumers legitimately
+        // have no opinion, so no hard assert is placed here — the single
+        // enforcement point lives in `nmp_app_start` (nmp-ffi) and covers
+        // all callers (builder path AND the raw C-ABI path from Swift/Kotlin).
+
         // SAFETY: `app` is non-null (builder invariant).
         nmp_app_start(app, 0, config.visible_limit, config.emit_hz);
         app

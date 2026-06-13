@@ -121,3 +121,31 @@ fn builder_full_pipeline_with_register_defaults_and_custom_run_config() {
     nmp_app_stop(app);
     nmp_app_free(app);
 }
+
+/// ADR-0053 DEBT 2 — verify that declaring projections before `start()` puts
+/// the app into the narrowing state. This proves the builder's
+/// `declare_consumed_projections` delegation reaches the `SnapshotRegistry`
+/// correctly — the declared set survives through `start()` and the
+/// `consumed_projections_are_narrowing()` query returns `true`.
+///
+/// The enforcement point for omissions is a `tracing::warn!` in
+/// `nmp_app_start` (not a hard assert) so test consumers that omit the
+/// declaration don't fail — only the warn fires for them.
+#[test]
+fn builder_with_declared_projections_is_narrowing_after_start() {
+    use nmp_core::substrate::AppHost;
+    let builder = NmpAppBuilder::new();
+    // Declare a small set — exercises the `AppHost::declare_consumed_projections`
+    // delegation path through the builder into the `SnapshotRegistry`.
+    builder.declare_consumed_projections(["profile", "accounts"]);
+    let app = builder.in_memory().start(RunConfig::default());
+    assert!(!app.is_null());
+    // SAFETY: `nmp_app_start` returned non-null; the pointer is valid for the
+    // duration of this test (we call `nmp_app_stop` + `nmp_app_free` below).
+    assert!(
+        unsafe { &*app }.consumed_projections_are_narrowing(),
+        "after declaring projections the app must be in narrowing state"
+    );
+    nmp_app_stop(app);
+    nmp_app_free(app);
+}
