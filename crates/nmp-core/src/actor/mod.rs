@@ -66,6 +66,8 @@ mod publish_relay_dispatch_tests;
 #[cfg(feature = "native")]
 pub(crate) mod raw_event_forwarder;
 #[cfg(feature = "native")]
+mod relay_event_guard;
+#[cfg(feature = "native")]
 mod relay_idle;
 #[cfg(feature = "native")]
 mod relay_mgmt;
@@ -211,7 +213,7 @@ pub use commands::ConformanceHarness;
 #[cfg(feature = "native")]
 use capability_worker::{spawn_capability_worker, CapabilityWorkSender};
 #[cfg(feature = "native")]
-use dispatch::{dispatch_command, handle_relay_event, ActorContext};
+use dispatch::{dispatch_command, ActorContext};
 #[cfg(feature = "native")]
 use pending_sign::{resolve_parked_op, ParkedOp, PublishObligation};
 
@@ -264,8 +266,6 @@ use nmp_network::pool::{Pool, PoolConfig, RelayHandle};
 use std::collections::HashMap;
 #[cfg(feature = "native")]
 use std::collections::HashSet;
-#[cfg(feature = "native")]
-use std::panic::{self, AssertUnwindSafe};
 #[cfg(feature = "native")]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(feature = "native")]
@@ -1972,10 +1972,14 @@ pub fn run_actor_with_observers(
         // drain_command_lane` is now the *only* implementation of the
         // command-priority + fairness + relay-backlog contract. It replays the
         // held `first_command`, drains up to `COMMAND_DRAIN_BUDGET` commands,
-        // stashes any relay mail it sees, and returns the commands as a `Vec`
-        // so the `&mut kernel` / `&mut identity` per-command dispatch (which a
-        // closure boundary cannot express, hence the prior inline copy) runs
-        // here, after the drain returns.
+        // stashes any relay mail it sees (honoring the #1264 RELAY_BACKLOG_CAP
+        // backpressure: once the backlog is full it STOPS pulling relay mail
+        // forward, leaving it in the bounded mpsc channel so pressure builds at
+        // the pool translator rather than silently dropping the oldest staged
+        // event), and returns the commands as a `Vec` so the `&mut kernel` /
+        // `&mut identity` per-command dispatch (which a closure boundary cannot
+        // express, hence the prior inline copy) runs here, after the drain
+        // returns.
         let CommandLaneDrain {
             commands,
             drain: command_drain,
@@ -2117,7 +2121,74 @@ pub fn run_actor_with_observers(
         // any handle whose generation no longer matches the slot's current
         // generation. The pool's translator already drops events with a
         // stale slot-generation, so this is belt-and-braces.
-        let wait = command_drain.relay_wait(compute_wait(&kernel, running, last_emit, emit_hz));
+        // Relay events are processed under panic isolation — see
+        // `relay_event_guard::process_relay_event`. `handle_relay_event`
+        // parses arbitrary network bytes (the highest-risk panic site in the
+        // actor); the guard's `catch_unwind` keeps a panic from killing the
+        // loop (D1: partial state tolerated, loop survival is the invariant).
+        // The same guarded helper serves BOTH the bounded backlog batch and
+        // the single recv'd event below (#1264).
+        //
+        // A small local macro forwards the actor's ~13 loop locals into the
+        // helper from both call sites without re-listing them (a closure would
+        // have to mutably re-borrow them per batch element).
+        macro_rules! process_relay_event {
+            ($event:expr) => {
+                relay_event_guard::process_relay_event(
+                    $event,
+                    &mut kernel,
+                    &relay_text_interceptor,
+                    &relay_connected_hook,
+                    &command_tx_self,
+                    &mut relay_controls,
+                    &mut slot_to_url,
+                    &pool,
+                    &mut next_relay_generation,
+                    &mut connected_relays,
+                    &mut connected_urls,
+                    &update_tx,
+                    &mut last_emit,
+                    &mut startup_sent,
+                    running,
+                )
+            };
+        }
+
+        // #1264: serve a BOUNDED batch of staged backlog events this iteration
+        // (up to RELAY_BACKLOG_DRAIN_BATCH) so the backlog drains faster than a
+        // sustained relay flood fills it — then ALWAYS fall through to the
+        // single blocking `recv_timeout` below. A non-empty backlog therefore no
+        // longer bypasses the one wait per iteration (D8), which kills the
+        // busy-spin that previously pinned the CPU under flood.
+        for event in scheduler.drain_backlog_batch() {
+            process_relay_event!(event);
+        }
+
+        // ── Relay event lane ─────────────────────────────────────────────
+        // Block up to compute_wait so emit-hz is respected without busy-spin.
+        // This `recv_timeout` is the loop's SINGLE blocking point (D8). A
+        // command received during the wait is replayed as `first_command` so
+        // the next iteration dispatches it on the priority lane (no added
+        // latency).
+        //
+        // #1264: when backlog work remains (the batch did not exhaust it) we
+        // pass a ZERO wait so the loop keeps draining promptly — but we STILL
+        // call `recv_timeout`, so the single blocking point is reached every
+        // iteration (no busy-spin / no D8 violation: a zero-timeout `recv` is
+        // the one wait, it simply returns immediately when nothing is queued).
+        //
+        // Phase F: the inbound item is `PoolEvent` (push-model). Stale-event
+        // filtering moved into `handle_relay_event` itself — the helper
+        // resolves `RelayHandle.slot()` → `(url, role)` via the `slot_to_url`
+        // side-map and the `relay_controls` entry, dropping any handle whose
+        // generation no longer matches the slot's current generation. The
+        // pool's translator already drops events with a stale slot-generation,
+        // so this is belt-and-braces.
+        let wait = if scheduler.has_backlog() {
+            std::time::Duration::ZERO
+        } else {
+            command_drain.relay_wait(compute_wait(&kernel, running, last_emit, emit_hz))
+        };
         match scheduler.next_after_drain(&inbox, wait) {
             LoopStep::Command(command) => {
                 // Woken by a command during the blocking wait — replay it on
@@ -2139,65 +2210,7 @@ pub fn run_actor_with_observers(
                 // Timeout (normal idle tick) — fall through to idle work.
             }
             LoopStep::Relay(event) => {
-                // Reliability north star: `handle_relay_event` processes
-                // arbitrary bytes from the network — it is the highest-risk
-                // panic site in the actor. Wrap it in `catch_unwind` so a
-                // panic in relay frame processing cannot kill the kernel:
-                // the actor loop survives, logs the payload, surfaces an
-                // error toast, and processes the next event fresh.
-                //
-                // `AssertUnwindSafe` is required because the closure
-                // captures `&mut` kernel state (`HashMap`/`Mutex` interiors
-                // are not `UnwindSafe`). This is sound here: the actor is
-                // single-threaded, so there is no other thread that could
-                // observe partially-mutated / poisoned state. Per D1
-                // (best-effort rendering) the kernel tolerates partial
-                // state — the invariant we protect is loop survival, not
-                // per-event atomicity.
-                //
-                // The command drain above is deliberately NOT wrapped:
-                // commands are internally generated, so a panic there is a
-                // genuine bug that must stay visible.
-                //
-                // V-38: pass the substrate-generic `RelayTextInterceptorSlot`
-                // so an installed NIP-crate runtime (today `nmp-nip47`) can
-                // peek at text frames the kernel would otherwise drop.
-                // `nmp-core` no longer names `wallet` / `NWC` at the actor
-                // boundary (D0).
-                let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                    handle_relay_event(
-                        event,
-                        &mut kernel,
-                        &relay_text_interceptor,
-                        &relay_connected_hook,
-                        &command_tx_self,
-                        &mut relay_controls,
-                        &mut slot_to_url,
-                        &pool,
-                        &mut next_relay_generation,
-                        &mut connected_relays,
-                        &mut connected_urls,
-                        &update_tx,
-                        &mut last_emit,
-                        &mut startup_sent,
-                        running,
-                    );
-                }));
-                if let Err(panic_payload) = result {
-                    let msg = panic_payload
-                        .downcast_ref::<&str>()
-                        .map(std::string::ToString::to_string)
-                        .or_else(|| panic_payload.downcast_ref::<String>().cloned())
-                        .unwrap_or_else(|| "unknown panic".to_string());
-                    kernel.log(format!("actor: relay event handler panicked: {msg}"));
-                    kernel.set_last_error_toast(Some(
-                        "relay processing error — continuing".to_string(),
-                    ));
-                    // Surface the toast on this tick rather than waiting
-                    // for the next `flush_due` — mirrors the pending-sign
-                    // error path below.
-                    emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                }
+                process_relay_event!(event);
             }
         }
 

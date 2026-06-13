@@ -167,6 +167,9 @@ fn real_registry_emits_exactly_the_proof_keys() {
     assert!(out.contains("enum TypedZapsDecoder {"));
     assert!(out.contains("enum TypedGroupChatDecoder {"));
     assert!(out.contains("enum TypedDiscoveredGroupsDecoder {"));
+    // #626: crate-owned NIP-29 group-create defaults (`groupDefaults` →
+    // `TypedGroupDefaultsDecoder`).
+    assert!(out.contains("enum TypedGroupDefaultsDecoder {"));
     // Profile-cluster keys — all three share the `nmp_kernel_ProfileCard` reader
     // (defined once via the shared `profile_card.fbs` include).
     assert!(out.contains("enum TypedProfileDecoder {"));
@@ -203,8 +206,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 28,
-        "exactly twenty-eight keys have a checked-in flatc --swift reader binding \
+        emitted, 29,
+        "exactly twenty-nine keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
@@ -218,7 +221,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
          plus the wallet (producer field-add) + settings_hub (kernel built-in) \
          flips; Wave C: action_results, action_stages; signer_state \
          (ADR-0048 D6, generalised from V-14 bunker_connection_state); V-112 \
-         author_view + thread_view deleted = 30 - 2 = 28); if this changed, \
+         author_view + thread_view deleted = 30 - 2 = 28; #626: \
+         nmp.nip29.group_defaults = 28 + 1 = 29); if this changed, \
          regenerate TypedProjectionDecoders.generated.swift and update this test"
     );
 }

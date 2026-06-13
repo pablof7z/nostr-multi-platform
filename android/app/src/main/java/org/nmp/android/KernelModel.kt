@@ -5,18 +5,13 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import org.nmp.android.model.AccountSummary
@@ -78,7 +73,6 @@ class KernelModel : ViewModel() {
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private var started = false
-    private var signerReaderJob: Job? = null
     private var lastLoadMoreCursor: TimelineWindowCursor? = null
 
     /** ADR-0048 Stage 2 — NIP-55 capability handler (activity-registered).
@@ -159,22 +153,15 @@ class KernelModel : ViewModel() {
             _snapshotCount.value += 1
             _lastSnapshotAtMs.value = System.currentTimeMillis()
         }
-        // ADR-0048 Stage 2 — drain NIP-55 requests; dispatch on Main (Intent requires it).
-        signerReaderJob = viewModelScope.launch(Dispatchers.IO) {
-            while (isActive) {
-                val requestJson = try {
-                    bridge.nextSignerRequest()
-                } catch (e: IllegalStateException) {
-                    Log.i(TAG, "signer request channel closed: ${e.message}")
-                    break
-                } ?: continue
-                val handler = externalSignerHandler
-                if (handler == null) {
-                    Log.w(TAG, "NIP-55 request dropped: no capability bridge registered")
-                    continue
-                }
-                withContext(Dispatchers.Main) { handler(requestJson) }
-            }
+        // ADR-0048 Stage 2 / issue #1284 — NIP-55 requests arrive via a JNI push
+        // callback (D8: no polling; mirrors the update-listener seam above).
+        // Rust invokes this on its capability-dispatch thread (a native
+        // background thread); the NIP-55 launch Intent requires the main thread,
+        // so we hop to Main before invoking the activity-owned handler.
+        bridge.setSignerRequestListener { requestJson ->
+            externalSignerHandler?.let { handler ->
+                viewModelScope.launch(Dispatchers.Main) { handler(requestJson) }
+            } ?: Log.w(TAG, "NIP-55 request dropped: no capability bridge registered")
         }
     }
 
@@ -458,16 +445,12 @@ class KernelModel : ViewModel() {
     }
 
     override fun onCleared() {
-        val signerJob = signerReaderJob
-        signerReaderJob = null
         started = false
         bridge.stop()
-        // `closeUpdates` quiesces the kernel update callback and drops the push
-        // listener (issue #614) — no reader coroutine to join anymore.
+        // `closeUpdates` quiesces the kernel update callback and drops both push
+        // listeners — the update listener (issue #614) and the NIP-55
+        // signer-request listener (issue #1284). No reader coroutine to join.
         bridge.closeUpdates()
-        runBlocking {
-            signerJob?.cancelAndJoin()
-        }
         bridge.free()
         super.onCleared()
     }

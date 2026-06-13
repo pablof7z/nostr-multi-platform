@@ -27,7 +27,6 @@ members = [
     "crates/nmp-nip51",
     "crates/nmp-nip57",
     "crates/nmp-nip59",
-    "crates/nmp-blossom",
     "apps/nmp-gallery/nmp-app-gallery",
     "crates/nmp-nip77",
     "crates/nmp-wot",
@@ -38,8 +37,6 @@ members = [
     "crates/nmp-planner",
     "crates/nmp-router",
     "crates/nmp-store",
-    "crates/nmp-nip60",
-    "apps/nmp-wallet-poc",
     "crates/nmp-nwc",
     "crates/nmp-repl",
     "crates/nmp-signer-broker",
@@ -49,6 +46,30 @@ members = [
     "crates/nmp-threading",
     "apps/chirp/chirp-desktop",
     "crates/nmp-wasm",
+]
+# PARKED CRATES — excluded from the default workspace build.
+#
+# These crates are post-v1 (see docs/plan.md §133-141) and their primary
+# action stubs return `Err(Unsupported)`. Keeping them as active members
+# would violate the no-dead-code / no-false-advertising rule in AGENTS.md
+# §155-170. The code is preserved in-tree so it is ready when the
+# corresponding milestone enters scope:
+#
+#   nmp-blossom  — Blossom media-upload protocol. Re-activate when M10
+#                  (#998) enters scope.
+#   nmp-nip60    — Cashu / nutzaps (NIP-60). Re-activate when issue
+#                  #1001 enters scope.
+#   apps/nmp-wallet-poc — standalone POC binary that depends on nmp-nip60.
+#                  Parked together with its dependency.
+#
+# To build a parked crate on demand:
+#   cargo build --manifest-path crates/nmp-blossom/Cargo.toml
+#   cargo build --manifest-path crates/nmp-nip60/Cargo.toml
+#   cargo build --manifest-path apps/nmp-wallet-poc/Cargo.toml
+exclude = [
+    "crates/nmp-blossom",
+    "crates/nmp-nip60",
+    "apps/nmp-wallet-poc",
 ]
 resolver = "2"
 

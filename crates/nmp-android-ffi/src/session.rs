@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicI64, AtomicPtr, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
+#[cfg(test)]
+use std::sync::mpsc::RecvTimeoutError;
+#[cfg(test)]
 use std::time::Duration;
 
 use jni::sys::jlong;
@@ -11,6 +14,7 @@ use nmp_app_chirp::{nmp_app_chirp_unregister, ChirpHandle};
 use nmp_ffi::{nmp_app_free, nmp_app_set_capability_callback, nmp_app_set_update_callback, NmpApp};
 
 use crate::capability::CapabilityHandlerSlot;
+use crate::signer_request_listener::SignerRequestListenerSlot;
 use crate::update_listener::UpdateListenerSlot;
 pub(crate) use crate::update_listener::UpdatePushListener;
 
@@ -68,43 +72,6 @@ struct SessionState {
     freed: bool,
 }
 
-/// Outbound `external_signer` capability requests (ADR-0048 Stage 2),
-/// drained by the Kotlin reader via `nativeNextSignerRequest` — the same
-/// channel + blocking-timed-drain shape as the update-frame channel (it
-/// sidesteps JNI thread-attach/global-ref complexity; see the module doc
-/// in `lib.rs`).
-pub(crate) struct SignerRequestChannel {
-    tx: Mutex<Option<Sender<String>>>,
-    rx: Mutex<Receiver<String>>,
-}
-
-impl SignerRequestChannel {
-    fn new() -> Self {
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-        Self {
-            tx: Mutex::new(Some(tx)),
-            rx: Mutex::new(rx),
-        }
-    }
-
-    /// Push one `ExternalSignerRequest` JSON payload for the Kotlin drain.
-    pub(crate) fn push(&self, payload_json: String) -> bool {
-        let Ok(guard) = self.tx.lock() else {
-            return false;
-        };
-        match guard.as_ref() {
-            Some(tx) => tx.send(payload_json).is_ok(),
-            None => false,
-        }
-    }
-
-    fn close(&self) {
-        if let Ok(mut guard) = self.tx.lock() {
-            guard.take();
-        }
-    }
-}
-
 /// Owns the Android JNI kernel lifetime.
 ///
 /// Kotlin receives an integer registry id, not this allocation's address. Every
@@ -120,10 +87,21 @@ pub(crate) struct Session {
     rx: Mutex<Receiver<Vec<u8>>>,
     callback_state: Arc<CallbackState>,
     callback_context: *const CallbackState,
-    /// ADR-0048 Stage 2 — outbound NIP-55 capability requests for the Kotlin
-    /// drain. The capability trampoline (`external_signer::on_capability_request`)
-    /// pushes; `nativeNextSignerRequest` drains.
-    pub(crate) signer_requests: SignerRequestChannel,
+    /// ADR-0048 Stage 2 — JNI push listener for outbound NIP-55 capability
+    /// requests (issue #1284, D8: no polling). The capability trampoline
+    /// (`external_signer::on_capability_request`) pushes each request JSON
+    /// straight to the registered Kotlin listener; cleared on teardown by
+    /// [`Self::close_updates_locked`] after the capability socket is
+    /// unregistered.
+    pub(crate) signer_request_listener: SignerRequestListenerSlot,
+    /// Test-only capture sink for pushed NIP-55 signer requests. Production
+    /// pushes go through the JNI `signer_request_listener` (which needs a live
+    /// JVM); the unit tests have no JVM, so `push_signer_request` mirrors each
+    /// pushed request into this `Vec` when one is present and reports success,
+    /// letting the trampoline tests assert the request payload + ack envelope
+    /// without a JNI listener. Never compiled into the shipped `.so`.
+    #[cfg(test)]
+    pub(crate) signer_request_capture: Mutex<Option<Vec<String>>>,
     /// Synchronous capability handler for non-`external_signer` namespaces
     /// (e.g. Android Keystore keyring). Registered by `nativeSetCapabilityHandler`;
     /// cleared in `close_updates_locked` after the capability socket is unregistered.
@@ -156,7 +134,9 @@ impl Session {
             rx: Mutex::new(rx),
             callback_state,
             callback_context,
-            signer_requests: SignerRequestChannel::new(),
+            signer_request_listener: Mutex::new(None),
+            #[cfg(test)]
+            signer_request_capture: Mutex::new(None),
             capability_handler: Mutex::new(None),
             marmot: AtomicPtr::new(std::ptr::null_mut()),
         }
@@ -234,21 +214,6 @@ impl Session {
         }
     }
 
-    /// Blocking timed drain of the outbound NIP-55 signer-request channel
-    /// (ADR-0048 Stage 2). Same contract as [`Self::recv_next_update`]:
-    /// `Idle` is a normal timeout tick, `Closed` means the channel sender
-    /// was dropped (session teardown) and the Kotlin reader must stop.
-    pub(crate) fn recv_next_signer_request(&self, timeout: Duration) -> NextSignerRequest {
-        let Ok(rx) = self.signer_requests.rx.lock() else {
-            return NextSignerRequest::Closed;
-        };
-        match rx.recv_timeout(timeout) {
-            Ok(payload) => NextSignerRequest::Request(payload),
-            Err(RecvTimeoutError::Timeout) => NextSignerRequest::Idle,
-            Err(RecvTimeoutError::Disconnected) => NextSignerRequest::Closed,
-        }
-    }
-
     fn close_updates_locked(&self, state: &mut SessionState) {
         if state.updates_closed {
             return;
@@ -275,9 +240,15 @@ impl Session {
             // dispatch degrades to an error envelope via the registry lookup
             // rather than a use-after-free.
             nmp_app_set_capability_callback(state.app, std::ptr::null_mut(), None);
+            // Issue #1284 — drop the NIP-55 signer-request push listener
+            // `GlobalRef` now that the capability trampoline above is
+            // unregistered. The trampoline snapshots an `Arc` clone of the
+            // listener under the slot lock and drops the lock before its JNI
+            // upcall (mirrors `on_update`), so this `take()` only ever races a
+            // cheap `Arc::clone`, never an in-flight `push`.
+            self.clear_signer_request_listener();
         }
         self.callback_state.close();
-        self.signer_requests.close();
         // Drop the synchronous capability handler GlobalRef.
         //
         // UAF safety is NOT the capability-socket unregister above: unlike the
@@ -307,7 +278,9 @@ impl Session {
             rx: Mutex::new(rx),
             callback_state: Arc::new(CallbackState::new(tx)),
             callback_context: std::ptr::null(),
-            signer_requests: SignerRequestChannel::new(),
+            signer_request_listener: Mutex::new(None),
+            #[cfg(test)]
+            signer_request_capture: Mutex::new(None),
             capability_handler: Mutex::new(None),
             marmot: AtomicPtr::new(std::ptr::null_mut()),
         })
@@ -332,14 +305,6 @@ impl Drop for Session {
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum NextUpdate {
     Frame(Vec<u8>),
-    Idle,
-    Closed,
-}
-
-/// Result of one `recv_next_signer_request` drain tick (ADR-0048 Stage 2).
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) enum NextSignerRequest {
-    Request(String),
     Idle,
     Closed,
 }

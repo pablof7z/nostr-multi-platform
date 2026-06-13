@@ -44,6 +44,10 @@ use nmp_wasm::{
     WorkerRequest,
 };
 
+// Imports used only by the wasm32-only async publish test (#1202 guard).
+#[cfg(target_arch = "wasm32")]
+use nmp_wasm::{AppAction, CapabilityFailure, SetSigner};
+
 /// Boot the runtime through Hello → Start and assert:
 /// - `HelloAccepted` is returned for a matching protocol version.
 /// - `RuntimeStatus::Running` is returned after Start.
@@ -133,4 +137,80 @@ fn wasm_runtime_boots_without_panicking() {
         "configured_relays must contain the bootstrap relay URL 'ws://127.0.0.1:1'; got: {:?}",
         cr.relays
     );
+}
+
+/// #1202 regression guard — the async publish path MUST surface an explicit
+/// `publish_not_supported_in_web_preview` `CapabilityFailure` instead of
+/// silently swallowing the event.
+///
+/// Before #1202 the path called `publish_signed_event` on a kernel whose
+/// `NoopOutboxResolver` resolved zero relay targets (`PublishTarget::Auto` →
+/// `NoTargets`), then returned `ActionAccepted` — the host had no way to know
+/// the event was never sent. This test asserts the honest-disable contract:
+/// `start_publish_app_action` must resolve to a `CapabilityFailure` with the
+/// `publish_not_supported_in_web_preview:` prefix for every app-level write
+/// action while the real composition root is pending (#1007).
+///
+/// This test runs only on `wasm32` (where `start_publish_app_action` exists)
+/// via `wasm-pack test --headless --chrome`. The native variant of this guard
+/// is the `publish_not_supported_in_web_preview_reason_has_stable_prefix` unit
+/// test in `publish_path.rs`, which pins the reason-string prefix contract
+/// cross-target.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen_test]
+async fn async_publish_path_surfaces_honest_disable_not_action_accepted() {
+    // Install a NIP-07 signer so the gate cannot be attributed to a missing
+    // signer (we want to reach the honest-disable gate, not the
+    // `signer_not_installed` gate).
+    let mut runtime = WasmRuntime::new();
+    runtime
+        .handle(WorkerRequest::SetSigner(SetSigner {
+            kind: "nip07".to_string(),
+            pubkey_hex: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+                .to_string(),
+            correlation_id: "set-1".to_string(),
+        }))
+        .expect("SetSigner must succeed");
+
+    // Drive the async publish path — this is the path that previously hit
+    // NoopOutboxResolver → NoTargets → silent ActionAccepted (the #1202 bug).
+    let event = runtime
+        .start_publish_app_action(
+            AppAction::PublishNote {
+                content: "hello from wasm".to_string(),
+                reply_to_id: None,
+            },
+            "pub-wasm-1".to_string(),
+            // now_secs: fixed; the honest-disable gate returns before any
+            // publish_signed_event call so the timestamp is never used.
+            1_700_000_000,
+        )
+        .await;
+
+    match event {
+        WorkerEvent::CapabilityFailure(CapabilityFailure { capability, reason, .. }) => {
+            assert_eq!(
+                capability, "nmp.publish",
+                "CapabilityFailure must carry the correct capability; got: {capability:?}"
+            );
+            assert!(
+                reason.starts_with("publish_not_supported_in_web_preview:"),
+                "async publish path must surface 'publish_not_supported_in_web_preview:' prefix, \
+                 NOT 'action_accepted' or any silent-success indicator; got: {reason:?}"
+            );
+        }
+        WorkerEvent::ActionAccepted { .. } => {
+            panic!(
+                "#1202 regression: async publish path returned ActionAccepted but the event \
+                 was silently dropped (NoopOutboxResolver → NoTargets). The honest-disable \
+                 gate must return CapabilityFailure before any publish_signed_event call."
+            );
+        }
+        other => {
+            panic!(
+                "expected CapabilityFailure with publish_not_supported_in_web_preview prefix, \
+                 got: {other:?}"
+            );
+        }
+    }
 }

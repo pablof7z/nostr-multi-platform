@@ -37,7 +37,12 @@
 //! Every type here is `pub(crate)` or below; nothing leaks across the FFI
 //! boundary.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// Type-only import: keepalive is D7-pure and never calls `Instant::now()` in
+// production (time enters solely through caller-supplied `Instant` values — see
+// the module header). `std::time::Instant == web_time::Instant` at the type
+// level, so the bare import is wasm-safe (no `.now()` to panic on wasm32).
+use std::time::Instant; // doctrine-allow: D20 — type-only; no Instant::now() in prod (caller-supplied)
 
 /// Verdict returned by `KeepaliveState::step`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
