@@ -248,7 +248,13 @@ fn outbox_routes_real_author_kind10002_writes() {
 
     let resolver = Nip65OutboxResolver::with_default_fallback(store);
     let resolved: BTreeSet<String> = resolver
-        .resolve(&listing.author_hex, &[], &PublishTarget::Auto, 1)
+        .resolve(
+            &listing.author_hex,
+            &[],
+            &PublishTarget::Auto,
+            1,
+            &nmp_core::substrate::BlockedRelaySet::new(),
+        )
         .into_iter()
         .map(|r| r.url)
         .collect();

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::action::{PublishHandle, PublishTarget, RelayUrl};
 use super::state::{PerRelayState, RelayAck};
-use crate::substrate::SignedEvent;
+use crate::substrate::{BlockedRelaySet, SignedEvent};
 
 /// Structured reason a relay was added to a publish set.
 ///
@@ -112,12 +112,22 @@ pub trait OutboxResolver: Send + Sync {
     /// human-readable reason it was selected. The returned `Vec` may contain
     /// the same canonical URL more than once with different reasons — the
     /// engine deduplicates and merges reasons at the call site.
+    ///
+    /// `blocked` is the active account's kind:10006 blocked-relay set. Every
+    /// impl MUST exclude blocked relays from its output — including the
+    /// `PublishTarget::Explicit` path (a user-named relay that the account
+    /// also blocked is still blocked; blocking is a privacy decision the
+    /// resolver must honour unconditionally). This mirrors the subscribe-side
+    /// `GenericOutboxRouter`, which filters `blocked_relays.contains` on every
+    /// lane. Without this filter the outbox resolver silently leaked the
+    /// author's events to relays they explicitly told us never to publish to.
     fn resolve(
         &self,
         author_pubkey: &str,
         p_tags: &[String],
         target: &PublishTarget,
         kind: u32,
+        blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay>;
 }
 
@@ -137,10 +147,12 @@ impl OutboxResolver for StaticOutbox {
         p_tags: &[String],
         target: &PublishTarget,
         _kind: u32,
+        blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay> {
         if let PublishTarget::Explicit { relays } = target {
             return relays
                 .iter()
+                .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
                     reason: RelaySelectionReason::Explicit,
@@ -190,6 +202,9 @@ impl OutboxResolver for StaticOutbox {
                 }
             }
         }
+        // Privacy post-filter: never emit a blocked relay (parity with the
+        // subscribe-side router and `Nip65OutboxResolver`).
+        out.retain(|r| !blocked.contains(&r.url));
         out
     }
 }
@@ -205,10 +220,12 @@ impl OutboxResolver for NoopOutboxResolver {
         _p_tags: &[String],
         target: &PublishTarget,
         _kind: u32,
+        blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay> {
         if let PublishTarget::Explicit { relays } = target {
             return relays
                 .iter()
+                .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
                     reason: RelaySelectionReason::Explicit,

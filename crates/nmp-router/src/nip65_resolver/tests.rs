@@ -20,6 +20,14 @@ use nmp_core::slots::{
     new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
 };
 use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_core::substrate::BlockedRelaySet;
+
+/// Empty blocked-relay set — the common case for tests that don't exercise
+/// the kind:10006 block filter. Spelled once so each `resolve` call site reads
+/// `&no_block()` rather than `&BlockedRelaySet::new()`.
+fn no_block() -> BlockedRelaySet {
+    BlockedRelaySet::new()
+}
 
 /// Test helper — typed [`IndexerRelaysSlot`] pre-populated with `urls`.
 /// Centralizes typed-slot construction so tests that need a non-empty
@@ -104,7 +112,7 @@ fn nip65_resolver_uses_author_writes_when_present() {
         ],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
     assert!(urls.contains("wss://write.example"));
     // Read-only relays are NOT used for the author's own writes.
@@ -122,7 +130,7 @@ fn nip65_resolver_uses_author_writes_when_present() {
 fn nip65_resolver_returns_empty_when_no_kind10002() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     assert!(
         out.is_empty(),
         "author with no kind:10002 must resolve to empty set (fail-closed, NoTargets); \
@@ -140,13 +148,13 @@ fn nip65_resolver_uses_local_writes_for_active_account_only() {
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
     );
 
-    let own = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    let own = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     assert_eq!(
         urls_of(&own),
         BTreeSet::from(["wss://local-write.example".to_string()])
     );
 
-    let other = resolver.resolve(RECIPIENT_HEX, &[], &PublishTarget::Auto, 1);
+    let other = resolver.resolve(RECIPIENT_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     assert!(
         other.is_empty(),
         "local relay rows must not route already-signed events for other authors"
@@ -175,12 +183,7 @@ fn nip65_resolver_unions_recipient_reads_for_p_tags() {
         ]],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        1,
-    );
+    let out = resolver.resolve(AUTHOR_HEX, &[RECIPIENT_HEX.to_string()], &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
     assert!(urls.contains("wss://author-write.example"));
     assert!(urls.contains("wss://recipient-read.example"));
@@ -210,7 +213,7 @@ fn nip65_resolver_skips_recipient_reads_at_p_tag_threshold() {
     let recipients = threshold_recipients();
 
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(AUTHOR_HEX, &recipients, &PublishTarget::Auto, 1);
+    let out = resolver.resolve(AUTHOR_HEX, &recipients, &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
 
     assert!(urls.contains("wss://author-write.example"));
@@ -247,7 +250,7 @@ fn nip65_resolver_keeps_discovery_indexers_when_p_tag_threshold_skips_inboxes() 
         indexer_slot_with(vec!["wss://indexer.example".to_string()]),
     );
 
-    let out = resolver.resolve(AUTHOR_HEX, &recipients, &PublishTarget::Auto, 3);
+    let out = resolver.resolve(AUTHOR_HEX, &recipients, &PublishTarget::Auto, 3, &no_block());
     let urls = urls_of(&out);
 
     assert!(urls.contains("wss://author-write.example"));
@@ -267,6 +270,7 @@ fn nip65_resolver_returns_explicit_unchanged() {
             relays: explicit.clone(),
         },
         1,
+        &no_block(),
     );
     assert_eq!(urls_of(&out), explicit.into_iter().collect::<BTreeSet<_>>());
 }
@@ -289,7 +293,7 @@ fn nip65_resolver_handles_malformed_kind10002_gracefully() {
         ],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
     assert!(urls.contains("wss://valid.example"));
     assert!(!urls.contains("https://example.com"));
@@ -310,12 +314,7 @@ fn nip65_resolver_unmarked_tag_is_both() {
         vec![vec!["r".into(), "wss://recipient-both.example".into()]],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        1,
-    );
+    let out = resolver.resolve(AUTHOR_HEX, &[RECIPIENT_HEX.to_string()], &PublishTarget::Auto, 1, &no_block());
     let urls = urls_of(&out);
     // Unmarked counts as both → write goes here.
     assert!(urls.contains("wss://both.example"));
@@ -331,7 +330,7 @@ fn nip65_resolver_invalid_author_hex_returns_empty() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     let resolver = mk_resolver(store);
     // Short / non-hex author → lookup returns None → empty (fail-closed).
-    let out = resolver.resolve("not-hex", &[], &PublishTarget::Auto, 1);
+    let out = resolver.resolve("not-hex", &[], &PublishTarget::Auto, 1, &no_block());
     assert!(
         out.is_empty(),
         "unparseable author pubkey must resolve to empty set (fail-closed); \
@@ -358,7 +357,7 @@ fn resolve_returns_nip65_write_relay_reason() {
         ]],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     assert!(matches!(
         find_reason(&out, "wss://write.example"),
         Some(RelaySelectionReason::AuthorWriteRelay)
@@ -377,7 +376,7 @@ fn resolve_returns_app_relay_reason_when_no_kind10002() {
         local_write_slot_with(vec!["wss://local-write.example".to_string()]),
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
     );
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     assert!(matches!(
         find_reason(&out, "wss://local-write.example"),
         Some(RelaySelectionReason::LocalConfigRelay)
@@ -398,7 +397,7 @@ fn resolve_returns_discovery_indexer_reason_for_kind0() {
         store,
         indexer_slot_with(vec!["wss://indexer.example".to_string()]),
     );
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 0);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 0, &no_block());
     assert!(matches!(
         find_reason(&out, "wss://indexer.example"),
         Some(RelaySelectionReason::DiscoveryIndexer { kind: 0 })
@@ -432,12 +431,7 @@ fn resolve_returns_inbox_relay_reason_for_p_tags() {
         ]],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(
-        AUTHOR_HEX,
-        &[RECIPIENT_HEX.to_string()],
-        &PublishTarget::Auto,
-        1,
-    );
+    let out = resolver.resolve(AUTHOR_HEX, &[RECIPIENT_HEX.to_string()], &PublishTarget::Auto, 1, &no_block());
     let reason = find_reason(&out, "wss://recipient-read.example")
         .expect("recipient read relay must be present");
     match reason {
@@ -484,7 +478,7 @@ fn resolve_fail_closed_when_kind10002_has_only_read_relays_non_discovery() {
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
     );
     // Non-discovery kind (kind:1 note).
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     assert!(
         out.is_empty(),
         "kind:10002 with only read relays must resolve to empty (fail-closed, NoTargets) \
@@ -511,7 +505,7 @@ fn resolve_local_write_fallback_fires_when_no_kind10002_at_all() {
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
     );
     // Non-discovery kind — bootstrap fallback must fire.
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &no_block());
     assert_eq!(
         urls_of(&out),
         BTreeSet::from(["wss://local-write.example".to_string()]),
@@ -541,6 +535,7 @@ fn resolve_returns_explicit_relay_reason() {
             relays: explicit.clone(),
         },
         1,
+        &no_block(),
     );
     assert_eq!(out.len(), 2);
     for url in &explicit {

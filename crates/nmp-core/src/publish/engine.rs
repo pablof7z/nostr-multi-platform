@@ -49,7 +49,7 @@ use super::traits::{
     OutboxResolver, PublishStore, PublishStoreError, RelayDispatcher, RelaySelectionReason, Signer,
 };
 use super::view::{PublishStatusSnapshot, PublishStatusState, RecentFailure};
-use crate::substrate::SignedEvent;
+use crate::substrate::{empty_blocked_relay_lookup, BlockedRelayLookup, SignedEvent};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum PublishEngineError {
@@ -91,6 +91,12 @@ pub struct PublishEngine {
     pub view: PublishStatusState,
     policy: RetryPolicy,
     outbox: Arc<dyn OutboxResolver>,
+    /// Per-account blocked-relay lookup (kind:10006). Consulted at resolve
+    /// time so the outbox resolver can exclude relays the author told us to
+    /// never publish to. Default is [`empty_blocked_relay_lookup`] (no
+    /// blocks); production composition installs the router-side
+    /// `InMemoryBlockedRelayCache` via [`PublishEngine::set_blocked_relay_lookup`].
+    blocked_relays: Arc<dyn BlockedRelayLookup>,
     dispatcher: Arc<dyn RelayDispatcher>,
     store: Arc<dyn PublishStore>,
     #[allow(dead_code)]
@@ -130,6 +136,7 @@ impl PublishEngine {
             view: PublishStatusState::new(&super::view::PublishStatusSpec::default()),
             policy,
             outbox,
+            blocked_relays: empty_blocked_relay_lookup(),
             dispatcher,
             store,
             signer,
@@ -152,6 +159,18 @@ impl PublishEngine {
     /// every tick).
     pub fn set_outbox(&mut self, outbox: Arc<dyn OutboxResolver>) {
         self.outbox = outbox;
+    }
+
+    /// Swap the engine's [`BlockedRelayLookup`] in-place. Production
+    /// composition (`nmp-defaults::register_defaults` → kernel wiring)
+    /// installs the router-side `InMemoryBlockedRelayCache` so the outbox
+    /// resolver excludes the active account's kind:10006 blocked relays. The
+    /// default is [`empty_blocked_relay_lookup`] (no blocks — a kernel built
+    /// without the router-side cache behaves exactly as before this seam
+    /// existed). MUST be installed before any publish reaches `start_publish`
+    /// for the block to take effect on that publish.
+    pub fn set_blocked_relay_lookup(&mut self, lookup: Arc<dyn BlockedRelayLookup>) {
+        self.blocked_relays = lookup;
     }
 
     /// Drive a `PublishAction` into the engine.
@@ -209,11 +228,19 @@ impl PublishEngine {
         if self.in_flight.contains_key(&handle) {
             return Err(PublishEngineError::DuplicateHandle(handle));
         }
+        // Resolve the author's kind:10006 blocked-relay set once and pass it
+        // into the resolver so every selected relay (write set, fallback,
+        // discovery indexers, recipient inboxes, and even explicit targets)
+        // is filtered against it. Privacy fix: before this the outbox
+        // resolver had no blocked set and leaked publishes to relays the
+        // author explicitly blocked.
+        let blocked = self.blocked_relays.blocked_relays(&event.unsigned.pubkey);
         let resolved = self.outbox.resolve(
             &event.unsigned.pubkey,
             &helpers::collect_p_tags(&event),
             &target,
             event.unsigned.kind,
+            &blocked,
         );
         // Deduplicate by canonical URL. When the same canonical URL appears
         // with multiple distinct reasons (e.g. NIP-65 write relay AND a

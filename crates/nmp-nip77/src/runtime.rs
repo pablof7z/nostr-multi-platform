@@ -9,7 +9,7 @@ use nmp_core::{Kernel, OutboundMessage};
 use nmp_coverage_gate::{CoverageGate, FilterFanout};
 use nostr::{Filter, JsonUtil as _, RelayMessage};
 
-use crate::codec::{hex_decode, notice_mentions_negentropy};
+use crate::codec::{hex_decode_size_limited, notice_mentions_negentropy};
 use crate::filter::EligibleFilter;
 use crate::messages;
 use crate::reconciler::{Reconciler, ReconcilerOutcome};
@@ -254,7 +254,7 @@ impl RelayTextInterceptor for NegentropySyncRuntime {
                 else {
                     return Vec::new();
                 };
-                let Ok(msg) = hex_decode(&message) else {
+                let Ok(msg) = hex_decode_size_limited(&message) else {
                     self.set_relay_state(
                         kernel,
                         session.role,
