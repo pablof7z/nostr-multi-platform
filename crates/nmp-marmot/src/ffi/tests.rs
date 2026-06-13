@@ -539,21 +539,19 @@ fn ingest_parser_kind_1059_coexistence_both_parsers_fire() {
     let sender = Keys::generate();
     let receiver = Keys::generate();
     let (gift_json, _) = {
-        use nmp_nip59::{gift_wrap_with_signer, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
+        use nmp_nip59::gift_wrap_local;
         use nostr::{EventBuilder, Kind, Tag, Timestamp};
         let rumor = EventBuilder::new(Kind::from_u16(14), "coexistence test")
             .tags(vec![Tag::public_key(receiver.public_key())])
             .custom_created_at(Timestamp::from(1_700_000_000u64))
             .build(sender.public_key());
-        let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
-        let envelope = gift_wrap_with_signer(
-            &signer,
+        let envelope = gift_wrap_local(
+            &sender,
             &receiver.public_key(),
             &rumor,
             Timestamp::from(1_700_000_000u64),
         )
-        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
-        .expect("gift_wrap succeeds with local keys");
+        .expect("gift_wrap_local succeeds with local keys");
         let tag_vecs: Vec<Vec<String>> = envelope
             .tags
             .iter()

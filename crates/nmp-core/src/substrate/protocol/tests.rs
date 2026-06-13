@@ -100,7 +100,7 @@ fn with_send_only_defaults_are_safe() {
     let ctx = ProtocolCommandContext::with_send_only(&send);
     assert_eq!(ctx.now_secs(), 0);
     assert!(ctx.active_local_keys().is_none());
-    assert!(ctx.signer_for_seal().is_none());
+    assert!(ctx.active_account_pubkey().is_none());
     assert!(ctx.dm_inbox_relays("anything").is_none());
     ctx.set_last_error_toast(Some("toast".to_string()));
     ctx.record_action_failure("cid".to_string(), "err".to_string());
@@ -119,14 +119,14 @@ impl KernelClock for FixedClock {
 
 struct LocalSigners {
     keys: Option<nostr::Keys>,
-    signer: Option<Arc<dyn nmp_nip59::SignerForSeal>>,
+    active_pubkey: Option<String>,
 }
 impl LocalSignerAccess for LocalSigners {
     fn active_local_keys(&self) -> Option<nostr::Keys> {
         self.keys.clone()
     }
-    fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
-        self.signer.clone()
+    fn active_account_pubkey(&self) -> Option<String> {
+        self.active_pubkey.clone()
     }
 }
 
@@ -173,7 +173,7 @@ fn full_constructor_threads_capabilities() {
     let clock = FixedClock(123_456);
     let signers = LocalSigners {
         keys: None,
-        signer: None,
+        active_pubkey: None,
     };
     let dms = crate::substrate::EmptyDmInboxRelayLookup;
     let errors = RecordingErrors {
@@ -202,7 +202,7 @@ fn full_constructor_threads_capabilities() {
 
     assert_eq!(ctx.now_secs(), 123_456);
     assert!(ctx.active_local_keys().is_none());
-    assert!(ctx.signer_for_seal().is_none());
+    assert!(ctx.active_account_pubkey().is_none());
     assert!(ctx.dm_inbox_relays("anyone").is_none());
     ctx.set_last_error_toast(Some("hello".to_string()));
     ctx.record_action_failure("cid-z".to_string(), "boom".to_string());

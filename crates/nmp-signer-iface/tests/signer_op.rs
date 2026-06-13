@@ -2,10 +2,10 @@
 //! signer operation that may complete asynchronously.
 //!
 //! `SignerOp` is the load-bearing seam between the (synchronous, `std::sync::
-//! mpsc`-driven) kernel actor and the various signer backends; pending a real
-//! `gift_wrap_with_signer` consumer landing, these unit tests pin the synchronous
-//! `Ready` / `Pending` / `wait` / `poll` contract from inside the crate so the
-//! upcoming signer-seam refactor cannot silently regress it.
+//! mpsc`-driven) kernel actor and the various signer backends (it carries the
+//! actor's three-verb port results — sign / nip44_encrypt / nip44_decrypt).
+//! These unit tests pin the synchronous `Ready` / `Pending` / `wait` / `poll`
+//! contract from inside the crate so the signer-seam cannot silently regress.
 
 use std::sync::mpsc;
 use std::thread;

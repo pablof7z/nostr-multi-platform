@@ -88,7 +88,7 @@ pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 /// `nmp-nip57` zap path). Re-exported through the substrate so NIP crates
 /// reach it via `nmp_core::substrate::SignerOp` rather than adding a direct
 /// `nmp-signer-iface` dependency — every signer surface a NIP crate touches
-/// stays funnelled through `nmp_core::substrate` (mirrors `SignerForSeal`).
+/// stays funnelled through `nmp_core::substrate`.
 /// [`SignerError`] rides along because `SignerOp::Pending` carries a
 /// `Receiver<Result<T, SignerError>>`, so any crate constructing or matching
 /// on a pending op needs the error name too.
@@ -101,10 +101,11 @@ pub use keyring::{
 pub use nmp_store::{DomainMigration, MigrationTx};
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{
-    build_sign_event_for_account, ActionStageTracker, DmInboxLookup, ErrorSurface, KernelClock,
-    LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopKernelClock,
-    NoopLocalSignerAccess, NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
-    ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup,
+    build_nip44_encrypt_for_account, build_sign_event_for_account, ActionStageTracker,
+    DmInboxLookup, ErrorSurface, KernelClock, LocalSignerAccess, NoopActionStageTracker,
+    NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup,
+    ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts, ProtocolCommandError,
+    RecipientRelayLookup,
 };
 pub use raw_event_forwarding::{
     RawEventForwardPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
@@ -120,16 +121,9 @@ pub use relay_intercept::{
 pub use req_intercept::{
     new_req_frame_interceptor_slot, ReqFrameContext, ReqFrameInterceptor, ReqFrameInterceptorSlot,
 };
-// V-08 — re-export `SignerForSeal` from `nmp-nip59` so NIP crates depending
-// only on `nmp-core` can name the signer-capability trait that
-// `ProtocolCommandContext::signer_for_seal` returns. Gift-wrap is the one
-// NIP crate substrate is allowed to depend on per the spec (Layer 4
-// exception); re-exporting its capability trait keeps the dep wall
-// asymmetric the way the architecture wants it.
 #[cfg(any(test, feature = "test-support"))]
 pub use empty_routing::TestInMemoryMailboxCache;
 pub use empty_routing::{EmptyMailboxCache, EmptyOutboxRouter};
-pub use nmp_nip59::SignerForSeal;
 #[cfg(feature = "lmdb-backend")]
 pub use relay_score_store::LmdbRelayAuthorScoreStore;
 pub use relay_score_store::{NoopRelayAuthorScoreStore, RelayAuthorScoreStore, ScoreCell};

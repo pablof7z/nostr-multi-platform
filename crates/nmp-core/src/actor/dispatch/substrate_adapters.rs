@@ -9,8 +9,6 @@
 //! adapters are a self-contained cluster (five `'a`-lifetime substrate-trait
 //! wrappers over a `&RefCell<&mut Kernel>` / `&RefCell<&IdentityRuntime>`).
 
-use std::sync::Arc;
-
 use super::IdentityRuntime;
 use crate::kernel::Kernel;
 
@@ -44,8 +42,8 @@ impl<'a> crate::substrate::LocalSignerAccess for LocalSignerAccessAdapter<'a> {
     fn active_local_keys(&self) -> Option<nostr::Keys> {
         self.identity.borrow().active_local_keys().cloned()
     }
-    fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
-        self.identity.borrow().active_signer_for_seal()
+    fn active_account_pubkey(&self) -> Option<String> {
+        self.identity.borrow().active_pubkey()
     }
 }
 

@@ -80,7 +80,6 @@ mod publish;
 mod raw_event_observer;
 #[cfg(feature = "native")]
 mod relays;
-mod remote_signer_for_seal;
 // V-41 — `zap` + `zap_lnurl` moved to
 // `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` (a `ProtocolCommand`
 // dispatched via `ActorCommand::Protocol`). D0: `nmp-core` carries no

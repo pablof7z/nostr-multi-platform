@@ -151,8 +151,8 @@ fn signed_event_json(
 }
 
 /// Build and return a kind:1059 gift-wrap JSON `Value` from `sender` to
-/// `receiver`, using `nmp_nip59::gift_wrap_with_signer` — the same path
-/// production DM sending uses.
+/// `receiver`, using `nmp_nip59::gift_wrap_local` — the same pure seal/wrap
+/// composition the production DM chain assembles on the actor thread.
 fn gift_wrap_json(
     sender: &::nostr::Keys,
     receiver: &::nostr::PublicKey,
@@ -160,17 +160,15 @@ fn gift_wrap_json(
     created_at: u64,
 ) -> (serde_json::Value, String) {
     use ::nostr::{EventBuilder, Kind, Tag, Timestamp};
-    use nmp_nip59::{gift_wrap_with_signer, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
 
     let rumor = EventBuilder::new(Kind::from_u16(14), content)
         .tags(vec![Tag::public_key(*receiver)])
         .custom_created_at(Timestamp::from(created_at))
         .build(sender.public_key());
 
-    let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
-    let envelope = gift_wrap_with_signer(&signer, receiver, &rumor, Timestamp::from(created_at))
-        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
-        .expect("gift_wrap_with_signer succeeds with local keys");
+    let envelope =
+        nmp_nip59::gift_wrap_local(sender, receiver, &rumor, Timestamp::from(created_at))
+            .expect("gift_wrap_local succeeds with local keys");
 
     let tag_vecs: Vec<Vec<String>> = envelope
         .tags

@@ -4,11 +4,7 @@
 //! `Nip59Error` rather than panicking — silent crypto-wrapping bugs are the
 //! primary risk this crate must guard against.
 
-use std::sync::Arc;
-
-use nmp_nip59::{
-    gift_wrap_with_signer, unwrap_gift_wrap, Nip59Error, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT,
-};
+use nmp_nip59::{gift_wrap_local, unwrap_gift_wrap, Nip59Error};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::{EventBuilder, Keys, Timestamp, UnsignedEvent};
 
@@ -20,14 +16,11 @@ fn pinned_rumor(author: &Keys, content: &str) -> UnsignedEvent {
         .build(author.public_key())
 }
 
-/// Test-only shorthand. The blanket `SignerForSeal` impl on `Keys`
-/// resolves every step synchronously.
+/// Test-only shorthand. `gift_wrap_local` composes the pure seal/wrap steps
+/// synchronously with the sender's local keys (ADR-0050 §D5).
 fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
-    let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
     let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
-    gift_wrap_with_signer(&signer, receiver, rumor, tweaked)
-        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
-        .expect("gift_wrap_with_signer should succeed")
+    gift_wrap_local(sender, receiver, rumor, tweaked).expect("gift_wrap_local should succeed")
 }
 
 #[test]

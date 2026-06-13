@@ -5,7 +5,8 @@
 //! (`Protocol(Box<dyn ProtocolCommand>)`). Step 4 (V-41) added the kernel +
 //! identity accessors the NIP-57 LNURL fetcher needs; V-39+V-40 (NIP-17 DM
 //! stack) added the local-keys snapshot, DM-inbox relay lookup, and D6 error
-//! surface; V-08 added the `SignerForSeal` resolver for bunker accounts.
+//! surface; ADR-0050 §D5 replaced the `SignerForSeal` resolver with
+//! `active_account_pubkey` (the gift-wrap chain signs through the actor port).
 //!
 //! ## Debt C — capability traits replace a 12-arg closure bundle
 //!
@@ -24,8 +25,8 @@
 //! Capability traits bundled by the parts struct:
 //!
 //! - [`KernelClock`] — D7 wall-clock seam.
-//! - [`LocalSignerAccess`] — local `nostr::Keys` snapshot + V-08
-//!   `SignerForSeal` resolver (covers BOTH local-nsec AND NIP-46 bunker).
+//! - [`LocalSignerAccess`] — local `nostr::Keys` snapshot + backend-transparent
+//!   `active_account_pubkey` (the gift-wrap chain's account-pinning source).
 //! - [`DmInboxLookup`] — kind:10050 DM-inbox relay reads (concrete cache
 //!   lives in `nmp-nip17`).
 //! - [`ErrorSurface`] — D6 `last_error_toast` + `Failed` action-stage
@@ -36,7 +37,7 @@
 //!   publish-direction `UnsignedEvent` (recipient NIP-65 write set, with
 //!   router lane-7/lane-6 cold-start fallback).
 //!
-//! NIP commands call `ctx.clock().now_secs()`, `ctx.signers().signer_for_seal()`,
+//! NIP commands call `ctx.clock().now_secs()`, `ctx.signers().active_account_pubkey()`,
 //! `ctx.dms().dm_inbox_relays(pk)`, `ctx.recipients().recipient_publish_relays(pk, kind)`,
 //! etc. — trait names tell every reader which surface a given call belongs to.
 //!
@@ -64,7 +65,6 @@
 //! [`send`](ProtocolCommandContext::send)'s drop-on-panic is benign.
 
 use std::fmt;
-use std::sync::Arc;
 
 use crate::kernel::Kernel;
 use crate::relay::OutboundMessage;
@@ -114,17 +114,18 @@ pub trait KernelClock: Send + Sync {
 /// NIP-17 gift-wrap sealing).
 pub trait LocalSignerAccess: Send + Sync {
     /// Active account's local `nostr::Keys`, cloned. `None` for NIP-46
-    /// bunker accounts (which expose signing through [`Self::signer_for_seal`]
-    /// instead) and when no account is active.
+    /// bunker accounts (which sign through the actor's signer port) and when
+    /// no account is active.
     fn active_local_keys(&self) -> Option<nostr::Keys>;
 
-    /// V-08 — resolve a [`SignerForSeal`][nmp_nip59::SignerForSeal] that
-    /// uniformly handles BOTH local-nsec accounts (blanket impl on
-    /// `nostr::Keys`, every chain step `Ready`) AND NIP-46 bunker accounts
-    /// (`RemoteSignerForSeal` adapter — `nip44_encrypt` + `sign_seal` run
-    /// `Pending` on a per-invocation driver thread). `None` when no account
-    /// is active or a remote signer reported a malformed pubkey.
-    fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>>;
+    /// Active account's hex pubkey, backend-transparent (local nsec OR remote
+    /// signer). `None` when no account is active.
+    ///
+    /// ADR-0050 §D5 — the gift-wrap DM chain resolves the active account's
+    /// pubkey ONCE at step 1 through this accessor and pins every subsequent
+    /// port step with `signer_pubkey: Some(hex)`, so a mid-chain account switch
+    /// signs the seal with the originating account. Replaces `signer_for_seal`.
+    fn active_account_pubkey(&self) -> Option<String>;
 }
 
 /// NIP-17 kind:10050 DM-inbox relay reads — substrate-generic. Re-uses
@@ -207,7 +208,7 @@ impl LocalSignerAccess for NoopLocalSignerAccess {
     fn active_local_keys(&self) -> Option<nostr::Keys> {
         None
     }
-    fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
+    fn active_account_pubkey(&self) -> Option<String> {
         None
     }
 }
@@ -265,7 +266,7 @@ pub struct ProtocolCommandContextParts<'a> {
     pub command_sender: crate::actor::CommandSender,
     /// D7 wall-clock seam.
     pub clock: &'a dyn KernelClock,
-    /// Active-account local signing material (incl. `SignerForSeal`).
+    /// Active-account local signing material + active-pubkey accessor.
     pub signers: &'a dyn LocalSignerAccess,
     /// NIP-17 kind:10050 DM-inbox relay reads.
     pub dms: &'a dyn DmInboxLookup,
@@ -532,14 +533,36 @@ impl<'a> ProtocolCommandContext<'a> {
             .unwrap_or(None)
     }
 
-    /// D15-wrapped [`LocalSignerAccess::signer_for_seal`]. Returns
-    /// `None` on a panicking adapter (matches the genuinely-absent
-    /// signer branch).
+    /// D15-wrapped [`LocalSignerAccess::active_account_pubkey`] — the §D5
+    /// account-pin source. Returns `None` on a panicking adapter (matches the
+    /// genuinely-absent account branch).
     #[must_use]
-    pub fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
+    pub fn active_account_pubkey(&self) -> Option<String> {
         let s = self.signers;
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| s.signer_for_seal()))
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| s.active_account_pubkey()))
             .unwrap_or(None)
+    }
+
+    /// ADR-0050 §D1 cipher-port helper — the NIP-44 encrypt twin of
+    /// [`sign_event_for_account`](Self::sign_event_for_account). Sends an
+    /// [`ActorCommand::Nip44EncryptForAccount`] for `plaintext` → `peer_pubkey`
+    /// (named `Some(hex)` or active `None` account). Local-vs-bunker is invisible
+    /// (D13 — only ciphertext crosses); the continuation runs on the actor thread
+    /// and only enqueues work (D8). Worker threads holding a `command_sender_clone`
+    /// use [`build_nip44_encrypt_for_account`] directly.
+    pub fn nip44_encrypt_for_account(
+        &self,
+        peer_pubkey: String,
+        plaintext: String,
+        signer_pubkey: Option<String>,
+        continuation: impl FnOnce(Result<String, String>) + Send + 'static,
+    ) {
+        self.send(build_nip44_encrypt_for_account(
+            peer_pubkey,
+            plaintext,
+            signer_pubkey,
+            continuation,
+        ));
     }
 
     /// D15-wrapped [`DmInboxLookup::dm_inbox_relays`]. Returns `None`
@@ -606,33 +629,6 @@ impl<'a> ProtocolCommandContext<'a> {
     }
 }
 
-/// Build an [`ActorCommand::SignEventForAccount`] (ADR-0043 Decision 2) the
-/// generic, backend-transparent sign-account port.
-///
-/// This free function lets a spawned worker thread — which holds only a
-/// [`CommandSender`](crate::actor::CommandSender) (via
-/// [`ProtocolCommandContext::command_sender_clone`]), not the actor-thread
-/// `ctx` — construct the command and `send` it itself.
-/// The actor's dispatch arm signs (active account when `signer_pubkey` is
-/// `None`, else the named roster key) and invokes `continuation` with the
-/// resolved [`crate::substrate::SignedEvent`] or an error string — inline for a
-/// local key, from the idle-loop drain for a parked NIP-46 bunker. The caller
-/// cannot tell which.
-///
-/// The continuation runs on the actor thread; it must only enqueue further
-/// work (D8) and never receives raw key bytes (D13).
-pub fn build_sign_event_for_account(
-    unsigned: crate::substrate::UnsignedEvent,
-    signer_pubkey: Option<String>,
-    continuation: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
-) -> ActorCommand {
-    ActorCommand::SignEventForAccount {
-        unsigned,
-        signer_pubkey,
-        continuation: crate::actor::SignContinuation::new(continuation),
-    }
-}
-
 /// Open-seam command dispatched as [`ActorCommand::Protocol`].
 ///
 /// `Debug` is required because [`ActorCommand`] derives `Debug` and the
@@ -644,6 +640,10 @@ pub trait ProtocolCommand: Send + fmt::Debug + 'static {
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError>;
 }
+
+#[path = "protocol/builders.rs"]
+mod builders;
+pub use builders::{build_nip44_encrypt_for_account, build_sign_event_for_account};
 
 #[cfg(test)]
 #[path = "protocol/tests.rs"]

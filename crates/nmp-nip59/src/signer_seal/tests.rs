@@ -1,11 +1,14 @@
-//! Tests for [`gift_wrap_with_signer`] across the local-keys fast path
-//! and a fake remote-signer that emulates the `SignerOp::Pending`
-//! shape with `mpsc` channels. The chain produced for both shapes
-//! must round-trip through `unwrap_gift_wrap` to the original rumor.
+//! Tests for the pure NIP-59 seal/wrap functions (ADR-0050 §D5).
+//!
+//! [`gift_wrap_local`] composes the four pure steps end-to-end; the chain it
+//! produces must round-trip through [`unwrap_gift_wrap`] to the original rumor.
+//! [`build_seal_unsigned`] + [`wrap_signed_seal`] are exercised directly to prove
+//! the granular halves the actor's port chain calls compose to the same result.
 use super::*;
 use crate::wrap::unwrap_gift_wrap;
+use nostr::nips::nip44::{self, Version as Nip44Version};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
-use nostr::{EventBuilder, Kind, Tag};
+use nostr::{EventBuilder, JsonUtil, Kind, Tag};
 
 /// Build a kind:14 chat-message rumor for the given sender pubkey.
 /// Mirrors the shape `nmp_nip17::build_dm_rumor` produces.
@@ -16,207 +19,99 @@ fn sample_rumor(sender_pubkey: PublicKey, content: &str) -> UnsignedEvent {
         .build(sender_pubkey)
 }
 
-/// A `SignerForSeal` that always returns `Pending` from `nip44_encrypt`
-/// — exercises the spawned-driver remote path. The seal sign step
-/// uses a real local key (a remote signer in production routes the
-/// sign via an RPC too, but the chain-driver code path is identical
-/// regardless of whether sign is `Ready` or `Pending`; the dedicated
-/// pending-sign test below exercises the latter).
-struct PendingEncryptSigner {
-    keys: Keys,
-    encrypt_tx: std::sync::Mutex<Option<mpsc::Sender<Result<String, SignerError>>>>,
-    encrypt_rx_slot: std::sync::Mutex<Option<mpsc::Receiver<Result<String, SignerError>>>>,
-}
-
-impl PendingEncryptSigner {
-    fn new(keys: Keys) -> Arc<Self> {
-        let (tx, rx) = mpsc::channel::<Result<String, SignerError>>();
-        Arc::new(Self {
-            keys,
-            encrypt_tx: std::sync::Mutex::new(Some(tx)),
-            encrypt_rx_slot: std::sync::Mutex::new(Some(rx)),
-        })
-    }
-
-    /// Mimic the broker delivering the seal-encrypt ciphertext later.
-    fn deliver_encrypt(&self, ciphertext: String) {
-        let tx = self
-            .encrypt_tx
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
-            .expect("encrypt_tx already delivered");
-        tx.send(Ok(ciphertext)).expect("deliver must succeed");
-    }
-}
-
-impl SignerForSeal for PendingEncryptSigner {
-    fn pubkey(&self) -> PublicKey {
-        self.keys.public_key()
-    }
-
-    fn nip44_encrypt(&self, _recipient_pubkey: &str, _plaintext: &str) -> SignerOp<String> {
-        // Hand back the pre-arranged receiver. Subsequent calls would
-        // re-arm; the test only fires once.
-        let rx = self
-            .encrypt_rx_slot
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
-            .expect("encrypt_rx already taken");
-        SignerOp::Pending(rx)
-    }
-
-    fn sign_seal(&self, unsigned: &UnsignedEvent) -> SignerOp<Event> {
-        // Remote sign of the seal: still local in this fake — the
-        // chain-driver path doesn't care whether sign is Ready or
-        // Pending, and exercising sign-Pending separately would
-        // duplicate the same plumbing.
-        match unsigned.clone().sign_with_keys(&self.keys) {
-            Ok(e) => SignerOp::ok(e),
-            Err(e) => SignerOp::err(SignerError::Backend(e.to_string())),
-        }
-    }
-}
-
 #[test]
-fn local_keys_round_trips_through_gift_wrap_with_signer() {
-    // Sender + receiver local keypairs.
-    let sender_keys = Keys::generate();
-    let receiver_keys = Keys::generate();
+fn gift_wrap_local_round_trips_to_original_rumor() {
+    let sender = Keys::generate();
+    let receiver = Keys::generate();
+    let rumor = sample_rumor(sender.public_key(), "hello pure functions");
 
-    let rumor = sample_rumor(sender_keys.public_key(), "hello via signer seam");
-    let created_at = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
+    let seal_ts = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
+    let gift_wrap = gift_wrap_local(&sender, &receiver.public_key(), &rumor, seal_ts)
+        .expect("local gift-wrap must succeed");
 
-    // Local-keys fast path: the SignerOp must be Ready(Ok(event))
-    // immediately — no driver thread.
-    let op = gift_wrap_with_signer(
-        &(Arc::new(sender_keys.clone()) as Arc<dyn SignerForSeal>),
-        &receiver_keys.public_key(),
-        &rumor,
-        created_at,
+    assert_eq!(gift_wrap.kind, Kind::GiftWrap, "outer is kind:1059");
+    // The outer wrap is signed by a fresh EPHEMERAL key, never the sender — the
+    // NIP-59 unlinkability guarantee.
+    assert_ne!(
+        gift_wrap.pubkey,
+        sender.public_key(),
+        "outer wrap must NOT be signed by the sender (ephemeral unlinkability)"
     );
-    let event = op
-        .wait(DRIVER_STEP_TIMEOUT)
-        .expect("local-keys path must resolve synchronously");
 
-    // The output must be a kind:1059 envelope that the receiver can
-    // unwrap to the original rumor.
-    assert_eq!(event.kind, Kind::GiftWrap);
-    let unwrapped =
-        unwrap_gift_wrap(&receiver_keys, &event).expect("receiver must unwrap successfully");
+    let unwrapped = unwrap_gift_wrap(&receiver, &gift_wrap).expect("unwrap must succeed");
     assert_eq!(
         unwrapped.sender,
-        sender_keys.public_key(),
-        "unwrapped sender pubkey must match the original signer"
+        sender.public_key(),
+        "sender recovered from the verified seal"
     );
-    assert_eq!(
-        unwrapped.rumor.content, "hello via signer seam",
-        "round-tripped rumor content must match"
-    );
-    assert_eq!(unwrapped.rumor.kind, Kind::from_u16(14));
+    assert_eq!(unwrapped.rumor.content, "hello pure functions");
+    assert_eq!(u16::from(unwrapped.rumor.kind), 14);
 }
 
 #[test]
-fn pending_encrypt_returns_pending_then_resolves_after_delivery() {
-    let sender_keys = Keys::generate();
-    let receiver_keys = Keys::generate();
-    let signer = PendingEncryptSigner::new(sender_keys.clone());
-    let rumor = sample_rumor(sender_keys.public_key(), "hello via remote-signer path");
-    let created_at = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
+fn manual_compose_matches_gift_wrap_local() {
+    // Prove the granular pure halves (the ones the actor port chain calls)
+    // compose to the same observable result as the local convenience: seal +
+    // wrap a rumor by hand, then round-trip it through unwrap.
+    let sender = Keys::generate();
+    let receiver = Keys::generate();
+    let rumor = sample_rumor(sender.public_key(), "manual compose");
+    let seal_ts = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
 
-    let mut op = gift_wrap_with_signer(
-        &(Arc::clone(&signer) as Arc<dyn SignerForSeal>),
-        &receiver_keys.public_key(),
-        &rumor,
-        created_at,
-    );
-
-    // First poll BEFORE delivery: must still be pending (the driver
-    // thread is blocked on the encrypt receiver). This is the property
-    // the actor's PendingSign loop depends on — Pending stays Pending
-    // until the chain completes.
-    match &mut op {
-        SignerOp::Pending(_) => { /* expected */ }
-        SignerOp::Ready(r) => panic!(
-            "remote-encrypt op must return Pending until the encrypt step resolves; got Ready({r:?})"
-        ),
-    }
-    assert!(
-        op.poll().is_none(),
-        "the driver has nothing to send until encrypt is delivered"
-    );
-
-    // Compute the real ciphertext using the sender's local key — the
-    // fake just shuttles the value; once the driver receives it the
-    // chain proceeds (sign_seal, wrap, send-final). The driver must
-    // assemble a valid kind:1059 the receiver can unwrap.
-    let receiver_pk = receiver_keys.public_key();
-    let real_ct = nip44::encrypt(
-        sender_keys.secret_key(),
-        &receiver_pk,
+    // Step 1 — seal-content encrypt (the `Nip44EncryptForAccount` port verb in
+    // the real chain; a local nip44 encrypt here).
+    let ciphertext = nip44::encrypt(
+        sender.secret_key(),
+        &receiver.public_key(),
         &rumor.as_json(),
         Nip44Version::V2,
     )
-    .expect("local nip44_encrypt for test setup");
-    signer.deliver_encrypt(real_ct);
+    .expect("seal encrypt");
 
-    // After delivery the rx eventually carries the final event. wait()
-    // blocks the test thread (not the actor) within the per-step
-    // timeout budget.
-    let event = op
-        .wait(DRIVER_STEP_TIMEOUT * 3)
-        .expect("the driver thread must complete the chain after delivery");
-    assert_eq!(event.kind, Kind::GiftWrap);
+    // Step 2 — build the seal UnsignedEvent (pure, on-actor in the chain).
+    let seal_unsigned = build_seal_unsigned(sender.public_key(), ciphertext, seal_ts);
+    assert_eq!(seal_unsigned.kind, Kind::Seal, "seal is kind:13");
+    assert_eq!(seal_unsigned.pubkey, sender.public_key());
 
-    let unwrapped =
-        unwrap_gift_wrap(&receiver_keys, &event).expect("receiver must unwrap successfully");
-    assert_eq!(unwrapped.sender, sender_keys.public_key());
-    assert_eq!(unwrapped.rumor.content, "hello via remote-signer path");
+    // Step 3 — sign the seal (the `SignEventForAccount` port verb in the chain).
+    let seal_event = seal_unsigned.sign_with_keys(&sender).expect("seal sign");
+
+    // Step 4 — wrap with a fresh ephemeral key (pure, in-process).
+    let gift_wrap =
+        wrap_signed_seal(&receiver.public_key(), &seal_event).expect("wrap signed seal");
+
+    let unwrapped = unwrap_gift_wrap(&receiver, &gift_wrap).expect("unwrap");
+    assert_eq!(unwrapped.sender, sender.public_key());
+    assert_eq!(unwrapped.rumor.content, "manual compose");
 }
 
-/// NIP-59 §1 requires INDEPENDENTLY randomized timestamps on the seal
-/// (kind:13) and the outer wrap (kind:1059) so a relay cannot correlate
-/// the two events by their `created_at` field.
+/// NIP-59 §1 privacy: the kind:13 seal and the kind:1059 outer wrap carry
+/// INDEPENDENTLY randomized `created_at` values so a relay cannot correlate the
+/// two events by their timestamp.
 ///
-/// This test builds N=20 gift wraps and asserts that at least one pair
-/// carries distinct timestamps. With two draws from a uniform 2-day
-/// window (~172 800 seconds) the probability of all N pairs having equal
-/// timestamps is astronomically small (~1 / 172800^19).
+/// Build N=20 gift wraps and assert at least one pair carries distinct
+/// timestamps. With two draws from a uniform ~2-day window the probability of
+/// all N pairs being equal is astronomically small.
 #[test]
 fn wrap_and_seal_timestamps_are_independently_randomized() {
-    use nostr::nips::nip44;
-    use nostr::{Event, JsonUtil};
-
-    let sender_keys = Keys::generate();
-    let receiver_keys = Keys::generate();
-    let signer: Arc<dyn SignerForSeal> = Arc::new(sender_keys.clone());
+    let sender = Keys::generate();
+    let receiver = Keys::generate();
 
     let mut found_distinct = false;
     const ATTEMPTS: usize = 20;
 
     for i in 0..ATTEMPTS {
-        let rumor = sample_rumor(sender_keys.public_key(), &format!("ts-independence-{i}"));
+        let rumor = sample_rumor(sender.public_key(), &format!("ts-independence-{i}"));
         let seal_ts = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
 
-        let op = gift_wrap_with_signer(&signer, &receiver_keys.public_key(), &rumor, seal_ts);
-        let gift_wrap = op
-            .wait(DRIVER_STEP_TIMEOUT)
-            .expect("local-keys path must resolve synchronously");
-
+        let gift_wrap = gift_wrap_local(&sender, &receiver.public_key(), &rumor, seal_ts)
+            .expect("local gift-wrap must succeed");
         assert_eq!(gift_wrap.kind, Kind::GiftWrap);
 
-        // Decrypt the outer wrap using receiver key + ephemeral pubkey on envelope.
-        let seal_json = nip44::decrypt(
-            receiver_keys.secret_key(),
-            &gift_wrap.pubkey,
-            &gift_wrap.content,
-        )
-        .expect("outer wrap must decrypt successfully");
-
-        let seal_event: Event =
-            Event::from_json(&seal_json).expect("decrypted content must be valid Event JSON");
-
+        // Decrypt the outer wrap (receiver key + ephemeral pubkey on envelope).
+        let seal_json = nip44::decrypt(receiver.secret_key(), &gift_wrap.pubkey, &gift_wrap.content)
+            .expect("outer wrap must decrypt");
+        let seal_event = Event::from_json(&seal_json).expect("seal JSON");
         assert_eq!(seal_event.kind, Kind::Seal);
 
         if gift_wrap.created_at != seal_event.created_at {
@@ -233,51 +128,19 @@ fn wrap_and_seal_timestamps_are_independently_randomized() {
 }
 
 #[test]
-fn pending_encrypt_propagates_step_failure() {
-    // If the encrypt step fails (broker rejects, channel drops, ...),
-    // the driver must forward the error rather than block forever or
-    // panic.
-    let sender_keys = Keys::generate();
-    let receiver_keys = Keys::generate();
+fn every_wrap_mints_a_distinct_ephemeral_outer_key() {
+    // Unlinkability: two wraps of the same rumor to the same receiver must NOT
+    // share an outer pubkey (a fresh ephemeral per call).
+    let sender = Keys::generate();
+    let receiver = Keys::generate();
+    let rumor = sample_rumor(sender.public_key(), "distinct ephemeral");
+    let ts = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
 
-    // A signer whose `nip44_encrypt` returns Pending then drops the
-    // sender — emulates a broker crash mid-chain.
-    struct DropSigner {
-        keys: Keys,
-    }
-    impl SignerForSeal for DropSigner {
-        fn pubkey(&self) -> PublicKey {
-            self.keys.public_key()
-        }
-        fn nip44_encrypt(&self, _r: &str, _p: &str) -> SignerOp<String> {
-            let (_tx, rx) = mpsc::channel::<Result<String, SignerError>>();
-            // _tx is dropped immediately — driver sees Disconnected.
-            SignerOp::Pending(rx)
-        }
-        fn sign_seal(&self, _u: &UnsignedEvent) -> SignerOp<Event> {
-            // Unreachable in this test (driver fails before sign).
-            SignerOp::err(SignerError::Backend("unreachable".into()))
-        }
-    }
+    let a = gift_wrap_local(&sender, &receiver.public_key(), &rumor, ts).expect("wrap a");
+    let b = gift_wrap_local(&sender, &receiver.public_key(), &rumor, ts).expect("wrap b");
 
-    let signer: Arc<dyn SignerForSeal> = Arc::new(DropSigner {
-        keys: sender_keys.clone(),
-    });
-    let rumor = sample_rumor(sender_keys.public_key(), "irrelevant");
-    let op = gift_wrap_with_signer(
-        &signer,
-        &receiver_keys.public_key(),
-        &rumor,
-        Timestamp::from(1_700_000_000),
-    );
-    let err = op
-        .wait(DRIVER_STEP_TIMEOUT)
-        .expect_err("dropped encrypt channel must surface as an error");
-    // Either Backend or Timeout is acceptable here — the contract is
-    // "does not hang and does not panic". We assert it's an error
-    // and the message names the encrypt step so debugging is direct.
-    assert!(
-        matches!(err, SignerError::Backend(_) | SignerError::Timeout(_)),
-        "expected Backend or Timeout, got {err:?}"
+    assert_ne!(
+        a.pubkey, b.pubkey,
+        "each gift-wrap must carry a distinct ephemeral outer pubkey"
     );
 }

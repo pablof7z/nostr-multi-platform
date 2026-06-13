@@ -13,9 +13,7 @@
 //! These pin the contract from inside the crate so a refactor cannot regress
 //! it without a red test.
 
-use std::sync::Arc;
-
-use nmp_nip59::{gift_wrap_with_signer, unwrap_gift_wrap, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
+use nmp_nip59::{gift_wrap_local, unwrap_gift_wrap};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::{EventBuilder, EventId, Keys, Kind, Tag, Timestamp, UnsignedEvent};
 
@@ -29,14 +27,11 @@ const RUMOR_SENTINEL_TS: u64 = 1_600_000_000;
 const WELCOME_E_TAG_HEX: &str =
     "0000000000000000000000000000000000000000000000000000000077656c63";
 
-/// Test-only shorthand. The blanket `SignerForSeal` impl on `Keys`
-/// resolves every step synchronously.
+/// Test-only shorthand. `gift_wrap_local` composes the pure seal/wrap steps
+/// synchronously with the sender's local keys (ADR-0050 §D5).
 fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
-    let signer: Arc<dyn SignerForSeal> = Arc::new(sender.clone());
     let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
-    gift_wrap_with_signer(&signer, receiver, rumor, tweaked)
-        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
-        .expect("gift_wrap_with_signer should succeed")
+    gift_wrap_local(sender, receiver, rumor, tweaked).expect("gift_wrap_local should succeed")
 }
 
 #[test]

@@ -2,23 +2,26 @@
 //!
 //! # Overview
 //!
-//! This crate provides two load-bearing public free functions:
-//! - [`gift_wrap_with_signer`]: ADR-0026 `SignerForSeal` seam — Seal
-//!   (kind:13, NIP-44) + gift-wrap (kind:1059, NIP-44 from ephemeral key)
-//!   via an abstract signer. The blanket impl on `nostr::Keys` covers the
-//!   local-keys fast path (every `SignerOp::Ready`); a remote-signer
-//!   adapter (NIP-46 bunker, NIP-07, hardware) drives the chain through a
-//!   per-invocation driver thread on the `Pending` path. This is THE
-//!   public entry point for both local and remote signers.
-//! - [`unwrap_gift_wrap`]: Unwrap an incoming kind:1059 → verify seal →
-//!   extract rumor. Thin wrapper over
-//!   `nostr::nips::nip59::UnwrappedGift::from_gift_wrap`.
+//! ADR-0050 §D5 reduced this crate to **pure functions** — the `SignerForSeal`
+//! trait + driver-thread execution model is deleted. The seal step for a DM send
+//! is now a continuation chain through the actor's signer port (composed in
+//! `nmp-nip17`); this crate supplies the pure building blocks both that chain and
+//! the local-keys callers compose from.
 //!
-//! The legacy raw-keys primitive `gift_wrap(&Keys, ...)` was tightened to
-//! `pub(crate)` in the offline-first audit (PR #631) — every external
-//! caller (`nmp-marmot::wrap_welcome`, `nmp-nip17` inbox tests, the
-//! integration tests under `tests/`) now routes through
-//! `gift_wrap_with_signer`.
+//! Sealing / wrapping (`signer_seal`):
+//! - [`build_seal_unsigned`]: assemble the kind:13 seal `UnsignedEvent` from an
+//!   already-produced NIP-44 ciphertext (no key material).
+//! - [`wrap_signed_seal`]: locally wrap a signed seal in a kind:1059 envelope
+//!   under a fresh ephemeral key (NIP-59 unlinkability).
+//! - [`gift_wrap_local`]: the local-keys-only convenience composing the four pure
+//!   steps end-to-end. For callers local-key-only by construction
+//!   (`nmp-marmot`) and the integration tests. Synchronous; no trait, no thread.
+//!
+//! Unwrapping (`wrap`):
+//! - [`unwrap_gift_wrap`]: local-keys kind:1059 → verify seal → extract rumor.
+//! - [`parse_outer_for_decrypt`] / [`parse_seal_for_decrypt`] / [`parse_rumor`]:
+//!   the three PURE halves the unwrap composes, split out so ADR-0050 Stage 4 can
+//!   route the two NIP-44 decrypts through `Nip44DecryptForAccount`.
 //!
 //! # D0: no app/protocol nouns
 //!
@@ -34,10 +37,10 @@
 
 pub use error::Nip59Error;
 pub use kinds::KIND_GIFT_WRAP;
-pub use signer_seal::{
-    gift_wrap_with_signer, SignerForSeal, DRIVER_STEP_TIMEOUT, GIFT_WRAP_TOTAL_TIMEOUT,
+pub use signer_seal::{build_seal_unsigned, gift_wrap_local, wrap_signed_seal};
+pub use wrap::{
+    parse_outer_for_decrypt, parse_rumor, parse_seal_for_decrypt, unwrap_gift_wrap, UnwrappedGift,
 };
-pub use wrap::{unwrap_gift_wrap, UnwrappedGift};
 
 mod error;
 pub mod kinds;

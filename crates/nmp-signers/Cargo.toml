@@ -42,12 +42,6 @@ zeroize = { workspace = true, features = ["serde"] }
 [dev-dependencies]
 # No proc-macro fuzz crate — we keep the dep surface small and roll our own
 # deterministic generator (see `fuzz/bunker_uri.rs`).
-# Stage 3 DM-send seal-seam proof tests (ADR-0048 §D5): verify that a
-# NIP-55 backed account can produce a valid kind:1059 gift-wrap through the
-# ADR-0026 `SignerForSeal` seam.  `nmp-nip59` is already reachable via
-# `nmp-core` transitively, but dev-dep here avoids relying on transitive
-# resolution.
-nmp-nip59 = { path = "../nmp-nip59" }
 
 # V-01 Stage 3b — wasm32-only deps for the real `Nip07Signer::sign()` that
 # bridges into `window.nostr.signEvent(...)`. The wasm feature gate inside

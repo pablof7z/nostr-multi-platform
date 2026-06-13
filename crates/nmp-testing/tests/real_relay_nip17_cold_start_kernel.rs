@@ -88,7 +88,7 @@ use nmp_ffi::{
     nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_read_projection_json,
     nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
 };
-use nmp_nip59::{gift_wrap_with_signer, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
+use nmp_nip59::gift_wrap_local;
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::util::JsonUtil as _;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp, ToBech32 as _};
@@ -373,11 +373,9 @@ fn run_scenario() -> Result<bool, String> {
         .tag(Tag::public_key(bob.public_key()))
         .custom_created_at(Timestamp::now())
         .build(alice.public_key());
-    let signer: Arc<dyn SignerForSeal> = Arc::new(alice.clone());
     let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
-    let envelope = gift_wrap_with_signer(&signer, &bob.public_key(), &rumor, tweaked)
-        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
-        .map_err(|e| format!("gift_wrap_with_signer: {e}"))?;
+    let envelope = gift_wrap_local(&alice, &bob.public_key(), &rumor, tweaked)
+        .map_err(|e| format!("gift_wrap_local: {e}"))?;
     assert_eq!(envelope.kind, Kind::GiftWrap, "outer kind must be 1059");
     let envelope_id = envelope.id.to_hex();
     println!("[f02-kernel] PHASE 1b: publishing Alice's kind:1059 id={envelope_id} (Bob offline)");

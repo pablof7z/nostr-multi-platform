@@ -30,9 +30,9 @@ use nostr::nips::nip19::FromBech32;
 use nostr::{EventBuilder, Keys, SecretKey, Timestamp};
 
 use super::commands::{self, IdentityRuntime};
-use super::dispatch::{dispatch_command, ActorContext};
-use super::pending_sign::{resolve_parked_op, ParkedOp, ParkedOpSink};
-use super::{ActorCommand, ActorMail, CommandSender, SignContinuation};
+use super::pending_sign::{resolve_parked_op, ParkedOpSink};
+use super::signer_port_test_harness::dispatch_one;
+use super::{ActorCommand, SignContinuation};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::remote_signer::RemoteSignerHandle;
@@ -72,6 +72,11 @@ struct PendingRemoteSigner {
     keys: Keys,
     pk: String,
     sign_count: Arc<AtomicU32>,
+    /// Self-described per-op budget (ADR-0050 §D4). Defaults to the NIP-46 5s
+    /// budget; the named-roster-key deadline test overrides it to a 90s
+    /// NIP-55-style budget to prove the parked deadline reflects the SIGNING
+    /// account's budget rather than the active account's.
+    op_timeout: std::time::Duration,
     /// Each `sign()` stashes the receiver end here so the dispatch arm can park
     /// it; the test holds the matching sender to resolve the broker round-trip.
     last_sender: Mutex<Option<Sender<Result<SignedEvent, SignerError>>>>,
@@ -79,11 +84,16 @@ struct PendingRemoteSigner {
 
 impl PendingRemoteSigner {
     fn new(keys: Keys) -> Self {
+        Self::with_op_timeout(keys, nmp_signer_iface::PENDING_SIGN_TIMEOUT)
+    }
+
+    fn with_op_timeout(keys: Keys, op_timeout: std::time::Duration) -> Self {
         let pk = keys.public_key().to_hex();
         Self {
             keys,
             pk,
             sign_count: Arc::new(AtomicU32::new(0)),
+            op_timeout,
             last_sender: Mutex::new(None),
         }
     }
@@ -124,6 +134,10 @@ impl RemoteSignerHandle for PendingRemoteSigner {
         "nip46"
     }
 
+    fn op_timeout(&self) -> std::time::Duration {
+        self.op_timeout
+    }
+
     fn sign(&self, _unsigned: &UnsignedEvent) -> SignerOp<SignedEvent> {
         self.sign_count.fetch_add(1, Ordering::Relaxed);
         let (tx, rx): (
@@ -145,108 +159,6 @@ impl RemoteSignerHandle for PendingRemoteSigner {
     fn deliver_response(&self, _response_json: &str) {}
 }
 
-/// Drive a single `dispatch_command(cmd, ctx)` against a freshly built
-/// `ActorContext`, returning the unified parked-op queue afterwards so the
-/// bunker tests can resolve + drain. The `kernel` / `identity` are threaded in
-/// so the caller controls the registered signer.
-fn dispatch_one(
-    cmd: ActorCommand,
-    identity: &mut IdentityRuntime,
-    kernel: &mut Kernel,
-) -> Vec<ParkedOp> {
-    use crate::relay::CanonicalRelayUrl;
-    use std::collections::{HashMap, HashSet};
-    use std::time::Instant;
-
-    let (update_tx, _update_rx) = channel::<crate::update_envelope::UpdateFrameBytes>();
-    let (command_inbox_tx, _command_rx) = channel::<ActorMail>();
-    let command_tx = CommandSender::new(command_inbox_tx);
-    let lifecycle_observer = commands::new_observer_slot();
-    let mls_local_nsec = Arc::new(Mutex::new(None));
-    let active_local_keys = Arc::new(Mutex::new(None));
-    let pool = nmp_network::pool::Pool::new(
-        nmp_network::pool::PoolConfig::default(),
-        channel::<nmp_network::pool::PoolEvent>().0,
-    );
-    let mut relay_controls: HashMap<CanonicalRelayUrl, super::RelayControl> = HashMap::new();
-    let mut slot_to_url: HashMap<u32, CanonicalRelayUrl> = HashMap::new();
-    let mut connected_relays = HashSet::new();
-    let mut connected_urls = HashSet::new();
-    let mut last_emit = Instant::now();
-    let mut next_relay_generation = 1u64;
-    let mut running = true;
-    let mut emit_hz = 4u32;
-    let mut startup_sent = false;
-    let mut parked_ops: Vec<ParkedOp> = Vec::new();
-    let capability_callback: crate::capability_socket::CapabilityCallbackSlot =
-        Arc::new(Mutex::new(None));
-    let (capability_work_inner_tx, _capability_work_rx) = channel::<ActorMail>();
-    let capability_work_tx = crate::actor::capability_worker::spawn_capability_worker(
-        Arc::clone(&capability_callback),
-        CommandSender::new(capability_work_inner_tx),
-    );
-    let coverage_hook = Arc::new(Mutex::new(None::<crate::subs::PlanCoverageHook>));
-    let req_frame_interceptor = Arc::new(Mutex::new(None));
-    let host_op_handler = Arc::new(Mutex::new(None));
-    let ingest_dispatcher_slot = Arc::new(std::sync::RwLock::new(
-        crate::substrate::EventIngestDispatcher::default(),
-    ));
-    let dm_inbox_relays_slot =
-        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup()));
-    let blocked_relays_slot = Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup()));
-    let bootstrap_self_kinds_slot = Arc::new(Mutex::new(None));
-    let routing_trace_slot = Arc::new(Mutex::new(None));
-    let event_store_slot = Arc::new(Mutex::new(None));
-    let routing_substrate_slot = Arc::new(Mutex::new(None));
-    let publish_resolver_slot = Arc::new(Mutex::new(None));
-    let active_account_slot = Arc::new(Mutex::new(None));
-    let raw_event_forward_observer_ids =
-        crate::actor::raw_event_forwarder::new_raw_event_forward_observer_id_slot();
-    let raw_event_forward_policy_slot = Arc::new(Mutex::new(None));
-    let raw_event_observers = commands::new_raw_event_observer_slot();
-
-    let mut ctx = ActorContext {
-        kernel,
-        identity,
-        relay_controls: &mut relay_controls,
-        slot_to_url: &mut slot_to_url,
-        pool: &pool,
-        connected_relays: &mut connected_relays,
-        connected_urls: &mut connected_urls,
-        update_tx: &update_tx,
-        last_emit: &mut last_emit,
-        next_relay_generation: &mut next_relay_generation,
-        running: &mut running,
-        emit_hz: &mut emit_hz,
-        startup_sent: &mut startup_sent,
-        relays_ready: false,
-        lifecycle_observer: &lifecycle_observer,
-        mls_local_nsec: &mls_local_nsec,
-        active_local_keys: &active_local_keys,
-        capability_callback: &capability_callback,
-        parked_ops: &mut parked_ops,
-        command_tx_self: &command_tx,
-        capability_work_tx: &capability_work_tx,
-        coverage_hook_slot: &coverage_hook,
-        req_frame_interceptor_slot: &req_frame_interceptor,
-        host_op_handler: &host_op_handler,
-        ingest_dispatcher_slot: &ingest_dispatcher_slot,
-        dm_inbox_relays_slot: &dm_inbox_relays_slot,
-        blocked_relays_slot: &blocked_relays_slot,
-        bootstrap_self_kinds_slot: &bootstrap_self_kinds_slot,
-        routing_trace_slot: &routing_trace_slot,
-        event_store_slot: &event_store_slot,
-        routing_substrate_slot: &routing_substrate_slot,
-        publish_resolver_slot: &publish_resolver_slot,
-        active_account_slot: &active_account_slot,
-        raw_event_forward_observer_ids: &raw_event_forward_observer_ids,
-        raw_event_forward_policy_slot: &raw_event_forward_policy_slot,
-        raw_event_observers_handle: &raw_event_observers,
-    };
-
-    dispatch_command(cmd, &mut ctx);
-    parked_ops
-}
 
 fn fresh_identity() -> IdentityRuntime {
     IdentityRuntime::new(
@@ -583,4 +495,72 @@ fn no_account_invokes_continuation_with_err_immediately() {
         .take()
         .expect("continuation must run immediately when there is no account");
     assert!(outcome.is_err(), "no active account is an Err outcome");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §D4 — SignEventForReturn named-account budget regression.
+//
+// Mirrors `cipher_for_account_tests::named_roster_key_keeps_its_own_budget_not_
+// the_active_accounts` on the sign-and-return path (`dispatch.rs:606`). A named
+// 90s NIP-55-style roster key signed while a 5s NIP-46-style account is active
+// must park with ITS OWN 90s budget — never inherit the active account's 5s
+// deadline. The D4 bug was `active_sign_deadline()` at the park site; the fix
+// computes `sign_deadline_for(named)`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn sign_event_for_return_named_roster_key_keeps_its_own_budget() {
+    let mut identity = fresh_identity();
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Active account: a 5s-budget bunker (NIP-46-style). Pending sign so any
+    // accidental routing-through-active would park with the 5s deadline.
+    let active = PendingRemoteSigner::with_op_timeout(
+        Keys::generate(),
+        std::time::Duration::from_secs(5),
+    );
+    commands::add_signer(
+        &mut identity,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(Box::new(active)),
+        true,
+        false,
+    );
+
+    // A SECOND, non-active roster key: a 90s-budget signer (NIP-55-style).
+    let named = PendingRemoteSigner::with_op_timeout(
+        Keys::generate(),
+        std::time::Duration::from_secs(90),
+    );
+    let named_pk = named.pubkey_hex();
+    commands::add_signer(
+        &mut identity,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(Box::new(named)),
+        false, // do NOT make active — the 5s account stays active.
+        false,
+    );
+
+    // Sign-and-return with the NAMED key while the 5s account is active.
+    let before = std::time::Instant::now();
+    let parked = dispatch_one(
+        ActorCommand::SignEventForReturn {
+            account_pubkey: named_pk,
+            unsigned_json: r#"{"kind":24242,"content":"auth","tags":[]}"#.to_string(),
+            correlation_id: "corr-named-budget".to_string(),
+        },
+        &mut identity,
+        &mut kernel,
+    );
+    assert_eq!(parked.len(), 1, "named bunker sign-and-return parks");
+
+    // The parked deadline must reflect the NAMED key's 90s budget, NOT the
+    // active account's 5s. Generous slack for dispatch latency.
+    let deadline = parked[0].deadline;
+    let budget = deadline.saturating_duration_since(before);
+    assert!(
+        budget > std::time::Duration::from_secs(60),
+        "named 90s key must keep its own budget on the sign-and-return path (got \
+         {budget:?}); the D4 bug would have parked it with the active account's 5s budget"
+    );
 }

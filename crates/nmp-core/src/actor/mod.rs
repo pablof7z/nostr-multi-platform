@@ -73,6 +73,8 @@ mod session_persistence;
 #[cfg(all(test, feature = "native"))]
 mod session_persistence_tests;
 #[cfg(all(test, feature = "native"))]
+mod signer_port_test_harness;
+#[cfg(all(test, feature = "native"))]
 mod cipher_for_account_tests;
 #[cfg(all(test, feature = "native"))]
 mod sign_event_for_account_tests;

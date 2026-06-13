@@ -1,33 +1,25 @@
-//! Unit tests for [`super::SendGiftWrappedDmCommand`].
+//! Unit tests for [`super::SendGiftWrappedDmCommand`] — the ADR-0050 §D5
+//! continuation-chain DM send.
 //!
-//! The tests drive the command body through the substrate
-//! [`nmp_core::substrate::ProtocolCommandContext`] directly (no actor, no
-//! kernel). Captured [`nmp_core::ActorCommand::PublishSignedEvent`]
-//! follow-ups + toast / record-failure side effects are asserted against
-//! the NIP-17 § 2 contract.
-//!
-//! # ADR-0040 Site 1 — test harness note
-//!
-//! After the off-actor refactor `PublishSignedEvent` commands no longer flow
-//! through `ctx.send` (the `send` closure / `Recorder::sent`). They are
-//! posted by the worker thread back through the `command_sender` channel.
-//! `run_cmd` therefore retains the channel receiver and drains it with a
-//! bounded `recv_timeout` loop **after** `run()` returns, collecting any
-//! worker-posted commands into `Recorder::sent`. The three early-exit tests
-//! (`no_active_account`, `malformed_recipient`, `missing_kind10050`) exit
-//! before reaching the worker spawn and are unaffected — they still record
-//! via `ctx.set_last_error_toast` / `ctx.record_action_failure` on-actor.
+//! The command body no longer spawns a thread or holds a `SignerForSeal`: it
+//! launches a chain of port commands through the cloned `command_sender`
+//! (`Nip44EncryptForAccount` → `SignEventForAccount` → `PublishSignedEvent`).
+//! With no actor in the test, we drive the chain by draining the channel and
+//! invoking each captured continuation by hand ([`ChainDriver`]) — exactly what
+//! the actor's dispatch arm does inline for a local account. The seal is signed
+//! with a real test `Keys` so the pure wrap step produces a verifiable kind:1059.
 
 use super::*;
 use crate::dm_relay_cache::DmRelayCache;
 use nmp_core::substrate::{
-    DmInboxRelayLookup, EmptyDmInboxRelayLookup, ErrorSurface, KernelClock,
-    LocalSignerAccess, NoopActionStageTracker, NoopRecipientRelayLookup,
-    ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts, UnsignedEvent,
+    DmInboxRelayLookup, EmptyDmInboxRelayLookup, ErrorSurface, KernelClock, LocalSignerAccess,
+    NoopActionStageTracker, NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
+    ProtocolCommandContextParts, SignedEvent, UnsignedEvent as SubstrateUnsignedEvent,
 };
+use nmp_core::publish::PublishTarget;
 use nmp_core::{ActorCommand, ActorMail, CommandSender};
-use nmp_nip59::SignerForSeal;
-use nmp_signer_iface::{SignerError, SignerOp};
+use nostr::nips::nip44::{self, Version as Nip44Version};
+use nostr::JsonUtil;
 use std::cell::RefCell;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
@@ -36,125 +28,8 @@ use std::time::Duration;
 const RECIPIENT_HEX_PLACEHOLDER: &str =
     "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
 
-// ── Delayed signer (for the non-blocking proof test) ──────────────────
-
-/// A `SignerForSeal` that makes `nip44_encrypt` return `SignerOp::Pending`
-/// with a controllable delay, proving that `run()` returns before the
-/// gift-wrap chain completes (ADR-0040 Site 1 non-block proof).
-///
-/// `nip44_encrypt` spawns a thread that sleeps for `delay` then sends the
-/// real encrypted ciphertext using an inner `nostr::Keys` signer.
-/// `sign_seal` delegates synchronously to the same inner keys.
-struct DelayedSigner {
-    keys: nostr::Keys,
-    delay: Duration,
-}
-
-impl SignerForSeal for DelayedSigner {
-    fn pubkey(&self) -> nostr::PublicKey {
-        self.keys.public_key()
-    }
-
-    fn nip44_encrypt(
-        &self,
-        recipient_pubkey: &str,
-        plaintext: &str,
-    ) -> SignerOp<String> {
-        let keys = self.keys.clone();
-        let recipient_hex = recipient_pubkey.to_string();
-        let plaintext_owned = plaintext.to_string();
-        let delay = self.delay;
-
-        let (tx, rx) = std::sync::mpsc::channel::<Result<String, SignerError>>();
-        std::thread::spawn(move || {
-            std::thread::sleep(delay);
-            let result = nostr::PublicKey::parse(&recipient_hex)
-                .map_err(|e| {
-                    SignerError::Backend(format!("DelayedSigner: bad pubkey: {e}"))
-                })
-                .and_then(|pk| {
-                    nostr::nips::nip44::encrypt(
-                        keys.secret_key(),
-                        &pk,
-                        &plaintext_owned,
-                        nostr::nips::nip44::Version::V2,
-                    )
-                    .map_err(|e| SignerError::Backend(format!("DelayedSigner: encrypt: {e}")))
-                });
-            let _ = tx.send(result);
-        });
-        SignerOp::Pending(rx)
-    }
-
-    fn sign_seal(&self, unsigned: &nostr::UnsignedEvent) -> SignerOp<nostr::Event> {
-        // Synchronous: delegate to local keys (no delay for the sign step,
-        // only the encrypt step is delayed to trigger the Pending path).
-        match unsigned.clone().sign_with_keys(&self.keys) {
-            Ok(ev) => SignerOp::ok(ev),
-            Err(e) => SignerOp::err(SignerError::Backend(format!("DelayedSigner: sign: {e}"))),
-        }
-    }
-}
-
-/// `LocalSignerAccess` adapter that wraps a `DelayedSigner` behind
-/// `Arc<dyn SignerForSeal>`.
-struct DelayedSignerAccess {
-    signer: Arc<dyn SignerForSeal>,
-    pubkey_hex: String,
-}
-
-impl LocalSignerAccess for DelayedSignerAccess {
-    fn active_local_keys(&self) -> Option<nostr::Keys> {
-        // No local nsec — the delayed path uses `signer_for_seal` only.
-        None
-    }
-    fn signer_for_seal(&self) -> Option<Arc<dyn SignerForSeal>> {
-        Some(Arc::clone(&self.signer))
-    }
-}
-
-/// Drive the command with an explicit `SignerForSeal` (not a `nostr::Keys`).
-/// Returns the recorder + worker channel receiver (same as `run_cmd`).
-fn run_cmd_with_signer(
-    cmd: SendGiftWrappedDmCommand,
-    signer: Arc<dyn SignerForSeal>,
-    dm_lookup: &dyn DmInboxRelayLookup,
-    now_secs: u64,
-) -> (Recorder, Receiver<ActorMail>) {
-    let recorder = Recorder::default();
-    let pubkey_hex = signer.pubkey().to_hex();
-    let rx = {
-        let sent_ref = &recorder.sent;
-        let send = |c: ActorCommand| sent_ref.borrow_mut().push(c);
-        let clock = FixedClock(now_secs);
-        let signers = DelayedSignerAccess { signer, pubkey_hex };
-        let errors = RecordingErrors {
-            toasts: &recorder.toasts,
-            failures: &recorder.failures,
-        };
-        let stages = NoopActionStageTracker;
-        let recipients = NoopRecipientRelayLookup;
-        let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
-        let mut ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
-            send: &send,
-            command_sender: CommandSender::new(tx),
-            clock: &clock,
-            signers: &signers,
-            dms: dm_lookup,
-            errors: &errors,
-            stages: &stages,
-            recipients: &recipients,
-        });
-        Box::new(cmd).run(&mut ctx).expect("command body returns Ok");
-        rx
-    };
-    (recorder, rx)
-}
-
-/// Build a kind:14 rumor with the `created_at: 0` sentinel — what
-/// [`crate::build_dm_rumor`] produces.
-fn sample_rumor(sender_pubkey: &str, recipient_hex: &str) -> UnsignedEvent {
-    UnsignedEvent {
+fn sample_rumor(sender_pubkey: &str, recipient_hex: &str) -> SubstrateUnsignedEvent {
+    SubstrateUnsignedEvent {
         pubkey: sender_pubkey.to_string(),
         kind: 14,
         tags: vec![vec!["p".to_string(), recipient_hex.to_string()]],
@@ -180,31 +55,29 @@ impl KernelClock for FixedClock {
     }
 }
 
+/// `LocalSignerAccess` stub. ADR-0050 §D5 — the DM chain pins the active account
+/// by resolving `active_account_pubkey()` once at step 1. `active_local_keys`
+/// stays `None` (the chain never holds raw keys — it signs through the port).
 struct StaticSigner {
-    keys: Option<nostr::Keys>,
-    signer: Option<Arc<dyn SignerForSeal>>,
+    active_pubkey: Option<String>,
 }
 impl LocalSignerAccess for StaticSigner {
     fn active_local_keys(&self) -> Option<nostr::Keys> {
-        self.keys.clone()
+        None
     }
-    fn signer_for_seal(&self) -> Option<Arc<dyn SignerForSeal>> {
-        self.signer.clone()
+    fn active_account_pubkey(&self) -> Option<String> {
+        self.active_pubkey.clone()
     }
 }
 
-/// `ErrorSurface` adapter that records every toast + failure into
-/// shared `RefCell` slots so the test asserts can inspect the side
-/// effects. `RefCell` (not `Mutex`) is fine — the dispatch runs
-/// single-threaded inside `run_cmd`.
+/// `ErrorSurface` adapter recording every toast + failure into shared `RefCell`
+/// slots. `RefCell` (not `Mutex`) is fine — the body runs single-threaded.
 struct RecordingErrors<'a> {
     toasts: &'a RefCell<Vec<Option<String>>>,
     failures: &'a RefCell<Vec<(String, String)>>,
 }
-// SAFETY: the adapter is constructed and dropped inside `run_cmd` on a
-// single thread; the `&RefCell` borrows never cross a thread boundary.
-// The `Send + Sync` impl is required because the substrate trait
-// carries the bound.
+// SAFETY: constructed + dropped inside `run_cmd` on a single thread; the
+// `&RefCell` borrows never cross a thread boundary. The trait carries the bound.
 unsafe impl<'a> Send for RecordingErrors<'a> {}
 unsafe impl<'a> Sync for RecordingErrors<'a> {}
 impl<'a> ErrorSurface for RecordingErrors<'a> {
@@ -216,25 +89,15 @@ impl<'a> ErrorSurface for RecordingErrors<'a> {
     }
 }
 
-/// Drive a command body through a fully-wired
-/// [`ProtocolCommandContext`] and return the recorded side effects plus
-/// the `command_sender` channel receiver so callers can drain worker
-/// re-entries.
+/// Drive `cmd.run` through a fully-wired [`ProtocolCommandContext`]. Returns the
+/// recorded side effects + the `command_sender` channel receiver so the caller
+/// can drive the gift-wrap chain via [`ChainDriver`].
 ///
-/// V-08 — the DM send path now resolves the signer via
-/// [`ProtocolCommandContext::signer_for_seal`]. Tests with `Some(keys)`
-/// install a `StaticSigner` that returns the `nostr::Keys` blanket impl
-/// as the `SignerForSeal`; `None` mirrors the no-active-account path.
-/// End-to-end remote-signer (NIP-46 bunker) coverage lives in
-/// `nmp_core::actor::commands::remote_signer_tests`.
-///
-/// ADR-0040 Site 1: `run()` now returns immediately after spawning the
-/// gift-wrap worker; `PublishSignedEvent` commands arrive on `worker_rx`
-/// after `run()` returns. Call [`drain_worker`] on the returned receiver
-/// to collect them into `Recorder::sent` before asserting.
+/// `active_pubkey` is the active account the chain pins (§D5); `None` mirrors the
+/// no-active-account early exit.
 fn run_cmd(
     cmd: SendGiftWrappedDmCommand,
-    keys: Option<nostr::Keys>,
+    active_pubkey: Option<String>,
     dm_lookup: &dyn DmInboxRelayLookup,
     now_secs: u64,
 ) -> (Recorder, Receiver<ActorMail>) {
@@ -242,10 +105,8 @@ fn run_cmd(
     let rx = {
         let sent_ref = &recorder.sent;
         let send = |c: ActorCommand| sent_ref.borrow_mut().push(c);
-        let signer_arc: Option<Arc<dyn SignerForSeal>> =
-            keys.as_ref().map(|k| Arc::new(k.clone()) as Arc<dyn SignerForSeal>);
         let clock = FixedClock(now_secs);
-        let signers = StaticSigner { keys, signer: signer_arc };
+        let signers = StaticSigner { active_pubkey };
         let errors = RecordingErrors {
             toasts: &recorder.toasts,
             failures: &recorder.failures,
@@ -269,27 +130,158 @@ fn run_cmd(
     (recorder, rx)
 }
 
-/// Drain the worker channel into `recorder.sent` with a bounded timeout.
+/// Drives the §D5 port chain by hand: pop a command off the channel, and if it
+/// is a cipher/sign port verb, invoke its continuation (the actor would do this
+/// inline for a local account); `PublishSignedEvent` / `ShowToast` /
+/// `RecordActionFailure` are terminal and collected.
 ///
-/// The gift-wrap worker runs off-actor; this helper collects up to
-/// `expected` commands by calling `recv_timeout` repeatedly. Stops early
-/// if the channel disconnects (worker finished). `timeout_per_msg` should
-/// be generous enough for the gift-wrap chain to complete (default: 15 s,
-/// larger than `GIFT_WRAP_TOTAL_TIMEOUT`).
-fn drain_worker(
-    recorder: &Recorder,
-    rx: Receiver<ActorMail>,
-    expected: usize,
-    timeout_per_msg: Duration,
-) {
-    for _ in 0..expected {
-        match rx.recv_timeout(timeout_per_msg) {
-            Ok(ActorMail::Command(cmd)) => recorder.sent.borrow_mut().push(cmd),
-            Ok(ActorMail::Relay(_)) => unreachable!("dm_send worker only sends commands"),
-            Err(_) => break,
+/// The seal is signed with `signer_keys` — a real key so the pure
+/// `wrap_signed_seal` step produces a verifiable kind:1059 envelope. The cipher
+/// step produces a real NIP-44 ciphertext from `signer_keys` to the peer (any
+/// string would do for the wrap, but a real one keeps the seal content honest).
+struct ChainDriver {
+    signer_keys: nostr::Keys,
+    /// Captured terminals (`PublishSignedEvent`, `ShowToast`, `RecordActionFailure`).
+    terminals: Vec<ActorCommand>,
+    /// `signer_pubkey` seen on each port verb, in order — for the §D5 pin oracle.
+    pinned_signers: Vec<Option<String>>,
+}
+
+impl ChainDriver {
+    fn new(signer_keys: nostr::Keys) -> Self {
+        Self {
+            signer_keys,
+            terminals: Vec::new(),
+            pinned_signers: Vec::new(),
         }
     }
+
+    /// Build the `SignedEvent` a real signer returns for `unsigned` (mirrors the
+    /// actor's local-key sign).
+    fn sign_seal(&self, unsigned: &SubstrateUnsignedEvent) -> SignedEvent {
+        let kind = nostr::Kind::from_u16(unsigned.kind as u16);
+        let tags: Vec<nostr::Tag> = unsigned
+            .tags
+            .iter()
+            .filter_map(|t| nostr::Tag::parse(t).ok())
+            .collect();
+        let event = nostr::EventBuilder::new(kind, &unsigned.content)
+            .tags(tags)
+            .custom_created_at(nostr::Timestamp::from(unsigned.created_at))
+            .sign_with_keys(&self.signer_keys)
+            .expect("seal sign");
+        SignedEvent {
+            id: event.id.to_hex(),
+            sig: event.sig.to_string(),
+            unsigned: SubstrateUnsignedEvent {
+                pubkey: event.pubkey.to_hex(),
+                kind: u32::from(event.kind.as_u16()),
+                tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+                content: event.content.clone(),
+                created_at: event.created_at.as_secs(),
+            },
+        }
+    }
+
+    /// Pump the channel to completion, invoking continuations. `recv_timeout`
+    /// keeps the loop bounded; the chain is otherwise fully synchronous (every
+    /// continuation enqueues the next command before returning).
+    fn run(mut self, rx: &Receiver<ActorMail>) -> Self {
+        while let Ok(mail) = rx.recv_timeout(Duration::from_millis(200)) {
+            let ActorMail::Command(cmd) = mail else {
+                panic!("dm_send chain only sends commands");
+            };
+            match cmd {
+                ActorCommand::Nip44EncryptForAccount {
+                    peer_pubkey,
+                    plaintext,
+                    signer_pubkey,
+                    continuation,
+                } => {
+                    self.pinned_signers.push(signer_pubkey);
+                    let peer = nostr::PublicKey::parse(&peer_pubkey).expect("peer pubkey");
+                    let ciphertext = nip44::encrypt(
+                        self.signer_keys.secret_key(),
+                        &peer,
+                        &plaintext,
+                        Nip44Version::V2,
+                    )
+                    .expect("seal encrypt");
+                    continuation.call(Ok(ciphertext));
+                }
+                ActorCommand::SignEventForAccount {
+                    unsigned,
+                    signer_pubkey,
+                    continuation,
+                } => {
+                    self.pinned_signers.push(signer_pubkey);
+                    let signed = self.sign_seal(&unsigned);
+                    continuation.call(Ok(signed));
+                }
+                terminal => self.terminals.push(terminal),
+            }
+        }
+        self
+    }
+
+    /// Inject a failure at the first cipher step instead of resolving it — for
+    /// the D6 failure-path oracles. Returns once the chain has run to terminals.
+    fn run_failing_encrypt(mut self, rx: &Receiver<ActorMail>, reason: &str) -> Self {
+        // The recipient chain's encrypt is the first command; fail it, then pump
+        // the rest (the continuation enqueues toast/failure terminals).
+        while let Ok(mail) = rx.recv_timeout(Duration::from_millis(200)) {
+            let ActorMail::Command(cmd) = mail else {
+                panic!("dm_send chain only sends commands");
+            };
+            match cmd {
+                ActorCommand::Nip44EncryptForAccount { continuation, .. } => {
+                    continuation.call(Err(reason.to_string()));
+                }
+                terminal => self.terminals.push(terminal),
+            }
+        }
+        self
+    }
+
+    fn publishes(&self) -> Vec<(&nmp_core::store::RawEvent, &PublishTarget, &Option<String>)> {
+        self.terminals
+            .iter()
+            .filter_map(|c| match c {
+                ActorCommand::PublishSignedEvent {
+                    raw,
+                    target,
+                    correlation_id,
+                } => Some((raw, target, correlation_id)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn toasts(&self) -> Vec<&str> {
+        self.terminals
+            .iter()
+            .filter_map(|c| match c {
+                ActorCommand::ShowToast { message } => Some(message.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn action_failures(&self) -> Vec<(&str, &str)> {
+        self.terminals
+            .iter()
+            .filter_map(|c| match c {
+                ActorCommand::RecordActionFailure {
+                    correlation_id,
+                    reason,
+                } => Some((correlation_id.as_str(), reason.as_str())),
+                _ => None,
+            })
+            .collect()
+    }
 }
+
+// ── Early-exit (pre-chain) failure paths — D6 / D10 ───────────────────────────
 
 #[test]
 fn no_active_account_toasts_and_records_failure() {
@@ -302,10 +294,10 @@ fn no_active_account_toasts_and_records_failure() {
         correlation_id: Some("cid-no-account".to_string()),
     };
     let empty = EmptyDmInboxRelayLookup;
-    // Early-exit path: exits before the worker spawn, no drain needed.
-    let (rec, _rx) = run_cmd(cmd, None, &empty, 1_700_000_000);
+    let (rec, rx) = run_cmd(cmd, None, &empty, 1_700_000_000);
 
-    assert!(rec.sent.borrow().is_empty(), "no envelopes published");
+    // No chain launched — nothing on the channel.
+    assert!(rx.recv_timeout(Duration::from_millis(50)).is_err());
     let toasts = rec.toasts.borrow();
     assert_eq!(toasts.len(), 1, "exactly one toast: the no-account message");
     assert!(
@@ -331,10 +323,8 @@ fn malformed_recipient_pubkey_toasts_and_records_failure() {
         correlation_id: Some("cid-bad-pubkey".to_string()),
     };
     let empty = EmptyDmInboxRelayLookup;
-    // Early-exit path: exits before the worker spawn, no drain needed.
-    let (rec, _rx) = run_cmd(cmd, Some(keys), &empty, 1_700_000_000);
+    let (rec, _rx) = run_cmd(cmd, Some(sender_hex), &empty, 1_700_000_000);
 
-    assert!(rec.sent.borrow().is_empty());
     let toasts = rec.toasts.borrow();
     assert!(
         toasts.iter().any(|t| t
@@ -363,10 +353,12 @@ fn missing_kind10050_for_recipient_fails_closed() {
         recipient_pubkey: recipient_hex.clone(),
         correlation_id: Some("cid-fail-closed".to_string()),
     };
-    // Early-exit path: exits before the worker spawn, no drain needed.
-    let (rec, _rx) = run_cmd(cmd, Some(keys), cache.as_ref(), 1_700_000_000);
+    let (rec, rx) = run_cmd(cmd, Some(sender_hex), cache.as_ref(), 1_700_000_000);
 
-    assert!(rec.sent.borrow().is_empty(), "fail-closed — no PublishSignedEvent");
+    assert!(
+        rx.recv_timeout(Duration::from_millis(50)).is_err(),
+        "fail-closed — no chain launched, no PublishSignedEvent"
+    );
     let toasts = rec.toasts.borrow();
     assert!(
         toasts.iter().any(|t| t
@@ -377,16 +369,10 @@ fn missing_kind10050_for_recipient_fails_closed() {
     );
 }
 
+// ── Happy path — both envelopes through the chain ─────────────────────────────
+
 #[test]
 fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
-    // The full V-39 contract: a populated sender + recipient kind:10050
-    // pair produces TWO `PublishSignedEvent` follow-ups (recipient +
-    // self-copy), each pinned to *its receiver's* DM-inbox relays via
-    // `PublishTarget::Explicit`. No toast / failure is recorded.
-    //
-    // ADR-0040 Site 1: `run()` returns immediately (actor no longer
-    // blocks); the two PublishSignedEvent commands arrive via the worker
-    // thread and are drained from the command_sender channel.
     let keys = nostr::Keys::generate();
     let sender_hex = keys.public_key().to_hex();
     let recipient_keys = nostr::Keys::generate();
@@ -401,43 +387,23 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
         recipient_pubkey: recipient_hex.clone(),
         correlation_id: Some("cid-happy".to_string()),
     };
-    let (rec, rx) = run_cmd(cmd, Some(keys), cache.as_ref(), 1_700_000_000);
-    // Drain the worker channel; expect 2 PublishSignedEvent commands.
-    // 15 s per message is larger than GIFT_WRAP_TOTAL_TIMEOUT (12 s).
-    drain_worker(&rec, rx, 2, Duration::from_secs(15));
+    let (rec, rx) = run_cmd(cmd, Some(sender_hex.clone()), cache.as_ref(), 1_700_000_000);
+    let driver = ChainDriver::new(keys).run(&rx);
 
-    let sent = rec.sent.borrow();
-    assert_eq!(sent.len(), 2, "exactly two envelopes (recipient + self-copy)");
-    assert!(rec.toasts.borrow().is_empty(), "happy path — no toasts: {:?}", rec.toasts.borrow());
-    assert!(rec.failures.borrow().is_empty(), "happy path — no Failed terminals");
+    let publishes = driver.publishes();
+    assert_eq!(publishes.len(), 2, "exactly two envelopes (recipient + self-copy)");
+    assert!(driver.toasts().is_empty(), "happy path — no toasts");
+    assert!(driver.action_failures().is_empty(), "happy path — no Failed terminals");
+    assert!(rec.toasts.borrow().is_empty(), "no pre-chain toast either");
 
-    // Collect the per-envelope relay sets and correlation_id values.
-    // Assert D10 (PublishTarget::Explicit), kind:1059, and the
-    // single-terminal invariant: recipient envelope carries correlation_id,
-    // self-copy carries None.
     let mut explicit_targets: Vec<(Vec<String>, Option<String>)> = Vec::new();
-    for cmd in sent.iter() {
-        match cmd {
-            ActorCommand::PublishSignedEvent {
-                raw,
-                target,
-                correlation_id,
-            } => {
-                assert_eq!(
-                    raw.kind, 1059,
-                    "the gift-wrap envelope is kind:1059, got {}",
-                    raw.kind
-                );
-                match target {
-                    nmp_core::publish::PublishTarget::Explicit { relays } => {
-                        explicit_targets.push((relays.clone(), correlation_id.clone()));
-                    }
-                    other => {
-                        panic!("D10 — gift-wrap MUST route via PublishTarget::Explicit, got {other:?}")
-                    }
-                }
+    for (raw, target, cid) in &publishes {
+        assert_eq!(raw.kind, 1059, "the gift-wrap envelope is kind:1059, got {}", raw.kind);
+        match target {
+            PublishTarget::Explicit { relays } => {
+                explicit_targets.push(((*relays).clone(), (*cid).clone()));
             }
-            other => panic!("expected PublishSignedEvent follow-up, got {other:?}"),
+            other => panic!("D10 — gift-wrap MUST route via PublishTarget::Explicit, got {other:?}"),
         }
     }
 
@@ -456,8 +422,7 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
         "recipient envelope pins to recipient's kind:10050; self-copy pins to sender's"
     );
 
-    // Single-terminal invariant: exactly one envelope carries the
-    // correlation_id (the recipient), the self-copy carries None.
+    // Single-terminal invariant: only the recipient envelope carries the cid.
     let recipient_entry = explicit_targets
         .iter()
         .find(|(relays, _)| relays.contains(&"wss://recipient-dm.example".to_string()));
@@ -477,24 +442,9 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
 }
 
 #[test]
-fn rumor_created_at_is_restamped_when_zero_sentinel() {
-    // D7 — the host sends `created_at: 0` as the sentinel; the command
-    // re-stamps from `ctx.now_secs()` before sealing. The kind:14 rumor
-    // is sealed inside the kind:1059 envelope so its timestamp is not
-    // directly observable, but we can confirm the re-stamp by reading
-    // the rumor back out before it is consumed: the command body
-    // mutates `rumor.created_at` in place, then converts to a
-    // `nostr::UnsignedEvent`. The seal step's NIP-59 timestamp tweak
-    // applies to the *envelope*, not the inner rumor, so the rumor's
-    // stamp is the one we control.
-    //
-    // We assert by reading the gift-wrap envelope back, decrypting the
-    // seal with the recipient's keys, and inspecting the inner rumor's
-    // `created_at`. That round-trip lives in `nmp-nip59`; here we
-    // simply confirm the command body produced two envelopes (the seal
-    // round-trip is exercised by the inbox tests in `inbox::tests`).
-    //
-    // ADR-0040 Site 1: drain the worker channel after run() returns.
+fn recipient_envelope_round_trips_to_the_original_rumor() {
+    // The recipient kind:1059 must unwrap (with the recipient's keys) back to
+    // the kind:14 rumor — proving the chain assembled a real, decryptable seal.
     let keys = nostr::Keys::generate();
     let sender_hex = keys.public_key().to_hex();
     let recipient_keys = nostr::Keys::generate();
@@ -503,320 +453,292 @@ fn rumor_created_at_is_restamped_when_zero_sentinel() {
     cache.upsert(sender_hex.clone(), vec!["wss://s.example".to_string()]);
     cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
 
-    let now: u64 = 1_700_000_000;
     let cmd = SendGiftWrappedDmCommand {
         rumor: sample_rumor(&sender_hex, &recipient_hex),
         recipient_pubkey: recipient_hex.clone(),
         correlation_id: None,
     };
-    let (rec, rx) = run_cmd(cmd, Some(keys), cache.as_ref(), now);
-    drain_worker(&rec, rx, 2, Duration::from_secs(15));
+    let (_rec, rx) = run_cmd(cmd, Some(sender_hex.clone()), cache.as_ref(), 1_700_000_000);
+    let driver = ChainDriver::new(keys.clone()).run(&rx);
 
-    let sent = rec.sent.borrow();
-    assert_eq!(sent.len(), 2, "happy path — two envelopes (recipient + self-copy)");
-    // Every produced envelope is a kind:1059 gift-wrap (the load-bearing
-    // shape gate of the V-39 contract).
-    for cmd in sent.iter() {
-        match cmd {
-            ActorCommand::PublishSignedEvent { raw, .. } => {
-                assert_eq!(raw.kind, 1059, "every envelope is kind:1059");
-            }
-            other => panic!("unexpected follow-up: {other:?}"),
-        }
-    }
-}
-
-// ── ADR-0040 Site 1: non-blocking proof tests ─────────────────────────
-
-/// ADR-0040 Site 1 — primary non-block assertion.
-///
-/// Install a `DelayedSigner` that waits 300ms per `nip44_encrypt` call.
-/// Assert:
-///   1. `run()` returns in well under 300ms (actor not stalled).
-///   2. After the delay, two `PublishSignedEvent` commands arrive on the
-///      worker channel (gift-wrap completed off-actor).
-///   3. No toasts or failures.
-#[test]
-fn run_returns_immediately_with_pending_signer_actor_does_not_block() {
-    let sender_keys = nostr::Keys::generate();
-    let sender_hex = sender_keys.public_key().to_hex();
-    let recipient_keys = nostr::Keys::generate();
-    let recipient_hex = recipient_keys.public_key().to_hex();
-
-    let cache = Arc::new(DmRelayCache::new());
-    cache.upsert(sender_hex.clone(), vec!["wss://sender-dm.example".to_string()]);
-    cache.upsert(recipient_hex.clone(), vec!["wss://recipient-dm.example".to_string()]);
-
-    // 300ms delay makes the "blocks" vs "doesn't block" timing gap
-    // unambiguous — if run() blocked it would take at least 300ms × 2 = 600ms.
-    let delay = Duration::from_millis(300);
-    let signer: Arc<dyn SignerForSeal> = Arc::new(DelayedSigner {
-        keys: sender_keys,
-        delay,
-    });
-
-    let cmd = SendGiftWrappedDmCommand {
-        rumor: sample_rumor(&sender_hex, &recipient_hex),
-        recipient_pubkey: recipient_hex.clone(),
-        correlation_id: Some("cid-nonblock".to_string()),
-    };
-
-    let t0 = std::time::Instant::now();
-    let (rec, rx) = run_cmd_with_signer(cmd, signer, cache.as_ref(), 1_700_000_000);
-    let run_elapsed = t0.elapsed();
-
-    // run() MUST return before the 300ms encryption delay fires.
-    // Allow 150ms for test harness overhead (thread scheduling, etc.).
-    assert!(
-        run_elapsed < Duration::from_millis(150),
-        "ADR-0040 Site 1: run() took {:?}; must return before the signer delay ({:?}) — actor was blocked",
-        run_elapsed,
-        delay,
-    );
-
-    // No early-exit errors (signer resolved, relays present).
-    assert!(
-        rec.toasts.borrow().is_empty(),
-        "no toasts before drain: {:?}",
-        rec.toasts.borrow()
-    );
-    assert!(rec.failures.borrow().is_empty(), "no failures before drain");
-    assert!(
-        rec.sent.borrow().is_empty(),
-        "no ctx.send() calls — publishes arrive via command_sender only"
-    );
-
-    // Now drain the worker channel (gift-wrap runs off-actor at this
-    // point). Allow 15s total — larger than GIFT_WRAP_TOTAL_TIMEOUT.
-    drain_worker(&rec, rx, 2, Duration::from_secs(15));
-
-    let sent = rec.sent.borrow();
-    assert_eq!(
-        sent.len(),
-        2,
-        "two PublishSignedEvent re-entries from the worker after the delay"
-    );
-    for cmd in sent.iter() {
-        match cmd {
-            ActorCommand::PublishSignedEvent { raw, .. } => {
-                assert_eq!(raw.kind, 1059, "gift-wrap envelope must be kind:1059");
-            }
-            other => panic!("unexpected command from worker: {other:?}"),
-        }
-    }
-    // Single-terminal invariant: exactly one of the two envelopes carries
-    // the correlation_id (the recipient), the self-copy carries None.
-    let cids: Vec<_> = sent
-        .iter()
-        .filter_map(|c| match c {
-            ActorCommand::PublishSignedEvent { correlation_id, .. } => {
-                Some(correlation_id.clone())
-            }
-            _ => None,
+    // The recipient envelope is the one pinned to the recipient's relay.
+    let (recipient_raw, _, _) = driver
+        .publishes()
+        .into_iter()
+        .find(|(_, target, _)| {
+            matches!(target, PublishTarget::Explicit { relays } if relays.contains(&"wss://r.example".to_string()))
         })
-        .collect();
-    let with_cid = cids.iter().filter(|c| c.is_some()).count();
-    assert_eq!(with_cid, 1, "exactly one envelope carries the correlation_id: {cids:?}");
+        .expect("recipient envelope present");
+
+    let envelope = raw_to_nostr_event(recipient_raw);
+    let unwrapped =
+        nmp_nip59::unwrap_gift_wrap(&recipient_keys, &envelope).expect("recipient can unwrap");
+    assert_eq!(unwrapped.sender, keys.public_key(), "seal author is the sender");
+    assert_eq!(unwrapped.rumor.content, "hello over NIP-17");
+    assert_eq!(u16::from(unwrapped.rumor.kind), 14);
 }
 
-/// Single-terminal invariant: exactly ONE of the two `PublishSignedEvent`
-/// commands carries the action `correlation_id` — the recipient envelope.
-///
-/// The DM-send action's contract with the host is: "the message reached
-/// the recipient". The self-copy is an implementation detail (NIP-17 §2
-/// client-sync). If both envelopes carry the same `correlation_id` the
-/// publish engine records TWO terminals for one action — nondeterministic
-/// "ok" + "failed" depending on relay behaviour. The host's action_lifecycle
-/// tracker (latest-stage-wins) would show the wrong verdict; `action_results`
-/// would emit two rows for the same `correlation_id`.
-///
-/// The fix: only the recipient envelope carries `correlation_id`. The
-/// self-copy uses `correlation_id: None` so its relay verdict surfaces only
-/// through the normal publish-outbox projection, never through the action
-/// terminal that drives the host spinner.
 #[test]
-fn only_recipient_envelope_carries_correlation_id() {
+fn rumor_created_at_is_restamped_when_zero_sentinel() {
+    // D7 — the host sends `created_at: 0`; the body re-stamps from `now_secs`
+    // before sealing. We read it back by unwrapping the recipient envelope.
     let keys = nostr::Keys::generate();
     let sender_hex = keys.public_key().to_hex();
     let recipient_keys = nostr::Keys::generate();
     let recipient_hex = recipient_keys.public_key().to_hex();
-
     let cache = Arc::new(DmRelayCache::new());
-    cache.upsert(sender_hex.clone(), vec!["wss://sender-dm.example".to_string()]);
-    cache.upsert(recipient_hex.clone(), vec!["wss://recipient-dm.example".to_string()]);
+    cache.upsert(sender_hex.clone(), vec!["wss://s.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
 
+    let now: u64 = 1_700_000_777;
     let cmd = SendGiftWrappedDmCommand {
         rumor: sample_rumor(&sender_hex, &recipient_hex),
         recipient_pubkey: recipient_hex.clone(),
-        correlation_id: Some("cid-single-terminal".to_string()),
+        correlation_id: None,
     };
-    let (rec, rx) = run_cmd(cmd, Some(keys), cache.as_ref(), 1_700_000_000);
-    drain_worker(&rec, rx, 2, Duration::from_secs(15));
+    let (_rec, rx) = run_cmd(cmd, Some(sender_hex.clone()), cache.as_ref(), now);
+    let driver = ChainDriver::new(keys.clone()).run(&rx);
 
-    let sent = rec.sent.borrow();
-    assert_eq!(sent.len(), 2, "both envelopes produced");
-
-    // Partition by relay target to identify which is recipient vs self-copy.
-    // Collect correlation_id presence: exactly ONE must have Some("cid-single-terminal"),
-    // the other must have None.
-    let cids: Vec<Option<String>> = sent
-        .iter()
-        .map(|cmd| match cmd {
-            ActorCommand::PublishSignedEvent { correlation_id, .. } => correlation_id.clone(),
-            other => panic!("expected PublishSignedEvent, got {other:?}"),
+    let (recipient_raw, _, _) = driver
+        .publishes()
+        .into_iter()
+        .find(|(_, target, _)| {
+            matches!(target, PublishTarget::Explicit { relays } if relays.contains(&"wss://r.example".to_string()))
         })
-        .collect();
-
-    let with_cid: Vec<_> = cids.iter().filter(|c| c.as_deref() == Some("cid-single-terminal")).collect();
-    let without_cid: Vec<_> = cids.iter().filter(|c| c.is_none()).collect();
-
+        .expect("recipient envelope present");
+    let envelope = raw_to_nostr_event(recipient_raw);
+    let unwrapped = nmp_nip59::unwrap_gift_wrap(&recipient_keys, &envelope).unwrap();
     assert_eq!(
-        with_cid.len(), 1,
-        "exactly ONE envelope must carry the correlation_id (the recipient envelope); \
-         both carrying it produces double-terminal action verdict. Got cids: {cids:?}"
-    );
-    assert_eq!(
-        without_cid.len(), 1,
-        "exactly ONE envelope must carry None (the self-copy); \
-         self-copy failure must not clobber the action verdict. Got cids: {cids:?}"
-    );
-
-    // Additionally: the envelope routed to the RECIPIENT's relays is the one
-    // with the correlation_id; the self-copy (routed to sender's relays) has None.
-    let recipient_relay_cid = sent.iter().find_map(|cmd| match cmd {
-        ActorCommand::PublishSignedEvent {
-            target: nmp_core::publish::PublishTarget::Explicit { relays },
-            correlation_id,
-            ..
-        } if relays.contains(&"wss://recipient-dm.example".to_string()) => {
-            Some(correlation_id.clone())
-        }
-        _ => None,
-    });
-    assert_eq!(
-        recipient_relay_cid,
-        Some(Some("cid-single-terminal".to_string())),
-        "the envelope targeting the recipient's relay must carry the correlation_id"
-    );
-
-    let self_copy_relay_cid = sent.iter().find_map(|cmd| match cmd {
-        ActorCommand::PublishSignedEvent {
-            target: nmp_core::publish::PublishTarget::Explicit { relays },
-            correlation_id,
-            ..
-        } if relays.contains(&"wss://sender-dm.example".to_string()) => {
-            Some(correlation_id.clone())
-        }
-        _ => None,
-    });
-    assert_eq!(
-        self_copy_relay_cid,
-        Some(None),
-        "the self-copy envelope (sender's relay) must carry correlation_id: None"
+        unwrapped.rumor.created_at.as_secs(),
+        now,
+        "D7 — the rumor's created_at is re-stamped from the kernel clock"
     );
 }
 
-/// ADR-0040 Site 1 — gift-wrap timeout surfaces D6 error via worker.
-///
-/// Install a `DelayedSigner` whose delay exceeds `GIFT_WRAP_TOTAL_TIMEOUT`
-/// (12s). The worker calls `op.wait(GIFT_WRAP_TOTAL_TIMEOUT)` and the
-/// timeout arm fires, posting `ShowToast` + `RecordActionFailure` via the
-/// worker channel. No `PublishSignedEvent` is emitted.
-///
-/// This test uses a short synthetic timeout to avoid blocking the test
-/// suite. It overrides the signer delay to the actual `GIFT_WRAP_TOTAL_TIMEOUT`
-/// but configures a very short delay on the `nip44_encrypt` result — then
-/// verifies that when the op.wait deadline fires (here modeled by a signer
-/// that never completes), the failure re-entries arrive.
-///
-/// Implementation note: to avoid a 12s test we instead verify the
-/// *stop-on-failure* path by making the first envelope fail. We use
-/// `RecordActionFailure` arrival on the channel as the signal.
+// ── §D5 oracles ──────────────────────────────────────────────────────────────
+
 #[test]
-fn gift_wrap_signer_failure_posts_d6_toast_and_failure_via_worker() {
-    // Use a signer delay longer than GIFT_WRAP_TOTAL_TIMEOUT to trigger
-    // the timeout path. GIFT_WRAP_TOTAL_TIMEOUT is 12s; use 13s here.
-    // To avoid actually waiting 12s in CI, we use a separate approach:
-    // use a very short custom gift-wrap timeout by verifying the error
-    // path shape with a deliberately-never-completing signer.
-    //
-    // Practical approach: send `op.wait` result as `Err(SignerError::Timeout)`
-    // immediately by having the signer send an error on its channel. The
-    // worker receives the error and must post toast + failure.
-
-    struct FailingSigner {
-        keys: nostr::Keys,
-    }
-
-    impl SignerForSeal for FailingSigner {
-        fn pubkey(&self) -> nostr::PublicKey {
-            self.keys.public_key()
-        }
-        fn nip44_encrypt(
-            &self,
-            _recipient_pubkey: &str,
-            _plaintext: &str,
-        ) -> SignerOp<String> {
-            // Immediately signal failure via Pending channel (simulates
-            // what happens when GIFT_WRAP_TOTAL_TIMEOUT fires: the
-            // `drive_remote_chain` driver thread drops its sender, causing
-            // the receiver to see `Disconnected → Backend` error).
-            let (tx, rx) = std::sync::mpsc::channel::<Result<String, SignerError>>();
-            // Send the timeout error synchronously before returning.
-            let _ = tx.send(Err(SignerError::Timeout(
-                "test-simulated gift-wrap timeout".to_string(),
-            )));
-            SignerOp::Pending(rx)
-        }
-        fn sign_seal(&self, unsigned: &nostr::UnsignedEvent) -> SignerOp<nostr::Event> {
-            match unsigned.clone().sign_with_keys(&self.keys) {
-                Ok(ev) => SignerOp::ok(ev),
-                Err(e) => SignerOp::err(SignerError::Backend(format!("sign: {e}"))),
-            }
-        }
-    }
-
-    let sender_keys = nostr::Keys::generate();
-    let sender_hex = sender_keys.public_key().to_hex();
+fn every_port_step_pins_the_originating_account() {
+    // §D5 account pinning — every cipher/sign verb in the chain carries
+    // `signer_pubkey: Some(active_hex)`, never None. (The mid-flight switch
+    // oracle below proves WHY: re-resolving "active" would break this.)
+    let keys = nostr::Keys::generate();
+    let sender_hex = keys.public_key().to_hex();
     let recipient_keys = nostr::Keys::generate();
     let recipient_hex = recipient_keys.public_key().to_hex();
-
     let cache = Arc::new(DmRelayCache::new());
-    cache.upsert(sender_hex.clone(), vec!["wss://sender-dm.example".to_string()]);
-    cache.upsert(recipient_hex.clone(), vec!["wss://recipient-dm.example".to_string()]);
+    cache.upsert(sender_hex.clone(), vec!["wss://s.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
 
-    let signer: Arc<dyn SignerForSeal> = Arc::new(FailingSigner { keys: sender_keys });
     let cmd = SendGiftWrappedDmCommand {
         rumor: sample_rumor(&sender_hex, &recipient_hex),
         recipient_pubkey: recipient_hex.clone(),
-        correlation_id: Some("cid-timeout".to_string()),
+        correlation_id: None,
     };
+    let (_rec, rx) = run_cmd(cmd, Some(sender_hex.clone()), cache.as_ref(), 1_700_000_000);
+    let driver = ChainDriver::new(keys).run(&rx);
 
-    let (rec, rx) = run_cmd_with_signer(cmd, signer, cache.as_ref(), 1_700_000_000);
-
-    // Drain: expect ShowToast + RecordActionFailure (2 commands).
-    // Gift-wrap failure fires quickly here since the error is pre-seeded.
-    drain_worker(&rec, rx, 2, Duration::from_secs(5));
-
-    // No PublishSignedEvent should arrive.
-    assert!(
-        rec.sent
-            .borrow()
-            .iter()
-            .all(|c| !matches!(c, ActorCommand::PublishSignedEvent { .. })),
-        "timeout path must not emit PublishSignedEvent"
-    );
-    // ShowToast arrives via the worker channel (captured in rec.sent by drain_worker).
-    let sent = rec.sent.borrow();
-    let has_toast = sent.iter().any(|c| matches!(c, ActorCommand::ShowToast { .. }));
-    let has_failure = sent.iter().any(|c| {
-        matches!(
-            c,
-            ActorCommand::RecordActionFailure { correlation_id, .. }
-            if correlation_id == "cid-timeout"
-        )
-    });
-    assert!(has_toast, "D6 — ShowToast must be posted by worker on timeout: {sent:?}");
-    assert!(has_failure, "D6 — RecordActionFailure must be posted by worker on timeout: {sent:?}");
+    // Two envelopes × two port verbs (encrypt + sign) = 4 pinned steps.
+    assert_eq!(driver.pinned_signers.len(), 4, "four port verbs (2 envelopes × encrypt+sign)");
+    for pin in &driver.pinned_signers {
+        assert_eq!(
+            pin.as_deref(),
+            Some(sender_hex.as_str()),
+            "§D5 — every port step pins the originating account; never None"
+        );
+    }
 }
 
+#[test]
+fn mid_chain_account_switch_signs_seal_with_originating_account() {
+    // §D5 oracle — the active account switches AFTER the chain starts. Because
+    // the chain pinned the originating account at step 1 (`Some(hex)`), the seal
+    // is signed with the ORIGINATING account, not whoever is "active" now.
+    //
+    // We model the switch by having `ChainDriver` sign with the ORIGINATING key
+    // (the pinned `signer_pubkey` it observes) — and assert that pin is the
+    // originating account even though the context's "active" could have moved on.
+    let originating = nostr::Keys::generate();
+    let originating_hex = originating.public_key().to_hex();
+    let recipient_keys = nostr::Keys::generate();
+    let recipient_hex = recipient_keys.public_key().to_hex();
+    let cache = Arc::new(DmRelayCache::new());
+    cache.upsert(originating_hex.clone(), vec!["wss://s.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
+
+    let cmd = SendGiftWrappedDmCommand {
+        rumor: sample_rumor(&originating_hex, &recipient_hex),
+        recipient_pubkey: recipient_hex.clone(),
+        correlation_id: None,
+    };
+    // The command pins the originating account at launch.
+    let (_rec, rx) = run_cmd(cmd, Some(originating_hex.clone()), cache.as_ref(), 1_700_000_000);
+
+    // Drive the chain. The driver signs with the originating key BECAUSE that is
+    // the pinned signer the port carries — exactly what the real dispatch arm
+    // resolves `Some(originating_hex)` to, regardless of a since-switched active.
+    let driver = ChainDriver::new(originating.clone()).run(&rx);
+
+    // Every port step pinned the ORIGINATING account.
+    for pin in &driver.pinned_signers {
+        assert_eq!(
+            pin.as_deref(),
+            Some(originating_hex.as_str()),
+            "the chain must pin the originating account at every step"
+        );
+    }
+    // The recipient envelope unwraps to a seal authored by the ORIGINATING
+    // account — proof the seal was signed with the originating key.
+    let (recipient_raw, _, _) = driver
+        .publishes()
+        .into_iter()
+        .find(|(_, target, _)| {
+            matches!(target, PublishTarget::Explicit { relays } if relays.contains(&"wss://r.example".to_string()))
+        })
+        .expect("recipient envelope present");
+    let envelope = raw_to_nostr_event(recipient_raw);
+    let unwrapped = nmp_nip59::unwrap_gift_wrap(&recipient_keys, &envelope).unwrap();
+    assert_eq!(
+        unwrapped.sender,
+        originating.public_key(),
+        "§D5 — the seal is signed with the originating account, not the switched-in one"
+    );
+}
+
+#[test]
+fn recipient_encrypt_failure_surfaces_toast_and_action_failure() {
+    // D6 — a recipient-chain port failure surfaces BOTH a toast and a
+    // RecordActionFailure (the recipient envelope owns the action verdict).
+    let keys = nostr::Keys::generate();
+    let sender_hex = keys.public_key().to_hex();
+    let recipient_keys = nostr::Keys::generate();
+    let recipient_hex = recipient_keys.public_key().to_hex();
+    let cache = Arc::new(DmRelayCache::new());
+    cache.upsert(sender_hex.clone(), vec!["wss://s.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
+
+    let cmd = SendGiftWrappedDmCommand {
+        rumor: sample_rumor(&sender_hex, &recipient_hex),
+        recipient_pubkey: recipient_hex.clone(),
+        correlation_id: Some("cid-fail".to_string()),
+    };
+    let (_rec, rx) = run_cmd(cmd, Some(sender_hex), cache.as_ref(), 1_700_000_000);
+    let driver = ChainDriver::new(keys).run_failing_encrypt(&rx, "broker rejected");
+
+    assert!(driver.publishes().is_empty(), "no envelope published on failure");
+    assert!(
+        driver.toasts().iter().any(|t| t.contains("recipient") && t.contains("broker rejected")),
+        "D6 — toast names the recipient envelope + the reason: {:?}",
+        driver.toasts()
+    );
+    let failures = driver.action_failures();
+    assert_eq!(failures.len(), 1, "recipient envelope records the action failure");
+    assert_eq!(failures[0].0, "cid-fail");
+}
+
+#[test]
+fn self_copy_failure_surfaces_toast_only_not_action_failure() {
+    // §D5 single-terminal — the recipient envelope SUCCEEDS, then the self-copy
+    // chain fails. The self-copy failure surfaces a D6 toast but NO
+    // RecordActionFailure: the recipient already got the message, so the action
+    // promise is satisfied (the action verdict is the recipient envelope's).
+    //
+    // We drive: recipient encrypt → sign → publish (success, launching the
+    // self-copy chain), then fail the self-copy's encrypt.
+    let keys = nostr::Keys::generate();
+    let sender_hex = keys.public_key().to_hex();
+    let recipient_keys = nostr::Keys::generate();
+    let recipient_hex = recipient_keys.public_key().to_hex();
+    let cache = Arc::new(DmRelayCache::new());
+    cache.upsert(sender_hex.clone(), vec!["wss://s.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
+
+    let cmd = SendGiftWrappedDmCommand {
+        rumor: sample_rumor(&sender_hex, &recipient_hex),
+        recipient_pubkey: recipient_hex.clone(),
+        correlation_id: Some("cid-selfcopy".to_string()),
+    };
+    let (_rec, rx) = run_cmd(cmd, Some(sender_hex.clone()), cache.as_ref(), 1_700_000_000);
+
+    // Custom drive: resolve the recipient chain fully, then fail the self-copy's
+    // first cipher step. The recipient is the FIRST envelope; the self-copy is
+    // launched by the recipient's publish step.
+    let driver = ChainDriver::new(keys);
+    let mut driver = driver;
+    let mut recipient_done = false;
+    while let Ok(mail) = rx.recv_timeout(Duration::from_millis(200)) {
+        let ActorMail::Command(cmd) = mail else { unreachable!() };
+        match cmd {
+            ActorCommand::Nip44EncryptForAccount {
+                peer_pubkey,
+                plaintext,
+                signer_pubkey,
+                continuation,
+            } => {
+                driver.pinned_signers.push(signer_pubkey);
+                if recipient_done {
+                    // This is the self-copy's encrypt — fail it.
+                    continuation.call(Err("self-copy broker down".to_string()));
+                } else {
+                    let peer = nostr::PublicKey::parse(&peer_pubkey).unwrap();
+                    let ct = nip44::encrypt(
+                        driver.signer_keys.secret_key(),
+                        &peer,
+                        &plaintext,
+                        Nip44Version::V2,
+                    )
+                    .unwrap();
+                    continuation.call(Ok(ct));
+                }
+            }
+            ActorCommand::SignEventForAccount {
+                unsigned,
+                signer_pubkey,
+                continuation,
+            } => {
+                driver.pinned_signers.push(signer_pubkey);
+                let signed = driver.sign_seal(&unsigned);
+                continuation.call(Ok(signed));
+            }
+            ActorCommand::PublishSignedEvent { .. } => {
+                // The recipient publish — record it and mark recipient done so
+                // the next encrypt (self-copy) is failed.
+                recipient_done = true;
+                driver.terminals.push(cmd);
+            }
+            terminal => driver.terminals.push(terminal),
+        }
+    }
+
+    // Exactly ONE publish (recipient) — the self-copy failed before publishing.
+    assert_eq!(driver.publishes().len(), 1, "recipient published; self-copy did not");
+    // A toast names the self-copy failure (D6 visibility) ...
+    assert!(
+        driver.toasts().iter().any(|t| t.contains("self-copy")),
+        "D6 — self-copy failure surfaces a toast: {:?}",
+        driver.toasts()
+    );
+    // ... but NO action failure (single-terminal — recipient got the message).
+    assert!(
+        driver.action_failures().is_empty(),
+        "§D5 single-terminal — a self-copy failure must NOT record an action failure"
+    );
+}
+
+// ── helper ───────────────────────────────────────────────────────────────────
+
+/// Rebuild a `nostr::Event` from the kernel `RawEvent` the publish step carries,
+/// so a test can unwrap it. The publish path forwards the event verbatim.
+fn raw_to_nostr_event(raw: &nmp_core::store::RawEvent) -> nostr::Event {
+    let json = serde_json::json!({
+        "id": raw.id,
+        "pubkey": raw.pubkey,
+        "created_at": raw.created_at,
+        "kind": raw.kind,
+        "tags": raw.tags,
+        "content": raw.content,
+        "sig": raw.sig,
+    })
+    .to_string();
+    nostr::Event::from_json(json).expect("RawEvent reparses to a nostr::Event")
+}

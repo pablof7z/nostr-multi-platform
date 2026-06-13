@@ -89,7 +89,7 @@ fn marmot_kind445_roundtrip_over_damus() {
     );
 
     // setup_two_member_group exercises the migrated `wrap_welcome` (now
-    // routes through `gift_wrap_with_signer`). If that broke, this panics.
+    // routes through `nmp_nip59::gift_wrap_local`). If that broke, this panics.
     let group_id =
         harness::setup_two_member_group(&alice, &alice_keys, &bob, &bob_keys, "marmot-real-relay");
     println!("[marmot-rrt] group established at the same epoch on both sides");

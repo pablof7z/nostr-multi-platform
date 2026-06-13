@@ -28,9 +28,7 @@ fn gift_wrapped_dm(sender: &Keys, receiver: &nostr::PublicKey, content: &str, ts
         .tags(vec![Tag::public_key(*receiver)])
         .custom_created_at(Timestamp::from(ts))
         .build(sender.public_key());
-    let signer: Arc<dyn nmp_nip59::SignerForSeal> = Arc::new(sender.clone());
-    nmp_nip59::gift_wrap_with_signer(&signer, receiver, &rumor, Timestamp::from(ts))
-        .wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)
+    nmp_nip59::gift_wrap_local(sender, receiver, &rumor, Timestamp::from(ts))
         .expect("gift wrap succeeds")
         .as_json()
 }

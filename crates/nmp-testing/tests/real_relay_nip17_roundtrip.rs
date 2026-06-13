@@ -26,7 +26,7 @@ use std::net::TcpStream;
 use std::sync::{Arc, Once};
 use std::time::{Duration, Instant};
 
-use nmp_nip59::{gift_wrap_with_signer, unwrap_gift_wrap, SignerForSeal, GIFT_WRAP_TOTAL_TIMEOUT};
+use nmp_nip59::{gift_wrap_local, unwrap_gift_wrap};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::util::JsonUtil as _;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
@@ -138,15 +138,10 @@ fn nip17_giftwrap_roundtrip_over_damus() {
         .custom_created_at(Timestamp::now())
         .build(alice.public_key());
 
-    // ── Gift-wrap via the PR-public seam ────────────────────────────────────
-    // `nmp_nip59::gift_wrap_with_signer` is the ONLY public path post-#631.
-    // The blanket `SignerForSeal` impl on `nostr::Keys` resolves every step
-    // synchronously, so `.wait` returns immediately.
-    let signer: Arc<dyn SignerForSeal> = Arc::new(alice.clone());
+    // ── Gift-wrap via the pure local-keys composition (ADR-0050 §D5) ────────
     let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
-    let envelope = gift_wrap_with_signer(&signer, &bob.public_key(), &rumor, tweaked)
-        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
-        .expect("gift_wrap_with_signer must succeed for local keys");
+    let envelope = gift_wrap_local(&alice, &bob.public_key(), &rumor, tweaked)
+        .expect("gift_wrap_local must succeed for local keys");
     assert_eq!(envelope.kind, Kind::GiftWrap, "outer kind must be 1059");
     let envelope_id = envelope.id.to_hex();
     let envelope_json = envelope.as_json();

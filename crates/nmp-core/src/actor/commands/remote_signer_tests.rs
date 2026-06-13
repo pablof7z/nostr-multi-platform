@@ -362,59 +362,47 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
 }
 
 #[test]
-fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
-    // V-08 (bunker DM send) regression pin. End-to-end contract: with
-    // an active bunker (`StubRemoteSigner`), the `signer_for_seal`
-    // closure the dispatch arm installs on `ProtocolCommandContext`
-    // resolves to a `SignerForSeal` that drives the kind:13 seal step
-    // through the remote signer (NOT a phantom local-keys branch).
+fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
+    // ADR-0050 §D5 — the gift-wrap DM chain pins its originating account by
+    // resolving `ctx.active_account_pubkey()` ONCE at step 1, then passing
+    // `signer_pubkey: Some(hex)` to every port step (so a mid-chain account
+    // switch signs the seal with the originating account). This replaces the
+    // deleted `signer_for_seal` slot + `RemoteSignerForSeal` adapter.
     //
-    // The `nmp-nip17::SendGiftWrappedDmCommand` body itself reads the
-    // signer through `ctx.signer_for_seal()` and hands it to
-    // `nmp_nip59::gift_wrap_with_signer`; this test reproduces those
-    // two calls against the same accessor without crossing the D0
-    // crate boundary (nmp-core cannot import nmp-nip17). If the
-    // accessor returns the bunker-adapted signer here, the DM command
-    // body — already covered for the local-keys happy path in
-    // `nmp_nip17::dm_send::tests::happy_path_publishes_two_envelopes\
-    // _pinned_to_kind10050_relays` — automatically routes through the
-    // bunker too.
+    // The accessor must be backend-transparent: with an active NIP-46 bunker
+    // (no local keys), it resolves the BUNKER's user pubkey — not `None`, and
+    // not a phantom local-keys branch. `active_local_keys()` stays `None` for a
+    // bunker (D13 — the chain never holds raw keys; it signs through the port).
     use crate::substrate::{
         EmptyDmInboxRelayLookup, LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
         NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
         ProtocolCommandContextParts,
     };
-    use nmp_nip59::{gift_wrap_with_signer, GIFT_WRAP_TOTAL_TIMEOUT};
-    use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
-    use nostr::{EventBuilder, Kind};
 
     let (mut id, mut kernel) = fresh();
-    let (handle, sign_count) = stub_signer();
-    let sender_hex = handle.pubkey_hex();
+    let (handle, _sign_count) = stub_signer();
+    let bunker_hex = handle.pubkey_hex();
     add_signer(
         &mut id,
         &mut kernel,
         crate::actor::SignerSource::RemoteHandle(handle),
-        false,
+        true, // make_active — this is the active account.
         false,
     );
 
-    // Debt C — wrap the identity reference in a `LocalSignerAccess`
-    // adapter so the test exercises the same capability surface the
-    // dispatch arm wires. The dispatch arm uses an equivalent adapter
-    // backed by a `RefCell<&IdentityRuntime>`; here we use a direct
-    // borrow because the test holds the runtime exclusively.
+    // Debt C — wrap the identity reference in a `LocalSignerAccess` adapter so
+    // the test exercises the same capability surface the dispatch arm wires.
     struct IdentityLocalSignerAccess<'a>(&'a super::IdentityRuntime);
     impl<'a> LocalSignerAccess for IdentityLocalSignerAccess<'a> {
         fn active_local_keys(&self) -> Option<nostr::Keys> {
             self.0.active_local_keys().cloned()
         }
-        fn signer_for_seal(&self) -> Option<Arc<dyn nmp_nip59::SignerForSeal>> {
-            self.0.active_signer_for_seal()
+        fn active_account_pubkey(&self) -> Option<String> {
+            self.0.active_pubkey()
         }
     }
-    // SAFETY: single-threaded test scope; the `&IdentityRuntime` borrow
-    // never crosses a thread boundary. The trait carries the bound.
+    // SAFETY: single-threaded test scope; the `&IdentityRuntime` borrow never
+    // crosses a thread boundary. The trait carries the bound.
     unsafe impl<'a> Send for IdentityLocalSignerAccess<'a> {}
     unsafe impl<'a> Sync for IdentityLocalSignerAccess<'a> {}
     let signers = IdentityLocalSignerAccess(&id);
@@ -436,48 +424,18 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
         recipients: &RECIPIENTS,
     });
 
-    let signer = ctx
-        .signer_for_seal()
-        .expect("ctx.signer_for_seal() resolves the active bunker signer");
-
-    // The signer's pubkey must equal the bunker's pubkey (NOT a local
-    // key) — proves the `RemoteSignerForSeal` adapter is the one
-    // wired through, not a phantom local-keys branch.
+    // Backend-transparent: the active bunker's pubkey resolves through the
+    // accessor — the pin source for the whole chain.
     assert_eq!(
-        signer.pubkey().to_hex(),
-        sender_hex,
-        "signer pubkey must match the bunker's user pubkey"
+        ctx.active_account_pubkey().as_deref(),
+        Some(bunker_hex.as_str()),
+        "active_account_pubkey must resolve the active bunker's user pubkey"
     );
-
-    // Drive a real gift-wrap through the resolved signer — same call
-    // pattern `SendGiftWrappedDmCommand` uses. The kind:13 seal step
-    // routes through `RemoteSignerHandle::sign` on the stub, bumping
-    // `sign_count`.
-    let recipient = nostr::Keys::generate().public_key();
-    let rumor = EventBuilder::new(Kind::from_u16(14), "hello from a bunker")
-        .tag(nostr::Tag::public_key(recipient))
-        .build(signer.pubkey());
-
-    let op = gift_wrap_with_signer(
-        &signer,
-        &recipient,
-        &rumor,
-        nostr::Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK),
-    );
-    let envelope = op
-        .wait(GIFT_WRAP_TOTAL_TIMEOUT)
-        .expect("bunker gift-wrap completes within total budget");
-
-    assert_eq!(envelope.kind, Kind::GiftWrap, "kind:1059 envelope");
-    assert_ne!(
-        envelope.pubkey,
-        signer.pubkey(),
-        "NIP-59 unlinkability — outer pubkey must be ephemeral"
-    );
-    assert_eq!(
-        sign_count.load(Ordering::Relaxed),
-        1,
-        "the bunker signed the kind:13 seal exactly once"
+    // A bunker exposes NO local keys — the chain signs the seal through the
+    // port (`SignEventForAccount`), never by holding raw `Keys` (D13).
+    assert!(
+        ctx.active_local_keys().is_none(),
+        "a NIP-46 bunker account must not expose local keys"
     );
 }
 
