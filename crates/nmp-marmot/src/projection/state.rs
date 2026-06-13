@@ -68,13 +68,13 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use mdk_core::prelude::group_types::GroupState;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 use nostr::{Event, JsonUtil, PublicKey, RelayUrl};
 
 use crate::service::MarmotService;
-
 use crate::projection::display;
 use crate::projection::payload::{
     KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
@@ -239,6 +239,7 @@ impl MarmotProjection {
                 .get_groups()
                 .map(|gs| {
                     gs.into_iter()
+                        .filter(|g| g.state == GroupState::Active)
                         .map(|g| hex_encode(g.mls_group_id.as_slice()))
                         .collect()
                 })
@@ -284,6 +285,7 @@ impl MarmotProjection {
                 .get_groups()
                 .map(|gs| {
                     gs.into_iter()
+                        .filter(|g| g.state == GroupState::Active)
                         .map(|g| hex_encode(g.mls_group_id.as_slice()))
                         .collect()
                 })
@@ -318,6 +320,7 @@ impl MarmotProjection {
         let groups: Vec<MarmotGroupRow> = match inner.service.get_groups() {
             Ok(gs) => gs
                 .into_iter()
+                .filter(|g| g.state == GroupState::Active)
                 .map(|g| {
                     let id_hex = hex_encode(g.mls_group_id.as_slice());
                     let members = inner

@@ -141,3 +141,6 @@ mod tests;
 
 #[cfg(test)]
 mod restart_resubscribe_tests;
+
+#[cfg(test)]
+mod security_tests;

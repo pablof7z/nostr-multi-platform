@@ -69,6 +69,7 @@ crates/nmp-marmot/src/ffi.rs	634
 crates/nmp-marmot/src/ffi/tests.rs	996
 crates/nmp-marmot/src/projection/ops.rs	713
 crates/nmp-marmot/src/projection/state.rs	655
+crates/nmp-marmot/src/restart_resubscribe_tests.rs	522
 crates/nmp-marmot/src/service.rs	666
 crates/nmp-marmot/src/tests.rs	751
 crates/nmp-network/src/pool/inner.rs	519
