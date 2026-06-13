@@ -31,6 +31,7 @@ use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::store::VerifiedEvent;
 use nmp_core::substrate::{IngestParser, MailboxCache, ParsedRelayList};
 
+use crate::canonical::canonicalize_relay_url;
 use crate::InMemoryMailboxCache;
 
 /// The kind:10002 ingest parser. Constructed with a shared
@@ -88,8 +89,15 @@ fn parse_relay_list(tags: &[Vec<String>]) -> ParsedRelayList {
         // legacy kernel-side parser applied this gate; the substrate
         // parser must too so a misconfigured `r` tag (`https://…`,
         // `ws://…`, bare host, etc.) does not poison the routing cache.
+        //
+        // Canonicalise via the shared `canonical::canonicalize_relay_url`
+        // (lowercase host, strip empty-path trailing slash) — the SAME
+        // helper `blocked_relays.rs` (kind:10006) applies. Without this,
+        // a kind:10002 write entry `wss://Block.Example` would never match
+        // a blocked entry stored as `wss://block.example`, silently
+        // defeating the blocked-relay filter (a privacy regression).
         let url = match tag.get(1) {
-            Some(u) if u.starts_with("wss://") => u.clone(),
+            Some(u) if u.starts_with("wss://") => canonicalize_relay_url(u),
             _ => continue,
         };
         match tag.get(2).map(String::as_str) {
@@ -282,5 +290,34 @@ mod tests {
             cache.read_relays(&"alice".into()),
             Some(vec!["wss://via.dispatcher".into()]),
         );
+    }
+
+    // ─── Bug 2: URL canonicalisation (kind:10002 ⇄ kind:10006 collision) ────
+
+    #[test]
+    fn parse_relay_list_canonicalizes_urls() {
+        // An `r` tag with a mixed-case host + trailing slash must store as the
+        // canonical form (lowercase host, slash stripped) so it collides with
+        // the blocked-relay cache's canonical keys.
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        let parser = Kind10002Parser::new(cache.clone());
+        parser.parse_event(&evt("alice", 10_002, vec![
+            vec!["r".into(), "wss://RELAY.EXAMPLE/".into(), "write".into()],
+        ]));
+
+        let w = cache.write_relays(&"alice".into()).unwrap();
+        assert_eq!(w, vec!["wss://relay.example".to_string()]);
+    }
+
+    #[test]
+    fn parse_relay_list_strips_trailing_slash() {
+        let cache = Arc::new(InMemoryMailboxCache::new());
+        let parser = Kind10002Parser::new(cache.clone());
+        parser.parse_event(&evt("alice", 10_002, vec![
+            vec!["r".into(), "wss://relay.example/".into()],
+        ]));
+
+        let r = cache.read_relays(&"alice".into()).unwrap();
+        assert_eq!(r, vec!["wss://relay.example".to_string()]);
     }
 }

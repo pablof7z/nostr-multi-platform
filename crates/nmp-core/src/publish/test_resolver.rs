@@ -38,6 +38,7 @@ use std::sync::Arc;
 use super::action::{PublishTarget, RelayUrl};
 use super::traits::{OutboxResolver, RelaySelectionReason, ResolvedRelay};
 use crate::store::{EventStore, PubKey};
+use crate::substrate::BlockedRelaySet;
 
 #[derive(Clone)]
 pub struct TestKind10002OutboxResolver {
@@ -129,10 +130,12 @@ impl OutboxResolver for TestKind10002OutboxResolver {
         p_tags: &[String],
         target: &PublishTarget,
         _kind: u32,
+        blocked: &BlockedRelaySet,
     ) -> Vec<ResolvedRelay> {
         if let PublishTarget::Explicit { relays } = target {
             return relays
                 .iter()
+                .filter(|url| !blocked.contains(url))
                 .map(|url| ResolvedRelay {
                     url: url.clone(),
                     reason: RelaySelectionReason::Explicit,
@@ -179,6 +182,8 @@ impl OutboxResolver for TestKind10002OutboxResolver {
                 }
             }
         }
+        // Blocked-relay post-filter (parity with the production resolver).
+        out.retain(|r| !blocked.contains(&r.url));
         out
     }
 }

@@ -2668,18 +2668,18 @@ impl Kernel {
         self.dm_inbox_relays = lookup;
     }
 
-    /// Inject the blocked-relay lookup (composition seam). Production
-    /// composition (apps that depend on `nmp-router`) calls this after
-    /// `Kernel::new` to install a shared `Arc<InMemoryBlockedRelayCache>`
-    /// so the kernel's `build_routing_context` reader and the
-    /// kind:10006 ingest parser writer see the same cache. Default is
-    /// [`crate::substrate::EmptyBlockedRelayLookup`] (every lookup returns
-    /// the empty set — the pre-V-40 zero-block default).
-    ///
-    /// MUST be called BEFORE the first kind:10006 event is ingested — the
-    /// caches are independent stores, not a write-through pair, so a swap
-    /// after ingest would lose cached entries.
+    /// Inject the blocked-relay lookup (composition seam). Apps that depend on
+    /// `nmp-router` call this after `Kernel::new` to install a shared
+    /// `Arc<InMemoryBlockedRelayCache>` so the `build_routing_context` reader,
+    /// the kind:10006 ingest parser writer, AND the publish engine all see the
+    /// same cache. Default is [`crate::substrate::EmptyBlockedRelayLookup`]
+    /// (zero-block). MUST be called BEFORE the first kind:10006 ingest — the
+    /// caches are independent stores, so a swap after ingest loses entries.
     pub(crate) fn set_blocked_relay_lookup(&mut self, lookup: Arc<dyn BlockedRelayLookup>) {
+        // Forward to the publish engine (privacy fix — the outbox resolver
+        // must also exclude blocked relays); then keep the routing-side handle.
+        self.publish_engine
+            .set_blocked_relay_lookup(Arc::clone(&lookup));
         self.blocked_relays = lookup;
     }
 
