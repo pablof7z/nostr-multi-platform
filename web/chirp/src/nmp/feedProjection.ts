@@ -100,10 +100,17 @@ function decodeAttribution(ra: ReplyAttribution): FeedAttribution {
     replyCreatedAt: Number(ra.replyCreatedAt()),
   };
   if (ra.hasAuthorDisplayName()) {
-    out.authorDisplayName = ra.authorDisplayName() ?? "";
+    // Guard against empty string: `?? ""` would set authorDisplayName="" which
+    // blocks the resolvedProfiles (KRPR) fallback in feedItemsToRows because
+    // `"" ?? resolvedProfiles.get(pubkey)` returns "" (nullish coalescing only
+    // bypasses null/undefined, not empty string).  Leave undefined so the
+    // presentation-layer join can supply the name from KRPR.
+    const dn = ra.authorDisplayName();
+    if (dn) out.authorDisplayName = dn;
   }
   if (ra.hasAuthorPictureUrl()) {
-    out.authorPictureUrl = ra.authorPictureUrl() ?? "";
+    const url = ra.authorPictureUrl();
+    if (url) out.authorPictureUrl = url;
   }
   return out;
 }
@@ -127,7 +134,8 @@ function decodeRootCard(rootCard: RootCard): FeedItem | null {
   if (repostedByFb) {
     repostedBy = { authorPubkey: repostedByFb.authorPubkey() ?? "" };
     if (repostedByFb.hasAuthorDisplayName()) {
-      repostedBy.authorDisplayName = repostedByFb.authorDisplayName() ?? "";
+      const dn = repostedByFb.authorDisplayName();
+      if (dn) repostedBy.authorDisplayName = dn;
     }
   }
 
@@ -149,10 +157,12 @@ function decodeRootCard(rootCard: RootCard): FeedItem | null {
     attribution,
   };
   if (card.hasAuthorDisplayName()) {
-    item.authorDisplayName = card.authorDisplayName() ?? "";
+    const dn = card.authorDisplayName();
+    if (dn) item.authorDisplayName = dn;
   }
   if (card.hasAuthorPictureUrl()) {
-    item.authorPictureUrl = card.authorPictureUrl() ?? "";
+    const url = card.authorPictureUrl();
+    if (url) item.authorPictureUrl = url;
   }
   if (repostedBy) {
     item.repostedBy = repostedBy;

@@ -2,6 +2,7 @@ import * as flatbuffers from "flatbuffers";
 
 import { DegradedRuntime } from "./degradedRuntime";
 import { decodeHomeFeed, decodeResolvedProfiles, type FeedItem } from "./feedProjection";
+import { decodeKrdgTones } from "./relayDiagnosticsProjection";
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
 import {
   eventCorrelationId,
@@ -12,7 +13,12 @@ import {
   type ChirpAction,
 } from "./protocol";
 import type { RuntimeCommand } from "./actions";
-import { decodeUpdateFrameBytes, SNAPSHOT_SCHEMA_VERSION, UpdateFrameDecodeError, type DecodedRelayStatus } from "./updateFrame";
+import {
+  decodeUpdateFrameBytes,
+  SNAPSHOT_SCHEMA_VERSION,
+  UpdateFrameDecodeError,
+  type DecodedRelayStatus,
+} from "./updateFrame";
 
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
@@ -24,19 +30,24 @@ export type RuntimeSnapshot = {
   clientRuntime: "worker" | "in_process_fallback";
   events: WorkerEvent[];
   latestUpdateBytes?: Uint8Array;
+  /** Snapshot revision number — decoded cheaply on every frame for the
+   *  Inspector's collapsed pulse strip. Undefined before the first snapshot. */
+  latestRev?: bigint;
   /** Per-relay status rows decoded from the Tier-3 relay_statuses field of the
    *  most recent SnapshotFrame. Populated after the first successful decode;
    *  undefined before any snapshot arrives. Empty array means the kernel
-   *  has no relays configured yet. */
+   *  has no relays configured yet.
+   *  connectionTone / authTone / roleTone are merged in from the KRDG
+   *  typed projection on every frame (cheap — relay count is small). */
   latestRelayStatuses?: DecodedRelayStatus[];
   /** Decoded home feed items from the nmp.feed.home typed projection.
    *  Populated after the first snapshot that contains the projection; undefined
    *  before any projection arrives. Keep-last-good: only overwritten when a
    *  new successful decode arrives (never cleared on a corrupt frame). */
   feedItems?: FeedItem[];
-  /** Decoded resolved_profiles (KRPR) map: hex pubkey → kind:0 display name.
-   *  Populated after the first snapshot that carries the projection and at least
-   *  one claimed profile with a kind:0. Keep-last-good. */
+  /** Decoded resolved_profiles (KRPR) map: hex pubkey -> kind:0 display name.
+   *  Populated after the first successfully decoded KRPR projection. Empty map
+   *  means the kernel currently has no resolved profile facts to expose. */
   resolvedProfiles?: Map<string, string>;
 };
 
@@ -88,6 +99,7 @@ export function createNmpClient(): NmpClient {
 abstract class BaseClient implements NmpClient {
   private events: WorkerEvent[] = [];
   private latestUpdateBytes: Uint8Array | undefined;
+  private latestRev: bigint | undefined;
   private latestRelayStatuses: DecodedRelayStatus[] | undefined;
   private latestFeedItems: FeedItem[] | undefined;
   private latestResolvedProfiles: Map<string, string> | undefined;
@@ -102,6 +114,7 @@ abstract class BaseClient implements NmpClient {
       clientRuntime: this.clientRuntime,
       events: [...this.events],
       latestUpdateBytes: this.latestUpdateBytes,
+      latestRev: this.latestRev,
       latestRelayStatuses: this.latestRelayStatuses,
       feedItems: this.latestFeedItems,
       resolvedProfiles: this.latestResolvedProfiles,
@@ -122,7 +135,13 @@ abstract class BaseClient implements NmpClient {
       const bytes = event.bytes instanceof Uint8Array ? event.bytes : new Uint8Array(event.bytes);
       this.latestUpdateBytes = bytes;
       try {
-        const decoded = decodeUpdateFrameBytes(bytes);
+        // Hot path: lite=true skips the logicalInterests / wireSubscriptions /
+        // metrics loops in decodeUpdateFrameBytes. Those arrays are only needed
+        // by the Inspector panels when the dock is open; they are decoded lazily
+        // there via decodeInspectorSnapshot(). The feed-critical path (relay
+        // statuses, rev, feed items, resolved profiles, KRDG relay tones) is
+        // kept lean so profile-resolution frames are processed without delay.
+        const decoded = decodeUpdateFrameBytes(bytes, { lite: true });
         if (decoded.type === "snapshot") {
           // Envelope schema version mismatch: the kernel's wire layout moved
           // under us. Mirror iOS (KernelBridge.swift:525-528): keep the last
@@ -133,17 +152,18 @@ abstract class BaseClient implements NmpClient {
             // Tier-3 relay statuses: surfaced directly from the FlatBuffers
             // envelope without going through the typed-projection sidecar.
             this.latestRelayStatuses = decoded.relayStatuses;
+            // Rev exposed for the Inspector's collapsed pulse strip.
+            this.latestRev = decoded.rev;
             // running() mirrors the kernel's run-state; prefer the explicit
             // Tier-3 field over waiting for a separate runtime_status event
             // so the UI reflects live kernel state on every frame.
             if (decoded.running) {
               this.status = "running";
             }
-            // Decode the nmp.feed.home typed projection from the same frame.
-            // Parse the raw bytes again to obtain the SnapshotFrame object
-            // (decodeUpdateFrameBytes only returns decoded scalars).
-            // Keep-last-good: only overwrite when decodeHomeFeed returns a
-            // result (undefined means absent/corrupt — leave previous feed).
+            // Second pass over the same bytes to access typed projections
+            // (feed items, resolved profiles, KRDG relay tones). These are
+            // all feed-critical and must run on every frame.
+            // Keep-last-good: only overwrite on a non-undefined result.
             try {
               const bb = new flatbuffers.ByteBuffer(bytes);
               if (UpdateFrame.bufferHasIdentifier(bb)) {
@@ -156,10 +176,33 @@ abstract class BaseClient implements NmpClient {
                       this.latestFeedItems = feedResult.items;
                     }
                     // Decode resolved_profiles (KRPR) from the same frame.
-                    // Keep-last-good: only overwrite on a non-empty result.
+                    // Keep-last-good only applies to corrupt/missing projection
+                    // data (`undefined`). A successfully decoded empty map is a
+                    // real kernel snapshot and must replace the previous map so
+                    // the shell never owns stale profile facts.
                     const profilesResult = decodeResolvedProfiles(snap);
                     if (profilesResult !== undefined) {
                       this.latestResolvedProfiles = profilesResult;
+                    }
+                    // Decode relay_diagnostics (KRDG) typed projection.
+                    // skipDetails=true: only relay-level tones are decoded
+                    // (connectionTone / authTone / roleTone). The per-relay
+                    // wireSubTones and interestTones maps are expensive to
+                    // build on every frame and are only needed by the
+                    // Inspector's expanded panels — they are decoded lazily
+                    // in decodeInspectorSnapshot() when the dock opens.
+                    const krdgTones = decodeKrdgTones(snap, { skipDetails: true });
+                    if (krdgTones !== undefined && this.latestRelayStatuses) {
+                      this.latestRelayStatuses = this.latestRelayStatuses.map((r) => {
+                        const t = krdgTones.relayTones.get(r.url);
+                        if (!t) return r;
+                        return {
+                          ...r,
+                          connectionTone: t.connectionTone,
+                          authTone: t.authTone,
+                          roleTone: t.roleTone,
+                        };
+                      });
                     }
                   }
                 }
@@ -179,7 +222,7 @@ abstract class BaseClient implements NmpClient {
         }
       }
     }
-    this.events = [event, ...this.events].slice(0, 8);
+    this.events = [event, ...this.events].slice(0, 32);
     const snapshot = this.snapshot();
     for (const listener of this.listeners) {
       listener(snapshot);

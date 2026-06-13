@@ -7,7 +7,7 @@ import {
 } from "./nmp/snapshot";
 import { ChatsPanel, GroupsPanel, SettingsPanel, WalletPanel } from "./features/FeaturePanels";
 import { HomePanel } from "./features/HomePanel";
-import { RuntimePanel } from "./features/RuntimePanel";
+import { NmpInspector } from "./features/inspector/Inspector";
 import { Sidebar, type AppTab } from "./features/Sidebar";
 
 // NIP-07 browser extension interface (window.nostr — EIP-1193-style extension).
@@ -49,7 +49,17 @@ export default function App() {
   // feedItemsToRows returns [] for undefined/empty — honest empty state.
   // resolvedProfiles (KRPR) provides the presentation-layer join for author
   // display names (root cards carry no denormalized display copy — GH #920).
-  const rows = createMemo(() => feedItemsToRows(snapshot().feedItems ?? [], snapshot().resolvedProfiles));
+  //
+  // Two stable sub-memos gate the rows recomputation. SolidJS only propagates
+  // a memo when its return value changes by reference. client.ts holds
+  // latestFeedItems / latestResolvedProfiles as stable references and replaces
+  // them only when new NOFS/KRPR data arrives. Claim/release
+  // snapshot frames leave those references unchanged → feedItems() /
+  // resolvedProfiles() return the same object → rows does not recompute →
+  // Post components are not remounted → the claim/release/churn loop breaks.
+  const feedItems = createMemo(() => snapshot().feedItems);
+  const resolvedProfiles = createMemo(() => snapshot().resolvedProfiles);
+  const rows = createMemo(() => feedItemsToRows(feedItems() ?? [], resolvedProfiles()));
 
   onCleanup(unsubscribe);
   onMount(() => void start());
@@ -130,7 +140,7 @@ export default function App() {
           </Match>
         </Switch>
       </section>
-      <RuntimePanel snapshot={snapshot()} feature={feature()} starting={starting()} onStart={start} />
+      <NmpInspector snapshot={snapshot()} starting={starting()} onStart={start} />
     </main>
   );
 }

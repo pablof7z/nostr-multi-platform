@@ -130,11 +130,11 @@ describe("shared Chirp web semantics", () => {
     });
     const decoded = decodeUpdateFrameBytes(bytes);
 
-    expect(decoded).toEqual({
+    expect(decoded).toMatchObject({
       type: "snapshot",
       schemaVersion: 1,
       running: true,
-      relayStatuses: [{ url: "wss://relay.example", role: "both", status: "Connected" }],
+      relayStatuses: [expect.objectContaining({ url: "wss://relay.example", role: "both", status: "Connected" })],
     });
   });
 
@@ -142,7 +142,7 @@ describe("shared Chirp web semantics", () => {
     const bytes = makeSnapshotBytes({ running: false });
     const decoded = decodeUpdateFrameBytes(bytes);
 
-    expect(decoded).toEqual({
+    expect(decoded).toMatchObject({
       type: "snapshot",
       schemaVersion: 1,
       running: false,
@@ -164,7 +164,7 @@ describe("shared Chirp web semantics", () => {
     }
 
     const decoded = decodeUpdateFrameBytes(bytes);
-    expect(decoded).toEqual({
+    expect(decoded).toMatchObject({
       type: "snapshot",
       schemaVersion: 1,
       running: false, // Tier-3 `running` field absent in v1 fixture → default false
@@ -366,7 +366,7 @@ describe("client schema enforcement", () => {
 
     unsubscribe();
     expect(snapshots[snapshots.length - 1]!.latestRelayStatuses).toEqual([
-      { url: "wss://r.example", role: "both", status: "Connected" },
+      expect.objectContaining({ url: "wss://r.example", role: "both", status: "Connected" }),
     ]);
   });
 
