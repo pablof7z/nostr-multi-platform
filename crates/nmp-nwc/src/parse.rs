@@ -185,9 +185,17 @@ fn is_hex64(s: &str) -> bool {
     s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())
 }
 
-/// Minimal percent-decode for relay URLs (handles %3A, %2F, etc.).
+/// Minimal percent-decode for relay URLs (handles %3A, %2F, %C3%A9, etc.).
+///
+/// Decoded bytes are accumulated into a `Vec<u8>` and converted to a `String`
+/// via `String::from_utf8_lossy` at the end.  The previous approach of
+/// `bytes[i] as char` cast each decoded byte directly to a `char`, mapping
+/// bytes 0x80–0xFF to their Latin-1 code points rather than interpreting
+/// multi-byte UTF-8 sequences correctly.  Accumulating and converting at the
+/// end handles multi-byte sequences (e.g. %C3%A9 → U+00E9 'é') without any
+/// per-byte char promotion.
 fn url_decode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
+    let mut out: Vec<u8> = Vec::with_capacity(s.len());
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -196,15 +204,15 @@ fn url_decode(s: &str) -> String {
                 hex_nibble(bytes[i + 1]),
                 hex_nibble(bytes[i + 2]),
             ) {
-                out.push(char::from(hi << 4 | lo));
+                out.push(hi << 4 | lo);
                 i += 3;
                 continue;
             }
         }
-        out.push(bytes[i] as char);
+        out.push(bytes[i]);
         i += 1;
     }
-    out
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn hex_nibble(b: u8) -> Option<u8> {
@@ -462,6 +470,30 @@ mod tests {
         assert!(
             rendered.contains("relays"),
             "Display must include the offending key, got: {rendered}"
+        );
+    }
+
+    /// A relay URL whose hostname contains percent-encoded UTF-8 bytes (e.g.
+    /// `%C3%A9` = U+00E9 LATIN SMALL LETTER E WITH ACUTE) must round-trip to
+    /// the correct Unicode string, not a Latin-1 corrupted form.
+    ///
+    /// The pre-fix `bytes[i] as char` cast maps 0xC3 → U+00C3 and 0xA9 →
+    /// U+00A9 (two separate characters), rather than the single U+00E9 the
+    /// two-byte UTF-8 sequence encodes.
+    #[test]
+    fn percent_encoded_utf8_relay_url_round_trips_correctly() {
+        let wallet_pk = "a".repeat(64);
+        let secret = "b".repeat(64);
+        // wss://r%C3%A9lay.example/  →  wss://rélay.example/
+        let uri = format!(
+            "nostr+walletconnect://{}?relay=wss%3A%2F%2Fr%C3%A9lay.example%2F&secret={}",
+            wallet_pk, secret
+        );
+        let parsed = NwcUri::parse(&uri).unwrap();
+        assert_eq!(
+            parsed.relay_urls,
+            vec!["wss://rélay.example/"],
+            "percent-encoded UTF-8 must decode to the correct Unicode string"
         );
     }
 }
