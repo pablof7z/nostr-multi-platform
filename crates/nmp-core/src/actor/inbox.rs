@@ -26,7 +26,7 @@
 use std::collections::VecDeque;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SendError, Sender, TryRecvError};
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(feature = "native")]
 use super::fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
 use super::ActorCommand;
 #[cfg(feature = "native")]
@@ -272,6 +272,20 @@ pub(super) struct MailScheduler {
     relay_backlog_drops: u64,
 }
 
+/// Result of one [`MailScheduler::drain_command_lane`] pass: the commands to
+/// dispatch (in arrival order, `first_command` first), the budget state used to
+/// compute the post-drain relay wait, and whether the inbox is now closed.
+#[cfg(feature = "native")]
+pub(super) struct CommandLaneDrain {
+    /// Commands drained this iteration, to be dispatched by the caller with its
+    /// `&mut kernel` / `&mut identity` borrows.
+    pub(super) commands: Vec<ActorCommand>,
+    /// Budget accounting — `relay_wait`/`hit_budget` drive the relay lane wait.
+    pub(super) drain: CommandDrain,
+    /// True when every `CommandSender` clone has dropped (actor teardown).
+    pub(super) disconnected: bool,
+}
+
 #[cfg(feature = "native")]
 impl MailScheduler {
     pub(super) fn new() -> Self {
@@ -319,43 +333,79 @@ impl MailScheduler {
         self.relay_backlog.len()
     }
 
-    /// Drain the priority command lane. Returns the [`CommandDrain`] budget
-    /// state plus each command to dispatch through `for_each_command`.
+    /// Drain the priority command lane. Replays a `first_command` (a command
+    /// dequeued by the previous iteration's blocking `recv_timeout` and held
+    /// for priority service) ahead of the channel, then non-blockingly drains
+    /// queued commands up to [`COMMAND_DRAIN_BUDGET`], stashing any relay mail
+    /// seen along the way into the backlog so it is served after the command
+    /// lane (never starved). Returns the drained commands *and* the
+    /// [`CommandDrain`] budget state so the caller can dispatch each command
+    /// with its `&mut kernel` / `&mut identity` borrows and compute the
+    /// post-drain relay wait.
     ///
-    /// Returns `Err(())` to signal the inbox is closed (actor shutdown).
-    ///
-    /// This is the executable *specification* of the command-priority +
-    /// fairness contract. The production loop in `mod.rs` implements the same
-    /// contract inline (the per-command dispatch borrows `&mut kernel`,
-    /// `&mut identity`, … and must early-return on `Shutdown`, which a closure
-    /// boundary cannot express without threading that state out of the hot
-    /// path); the inbox lane tests drive this method to lock the contract.
-    #[cfg(test)]
+    /// This is the single, non-duplicated drain: the production `run_actor`
+    /// loop routes through it (issue #1231 follow-up #3 — previously it
+    /// reimplemented the same budget/priority/backlog logic inline, which could
+    /// drift from this "executable specification" silently). Returning the
+    /// commands as a `Vec` rather than invoking a `FnMut` is what lets the
+    /// production side keep the per-command `&mut`-heavy dispatch (and its
+    /// early-return on `Shutdown`) outside the closure boundary that previously
+    /// blocked this unification.
     pub(super) fn drain_command_lane(
         &mut self,
         inbox: &Inbox,
-        mut for_each_command: impl FnMut(ActorCommand),
-    ) -> Result<CommandDrain, ()> {
+        first_command: Option<ActorCommand>,
+    ) -> CommandLaneDrain {
         let mut drain = CommandDrain::new(COMMAND_DRAIN_BUDGET);
+        let mut commands = Vec::new();
+        let mut disconnected = false;
+
+        if let Some(cmd) = first_command {
+            drain.record_command();
+            commands.push(cmd);
+        }
+
         loop {
             if !drain.can_drain_command() {
+                break;
+            }
+            // #1264: once the relay backlog is at RELAY_BACKLOG_CAP, STOP
+            // draining the inbox channel. Pulling more relay mail out only to
+            // drop the oldest staged event (or this one) does no useful work and
+            // defeats backpressure — leaving relay mail in the bounded mpsc
+            // channel lets pressure build there (and ultimately at the pool's
+            // translator), the correct place to absorb a flood. The next
+            // iteration's bounded batch drain frees room. Commands already ahead
+            // in the channel are still served by the prior `first_command`
+            // replay / earlier `try_recv`s, so commands are not starved by a
+            // relay backlog — we only stop pulling *new* mail forward.
+            if self.relay_backlog_is_full() {
                 break;
             }
             match inbox.try_recv() {
                 Ok(ActorMail::Command(cmd)) => {
                     drain.record_command();
-                    for_each_command(cmd);
+                    commands.push(cmd);
                 }
                 Ok(ActorMail::Relay(event)) => {
                     // Relay mail does not consume the command budget; stash it
-                    // for the relay lane below.
-                    self.relay_backlog.push_back(event);
+                    // for the relay lane below. `stash_relay` honors the
+                    // RELAY_BACKLOG_CAP bound (drops oldest + bumps the drop
+                    // counter on overflow) so a flood bounds memory.
+                    self.stash_relay(event);
                 }
                 Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => return Err(()),
+                Err(TryRecvError::Disconnected) => {
+                    disconnected = true;
+                    break;
+                }
             }
         }
-        Ok(drain)
+        CommandLaneDrain {
+            commands,
+            drain,
+            disconnected,
+        }
     }
 
     /// Drain a *bounded batch* of staged backlog events — up to
@@ -402,7 +452,3 @@ impl MailScheduler {
         !self.relay_backlog.is_empty()
     }
 }
-
-#[cfg(all(test, feature = "native"))]
-#[path = "inbox/tests.rs"]
-mod tests;

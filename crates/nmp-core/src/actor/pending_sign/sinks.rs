@@ -66,6 +66,22 @@ pub(crate) enum ParkedOpSink {
         op: SignerOp<String>,
         continuation: Option<CipherContinuation>,
     },
+    /// V-06 / #960 — route the resolved signed kind:22242 back into the kernel's
+    /// NIP-42 AUTH handler. Like [`Publish`](ParkedOpSink::Publish) this sink
+    /// does NOT touch the kernel from the drain: it returns an [`AuthObligation`]
+    /// to the actor loop, which calls `Kernel::dispatch_signed_auth` /
+    /// `fail_auth_sign` and routes the outbound AUTH frame. This is the remote
+    /// (NIP-46 / NIP-55) half of the ONE async sign seam — a local key never
+    /// parks here (it resolves inline in `handle_auth_challenge`).
+    Auth {
+        op: SignerOp<SignedEvent>,
+        /// The relay lane the challenge arrived on.
+        role: crate::relay::RelayRole,
+        /// The delivering relay URL (NIP-42 replay binding + routing target).
+        relay_url: String,
+        /// The verbatim challenge — re-validated against the signed event.
+        challenge: String,
+    },
     /// Route the resolved signed event into the publish engine. The drain
     /// returns the routing obligation to the actor loop (which owns relay
     /// routing) rather than calling the engine itself.
@@ -168,10 +184,53 @@ impl ParkedOp {
         }
     }
 
+    /// V-06 / #960 — park a NIP-42 AUTH sign resolving into the kernel's AUTH
+    /// handler via an [`AuthObligation`] handed back to the loop.
+    #[must_use]
+    pub fn auth(
+        op: SignerOp<SignedEvent>,
+        role: crate::relay::RelayRole,
+        relay_url: String,
+        challenge: String,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            sink: ParkedOpSink::Auth {
+                op,
+                role,
+                relay_url,
+                challenge,
+            },
+            deadline,
+        }
+    }
+
     /// True once the op has overrun its deadline.
     pub fn timed_out(&self) -> bool {
         Instant::now() >= self.deadline
     }
+}
+
+/// V-06 / #960 — the NIP-42 AUTH-routing obligation a [`ParkedOpSink::Auth`]
+/// hands back to the actor loop when its op resolves. The loop owns relay
+/// routing + the `&mut Kernel` re-entry, so the drain returns this instead of
+/// calling the kernel itself.
+pub(crate) enum AuthObligation {
+    /// The signed kind:22242 is ready — call `Kernel::dispatch_signed_auth` with
+    /// these fields and route the resulting AUTH frame.
+    Dispatch {
+        role: crate::relay::RelayRole,
+        relay_url: String,
+        challenge: String,
+        signed: SignedEvent,
+    },
+    /// The sign failed / timed out — call `Kernel::fail_auth_sign` so the relay
+    /// drives to `Failed` and any deferred REQs fail closed (T76 / D6).
+    Failed {
+        role: crate::relay::RelayRole,
+        relay_url: String,
+        reason: String,
+    },
 }
 
 /// The publish-routing obligation a [`ParkedOpSink::Publish`] hands back to the

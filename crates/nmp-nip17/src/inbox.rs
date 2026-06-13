@@ -429,3 +429,9 @@ mod tests;
 #[cfg(test)]
 #[path = "inbox/chain_tests.rs"]
 mod chain_tests;
+
+// `InboxStore` unit tests (admit/chain_done/decrypt_status) — kept in a sibling
+// file for the 500-LOC ceiling. Contains the #1349 regression tests.
+#[cfg(test)]
+#[path = "inbox/store_tests.rs"]
+mod store_tests;

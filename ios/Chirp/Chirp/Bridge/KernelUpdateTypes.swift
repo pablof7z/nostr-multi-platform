@@ -126,9 +126,16 @@ struct KernelUpdateResult {
     /// consumer yet — read through the `dmRelayList` accessor (added for parity).
     let typedDmRelayList: DmRelayListSnapshot?
     /// Typed `claimed_events` projection decode (`KCEV`). `nil` ⇒ generic
-    /// `projections.claimedEvents` JSON fallback. Routed to `EmbedHost.update`
-    /// (typed-first effective value) in `KernelModel.apply`.
+    /// `projections.claimedEvents` JSON fallback. Still a live projection; no
+    /// longer the embed-resolution input (issue #1283 Phase 1 — see below).
     let typedClaimedEvents: [String: ClaimedEventDto]?
+    /// Typed `claimed_event_embeds` projection decode (`NEMB`, issue #1283
+    /// Phase 1). `nil` ⇒ generic `projections.claimedEventEmbeds` JSON fallback.
+    /// The kernel-resolved (`nmp_content::resolve_embed_projection`) embed map;
+    /// routed to `EmbedHost.update(envelopes:)` in `KernelModel.apply`. Replaces
+    /// the deleted in-Swift resolver — this is what closes the EmbedHost D0
+    /// violation and fixes the #1299 display_name precedence.
+    let typedClaimedEventEmbeds: [String: EmbeddedEventEnvelope]?
     /// Typed `bunker_handshake` projection decode (`KBHS`). `nil` ⇒ generic
     /// `projections["bunker_handshake"]` JSON fallback. The producer emits no
     /// sidecar while the handshake slot is idle, so nil is the steady state.

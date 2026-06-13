@@ -67,10 +67,19 @@ pub(super) fn launch_unwrap(
     event: Event,
     source_relay_url: Option<String>,
 ) -> bool {
-    // Pure half 1 — validate kind:1059 and extract (outer_ciphertext, ephemeral
-    // peer). A non-gift-wrap is a silent no-op (D6); nothing is enqueued and no
+    // The active account this envelope is being unwrapped for — used for the
+    // cheap `#p == signer` defense-in-depth in `parse_outer_for_decrypt` (issue
+    // #1265). A malformed pinned pubkey is a silent no-op (D6).
+    let Ok(recipient) = nostr::PublicKey::from_hex(&signer_hex) else {
+        return false;
+    };
+    // Pure half 1 — validate kind:1059, confirm it addresses us, and extract
+    // (outer_ciphertext, ephemeral peer). A non-gift-wrap or a wrap not addressed
+    // to the active account is a silent no-op (D6); nothing is enqueued and no
     // in-flight slot is reserved.
-    let Ok((outer_ciphertext, ephemeral_peer)) = nmp_nip59::parse_outer_for_decrypt(&event) else {
+    let Ok((outer_ciphertext, ephemeral_peer)) =
+        nmp_nip59::parse_outer_for_decrypt(&event, &recipient)
+    else {
         return false;
     };
 
@@ -96,8 +105,8 @@ pub(super) fn launch_unwrap(
             let Ok(seal_plaintext) = outcome else {
                 // Decrypt failed → the envelope was not addressed to us (or is
                 // another protocol's kind:1059). Silent discard (D6); release
-                // the §D7 in-flight slot.
-                store.chain_done();
+                // the §D7 in-flight slot (epoch-safe: generation pinned at launch).
+                store.chain_done(generation);
                 return;
             };
             decrypt_seal(
@@ -115,7 +124,7 @@ pub(super) fn launch_unwrap(
     } else {
         // The actor inbox is gone — the chain will never resolve, so release the
         // slot we just reserved (D6, no leak).
-        store_for_err.chain_done();
+        store_for_err.chain_done(generation);
         false
     }
 }
@@ -137,7 +146,7 @@ fn decrypt_seal(
     let Ok((seal, inner_ciphertext, seal_author)) =
         nmp_nip59::parse_seal_for_decrypt(&seal_plaintext)
     else {
-        store.chain_done();
+        store.chain_done(generation);
         return;
     };
 
@@ -150,20 +159,21 @@ fn decrypt_seal(
             // This inner continuation is the chain's TERMINAL step on every
             // branch — parse the rumor (half 3, anti-spoof author check), store
             // it if it is a kind:14, then release the §D7 in-flight slot exactly
-            // once. A decrypt error / malformed rumor / non-kind:14 is a silent
-            // discard (D6) but still terminates the chain.
+            // once (epoch-safe via pinned generation). A decrypt error / malformed
+            // rumor / non-kind:14 is a silent discard (D6) but still terminates
+            // the chain.
             if let Ok(rumor_plaintext) = outcome {
                 if let Ok(gift) = nmp_nip59::parse_rumor(&seal, &rumor_plaintext) {
                     store_rumor(&store, generation, &signer_hex, &gift, source_relay_url.as_deref());
                 }
             }
-            store.chain_done();
+            store.chain_done(generation);
         },
     );
     if tx.send(cmd).is_err() {
         // Inbox gone before the inner decrypt could be enqueued — terminate the
         // chain so its in-flight slot is not leaked (D6).
-        store_for_err.chain_done();
+        store_for_err.chain_done(generation);
     }
 }
 

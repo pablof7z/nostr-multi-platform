@@ -155,63 +155,116 @@ fn capped_follows_preserves_duplicate_slots_no_dedup() {
     assert_eq!(capped_contact_follows(&tags), vec![pk.clone(), pk]);
 }
 
-// ── NIP-02 follow-list edit builders ────────────────────────────────────
+// ── NIP-02 kind:3 contact-list edit builders (issue #1246) ──────────────
 
 const PUBKEY_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const PUBKEY_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const PUBKEY_X: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
-#[test]
-fn follow_list_after_add_appends_new_pubkey() {
-    let current = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string()];
-    let result = follow_list_after_add(&current, PUBKEY_X);
-    assert_eq!(result, vec![PUBKEY_A, PUBKEY_B, PUBKEY_X]);
+fn p(pk: &str) -> Vec<String> {
+    vec!["p".to_string(), pk.to_string()]
 }
 
 #[test]
-fn follow_list_after_add_is_idempotent() {
+fn kind3_tags_after_add_appends_new_pubkey() {
+    let current = vec![p(PUBKEY_A), p(PUBKEY_B)];
+    let result = kind3_tags_after_add(&current, PUBKEY_X);
+    assert_eq!(result, vec![p(PUBKEY_A), p(PUBKEY_B), p(PUBKEY_X)]);
+}
+
+#[test]
+fn kind3_tags_after_add_is_idempotent() {
     // Adding a pubkey that is already present must not create a duplicate.
-    let current = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string()];
-    let result = follow_list_after_add(&current, PUBKEY_A);
-    assert_eq!(result, vec![PUBKEY_A, PUBKEY_B], "no duplicate inserted");
+    let current = vec![p(PUBKEY_A), p(PUBKEY_B)];
+    let result = kind3_tags_after_add(&current, PUBKEY_A);
+    assert_eq!(result, vec![p(PUBKEY_A), p(PUBKEY_B)], "no duplicate inserted");
 }
 
 #[test]
-fn follow_list_after_add_to_empty_list() {
-    let result = follow_list_after_add(&[], PUBKEY_A);
-    assert_eq!(result, vec![PUBKEY_A]);
+fn kind3_tags_after_add_to_empty_list() {
+    let result = kind3_tags_after_add(&[], PUBKEY_A);
+    assert_eq!(result, vec![p(PUBKEY_A)]);
 }
 
 #[test]
-fn follow_list_after_remove_removes_target() {
-    let current = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string(), PUBKEY_X.to_string()];
-    let result = follow_list_after_remove(&current, PUBKEY_B);
-    assert_eq!(result, vec![PUBKEY_A, PUBKEY_X]);
+fn kind3_tags_after_add_preserves_non_p_tags_and_existing_columns() {
+    // A non-`p` tag and a relay-hinted+petnamed `p` must survive an add, and
+    // the new follow is appended after them.
+    let current = vec![
+        vec!["r".to_string(), "wss://relay".to_string()],
+        vec![
+            "p".to_string(),
+            PUBKEY_A.to_string(),
+            "wss://hint".to_string(),
+            "alice".to_string(),
+        ],
+    ];
+    let result = kind3_tags_after_add(&current, PUBKEY_X);
+    assert_eq!(
+        result,
+        vec![
+            vec!["r".to_string(), "wss://relay".to_string()],
+            vec![
+                "p".to_string(),
+                PUBKEY_A.to_string(),
+                "wss://hint".to_string(),
+                "alice".to_string(),
+            ],
+            p(PUBKEY_X),
+        ]
+    );
 }
 
 #[test]
-fn follow_list_after_remove_is_idempotent() {
+fn kind3_tags_after_remove_removes_target() {
+    let current = vec![p(PUBKEY_A), p(PUBKEY_B), p(PUBKEY_X)];
+    let result = kind3_tags_after_remove(&current, PUBKEY_B);
+    assert_eq!(result, vec![p(PUBKEY_A), p(PUBKEY_X)]);
+}
+
+#[test]
+fn kind3_tags_after_remove_is_idempotent() {
     // Removing a pubkey not in the list must return the list unchanged.
-    let current = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string()];
-    let result = follow_list_after_remove(&current, PUBKEY_X);
-    assert_eq!(result, vec![PUBKEY_A, PUBKEY_B]);
+    let current = vec![p(PUBKEY_A), p(PUBKEY_B)];
+    let result = kind3_tags_after_remove(&current, PUBKEY_X);
+    assert_eq!(result, vec![p(PUBKEY_A), p(PUBKEY_B)]);
 }
 
 #[test]
-fn follow_list_after_remove_from_empty_list() {
-    let result = follow_list_after_remove(&[], PUBKEY_A);
+fn kind3_tags_after_remove_from_empty_list() {
+    let result = kind3_tags_after_remove(&[], PUBKEY_A);
     assert!(result.is_empty());
 }
 
 #[test]
-fn follow_list_sequence_add_then_remove() {
+fn kind3_tags_after_remove_drops_any_arity_and_keeps_non_p() {
+    // A relay-hinted+petnamed `p` is removed by pubkey; non-`p` tags survive.
+    let current = vec![
+        vec!["r".to_string(), "wss://relay".to_string()],
+        vec![
+            "p".to_string(),
+            PUBKEY_A.to_string(),
+            "wss://hint".to_string(),
+            "alice".to_string(),
+        ],
+        p(PUBKEY_B),
+    ];
+    let result = kind3_tags_after_remove(&current, PUBKEY_A);
+    assert_eq!(
+        result,
+        vec![vec!["r".to_string(), "wss://relay".to_string()], p(PUBKEY_B)]
+    );
+}
+
+#[test]
+fn kind3_tags_sequence_add_then_remove() {
     // Simulate a real add-X-then-remove-B sequence on [A, B]:
     // [A, B] → add X → [A, B, X] → remove B → [A, X]
-    let start = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string()];
-    let after_add = follow_list_after_add(&start, PUBKEY_X);
-    assert_eq!(after_add, vec![PUBKEY_A, PUBKEY_B, PUBKEY_X]);
-    let after_remove = follow_list_after_remove(&after_add, PUBKEY_B);
-    assert_eq!(after_remove, vec![PUBKEY_A, PUBKEY_X]);
+    let start = vec![p(PUBKEY_A), p(PUBKEY_B)];
+    let after_add = kind3_tags_after_add(&start, PUBKEY_X);
+    assert_eq!(after_add, vec![p(PUBKEY_A), p(PUBKEY_B), p(PUBKEY_X)]);
+    let after_remove = kind3_tags_after_remove(&after_add, PUBKEY_B);
+    assert_eq!(after_remove, vec![p(PUBKEY_A), p(PUBKEY_X)]);
 }
 
 // ── NIP-10 marked form ──────────────────────────────────────────────────

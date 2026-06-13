@@ -31,6 +31,11 @@ pub(crate) mod typed_projections;
 // always-compiled below so `publish/action.rs` and every NIP-crate
 // `ActionModule::execute` impl can still name `ActorCommand` without the
 // `native` feature.
+// V-06 / #960 — NIP-42 async-AUTH drain + obligation execution, extracted from
+// the actor main loop to keep `mod.rs` within its size budget. Native-only (uses
+// the native signer port + relay pool routing).
+#[cfg(feature = "native")]
+mod auth_sign;
 #[cfg(feature = "native")]
 mod capability_worker;
 #[cfg(feature = "native")]
@@ -47,6 +52,10 @@ mod fairness;
 // `CommandSender` to workers, and `ActorCommand` itself is always-compiled);
 // the relay-side scheduler / sink / `Inbox` are `native`-gated inside.
 mod inbox;
+// Inbox command/relay lane priority + fairness tests, extracted from `inbox.rs`
+// to keep that file under the 500 LOC hard cap (AGENTS.md).
+#[cfg(all(test, feature = "native"))]
+mod inbox_lane_tests;
 // Always-compiled port continuations (named by the always-compiled
 // `ActorCommand` sign / cipher verbs; not `native`-gated).
 mod continuations;
@@ -82,6 +91,10 @@ mod signer_port_test_harness;
 mod cipher_for_account_tests;
 #[cfg(all(test, feature = "native"))]
 mod sign_event_for_account_tests;
+#[cfg(all(test, feature = "native"))]
+mod nip42_async_auth_tests;
+#[cfg(all(test, feature = "native"))]
+mod protocol_panic_isolation_tests;
 #[cfg(all(test, feature = "native"))]
 mod tests;
 #[cfg(feature = "native")]
@@ -211,9 +224,7 @@ use capability_worker::{spawn_capability_worker, CapabilityWorkSender};
 #[cfg(feature = "native")]
 use dispatch::{dispatch_command, ActorContext};
 #[cfg(feature = "native")]
-use fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
-#[cfg(feature = "native")]
-use pending_sign::{resolve_parked_op, ParkedOp, PublishObligation};
+use pending_sign::{resolve_parked_op, AuthObligation, ParkedOp, PublishObligation};
 
 use crate::kernel::LifecyclePhase;
 
@@ -230,7 +241,7 @@ pub use continuations::{CipherContinuation, SignContinuation};
 // Native-only relay-lane scheduler + receiver wrapper. (`RelayMailSink` is
 // constructed via `CommandSender::relay_sink()`, never named here.)
 #[cfg(feature = "native")]
-use inbox::{Inbox, LoopStep, MailScheduler};
+use inbox::{CommandLaneDrain, Inbox, LoopStep, MailScheduler};
 
 #[cfg(feature = "native")]
 use relay_idle::{sweep_temporary_idle_relays, TEMPORARY_RELAY_IDLE_GRACE};
@@ -266,8 +277,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 #[cfg(feature = "native")]
 use std::sync::atomic::{AtomicU64, Ordering};
-#[cfg(feature = "native")]
-use std::sync::mpsc::TryRecvError;
 #[cfg(feature = "native")]
 use std::sync::mpsc::{Receiver, Sender};
 #[cfg(feature = "native")]
@@ -977,49 +986,17 @@ pub enum ActorCommand {
     /// Used when reusable NMP extension state changes outside a typed kernel
     /// field (for example a registered feed viewport expanding older rows).
     MarkChangedSinceEmit,
-    /// Dispatch a stateful, host-owned action to the host-installed
-    /// [`crate::substrate::HostOpHandler`].
-    ///
-    /// This is the substrate-generic seam that lets the actor invoke ops
-    /// against app-owned state (e.g. the Marmot MLS service in
-    /// `nmp-app-marmot`, the fixture crate's TODO-list projection) without
-    /// `nmp-core` ever naming the app's nouns (D0). The producer is an
-    /// `ActionModule::execute` body in the app crate that serializes its
-    /// typed action to JSON; the handler installed by the same crate parses
-    /// the JSON back into its typed enum, runs the op, and returns a
-    /// `serde_json::Value` envelope.
-    ///
-    /// The actor's dispatch arm pulls the handler from the slot
-    /// ([`crate::NmpApp::set_host_op_handler`]), calls `handle` under
-    /// `catch_unwind` (D6 — a panicking handler maps to a `Failed` action
-    /// stage), and routes the resulting envelope:
-    ///
-    /// * `{"ok":true,...}` → [`ActorCommand::RecordActionSuccess`] for
-    ///   `correlation_id` so the host's spinner clears via the normal
-    ///   `action_stages` mirror.
-    /// * `{"ok":false,"error":"..."}` → [`ActorCommand::RecordActionFailure`]
-    ///   with the reason copied from the envelope.
-    /// * No handler installed → `Failed { reason: "no host op handler installed" }`.
-    ///
-    /// D8 — `handle` runs INLINE on the actor thread (the same thread that
-    /// ticks the kernel). The current MLS-state consumer's mutations are
-    /// SQLite-bound and typically sub-100ms; handlers whose ops routinely
-    /// exceed that should spawn a worker internally (the LNURL fetcher
-    /// pattern — see `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` for the
-    /// canonical V-41 example). See the [`crate::substrate::HostOpHandler`]
-    /// rustdoc.
-    DispatchHostOp {
-        /// JSON-encoded action body. The handler parses this into its own
-        /// typed action enum. No protocol type crosses the FFI boundary —
-        /// this is the same translation layer the legacy bespoke
-        /// `nmp_marmot_dispatch` envelope used (deleted in ADR-0025 PR 3,
-        /// 2026-05-23).
-        action_json: String,
-        /// Registry-minted dispatch correlation id (32 hex chars). Threaded
-        /// into the handler for inclusion in the result envelope and into
-        /// the `action_stages` terminal verdict.
-        correlation_id: String,
-    },
+    // ADR-0052 §D4 (K2 rung 5.4): `DispatchHostOp { action_json,
+    // correlation_id }` was DELETED. Host-op dispatch to the host-installed
+    // [`crate::substrate::HostOpHandler`] now flows through the single
+    // `Protocol` write seam as `crate::substrate::HostOpCommand`
+    // (`ActorCommand::Protocol(Box::new(host_op_command(action_json,
+    // correlation_id)))`). The persistent handler still lives in the per-app
+    // [`crate::substrate::HostOpHandlerSlot`] (set via
+    // [`crate::NmpApp::set_host_op_handler`]); the command clones it out at
+    // `run` time through the narrow `HostOpHandlerAccess` capability. Both the
+    // old arm's guarantees — whole-body `catch_unwind` and the persistent,
+    // hot-swappable handler — are preserved on the `Protocol` seam.
     /// ADR-0040 §3 — re-entry command from the serialized capability-worker
     /// thread (V-90 Site 2). The worker runs `dispatch_capability` off the
     /// actor thread and posts this command with the result; the actor applies
@@ -1190,97 +1167,14 @@ pub fn run_actor(
     command_tx_self: CommandSender,
     update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
 ) {
-    run_actor_with_observers(
+    // This shim is exactly [`run_actor_with_lifecycle_observer`] with a
+    // throwaway lifecycle slot — delegate so the long throwaway-slot argument
+    // list lives in exactly one place (no duplicated ~30-arg call).
+    run_actor_with_lifecycle_observer(
         inbox_rx,
         command_tx_self,
         update_tx,
         new_lifecycle_observer_slot(),
-        new_event_observer_slot(),
-        new_raw_event_observer_slot(),
-        crate::kernel::new_snapshot_projection_slot(),
-        // V-38: the wallet runtime + status slot moved to `nmp-nip47`. The
-        // actor only carries a substrate-generic relay-text interceptor slot.
-        crate::substrate::new_relay_text_interceptor_slot(),
-        // ADR-0051: throwaway relay-connected hook slot (no FFI surface here).
-        crate::substrate::new_relay_connected_hook_slot(),
-        // D0: NIP-46 remote signing is an app noun — likewise a private
-        // throwaway bunker-handshake slot (no FFI surface to register the
-        // `"bunker_handshake"` projection here).
-        new_bunker_handshake_slot(),
-        // V-14 step b: throwaway connection-state slot (no FFI surface here).
-        new_signer_state_slot(),
-        // Typed slot constructor; the backwards-compatible entry
-        // point has no FFI surface to read the slot, so it's a throwaway.
-        crate::kernel::new_app_relay_slot(),
-        Arc::new(Mutex::new(None)),
-        // Active-account local-keys slot — private throwaway: this
-        // backwards-compatible entry point has no FFI surface for a
-        // non-substrate reader to consume it (production threads it through
-        // `nmp-ffi`'s `NmpApp::active_local_keys`).
-        Arc::new(Mutex::new(None)),
-        new_capability_callback_slot(),
-        Arc::new(Mutex::new(None)),
-        // G-S4 — no `NmpApp` is wired through this backwards-compatible entry
-        // point, so the queue-depth counter is a private throwaway.
-        Arc::new(AtomicU64::new(0)),
-        // D2 — no `NmpApp` is wired through this backwards-compatible entry
-        // point, so the coverage-gate hook slot is a private throwaway
-        // (`None`); the lifecycle keeps its default `coverage_hook: None`.
-        Arc::new(Mutex::new(None)),
-        crate::substrate::new_req_frame_interceptor_slot(),
-        // Host-op handler slot — no `NmpApp` is wired through this
-        // backwards-compatible entry point, so the handler slot is a private
-        // throwaway. Any `DispatchHostOp` command reaching the actor here
-        // would record a `Failed { reason: "no host op handler installed" }`
-        // terminal — tests on this path do not enqueue such commands.
-        crate::substrate::new_host_op_handler_slot(),
-        // V-40 — no `NmpApp` here, so the `IngestParser` registry + the
-        // `DmInboxRelayLookup` are both private throwaways (empty
-        // dispatcher + always-`None` lookup). Tests on this path don't
-        // exercise the gift-wrap publish gate or the kind:10050 parser
-        // — those use `run_actor_with_observers` directly with shared
-        // slots.
-        Arc::new(std::sync::RwLock::new(
-            crate::substrate::EventIngestDispatcher::new(),
-        )),
-        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
-        // Throwaway blocked-relay lookup slot — no app composition here,
-        // so the kernel defaults to returning an empty `BlockedRelaySet`
-        // per account.
-        Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
-        // Throwaway bootstrap self-kinds override slot (`None` → builtin
-        // default).
-        Arc::new(Mutex::new(None)),
-        // V-51 phase 4 — no `NmpApp` is wired through this entry, so the
-        // routing-trace slot is a private throwaway (the actor still
-        // publishes its kernel's projection into it, but nothing reads it).
-        Arc::new(Mutex::new(None)),
-        // V-51 phase 5 — no `NmpApp` here, so the routing-substrate factory
-        // slot is a private throwaway. The kernel keeps its in-crate
-        // `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`
-        // defaults (substrate-honest debt B).
-        Arc::new(Mutex::new(None)),
-        // Spec §271 (2026-05-25) — no `NmpApp` here, so the
-        // substrate-publish-resolver factory slot is a private throwaway.
-        // The kernel keeps its `NoopOutboxResolver` default; every publish
-        // through `PublishTarget::Auto` resolves to an empty set and the
-        // engine surfaces `NoTargets` (fail-closed).
-        Arc::new(Mutex::new(None)),
-        // No app composition is wired through this compatibility entry, so
-        // no raw-event forwarding policies are installed.
-        crate::slots::new_raw_event_forward_policy_slot(),
-        // V-82 — no `NmpApp` is wired through this backwards-compatible entry
-        // point, so the active-account slot is a private throwaway. The kernel
-        // still writes its active account into it on every identity mutation;
-        // nothing outside the actor reads it on this path.
-        crate::slots::new_active_account_slot(),
-        // V-83 — no `NmpApp` here, so the event-store slot is a private
-        // throwaway. The actor still publishes its kernel's store into it;
-        // nothing outside the actor reads it on this path.
-        crate::slots::new_event_store_slot(),
-        // Test-support kernel-clock slot — no `NmpApp` here, so it's a private
-        // throwaway (`None` → the kernel keeps its `SystemClock`).
-        crate::slots::new_kernel_clock_slot(),
     );
 }
 
@@ -1316,6 +1210,10 @@ pub fn run_actor_with_lifecycle_observer(
         new_bunker_handshake_slot(),
         // V-14 step b: throwaway connection-state slot (no FFI surface here).
         new_signer_state_slot(),
+        // ADR-0052 §D3: throwaway bunker + NIP-55 hook slots (no FFI surface
+        // here to install a broker/driver; an invocation degrades to a toast).
+        crate::bunker_hook::new_bunker_hook_slot(),
+        crate::external_signer_hook::new_external_signer_hook_slot(),
         // Typed slot constructor; private throwaway here.
         crate::kernel::new_app_relay_slot(),
         Arc::new(Mutex::new(None)),
@@ -1425,6 +1323,15 @@ pub fn run_actor_with_observers(
     // snapshot-projection closure; this one is handed to `IdentityRuntime`
     // (sole writer, D4).
     signer_state: SignerStateSlot,
+    // ADR-0052 §D3 — per-app bunker + NIP-55 external-signer hook slots. The
+    // `NmpApp` keeps one `Arc` clone of each (so `nmp_signer_broker_init` /
+    // `nmp_external_signer_init` can install the broker/driver hook
+    // post-construction); these clones are handed to the actor's
+    // `IdentityRuntime` via `set_signer_hook_slots`, which is the sole reader.
+    // Replace the deleted `bunker_hook::HOOK` / `external_signer_hook::HOOK`
+    // process-globals. D0: opaque `Fn`-of-request shape; no NIP type named.
+    bunker_hook: crate::bunker_hook::BunkerHookSlot,
+    external_signer_hook: crate::external_signer_hook::ExternalSignerHookSlot,
     // Typed slot ([`crate::kernel::AppRelaySlot`]) so the actor
     // parameter type signals the slot's purpose; D14 forbids new bare
     // `Arc<Mutex<Vec<…>>>` parameters here.
@@ -1461,12 +1368,14 @@ pub fn run_actor_with_observers(
     req_frame_interceptor: crate::substrate::ReqFrameInterceptorSlot,
     // Substrate-generic host-op handler slot. Set by an app crate (today
     // `nmp-app-marmot`) before `nmp_app_start` via
-    // `NmpApp::set_host_op_handler`. Read by the `DispatchHostOp` dispatch arm
-    // so a host-extensible `ActionModule` whose `execute()` body emits
-    // `ActorCommand::DispatchHostOp` can reach the app-owned state
+    // `NmpApp::set_host_op_handler`. Read by the `Protocol` dispatch arm (via
+    // the `HostOpHandlerAccess` capability) when a `HostOpCommand` runs, so a
+    // host-extensible `ActionModule` whose `execute()` body emits
+    // `ActorCommand::Protocol(HostOpCommand)` can reach the app-owned state
     // (D0 — `nmp-core` never names the app's nouns; the slot speaks JSON).
-    // `None` (the test / no-stateful-app default) makes any `DispatchHostOp`
-    // arm record a `Failed` terminal stage; nothing else changes.
+    // ADR-0052 §D4 (K2 rung 5.4) merged the bespoke `DispatchHostOp` arm into
+    // `Protocol`. `None` (the test / no-stateful-app default) makes any such
+    // command record a `Failed` terminal stage; nothing else changes.
     host_op_handler: crate::substrate::HostOpHandlerSlot,
     // V-40 — substrate `EventIngestDispatcher` slot. The `NmpApp` owns
     // the writer side (`register_ingest_parser`); this actor thread
@@ -1914,6 +1823,9 @@ pub fn run_actor_with_observers(
     // projection registered above reads the same `Arc<Mutex<…>>` clone on
     // every tick. Same for `signer_state` (ADR-0048 D6).
     let mut identity = IdentityRuntime::new(bunker_handshake, signer_state);
+    // ADR-0052 §D3 — bind the per-app signer hook slots so the FFI broker /
+    // NIP-55 driver install into the SAME slots this runtime reads.
+    identity.set_signer_hook_slots(bunker_hook, external_signer_hook);
     // V-38: the wallet runtime moved to `nmp-nip47`. The actor no longer
     // owns it; the substrate relay-text interceptor slot
     // (`relay_text_interceptor`) is the only seam the actor calls for NIP-47
@@ -1968,47 +1880,26 @@ pub fn run_actor_with_observers(
         // events. Commands still get first service on every iteration, but the
         // budget prevents a sustained command stream from starving relay
         // events, subscription ticks, publish retries, and parked sign ops.
-        let mut command_drain = CommandDrain::new(COMMAND_DRAIN_BUDGET);
-        let mut inbox_disconnected = false;
-        loop {
-            if !command_drain.can_drain_command() {
-                break;
-            }
-            let command = if let Some(command) = first_command.take() {
-                command
-            } else {
-                // #1264: once the relay backlog is at RELAY_BACKLOG_CAP, STOP
-                // draining the inbox channel. Pulling more relay mail out only
-                // to drop the oldest staged event (or this one) does no useful
-                // work and defeats backpressure — leaving relay mail in the
-                // bounded mpsc channel lets pressure build there (and ultimately
-                // at the pool's translator), the correct place to absorb a
-                // flood. The next iteration's bounded batch drain frees room.
-                // We still serve any commands already ahead in the channel via
-                // the priority drain, so commands are not starved by a relay
-                // backlog — we only stop pulling *new* relay mail forward.
-                if scheduler.relay_backlog_is_full() {
-                    break;
-                }
-                match inbox.try_recv() {
-                    Ok(ActorMail::Command(command)) => command,
-                    Ok(ActorMail::Relay(event)) => {
-                        // Relay mail does not consume the command budget; stash
-                        // it for the relay lane below and keep draining
-                        // commands.
-                        scheduler.stash_relay(event);
-                        continue;
-                    }
-                    Err(TryRecvError::Empty) => break,
-                    Err(TryRecvError::Disconnected) => {
-                        inbox_disconnected = true;
-                        break;
-                    }
-                }
-            };
+        // Single drain (issue #1231 follow-up #3): `MailScheduler::
+        // drain_command_lane` is now the *only* implementation of the
+        // command-priority + fairness + relay-backlog contract. It replays the
+        // held `first_command`, drains up to `COMMAND_DRAIN_BUDGET` commands,
+        // stashes any relay mail it sees (honoring the #1264 RELAY_BACKLOG_CAP
+        // backpressure: once the backlog is full it STOPS pulling relay mail
+        // forward, leaving it in the bounded mpsc channel so pressure builds at
+        // the pool translator rather than silently dropping the oldest staged
+        // event), and returns the commands as a `Vec` so the `&mut kernel` /
+        // `&mut identity` per-command dispatch (which a closure boundary cannot
+        // express, hence the prior inline copy) runs here, after the drain
+        // returns.
+        let CommandLaneDrain {
+            commands,
+            drain: command_drain,
+            disconnected: inbox_disconnected,
+        } = scheduler.drain_command_lane(&inbox, first_command.take());
+        for command in commands {
             {
                 {
-                    command_drain.record_command();
                     // G-S4 — straddle counter: one command has left the channel
                     // (either the replayed `first_command`, which `command_rx
                     // .recv()` already dequeued, or a fresh `try_recv`). Mirror
@@ -2402,6 +2293,23 @@ pub fn run_actor_with_observers(
         if running && kernel.has_pending_cache_serves() {
             kernel.run_cache_serve_step();
         }
+        // ── V-06 / #960: drain kernel-emitted NIP-42 AUTH signs ──────────
+        // `handle_message` enqueues an AUTH kind:22242 for any relay lane whose
+        // active account is a REMOTE signer; route each through the async signer
+        // port (park under the `Auth` sink) — see `auth_sign::drain_pending_auth_signs`.
+        auth_sign::drain_pending_auth_signs(
+            &mut kernel,
+            &identity,
+            &mut parked_ops,
+            &mut auth_sign::RouteCtx {
+                running,
+                queued_publish_outbound: &mut queued_publish_outbound,
+                relay_controls: &mut relay_controls,
+                slot_to_url: &mut slot_to_url,
+                pool: &pool,
+                next_relay_generation: &mut next_relay_generation,
+            },
+        );
         // ── Poll the unified parked-op queue (ADR-0050 §D2) ──────────────
         // ONE `retain_mut` over ONE `Vec<ParkedOp>` replaces the two former
         // drains (the inline publish block + `resolve_pending_sign_return`). Each
@@ -2414,15 +2322,35 @@ pub fn run_actor_with_observers(
         // Empty `parked_ops` is a heap-free zero-item retain.
         if !parked_ops.is_empty() {
             let mut publish_obligations: Vec<PublishObligation> = Vec::new();
+            let mut auth_obligations: Vec<AuthObligation> = Vec::new();
             let mut any_changed = false;
             parked_ops.retain_mut(|parked| {
                 let outcome = resolve_parked_op(parked, &mut kernel);
                 if let Some(obligation) = outcome.publish {
                     publish_obligations.push(obligation);
                 }
+                if let Some(obligation) = outcome.auth {
+                    auth_obligations.push(obligation);
+                }
                 any_changed |= outcome.changed;
                 outcome.keep
             });
+            // V-06 / #960: execute the NIP-42 AUTH obligations the `Auth` sink
+            // handed back (re-enter `dispatch_signed_auth` / `fail_auth_sign` and
+            // route outbound) — see `auth_sign::run_auth_obligations`. Runs here
+            // after the retain so the drain's `&mut kernel` borrow has ended.
+            auth_sign::run_auth_obligations(
+                &mut kernel,
+                auth_obligations,
+                &mut auth_sign::RouteCtx {
+                    running,
+                    queued_publish_outbound: &mut queued_publish_outbound,
+                    relay_controls: &mut relay_controls,
+                    slot_to_url: &mut slot_to_url,
+                    pool: &pool,
+                    next_relay_generation: &mut next_relay_generation,
+                },
+            );
             // Execute the publish obligations the `Publish` sink handed back,
             // preserving ALL prior terminal behaviours exactly: a resolved sign
             // routes via the parked `target` + `correlation_id_override`; a

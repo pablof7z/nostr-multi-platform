@@ -103,6 +103,15 @@ impl InboxStore {
     /// when the bound is full. A LOCAL account's chains terminate inline before
     /// the next envelope so it effectively never sees a full bound; a bunker's
     /// concurrent backfill is what this throttles.
+    ///
+    /// **Over-bound drain** (fix for #1349 Defect 1): when the admit succeeds
+    /// AND the `over_bound` counter is non-zero, one previously-deferred slot is
+    /// consumed — `over_bound` tracks CURRENTLY-DEFERRED envelopes, not a
+    /// monotonic reject count. The [`InterestLifecycle::Tailing`] subscription
+    /// re-delivers every rejected envelope, so each successful re-admit must
+    /// balance one earlier rejection. Once all deferred envelopes re-arrive and
+    /// are admitted, `over_bound` returns to 0 and
+    /// [`Self::decrypt_status`] returns `(Ok, 0)`.
     pub(crate) fn admit(&self) -> bool {
         // CAS-free reserve: increment, and if we blew the bound, undo + count.
         let prior = self.in_flight.fetch_add(1, Ordering::AcqRel);
@@ -111,13 +120,41 @@ impl InboxStore {
             self.over_bound.fetch_add(1, Ordering::AcqRel);
             return false;
         }
+        // Successful admit: consume one deferred slot when over_bound is
+        // non-zero (the Tailing sub re-delivers previously rejected envelopes;
+        // each one that is now admitted is no longer "deferred").  Saturating
+        // so a spurious concurrent call can never underflow.
+        let prior_over = self.over_bound.load(Ordering::Acquire);
+        if prior_over > 0 {
+            self.over_bound.fetch_sub(1, Ordering::AcqRel);
+        }
         true
     }
 
     /// Release the in-flight slot an admitted chain reserved — called on EVERY
-    /// chain exit (terminal store, kind/peer discard, decrypt error). Saturating
-    /// so a double-call can never underflow.
-    pub(crate) fn chain_done(&self) {
+    /// chain exit (terminal store, kind/peer discard, decrypt error).
+    ///
+    /// `generation` must be the epoch captured by the chain at launch (the
+    /// value returned by [`Self::generation`] before [`chain::launch_unwrap`]
+    /// enqueued the first decrypt command). If the current generation has since
+    /// advanced (account switch mid-flight, §D6), the decrement is skipped:
+    /// [`Self::clear`] already reset `in_flight` to 0 for the new epoch, and
+    /// applying a stale decrement would corrupt the new account's counter
+    /// (fix for #1349 Defect 2 — epoch-safe chain_done).
+    pub(crate) fn chain_done(&self, generation: u64) {
+        // Epoch guard: stale old-epoch completions must not touch the new
+        // account's in_flight counter.  The generation check is not atomic
+        // with the fetch_sub, but the window is benign: if a concurrent
+        // clear() races exactly here it bumps the generation BEFORE zeroing
+        // in_flight, so our (now-stale) fetch_sub can at worst briefly
+        // under-count the NEW account's in_flight — self-healing on the very
+        // next chain_done from a legitimately-new chain, because clear() reset
+        // in_flight to 0 and the new chains build from 0.  The guard eliminates
+        // the SYSTEMATIC corruption described in #1349 §D2; the residual
+        // one-tick under-count is transient and not user-visible.
+        if self.generation.load(Ordering::Acquire) != generation {
+            return;
+        }
         let prior = self.in_flight.load(Ordering::Acquire);
         if prior > 0 {
             self.in_flight.fetch_sub(1, Ordering::AcqRel);

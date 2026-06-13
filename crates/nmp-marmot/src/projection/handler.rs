@@ -9,8 +9,8 @@
 //! as `(&str, &str) -> serde_json::Value` — exactly the JSON-in / JSON-out
 //! shape the legacy bespoke `nmp_marmot_dispatch` envelope spoke (deleted
 //! in ADR-0025 PR 3, 2026-05-23), with `correlation_id` added so the
-//! actor's `DispatchHostOp` arm can record the terminal verdict in the
-//! kernel's `action_stages` mirror.
+//! `HostOpCommand` (on the `Protocol` arm) can record the terminal verdict
+//! in the kernel's `action_stages` mirror.
 //!
 //! This handler:
 //!
@@ -23,9 +23,9 @@
 //! 3. invokes [`super::ops::dispatch`] under the projection's `Mutex<Inner>`
 //!    via [`MarmotProjection::with_inner`].
 //!
-//! The result `serde_json::Value` is returned verbatim — the actor's arm
+//! The result `serde_json::Value` is returned verbatim — the `HostOpCommand`
 //! interprets `{"ok":true,...}` vs `{"ok":false,...}` and routes to the
-//! appropriate `record_action_*` kernel API.
+//! appropriate `RecordAction*` actor command.
 //!
 //! # Why re-serialize when we already have JSON?
 //!
@@ -39,8 +39,8 @@
 //!
 //! # Threading
 //!
-//! `HostOpHandler::handle` runs INLINE on the actor thread (the
-//! `DispatchHostOp` dispatch arm). The handler acquires the projection's
+//! `HostOpHandler::handle` runs INLINE on the actor thread (inside the
+//! `HostOpCommand` on the `Protocol` dispatch arm). The handler acquires the projection's
 //! `Mutex<Inner>` via `with_inner`. After ADR-0025 PR 3 (2026-05-23,
 //! deleted the legacy bespoke `nmp_marmot_dispatch` C-ABI symbol), the
 //! actor thread is the sole HOST writer (D4) — the only other caller of

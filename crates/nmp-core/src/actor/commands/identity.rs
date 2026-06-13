@@ -448,6 +448,15 @@ pub(crate) struct IdentityRuntime {
     /// onto the snapshot wire). Set when the `BunkerUri` handshake is started;
     /// read + cleared when the matching `RemoteHandle` completes.
     pending_bunker_make_active: bool,
+    /// ADR-0052 §D3 — per-app bunker-URI hook slot (replaces the deleted
+    /// `bunker_hook::HOOK` global). Installed by `nmp_signer_broker_init`; read
+    /// by `start_bunker_handshake` / `restore_bunker_session`. Empty until a
+    /// broker installs — an invocation then degrades to a toast (D6).
+    bunker_hook: crate::bunker_hook::BunkerHookSlot,
+    /// ADR-0052 §D3 — per-app NIP-55 restore hook slot (twin of `bunker_hook`;
+    /// replaces `external_signer_hook::HOOK`). Installed by
+    /// `nmp_external_signer_init`; read by `restore_nip55_session`.
+    external_signer_hook: crate::external_signer_hook::ExternalSignerHookSlot,
 }
 
 impl IdentityRuntime {
@@ -467,7 +476,32 @@ impl IdentityRuntime {
             bunker_handshake,
             signer_state,
             pending_bunker_make_active: false,
+            // ADR-0052 §D3 — empty per-app hook slots; production replaces them
+            // with the `NmpApp`'s `Arc` clones via `set_signer_hook_slots`.
+            bunker_hook: crate::bunker_hook::new_bunker_hook_slot(),
+            external_signer_hook: crate::external_signer_hook::new_external_signer_hook_slot(),
         }
+    }
+
+    // ADR-0052 §D3 — per-app signer-hook bind/install/invoke methods live in
+    // the sibling `signer_hooks` module; these accessors keep the slot fields
+    // private to this owner.
+    pub(super) fn bunker_hook_slot(&self) -> &crate::bunker_hook::BunkerHookSlot {
+        &self.bunker_hook
+    }
+    pub(super) fn external_signer_hook_slot(
+        &self,
+    ) -> &crate::external_signer_hook::ExternalSignerHookSlot {
+        &self.external_signer_hook
+    }
+    pub(super) fn set_bunker_hook_slot(&mut self, slot: crate::bunker_hook::BunkerHookSlot) {
+        self.bunker_hook = slot;
+    }
+    pub(super) fn set_external_signer_hook_slot(
+        &mut self,
+        slot: crate::external_signer_hook::ExternalSignerHookSlot,
+    ) {
+        self.external_signer_hook = slot;
     }
 
     /// Write the latest bunker-handshake state into the shared projection slot
@@ -842,26 +876,18 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
         .collect::<Vec<_>>();
     kernel.set_accounts(summaries, active.clone());
 
-    // NIP-42 auth signer binding. Remote signers (NIP-46) cannot sign NIP-42
-    // challenges with the user's pubkey today — the broker's ephemeral key
-    // would sign as itself, not as the user. Clear the auth signer when a
-    // remote is active. V-06 Stage 1: toast on the transition so the user
-    // knows AUTH-required relays are degraded (replaces silent failure).
-    // V-06 Stage 2/3: broker-side sign_auth_challenge RPC + AuthSignerFn
-    // adapter (post-v1, tracked in issue #960).
+    // NIP-42 auth signer binding (V-06 / #960 — ONE uniform async sign seam).
+    //
+    // A REMOTE signer (NIP-46 / NIP-55) cannot sign synchronously — only the
+    // broker holds the key — so we bind the AUTH *pubkey* (the active id is the
+    // signer pubkey hex) and let `handle_auth_challenge` PARK the kind:22242 for
+    // the async signer port. A LOCAL key binds the synchronous `AuthSignerFn`
+    // and resolves inline. The kernel keeps these two bindings disjoint. No more
+    // remote bail / "bunker AUTH unsupported" toast — bunker accounts now pass
+    // NIP-42 AUTH gates as themselves.
     if let Some(active_id) = active.as_ref() {
         if identity.remote_signers.contains_key(active_id) {
-            // Toast only on the transition from having auth capability to
-            // losing it, not on every sync call (which runs frequently).
-            if kernel.has_auth_signer() {
-                kernel.set_last_error_toast(Some(
-                    "Relays requiring NIP-42 authentication are not supported \
-                     with bunker accounts yet. AUTH-required relays will be \
-                     accessed unauthenticated."
-                        .to_string(),
-                ));
-            }
-            kernel.clear_auth_signer();
+            kernel.bind_auth_remote(active_id.clone());
             return;
         }
     }
@@ -1419,8 +1445,9 @@ pub(crate) fn bunker_handshake_progress(
 /// (which has already stashed `make_active` in `pending_bunker_make_active`).
 fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: &str) {
     // Stage 3 of NIP-46 wiring: actor exposes handshake-progress snapshot.
-    // Stage 4 of NIP-46 wiring: actor delegates the handshake to a broker
-    // registered via `crate::bunker_hook::register_bunker_hook`.
+    // Stage 4 of NIP-46 wiring: actor delegates the handshake to the broker
+    // hook installed in this app's per-app `bunker_hook` slot (ADR-0052 §D3 —
+    // installed by `nmp_signer_broker_init`; no process-global).
     //
     // Here we shape-validate the URI, seed the snapshot with `"connecting"`
     // so the host sign-in flow renders progress immediately, then hand
@@ -1439,7 +1466,7 @@ fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: 
         Some("Waiting for broker...".to_string()),
     )));
     kernel.mark_changed_since_emit();
-    if !crate::bunker_hook::invoke_bunker_connect_hook(uri) {
+    if !identity.invoke_bunker_connect_hook(uri) {
         // Defence against init-order bugs: the broker should be registered
         // before any URI can reach the actor. If it isn't, surface a clear
         // toast and clear the progress projection (D6 — error becomes state,
@@ -1461,7 +1488,7 @@ pub(crate) fn restore_bunker_session(
         Some("Restoring broker session...".to_string()),
     )));
     kernel.mark_changed_since_emit();
-    if !crate::bunker_hook::invoke_bunker_restore_hook(payload_json) {
+    if !identity.invoke_bunker_restore_hook(payload_json) {
         identity.set_bunker_handshake(None);
         kernel.set_last_error_toast(Some(
             "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
@@ -1481,7 +1508,7 @@ pub(crate) fn restore_nip55_session(
     kernel: &mut Kernel,
     payload_json: &str,
 ) {
-    if !crate::external_signer_hook::invoke_external_signer_restore_hook(payload_json) {
+    if !identity.invoke_external_signer_restore_hook(payload_json) {
         identity.set_signer_state(Some(SignerStateDto::new(
             "nip55".to_string(),
             "unavailable".to_string(),

@@ -64,7 +64,7 @@ struct GateSpy {
 }
 
 impl ActionRegistrar for GateSpy {
-    fn register_action<M: ActionModule + 'static>(&mut self) {
+    fn register_action<M: ActionModule + 'static>(&mut self, _module: M) {
         // Substrate wires `nmp.nip65.publish_relay_list` here — capture-free
         // no-op; this test asserts on the coverage gate, not actions.
     }
@@ -100,6 +100,14 @@ impl AppHost for GateSpy {
         F: Fn() + Send + Sync + 'static,
     {
         unreachable!("register_substrate does not register tick observers");
+    }
+
+    fn declare_consumed_projections<I, K>(&self, _keys: I)
+    where
+        I: IntoIterator<Item = K>,
+        K: Into<String>,
+    {
+        unreachable!("register_substrate does not declare consumed projections");
     }
 
     fn set_coverage_hook(&self, hook: PlanCoverageHook) {

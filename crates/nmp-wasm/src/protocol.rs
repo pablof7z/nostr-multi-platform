@@ -7,7 +7,7 @@ pub enum WorkerRequest {
     Hello(ClientHello),
     Start(StartConfig),
     Dispatch(ActionDispatch),
-    #[serde(rename = "chirp_action")]
+    #[serde(rename = "app_action")]
     AppAction(AppActionDispatch),
     CapabilityResult(CapabilityResult),
     /// V-01 Stage 3b — install a signer for app-level write actions.
@@ -39,9 +39,14 @@ pub struct ClientHello {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StartConfig {
     pub app_id: String,
-    #[serde(default = "nmp_chirp_config::chirp_default_relay_urls")]
+    /// Relay set the host wants the runtime to connect to. Relay policy is a
+    /// host concern, not framework policy — the framework has no built-in
+    /// default. A host (e.g. the Chirp web composition root) MUST supply this
+    /// explicitly; a missing field fails serde deserialization loudly rather
+    /// than silently falling back to one app's relays.
     pub relays: Vec<String>,
-    #[serde(default = "default_relay_bootstrap")]
+    /// Explicit relay bootstrap list (url + role). Like `relays`, this is host
+    /// policy with no framework default; the host MUST supply it.
     pub relay_bootstrap: Vec<RelayBootstrapEntry>,
     pub database_name: String,
     pub correlation_id: String,
@@ -51,22 +56,6 @@ pub struct StartConfig {
 pub struct RelayBootstrapEntry {
     pub url: String,
     pub role: String,
-}
-
-impl From<&nmp_chirp_config::ChirpRelayBootstrapEntry> for RelayBootstrapEntry {
-    fn from(entry: &nmp_chirp_config::ChirpRelayBootstrapEntry) -> Self {
-        Self {
-            url: entry.url.to_string(),
-            role: entry.role.to_string(),
-        }
-    }
-}
-
-fn default_relay_bootstrap() -> Vec<RelayBootstrapEntry> {
-    nmp_chirp_config::chirp_default_relay_bootstrap()
-        .iter()
-        .map(Into::into)
-        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

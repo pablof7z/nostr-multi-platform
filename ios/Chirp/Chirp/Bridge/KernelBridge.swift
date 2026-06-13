@@ -46,6 +46,14 @@ final class KernelHandle {
         // broker's signer-ready event into
         // `AddSigner(source: RemoteHandle, make_active:)`.
         nmp_signer_broker_init(raw)
+        // ADR-0053 — declare Chirp's static Tier-2 built-in projection
+        // consumption set so the kernel narrows snapshot output to what this
+        // shell decodes (the single source of truth is
+        // `CHIRP_CONSUMED_BUILTIN_PROJECTIONS` in nmp-app-chirp). Must run
+        // before `nmp_app_start`; the kernel stops serializing built-ins this
+        // shell never reads. Tier-1 host projections (registered below /
+        // per-view feeds) self-gate by registration and are unaffected.
+        nmp_app_chirp_declare_consumed_projections(raw)
         // T146 — register the modular timeline projection on the kernel
         // event observer slot. See `Bridge/ModularTimelineBridge.swift`.
         registerChirpProjection()
@@ -751,6 +759,12 @@ final class KernelHandle {
             let typedDmInbox = TypedDmInboxDecoder.decode(from: envelopes)
             let typedDmRelayList = TypedDmRelayListDecoder.decode(from: envelopes)
             let typedClaimedEvents = TypedClaimedEventsDecoder.decode(from: envelopes)
+            // Issue #1283 Phase 1: the kernel-resolved embed map (`NEMB`). Returns
+            // nil when the sidecar is absent/malformed → the generic
+            // `projections.claimedEventEmbeds` JSON path stays active (ADR-0037
+            // Commitment 4). This is what feeds `EmbedHost` after the in-Swift
+            // resolver was deleted.
+            let typedClaimedEventEmbeds = TypedClaimedEventEmbedsDecoder.decode(from: envelopes)
             // NIP-46 cluster (`bunker_handshake` / `nip46_onboarding`). Each
             // returns nil when its sidecar is absent/malformed → the generic
             // `projections.<field>` JSON path stays active (ADR-0037 Commitment
@@ -814,6 +828,7 @@ final class KernelHandle {
                     typedDmInbox: typedDmInbox,
                     typedDmRelayList: typedDmRelayList,
                     typedClaimedEvents: typedClaimedEvents,
+                    typedClaimedEventEmbeds: typedClaimedEventEmbeds,
                     typedBunkerHandshake: typedBunkerHandshake,
                     typedNip46Onboarding: typedNip46Onboarding,
                     typedSignerState: typedSignerState,

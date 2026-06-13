@@ -362,3 +362,7 @@ fn json_string(s: &str) -> String {
 #[cfg(test)]
 #[path = "action/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "action/tests_host_op.rs"]
+mod tests_host_op;

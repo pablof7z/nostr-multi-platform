@@ -4,9 +4,15 @@
 > **Authoring agent:** Architect (M10.5 design task #4).
 > **Companion audit:** [`docs/perf/m10.5/debt-inventory.md`](../perf/m10.5/debt-inventory.md).
 > **Reading order:** this file first (§1, §2, §7, §10), then the five sub-docs (§3, §4, §5, §6, §8, §9).
+> **Current-status note (2026-06-13):** This is a historical M10.5 design
+> document. The current production C/JNI ABI lives in `crates/nmp-ffi`, update
+> callbacks carry binary `UpdateFrame` (`NMPU`) frames, and the old
+> `open_author`/`open_thread` symbols were replaced by generic interest and
+> Chirp wrapper calls. Use [`docs/ffi-surface.md`](../ffi-surface.md) for the
+> current ABI inventory.
 
 This is the design spec for the M10.5 dedicated FFI-surface hardening pass. The
-goal is to prove — in measured numbers, not adjectives — that the current raw
+goal is to prove — in measured numbers, not adjectives — that the M10.5-era raw
 C FFI between `crates/nmp-core` and `ios/NmpStress` is rock-solid before a
 single line of the M11 podcast app is written.
 
@@ -33,7 +39,7 @@ single line of the M11 podcast app is written.
 
 ### 1.2 Non-goals
 
-- **Changing the FFI shape.** The current surface (raw `extern "C"`
+- **Changing the FFI shape.** The M10.5-era surface (raw `extern "C"`
   functions in `crates/nmp-core/src/ffi.rs`, FlatBuffers update callback) is
   what we harden. Migrating to UniFFI + per-app generated enums per
   ADR-0010 is **M14**, not M10.5.
@@ -48,7 +54,7 @@ single line of the M11 podcast app is written.
 
 ## 2. FFI surface inventory
 
-The current FFI surface is **14 exported C symbols** in
+The M10.5-era FFI surface was **14 exported C symbols** in
 `crates/nmp-core/src/ffi.rs` (lines 44–268) plus **one callback type**
 (`UpdateCallback` at line 10). Every symbol below must have its
 ownership, lifetime, thread-safety, and null-handling rules documented

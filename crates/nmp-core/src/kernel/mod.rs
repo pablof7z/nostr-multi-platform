@@ -41,6 +41,10 @@ mod active_timeline_authors;
 #[cfg(test)]
 mod active_timeline_authors_tests;
 mod auth;
+// V-06 / #960 — NIP-42 AUTH signer-binding state (local-vs-remote disjoint
+// bindings) + the `PendingAuthSign` async-AUTH queue, extracted from this file to
+// keep it within its size budget. Adds methods to `impl Kernel`.
+mod auth_sign_state;
 pub(crate) mod clock;
 #[cfg(test)]
 mod clock_injection_tests;
@@ -359,6 +363,10 @@ use crate::store::{EventStore, MemEventStore};
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::AuthDriverState;
 pub use auth::AuthSignerFn;
+// V-06 / #960 — surfaced at the kernel-module root so the `Kernel` field type and
+// the `ingest::auth_handlers` enqueue site (`super::super::PendingAuthSign`)
+// resolve exactly as they did when the struct lived in this file.
+pub use auth_sign_state::PendingAuthSign;
 use clock::SystemClock;
 // Re-export `Clock` at `crate::kernel::Clock` so the always-compiled
 // `crate::slots::KernelClockSlot` (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) can
@@ -980,6 +988,18 @@ pub struct Kernel {
     /// that role are recorded but unanswered (driver stays in
     /// `ChallengeReceived` until a signer is bound for that role).
     auth_signers: HashMap<RelayRole, RelayAuthCredentials>,
+    /// V-06 / #960 — per-role AUTH pubkey for a *remote* (NIP-46 / NIP-55)
+    /// account. The kernel knows WHOM to AUTH as but holds no synchronous signer
+    /// (the broker is the only thing that can sign), so a challenge on such a
+    /// lane enqueues a [`PendingAuthSign`] instead of signing inline. A role is
+    /// in `auth_signers` XOR `auth_remote_pubkeys` (local-key XOR remote signer),
+    /// never both — `bind_auth_signer` / `bind_auth_remote` keep them disjoint.
+    auth_remote_pubkeys: HashMap<RelayRole, String>,
+    /// V-06 / #960 — AUTH kind:22242 events awaiting a remote signature. The
+    /// actor drains this after each inbound frame (`take_pending_auth_signs`),
+    /// routes each through the async signer port, and re-enters
+    /// `dispatch_signed_auth` on resolution.
+    pending_auth_signs: Vec<PendingAuthSign>,
     /// T66a identity/publish projections — flat wire-protocol summaries the
     /// actor pushes after each AccountManager-equivalent mutation. The actor
     /// (in `nmp-core`, so it CANNOT import `nmp-signers` per D0) owns the
@@ -1992,6 +2012,8 @@ impl Kernel {
             pending_claims: std::collections::BTreeMap::new(),
             claim_sub_index: std::collections::BTreeMap::new(),
             auth_signers: HashMap::new(),
+            auth_remote_pubkeys: HashMap::new(),
+            pending_auth_signs: Vec::new(),
             accounts: Vec::new(),
             active_account: None,
             signed_events: HashMap::new(),
@@ -2078,10 +2100,9 @@ impl Kernel {
     }
 
     /// Current wall-clock time as milliseconds since the Unix epoch, read
-    /// through the injected [`Clock`]. Used by the `action_stages` mirror
-    /// so per-stage timestamps survive `FixedClock` injection and
-    /// stay deterministic in tests/replay. A pre-epoch clock collapses to
-    /// `0` (D6 — never panics).
+    /// through the injected [`Clock`] so `FixedClock` keeps it deterministic
+    /// (used by the `action_stages` mirror and the `start()` wall anchor). A
+    /// pre-epoch clock collapses to `0` (D6 — never panics).
     pub(crate) fn now_ms(&self) -> u64 {
         self.clock
             .now()
@@ -2099,10 +2120,10 @@ impl Kernel {
     /// purge) was dead on every device (audit Finding 1).
     ///
     /// - **Budget**: [`GcBudget::production`] — `2000` events / `50 ms` scan
-    ///   bounds with the LRU ceiling **disabled** (`max_total_events =
-    ///   usize::MAX`): store-claims have no production callers yet, so a finite
-    ///   ceiling would silently evict live events (V-117). GitHub issue #1090
-    ///   tracks wiring claims and re-enabling `HOT_EVENT_CEILING` (`gc.md` §3).
+    ///   bounds, LRU ceiling at [`crate::store::HOT_EVENT_CEILING`] (10 000
+    ///   events, enabled by #1090 Stage 3 / #1327). When the floor-coherent
+    ///   pin scan is truncated by its D8 budget, [`Self::derive_store_gc_inputs`]
+    ///   returns a no-eviction budget so LRU is skipped this tick (#1348).
     /// - **`now_secs`**: read through the injected [`Clock`] via
     ///   [`Self::now_secs`] (D7/D9 — the store never reads the clock; the kernel
     ///   threads it in, so replay/tests stay deterministic).
@@ -2131,13 +2152,11 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        // #1090 Stage 1 — derive the ephemeral store-tier pin set (see
-        // `derive_store_pin_set`) and thread it into Phase-2 LRU eviction.
-        let pins = self.derive_store_pin_set();
-        match self
-            .store
-            .gc_step_with_pins(crate::store::GcBudget::production(), now_secs, &pins)
-        {
+        // #1090 Stage 1 — derive the ephemeral store-tier pin set and the
+        // matching budget (#1348 truncation→no-eviction decision lives in
+        // `derive_store_gc_inputs`), then thread both into Phase-2 LRU eviction.
+        let (pins, gc_budget) = self.derive_store_gc_inputs();
+        match self.store.gc_step_with_pins(gc_budget, now_secs, &pins) {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
@@ -2274,38 +2293,6 @@ impl Kernel {
     /// wallet-lane signer on disconnect.
     pub fn clear_relay_auth_signer(&mut self, role: RelayRole) {
         self.auth_signers.remove(&role);
-    }
-
-    /// Compat wrapper: bind the same identity signer to every user-identity
-    /// relay role (Content + Indexer). Replaces any previously-bound identity
-    /// signer on those roles; other roles (e.g. NWC `Wallet`) are unaffected.
-    /// FFI bridge that surfaces this from Swift is T59
-    /// (filed in `docs/perf/pending-user-decisions.md`).
-    pub(crate) fn bind_auth_signer(&mut self, pubkey_hex: String, signer: AuthSignerFn) {
-        self.auth_signers.insert(
-            RelayRole::Content,
-            RelayAuthCredentials {
-                signer: Arc::clone(&signer),
-                pubkey_hex: pubkey_hex.clone(),
-            },
-        );
-        self.auth_signers.insert(
-            RelayRole::Indexer,
-            RelayAuthCredentials { signer, pubkey_hex },
-        );
-    }
-
-    /// Compat wrapper: drop the identity signer for the user-identity roles
-    /// (Content + Indexer). Other roles (e.g. NWC `Wallet`) are unaffected —
-    /// use `clear_relay_auth_signer(role)` for per-role clearing.
-    pub(crate) fn clear_auth_signer(&mut self) {
-        self.auth_signers.remove(&RelayRole::Content);
-        self.auth_signers.remove(&RelayRole::Indexer);
-    }
-
-    /// Returns `true` if at least one relay role has an auth signer bound.
-    pub(crate) fn has_auth_signer(&self) -> bool {
-        !self.auth_signers.is_empty()
     }
 
     /// Bind the shared relay-edit rows slot so the FFI layer can read
@@ -2447,6 +2434,7 @@ impl Kernel {
     pub(crate) fn start(&mut self) {
         if self.timing.started_at.is_none() {
             self.timing.started_at = Some(Instant::now());
+            self.timing.started_unix_ms = Some(self.now_ms()); // D9 wall anchor
         }
         self.changed_since_emit = true;
         self.log("starting role-aware nmp demo slice");

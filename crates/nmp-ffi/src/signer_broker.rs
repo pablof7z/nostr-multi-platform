@@ -7,24 +7,23 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
-use nmp_core::{register_bunker_hook, ActorCommand, BunkerHookRequest, RemoteSignerHandle};
+use nmp_core::{ActorCommand, BunkerHookRequest, RemoteSignerHandle};
 use nmp_signer_broker::{percent_encode_query_value, BrokerEvent, BunkerBroker};
 use nmp_signer_iface::SignerOp;
 use nmp_signers::Nip46Signer;
 
 use super::{app_ref, NmpApp};
 
-/// Process-global broker handle. The bunker hook closure also holds a strong
-/// `Arc<BunkerBroker>`; this exists so the cancel and URI symbols can reach
-/// the broker without a second registration mechanism.
-static GLOBAL_BROKER: OnceLock<Arc<BunkerBroker>> = OnceLock::new();
-
-/// Initialise the NIP-46 broker. After this call, any `nmp_app_signin_bunker`
-/// dispatch routes through the broker's handshake state machine. Idempotent:
-/// repeated calls after the first keep the existing process-global broker.
+/// Initialise the NIP-46 broker for `app`. After this call, any
+/// `nmp_app_signin_bunker` dispatch routes through the broker's handshake state
+/// machine. Idempotent per app: repeated calls keep the existing per-app
+/// broker. ADR-0052 §D3 — the broker handle and the bunker hook are **per-app**
+/// (no `GLOBAL_BROKER` / `register_bunker_hook` process-global), so two
+/// `NmpApp`s in one process have independent brokers and a freed-then-recreated
+/// app re-initialises cleanly.
 ///
 /// # Safety
 ///
@@ -37,7 +36,7 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) {
         return;
     };
     let tx = app.actor_sender();
-    let _ = GLOBAL_BROKER.get_or_init(|| {
+    let broker = app.signer_broker_get_or_init(|| {
         let event_tx = tx.clone();
         let broker = BunkerBroker::new(Arc::new(move |event| {
             handle_broker_event(&event_tx, event);
@@ -52,15 +51,19 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) {
         broker.set_completion_sink(Arc::new(move |response_json: String| {
             let _ = sink_tx.send(ActorCommand::DeliverSignerResponse { response_json });
         }));
-        let broker_for_hook = Arc::clone(&broker);
-        register_bunker_hook(Arc::new(move |request| match request {
-            BunkerHookRequest::Connect { uri } => broker_for_hook.start_handshake(uri),
-            BunkerHookRequest::Restore { payload_json } => {
-                broker_for_hook.restore_session(payload_json);
-            }
-        }));
         broker
     });
+    // ADR-0052 §D3 — install the broker hook into THIS app's per-app slot
+    // (the actor's `IdentityRuntime` reads the matching `Arc` clone). The
+    // broker response routes back to the originating app structurally via the
+    // per-app `event_tx`/`sink_tx` captured above — no correlation token.
+    let broker_for_hook = Arc::clone(&broker);
+    app.install_bunker_hook(Arc::new(move |request| match request {
+        BunkerHookRequest::Connect { uri } => broker_for_hook.start_handshake(uri),
+        BunkerHookRequest::Restore { payload_json } => {
+            broker_for_hook.restore_session(payload_json);
+        }
+    }));
 }
 
 fn handle_broker_event(tx: &nmp_core::CommandSender, event: BrokerEvent) {
@@ -92,11 +95,11 @@ fn handle_broker_event(tx: &nmp_core::CommandSender, event: BrokerEvent) {
 /// # Safety
 ///
 /// `app` must be a valid pointer returned by `nmp_app_new()`. Passing null is
-/// safe. The argument is retained for ABI stability and future per-app brokers.
+/// safe. ADR-0052 §D3 — reads THIS app's per-app broker (no process-global).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub extern "C" fn nmp_app_cancel_bunker_handshake(_app: *mut NmpApp) {
-    if let Some(broker) = GLOBAL_BROKER.get() {
+pub extern "C" fn nmp_app_cancel_bunker_handshake(app: *mut NmpApp) {
+    if let Some(broker) = app_ref(app).and_then(NmpApp::signer_broker) {
         broker.cancel();
     }
 }
@@ -128,7 +131,7 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
             _ => None,
         }
     };
-    let Some(broker) = GLOBAL_BROKER.get() else {
+    let Some(broker) = app_ref(app).and_then(NmpApp::signer_broker) else {
         return std::ptr::null_mut();
     };
     let mut uri = broker.start_nostrconnect_handshake(relay);

@@ -287,20 +287,15 @@ pub trait EventStore: Send + Sync {
 
     /// V-52 — Return the ids of events whose provenance includes `relay_url`.
     ///
-    /// The `MemEventStore` backend maintains a secondary `relay_index` map
-    /// (relay_url → event_ids) that makes this an O(1) lookup. The LMDB backend
-    /// does not yet maintain this index and returns `Err(StoreError::NotSupported)`
-    /// as a tracked follow-up (V-52 LMDB index — see issue #969).
+    /// Both backends maintain a secondary relay-origin reverse index so this is
+    /// an O(events-on-relay) lookup: the `MemEventStore` keeps a
+    /// `relay_url → event_ids` map; the `LmdbEventStore` keeps an
+    /// `nmp-relay-index` sub-db keyed `relay_url || 0x00 || event_id` and scans
+    /// the relay's prefix range (issue #969).
     ///
-    /// Callers that need fallback behaviour for LMDB should inspect the error
-    /// variant and degrade gracefully (e.g. fall back to a provenance scan,
-    /// which is correct but O(N × MAX_PROVENANCE_ENTRIES)).
-    fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError> {
-        let _ = relay_url;
-        Err(StoreError::NotSupported(
-            "list_events_seen_on not implemented for this backend".to_string(),
-        ))
-    }
+    /// Both backends return the same set; only the events still present in the
+    /// store appear (every removal path prunes the reverse index).
+    fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, StoreError>;
 
     // ─── Writes ──────────────────────────────────────────────────────────────
 

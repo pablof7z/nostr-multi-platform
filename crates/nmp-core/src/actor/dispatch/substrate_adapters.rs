@@ -110,3 +110,27 @@ impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<
             .unwrap_or_default()
     }
 }
+
+/// ADR-0052 §D4 — bridge the actor's per-app
+/// [`crate::substrate::HostOpHandlerSlot`] into the substrate
+/// [`crate::substrate::HostOpHandlerAccess`] capability so the
+/// [`crate::substrate::HostOpCommand`] can clone the currently-installed
+/// handler out of the slot at `run` time (honouring account-switch hot-swaps).
+/// Reaches no kernel/identity state — only the handler slot.
+pub(super) struct HostOpHandlerAccessAdapter<'a> {
+    pub(super) slot: &'a crate::substrate::HostOpHandlerSlot,
+}
+
+unsafe impl<'a> Send for HostOpHandlerAccessAdapter<'a> {}
+unsafe impl<'a> Sync for HostOpHandlerAccessAdapter<'a> {}
+
+impl<'a> crate::substrate::HostOpHandlerAccess for HostOpHandlerAccessAdapter<'a> {
+    fn current_handler(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
+        // Clone the inner `Arc` under the slot lock and return by value so the
+        // (SQLite-bound) `handle` call never holds the slot mutex (D8 — must
+        // not block the FFI `set_host_op_handler` writer).
+        self.slot.lock().ok().and_then(|guard| guard.as_ref().cloned())
+    }
+}

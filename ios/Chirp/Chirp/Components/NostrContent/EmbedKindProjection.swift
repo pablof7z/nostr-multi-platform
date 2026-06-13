@@ -16,8 +16,30 @@ enum EmbedKindProjection: Equatable {
     case unknown(UnknownProjection)
 }
 
+extension EmbedKindProjection: Decodable {
+    /// Rust wire shape: `{ "variant": "<camelCase>", "data": { … } }`.
+    private enum CodingKeys: String, CodingKey { case variant, data }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let tag = try c.decode(String.self, forKey: .variant)
+        switch tag {
+        case "shortNote":
+            self = .shortNote(try c.decode(ShortNoteProjection.self, forKey: .data))
+        case "article":
+            self = .article(try c.decode(ArticleProjection.self, forKey: .data))
+        case "highlight":
+            self = .highlight(try c.decode(HighlightProjection.self, forKey: .data))
+        case "profile":
+            self = .profile(try c.decode(ProfileProjection.self, forKey: .data))
+        default:
+            self = .unknown(try c.decode(UnknownProjection.self, forKey: .data))
+        }
+    }
+}
+
 /// kind:1 short text note projection.
-struct ShortNoteProjection: Equatable {
+struct ShortNoteProjection: Equatable, Decodable {
     let id: String
     let authorPubkey: String
     let authorDisplayName: String?
@@ -28,6 +50,13 @@ struct ShortNoteProjection: Equatable {
     /// plain string and let SwiftUI handle the layout.
     let content: String
     let mediaUrls: [String]
+
+    /// Explicit CodingKeys bypass `convertFromSnakeCase` so that the Rust
+    /// camelCase JSON (`authorPubkey`, `createdAt`, …) maps directly to the
+    /// Swift camelCase properties without the strategy lowercasing them.
+    enum CodingKeys: String, CodingKey {
+        case id, authorPubkey, authorDisplayName, authorPictureUrl, createdAt, content, mediaUrls
+    }
 
     init(
         id: String,
@@ -49,7 +78,7 @@ struct ShortNoteProjection: Equatable {
 }
 
 /// kind:30023 long-form article projection (NIP-23).
-struct ArticleProjection: Equatable {
+struct ArticleProjection: Equatable, Decodable {
     let id: String
     let authorPubkey: String
     let authorDisplayName: String?
@@ -62,6 +91,11 @@ struct ArticleProjection: Equatable {
     /// Plain-text body fallback (the Rust resolver also emits a content tree;
     /// the Swift gallery showcase renders title/summary/hero image only).
     let content: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, authorPubkey, authorDisplayName, authorPictureUrl, createdAt
+        case title, summary, heroImageUrl, dTag, content
+    }
 
     init(
         id: String,
@@ -89,7 +123,7 @@ struct ArticleProjection: Equatable {
 }
 
 /// kind:9802 highlight projection (NIP-84).
-struct HighlightProjection: Equatable {
+struct HighlightProjection: Equatable, Decodable {
     let id: String
     let authorPubkey: String
     let authorDisplayName: String?
@@ -99,6 +133,11 @@ struct HighlightProjection: Equatable {
     let sourceEventAddr: String?
     let sourceUrl: String?
     let context: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, authorPubkey, authorDisplayName, createdAt
+        case highlightedText, sourceEventId, sourceEventAddr, sourceUrl, context
+    }
 
     init(
         id: String,
@@ -124,7 +163,7 @@ struct HighlightProjection: Equatable {
 }
 
 /// kind:0 profile metadata projection.
-struct ProfileProjection: Equatable {
+struct ProfileProjection: Equatable, Decodable {
     let pubkey: String
     let displayName: String?
     let pictureUrl: String?
@@ -132,6 +171,10 @@ struct ProfileProjection: Equatable {
     let nip05: String?
     let lud16: String?
     let bannerUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case pubkey, displayName, pictureUrl, about, nip05, lud16, bannerUrl
+    }
 
     init(
         pubkey: String,
@@ -153,7 +196,7 @@ struct ProfileProjection: Equatable {
 }
 
 /// Fallback projection for kinds without a registered handler.
-struct UnknownProjection: Equatable {
+struct UnknownProjection: Equatable, Decodable {
     let kind: UInt32
     let authorPubkey: String
     let authorDisplayName: String?
@@ -162,6 +205,10 @@ struct UnknownProjection: Equatable {
     let content: String
     let tags: [[String]]
     let altText: String?
+
+    enum CodingKeys: String, CodingKey {
+        case kind, authorPubkey, authorDisplayName, authorPictureUrl, createdAt, content, tags, altText
+    }
 
     init(
         kind: UInt32,
@@ -185,7 +232,7 @@ struct UnknownProjection: Equatable {
 }
 
 /// Full envelope mirror of `nmp_content::embed_projection::EmbeddedEventEnvelope`.
-struct EmbeddedEventEnvelope: Equatable {
+struct EmbeddedEventEnvelope: Equatable, Decodable {
     /// The original nostr: URI (nevent1… / naddr1… / npub1…).
     let uri: String
     /// Primary identifier: event-id hex for event-addressed refs, or

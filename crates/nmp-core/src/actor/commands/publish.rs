@@ -625,21 +625,33 @@ pub(crate) fn follow(
             correlation_id,
         );
     }
-    let current = kernel.current_follows(&author);
-    let follows = if add {
-        crate::tags::follow_list_after_add(&current, pubkey)
-    } else {
-        crate::tags::follow_list_after_remove(&current, pubkey)
+    // Fail-closed gate (issue #1246b): read the active account's FULL existing
+    // kind:3 raw event — every tag verbatim plus its content. `None` means the
+    // kind:3 has not been ingested yet; publishing an edit built from an empty
+    // list would silently wipe the user's contacts, so surface the failure
+    // under the dispatch correlation_id (matching the wasm path's
+    // `follow_list_not_loaded` CapabilityFailure after PR #1244). This replaces
+    // the old gate-less `current_follows`, which returned `[]` on a not-loaded
+    // list.
+    let Some((current_tags, current_content)) = kernel.try_current_kind3_event() else {
+        return fail_publish(
+            kernel,
+            "follow_list_not_loaded".to_string(),
+            correlation_id,
+        );
     };
-    let tags = follows
-        .iter()
-        .map(|p| vec!["p".to_string(), p.clone()])
-        .collect::<Vec<_>>();
+    // Splice ONLY the `p` section — preserve relay hints, petnames, every
+    // non-`p` tag, and the original content verbatim (issue #1246a).
+    let tags = if add {
+        crate::tags::kind3_tags_after_add(&current_tags, pubkey)
+    } else {
+        crate::tags::kind3_tags_after_remove(&current_tags, pubkey)
+    };
     let unsigned = UnsignedEvent {
         pubkey: author,
         kind: 3,
         tags,
-        content: String::new(),
+        content: current_content,
         created_at: kernel.now_secs(),
     };
     // Non-blocking sign: a remote signer's `Pending` op is parked for the

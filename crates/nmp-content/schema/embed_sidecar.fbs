@@ -1,0 +1,207 @@
+namespace nmp.embed;
+
+// Typed FlatBuffers wire for the `claimed_event_embeds` snapshot sidecar
+// (issue #1283 / ADR-0034 §embed-sidecar). This is the TYPED counterpart of the
+// JSON `claimed_event_embeds` projection produced by
+// `crates/nmp-ffi/src/embed_sidecar.rs`: it carries the SAME pre-resolved map
+// (`primary_id -> EmbeddedEventEnvelope`) so a typed-frame shell (Chirp) can
+// decode the kind-dispatched `EmbedKindProjection` WITHOUT re-implementing the
+// `match kind` resolver in Swift/Kotlin (the D0 thin-shell violation #1283
+// closes). The JSON projection is kept in parallel for the gallery shell, which
+// still decodes JSON; both are produced from the identical resolver output.
+//
+// Shape mirrors the existing resolver types in
+// `crates/nmp-content/src/embed_projection/` — never a bespoke re-parse:
+//   * `EmbeddedEventEnvelope` mirrors `embed_projection::EmbeddedEventEnvelope`
+//     (the FFI sidecar synthesises `uri=""`, `depth=0`, `max_depth=4`,
+//     `collapsed=false` per the Phase 0 JSON shape).
+//   * `EmbedKindProjection` mirrors `embed_projection::EmbedKindProjection`,
+//     modelled — exactly like `content_tree.fbs` — as a `kind` discriminator
+//     plus optional payload tables rather than a FlatBuffers `union` (unions are
+//     harder to keep stable across the Swift / Kotlin / TS runtimes this buffer
+//     crosses). Each per-kind table mirrors its `*Projection` struct.
+//
+// `Option<String>` resolver fields use the `has_*` presence convention from
+// `longform.fbs` / `wallet_status.fbs` (a `has_* : bool` flag + a value string
+// that is empty when absent) so `Some("")` round-trips distinctly from `None`.
+//
+// The per-kind `content_tree` body is the existing `ContentTreeWire` typed
+// buffer (`NFCT` root, `crates/nmp-content/schema/content_tree.fbs`) carried
+// verbatim as opaque bytes via the standalone `encode_content_tree` /
+// `decode_content_tree` codec — exactly as `longform.fbs` carries it. We do NOT
+// `include "content_tree.fbs"` here: the codec is reused as a unit and the
+// transport treats the nested buffer as opaque bytes.
+//
+// FlatBuffers has no native map — `entries` is a `key`-keyed vector on
+// `primary_id` so a host can binary-search an embed by its claim coordinate.
+//
+// Regenerate the checked-in bindings only with the workspace FlatBuffers pin
+// (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema has
+// no `include`, so generate plainly (Rust + Swift):
+//   flatc --rust -o crates/nmp-content/src/wire/generated \
+//         crates/nmp-content/schema/embed_sidecar.fbs
+//   flatc --swift -o ios/Chirp/Chirp/Bridge/Generated \
+//         crates/nmp-content/schema/embed_sidecar.fbs
+
+// Kind discriminator for the projection payload carried in an envelope. Mirrors
+// the `embed_projection::EmbedKindProjection` enum variants. `Unknown` is the
+// fallback for any kind without a registered Rust projection.
+enum EmbedProjectionKind:ubyte {
+  ShortNote = 0,
+  Article = 1,
+  Highlight = 2,
+  Profile = 3,
+  Unknown = 4
+}
+
+// kind:1 short text note projection — mirrors `ShortNoteProjection`.
+table ShortNoteProjection {
+  // 64-character hex event id.
+  id:string;
+  // 64-character hex author pubkey.
+  author_pubkey:string;
+  // author_display_name: Option<String> (kind:0 enrichment).
+  has_author_display_name:bool;
+  author_display_name:string;
+  // author_picture_url: Option<String>.
+  has_author_picture_url:bool;
+  author_picture_url:string;
+  // Event creation time as Unix seconds.
+  created_at:uint64;
+  // Rendered note body as a verbatim `ContentTreeWire` (`NFCT`) buffer.
+  content_tree:[ubyte];
+  // Top-level media URLs extracted for preview thumbnails.
+  media_urls:[string];
+}
+
+// kind:30023 long-form article projection — mirrors `ArticleProjection`.
+table ArticleProjection {
+  id:string;
+  author_pubkey:string;
+  has_author_display_name:bool;
+  author_display_name:string;
+  has_author_picture_url:bool;
+  author_picture_url:string;
+  created_at:uint64;
+  // title: Option<String>.
+  has_title:bool;
+  title:string;
+  // summary: Option<String>.
+  has_summary:bool;
+  summary:string;
+  // hero_image_url: Option<String> (the `image` tag).
+  has_hero_image_url:bool;
+  hero_image_url:string;
+  // Addressable `d` tag value.
+  d_tag:string;
+  // Article body as a verbatim `ContentTreeWire` (`NFCT`) buffer.
+  content_tree:[ubyte];
+}
+
+// kind:9802 highlight projection — mirrors `HighlightProjection`.
+table HighlightProjection {
+  id:string;
+  author_pubkey:string;
+  has_author_display_name:bool;
+  author_display_name:string;
+  created_at:uint64;
+  // Highlighted text from the event content.
+  highlighted_text:string;
+  // source_event_id: Option<String> (`e` tag).
+  has_source_event_id:bool;
+  source_event_id:string;
+  // source_event_addr: Option<String> (`a` tag).
+  has_source_event_addr:bool;
+  source_event_addr:string;
+  // source_url: Option<String> (`r` tag).
+  has_source_url:bool;
+  source_url:string;
+  // context: Option<String> (`context` tag).
+  has_context:bool;
+  context:string;
+}
+
+// kind:0 profile metadata projection — mirrors `ProfileProjection`.
+table ProfileProjection {
+  // 64-character hex profile pubkey.
+  pubkey:string;
+  has_display_name:bool;
+  display_name:string;
+  has_picture_url:bool;
+  picture_url:string;
+  has_about:bool;
+  about:string;
+  has_nip05:bool;
+  nip05:string;
+  has_lud16:bool;
+  lud16:string;
+  has_banner_url:bool;
+  banner_url:string;
+}
+
+// Fallback projection for an unregistered kind — mirrors `UnknownProjection`.
+table UnknownProjection {
+  // Raw Nostr event kind.
+  kind:uint32;
+  author_pubkey:string;
+  has_author_display_name:bool;
+  author_display_name:string;
+  has_author_picture_url:bool;
+  author_picture_url:string;
+  created_at:uint64;
+  // Raw event content.
+  content:string;
+  // Parsed content tree as a verbatim `ContentTreeWire` (`NFCT`) buffer.
+  content_tree:[ubyte];
+  // Raw NIP-01 tags available to custom native renderers.
+  tags:[TagRow];
+  // alt_text: Option<String> (NIP-31 `alt` tag).
+  has_alt_text:bool;
+  alt_text:string;
+}
+
+// One raw NIP-01 tag row (`["e", "<id>", "<relay>"]` → `values`). FlatBuffers
+// has no nested `[[string]]`, so a tag matrix is a vector of single-row tables.
+table TagRow {
+  values:[string];
+}
+
+// Kind-dispatched projection: a `kind` discriminator plus exactly one populated
+// payload table (the one matching `kind`). The non-matching slots are absent.
+// Mirrors `embed_projection::EmbedKindProjection`.
+table EmbedKindProjection {
+  kind:EmbedProjectionKind;
+  short_note:ShortNoteProjection;
+  article:ArticleProjection;
+  highlight:HighlightProjection;
+  profile:ProfileProjection;
+  unknown:UnknownProjection;
+}
+
+// Full envelope for one embedded event — mirrors
+// `embed_projection::EmbeddedEventEnvelope`.
+table EmbeddedEventEnvelope {
+  // Primary id (event-id hex or `kind:pubkey:d` coordinate) — the map key.
+  primary_id:string (key);
+  // The original nostr: URI (empty in the FFI sidecar — Phase 0 shape).
+  uri:string;
+  // Recursion guard state (FFI sidecar emits depth=0, max_depth=4).
+  depth:uint8;
+  max_depth:uint8 = 4;
+  // Whether this embed should be collapsed (FFI sidecar emits false).
+  collapsed:bool;
+  // collapse_reason: Option<String>.
+  has_collapse_reason:bool;
+  collapse_reason:string;
+  // The kind-dispatched projection driving native renderer choice.
+  projection:EmbedKindProjection;
+}
+
+// Root: the whole `claimed_event_embeds` projection in one buffer.
+table ClaimedEventEmbeds {
+  // Envelopes keyed by `primary_id` (sorted for binary search).
+  entries:[EmbeddedEventEnvelope];
+}
+
+file_identifier "NEMB";
+root_type ClaimedEventEmbeds;

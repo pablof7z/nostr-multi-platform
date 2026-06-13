@@ -138,6 +138,7 @@ pub(super) fn insert(
             // Provenance upsert.
             let count = provenance::upsert(
                 inner.provenance,
+                inner.relay_index,
                 &mut txn,
                 &id_bytes,
                 source.clone(),
@@ -151,7 +152,7 @@ pub(super) fn insert(
             }
             if let Some((replaced_id, replaced_expiry)) = pre_existing {
                 // Replaced — also drop the replaced event's provenance + LRU entry.
-                provenance::delete(inner.provenance, &mut txn, &replaced_id)?;
+                provenance::delete(inner.provenance, inner.relay_index, &mut txn, &replaced_id)?;
                 gc::lru_delete(inner, &mut txn, &replaced_id)?;
                 // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
                 gc::expiry_index_delete_exact(inner, &mut txn, replaced_expiry, &replaced_id)?;
@@ -177,6 +178,7 @@ pub(super) fn insert(
         SaveEventStatus::Rejected(RejectedReason::Duplicate) => {
             let count = provenance::upsert(
                 inner.provenance,
+                inner.relay_index,
                 &mut txn,
                 &id_bytes,
                 source.clone(),

@@ -99,13 +99,20 @@ struct GallerySnapshot: Decodable, Equatable {
     let running: Bool
     let profiles: [String: ProfileWire]
     let accounts: [AccountWire]
+    /// Pre-resolved embed-projection map produced by `nmp-ffi`'s embed sidecar
+    /// (issue #1283 / ADR-0034). Key = `primary_id`; value = fully resolved
+    /// `EmbeddedEventEnvelope` with `projection` already kind-dispatched in
+    /// Rust. Nil when the projection is absent (kernel not yet updated).
+    let claimedEventEmbeds: [String: EmbeddedEventEnvelope]?
 
-    static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [])
+    static let empty = GallerySnapshot(running: false, profiles: [:], accounts: [], claimedEventEmbeds: nil)
 
-    init(running: Bool, profiles: [String: ProfileWire], accounts: [AccountWire]) {
+    init(running: Bool, profiles: [String: ProfileWire], accounts: [AccountWire],
+         claimedEventEmbeds: [String: EmbeddedEventEnvelope]? = nil) {
         self.running = running
         self.profiles = profiles
         self.accounts = accounts
+        self.claimedEventEmbeds = claimedEventEmbeds
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -114,6 +121,9 @@ struct GallerySnapshot: Decodable, Equatable {
 
     private enum ProjectionsKeys: String, CodingKey {
         case resolvedProfiles, accounts
+        // `claimed_event_embeds` — with `.convertFromSnakeCase` this matches
+        // the camelCase key after conversion.
+        case claimedEventEmbeds
     }
 
     init(from decoder: Decoder) throws {
@@ -125,6 +135,7 @@ struct GallerySnapshot: Decodable, Equatable {
         var resolvedAccounts: [AccountWire] = []
 
         var assembled: [String: ProfileWire] = [:]
+        var claimedEmbeds: [String: EmbeddedEventEnvelope]? = nil
         if let projections = try? container.nestedContainer(
             keyedBy: ProjectionsKeys.self,
             forKey: .projections
@@ -148,6 +159,12 @@ struct GallerySnapshot: Decodable, Equatable {
             ) {
                 resolvedAccounts = accs
             }
+            // Issue #1283 / ADR-0034: decode the pre-resolved embed map from
+            // the `nmp-ffi` sidecar. Fault-tolerant — nil when absent.
+            claimedEmbeds = try? projections.decodeIfPresent(
+                [String: EmbeddedEventEnvelope].self,
+                forKey: .claimedEventEmbeds
+            )
         }
         // Top-level `accounts` fallback for tests / fixtures pre-projections.
         if resolvedAccounts.isEmpty,
@@ -161,6 +178,7 @@ struct GallerySnapshot: Decodable, Equatable {
 
         self.profiles = assembled
         self.accounts = resolvedAccounts
+        self.claimedEventEmbeds = claimedEmbeds
     }
 }
 
@@ -276,13 +294,11 @@ final class GalleryModel: NostrProfileHost {
     /// Decode a FlatBuffers update frame received from the push callback. A
     /// decode failure logs and keeps the previous snapshot intact (soft-fail).
     ///
-    /// The decode is split into two reads of the same JSON blob:
-    ///   1. Typed `GallerySnapshot` decode — resolved_profiles / accounts.
-    ///      Lean: stays decoupled from any embed-projection drift.
-    ///   2. Raw JSONSerialization read passed through to `embedHost` so the
-    ///      kind-dispatched embed projection (`projections.claimed_events`)
-    ///      flows into the SwiftUI environment without expanding the typed
-    ///      `GallerySnapshot` shape.
+    /// `GallerySnapshot` now includes `claimedEventEmbeds` — the pre-resolved
+    /// embed-projection map produced by `nmp-ffi` (issue #1283 / ADR-0034).
+    /// A single `JSONDecoder` pass fills both the profile/account fields and the
+    /// embed map; the separate `JSONSerialization` + `EmbedHost.update(fromSnapshotJSON:)`
+    /// path is deleted (the kind-dispatch now runs in Rust, not in Swift).
     func decode(frame: Data) {
         guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(from: frame) else {
             return
@@ -294,18 +310,13 @@ final class GalleryModel: NostrProfileHost {
             let next = try decoder.decode(GallerySnapshot.self, from: data)
             self.snapshot = next
             self.lastDecodeError = nil
+            // Embed-projection: feed the pre-resolved map directly from the
+            // typed `GallerySnapshot` field (no separate JSONSerialization pass).
+            embedHost.update(claimedEventEmbeds: next.claimedEventEmbeds)
         } catch {
             let msg = "GallerySnapshot direct decode failed: \(error.localizedDescription)"
             gmLog.error("\(msg, privacy: .public)")
             self.lastDecodeError = msg
-        }
-
-        // Embed-projection ingest. Separate from the typed decode so a
-        // claimed_events shape change cannot break user/relay/content pages.
-        if let raw = try? JSONSerialization.jsonObject(with: data),
-           let dict = raw as? [String: Any]
-        {
-            embedHost.update(fromSnapshotJSON: dict)
         }
     }
 

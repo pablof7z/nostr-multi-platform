@@ -54,6 +54,7 @@ impl ActionModule for JoinGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.join";
     type Action = JoinGroupInput;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -67,6 +68,7 @@ impl ActionModule for JoinGroupAction {
         Ok(())
     }
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -94,7 +96,7 @@ mod tests {
     /// Run the typed executor and capture every `ActorCommand` it sends, in order.
     fn run_execute(input: JoinGroupInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        JoinGroupAction::execute(input, "test-cid", &|cmd| {
+        JoinGroupAction.execute(input, "test-cid", &|cmd| {
             captured.borrow_mut().push(cmd);
         })?;
         Ok(captured.into_inner())
@@ -171,7 +173,7 @@ mod tests {
             reason: None,
         };
         assert!(matches!(
-            JoinGroupAction::start(&mut ctx, action),
+            JoinGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -185,7 +187,7 @@ mod tests {
             reason: None,
         };
         assert!(matches!(
-            JoinGroupAction::start(&mut ctx, action),
+            JoinGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -193,6 +195,6 @@ mod tests {
     #[test]
     fn well_formed_passes_validator() {
         let mut ctx = ActionContext::default();
-        assert!(JoinGroupAction::start(&mut ctx, input()).is_ok());
+        assert!(JoinGroupAction.start(&mut ctx, input()).is_ok());
     }
 }

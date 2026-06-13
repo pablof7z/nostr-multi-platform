@@ -1,9 +1,11 @@
 //! NIP-47 Nostr Wallet Connect actor-side runtime.
 //!
 //! Moved from `nmp-core::actor::commands::wallet` in V-38. The runtime lives
-//! on the actor thread; the actor reaches into it via the
-//! [`WalletRuntimeHandle`] slot installed via
-//! `nmp_core::NmpApp::set_wallet_runtime_handle`.
+//! behind a [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`).
+//! Each wallet `ActionModule` value and the `WalletInterceptor` hold their own
+//! `Arc` clone of the handle, obtained at composition time via
+//! [`crate::register::register_wallet`] (ADR-0052 rung 5.2 — register-by-value,
+//! no process-global install).
 //!
 //! D0: `nmp-core` no longer depends on `nmp-nwc`. D6: every error path
 //! surfaces as a `last_error_toast` + `WalletStatus::status = "error"`,
@@ -194,49 +196,24 @@ impl std::fmt::Debug for WalletRuntime {
 /// relay-event handler) does the same.
 pub type WalletRuntimeHandle = Arc<Mutex<Option<WalletRuntime>>>;
 
-/// Construct a fresh, empty [`WalletRuntimeHandle`]. The host installs it
-/// via [`install_wallet_runtime`] at app startup; the actor's relay-text
-/// intercept and the action-seam executor both pull it via
-/// [`active_wallet_runtime`].
+/// Construct a fresh, empty [`WalletRuntimeHandle`]. The host clones it into
+/// (a) each wallet `ActionModule` value, (b) each `ProtocolCommand` those
+/// modules construct, and (c) the relay-text interceptor — every consumer
+/// carries the handle by value (ADR-0052 rung 5.2). No process-global slot.
 #[must_use]
 pub fn new_wallet_runtime_handle() -> WalletRuntimeHandle {
     Arc::new(Mutex::new(None))
 }
 
-/// Process-wide slot holding the active [`WalletRuntimeHandle`]. There is
-/// exactly one wallet runtime per process; the action-seam executor
-/// ([`crate::WalletPayInvoiceModule::execute`]) and the FFI shims read it
-/// here so they don't need an [`nmp_core::NmpApp`] reference. Hosts install
-/// it once at app construction via [`install_wallet_runtime`].
-///
-/// Static rather than per-app because:
-/// * `ActionModule::execute` is a `fn` (no `&self`, no `&NmpApp`);
-/// * the FFI shims have an `app: *mut NmpApp` but no typed wallet field;
-/// * the wallet runtime IS naturally process-scoped (the actor thread is
-///   process-singleton too).
-static ACTIVE_WALLET_RUNTIME: std::sync::OnceLock<WalletRuntimeHandle> =
-    std::sync::OnceLock::new();
-
-/// Install the process-wide wallet runtime handle. Must be called exactly
-/// once per process; subsequent calls return `Err(_)` and the install is a
-/// no-op (the first handle wins).
-///
-/// The host typically does this in its app-construction code, alongside
-/// registering the `nmp.wallet.pay_invoice` action module and the
-/// `"wallet"` snapshot projection.
-pub fn install_wallet_runtime(handle: WalletRuntimeHandle) -> Result<(), &'static str> {
-    ACTIVE_WALLET_RUNTIME
-        .set(handle)
-        .map_err(|_| "wallet runtime already installed")
-}
-
-/// Fetch a clone of the installed [`WalletRuntimeHandle`]. Returns `None`
-/// when the host never called [`install_wallet_runtime`] — the action seam
-/// then surfaces a `Failed` terminal stage rather than panicking (D6).
-#[must_use]
-pub fn active_wallet_runtime() -> Option<WalletRuntimeHandle> {
-    ACTIVE_WALLET_RUNTIME.get().cloned()
-}
+// ADR-0052 rung 5.2: the process-global `ACTIVE_WALLET_RUNTIME`
+// (`OnceLock<WalletRuntimeHandle>`) plus `install_wallet_runtime` /
+// `active_wallet_runtime` were DELETED. The wallet runtime is now owned by
+// value: each of the three wallet `ActionModule`s holds an
+// `Arc<WalletRuntimeHandle>` captured at composition time, and the NIP-57 zap
+// auto-chain carries the same handle through `FetchLnurlInvoiceCommand`. Two
+// `NmpApp` instances in one process therefore drive fully independent wallet
+// runtimes (proven by the `k2_two_instance_wallet_isolation` oracle), and a
+// freed-then-recreated app re-initialises cleanly (no fired `OnceLock`).
 
 impl WalletRuntime {
     /// Construct a wallet runtime bound to the shared status slot.

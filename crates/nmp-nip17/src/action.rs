@@ -55,6 +55,7 @@ impl ActionModule for SendDmAction {
     /// gift-wrap / publish — and the recipient-pubkey *parse* — happen on the
     /// actor thread (which owns the user-facing error toasts, D6).
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -69,6 +70,7 @@ impl ActionModule for SendDmAction {
         Ok(())
     }
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -120,7 +122,7 @@ mod tests {
             content: "hello".to_string(),
             reply_to: None,
         };
-        assert!(SendDmAction::start(&mut ctx(), input).is_ok());
+        assert!(SendDmAction.start(&mut ctx(), input).is_ok());
     }
 
     #[test]
@@ -131,7 +133,7 @@ mod tests {
             reply_to: None,
         };
         assert!(matches!(
-            SendDmAction::start(&mut ctx(), input),
+            SendDmAction.start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -144,7 +146,7 @@ mod tests {
             reply_to: None,
         };
         assert!(matches!(
-            SendDmAction::start(&mut ctx(), input),
+            SendDmAction.start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -160,7 +162,7 @@ mod tests {
             content: "hello world".to_string(),
             reply_to: None,
         };
-        SendDmAction::execute(input, "cid-dm", &|cmd| {
+        SendDmAction.execute(input, "cid-dm", &|cmd| {
             captured.borrow_mut().push(cmd);
         })
         .expect("well-formed input executes");

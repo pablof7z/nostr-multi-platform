@@ -1,0 +1,109 @@
+//! ADR-0052 §D3 — per-app signer-port accessors on [`NmpApp`].
+//!
+//! Split out of `lib.rs` (file-size discipline) as a cohesive `impl NmpApp`
+//! block. These methods own the per-app bunker / NIP-55 **hook-slot** install
+//! + invoke surface and the per-app NIP-46 **broker** / NIP-55 **driver**
+//! handle accessors that replaced the deleted `GLOBAL_BROKER` / `GLOBAL_DRIVER`
+//! process-globals (and the two `nmp-core` hook statics). Every handle here
+//! lives on the `NmpApp` and dies with it — no global aliasing across
+//! `nmp_app_free`.
+
+use std::sync::Arc;
+
+use super::NmpApp;
+
+impl NmpApp {
+    /// ADR-0052 §D3 — install the per-app bunker-URI hook (the broker's
+    /// `start_handshake` / `restore_session` dispatch). Called by
+    /// `nmp_signer_broker_init`. Replaces the deleted `register_bunker_hook`
+    /// process-global write.
+    pub(crate) fn install_bunker_hook(&self, hook: nmp_core::BunkerHookFn) {
+        nmp_core::install_bunker_hook(&self.bunker_hook, hook);
+    }
+
+    /// ADR-0052 §D3 — install the per-app NIP-55 external-signer restore hook.
+    /// Called by `nmp_external_signer_init`. Replaces the deleted
+    /// `register_external_signer_hook` process-global write.
+    pub(crate) fn install_external_signer_hook(&self, hook: nmp_core::ExternalSignerHookFn) {
+        nmp_core::install_external_signer_hook(&self.external_signer_hook, hook);
+    }
+
+    /// ADR-0052 §D3 — test-support: invoke this app's bunker connect hook
+    /// through its per-app slot (the rung 5.3 isolation oracle). Mirrors the
+    /// actor's `start_bunker_handshake` read without the wire.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn invoke_bunker_connect_hook_for_test(&self, uri: &str) -> bool {
+        nmp_core::bunker_hook::invoke_bunker_connect_hook_for_test(&self.bunker_hook, uri)
+    }
+
+    /// ADR-0052 §D3 — test-support: invoke this app's NIP-55 restore hook
+    /// through its per-app slot (the rung 5.3 isolation oracle).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn invoke_external_signer_restore_hook_for_test(&self, payload_json: &str) -> bool {
+        nmp_core::external_signer_hook::invoke_external_signer_restore_hook_for_test(
+            &self.external_signer_hook,
+            payload_json,
+        )
+    }
+
+    /// ADR-0052 §D3 — per-app NIP-46 broker handle accessor (replacing
+    /// `GLOBAL_BROKER`). `get_or_init` is idempotent: the first
+    /// `nmp_signer_broker_init` constructs the broker; later calls keep it.
+    #[cfg(feature = "signer-broker")]
+    pub(crate) fn signer_broker_get_or_init(
+        &self,
+        init: impl FnOnce() -> Arc<nmp_signer_broker::BunkerBroker>,
+    ) -> Arc<nmp_signer_broker::BunkerBroker> {
+        let mut guard = self
+            .signer_broker
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(existing) = guard.as_ref() {
+            return Arc::clone(existing);
+        }
+        let broker = init();
+        *guard = Some(Arc::clone(&broker));
+        broker
+    }
+
+    /// ADR-0052 §D3 — read the per-app broker handle (cancel / nostrconnect-uri
+    /// symbols). `None` before `nmp_signer_broker_init`.
+    #[cfg(feature = "signer-broker")]
+    pub(crate) fn signer_broker(&self) -> Option<Arc<nmp_signer_broker::BunkerBroker>> {
+        self.signer_broker
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(Arc::clone)
+    }
+
+    /// ADR-0052 §D3 — per-app NIP-55 driver handle accessor (replacing
+    /// `GLOBAL_DRIVER`). Idempotent first-writer-wins, mirroring the broker.
+    #[cfg(feature = "external-signer")]
+    pub(crate) fn external_signer_driver_get_or_init(
+        &self,
+        init: impl FnOnce() -> Arc<crate::external_signer::Nip55Driver>,
+    ) -> Arc<crate::external_signer::Nip55Driver> {
+        let mut guard = self
+            .external_signer_driver
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(existing) = guard.as_ref() {
+            return Arc::clone(existing);
+        }
+        let driver = init();
+        *guard = Some(Arc::clone(&driver));
+        driver
+    }
+
+    /// ADR-0052 §D3 — read the per-app NIP-55 driver handle (signin / deliver
+    /// symbols). `None` before `nmp_external_signer_init`.
+    #[cfg(feature = "external-signer")]
+    pub(crate) fn external_signer_driver(&self) -> Option<Arc<crate::external_signer::Nip55Driver>> {
+        self.external_signer_driver
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .map(Arc::clone)
+    }
+}

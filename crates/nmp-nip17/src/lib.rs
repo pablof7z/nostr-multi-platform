@@ -164,8 +164,8 @@ pub fn build_dm_rumor(input: &DmInput) -> UnsignedEvent {
 pub fn register_actions(app: &mut impl AppHost) {
     // Yielding defaults (ADR-0049 Part 1): an app may pre-empt either DM action
     // module regardless of call order.
-    app.register_default_action::<SendDmAction>();
-    app.register_default_action::<PublishDmRelayListAction>();
+    app.register_default_action(SendDmAction);
+    app.register_default_action(PublishDmRelayListAction);
 
     // V-40 — install the shared `DmRelayCache` on both ends:
     //   1. As the kernel's `Arc<dyn DmInboxRelayLookup>` (reader).

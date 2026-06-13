@@ -18,7 +18,7 @@
 
 use nmp_signer_iface::SignerOp;
 
-use super::sinks::{ParkedOp, ParkedOpSink, PublishObligation};
+use super::sinks::{AuthObligation, ParkedOp, ParkedOpSink, PublishObligation};
 
 /// What the actor loop must do after [`resolve_parked_op`] handled one op.
 pub(crate) struct DrainOutcome {
@@ -28,6 +28,9 @@ pub(crate) struct DrainOutcome {
     /// A publish-routing obligation the loop must execute (the `Publish` sink
     /// only). `None` for every other sink and for a still-pending op.
     pub publish: Option<PublishObligation>,
+    /// V-06 / #960 — a NIP-42 AUTH-routing obligation the loop must execute (the
+    /// `Auth` sink only). `None` for every other sink and for a still-pending op.
+    pub auth: Option<AuthObligation>,
     /// `true` when this call changed kernel state (a terminal was recorded), so
     /// the loop emits a snapshot this tick rather than waiting for `flush_due`.
     pub changed: bool,
@@ -38,7 +41,19 @@ impl DrainOutcome {
         Self {
             keep: true,
             publish: None,
+            auth: None,
             changed: false,
+        }
+    }
+
+    /// A resolved (drop-the-op) outcome that changed kernel state, carrying no
+    /// loop obligation — the continuation / projection sinks settle in-drain.
+    fn resolved() -> Self {
+        Self {
+            keep: false,
+            publish: None,
+            auth: None,
+            changed: true,
         }
     }
 }
@@ -104,11 +119,7 @@ pub(crate) fn resolve_parked_op(
             let recorded =
                 outcome.map(|signed| crate::actor::dispatch::signed_event_to_json(&signed));
             kernel.record_signed_event_return(correlation_id, recorded);
-            DrainOutcome {
-                keep: false,
-                publish: None,
-                changed: true,
-            }
+            DrainOutcome::resolved()
         }
         ParkedOpSink::SignContinuation { op, continuation } => {
             let Some(outcome) = poll(op, timed_out).into_result("signing timed out") else {
@@ -122,11 +133,7 @@ pub(crate) fn resolve_parked_op(
             if let Some(continuation) = continuation.take() {
                 continuation.call(outcome);
             }
-            DrainOutcome {
-                keep: false,
-                publish: None,
-                changed: true,
-            }
+            DrainOutcome::resolved()
         }
         ParkedOpSink::CipherContinuation { op, continuation } => {
             let Some(outcome) = poll(op, timed_out).into_result("nip44 operation timed out") else {
@@ -140,9 +147,40 @@ pub(crate) fn resolve_parked_op(
             if let Some(continuation) = continuation.take() {
                 continuation.call(outcome);
             }
+            DrainOutcome::resolved()
+        }
+        ParkedOpSink::Auth {
+            op,
+            role,
+            relay_url,
+            challenge,
+        } => {
+            // V-06 / #960: the remote AUTH sign resolved. Hand an obligation back
+            // to the loop, which owns the `&mut Kernel` re-entry + relay routing.
+            // Pending → keep; a timeout / broker error fails the AUTH closed.
+            let obligation = match poll(op, timed_out) {
+                Resolved::Pending => return DrainOutcome::keep(),
+                Resolved::Ok(signed) => AuthObligation::Dispatch {
+                    role: *role,
+                    relay_url: std::mem::take(relay_url),
+                    challenge: std::mem::take(challenge),
+                    signed,
+                },
+                Resolved::TimedOut => AuthObligation::Failed {
+                    role: *role,
+                    relay_url: std::mem::take(relay_url),
+                    reason: "AUTH sign timed out".to_string(),
+                },
+                Resolved::BrokerErr(e) => AuthObligation::Failed {
+                    role: *role,
+                    relay_url: std::mem::take(relay_url),
+                    reason: format!("AUTH sign failed: {e}"),
+                },
+            };
             DrainOutcome {
                 keep: false,
                 publish: None,
+                auth: Some(obligation),
                 changed: true,
             }
         }
@@ -175,6 +213,7 @@ pub(crate) fn resolve_parked_op(
             DrainOutcome {
                 keep: false,
                 publish: Some(obligation),
+                auth: None,
                 changed: true,
             }
         }
