@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19.
+//! Doctrine-lint — grep-based static analyzer enforcing A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/{a5,d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19}.rs` for
+//! per-line opt-out comment, and `rules/{a5,d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -56,6 +56,7 @@ mod braces;
 mod cli;
 mod report;
 mod rules;
+mod scope;
 mod walker;
 
 use std::env;
@@ -63,7 +64,12 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
-use rules::{a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d6, d7, d8, d9};
+use rules::{a5, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d6, d7, d8, d9};
+use scope::{
+    a5_file_in_scope, d9_file_in_scope, d10_file_in_scope, d12_file_in_scope,
+    d13_file_extra_in_scope, d14_file_in_scope, d15_file_in_scope, d16_file_in_scope,
+    d17_file_in_scope, d19_file_in_scope, d20_file_in_scope, is_doctrine_lint_source,
+};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -132,6 +138,7 @@ fn main() -> ExitCode {
                 &cfg.d16_extra_scopes,
                 &cfg.d17_extra_scopes,
                 &cfg.d19_extra_scopes,
+                &cfg.d20_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
             ) {
@@ -144,7 +151,7 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19"
+        "A5/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20"
     };
     finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
@@ -207,6 +214,7 @@ fn scan_one_file(
     d16_extra_scopes: &[String],
     d17_extra_scopes: &[String],
     d19_extra_scopes: &[String],
+    d20_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -246,6 +254,10 @@ fn scan_one_file(
     // D19 — display-formatting banned from kernel projection builders.
     // Scope is `kernel/update/`, `kernel/types.rs`, `kernel/publish_outbox.rs`.
     let d19_in_scope = d19_file_in_scope(path, d19_extra_scopes);
+    // D20 — no raw `std::time::Instant`/`SystemTime` on the wasm-compiled path.
+    // Scope is the wasm-reachable crates (minus the two time shims and the
+    // native-only actor/relay_worker/lmdb subtrees).
+    let d20_in_scope = d20_file_in_scope(path, d20_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
     let mut d10_tracker = d10::PrivatePublishTracker::default();
@@ -600,6 +612,28 @@ fn scan_one_file(
                 });
             }
         }
+        // D20 — no raw `std::time::Instant`/`SystemTime` on the wasm-compiled
+        // path (#1173, #1161). `std::time::*::now()` PANICS on wasm32; the
+        // wasm-reachable crates must import from the `crate::time` web-time
+        // shim. Scope is the wasm-reachable crates minus the two shims and the
+        // native-only actor/relay_worker/lmdb subtrees. Test-only files
+        // (`d6_test_file`) and #[cfg(test)] bodies (`sl.in_test_cfg`) are
+        // exempt — tests never run on wasm32. Skipped in --workspace-d8.
+        if !workspace_d8 && d20_in_scope && !d6_test_file {
+            for (col, msg, suggested) in d20::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows(sl.text, d20::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d20::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
         // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
         // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
         // doctrine applies to all non-test code under `nmp-core`. Reuses
@@ -652,140 +686,5 @@ fn scan_one_file(
     Ok(())
 }
 
-/// True iff D9 should scan `path` — either the file is inside a protocol/
-/// substrate crate (`d9::file_in_scope`), or the caller opted-in via
-/// `--d9-extra-scope <fragment>` (the fixture smoke test uses this so a
-/// staged fixture file under `target/<label>/` is reachable without faking a
-/// `crates/nmp-*` layout).
-fn d9_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if d9::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff D10 should scan `path` — either the file is inside one of the
-/// D10-scoped trees (`crates/nmp-{core,nip17,marmot}/src/`), or the caller
-/// opted-in via `--d10-extra-scope <fragment>` (the fixture smoke test
-/// uses this so a staged fixture under `target/<label>/` is reachable
-/// without faking a `crates/nmp-*` layout). Mirrors `d9_file_in_scope`.
-fn d10_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if d10::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff D12 should scan `path` — either the file is inside a protocol/
-/// substrate or app-layer crate (`d12::file_in_scope`), or the caller
-/// opted-in via `--d12-extra-scope <fragment>`. Mirrors `d9_file_in_scope`
-/// exactly; the smoke test uses the extra-scope flag to point the rule at
-/// a fixture staged under `target/<label>/`.
-fn d12_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if d12::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff D14 should scan `path` — either the file is inside
-/// `crates/nmp-core/src/` (the substrate scope), or the caller opted-in via
-/// `--d14-extra-scope <fragment>` (the fixture smoke test uses this so a
-/// staged fixture file under `target/<label>/` is reachable without faking a
-/// `crates/nmp-core/src/` layout).
-fn d14_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if d14::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff D15 should scan `path` — either `nmp-core/src/` via
-/// `d15::file_in_scope`, or the caller opted-in via `--d15-extra-scope`
-/// (used by the fixture smoke test to stage a positive fixture under
-/// `target/` outside the nmp-core path tree).
-fn d15_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if d15::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff D16 should scan `path` — either the file is inside `apps/chirp/`
-/// via `d16::file_in_scope`, or the caller opted-in via `--d16-extra-scope`
-/// (used by the fixture smoke test to stage a positive fixture under
-/// `target/` outside the apps/chirp/ path tree). The allowlist check
-/// (`d16::file_is_allowlisted`) is separate and applied at the per-line
-/// invocation site so whitelisted files are correctly excluded.
-fn d16_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if d16::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff D17 should scan `path` — either the file is inside
-/// `crates/nmp-core/src/` via `d17::file_in_scope`, or the caller opted-in
-/// via `--d17-extra-scope` (used by the fixture smoke test to stage a
-/// positive fixture under `target/` outside the nmp-core path tree). Mirrors
-/// `d14_file_in_scope` exactly.
-fn d17_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if d17::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff `--d13-extra-scope` opts `path` into D13 Part A scope. Mirrors
-/// `--d9-extra-scope` etc: the fixture smoke test stages a positive D13
-/// fixture under `target/<label>/` (outside `crates/nmp-core/src/actor/
-/// commands/dm.rs`) and uses this hook to reach it without forging a
-/// fake `crates/` layout.
-fn d13_file_extra_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff D19 should scan `path` — either the file matches the kernel
-/// projection-builder paths via `d19::file_in_scope`, or the caller opted-in
-/// via `--d19-extra-scope <fragment>` (the fixture smoke test stages a
-/// positive fixture under `target/` outside the nmp-core kernel/ path tree).
-/// Mirrors `d17_file_in_scope`.
-fn d19_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if d19::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff A5 should scan `path` — either the file is in the A5 workspace
-/// scope via `a5::file_in_scope` (which already exempts definition files and
-/// the doctrine-lint binary itself), or the caller opted-in via
-/// `--a5-extra-scope <fragment>` (the fixture smoke test uses this so a
-/// staged fixture file under `target/` is reachable without faking a
-/// `crates/` layout). Mirrors `d17_file_in_scope`.
-fn a5_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if a5::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff `path` is part of doctrine-lint's own source tree but NOT a
-/// fixture file (fixtures are intentional negative test cases that must
-/// remain scannable). Rule files in `bin/doctrine-lint/rules/` and the tool's
-/// `tests.rs` contain banned tokens as string constants; scanning them on
-/// `--path crates/` produces meta-false-positives that obscure real findings.
-fn is_doctrine_lint_source(path: &Path) -> bool {
-    let s = path.to_string_lossy().replace('\\', "/");
-    (s.contains("/doctrine-lint/") || s.starts_with("doctrine-lint/")) && !s.contains("/fixtures/")
-}
+// File-scope resolution helpers (`dN_file_in_scope`, `is_doctrine_lint_source`)
+// live in `scope.rs` and are imported above.

@@ -112,7 +112,7 @@ fn default_permissions() -> Vec<Nip55Permission> {
 /// the pending map lifetime is all that's required.
 fn generate_correlation_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{SystemTime, UNIX_EPOCH}; // doctrine-allow: D20 — NIP-55 is the native Android external signer; never compiled to wasm32 (#1173 defers)
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

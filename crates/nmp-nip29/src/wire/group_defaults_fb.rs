@@ -1,0 +1,126 @@
+//! Typed FlatBuffers wire codec for [`crate::projection::GroupDefaultsSnapshot`].
+//!
+//! The canonical FFI shape is the serde JSON of `GroupDefaultsSnapshot`
+//! (`GroupDefaultsProjection::snapshot_json`). This module adds a **typed
+//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0037)
+//! carried alongside the generic `Value` projection under the same
+//! `"nmp.nip29.group_defaults"` key. The serde shape stays authoritative; this
+//! is the typed payload a `NGDF`-aware host decodes with generated accessors
+//! instead of JSON reflection.
+//!
+//! Raw data only (ADR-0032): `suggested_relay_url` is a raw relay URL string.
+//!
+//! Honours D6 (no panics): [`decode_group_defaults_snapshot`] returns
+//! `Err(String)` on any malformed input; there are no `unwrap`/`expect`/panicking
+//! operations on the decode path.
+//!
+//! ## Regenerating the bindings
+//!
+//! The checked-in bindings in `wire/generated/group_defaults_generated.rs` are
+//! produced by `flatc` from `schema/group_defaults.fbs`. Regenerate only with
+//! the workspace FlatBuffers pin (`25.12.19`), enforced by
+//! `ci/check-flatbuffers-version-pins.sh`. The schema is self-contained, so
+//! generate with plain `flatc --rust`:
+//!
+//! ```sh
+//! flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//!       crates/nmp-nip29/schema/group_defaults.fbs
+//! ```
+
+// The generated FlatBuffers bindings are intrinsically `unsafe` (every accessor
+// reads from a raw `Table`). This single generated module — and only it — opts
+// back into `unsafe`. No hand-written code in this file uses `unsafe`.
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+#[path = "generated/group_defaults_generated.rs"]
+pub mod generated;
+
+use flatbuffers::FlatBufferBuilder;
+use generated::nmp::nip_29 as fb;
+
+use crate::projection::GroupDefaultsSnapshot;
+
+/// Stable schema identifier carried in the typed-projection envelope.
+pub const GROUP_DEFAULTS_SCHEMA_ID: &str = "nmp.nip29.group_defaults";
+/// FlatBuffers file identifier embedded in every buffer this module emits.
+pub const GROUP_DEFAULTS_FILE_IDENTIFIER: &[u8; 4] = b"NGDF";
+/// Wire schema version. Bump on any breaking change to `group_defaults.fbs`.
+pub const GROUP_DEFAULTS_SCHEMA_VERSION: u32 = 1;
+
+// --- encode ---------------------------------------------------------------
+
+/// Encode a [`GroupDefaultsSnapshot`] to typed FlatBuffers bytes (with the
+/// `NGDF` file identifier).
+#[must_use]
+pub fn encode_group_defaults_snapshot(snapshot: &GroupDefaultsSnapshot) -> Vec<u8> {
+    let mut fbb = FlatBufferBuilder::new();
+
+    let suggested_relay_url = fbb.create_string(&snapshot.suggested_relay_url);
+
+    let root = fb::GroupDefaultsSnapshot::create(
+        &mut fbb,
+        &fb::GroupDefaultsSnapshotArgs {
+            schema_version: GROUP_DEFAULTS_SCHEMA_VERSION,
+            suggested_relay_url: Some(suggested_relay_url),
+        },
+    );
+    fb::finish_group_defaults_snapshot_buffer(&mut fbb, root);
+    fbb.finished_data().to_vec()
+}
+
+// --- decode ---------------------------------------------------------------
+
+/// Decode typed FlatBuffers bytes (as produced by
+/// [`encode_group_defaults_snapshot`]) back into a [`GroupDefaultsSnapshot`].
+/// Returns an error string on any malformed input or missing required field.
+pub fn decode_group_defaults_snapshot(bytes: &[u8]) -> Result<GroupDefaultsSnapshot, String> {
+    if bytes.len() < 8 || !fb::group_defaults_snapshot_buffer_has_identifier(bytes) {
+        return Err("missing NGDF file identifier".to_string());
+    }
+    let root = fb::root_as_group_defaults_snapshot(bytes)
+        .map_err(|e| format!("not a valid GroupDefaultsSnapshot buffer: {e}"))?;
+
+    let suggested_relay_url = root
+        .suggested_relay_url()
+        .map(str::to_string)
+        .ok_or_else(|| {
+            "GroupDefaultsSnapshot.suggested_relay_url: missing required string field".to_string()
+        })?;
+
+    Ok(GroupDefaultsSnapshot {
+        suggested_relay_url,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trips_through_flatbuffers() {
+        let snapshot = GroupDefaultsSnapshot::from_defaults();
+        let bytes = encode_group_defaults_snapshot(&snapshot);
+        let decoded = decode_group_defaults_snapshot(&bytes).expect("decode");
+        assert_eq!(decoded, snapshot);
+    }
+
+    #[test]
+    fn encodes_the_ngdf_file_identifier() {
+        let bytes = encode_group_defaults_snapshot(&GroupDefaultsSnapshot::from_defaults());
+        assert!(fb::group_defaults_snapshot_buffer_has_identifier(&bytes));
+    }
+
+    #[test]
+    fn rejects_buffer_without_identifier() {
+        assert!(decode_group_defaults_snapshot(&[0u8; 4]).is_err());
+        assert!(decode_group_defaults_snapshot(b"not-a-flatbuffer").is_err());
+    }
+}

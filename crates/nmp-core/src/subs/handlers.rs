@@ -114,12 +114,17 @@ impl SubscriptionLifecycle {
             let filter_json = match watermark_fn.as_ref() {
                 Some(wm) if !shape_is_ephemeral_only(&shape.shape) => {
                     let mut wire_shape = shape.shape.clone();
-                    if let Some(watermark) = wm(&wire_shape) {
-                        let floor = watermark.saturating_add(1);
-                        wire_shape.since = Some(match wire_shape.since {
-                            Some(existing) if existing >= floor => existing,
-                            _ => floor,
-                        });
+                    // #1281: since=None is "all-time / backfill" — exempt from
+                    // T129 watermark rewrite on reconnect replay, mirroring the
+                    // same rule in `apply_watermark_rewrite`. Only raise an
+                    // existing Some(t) floor toward the watermark.
+                    if let Some(existing) = wire_shape.since {
+                        if let Some(watermark) = wm(&wire_shape) {
+                            let floor = watermark.saturating_add(1);
+                            if floor > existing {
+                                wire_shape.since = Some(floor);
+                            }
+                        }
                     }
                     wire::filter_json_for(&wire_shape)
                 }

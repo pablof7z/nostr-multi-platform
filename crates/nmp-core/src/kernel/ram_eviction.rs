@@ -93,6 +93,16 @@
 use super::Kernel;
 use std::collections::HashSet;
 
+// #1090 Stage 2 — floor-coherent store-scan helpers, kept in a sibling file so
+// `ram_eviction.rs` stays under the 500-LOC cap. Declared here (not in
+// `kernel/mod.rs`) so the already-at-baseline `kernel/mod.rs` is not grown.
+#[path = "ram_eviction_floor.rs"]
+mod floor;
+// #1090 Stage 2 — floor-coherence tests (sibling file, same rationale).
+#[cfg(test)]
+#[path = "gc_floor_coherent_tests.rs"]
+mod gc_floor_coherent_tests;
+
 /// High-watermark for `self.events`.  2 × `TIMELINE_CACHE_LIMIT` (500).
 pub(super) const EVENTS_RAM_HWM: usize = 1_000;
 
@@ -226,7 +236,15 @@ impl Kernel {
     ///   to a store `EventId`, coordinate keys are skipped);
     /// - it matches the wire-filter shape of any active open interest
     ///   ([`Self::open_view_pins`] — the same predicate `should_store_event`'s
-    ///   `matches_active_open_interest` clause uses for admission).
+    ///   `matches_active_open_interest` clause uses for admission);
+    /// - **#1090 Stage 2 (floor-coherence):** it is a stored event matching an
+    ///   active floored shape with `created_at <= shape_floor`. The live
+    ///   `since`-floor for a subscription is content-derived (the `watermark_fn`
+    ///   floors each REQ's `since` to the newest stored matching event + 1), so
+    ///   LRU eviction of a *middle* event below that floor would punch a
+    ///   permanent hole — the floored self-healing REQ only re-requests events
+    ///   newer than the floor. Pinning every below-floor stored event closes
+    ///   that hole. See [`shape_floor`].
     ///
     /// The result is a set of 32-byte store [`EventId`](crate::store::EventId)s.
     /// Hex strings that do not parse to a 32-byte id (e.g. coordinate keys) are
@@ -248,13 +266,47 @@ impl Kernel {
             Some(bytes)
         }
 
-        self.timeline
+        let mut pins: HashSet<crate::store::EventId> = self
+            .timeline
             .iter()
             .map(String::as_str)
             .chain(self.event_claims.keys().map(String::as_str))
             .chain(view_pins.event_ids.iter().map(String::as_str))
             .filter_map(hex_to_id)
-            .collect()
+            .collect();
+
+        // #1090 Stage 2 — floor-coherent pins. For each active interest with a
+        // content-derived `since`-floor, pin every stored event matching that
+        // shape at or below the floor so LRU cannot evict a middle event the
+        // floored REQ will never re-request.
+        self.add_floor_coherent_pins(&mut pins);
+
+        pins
+    }
+
+    /// Extend `pins` with every stored event at or below each active floored
+    /// shape's `since`-floor (#1090 Stage 2).
+    ///
+    /// For each active `LogicalInterest`, [`shape_floor`](floor::shape_floor)
+    /// computes the same floor the `watermark_fn` would (the newest stored
+    /// matching event), then
+    /// every stored event matching that shape with `created_at <= floor` is
+    /// added to the pin set. Shapes with no floor (`None`) contribute nothing —
+    /// they are not floored, so the relay re-sends their history and no hole can
+    /// form.
+    fn add_floor_coherent_pins(&self, pins: &mut HashSet<crate::store::EventId>) {
+        use floor::{pin_shape_events_below_floor, shape_floor};
+
+        let active = self.lifecycle.registry().iter_active();
+        if active.is_empty() {
+            return;
+        }
+        for interest in &active {
+            let Some(floor) = shape_floor(&interest.shape, self.store.as_ref()) else {
+                continue;
+            };
+            pin_shape_events_below_floor(&interest.shape, floor, self.store.as_ref(), pins);
+        }
     }
 
     // ─── events ────────────────────────────────────────────────────────────

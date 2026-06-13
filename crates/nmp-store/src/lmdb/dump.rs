@@ -17,18 +17,6 @@ struct TombShallow {
     origin: String,
 }
 
-#[derive(serde::Deserialize)]
-struct WmShallowKey {
-    filter_hash: [u8; 32],
-    relay_url: String,
-}
-
-#[derive(serde::Deserialize)]
-struct WmShallow {
-    key: WmShallowKey,
-    synced_up_to: u64,
-}
-
 pub(super) fn dump(
     inner: &Arc<Inner>,
     out: &mut dyn std::io::Write,
@@ -94,34 +82,6 @@ pub(super) fn dump(
         out.write_all(&bytes)
             .map_err(|e| StoreError::Io(e.to_string()))?;
         stats.tombstones += 1;
-    }
-
-    // Watermarks.
-    let mut wms: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-    for entry in inner
-        .watermarks
-        .iter(&txn)
-        .map_err(|e| StoreError::Io(format!("wm iter: {e}")))?
-    {
-        let (k, v) = entry.map_err(|e| StoreError::Io(format!("wm step: {e}")))?;
-        wms.push((k.to_vec(), v.to_vec()));
-    }
-    wms.sort_by(|(a, _), (b, _)| a.cmp(b));
-    for (_k, v) in wms {
-        let row: WmShallow =
-            serde_json::from_slice(&v).map_err(|e| StoreError::Encoding(format!("wm dec: {e}")))?;
-        let line = serde_json::json!({
-            "type": "watermark",
-            "filter_hash": row.key.filter_hash.iter().map(|b| format!("{b:02x}")).collect::<String>(),
-            "relay_url": row.key.relay_url,
-            "synced_up_to": row.synced_up_to,
-        })
-        .to_string();
-        let bytes = (line + "\n").into_bytes();
-        stats.bytes_written += bytes.len() as u64;
-        out.write_all(&bytes)
-            .map_err(|e| StoreError::Io(e.to_string()))?;
-        stats.watermarks += 1;
     }
 
     // Domain rows.

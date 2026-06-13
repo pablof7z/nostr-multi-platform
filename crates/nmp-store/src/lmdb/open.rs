@@ -26,12 +26,14 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     // 11 internal sub-dbs; we reserve 9 additional for NMP-side data.
     const MAP_SIZE: usize = 1024 * 1024 * 1024 * 32;
     const MAX_READERS: u32 = 126;
-    // NMP sub-dbs: provenance, tombstones, addr-tombstones, watermarks,
+    // NMP sub-dbs: provenance, tombstones, addr-tombstones,
     // domain-versions, domain-data, relay-author-scores, lru-access (V-60),
     // expiry-index (V-118).  The nmp-claims / nmp-claims-budget sub-dbs were
     // removed in #1090 Stage 1 (persisted claims deleted in favour of a
-    // kernel-derived ephemeral pin set passed to `gc_step_with_pins`).
-    const NMP_ADDITIONAL_DBS: u32 = 9;
+    // kernel-derived ephemeral pin set passed to `gc_step_with_pins`).  The
+    // nmp-watermarks sub-db was removed in #1090 Stage 3 (dead persisted-
+    // watermark machinery had zero production callers).
+    const NMP_ADDITIONAL_DBS: u32 = 8;
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -55,7 +57,6 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
     let provenance = open("nmp-provenance", &mut txn)?;
     let tombstones = open("nmp-tombstones", &mut txn)?;
     let addr_tombstones = open("nmp-addr-tombstones", &mut txn)?;
-    let watermarks = open("nmp-watermarks", &mut txn)?;
     let domain_versions = open("nmp-domain-versions", &mut txn)?;
     let domain_data = open("nmp-domain-data", &mut txn)?;
     // W2 — relay-author-scores sub-db.
@@ -100,7 +101,6 @@ pub fn open_impl(path: &Path) -> Result<LmdbEventStore, StoreError> {
             provenance,
             tombstones,
             addr_tombstones,
-            watermarks,
             domain_versions,
             domain_data,
             relay_author_scores,
