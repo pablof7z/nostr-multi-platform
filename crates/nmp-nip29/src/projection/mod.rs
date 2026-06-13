@@ -10,9 +10,17 @@
 //! - [`discovered`] — [`DiscoveredGroupsProjection`]: a single relay's
 //!   group catalog, accumulated from kinds 39000/39001/39002. The read-side
 //!   of `JoinGroupView` / discovery flows.
+//! - [`group_defaults`] — [`GroupDefaultsProjection`]: crate-owned defaults for
+//!   the public-group create flow (the suggested relay URL, #626). Output-only:
+//!   not a `KernelEventObserver` — its snapshot is a pure function of a
+//!   crate-owned constant.
 
 pub mod discovered;
 pub mod group_chat;
+pub mod group_defaults;
 
 pub use discovered::{DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot};
 pub use group_chat::{GroupChatMessage, GroupChatProjection, GroupChatSnapshot};
+pub use group_defaults::{
+    GroupDefaultsProjection, GroupDefaultsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
+};

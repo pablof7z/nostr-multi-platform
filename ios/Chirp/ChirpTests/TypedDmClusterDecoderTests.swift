@@ -58,7 +58,7 @@ final class TypedDmClusterDecoderTests: XCTestCase {
                         ]),
                     DmConvoFixture(peerPubkey: "typedpeerB", messages: []),
                 ],
-                remoteSignerUnsupported: false))
+                decryptState: "ok"))
 
         let snap = try XCTUnwrap(
             TypedDmInboxDecoder.decode(from: [envelope]),
@@ -66,7 +66,8 @@ final class TypedDmClusterDecoderTests: XCTestCase {
 
         // Conversation order preserved verbatim (Rust owns it; shell never re-sorts).
         XCTAssertEqual(snap.conversations.map(\.peerPubkey), ["typedpeerA", "typedpeerB"])
-        XCTAssertFalse(snap.remoteSignerUnsupported)
+        XCTAssertEqual(snap.decryptState, "ok")
+        XCTAssertEqual(snap.undecryptedCount, 0)
 
         let convoA = snap.conversations[0]
         XCTAssertEqual(convoA.messages.map(\.id), ["typedmsg1", "typedmsg2"])
@@ -85,12 +86,25 @@ final class TypedDmClusterDecoderTests: XCTestCase {
         XCTAssertEqual(snap.conversations[1].messages, [])
     }
 
-    /// `remote_signer_unsupported == true` (the V-08 bunker case) round-trips.
-    func testTypedDmInboxRemoteSignerUnsupportedDecodes() throws {
+    /// ADR-0050 §D7 — the `decrypt_state` tri-state + `undecrypted_count`
+    /// round-trip through the typed NDMI wire. "limited" (bunker backfill
+    /// pending/throttled by the bounded per-account decrypt queue) carries a
+    /// non-zero count; "unavailable" (no active account) carries zero.
+    func testTypedDmInboxLimitedStateDecodes() throws {
         let snap = try XCTUnwrap(
             TypedDmInboxDecoder.decode(
-                bytes: buildDmInbox(conversations: [], remoteSignerUnsupported: true)))
-        XCTAssertTrue(snap.remoteSignerUnsupported)
+                bytes: buildDmInbox(conversations: [], decryptState: "limited", undecryptedCount: 7)))
+        XCTAssertEqual(snap.decryptState, "limited")
+        XCTAssertEqual(snap.undecryptedCount, 7)
+        XCTAssertEqual(snap.conversations, [])
+    }
+
+    func testTypedDmInboxUnavailableStateDecodes() throws {
+        let snap = try XCTUnwrap(
+            TypedDmInboxDecoder.decode(
+                bytes: buildDmInbox(conversations: [], decryptState: "unavailable")))
+        XCTAssertEqual(snap.decryptState, "unavailable")
+        XCTAssertEqual(snap.undecryptedCount, 0)
         XCTAssertEqual(snap.conversations, [])
     }
 
@@ -104,12 +118,12 @@ final class TypedDmClusterDecoderTests: XCTestCase {
             schemaId: "not.dm_inbox",
             schemaVersion: 1,
             fileIdentifier: TypedDmInboxDecoder.fileIdentifier,
-            payload: buildDmInbox(conversations: [], remoteSignerUnsupported: false))
+            payload: buildDmInbox(conversations: [], decryptState: "ok"))
         XCTAssertNil(TypedDmInboxDecoder.decode(from: [envelope]))
     }
 
     func testGarbledDmInboxBytesFallBack() {
-        var garbled = buildDmInbox(conversations: [], remoteSignerUnsupported: false)
+        var garbled = buildDmInbox(conversations: [], decryptState: "ok")
         garbled[4] = UInt8(ascii: "X")
         XCTAssertNil(TypedDmInboxDecoder.decode(bytes: garbled))
     }
@@ -265,7 +279,8 @@ final class TypedDmClusterDecoderTests: XCTestCase {
 
     private func buildDmInbox(
         conversations: [DmConvoFixture],
-        remoteSignerUnsupported: Bool
+        decryptState: String,
+        undecryptedCount: UInt32 = 0
     ) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 512)
         let convoOffsets: [Offset] = conversations.map { convo in
@@ -293,10 +308,12 @@ final class TypedDmClusterDecoderTests: XCTestCase {
                 &fbb, peerPubkeyOffset: peerOff, messagesVectorOffset: msgsVec)
         }
         let convosVec = fbb.createVector(ofOffsets: convoOffsets)
+        let decryptStateOff = fbb.create(string: decryptState)
         let root = nmp_nip17_DmInboxSnapshot.createDmInboxSnapshot(
             &fbb,
             conversationsVectorOffset: convosVec,
-            remoteSignerUnsupported: remoteSignerUnsupported)
+            decryptStateOffset: decryptStateOff,
+            undecryptedCount: undecryptedCount)
         nmp_nip17_DmInboxSnapshot.finish(&fbb, end: root)
         return fbb.data
     }

@@ -33,6 +33,11 @@ extension KernelModel {
     var wireSubscriptions: [WireSubscriptionStatus] { typedEnvelope?.wireSubscriptions ?? [] }
     var relayDiagnostics: RelayDiagnosticsSnapshot { typedRelayDiagnostics ?? .empty }
     var zaps: ZapsAggregateSnapshot? { typedZaps }
+    // #626: crate-owned NIP-29 public-group create defaults. `.empty`
+    // (suggestedRelayUrl == "") until the output-only projection's first
+    // snapshot tick lands — `NewGroupSheet` pre-fills the relay field once the
+    // suggested URL arrives.
+    var groupDefaults: GroupDefaultsSnapshot { typedGroupDefaults ?? .empty }
     // `dmRelayList` has no Swift read consumer today — the accessor exists for
     // parity so the registry-declared `NDRL` key is surfaced if a consumer lands.
     var dmRelayList: DmRelayListSnapshot? { typedDmRelayList }

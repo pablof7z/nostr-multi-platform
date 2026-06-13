@@ -277,53 +277,6 @@ fn tombstone_max_merge_takes_newer_deleted_at() {
     assert!(tomb.sources.contains(&"wss://r2/".to_string()), "union r2");
 }
 
-// ─── Watermark round-trip ────────────────────────────────────────────────────
-
-#[test]
-fn watermark_round_trip() {
-    use crate::types::{Coverage, SyncMethod, WatermarkKey, WatermarkRow};
-    let (store, _dir) = open_tmp();
-    let key = WatermarkKey {
-        filter_hash: [0xab; 32],
-        relay_url: "wss://r/".into(),
-    };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    // Pass `now` as the clock value — before any row is written the key is
-    // absent, so coverage must return Unknown regardless of the timestamp.
-    assert!(matches!(
-        store.coverage(&key, now).unwrap(),
-        Coverage::Unknown
-    ));
-    let row = WatermarkRow {
-        key: key.clone(),
-        synced_up_to: 12345,
-        last_sync_method: SyncMethod::Negentropy,
-        last_negentropy_state: Some(vec![1, 2, 3]),
-        bytes_saved_vs_req: 1000,
-        updated_at: now,
-    };
-    store.write_watermark(row.clone()).unwrap();
-    let got = store.read_watermark(&key).unwrap().unwrap();
-    assert_eq!(got.synced_up_to, 12345);
-    assert_eq!(got.last_negentropy_state.as_deref(), Some(&[1u8, 2, 3][..]));
-    // Row was written with `updated_at = now`; passing `now` keeps age = 0,
-    // which is within the 300s staleness window → CompleteAsOf.
-    assert!(matches!(
-        store.coverage(&key, now).unwrap(),
-        Coverage::CompleteAsOf(_)
-    ));
-
-    let listed = store
-        .list_watermarks_for_relay("wss://r/")
-        .unwrap()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-    assert_eq!(listed.len(), 1);
-}
-
 // ─── addr_tombstone GC tests (S-2 fix) ───────────────────────────────────────
 
 /// Insert a kind:5 with an `a`-tag to create an addr tombstone, then run
@@ -359,7 +312,10 @@ fn lmdb_stale_addr_tombstone_is_purged_by_gc() {
 
     // Addr tombstone must exist after the kind:5 insert.
     let count_before = store.addr_tombstone_count().unwrap();
-    assert!(count_before >= 1, "addr tombstone must be written by kind:5 a-tag insert");
+    assert!(
+        count_before >= 1,
+        "addr tombstone must be written by kind:5 a-tag insert"
+    );
 
     // GC with now_secs = deleted_at + TOMBSTONE_MAX_AGE_SECS + 1.
     // deleted_at = 2000 (kind5.created_at); age window = 90 * 24 * 3600.

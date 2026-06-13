@@ -48,7 +48,9 @@ class TypedDmWalletRelayDecoderTest {
         val peer = builder.createString(hex(0x12))
         val conv = FbDmConversation.createDmConversation(builder, peer, msgsVec)
         val convVec = FbDmInboxSnapshot.createConversationsVector(builder, intArrayOf(conv))
-        val snap = FbDmInboxSnapshot.createDmInboxSnapshot(builder, convVec, false)
+        // §D7: decrypt_state "ok" (a settled, signed-in account), no pending.
+        val decryptState = builder.createString("ok")
+        val snap = FbDmInboxSnapshot.createDmInboxSnapshot(builder, convVec, decryptState, 0)
         FbDmInboxSnapshot.finishDmInboxSnapshotBuffer(builder, snap)
         return builder.sizedByteArray()
     }
@@ -56,7 +58,8 @@ class TypedDmWalletRelayDecoderTest {
     @Test
     fun dmHappyPathMapsConversationAndMessage() {
         val inbox = requireNotNull(TypedDmInboxDecoder.decode(dmBuffer()))
-        assertFalse(inbox.remoteSignerUnsupported)
+        assertEquals("ok", inbox.decryptState)
+        assertEquals(0, inbox.undecryptedCount)
         val conv = inbox.conversations.single()
         assertEquals(hex(0x12), conv.peerPubkey)
         val msg = conv.messages.single()

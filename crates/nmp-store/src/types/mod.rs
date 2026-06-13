@@ -9,7 +9,6 @@ mod gc;
 mod ids;
 mod outcomes;
 mod query;
-mod watermark;
 
 // ─── Re-exports ───────────────────────────────────────────────────────────────
 
@@ -19,10 +18,7 @@ pub use gc::{
     DeleteFilter, DumpFormat, DumpStats, GcBudget, GcReport, GC_MAX_DURATION_MS,
     GC_MAX_EVENTS_PER_STEP, HOT_EVENT_CEILING,
 };
-pub use ids::{EventId, PubKey, RelayUrl};
 pub(crate) use ids::hex_to_event_id;
+pub use ids::{EventId, PubKey, RelayUrl};
 pub use outcomes::{InsertOutcome, ProvenanceEntry, RejectReason, TombstoneOrigin, TombstoneRow};
 pub use query::StoreQuery;
-pub use watermark::{
-    Coverage, SyncMethod, WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
-};

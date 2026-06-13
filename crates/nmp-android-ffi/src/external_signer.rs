@@ -1,20 +1,20 @@
 //! Android JNI surface for the NIP-55 external-signer capability
 //! (ADR-0048 Stage 2).
 //!
-//! Three pieces, mirroring the update-frame channel architecture (blocking
-//! timed drain instead of a JNI push callback — see the module doc in
-//! `lib.rs` for the thread-attach rationale):
+//! Three pieces, mirroring the update-frame JNI push architecture (issue
+//! #1284 — D8 no-polling; the request path is a push callback, not a blocking
+//! timed drain):
 //!
 //! 1. **Capability trampoline** — registered with the kernel's capability
 //!    socket at `nativeNew`. When the Rust NIP-55 driver dispatches a
 //!    `CapabilityRequest { namespace: "external_signer" }`, the trampoline
-//!    pushes the inner `ExternalSignerRequest` JSON onto the session's
-//!    signer-request channel and acks with `{"status":"dispatched"}`.
+//!    pushes the inner `ExternalSignerRequest` JSON straight to the registered
+//!    Kotlin signer-request listener and acks with `{"status":"dispatched"}`.
 //!    Non-`external_signer` namespaces return the same error envelope a
 //!    missing handler would (no Android keyring capability exists yet).
-//! 2. **`nativeNextSignerRequest`** — Kotlin's blocking timed drain. The
-//!    Kotlin reader thread loops on this and hands each request JSON to
-//!    `ExternalSignerCapabilityBridge.handleJson`.
+//! 2. **`nativeSetSignerRequestListener` / `nativeClearSignerRequestListener`**
+//!    (in `lib.rs`) — register the Kotlin `onSignerRequest(requestJson)`
+//!    callback the trampoline pushes to, mirroring `nativeSetUpdateListener`.
 //! 3. **`nativeSignInNip55` / `nativeDeliverSignerResponse`** — user intent
 //!    in, raw results back (D7: Kotlin decides nothing).
 //!
@@ -25,10 +25,9 @@
 use std::ffi::{c_char, c_void, CString};
 use std::mem::size_of;
 use std::ptr;
-use std::time::Duration;
 
 use jni::objects::{JClass, JObject, JString};
-use jni::sys::{jlong, jstring};
+use jni::sys::jlong;
 use jni::JNIEnv;
 
 use nmp_core::__ffi_internal::capability_error_envelope;
@@ -37,7 +36,6 @@ use nmp_ffi::{
     nmp_app_signin_nip55, nmp_external_signer_init, NmpApp,
 };
 
-use crate::session::NextSignerRequest;
 use crate::{jstring_to_cstring, session_arc};
 
 /// Wire constant — must match `nmp_signer_iface::EXTERNAL_SIGNER_NAMESPACE`.
@@ -103,8 +101,12 @@ extern "C" fn on_capability_request(
     };
 
     let handle = context as usize as jlong;
+    // Issue #1284 — push the request JSON straight to the registered Kotlin
+    // signer-request listener (D8: no polling). `push_signer_request` returns
+    // false when the session is gone OR when no listener is registered yet; both
+    // are reported as the same error envelope the driver already handles.
     let pushed = session_arc(handle)
-        .map(|session| session.signer_requests.push(payload.to_string()))
+        .map(|session| session.push_signer_request(payload))
         .unwrap_or(false);
     if !pushed {
         return to_c_string(capability_error_envelope(&request, "session-closed"));
@@ -122,40 +124,6 @@ fn to_c_string(value: String) -> *mut c_char {
     CString::new(value)
         .unwrap_or_else(|_| c"{}".to_owned())
         .into_raw()
-}
-
-/// Blocking timed drain of the outbound NIP-55 request channel.
-///
-/// V-57 P5 return contract (the two timeout arms must not be conflated; the
-/// signer channel keeps this poll shape — only the update path moved to a JNI
-/// push callback in issue #614):
-/// * `null` — idle tick; the Kotlin reader loops back in.
-/// * non-null `String` — one `ExternalSignerRequest` JSON.
-/// * throws `IllegalStateException` — channel closed; the reader MUST stop.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextSignerRequest(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) -> jstring {
-    let null = ptr::null_mut();
-    let Some(s) = session_arc(handle) else {
-        return null;
-    };
-    match s.recv_next_signer_request(Duration::from_millis(250)) {
-        NextSignerRequest::Request(payload) => env
-            .new_string(payload)
-            .map(|value| value.into_raw())
-            .unwrap_or(null),
-        NextSignerRequest::Idle => null,
-        NextSignerRequest::Closed => {
-            let _ = env.throw_new(
-                "java/lang/IllegalStateException",
-                "signer request channel closed",
-            );
-            null
-        }
-    }
 }
 
 /// Begin a NIP-55 sign-in. `signer_package` may be null ("let the OS
@@ -223,8 +191,13 @@ mod tests {
     }
 
     #[test]
-    fn external_signer_request_lands_on_session_channel() {
+    fn external_signer_request_is_pushed_to_listener() {
+        // Issue #1284: the trampoline pushes the request JSON straight to the
+        // registered signer-request listener (D8 — no polling). With a listener
+        // present (here the test capture sink standing in for the JVM-backed
+        // one), the trampoline acks `dispatched` and the payload is delivered.
         let session = Session::test_session();
+        session.arm_signer_request_capture();
         let handle = insert_session(Arc::clone(&session));
 
         let envelope = call_trampoline(
@@ -238,12 +211,35 @@ mod tests {
             .unwrap()
             .contains("dispatched"));
 
-        match session.recv_next_signer_request(Duration::from_millis(100)) {
-            NextSignerRequest::Request(payload) => {
-                assert!(payload.contains("get_public_key"));
-            }
-            other => panic!("expected a drained request, got {other:?}"),
-        }
+        let pushed = session.captured_signer_requests();
+        assert_eq!(pushed.len(), 1, "exactly one request pushed");
+        assert!(
+            pushed[0].contains("get_public_key"),
+            "pushed payload carries the request method: {}",
+            pushed[0]
+        );
+
+        remove_session(handle);
+    }
+
+    #[test]
+    fn external_signer_request_with_no_listener_error_envelopes() {
+        // No signer-request listener registered (and no capture sink armed):
+        // the push has nowhere to go, so the trampoline reports the same
+        // `session-closed` error envelope the driver already handles (D6 —
+        // never a panic or NULL). This proves the request never silently
+        // vanishes when the host has not yet registered its callback.
+        let session = Session::test_session();
+        let handle = insert_session(session);
+
+        let envelope = call_trampoline(
+            handle,
+            r#"{"namespace":"external_signer","correlation_id":"c1","payload_json":"{\"method\":\"get_public_key\"}"}"#,
+        );
+        assert!(envelope["result_json"]
+            .as_str()
+            .unwrap()
+            .contains("session-closed"));
 
         remove_session(handle);
     }

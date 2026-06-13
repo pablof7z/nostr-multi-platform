@@ -75,14 +75,26 @@ pub(super) fn launch_unwrap(
     };
     // Pure half 1 — validate kind:1059, confirm it addresses us, and extract
     // (outer_ciphertext, ephemeral peer). A non-gift-wrap or a wrap not addressed
-    // to the active account is a silent no-op (D6); nothing is enqueued.
+    // to the active account is a silent no-op (D6); nothing is enqueued and no
+    // in-flight slot is reserved.
     let Ok((outer_ciphertext, ephemeral_peer)) =
         nmp_nip59::parse_outer_for_decrypt(&event, &recipient)
     else {
         return false;
     };
 
+    // §D7 admission — reserve one of the bounded per-account in-flight decrypt
+    // slots. A LOCAL account's chains resolve inline and `chain_done` before the
+    // next envelope, so it never hits the bound; a bunker's concurrent backfill
+    // is throttled here. A rejected envelope is COUNTED (over-bound), never
+    // silently dropped — the snapshot surfaces it as `decrypt_state: limited`.
+    if !store.admit() {
+        return false;
+    }
+
     let tx_for_inner = tx.clone();
+    // Clone for the send-failure path below — the closure moves `store`.
+    let store_for_err = Arc::clone(&store);
     let cmd = build_nip44_decrypt_for_account(
         ephemeral_peer.to_hex(),
         outer_ciphertext,
@@ -92,7 +104,9 @@ pub(super) fn launch_unwrap(
             // enqueues the next port step or discards.
             let Ok(seal_plaintext) = outcome else {
                 // Decrypt failed → the envelope was not addressed to us (or is
-                // another protocol's kind:1059). Silent discard (D6).
+                // another protocol's kind:1059). Silent discard (D6); release
+                // the §D7 in-flight slot.
+                store.chain_done();
                 return;
             };
             decrypt_seal(
@@ -105,7 +119,14 @@ pub(super) fn launch_unwrap(
             );
         },
     );
-    tx.send(cmd).is_ok()
+    if tx.send(cmd).is_ok() {
+        true
+    } else {
+        // The actor inbox is gone — the chain will never resolve, so release the
+        // slot we just reserved (D6, no leak).
+        store_for_err.chain_done();
+        false
+    }
 }
 
 /// Step 2 — parse + verify the decrypted kind:13 seal, then enqueue the INNER
@@ -120,30 +141,39 @@ fn decrypt_seal(
     source_relay_url: Option<String>,
 ) {
     // Pure half 2 — parse + signature-verify the seal, extract (seal, inner
-    // ciphertext, seal author). A malformed/forged seal is a silent discard (D6).
+    // ciphertext, seal author). A malformed/forged seal is a silent discard (D6)
+    // and terminates the chain (§D7 in-flight slot released).
     let Ok((seal, inner_ciphertext, seal_author)) =
         nmp_nip59::parse_seal_for_decrypt(&seal_plaintext)
     else {
+        store.chain_done();
         return;
     };
 
+    let store_for_err = Arc::clone(&store);
     let cmd = build_nip44_decrypt_for_account(
         seal_author.to_hex(),
         inner_ciphertext,
         Some(signer_hex.clone()),
         move |outcome| {
-            let Ok(rumor_plaintext) = outcome else {
-                return; // inner decrypt failed → discard (D6).
-            };
-            // Pure half 3 — parse the rumor + enforce author-matches-seal
-            // (anti-spoof). A mismatch/malformed rumor is a silent discard (D6).
-            let Ok(gift) = nmp_nip59::parse_rumor(&seal, &rumor_plaintext) else {
-                return;
-            };
-            store_rumor(&store, generation, &signer_hex, &gift, source_relay_url.as_deref());
+            // This inner continuation is the chain's TERMINAL step on every
+            // branch — parse the rumor (half 3, anti-spoof author check), store
+            // it if it is a kind:14, then release the §D7 in-flight slot exactly
+            // once. A decrypt error / malformed rumor / non-kind:14 is a silent
+            // discard (D6) but still terminates the chain.
+            if let Ok(rumor_plaintext) = outcome {
+                if let Ok(gift) = nmp_nip59::parse_rumor(&seal, &rumor_plaintext) {
+                    store_rumor(&store, generation, &signer_hex, &gift, source_relay_url.as_deref());
+                }
+            }
+            store.chain_done();
         },
     );
-    let _ = tx.send(cmd);
+    if tx.send(cmd).is_err() {
+        // Inbox gone before the inner decrypt could be enqueued — terminate the
+        // chain so its in-flight slot is not leaked (D6).
+        store_for_err.chain_done();
+    }
 }
 
 /// Terminal step — apply the kind:14 gate, classify peer/direction, and insert
