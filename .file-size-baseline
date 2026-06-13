@@ -83,7 +83,7 @@ crates/nmp-nip57/src/lnurl/mod.rs	665
 crates/nmp-nip57/src/lnurl/tests.rs	819
 crates/nmp-nip60/src/nip60_wallet.rs	923
 crates/nmp-nostr-lmdb/src/lib_tests.rs	875
-crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs	1804
+crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs	1761
 crates/nmp-planner/src/compiler/tests.rs	567
 crates/nmp-planner/src/interest.rs	872
 crates/nmp-planner/src/lattice/mod.rs	652

@@ -20,7 +20,6 @@ use nostr_database::{FlatBufferBuilder, FlatBufferEncode, RejectedReason, SaveEv
 
 mod index;
 mod freshness_delete;
-
 use self::index::EventIndexKeys;
 use super::error::{Error, MigrationError};
 use super::filter::DatabaseFilter;
