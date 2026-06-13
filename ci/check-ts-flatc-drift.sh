@@ -4,7 +4,7 @@
 #
 # The checked-in TypeScript bindings at
 #   web/chirp/src/nmp/generated/nmp/
-# cover seven schemas in three groups:
+# cover eight schemas in four groups:
 #   transport  — crates/nmp-core/schema/nmp_update.fbs
 #   feed        — crates/nmp-nip01/schema/op_feed.fbs
 #              + crates/nmp-nip01/schema/timeline_snapshot.fbs
@@ -12,6 +12,7 @@
 #              + crates/nmp-feed/schema/feed_home.fbs
 #   KRPR        — crates/nmp-core/schema/profile_card.fbs
 #              + crates/nmp-core/schema/resolved_profiles.fbs
+#   KRDG        — crates/nmp-core/schema/relay_diagnostics.fbs
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
 # ci/check-flatbuffers-version-pins.sh and web/chirp/package.json).
 #
@@ -45,7 +46,11 @@
 #          -I crates/nmp-core/schema \
 #          crates/nmp-core/schema/profile_card.fbs \
 #          crates/nmp-core/schema/resolved_profiles.fbs
-#   5. Verify the output with this script.
+#   5. # KRDG schema bindings (relay_diagnostics — self-contained, no includes):
+#      flatc --ts -o web/chirp/src/nmp/generated/ \
+#          -I crates/nmp-core/schema \
+#          crates/nmp-core/schema/relay_diagnostics.fbs
+#   6. Verify the output with this script.
 #      (requires flatc 25.9.23 — the Web/TypeScript runtime pin)
 
 set -euo pipefail
@@ -67,6 +72,7 @@ KERNEL_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-core/schema/profile_card.fbs"
   "${REPO_ROOT}/crates/nmp-core/schema/resolved_profiles.fbs"
 )
+KRDG_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/relay_diagnostics.fbs"
 CHECKED_IN_DIR="${REPO_ROOT}/web/chirp/src/nmp/generated/nmp"
 
 # ── flatc availability + version guard ──────────────────────────────────────
@@ -120,6 +126,12 @@ flatc --ts -o "${TMP_DIR}" \
     -I "${KERNEL_SCHEMA_DIR}" \
     "${KERNEL_SCHEMAS[@]}"
 
+# ── KRDG schema (relay_diagnostics → nmp/kernel/) ────────────────────────────
+# Self-contained: no includes. Output lands in nmp/kernel/ alongside KRPR.
+flatc --ts -o "${TMP_DIR}" \
+    -I "${KERNEL_SCHEMA_DIR}" \
+    "${KRDG_SCHEMA}"
+
 GENERATED_DIR="${TMP_DIR}/nmp"
 
 if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
@@ -141,8 +153,12 @@ if ! diff -r "${CHECKED_IN_DIR}" "${GENERATED_DIR}"; then
     echo "      -I crates/nmp-core/schema \\" >&2
     echo "      crates/nmp-core/schema/profile_card.fbs \\" >&2
     echo "      crates/nmp-core/schema/resolved_profiles.fbs" >&2
+    echo "  # KRDG schema:" >&2
+    echo "  flatc --ts -o web/chirp/src/nmp/generated/ \\" >&2
+    echo "      -I crates/nmp-core/schema \\" >&2
+    echo "      crates/nmp-core/schema/relay_diagnostics.fbs" >&2
     echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Web/TypeScript runtime pin)" >&2
     exit 1
 fi
 
-echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR bindings in sync)"
+echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG bindings in sync)"

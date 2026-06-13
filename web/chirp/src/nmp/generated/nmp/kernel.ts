@@ -2,6 +2,8 @@
 
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
-export { ProfileCard } from './kernel/profile-card.js';
-export { ResolvedProfileEntry } from './kernel/resolved-profile-entry.js';
-export { ResolvedProfilesSnapshot } from './kernel/resolved-profiles-snapshot.js';
+export { RelayDiagnosticsInfo } from './kernel/relay-diagnostics-info.js';
+export { RelayDiagnosticsInterest } from './kernel/relay-diagnostics-interest.js';
+export { RelayDiagnosticsRow } from './kernel/relay-diagnostics-row.js';
+export { RelayDiagnosticsSnapshot } from './kernel/relay-diagnostics-snapshot.js';
+export { RelayDiagnosticsWireSub } from './kernel/relay-diagnostics-wire-sub.js';

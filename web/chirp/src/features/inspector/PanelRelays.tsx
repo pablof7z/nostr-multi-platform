@@ -1,15 +1,6 @@
 import { For, Show } from "solid-js";
 import type { DecodedRelayStatus } from "../../nmp/updateFrame";
 
-/** Map kernel connection string → CSS tone class. */
-function connectionTone(status: string): string {
-  const s = status.toLowerCase();
-  if (s === "connected") return "tone-ok";
-  if (s.includes("connect") || s.includes("pending") || s.includes("reconnect")) return "tone-warn";
-  if (s === "disconnected" || s === "failed" || s === "denied") return "tone-error";
-  return "tone-muted";
-}
-
 /** Map kernel role string → abbreviated label. */
 function roleLabel(role: string): string {
   const r = role.toLowerCase();
@@ -26,21 +17,22 @@ function fmtBigint(n: bigint): string {
 
 function RelayRow(props: { relay: DecodedRelayStatus }) {
   const r = props.relay;
-  const tone = connectionTone(r.status);
+  const connTone = r.connectionTone ?? "muted";
+  const authTone = r.authTone ?? "muted";
   return (
     <div
       class={`ins-relay-row${r.denied ? " ins-relay-denied" : ""}`}
       data-testid="relay-row"
     >
       <div class="ins-relay-header">
-        <span class={`ins-dot ins-dot-${tone}`} />
+        <span class={`ins-dot ins-dot-${connTone}`} />
         <span class="ins-relay-url mono">{r.url || "—"}</span>
         <span class="ins-relay-role">{roleLabel(r.role)}</span>
       </div>
       <div class="ins-relay-meta">
-        <span class={`ins-chip ins-chip-${tone}`}>{r.status || "unknown"}</span>
+        <span class={`ins-chip ins-chip-${connTone}`}>{r.status || "unknown"}</span>
         <Show when={r.auth}>
-          <span class="ins-chip ins-chip-muted">auth:{r.auth}</span>
+          <span class={`ins-chip ins-chip-${authTone}`}>auth:{r.auth}</span>
         </Show>
         <Show when={r.denied}>
           <span class="ins-chip ins-chip-error">denied</span>

@@ -2,6 +2,7 @@ import * as flatbuffers from "flatbuffers";
 
 import { DegradedRuntime } from "./degradedRuntime";
 import { decodeHomeFeed, decodeResolvedProfiles, type FeedItem } from "./feedProjection";
+import { decodeKrdgTones } from "./relayDiagnosticsProjection";
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
 import {
   eventCorrelationId,
@@ -195,6 +196,41 @@ abstract class BaseClient implements NmpClient {
                     const profilesResult = decodeResolvedProfiles(snap);
                     if (profilesResult !== undefined) {
                       this.latestResolvedProfiles = profilesResult;
+                    }
+                    // Decode relay_diagnostics (KRDG) typed projection and
+                    // merge pre-computed tone fields into the Tier-3 decoded
+                    // structs. Keep-last-good: only overwrite on success.
+                    // This is a second pass over an already-decoded frame —
+                    // Tier-3 relay_statuses carry no tone fields; KRDG does.
+                    const krdgTones = decodeKrdgTones(snap);
+                    if (krdgTones !== undefined) {
+                      if (this.latestRelayStatuses) {
+                        this.latestRelayStatuses = this.latestRelayStatuses.map((r) => {
+                          const t = krdgTones.relayTones.get(r.url);
+                          if (!t) return r;
+                          return {
+                            ...r,
+                            connectionTone: t.connectionTone,
+                            authTone: t.authTone,
+                            roleTone: t.roleTone,
+                          };
+                        });
+                      }
+                      if (this.latestDecodedSnapshot) {
+                        this.latestDecodedSnapshot = {
+                          ...this.latestDecodedSnapshot,
+                          logicalInterests: this.latestDecodedSnapshot.logicalInterests.map((li) => {
+                            const tone = krdgTones.interestTones.get(li.key);
+                            return tone !== undefined ? { ...li, stateTone: tone } : li;
+                          }),
+                          wireSubscriptions: this.latestDecodedSnapshot.wireSubscriptions.map((ws) => {
+                            const relayEntry = krdgTones.relayTones.get(ws.relayUrl);
+                            if (!relayEntry) return ws;
+                            const tone = relayEntry.wireSubTones.get(ws.wireId);
+                            return tone !== undefined ? { ...ws, stateTone: tone } : ws;
+                          }),
+                        };
+                      }
                     }
                   }
                 }

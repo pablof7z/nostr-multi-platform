@@ -27,7 +27,9 @@ export class UpdateFrameDecodeError extends Error {
   }
 }
 
-/** Relay status decoded from the SnapshotFrame Tier-3 `relay_statuses` field. */
+/** Relay status decoded from the SnapshotFrame Tier-3 `relay_statuses` field.
+ *  The optional tone fields are NOT present in the Tier-3 wire format — they
+ *  are filled in a second pass from the KRDG typed projection in client.ts. */
 export type DecodedRelayStatus = {
   url: string;
   role: string;
@@ -43,6 +45,12 @@ export type DecodedRelayStatus = {
   denied: boolean;
   lastError: string | null;
   lastCloseReason: string | null;
+  /** Pre-computed connection tone from KRDG (`"ok"/"warn"/"error"/"muted"`). */
+  connectionTone?: string;
+  /** Pre-computed auth tone from KRDG (`"ok"/"warn"/"muted"`). */
+  authTone?: string;
+  /** Pre-computed role tone from KRDG (`"primary"/"write"/"accent"/"secondary"`). */
+  roleTone?: string;
 };
 
 /** Key metrics decoded from the Tier-3 `metrics` field. */
@@ -69,6 +77,8 @@ export type DecodedLogicalInterest = {
   refcount: number;
   relayUrls: string[];
   cacheCoverage: string | null;
+  /** Pre-computed interest state tone from KRDG (`"ok"/"warn"/"muted"`). */
+  stateTone?: string;
 };
 
 /** A wire subscription decoded from the Tier-3 `wire_subscriptions` vector. */
@@ -79,6 +89,8 @@ export type DecodedWireSub = {
   state: string;
   logicalConsumerCount: number;
   eventsRx: bigint;
+  /** Pre-computed wire sub state tone from KRDG (`"ok"/"warn"/"muted"/"error"`). */
+  stateTone?: string;
 };
 
 export type DecodedUpdateFrame =

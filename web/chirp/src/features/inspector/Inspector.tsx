@@ -2,7 +2,6 @@ import { createSignal, For, Match, Show, Switch } from "solid-js";
 import { labelRuntimeStatus, protocolVersion } from "../../nmp/protocol";
 import "./inspector.css";
 import type { RuntimeSnapshot } from "../../nmp/client";
-import type { DecodedRelayStatus } from "../../nmp/updateFrame";
 import { PanelOverview, PanelFrames } from "./PanelOverview";
 import { PanelRelays } from "./PanelRelays";
 import { PanelSubs } from "./PanelSubs";
@@ -21,17 +20,6 @@ const TABS: { id: InspectorTab; label: string }[] = [
   { id: "signer", label: "Signer" },
   { id: "frames", label: "Frames" },
 ];
-
-function worstTone(relays: DecodedRelayStatus[]): string {
-  let worst = "muted";
-  for (const r of relays) {
-    const s = r.status.toLowerCase();
-    if (s === "disconnected" || s === "failed" || r.denied) return "error";
-    if (s.includes("connect") && s !== "connected") worst = "warn";
-    if (s === "connected" && worst === "muted") worst = "ok";
-  }
-  return worst;
-}
 
 function statusLabel(status: RuntimeSnapshot["status"]): string {
   if (status === "running") return "running";
@@ -106,7 +94,7 @@ export function NmpInspector(props: {
             <For each={relays().slice(0, 5)}>
               {(relay) => (
                 <span
-                  class={`ins-dot ins-dot-${worstTone([relay])}`}
+                  class={`ins-dot ins-dot-${relay.connectionTone ?? "muted"}`}
                   title={`${relay.url} — ${relay.status}`}
                 />
               )}

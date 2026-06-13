@@ -1,17 +1,9 @@
 import { For, Show } from "solid-js";
 import type { DecodedLogicalInterest, DecodedWireSub } from "../../nmp/updateFrame";
 
-function stateTone(state: string): string {
-  const s = state.toLowerCase();
-  if (s === "active" || s === "open") return "tone-ok";
-  if (s.includes("warm") || s.includes("pend")) return "tone-warn";
-  if (s === "closed" || s === "idle") return "tone-muted";
-  return "tone-muted";
-}
-
 function LogicalRow(props: { interest: DecodedLogicalInterest }) {
   const i = props.interest;
-  const tone = stateTone(i.state);
+  const tone = i.stateTone ?? "muted";
   return (
     <div class="ins-sub-row">
       <div class="ins-sub-header">
@@ -34,7 +26,7 @@ function LogicalRow(props: { interest: DecodedLogicalInterest }) {
 
 function WireRow(props: { sub: DecodedWireSub }) {
   const s = props.sub;
-  const tone = stateTone(s.state);
+  const tone = s.stateTone ?? "muted";
   return (
     <div class="ins-sub-row">
       <div class="ins-sub-header">
