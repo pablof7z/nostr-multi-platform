@@ -49,9 +49,14 @@ enum KernelUpdateFrameDecoder {
     static func decode(_ data: Data) throws -> KernelUpdateFrame {
         guard !data.isEmpty else { throw KernelUpdateFrameDecoderError.emptyPayload }
         var buffer = ByteBuffer(data: data)
-        let frame: nmp_transport_UpdateFrame = try getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: "NMPU")
+        // Buffers cross a trusted in-process FFI boundary (Rust kernel → Swift
+        // shell, same process, same memory). Running getCheckedRoot here invokes
+        // the FlatBuffers Verifier — an O(buffer) recursive walk — on every 4 Hz
+        // snapshot frame for zero security benefit. Switch to the unchecked
+        // getRoot accessor; the fileId/magic is not checked here but the
+        // TypedProjectionEnvelope key+schemaId routing already selects the right
+        // sub-buffer, and gross wiring errors surface at decode time as nil/empty.
+        let frame: nmp_transport_UpdateFrame = getRoot(byteBuffer: &buffer)
 
         switch frame.kind {
         case .snapshot:
