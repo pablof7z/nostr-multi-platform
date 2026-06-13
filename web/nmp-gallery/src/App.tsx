@@ -5,6 +5,7 @@ import { NostrProfileName } from "./components/user-name/NostrProfileName";
 import { NostrNip05Badge } from "./components/user-nip05/NostrNip05Badge";
 import { NostrUserCard } from "./components/user-card/NostrUserCard";
 import { NostrRelayList } from "./components/relay-list/NostrRelayList";
+import { NostrLoginBlock } from "./components/login-block/NostrLoginBlock";
 import { createGalleryRuntime } from "./nmp/profileHost";
 import { SHOWCASE_PUBKEY, SHOWCASE_RELAYS } from "./showcase";
 
@@ -119,6 +120,16 @@ export default function App(): JSX.Element {
               </div>
             )}
           </Show>
+        </Section>
+
+        <Section
+          id="login-block"
+          title="login-block"
+          desc="NIP-07 browser-signer detection with a one-click sign-in card and a manual key-entry fallback."
+        >
+          <div data-testid="login-block-demo" style={{ "max-width": "420px", width: "100%" }}>
+            <NostrLoginBlock />
+          </div>
         </Section>
       </div>
     </NostrProfileHostProvider>
