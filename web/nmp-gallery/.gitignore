@@ -6,3 +6,4 @@ public/nmp-wasm
 screenshots
 test-results
 playwright-report
+.vercel
