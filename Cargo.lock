@@ -4441,6 +4441,7 @@ dependencies = [
  "nmp-feed",
  "nmp-nip01",
  "nmp-nip02",
+ "nmp-router",
  "nmp-threading",
  "nmp-wasm",
  "serde_json",

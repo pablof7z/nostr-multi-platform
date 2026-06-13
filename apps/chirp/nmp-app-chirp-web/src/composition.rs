@@ -123,6 +123,22 @@ fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
 pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
     let reducer = runtime.reducer_handle();
 
+    // 0. Install the production outbox router. The wasm32 path has no AppHost /
+    //    actor `set_routing_substrate` seam (native installs the substrate via
+    //    `nmp_defaults::register_substrate`), so the kernel would otherwise keep
+    //    its no-op `EmptyOutboxRouter` — making every outbox-direction REQ
+    //    (kind:0 profile claims, kind:3 contacts, kind:10002 NIP-65) silently
+    //    resolve to zero relays. (Event-id fetches work regardless because they
+    //    route through the Discovery seed, not the outbox router.) Must run
+    //    before `Start`. `InMemoryMailboxCache` starts empty; cold-start kind:0
+    //    fetches use the IndexerOnly bootstrap fallback, which needs no NIP-65
+    //    mailbox data. Wiring the kind:10002 ingest parser into this same cache
+    //    (for warm NIP-65 routing) is a follow-up.
+    reducer.borrow_mut().set_routing(
+        Arc::new(nmp_router::GenericOutboxRouter::new()),
+        Arc::new(nmp_router::InMemoryMailboxCache::new()),
+    );
+
     // 1. Active-account slot (for follow-set seeding + account switch).
     let active_account_slot = reducer.borrow().active_account_handle();
 
