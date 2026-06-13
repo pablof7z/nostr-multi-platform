@@ -47,15 +47,25 @@ members = [
     "apps/chirp/chirp-desktop",
     "crates/nmp-wasm",
 ]
-# Parked dead-island crates (issue #1250). These carry no active consumer in the
-# composition graph today, so they are excluded from the workspace to incur zero
-# build/CI weight until their milestones enter scope. NO code is deleted — this
-# is a pure workspace-membership move. Re-add to `members` (plus the one-line
-# nmp-defaults register call) when the milestone lands.
-#   - crates/nmp-blossom : uploads; wire-in tracked by #998 (M10).
-#   - crates/nmp-nip60   : Cashu wallet; wire-in tracked by #1001.
-#   - apps/nmp-wallet-poc: standalone POC binary, the sole consumer of nmp-nip60;
-#                          parked alongside it (re-add together with #1001).
+# PARKED CRATES — excluded from the default workspace build.
+#
+# These crates are post-v1 (see docs/plan.md §133-141) and their primary
+# action stubs return `Err(Unsupported)`. Keeping them as active members
+# would violate the no-dead-code / no-false-advertising rule in AGENTS.md
+# §155-170. The code is preserved in-tree so it is ready when the
+# corresponding milestone enters scope:
+#
+#   nmp-blossom  — Blossom media-upload protocol. Re-activate when M10
+#                  (#998) enters scope.
+#   nmp-nip60    — Cashu / nutzaps (NIP-60). Re-activate when issue
+#                  #1001 enters scope.
+#   apps/nmp-wallet-poc — standalone POC binary that depends on nmp-nip60.
+#                  Parked together with its dependency.
+#
+# To build a parked crate on demand:
+#   cargo build --manifest-path crates/nmp-blossom/Cargo.toml
+#   cargo build --manifest-path crates/nmp-nip60/Cargo.toml
+#   cargo build --manifest-path apps/nmp-wallet-poc/Cargo.toml
 exclude = [
     "crates/nmp-blossom",
     "crates/nmp-nip60",

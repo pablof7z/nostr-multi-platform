@@ -14,10 +14,7 @@ use nostr::prelude::*;
 
 use super::{conv, gc, provenance, tombstones, Inner};
 use crate::events::EventIter;
-use crate::types::{
-    Coverage, EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, SyncMethod, TombstoneRow,
-    WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
-};
+use crate::types::{EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, TombstoneRow};
 use crate::StoreError;
 
 // ─── Primary lookup ──────────────────────────────────────────────────────────
@@ -64,7 +61,9 @@ pub(super) fn get_by_id(
     gc::lru_stamp(inner, &mut txn, id)?;
     txn.commit()
         .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
-    Ok(Some(conv::stored_from_raw(raw, /* received_at_ms */ 0)))
+    Ok(Some(conv::stored_from_raw(
+        raw, /* received_at_ms */ 0,
+    )))
 }
 
 // ─── Scans ───────────────────────────────────────────────────────────────────
@@ -338,155 +337,4 @@ pub(super) fn provenance_for(
         .read_txn()
         .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
     provenance::read(inner.provenance, &txn, id)
-}
-
-// ─── Watermarks ──────────────────────────────────────────────────────────────
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct PersistWmKey {
-    filter_hash: [u8; 32],
-    relay_url: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct PersistWmRow {
-    key: PersistWmKey,
-    synced_up_to: u64,
-    last_sync_method: PersistSyncMethod,
-    last_negentropy_state: Option<Vec<u8>>,
-    bytes_saved_vs_req: u64,
-    updated_at: u64,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-enum PersistSyncMethod {
-    Negentropy,
-    ReqScan,
-    Manual,
-}
-
-fn wm_db_key(key: &WatermarkKey) -> Vec<u8> {
-    let mut out = Vec::with_capacity(32 + key.relay_url.len());
-    out.extend_from_slice(&key.filter_hash);
-    out.extend_from_slice(key.relay_url.as_bytes());
-    out
-}
-
-fn encode_row(row: &WatermarkRow) -> Result<Vec<u8>, StoreError> {
-    let m = match row.last_sync_method {
-        SyncMethod::Negentropy => PersistSyncMethod::Negentropy,
-        SyncMethod::ReqScan => PersistSyncMethod::ReqScan,
-        SyncMethod::Manual => PersistSyncMethod::Manual,
-    };
-    let p = PersistWmRow {
-        key: PersistWmKey {
-            filter_hash: row.key.filter_hash,
-            relay_url: row.key.relay_url.clone(),
-        },
-        synced_up_to: row.synced_up_to,
-        last_sync_method: m,
-        last_negentropy_state: row.last_negentropy_state.clone(),
-        bytes_saved_vs_req: row.bytes_saved_vs_req,
-        updated_at: row.updated_at,
-    };
-    serde_json::to_vec(&p).map_err(|e| StoreError::Encoding(format!("wm enc: {e}")))
-}
-
-fn decode_row(bytes: &[u8]) -> Result<WatermarkRow, StoreError> {
-    let p: PersistWmRow =
-        serde_json::from_slice(bytes).map_err(|e| StoreError::Encoding(format!("wm dec: {e}")))?;
-    let m = match p.last_sync_method {
-        PersistSyncMethod::Negentropy => SyncMethod::Negentropy,
-        PersistSyncMethod::ReqScan => SyncMethod::ReqScan,
-        PersistSyncMethod::Manual => SyncMethod::Manual,
-    };
-    Ok(WatermarkRow {
-        key: WatermarkKey {
-            filter_hash: p.key.filter_hash,
-            relay_url: p.key.relay_url,
-        },
-        synced_up_to: p.synced_up_to,
-        last_sync_method: m,
-        last_negentropy_state: p.last_negentropy_state,
-        bytes_saved_vs_req: p.bytes_saved_vs_req,
-        updated_at: p.updated_at,
-    })
-}
-
-pub(super) fn read_watermark(
-    inner: &Arc<Inner>,
-    key: &WatermarkKey,
-) -> Result<Option<WatermarkRow>, StoreError> {
-    let txn = inner
-        .lmdb
-        .read_txn()
-        .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
-    let k = wm_db_key(key);
-    match inner
-        .watermarks
-        .get(&txn, &k)
-        .map_err(|e| StoreError::Io(format!("wm get: {e}")))?
-    {
-        Some(b) => Ok(Some(decode_row(b)?)),
-        None => Ok(None),
-    }
-}
-
-pub(super) fn write_watermark(inner: &Arc<Inner>, row: WatermarkRow) -> Result<(), StoreError> {
-    let mut txn = inner
-        .env
-        .write_txn()
-        .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
-    let k = wm_db_key(&row.key);
-    let b = encode_row(&row)?;
-    inner
-        .watermarks
-        .put(&mut txn, &k, &b)
-        .map_err(|e| StoreError::Io(format!("wm put: {e}")))?;
-    txn.commit()
-        .map_err(|e| StoreError::Io(format!("commit: {e}")))
-}
-
-pub(super) fn coverage(
-    inner: &Arc<Inner>,
-    key: &WatermarkKey,
-    now_secs: u64,
-) -> Result<Coverage, StoreError> {
-    let row = read_watermark(inner, key)?;
-    let Some(row) = row else {
-        return Ok(Coverage::Unknown);
-    };
-    // Staleness window is coverage policy; defined once next to the `Coverage`
-    // type so the mem + lmdb backends cannot drift. `now_secs` is threaded in
-    // from the caller (D7 — the kernel owns the wall clock; lower layers
-    // receive time, they do not read it).
-    let age = now_secs.saturating_sub(row.updated_at);
-    if age <= COVERAGE_STALENESS_WINDOW_SECS {
-        Ok(Coverage::CompleteAsOf(row.synced_up_to))
-    } else {
-        Ok(Coverage::PartialUpTo(row.synced_up_to))
-    }
-}
-
-pub(super) fn list_watermarks_for_relay(
-    inner: &Arc<Inner>,
-    relay_url: &str,
-) -> Result<Vec<WatermarkRow>, StoreError> {
-    let txn = inner
-        .lmdb
-        .read_txn()
-        .map_err(|e| StoreError::Io(format!("read_txn: {e}")))?;
-    let mut out = Vec::new();
-    for entry in inner
-        .watermarks
-        .iter(&txn)
-        .map_err(|e| StoreError::Io(format!("wm iter: {e}")))?
-    {
-        let (_k, v) = entry.map_err(|e| StoreError::Io(format!("wm iter step: {e}")))?;
-        let row = decode_row(v)?;
-        if row.key.relay_url == relay_url {
-            out.push(row);
-        }
-    }
-    Ok(out)
 }

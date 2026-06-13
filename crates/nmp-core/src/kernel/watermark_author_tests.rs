@@ -104,6 +104,27 @@ fn one_author_interest(id: u64, author: &str) -> LogicalInterest {
     }
 }
 
+/// Build a single-author `LogicalInterest` with an explicit `since` floor.
+/// Used by tests that need to verify the watermark-raise path (owner decision
+/// #1281: since=None interests are exempt, only Some(t) floors are raised).
+fn one_author_interest_with_since(id: u64, author: &str, since: u64) -> LogicalInterest {
+    let mut i = one_author_interest(id, author);
+    i.shape.since = Some(since);
+    i
+}
+
+/// Build a two-author `LogicalInterest` with an explicit `since` floor.
+fn two_author_interest_with_since(
+    id: u64,
+    author_a: &str,
+    author_b: &str,
+    since: u64,
+) -> LogicalInterest {
+    let mut i = two_author_interest(id, author_a, author_b);
+    i.shape.since = Some(since);
+    i
+}
+
 /// Extract every `since` value from REQ frames in a filter JSON string.
 fn since_from_filter(filter_json: &str) -> Option<u64> {
     // filter_json looks like `{"kinds":[1],"authors":[...],"since":1234}`.
@@ -192,16 +213,18 @@ fn multi_author_no_floor_when_any_author_has_no_events() {
 
 // ─── test 2: multi-author shape where both authors have events ────────────────
 //
-// Expected behaviour:
-//   Author A newest = 100.
-//   Author B newest = 50.
+// Expected behaviour (owner decision #1281: since=None exempt from rewrite):
+//   Interest carries since=1 (an explicit lower bound below both watermarks).
+//   Author A newest = 100, Author B newest = 50.
 //   min(100, 50) = 50 → floor = 51.
+//   The interest's existing since=1 is below the floor → raised to 51.
 //   Result: REQ carries `"since":51`.
 //
-// On pre-fix master:
-//   KindTime finds the global max which is A's t=100 → floor = 101.
-//   (Over-aggressive floor; misses events in [51..100] from B — but the test
-//   fails on the wrong value.)
+// This validates that the kernel watermark_fn computes min(per-author) correctly
+// AND that the rewrite raises an existing Some(t) floor to the watermark.
+//
+// On pre-fix master (KindTime branch):
+//   KindTime finds the global max which is A's t=100 → floor = 101 (wrong).
 #[test]
 fn multi_author_since_is_min_of_per_author_watermarks() {
     let mut kernel = Kernel::new(crate::relay::DEFAULT_VISIBLE_LIMIT);
@@ -217,10 +240,12 @@ fn multi_author_since_is_min_of_per_author_watermarks() {
     kernel.lifecycle_mut().set_selection_budget(usize::MAX, usize::MAX);
 
     let mailboxes = mailboxes_for(&[("a", 1), ("b", 1)]);
+    // since=1 provides an explicit floor so the watermark rewrite applies
+    // (#1281: since=None interests are exempt; only Some(t) floors are raised).
     kernel
         .lifecycle_mut()
         .registry_mut()
-        .push(two_author_interest(2, "a", "b"));
+        .push(two_author_interest_with_since(2, "a", "b", 1));
 
     let frames = kernel
         .lifecycle_mut()
@@ -243,6 +268,10 @@ fn multi_author_since_is_min_of_per_author_watermarks() {
 //
 // The single-author `AuthorKind` path must continue to produce the correct
 // watermark (newest stored event + 1) after the fix.
+//
+// Owner decision #1281: since=None interests are exempt from the rewrite.
+// We supply since=1 so the watermark can be applied and the raising behaviour
+// is exercised on the single-author code path.
 #[test]
 fn single_author_watermark_unchanged_after_fix() {
     let mut kernel = Kernel::new(crate::relay::DEFAULT_VISIBLE_LIMIT);
@@ -251,10 +280,11 @@ fn single_author_watermark_unchanged_after_fix() {
     insert_event(&store, "a", 200, 0x04);
 
     let mailboxes = mailboxes_for(&[("a", 3)]);
+    // since=1 so the watermark rewrite applies (#1281 exempts since=None).
     kernel
         .lifecycle_mut()
         .registry_mut()
-        .push(one_author_interest(3, "a"));
+        .push(one_author_interest_with_since(3, "a", 1));
 
     let frames = kernel
         .lifecycle_mut()

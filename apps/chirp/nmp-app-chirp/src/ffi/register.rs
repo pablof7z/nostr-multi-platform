@@ -173,6 +173,17 @@ pub extern "C" fn nmp_app_chirp_register(
         app_ref.register_snapshot_projection("nmp.nip57.zaps", move || zaps_proj.snapshot_json());
     }
 
+    // #626: wire the crate-owned NIP-29 group-create defaults projection so the
+    // suggested public-group relay URL surfaces under `"nmp.nip29.group_defaults"`
+    // (typed `NGDF` sidecar + generic `Value` fallback) instead of being a
+    // hardcoded Swift `@State` literal in `NewGroupSheet`. Output-only: the
+    // projection observes no kernel events — its snapshot is a pure function of
+    // the `nmp-nip29` crate constant — so this is a one-time registration at app
+    // init, like the zaps projection above (NIP-29 group-create is a Chirp verb,
+    // not part of the canonical NMP composition, so it lives here, not in
+    // `register_defaults`).
+    nmp_nip29::register::wire_group_defaults(app_ref);
+
     // V-80 rung 7 — the product-visible cut-over. The home feed
     // (`"nmp.feed.home"`) is now produced by the OP-centric engine instead of
     // the modular timeline projection: a stream of thread ROOTS, each carrying

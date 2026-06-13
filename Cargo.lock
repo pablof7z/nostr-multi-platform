@@ -4556,6 +4556,7 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip11",
  "nmp-nip17",
+ "nmp-nip47",
  "nmp-nip51",
  "nmp-nip57",
  "nmp-nip59",

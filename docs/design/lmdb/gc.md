@@ -185,7 +185,7 @@ The actor calls `gc_step()` (via `Kernel::run_gc_step`, which threads the kernel
 
 `gc_step()` is **never** invoked from an FFI call path — it runs on the actor's own schedule so any latency it introduces is invisible to the platform. The last run's `GcReport` and its wall-clock time are recorded on the kernel (`Kernel::last_gc` / `last_gc_at_ms`) so the schedule is observable rather than a silent ending — see §7.
 
-## 4. Pin-set wiring (derived, ephemeral — #1090 Stage 1)
+## 4. Pin-set wiring (derived, ephemeral — #1090 Stages 1–3)
 
 The earlier design persisted per-`ClaimerId` claim sets in dedicated LMDB
 sub-dbs (`nmp-claims` / `nmp-claims-budget`) and exposed
@@ -217,8 +217,8 @@ protects no events.
 
 `Kernel::run_gc_step` calls `Kernel::derive_store_pin_set()` immediately before
 `gc_step_with_pins`. The derivation (`crates/nmp-core/src/kernel/ram_eviction.rs`)
-unions three live sources, exactly mirroring the RAM-tier `events` pin set, and
-converts each hex id to a 32-byte store `EventId`:
+unions four live sources, mirroring the RAM-tier `events` pin set plus the
+floor-coherent extension, and converts each hex id to a 32-byte store `EventId`:
 
 1. **`self.timeline`** — the bounded visible feed (≤ `TIMELINE_CACHE_LIMIT`).
 2. **`self.event_claims`** — keys for which a UI component currently holds a
@@ -230,17 +230,31 @@ converts each hex id to a 32-byte store `EventId`:
    (`self.lifecycle.registry().iter_active()` + `shape.matches_event_with_id`),
    the same predicate `should_store_event`'s `matches_active_open_interest`
    clause uses for admission.
+4. **Floor-coherent pins (#1090 Stage 2)** — for each active floored shape,
+   every **stored** event with `created_at <= shape_floor`. The live
+   `since`-floor for a subscription is content-derived: the `watermark_fn`
+   (`kernel/mod.rs`) floors each REQ's `since` to the newest stored matching
+   event + 1. LRU eviction of a *middle* event below that floor would punch a
+   permanent hole — the floored self-healing REQ only re-requests events newer
+   than the floor, so the evicted middle event is never refetched.
+   `derive_store_pin_set` therefore additionally pins every stored event with
+   `created_at <= shape_floor` for each active floored shape, so LRU cannot
+   evict middle events that the floored REQ will not re-request. The
+   `shape_floor` helper is factored from the same logic the `watermark_fn`
+   uses, so floor computation and floor-coherent pinning stay in lockstep
+   (sources 1–3 scan only the RAM `events` map; source 4 scans the store, so it
+   protects events that RAM-tier eviction has already dropped from `self.events`).
 
 Because the set is recomputed each pass, there is **no restart-recovery
 problem** and **no persisted-claims drift**: the cold-start path naturally
 re-derives the pin set from whatever timeline / claims / interests are live at
 the first GC tick after restart. There is nothing to reconcile on disk.
 
-> **Ceiling still disabled.** `GcBudget::production()` keeps
-> `max_total_events = usize::MAX` (Phase-2 eviction off) through Stage 1.
-> Re-enabling the finite `HOT_EVENT_CEILING` is Stage 3, gated on the Stage-2
-> watermark-coherence decision: a finite ceiling is only safe once we are
-> confident the derived pin set fully covers the live snapshot working set.
+> **Ceiling enabled (#1090 Stage 3).** `GcBudget::production()` now sets
+> `max_total_events = HOT_EVENT_CEILING` (10,000), so Phase-2 LRU eviction runs
+> on device. Floor-coherent pinning (source 4 above) is what makes the finite
+> ceiling safe: eviction can never punch a hole below an active floored shape's
+> `since`-floor.
 
 ## 5. Memory accounting (the ADR-0003 gate)
 
