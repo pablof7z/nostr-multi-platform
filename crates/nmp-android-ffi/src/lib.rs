@@ -31,6 +31,7 @@ mod platform;
 mod relay_seeding;
 mod session;
 mod signer;
+mod signer_request_listener;
 mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
@@ -39,7 +40,7 @@ use nmp_ffi::{
     nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
     nmp_app_switch_active, nmp_free_string,
 };
-use session::{insert_session, remove_session, UpdatePushListener};
+use session::{insert_session, remove_session, SignerRequestPushListener, UpdatePushListener};
 pub(crate) use session::{session_arc, Session};
 
 #[no_mangle]
@@ -246,6 +247,58 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClearUpdateListen
 ) {
     if let Some(s) = session_arc(handle) {
         s.clear_push_listener();
+    }
+}
+
+/// Register (or clear) the JNI push listener for NIP-55 external-signer
+/// requests (issue #1284 — D8 no-polling; replaces the deleted
+/// `nativeNextSignerRequest` blocking drain).
+///
+/// `listener` must implement `fun onSignerRequest(requestJson: String)`. Each
+/// request is pushed from whichever Rust thread dispatches the `external_signer`
+/// capability (a background thread), so Kotlin must treat `onSignerRequest` as a
+/// background callback and marshal to the main thread itself (the NIP-55 Intent
+/// dispatch requires the main thread). Pass `null` to deregister.
+///
+/// D6: a null/dead handle, or any JNI failure obtaining the `JavaVM` / global
+/// ref, is a silent no-op — never panics across the seam. The listener
+/// `GlobalRef` is dropped on teardown (`nativeClose`/`nativeFree`) after the
+/// capability trampoline is unregistered.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSetSignerRequestListener(
+    env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    listener: JObject,
+) {
+    let Some(s) = session_arc(handle) else {
+        return;
+    };
+    if listener.is_null() {
+        s.clear_signer_request_listener();
+        return;
+    }
+    let Ok(vm) = env.get_java_vm() else {
+        return;
+    };
+    let Ok(global) = env.new_global_ref(&listener) else {
+        return;
+    };
+    s.set_signer_request_listener(SignerRequestPushListener::new(vm, global));
+}
+
+/// Clear the JNI signer-request push listener without freeing the session
+/// (issue #1284).
+///
+/// D6: a null/dead handle is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClearSignerRequestListener(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if let Some(s) = session_arc(handle) {
+        s.clear_signer_request_listener();
     }
 }
 

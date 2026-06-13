@@ -21,10 +21,14 @@ fn android_bridge_declares_parity_jni_symbols() {
         "SignInBunker",
         "CancelBunkerHandshake",
         "NostrConnectUri",
-        // ADR-0048 Stage 2 — NIP-55 external-signer seam.
+        // ADR-0048 Stage 2 — NIP-55 external-signer seam. Issue #1284 migrated
+        // the request path from the `NextSignerRequest` blocking drain to the
+        // `SetSignerRequestListener`/`ClearSignerRequestListener` JNI push
+        // callbacks (D8 — no polling), mirroring the update-listener seam.
         "SignInNip55",
         "DeliverSignerResponse",
-        "NextSignerRequest",
+        "SetSignerRequestListener",
+        "ClearSignerRequestListener",
     ] {
         let kotlin_decl = format!("native{method}(");
         assert!(
