@@ -139,10 +139,11 @@ fn local_backend_received_dm_surfaces_through_the_port() {
     assert_eq!(msg.sender_pubkey, alice.public_key().to_hex());
     assert_eq!(msg.created_at, 12345, "D7: the rumor's send time verbatim");
     assert!(!msg.is_outgoing, "Alice→Bob is incoming");
-    assert!(
-        !snap.remote_signer_unsupported,
-        "a signed-in local account is decrypt-capable"
+    assert_eq!(
+        snap.decrypt_state, "ok",
+        "a local account that finished decrypting reports ok (§D7)"
     );
+    assert_eq!(snap.undecrypted_count, 0);
 }
 
 #[test]
@@ -246,10 +247,11 @@ fn bunker_backend_decrypts_through_the_port_with_no_local_keys() {
         snap.conversations[0].peer_pubkey,
         alice.public_key().to_hex()
     );
-    assert!(
-        !snap.remote_signer_unsupported,
-        "§D6: a bunker account is no longer 'unsupported' — it decrypts via the port"
+    assert_eq!(
+        snap.decrypt_state, "ok",
+        "§D6/§D7: a bunker account decrypts via the port; once drained it is ok"
     );
+    assert_eq!(snap.undecrypted_count, 0);
 }
 
 // ── Oracle: account-switch leak guard (§D6 epoch) ───────────────────────────
@@ -295,9 +297,9 @@ fn not_signed_in_launches_no_chain() {
     assert!(rx.try_recv().is_err(), "no port command must be emitted");
     let snap = proj.snapshot();
     assert!(snap.conversations.is_empty());
-    assert!(
-        snap.remote_signer_unsupported,
-        "no active account → host hides the DM screen"
+    assert_eq!(
+        snap.decrypt_state, "unavailable",
+        "no active account → host hides the DM screen (§D7)"
     );
 }
 
@@ -309,6 +311,95 @@ fn malformed_envelope_launches_no_chain() {
     assert!(!proj.ingest_gift_wrap("{}", None));
     assert!(rx.try_recv().is_err(), "a malformed envelope emits no port command");
     assert!(proj.snapshot().conversations.is_empty());
+}
+
+// ── §D7 — bounded per-account decrypt queue + decrypt_state policy ───────────
+
+#[test]
+fn bunker_backfill_is_bounded_and_surfaces_limited_state() {
+    // Simulate a bunker backfill: many envelopes arrive but their decrypts NEVER
+    // resolve (we never drain rx — the bunker round-trips are "outstanding").
+    // The projection must admit at most MAX_IN_FLIGHT_DECRYPTS chains, count the
+    // rest as over-bound (NEVER silently dropping them), and report `limited`
+    // with the full undecrypted count (§D7 — errors-as-state).
+    use super::store::MAX_IN_FLIGHT_DECRYPTS;
+
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+    let (proj, _rx) = projection_for(&bob.public_key()); // rx intentionally undrained
+
+    let total = (MAX_IN_FLIGHT_DECRYPTS as usize) + 5;
+    let mut admitted = 0;
+    for i in 0..total {
+        let envelope = gift_wrapped_dm(&alice, &bob.public_key(), &format!("m{i}"), 100 + i as u64, None);
+        if proj.ingest_gift_wrap(&envelope.as_json(), None) {
+            admitted += 1;
+        }
+    }
+
+    assert_eq!(
+        admitted as u64, MAX_IN_FLIGHT_DECRYPTS,
+        "exactly the bound is admitted; the rest are rejected by the §D7 queue"
+    );
+    let snap = proj.snapshot();
+    assert!(
+        snap.conversations.is_empty(),
+        "nothing decrypted yet (no bunker round-trip resolved)"
+    );
+    assert_eq!(snap.decrypt_state, "limited", "pending backfill → limited (§D7)");
+    assert_eq!(
+        u64::from(snap.undecrypted_count),
+        total as u64,
+        "EVERY envelope is accounted for — admitted-pending + over-bound — never silently dropped"
+    );
+}
+
+#[test]
+fn drained_backfill_returns_to_ok_and_clears_the_count() {
+    // The bound is per-account in-flight: once chains terminate (drain), the
+    // count falls and the state returns to ok. Here a LOCAL account drains inline
+    // so each ingest's chain completes before the next — it never accumulates.
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+    let (proj, rx) = projection_for(&bob.public_key());
+
+    for i in 0..20u64 {
+        let envelope = gift_wrapped_dm(&alice, &bob.public_key(), &format!("m{i}"), 100 + i, None);
+        proj.parse(&verified(&envelope));
+        drive_decrypts(&rx, &Decryptor::Local(bob.secret_key().clone()));
+    }
+
+    let snap = proj.snapshot();
+    assert_eq!(snap.conversations.len(), 1, "all 20 land under one peer");
+    assert_eq!(snap.conversations[0].messages.len(), 20);
+    assert_eq!(
+        snap.decrypt_state, "ok",
+        "a local account drains inline → never bounded, always ok once settled"
+    );
+    assert_eq!(snap.undecrypted_count, 0);
+}
+
+#[test]
+fn account_switch_resets_the_backfill_budget() {
+    // A stalled bunker backfill fills the bound; switching accounts (clear())
+    // must reset in-flight + over-bound so the new account starts fresh at ok.
+    let alice = Keys::generate();
+    let bob = Keys::generate();
+    let (proj, _rx) = projection_for(&bob.public_key());
+
+    for i in 0..20u64 {
+        let envelope = gift_wrapped_dm(&alice, &bob.public_key(), &format!("m{i}"), 100 + i, None);
+        let _ = proj.ingest_gift_wrap(&envelope.as_json(), None);
+    }
+    assert_eq!(proj.snapshot().decrypt_state, "limited", "backfill fills the bound");
+
+    proj.clear(); // account switch
+    let snap = proj.snapshot();
+    assert_eq!(
+        snap.decrypt_state, "ok",
+        "clear() resets the §D7 budget — the new account starts ok"
+    );
+    assert_eq!(snap.undecrypted_count, 0);
 }
 
 // ── helper: build a VerifiedEvent from a signed nostr::Event ────────────────

@@ -60,7 +60,11 @@ object TypedDmInboxDecoder {
             }
             DmInboxSnapshot(
                 conversations = conversations,
-                remoteSignerUnsupported = snapshot.remoteSignerUnsupported,
+                // §D7 — `decrypt_state` is a required string on the wire; an
+                // absent / empty value maps to "unavailable" (the safe "host
+                // hides the screen" default, never a misleading "ok").
+                decryptState = snapshot.decryptState?.takeIf { it.isNotEmpty() } ?: "unavailable",
+                undecryptedCount = snapshot.undecryptedCount,
             )
         } catch (e: Exception) {
             Log.e(TAG, "NDMI decode error: ${e.message} bytes=${bytes.size}")

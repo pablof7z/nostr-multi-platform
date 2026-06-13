@@ -296,30 +296,46 @@ struct FollowListSnapshot: Decodable, Equatable {
 /// projection — Swift does not re-sort.
 struct DmInboxSnapshot: Decodable, Equatable {
     let conversations: [DmConversation]
-    /// Set by Rust (V-08) when the active account uses a NIP-46 bunker that
-    /// cannot unseal gift-wraps. The host should surface a message instead of
-    /// an empty list. `false` when signed in with local keys or not signed in.
-    var remoteSignerUnsupported: Bool
+    /// ADR-0050 §D7 decrypt-pipeline policy state (errors-as-state) — the
+    /// tri-state that replaced the old `remoteSignerUnsupported` bool. Stable
+    /// wire tokens the host switches on:
+    ///
+    /// * `"unavailable"` — no active account; the host should hide the DM
+    ///   screen entirely.
+    /// * `"limited"` — an active account with `undecryptedCount > 0`: a bunker
+    ///   backfill is pending or throttled by the bounded per-account decrypt
+    ///   queue. NOT a silent drop — the host surfaces the count.
+    /// * `"ok"` — an active account with everything decrypted.
+    var decryptState: String
+    /// ADR-0050 §D7 — count of envelopes admitted-but-not-yet-decrypted plus
+    /// those not admitted because the per-account bound was full. Non-zero
+    /// exactly when `decryptState == "limited"`.
+    var undecryptedCount: UInt32
 
-    static let empty = DmInboxSnapshot(conversations: [], remoteSignerUnsupported: false)
+    static let empty = DmInboxSnapshot(conversations: [], decryptState: "unavailable", undecryptedCount: 0)
 
-    // Custom init so `remoteSignerUnsupported` degrades to `false` when the
-    // field is absent (older Rust build that predates V-08). The decoder uses
-    // `.convertFromSnakeCase`, so `remote_signer_unsupported` → property name.
+    // Custom init so the §D7 fields degrade safely when absent (an older Rust
+    // build that predates Stage 5). The decoder uses `.convertFromSnakeCase`,
+    // so `decrypt_state` / `undecrypted_count` map to the property names; an
+    // absent `decrypt_state` decodes to "unavailable" (the safe "hide the
+    // screen" default, never a misleading "ok").
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         conversations = try c.decode([DmConversation].self, forKey: .conversations)
-        remoteSignerUnsupported = try c.decodeIfPresent(Bool.self, forKey: .remoteSignerUnsupported) ?? false
+        decryptState = try c.decodeIfPresent(String.self, forKey: .decryptState) ?? "unavailable"
+        undecryptedCount = try c.decodeIfPresent(UInt32.self, forKey: .undecryptedCount) ?? 0
     }
 
-    init(conversations: [DmConversation], remoteSignerUnsupported: Bool = false) {
+    init(conversations: [DmConversation], decryptState: String = "ok", undecryptedCount: UInt32 = 0) {
         self.conversations = conversations
-        self.remoteSignerUnsupported = remoteSignerUnsupported
+        self.decryptState = decryptState
+        self.undecryptedCount = undecryptedCount
     }
 
     private enum CodingKeys: String, CodingKey {
         case conversations
-        case remoteSignerUnsupported
+        case decryptState
+        case undecryptedCount
     }
 }
 

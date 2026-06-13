@@ -150,33 +150,39 @@ public struct nmp_nip17_DmInboxSnapshot: FlatBufferTable, FlatbuffersVectorIniti
 
   private enum VTOFFSET: VOffset {
     case conversations = 4
-    case remoteSignerUnsupported = 6
+    case decryptState = 6
+    case undecryptedCount = 8
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
 
   public var conversations: FlatbufferVector<nmp_nip17_DmConversation> { return _accessor.vector(at: VTOFFSET.conversations.v, byteSize: 4) }
-  public var remoteSignerUnsupported: Bool { let o = _accessor.offset(VTOFFSET.remoteSignerUnsupported.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public static func startDmInboxSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
+  public var decryptState: String? { let o = _accessor.offset(VTOFFSET.decryptState.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var decryptStateSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.decryptState.v) }
+  public var undecryptedCount: UInt32 { let o = _accessor.offset(VTOFFSET.undecryptedCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
+  public static func startDmInboxSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 3) }
   public static func addVectorOf(conversations: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: conversations, at: VTOFFSET.conversations.p) }
-  public static func add(remoteSignerUnsupported: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: remoteSignerUnsupported, def: false,
-   at: VTOFFSET.remoteSignerUnsupported.p) }
+  public static func add(decryptState: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: decryptState, at: VTOFFSET.decryptState.p) }
+  public static func add(undecryptedCount: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: undecryptedCount, def: 0, at: VTOFFSET.undecryptedCount.p) }
   public static func endDmInboxSnapshot(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createDmInboxSnapshot(
     _ fbb: inout FlatBufferBuilder,
     conversationsVectorOffset conversations: Offset = Offset(),
-    remoteSignerUnsupported: Bool = false
+    decryptStateOffset decryptState: Offset = Offset(),
+    undecryptedCount: UInt32 = 0
   ) -> Offset {
     let __start = nmp_nip17_DmInboxSnapshot.startDmInboxSnapshot(&fbb)
     nmp_nip17_DmInboxSnapshot.addVectorOf(conversations: conversations, &fbb)
-    nmp_nip17_DmInboxSnapshot.add(remoteSignerUnsupported: remoteSignerUnsupported, &fbb)
+    nmp_nip17_DmInboxSnapshot.add(decryptState: decryptState, &fbb)
+    nmp_nip17_DmInboxSnapshot.add(undecryptedCount: undecryptedCount, &fbb)
     return nmp_nip17_DmInboxSnapshot.endDmInboxSnapshot(&fbb, start: __start)
   }
 
   public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.conversations.p, fieldName: "conversations", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_nip17_DmConversation>, nmp_nip17_DmConversation>>.self)
-    try _v.visit(field: VTOFFSET.remoteSignerUnsupported.p, fieldName: "remoteSignerUnsupported", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.decryptState.p, fieldName: "decryptState", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.undecryptedCount.p, fieldName: "undecryptedCount", required: false, type: UInt32.self)
     _v.finish()
   }
 }
