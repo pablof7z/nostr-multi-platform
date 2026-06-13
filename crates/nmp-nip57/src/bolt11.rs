@@ -343,7 +343,7 @@ mod tests {
         let zero = Fe32::try_from(0u8).unwrap();
         let mut data: Vec<Fe32> = Vec::new();
         // 7-group timestamp prefix (value irrelevant to the H walk).
-        data.extend(std::iter::repeat(zero).take(TIMESTAMP_FE32_GROUPS));
+        data.extend(std::iter::repeat_n(zero, TIMESTAMP_FE32_GROUPS));
         // Tagged field: type 23, length 52 (big-endian 5-bit: 1,20 → 1<<5|20).
         data.push(Fe32::try_from(TAG_DESCRIPTION_HASH).unwrap());
         let len = 52usize;
@@ -398,12 +398,12 @@ mod tests {
         let zero = Fe32::try_from(0u8).unwrap();
         let hash: [u8; 32] = std::array::from_fn(|i| (i as u8).wrapping_mul(7));
         let mut data: Vec<Fe32> = Vec::new();
-        data.extend(std::iter::repeat(zero).take(TIMESTAMP_FE32_GROUPS));
+        data.extend(std::iter::repeat_n(zero, TIMESTAMP_FE32_GROUPS));
         // Junk field: type 1, length 3, three zero data groups.
         data.push(Fe32::try_from(1u8).unwrap());
         data.push(zero);
         data.push(Fe32::try_from(3u8).unwrap());
-        data.extend(std::iter::repeat(zero).take(3));
+        data.extend(std::iter::repeat_n(zero, 3));
         // Then the real H field.
         data.push(Fe32::try_from(TAG_DESCRIPTION_HASH).unwrap());
         data.push(Fe32::try_from(1u8).unwrap());
