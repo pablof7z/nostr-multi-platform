@@ -78,6 +78,32 @@ jobs:
       - name: Check Rust transport bindings are in sync with the schema
         run: bash ci/check-rust-flatc-drift.sh
 
+  # Swift flatc binding drift gate. The 34 checked-in `flatc --swift` Swift
+  # binding files at ios/Chirp/Chirp/Bridge/Generated/*.generated.swift (every
+  # `.generated.swift` EXCEPT KernelTypes.generated.swift and
+  # TypedProjectionDecoders.generated.swift, which are nmp-codegen outputs
+  # covered by the `swift-codegen-drift` job above) must be byte-identical to a
+  # fresh `flatc --swift` run over their source `.fbs` schemas, with flatc
+  # pinned to the Rust+Swift runtime pin (25.12.19, the SAME pin as
+  # rust-flatc-drift, distinct from Android 25.2.10 and Web 25.9.23).
+  # Regenerate locally per the instructions ci/check-swift-flatc-drift.sh prints.
+  swift-flatc-drift:
+    name: Swift flatc drift (ios/.../Bridge/Generated/*.generated.swift vs *.fbs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned flatc 25.12.19
+        run: |
+          curl -fsSL -o /tmp/flatc.zip \
+            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.clang++-18.zip
+          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
+          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
+          flatc --version
+
+      - name: Check Swift FlatBuffers bindings are in sync with the schemas
+        run: bash ci/check-swift-flatc-drift.sh
+
   # Issue #1093 — Kotlin flatc transport-binding drift gate. The checked-in
   # Kotlin bindings at android/app/src/main/java/nmp/transport/*.kt must be
   # identical to a fresh `flatc --kotlin` run over nmp_update.fbs, with flatc

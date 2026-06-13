@@ -3,6 +3,10 @@
 // Rust-shell module *generator* that also read this manifest; the manifest
 // model itself survives because the dependency-policy commands still need it.)
 mod manifest;
+// Shared `--check` diff-line reporting for the Swift codegen gates — keeps
+// `check_swift` / `check_typed_decoders` reporting consistent and ensures a
+// length-only mismatch never masquerades as a missing file.
+mod diff_report;
 // V6 Stage 1 — Swift `Decodable` emitter pilot. Consumes the JSON document
 // `nmp-core --features codegen-schema --bin dump_projection_schemas` writes,
 // emits one Swift file with one struct per pilot type. See

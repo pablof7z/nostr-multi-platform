@@ -882,14 +882,11 @@ mod tests {
         }
     }
 
-    /// Every dotted JSON key in the conformance test
-    /// (`SnapshotProjectionsConformanceTests.swift`) must be present in
-    /// this registry — and vice versa for the six dotted-key entries the
-    /// conformance test names. If a new dotted key is added to the
-    /// conformance test, this registry must grow too (and the renderer
-    /// will produce a matching `CodingKeys` case). If a dotted key is
-    /// removed from the registry, the conformance test must drop the
-    /// matching `XCTAssertNotNil`.
+    /// Every dotted projection key in this registry must be mirrored in the
+    /// conformance test (`SnapshotProjectionsConformanceTests.swift`) and vice
+    /// versa — except `nmp.feed.home`, the typed sidecar (see below). Adding a
+    /// dotted key requires updating both sides (and the renderer emits a
+    /// matching `CodingKeys` case for JSON-decoded keys).
     #[test]
     fn all_dotted_keys_are_present() {
         let dotted: Vec<&str> = SNAPSHOT_PROJECTIONS
@@ -897,9 +894,10 @@ mod tests {
             .map(|e| e.json_key)
             .filter(|k| k.contains('.'))
             .collect();
-        // The conformance test names eight dotted keys (six prior + 2 Marmot
-        // push projections added in V-107). Hard-code them here so a drift on
-        // either side fails this test loudly.
+        // Nine dotted keys. `nmp.feed.home` is a NOFS typed sidecar decoded by
+        // the hand-written `TypedHomeFeedDecoder` (`swift_reader_type: None`) —
+        // not a JSON `SnapshotProjections` field, so it has no `XCTAssertNotNil`
+        // in the Swift conformance test, but it IS a dotted registry key.
         let expected = [
             "nmp.nip29.group_chat",
             "nmp.nip29.discovered_groups",
@@ -909,13 +907,12 @@ mod tests {
             "nmp.nip17.dm_relay_list",
             "nmp.marmot.snapshot",
             "nmp.marmot.messages",
+            "nmp.feed.home",
         ];
         for key in expected {
-            assert!(
-                dotted.contains(&key),
-                "dotted projection key {key:?} is in the conformance test \
-                 but missing from SNAPSHOT_PROJECTIONS"
-            );
+            assert!(dotted.contains(&key), "expected dotted key {key:?} not in registry");
         }
+        // Equal lengths + the forward-contains prove set equality.
+        assert_eq!(dotted.len(), expected.len(), "dotted keys drifted: {dotted:?}");
     }
 }
