@@ -42,6 +42,7 @@ impl ActionModule for PostChatMessageAction {
     const NAMESPACE: &'static str = "nmp.nip29.post_chat_message";
     type Action = PostChatMessageInput;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -55,6 +56,7 @@ impl ActionModule for PostChatMessageAction {
         Ok(())
     }
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -81,7 +83,7 @@ mod tests {
     #[test]
     fn well_formed_passes_validator() {
         let mut ctx = ActionContext::default();
-        assert!(PostChatMessageAction::start(&mut ctx, input()).is_ok());
+        assert!(PostChatMessageAction.start(&mut ctx, input()).is_ok());
     }
 
     #[test]
@@ -92,7 +94,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            PostChatMessageAction::start(&mut ctx, action),
+            PostChatMessageAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -105,7 +107,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            PostChatMessageAction::start(&mut ctx, action),
+            PostChatMessageAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -118,7 +120,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            PostChatMessageAction::start(&mut ctx, action),
+            PostChatMessageAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -129,7 +131,7 @@ mod tests {
         use std::cell::RefCell;
 
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        PostChatMessageAction::execute(input(), "cid-99", &|cmd| {
+        PostChatMessageAction.execute(input(), "cid-99", &|cmd| {
             captured.borrow_mut().push(cmd);
         })
         .expect("well-formed input executes");

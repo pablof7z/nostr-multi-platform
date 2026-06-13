@@ -74,13 +74,15 @@
 //!
 //! # NWC payment handoff
 //!
-//! After the bolt11 is fetched, the worker checks `nmp_nip47::active_wallet_runtime()`.
-//! If a wallet runtime is installed, it dispatches `WalletPayInvoiceCommand`
-//! carrying the bolt11 and the zap's `correlation_id`. The kind:23195 NWC
-//! response handler then closes the action stage — success or failure — so
-//! the host's spinner resolves only when the payment is confirmed by the
-//! wallet, not merely when the invoice is fetched. If no wallet is installed
-//! the action records a `Failed` terminal immediately with a descriptive reason.
+//! After the bolt11 is fetched, the worker pays through the [`crate::action::ZapPayer`] the
+//! command carries (captured at zap registration time — ADR-0052 D1/D2, no
+//! process-global). On [`crate::action::ZapPayer::Nwc`] it dispatches `WalletPayInvoiceCommand`
+//! carrying the bolt11 and the zap's `correlation_id` against the app's OWN
+//! runtime handle. The kind:23195 NWC response handler then closes the action
+//! stage — success or failure — so the host's spinner resolves only when the
+//! payment is confirmed by the wallet, not merely when the invoice is fetched.
+//! On [`crate::action::ZapPayer::Unavailable`] (no wallet wired) the action records a `Failed`
+//! terminal immediately with a descriptive reason.
 
 mod pay;
 mod validation;
@@ -145,6 +147,11 @@ pub struct FetchLnurlInvoiceCommand {
     /// spinner clears. `None` means a direct caller with no spinner —
     /// only the `ShowToast` follow-up is sent.
     pub correlation_id: Option<String>,
+    /// Payment backend the fetched bolt11 is handed to (ADR-0052 D1/D2). The
+    /// off-actor worker owns its own clone and dispatches against it — it never
+    /// reads a process-global. `ZapPayer::Unavailable` fails closed with a "no
+    /// wallet connected" terminal.
+    pub payer: crate::action::ZapPayer,
 }
 
 impl ProtocolCommand for FetchLnurlInvoiceCommand {
@@ -158,6 +165,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
             lnurl_or_address,
             amount_msats,
             correlation_id,
+            payer,
         } = *self;
 
         // Resolve the LN destination. Shells may omit `lnurl_or_address`
@@ -254,10 +262,14 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                     return;
                 }
             };
-            spawn_lnurl_worker(worker_tx, lnurl_or_address, amount_msats, signed_json, correlation_id);
+            spawn_lnurl_worker(worker_tx, lnurl_or_address, amount_msats, signed_json, correlation_id, payer);
         });
 
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
     }
 }
 
@@ -280,11 +292,14 @@ fn spawn_lnurl_worker(
     amount_msats: u64,
     signed_json: String,
     correlation_id: Option<String>,
+    payer: crate::action::ZapPayer,
 ) {
     std::thread::spawn(move || {
         match fetch_lnurl_invoice_blocking(&lnurl_or_address, amount_msats, &signed_json) {
-            Ok(bolt11) => match nmp_nip47::active_wallet_runtime() {
-                Some(runtime) => {
+            // ADR-0052 D2 — pay through the per-app payer captured at zap
+            // registration time (no `active_wallet_runtime()` process-global).
+            Ok(bolt11) => match payer {
+                crate::action::ZapPayer::Nwc(runtime) => {
                     let _ = worker_tx.send(ActorCommand::Protocol(Box::new(
                         nmp_nip47::WalletPayInvoiceCommand {
                             bolt11,
@@ -294,7 +309,7 @@ fn spawn_lnurl_worker(
                         },
                     )));
                 }
-                None => {
+                crate::action::ZapPayer::Unavailable => {
                     let reason =
                         "zap: no wallet connected — connect a NWC wallet first".to_string();
                     let _ = worker_tx.send(ActorCommand::ShowToast {

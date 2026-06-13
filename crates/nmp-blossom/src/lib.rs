@@ -35,5 +35,5 @@ pub use upload::BlossomUploadCommand;
 ///
 /// [`ActionRegistrar`]: nmp_core::substrate::ActionRegistrar
 pub fn register_actions(app: &mut impl nmp_core::substrate::ActionRegistrar) {
-    app.register_action::<UploadAction>();
+    app.register_action(UploadAction);
 }

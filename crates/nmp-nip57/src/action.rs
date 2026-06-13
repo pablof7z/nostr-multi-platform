@@ -42,6 +42,42 @@ use crate::build::ZapRequest;
 #[cfg(feature = "native")]
 use crate::lnurl::FetchLnurlInvoiceCommand;
 
+/// The payment backend a zap's fetched bolt11 is handed to (ADR-0052 D1/D2).
+///
+/// The zap chain (`ZapAction` → `FetchLnurlInvoiceCommand`'s off-actor worker)
+/// must reach the wallet runtime WITHOUT a process-global. So the payer is
+/// captured by value at registration time and carried command-to-worker:
+///
+/// * `Unavailable` — no wallet wired (the generic `nmp-defaults` zap default,
+///   which has zero wallet knowledge): a fetched invoice records a `Failed`
+///   terminal with "no wallet connected".
+/// * `Nwc(handle)` — a NIP-47 wallet was composed; the app registers
+///   `ZapAction::new(ZapPayer::Nwc(handle.clone()))`, overriding the default,
+///   so the worker dispatches `WalletPayInvoiceCommand` against THIS app's
+///   own runtime handle.
+///
+/// Cloned into each `FetchLnurlInvoiceCommand` at `execute` time; the worker
+/// thread owns its own clone. No global, instance-scoped per `NmpApp`.
+#[derive(Clone, Default)]
+pub enum ZapPayer {
+    /// No wallet backend wired — a fetched invoice fails closed.
+    #[default]
+    Unavailable,
+    /// NIP-47 NWC wallet, sourced from the app's own runtime handle.
+    #[cfg(feature = "native")]
+    Nwc(nmp_nip47::WalletRuntimeHandle),
+}
+
+impl std::fmt::Debug for ZapPayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ZapPayer::Unavailable => f.write_str("ZapPayer::Unavailable"),
+            #[cfg(feature = "native")]
+            ZapPayer::Nwc(_) => f.write_str("ZapPayer::Nwc(<handle>)"),
+        }
+    }
+}
+
 /// Wire shape for `nmp.nip57.zap` — the JSON body a host passes to
 /// `nmp_app_dispatch_action`.
 ///
@@ -105,7 +141,25 @@ pub struct ZapInput {
 /// [`FetchLnurlInvoiceCommand`] (V-41) — the protocol command handles
 /// signing (D7 — kernel owns key access) and the off-thread LNURL-pay
 /// HTTP round-trip (D8 — no blocking on the actor thread).
-pub struct ZapAction;
+pub struct ZapAction {
+    payer: ZapPayer,
+}
+
+impl ZapAction {
+    /// Construct the zap module carrying the payment backend (ADR-0052 D1/D2).
+    #[must_use]
+    pub fn new(payer: ZapPayer) -> Self {
+        Self { payer }
+    }
+}
+
+impl Default for ZapAction {
+    /// The wallet-less default — the generic `nmp-defaults` registration. An
+    /// app with a NIP-47 wallet overrides it with `ZapAction::new(Nwc(..))`.
+    fn default() -> Self {
+        Self { payer: ZapPayer::Unavailable }
+    }
+}
 
 fn record_action_failure(send: &dyn Fn(ActorCommand), correlation_id: &str, reason: String) {
     send(ActorCommand::RecordActionFailure {
@@ -127,7 +181,7 @@ impl ActionModule for ZapAction {
     /// actor auto-selects from the recipient's kind:10002 (NIP-65) write
     /// list before signing (V-07). Relay choice is policy that lives in the
     /// kernel, not the shell.
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.recipient_pubkey.trim().is_empty() {
             return Err(ActionRejection::Invalid(
                 "zap requires a recipient pubkey".into(),
@@ -156,7 +210,7 @@ impl ActionModule for ZapAction {
     /// NWC pay-invoice on a fetched invoice, or records `Failed` on LNURL /
     /// missing-wallet errors. The NIP-47 kind:23195 response closes the
     /// original zap action's `correlation_id` on wallet confirmation.
-    fn is_async_completing() -> bool {
+    fn is_async_completing(&self) -> bool {
         true
     }
 
@@ -177,6 +231,7 @@ impl ActionModule for ZapAction {
     /// LNURL-pay HTTP round-trip on a spawned `std::thread::spawn`
     /// worker (D8).
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -220,9 +275,12 @@ impl ActionModule for ZapAction {
             lnurl_or_address: action.lnurl,
             amount_msats: action.amount_msats,
             correlation_id: Some(correlation_id.to_string()),
+            // ADR-0052 D2 — the worker pays through THIS module's own payer
+            // (no `active_wallet_runtime()` global).
+            payer: self.payer.clone(),
         })));
         #[cfg(not(feature = "native"))]
-        { let _ = (unsigned, action); record_action_failure(send, correlation_id, "zap not available on this platform".into()); }
+        { let _ = (unsigned, action, &self.payer); record_action_failure(send, correlation_id, "zap not available on this platform".into()); }
         Ok(())
     }
 }
@@ -236,7 +294,7 @@ mod tests {
     /// Run the typed executor and capture every `ActorCommand` it sends, in order.
     fn run_execute(input: ZapInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        ZapAction::execute(input, "cid-deadbeef", &|cmd| {
+        ZapAction::default().execute(input, "cid-deadbeef", &|cmd| {
             captured.borrow_mut().push(cmd);
         })?;
         Ok(captured.into_inner())
@@ -280,12 +338,12 @@ mod tests {
     #[test]
     fn is_async_completing_is_true() {
         // Zap settles asynchronously — host should subscribe to action_stages.
-        assert!(ZapAction::is_async_completing());
+        assert!(ZapAction::default().is_async_completing());
     }
 
     #[test]
     fn start_accepts_well_formed_input() {
-        assert!(ZapAction::start(&mut ctx(), well_formed_input()).is_ok());
+        assert!(ZapAction::default().start(&mut ctx(), well_formed_input()).is_ok());
     }
 
     #[test]
@@ -297,7 +355,7 @@ mod tests {
             comment: Some("great post".to_string()),
             ..well_formed_input()
         };
-        assert!(ZapAction::start(&mut ctx(), input).is_ok());
+        assert!(ZapAction::default().start(&mut ctx(), input).is_ok());
     }
 
     #[test]
@@ -307,7 +365,7 @@ mod tests {
             ..well_formed_input()
         };
         assert!(matches!(
-            ZapAction::start(&mut ctx(), input),
+            ZapAction::default().start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -319,7 +377,7 @@ mod tests {
             ..well_formed_input()
         };
         assert!(matches!(
-            ZapAction::start(&mut ctx(), input),
+            ZapAction::default().start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -329,7 +387,7 @@ mod tests {
         // Shells that know only the pubkey and amount pass `lnurl: None`.
         // The kernel resolves the address from the cached kind:0 profile at
         // execute time — `start` must not reject it.
-        assert!(ZapAction::start(&mut ctx(), well_formed_input_no_lnurl()).is_ok());
+        assert!(ZapAction::default().start(&mut ctx(), well_formed_input_no_lnurl()).is_ok());
     }
 
     #[test]
@@ -339,7 +397,7 @@ mod tests {
             ..well_formed_input()
         };
         assert!(matches!(
-            ZapAction::start(&mut ctx(), input),
+            ZapAction::default().start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -355,7 +413,7 @@ mod tests {
             relays: vec![],
             ..well_formed_input()
         };
-        assert!(ZapAction::start(&mut ctx(), input).is_ok());
+        assert!(ZapAction::default().start(&mut ctx(), input).is_ok());
     }
 
     /// V-07 sibling: whitespace-only relays filter to empty and follow the
@@ -367,7 +425,7 @@ mod tests {
             relays: vec!["   ".to_string(), "\t".to_string()],
             ..well_formed_input()
         };
-        assert!(ZapAction::start(&mut ctx(), input).is_ok());
+        assert!(ZapAction::default().start(&mut ctx(), input).is_ok());
     }
 
     /// The executor must emit a `Protocol(FetchLnurlInvoiceCommand)`

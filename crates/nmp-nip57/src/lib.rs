@@ -25,7 +25,7 @@ pub mod projection;
 pub mod view;
 pub mod wire;
 
-pub use action::{ZapAction, ZapInput};
+pub use action::{ZapAction, ZapInput, ZapPayer};
 pub use build::{ZapRequest, ZapRequestBuildError, ZapRequestBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, ZapReceiptRecord};
 pub use interests::{self_zap_receipts_interest, self_zap_receipts_interest_id};
@@ -41,8 +41,12 @@ pub use wire::typed_fb::{
 
 pub fn register_actions(app: &mut impl nmp_core::substrate::ActionRegistrar) {
     // Yielding default (ADR-0049 Part 1): an app may pre-empt the zap action
-    // module regardless of call order.
-    app.register_default_action::<ZapAction>();
+    // module regardless of call order. This generic registration carries NO
+    // wallet backend (`ZapPayer::Unavailable`) — `nmp-defaults` has zero wallet
+    // knowledge (ADR-0052 D1/D2). An app that composed a NIP-47 wallet
+    // overrides this with `register_action(ZapAction::new(ZapPayer::Nwc(handle)))`
+    // so its zaps reach the app's own runtime handle (no process-global).
+    app.register_default_action(ZapAction::default());
 }
 
 // `nmp-nip57` exposes `ZapsView` as a plain public type whose `open` /

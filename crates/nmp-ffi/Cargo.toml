@@ -14,6 +14,14 @@ name = "nmp_ffi"
 # normal Rust paths without re-declaring `extern "C"` blocks.
 crate-type = ["staticlib", "rlib"]
 
+# K2 rung 5.2 (ADR-0052 D1) — two-instance wallet-interop oracle. Needs
+# `NmpApp::action_registry_for_test`, which is `test-support`-gated, so the
+# whole test binary requires that feature; `cargo test -p nmp-ffi` without it
+# simply skips this test rather than failing to compile.
+[[test]]
+name = "wallet_instance_scoping"
+required-features = ["test-support"]
+
 [features]
 # Same feature gating posture as nmp-core's old `ffi` module: the C-ABI
 # surface is native-only (wasm uses wasm-bindgen, not C-ABI), so the entire
@@ -76,3 +84,8 @@ zeroize = { workspace = true }
 # `nmp-core/test-support` exposes the helpers the in-crate ffi tests reach
 # for (e.g. `VerifiedEvent::from_raw_unchecked`, `ConformanceHarness`).
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# K2 rung 5.2 (ADR-0052 D1): the two-instance wallet-interop oracle
+# (`tests/wallet_instance_scoping.rs`) registers the NIP-47 wallet
+# `ActionModule` VALUES on two independent `NmpApp`s and asserts each routes
+# to its own `WalletRuntimeHandle` (no `ACTIVE_WALLET_RUNTIME` global).
+nmp-nip47 = { path = "../nmp-nip47" }

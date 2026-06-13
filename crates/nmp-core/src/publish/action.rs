@@ -203,7 +203,7 @@ impl ActionModule for PublishModule {
     /// known until the actor signs. `Cancel` is not reachable through
     /// `dispatch_action` (`start` rejects it), so it never reaches this
     /// function; it falls into the `_` arm and returns `None`.
-    fn preferred_action_id(action: &Self::Action) -> Option<crate::substrate::ActionId> {
+    fn preferred_action_id(&self, action: &Self::Action) -> Option<crate::substrate::ActionId> {
         match action {
             PublishAction::Publish { event, .. } if !event.id.is_empty() => Some(event.id.clone()),
             _ => None,
@@ -216,11 +216,11 @@ impl ActionModule for PublishModule {
     /// `actor/dispatch.rs` (Requested), `kernel/publish_engine.rs`
     /// (Publishing / Accepted), `kernel/publish_cmd.rs` (Failed).
     #[rustfmt::skip]
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites in actor/dispatch.rs + kernel/publish_*.rs
+    fn is_async_completing(&self) -> bool { // doctrine-allow: D12 — recording sites in actor/dispatch.rs + kernel/publish_*.rs
         true
     }
 
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         match action {
             PublishAction::Publish { event, target, .. } => {
                 if event.id.is_empty() || event.sig.is_empty() {
@@ -280,6 +280,7 @@ impl ActionModule for PublishModule {
     }
 
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

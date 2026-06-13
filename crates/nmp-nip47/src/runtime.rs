@@ -194,48 +194,15 @@ impl std::fmt::Debug for WalletRuntime {
 /// relay-event handler) does the same.
 pub type WalletRuntimeHandle = Arc<Mutex<Option<WalletRuntime>>>;
 
-/// Construct a fresh, empty [`WalletRuntimeHandle`]. The host installs it
-/// via [`install_wallet_runtime`] at app startup; the actor's relay-text
-/// intercept and the action-seam executor both pull it via
-/// [`active_wallet_runtime`].
+/// Construct a fresh, empty [`WalletRuntimeHandle`]. The host creates it once
+/// at app construction and threads `Arc::clone`s into BOTH the wallet
+/// `ActionModule` values (which carry it by value — ADR-0052 D1/D2) and the
+/// relay-text interceptor. There is no process-global: each `NmpApp` instance
+/// owns its own handle, so two apps in one process never share a wallet
+/// runtime (the K2 rung 5.2 two-instance interop invariant).
 #[must_use]
 pub fn new_wallet_runtime_handle() -> WalletRuntimeHandle {
     Arc::new(Mutex::new(None))
-}
-
-/// Process-wide slot holding the active [`WalletRuntimeHandle`]. There is
-/// exactly one wallet runtime per process; the action-seam executor
-/// ([`crate::WalletPayInvoiceModule::execute`]) and the FFI shims read it
-/// here so they don't need an [`nmp_core::NmpApp`] reference. Hosts install
-/// it once at app construction via [`install_wallet_runtime`].
-///
-/// Static rather than per-app because:
-/// * `ActionModule::execute` is a `fn` (no `&self`, no `&NmpApp`);
-/// * the FFI shims have an `app: *mut NmpApp` but no typed wallet field;
-/// * the wallet runtime IS naturally process-scoped (the actor thread is
-///   process-singleton too).
-static ACTIVE_WALLET_RUNTIME: std::sync::OnceLock<WalletRuntimeHandle> =
-    std::sync::OnceLock::new();
-
-/// Install the process-wide wallet runtime handle. Must be called exactly
-/// once per process; subsequent calls return `Err(_)` and the install is a
-/// no-op (the first handle wins).
-///
-/// The host typically does this in its app-construction code, alongside
-/// registering the `nmp.wallet.pay_invoice` action module and the
-/// `"wallet"` snapshot projection.
-pub fn install_wallet_runtime(handle: WalletRuntimeHandle) -> Result<(), &'static str> {
-    ACTIVE_WALLET_RUNTIME
-        .set(handle)
-        .map_err(|_| "wallet runtime already installed")
-}
-
-/// Fetch a clone of the installed [`WalletRuntimeHandle`]. Returns `None`
-/// when the host never called [`install_wallet_runtime`] — the action seam
-/// then surfaces a `Failed` terminal stage rather than panicking (D6).
-#[must_use]
-pub fn active_wallet_runtime() -> Option<WalletRuntimeHandle> {
-    ACTIVE_WALLET_RUNTIME.get().cloned()
 }
 
 impl WalletRuntime {

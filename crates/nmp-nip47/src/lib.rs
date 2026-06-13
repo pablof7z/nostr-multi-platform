@@ -15,16 +15,20 @@
 //!
 //! # Composition
 //!
-//! Host code (an `nmp-app-*` crate, or the FFI surface in `nmp-core::ffi::
-//! wallet`) constructs the [`WalletStatusSlot`] and a
-//! [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`), then:
+//! Host code (an `nmp-app-*` crate) constructs the [`WalletStatusSlot`] and a
+//! [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`) ONCE, then:
 //!
-//! * registers [`WalletPayInvoiceModule`] on its `ActionRegistry`;
-//! * installs the runtime handle into the actor through
-//!   [`nmp_core::NmpApp::set_wallet_runtime_handle`];
+//! * registers [`WalletConnectModule`] / [`WalletDisconnectModule`] /
+//!   [`WalletPayInvoiceModule`] on its `ActionRegistry`, each constructed via
+//!   `Module::new(Arc::clone(&handle))` so the module owns its handle by value
+//!   (ADR-0052 D1/D2 — no process-global);
+//! * captures the SAME `Arc::clone(&handle)` in the relay-text interceptor;
 //! * captures one `Arc` clone of [`WalletStatusSlot`] in the `"wallet"`
 //!   snapshot-projection closure registered via
 //!   [`nmp_core::NmpApp::register_snapshot_projection`].
+//!
+//! Each `NmpApp` instance owns its own handle, so two apps in one process have
+//! two independent wallet runtimes (the K2 rung 5.2 no-crosstalk invariant).
 //!
 //! D0: the kernel never names "wallet" / "NWC" / "kind:23194" — those nouns
 //! live entirely here.
@@ -48,9 +52,9 @@ pub use protocol::{
     WalletPayInvoiceCommand,
 };
 pub use runtime::{
-    active_wallet_runtime, install_wallet_runtime, new_wallet_runtime_handle, HeartbeatOutbound,
-    WalletRuntime, WalletRuntimeHandle, HEARTBEAT_CADENCE_SECS, HEARTBEAT_MAX_FAILURES,
-    HEARTBEAT_PROBE_TIMEOUT_SECS, PENDING_PAYMENT_TTL_SECS,
+    new_wallet_runtime_handle, HeartbeatOutbound, WalletRuntime, WalletRuntimeHandle,
+    HEARTBEAT_CADENCE_SECS, HEARTBEAT_MAX_FAILURES, HEARTBEAT_PROBE_TIMEOUT_SECS,
+    PENDING_PAYMENT_TTL_SECS,
 };
 pub use status::{
     format_sats_display, new_wallet_status_slot, NwcConnectionState, WalletStatus, WalletStatusSlot,

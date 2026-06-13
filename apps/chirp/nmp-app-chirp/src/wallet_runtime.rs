@@ -13,10 +13,9 @@ use nmp_core::{Kernel, OutboundMessage, TypedProjectionData};
 use nmp_ffi::NmpApp;
 
 use nmp_nip47::{
-    encode_wallet_status, install_wallet_runtime, new_wallet_runtime_handle, WalletConnectModule,
-    WalletDisconnectModule, WalletPayInvoiceModule, WalletRuntime, WalletRuntimeHandle,
-    WalletStatusSlot, WALLET_STATUS_FILE_IDENTIFIER, WALLET_STATUS_SCHEMA_ID,
-    WALLET_STATUS_SCHEMA_VERSION,
+    encode_wallet_status, new_wallet_runtime_handle, WalletConnectModule, WalletDisconnectModule,
+    WalletPayInvoiceModule, WalletRuntime, WalletRuntimeHandle, WalletStatusSlot,
+    WALLET_STATUS_FILE_IDENTIFIER, WALLET_STATUS_SCHEMA_ID, WALLET_STATUS_SCHEMA_VERSION,
 };
 
 /// Adapter that wires the wallet runtime's [`nmp_nip47::handle_nwc_text`]
@@ -112,21 +111,14 @@ impl RelayTextInterceptor for WalletInterceptor {
 /// Register the NIP-47 wallet stack on `app`. Called by
 /// `nmp_app_chirp_register` when the `wallet` feature is on.
 pub(crate) fn register_nip47_wallet(app: &mut NmpApp) {
-    // 1. Action modules — exposed under `nmp.wallet.{connect,disconnect,
-    //    pay_invoice}` so the existing `nmp_app_wallet_*` FFI shims (which
-    //    route through `dispatch_action` post-V-38) reach the runtime.
-    app.register_action::<WalletConnectModule>();
-    app.register_action::<WalletDisconnectModule>();
-    app.register_action::<WalletPayInvoiceModule>();
-
-    // 2. Shared status slot — one `Arc` clone goes to the runtime (sole
+    // 1. Shared status slot — one `Arc` clone goes to the runtime (sole
     //    writer, D4), the others are captured below by the `"wallet"`
     //    generic + typed snapshot projection closures.
     let status_slot: WalletStatusSlot = nmp_nip47::new_wallet_status_slot();
     let projection_slot = Arc::clone(&status_slot);
     let typed_projection_slot = Arc::clone(&status_slot);
 
-    // 3. Wallet runtime — held inside an `Arc<Mutex<Option<WalletRuntime>>>`
+    // 2. Wallet runtime — held inside an `Arc<Mutex<Option<WalletRuntime>>>`
     //    handle the `ProtocolCommand` impls and the interceptor both lock.
     let mut runtime = WalletRuntime::new(status_slot);
 
@@ -140,15 +132,32 @@ pub(crate) fn register_nip47_wallet(app: &mut NmpApp) {
         runtime.set_payment_store(nmp_nip47::FsPaymentStore::new(storage_path));
     }
 
+    // 3. The ONE per-app wallet runtime handle (ADR-0052 D1/D2). Created BEFORE
+    //    registration so every consumer captures the SAME `Arc` by value — no
+    //    process-global. Two `NmpApp`s in one process therefore own two
+    //    independent wallet runtimes (the K2 rung 5.2 no-crosstalk invariant).
     let handle: WalletRuntimeHandle = new_wallet_runtime_handle();
     if let Ok(mut guard) = handle.lock() {
         *guard = Some(runtime);
     }
 
-    // 4. Install the process-wide active handle so the action-seam executor
-    //    (a static `fn`) can fetch it without an `NmpApp` reference. Silent
-    //    second-install is OK (e.g. tests).
-    let _ = install_wallet_runtime(Arc::clone(&handle));
+    // 4. Action modules — exposed under `nmp.wallet.{connect,disconnect,
+    //    pay_invoice}` so the existing `nmp_app_wallet_*` FFI shims (which
+    //    route through `dispatch_action` post-V-38) reach the runtime. Each
+    //    module carries its OWN clone of the handle by value.
+    app.register_action(WalletConnectModule::new(Arc::clone(&handle)));
+    app.register_action(WalletDisconnectModule::new(Arc::clone(&handle)));
+    app.register_action(WalletPayInvoiceModule::new(Arc::clone(&handle)));
+
+    // 4b. Re-register the NIP-57 zap module so its LNURL → pay-invoice chain
+    //     pays through THIS app's wallet handle (ADR-0052 D2). `nmp-defaults`
+    //     registered `ZapAction::default()` (wallet-less) as a yielding default
+    //     during `register_defaults`; this app-path registration overrides it
+    //     with the NWC-backed payer. Without a wallet composed, the wallet-less
+    //     default stands and a zap fails closed with "no wallet connected".
+    app.register_action(nmp_nip57::ZapAction::new(nmp_nip57::ZapPayer::Nwc(
+        Arc::clone(&handle),
+    )));
 
     // 5. Substrate-generic relay-text interceptor — the actor calls this
     //    for every inbound text frame.

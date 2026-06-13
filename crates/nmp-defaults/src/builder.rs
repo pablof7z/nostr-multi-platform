@@ -400,11 +400,11 @@ impl NmpAppBuilder<StorageSet> {
 // run before `start()`, which the typestate already guarantees.
 
 impl<S> ActionRegistrar for NmpAppBuilder<S> {
-    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
+    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
         // SAFETY: `self.app` non-null (builder invariant). Exclusive borrow via
         // `&mut self` ⇒ no aliasing.
         let app: &mut NmpApp = unsafe { &mut *self.app };
-        app.register_action::<M>();
+        app.register_action::<M>(module);
     }
 }
 

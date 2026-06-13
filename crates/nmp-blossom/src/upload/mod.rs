@@ -103,6 +103,10 @@ impl ProtocolCommand for BlossomUploadCommand {
 
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }
 
 /// Worker A: stream the file → sha256 + size, build the kind:24242, and send the

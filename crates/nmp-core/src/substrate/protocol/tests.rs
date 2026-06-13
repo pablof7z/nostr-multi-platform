@@ -14,6 +14,10 @@ impl ProtocolCommand for FiringCommand {
         *self.fired.lock().unwrap() = true;
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -27,6 +31,10 @@ impl ProtocolCommand for ChainingCommand {
         ctx.send(ActorCommand::Shutdown);
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -38,6 +46,10 @@ impl ProtocolCommand for FailingCommand {
         _ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
         Err(ProtocolCommandError::new("intentional"))
+    }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
     }
 }
 

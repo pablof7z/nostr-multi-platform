@@ -470,6 +470,7 @@ fn run_and_capture_port(correlation_id: Option<String>) -> PortCapture {
             lnurl_or_address: Some(UNREACHABLE_LNURL.to_string()),
             amount_msats: 21_000,
             correlation_id,
+            payer: crate::action::ZapPayer::Unavailable,
         });
         cmd.run(&mut ctx).expect("run returns Ok");
     }
@@ -667,6 +668,7 @@ fn run_restamps_created_at_from_context_clock() {
         lnurl_or_address: Some("alice@example.com".to_string()),
         amount_msats: 21_000,
         correlation_id: None,
+        payer: crate::action::ZapPayer::Unavailable,
     });
     cmd.run(&mut ctx).expect("run returns Ok on fail-closed branch");
     assert!(

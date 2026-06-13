@@ -20,7 +20,7 @@ use crate::substrate::{ActionContext, ActionModule, ActionRejection};
 
 fn capture_commands(action: BrowseRelayAction) -> Vec<ActorCommand> {
     let captured = Mutex::new(Vec::new());
-    BrowseRelayModule::execute(action, "test-corr", &|cmd| {
+    BrowseRelayModule.execute(action, "test-corr", &|cmd| {
         captured.lock().unwrap().push(cmd);
     })
     .expect("execute must not fail for valid actions");
@@ -42,7 +42,7 @@ fn open_action(relay: &str, kinds: Vec<u32>, id: u64) -> BrowseRelayAction {
 fn start_rejects_non_relay_url() {
     let action = open_action("not-a-relay-url", vec![1], 42);
     let mut ctx = ActionContext::default();
-    let result = BrowseRelayModule::start(&mut ctx, action);
+    let result = BrowseRelayModule.start(&mut ctx, action);
     assert!(
         matches!(result, Err(ActionRejection::Invalid(_))),
         "non-relay-URL must be rejected"
@@ -53,7 +53,7 @@ fn start_rejects_non_relay_url() {
 fn start_rejects_zero_interest_id() {
     let action = open_action("wss://relay.example.com", vec![1], 0);
     let mut ctx = ActionContext::default();
-    let result = BrowseRelayModule::start(&mut ctx, action);
+    let result = BrowseRelayModule.start(&mut ctx, action);
     assert!(
         matches!(result, Err(ActionRejection::Invalid(_))),
         "interest_id = 0 must be rejected (sentinel value)"
@@ -65,7 +65,7 @@ fn start_accepts_valid_open() {
     let action = open_action("wss://relay.example.com", vec![1, 6], 1);
     let mut ctx = ActionContext::default();
     assert!(
-        BrowseRelayModule::start(&mut ctx, action).is_ok(),
+        BrowseRelayModule.start(&mut ctx, action).is_ok(),
         "valid Open must be accepted"
     );
 }
@@ -75,7 +75,7 @@ fn start_accepts_close_unconditionally() {
     let action = BrowseRelayAction::Close { interest_id: 1 };
     let mut ctx = ActionContext::default();
     assert!(
-        BrowseRelayModule::start(&mut ctx, action).is_ok(),
+        BrowseRelayModule.start(&mut ctx, action).is_ok(),
         "Close must always be accepted"
     );
 }

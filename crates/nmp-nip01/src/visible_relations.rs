@@ -56,7 +56,7 @@ impl ActionModule for VisibleNoteRelationsModule {
     const NAMESPACE: &'static str = VISIBLE_NOTE_RELATIONS_NAMESPACE;
     type Action = VisibleNoteRelationsAction;
 
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         let (event_id, consumer_id) = action.parts();
         if !is_hex64(event_id) {
             return Err(ActionRejection::Invalid(
@@ -72,6 +72,7 @@ impl ActionModule for VisibleNoteRelationsModule {
     }
 
     fn execute(
+        &self,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -122,7 +123,7 @@ pub fn visible_note_relations_identity(event_id: &str, consumer_id: &str) -> Sub
 }
 
 pub fn register_visible_note_relation_actions(app: &mut impl ActionRegistrar) {
-    app.register_action::<VisibleNoteRelationsModule>();
+    app.register_action(VisibleNoteRelationsModule);
 }
 
 fn is_hex64(value: &str) -> bool {
@@ -158,10 +159,10 @@ mod tests {
             event_id: EVENT.to_string(),
             consumer_id: "row".to_string(),
         };
-        assert!(VisibleNoteRelationsModule::start(&mut ctx, claim.clone()).is_ok());
+        assert!(VisibleNoteRelationsModule.start(&mut ctx, claim.clone()).is_ok());
 
         let (tx, rx) = std::sync::mpsc::channel();
-        VisibleNoteRelationsModule::execute(claim, "corr", &|cmd| {
+        VisibleNoteRelationsModule.execute(claim, "corr", &|cmd| {
             tx.send(cmd).expect("test channel accepts command");
         })
         .expect("claim action should enqueue");
@@ -177,7 +178,7 @@ mod tests {
             consumer_id: "row".to_string(),
         };
         let (tx, rx) = std::sync::mpsc::channel();
-        VisibleNoteRelationsModule::execute(release, "corr", &|cmd| {
+        VisibleNoteRelationsModule.execute(release, "corr", &|cmd| {
             tx.send(cmd).expect("test channel accepts command");
         })
         .expect("release action should enqueue");

@@ -191,6 +191,7 @@ impl ActionModule for MarmotActionModule {
     /// `ActionRegistry` adapter parses the JSON into `Self::Action` first);
     /// reaching this body means the typed enum is well-formed.
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         _action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -207,7 +208,7 @@ impl ActionModule for MarmotActionModule {
     ///
     /// Returning `false` here would skip the `action_stages` mirror writes
     /// and the host would never see a terminal verdict for a Marmot op.
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — stage transitions are recorded by the `DispatchHostOp` arm in `nmp-core/src/actor/dispatch.rs`, not here; this is the seam declaration so the registry routes the verdict.
+    fn is_async_completing(&self) -> bool { // doctrine-allow: D12 — stage transitions are recorded by the `DispatchHostOp` arm in `nmp-core/src/actor/dispatch.rs`, not here; this is the seam declaration so the registry routes the verdict.
         true
     }
 
@@ -224,6 +225,7 @@ impl ActionModule for MarmotActionModule {
     /// `{"correlation_id":...,"error":...}` (the same post-mint failure
     /// path `PublishModule` uses).
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -303,7 +305,7 @@ mod tests {
             group_id_hex: "aa00bb11".to_string(),
             text: "hello, group".to_string(),
         };
-        MarmotActionModule::execute(action, "corr-test-id", &|cmd| {
+        MarmotActionModule.execute(action, "corr-test-id", &|cmd| {
             captured.borrow_mut().push(cmd);
         })
         .expect("execute should not fail for a valid action");

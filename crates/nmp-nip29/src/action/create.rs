@@ -69,7 +69,7 @@ impl ActionModule for CreatePublicGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.create_public_group";
     type Action = CreatePublicGroupInput;
 
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         validate_group_id(&action.group).map_err(ActionRejection::Invalid)?;
         if action.name.trim().is_empty() {
             return Err(ActionRejection::Invalid(
@@ -86,6 +86,7 @@ impl ActionModule for CreatePublicGroupAction {
     }
 
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -112,7 +113,7 @@ mod tests {
 
     fn run_execute(input: CreatePublicGroupInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        CreatePublicGroupAction::execute(input, "cid-create", &|cmd| {
+        CreatePublicGroupAction.execute(input, "cid-create", &|cmd| {
             captured.borrow_mut().push(cmd);
         })?;
         Ok(captured.into_inner())
@@ -121,7 +122,7 @@ mod tests {
     #[test]
     fn well_formed_passes_validator() {
         let mut ctx = ActionContext::default();
-        assert!(CreatePublicGroupAction::start(&mut ctx, input()).is_ok());
+        assert!(CreatePublicGroupAction.start(&mut ctx, input()).is_ok());
     }
 
     #[test]
@@ -185,7 +186,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            CreatePublicGroupAction::start(&mut ctx, action),
+            CreatePublicGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -198,7 +199,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            CreatePublicGroupAction::start(&mut ctx, action),
+            CreatePublicGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -211,7 +212,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            CreatePublicGroupAction::start(&mut ctx, action),
+            CreatePublicGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }

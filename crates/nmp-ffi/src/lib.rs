@@ -1363,8 +1363,8 @@ impl NmpApp {
     /// Registration MUST happen during host init — before `nmp_app_start`
     /// and before any [`action::nmp_app_dispatch_action`] call — because it
     /// requires `&mut self`.
-    pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
-        self.action_registry.register::<M>();
+    pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
+        self.action_registry.register::<M>(module);
     }
 
     /// Register a typed action module as a **yielding default** (ADR-0049
@@ -1375,8 +1375,9 @@ impl NmpApp {
     /// this path.
     pub fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(
         &mut self,
+        module: M,
     ) -> bool {
-        self.action_registry.register_default::<M>()
+        self.action_registry.register_default::<M>(module)
     }
 
     /// ADR-0049 — read-only handle to the composition ledger for
@@ -1384,6 +1385,22 @@ impl NmpApp {
     #[must_use]
     pub fn composition_ledger(&self) -> &Arc<nmp_core::CompositionLedger> {
         &self.composition_ledger
+    }
+
+    /// Test-support read handle to the app's `ActionRegistry`.
+    ///
+    /// Lets an out-of-crate integration test drive the SAME validation +
+    /// execution path `nmp_app_dispatch_action` takes
+    /// ([`nmp_core::ActionRegistry::start`] / [`nmp_core::ActionRegistry::execute`])
+    /// while capturing the enqueued `ActorCommand` through a supplied `send`
+    /// closure — used by the K2 rung 5.2 two-instance wallet-interop oracle to
+    /// assert each app's wallet module routes to ITS OWN `WalletRuntimeHandle`
+    /// (ADR-0052 D1). Not part of the C-ABI; `test-support`-gated so it carries
+    /// zero weight in production builds.
+    #[cfg(feature = "test-support")]
+    #[must_use]
+    pub fn action_registry_for_test(&self) -> &ActionRegistry {
+        &self.action_registry
     }
 
     /// ADR-0049 Part 2 — record a last-writer-wins **wiring-slot** decision.
@@ -2537,8 +2554,8 @@ impl NmpApp {
 }
 
 impl nmp_core::substrate::ActionRegistrar for NmpApp {
-    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
-        NmpApp::register_action::<M>(self);
+    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
+        NmpApp::register_action::<M>(self, module);
     }
 
     /// ADR-0049 Part 1 — override the trait default so the canonical NMP
@@ -2547,8 +2564,11 @@ impl nmp_core::substrate::ActionRegistrar for NmpApp {
     /// semantics. Without this override the trait's default impl would delegate
     /// to `register_action` (the app path), recording every default as an app
     /// registration and making a repeated `register_defaults` collide.
-    fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) -> bool {
-        NmpApp::register_default_action::<M>(self)
+    fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> bool {
+        NmpApp::register_default_action::<M>(self, module)
     }
 }
 

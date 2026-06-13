@@ -228,7 +228,7 @@ fn start_rejects_relay_rows_that_are_only_indexers() {
     }))
     .expect("indexer is a known native relay-row role");
     assert!(matches!(
-        PublishRelayListAction::start(&mut ctx(), input),
+        PublishRelayListAction.start(&mut ctx(), input),
         Err(ActionRejection::Invalid(_))
     ));
 }
@@ -252,14 +252,14 @@ fn start_accepts_a_non_empty_relay_list() {
     let input = PublishRelayListInput {
         relays: vec![entry("wss://relay.example", RelayMarker::Both)],
     };
-    assert!(PublishRelayListAction::start(&mut ctx(), input).is_ok());
+    assert!(PublishRelayListAction.start(&mut ctx(), input).is_ok());
 }
 
 #[test]
 fn start_rejects_empty_relay_list() {
     let input = PublishRelayListInput { relays: Vec::new() };
     assert!(matches!(
-        PublishRelayListAction::start(&mut ctx(), input),
+        PublishRelayListAction.start(&mut ctx(), input),
         Err(ActionRejection::Invalid(_))
     ));
 }
@@ -276,7 +276,7 @@ fn start_rejects_input_that_produces_zero_canonical_tags() {
         ],
     };
     assert!(matches!(
-        PublishRelayListAction::start(&mut ctx(), input),
+        PublishRelayListAction.start(&mut ctx(), input),
         Err(ActionRejection::Invalid(_))
     ));
 }
@@ -290,7 +290,7 @@ fn execute_emits_kind10002_publish_unsigned_event_command() {
     let input = PublishRelayListInput {
         relays: vec![entry("wss://relay.example", RelayMarker::Both)],
     };
-    PublishRelayListAction::execute(input, "test-cid", &|cmd| {
+    PublishRelayListAction.execute(input, "test-cid", &|cmd| {
         captured.borrow_mut().push(cmd);
     })
     .expect("execute must not fail");

@@ -136,15 +136,17 @@ mod tests {
             type Action = serde_json::Value;
             const NAMESPACE: &'static str = "test.composition.probe";
             fn start(
+                &self,
                 _ctx: &mut ActionContext,
                 _action: Self::Action,
             ) -> Result<(), ActionRejection> {
                 Ok(())
             }
-            fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> {
+            fn preferred_action_id(&self, _action: &Self::Action) -> Option<ActionId> {
                 None
             }
             fn execute(
+                &self,
                 _action: Self::Action,
                 _correlation_id: &str,
                 _send: &dyn Fn(nmp_core::ActorCommand),
@@ -157,7 +159,7 @@ mod tests {
         // SAFETY: exclusive borrow of a valid pointer from nmp_app_new; no
         // other reference aliases it in this test.
         let app_mut = unsafe { &mut *app };
-        let installed = app_mut.register_default_action::<ProbeModule>();
+        let installed = app_mut.register_default_action(ProbeModule);
         assert!(installed, "first default registration installs");
 
         let ptr = nmp_app_composition_report(app);

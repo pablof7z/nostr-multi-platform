@@ -70,7 +70,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// needed (empty fields, hex shape, invariant checks). Modules whose
     /// kernel command handler owns all error toasting can omit this method.
     #[allow(unused_variables)]
-    fn start(ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
     }
 
@@ -85,7 +85,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// Override when the action's natural identity is already a stable,
     /// collision-free string visible to the engine (e.g. the pre-signed
     /// event's `id` for `PublishAction::Publish`).
-    fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> {
+    fn preferred_action_id(&self, _action: &Self::Action) -> Option<ActionId> {
         None
     }
 
@@ -99,7 +99,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// `Accepted`/`Failed`) via `Kernel::record_action_stage`; doctrine-lint
     /// rule **D12** enforces this statically per file.
     #[must_use]
-    fn is_async_completing() -> bool {
+    fn is_async_completing(&self) -> bool {
         false
     }
 
@@ -114,6 +114,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// `register_action_executor`) was deleted; `execute` is now the sole
     /// executor seam for any registered module.
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
@@ -131,7 +132,7 @@ pub trait ActionRegistrar {
     /// (legal) but collides loudly with another app registration of the same
     /// namespace (ADR-0049 Part 1). This is the path app-specific verbs
     /// (Chirp's NIP-29, wallet, …) use.
-    fn register_action<M: ActionModule + 'static>(&mut self);
+    fn register_action<M: ActionModule + 'static>(&mut self, module: M);
 
     /// Register `M` as a **yielding default** under `M::NAMESPACE` — install it
     /// ONLY if the namespace is unclaimed; otherwise yield to the existing
@@ -147,8 +148,8 @@ pub trait ActionRegistrar {
     /// This keeps non-recording / test [`ActionRegistrar`] impls valid without
     /// re-implementing yielding semantics; the real entry-or-insert behaviour
     /// lives in the kernel's `ActionRegistry` override.
-    fn register_default_action<M: ActionModule + 'static>(&mut self) -> bool {
-        self.register_action::<M>();
+    fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
+        self.register_action::<M>(module);
         true
     }
 }

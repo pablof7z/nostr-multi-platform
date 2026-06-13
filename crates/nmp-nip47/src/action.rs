@@ -19,6 +19,7 @@ use nmp_core::ActorCommand;
 use crate::protocol::{
     WalletConnectCommand, WalletDisconnectCommand, WalletPayInvoiceCommand,
 };
+use crate::runtime::WalletRuntimeHandle;
 
 /// User-initiated wallet intents dispatchable through
 /// `nmp_app_dispatch_action` under the `nmp.wallet.pay_invoice` namespace.
@@ -47,7 +48,21 @@ pub enum WalletConnectAction {
 
 /// `ActionModule` for `nmp.wallet.connect`. Replaces the pre-V-38 bespoke
 /// `nmp_app_wallet_connect` FFI symbol's direct ActorCommand construction.
-pub struct WalletConnectModule;
+///
+/// Carries the per-app [`WalletRuntimeHandle`] by value (ADR-0052 D1/D2): the
+/// host clones the handle into this module at registration time, so dispatch
+/// reaches the app's own runtime without a process-global.
+pub struct WalletConnectModule {
+    runtime: WalletRuntimeHandle,
+}
+
+impl WalletConnectModule {
+    /// Construct the module bound to the app's wallet runtime handle.
+    #[must_use]
+    pub fn new(runtime: WalletRuntimeHandle) -> Self {
+        Self { runtime }
+    }
+}
 
 impl ActionModule for WalletConnectModule {
     const NAMESPACE: &'static str = "nmp.wallet.connect";
@@ -63,7 +78,7 @@ impl ActionModule for WalletConnectModule {
     /// Validates:
     /// 1. Non-empty URI
     /// 2. `nostr+walletconnect://` scheme prefix (case-insensitive)
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         match action {
             WalletConnectAction::Connect { uri } => {
                 if uri.is_empty() {
@@ -82,21 +97,16 @@ impl ActionModule for WalletConnectModule {
     }
 
     fn execute(
+        &self,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        let Some(runtime) = crate::runtime::active_wallet_runtime() else {
-            return Err(
-                "wallet runtime not installed — host must call nmp_nip47::install_wallet_runtime"
-                    .to_string(),
-            );
-        };
         match action {
             WalletConnectAction::Connect { uri } => {
                 send(ActorCommand::Protocol(Box::new(WalletConnectCommand {
                     uri,
-                    runtime,
+                    runtime: self.runtime.clone(),
                 })));
                 Ok(())
             }
@@ -110,26 +120,32 @@ pub enum WalletDisconnectAction {
     Disconnect,
 }
 
-/// `ActionModule` for `nmp.wallet.disconnect`.
-pub struct WalletDisconnectModule;
+/// `ActionModule` for `nmp.wallet.disconnect`. Carries the per-app
+/// [`WalletRuntimeHandle`] by value (ADR-0052 D1/D2).
+pub struct WalletDisconnectModule {
+    runtime: WalletRuntimeHandle,
+}
+
+impl WalletDisconnectModule {
+    /// Construct the module bound to the app's wallet runtime handle.
+    #[must_use]
+    pub fn new(runtime: WalletRuntimeHandle) -> Self {
+        Self { runtime }
+    }
+}
 
 impl ActionModule for WalletDisconnectModule {
     const NAMESPACE: &'static str = "nmp.wallet.disconnect";
     type Action = WalletDisconnectAction;
 
     fn execute(
+        &self,
         _action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        let Some(runtime) = crate::runtime::active_wallet_runtime() else {
-            return Err(
-                "wallet runtime not installed — host must call nmp_nip47::install_wallet_runtime"
-                    .to_string(),
-            );
-        };
         send(ActorCommand::Protocol(Box::new(WalletDisconnectCommand {
-            runtime,
+            runtime: self.runtime.clone(),
         })));
         Ok(())
     }
@@ -137,8 +153,19 @@ impl ActionModule for WalletDisconnectModule {
 
 // ── nmp.wallet.pay_invoice ──────────────────────────────────────────────────
 
-/// `ActionModule` implementation for `nmp.wallet.pay_invoice`.
-pub struct WalletPayInvoiceModule;
+/// `ActionModule` implementation for `nmp.wallet.pay_invoice`. Carries the
+/// per-app [`WalletRuntimeHandle`] by value (ADR-0052 D1/D2).
+pub struct WalletPayInvoiceModule {
+    runtime: WalletRuntimeHandle,
+}
+
+impl WalletPayInvoiceModule {
+    /// Construct the module bound to the app's wallet runtime handle.
+    #[must_use]
+    pub fn new(runtime: WalletRuntimeHandle) -> Self {
+        Self { runtime }
+    }
+}
 
 impl ActionModule for WalletPayInvoiceModule {
     const NAMESPACE: &'static str = "nmp.wallet.pay_invoice";
@@ -147,6 +174,7 @@ impl ActionModule for WalletPayInvoiceModule {
 
     /// Validate the action shape. `bolt11` must be non-empty.
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -162,7 +190,7 @@ impl ActionModule for WalletPayInvoiceModule {
         }
     }
 
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (`runtime.rs` `record_action_success`/`record_action_failure`); covered by runtime tests
+    fn is_async_completing(&self) -> bool { // doctrine-allow: D12 — recording sites are cross-file (`runtime.rs` `record_action_success`/`record_action_failure`); covered by runtime tests
         true
     }
 
@@ -173,23 +201,18 @@ impl ActionModule for WalletPayInvoiceModule {
     /// variant; V-38 deleted that variant — the open `Protocol` seam is
     /// the substrate-generic replacement.
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        let Some(runtime) = crate::runtime::active_wallet_runtime() else {
-            return Err(
-                "wallet runtime not installed — host must call nmp_nip47::install_wallet_runtime"
-                    .to_string(),
-            );
-        };
         match action {
             WalletAction::PayInvoice { bolt11, amount_msats } => {
                 let cmd = WalletPayInvoiceCommand {
                     bolt11,
                     amount_msats,
                     correlation_id: Some(correlation_id.to_string()),
-                    runtime,
+                    runtime: self.runtime.clone(),
                 };
                 send(ActorCommand::Protocol(Box::new(cmd)));
                 Ok(())
@@ -201,9 +224,18 @@ impl ActionModule for WalletPayInvoiceModule {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::new_wallet_runtime_handle;
 
     fn ctx() -> ActionContext {
         ActionContext::default()
+    }
+
+    fn connect_module() -> WalletConnectModule {
+        WalletConnectModule::new(new_wallet_runtime_handle())
+    }
+
+    fn pay_module() -> WalletPayInvoiceModule {
+        WalletPayInvoiceModule::new(new_wallet_runtime_handle())
     }
 
     // ── WalletConnectModule tests ─────────────────────────────────────────
@@ -213,7 +245,8 @@ mod tests {
         let action = WalletConnectAction::Connect {
             uri: "nostr+walletconnect://abc123?relay=wss://relay.example.com&secret=xyz".to_string(),
         };
-        WalletConnectModule::start(&mut ctx(), action)
+        connect_module()
+            .start(&mut ctx(), action)
             .expect("valid nostr+walletconnect:// URI must be accepted");
     }
 
@@ -223,7 +256,8 @@ mod tests {
         let action = WalletConnectAction::Connect {
             uri: "NOSTR+WALLETCONNECT://abc123?relay=wss://relay.example.com".to_string(),
         };
-        WalletConnectModule::start(&mut ctx(), action)
+        connect_module()
+            .start(&mut ctx(), action)
             .expect("upper-case scheme variant must be accepted");
     }
 
@@ -232,7 +266,8 @@ mod tests {
         let action = WalletConnectAction::Connect {
             uri: String::new(),
         };
-        let err = WalletConnectModule::start(&mut ctx(), action)
+        let err = connect_module()
+            .start(&mut ctx(), action)
             .expect_err("empty URI must be rejected");
         match err {
             ActionRejection::Invalid(msg) => {
@@ -252,7 +287,8 @@ mod tests {
             "   ",
         ] {
             let action = WalletConnectAction::Connect { uri: bad.to_string() };
-            let err = WalletConnectModule::start(&mut ctx(), action)
+            let err = connect_module()
+                .start(&mut ctx(), action)
                 .expect_err(&format!("bad URI {bad:?} must be rejected"));
             match err {
                 ActionRejection::Invalid(msg) => {
@@ -274,7 +310,8 @@ mod tests {
             bolt11: "lnbc100n1p0fakeinvoice".to_string(),
             amount_msats: None,
         };
-        WalletPayInvoiceModule::start(&mut ctx(), action)
+        pay_module()
+            .start(&mut ctx(), action)
             .expect("non-empty bolt11 must be accepted");
     }
 
@@ -284,7 +321,8 @@ mod tests {
             bolt11: "lnbc1p0amountless".to_string(),
             amount_msats: Some(21_000),
         };
-        WalletPayInvoiceModule::start(&mut ctx(), action)
+        pay_module()
+            .start(&mut ctx(), action)
             .expect("explicit amount must be accepted");
     }
 
@@ -294,7 +332,8 @@ mod tests {
             bolt11: String::new(),
             amount_msats: None,
         };
-        let err = WalletPayInvoiceModule::start(&mut ctx(), action)
+        let err = pay_module()
+            .start(&mut ctx(), action)
             .expect_err("empty bolt11 must be rejected");
         match err {
             ActionRejection::Invalid(msg) => {
@@ -310,7 +349,7 @@ mod tests {
     #[test]
     fn is_async_completing_is_true() {
         assert!(
-            WalletPayInvoiceModule::is_async_completing(),
+            pay_module().is_async_completing(),
             "pay_invoice settles asynchronously via the kind:23195 response"
         );
     }
@@ -335,19 +374,16 @@ mod tests {
     }
 
     /// `execute` emits exactly one `Protocol`-wrapped `WalletPayInvoiceCommand`
-    /// carrying the registry-minted `correlation_id`.
-    ///
-    /// Requires the process-wide runtime handle to be installed first. The
-    /// `OnceLock` means this test races with sibling tests in the same
-    /// process — guarded by `install_wallet_runtime`'s `Err`-on-double-set
-    /// semantic, so we tolerate a "already installed" rejection here.
+    /// carrying the registry-minted `correlation_id` AND the module's OWN
+    /// runtime handle (ADR-0052 D1/D2 — no process-global, so this test is
+    /// fully self-contained and never races siblings).
     #[test]
     fn execute_emits_protocol_wrapped_pay_invoice_command() {
         use std::cell::RefCell;
+        use std::sync::Arc;
 
-        let handle = crate::runtime::new_wallet_runtime_handle();
-        // OK if a sibling test installed first — only the shape matters.
-        let _ = crate::runtime::install_wallet_runtime(handle);
+        let handle = new_wallet_runtime_handle();
+        let module = WalletPayInvoiceModule::new(Arc::clone(&handle));
 
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
         let action = WalletAction::PayInvoice {
@@ -356,18 +392,25 @@ mod tests {
         };
         let minted_correlation_id = "be".repeat(16);
 
-        WalletPayInvoiceModule::execute(action, &minted_correlation_id, &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
-        .expect("execute must succeed");
+        module
+            .execute(action, &minted_correlation_id, &|cmd| {
+                captured.borrow_mut().push(cmd);
+            })
+            .expect("execute must succeed");
 
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "executor must emit exactly one ActorCommand");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::Protocol(_) => {
-                // Body content is verified through the runtime; here we only
-                // assert the variant shape so the kernel's NIP-noun count
-                // stays zero.
+            ActorCommand::Protocol(boxed) => {
+                let cmd = boxed
+                    .as_any()
+                    .downcast_ref::<WalletPayInvoiceCommand>()
+                    .expect("must be a WalletPayInvoiceCommand");
+                assert!(
+                    Arc::ptr_eq(&cmd.runtime, &handle),
+                    "command must carry the module's OWN handle, not a shared global"
+                );
+                assert_eq!(cmd.correlation_id.as_deref(), Some(minted_correlation_id.as_str()));
             }
             other => panic!("expected ActorCommand::Protocol, got {other:?}"),
         }

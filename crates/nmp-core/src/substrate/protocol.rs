@@ -637,6 +637,20 @@ pub trait ProtocolCommand: Send + fmt::Debug + 'static {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError>;
+
+    /// Downcast hook for instance-scoping verification (ADR-0052 D1/D2).
+    ///
+    /// A `ProtocolCommand` captures its dependencies by value at composition
+    /// time (e.g. a NIP-47 `WalletRuntimeHandle`). To assert — in a test —
+    /// that a dispatched command carries the *correct per-app* dependency
+    /// rather than a shared process-global, the boxed trait object must be
+    /// downcastable to its concrete type. This is the standard object-safe
+    /// `Any` upcast; production dispatch never calls it.
+    ///
+    /// Implementors return `self`; the one-line body cannot be a trait
+    /// default because coercing `&Self` to `&dyn Any` requires `Self: Sized`,
+    /// which a trait-object default body does not have.
+    fn as_any(&self) -> &dyn core::any::Any;
 }
 
 #[path = "protocol/builders.rs"]

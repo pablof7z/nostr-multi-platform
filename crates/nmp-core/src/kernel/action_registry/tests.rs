@@ -447,10 +447,11 @@ fn panicking_validator_is_rejected_not_unwound() {
     impl ActionModule for PanickingStartModule {
         const NAMESPACE: &'static str = "host.boom_start"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
-        fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
+        fn start(&self, _ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
             panic!("buggy module validator");
         }
         fn execute(
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -460,7 +461,7 @@ fn panicking_validator_is_rejected_not_unwound() {
     }
 
     let mut registry = ActionRegistry::new();
-    registry.register::<PanickingStartModule>();
+    registry.register(PanickingStartModule);
     let err = registry
         .start(&mut ctx(), 1_700_000_000_000, "host.boom_start", "null")
         .expect_err("a panicking validator must be rejected, not unwound");
@@ -489,10 +490,11 @@ fn panicking_executor_returns_err_not_unwound() {
     impl ActionModule for PanickingExecuteModule {
         const NAMESPACE: &'static str = "host.boom"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
-        fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
+        fn start(&self, _ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
             Ok(())
         }
         fn execute(
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -502,7 +504,7 @@ fn panicking_executor_returns_err_not_unwound() {
     }
 
     let mut registry = ActionRegistry::new();
-    registry.register::<PanickingExecuteModule>();
+    registry.register(PanickingExecuteModule);
     let err = registry
         .execute("host.boom", "null", "corr-id", &|_cmd| {})
         .expect_err("a panicking executor must return Err, not unwind");
@@ -576,6 +578,7 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: &'static str = "nmp.test.adr0049.ns";
         fn execute(
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -589,6 +592,7 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: &'static str = "nmp.test.adr0049.ns";
         fn execute(
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -604,6 +608,7 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: &'static str = "nmp.test.adr0049.other";
         fn execute(
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -616,10 +621,10 @@ mod adr_0049_yield {
     fn default_then_app_app_wins() {
         let mut registry = ActionRegistry::new();
         assert!(
-            registry.register_default::<DefaultModule>(),
+            registry.register_default(DefaultModule),
             "first default install returns true"
         );
-        registry.register::<AppModule>();
+        registry.register(AppModule);
         assert!(registry.contains("nmp.test.adr0049.ns"));
     }
 
@@ -627,8 +632,8 @@ mod adr_0049_yield {
     fn app_then_default_app_wins() {
         // App registers first; the later default must YIELD.
         let mut registry = ActionRegistry::new();
-        registry.register::<AppModule>();
-        let installed = registry.register_default::<DefaultModule>();
+        registry.register(AppModule);
+        let installed = registry.register_default(DefaultModule);
         assert!(
             !installed,
             "default must yield (return false) when the namespace is already claimed by an app"
@@ -639,9 +644,9 @@ mod adr_0049_yield {
     #[test]
     fn default_then_default_first_default_wins() {
         let mut registry = ActionRegistry::new();
-        assert!(registry.register_default::<DefaultModule>());
+        assert!(registry.register_default(DefaultModule));
         assert!(
-            !registry.register_default::<AppModule>(),
+            !registry.register_default(AppModule),
             "a second default under the same namespace yields"
         );
     }
@@ -651,8 +656,8 @@ mod adr_0049_yield {
         let ledger = Arc::new(CompositionLedger::new());
         let mut registry = ActionRegistry::new().with_composition_ledger(Arc::clone(&ledger));
 
-        registry.register::<AppModule>();
-        assert!(!registry.register_default::<DefaultModule>());
+        registry.register(AppModule);
+        assert!(!registry.register_default(DefaultModule));
 
         let records = ledger.records();
         assert_eq!(records.len(), 2);
@@ -680,8 +685,8 @@ mod adr_0049_yield {
         let ledger = Arc::new(CompositionLedger::new());
         let mut registry = ActionRegistry::new().with_composition_ledger(Arc::clone(&ledger));
 
-        registry.register_default::<DefaultModule>();
-        registry.register::<AppModule>();
+        registry.register_default(DefaultModule);
+        registry.register(AppModule);
 
         let records = ledger.records();
         assert_eq!(records.len(), 2);
@@ -701,8 +706,8 @@ mod adr_0049_yield {
     fn distinct_namespaces_both_install_no_collision() {
         let ledger = Arc::new(CompositionLedger::new());
         let mut registry = ActionRegistry::new().with_composition_ledger(Arc::clone(&ledger));
-        registry.register::<AppModule>();
-        registry.register::<OtherAppModule>();
+        registry.register(AppModule);
+        registry.register(OtherAppModule);
         let records = ledger.records();
         assert_eq!(records.len(), 2);
         assert!(records
@@ -721,8 +726,8 @@ mod adr_0049_yield {
     #[should_panic(expected = "composition collision")]
     fn app_over_app_collision_panics_in_dev() {
         let mut registry = ActionRegistry::new();
-        registry.register::<AppModule>();
-        registry.register::<OtherAppModuleSameNs>();
+        registry.register(AppModule);
+        registry.register(OtherAppModuleSameNs);
     }
 
     #[cfg(debug_assertions)]
@@ -732,6 +737,7 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: &'static str = "nmp.test.adr0049.ns";
         fn execute(
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),

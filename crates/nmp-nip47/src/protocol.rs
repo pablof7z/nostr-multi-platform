@@ -81,6 +81,10 @@ impl ProtocolCommand for WalletConnectCommand {
             runtime_wallet_connect(rt, k, &uri)
         })
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }
 
 impl ProtocolCommand for WalletDisconnectCommand {
@@ -92,6 +96,10 @@ impl ProtocolCommand for WalletDisconnectCommand {
         with_runtime_and_kernel(&runtime, ctx, "wallet_disconnect", |rt, k| {
             runtime_wallet_disconnect(rt, k)
         })
+    }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
     }
 }
 
@@ -109,6 +117,10 @@ impl ProtocolCommand for WalletPayInvoiceCommand {
         with_runtime_and_kernel(&runtime, ctx, "wallet_pay_invoice", |rt, k| {
             runtime_wallet_pay_invoice(rt, k, &bolt11, amount_msats, correlation_id.clone())
         })
+    }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
     }
 }
 

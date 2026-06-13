@@ -44,6 +44,7 @@ impl ActionModule for ReactInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.react_in_group";
     type Action = ReactInGroupInput;
     fn start(
+        &self,
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
@@ -60,6 +61,7 @@ impl ActionModule for ReactInGroupAction {
         Ok(())
     }
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -87,7 +89,7 @@ mod tests {
     #[test]
     fn react_well_formed_passes_validator() {
         let mut ctx = ActionContext::default();
-        assert!(ReactInGroupAction::start(&mut ctx, react_input()).is_ok());
+        assert!(ReactInGroupAction.start(&mut ctx, react_input()).is_ok());
     }
 
     #[test]
@@ -98,7 +100,7 @@ mod tests {
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction::start(&mut ctx, action),
+            ReactInGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -111,7 +113,7 @@ mod tests {
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction::start(&mut ctx, action),
+            ReactInGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -124,7 +126,7 @@ mod tests {
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction::start(&mut ctx, action),
+            ReactInGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -137,7 +139,7 @@ mod tests {
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction::start(&mut ctx, action),
+            ReactInGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -145,7 +147,7 @@ mod tests {
     #[test]
     fn react_execute_emits_host_pinned_kind7_publish_command() {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        ReactInGroupAction::execute(react_input(), "react-cid", &|cmd| {
+        ReactInGroupAction.execute(react_input(), "react-cid", &|cmd| {
             captured.borrow_mut().push(cmd);
         })
         .expect("well-formed input executes");

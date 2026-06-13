@@ -201,6 +201,10 @@ impl ProtocolCommand for SendGiftWrappedDmCommand {
 
         Ok(())
     }
+
+    fn as_any(&self) -> &dyn core::any::Any {
+        self
+    }
 }
 
 // ──────────────────────────────────────────────────────────────────────

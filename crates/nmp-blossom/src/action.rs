@@ -55,7 +55,7 @@ impl ActionModule for UploadAction {
     /// - empty `file_path`
     /// - empty `servers`
     /// - any server that is not a valid `http(s)://` URL
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.file_path.trim().is_empty() {
             return Err(ActionRejection::Invalid(
                 "blossom upload requires a non-empty file_path".into(),
@@ -84,13 +84,14 @@ impl ActionModule for UploadAction {
     /// Settles asynchronously — `execute` enqueues the protocol command and
     /// returns; the worker posts the terminal (`RecordActionSuccess` with the
     /// descriptor, or `RecordActionFailure`) against `correlation_id`.
-    fn is_async_completing() -> bool {
+    fn is_async_completing(&self) -> bool {
         true
     }
 
     /// Enqueue `ActorCommand::Protocol(BlossomUploadCommand{...})` carrying the
     /// validated upload intent. Returns immediately (D8).
     fn execute(
+        &self,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -142,7 +143,7 @@ mod tests {
 
     fn run_execute(input: UploadInput) -> Vec<ActorCommand> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        UploadAction::execute(input, "cid-blossom", &|cmd| captured.borrow_mut().push(cmd))
+        UploadAction.execute(input, "cid-blossom", &|cmd| captured.borrow_mut().push(cmd))
             .expect("execute succeeds");
         captured.into_inner()
     }
@@ -154,12 +155,12 @@ mod tests {
 
     #[test]
     fn is_async_completing_is_true() {
-        assert!(UploadAction::is_async_completing());
+        assert!(UploadAction.is_async_completing());
     }
 
     #[test]
     fn start_accepts_well_formed_input() {
-        assert!(UploadAction::start(&mut ctx(), well_formed()).is_ok());
+        assert!(UploadAction.start(&mut ctx(), well_formed()).is_ok());
     }
 
     #[test]
@@ -169,7 +170,7 @@ mod tests {
             ..well_formed()
         };
         assert!(matches!(
-            UploadAction::start(&mut ctx(), input),
+            UploadAction.start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -181,7 +182,7 @@ mod tests {
             ..well_formed()
         };
         assert!(matches!(
-            UploadAction::start(&mut ctx(), input),
+            UploadAction.start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -193,7 +194,7 @@ mod tests {
             ..well_formed()
         };
         assert!(matches!(
-            UploadAction::start(&mut ctx(), input),
+            UploadAction.start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
     }
