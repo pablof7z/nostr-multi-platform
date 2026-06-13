@@ -88,7 +88,7 @@ jobs:
       - name: Build wasm package for web/chirp
         env:
           CC_wasm32_unknown_unknown: clang
-        run: wasm-pack build --target web crates/nmp-wasm --out-dir ../../web/chirp/public/nmp-wasm
+        run: wasm-pack build --target web apps/chirp/nmp-app-chirp-web --out-dir ../../../web/chirp/public/nmp-wasm
 
       - name: Install Node
         uses: actions/setup-node@v4

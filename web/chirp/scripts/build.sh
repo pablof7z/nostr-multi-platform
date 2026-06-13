@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the nmp-wasm package, then build the Chirp web app.
+# Build the nmp-app-chirp-web package, then build the Chirp web app.
 #
 # Used by the Vercel deploy build command (see vercel.json) and available
 # locally as an alternative to running the two steps manually.
@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEB_CHIRP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$WEB_CHIRP_DIR/../.." && pwd)"
-CRATE_DIR="$REPO_ROOT/crates/nmp-wasm"
+CRATE_DIR="$REPO_ROOT/apps/chirp/nmp-app-chirp-web"
 OUT_DIR="$WEB_CHIRP_DIR/public/nmp-wasm"
 
 # $HOME/.cargo/bin may not exist if cargo was installed system-wide (e.g.
@@ -51,7 +51,7 @@ rustup target add wasm32-unknown-unknown
 
 # ---------------------------------------------------------------------------
 # 2. Ensure wasm-pack 0.13.1
-#    Pinned to match the wasm-bindgen version in crates/nmp-wasm/Cargo.toml.
+#    Pinned to match the wasm-bindgen version in apps/chirp/nmp-app-chirp-web/Cargo.toml.
 #    Use the pre-built binary when possible (saves ~1-2 min vs cargo-install).
 # ---------------------------------------------------------------------------
 if ! command -v wasm-pack &>/dev/null; then
@@ -72,7 +72,7 @@ fi
 # ---------------------------------------------------------------------------
 # 3. Build the wasm package
 # ---------------------------------------------------------------------------
-echo "[build] Building nmp-wasm (target: web, out: $OUT_DIR)..."
+echo "[build] Building nmp-app-chirp-web (target: web, out: $OUT_DIR)..."
 CC_wasm32_unknown_unknown=clang wasm-pack build \
     --target web \
     "$CRATE_DIR" \

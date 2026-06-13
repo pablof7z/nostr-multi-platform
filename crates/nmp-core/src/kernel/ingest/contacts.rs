@@ -149,12 +149,16 @@ impl Kernel {
         //
         // We reconstruct each interest's shape directly from `(pubkey, kinds)`
         // rather than looking it up via the registry to keep this O(n) instead
-        // of O(n²). The `follow_feed_interest` constructor is deterministic and
-        // the completion key uses `InterestRegistry::legacy_key` — the SAME
-        // derivation the registry mints for `push`-registered interests
-        // (single source of truth; no hand-copied key recipe).
+        // of O(n²). The `follow_feed_interest` constructor is deterministic.
+        //
+        // Route every author through the SHARED enqueue helper
+        // (`enqueue_interest_cache_serve_deferred`) so the completion-key
+        // derivation is the one centralised recipe — no hand-copied
+        // `legacy_key` → `completion_key_for_interest` block to drift (PR #1237
+        // review F3). `_deferred` enqueues WITHOUT draining; we drain ONCE after
+        // the whole batch so a 300–500-follow cold start runs one synchronous
+        // chunk, not one per author.
         {
-            use crate::kernel::cache_serve::completion_key_for_interest;
             use crate::subs::InterestRegistry;
             // Collect the pubkey list: follows + active user.
             let mut cache_serve_authors: Vec<String> = follows.to_vec();
@@ -164,8 +168,7 @@ impl Kernel {
             for pubkey in cache_serve_authors {
                 let interest = follow_feed_interest(&pubkey, &kinds);
                 let sub_key = InterestRegistry::legacy_key(&interest.id);
-                let completion_key = completion_key_for_interest(&sub_key, &interest.shape);
-                self.enqueue_cache_serve(&interest.shape, completion_key);
+                self.enqueue_interest_cache_serve_deferred(&sub_key, &interest.shape);
             }
             self.run_cache_serve_step();
         }

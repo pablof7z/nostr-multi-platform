@@ -25,11 +25,12 @@
 //! # Scope
 //!
 //! This module wires **`PublishNote` (kind:1)** including NIP-10 threaded
-//! replies. `React` / `Follow` / `Unfollow` remain scoped to an honest
-//! `publish_path_not_wired_for_kind` error — each kind has tag-construction
-//! subtleties the native `react` / `follow` commands own (e.g. NIP-25 `k`
-//! tag derivation, kind:3 follow-set merging) that land kind-by-kind so the
-//! wasm path does not silently drift from native.
+//! replies, and **`React` (kind:7)** via
+//! [`nmp_core::KernelReducer::build_reaction_draft`]. `Follow` / `Unfollow`
+//! remain scoped to an honest `publish_path_not_wired_for_kind` error —
+//! kind:3 follow-set editing requires a `try_current_follows` kernel seam to
+//! distinguish "kind:3 not yet loaded" from "zero follows", to avoid silently
+//! destroying a user's existing contact list (PR-6b).
 //!
 //! Reply tags are resolved through [`nmp_core::KernelReducer::build_reply_tags`]
 //! before the sign `.await` so no `RefCell` borrow ever lives across an async
@@ -46,7 +47,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
-use nmp_core::{KernelReducer, OutboundMessage};
+use nmp_core::KernelReducer;
 #[cfg(target_arch = "wasm32")]
 use nmp_signers::Signer;
 
@@ -73,7 +74,7 @@ pub(crate) fn write_path_not_wired_for_kind_reason(action_type: &str) -> String 
     format!(
         "publish_path_not_wired_for_kind: action {action_type:?} is not yet wired through the \
          wasm publish path. V-01 Stage 3c first PR wired `nmp.publish` (kind:1 notes) only — \
-         React / Follow / Unfollow follow up. See issue #1007."
+         Follow / Unfollow follow up. See issue #1007."
     )
 }
 
@@ -91,6 +92,20 @@ pub(crate) fn reply_target_unknown_reason(reply_to_id: &str) -> String {
         "reply_target_unknown: event {reply_to_id:?} is not a repliable note in the \
          kernel's local store (absent or not kind:1). The parent must be a kind:1 \
          note in the local feed before a reply can be composed."
+    )
+}
+
+/// Stable error-code prefix returned when the `target_event_id` supplied to
+/// `React` is not a valid 64-char hex event id.
+///
+/// `build_reaction_draft` returns `None` for this case; the wasm path fails
+/// closed — silently ignoring the reaction would publish an ill-formed
+/// kind:7 event. The prefix is pinned by the test below.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) fn react_target_invalid_reason(target_event_id: &str) -> String {
+    format!(
+        "react_target_invalid: target event id {target_event_id:?} is not a valid \
+         64-char hex event id."
     )
 }
 
@@ -118,8 +133,9 @@ pub(crate) fn unsupported_signer_backend_reason(backend: &SignerBackend) -> Stri
 /// V-01 Stage 3c — async publish path executed inside a `js_sys::Promise`.
 ///
 /// Lifecycle:
-/// 1. Validate the action variant. Non-`PublishNote` variants return an
-///    honest `publish_path_not_wired_for_kind` failure inline (no sign call).
+/// 1. Validate the action variant. `React` (kind:7) and `PublishNote` (kind:1)
+///    are wired; `Follow` / `Unfollow` and all other variants return an honest
+///    `publish_path_not_wired_for_kind` failure inline (no sign call).
 /// 2. Validate the installed signer's backend. Non-`Nip07` backends return
 ///    an `unsupported_signer_backend_for_writes` failure inline.
 /// 3. Resolve NIP-10 reply tags (if `reply_to_id` is set) via
@@ -163,8 +179,90 @@ pub(crate) async fn publish_app_action(
     use nmp_core::substrate::UnsignedEvent;
     use nmp_signers::sign_event_via_extension;
 
-    // Step 1 — variant gate. Only PublishNote is wired in this PR.
+    // Step 1 — variant gate. React (kind:7) and PublishNote (kind:1) are
+    // wired; Follow / Unfollow remain fail-closed (PR-6b).
     let (action_type, _payload) = action.clone().into_dispatch_parts();
+
+    // Step 1a — React branch. Extract data by reference before `action` is
+    // consumed by the Note match below. The borrow of `action` is released at
+    // the end of the `if let` block; any path that enters the block returns,
+    // so `action` is available for the Note match only when action is NOT React.
+    if let AppAction::React {
+        target_event_id,
+        reaction,
+    } = &action
+    {
+        let target_event_id = target_event_id.clone();
+        let reaction = reaction.clone();
+        // action borrow ends here (clones are owned values).
+
+        // Signer backend gate — same constraint as Note.
+        let backend = signer.backend();
+        if !matches!(backend, SignerBackend::Nip07) {
+            return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: action_type,
+                correlation_id,
+                reason: unsupported_signer_backend_reason(&backend),
+            });
+        }
+        let cached_pubkey = signer.pubkey();
+
+        // Build NIP-25 tags + normalised content via the shared kernel seam.
+        // Synchronous read-cache lookup — borrow dropped before the sign
+        // await (RefCell borrow discipline, D4/D8). Returns None only for
+        // invalid hex — author absence degrades to e-tag-only (D6).
+        let (tags, content) =
+            match reducer.borrow().build_reaction_draft(&target_event_id, &reaction) {
+                Some(draft) => draft,
+                None => {
+                    return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                        capability: action_type,
+                        correlation_id,
+                        reason: react_target_invalid_reason(&target_event_id),
+                    });
+                }
+            };
+
+        let unsigned = UnsignedEvent {
+            pubkey: cached_pubkey.to_hex(),
+            kind: 7,
+            tags,
+            content,
+            created_at: now_secs,
+        };
+
+        // Await the extension — only await in this path; reducer is not
+        // borrowed across it.
+        let signed = match sign_event_via_extension(cached_pubkey, unsigned).await {
+            Ok(s) => s,
+            Err(error) => {
+                return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                    capability: action_type,
+                    correlation_id,
+                    reason: format!("nip07_sign_failed: {error}"),
+                });
+            }
+        };
+
+        // Publish + fan-out. Thread `correlation_id` into the engine so
+        // per-relay terminal verdicts land in `action_results` under the
+        // dispatch id the JS host is waiting on — same contract as the Note
+        // branch below (Step 5). Without this the engine keys on the signed
+        // event id the host never sees, breaking the action-result promise.
+        let outbound = {
+            let mut r = reducer.borrow_mut();
+            r.publish_signed_event(&signed, &[], Some(correlation_id.clone()))
+        };
+        crate::relay_pool::fan_out_outbound(&drivers, &outbound);
+        push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+
+        return WorkerEvent::ActionAccepted {
+            action_type,
+            correlation_id,
+        };
+    }
+
+    // Step 1b — Note branch. `action` was not React; destructure it here.
     let (content, reply_to_id) = match action {
         AppAction::PublishNote {
             content,
@@ -282,9 +380,20 @@ mod tests {
 
     #[test]
     fn write_path_not_wired_for_kind_reason_has_stable_prefix() {
-        let reason = write_path_not_wired_for_kind_reason("nmp.nip25.react");
+        // React (nmp.nip25.react) is now wired; use a genuinely-unwired action.
+        let reason = write_path_not_wired_for_kind_reason("nmp.follow");
         assert!(reason.starts_with("publish_path_not_wired_for_kind"));
-        assert!(reason.contains("nmp.nip25.react"));
+        assert!(reason.contains("nmp.follow"));
+    }
+
+    #[test]
+    fn react_target_invalid_reason_has_stable_prefix() {
+        let reason = react_target_invalid_reason("not-hex");
+        assert!(
+            reason.starts_with("react_target_invalid:"),
+            "prefix must be 'react_target_invalid:'; got: {reason:?}"
+        );
+        assert!(reason.contains("not-hex"), "reason must echo the event id");
     }
 
     #[test]

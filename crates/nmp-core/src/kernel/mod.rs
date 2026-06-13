@@ -91,6 +91,10 @@ mod eose_ok_notice_ingest_tests;
 #[cfg(test)]
 mod event_claim_tests;
 #[cfg(test)]
+mod interest_install_cache_serve_support;
+#[cfg(test)]
+mod interest_install_cache_serve_tests;
+#[cfg(test)]
 mod resolved_profiles_tests;
 // V-59 rung 1 (#4) — `event_claim_released` ring projection + the
 // in-process `EventClaimReleasedObserver` registration. `pub(crate)` so the
@@ -2125,7 +2129,10 @@ impl Kernel {
         // #1090 Stage 1 — derive the ephemeral store-tier pin set (see
         // `derive_store_pin_set`) and thread it into Phase-2 LRU eviction.
         let pins = self.derive_store_pin_set();
-        match self.store.gc_step_with_pins(crate::store::GcBudget::production(), now_secs, &pins) {
+        match self
+            .store
+            .gc_step_with_pins(crate::store::GcBudget::production(), now_secs, &pins)
+        {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());
@@ -2507,28 +2514,11 @@ impl Kernel {
         identity: crate::subs::SubIdentity,
         interest: crate::planner::LogicalInterest,
     ) -> bool {
-        // ADR-0045 E1: capture the shape and key before moving `interest` into
-        // the registry (borrow checker: ensure_sub takes ownership of interest).
-        let shape_for_serve = interest.shape.clone();
-        let key_for_serve = identity.key;
-
-        let newly_installed = self.lifecycle.registry_mut().ensure_sub(identity, interest);
-        if newly_installed {
-            self.lifecycle
-                .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
-                    reason: crate::subs::InvalidateReason::External("open-interest".to_string()),
-                });
-            // ADR-0045 E1 — queue a store-cache serve for this shape, then
-            // drain ONE aggregate-budget chunk synchronously so the next
-            // snapshot carries store data (D1). Anything beyond the per-tick
-            // budget stays queued and continues on the actor tick (§5
-            // chunked continuation).
-            let completion_key =
-                cache_serve::completion_key_for_interest(&key_for_serve, &shape_for_serve);
-            self.enqueue_cache_serve(&shape_for_serve, completion_key);
-            self.run_cache_serve_step();
-        }
-        newly_installed
+        // ADR-0045 E1 — delegate to the single ensure-install front door so the
+        // "register-if-absent → trigger + store-serve on newly-installed" recipe
+        // lives in exactly one place (shared with the EnsureInterest dispatch
+        // arm and the open_uri resolver).
+        self.ensure_interest_and_serve(identity, interest, "open-interest")
     }
 
     /// M2 (ADR-0042) — detach one owner from a generic feed interest and, when
@@ -2639,8 +2629,15 @@ impl Kernel {
     #[cfg(test)]
     pub(crate) fn seed_pre_kind3_buffer_for_test(&mut self, event_id: impl Into<String>) {
         let id = event_id.into();
-        let e = NostrEvent { id: id.clone(), pubkey: "d".repeat(64), created_at: 0,
-            kind: 1, tags: vec![], content: String::new(), sig: "s".repeat(128) };
+        let e = NostrEvent {
+            id: id.clone(),
+            pubkey: "d".repeat(64),
+            created_at: 0,
+            kind: 1,
+            tags: vec![],
+            content: String::new(),
+            sig: "s".repeat(128),
+        };
         self.pre_kind3_buffer.insert(id, (e, String::new()));
     }
 

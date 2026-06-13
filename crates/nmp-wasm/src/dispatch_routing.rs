@@ -130,8 +130,8 @@ pub(crate) fn write_path_unavailable_reason(signer: Option<&Arc<dyn Signer>>) ->
      NIP-07 sign step requires awaiting `window.nostr.signEvent(...)`, \
      which the wasm thread cannot block on. Use \
      `NmpWasmRuntime.dispatch_app_action_async(requestJson)` (returns a \
-     Promise) instead. V-01 Stage 3c wired PublishNote (kind:1); React / \
-     Follow / Unfollow follow up."
+     Promise) instead. V-01 Stage 3c wired PublishNote (kind:1) and React \
+     (kind:7); Follow / Unfollow follow up."
         .to_string()
 }
 
