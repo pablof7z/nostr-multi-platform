@@ -2114,8 +2114,26 @@ impl NmpApp {
         self.tx.clone()
     }
 
-    /// Add a signer through the actor-owned identity reducer — the unified entry
-    /// point that replaced `sign_in_nsec` / `sign_in_bunker` / `add_remote_signer`.
+    /// Add a signer through the actor-owned identity reducer — the **single
+    /// documented entry point** for all sign-in paths.
+    ///
+    /// This method replaced the legacy `sign_in_nsec` / `sign_in_bunker` /
+    /// `add_remote_signer` surface. All sign-in paths ultimately funnel here:
+    ///
+    /// | Caller | Source | Notes |
+    /// |--------|--------|-------|
+    /// | `nmp_app_signin_nsec` (C-ABI) | `LocalNsec` | Shells without Marmot; `make_active` is caller-controlled |
+    /// | `nmp_app_signin_bunker` (C-ABI) | `BunkerUri` | NIP-46 remote signer; `make_active` stashed across handshake |
+    /// | `nmp-marmot::identity::sign_in_nsec_with_keyring_account` | `LocalNsec` | Persists secret to keyring first, then calls here |
+    /// | `nmp-marmot::identity::restore_identity_with_keyring_account` | `LocalNsec` | Recalls secret from keyring, then calls here |
+    /// | `nmp_app_signin_nip55` (C-ABI) | `RemoteHandle` | NIP-55 external signer; resolves via `Nip55Connect` |
+    ///
+    /// **Keyring split:** keyring operations (persist / recall / forget) are an
+    /// app-layer concern owned by `nmp-marmot`. Shells that do not embed Marmot
+    /// use `nmp_app_signin_nsec` and manage keyring storage themselves (or skip
+    /// it). `add_signer` itself is keyring-agnostic — it only enqueues the
+    /// `ActorCommand::AddSigner` command and arms the MLS autopublish flag for
+    /// active local-key sign-ins.
     ///
     /// `make_active` activates the resulting account once it resolves (for a
     /// `BunkerUri` source the flag is stashed across the async handshake
@@ -2127,45 +2145,6 @@ impl NmpApp {
             self.set_pending_mls_autopublish(true);
         }
         self.send_cmd(ActorCommand::AddSigner { source, make_active });
-    }
-
-    /// Restore an app-scoped local secret from the keyring capability or use an
-    /// injected test secret, then sign it in (always active) via `add_signer`.
-    /// Owns the keyring-restore integration `nmp-marmot` + host shells depend on.
-    pub fn restore_local_nsec_from_keyring(
-        &self,
-        account_id: &str,
-        test_nsec: Option<String>,
-    ) -> Option<String> {
-        let secret = match test_nsec {
-            Some(secret) => Some(secret),
-            None => self.recall_local_nsec(account_id),
-        }?;
-        // `add_signer` arms MLS autopublish for this active local-key sign-in.
-        self.add_signer(
-            nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
-            true,
-        );
-        Some(secret)
-    }
-
-    /// Persist a newly-imported local secret through the keyring capability,
-    /// then sign it in (always active) via `add_signer`. Owns the keyring-persist
-    /// integration `nmp-marmot` + host shells depend on.
-    #[must_use]
-    pub fn sign_in_local_nsec_with_keyring(&self, account_id: &str, secret: String) -> String {
-        let req = nmp_core::substrate::KeyringIdentityWiring::persist_secret(
-            "nmp.identity.persist",
-            account_id,
-            &secret,
-        );
-        let _ = self.dispatch_capability(&req);
-        // `add_signer` arms MLS autopublish for this active local-key sign-in.
-        self.add_signer(
-            nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
-            true,
-        );
-        secret
     }
 
     /// Remove an identity through the actor-owned identity reducer.
@@ -2184,7 +2163,15 @@ impl NmpApp {
         self.remove_account(identity_id);
     }
 
-    fn recall_local_nsec(&self, account_id: &str) -> Option<String> {
+    /// Recall a previously-persisted local secret from the keyring capability.
+    ///
+    /// Returns `None` if the keyring reports `NotFound` or `Error` (no secret
+    /// stored for this `account_id`, or the capability is unavailable).
+    ///
+    /// This is the low-level keyring-recall primitive consumed by
+    /// `nmp-marmot::identity` — keyring orchestration (persist → sign-in,
+    /// recall → sign-in) lives in that crate, not here.
+    pub fn recall_local_nsec(&self, account_id: &str) -> Option<String> {
         let req = nmp_core::substrate::KeyringIdentityWiring::recall_secret(
             "nmp.identity.recall",
             account_id,

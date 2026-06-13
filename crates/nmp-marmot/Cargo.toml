@@ -35,6 +35,7 @@ nmp-ffi = { path = "../nmp-ffi" }
 nmp-nip59 = { path = "../nmp-nip59" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+zeroize = { workspace = true }
 # nostr 0.44 — version pinned via [workspace.dependencies]; mdk-core 0.8.0
 # re-exports the same nostr graph, so no version duplication.
 nostr = { workspace = true, features = ["std"] }
