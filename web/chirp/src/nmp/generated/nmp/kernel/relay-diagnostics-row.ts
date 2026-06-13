@@ -138,71 +138,57 @@ bytesTxDisplay(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-hasLastConnectedDisplay():boolean {
+lastConnectedMs():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 40);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
-lastConnectedDisplay():string|null
-lastConnectedDisplay(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-lastConnectedDisplay(optionalEncoding?:any):string|Uint8Array|null {
+lastEventMs():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 42);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
-hasLastEventDisplay():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 44);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-lastEventDisplay():string|null
-lastEventDisplay(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-lastEventDisplay(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 46);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 hasLastNotice():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 48);
+  const offset = this.bb!.__offset(this.bb_pos, 44);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 lastNotice():string|null
 lastNotice(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lastNotice(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 50);
+  const offset = this.bb!.__offset(this.bb_pos, 46);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 hasLastError():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 52);
+  const offset = this.bb!.__offset(this.bb_pos, 48);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 lastError():string|null
 lastError(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lastError(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 54);
+  const offset = this.bb!.__offset(this.bb_pos, 50);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 wireSubs(index: number, obj?:RelayDiagnosticsWireSub):RelayDiagnosticsWireSub|null {
-  const offset = this.bb!.__offset(this.bb_pos, 56);
+  const offset = this.bb!.__offset(this.bb_pos, 52);
   return offset ? (obj || new RelayDiagnosticsWireSub()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 wireSubsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 56);
+  const offset = this.bb!.__offset(this.bb_pos, 52);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 info(obj?:RelayDiagnosticsInfo):RelayDiagnosticsInfo|null {
-  const offset = this.bb!.__offset(this.bb_pos, 58);
+  const offset = this.bb!.__offset(this.bb_pos, 54);
   return offset ? (obj || new RelayDiagnosticsInfo()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
 static startRelayDiagnosticsRow(builder:flatbuffers.Builder) {
-  builder.startObject(28);
+  builder.startObject(26);
 }
 
 static addRelayUrl(builder:flatbuffers.Builder, relayUrlOffset:flatbuffers.Offset) {
@@ -277,40 +263,32 @@ static addBytesTxDisplay(builder:flatbuffers.Builder, bytesTxDisplayOffset:flatb
   builder.addFieldOffset(17, bytesTxDisplayOffset, 0);
 }
 
-static addHasLastConnectedDisplay(builder:flatbuffers.Builder, hasLastConnectedDisplay:boolean) {
-  builder.addFieldInt8(18, +hasLastConnectedDisplay, +false);
+static addLastConnectedMs(builder:flatbuffers.Builder, lastConnectedMs:bigint) {
+  builder.addFieldInt64(18, lastConnectedMs, BigInt('0'));
 }
 
-static addLastConnectedDisplay(builder:flatbuffers.Builder, lastConnectedDisplayOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(19, lastConnectedDisplayOffset, 0);
-}
-
-static addHasLastEventDisplay(builder:flatbuffers.Builder, hasLastEventDisplay:boolean) {
-  builder.addFieldInt8(20, +hasLastEventDisplay, +false);
-}
-
-static addLastEventDisplay(builder:flatbuffers.Builder, lastEventDisplayOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(21, lastEventDisplayOffset, 0);
+static addLastEventMs(builder:flatbuffers.Builder, lastEventMs:bigint) {
+  builder.addFieldInt64(19, lastEventMs, BigInt('0'));
 }
 
 static addHasLastNotice(builder:flatbuffers.Builder, hasLastNotice:boolean) {
-  builder.addFieldInt8(22, +hasLastNotice, +false);
+  builder.addFieldInt8(20, +hasLastNotice, +false);
 }
 
 static addLastNotice(builder:flatbuffers.Builder, lastNoticeOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(23, lastNoticeOffset, 0);
+  builder.addFieldOffset(21, lastNoticeOffset, 0);
 }
 
 static addHasLastError(builder:flatbuffers.Builder, hasLastError:boolean) {
-  builder.addFieldInt8(24, +hasLastError, +false);
+  builder.addFieldInt8(22, +hasLastError, +false);
 }
 
 static addLastError(builder:flatbuffers.Builder, lastErrorOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(25, lastErrorOffset, 0);
+  builder.addFieldOffset(23, lastErrorOffset, 0);
 }
 
 static addWireSubs(builder:flatbuffers.Builder, wireSubsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(26, wireSubsOffset, 0);
+  builder.addFieldOffset(24, wireSubsOffset, 0);
 }
 
 static createWireSubsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -326,7 +304,7 @@ static startWireSubsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addInfo(builder:flatbuffers.Builder, infoOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(27, infoOffset, 0);
+  builder.addFieldOffset(25, infoOffset, 0);
 }
 
 static endRelayDiagnosticsRow(builder:flatbuffers.Builder):flatbuffers.Offset {
