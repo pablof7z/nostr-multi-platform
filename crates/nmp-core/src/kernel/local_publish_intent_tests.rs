@@ -276,8 +276,11 @@ fn local_kind0_publish_fans_out_to_event_observers() {
     // `profile_for_pubkey`, so a non-placeholder display name proves the local
     // kind:0 landed in the canonical `profiles` cache.
     let card = kernel.profile_card_for(&author, "Waiting for kind:0 from indexer");
+    // D1 (#606): the `has_profile` render-gate bool was removed. A resolved
+    // profile is now proven by `display_name.is_some()` — the offline-first
+    // optional-binding guard that replaced the render-gate.
     assert!(
-        card.has_profile,
+        card.display_name.is_some(),
         "profile card must resolve after local kind:0 publish"
     );
     assert_eq!(
