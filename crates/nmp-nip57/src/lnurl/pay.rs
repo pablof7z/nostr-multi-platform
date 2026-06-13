@@ -1,9 +1,12 @@
-//! LNURL-pay decode + query-encode helpers used by
-//! [`super::FetchLnurlInvoiceCommand`].
+//! LNURL-pay decode + query-encode helpers, and the off-actor worker spawner
+//! used by [`super::FetchLnurlInvoiceCommand`].
 //!
 //! Split out of `lnurl::mod` so the orchestrator file stays under the
-//! 500-LOC hard cap (file-size gate). All functions here are pure (no I/O,
-//! no mutable state) and unit-tested in isolation.
+//! 500-LOC hard cap (file-size gate). Pure helpers are unit-tested in
+//! isolation; `spawn_lnurl_worker` is extracted here to keep `mod.rs` under
+//! its baseline LOC ceiling.
+
+use nmp_core::ActorCommand;
 
 /// Convert any of the three LNURL-pay input shapes into the well-known URL
 /// to GET.
@@ -141,6 +144,71 @@ pub fn looks_like_bolt11(s: &str) -> bool {
         || lower.starts_with("lntb")
         || lower.starts_with("lnbcrt")
         || lower.starts_with("lntbs")
+}
+
+/// Spawn the off-actor HTTP worker that runs the two-leg LNURL-pay round-trip
+/// for an already-signed kind:9734 (serialized as `signed_json`). `std::thread`
+/// (not tokio) — `nmp-nip57` has no async runtime and the actor itself is
+/// `std::thread`-based. The worker owns clones of everything it needs; nothing
+/// references the actor's mutable state. D8: zero blocking on the actor thread —
+/// this function only *spawns*; the blocking HTTP work happens on the new
+/// thread.
+///
+/// On a fetched invoice the worker hands the bolt11 to the NWC wallet so the
+/// kind:23195 response handler closes the `nmp.nip57.zap` action stage on wallet
+/// confirmation; if no wallet runtime is installed (or the LNURL legs fail) it
+/// posts a `ShowToast` + `RecordActionFailure` so the host spinner resolves with
+/// a clear reason instead of hanging.
+pub(super) fn spawn_lnurl_worker(
+    worker_tx: nmp_core::CommandSender,
+    lnurl_or_address: String,
+    amount_msats: u64,
+    signed_json: String,
+    correlation_id: Option<String>,
+    payer: crate::action::ZapPayer,
+) {
+    std::thread::spawn(move || {
+        match super::fetch_lnurl_invoice_blocking(&lnurl_or_address, amount_msats, &signed_json) {
+            // ADR-0052 D2 — pay through the per-app payer captured at zap
+            // registration time (no `active_wallet_runtime()` process-global).
+            Ok(bolt11) => match payer {
+                crate::action::ZapPayer::Nwc(runtime) => {
+                    let _ = worker_tx.send(ActorCommand::Protocol(Box::new(
+                        nmp_nip47::WalletPayInvoiceCommand {
+                            bolt11,
+                            amount_msats: None, // bolt11 carries the amount
+                            correlation_id,
+                            runtime,
+                        },
+                    )));
+                }
+                crate::action::ZapPayer::Unavailable => {
+                    let reason =
+                        "zap: no wallet connected — connect a NWC wallet first".to_string();
+                    let _ = worker_tx.send(ActorCommand::ShowToast {
+                        message: reason.clone(),
+                    });
+                    if let Some(cid) = correlation_id {
+                        let _ = worker_tx.send(ActorCommand::RecordActionFailure {
+                            correlation_id: cid,
+                            reason,
+                        });
+                    }
+                }
+            },
+            Err(reason) => {
+                let _ = worker_tx.send(ActorCommand::ShowToast {
+                    message: format!("Zap failed: {reason}"),
+                });
+                if let Some(cid) = correlation_id {
+                    let _ = worker_tx.send(ActorCommand::RecordActionFailure {
+                        correlation_id: cid,
+                        reason,
+                    });
+                }
+            }
+        }
+    });
 }
 
 #[cfg(test)]
