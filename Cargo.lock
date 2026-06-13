@@ -4044,15 +4044,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "matchers"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9"
-dependencies = [
- "regex-automata",
-]
-
-[[package]]
 name = "mdk-core"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4470,22 +4461,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-blossom"
-version = "0.6.2"
-dependencies = [
- "base64",
- "nmp-core",
- "nmp-ffi",
- "nmp-kinds",
- "nostr",
- "serde",
- "serde_json",
- "sha2",
- "tracing",
- "ureq",
-]
-
-[[package]]
 name = "nmp-chirp-config"
 version = "0.6.2"
 
@@ -4832,21 +4807,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-nip60"
-version = "0.6.2"
-dependencies = [
- "hex",
- "nostr",
- "rustls",
- "serde",
- "serde_json",
- "sha2",
- "tracing",
- "tungstenite",
- "ureq",
-]
-
-[[package]]
 name = "nmp-nip77"
 version = "0.6.2"
 dependencies = [
@@ -5015,17 +4975,6 @@ dependencies = [
  "nmp-core",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "nmp-wallet-poc"
-version = "0.6.2"
-dependencies = [
- "clap",
- "nmp-nip60",
- "nostr",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -7916,32 +7865,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "tracing-log"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
-dependencies = [
- "log",
- "once_cell",
- "tracing-core",
-]
-
-[[package]]
 name = "tracing-subscriber"
 version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
- "matchers",
- "nu-ansi-term",
- "once_cell",
- "regex-automata",
  "sharded-slab",
- "smallvec",
  "thread_local",
- "tracing",
  "tracing-core",
- "tracing-log",
 ]
 
 [[package]]
