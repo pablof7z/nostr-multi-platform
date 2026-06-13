@@ -16,6 +16,46 @@ use nmp_core::substrate::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 
 use super::{DmConversation, DmMessage};
 
+/// Per-account bound on concurrently-in-flight decrypt chains (ADR-0050 §D7).
+///
+/// A LOCAL account resolves each decrypt `Ready` inline on the actor thread, so
+/// its chains terminate within the same `ingest_gift_wrap` dispatch and the
+/// in-flight count is back to 0 before the next envelope — it never approaches
+/// this bound. A REMOTE (bunker) account parks each decrypt and resolves it from
+/// a later mailbox drain, so concurrent backfill envelopes accumulate in flight;
+/// this bound caps the outstanding interactive round-trips (one chain = up to 2
+/// sequential bunker RPCs). The async-vs-inline resolution difference makes the
+/// bound self-target remote accounts WITHOUT the projection branching on a
+/// signer-kind label (one mechanism, §D7 "strictly sequential per-account").
+pub(crate) const MAX_IN_FLIGHT_DECRYPTS: u64 = 8;
+
+/// Policy state for the inbox decrypt pipeline (ADR-0050 §D7) — the
+/// errors-as-state replacement for the old `remote_signer_unsupported: bool`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DecryptState {
+    /// An active account; every admitted envelope has decrypted (nothing
+    /// pending, nothing over the bound).
+    Ok,
+    /// An active account, but envelopes are pending decryption or were not
+    /// admitted because the per-account bound is full (bunker backfill in
+    /// progress / throttled). `undecrypted_count` is non-zero. NOT a silent
+    /// drop — the host surfaces the count.
+    Limited,
+    /// No active account (not signed in) — the host should hide the DM screen.
+    Unavailable,
+}
+
+impl DecryptState {
+    /// The stable wire token other platforms switch on.
+    pub(crate) fn as_wire(self) -> &'static str {
+        match self {
+            DecryptState::Ok => "ok",
+            DecryptState::Limited => "limited",
+            DecryptState::Unavailable => "unavailable",
+        }
+    }
+}
+
 /// Shared, decrypt-result store for the DM inbox.
 pub(crate) struct InboxStore {
     /// Accepted decrypted messages keyed by inner-rumor event id. The value
@@ -31,6 +71,15 @@ pub(crate) struct InboxStore {
     /// account changed mid-flight) — so a previous account's message can never
     /// leak into the new account's snapshot (#1138, async-chain-safe).
     generation: AtomicU64,
+    /// Chains launched (outer decrypt sent) but not yet terminated (§D7).
+    /// Incremented by [`Self::admit`], decremented by [`Self::chain_done`] on
+    /// EVERY chain exit path (store, discard, decrypt error). Caps interactive
+    /// bunker backfill at [`MAX_IN_FLIGHT_DECRYPTS`].
+    in_flight: AtomicU64,
+    /// Envelopes NOT admitted because the bound was full when they arrived
+    /// (§D7 — never silently dropped; surfaced as the undecrypted count). Reset
+    /// by [`Self::clear`] (account switch starts a fresh backfill budget).
+    over_bound: AtomicU64,
 }
 
 impl InboxStore {
@@ -38,12 +87,63 @@ impl InboxStore {
         Self {
             messages: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
             generation: AtomicU64::new(0),
+            in_flight: AtomicU64::new(0),
+            over_bound: AtomicU64::new(0),
         }
     }
 
     /// Current epoch — captured by a chain at launch (§D6 account pinning).
     pub(crate) fn generation(&self) -> u64 {
         self.generation.load(Ordering::Acquire)
+    }
+
+    /// Try to admit one new decrypt chain under the §D7 bound. Returns `true`
+    /// and reserves an in-flight slot when under [`MAX_IN_FLIGHT_DECRYPTS`];
+    /// returns `false` and records the over-bound envelope (never a silent drop)
+    /// when the bound is full. A LOCAL account's chains terminate inline before
+    /// the next envelope so it effectively never sees a full bound; a bunker's
+    /// concurrent backfill is what this throttles.
+    pub(crate) fn admit(&self) -> bool {
+        // CAS-free reserve: increment, and if we blew the bound, undo + count.
+        let prior = self.in_flight.fetch_add(1, Ordering::AcqRel);
+        if prior >= MAX_IN_FLIGHT_DECRYPTS {
+            self.in_flight.fetch_sub(1, Ordering::AcqRel);
+            self.over_bound.fetch_add(1, Ordering::AcqRel);
+            return false;
+        }
+        true
+    }
+
+    /// Release the in-flight slot an admitted chain reserved — called on EVERY
+    /// chain exit (terminal store, kind/peer discard, decrypt error). Saturating
+    /// so a double-call can never underflow.
+    pub(crate) fn chain_done(&self) {
+        let prior = self.in_flight.load(Ordering::Acquire);
+        if prior > 0 {
+            self.in_flight.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
+
+    /// Derive the §D7 policy state `(decrypt_state, undecrypted_count)` for the
+    /// snapshot. `signed_in` is whether an active account exists.
+    ///
+    /// `undecrypted_count` = in-flight (admitted, pending decryption) +
+    /// over-bound (arrived while the bound was full). `decrypt_state` is
+    /// `Unavailable` with no account, `Limited` while that count is non-zero
+    /// (backfill pending/throttled), else `Ok`.
+    pub(crate) fn decrypt_status(&self, signed_in: bool) -> (DecryptState, u32) {
+        if !signed_in {
+            return (DecryptState::Unavailable, 0);
+        }
+        let pending = self.in_flight.load(Ordering::Acquire);
+        let over = self.over_bound.load(Ordering::Acquire);
+        let undecrypted = pending.saturating_add(over);
+        let state = if undecrypted == 0 {
+            DecryptState::Ok
+        } else {
+            DecryptState::Limited
+        };
+        (state, undecrypted.min(u64::from(u32::MAX)) as u32)
     }
 
     /// Insert one decrypted message under epoch `gen`. A no-op (returns `false`)
@@ -113,9 +213,16 @@ impl InboxStore {
     }
 
     /// Drop all messages and bump the epoch so any chain in flight under the
-    /// previous epoch discards its terminal insert (§D6).
+    /// previous epoch discards its terminal insert (§D6). Also resets the §D7
+    /// backfill counters: the new account starts with a fresh in-flight budget
+    /// and zero over-bound. In-flight chains from the OLD epoch still call
+    /// `chain_done` when they resolve; resetting `in_flight` to 0 here means
+    /// those stale `chain_done` calls are absorbed by the saturating guard
+    /// (they cannot drive the new account's count negative).
     pub(crate) fn clear(&self) {
         self.generation.fetch_add(1, Ordering::AcqRel);
+        self.in_flight.store(0, Ordering::Release);
+        self.over_bound.store(0, Ordering::Release);
         if let Ok(mut messages) = self.messages.lock() {
             *messages = BoundedMessageMap::new(MAX_PROJECTION_MESSAGES);
         }

@@ -33,7 +33,8 @@ fn sample_snapshot() -> DmInboxSnapshot {
                 messages: vec![sample_message("21", None, false)],
             },
         ],
-        remote_signer_unsupported: false,
+        decrypt_state: "ok".to_string(),
+        undecrypted_count: 0,
     }
 }
 
@@ -46,16 +47,31 @@ fn round_trips_full_snapshot() {
 }
 
 #[test]
-fn round_trips_remote_signer_flag_and_empty_conversations() {
+fn round_trips_decrypt_state_and_empty_conversations() {
+    // §D7 — the tri-state + count round-trip through the typed wire.
     let snapshot = DmInboxSnapshot {
         conversations: vec![],
-        remote_signer_unsupported: true,
+        decrypt_state: "limited".to_string(),
+        undecrypted_count: 7,
     };
     let bytes = encode_dm_inbox_snapshot(&snapshot);
     let decoded = decode_dm_inbox_snapshot(&bytes).expect("decode");
     assert_eq!(decoded, snapshot);
-    assert!(decoded.remote_signer_unsupported);
+    assert_eq!(decoded.decrypt_state, "limited");
+    assert_eq!(decoded.undecrypted_count, 7);
     assert!(decoded.conversations.is_empty());
+}
+
+#[test]
+fn unavailable_state_round_trips() {
+    let snapshot = DmInboxSnapshot {
+        conversations: vec![],
+        decrypt_state: "unavailable".to_string(),
+        undecrypted_count: 0,
+    };
+    let bytes = encode_dm_inbox_snapshot(&snapshot);
+    let decoded = decode_dm_inbox_snapshot(&bytes).expect("decode");
+    assert_eq!(decoded, snapshot);
 }
 
 #[test]
@@ -105,5 +121,5 @@ fn decode_rejects_garbage() {
 fn schema_consts_are_stable() {
     assert_eq!(DM_INBOX_SCHEMA_ID, "nmp.nip17.dm_inbox");
     assert_eq!(DM_INBOX_FILE_IDENTIFIER, b"NDMI");
-    assert_eq!(DM_INBOX_SCHEMA_VERSION, 1);
+    assert_eq!(DM_INBOX_SCHEMA_VERSION, 2);
 }

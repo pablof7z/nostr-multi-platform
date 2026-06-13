@@ -142,30 +142,39 @@ pub struct DmConversation {
 pub struct DmInboxSnapshot {
     /// Conversations, ordered by most-recent message (newest thread first).
     pub conversations: Vec<DmConversation>,
-    /// Whether the active account can decrypt this inbox at all.
+    /// **ADR-0050 §D7** — the decrypt-pipeline policy state, an errors-as-state
+    /// (D6) tri-state that REPLACES the old `remote_signer_unsupported: bool`.
+    /// Stable wire tokens the host switches on:
     ///
-    /// **ADR-0050 §D6**: with gift-UNWRAP routed through the signer port, a
-    /// remote (bunker) account is now *structurally* able to decrypt — so this
-    /// flag is no longer "bunker accounts cannot decrypt". It is `true` ONLY
-    /// when there is no active account (not signed in), in which case the host
-    /// should hide the DM screen entirely; `false` otherwise (local OR bunker).
-    /// The bounded-decrypt PRODUCT policy for bunker backfill (a count of
-    /// undecrypted envelopes + a tri-state `decrypt_state`) lands at ADR-0050
-    /// §D7 / Stage 5, which replaces this boolean with policy-driven state.
-    /// Additive field: decoders that pre-date it read `false` via
-    /// `#[serde(default)]`.
+    /// * `"unavailable"` — no active account (not signed in); the host should
+    ///   hide the DM screen entirely.
+    /// * `"limited"` — an active account with `undecrypted_count > 0`: a bunker
+    ///   backfill is pending or throttled by the bounded per-account decrypt
+    ///   queue (§D7). NOT a silent drop — the host surfaces the count.
+    /// * `"ok"` — an active account with everything decrypted.
+    ///
+    /// Additive default `"ok"` is deliberately NOT used; `Default` yields the
+    /// empty string, and a fresh projection reports `"unavailable"` via
+    /// [`Self::empty`] / a live no-account snapshot.
     #[serde(default)]
-    pub remote_signer_unsupported: bool,
+    pub decrypt_state: String,
+    /// **ADR-0050 §D7** — count of envelopes admitted-but-not-yet-decrypted plus
+    /// those not admitted because the per-account bound was full. Non-zero
+    /// exactly when `decrypt_state == "limited"`. The host renders e.g. "N
+    /// messages still decrypting" instead of silently hiding them.
+    #[serde(default)]
+    pub undecrypted_count: u32,
 }
 
 impl DmInboxSnapshot {
-    /// An empty inbox — what a fresh projection (or a poisoned mutex, D6)
-    /// reports.
+    /// An empty, no-active-account inbox — what a fresh projection (or a poisoned
+    /// mutex, D6) reports: no conversations and `decrypt_state: "unavailable"`.
     #[must_use]
     pub fn empty() -> Self {
         Self {
             conversations: Vec::new(),
-            remote_signer_unsupported: false,
+            decrypt_state: store::DecryptState::Unavailable.as_wire().to_string(),
+            undecrypted_count: 0,
         }
     }
 }
@@ -230,16 +239,20 @@ impl DmInboxProjection {
     /// D6: a poisoned mutex degrades to [`DmInboxSnapshot::empty`] rather than
     /// panicking — this runs on the actor thread inside a snapshot tick.
     ///
-    /// `remote_signer_unsupported` is `true` only when there is no active
-    /// account (§D6 — a bunker account CAN now decrypt structurally; the
-    /// per-account bounded-backfill policy state lands at §D7 / Stage 5).
+    /// `decrypt_state` / `undecrypted_count` carry the §D7 policy state:
+    /// `"unavailable"` with no active account, `"limited"` while a (bunker)
+    /// backfill is pending or throttled by the bounded per-account decrypt queue,
+    /// else `"ok"`. A bunker account decrypts structurally (§D6); the bound caps
+    /// its concurrent interactive round-trips and surfaces the residue as state
+    /// (never a silent drop).
     #[must_use]
     pub fn snapshot(&self) -> DmInboxSnapshot {
+        let signed_in = self.active_pubkey_hex().is_some();
+        let (state, undecrypted_count) = self.store.decrypt_status(signed_in);
         DmInboxSnapshot {
             conversations: self.store.snapshot_conversations(),
-            // No active account → the host should hide the DM screen. A signed-in
-            // account (local or bunker) is decrypt-capable, so the flag is false.
-            remote_signer_unsupported: self.active_pubkey_hex().is_none(),
+            decrypt_state: state.as_wire().to_string(),
+            undecrypted_count,
         }
     }
 
@@ -264,9 +277,13 @@ impl DmInboxProjection {
     /// collapses to `{"conversations": []}` rather than propagating.
     #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
-        serde_json::to_value(self.snapshot()).unwrap_or_else(
-            |_| serde_json::json!({ "conversations": [], "remote_signer_unsupported": false }),
-        )
+        serde_json::to_value(self.snapshot()).unwrap_or_else(|_| {
+            serde_json::json!({
+                "conversations": [],
+                "decrypt_state": "unavailable",
+                "undecrypted_count": 0,
+            })
+        })
     }
 
     /// Launch the port-driven gift-UNWRAP chain for one accepted kind:1059
