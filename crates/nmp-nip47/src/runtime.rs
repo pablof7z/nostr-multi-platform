@@ -702,7 +702,18 @@ fn wallet_disconnect_inner(
             None
         }
     };
-    if let Ok(mut slot) = wallet.status_slot.lock() {
+    // D6 poison-lock recovery — same as `sync_wallet_status`. Recover rather
+    // than silently skipping the disconnect status write.
+    {
+        let mut slot = match wallet.status_slot.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::error!(
+                    "nwc: status_slot lock was poisoned on disconnect — recovering"
+                );
+                poisoned.into_inner()
+            }
+        };
         let balance_sats = conn.balance_msats.map(|m| m / 1000);
         let wire = "disconnected";
         *slot = Some(WalletStatus {
@@ -1099,36 +1110,52 @@ fn build_request_with_meta(
             bolt11: String::new(),
             amount_msats: None,
         });
-        conn.pending_payments.insert(
-            request_event_id.clone(),
-            PendingPayment {
-                correlation_id: correlation_id.clone(),
-                inserted_at_secs: created_at,
-                bolt11: meta.bolt11.clone(),
-                amount_msats: meta.amount_msats,
-            },
-        );
-        // Double-pay safety: persist the record with state PaySent BEFORE the
-        // frame leaves this function (the caller enqueues the returned
-        // OutboundMessage afterwards). On error we log but do NOT fail the
-        // payment (D6) — losing durability is strictly safer than refusing a
-        // legitimate payment, and the in-memory map still tracks it.
+
+        // Double-pay safety (fail-closed): persist the PaySent record BEFORE
+        // inserting into `pending_payments` and BEFORE returning the outbound
+        // frame.  If the durable write fails we MUST NOT send the payment:
+        // a payment with no durable record cannot be reconciled on restart and
+        // creates a silent double-pay / balance-loss vector.  Return `None` so
+        // the caller (`wallet_pay_invoice`) calls `record_action_failure`
+        // instead of enqueuing the frame.
+        //
+        // When no `payment_store` is installed (unit tests / pre-startup) we
+        // skip the write and proceed as before — the in-memory map is the only
+        // tracking available in that mode.
         if let Some(store) = wallet.payment_store.as_ref() {
             let record = PaymentRecord {
                 request_event_id: request_event_id.clone(),
-                bolt11: meta.bolt11,
-                correlation_id,
+                bolt11: meta.bolt11.clone(),
+                correlation_id: correlation_id.clone(),
                 amount_msats: meta.amount_msats,
                 state: PaymentState::PaySent,
                 preimage: None,
             };
             if let Err(e) = store.upsert(&record) {
-                tracing::warn!(
+                // Remove from `conn.pending` — we inserted it above but must
+                // not leave a dangling diagnostic entry without a payment entry.
+                conn.pending.remove(&request_event_id);
+                tracing::error!(
                     request_event_id = %request_event_id,
-                    "nwc: failed to persist PaySent payment record: {e}"
+                    "nwc: PaySent persist failed — aborting payment to prevent \
+                     double-pay on restart: {e}"
                 );
+                kernel.set_last_error_toast(Some(format!(
+                    "wallet: payment aborted — could not write durable record: {e}"
+                )));
+                return None;
             }
         }
+
+        conn.pending_payments.insert(
+            request_event_id.clone(),
+            PendingPayment {
+                correlation_id: correlation_id.clone(),
+                inserted_at_secs: created_at,
+                bolt11: meta.bolt11,
+                amount_msats: meta.amount_msats,
+            },
+        );
     }
 
     Some((
@@ -1157,9 +1184,28 @@ fn sync_wallet_status(wallet: &WalletRuntime, kernel: &mut Kernel) {
             connection_state: c.connection_state.clone(),
         }
     });
-    if let Ok(mut slot) = wallet.status_slot.lock() {
-        *slot = status;
-    }
+    // D6 poison-lock recovery: a panicking thread must not permanently brick
+    // the status projection.  Recover the guard via `unwrap_or_else` so a
+    // single actor panic never leaves the slot locked forever.  Log the
+    // recovery so it is observable without crashing the actor thread.
+    //
+    // `mark_changed_since_emit` is called ONLY when the slot write succeeded.
+    // Calling it after a skipped write would tell the snapshot machinery there
+    // is new data to emit when in fact the slot still holds its prior value —
+    // that is a stale-balance defect (D6: poison is not fatal, but we must not
+    // lie about what we wrote).
+    let mut slot = match wallet.status_slot.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            tracing::error!(
+                "nwc: status_slot lock was poisoned — recovering; \
+                 wallet projection may be temporarily stale"
+            );
+            poisoned.into_inner()
+        }
+    };
+    *slot = status;
+    drop(slot); // release before marking dirty
     kernel.mark_changed_since_emit();
 }
 
@@ -1173,3 +1219,7 @@ fn pubkey_to_npub(hex: &str) -> Result<String, String> {
 #[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "runtime_money_path_tests.rs"]
+mod money_path_tests;

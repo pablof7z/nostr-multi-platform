@@ -23,6 +23,7 @@
 //! envelope via the registry lookup (D6), never a use-after-free.
 
 use std::ffi::{c_char, c_void, CString};
+use std::mem::size_of;
 use std::ptr;
 use std::time::Duration;
 
@@ -48,6 +49,15 @@ const EXTERNAL_SIGNER_NAMESPACE: &str = "external_signer";
 /// freshly created session. Called from `nativeNew` AFTER `insert_session`
 /// assigned `handle` (the trampoline context is the handle id).
 pub(crate) fn install(app: *mut NmpApp, handle: jlong) {
+    // Defensive: `jlong` is i64; we store it as a `usize` in the trampoline
+    // context pointer. On 32-bit targets `usize` is 4 bytes and the cast
+    // would silently truncate. Android dropped 32-bit ABI support in NDK r21
+    // (API 21), so this assertion is always satisfied on real devices — it
+    // fires only if someone mistakenly targets a 32-bit host.
+    debug_assert!(
+        size_of::<usize>() >= size_of::<jlong>(),
+        "jlong→usize truncation: target is 32-bit, handle id would be corrupted"
+    );
     nmp_app_set_capability_callback(app, handle as usize as *mut c_void, Some(on_capability_request));
     nmp_external_signer_init(app);
 }

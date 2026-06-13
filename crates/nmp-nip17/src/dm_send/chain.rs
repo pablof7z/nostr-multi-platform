@@ -56,6 +56,10 @@ impl EnvelopeChain {
         } = self;
 
         let tx_for_seal = worker_tx.clone();
+        // Retained for the fail-loud path below: the closure moves
+        // `correlation_id`, but if the send itself fails the closure never
+        // runs, so we need our own copy to report the hung action.
+        let correlation_id_for_send_err = correlation_id.clone();
         let cmd = build_nip44_encrypt_for_account(
             receiver.to_hex(),
             rumor_json,
@@ -88,7 +92,18 @@ impl EnvelopeChain {
                 );
             },
         );
-        let _ = worker_tx.send(cmd);
+        // D6 fail-loud: a dead actor inbox means the encrypt step's
+        // continuation never runs, so the action's `correlation_id` would hang
+        // forever (UI spinner never resolves). Report the failure so the action
+        // resolves `Failed`.
+        if worker_tx.send(cmd).is_err() {
+            report_envelope_failure(
+                &worker_tx,
+                label,
+                &correlation_id_for_send_err,
+                "actor inbox closed before seal encrypt".to_string(),
+            );
+        }
     }
 }
 
@@ -113,6 +128,8 @@ fn seal_and_sign(
     let seal_substrate = nostr_unsigned_to_substrate(&seal_unsigned);
 
     let tx_for_wrap = worker_tx.clone();
+    // Retained for the fail-loud send path: the closure moves `correlation_id`.
+    let correlation_id_for_send_err = correlation_id.clone();
     let cmd = build_sign_event_for_account(
         seal_substrate,
         Some(signer_hex), // §D5 pin — never None.
@@ -140,7 +157,16 @@ fn seal_and_sign(
             );
         },
     );
-    let _ = worker_tx.send(cmd);
+    // D6 fail-loud: a dead inbox means the sign step's continuation never runs,
+    // so the action would hang. Report so it resolves `Failed`.
+    if worker_tx.send(cmd).is_err() {
+        report_envelope_failure(
+            &worker_tx,
+            label,
+            &correlation_id_for_send_err,
+            "actor inbox closed before seal sign".to_string(),
+        );
+    }
 }
 
 /// Step 3 — assemble the kind:1059 wrap (pure, fresh ephemeral key in-process)
@@ -175,11 +201,27 @@ fn wrap_and_publish(
     // The kind:1059 envelope is already signed by its ephemeral key — route via
     // the signed-event publish path so the kernel forwards it verbatim
     // (re-signing would destroy the unlinkability gift-wrap provides).
-    let _ = worker_tx.send(ActorCommand::PublishSignedEvent {
-        raw: nostr_event_to_raw(&envelope),
-        target: PublishTarget::Explicit { relays },
-        correlation_id,
-    });
+    let correlation_id_for_send_err = correlation_id.clone();
+    if worker_tx
+        .send(ActorCommand::PublishSignedEvent {
+            raw: nostr_event_to_raw(&envelope),
+            target: PublishTarget::Explicit { relays },
+            correlation_id,
+        })
+        .is_err()
+    {
+        // D6 fail-loud: the publish command never landed, so the action would
+        // hang. Report so it resolves `Failed`. (`report_envelope_failure`'s
+        // own sends will also fail on a dead inbox, but reporting is correct;
+        // the dead-inbox case is terminal regardless.)
+        report_envelope_failure(
+            worker_tx,
+            label,
+            &correlation_id_for_send_err,
+            "actor inbox closed before gift-wrap publish".to_string(),
+        );
+        return;
+    }
 
     // Recipient success → launch the self-copy chain (sequential ordering).
     if let Some(self_copy) = on_success {
@@ -249,5 +291,186 @@ fn nostr_event_to_raw(event: &nostr::Event) -> nmp_core::store::RawEvent {
         tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
         content: event.content.clone(),
         sig: event.sig.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod send_failure_tests {
+    //! Bug 2 (D6 fail-loud): when the actor inbox is gone, every chain step's
+    //! `worker_tx.send()` returns `Err`. The action's `correlation_id` would
+    //! otherwise hang forever (UI spinner never resolves). These tests pin the
+    //! contract that a closed inbox is detected and `report_envelope_failure`
+    //! is invoked — never a silent `let _ = send(..)`.
+
+    use super::*;
+    use nmp_core::ActorMail;
+    use std::sync::mpsc::{channel, Receiver, Sender};
+
+    /// A signed kind:13 seal for the wrap step, signed with a real test key so
+    /// `wrap_signed_seal` produces a verifiable kind:1059.
+    fn signed_seal(signer: &nostr::Keys) -> SignedEvent {
+        let seal_ts = Timestamp::from(1_700_000_000);
+        let event = nostr::EventBuilder::new(nostr::Kind::Seal, "ciphertext-placeholder")
+            .custom_created_at(seal_ts)
+            .sign_with_keys(signer)
+            .expect("seal sign");
+        SignedEvent {
+            id: event.id.to_hex(),
+            sig: event.sig.to_string(),
+            unsigned: UnsignedEvent {
+                pubkey: event.pubkey.to_hex(),
+                kind: u32::from(event.kind.as_u16()),
+                tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+                content: event.content.clone(),
+                created_at: event.created_at.as_secs(),
+            },
+        }
+    }
+
+    /// A live `CommandSender` whose receiver we keep, so we can drain enqueued
+    /// commands and assert what landed.
+    fn live_sender() -> (CommandSender, Receiver<ActorMail>) {
+        let (tx, rx): (Sender<ActorMail>, Receiver<ActorMail>) = channel();
+        (CommandSender::new(tx), rx)
+    }
+
+    /// A `CommandSender` whose receiver has been dropped — every `send` returns
+    /// `Err` (the actor-thread-is-dead scenario).
+    fn dead_sender() -> CommandSender {
+        let (tx, rx): (Sender<ActorMail>, Receiver<ActorMail>) = channel();
+        drop(rx);
+        CommandSender::new(tx)
+    }
+
+    fn drain(rx: &Receiver<ActorMail>) -> Vec<ActorCommand> {
+        let mut out = Vec::new();
+        while let Ok(ActorMail::Command(cmd)) = rx.try_recv() {
+            out.push(cmd);
+        }
+        out
+    }
+
+    #[test]
+    fn wrap_and_publish_enqueues_publish_on_live_inbox() {
+        // Baseline: a live inbox accepts the PublishSignedEvent terminal.
+        let signer = nostr::Keys::generate();
+        let receiver = nostr::Keys::generate().public_key();
+        let seal = signed_seal(&signer);
+        let (tx, rx) = live_sender();
+
+        wrap_and_publish(
+            &tx,
+            "recipient",
+            receiver,
+            &seal,
+            vec!["wss://relay.example".to_string()],
+            Some("corr-live".to_string()),
+            None,
+        );
+
+        let cmds = drain(&rx);
+        assert!(
+            cmds.iter()
+                .any(|c| matches!(c, ActorCommand::PublishSignedEvent { .. })),
+            "live inbox must receive the gift-wrap publish: {cmds:?}"
+        );
+        // No failure terminal on the happy path.
+        assert!(
+            !cmds
+                .iter()
+                .any(|c| matches!(c, ActorCommand::RecordActionFailure { .. })),
+            "happy path must not record a failure: {cmds:?}"
+        );
+    }
+
+    #[test]
+    fn command_sender_send_errors_when_receiver_dropped() {
+        // Precondition for the whole bug: a dropped receiver makes send fail.
+        let tx = dead_sender();
+        assert!(
+            tx.send(ActorCommand::ShowToast {
+                message: "x".into()
+            })
+            .is_err(),
+            "a dropped receiver must surface a send error"
+        );
+    }
+
+    #[test]
+    fn wrap_and_publish_reports_failure_when_inbox_dead() {
+        // The bug: when the publish send fails, the recipient action must not
+        // silently hang — `report_envelope_failure` is invoked instead. With a
+        // dead inbox even the report's sends fail, so we assert the function
+        // takes the failure branch (returns without launching the self-copy
+        // chain) rather than panicking or proceeding as if published.
+        let signer = nostr::Keys::generate();
+        let receiver = nostr::Keys::generate().public_key();
+        let seal = signed_seal(&signer);
+        let tx = dead_sender();
+
+        let self_copy = SelfCopyLaunch {
+            signer_hex: signer.public_key().to_hex(),
+            sender: signer.public_key(),
+            rumor_json: "{}".to_string(),
+            relays: vec!["wss://relay.example".to_string()],
+        };
+
+        // Must not panic and must return (the early-return failure branch). A
+        // pre-fix `let _ = send(..)` would silently fall through to launching
+        // the self-copy chain even though nothing was published.
+        wrap_and_publish(
+            &tx,
+            "recipient",
+            receiver,
+            &seal,
+            vec!["wss://relay.example".to_string()],
+            Some("corr-dead".to_string()),
+            Some(self_copy),
+        );
+    }
+
+    #[test]
+    fn report_envelope_failure_records_action_on_live_inbox() {
+        // The fail-loud terminal contract: a correlation_id-bearing envelope
+        // emits both a toast AND a RecordActionFailure so the action resolves.
+        let (tx, rx) = live_sender();
+        report_envelope_failure(
+            &tx,
+            "recipient",
+            &Some("corr-1".to_string()),
+            "actor inbox closed before seal encrypt".to_string(),
+        );
+        let cmds = drain(&rx);
+        assert!(
+            cmds.iter()
+                .any(|c| matches!(c, ActorCommand::ShowToast { .. })),
+            "must surface a toast: {cmds:?}"
+        );
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                ActorCommand::RecordActionFailure { correlation_id, .. } if correlation_id == "corr-1"
+            )),
+            "must record the action failure so the spinner resolves: {cmds:?}"
+        );
+    }
+
+    #[test]
+    fn envelope_chain_launch_does_not_hang_on_dead_inbox() {
+        // End-to-end: launching the chain against a dead inbox returns promptly
+        // (the send-error branch fires) rather than dropping the action on the
+        // floor. Pre-fix this `let _ = send(..)` left the correlation_id hung.
+        let signer = nostr::Keys::generate();
+        let receiver = nostr::Keys::generate().public_key();
+        let chain = EnvelopeChain {
+            label: "recipient",
+            signer_hex: signer.public_key().to_hex(),
+            sender: signer.public_key(),
+            receiver,
+            rumor_json: "{}".to_string(),
+            relays: vec!["wss://relay.example".to_string()],
+            correlation_id: Some("corr-launch".to_string()),
+        };
+        chain.launch(dead_sender(), None);
     }
 }

@@ -204,11 +204,15 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         // the RECIPIENT's NIP-65 write list, which only the kernel knows.
         inject_recipient_relays(ctx, &mut unsigned);
 
-        // NIP-57 SHOULD — the `lnurl` tag carries the bech32-encoded
-        // well-known URL so the LN provider (e.g. Primal) can associate
-        // the payment with the right Nostr account and mint the kind:9735
-        // receipt. Pure computation — no I/O, safe on the actor thread.
-        inject_lnurl_tag(&lnurl_or_address, &mut unsigned);
+        // D6 fail-closed: abort the zap if lnurl tag encoding fails (most
+        // providers including Primal won't mint a receipt without it).
+        if let Err(reason) = inject_lnurl_tag(&lnurl_or_address, &mut unsigned) {
+            ctx.send(ActorCommand::ShowToast { message: format!("Zap failed: {reason}") });
+            if let Some(cid) = correlation_id {
+                ctx.send(ActorCommand::RecordActionFailure { correlation_id: cid, reason });
+            }
+            return Ok(());
+        }
 
         // V-78 reconcile — sign the kind:9734 through the unified
         // `ActorCommand::SignEventForAccount` port (ADR-0043 Decision 2). The
@@ -360,33 +364,29 @@ pub(crate) fn inject_recipient_relays(
     unsigned.tags.push(row);
 }
 
-/// NIP-57 SHOULD — inject the `lnurl` tag (bech32-encoded well-known URL)
-/// into the kind:9734 zap request when no `lnurl` tag is already present.
+/// NIP-57 SHOULD — inject the `lnurl` tag (bech32 well-known URL) when absent.
 ///
-/// Primal and most LNURL servers require this tag to associate the LN
-/// payment with the right Nostr account and mint the kind:9735 zap receipt.
-/// Without it the bolt11 is paid but no receipt is published.
-///
-/// Pure computation (no I/O): safe to call on the actor thread.
-pub(crate) fn inject_lnurl_tag(lnurl_or_address: &str, unsigned: &mut UnsignedEvent) {
-    // Skip if the caller already provided an lnurl tag (non-empty value).
+/// Returns `Err(reason)` if the LNURL cannot be resolved or encoded so the
+/// caller can abort the zap (D6: paid invoice without the tag loses the
+/// kind:9735 receipt from most providers). Pure computation; safe on actor
+/// thread.
+pub(crate) fn inject_lnurl_tag(
+    lnurl_or_address: &str,
+    unsigned: &mut UnsignedEvent,
+) -> Result<(), String> {
     if unsigned
         .tags
         .iter()
         .any(|t| t.first().is_some_and(|k| k == "lnurl") && t.len() > 1)
     {
-        return;
+        return Ok(());
     }
-    // Resolve to the https well-known URL, then encode as bech32.
-    // Errors are silently ignored — the zap proceeds without the tag
-    // (degraded: receipt may not be published by some providers).
-    let Ok(well_known) = lnurl_to_well_known_url(lnurl_or_address) else {
-        return;
-    };
-    let Ok(bech32_lnurl) = pay::url_to_bech32_lnurl(&well_known) else {
-        return;
-    };
+    let well_known = lnurl_to_well_known_url(lnurl_or_address)
+        .map_err(|e| format!("zap: lnurl resolve failed ({lnurl_or_address}): {e}"))?;
+    let bech32_lnurl = pay::url_to_bech32_lnurl(&well_known)
+        .map_err(|e| format!("zap: lnurl bech32 encode failed ({well_known}): {e}"))?;
     unsigned.tags.push(vec!["lnurl".to_string(), bech32_lnurl]);
+    Ok(())
 }
 
 fn has_filled_relays_row(tags: &[Vec<String>]) -> bool {
