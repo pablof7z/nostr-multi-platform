@@ -67,9 +67,18 @@ pub(super) fn launch_unwrap(
     event: Event,
     source_relay_url: Option<String>,
 ) -> bool {
-    // Pure half 1 — validate kind:1059 and extract (outer_ciphertext, ephemeral
-    // peer). A non-gift-wrap is a silent no-op (D6); nothing is enqueued.
-    let Ok((outer_ciphertext, ephemeral_peer)) = nmp_nip59::parse_outer_for_decrypt(&event) else {
+    // The active account this envelope is being unwrapped for — used for the
+    // cheap `#p == signer` defense-in-depth in `parse_outer_for_decrypt` (issue
+    // #1265). A malformed pinned pubkey is a silent no-op (D6).
+    let Ok(recipient) = nostr::PublicKey::from_hex(&signer_hex) else {
+        return false;
+    };
+    // Pure half 1 — validate kind:1059, confirm it addresses us, and extract
+    // (outer_ciphertext, ephemeral peer). A non-gift-wrap or a wrap not addressed
+    // to the active account is a silent no-op (D6); nothing is enqueued.
+    let Ok((outer_ciphertext, ephemeral_peer)) =
+        nmp_nip59::parse_outer_for_decrypt(&event, &recipient)
+    else {
         return false;
     };
 

@@ -43,14 +43,42 @@ pub struct UnwrappedGift {
 /// decrypts the outer content against. No key material is read here; the caller
 /// (Stage 4 port, or [`unwrap_gift_wrap`] locally) performs the decrypt.
 ///
+/// `recipient` is the active account this envelope is being unwrapped for. As a
+/// cheap defense-in-depth (issue #1265), an envelope whose `#p` tag does not
+/// address `recipient` is rejected up front so we never burn a NIP-44 decrypt —
+/// nor, on a bunker signer, an out-of-process round-trip — on a kind:1059 that
+/// was never addressed to us. The authoritative recipient check still happens
+/// when the outer decrypt itself fails, but rejecting on the public `#p` tag is
+/// both free and fail-closed.
+///
 /// # Errors
 ///
-/// [`Nip59Error::NotGiftWrap`] if `gift_wrap.kind != 1059`.
-pub fn parse_outer_for_decrypt(gift_wrap: &Event) -> Result<(String, PublicKey), Nip59Error> {
+/// [`Nip59Error::NotGiftWrap`] if `gift_wrap.kind != 1059`, or if the envelope's
+/// `#p` tag does not address `recipient`.
+pub fn parse_outer_for_decrypt(
+    gift_wrap: &Event,
+    recipient: &PublicKey,
+) -> Result<(String, PublicKey), Nip59Error> {
     if gift_wrap.kind != Kind::GiftWrap {
         return Err(Nip59Error::NotGiftWrap);
     }
+    // Defense-in-depth: a kind:1059 must carry a `#p` tag addressing the active
+    // account. NIP-59 wraps are public; the `#p` is the cleartext routing hint.
+    // A wrap not addressed to us is not ours to decrypt — reject before the port.
+    if !addresses_recipient(gift_wrap, recipient) {
+        return Err(Nip59Error::NotGiftWrap);
+    }
     Ok((gift_wrap.content.clone(), gift_wrap.pubkey))
+}
+
+/// Whether `gift_wrap` carries a `#p` tag whose value is `recipient` (hex).
+fn addresses_recipient(gift_wrap: &Event, recipient: &PublicKey) -> bool {
+    let recipient_hex = recipient.to_hex();
+    gift_wrap.tags.iter().any(|tag| {
+        let slice = tag.as_slice();
+        slice.first().map(String::as_str) == Some("p")
+            && slice.get(1).map(String::as_str) == Some(recipient_hex.as_str())
+    })
 }
 
 /// Pure half 2 — parse + signature-verify the decrypted kind:13 seal, then
@@ -110,7 +138,8 @@ pub fn parse_rumor(seal: &Event, rumor_plaintext: &str) -> Result<UnwrappedGift,
 /// seal cannot be verified, or the rumor author does not match the seal.
 pub fn unwrap_gift_wrap(receiver: &Keys, gift_wrap: &Event) -> Result<UnwrappedGift, Nip59Error> {
     // Outer: decrypt the wrap content against the ephemeral wrap pubkey → seal.
-    let (outer_ciphertext, ephemeral_peer) = parse_outer_for_decrypt(gift_wrap)?;
+    let (outer_ciphertext, ephemeral_peer) =
+        parse_outer_for_decrypt(gift_wrap, &receiver.public_key())?;
     let seal_plaintext = nip44::decrypt(receiver.secret_key(), &ephemeral_peer, &outer_ciphertext)
         .map_err(|e| Nip59Error::Nostr(format!("outer nip44_decrypt: {e}")))?;
 

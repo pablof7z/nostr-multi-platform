@@ -190,6 +190,16 @@ fn wrap_and_publish(
             return;
         }
     };
+    // Fail-closed (issue #1265): verify the seal's signature BEFORE gift-wrapping.
+    // A misbehaving external/NIP-55 signer can return a malformed/garbage sig; an
+    // unverified seal would gift-wrap+publish a corrupt event the recipient cannot
+    // decrypt (the DM is silently lost). Mirror the reparse-failure arm — resolve
+    // the action Failed with a D6 toast — symmetric with `parse_seal_for_decrypt`
+    // on the inbox side.
+    if let Err(e) = seal_event.verify() {
+        report_envelope_failure(worker_tx, label, &correlation_id, format!("seal verify: {e}"));
+        return;
+    }
     let envelope = match nmp_nip59::wrap_signed_seal(&receiver, &seal_event) {
         Ok(ev) => ev,
         Err(e) => {
@@ -327,6 +337,23 @@ mod send_failure_tests {
         }
     }
 
+    /// A signed kind:13 seal whose signature has been tampered with: the event
+    /// id/pubkey/content are valid but the `sig` is replaced with another valid
+    /// signature over a DIFFERENT message, so `seal_event.verify()` must fail.
+    /// Models a misbehaving external/NIP-55 signer returning a garbage sig.
+    fn tampered_seal(signer: &nostr::Keys) -> SignedEvent {
+        let mut seal = signed_seal(signer);
+        // Forge: sign a different event and graft that (well-formed but wrong)
+        // signature onto our seal. The id no longer matches the sig → verify
+        // fails on signature, not on parse.
+        let other = nostr::EventBuilder::new(nostr::Kind::Seal, "a-different-payload")
+            .custom_created_at(Timestamp::from(1_700_000_001))
+            .sign_with_keys(signer)
+            .expect("decoy sign");
+        seal.sig = other.sig.to_string();
+        seal
+    }
+
     /// A live `CommandSender` whose receiver we keep, so we can drain enqueued
     /// commands and assert what landed.
     fn live_sender() -> (CommandSender, Receiver<ActorMail>) {
@@ -380,6 +407,46 @@ mod send_failure_tests {
                 .iter()
                 .any(|c| matches!(c, ActorCommand::RecordActionFailure { .. })),
             "happy path must not record a failure: {cmds:?}"
+        );
+    }
+
+    #[test]
+    fn wrap_and_publish_rejects_seal_with_bad_signature() {
+        // Issue #1265 (fail-closed send path): if the signed seal carries a
+        // garbage/forged signature (a misbehaving external/NIP-55 signer),
+        // `wrap_and_publish` must call `seal_event.verify()`, fail closed, and
+        // NEVER gift-wrap+publish a corrupt seal. The action resolves Failed
+        // (toast + RecordActionFailure) instead of silently losing the DM.
+        let signer = nostr::Keys::generate();
+        let receiver = nostr::Keys::generate().public_key();
+        let seal = tampered_seal(&signer);
+        let (tx, rx) = live_sender();
+
+        wrap_and_publish(
+            &tx,
+            "recipient",
+            receiver,
+            &seal,
+            vec!["wss://relay.example".to_string()],
+            Some("corr-bad-sig".to_string()),
+            None,
+        );
+
+        let cmds = drain(&rx);
+        // A corrupt seal must NOT be published.
+        assert!(
+            !cmds
+                .iter()
+                .any(|c| matches!(c, ActorCommand::PublishSignedEvent { .. })),
+            "a seal failing verify must not be gift-wrapped+published: {cmds:?}"
+        );
+        // The action must resolve Failed (single-terminal fail-loud contract).
+        assert!(
+            cmds.iter().any(|c| matches!(
+                c,
+                ActorCommand::RecordActionFailure { correlation_id, .. } if correlation_id == "corr-bad-sig"
+            )),
+            "a verify failure must record the action failure: {cmds:?}"
         );
     }
 
