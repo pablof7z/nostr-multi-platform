@@ -1,5 +1,12 @@
 import type { Component } from "./types";
 
+// Content — Web (SolidJS)
+import contentViewWebTsx from "../vendor/web/content-view/NostrContentView.tsx?raw";
+import contentMinimalWebTsx from "../vendor/web/content-minimal/NostrMinimalContentView.tsx?raw";
+import mentionChipWebTsx from "../vendor/web/content-mention-chip/NostrMentionChip.tsx?raw";
+import mediaGridWebTsx from "../vendor/web/content-media-grid/NostrMediaGrid.tsx?raw";
+import quoteCardWebTsx from "../vendor/web/content-quote-card/NostrQuoteCard.tsx?raw";
+
 // Content — SwiftUI
 import contentCoreSwift from "../vendor/swiftui/content-core/NostrContentRenderer.swift?raw";
 import contentCoreWireSwift from "../vendor/swiftui/content-core/ContentTreeWire.swift?raw";
@@ -150,6 +157,22 @@ export const contentComponents: Component[] = [
           "Pair it with the host kernel render-intent loop that claims visible profile and event references.",
         ],
       },
+      web: {
+        status: "stable",
+        installId: "web/content-minimal",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`NostrMinimalContentView` renders a `ContentTree` as a flat inline text run — no block structure, no media. Suitable for feed-row previews and notification summaries. Falls back to the raw content string when no tree is available.",
+        files: [
+          { source: "web/content-minimal/NostrMinimalContentView.tsx", target: "src/components/NostrContent/NostrMinimalContentView.tsx", role: "source", content: contentMinimalWebTsx },
+        ],
+        screenshots: [],
+        customization: [
+          "Pass `clampClass` to apply a CSS line-clamp class to the wrapper span.",
+          "Block-level nodes (Paragraph, Heading, List, …) are rendered inline — the entire note collapses to one continuous text run.",
+        ],
+      },
     },
   },
   {
@@ -207,6 +230,23 @@ export const contentComponents: Component[] = [
         customization: [
           "`NostrContentView` dispatches each `ContentTreeWire` node to the matching Ratatui sub-widget and keeps event refs as quote cards when render data is present.",
           "Host apps provide terminal image protocols for media URLs; the widget renders inline images when those protocols are present and falls back to text rows otherwise.",
+        ],
+      },
+      web: {
+        status: "stable",
+        installId: "web/content-view",
+        version: "0.1.0",
+        dependencies: ["content-media-grid", "content-quote-card"],
+        longDescription:
+          "`NostrContentView` walks a decoded `ContentTree` and renders all node kinds: text, mentions, hashtags, URLs, emoji, inline formatting, headings, blockquotes, code blocks, lists, media grids, and quote cards. Falls back to the raw content string when no tree is available (keep-last-good / honest-empty).",
+        files: [
+          { source: "web/content-view/NostrContentView.tsx", target: "src/components/NostrContent/NostrContentView.tsx", role: "source", content: contentViewWebTsx },
+        ],
+        screenshots: [],
+        customization: [
+          "The component accepts a `ContentTree` (plain TS interface). Wire it to your decode layer: convert `ContentTreeWire` FlatBuffers objects to `ContentTree` using the `content-core` decode helpers.",
+          "EventRef nodes render as raw `nostr:nevent…` links in Stage 0. Wire `onTap` on the `NostrQuoteCard` and pass a resolved `NostrQuoteCardModel` to upgrade to rich embed cards when `resolved_embeds` is available.",
+          "Mention display-name resolution is the caller's responsibility: claim the author pubkey via the kernel and pass `displayName` to `NostrMentionChip` when resolved.",
         ],
       },
     },
@@ -417,6 +457,22 @@ export const contentComponents: Component[] = [
           "The chip displays the kernel-projected kind:0 name when available and shortens the npub/pubkey fallback locally.",
         ],
       },
+      web: {
+        status: "stable",
+        installId: "web/content-mention-chip",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`NostrMentionChip` renders an inline `@displayName` chip for a Mention node. Pass `displayName` when the kernel has resolved the kind:0 profile; the chip falls back to an abbreviated `nostr:npub1…` URI until then — no spinners, no blocking.",
+        files: [
+          { source: "web/content-mention-chip/NostrMentionChip.tsx", target: "src/components/NostrContent/NostrMentionChip.tsx", role: "source", content: mentionChipWebTsx },
+        ],
+        screenshots: [],
+        customization: [
+          "Pass `pictureUrl` from the kernel's kind:0 profile when available; the chip renders a 16 px avatar with an initial-letter fallback.",
+          "Wire `onTap` to open a profile view or navigate to the npub route.",
+        ],
+      },
     },
   },
   {
@@ -467,6 +523,22 @@ export const contentComponents: Component[] = [
           "Feed it a `WireNode::EventRef` plus `ContentRenderData`; unresolved references stay visible as a quote placeholder instead of raw `nostr:nevent...` text.",
         ],
       },
+      web: {
+        status: "stable",
+        installId: "web/content-quote-card",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`NostrQuoteCard` renders a quoted Nostr event inline. Stage 0: pass only `nostrUri` and the card renders a collapsed placeholder link — no fake embed. Stage 1+: pass a resolved `NostrQuoteCardModel` (author header + content preview) once `resolved_embeds` is wired.",
+        files: [
+          { source: "web/content-quote-card/NostrQuoteCard.tsx", target: "src/components/NostrContent/NostrQuoteCard.tsx", role: "source", content: quoteCardWebTsx },
+        ],
+        screenshots: [],
+        customization: [
+          "Wire `model` from your app's embed resolver when `resolved_embeds` projection lands; the component handles both variants — collapsed placeholder and rich card — without further changes.",
+          "Tap routing: wire `onTap` to open a thread view or navigate to the event's page.",
+        ],
+      },
     },
   },
   {
@@ -514,6 +586,23 @@ export const contentComponents: Component[] = [
         screenshots: ["tui-content-media-grid-preview.png"],
         customization: [
           "Pass host-created `ratatui-image` protocols for URLs that have already been fetched and decoded. The widget lays out up to four inline images and leaves fetching/caching outside the display component.",
+        ],
+      },
+      web: {
+        status: "stable",
+        installId: "web/content-media-grid",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`NostrMediaGrid` renders the `mediaUrls` array from an NFCT Media node into an adaptive CSS grid. Count-driven layout: 1 = full-width 16:9, 2 = side-by-side, 3 = one large + two stacked, 4 = 2×2. Five or more show a 2×2 preview with a `+N` overflow badge. All images use `loading=\"lazy\"`.",
+        files: [
+          { source: "web/content-media-grid/NostrMediaGrid.tsx", target: "src/components/NostrContent/NostrMediaGrid.tsx", role: "source", content: mediaGridWebTsx },
+        ],
+        screenshots: [],
+        customization: [
+          "CSS grid layout is driven by the `data-count` attribute on `.nostr-media-grid` — add one CSS rule per count to customise the grid template.",
+          "Swap the `<img>` in `MediaCell` with your own lazy-loaded image component (e.g. a Solid signal-based cache or blurhash placeholder).",
+          "Wire `onTap` to open a full-screen media viewer; it receives the URL and index of the tapped item.",
         ],
       },
     },

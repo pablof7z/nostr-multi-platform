@@ -1,5 +1,6 @@
 /** ADR-0035 reply-attribution badge attached to a feed item. */
 import type { FeedItem, FeedCountState } from "./feedProjection";
+import type { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
 
 export type AttributionBadge = {
   authorPubkey: string;
@@ -29,6 +30,11 @@ export type TimelineItem = {
   attribution?: AttributionBadge[];
   /** NIP-18 repost attribution — absent for plain notes. */
   repostedBy?: RepostBadge;
+  /**
+   * Decoded NFCT content tree from the kernel — absent until the kernel
+   * ships `content_tree_bytes`. Callers fall back to `content` when undefined.
+   */
+  contentTree?: ContentTreeWire;
 };
 
 export type RelationCounts = { replies?: CountState; reactions?: CountState; reposts?: CountState };
@@ -164,6 +170,7 @@ export function feedItemsToRows(items: FeedItem[], resolvedProfiles?: Map<string
     repostedBy: item.repostedBy
       ? { authorPubkey: item.repostedBy.authorPubkey, authorDisplayName: item.repostedBy.authorDisplayName }
       : undefined,
+    contentTree: item.contentTree,
   }));
 }
 
