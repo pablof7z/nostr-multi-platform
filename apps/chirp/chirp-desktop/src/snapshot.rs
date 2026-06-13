@@ -43,6 +43,16 @@ pub struct Snapshot {
     /// nmp.feed.home, configured_relays, action_lifecycle, mention_profiles, …).
     #[serde(default)]
     pub projections: HashMap<String, serde_json::Value>,
+
+    /// Pre-resolved embed map (issue #1283 Phase 1), keyed by `primary_id`.
+    /// Decoded from the typed `claimed_event_embeds` (`NEMB`) sidecar in
+    /// `snapshot_decode::decode_snapshot_typed` — desktop is a typed-frame shell
+    /// (no JSON `payload`), so it consumes the SAME typed sidecar Chirp iOS does.
+    /// `#[serde(default)]`: never present in the JSON envelope; the typed decode
+    /// populates it. `render::note_body` looks an `EventRef` up here by
+    /// `primary_id` to render the embedded note instead of a `↗ note` placeholder.
+    #[serde(default)]
+    pub embeds: HashMap<String, nmp_content::EmbeddedEventEnvelope>,
 }
 
 impl Snapshot {

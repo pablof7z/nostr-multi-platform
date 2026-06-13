@@ -232,6 +232,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let resolvedProfiles: [String: ProfileCard]?
     let claimedProfiles: [String: ProfileCard]?
     let claimedEvents: [String: ClaimedEventDto]?
+    let claimedEventEmbeds: [String: EmbeddedEventEnvelope]?
     let settingsHub: [String: Int]?
     let marmotSnapshot: MarmotSnapshot?
     let marmotMessages: [String: [MarmotMessage]]?
@@ -269,6 +270,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case resolvedProfiles
         case claimedProfiles
         case claimedEvents
+        case claimedEventEmbeds
         case settingsHub
         case marmotSnapshot = "nmp.marmot.snapshot"
         case marmotMessages = "nmp.marmot.messages"

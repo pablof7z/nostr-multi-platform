@@ -185,6 +185,9 @@ fn real_registry_emits_exactly_the_proof_keys() {
     assert!(out.contains("enum TypedDmInboxDecoder {"));
     assert!(out.contains("enum TypedDmRelayListDecoder {"));
     assert!(out.contains("enum TypedClaimedEventsDecoder {"));
+    // Issue #1283 Phase 1: the typed embed sidecar (`claimedEventEmbeds` →
+    // `TypedClaimedEventEmbedsDecoder`, `NEMB` / `nmp_embed_ClaimedEventEmbeds`).
+    assert!(out.contains("enum TypedClaimedEventEmbedsDecoder {"));
     // NIP-46 per-key sidecar flips. The enum name derives from `swift_field`.
     assert!(out.contains("enum TypedBunkerHandshakeDecoder {"));
     assert!(out.contains("enum TypedNip46OnboardingDecoder {"));
@@ -211,8 +214,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 29,
-        "exactly twenty-nine keys have a checked-in flatc --swift reader binding \
+        emitted, 30,
+        "exactly thirty keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
@@ -227,7 +230,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
          flips; Wave C: action_results, action_stages; signer_state \
          (ADR-0048 D6, generalised from V-14 bunker_connection_state); V-112 \
          author_view + thread_view deleted = 30 - 2 = 28; #626: \
-         nmp.nip29.group_defaults = 28 + 1 = 29); if this changed, \
+         nmp.nip29.group_defaults = 28 + 1 = 29; #1283 Phase 1: \
+         claimed_event_embeds (NEMB) = 29 + 1 = 30); if this changed, \
          regenerate TypedProjectionDecoders.generated.swift and update this test"
     );
 }

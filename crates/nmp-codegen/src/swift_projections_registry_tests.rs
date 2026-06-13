@@ -11,14 +11,13 @@ use super::*;
 /// silent.
 #[test]
 fn registry_size_is_locked() {
-    // 35 entries: 36 (incl. `bunker_connection_state`, V-14 step b, #963)
-    // minus `author_view` (KAVW) and `thread_view` (KTVW), removed by
-    // V-112 (ADR-0042), plus `nmp.nip29.group_defaults` (#626).
+    // 36 entries: 35 (the V-112 / #963 / #626 baseline) plus
+    // `claimed_event_embeds` (the typed embed sidecar, issue #1283 Phase 1).
     // Bump this (and add a new SnapshotProjectionEntry above) when a new
     // projection is wired.
     assert_eq!(
         SNAPSHOT_PROJECTIONS.len(),
-        35,
+        36,
         "registry size changed — regenerate KernelTypes.generated.swift and update this test"
     );
 }
