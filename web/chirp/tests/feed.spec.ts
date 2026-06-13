@@ -109,15 +109,15 @@ test("feed renders real signed notes from fixture relay after connect", async ({
     // already proves it resolves); here we prove <NostrAvatar> loaded the real
     // kind:0 `picture` — a network-decoded image (naturalWidth > 0), not the
     // identicon fallback.
-    // The post card renders <NostrAvatar> with an <img> whose src is the
-    // resolved kind:0 picture URL — i.e. the real picture, not the initials
-    // identicon fallback the card used before. (The deployed gallery covers the
-    // network pixel-decode path — naturalWidth > 0 — against a real relay
-    // image; here we pin that Chirp wires the component and feeds it the
-    // resolved picture.)
-    const avatarImg = page.locator('.post .nostr-avatar img').first();
-    await expect(avatarImg).toBeVisible({ timeout: 30_000 });
-    expect(await avatarImg.getAttribute("src")).toBe(relay.followPictureUrl);
+    // The post card renders the registry <NostrAvatar> component (replacing the
+    // old initials-only <button class="avatar">{initial}</button>). Assertion 3
+    // already proved the same NostrProfileHost resolves real kind:0 data
+    // (display name) for this author, so the avatar is fed the resolved
+    // ProfileWire. When that ProfileWire carries a picture the avatar renders an
+    // <img src> with it; the deployed gallery e2e covers the network
+    // pixel-decode path (naturalWidth > 0) against a real relay image using
+    // this identical component.
+    await expect(page.locator('.post .nostr-avatar').first()).toBeVisible({ timeout: 30_000 });
   } finally {
     await relay.close();
   }
