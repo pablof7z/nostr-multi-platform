@@ -72,6 +72,9 @@ mod conformance_support;
 // Box::new(SendGiftWrappedDmCommand { ... }))`.
 mod event_observer;
 mod identity;
+// ADR-0052 §D3 — per-app signer-hook accessors on `IdentityRuntime`
+// (`impl` block split out of `identity.rs` for file-size discipline).
+mod signer_hooks;
 // ADR-0032 / #1099: signer-state display label/tone derivation (split from
 // `identity.rs` for file-size; mirrors the `cipher` split).
 mod signer_state_label;

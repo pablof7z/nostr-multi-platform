@@ -448,6 +448,15 @@ pub(crate) struct IdentityRuntime {
     /// onto the snapshot wire). Set when the `BunkerUri` handshake is started;
     /// read + cleared when the matching `RemoteHandle` completes.
     pending_bunker_make_active: bool,
+    /// ADR-0052 §D3 — per-app bunker-URI hook slot (replaces the deleted
+    /// `bunker_hook::HOOK` global). Installed by `nmp_signer_broker_init`; read
+    /// by `start_bunker_handshake` / `restore_bunker_session`. Empty until a
+    /// broker installs — an invocation then degrades to a toast (D6).
+    bunker_hook: crate::bunker_hook::BunkerHookSlot,
+    /// ADR-0052 §D3 — per-app NIP-55 restore hook slot (twin of `bunker_hook`;
+    /// replaces `external_signer_hook::HOOK`). Installed by
+    /// `nmp_external_signer_init`; read by `restore_nip55_session`.
+    external_signer_hook: crate::external_signer_hook::ExternalSignerHookSlot,
 }
 
 impl IdentityRuntime {
@@ -467,7 +476,32 @@ impl IdentityRuntime {
             bunker_handshake,
             signer_state,
             pending_bunker_make_active: false,
+            // ADR-0052 §D3 — empty per-app hook slots; production replaces them
+            // with the `NmpApp`'s `Arc` clones via `set_signer_hook_slots`.
+            bunker_hook: crate::bunker_hook::new_bunker_hook_slot(),
+            external_signer_hook: crate::external_signer_hook::new_external_signer_hook_slot(),
         }
+    }
+
+    // ADR-0052 §D3 — per-app signer-hook bind/install/invoke methods live in
+    // the sibling `signer_hooks` module; these accessors keep the slot fields
+    // private to this owner.
+    pub(super) fn bunker_hook_slot(&self) -> &crate::bunker_hook::BunkerHookSlot {
+        &self.bunker_hook
+    }
+    pub(super) fn external_signer_hook_slot(
+        &self,
+    ) -> &crate::external_signer_hook::ExternalSignerHookSlot {
+        &self.external_signer_hook
+    }
+    pub(super) fn set_bunker_hook_slot(&mut self, slot: crate::bunker_hook::BunkerHookSlot) {
+        self.bunker_hook = slot;
+    }
+    pub(super) fn set_external_signer_hook_slot(
+        &mut self,
+        slot: crate::external_signer_hook::ExternalSignerHookSlot,
+    ) {
+        self.external_signer_hook = slot;
     }
 
     /// Write the latest bunker-handshake state into the shared projection slot
@@ -1411,8 +1445,9 @@ pub(crate) fn bunker_handshake_progress(
 /// (which has already stashed `make_active` in `pending_bunker_make_active`).
 fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: &str) {
     // Stage 3 of NIP-46 wiring: actor exposes handshake-progress snapshot.
-    // Stage 4 of NIP-46 wiring: actor delegates the handshake to a broker
-    // registered via `crate::bunker_hook::register_bunker_hook`.
+    // Stage 4 of NIP-46 wiring: actor delegates the handshake to the broker
+    // hook installed in this app's per-app `bunker_hook` slot (ADR-0052 §D3 —
+    // installed by `nmp_signer_broker_init`; no process-global).
     //
     // Here we shape-validate the URI, seed the snapshot with `"connecting"`
     // so the host sign-in flow renders progress immediately, then hand
@@ -1431,7 +1466,7 @@ fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: 
         Some("Waiting for broker...".to_string()),
     )));
     kernel.mark_changed_since_emit();
-    if !crate::bunker_hook::invoke_bunker_connect_hook(uri) {
+    if !identity.invoke_bunker_connect_hook(uri) {
         // Defence against init-order bugs: the broker should be registered
         // before any URI can reach the actor. If it isn't, surface a clear
         // toast and clear the progress projection (D6 — error becomes state,
@@ -1453,7 +1488,7 @@ pub(crate) fn restore_bunker_session(
         Some("Restoring broker session...".to_string()),
     )));
     kernel.mark_changed_since_emit();
-    if !crate::bunker_hook::invoke_bunker_restore_hook(payload_json) {
+    if !identity.invoke_bunker_restore_hook(payload_json) {
         identity.set_bunker_handshake(None);
         kernel.set_last_error_toast(Some(
             "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
@@ -1473,7 +1508,7 @@ pub(crate) fn restore_nip55_session(
     kernel: &mut Kernel,
     payload_json: &str,
 ) {
-    if !crate::external_signer_hook::invoke_external_signer_restore_hook(payload_json) {
+    if !identity.invoke_external_signer_restore_hook(payload_json) {
         identity.set_signer_state(Some(SignerStateDto::new(
             "nip55".to_string(),
             "unavailable".to_string(),

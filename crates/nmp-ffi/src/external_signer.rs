@@ -28,13 +28,11 @@
 //!   handlers surface as `signer_state: unavailable`, never a panic.
 
 use std::ffi::c_char;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::{dispatch_capability, CapabilityCallbackSlot};
 use nmp_core::substrate::{CapabilityEnvelope, CapabilityRequest, SignedEvent, UnsignedEvent};
-use nmp_core::{
-    register_external_signer_hook, ActorCommand, ExternalSignerHookRequest, RemoteSignerHandle,
-};
+use nmp_core::{ActorCommand, ExternalSignerHookRequest, RemoteSignerHandle};
 use nmp_signer_iface::{
     ExternalSignerRequest, ExternalSignerResponse, ExternalSignerTransport, SignerError, SignerOp,
     EXTERNAL_SIGNER_NAMESPACE,
@@ -42,11 +40,6 @@ use nmp_signer_iface::{
 use nmp_signers::{Nip55Connect, Nip55Signer, SignerPayload};
 
 use super::{app_ref, NmpApp};
-
-/// Process-global driver handle (mirrors `GLOBAL_BROKER` in
-/// `signer_broker.rs` — one app per process; the deliver/signin symbols
-/// reach the driver without a second registration mechanism).
-static GLOBAL_DRIVER: OnceLock<Arc<Nip55Driver>> = OnceLock::new();
 
 /// Outbound transport: serialises an [`ExternalSignerRequest`] into a
 /// `CapabilityRequest { namespace: "external_signer" }` and routes it through
@@ -306,9 +299,12 @@ impl RemoteSignerHandle for ArcNip55Signer {
     }
 }
 
-/// Initialise the NIP-55 driver for `app` and register the nmp-core restore
-/// hook. Idempotent: repeated calls after the first keep the existing
-/// process-global driver (the `nmp_signer_broker_init` contract).
+/// Initialise the NIP-55 driver for `app` and install the per-app restore hook.
+/// Idempotent per app: repeated calls keep the existing per-app driver.
+/// ADR-0052 §D3 — the driver handle and the restore hook are **per-app** (no
+/// `GLOBAL_DRIVER` / `register_external_signer_hook` process-global), so two
+/// apps have independent drivers and a freed-then-recreated app re-initialises
+/// cleanly.
 ///
 /// Called by the Android JNI shims at `nativeNew`, after the capability
 /// callback trampoline is registered.
@@ -325,17 +321,20 @@ pub extern "C" fn nmp_external_signer_init(app: *mut NmpApp) {
     };
     let tx = app.actor_sender();
     let callback = Arc::clone(&app.capability_callback);
-    let _ = GLOBAL_DRIVER.get_or_init(|| {
+    let driver = app.external_signer_driver_get_or_init(|| {
         let transport = Arc::new(CapabilitySignerTransport { callback });
-        let driver = Arc::new(Nip55Driver::new(tx, transport));
-        let driver_for_hook = Arc::clone(&driver);
-        register_external_signer_hook(Arc::new(move |request| match request {
-            ExternalSignerHookRequest::Restore { payload_json } => {
-                driver_for_hook.restore(&payload_json);
-            }
-        }));
-        driver
+        Arc::new(Nip55Driver::new(tx, transport))
     });
+    // ADR-0052 §D3 — install the restore hook into THIS app's per-app slot
+    // (the actor's `IdentityRuntime` reads the matching `Arc` clone). The
+    // driver's actor re-entry uses the per-app `tx` captured above — responses
+    // route to the originating app structurally, no correlation token.
+    let driver_for_hook = Arc::clone(&driver);
+    app.install_external_signer_hook(Arc::new(move |request| match request {
+        ExternalSignerHookRequest::Restore { payload_json } => {
+            driver_for_hook.restore(&payload_json);
+        }
+    }));
 }
 
 /// Begin a NIP-55 sign-in (`get_public_key` + permission batch) routed to
@@ -368,7 +367,7 @@ pub extern "C" fn nmp_app_signin_nip55(app: *mut NmpApp, signer_package: *const 
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    if let Some(driver) = GLOBAL_DRIVER.get() {
+    if let Some(driver) = app_ref(app).and_then(NmpApp::external_signer_driver) {
         driver.signin(package);
     }
 }
@@ -393,7 +392,7 @@ pub extern "C" fn nmp_app_deliver_external_signer_response(
     let Some(response) = super::c_string_argument(response_json) else {
         return;
     };
-    if let Some(driver) = GLOBAL_DRIVER.get() {
+    if let Some(driver) = app_ref(app).and_then(NmpApp::external_signer_driver) {
         driver.deliver(&response);
     }
 }

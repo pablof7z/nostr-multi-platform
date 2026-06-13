@@ -188,6 +188,13 @@ struct NewGroupSheet: View {
             } else if !isWaiting {
                 Button { create() } label: { Text("Create group") }
                     .disabled(createDisabled)
+                // When Marmot is not registered (bunker / no local nsec), surface
+                // the Rust-owned reason so the user knows how to unblock themselves.
+                if kind == .privateGroup, !model.marmot.isRegistered {
+                    Text(model.marmot.snapshot.keyPackage.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

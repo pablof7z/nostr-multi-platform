@@ -58,6 +58,9 @@ mod raw_event_tap;
 mod relay_config;
 #[cfg(feature = "signer-broker")]
 mod signer_broker;
+// ADR-0052 §D3 — per-app signer-port accessors (`impl NmpApp` block split out
+// of `lib.rs`); methods individually feature-gated, module always compiled.
+mod signer_ports;
 // ADR-0048 Stage 2 — NIP-55 external-signer driver (capability-bridge
 // transport + first-connect flow + actor re-entry).
 #[cfg(feature = "external-signer")]
@@ -81,6 +84,11 @@ mod wallet;
 
 #[cfg(any(test, feature = "test-support"))]
 mod testing;
+
+// ADR-0052 §D3 — test-support seam for the rung 5.3 per-app signer-port
+// oracle. Gated test-only; never in the production FFI ABI.
+#[cfg(any(test, feature = "test-support"))]
+mod signer_ports_test_support;
 
 // ── Native re-export surface ──────────────────────────────────────────────
 // Hoist every per-submodule FFI entry-point into the `ffi::` namespace so
@@ -193,6 +201,12 @@ pub use timeline::{
 pub use testing::{
     nmp_app_inject_pre_verified_events, nmp_app_inject_signed_event_json,
     nmp_app_inject_signed_events, nmp_app_read_projection_json,
+};
+// ADR-0052 §D3 — rung 5.3 per-app signer-port oracle seam.
+#[cfg(any(test, feature = "test-support"))]
+pub use signer_ports_test_support::{
+    install_bunker_hook_for_test, install_external_signer_hook_for_test,
+    invoke_bunker_connect_hook_for_test, invoke_external_signer_restore_hook_for_test,
 };
 
 // ── android-ffi delta ────────────────────────────────────────────────────
@@ -693,6 +707,20 @@ pub struct NmpApp {
     /// above): `nmp-nip11` installs its fetch hook, the actor fans it on
     /// `PoolEvent::Opened`.
     relay_connected_hook: nmp_core::substrate::RelayConnectedHookSlot,
+    /// ADR-0052 §D3 — per-app bunker-URI hook slot (replaces `bunker_hook::HOOK`;
+    /// installed by `nmp_signer_broker_init`, read by the actor; dies with app).
+    bunker_hook: nmp_core::BunkerHookSlot,
+    /// ADR-0052 §D3 — per-app NIP-55 restore hook slot (replaces
+    /// `external_signer_hook::HOOK`; installed by `nmp_external_signer_init`).
+    external_signer_hook: nmp_core::ExternalSignerHookSlot,
+    /// ADR-0052 §D3 — per-app NIP-46 broker handle (replaces `GLOBAL_BROKER`;
+    /// `None` until `nmp_signer_broker_init`; read by cancel / nostrconnect-uri).
+    #[cfg(feature = "signer-broker")]
+    signer_broker: Arc<Mutex<Option<Arc<nmp_signer_broker::BunkerBroker>>>>,
+    /// ADR-0052 §D3 — per-app NIP-55 driver handle (replaces `GLOBAL_DRIVER`;
+    /// `None` until `nmp_external_signer_init`; read by signin / deliver).
+    #[cfg(feature = "external-signer")]
+    external_signer_driver: Arc<Mutex<Option<Arc<external_signer::Nip55Driver>>>>,
     /// V-40 — shared [`nmp_core::substrate::EventIngestDispatcher`] slot.
     /// Per-NIP crates register a parser through
     /// [`Self::register_ingest_parser`] which mutates this slot under a
@@ -842,6 +870,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // ADR-0051: relay-connected hook slot (actor clone + `NmpApp` clone).
     let relay_connected_hook = nmp_core::substrate::new_relay_connected_hook_slot();
     let actor_relay_connected_hook = Arc::clone(&relay_connected_hook);
+    // ADR-0052 §D3: per-app signer hook slots (replace the deleted
+    // `bunker_hook::HOOK` / `external_signer_hook::HOOK` globals). The `NmpApp`
+    // keeps one clone of each so the `*_init` symbols install post-construction;
+    // the actor's `IdentityRuntime` carries the matching clone (sole reader).
+    let bunker_hook = nmp_core::new_bunker_hook_slot();
+    let actor_bunker_hook = Arc::clone(&bunker_hook);
+    let external_signer_hook = nmp_core::new_external_signer_hook_slot();
+    let actor_external_signer_hook = Arc::clone(&external_signer_hook);
     // D0: NIP-46 remote signing is an app noun. The shared bunker-handshake
     // slot is handed to the actor: `run_actor_with_observers` both gives one
     // `Arc` clone to the actor's `IdentityRuntime` (the sole writer, D4) and
@@ -1060,6 +1096,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // V-14 step b: bunker relay-layer connection-state slot.
                 // The broker callback → actor command → slot write keeps D4.
                 actor_signer_state,
+                // ADR-0052 §D3 — actor clones of the per-app signer hook slots
+                // (read by the actor's `IdentityRuntime` on bunker/NIP-55 restore).
+                actor_bunker_hook,
+                actor_external_signer_hook,
                 actor_configured_relays,
                 actor_mls_local_nsec,
                 actor_active_local_keys,
@@ -1285,6 +1325,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // its NWC runtime here.
         relay_text_interceptor,
         relay_connected_hook,
+        // ADR-0052 §D3 — per-app signer hook slots + broker/driver handles
+        // (replace `GLOBAL_BROKER` / `GLOBAL_DRIVER` / the `HOOK` statics).
+        // Broker/driver start `None`; written by the `*_init` symbols.
+        bunker_hook,
+        external_signer_hook,
+        #[cfg(feature = "signer-broker")]
+        signer_broker: Arc::new(Mutex::new(None)),
+        #[cfg(feature = "external-signer")]
+        external_signer_driver: Arc::new(Mutex::new(None)),
         // V-40 — the `NmpApp`'s clones of the substrate `IngestParser`
         // dispatcher slot and the DM-inbox relay-lookup slot. Per-NIP
         // crates mutate these through
@@ -1758,6 +1807,9 @@ impl NmpApp {
     ) {
         nmp_core::substrate::install_relay_connected_hook(&self.relay_connected_hook, hook);
     }
+
+    // ADR-0052 §D3 — per-app signer-port accessors live in the cohesive
+    // `signer_ports` sibling module (another `impl NmpApp` block).
 
     /// V-40 — register a [`nmp_core::substrate::IngestParser`] for `kind`
     /// against the shared `EventIngestDispatcher` slot. The same `Arc`
