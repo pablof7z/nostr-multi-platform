@@ -13,7 +13,15 @@ private let KERNEL_SCHEMA_VERSION: UInt32 = 1
 /// Thin C-FFI wrapper around the `nmp_core` static library.
 final class KernelHandle {
     let raw: UnsafeMutableRawPointer
-    private var updateSink: KernelUpdateSink?
+    /// Retained handle for the update sink whose opaque pointer is registered
+    /// with Rust via `nmp_app_set_update_callback`. We `passRetained` the sink
+    /// into Rust (Rust owns the +1) and hold the `Unmanaged` token here so the
+    /// retain can be released *exactly once* — on re-`listen()` (replace) or in
+    /// `deinit` (clear). This removes the fragile dependency on `updateSink`
+    /// staying non-nil for the registered pointer to remain valid: even if the
+    /// strong property were cleared, the Rust-side retain keeps the object
+    /// alive until `nmp_app_set_update_callback(raw, nil, nil)` quiesces.
+    private var retainedUpdateSink: Unmanaged<KernelUpdateSink>?
     /// Strong reference to the registered capabilities object. Held so the
     /// context pointer passed to `nmpCapabilityCallback` stays valid until
     /// `deinit` unregisters the callback.
@@ -61,7 +69,9 @@ final class KernelHandle {
         unregisterChirpProjectionIfNeeded()
         // Same contract for the Marmot observer registration.
         unregisterMarmotIfNeeded()
-        nmp_app_set_update_callback(raw, nil, nil)
+        // Unregister the update callback and release the retained sink in
+        // lock-step (balances the `passRetained` in `listen`).
+        clearUpdateCallback()
         // Unregister the capability callback before releasing `retainedCapabilities`
         // so no callback fires with a dangling context pointer.
         nmp_app_set_capability_callback(raw, nil, nil)
@@ -88,12 +98,32 @@ final class KernelHandle {
         _ handler: @escaping (KernelUpdateResult) -> Void,
         onPanic: @escaping () -> Void = {}
     ) {
+        // Clear any prior registration first. `set_update_callback` quiesces
+        // (Article: UpdateCallbackGate) — after it returns no in-flight
+        // callback can still hold the old context pointer — so releasing the
+        // previous retain immediately afterwards is safe.
+        clearUpdateCallback()
         let sink = KernelUpdateSink(handler: handler, onPanic: onPanic)
-        updateSink = sink
+        // `passRetained` hands Rust its own +1 on the sink; the matching
+        // release happens in `clearUpdateCallback()` (on replace or deinit).
+        let retained = Unmanaged.passRetained(sink)
+        retainedUpdateSink = retained
         nmp_app_set_update_callback(
             raw,
-            Unmanaged.passUnretained(sink).toOpaque(),
+            retained.toOpaque(),
             nmpUpdateCallback)
+    }
+
+    /// Unregister the Rust update callback and release the sink retain in
+    /// lock-step. Idempotent. Relies on the `nmp_app_set_update_callback`
+    /// quiescence guarantee: once the setter returns, the actor has drained any
+    /// in-flight callback, so no Rust caller can dereference the (about to be
+    /// released) context pointer.
+    private func clearUpdateCallback() {
+        guard let retained = retainedUpdateSink else { return }
+        nmp_app_set_update_callback(raw, nil, nil)
+        retained.release()
+        retainedUpdateSink = nil
     }
 
     /// Actor-liveness probe (D7 pull-side, ADR-0028). Returns `true` when the
@@ -542,6 +572,23 @@ final class KernelHandle {
                 nmp_app_add_relay(raw, uPtr, rPtr)
             }
         }
+    }
+
+    /// Seed the Chirp reference relay set. The default relay list lives in Rust
+    /// (`nmp-chirp-config`, surfaced via `nmp_app_chirp_seed_default_relays`),
+    /// not in Swift (D7 / thin-shell) — the shell no longer hardcodes URLs.
+    /// Returns `false` only on a null app handle.
+    @discardableResult
+    func seedDefaultRelays() -> Bool {
+        nmp_app_chirp_seed_default_relays(raw)
+    }
+
+    /// Seed relays from a `[["url","role"],…]` JSON array (the `NMP_TEST_RELAYS`
+    /// override shape). Parsing/validation live in Rust
+    /// (`nmp_app_chirp_seed_relays_from_json`); returns `false` when the JSON is
+    /// malformed or empty so the caller can fall back to `seedDefaultRelays()`.
+    func seedRelays(fromJSON json: String) -> Bool {
+        json.withCString { nmp_app_chirp_seed_relays_from_json(raw, $0) }
     }
 
     func removeRelay(url: String) {

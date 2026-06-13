@@ -68,7 +68,7 @@ struct ThreadNoteRow: View {
     // with view builders inside the parent `HStack`.
 
     private var noteBodyContent: some View {
-        let isRepost = card.kind == 6
+        let isRepost = card.isRepost
         let context = NoteRenderContext(
             mentionProfiles: mentionProfiles,
             eventCards: eventCards,

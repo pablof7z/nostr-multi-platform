@@ -107,6 +107,16 @@ void nmp_app_switch_active(void *app, const char *identity_id);
 void nmp_app_remove_account(void *app, const char *identity_id);
 void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
+// Chirp relay-bootstrap seeding. Policy lives in Rust (nmp-chirp-config), not
+// in Swift (D7 / thin-shell): the relay default set has ONE source of truth.
+// `nmp_app_chirp_seed_default_relays` adds the Chirp reference set; returns
+// false only when `app` is NULL. `nmp_app_chirp_seed_relays_from_json` parses
+// the NMP_TEST_RELAYS override (a [["url","role"],…] JSON array) and seeds each
+// entry; returns false on a NULL app, malformed JSON, or an empty array — the
+// caller falls back to the default seed on false. iOS analogue of the Android
+// nmp-android-ffi relay-seeding glue.
+bool nmp_app_chirp_seed_default_relays(void *app);
+bool nmp_app_chirp_seed_relays_from_json(void *app, const char *json);
 // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline REMOVED.
 // Use the Chirp home-feed wrappers below instead.
 void nmp_app_chirp_open_home_feed(void *app);

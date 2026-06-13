@@ -64,6 +64,9 @@ final class OpFeedDecoderTests: XCTestCase {
         // root_card() has absent display mirrors (has_* == false).
         XCTAssertNil(root.card.authorDisplayName)
         XCTAssertNil(root.card.authorPictureUrl)
+        // D0 typed repost signal: a plain root has no `reposted_by`, so
+        // isRepost is false (NOT re-derived from kind in the view).
+        XCTAssertFalse(root.card.isRepost, "plain root must not be flagged repost")
 
         // ADR-0038 Stage T4: contentTree and relationCounts are now populated
         // by the typed NFCT decoder. The prior nil assertions documented the gap;
@@ -99,6 +102,11 @@ final class OpFeedDecoderTests: XCTestCase {
         let repost = snapshot.cards[1]
         XCTAssertEqual(repost.card.id, hex32(0x09))
         XCTAssertEqual(repost.card.kind, 6)
+        // D0 typed repost signal: the fixture card carries `reposted_by`, so
+        // isRepost is true. This is the field ThreadNoteRow reads instead of
+        // `card.kind == 6` — and it stays correct for the OP-centric feed where
+        // a repost card can carry the *original* note's kind (not 6).
+        XCTAssertTrue(repost.card.isRepost, "card with reposted_by must be flagged repost")
         XCTAssertEqual(repost.card.authorDisplayName, "Alice")
         XCTAssertEqual(repost.card.authorPictureUrl, "https://example.com/a.png")
         XCTAssertTrue(repost.attribution.isEmpty)
@@ -239,7 +247,8 @@ final class OpFeedDecoderTests: XCTestCase {
             card: ChirpEventCard(
                 id: id, authorPubkey: "", kind: 1, createdAt: 0, content: "",
                 contentTree: nil, relationCounts: nil,
-                authorDisplayName: nil, authorPictureUrl: nil, contentPreview: ""),
+                authorDisplayName: nil, authorPictureUrl: nil, contentPreview: "",
+                isRepost: false),
             attribution: [])
     }
 

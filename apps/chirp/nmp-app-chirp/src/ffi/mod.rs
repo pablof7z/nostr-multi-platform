@@ -20,6 +20,12 @@
 //!   relay-list publish.
 //! - [`nmp_app_chirp_unregister`] — free the handle. Idempotent. (The engine /
 //!   follow-set observer registrations are torn down by `nmp_app_free`.)
+//! - [`nmp_app_chirp_seed_default_relays`] /
+//!   [`nmp_app_chirp_seed_relays_from_json`] — Chirp relay-bootstrap seeding.
+//!   Wraps `nmp_chirp_config::chirp_default_relay_bootstrap` so the relay
+//!   default set has ONE source of truth and the Swift/Kotlin shells never
+//!   hardcode relay URLs (D7). iOS analogue of the Android
+//!   `nmp-android-ffi::relay_seeding` glue.
 //! - `nmp_app_chirp_identity_restore`,
 //!   `nmp_app_chirp_identity_sign_in_nsec`, and
 //!   `nmp_app_chirp_identity_remove_account` — Chirp-owned identity wrappers
@@ -51,6 +57,7 @@ mod helpers;
 mod identity;
 mod interest_feed;
 mod register;
+mod relay_seeding;
 mod snapshot;
 mod typed_actions;
 
@@ -67,6 +74,9 @@ pub use interest_feed::{
     nmp_app_chirp_close_author_feed, nmp_app_chirp_close_home_feed,
     nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed,
     nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
+};
+pub use relay_seeding::{
+    nmp_app_chirp_seed_default_relays, nmp_app_chirp_seed_relays_from_json,
 };
 pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
