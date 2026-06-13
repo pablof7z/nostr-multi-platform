@@ -32,6 +32,32 @@ use super::ActorCommand;
 #[cfg(feature = "native")]
 use nmp_network::pool::PoolEvent;
 
+/// Hard cap on the actor's local relay backlog (the `VecDeque<PoolEvent>` the
+/// [`MailScheduler`] stages between blocking receives).
+///
+/// Under a sustained relay-event flood — a relay replaying thousands of
+/// historical events, say — relay mail can arrive faster than the actor drains
+/// it. Without a cap the backlog grows without bound (memory growth) and, paired
+/// with the bounded drain below, the actor would otherwise busy-spin one event
+/// at a time. The cap bounds memory; on overflow the *oldest* staged event is
+/// dropped (D1 tolerates partial state — a dropped relay frame is recoverable
+/// via re-subscription / EOSE-driven refetch, and the newest events are the most
+/// relevant to keep). Drops are counted ([`MailScheduler::relay_backlog_drops`])
+/// so the loss is observable rather than silent.
+#[cfg(feature = "native")]
+pub(super) const RELAY_BACKLOG_CAP: usize = 512;
+
+/// Maximum number of stashed backlog items [`MailScheduler::next_after_drain`]
+/// serves before it MUST fall through to the single blocking `recv_timeout`.
+///
+/// Serving a *bounded* batch (rather than one-per-call) lets the backlog drain
+/// faster than a flood fills it, while always falling through to the one
+/// blocking wait once the batch is exhausted preserves D8 (exactly one blocking
+/// wait per loop iteration) and kills the busy-spin: a non-empty backlog no
+/// longer indefinitely bypasses `recv_timeout`.
+#[cfg(feature = "native")]
+pub(super) const RELAY_BACKLOG_DRAIN_BATCH: usize = 16;
+
 /// One item the actor inbox carries.
 ///
 /// The [`Relay`](ActorMail::Relay) variant is `native`-only because its payload
@@ -219,21 +245,31 @@ pub(super) enum LoopStep {
 ///    relay mail seen along the way into the bounded backlog. Stops at the
 ///    budget (leftover mail stays in the channel for the next iteration) or when
 ///    the channel is empty.
-/// 2. [`next_after_drain`](MailScheduler::next_after_drain) — serve one relay
-///    event: a stashed backlog item if present (zero wait, relay not starved),
-///    otherwise the single blocking `recv_timeout` that is the loop's *only*
-///    wait (D8). A command that arrives during the wait is returned for the
-///    command path, preserving "command sends wake the actor".
+/// 2. [`next_after_drain`](MailScheduler::next_after_drain) — serve a *bounded
+///    batch* of stashed backlog items (up to [`RELAY_BACKLOG_DRAIN_BATCH`], zero
+///    wait, relay not starved), then ALWAYS fall through to the single blocking
+///    `recv_timeout` once the batch is exhausted (or the backlog is empty). That
+///    `recv_timeout` is the loop's *only* wait (D8); a non-empty backlog no
+///    longer bypasses it forever, so a sustained flood cannot busy-spin the
+///    actor. A command that arrives during the wait is returned for the command
+///    path, preserving "command sends wake the actor".
 ///
-/// The backlog never grows beyond what the channel already held *before* the
-/// command budget was hit, so there is no unbounded local buffering (ADR-0050
-/// §D3a constraint). Bootstrap relay mail (received before the first command,
-/// which cannot happen in practice since no relays are open yet, but is handled
-/// soundly anyway) is staged here via [`stash_relay`](MailScheduler::stash_relay)
-/// and replayed after kernel construction.
+/// The backlog is **bounded** at [`RELAY_BACKLOG_CAP`]: relay mail arriving
+/// across iterations under a sustained flood accumulates, so on overflow
+/// [`stash_relay`](MailScheduler::stash_relay) drops the *oldest* staged event
+/// (counted via [`relay_backlog_drops`](MailScheduler::relay_backlog_drops)) to
+/// keep local memory bounded (D1 tolerates the partial state — a dropped relay
+/// frame is recoverable). Bootstrap relay mail (received before the first
+/// command, which cannot happen in practice since no relays are open yet, but is
+/// handled soundly anyway) is staged here and replayed after kernel
+/// construction.
 #[cfg(feature = "native")]
 pub(super) struct MailScheduler {
     relay_backlog: VecDeque<PoolEvent>,
+    /// Count of relay events dropped because the backlog was at
+    /// [`RELAY_BACKLOG_CAP`] when a new event was stashed. Observable so the
+    /// (recoverable) loss under flood is not silent.
+    relay_backlog_drops: u64,
 }
 
 #[cfg(feature = "native")]
@@ -241,14 +277,46 @@ impl MailScheduler {
     pub(super) fn new() -> Self {
         Self {
             relay_backlog: VecDeque::new(),
+            relay_backlog_drops: 0,
         }
     }
 
     /// Stash a relay event that must be processed but cannot run yet (the
     /// bootstrap pre-kernel replay path, or relay mail seen while draining the
     /// command lane).
+    ///
+    /// The backlog is capped at [`RELAY_BACKLOG_CAP`]: when it is full the
+    /// oldest staged event is dropped (`pop_front` before `push_back`) and the
+    /// drop counter is bumped, so a sustained flood bounds memory instead of
+    /// growing without limit.
     pub(super) fn stash_relay(&mut self, event: PoolEvent) {
+        if self.relay_backlog.len() >= RELAY_BACKLOG_CAP {
+            // Drop the oldest staged event to make room (D1: partial state is
+            // tolerated; the newest events are the most relevant to keep).
+            self.relay_backlog.pop_front();
+            self.relay_backlog_drops = self.relay_backlog_drops.saturating_add(1);
+        }
         self.relay_backlog.push_back(event);
+    }
+
+    /// `true` while the backlog is at its [`RELAY_BACKLOG_CAP`] — the actor's
+    /// command-drain loop uses this to STOP stashing and instead leave relay
+    /// mail in the inbox channel, applying real backpressure to the pool rather
+    /// than silently dropping under flood.
+    pub(super) fn relay_backlog_is_full(&self) -> bool {
+        self.relay_backlog.len() >= RELAY_BACKLOG_CAP
+    }
+
+    /// Number of relay events dropped on backlog overflow since construction.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) fn relay_backlog_drops(&self) -> u64 {
+        self.relay_backlog_drops
+    }
+
+    /// Current backlog occupancy. Test-only observability of the bound.
+    #[cfg(test)]
+    pub(super) fn relay_backlog_len(&self) -> usize {
+        self.relay_backlog.len()
     }
 
     /// Drain the priority command lane. Returns the [`CommandDrain`] budget
@@ -290,12 +358,34 @@ impl MailScheduler {
         Ok(drain)
     }
 
-    /// Decide the post-drain step: a backlog relay event (zero wait), else the
-    /// single blocking `recv_timeout(wait)`.
+    /// Drain a *bounded batch* of staged backlog events — up to
+    /// [`RELAY_BACKLOG_DRAIN_BATCH`] — to process this iteration before the
+    /// single blocking wait.
+    ///
+    /// Serving a batch (rather than one event per loop iteration) lets the
+    /// backlog drain faster than a sustained flood fills it; capping the batch
+    /// and then ALWAYS calling [`next_after_drain`](MailScheduler::next_after_drain)
+    /// — which performs the one blocking `recv_timeout` — guarantees the actor
+    /// reaches its single wait every iteration (D8) and cannot busy-spin while
+    /// the backlog is non-empty.
+    pub(super) fn drain_backlog_batch(&mut self) -> Vec<PoolEvent> {
+        let take = self.relay_backlog.len().min(RELAY_BACKLOG_DRAIN_BATCH);
+        self.relay_backlog.drain(..take).collect()
+    }
+
+    /// The post-batch step: the single blocking `recv_timeout(wait)` — the
+    /// loop's *only* wait per iteration (D8).
+    ///
+    /// Backlog events are served by [`drain_backlog_batch`](MailScheduler::drain_backlog_batch)
+    /// *before* this is called; this method no longer pops from the backlog, so
+    /// a non-empty backlog never bypasses the blocking wait (kills the
+    /// busy-spin). Any leftover backlog (beyond the batch) is served on the next
+    /// iteration after this wait returns.
+    ///
+    /// `wait` is `Duration::ZERO` when more backlog work remains (the caller
+    /// passes a zero wait so a full backlog keeps draining promptly without ever
+    /// skipping the `recv_timeout` call), otherwise the computed compute-wait.
     pub(super) fn next_after_drain(&mut self, inbox: &Inbox, wait: std::time::Duration) -> LoopStep {
-        if let Some(event) = self.relay_backlog.pop_front() {
-            return LoopStep::Relay(event);
-        }
         match inbox.recv_timeout(wait) {
             Ok(ActorMail::Command(cmd)) => LoopStep::Command(cmd),
             Ok(ActorMail::Relay(event)) => LoopStep::Relay(event),
@@ -303,165 +393,16 @@ impl MailScheduler {
             Err(RecvTimeoutError::Disconnected) => LoopStep::Shutdown,
         }
     }
+
+    /// `true` while staged backlog events remain — the caller uses this to pass
+    /// a `Duration::ZERO` wait to [`next_after_drain`](MailScheduler::next_after_drain)
+    /// so a deep backlog keeps draining promptly while still hitting the
+    /// blocking `recv_timeout` every iteration (D8).
+    pub(super) fn has_backlog(&self) -> bool {
+        !self.relay_backlog.is_empty()
+    }
 }
 
 #[cfg(all(test, feature = "native"))]
-mod tests {
-    use super::*;
-    use std::sync::mpsc::channel;
-    use std::thread;
-    use std::time::{Duration, Instant};
-
-    fn pool_event() -> PoolEvent {
-        // A `Health` event is the cheapest `PoolEvent` to construct for lane
-        // routing tests — its payload is not inspected here.
-        PoolEvent::Health {
-            h: nmp_network::pool::RelayHandle::for_test(0, 1),
-            snapshot: nmp_network::pool::RelayHealth::default(),
-        }
-    }
-
-    /// ADR-0050 §D3a core property: a thread blocked in `recv_timeout` with a
-    /// long timeout wakes *immediately* when a command is sent — it does not
-    /// wait out the timeout. This is the regression the whole change fixes.
-    #[test]
-    fn command_send_wakes_a_blocked_inbox() {
-        let (tx, rx) = channel::<ActorMail>();
-        let sender = CommandSender::new(tx);
-        let inbox = Inbox::new(rx);
-
-        let waiter = thread::spawn(move || {
-            let start = Instant::now();
-            // A 10s timeout: if the send does not wake us, this blocks the
-            // full 10s and the assertion below fails the elapsed bound.
-            let step = inbox.recv_timeout(Duration::from_secs(10));
-            (start.elapsed(), step)
-        });
-
-        // Give the waiter a beat to reach the blocking recv, then send.
-        thread::sleep(Duration::from_millis(50));
-        sender
-            .send(ActorCommand::Shutdown)
-            .expect("inbox still open");
-
-        let (elapsed, step) = waiter.join().expect("waiter thread");
-        assert!(
-            matches!(step, Ok(ActorMail::Command(ActorCommand::Shutdown))),
-            "expected the sent command to be received"
-        );
-        assert!(
-            elapsed < Duration::from_secs(2),
-            "command send must wake the blocked inbox promptly, not wait the \
-             10s timeout (elapsed: {elapsed:?})"
-        );
-    }
-
-    /// Priority: when commands and relay mail are interleaved in the channel,
-    /// the command lane is fully served first (up to budget) before any relay
-    /// event is handed out.
-    #[test]
-    fn commands_are_served_before_relay_mail() {
-        let (tx, rx) = channel::<ActorMail>();
-        let inbox = Inbox::new(rx);
-        let mut scheduler = MailScheduler::new();
-
-        // Interleave: relay, command, relay, command. Keep `tx` alive so the
-        // drain sees `Empty` (not `Disconnected`) once the queue is consumed.
-        tx.send(ActorMail::Relay(pool_event())).unwrap();
-        tx.send(ActorMail::Command(ActorCommand::Shutdown)).unwrap();
-        tx.send(ActorMail::Relay(pool_event())).unwrap();
-        tx.send(ActorMail::Command(ActorCommand::Shutdown)).unwrap();
-
-        let mut commands = 0usize;
-        let drain = scheduler
-            .drain_command_lane(&inbox, |_cmd| commands += 1)
-            .expect("inbox open during drain");
-
-        assert_eq!(commands, 2, "both commands drained on the priority lane");
-        assert!(!drain.hit_budget());
-        // Only now does a relay event surface — and it comes from the backlog
-        // (the relay mail stashed while draining commands), zero wait.
-        assert!(matches!(
-            scheduler.next_after_drain(&inbox, Duration::ZERO),
-            LoopStep::Relay(_)
-        ));
-        assert!(matches!(
-            scheduler.next_after_drain(&inbox, Duration::ZERO),
-            LoopStep::Relay(_)
-        ));
-    }
-
-    /// Fairness: a sustained command burst yields to relay work at the budget.
-    /// Commands beyond the budget stay in the channel; relay mail seen during
-    /// the drain is served right after, never starved.
-    #[test]
-    fn command_burst_yields_to_relay_at_budget() {
-        let (tx, rx) = channel::<ActorMail>();
-        let inbox = Inbox::new(rx);
-        let mut scheduler = MailScheduler::new();
-
-        // One relay event, then a command flood larger than the budget.
-        tx.send(ActorMail::Relay(pool_event())).unwrap();
-        for _ in 0..(COMMAND_DRAIN_BUDGET + 10) {
-            tx.send(ActorMail::Command(ActorCommand::Shutdown)).unwrap();
-        }
-
-        let mut commands = 0usize;
-        let drain = scheduler
-            .drain_command_lane(&inbox, |_cmd| commands += 1)
-            .expect("inbox open");
-
-        assert_eq!(
-            commands, COMMAND_DRAIN_BUDGET,
-            "the command lane stops exactly at the budget"
-        );
-        assert!(drain.hit_budget(), "budget reached → relay_wait is ZERO");
-        // The relay event seen before the budget was hit is served immediately
-        // (from the backlog), proving relay is not starved by the command flood.
-        assert!(matches!(
-            scheduler.next_after_drain(&inbox, Duration::ZERO),
-            LoopStep::Relay(_)
-        ));
-        // Leftover commands remain in the channel for the next iteration (tx
-        // kept alive — the live actor holds the relay sink, so the inbox does
-        // not disconnect while draining).
-        let mut leftover = 0usize;
-        scheduler
-            .drain_command_lane(&inbox, |_cmd| leftover += 1)
-            .expect("inbox open");
-        assert_eq!(leftover, 10, "commands beyond the budget were not dropped");
-        drop(tx);
-    }
-
-    /// A timeout (no mail) yields `Idle`; a closed inbox yields `Shutdown`.
-    #[test]
-    fn timeout_is_idle_and_closed_inbox_is_shutdown() {
-        let (tx, rx) = channel::<ActorMail>();
-        let inbox = Inbox::new(rx);
-        let mut scheduler = MailScheduler::new();
-
-        assert!(matches!(
-            scheduler.next_after_drain(&inbox, Duration::from_millis(1)),
-            LoopStep::Idle
-        ));
-
-        drop(tx);
-        assert!(matches!(
-            scheduler.next_after_drain(&inbox, Duration::from_millis(1)),
-            LoopStep::Shutdown
-        ));
-    }
-
-    /// `CommandSender::send` on a closed inbox returns the undelivered command
-    /// (mpsc-`SendError` parity) rather than losing it.
-    #[test]
-    fn closed_inbox_send_returns_the_command() {
-        let (tx, rx) = channel::<ActorMail>();
-        let sender = CommandSender::new(tx);
-        drop(rx);
-        let err = sender
-            .send(ActorCommand::Shutdown)
-            .expect_err("send on closed inbox must error");
-        assert!(matches!(err.0, ActorCommand::Shutdown));
-    }
-}
+#[path = "inbox/tests.rs"]
+mod tests;
