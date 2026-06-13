@@ -46,6 +46,14 @@ final class KernelHandle {
         // broker's signer-ready event into
         // `AddSigner(source: RemoteHandle, make_active:)`.
         nmp_signer_broker_init(raw)
+        // ADR-0053 — declare Chirp's static Tier-2 built-in projection
+        // consumption set so the kernel narrows snapshot output to what this
+        // shell decodes (the single source of truth is
+        // `CHIRP_CONSUMED_BUILTIN_PROJECTIONS` in nmp-app-chirp). Must run
+        // before `nmp_app_start`; the kernel stops serializing built-ins this
+        // shell never reads. Tier-1 host projections (registered below /
+        // per-view feeds) self-gate by registration and are unaffected.
+        nmp_app_chirp_declare_consumed_projections(raw)
         // T146 — register the modular timeline projection on the kernel
         // event observer slot. See `Bridge/ModularTimelineBridge.swift`.
         registerChirpProjection()

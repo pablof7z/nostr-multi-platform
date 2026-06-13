@@ -326,6 +326,23 @@ void nmp_app_ack_action_stage(void *app, const char *correlation_id);
 typedef const char *(*NmpSnapshotProjector)(void);
 void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapshotProjector projector);
 
+// ADR-0053 — host-declared projection subscriptions. The OUTPUT-side sibling of
+// the relay push_interest lattice: a host declares, ONCE at app init, the static
+// set of Tier-2 kernel-owned built-in projection keys it consumes (the union of
+// every projection key any of the app's screens reads, known at build time).
+// `keys` is an array of `len` NUL-terminated UTF-8 C strings. The kernel then
+// serializes a kernel-owned built-in into each snapshot only if its key is
+// declared. An empty / zero-len declaration leaves the kernel emitting every
+// built-in (no narrowing — the relay-filter semantic); a non-empty declaration
+// narrows the built-ins to its members, skipping the producer work (notably the
+// `relay_diagnostics` roll-up) for everything else. Additive (multiple calls
+// union). Tier-1 host projections registered via
+// `nmp_app_register_snapshot_projection` are NOT gated by this — registration
+// already declares their consumption. Call before `nmp_app_start`. A null `app`,
+// a null `keys`, or `len == 0` is a silent no-op; individual null entries are
+// skipped (D6).
+void nmp_app_declare_consumed_projections(void *app, const char *const *keys, uintptr_t len);
+
 // ── V-51 phase 2 — routing-trace snapshot accessor ───────────────────────
 //
 // Return a heap-owned NUL-terminated JSON snapshot of the kernel's recent
@@ -457,6 +474,13 @@ uint32_t nmp_app_chirp_register(void *app,
                                 void **handle_out);
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 void nmp_app_chirp_register_dm_inbox(void *app);
+// ADR-0053 — declare Chirp's static Tier-2 built-in projection consumption set
+// (the union of every kernel-owned built-in the iOS + Android shells decode).
+// The kernel then serializes only those built-ins. Call once at app
+// construction, before `nmp_app_start`. The key list is owned by nmp-app-chirp
+// (`CHIRP_CONSUMED_BUILTIN_PROJECTIONS`); the shell makes only this one static
+// call. A null `app` is a silent no-op (D6).
+void nmp_app_chirp_declare_consumed_projections(void *app);
 // Build a Rust-authored Chirp action dispatch spec from typed user intent JSON.
 // Returns {"namespace":"...","body_json":"..."} or {"error":"..."}; free with
 // nmp_free_string.
