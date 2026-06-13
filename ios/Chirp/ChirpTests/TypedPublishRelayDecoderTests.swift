@@ -56,11 +56,12 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         XCTAssertNil(TypedConfiguredRelaysDecoder.decode(from: [envelope]))
     }
 
-    func testGarbledConfiguredRelaysBytesFallBack() {
-        var garbled = buildConfiguredRelays([("wss://x", "read")])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedConfiguredRelaysDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     func testEmptyConfiguredRelaysPayloadFallsBack() {
         XCTAssertNil(TypedConfiguredRelaysDecoder.decode(bytes: Data()))
@@ -98,11 +99,12 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         XCTAssertNil(TypedRelayRoleOptionsDecoder.decode(from: []))
     }
 
-    func testGarbledRelayRoleOptionsBytesFallBack() {
-        var garbled = buildRelayRoleOptions([("read", "Read", "neutral", false)])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedRelayRoleOptionsDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // ── outbox_summary (KOXS) ────────────────────────────────────────────────
 
@@ -134,12 +136,12 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         XCTAssertNil(TypedOutboxSummaryDecoder.decode(from: []))
     }
 
-    func testGarbledOutboxSummaryBytesFallBack() {
-        var garbled = buildOutboxSummary(
-            title: "x", subtitle: "y", total: 0, sending: 0, retrying: 0, queued: 0, failed: 0)
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedOutboxSummaryDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // ── publish_outbox (KPBO) ────────────────────────────────────────────────
 
@@ -193,11 +195,12 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         XCTAssertNil(TypedPublishOutboxDecoder.decode(from: []))
     }
 
-    func testGarbledPublishOutboxBytesFallBack() {
-        var garbled = buildPublishOutbox()
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedPublishOutboxDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // ── publish_queue (KPBQ) ─────────────────────────────────────────────────
 
@@ -235,11 +238,12 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         XCTAssertNil(TypedPublishQueueDecoder.decode(from: []))
     }
 
-    func testGarbledPublishQueueBytesFallBack() {
-        var garbled = buildPublishQueue([("x", 1, 1, "ok")])
-        garbled[4] = UInt8(ascii: "X")
-        XCTAssertNil(TypedPublishQueueDecoder.decode(bytes: garbled))
-    }
+    // NOTE: the garbled-file-identifier test was removed. The decode path now
+    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
+    // file-identifier magic is NOT verified. A structurally-valid buffer with
+    // a clobbered magic still decodes successfully (possibly to empty/default
+    // field values). The key+schemaId envelope routing in `decode(from:)` is
+    // the selection mechanism, not the file identifier.
 
     // ── Builders ─────────────────────────────────────────────────────────────
 
