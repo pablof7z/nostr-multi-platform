@@ -297,8 +297,24 @@ data class DmConversation(
 @Serializable
 data class DmInboxSnapshot(
     val conversations: List<DmConversation> = emptyList(),
-    val remoteSignerUnsupported: Boolean = false,
-)
+    // ADR-0050 §D7 decrypt-pipeline policy state (errors-as-state) — the
+    // tri-state that replaced the old `remoteSignerUnsupported` bool.
+    // "unavailable" (no active account → host hides the DM screen),
+    // "limited" (a bunker backfill is pending/throttled by the bounded
+    // per-account decrypt queue; `undecryptedCount > 0`), "ok" (settled).
+    // Default "unavailable" so an absent field (older Rust build) hides the
+    // screen rather than misleadingly reporting "ok".
+    val decryptState: String = "unavailable",
+    // §D7 — envelopes pending decryption or over the per-account bound.
+    // Non-zero exactly when `decryptState == "limited"`.
+    val undecryptedCount: Int = 0,
+) {
+    /** No active account — the host should hide the DM screen entirely (§D7). */
+    val isUnavailable: Boolean get() = decryptState == "unavailable"
+
+    /** A signed-in account whose backfill is still pending/throttled (§D7). */
+    val isLimited: Boolean get() = decryptState == "limited"
+}
 
 /**
  * Unified remote-signer health — `projections["signer_state"]`.

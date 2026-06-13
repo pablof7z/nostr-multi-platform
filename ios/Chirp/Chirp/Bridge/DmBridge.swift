@@ -67,10 +67,23 @@ final class DmInboxStore: ObservableObject {
     /// `DmInboxProjection`. Within each conversation, `messages` is in
     /// chronological order — oldest first, newest last.
     @Published private(set) var conversations: [DmConversation] = []
-    /// Mirrors `DmInboxSnapshot.remoteSignerUnsupported` (V-08 Stage 2). When
-    /// `true` the active account uses a bunker (NIP-46) that cannot decrypt
-    /// gift-wraps. The list view surfaces a banner instead of an empty list.
-    @Published private(set) var remoteSignerUnsupported: Bool = false
+    /// Mirrors `DmInboxSnapshot.decryptState` (ADR-0050 §D7) — the
+    /// errors-as-state tri-state that replaced the old `remoteSignerUnsupported`
+    /// bool. `"unavailable"` (no active account → host hides the DM screen),
+    /// `"limited"` (a bunker backfill is pending/throttled by the bounded
+    /// per-account decrypt queue; `undecryptedCount > 0`), `"ok"` (settled).
+    @Published private(set) var decryptState: String = "unavailable"
+    /// Mirrors `DmInboxSnapshot.undecryptedCount` (§D7) — envelopes pending
+    /// decryption or over the per-account bound. Non-zero exactly when
+    /// `decryptState == "limited"`; the list view surfaces "N still decrypting".
+    @Published private(set) var undecryptedCount: UInt32 = 0
+
+    /// No active account — the host should hide the DM screen entirely (§D7).
+    var isUnavailable: Bool { decryptState == "unavailable" }
+    /// A signed-in account whose backfill is still pending/throttled (§D7) —
+    /// the list view surfaces a "still decrypting" banner, NOT an empty/hidden
+    /// list (errors-as-state, never a silent drop).
+    var isLimited: Bool { decryptState == "limited" }
 
     private unowned let kernel: KernelHandle
 
@@ -88,8 +101,11 @@ final class DmInboxStore: ObservableObject {
         if snapshot.conversations != conversations {
             conversations = snapshot.conversations
         }
-        if snapshot.remoteSignerUnsupported != remoteSignerUnsupported {
-            remoteSignerUnsupported = snapshot.remoteSignerUnsupported
+        if snapshot.decryptState != decryptState {
+            decryptState = snapshot.decryptState
+        }
+        if snapshot.undecryptedCount != undecryptedCount {
+            undecryptedCount = snapshot.undecryptedCount
         }
     }
 
