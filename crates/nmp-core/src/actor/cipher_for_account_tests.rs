@@ -10,7 +10,7 @@
 //!
 //! Oracle 3 (§D4): a named NIP-55-style roster key with a 90s budget parks with
 //! ITS budget, not the active (5s NIP-46-style) account's — the bug ADR-0050 D4
-//! fixes at `dispatch.rs:608,662`.
+//! fixes at `dispatch.rs:606` / `signer_port_dispatch.rs:71`.
 
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -374,7 +374,7 @@ fn bunker_account_nip44_encrypt_parks_then_drain_invokes_continuation() {
 // ── Oracle 3 — §D4 named-account budget regression ──────────────────────────
 
 /// A named roster key with a 90s budget must park with ITS deadline, not the
-/// active account's (5s). Regression for ADR-0050 D4 (`dispatch.rs:608,662`,
+/// active account's (5s). Regression for ADR-0050 D4 (`signer_port_dispatch.rs:71`,
 /// which previously called `active_sign_deadline()`).
 #[test]
 fn named_roster_key_keeps_its_own_budget_not_the_active_accounts() {
