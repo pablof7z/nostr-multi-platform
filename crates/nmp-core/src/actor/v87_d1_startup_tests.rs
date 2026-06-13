@@ -17,6 +17,23 @@
 //!    it.  Without the `resume_rev_after_preflight` fix both frames carry
 //!    `rev=1` and the host drops the `running=true` frame, leaving the UI
 //!    stuck on the `running=false` pre-flight state indefinitely.
+//!
+//! 4. **Seeded-store offline render** (`#628`) — an actor whose local store is
+//!    seeded with a known event BEFORE `Start` (with zero relays) must render
+//!    that event from the local store alone. The running snapshot's typed
+//!    `claimed_events` sidecar must contain the seeded event within the same
+//!    500 ms budget, with no relay connectivity at all
+//!    (offline-first.md §7: "the first rendered frame is produced from
+//!    local-store content alone").
+//!
+//! 5. **Emit-before-dial ordering** (`#600` / `#628`) — the `Start` arm
+//!    (`dispatch.rs` ~460-461) MUST call `emit_now` BEFORE `spawn_missing_relays`
+//!    so the first snapshot reaches the shell before any relay TCP connection is
+//!    dialed. The test drives the real `Start` dispatch with ONE configured
+//!    relay and asserts the first `running=true` frame does NOT yet mark that
+//!    relay `"connecting"` (the dial, via `kernel.relay_connecting_url`, has not
+//!    run when the frame is encoded). A later frame DOES show `"connecting"`,
+//!    proving the dial happened — so the ordering assertion is non-vacuous.
 
 #[cfg(test)]
 mod tests {
@@ -241,6 +258,226 @@ mod tests {
             first_post_start.running,
             "V-87 #601-rev: first post-Start frame has rev={first_post_start_rev} > \
              preflight_rev={preflight_rev} (guard passes) but running is not true"
+        );
+
+        let _ = cmd_tx.send(ActorCommand::Shutdown);
+    }
+
+    // ─── #628: seeded-store offline render ───────────────────────────────────
+
+    /// offline-first.md §7 mandate: "Every viewer-class app MUST have a smoke
+    /// test that boots the kernel with zero relay connectivity and verifies
+    /// that the first rendered frame is produced from local-store content
+    /// alone."
+    ///
+    /// This test seeds a known event into the actor's local store
+    /// (`IngestPreVerifiedEvents`) and claims it (`ClaimEvent`) BEFORE the
+    /// `running=true` snapshot is observed, with `initial_relays` EMPTY — zero
+    /// connectivity. Within the same 500 ms budget the other D1 tests use, the
+    /// actor must emit a `running=true` snapshot whose typed `claimed_events`
+    /// sidecar carries the seeded event. No relay ever connects: the rendered
+    /// frame is produced from local-store content alone.
+    ///
+    /// Decode pattern reused from `nmp-testing` C13
+    /// (`framework_magic_contract/c5_c8_c13.rs`): `decode_snapshot_typed_projections`
+    /// → find the `claimed_events` sidecar → `decode_claimed_events` → look up
+    /// the seeded event id.
+    #[test]
+    fn v628_seeded_store_renders_offline_with_zero_relays() {
+        use crate::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
+        use crate::nip19::encode_note;
+        use crate::store::{RawEvent, VerifiedEvent};
+        use crate::update_envelope::decode_snapshot_typed_projections;
+
+        let (cmd_tx, upd_rx) = spawn_actor();
+
+        // Drain the unconditional pre-flight frame so the real kernel exists.
+        let _ = drain_snapshots(&upd_rx, Duration::from_millis(200));
+
+        // Seed a known event into the local store. The diag-firehose-stress
+        // ingest path pushes the event directly into `self.events` regardless
+        // of `timeline_authors`, so it is visible to `claimed_events`.
+        let author_pk = "628a0628a0628a0628a0628a0628a0628a0628a0628a0628a0628a0628a0628a";
+        let event_id = "628e0000628e0000628e0000628e0000628e0000628e0000628e0000628e0000";
+        let raw = RawEvent {
+            id: event_id.to_string(),
+            pubkey: author_pk.to_string(),
+            created_at: 1_000,
+            kind: 1,
+            tags: vec![],
+            content: "offline-first seeded note".to_string(),
+            sig: "a".repeat(128),
+        };
+        let verified = VerifiedEvent::from_raw_unchecked(raw);
+        cmd_tx
+            .send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
+            .expect("seed store");
+
+        // Start with ZERO relays — no connectivity at all.
+        cmd_tx
+            .send(ActorCommand::Start {
+                visible_limit: 100,
+                emit_hz: 30,
+                initial_relays: Vec::new(),
+            })
+            .expect("send Start with zero relays");
+
+        // Claim the seeded event so it surfaces in the `claimed_events` typed
+        // sidecar (D5: claimed_events carries the entry only after a ClaimEvent
+        // dispatch). The store already holds the event, so this resolves from
+        // local content — no relay fetch is needed or possible (zero relays).
+        let note_uri = format!("nostr:{}", encode_note(event_id).expect("valid note uri"));
+        cmd_tx
+            .send(ActorCommand::ClaimEvent {
+                uri: note_uri,
+                consumer_id: "v628-test".to_string(),
+                force: false,
+            })
+            .expect("claim seeded event");
+
+        // Within the existing 500 ms D1 budget, a running=true snapshot whose
+        // typed claimed_events sidecar contains the seeded event must arrive —
+        // produced from local store alone, with no relay connected.
+        let deadline = std::time::Instant::now() + Duration::from_millis(500);
+        let mut found = false;
+        while std::time::Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            match upd_rx.recv_timeout(remaining) {
+                Ok(frame) => {
+                    // Only consider running=true snapshots (the rendered frame).
+                    let env = match decode_snapshot_envelope(&frame) {
+                        Ok(env) => env,
+                        Err(_) => continue,
+                    };
+                    if !env.running {
+                        continue;
+                    }
+                    let projections = match decode_snapshot_typed_projections(&frame) {
+                        Ok(p) => p,
+                        Err(_) => continue,
+                    };
+                    let has_seeded = projections
+                        .iter()
+                        .find(|p| p.schema_id == CLAIMED_EVENTS_SCHEMA_ID)
+                        .and_then(|p| decode_claimed_events(&p.payload).ok())
+                        .map(|model| model.entries.iter().any(|(k, _)| k == event_id))
+                        .unwrap_or(false);
+                    if has_seeded {
+                        found = true;
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+
+        assert!(
+            found,
+            "#628: a running=true snapshot whose typed claimed_events sidecar \
+             contains the seeded event {event_id} must arrive within 500 ms with \
+             ZERO relays connected (offline-first.md §7: the first rendered frame \
+             is produced from local-store content alone)"
+        );
+
+        let _ = cmd_tx.send(ActorCommand::Shutdown);
+    }
+
+    // ─── #600: emit-before-dial ordering guard ───────────────────────────────
+
+    /// Regression guard for issue #600: the `Start` arm (`dispatch.rs`
+    /// ~460-461) MUST call `emit_now` BEFORE `spawn_missing_relays`, so the
+    /// first snapshot reaches the shell before any relay TCP connection is
+    /// dialed (D1 / offline-first.md §7).
+    ///
+    /// This drives the REAL `Start` dispatch through `run_actor` (not a hand-
+    /// rolled helper sequence) so it genuinely guards the ordering inside
+    /// `dispatch_command`. ONE relay is configured via `initial_relays`, so
+    /// `spawn_missing_relays` resolves a bootstrap URL and dials it — which
+    /// calls `kernel.relay_connecting_url`, flipping that URL's Tier-3
+    /// `relay_statuses` row to `"connecting"`.
+    ///
+    /// The observable that distinguishes the two orderings:
+    ///
+    /// - **Correct (emit_now BEFORE spawn_missing_relays):** the very first
+    ///   `running=true` frame is encoded *before* the dial, so the configured
+    ///   relay's row is NOT yet `"connecting"` in that frame.
+    /// - **Reordered (#600 bug — spawn before emit):** the dial has already run
+    ///   when the first frame is encoded, so the row reads `"connecting"` — the
+    ///   shell's first rendered frame would reflect relay I/O, violating D1.
+    ///
+    /// We capture the FIRST `running=true` frame and assert the configured
+    /// relay is present but not `"connecting"`. Non-vacuous guard: a later frame
+    /// (after the dial) MUST show the relay as `"connecting"`, proving the dial
+    /// really happened and the ordering assertion was meaningful.
+    #[test]
+    fn v600_first_running_frame_precedes_relay_dial() {
+        // Use a syntactically-valid wss URL that will never connect (TEST-NET-1
+        // documentation host, RFC 5737). The dial is non-blocking; we only care
+        // that `spawn_missing_relays` marks it `"connecting"` in the kernel.
+        let configured_url = "wss://relay.v600.test/";
+
+        let (cmd_tx, upd_rx) = spawn_actor();
+
+        // Drain the unconditional pre-flight frame.
+        let _ = drain_snapshots(&upd_rx, Duration::from_millis(200));
+
+        // Start with exactly ONE configured relay (role "both" → Content
+        // bootstrap lane). This is the only relay `spawn_missing_relays` dials.
+        cmd_tx
+            .send(ActorCommand::Start {
+                visible_limit: DEFAULT_VISIBLE_LIMIT,
+                emit_hz: 30,
+                initial_relays: vec![(configured_url.to_string(), "both".to_string())],
+            })
+            .expect("send Start with one configured relay");
+
+        // Helper: does this frame's relay_statuses show the configured relay as
+        // "connecting"? Match on the host part so trailing-slash / canonical
+        // differences do not cause a false miss.
+        let needle = "relay.v600.test";
+        let connecting_state = |env: &SnapshotEnvelope| -> Option<bool> {
+            env.relay_statuses
+                .iter()
+                .find(|r| r.relay_url.contains(needle))
+                .map(|r| r.connection == "connecting")
+        };
+
+        // Collect frames within the existing 500 ms D1 budget.
+        let frames = drain_snapshots(&upd_rx, Duration::from_millis(500));
+
+        // The FIRST running=true frame is the Start-arm `emit_now` output.
+        let first_running = frames
+            .iter()
+            .find(|s| s.running)
+            .expect("#600: a running=true frame must arrive within 500 ms");
+
+        // D1 / #600: the configured relay must NOT yet be "connecting" in the
+        // first rendered frame — emit_now ran before spawn_missing_relays dialed
+        // it. (The row may be absent or in a pre-dial state, but never
+        // "connecting".)
+        assert_ne!(
+            connecting_state(first_running),
+            Some(true),
+            "#600: the first running=true frame must be emitted BEFORE the \
+             configured relay is dialed — its relay_statuses row must not read \
+             \"connecting\" (D1: the first rendered frame is independent of \
+             relay I/O). relay_statuses={:?}",
+            first_running.relay_statuses
+        );
+
+        // Non-vacuous guard: SOME later frame MUST show the relay as
+        // "connecting", proving spawn_missing_relays actually dialed it. If it
+        // never connects in any frame, the ordering assertion above would be
+        // meaningless (no dial ever happened).
+        let dial_observed = frames
+            .iter()
+            .any(|s| connecting_state(s) == Some(true));
+        assert!(
+            dial_observed,
+            "#600: spawn_missing_relays must dial the one configured relay — \
+             some frame must show it as \"connecting\"; otherwise the \
+             emit-before-dial ordering is untested. frames={}",
+            frames.len()
         );
 
         let _ = cmd_tx.send(ActorCommand::Shutdown);
