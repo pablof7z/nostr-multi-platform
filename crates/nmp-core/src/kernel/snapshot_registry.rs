@@ -46,7 +46,6 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use super::Kernel;
 use crate::update_envelope::TypedProjectionData;
 
 /// A host-registered projection closure.
@@ -142,6 +141,12 @@ pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
 pub mod bounds;
 use bounds::{admit_additive, admit_keyed};
 
+// ADR-0053 — the host-declared consumed-projection set. Extracted to a `pub`
+// submodule so the registry file stays within its LOC ceiling; the type is part
+// of the public seam (read by the kernel to gate Tier-2 built-ins).
+pub mod declared;
+pub use declared::DeclaredProjections;
+
 // D5 — registration-count ceiling tests (kept beside the registry, off the
 // `kernel/mod.rs` module list, so this PR does not touch that ratcheted file).
 #[cfg(test)]
@@ -165,6 +170,13 @@ pub struct SnapshotRegistry {
     /// fire on every tick. (Production wires exactly one today, the re-homed
     /// zap-subscription reconciler.)
     tick_observers: Vec<TickObserverFn>,
+    /// ADR-0053 — the host-declared set of consumed Tier-2 built-in projection
+    /// keys. Empty (the default) means "no opinion / no narrowing" — every
+    /// Tier-2 built-in is emitted, as before this ADR. A non-empty set narrows
+    /// the kernel-owned built-ins to its members. Tier-1 host/protocol
+    /// projections are unaffected (they self-gate by registration). See
+    /// [`DeclaredProjections`].
+    declared_projections: DeclaredProjections,
 }
 
 impl SnapshotRegistry {
@@ -374,6 +386,30 @@ impl SnapshotRegistry {
         self.tick_observers.push(Box::new(f));
     }
 
+    /// ADR-0053 — declare (union into) the set of Tier-2 built-in projection
+    /// keys this host consumes.
+    ///
+    /// Additive: call more than once and the sets union (e.g. a base set from
+    /// `nmp-defaults` plus an app-specific extension). Intended as a host-init
+    /// call, before `nmp_app_start`. An empty declared set leaves the kernel
+    /// emitting every Tier-2 built-in (no narrowing); a non-empty set narrows
+    /// the kernel-owned built-ins to the declared members. Tier-1 host/protocol
+    /// projections are unaffected — they self-gate by registration.
+    pub fn declare_consumed_projections<I, K>(&mut self, keys: I)
+    where
+        I: IntoIterator<Item = K>,
+        K: Into<String>,
+    {
+        self.declared_projections.declare(keys);
+    }
+
+    /// Read the host-declared consumed-projection set — the gate the kernel
+    /// consults per Tier-2 built-in key in `make_update`.
+    #[must_use]
+    pub fn declared_projections(&self) -> &DeclaredProjections {
+        &self.declared_projections
+    }
+
     /// Run every registered per-tick observer.
     ///
     /// Mirrors [`Self::run`]'s safety contract: each observer runs on the actor
@@ -411,77 +447,7 @@ pub fn new_snapshot_projection_slot() -> SnapshotProjectionSlot {
     Arc::new(Mutex::new(SnapshotRegistry::new()))
 }
 
-impl Kernel {
-    /// Install the actor's shared snapshot-projection slot.
-    ///
-    /// The `Arc<Mutex<…>>` is shared with the FFI surface
-    /// (`ffi/snapshot.rs`) and any per-app crate that registered a
-    /// projection; the same registrations are therefore visible to both the
-    /// actor thread and external Rust callers. Idempotent — re-binding
-    /// replaces the prior handle. The actor calls this once immediately after
-    /// constructing a kernel.
-    pub(crate) fn set_snapshot_projection_handle(&mut self, handle: SnapshotProjectionSlot) {
-        self.snapshot_projections = Some(handle);
-    }
-
-    /// Extract the snapshot-projection handle before a `Reset` replaces the
-    /// kernel. The slot's `Arc<Mutex<…>>` is shared with the FFI surface and
-    /// per-app crates, so it MUST survive `Reset` — otherwise every host
-    /// projection would silently stop appearing (the same survival contract
-    /// as the event observer slot).
-    pub(crate) fn take_snapshot_projection_handle_for_reset(
-        &mut self,
-    ) -> Option<SnapshotProjectionSlot> {
-        self.snapshot_projections.take()
-    }
-
-    /// Run every registered snapshot projection and return the namespaced
-    /// map appended to `KernelSnapshot::projections`.
-    ///
-    /// Empty (no allocation past the empty map) when no slot is bound, the
-    /// mutex is poisoned, or nothing is registered — D6: a projection
-    /// failure is data, never a panic at the boundary. Called from
-    /// `make_update`.
-    pub(in crate::kernel) fn run_snapshot_projections(&self) -> HashMap<String, serde_json::Value> {
-        match &self.snapshot_projections {
-            Some(slot) => slot
-                .lock()
-                .map(|registry| registry.run())
-                .unwrap_or_default(),
-            None => HashMap::new(),
-        }
-    }
-
-    /// Run every registered **typed** snapshot projection and return the vector
-    /// carried in the snapshot frame's `typed_projections` sidecar (ADR-0037).
-    ///
-    /// Empty when no slot is bound, the mutex is poisoned, or nothing is
-    /// registered — D6: a projection failure is data, never a panic at the
-    /// boundary. Shares the slot (and therefore the registry) with
-    /// [`Self::run_snapshot_projections`]; called from `make_update`.
-    pub(in crate::kernel) fn run_typed_projections(&self) -> Vec<TypedProjectionData> {
-        match &self.snapshot_projections {
-            Some(slot) => slot
-                .lock()
-                .map(|registry| registry.run_typed())
-                .unwrap_or_default(),
-            None => Vec::new(),
-        }
-    }
-
-    /// Fire every registered per-tick observer.
-    ///
-    /// A no-op when no slot is bound or the mutex is poisoned — D6: an observer
-    /// dispatch failure is silently absorbed, never a panic at the boundary.
-    /// Shares the slot (and therefore the registry) with
-    /// [`Self::run_snapshot_projections`]; called from `make_update` on every
-    /// tick. The per-observer `catch_unwind` (D6) lives in
-    /// [`SnapshotRegistry::run_tick_observers`].
-    pub(in crate::kernel) fn run_tick_observers(&self) {
-        if let Some(slot) = &self.snapshot_projections {
-            if let Ok(registry) = slot.lock() {
-                registry.run_tick_observers();
-            }
-        }
-    }
-}
+// Kernel-side accessors over the shared slot (set/take handle, run generic +
+// typed projections, run tick observers, ADR-0053 declared-set snapshot) live in
+// the `kernel_access` submodule to keep this file within its LOC ceiling.
+mod kernel_access;

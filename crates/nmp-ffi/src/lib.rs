@@ -1460,6 +1460,26 @@ impl NmpApp {
         }
     }
 
+    /// ADR-0053 — declare (union into) the static set of Tier-2 built-in
+    /// projection keys this host consumes.
+    ///
+    /// The output-side sibling of relay `push_interest`: the kernel serializes a
+    /// kernel-owned built-in into each snapshot only if its key is declared. An
+    /// empty declared set emits every built-in (no narrowing); a non-empty set
+    /// narrows to its members, skipping the producer work (notably the
+    /// `relay_diagnostics` roll-up) for everything else. Additive, `&self`
+    /// (lock-and-extend), intended as a host-init call before `nmp_app_start`.
+    /// A poisoned registry mutex is a silent no-op (D6).
+    pub fn declare_consumed_projections<I, K>(&self, keys: I)
+    where
+        I: IntoIterator<Item = K>,
+        K: Into<String>,
+    {
+        if let Ok(mut registry) = self.snapshot_projections.lock() {
+            registry.declare_consumed_projections(keys);
+        }
+    }
+
     /// Register a **change-gated** snapshot projection — the perf-aware
     /// counterpart to [`Self::register_snapshot_projection`].
     ///
@@ -2593,6 +2613,14 @@ impl nmp_core::substrate::AppHost for NmpApp {
         F: Fn() + Send + Sync + 'static,
     {
         NmpApp::register_snapshot_tick_observer(self, f);
+    }
+
+    fn declare_consumed_projections<I, K>(&self, keys: I)
+    where
+        I: IntoIterator<Item = K>,
+        K: Into<String>,
+    {
+        NmpApp::declare_consumed_projections(self, keys);
     }
 
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {

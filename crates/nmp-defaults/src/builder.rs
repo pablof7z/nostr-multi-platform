@@ -466,6 +466,17 @@ impl<S> AppHost for NmpAppBuilder<S> {
         NmpApp::register_snapshot_tick_observer(app, f);
     }
 
+    fn declare_consumed_projections<I, K>(&self, keys: I)
+    where
+        I: IntoIterator<Item = K>,
+        K: Into<String>,
+    {
+        // SAFETY: `self.app` non-null (builder invariant). Shared borrow via
+        // `&self` is safe — all AppHost methods take `&self`.
+        let app: &NmpApp = unsafe { &*self.app };
+        NmpApp::declare_consumed_projections(app, keys);
+    }
+
     fn set_coverage_hook(&self, hook: nmp_core::subs::PlanCoverageHook) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_coverage_hook(hook);

@@ -102,6 +102,14 @@ impl AppHost for GateSpy {
         unreachable!("register_substrate does not register tick observers");
     }
 
+    fn declare_consumed_projections<I, K>(&self, _keys: I)
+    where
+        I: IntoIterator<Item = K>,
+        K: Into<String>,
+    {
+        unreachable!("register_substrate does not declare consumed projections");
+    }
+
     fn set_coverage_hook(&self, hook: PlanCoverageHook) {
         *self.coverage_hook.lock().unwrap() = Some(hook);
     }

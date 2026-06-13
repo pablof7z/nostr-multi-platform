@@ -119,6 +119,31 @@ pub trait AppHost: ActionRegistrar {
     where
         F: Fn() + Send + Sync + 'static;
 
+    /// ADR-0053 — declare the static set of **Tier-2 built-in projection keys**
+    /// this host consumes (the union of every projection any of the app's screens
+    /// can read, known at app build time).
+    ///
+    /// The output-side sibling of the relay `push_interest` lattice: the kernel
+    /// serializes a kernel-owned built-in into each snapshot only if its key is
+    /// in the declared set. An **empty** declared set means "no opinion" and
+    /// emits every built-in (no narrowing — the relay-filter semantic, where an
+    /// empty filter set does not subscribe to nothing). A **non-empty** set
+    /// narrows the built-ins to its members, skipping the producer work (no
+    /// serialize, no roll-up) for everything else — most notably the
+    /// `relay_diagnostics` roll-up, which no longer ships to hosts that do not
+    /// declare it.
+    ///
+    /// Additive (unions into the set) and `&self` (the mutation is a
+    /// lock-and-extend behind the shared registry slot). Intended as a host-init
+    /// call, before `nmp_app_start`. Tier-1 host/protocol projections registered
+    /// via [`AppHost::register_snapshot_projection`] are NOT gated by this —
+    /// registration already declares their consumption (and dynamic feeds gate by
+    /// their `unregister_feed` lifecycle).
+    fn declare_consumed_projections<I, K>(&self, keys: I)
+    where
+        I: IntoIterator<Item = K>,
+        K: Into<String>;
+
     fn set_coverage_hook(&self, hook: PlanCoverageHook);
 
     fn set_req_frame_interceptor(&self, interceptor: Arc<dyn ReqFrameInterceptor>);
