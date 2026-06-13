@@ -88,7 +88,7 @@ final class EmbedHost {
             let meta = parseProfileMetadata(content)
             return .profile(ProfileProjection(
                 pubkey: authorPubkey,
-                displayName: meta["name"] ?? meta["display_name"],
+                displayName: meta["display_name"] ?? meta["name"],
                 pictureUrl: meta["picture"],
                 about: meta["about"],
                 nip05: meta["nip05"],

@@ -11,7 +11,33 @@ rust-ios-sim:
     # duplicated across app, projection, and NIP-46 broker crates.
     cargo build -p nmp-app-chirp --features marmot --target aarch64-apple-ios-sim
 
-gen-ios:
+# Seed the gitignored BuildInfo.generated.swift BEFORE xcodegen runs.
+#
+# project.yml's `Generate BuildInfo` preBuildScript writes this file at every
+# Xcode build, but xcodegen's source globs only pick up files that already
+# exist when `xcodegen generate` runs. On a clean checkout (e.g. CI) the file
+# is absent, so it would be excluded from the Chirp target's Sources and the app
+# would fail to compile with "cannot find 'BuildInfo' in scope" even though the
+# preBuildScript later writes it. Seeding it here makes the generated project
+# self-consistent on a fresh tree. The preBuildScript still overwrites it with
+# live branch/commit/time on each Xcode build.
+gen-buildinfo:
+    #!/usr/bin/env zsh
+    set -eu
+    OUT="ios/Chirp/Chirp/App/BuildInfo.generated.swift"
+    BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
+    {
+      echo "// Auto-generated at build time — do not edit"
+      echo "enum BuildInfo {"
+      echo "    static let branch = \"$BRANCH\""
+      echo "    static let commit = \"$COMMIT\""
+      echo "    static let buildTime = \"$BUILD_TIME\""
+      echo "}"
+    } > "$OUT"
+
+gen-ios: gen-buildinfo
     xcodegen generate --spec ios/Chirp/project.yml
 
 build-ios: rust-ios-sim gen-ios
