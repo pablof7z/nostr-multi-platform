@@ -43,11 +43,19 @@ import XCTest
 ///
 /// ## Known gap
 ///
-/// None — all 9 registered Rust projections (`nmp.nip29.group_chat`,
+/// None for the JSON `Decodable` path — every registered Rust projection that
+/// ships as a JSON `SnapshotProjections` field (`nmp.nip29.group_chat`,
 /// `nmp.nip29.discovered_groups`, `nmp.nip17.dm_inbox`, `nmp.follow_list`,
 /// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`, `claimed_profiles`,
-/// `nmp.marmot.snapshot`, `nmp.marmot.messages`) have Swift decoders
-/// covered by this conformance test as of this file (V-107 / ADR-0039).
+/// `nmp.marmot.snapshot`, `nmp.marmot.messages`) has its decoder covered by
+/// this conformance test (V-107 / ADR-0039).
+///
+/// One registered dotted key is DELIBERATELY out of scope here: `nmp.feed.home`
+/// is a typed FlatBuffers NOFS sidecar (`schema_id "nmp.nip01.opfeed"`,
+/// `swift_reader_type: None`), decoded by the hand-written `TypedHomeFeedDecoder`
+/// — NOT a JSON `SnapshotProjections` field — so it has no `XCTAssertNotNil`
+/// here. It IS tracked by the Rust `all_dotted_keys_are_present` registry test
+/// (which asserts all nine dotted keys, this one included).
 final class SnapshotProjectionsConformanceTests: XCTestCase {
 
     /// The exact decoder configuration `KernelHandle.decode` uses for the

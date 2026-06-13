@@ -222,3 +222,24 @@ fn real_registry_emits_exactly_the_proof_keys() {
          regenerate TypedProjectionDecoders.generated.swift and update this test"
     );
 }
+
+#[test]
+fn check_typed_decoders_length_diff_reports_first_diff_line_not_none() {
+    // A file that matches the rendered output on every common line but is
+    // shorter (last line missing) must report a diff line, not `None` — `None`
+    // is the "file missing" signal the CI reporting code keys off.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = dir.path().join("TypedProjectionDecoders.generated.swift");
+    generate_typed_decoders(&out).expect("write");
+    let full = std::fs::read_to_string(&out).expect("read");
+    let line_count = full.lines().count();
+    let truncated: String =
+        full.lines().take(line_count - 1).collect::<Vec<_>>().join("\n") + "\n";
+    std::fs::write(&out, &truncated).expect("truncate");
+    let result = check_typed_decoders(&out).expect("check");
+    assert!(!result.up_to_date, "truncated file must be stale");
+    assert!(
+        result.first_diff_line.is_some(),
+        "truncated file should report a diff line, not None (which implies missing)"
+    );
+}
