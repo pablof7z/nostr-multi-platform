@@ -190,7 +190,7 @@ private struct GroupChatMessageRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            ChirpAvatar(
+            NostrAvatar(
                 pubkey: message.pubkey,
                 url: nil,
                 initials: message.pubkey.displayInitials,

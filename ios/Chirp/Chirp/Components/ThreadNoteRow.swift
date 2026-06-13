@@ -43,7 +43,7 @@ struct ThreadNoteRow: View {
 
             HStack(alignment: .top, spacing: 8) {
                 Button(action: onAvatarTap) {
-                    ChirpAvatar(
+                    NostrAvatar(
                         pubkey: card.authorPubkey,
                         url: card.authorPictureUrl,
                         initials: authorAvatarInitials,

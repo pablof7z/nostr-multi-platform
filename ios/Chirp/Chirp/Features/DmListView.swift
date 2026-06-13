@@ -109,7 +109,7 @@ private struct DmConversationRow: View {
         HStack(alignment: .top, spacing: 8) {
             // ADR-0032: initials, colour, and pubkey abbreviation are
             // derived locally from the raw peer hex pubkey.
-            ChirpAvatar(
+            NostrAvatar(
                 pubkey: conversation.peerPubkey,
                 url: nil,
                 initials: conversation.peerPubkey.displayInitials,
@@ -207,7 +207,7 @@ private struct DmComposeSheet: View {
                                 recipient = follow.pubkey
                             } label: {
                                 HStack(spacing: 8) {
-                                    ChirpAvatar(
+                                    NostrAvatar(
                                         pubkey: follow.pubkey,
                                         url: nil,
                                         initials: follow.pubkey.displayInitials,

@@ -174,7 +174,7 @@ struct HomeFeedView: View {
                 Button {
                     router.push(.profile(pubkey: account.id))
                 } label: {
-                    ChirpAvatar(
+                    NostrAvatar(
                         pubkey: account.id,
                         url: account.pictureUrl,
                         initials: (account.displayName ?? account.id).displayInitials,

@@ -85,7 +85,7 @@ struct ProfileView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .bottom) {
-                    ChirpAvatar(
+                    NostrAvatar(
                         pubkey: profile?.pubkey ?? "",
                         url: profile?.pictureUrl,
                         initials: (profile?.displayLabel ?? "?").displayInitials,
@@ -130,19 +130,12 @@ struct ProfileView: View {
 
     private var profileMetadata: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(profile?.displayLabel ?? "Loading…")
-                .font(.title)
-                .foregroundStyle(.primary)
+            NostrProfileName(
+                displayName: profile?.displayLabel ?? "Loading…",
+                font: .title)
 
             if let nip05 = profile?.nip05, !nip05.isEmpty {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(ChirpColor.success)
-                    Text(nip05)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                NostrNip05Badge(nip05: nip05)
             }
 
             // ADR-0032 / V-115: bech32 no longer in projection; encode host-side

@@ -71,7 +71,7 @@ struct ComposeView: View {
     @ViewBuilder
     private var currentAvatar: some View {
         if let account = currentAccount {
-            ChirpAvatar(
+            NostrAvatar(
                 pubkey: account.id,
                 url: account.pictureUrl,
                 initials: (account.displayName ?? account.id).displayInitials,
