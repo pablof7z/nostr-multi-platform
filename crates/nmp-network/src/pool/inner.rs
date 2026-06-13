@@ -57,13 +57,15 @@ pub(super) struct PoolInner {
     pub(super) slots: Vec<Option<SlotState>>,
     /// URL → slot id. Lookup keyed by canonicalized URL.
     pub(super) url_to_slot: HashMap<RelayUrl, u32>,
-    /// Event sink handed to [`super::Pool::new`]. A `Box<dyn PoolEventSink>`
+    /// Event sink handed to [`super::Pool::new`]. An `Arc<dyn PoolEventSink>`
     /// so the actor can deliver relay events onto its unified command/relay
     /// inbox (ADR-0050 §D3a) while other callers keep handing in a plain
-    /// `Sender<PoolEvent>` (blanket impl). Pushed under the inner lock — the
-    /// underlying channel `send` is an unbounded non-blocking enqueue, so this
-    /// holds the lock only for the push, never for I/O.
-    pub(super) events: Box<dyn super::PoolEventSink>,
+    /// `Sender<PoolEvent>` (blanket impl). The translator clones this handle
+    /// out under the inner lock and then *drops the lock before* calling
+    /// `send_event` (ADR-0050 §D3a follow-up #1231): no sink is ever invoked
+    /// while the `PoolInner` mutex is held, so a sink can never stall a
+    /// concurrent `Pool::send`.
+    pub(super) events: Arc<dyn super::PoolEventSink>,
     /// Worker→translator channel; one shared sender cloned to every
     /// spawned worker.
     pub(super) worker_event_tx: Sender<RelayEvent>,
@@ -80,7 +82,7 @@ impl PoolInner {
 
     pub(super) fn new(
         config: PoolConfig,
-        events: Box<dyn super::PoolEventSink>,
+        events: Arc<dyn super::PoolEventSink>,
     ) -> Arc<Mutex<Self>> {
         let (worker_event_tx, worker_event_rx) = mpsc::channel::<RelayEvent>();
         let inner = Arc::new(Mutex::new(Self {
@@ -286,7 +288,7 @@ impl PoolInner {
         // wraps an `mpsc::Sender` (the blanket impl), that releases the
         // consumer-side `recv()` exactly as before.
         let (dead_events_tx, _dead_events_rx) = mpsc::channel::<PoolEvent>();
-        self.events = Box::new(dead_events_tx);
+        self.events = Arc::new(dead_events_tx);
     }
 
     pub(super) fn snapshot(&self) -> PoolSnapshot {
@@ -356,12 +358,17 @@ fn translator_loop(
             Some(ev) => ev,
             None => continue,
         };
-        // Still under the lock, but the sink's enqueue is a non-blocking,
-        // unbounded channel push, so this never holds the lock across I/O.
-        // `send_event` swallows a gone-consumer error (ADR-0050 §D3a); the
-        // translator stops naturally when its workers exit and the
+        // Clone the sink handle (an `Arc` bump, O(1)) and DROP the lock before
+        // delivering (ADR-0050 §D3a follow-up #1231). The cross-lock-send
+        // invariant is now structural rather than relying on the sink being
+        // non-blocking: even if a future sink blocked, it could not stall a
+        // concurrent `Pool::send`, since the `PoolInner` mutex is released
+        // first. `send_event` swallows a gone-consumer error (ADR-0050 §D3a);
+        // the translator stops naturally when its workers exit and the
         // `worker_event_rx.recv()` above returns `Err` on the next poll.
-        guard.events.send_event(pool_event);
+        let sink = Arc::clone(&guard.events);
+        drop(guard);
+        sink.send_event(pool_event);
     }
 }
 
