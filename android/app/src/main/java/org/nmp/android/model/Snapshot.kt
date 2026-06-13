@@ -73,9 +73,84 @@ data class SnapshotProjections(
     // sessions — `signerKind` discriminates. Drives the signer health badge
     // in the sign-in screen. Rust pre-computes every flag (ADR-0032 pattern):
     // isReady = green, isAwaitingApproval/isReconnecting = amber (wait),
-    // isUnavailable/isFailed = red (re-auth required). No typed sidecar needed
-    // on Android — JSON fallback is the primary path here.
+    // isUnavailable/isFailed = red (re-auth required). Decoded typed-first from
+    // the `signer_state` (`KSST`) sidecar by [TypedSignerStateDecoder] (#1099
+    // parity with iOS); `null` when no remote-signer session is active.
     @SerialName("signer_state") val signerState: SignerState? = null,
+    // Detailed relay diagnostics — `relay_diagnostics` (`KRDG`) sidecar, decoded
+    // by [TypedRelayDiagnosticsDecoder]. `null` when the sidecar is absent. Every
+    // label/tone is Rust-precomputed (ADR-0032) so the UI never branches on raw
+    // protocol strings; `RelayScreen` prefers `connectionLabel`/`connectionTone`
+    // here over the Tier-3 `relayStatuses` raw-string switch.
+    @SerialName("relay_diagnostics") val relayDiagnostics: RelayDiagnosticsSnapshot? = null,
+)
+
+/**
+ * Detailed relay diagnostics — `projections["relay_diagnostics"]` (`KRDG`).
+ * Android peer of iOS `RelayDiagnosticsSnapshot` (`TypedProjectionGlue`).
+ *
+ * Field-for-field mirror of the kernel projection. Every `*Label`/`*Tone`
+ * string is Rust-precomputed (ADR-0032 / V-14) so the presentation layer
+ * never branches on raw protocol tokens (thin-shell rule). `null` display
+ * strings collapse to `""` here, byte-faithful to the typed wire's
+ * `has_*`-companion semantics.
+ */
+@Serializable
+data class RelayDiagnosticsSnapshot(
+    val relays: List<RelayDiagnosticsRow> = emptyList(),
+    val interests: List<RelayDiagnosticsInterest> = emptyList(),
+)
+
+@Serializable
+data class RelayDiagnosticsRow(
+    val relayUrl: String = "",
+    val shortUrl: String = "",
+    val roleLabel: String = "",
+    val roleTone: String = "",
+    val connectionLabel: String = "",
+    val connectionTone: String = "",
+    val authLabel: String = "",
+    val authTone: String = "",
+    val totalSubCount: Int = 0,
+    val activeSubCount: Int = 0,
+    val eosedSubCount: Int = 0,
+    val totalEventsRx: Long = 0,
+    val totalEventsDisplay: String = "",
+    val reconnectCount: Int = 0,
+    val bytesRxDisplay: String? = null,
+    val bytesTxDisplay: String? = null,
+    val lastConnectedDisplay: String? = null,
+    val lastEventDisplay: String? = null,
+    val lastNotice: String? = null,
+    val lastError: String? = null,
+    val wireSubs: List<RelayDiagnosticsWireSub> = emptyList(),
+)
+
+@Serializable
+data class RelayDiagnosticsWireSub(
+    val wireId: String = "",
+    val shortWireId: String = "",
+    val relayUrl: String = "",
+    val filterSummary: String = "",
+    val stateLabel: String = "",
+    val stateTone: String = "",
+    val consumerCountLabel: String = "",
+    val eventsRxDisplay: String? = null,
+    val eoseObserved: Boolean = false,
+    val openedDisplay: String = "",
+    val lastEventDisplay: String? = null,
+    val eoseDisplay: String? = null,
+    val closeReason: String? = null,
+)
+
+@Serializable
+data class RelayDiagnosticsInterest(
+    val key: String = "",
+    val state: String = "",
+    val stateTone: String = "",
+    val refcount: Int = 0,
+    val cacheCoverage: String = "",
+    val relayUrls: List<String> = emptyList(),
 )
 
 /**

@@ -126,6 +126,11 @@ fn snake_to_camel_handles_common_shapes() {
     assert_eq!(snake_to_camel("a_b_c"), "aBC");
     // Already camelCase passes through unchanged.
     assert_eq!(snake_to_camel("alreadyCamel"), "alreadyCamel");
+    // Leading underscores are preserved (the doc-comment promise the old
+    // body silently broke — it dropped them while flagging `upper_next`).
+    assert_eq!(snake_to_camel("_secret_bytes"), "_secretBytes");
+    assert_eq!(snake_to_camel("__foo_bar"), "__fooBar");
+    assert_eq!(snake_to_camel("_"), "_");
 }
 
 #[test]
@@ -168,6 +173,28 @@ fn check_swift_treats_missing_file_as_stale() {
     let result = check_swift(one_type_document(), &out).expect("check");
     assert!(!result.up_to_date);
     assert_eq!(result.first_diff_line, None);
+}
+
+#[test]
+fn check_swift_length_diff_reports_first_diff_line_not_none() {
+    // File has all the same lines as rendered but is missing the last line(s).
+    // The `.zip()` walk over the common prefix finds no mismatch, so the old
+    // code returned `first_diff_line: None` — which CI reporting interprets as
+    // "file missing" rather than "file exists but differs in length".
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = dir.path().join("out.swift");
+    generate_swift(one_type_document(), &out).expect("write");
+    let full = std::fs::read_to_string(&out).expect("read");
+    let line_count = full.lines().count();
+    let truncated: String =
+        full.lines().take(line_count - 1).collect::<Vec<_>>().join("\n") + "\n";
+    std::fs::write(&out, &truncated).expect("truncate");
+    let result = check_swift(one_type_document(), &out).expect("check");
+    assert!(!result.up_to_date, "truncated file must be stale");
+    assert!(
+        result.first_diff_line.is_some(),
+        "truncated file should report a diff line, not None (which implies missing)"
+    );
 }
 
 // ── V6 Stage 2 ──────────────────────────────────────────────────────────

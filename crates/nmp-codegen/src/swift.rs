@@ -531,13 +531,15 @@ fn map_integer_format(format: Option<&str>) -> &'static str {
     }
 }
 
-/// snake_case → camelCase. `relay_url` → `relayUrl`. Leading underscores
-/// are preserved as-is (none appear in the pilot set; included for
-/// robustness against future fields like `_internal`).
+/// snake_case → camelCase. `relay_url` → `relayUrl`. Leading underscores are
+/// preserved (`_secret_bytes` → `_secretBytes`), for future `_internal` fields.
 fn snake_to_camel(snake: &str) -> String {
     let mut out = String::with_capacity(snake.len());
+    // Preserve leading underscores verbatim (the loop below would drop them).
+    let trimmed = snake.trim_start_matches('_');
+    out.push_str(&snake[..snake.len() - trimmed.len()]);
     let mut upper_next = false;
-    for ch in snake.chars() {
+    for ch in trimmed.chars() {
         if ch == '_' {
             upper_next = true;
         } else if upper_next {
@@ -597,11 +599,9 @@ pub fn check_swift(document_json: &str, out_path: &Path) -> Result<SwiftCheckOut
             first_diff_line: None,
         });
     }
-    let first_diff_line = actual
-        .lines()
-        .zip(rendered.lines())
-        .position(|(a, b)| a != b)
-        .map(|p| p + 1);
+    // Strings already proven to differ above; see `diff_report` for why a
+    // length-only mismatch must still yield a `Some` line, not `None`.
+    let first_diff_line = crate::diff_report::first_diff_or_length(&actual, &rendered);
     Ok(SwiftCheckOutcome {
         up_to_date: false,
         first_diff_line,

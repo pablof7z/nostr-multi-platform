@@ -285,11 +285,9 @@ pub fn check_typed_decoders(out_path: &Path) -> std::io::Result<TypedDecodersChe
             first_diff_line: None,
         });
     }
-    let first_diff_line = actual
-        .lines()
-        .zip(rendered.lines())
-        .position(|(a, b)| a != b)
-        .map(|p| p + 1);
+    // Strings already proven to differ above; a length-only mismatch must still
+    // report a real diff line, not `None` (which CI reads as "file missing").
+    let first_diff_line = crate::diff_report::first_diff_or_length(&actual, &rendered);
     Ok(TypedDecodersCheckOutcome {
         up_to_date: false,
         first_diff_line,
