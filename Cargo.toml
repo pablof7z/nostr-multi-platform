@@ -27,7 +27,6 @@ members = [
     "crates/nmp-nip51",
     "crates/nmp-nip57",
     "crates/nmp-nip59",
-    "crates/nmp-blossom",
     "apps/nmp-gallery/nmp-app-gallery",
     "crates/nmp-nip77",
     "crates/nmp-wot",
@@ -38,8 +37,6 @@ members = [
     "crates/nmp-planner",
     "crates/nmp-router",
     "crates/nmp-store",
-    "crates/nmp-nip60",
-    "apps/nmp-wallet-poc",
     "crates/nmp-nwc",
     "crates/nmp-repl",
     "crates/nmp-signer-broker",
@@ -49,6 +46,20 @@ members = [
     "crates/nmp-threading",
     "apps/chirp/chirp-desktop",
     "crates/nmp-wasm",
+]
+# Parked dead-island crates (issue #1250). These carry no active consumer in the
+# composition graph today, so they are excluded from the workspace to incur zero
+# build/CI weight until their milestones enter scope. NO code is deleted — this
+# is a pure workspace-membership move. Re-add to `members` (plus the one-line
+# nmp-defaults register call) when the milestone lands.
+#   - crates/nmp-blossom : uploads; wire-in tracked by #998 (M10).
+#   - crates/nmp-nip60   : Cashu wallet; wire-in tracked by #1001.
+#   - apps/nmp-wallet-poc: standalone POC binary, the sole consumer of nmp-nip60;
+#                          parked alongside it (re-add together with #1001).
+exclude = [
+    "crates/nmp-blossom",
+    "crates/nmp-nip60",
+    "apps/nmp-wallet-poc",
 ]
 resolver = "2"
 
