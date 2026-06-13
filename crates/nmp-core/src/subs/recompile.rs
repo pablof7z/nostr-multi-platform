@@ -275,13 +275,8 @@ pub(super) fn shape_is_ephemeral_only(shape: &InterestShape) -> bool {
     !shape.kinds.is_empty() && shape.kinds.iter().all(|k| (20000..30000).contains(k))
 }
 
-/// In-place rewrite of every non-ephemeral sub-shape's *existing* `since`
-/// floor to `max(existing_since, watermark + 1)`.
-///
-/// A `since=None` ("all time") shape is left untouched — converting it to a
-/// bounded `since` would silently drop every event before the watermark
-/// (Defect 2 backfill gap). The rewrite only ever RAISES an already-bounded
-/// floor; it never bounds an unbounded interest.
+/// In-place rewrite of every non-ephemeral sub-shape's `since` to
+/// `max(existing_since, watermark + 1)`.
 ///
 /// The rewrite is purely a value mutation — `canonical_filter_hash` is left
 /// untouched so the wire-emitter's diff treats a re-opened sub as the same
@@ -305,14 +300,11 @@ pub(super) fn apply_watermark_rewrite(
             let Some(watermark) = watermark_fn(&sub_shape.shape) else {
                 continue;
             };
-            // Defect 2: only RAISE an existing `since` floor. A `since=None`
-            // interest means "all time" — converting it to a bounded `since`
-            // here would silently skip every event before the watermark
-            // (backfill gap). Leave None untouched.
-            if let Some(existing) = sub_shape.shape.since {
-                let floor = watermark.saturating_add(1);
-                sub_shape.shape.since = Some(existing.max(floor));
-            }
+            let floor = watermark.saturating_add(1);
+            sub_shape.shape.since = Some(match sub_shape.shape.since {
+                Some(existing) if existing >= floor => existing,
+                _ => floor,
+            });
         }
     }
 }

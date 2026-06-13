@@ -10,29 +10,26 @@ use crate::interest::{InterestLifecycle, InterestShape, NaddrCoord};
 
 /// Rule 1 — `kinds` merge.
 ///
-/// Mergeable iff `a.kinds == b.kinds` (including both wildcard). A wildcard
-/// (empty) set MUST NOT merge with a concrete set.
+/// Mergeable iff `a.kinds == b.kinds` OR one is empty (wildcard absorbs ALL).
 ///
-/// An empty set means "match any kind" (wildcard). Merging a wildcard with a
-/// concrete-kinds interest would produce a kinds-less (all-kinds) filter on
-/// the wire — a privacy/bandwidth leak: the concrete side asked for `[1, 6]`,
-/// but the merged REQ would pull EVERY kind from the relay. Equally, narrowing
-/// the wildcard to the concrete set would drop kinds the wildcard intended to
-/// match. Neither outcome is sound, so the merge is refused — mirroring Rule 9
-/// (`relay_pin`), where `None` likewise does NOT absorb a concrete `Some(_)`.
+/// An empty set means "match any kind" (wildcard). When either side is wildcard,
+/// the result MUST be wildcard (empty), not the other side's concrete set.
+/// Returning the concrete set would NARROW the subscription semantics — a relay
+/// receiving `{ kinds: [1, 6] }` would miss kinds 0, 30023, etc. that the
+/// wildcard side intended to include.
 ///
-/// `wildcard ∪ wildcard = wildcard` is the only wildcard merge that survives:
-/// both sides already match all kinds, so the union broadens nothing.
+/// `wildcard ∪ {1, 6} = wildcard` — the wildcard absorbs its neighbour.
 pub(super) fn rule1_kinds(
     a: &InterestShape,
     b: &InterestShape,
 ) -> Option<std::collections::BTreeSet<u32>> {
-    if a.kinds == b.kinds {
-        // Identical sets (both concrete-equal, or both wildcard/empty) — merge.
+    if a.kinds.is_empty() || b.kinds.is_empty() {
+        // At least one side is wildcard — wildcard absorbs, result is wildcard.
+        Some(std::collections::BTreeSet::new())
+    } else if a.kinds == b.kinds {
         Some(a.kinds.clone())
     } else {
-        // Differing sets — including wildcard vs concrete — refuse. Merging
-        // would either over-broaden (wildcard wins) or narrow (concrete wins).
+        // Both non-empty but different — refuse (merging would widen kinds)
         None
     }
 }

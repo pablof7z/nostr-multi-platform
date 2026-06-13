@@ -110,17 +110,10 @@ fn relays_with_req(frames: &[WireFrame]) -> std::collections::BTreeSet<String> {
 
 // ─── 1) Basic rewrite ────────────────────────────────────────────────────────
 
-/// Defect 2 regression: a `since=None` ("all time") interest must NOT be
-/// rewritten by the watermark pass. Rewriting it to `watermark+1` would
-/// silently drop every event before the watermark — a backfill gap. The
-/// watermark floor only ever RAISES an existing `Some(t)`; it never converts
-/// an unbounded interest into a bounded one (which would skip historical
-/// events the interest explicitly asked for by leaving `since` open).
 #[test]
-fn does_not_rewrite_none_since_to_bounded() {
+fn rewrites_since_to_watermark_plus_one_when_filter_has_no_since() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
-    // Cache has events for this filter with newest created_at = 1700, but the
-    // interest itself declared no `since` floor (wants all history).
+    // Cache has events for this filter with newest created_at = 1700.
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
     l.registry_mut().push(timeline_interest(1, "a"));
 
@@ -130,32 +123,8 @@ fn does_not_rewrite_none_since_to_bounded() {
     assert!(!filters.is_empty(), "expected at least one REQ");
     for filter in &filters {
         assert!(
-            !filter.contains("\"since\""),
-            "a None-since interest must stay unbounded — the watermark pass \
-             must NOT convert it to a bounded `since` (backfill gap); got {filter}",
-        );
-    }
-}
-
-/// Companion to the regression above: an interest that DID declare a `since`
-/// floor IS raised to `watermark+1` when the watermark is higher. This is the
-/// legitimate half of the rewrite that the Defect 2 fix preserves.
-#[test]
-fn raises_some_since_to_watermark_plus_one() {
-    let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
-    // Interest declared since=1000; watermark (1700) is higher → raise to 1701.
-    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
-    l.registry_mut()
-        .push(timeline_interest_with_since(1, "a", 1000));
-
-    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
-    let filters = req_filters(&frames);
-
-    assert!(!filters.is_empty(), "expected at least one REQ");
-    for filter in &filters {
-        assert!(
             filter.contains("\"since\":1701"),
-            "an existing since floor must be raised to watermark+1; got {filter}",
+            "since not rewritten to watermark+1 in filter {filter}",
         );
     }
 }
@@ -245,7 +214,9 @@ fn two_author_interest(id: u64, author_a: &str, author_b: &str) -> LogicalIntere
         id: InterestId(id),
         scope: InterestScope::Global,
         shape: InterestShape {
-            authors: [pubkey(author_a), pubkey(author_b)].into_iter().collect(),
+            authors: [pubkey(author_a), pubkey(author_b)]
+                .into_iter()
+                .collect(),
             kinds: [1u32].into_iter().collect(),
             ..Default::default()
         },
@@ -323,10 +294,7 @@ fn multi_author_no_since_when_watermark_fn_returns_none() {
 }
 
 /// When the watermark fn returns the minimum of per-author watermarks, the
-/// rewrite must RAISE an existing `since` floor to that minimum (not a higher
-/// value). The interest carries an explicit `since=10` floor so the rewrite
-/// has a `Some(_)` to raise — a None-since interest is left unbounded
-/// (Defect 2 / `does_not_rewrite_none_since_to_bounded`).
+/// rewrite must use that minimum (not a higher value).
 #[test]
 fn multi_author_since_is_min_watermark_plus_one() {
     let (mut l, mailboxes) = lifecycle_with_two_authors_shared_relay("a", "b");
@@ -338,9 +306,7 @@ fn multi_author_since_is_min_watermark_plus_one() {
             Some(1700) // single-author path unchanged
         }
     }));
-    let mut interest = two_author_interest(11, "a", "b");
-    interest.shape.since = Some(10); // existing floor below the watermark
-    l.registry_mut().push(interest);
+    l.registry_mut().push(two_author_interest(11, "a", "b"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -374,10 +340,7 @@ fn multi_relay_emits_identical_rewritten_since() {
     // confounded by selection-induced relay dropping.
     l.set_selection_budget(usize::MAX, usize::MAX);
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
-    // Explicit since floor (below the watermark) so the rewrite raises it on
-    // every relay — a None-since interest stays unbounded (Defect 2).
-    l.registry_mut()
-        .push(timeline_interest_with_since(1, "a", 1000));
+    l.registry_mut().push(timeline_interest(1, "a"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);

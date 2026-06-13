@@ -163,10 +163,8 @@ fn cold_open_profile_view_full_pipeline() {
 // rewiring.  The actor's update channel is opaque to outbound REQs.
 #[test]
 fn kind3_update_rewires_subscriptions() {
-    use nmp_core::planner::{
-        InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
-        LogicalInterest, MailboxSnapshot,
-    };
+    use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+        InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{AccountId, CompileTrigger, SubscriptionLifecycle, WireFrame};
     use std::collections::BTreeSet;
 
@@ -293,8 +291,8 @@ fn kind3_update_rewires_subscriptions() {
 #[test]
 fn publish_roundtrip_via_outbox() {
     use nmp_core::publish::{
-        InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishTarget, RelayAck,
-        RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
+        InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishTarget,
+        RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
     };
     use nmp_core::substrate::{SignedEvent, UnsignedEvent};
     use std::sync::Arc;
@@ -363,11 +361,7 @@ fn publish_roundtrip_via_outbox() {
 
     // Confirm the dispatched frames encode a kind:1 event.
     // Sent frames are `["EVENT", <signed-event-json>]` strings.
-    let all_text: String = sent
-        .iter()
-        .map(|(_, t)| t.as_str())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let all_text: String = sent.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join(" ");
     assert!(
         all_text.contains("\"kind\":1"),
         "dispatched frame must encode kind:1; got excerpt: {}",
@@ -380,28 +374,33 @@ fn publish_roundtrip_via_outbox() {
 // ---------------------------------------------------------------------------
 //
 // Scenario — watermark `since`-rewrite (T129 / the surviving coverage gate):
-// A WatermarkFn reporting events up to ts=1700 RAISES the interest's `since`
-// floor (1000) → the REQ carries `"since":1701`. Defect 2: the rewrite only
-// RAISES an existing floor — a None-since cold-start interest carries no `since`.
+//   1. Build a SubscriptionLifecycle with a WatermarkFn that reports the
+//      local store has events up to ts=1700 for alice's kind:1.
+//   2. Open a tailing interest for alice (no explicit `since`).
+//   3. Compile: assert the emitted REQ carries `"since":1701`
+//      (watermark + 1 — the relay is told to skip events already on disk).
+//   4. No WatermarkFn installed (cold start / empty store): assert no `since`
+//      in the filter (relay sends everything).
 //
 // Design note: `nmp-nip77` (NIP-77 negentropy full-sync) was deleted (no
-// shipping callers); the surviving "skips redundant fetches" mechanism is the
-// T129 watermark-to-`since` rewrite in `SubscriptionLifecycle` — a shipping
-// D2-adjacent coverage gate that narrows the REQ (relay sends only NEW events)
-// instead of suppressing it. It is driven by a `WatermarkFn` installed at
-// kernel construction (prod: `EventStore::query_visit` newest-created_at).
+// shipping callers); the surviving mechanism that "skips redundant fetches"
+// is the T129 watermark-to-`since` rewrite in `SubscriptionLifecycle`.  This
+// rewrite is the shipping D2-adjacent coverage gate: instead of suppressing
+// the REQ entirely, it narrows it so the relay sends only NEW events.  The
+// rewrite is driven by a `WatermarkFn` installed at kernel construction time
+// (production: `EventStore::query_visit` newest-created_at lookup; tests:
+// any `Arc<dyn Fn(&InterestShape) -> Option<u64>>`).
 //
 // D2 doctrine note: a complete negentropy-driven REQ suppression path would
-// require a shipping coverage hook (`PlanCoverageHook`) over real store state.
-// The production kernel does NOT install one (see `TODO(D2)` in `subs/mod.rs`;
-// the `#[ignore]` lives in `coverage_hook_tests.rs::d2_coverage_hook_slot_round_trips`).
+// require a shipping coverage hook (`PlanCoverageHook`) that derives its
+// decision from real store state.  The production kernel currently does NOT
+// install such a hook (see `TODO(D2)` in `subs/mod.rs`).  The correct `#[ignore]`
+// for that missing piece lives in `coverage_hook_tests.rs::d2_coverage_hook_slot_round_trips`.
 // This test pins the working, shipping coverage narrowing mechanism instead.
 #[test]
 fn negentropy_skips_redundant_req() {
-    use nmp_core::planner::{
-        InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
-        LogicalInterest, MailboxSnapshot,
-    };
+    use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+        InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{SubscriptionLifecycle, WireFrame};
     use std::collections::BTreeSet;
     use std::sync::Arc;
@@ -445,12 +444,11 @@ fn negentropy_skips_redundant_req() {
         is_indexer_discovery: false,
     };
 
-    // ── Case 1: watermark (1700) RAISES the interest's floor (1000) → 1701.
-    let mut alice_with_floor = alice_interest.clone();
-    alice_with_floor.shape.since = Some(1000);
+    // ── Case 1: WatermarkFn reports local store has events up to ts=1700 ────
+    // The relay REQ must carry `"since":1701` — skipping already-cached events.
     let mut lc_warm = SubscriptionLifecycle::new();
     lc_warm.set_watermark_fn(Arc::new(|_shape| Some(1700)));
-    lc_warm.registry_mut().push(alice_with_floor);
+    lc_warm.registry_mut().push(alice_interest.clone());
     let frames_warm = lc_warm
         .recompile_and_diff(&mailboxes)
         .expect("warm compile");
@@ -462,11 +460,13 @@ fn negentropy_skips_redundant_req() {
     for filter in &filters_warm {
         assert!(
             filter.contains("\"since\":1701"),
-            "REQ must carry since=watermark+1 to skip cached events; got {filter}"
+            "REQ filter must carry since=watermark+1 to skip already-cached events; \
+             got filter: {filter}"
         );
     }
 
-    // ── Case 2: No WatermarkFn / cold start → relay sends everything (no `since`).
+    // ── Case 2: No WatermarkFn / cold start → relay sends everything ─────────
+    // Without a watermark the REQ must have NO `since` field (full fetch).
     let mut lc_cold = SubscriptionLifecycle::new();
     lc_cold.set_watermark_fn(Arc::new(|_shape| None));
     lc_cold.registry_mut().push(alice_interest);
@@ -506,10 +506,8 @@ fn negentropy_skips_redundant_req() {
 // BEFORE the compile so the `partition()` path captures the REQs.
 #[test]
 fn auth_required_for_read_flow() {
-    use nmp_core::planner::{
-        InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
-        LogicalInterest, MailboxSnapshot,
-    };
+    use nmp_core::planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
+        InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{RelayAuthState, SubscriptionLifecycle, WireFrame};
     use std::collections::BTreeSet;
 
@@ -546,15 +544,15 @@ fn auth_required_for_read_flow() {
     // Phase 1: AUTH challenge arrives BEFORE the first compile.
     // This puts the relay into the paused state so recompile_and_diff routes
     // the produced REQs through the auth-gate partition path.
-    let _pre =
-        lc.handle_auth_state_change(relay_url.to_string(), RelayAuthState::ChallengeReceived);
+    let _pre = lc.handle_auth_state_change(
+        relay_url.to_string(),
+        RelayAuthState::ChallengeReceived,
+    );
 
     // Phase 2: Compile while auth-paused.
     // REQs targeting the paused relay must be captured in the pending buffer,
     // not returned to the caller (zero wire frames for this relay).
-    let frames_paused = lc
-        .recompile_and_diff(&mailboxes)
-        .expect("auth-paused compile");
+    let frames_paused = lc.recompile_and_diff(&mailboxes).expect("auth-paused compile");
     let reqs_to_paused: Vec<_> = frames_paused
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == relay_url))
@@ -566,8 +564,10 @@ fn auth_required_for_read_flow() {
     );
 
     // Phase 3: AUTH completes — pending REQs must be flushed to the wire.
-    let flush_frames =
-        lc.handle_auth_state_change(relay_url.to_string(), RelayAuthState::Authenticated);
+    let flush_frames = lc.handle_auth_state_change(
+        relay_url.to_string(),
+        RelayAuthState::Authenticated,
+    );
     let reqs_flushed: Vec<_> = flush_frames
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == relay_url))

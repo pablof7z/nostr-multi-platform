@@ -69,13 +69,11 @@
 //!   the relay should send (skipping authoritative ranges already on disk).
 //!   The wire-emitter MUST see a new sub-id so the new REQ goes out — the
 //!   hook calls [`plan::SubShape::recompute_hash`] after each mutation.
-//! - **`addSinceFromCache` (T129)**: RAISING an *existing* `since` floor is a
-//!   no-data-loss change — every event the relay would have sent below
-//!   `watermark + 1` is already on disk; not seeing them again is the *point*.
-//!   A `since=None` ("all time") interest is left UNTOUCHED: bounding it would
-//!   silently skip every event before the watermark, a backfill gap (Defect
-//!   2). The wire-emitter MUST NOT see a new sub-id (else every recompile
-//!   churns CLOSE+REQ as the watermark advances). The rewrite therefore leaves
+//! - **`addSinceFromCache` (T129)**: bumping `since` is a no-data-loss floor
+//!   — every event the relay would have sent below `watermark + 1` is
+//!   already on disk; not seeing them again is the *point*. The wire-emitter
+//!   MUST NOT see a new sub-id (else every recompile churns CLOSE+REQ as
+//!   the watermark advances). The rewrite therefore leaves
 //!   `canonical_filter_hash` alone and is applied AFTER the hash is computed.
 //!
 //! Both rules collapse to the same invariant: `canonical_filter_hash` reflects
