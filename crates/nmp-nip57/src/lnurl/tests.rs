@@ -470,6 +470,9 @@ fn run_and_capture_port(correlation_id: Option<String>) -> PortCapture {
             lnurl_or_address: Some(UNREACHABLE_LNURL.to_string()),
             amount_msats: 21_000,
             correlation_id,
+            // ADR-0052 rung 5.2: this test exercises the sign/LNURL legs, not
+            // the wallet handoff — no wallet handle wired.
+            runtime: None,
         });
         cmd.run(&mut ctx).expect("run returns Ok");
     }
@@ -667,6 +670,8 @@ fn run_restamps_created_at_from_context_clock() {
         lnurl_or_address: Some("alice@example.com".to_string()),
         amount_msats: 21_000,
         correlation_id: None,
+        // ADR-0052 rung 5.2: sign/LNURL-leg test, no wallet handle.
+        runtime: None,
     });
     cmd.run(&mut ctx).expect("run returns Ok on fail-closed branch");
     assert!(

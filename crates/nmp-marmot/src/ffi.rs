@@ -325,7 +325,7 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
     // `&*app` borrow on the next line is taken only after this exclusive
     // borrow is dropped. Mirrors the `register_chirp_actions(unsafe { &mut
     // *app })` pattern in `apps/chirp/nmp-app-chirp/src/ffi/register.rs`.
-    unsafe { &mut *app }.register_action::<MarmotActionModule>();
+    unsafe { &mut *app }.register_action(MarmotActionModule);
 
     // SAFETY: caller guarantees `app` is non-null and valid.
     let app_ref = unsafe { &*app };

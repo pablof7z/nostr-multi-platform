@@ -49,6 +49,23 @@ fn timeline_interest_with_since(id: u64, author: &str, since: u64) -> LogicalInt
     i
 }
 
+/// A OneShot (backfill) interest with no since — models an all-time history
+/// fetch where T129 narrowing must NOT be applied (#1281).
+fn backfill_interest(id: u64, author: &str) -> LogicalInterest {
+    LogicalInterest {
+        id: InterestId(id),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors: [pubkey(author)].into_iter().collect(),
+            kinds: [1u32].into_iter().collect(),
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
+    }
+}
+
 fn ephemeral_interest(id: u64, author: &str) -> LogicalInterest {
     LogicalInterest {
         id: InterestId(id),
@@ -110,20 +127,25 @@ fn relays_with_req(frames: &[WireFrame]) -> std::collections::BTreeSet<String> {
 
 // ─── 1) since=None exemption (#1281) ─────────────────────────────────────────
 //
-// Owner decision #1281 (2026-06-13): a since=None ("all-time / backfill")
-// interest is EXEMPT from the T129 watermark rewrite. Raising None to
-// watermark+1 silently prevents backfill of history older than the watermark.
-// T129 only raises an existing Some(t) floor — it never introduces a new
-// lower bound where none existed.
+// Owner decision #1281 (2026-06-13, refined): the backfill exemption applies
+// ONLY to non-Tailing (OneShot/backfill) interests. A non-Tailing since=None
+// interest requests all-time history; raising it to watermark+1 would
+// silently prevent the relay from returning events older than the local store.
+//
+// A TAILING since=None interest is a live feed that has not yet expressed a
+// lower bound. T129 applies normally — we narrow it to watermark+1 so the
+// relay does not re-send already-cached events (the core T129 optimisation).
 
+/// Non-Tailing (backfill/OneShot) + since=None: watermark rewrite must NOT
+/// introduce a lower bound (full history requested).
 #[test]
-fn since_none_stays_none_after_watermark_rewrite() {
+fn since_none_stays_none_for_backfill_interest_after_watermark_rewrite() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
-    // Cache has events for this filter with newest created_at = 1700, but
-    // the interest has no since (all-time backfill).  The watermark rewrite
-    // must NOT introduce a lower bound.
+    // Cache has events up to ts=1700 for this filter, but the interest is a
+    // backfill (OneShot, lifecycle!=Tailing) with no since. The watermark
+    // rewrite must NOT introduce a lower bound.
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
-    l.registry_mut().push(timeline_interest(1, "a"));
+    l.registry_mut().push(backfill_interest(1, "a"));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -132,7 +154,29 @@ fn since_none_stays_none_after_watermark_rewrite() {
     for filter in &filters {
         assert!(
             !filter.contains("\"since\""),
-            "since=None must remain absent after watermark rewrite (backfill exemption #1281); got {filter}",
+            "backfill (OneShot) since=None must remain absent after watermark rewrite (#1281); got {filter}",
+        );
+    }
+}
+
+/// Tailing + since=None: T129 applies — rewrite to watermark+1 so the live
+/// feed does not re-request already-cached events on reconnect/recompile.
+#[test]
+fn tailing_since_none_is_narrowed_to_watermark_plus_one() {
+    let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
+    // Watermark = 1700; Tailing interest with no explicit since.
+    // T129 must narrow it to since=1701 so the relay skips cached events.
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+    l.registry_mut().push(timeline_interest(1, "a")); // lifecycle: Tailing
+
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let filters = req_filters(&frames);
+
+    assert!(!filters.is_empty(), "expected at least one REQ");
+    for filter in &filters {
+        assert!(
+            filter.contains("\"since\":1701"),
+            "Tailing since=None must be narrowed to watermark+1 by T129; got {filter}",
         );
     }
 }

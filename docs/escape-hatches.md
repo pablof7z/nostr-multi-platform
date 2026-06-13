@@ -12,8 +12,8 @@ use case. Every escape hatch trades a framework guarantee for direct access.
 
 ## 1. Raw Event Tap — `nmp_app_register_raw_event_observer`
 
-**Module:** `crates/nmp-core/src/ffi/raw_event_tap.rs`  
-**Rust API:** `NmpApp::register_raw_event_observer`  
+**Module:** `crates/nmp-ffi/src/raw_event_tap.rs`
+**Rust API:** `NmpApp::register_raw_event_observer`
 **C ABI:** `nmp_app_register_raw_event_observer` / `nmp_app_unregister_raw_event_observer`
 
 **What it gives you:** The verbatim inbound `SignedEvent` JSON (id + pubkey +
@@ -51,14 +51,14 @@ signatures. If you need to derive in-process state or projections, use
 
 ## 2. Snapshot Projector — `nmp_app_register_snapshot_projection`
 
-**Module:** `crates/nmp-core/src/ffi/snapshot.rs`  
-**Rust API:** `NmpApp::register_snapshot_projection`  
+**Module:** `crates/nmp-ffi/src/snapshot.rs`
+**Rust API:** `NmpApp::register_snapshot_projection`
 **C ABI:** `nmp_app_register_snapshot_projection`
 
 **What it gives you:** A callback invoked on every snapshot tick. Your callback
-returns a JSON string that is appended to `KernelSnapshot::projections` under a
-host-chosen key, making custom app state visible to the host shell alongside
-the kernel's built-in projections.
+returns a JSON value that is appended to `KernelSnapshot::projections` under a
+host-chosen key. Use this for internal/diagnostic JSON projections; production
+host-rendered state should use a typed FlatBuffers projection sidecar.
 
 **What it bypasses:**
 - D3 — your projector runs outside the kernel's typed projection system; the
@@ -96,8 +96,8 @@ See `docs/dispatch-actions.md` for the action namespace catalog.
 
 ## 4. Test-Only Injectors — `nmp_app_inject_*`
 
-**Module:** `crates/nmp-core/src/ffi/testing.rs`  
-**Gate:** `#[cfg(any(test, feature = "test-support"))]` — **never in production ABI**  
+**Module:** `crates/nmp-ffi/src/testing.rs`
+**Gate:** `#[cfg(any(test, feature = "test-support"))]` — **never in production ABI**
 **Symbols:** `nmp_app_inject_pre_verified_events`, `nmp_app_inject_signed_events`,
 `nmp_app_inject_signed_event_json`
 

@@ -1350,16 +1350,9 @@ fn react_builds_kind7_with_e_and_p_tags() {
     );
 }
 
-#[test]
-fn follow_publishes_kind3_with_p_tag() {
-    let (mut id, mut kernel) = fresh();
-    sign_in_with_nip65(&mut id, &mut kernel);
-    let target = "b".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true, None, &mut Vec::new());
-    assert!(!outbound.is_empty());
-    assert!(outbound[0].text.contains("\"kind\":3"));
-    assert!(outbound[0].text.contains(&target));
-}
+// Issue #1246 kind:3 full-edit follow tests live in the sibling child module
+// `tests_follow_kind3_fulledit` (declared at the bottom of this file) to keep
+// this file under the file-size hard cap.
 
 // ── react: account / id-validation / default-content gaps ──────────────────
 //
@@ -2268,3 +2261,9 @@ fn open_contact_feed_empty_kinds_is_clear() {
         "open_contact_feed with empty kinds must clear follow_feed_interest_ids"
     );
 }
+
+// Issue #1246 kind:3 full-edit follow tests, extracted to keep this file under
+// the file-size hard cap. Child module so `use super::*` inherits the shared
+// test helpers (`fresh`, `seed_contact_list`, `follow`, ...).
+#[path = "tests_follow_kind3_fulledit.rs"]
+mod tests_follow_kind3_fulledit;

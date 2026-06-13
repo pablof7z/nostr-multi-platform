@@ -831,10 +831,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // V-38: the shared `WalletStatusSlot` + the `"wallet"` snapshot
     // projection moved to `crates/nmp-nip47`. The host (per-app crate)
     // builds those itself and calls
-    // `nmp_app_register_snapshot_projection("wallet", …)` for the read side
-    // + `nmp_nip47::install_wallet_runtime(handle)` for the write side. The
-    // actor now only carries a substrate-generic relay-text interceptor
-    // slot.
+    // `nmp_app_register_snapshot_projection("wallet", …)` for the read side.
+    // ADR-0052 rung 5.2: the write side is the per-app `WalletRuntimeHandle`
+    // owned BY VALUE inside the wallet `ActionModule`s (no process-global
+    // install). The actor now only carries a substrate-generic relay-text
+    // interceptor slot.
     let relay_text_interceptor = nmp_core::substrate::new_relay_text_interceptor_slot();
     let actor_relay_text_interceptor = Arc::clone(&relay_text_interceptor);
     // ADR-0051: relay-connected hook slot (actor clone + `NmpApp` clone).
@@ -1361,10 +1362,12 @@ impl NmpApp {
     /// / `register_action_executor` closure seam has been deleted).
     ///
     /// Registration MUST happen during host init — before `nmp_app_start`
-    /// and before any [`action::nmp_app_dispatch_action`] call — because it
-    /// requires `&mut self`.
-    pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
-        self.action_registry.register::<M>();
+    /// and before any [`action::nmp_app_dispatch_action`] call. ADR-0052 rung
+    /// 5.2: takes the module **value** so a stateful module (e.g. one owning
+    /// an `Arc<WalletRuntimeHandle>`) carries its deps, captured at
+    /// composition time, instead of reaching a process-global.
+    pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
+        self.action_registry.register(module);
     }
 
     /// Register a typed action module as a **yielding default** (ADR-0049
@@ -1372,11 +1375,12 @@ impl NmpApp {
     /// to the existing registration regardless of call order. Returns `true`
     /// when installed, `false` when it yielded. The canonical NMP defaults
     /// (`nmp_nip02` / `nmp_nip17` / `nmp_nip57` / `nmp_router`) register through
-    /// this path.
+    /// this path. ADR-0052 rung 5.2: takes the module **value**.
     pub fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(
         &mut self,
+        module: M,
     ) -> bool {
-        self.action_registry.register_default::<M>()
+        self.action_registry.register_default(module)
     }
 
     /// ADR-0049 — read-only handle to the composition ledger for
@@ -2537,8 +2541,8 @@ impl NmpApp {
 }
 
 impl nmp_core::substrate::ActionRegistrar for NmpApp {
-    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) {
-        NmpApp::register_action::<M>(self);
+    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
+        NmpApp::register_action(self, module);
     }
 
     /// ADR-0049 Part 1 — override the trait default so the canonical NMP
@@ -2547,8 +2551,11 @@ impl nmp_core::substrate::ActionRegistrar for NmpApp {
     /// semantics. Without this override the trait's default impl would delegate
     /// to `register_action` (the app path), recording every default as an app
     /// registration and making a repeated `register_defaults` collide.
-    fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self) -> bool {
-        NmpApp::register_default_action::<M>(self)
+    fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> bool {
+        NmpApp::register_default_action(self, module)
     }
 }
 
