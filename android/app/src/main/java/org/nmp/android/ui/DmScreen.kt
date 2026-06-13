@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
@@ -36,13 +35,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.components.LocalNostrProfileHost
+import org.nmp.android.components.NostrAvatar
 import org.nmp.android.model.DmConversation
 import org.nmp.android.model.DmInboxSnapshot
 import org.nmp.android.model.DmMessage
@@ -96,7 +96,13 @@ private fun DmConversationListScreen(
         if (claim) model.claimProfile(pubkey, consumerId)
         else model.releaseProfile(pubkey, consumerId)
     }
-    CompositionLocalProvider(LocalProfileClaimer provides claimer) {
+    val state by model.state.collectAsStateWithLifecycle()
+    val resolvedProfiles = state.projections?.resolvedProfiles ?: emptyMap()
+    val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
+    CompositionLocalProvider(
+        LocalProfileClaimer provides claimer,
+        LocalNostrProfileHost provides profileHost,
+    ) {
         Column(modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().padding(16.dp),
@@ -151,7 +157,8 @@ private fun DmConversationRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    RememberProfileClaim(conversation.peerPubkey, "dm-peer-${conversation.peerPubkey}")
+    // NostrAvatar below is self-claiming via LocalNostrProfileHost, so no manual
+    // RememberProfileClaim is needed for the peer avatar here.
     val latest = conversation.messages.lastOrNull()
     val peerShortHex = if (conversation.peerPubkey.length >= 16) {
         "${conversation.peerPubkey.take(8)}…${conversation.peerPubkey.takeLast(8)}"
@@ -166,8 +173,11 @@ private fun DmConversationRow(
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Avatar (initials only — per ADR-0032, derived from pubkey)
-        Avatar(peerShortHex.take(2).uppercase(), "")
+        NostrAvatar(
+            pubkey = conversation.peerPubkey,
+            size = 36.dp,
+            consumerId = "dm-peer-${conversation.peerPubkey}",
+        )
         Spacer(Modifier.size(8.dp))
 
         // Peer pubkey, timestamp, and message preview
@@ -376,26 +386,6 @@ private fun DmMessageBubble(message: DmMessage) {
 }
 
 /**
- * Avatar with initials (no color differentiation in this minimal version).
- */
-@Composable
-private fun Avatar(initials: String, colorHex: String) {
-    Surface(
-        modifier = Modifier.size(36.dp).clip(CircleShape),
-        color = parseHexColor(colorHex) ?: MaterialTheme.colorScheme.secondary,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                initials,
-                color = Color.White,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-}
-
-/**
  * Empty state: no DM conversations yet.
  */
 @Composable
@@ -455,18 +445,3 @@ private fun formatRelativeTime(createdAtSeconds: Long): String {
     }
 }
 
-/**
- * Parse a hex color string (e.g. "#RRGGBB" or "RRGGBB") into a Compose [Color].
- * Returns null if the string is blank or malformed.
- */
-private fun parseHexColor(hex: String): Color? {
-    if (hex.isBlank()) return null
-    return try {
-        val cleaned = if (hex.startsWith("#")) hex.substring(1) else hex
-        val value = cleaned.toLong(16)
-        val argb = if (cleaned.length == 6) (0xFF000000L or value).toInt() else value.toInt()
-        Color(argb)
-    } catch (_: NumberFormatException) {
-        null
-    }
-}

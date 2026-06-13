@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.HorizontalDivider
@@ -26,12 +25,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.components.LocalNostrProfileHost
+import org.nmp.android.components.NostrAvatar
+import org.nmp.android.components.NostrNip05Badge
 import org.nmp.android.model.ProfileCard
 
 /**
@@ -89,11 +89,13 @@ fun ProfileScreen(
         ?: shortPubkey
 
     val displayName = profileCard?.displayName?.takeIf { it.isNotEmpty() } ?: shortPubkey
-    val initials = displayName.take(2).uppercase()
+    val nip05 = profileCard?.nip05?.takeIf { it.isNotEmpty() }
     val noteCount = cards.size
+    val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
 
     CompositionLocalProvider(
         LocalResolvedProfiles provides resolvedProfiles,
+        LocalNostrProfileHost provides profileHost,
     ) {
         Box(modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
@@ -127,21 +129,11 @@ fun ProfileScreen(
                         .fillMaxWidth()
                         .padding(16.dp),
                 ) {
-                    Surface(
-                        modifier = Modifier
-                            .size(82.dp)
-                            .clip(CircleShape),
-                        color = MaterialTheme.colorScheme.secondary,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                initials,
-                                color = Color.White,
-                                style = MaterialTheme.typography.displaySmall,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
+                    NostrAvatar(
+                        pubkey = pubkey,
+                        size = 82.dp,
+                        consumerId = "profile_header-$pubkey",
+                    )
 
                     Spacer(Modifier.size(16.dp))
 
@@ -150,6 +142,11 @@ fun ProfileScreen(
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                     )
+
+                    if (nip05 != null) {
+                        Spacer(Modifier.size(4.dp))
+                        NostrNip05Badge(nip05 = nip05)
+                    }
 
                     Spacer(Modifier.size(4.dp))
 
