@@ -26,6 +26,14 @@ use std::ffi::{c_char, CStr};
 
 use super::{app_ref, c_string_argument, NmpApp};
 
+// Issue #1283 / ADR-0034 — the `claimed_event_embeds` snapshot-projection
+// producer. A submodule of `snapshot` (both own snapshot-projection wiring);
+// kept here rather than as a `lib.rs` sibling `mod` so the over-cap `lib.rs`
+// does not grow (AGENTS.md file-size anti-cheat). See the module doc for the
+// one-tick-lag design.
+#[path = "embed_sidecar.rs"]
+pub(crate) mod embed_sidecar;
+
 /// Host-supplied snapshot projector callback.
 ///
 /// Called on every snapshot tick. Returns a NUL-terminated JSON C string

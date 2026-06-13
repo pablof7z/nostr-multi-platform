@@ -70,7 +70,6 @@ mod routing_trace;
 // (`nmp_app_composition_report`). Pull-only diagnostic surface; not folded into
 // the snapshot tick.
 mod composition_report;
-mod embed_sidecar; // Issue #1283 / ADR-0034 embed-sidecar (see module doc).
 mod snapshot;
 mod storage;
 mod timeline;
@@ -765,8 +764,6 @@ pub struct NmpApp {
     /// content) so the wallet pay-invoice FFI shim can short-circuit a
     /// same-bolt11 retap before it crosses into `nmp-nip47`.
     pub(crate) inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
-    // Issue #1283 / ADR-0034 embed-sidecar slot (see `embed_sidecar` module doc).
-    pub(crate) embed_sidecar: embed_sidecar::EmbedSidecarSlot,
 }
 
 impl Drop for NmpApp {
@@ -1148,11 +1145,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             let _ = update_tx_panic.send(frame);
         }
     });
-    let embed_sidecar = embed_sidecar::new_embed_sidecar_slot(); // Issue #1283.
-    let listener_embed_sidecar = Arc::clone(&embed_sidecar);
+    let (embed_sidecar, listener_embed_sidecar) = snapshot::embed_sidecar::new_embed_sidecar_pair();
     let update_listener = thread::spawn(move || {
         while let Ok(update) = update_rx.recv() {
-            embed_sidecar::update_embed_sidecar_from_frame(&update, &listener_embed_sidecar);
+            snapshot::embed_sidecar::update_embed_sidecar_from_frame(&update, &listener_embed_sidecar);
             notify_identity_change_observers(
                 &listener_active_account,
                 &listener_last_active_account,
@@ -1216,7 +1212,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             }
         }
     });
-
     let app = NmpApp {
         tx: command_tx,
         update_callback,
@@ -1312,9 +1307,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // content); the wallet runtime that consumes the dispatched action
         // moved to `crates/nmp-nip47`.
         inflight_bolt11: Mutex::new(std::collections::HashMap::new()),
-        embed_sidecar, // Issue #1283 — `claimed_event_embeds` sidecar slot.
     };
-
     // V-38: the `"wallet"` snapshot projection moved to `crates/nmp-nip47`.
     // The host (per-app crate) registers it themselves on the `NmpApp`
     // via `register_snapshot_projection("wallet", …)` after constructing
@@ -1324,7 +1317,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `run_actor_with_observers` (at the actor wiring site), not here: it
     // reads the actor-owned bunker-handshake slot, so every actor consumer
     // (FFI or test) gets the projection without a separate FFI step.
-    embed_sidecar::install_embed_sidecar_projection(&app); // Issue #1283.
+    snapshot::embed_sidecar::install_embed_sidecar_projection(&app, embed_sidecar); // #1283.
     Box::into_raw(Box::new(app))
 }
 
