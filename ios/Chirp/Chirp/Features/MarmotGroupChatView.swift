@@ -28,6 +28,13 @@ struct MarmotGroupChatView: View {
     @State private var showInvite = false
     @State private var showMembers = false
     @State private var sending = false
+    /// Correlation id of an in-flight `leave` op. The chat view dismisses only
+    /// when this op reaches a terminal `.accepted` verdict — leaving on mere
+    /// submission would bounce the user out of a group they may still be in if
+    /// the op fails (same dismiss-only-on-terminal rule as NewGroupSheet).
+    @State private var leaveCid: String?
+    /// Rust-owned terminal failure reason for a failed leave, rendered verbatim.
+    @State private var leaveError: String?
     @FocusState private var composerFocused: Bool
 
     /// Live group row from the snapshot lookup; falls back to the
@@ -64,6 +71,32 @@ struct MarmotGroupChatView: View {
         }
         .task(id: model.rev) { reloadMessages() }
         .onAppear { reloadMessages() }
+        .onChange(of: model.actionLifecycle) { resolveLeaveTerminal() }
+        .alert(
+            "Could not leave group",
+            isPresented: Binding(get: { leaveError != nil }, set: { if !$0 { leaveError = nil } })
+        ) {
+            Button("OK", role: .cancel) { leaveError = nil }
+        } message: {
+            Text(leaveError ?? "")
+        }
+    }
+
+    /// Matches `leaveCid` against `recentTerminal` — same seam as NewGroupSheet
+    /// / RelaySettingsView. Dismisses only on `.accepted`; surfaces the
+    /// Rust-owned reason verbatim on `.failed`.
+    private func resolveLeaveTerminal() {
+        guard let cid = leaveCid,
+              let entry = model.recentTerminal(correlationId: cid) else { return }
+        leaveCid = nil
+        switch entry.stage {
+        case .accepted:
+            dismiss()
+        case .failed(let reason):
+            leaveError = reason.isEmpty ? "Leaving the group failed." : reason
+        default:
+            break
+        }
     }
 
     private func reloadMessages() {
@@ -202,7 +235,13 @@ struct MarmotGroupChatView: View {
                 Button(role: .destructive) {
                     Task {
                         let result = await model.marmot.leave(groupIDHex: group.idHex)
-                        if result.ok { dismiss() }
+                        // Dismiss only on terminal `.accepted` (resolveLeaveTerminal);
+                        // stash the cid and wait rather than leaving on submission.
+                        if result.ok, let cid = result.correlationId {
+                            leaveCid = cid
+                        } else if let err = result.error {
+                            leaveError = err
+                        }
                     }
                 } label: {
                     Label("Leave group", systemImage: "rectangle.portrait.and.arrow.right")
