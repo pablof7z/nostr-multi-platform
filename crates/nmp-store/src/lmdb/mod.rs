@@ -58,6 +58,9 @@ mod tests_gc;
 // #1090 Stage-1 — derived pin set for gc_step.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_gc_stage1;
+// Secondary-index integrity tests (Bug-1: kind:5 a-tag leaks; Bug-2: freshness leaks).
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_secondary_index;
 
 use std::path::{Path, PathBuf};
 
@@ -200,6 +203,14 @@ impl LmdbEventStore {
     #[cfg(not(feature = "lmdb-backend"))]
     fn not_enabled() -> StoreError {
         StoreError::Io("lmdb-backend feature not enabled".into())
+    }
+
+    /// Test-only: expose the inner Arc so tests can directly inspect sub-dbs.
+    ///
+    /// Only compiled under `#[cfg(test)]` — not part of the public API.
+    #[cfg(all(test, feature = "lmdb-backend"))]
+    pub(crate) fn inner_for_test(&self) -> &std::sync::Arc<Inner> {
+        &self.inner
     }
 }
 

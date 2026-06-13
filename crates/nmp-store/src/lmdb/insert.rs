@@ -156,6 +156,14 @@ pub(super) fn insert(
                 gc::lru_delete(inner, &mut txn, &replaced_id)?;
                 // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
                 gc::expiry_index_delete_exact(inner, &mut txn, replaced_expiry, &replaced_id)?;
+                // Delete the replaceable_freshness row so stale TTL data cannot
+                // cause a re-fetch to be wrongly skipped after replacement.
+                if let Some(freshness_key) = freshness_key_for(&event) {
+                    inner
+                        .lmdb
+                        .delete_freshness(&mut txn, &freshness_key)
+                        .map_err(|e| StoreError::Io(format!("delete_freshness: {e}")))?;
+                }
                 InsertOutcome::Replaced {
                     new_id: id_bytes,
                     replaced_id,
@@ -224,6 +232,32 @@ pub(super) fn insert(
     txn.commit()
         .map_err(|e| StoreError::Io(format!("commit: {e}")))?;
     Ok(outcome)
+}
+
+/// Build the `ReplaceableKey` for `event` if it is replaceable or
+/// param-replaceable.  Returns `None` for regular (non-replaceable) events.
+///
+/// Used to delete stale `replaceable_freshness` entries on replacement or
+/// deletion so a stale TTL never causes a re-fetch to be wrongly skipped.
+fn freshness_key_for(event: &RawEvent) -> Option<nmp_nostr_lmdb::ReplaceableKey> {
+    let pubkey = event.pubkey_bytes()?;
+    let pubkey_arr: [u8; 32] = pubkey.try_into().ok()?;
+    let kind = event.kind as u32;
+    if event.is_replaceable() {
+        Some(nmp_nostr_lmdb::ReplaceableKey::Regular {
+            kind,
+            pubkey: pubkey_arr,
+        })
+    } else if event.is_param_replaceable() {
+        let d_tag = event.d_tag().map(|d| String::from_utf8_lossy(&d).into_owned()).unwrap_or_default();
+        Some(nmp_nostr_lmdb::ReplaceableKey::Parameterized {
+            kind,
+            pubkey: pubkey_arr,
+            d_tag,
+        })
+    } else {
+        None
+    }
 }
 
 /// Look up the existing event id (and expiry timestamp) for a replaceable /
@@ -402,20 +436,77 @@ fn handle_kind5(
         );
         tombstones::merge_addr(inner.addr_tombstones, txn, &addr_key_bytes, addr_row)?;
 
-        // Remove all matching events ≤ kind5.created_at via the fork.
+        // Remove all matching events ≤ kind5.created_at via the fork,
+        // also cleaning up NMP-side secondaries (lru-access, provenance,
+        // expiry-index) for each removed event id (Bug-1 fix).
         if let Ok(pk) = PublicKey::from_slice(&kind5_pubkey) {
             let coord =
                 Coordinate::new(Kind::from(tgt_kind as u16), pk).identifier(tgt_dtag.to_string());
             if coord.kind.is_addressable() {
+                // Pre-query the existing addressable event to get its id + expiry
+                // so we can clean NMP-side indexes in O(1) without a post-scan.
+                if let Some(existing) = inner
+                    .lmdb
+                    .find_addressable_event(txn, &coord)
+                    .map_err(|e| StoreError::Io(format!("k5 find_addressable: {e}")))?
+                {
+                    let owned = existing.into_owned();
+                    if owned.created_at <= Timestamp::from_secs(kind5_at) {
+                        let mut existing_id = [0u8; 32];
+                        existing_id.copy_from_slice(owned.id.as_bytes());
+                        let existing_expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+                        inner
+                            .lmdb
+                            .remove_addressable(txn, &coord, Timestamp::from_secs(kind5_at))
+                            .map_err(|e| StoreError::Io(format!("k5 remove_addressable: {e}")))?;
+                        // Clean NMP-side secondary indexes for the removed event.
+                        provenance::delete(inner.provenance, txn, &existing_id)?;
+                        gc::lru_delete(inner, txn, &existing_id)?;
+                        gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
+                    }
+                }
+                // Delete the replaceable_freshness row for this coordinate so stale
+                // TTL data cannot cause a re-fetch to be wrongly skipped (Bug-2 fix).
+                let freshness_key = nmp_nostr_lmdb::ReplaceableKey::Parameterized {
+                    kind: tgt_kind,
+                    pubkey: kind5_pubkey,
+                    d_tag: tgt_dtag.to_string(),
+                };
                 inner
                     .lmdb
-                    .remove_addressable(txn, &coord, Timestamp::from_secs(kind5_at))
-                    .map_err(|e| StoreError::Io(format!("k5 remove_addressable: {e}")))?;
+                    .delete_freshness(txn, &freshness_key)
+                    .map_err(|e| StoreError::Io(format!("k5 delete_freshness: {e}")))?;
             } else if coord.kind.is_replaceable() {
+                // Pre-query the existing replaceable event.
+                if let Some(existing) = inner
+                    .lmdb
+                    .find_replaceable_event(txn, &pk, coord.kind)
+                    .map_err(|e| StoreError::Io(format!("k5 find_replaceable: {e}")))?
+                {
+                    let owned = existing.into_owned();
+                    if owned.created_at <= Timestamp::from_secs(kind5_at) {
+                        let mut existing_id = [0u8; 32];
+                        existing_id.copy_from_slice(owned.id.as_bytes());
+                        let existing_expiry = owned.tags.expiration().map(|ts| ts.as_secs());
+                        inner
+                            .lmdb
+                            .remove_replaceable(txn, &coord, Timestamp::from_secs(kind5_at))
+                            .map_err(|e| StoreError::Io(format!("k5 remove_replaceable: {e}")))?;
+                        // Clean NMP-side secondary indexes for the removed event.
+                        provenance::delete(inner.provenance, txn, &existing_id)?;
+                        gc::lru_delete(inner, txn, &existing_id)?;
+                        gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
+                    }
+                }
+                // Delete the replaceable_freshness row (Bug-2 fix).
+                let freshness_key = nmp_nostr_lmdb::ReplaceableKey::Regular {
+                    kind: tgt_kind,
+                    pubkey: kind5_pubkey,
+                };
                 inner
                     .lmdb
-                    .remove_replaceable(txn, &coord, Timestamp::from_secs(kind5_at))
-                    .map_err(|e| StoreError::Io(format!("k5 remove_replaceable: {e}")))?;
+                    .delete_freshness(txn, &freshness_key)
+                    .map_err(|e| StoreError::Io(format!("k5 delete_freshness: {e}")))?;
             }
             // Note: we deliberately skip the fork's `mark_coordinate_deleted`
             // for the same reason as `mark_deleted` above. Future-arrival

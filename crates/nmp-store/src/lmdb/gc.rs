@@ -55,6 +55,32 @@ use crate::StoreError;
 /// Mirrored from `mem/mod.rs:75`.
 const TOMBSTONE_MAX_AGE_SECS: u64 = 90 * 24 * 3600;
 
+/// Build a `ReplaceableKey` from a decoded event if it is replaceable or
+/// addressable.  Returns `None` for regular (non-replaceable) event kinds.
+///
+/// Used by the LRU eviction phase to delete stale `replaceable_freshness`
+/// entries so a re-fetch after eviction is not wrongly skipped (Bug-2 fix).
+fn freshness_key_from_event(event: &nostr::Event) -> Option<nmp_nostr_lmdb::ReplaceableKey> {
+    let pubkey: [u8; 32] = event.pubkey.to_bytes();
+    let kind = u32::from(event.kind.as_u16());
+    if event.kind.is_addressable() {
+        let d_tag = event
+            .tags
+            .identifier()
+            .unwrap_or_default()
+            .to_string();
+        Some(nmp_nostr_lmdb::ReplaceableKey::Parameterized {
+            kind,
+            pubkey,
+            d_tag,
+        })
+    } else if event.kind.is_replaceable() {
+        Some(nmp_nostr_lmdb::ReplaceableKey::Regular { kind, pubkey })
+    } else {
+        None
+    }
+}
+
 /// Phase-3/3b tombstone scan runs at most once per hour (V-117).
 ///
 /// Iterating every tombstone row inside a WRITE txn every 60 s causes
@@ -227,6 +253,16 @@ pub(super) fn gc_step(
                 .write_txn()
                 .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
             for (index_key, id) in &to_reap {
+                // Load the event before deletion to capture the freshness key
+                // (Bug-2 fix: stale replaceable_freshness must be cleaned).
+                let freshness_key = match inner
+                    .lmdb
+                    .get_event_by_id(&txn, id)
+                    .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
+                {
+                    Some(ev) => freshness_key_from_event(&ev.into_owned()),
+                    None => None,
+                };
                 // Remove the index entry first (we already hold its exact key).
                 inner
                     .expiry_index
@@ -241,6 +277,13 @@ pub(super) fn gc_step(
                     .map_err(|e| StoreError::Io(format!("del: {e}")))?;
                 provenance::delete(inner.provenance, &mut txn, id)?;
                 lru_delete(inner, &mut txn, id)?;
+                // Bug-2 fix: delete stale replaceable_freshness row.
+                if let Some(fk) = freshness_key {
+                    inner
+                        .lmdb
+                        .delete_freshness(&mut txn, &fk)
+                        .map_err(|e| StoreError::Io(format!("expiry delete_freshness: {e}")))?;
+                }
                 tombstones::put(
                     inner.tombstones,
                     &mut txn,
@@ -331,6 +374,23 @@ pub(super) fn gc_step(
                     .write_txn()
                     .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
                 for (_, id) in &candidates {
+                    // Load the event before deletion to capture expiry and
+                    // coordinate info needed for O(1) secondary-index cleanup
+                    // (expiry-index + replaceable_freshness — Bug-2 fix).
+                    // Use the write txn for the read (heed RwTxn derefs to
+                    // RoTxn; mirrors the pattern in delete.rs:by_ids).
+                    let (expiry, freshness_key) =
+                        match inner.lmdb.get_event_by_id(&txn, id)
+                            .map_err(|e| StoreError::Io(format!("get_by_id: {e}")))?
+                        {
+                            None => (None, None),
+                            Some(ev) => {
+                                let owned = ev.into_owned();
+                                let exp = owned.tags.expiration().map(|ts| ts.as_secs());
+                                let fk = freshness_key_from_event(&owned);
+                                (exp, fk)
+                            }
+                        };
                     let f = Filter::new().id(
                         nostr::EventId::from_slice(id)
                             .map_err(|e| StoreError::Encoding(format!("id: {e}")))?,
@@ -341,6 +401,16 @@ pub(super) fn gc_step(
                         .map_err(|e| StoreError::Io(format!("lru evict del: {e}")))?;
                     provenance::delete(inner.provenance, &mut txn, id)?;
                     lru_delete(inner, &mut txn, id)?;
+                    // V-118: clean expiry-index using the known expiry timestamp.
+                    expiry_index_delete_exact(inner, &mut txn, expiry, id)?;
+                    // Bug-2 fix: delete stale replaceable_freshness row so a
+                    // re-fetch after eviction is not wrongly skipped.
+                    if let Some(fk) = freshness_key {
+                        inner
+                            .lmdb
+                            .delete_freshness(&mut txn, &fk)
+                            .map_err(|e| StoreError::Io(format!("lru evict delete_freshness: {e}")))?;
+                    }
                     report.lru_evicted += 1;
                     if start.elapsed().as_millis() as u32 >= budget.max_duration_ms {
                         txn.commit()
