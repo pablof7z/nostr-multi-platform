@@ -3,9 +3,28 @@
 //! The reusable Marmot crate does not choose an app namespace, keyring account
 //! id, or C symbol prefix. Host crates supply that app-owned keyring account id
 //! and expose any per-app ABI wrappers they need.
+//!
+//! # Sign-in path ownership
+//!
+//! All sign-in paths ultimately call `NmpApp::add_signer` — the single
+//! documented entry point in `nmp-ffi`. This module owns the two keyring-aware
+//! variants that Marmot host shells need:
+//!
+//! - [`sign_in_nsec_with_keyring_account`] — **new account**: persists the
+//!   secret to the host keyring, signs it into the kernel, and registers
+//!   Marmot. Use this on first import or account creation.
+//! - [`restore_identity_with_keyring_account`] — **returning user**: recalls
+//!   the secret from the host keyring (or accepts an injected test secret),
+//!   signs it in, and registers Marmot. Use this on app launch / session
+//!   restore.
+//!
+//! Shells that do not embed Marmot use `nmp_app_signin_nsec` (C-ABI) directly
+//! and are responsible for their own keyring management.
 
+use nmp_core::substrate::KeyringIdentityWiring;
 use nmp_ffi::NmpApp;
 use nostr::Keys;
+use zeroize::Zeroizing;
 
 use crate::ffi::{register_with_keys, MarmotHandle};
 
@@ -21,11 +40,18 @@ fn sign_in_and_register_marmot(
     register_with_keys(app, keys, &db_path)
 }
 
-/// Restore a caller-scoped local secret, sign it into the kernel actor, and
-/// register Marmot with the same account.
+/// Restore a caller-scoped local secret from the keyring, sign it into the
+/// kernel actor, and register Marmot with the same account.
 ///
-/// `keyring_account_id` is app-owned policy. Passing an empty id or missing
-/// `db_dir` degrades to a null Marmot handle.
+/// `keyring_account_id` is app-owned policy (e.g. `"com.example.app.nsec"`).
+/// Passing an empty id or a missing `db_dir` degrades gracefully to a null
+/// Marmot handle (D6 — never panics on bad input).
+///
+/// When `test_nsec` is `Some`, that value is used directly instead of querying
+/// the host keyring — for use in unit tests that do not wire a real keyring.
+///
+/// Internally: recalls the secret via `NmpApp::recall_local_nsec`, then calls
+/// `NmpApp::add_signer(LocalNsec, make_active=true)`.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn restore_identity_with_keyring_account(
     app: *mut NmpApp,
@@ -37,15 +63,30 @@ pub fn restore_identity_with_keyring_account(
         return std::ptr::null_mut();
     }
     let app_ref = unsafe { &*app };
-    let secret = app_ref.restore_local_nsec_from_keyring(keyring_account_id, test_nsec);
+    let secret = match test_nsec {
+        Some(s) => Some(s),
+        None => app_ref.recall_local_nsec(keyring_account_id),
+    };
     let Some(secret) = secret else {
         return std::ptr::null_mut();
     };
+    // `add_signer` arms MLS autopublish for this active local-key sign-in.
+    app_ref.add_signer(
+        nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
+        true,
+    );
     sign_in_and_register_marmot(app, &secret, db_dir)
 }
 
-/// Persist a caller-scoped local secret, sign it into the kernel actor, and
-/// register Marmot with the same account.
+/// Persist a newly-imported local secret to the keyring, sign it into the
+/// kernel actor, and register Marmot with the same account.
+///
+/// `keyring_account_id` is app-owned policy (e.g. `"com.example.app.nsec"`).
+/// Passing an empty id or a missing `db_dir` degrades gracefully to a null
+/// Marmot handle (D6 — never panics on bad input).
+///
+/// Internally: stores the secret via `KeyringIdentityWiring::persist_secret`,
+/// then calls `NmpApp::add_signer(LocalNsec, make_active=true)`.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn sign_in_nsec_with_keyring_account(
     app: *mut NmpApp,
@@ -57,7 +98,17 @@ pub fn sign_in_nsec_with_keyring_account(
         return std::ptr::null_mut();
     }
     let app_ref = unsafe { &*app };
-    let secret = app_ref.sign_in_local_nsec_with_keyring(keyring_account_id, secret);
+    let req = KeyringIdentityWiring::persist_secret(
+        "nmp.identity.persist",
+        keyring_account_id,
+        &secret,
+    );
+    let _ = app_ref.dispatch_capability(&req);
+    // `add_signer` arms MLS autopublish for this active local-key sign-in.
+    app_ref.add_signer(
+        nmp_core::SignerSource::LocalNsec(Zeroizing::new(secret.clone())),
+        true,
+    );
     sign_in_and_register_marmot(app, &secret, db_dir)
 }
 

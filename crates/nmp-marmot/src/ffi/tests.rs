@@ -122,7 +122,10 @@ extern "C" fn mock_keyring_callback(
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
 #[test]
-fn nmp_core_identity_policy_owns_keyring_store_recall_forget() {
+fn nmp_marmot_identity_policy_owns_keyring_store_recall_forget() {
+    // Verifies the full persist → recall → forget cycle through the two
+    // `nmp-marmot::identity` entry points, which are the sole owners of
+    // keyring-aware sign-in logic (relocated from `NmpApp` — issue #622).
     let app = nmp_ffi::nmp_app_new();
     nmp_ffi::nmp_app_set_capability_callback(
         app,
@@ -131,20 +134,21 @@ fn nmp_core_identity_policy_owns_keyring_store_recall_forget() {
     );
     let app_ref = unsafe { &*app };
 
-    // Use a valid nsec so the actor's sign-in succeeds; the mock keyring is
-    // keyed by account_id so actor-thread persist calls don't corrupt state.
-    let _ = app_ref.sign_in_local_nsec_with_keyring("test.keyring.acct", TEST_NSEC.to_string());
+    // Persist via sign_in_nsec_with_keyring_account (returns null: no db_dir).
+    let _ = crate::identity::sign_in_nsec_with_keyring_account(
+        app,
+        "test.keyring.acct",
+        TEST_NSEC.to_string(),
+        None,
+    );
+    // Recall via NmpApp::recall_local_nsec — the low-level primitive that
+    // restore_identity_with_keyring_account delegates to.
     assert_eq!(
-        app_ref
-            .restore_local_nsec_from_keyring("test.keyring.acct", None)
-            .as_deref(),
+        app_ref.recall_local_nsec("test.keyring.acct").as_deref(),
         Some(TEST_NSEC)
     );
     app_ref.remove_account_forgetting_keyring("test.keyring.acct", "missing".to_string());
-    assert_eq!(
-        app_ref.restore_local_nsec_from_keyring("test.keyring.acct", None),
-        None
-    );
+    assert_eq!(app_ref.recall_local_nsec("test.keyring.acct"), None);
 
     nmp_ffi::nmp_app_free(app);
 }

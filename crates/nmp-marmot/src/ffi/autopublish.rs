@@ -1,10 +1,12 @@
 //! PR-4 — shared key-package autopublish tail for the register entry points.
 //!
 //! Every local-key sign-in path (`nmp_app_signin_nsec`,
-//! `restore/sign_in_local_nsec_with_keyring`, `nmp_app_create_new_account`)
-//! sets `NmpApp::pending_mls_autopublish`. Consuming it HERE — in the tail
-//! shared by both `nmp_marmot_register` and `nmp_marmot_register_active` —
-//! makes every account MLS-capable on register without extra host plumbing.
+//! `nmp-marmot::identity::sign_in_nsec_with_keyring_account`,
+//! `nmp-marmot::identity::restore_identity_with_keyring_account`,
+//! `nmp_app_create_new_account`) sets `NmpApp::pending_mls_autopublish` via
+//! `NmpApp::add_signer`. Consuming it HERE — in the tail shared by both
+//! `nmp_marmot_register` and `nmp_marmot_register_active` — makes every
+//! account MLS-capable on register without extra host plumbing.
 //!
 //! Idempotence: `take_pending_mls_autopublish` is a one-shot atomic swap, so a
 //! re-register (account switch back) of an already-published account does NOT
