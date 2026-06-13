@@ -32,6 +32,12 @@ jobs:
           ARCHITECTURE_REVIEW_REQUIRED: ${{ vars.ARCHITECTURE_REVIEW_REQUIRED }}
           ARCHITECTURE_REVIEW_PROVIDER: ${{ vars.ARCHITECTURE_REVIEW_PROVIDER }}
           ARCHITECTURE_REVIEW_MODEL: ${{ vars.ARCHITECTURE_REVIEW_MODEL }}
+          # Empty / unset (the default) means the gate is REQUIRED in CI: if it
+          # cannot run (missing provider, model, or API key) the job fails loud
+          # instead of fabricating a pass. Set the repo/org variable
+          # ARCHITECTURE_REVIEW_OPTIONAL=true to allow skipping while the
+          # provider, model, and secret are still being provisioned.
+          ARCHITECTURE_REVIEW_OPTIONAL: ${{ vars.ARCHITECTURE_REVIEW_OPTIONAL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |

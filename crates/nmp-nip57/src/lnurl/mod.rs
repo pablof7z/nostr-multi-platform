@@ -83,6 +83,9 @@
 //! the action records a `Failed` terminal immediately with a descriptive reason.
 
 mod pay;
+mod validation;
+
+pub(crate) use validation::{validate_bolt11_amount, validate_description_hash};
 
 use std::io::Read;
 use std::str::FromStr;
@@ -517,6 +520,12 @@ pub(crate) fn fetch_lnurl_invoice_blocking(
                 .to_string(),
         );
     }
+    // Non-empty `nostrPubkey` = NIP-57 zap mode; the invoice must then commit to
+    // our zap request (enforced below by `validate_description_hash`).
+    let advertises_nostr_pubkey = well_known
+        .get("nostrPubkey")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|pk| !pk.trim().is_empty());
 
     // Leg 2: callback fetch. NIP-57 § "Appendix C" — append `amount` (msats)
     // and the URL-encoded signed kind:9734 as `nostr`. The response carries
@@ -572,36 +581,10 @@ pub(crate) fn fetch_lnurl_invoice_blocking(
     // Fail closed: an amountless invoice or one with a different amount is
     // never forwarded to the wallet (D6 — errors as state, not panic).
     validate_bolt11_amount(bolt11, amount_msats)?;
+    // NIP-57 commitment check (zap mode only) — binds the invoice to *our*
+    // signed request. Runs before return, hence before any pay dispatch.
+    validate_description_hash(bolt11, signed_zap_request_json, advertises_nostr_pubkey)?;
     Ok(bolt11.to_string())
-}
-
-/// Validate that a bolt11 invoice encodes exactly `requested_msats`.
-///
-/// Parses the BOLT-11 HRP with [`crate::bolt11::amount_msats`] and compares
-/// the result against the user-chosen amount.  Returns `Err` when:
-///
-/// - the invoice is **amountless** (parser returns `None`) — fail closed,
-///   because an unverifiable invoice must not be auto-paid (a malicious
-///   provider could charge any amount); or
-/// - the encoded amount **does not match** the requested amount — a mismatch
-///   means a buggy or hostile LNURL provider; the error message names both
-///   values so the user can diagnose it.
-///
-/// Returns `Ok(())` only when the parsed amount equals `requested_msats`
-/// exactly.
-pub(crate) fn validate_bolt11_amount(bolt11: &str, requested_msats: u64) -> Result<(), String> {
-    match crate::bolt11::amount_msats(bolt11) {
-        None => Err(format!(
-            "LNURL provider returned an amountless bolt11 invoice — \
-             refusing automatic payment of an unverifiable amount \
-             (requested {requested_msats} msats)"
-        )),
-        Some(actual) if actual != requested_msats => Err(format!(
-            "LNURL provider invoice amount mismatch: requested {requested_msats} msats \
-             but bolt11 encodes {actual} msats — refusing automatic payment"
-        )),
-        Some(_) => Ok(()),
-    }
 }
 
 /// One-shot HTTP GET → JSON. Bounded by `LNURL_HTTP_TIMEOUT_SECS` and
