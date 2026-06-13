@@ -1,8 +1,8 @@
 # ADR-0038 — Typed FlatBuffers sidecar for the OP-centric home feed
 
 > Note (ADR-0046, 2026-06-12): the `nmp-app-template` crate named below was
-> renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
-> as `nmp-defaults` / `nmp_defaults`.
+> renamed to `nmp-defaults`; as of 2026-06-13 the `payload:Value` fallback below
+> is historical and production OP-feed consumers read the typed sidecar path.
 
 - **Status:** Proposed (2026-05-29)
 - **Relates to:** ADR-0037 (typed FlatBuffers runtime projections — the

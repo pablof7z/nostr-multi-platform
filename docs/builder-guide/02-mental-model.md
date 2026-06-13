@@ -215,14 +215,14 @@ routing lane) and zero group nouns.
 | Dispatched `AppAction` variants | Action ledger, ActorCommand queue |
 | `CapabilityRequest` / `CapabilityEnvelope` | Planner, subscription pool, signer keys |
 | `rev: u64` monotonic guard | All policy / retry / routing decisions |
-| `projections[key]` JSON slices | Kernel-internal view state |
+| Typed projection sidecars | Kernel-internal view state |
 
 No `Result<T,E>` crosses the boundary (D6) — failures arrive as data inside
 the snapshot or as capability envelopes. The hot update transport is a single
-canonical FlatBuffers schema for `FullState`, `ViewBatch`, and side-effect
-frames. Historical raw C JSON-over-string remains live while the FlatBuffers
-migration is incomplete (see [15](15-codegen-and-ffi.md) and
-[27](27-discrepancies.md) row 3).
+canonical FlatBuffers schema: `UpdateFrame` carries snapshot envelopes and typed
+projection sidecars. The raw C/JNI ABI remains live for lifecycle/actions/
+capabilities, but it no longer carries JSON runtime snapshots (see
+[15](15-codegen-and-ffi.md) and [27](27-discrepancies.md) row 3).
 
 ## "Where does X live?" — concrete map
 

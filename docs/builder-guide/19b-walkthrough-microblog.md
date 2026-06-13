@@ -99,7 +99,7 @@ map keyed by that id.
 | Outbox auto-routing (NIP-65) | ✅ T105 (DONE) | — |
 | `KernelEventObserver` + `register_event_observer` | ✅ DONE | — |
 | `register_snapshot_projection` | ✅ DONE | — |
-| Legacy raw C FFI (JSON-over-string snapshot) | ✅ today | FlatBuffers migration in progress (F-10); UniFFI binding/lifecycle bridge = **M14, PLANNED** |
+| Raw C/JNI lifecycle/action FFI + FlatBuffers update frames | ✅ today | UniFFI binding/lifecycle bridge = **M14, PLANNED** |
 | `nmp init` (Rust workspace scaffold) | ✅ ships | Creates a Rust workspace only; full multi-platform starter is M16. This walkthrough hand-scaffolds inside the monorepo. |
 | iOS shell (Chirp, active) | ✅ DONE | Additional app shells deferred until Chirp is complete |
 
