@@ -2,6 +2,10 @@
 pub mod nostr_profile_name;
 #[path = "../../../../../../crates/nmp-cli/registry/tui/user-core/profile_wire.rs"]
 pub mod profile_wire;
+#[path = "../../../../../../crates/nmp-cli/registry/tui/user-avatar/nostr_avatar.rs"]
+pub mod nostr_avatar;
+#[path = "../../../../../../crates/nmp-cli/registry/tui/user-nip05/nostr_nip05_badge.rs"]
+pub mod nostr_nip05_badge;
 
 use ratatui::{
     style::Style,
