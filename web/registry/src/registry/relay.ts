@@ -4,6 +4,9 @@ import type { Component } from "./types";
 import nostrRelayListSwift from "../vendor/swiftui/relay-list/NostrRelayList.swift?raw";
 import nostrRelayListPreviewSwift from "../vendor/swiftui/relay-list/Examples/NostrRelayListPreview.swift?raw";
 
+// Relay — Web (SolidJS)
+import nostrRelayListWeb from "../vendor/web/relay-list/NostrRelayList.tsx?raw";
+
 // Render Identity — SwiftUI
 import renderIdentifiableSwift from "../vendor/swiftui/render-identity/RenderIdentifiable.swift?raw";
 
@@ -30,6 +33,23 @@ export const relayComponents: Component[] = [
           "Pass a `relayStatuses: [String: String]` dictionary keyed by relay URL to animate connection dots. Build it with `Dictionary(uniqueKeysWithValues: snapshot.relayStatuses.map { ($0.relayUrl, $0.connection) })`.",
           "Role badge colors map semantic tokens (`accent`, `info`, `success`, `neutral`) to SwiftUI system colors — override `tintColor(for:)` to match your brand.",
           "Edit `displayUrl` in `NostrRelayEditRow` to strip or preserve the `wss://` scheme prefix.",
+        ],
+      },
+      web: {
+        status: "stable",
+        installId: "web/relay-list",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`<NostrRelayList relays={...} />` renders relay rows folded from the kernel snapshot — `url` + `role` from `configured_relays`, `connection` from the top-level `relay_statuses` field — with a live connection-status dot (green connected / amber connecting+pulsing / red error / grey disconnected) and per-token role badges. Render-only; the host owns relay config. Verified live in the NMP web gallery against real relays (relay.primal.net + purplepag.es, both connected).",
+        files: [
+          { source: "web/relay-list/NostrRelayList.tsx", target: "src/components/nostr-relays/NostrRelayList.tsx", role: "source", content: nostrRelayListWeb },
+        ],
+        screenshots: ["relay-list-web-preview.png"],
+        customization: [
+          "Fold `relay_statuses` into each row's `connection` before passing `relays` (closed token set: connected | connecting | disconnected | error).",
+          "Edit `connectionColor` / `roleTint` / `roleLabel` to match your theme; `displayUrl` strips the `wss://` scheme.",
+          "Pass `onRelayTap` to make rows interactive; omit it for a read-only list.",
         ],
       },
     },

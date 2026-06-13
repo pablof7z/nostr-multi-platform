@@ -4,6 +4,7 @@ import { NostrAvatar } from "./components/user-avatar/NostrAvatar";
 import { NostrProfileName } from "./components/user-name/NostrProfileName";
 import { NostrNip05Badge } from "./components/user-nip05/NostrNip05Badge";
 import { NostrUserCard } from "./components/user-card/NostrUserCard";
+import { NostrRelayList } from "./components/relay-list/NostrRelayList";
 import { createGalleryRuntime } from "./nmp/profileHost";
 import { SHOWCASE_PUBKEY, SHOWCASE_RELAYS } from "./showcase";
 
@@ -101,6 +102,20 @@ export default function App(): JSX.Element {
             {(p) => (
               <div data-testid="card-demo" style={{ "max-width": "360px" }}>
                 <NostrUserCard profile={p} avatarSize={48} />
+              </div>
+            )}
+          </Show>
+        </Section>
+
+        <Section
+          id="relay-list"
+          title="relay-list"
+          desc="Configured relays with live connection-status dots and role badges — folded from the kernel's relay_statuses."
+        >
+          <Show when={runtime.relays().length > 0} fallback={<Resolving />} keyed>
+            {(_) => (
+              <div data-testid="relay-list-demo" style={{ "max-width": "420px", width: "100%" }}>
+                <NostrRelayList relays={runtime.relays()} />
               </div>
             )}
           </Show>
