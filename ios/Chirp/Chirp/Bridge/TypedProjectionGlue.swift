@@ -864,24 +864,16 @@ enum TypedProjectionGlue {
     // MARK: wallet → WalletStatusData
 
     /// Map the typed `wallet` sidecar (`NWST` / `nmp_nip47_WalletStatus`) to the
-    /// `WalletStatusData` the JSON `projections["wallet"]` path yields. The
-    /// `wallet_pubkey_hex` field is the producer field-add that unblocked this
-    /// flip — it now ships on BOTH the JSON projection and this wire, so the
-    /// typed value is byte-identical to the JSON path. `WalletStatusData` is a
-    /// field-SUBSET of the wire: it carries no `walletNpubShort` /
-    /// `balanceSatsDisplay` / `connectionState` (the JSON `Decodable` drops them
-    /// too — field-subset, not divergence; ADR-0032 leaves bech32/abbreviation/
-    /// liveness to other surfaces). The two `has_*` companion bools reproduce
-    /// the JSON `null`-when-`None` semantics: `balanceMsats` (`UInt64?`) and
-    /// `balanceSats` (`Int?`, widened from the wire `uint64`) are `nil` when
-    /// their companion is `false`, byte-identical to the JSON path.
+    /// `WalletStatusData` the JSON `projections["wallet"]` path yields — a
+    /// field-SUBSET of the wire (no `walletNpubShort`/`balanceSatsDisplay`/
+    /// `connectionState`; ADR-0032). The `has_*` companion bools reproduce JSON
+    /// `null`-when-`None`: `balanceMsats`/`balanceSats` are `nil` when `false`.
     static func wallet(_ reader: nmp_nip47_WalletStatus) -> WalletStatusData {
         let rawStatus = reader.status ?? ""
-        // `statusLabel` / `statusTone` are tail-appended (additive). If absent
-        // (older buffer without these fields), fall back to re-deriving from
-        // `rawStatus` — identical to what the Rust decode path does (D1).
-        let label = reader.statusLabel ?? Self.derivedStatusLabel(rawStatus)
-        let tone  = reader.statusTone  ?? Self.derivedStatusTone(rawStatus)
+        // `statusLabel`/`statusTone` are tail-appended (additive); absent on
+        // older buffers → re-derive from `rawStatus` as the Rust path does (D1).
+        let label = reader.statusLabel ?? WalletStatusTone.derivedLabel(rawStatus)
+        let tone  = reader.statusTone  ?? WalletStatusTone.derivedTone(rawStatus)
         return WalletStatusData(
             status: rawStatus,
             relayUrl: reader.relayUrl ?? "",
@@ -894,30 +886,6 @@ enum TypedProjectionGlue {
             statusLabel: label,
             statusTone: tone
         )
-    }
-
-    /// Derive the display label from the raw wire status token. Mirrors the
-    /// Rust `status_label()` function — only needed when decoding an older
-    /// buffer that predates the tail-appended fields.
-    private static func derivedStatusLabel(_ wire: String) -> String {
-        switch wire {
-        case "connecting":    return "Connecting"
-        case "ready":         return "Ready"
-        case "error":         return "Error"
-        case "disconnected":  return "Disconnected"
-        default:              return "Unknown"
-        }
-    }
-
-    /// Derive the semantic tone from the raw wire status token. Mirrors the
-    /// Rust `status_tone()` function — only needed when decoding an older buffer.
-    private static func derivedStatusTone(_ wire: String) -> String {
-        switch wire {
-        case "ready":       return "active"
-        case "connecting":  return "warning"
-        case "error":       return "error"
-        default:            return "inactive"
-        }
     }
 
     // MARK: settings_hub → [String: Int]

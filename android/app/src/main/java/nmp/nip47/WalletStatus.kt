@@ -37,8 +37,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val statusAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(4, 1)
-    fun statusInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 4, 1)
+    val statusAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(4, 1)
+    fun statusInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 4, 1)
     val relayUrl : String?
         get() {
             val o = __offset(6)
@@ -48,8 +48,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val relayUrlAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(6, 1)
-    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 6, 1)
+    val relayUrlAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
+    fun relayUrlInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
     val walletNpub : String?
         get() {
             val o = __offset(8)
@@ -59,8 +59,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val walletNpubAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(8, 1)
-    fun walletNpubInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 8, 1)
+    val walletNpubAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
+    fun walletNpubInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val hasBalanceMsats : Boolean
         get() {
             val o = __offset(10)
@@ -95,8 +95,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val balanceSatsDisplayAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(20, 1)
-    fun balanceSatsDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 20, 1)
+    val balanceSatsDisplayAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(20, 1)
+    fun balanceSatsDisplayInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 20, 1)
     val walletNpubShort : String?
         get() {
             val o = __offset(22)
@@ -106,8 +106,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val walletNpubShortAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(22, 1)
-    fun walletNpubShortInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 22, 1)
+    val walletNpubShortAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(22, 1)
+    fun walletNpubShortInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 22, 1)
     val isReady : Boolean
         get() {
             val o = __offset(24)
@@ -137,8 +137,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val walletPubkeyHexAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(32, 1)
-    fun walletPubkeyHexInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 32, 1)
+    val walletPubkeyHexAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(32, 1)
+    fun walletPubkeyHexInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 32, 1)
     val statusLabel : String?
         get() {
             val o = __offset(34)
@@ -148,8 +148,8 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val statusLabelAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(34, 1)
-    fun statusLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 34, 1)
+    val statusLabelAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(34, 1)
+    fun statusLabelInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 34, 1)
     val statusTone : String?
         get() {
             val o = __offset(36)
@@ -159,10 +159,10 @@ class WalletStatus : Table() {
                 null
             }
         }
-    val statusToneAsByteBuffer : ByteBuffer? get() = __vector_as_bytebuffer(36, 1)
-    fun statusToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer? = __vector_in_bytebuffer(_bb, 36, 1)
+    val statusToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(36, 1)
+    fun statusToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 36, 1)
     companion object {
-        fun validateVersion() = Constants.FLATBUFFERS_25_12_19()
+        fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsWalletStatus(_bb: ByteBuffer): WalletStatus = getRootAsWalletStatus(_bb, WalletStatus())
         fun getRootAsWalletStatus(_bb: ByteBuffer, obj: WalletStatus): WalletStatus {
             _bb.order(ByteOrder.LITTLE_ENDIAN)

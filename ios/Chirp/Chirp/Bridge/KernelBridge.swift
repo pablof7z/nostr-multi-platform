@@ -2000,13 +2000,9 @@ struct WalletStatusData: Decodable, Equatable {
     let isReady: Bool
     /// `status == "connecting" || status == "ready"` pre-computed in Rust.
     let isConnected: Bool
-    /// ADR-0032 / #623: pre-computed human-readable label for the current
-    /// status. Values: `"Connecting"` | `"Ready"` | `"Error"` | `"Disconnected"`.
-    /// Bind verbatim — no Swift string manipulation required (thin-shell rule).
+    /// ADR-0032 / #623: pre-computed label, bound verbatim (thin-shell rule).
     let statusLabel: String
-    /// ADR-0032 / #623: semantic tone. Values: `"active"` | `"warning"` |
-    /// `"error"` | `"inactive"`. Map tone → colour/icon without knowing
-    /// protocol strings (thin-shell rule).
+    /// ADR-0032 / #623: tone `"active"|"warning"|"error"|"inactive"` → colour.
     let statusTone: String
 }
 

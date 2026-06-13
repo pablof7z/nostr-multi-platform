@@ -784,16 +784,11 @@ fn _wallet_projection_moved_to_nmp_nip47() {
         balance_msats: Some(21_000),
         balance_sats: Some(21),
         balance_sats_display: Some("21".to_string()),
-        // Fixture npub is 18 chars (> 17 guard) so `abbreviate_npub` would
-        // yield `npub1walle…xample`. We embed the abbreviated form directly
-        // — the projection always carries a pre-computed `_short` so the
-        // shell never has to derive one (thin-shell V-23).
-        wallet_npub_short: "npub1walle…xample".to_string(),
+        wallet_npub_short: "npub1walle…xample".to_string(), // pre-computed (V-23)
         is_ready: true,
         is_connected: true,
         connection_state: None,
-        // ADR-0032 / #623: pre-computed display fields.
-        status_label: "Ready".to_string(),
+        status_label: "Ready".to_string(), // ADR-0032 / #623
         status_tone: "active".to_string(),
     });
     let connected: serde_json::Value =
