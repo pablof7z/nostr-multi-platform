@@ -3,6 +3,7 @@
 //! assertions. Covers every arrival case in design §3-J plus the V-81
 //! release-signal-is-not-terminal contract.
 
+mod pagination_ordering;
 mod support;
 
 use nmp_threading::pointer::ThreadPointer;
