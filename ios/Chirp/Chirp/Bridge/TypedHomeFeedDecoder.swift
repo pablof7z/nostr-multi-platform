@@ -51,19 +51,16 @@ enum TypedHomeFeedDecoder {
 
     /// Decode a raw `NOFS` FlatBuffers buffer into the Swift feed model.
     ///
-    /// Uses `getCheckedRoot` so the FlatBuffers runtime verifies both the file
-    /// identifier and structural integrity in one pass; any failure surfaces as
-    /// `nil` rather than a thrown error, honouring the graceful-fallback
-    /// contract.
+    /// Uses `getRoot` (unchecked) because this buffer arrives over a trusted
+    /// in-process FFI boundary from the Rust kernel — running the O(N)
+    /// FlatBuffers Verifier on every 4 Hz frame is pure wasted CPU. The
+    /// `!bytes.isEmpty` guard above is the only presence check needed; a
+    /// gross wiring error would surface as empty/default field values from
+    /// the glue layer rather than a crash.
     static func decode(bytes: Data) -> ChirpTimelineSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        guard let snapshot: nmp_nip01_OpFeedSnapshot = try? getCheckedRoot(
-            byteBuffer: &buffer,
-            fileId: fileIdentifier
-        ) else {
-            return nil
-        }
+        let snapshot: nmp_nip01_OpFeedSnapshot = getRoot(byteBuffer: &buffer)
 
         let cards = snapshot.cards.map(makeRootCard)
         let page = snapshot.hasPage ? decodePage(snapshot) : nil
@@ -135,10 +132,10 @@ enum TypedHomeFeedDecoder {
         } ?? nil
         guard let data = windowData, !data.isEmpty else { return nil }
         var windowBuffer = ByteBuffer(data: data)
-        guard let window: nmp_feed_FeedWindow = try? getCheckedRoot(
-            byteBuffer: &windowBuffer,
-            fileId: feedWindowFileIdentifier
-        ), let page = window.page else {
+        // Trusted in-process sub-buffer (embedded within a kernel-produced NOFS
+        // frame); skip the O(N) Verifier walk.
+        let window: nmp_feed_FeedWindow = getRoot(byteBuffer: &windowBuffer)
+        guard let page = window.page else {
             return nil
         }
         // Explicit closure rather than `Optional.flatMap` to avoid any
@@ -165,12 +162,8 @@ enum TypedHomeFeedDecoder {
     static func decodeContentTree(fromBytes bytes: Data) -> ContentTreeWire? {
         guard !bytes.isEmpty else { return nil }
         var treeBuffer = ByteBuffer(data: bytes)
-        guard let root: nmp_content_ContentTreeWire = try? getCheckedRoot(
-            byteBuffer: &treeBuffer,
-            fileId: contentTreeFileIdentifier
-        ) else {
-            return nil
-        }
+        // Trusted in-process sub-buffer; skip the O(N) Verifier walk.
+        let root: nmp_content_ContentTreeWire = getRoot(byteBuffer: &treeBuffer)
         let nodes = root.nodes.compactMap(decodeWireNode)
         let roots: [UInt32] = root.roots.map { $0 }
         let mode = renderModeString(root.mode)
@@ -182,9 +175,11 @@ enum TypedHomeFeedDecoder {
     ///
     /// Mirrors the `decodePage` pattern: extract the raw bytes via
     /// `withUnsafePointerToContentTreeBytes`, wrap in a `ByteBuffer`, then call
-    /// `getCheckedRoot` with the `NFCT` file identifier. Returns `nil` on any
-    /// absent or malformed buffer — `contentTree` is Optional on `ChirpEventCard`
-    /// so nil is valid and the renderer falls back to the plain `content` string.
+    /// `getRoot` (unchecked) to obtain the reader struct. The buffer is
+    /// trusted (embedded within a kernel-produced NOFS frame); the O(N)
+    /// FlatBuffers Verifier walk is skipped. Returns `nil` when the sub-buffer
+    /// is absent — `contentTree` is Optional on `ChirpEventCard` so nil is
+    /// valid and the renderer falls back to the plain `content` string.
     ///
     /// Raw values only — no display helpers (D11, display-separation audit
     /// 2026-05-25).
@@ -195,12 +190,8 @@ enum TypedHomeFeedDecoder {
         } ?? nil
         guard let data = treeData, !data.isEmpty else { return nil }
         var treeBuffer = ByteBuffer(data: data)
-        guard let root: nmp_content_ContentTreeWire = try? getCheckedRoot(
-            byteBuffer: &treeBuffer,
-            fileId: contentTreeFileIdentifier
-        ) else {
-            return nil
-        }
+        // Trusted in-process sub-buffer; skip the O(N) Verifier walk.
+        let root: nmp_content_ContentTreeWire = getRoot(byteBuffer: &treeBuffer)
         let nodes = root.nodes.compactMap(decodeWireNode)
         let roots: [UInt32] = root.roots.map { $0 }
         let mode = renderModeString(root.mode)
