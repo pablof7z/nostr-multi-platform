@@ -727,6 +727,12 @@ final class KernelHandle {
             let typedZaps = TypedZapsDecoder.decode(from: envelopes)
             let typedGroupChat = TypedGroupChatDecoder.decode(from: envelopes)
             let typedDiscoveredGroups = TypedDiscoveredGroupsDecoder.decode(from: envelopes)
+            // #626: NIP-29 group-create defaults (NGDF). The crate-owned
+            // suggested public-group relay URL. Output-only projection; the
+            // producer registers it once at app init, so the sidecar is present
+            // on every tick. Nil only on an older kernel build → the generic
+            // `projections["nmp.nip29.group_defaults"]` JSON path applies.
+            let typedGroupDefaults = TypedGroupDefaultsDecoder.decode(from: envelopes)
             // Profile-cluster typed sidecars (`profile` / `claimed_profiles` /
             // `resolved_profiles`). All three share the `nmp_kernel_ProfileCard`
             // reader (defined once in `ProfileCard.generated.swift`). Each returns
@@ -801,6 +807,7 @@ final class KernelHandle {
                     typedZaps: typedZaps,
                     typedGroupChat: typedGroupChat,
                     typedDiscoveredGroups: typedDiscoveredGroups,
+                    typedGroupDefaults: typedGroupDefaults,
                     typedProfile: typedProfile,
                     typedClaimedProfiles: typedClaimedProfiles,
                     typedResolvedProfiles: typedResolvedProfiles,

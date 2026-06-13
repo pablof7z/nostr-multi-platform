@@ -8,9 +8,8 @@ use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex};
 
 use super::types::{
-    Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
+    DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
-    WatermarkKey, WatermarkRow,
 };
 use super::StoreError;
 use crate::DomainMigration;
@@ -324,24 +323,6 @@ pub trait EventStore: Send + Sync {
     ///
     /// Returns the number of primary rows removed.
     fn delete_by_filter(&self, filter: DeleteFilter) -> Result<usize, StoreError>;
-
-    // ─── Watermarks ──────────────────────────────────────────────────────────
-
-    fn read_watermark(&self, key: &WatermarkKey) -> Result<Option<WatermarkRow>, StoreError>;
-    fn write_watermark(&self, row: WatermarkRow) -> Result<(), StoreError>;
-
-    /// Coverage classification for a `(filter, relay)` pair.
-    ///
-    /// `now_secs` is the current wall-clock time as Unix seconds, supplied by
-    /// the caller so the store never reads the clock directly (D7 — the kernel
-    /// owns the wall clock; lower layers receive time, they do not read it).
-    fn coverage(&self, key: &WatermarkKey, now_secs: u64) -> Result<Coverage, StoreError>;
-
-    /// Iterate watermarks for a specific relay.
-    fn list_watermarks_for_relay<'a>(
-        &'a self,
-        relay_url: &str,
-    ) -> Result<Box<dyn Iterator<Item = Result<WatermarkRow, StoreError>> + Send + 'a>, StoreError>;
 
     // ─── Hot-set / GC ────────────────────────────────────────────────────────
 

@@ -637,19 +637,19 @@ impl IdentityRuntime {
     /// `RemoteSignerHandle::op_timeout()` for remote signers (NIP-46 = 5s,
     /// NIP-55 = 90s); `PENDING_SIGN_TIMEOUT` otherwise (local ops are `Ready`
     /// and never park, so the default is safe). ADR-0048 D3 per-op deadline.
-    pub(crate) fn active_sign_deadline(&self) -> std::time::Instant {
+    pub(crate) fn active_sign_deadline(&self) -> crate::time::Instant {
         let duration = self
             .active_remote()
             .map(|h| h.op_timeout())
             .unwrap_or(nmp_signer_iface::PENDING_SIGN_TIMEOUT);
-        std::time::Instant::now() + duration
+        crate::time::Instant::now() + duration
     }
 
     /// Wall-clock deadline for a parked op on a SPECIFIC account — the
     /// account-addressed sibling of [`Self::active_sign_deadline`]. Reads THAT
     /// account's signer budget (the active account may be a different backend);
     /// `None` falls back to the active account. ADR-0050 §D4.
-    pub(crate) fn sign_deadline_for(&self, pubkey: Option<&str>) -> std::time::Instant {
+    pub(crate) fn sign_deadline_for(&self, pubkey: Option<&str>) -> crate::time::Instant {
         let handle = match pubkey {
             Some(pk) => self.remote_signers.get(pk).map(|h| h.as_ref()),
             None => self.active_remote(),
@@ -657,7 +657,7 @@ impl IdentityRuntime {
         let duration = handle
             .map(|h| h.op_timeout())
             .unwrap_or(nmp_signer_iface::PENDING_SIGN_TIMEOUT);
-        std::time::Instant::now() + duration
+        crate::time::Instant::now() + duration
     }
 
 }

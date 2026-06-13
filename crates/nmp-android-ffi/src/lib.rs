@@ -13,7 +13,7 @@
 use std::ffi::CString;
 use std::sync::Arc;
 
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{JClass, JString};
 use jni::sys::{jint, jlong};
 use jni::JNIEnv;
 
@@ -31,6 +31,7 @@ mod platform;
 mod relay_seeding;
 mod session;
 mod signer;
+mod signer_request_listener;
 mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
@@ -39,7 +40,7 @@ use nmp_ffi::{
     nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop,
     nmp_app_switch_active, nmp_free_string,
 };
-use session::{insert_session, remove_session, UpdatePushListener};
+use session::{insert_session, remove_session};
 pub(crate) use session::{session_arc, Session};
 
 #[no_mangle]
@@ -196,56 +197,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
 ) {
     if let Some(s) = session_arc(handle) {
         s.with_app(|app| nmp_app_stop(app));
-    }
-}
-
-/// Register (or clear) the JNI push listener for kernel update frames
-/// (issue #614 — D8 no-polling; replaces the deleted `nativeNextUpdate`
-/// blocking drain).
-///
-/// `listener` must implement `fun onUpdate(frame: ByteArray)`. Frames are
-/// pushed from the kernel's update-listener thread (a Rust background thread),
-/// so Kotlin must treat `onUpdate` as a background callback and marshal to the
-/// main thread itself when needed. Pass `null` to deregister.
-///
-/// D6: a null/dead handle, or any JNI failure obtaining the `JavaVM` / global
-/// ref, is a silent no-op — never panics across the seam. The listener
-/// `GlobalRef` is dropped on teardown (`nativeClose`/`nativeFree`) after the
-/// update-callback quiescence gate guarantees no in-flight `on_update`.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSetUpdateListener(
-    env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    listener: JObject,
-) {
-    let Some(s) = session_arc(handle) else {
-        return;
-    };
-    if listener.is_null() {
-        s.clear_push_listener();
-        return;
-    }
-    let Ok(vm) = env.get_java_vm() else {
-        return;
-    };
-    let Ok(global) = env.new_global_ref(&listener) else {
-        return;
-    };
-    s.set_push_listener(UpdatePushListener::new(vm, global));
-}
-
-/// Clear the JNI push listener without freeing the session (issue #614).
-///
-/// D6: a null/dead handle is a silent no-op.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClearUpdateListener(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = session_arc(handle) {
-        s.clear_push_listener();
     }
 }
 

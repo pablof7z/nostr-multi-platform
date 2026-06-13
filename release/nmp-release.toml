@@ -128,17 +128,17 @@ path = "crates/nmp-nip51"
 name = "nmp-nip57"
 path = "crates/nmp-nip57"
 
-[[public_crates]]
-name = "nmp-blossom"
-path = "crates/nmp-blossom"
+# nmp-blossom and nmp-nip60 are PARKED — excluded from the default workspace
+# (see top-level Cargo.toml [workspace] exclude, issue #1250). They are not
+# workspace members, so they must NOT appear here: this manifest is the
+# release-readiness source of truth and the dry-run runs `cargo package -p`
+# over every public_crate. Re-add when the milestones enter scope:
+#   nmp-blossom → Blossom M10 (#998)
+#   nmp-nip60   → Cashu / nutzaps (#1001)
 
 [[public_crates]]
 name = "nmp-nip59"
 path = "crates/nmp-nip59"
-
-[[public_crates]]
-name = "nmp-nip60"
-path = "crates/nmp-nip60"
 
 [[public_crates]]
 name = "nmp-nip77"
@@ -215,10 +215,10 @@ name = "nmp-gallery-desktop"
 path = "apps/nmp-gallery/desktop"
 reason = "gallery reference desktop (egui) application"
 
-[[private_packages]]
-name = "nmp-wallet-poc"
-path = "apps/nmp-wallet-poc"
-reason = "NIP-60 wallet proof-of-concept application"
+# nmp-wallet-poc is PARKED alongside its dependency nmp-nip60 — excluded from
+# the default workspace (top-level Cargo.toml [workspace] exclude, issue #1250).
+# Not a workspace member, so it must not be classified here. Re-add when #1001
+# enters scope (together with nmp-nip60).
 
 [[private_packages]]
 name = "chirp-desktop"

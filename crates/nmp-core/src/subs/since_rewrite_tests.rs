@@ -108,12 +108,20 @@ fn relays_with_req(frames: &[WireFrame]) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
-// ─── 1) Basic rewrite ────────────────────────────────────────────────────────
+// ─── 1) since=None exemption (#1281) ─────────────────────────────────────────
+//
+// Owner decision #1281 (2026-06-13): a since=None ("all-time / backfill")
+// interest is EXEMPT from the T129 watermark rewrite. Raising None to
+// watermark+1 silently prevents backfill of history older than the watermark.
+// T129 only raises an existing Some(t) floor — it never introduces a new
+// lower bound where none existed.
 
 #[test]
-fn rewrites_since_to_watermark_plus_one_when_filter_has_no_since() {
+fn since_none_stays_none_after_watermark_rewrite() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
-    // Cache has events for this filter with newest created_at = 1700.
+    // Cache has events for this filter with newest created_at = 1700, but
+    // the interest has no since (all-time backfill).  The watermark rewrite
+    // must NOT introduce a lower bound.
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
     l.registry_mut().push(timeline_interest(1, "a"));
 
@@ -123,8 +131,29 @@ fn rewrites_since_to_watermark_plus_one_when_filter_has_no_since() {
     assert!(!filters.is_empty(), "expected at least one REQ");
     for filter in &filters {
         assert!(
+            !filter.contains("\"since\""),
+            "since=None must remain absent after watermark rewrite (backfill exemption #1281); got {filter}",
+        );
+    }
+}
+
+#[test]
+fn some_since_is_raised_to_watermark_plus_one() {
+    let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
+    // Interest has an explicit since=500 (older than the watermark).
+    // Watermark = 1700, so the floor is 1701.  The rewrite must raise it.
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+    l.registry_mut()
+        .push(timeline_interest_with_since(1, "a", 500));
+
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let filters = req_filters(&frames);
+
+    assert!(!filters.is_empty(), "expected at least one REQ");
+    for filter in &filters {
+        assert!(
             filter.contains("\"since\":1701"),
-            "since not rewritten to watermark+1 in filter {filter}",
+            "existing since below watermark must be raised to watermark+1; got {filter}",
         );
     }
 }
@@ -295,6 +324,9 @@ fn multi_author_no_since_when_watermark_fn_returns_none() {
 
 /// When the watermark fn returns the minimum of per-author watermarks, the
 /// rewrite must use that minimum (not a higher value).
+///
+/// Owner decision #1281: since=None interests are exempt from the T129 rewrite.
+/// The interest must carry an explicit since so the watermark can be applied.
 #[test]
 fn multi_author_since_is_min_watermark_plus_one() {
     let (mut l, mailboxes) = lifecycle_with_two_authors_shared_relay("a", "b");
@@ -306,7 +338,10 @@ fn multi_author_since_is_min_watermark_plus_one() {
             Some(1700) // single-author path unchanged
         }
     }));
-    l.registry_mut().push(two_author_interest(11, "a", "b"));
+    // since=1 so the watermark rewrite applies (#1281: since=None is exempt).
+    let mut interest = two_author_interest(11, "a", "b");
+    interest.shape.since = Some(1);
+    l.registry_mut().push(interest);
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -340,7 +375,9 @@ fn multi_relay_emits_identical_rewritten_since() {
     // confounded by selection-induced relay dropping.
     l.set_selection_budget(usize::MAX, usize::MAX);
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
-    l.registry_mut().push(timeline_interest(1, "a"));
+    // since=500 so the watermark rewrite applies (#1281: since=None is exempt).
+    l.registry_mut()
+        .push(timeline_interest_with_since(1, "a", 500));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);

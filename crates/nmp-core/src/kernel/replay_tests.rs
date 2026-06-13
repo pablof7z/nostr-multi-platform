@@ -33,6 +33,12 @@ fn timeline_interest(id: u64, author: &str) -> LogicalInterest {
     }
 }
 
+fn timeline_interest_with_since(id: u64, author: &str, since: u64) -> LogicalInterest {
+    let mut i = timeline_interest(id, author);
+    i.shape.since = Some(since);
+    i
+}
+
 /// Build a kernel + mailbox + populate `current_plan` with a single
 /// author/kind interest routed to one write relay. Returns the resolved
 /// relay URL so tests can use it as the reconnect target.
@@ -161,6 +167,10 @@ fn replay_on_reconnect_reissues_req_for_url() {
 /// reconnect the store may have ingested newer events. The replay must
 /// re-apply the watermark fn so `since` is bumped past already-stored
 /// events; otherwise the relay re-emits everything we already have.
+///
+/// Owner decision #1281: only interests with an explicit `since` (`Some(t)`)
+/// are eligible for the rewrite. We supply since=500 (below the watermark of
+/// 1700) so the reconnect replay raises it to 1701.
 #[test]
 fn replay_applies_t129_watermark_to_since() {
     let role = RelayRole::Content;
@@ -178,14 +188,15 @@ fn replay_applies_t129_watermark_to_since() {
         },
     );
 
-    // Watermark at 1700 — every replay REQ must carry since=1701.
+    // Watermark at 1700. Interest has since=500 so the rewrite raises it to
+    // 1701 on every replay REQ (#1281: since=None is exempt from the rewrite).
     kernel
         .lifecycle_mut()
         .set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
     kernel
         .lifecycle_mut()
         .registry_mut()
-        .push(timeline_interest(7, author));
+        .push(timeline_interest_with_since(7, author, 500));
     let _ = kernel
         .lifecycle_mut()
         .recompile_and_diff(&mailboxes)

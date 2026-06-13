@@ -187,25 +187,25 @@ fn gc_tick_interval_is_60_seconds() {
 /// Phase-2 LRU eviction is a permanent no-op even once gc runs (the load-bearing
 /// piece of #1069).
 ///
-/// V-117 update: the production budget intentionally disables the LRU ceiling
-/// (`max_total_events = usize::MAX`) until store-claims have production callers
-/// (see GitHub issue #1090).  This test is updated to document the CURRENT
-/// state and will need updating again when #1090 is resolved.
+/// #1090 Stage 3: the production budget now ENABLES the LRU ceiling
+/// (`max_total_events = HOT_EVENT_CEILING`). Stage 2 (`derive_store_pin_set`
+/// floor-coherent pins) is what makes the finite ceiling safe — eviction can no
+/// longer punch a hole below an active floored shape's `since`-floor.
 #[test]
 fn production_budget_documents_ceiling_state() {
     let budget = crate::store::GcBudget::production();
 
-    // V-117: production ceiling is DISABLED until #1090 wires store-claims.
-    // When #1090 is done, this assertion should be changed to:
-    //   `assert_eq!(budget.max_total_events, crate::store::HOT_EVENT_CEILING)`
+    // #1090 Stage 3: production gc enforces the finite hot-event ceiling.
     assert_eq!(
         budget.max_total_events,
-        usize::MAX,
-        "V-117: production gc must have LRU eviction DISABLED until store-claims \
-         are wired (see #1090). HOT_EVENT_CEILING={}, see types/gc.rs.",
         crate::store::HOT_EVENT_CEILING,
+        "#1090 Stage 3: production gc must enable LRU eviction at HOT_EVENT_CEILING \
+         (floor-coherence from Stage 2 makes it safe). See types/gc.rs.",
     );
-    assert_eq!(budget.max_events_per_step, crate::store::GC_MAX_EVENTS_PER_STEP);
+    assert_eq!(
+        budget.max_events_per_step,
+        crate::store::GC_MAX_EVENTS_PER_STEP
+    );
     assert_eq!(budget.max_duration_ms, crate::store::GC_MAX_DURATION_MS);
 }
 
@@ -230,9 +230,7 @@ fn gc_report_includes_duration_ms() {
     }
 
     pin_clock(&mut kernel, T0_SECS + 100);
-    let report = kernel
-        .run_gc_step()
-        .expect("gc_step must succeed");
+    let report = kernel.run_gc_step().expect("gc_step must succeed");
 
     // duration_ms must be set (non-zero on any real pass).
     // Allow 0 only in theory (pass so fast it rounds to 0ms); the important
