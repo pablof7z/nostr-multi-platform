@@ -64,13 +64,15 @@ struct WalletView: View {
         Section {
             VStack(spacing: 16) {
                 HStack {
+                    // ADR-0032 / #623: bind pre-computed label and tone — no
+                    // protocol-string branching in Swift (thin-shell rule).
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(statusColor(status.status))
+                            .fill(color(for: status.statusTone))
                             .frame(width: 6, height: 6)
-                        Text(status.status.capitalized)
+                        Text(status.statusLabel)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(statusColor(status.status))
+                            .foregroundStyle(color(for: status.statusTone))
                     }
                     Spacer()
                     Button(role: .destructive) {
@@ -90,7 +92,9 @@ struct WalletView: View {
                     Text("\(sats.formatted(.number)) sats")
                         .font(.largeTitle.weight(.bold))
                 } else {
-                    Text(status.status == "connecting" ? "Fetching balance…" : "— sats")
+                    // `isReady == false` when connecting; the Rust projection
+                    // pre-computed this — no raw-string compare needed here.
+                    Text(status.isReady ? "— sats" : "Fetching balance…")
                         .font(.largeTitle.weight(.bold))
                         .foregroundStyle(.secondary)
                 }
@@ -105,12 +109,18 @@ struct WalletView: View {
         }
     }
 
-    private func statusColor(_ status: String) -> Color {
-        switch status {
-        case "ready": return ChirpColor.success
-        case "connecting": return ChirpColor.zap
-        case "error": return ChirpColor.danger
-        default: return ChirpColor.textSecondary
+    /// Map a pre-computed `statusTone` string to a `Color`.
+    ///
+    /// The tone vocabulary is `"active"` | `"warning"` | `"error"` |
+    /// `"inactive"` (ADR-0032 / #623). No other protocol-string knowledge
+    /// lives here — the Rust projection owns the mapping from wire status to
+    /// tone (thin-shell rule).
+    private func color(for tone: String) -> Color {
+        switch tone {
+        case "active":   return ChirpColor.success
+        case "warning":  return ChirpColor.zap
+        case "error":    return ChirpColor.danger
+        default:         return ChirpColor.textSecondary
         }
     }
 
@@ -148,6 +158,11 @@ struct WalletView: View {
     // `crates/nmp-core/src/actor/commands/wallet.rs`), and the connected
     // section binds `status.walletNpubShort` verbatim. No Swift-side display
     // formatting remains in this view.
+    //
+    // ADR-0032 / #623: the three former P5 violations (raw-status `.capitalized`,
+    // `== "connecting"` branch, `statusColor` switch on wire strings) are now
+    // eliminated. The view binds `status.statusLabel` and maps
+    // `status.statusTone` → `Color` — the only shell concern remaining.
 }
 
 // ── Connect Wallet Sheet ───────────────────────────────────────────────────

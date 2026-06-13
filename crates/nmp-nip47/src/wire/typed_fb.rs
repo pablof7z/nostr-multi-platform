@@ -82,6 +82,8 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
         .map(|s| fbb.create_string(s));
     let wallet_npub_short = fbb.create_string(&status.wallet_npub_short);
     let wallet_pubkey_hex = fbb.create_string(&status.wallet_pubkey_hex);
+    let status_label = fbb.create_string(&status.status_label);
+    let status_tone = fbb.create_string(&status.status_tone);
 
     let root = fb::WalletStatus::create(
         &mut fbb,
@@ -105,6 +107,8 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
                 .map(|s| connection_state_to_fb(s.clone()))
                 .unwrap_or(fb::NwcConnectionState::Connected),
             wallet_pubkey_hex: Some(wallet_pubkey_hex),
+            status_label: Some(status_label),
+            status_tone: Some(status_tone),
         },
     );
     fb::finish_wallet_status_buffer(&mut fbb, root);
@@ -145,6 +149,17 @@ pub fn decode_wallet_status(bytes: &[u8]) -> Result<WalletStatus, String> {
         } else {
             None
         },
+        // Tail-appended fields (absent in older buffers) — fall back to
+        // re-deriving from the authoritative `status` token so an older
+        // buffer still yields a correct domain value (forward-compat, D1).
+        status_label: root
+            .status_label()
+            .map(str::to_string)
+            .unwrap_or_else(|| crate::status::status_label(root.status().unwrap_or_default())),
+        status_tone: root
+            .status_tone()
+            .map(str::to_string)
+            .unwrap_or_else(|| crate::status::status_tone(root.status().unwrap_or_default())),
     })
 }
 

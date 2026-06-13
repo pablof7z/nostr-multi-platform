@@ -36,6 +36,58 @@ pub enum NwcConnectionState {
     TransportLost,
 }
 
+/// Semantic tone vocabulary for pre-computed display hints (ADR-0032 / #623).
+///
+/// The shell maps tone → colour/icon without any protocol-string knowledge.
+/// This vocabulary is reusable for other projections that follow the same
+/// pattern (e.g. `bunker_connection_state` label/tone — issue #1099).
+///
+/// String constants rather than an enum so the wire stays `String` and
+/// forward-compat is trivially additive (unknown tone → treat as `inactive`).
+pub mod tone {
+    /// Healthy / normal operating state — green indicator.
+    pub const ACTIVE: &str = "active";
+    /// Transient degraded state (connecting, reconnecting) — amber indicator.
+    pub const WARNING: &str = "warning";
+    /// Terminal error state — red indicator.
+    pub const ERROR: &str = "error";
+    /// Not connected / no session — neutral/secondary indicator.
+    pub const INACTIVE: &str = "inactive";
+}
+
+/// Derive the human-readable label for a raw NIP-47 wire status token.
+///
+/// `"connecting"` → `"Connecting"`, `"ready"` → `"Ready"`,
+/// `"error"` → `"Error"`, `"disconnected"` → `"Disconnected"`,
+/// anything else → `"Unknown"`.
+#[must_use]
+pub fn status_label(wire_status: &str) -> String {
+    match wire_status {
+        "connecting" => "Connecting".to_string(),
+        "ready" => "Ready".to_string(),
+        "error" => "Error".to_string(),
+        "disconnected" => "Disconnected".to_string(),
+        _ => "Unknown".to_string(),
+    }
+}
+
+/// Derive the semantic tone for a raw NIP-47 wire status token.
+///
+/// Maps to the vocabulary in [`tone`]:
+/// * `"ready"` → `"active"` (green)
+/// * `"connecting"` → `"warning"` (amber — transient)
+/// * `"error"` → `"error"` (red)
+/// * `"disconnected"` / anything else → `"inactive"` (neutral)
+#[must_use]
+pub fn status_tone(wire_status: &str) -> String {
+    match wire_status {
+        "ready" => tone::ACTIVE.to_string(),
+        "connecting" => tone::WARNING.to_string(),
+        "error" => tone::ERROR.to_string(),
+        _ => tone::INACTIVE.to_string(),
+    }
+}
+
 /// NIP-47 wallet connection status — projected to the snapshot under
 /// `projections["wallet"]`.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -75,6 +127,16 @@ pub struct WalletStatus {
     /// yet). The shell renders a non-silent indicator when this is
     /// `Reconnecting` or `TransportLost`.
     pub connection_state: Option<NwcConnectionState>,
+    /// ADR-0032 / #623: pre-computed human-readable label for the current
+    /// status (e.g. `"Connecting"`, `"Ready"`, `"Error"`, `"Disconnected"`).
+    /// The shell binds this verbatim — no Swift/Kotlin string manipulation
+    /// required (thin-shell rule). Derived by [`status_label`].
+    pub status_label: String,
+    /// ADR-0032 / #623: semantic tone for the current status, one of
+    /// `"active"` | `"warning"` | `"error"` | `"inactive"` (see [`tone`]).
+    /// The shell maps tone → colour/icon without knowing protocol strings.
+    /// Derived by [`status_tone`].
+    pub status_tone: String,
 }
 
 /// Format a satoshi count with `,` thousands separators (e.g. `12345` →
@@ -130,5 +192,57 @@ mod tests {
     fn new_wallet_status_slot_is_empty() {
         let slot = new_wallet_status_slot();
         assert!(slot.lock().unwrap().is_none());
+    }
+
+    // ADR-0032 / #623: label and tone for each wire status token.
+
+    #[test]
+    fn status_label_connecting() {
+        assert_eq!(status_label("connecting"), "Connecting");
+    }
+
+    #[test]
+    fn status_label_ready() {
+        assert_eq!(status_label("ready"), "Ready");
+    }
+
+    #[test]
+    fn status_label_error() {
+        assert_eq!(status_label("error"), "Error");
+    }
+
+    #[test]
+    fn status_label_disconnected() {
+        assert_eq!(status_label("disconnected"), "Disconnected");
+    }
+
+    #[test]
+    fn status_label_unknown_token_falls_back() {
+        assert_eq!(status_label("some_future_state"), "Unknown");
+    }
+
+    #[test]
+    fn status_tone_ready_is_active() {
+        assert_eq!(status_tone("ready"), tone::ACTIVE);
+    }
+
+    #[test]
+    fn status_tone_connecting_is_warning() {
+        assert_eq!(status_tone("connecting"), tone::WARNING);
+    }
+
+    #[test]
+    fn status_tone_error_is_error() {
+        assert_eq!(status_tone("error"), tone::ERROR);
+    }
+
+    #[test]
+    fn status_tone_disconnected_is_inactive() {
+        assert_eq!(status_tone("disconnected"), tone::INACTIVE);
+    }
+
+    #[test]
+    fn status_tone_unknown_is_inactive() {
+        assert_eq!(status_tone("some_future_state"), tone::INACTIVE);
     }
 }

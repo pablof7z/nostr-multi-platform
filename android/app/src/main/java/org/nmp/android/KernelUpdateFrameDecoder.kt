@@ -187,6 +187,10 @@ object KernelUpdateFrameDecoder {
             dmInbox = TypedDmInboxDecoder.decode(typedProjections),
             walletStatus = typedWallet?.status,
             walletBalance = typedWallet?.balanceDisplay,
+            // ADR-0032 / #623: propagate the pre-computed label and tone from the
+            // typed NIP-47 decoder so WalletScreen never branches on raw strings.
+            walletLabel = typedWallet?.statusLabel,
+            walletTone = typedWallet?.statusTone,
             relayRoleOptions = TypedRelayRoleOptionsDecoder.decode(typedProjections) ?: emptyList(),
             marmotSnapshot = TypedMarmotDecoder.decodeSnapshot(typedProjections),
             marmotMessages = TypedMarmotDecoder.decodeMessages(typedProjections) ?: emptyMap(),

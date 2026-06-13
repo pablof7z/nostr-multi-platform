@@ -28,6 +28,8 @@ fn sample_status() -> WalletStatus {
         is_ready: true,
         is_connected: true,
         connection_state: Some(NwcConnectionState::Connected),
+        status_label: "Ready".to_string(),
+        status_tone: "active".to_string(),
     }
 }
 

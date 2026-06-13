@@ -275,9 +275,9 @@ fn local_kind0_publish_fans_out_to_event_observers() {
     // single store-first mechanism. `profile_card_for` reads through
     // `profile_for_pubkey`, so a non-placeholder display name proves the local
     // kind:0 landed in the canonical `profiles` cache.
-    // #1245 deleted the `has_profile` render-gate (D1, #606): resolution is
-    // proven by the optional fields themselves — a non-placeholder
-    // `display_name` IS the read-your-writes evidence.
+    // D1 (#606): the `has_profile` render-gate boolean was removed; resolution
+    // is proven by the real fields carrying the locally published kind:0 data
+    // (a non-placeholder `display_name`) rather than a "loaded" flag.
     let card = kernel.profile_card_for(&author, "Waiting for kind:0 from indexer");
     assert_eq!(
         card.display_name.as_deref(),

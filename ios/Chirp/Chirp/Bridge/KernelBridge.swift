@@ -2000,6 +2000,10 @@ struct WalletStatusData: Decodable, Equatable {
     let isReady: Bool
     /// `status == "connecting" || status == "ready"` pre-computed in Rust.
     let isConnected: Bool
+    /// ADR-0032 / #623: pre-computed label, bound verbatim (thin-shell rule).
+    let statusLabel: String
+    /// ADR-0032 / #623: tone `"active"|"warning"|"error"|"inactive"` → colour.
+    let statusTone: String
 }
 
 /// Profile summary card. Raw kind:0 metadata fields — `displayName` and
