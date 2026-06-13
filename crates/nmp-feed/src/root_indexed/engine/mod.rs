@@ -28,7 +28,7 @@
 //! here (this rung is `nmp-feed`-only).
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicU64, AtomicUsize, Ordering},
     Arc, Mutex,
 };
 
@@ -39,6 +39,7 @@ use nmp_threading::{pointer::ThreadPointer, ParentResolver};
 use crate::root_indexed::attribution::AttributionPayload;
 use crate::root_indexed::card::{RootCard, RootFeedSnapshot};
 use crate::root_indexed::claim::ClaimRequest;
+use crate::types::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
 use crate::{FeedController, FeedCursor, FeedPage, FeedRequest};
 
 /// The per-event ingest state machine lives in a sibling file to keep both
@@ -152,6 +153,12 @@ where
     /// pending attributions; the counter exists so a consumer (and the V-81
     /// test) can observe "release seen, pending intact".
     released_signals_seen: AtomicU64,
+    /// Current visible-window limit, grown by `load_older` each call.
+    /// Starts at `DEFAULT_FEED_WINDOW_LIMIT`; grows by one page per `load_older`
+    /// call so the caller can reveal progressively older roots. Held outside the
+    /// `Mutex` (a plain monotone counter) so `snapshot_json` can read it without
+    /// taking the state lock twice.
+    window_limit: AtomicUsize,
 }
 
 impl<R, A, C> RootIndexedFeed<R, A, C>
@@ -196,6 +203,7 @@ where
             },
             state: Mutex::new(EngineState::new()),
             released_signals_seen: AtomicU64::new(0),
+            window_limit: AtomicUsize::new(DEFAULT_FEED_WINDOW_LIMIT),
         }
     }
 
@@ -369,16 +377,32 @@ where
     C: Clone + Send + Sync + serde::Serialize,
 {
     fn snapshot_json(&self) -> serde_json::Value {
-        serde_json::to_value(self.snapshot(&FeedRequest::default()))
+        // Honor the window that `load_older` has grown so far, rather than the
+        // fixed default — otherwise callers could never see past the first page.
+        let limit = self.window_limit.load(Ordering::Relaxed);
+        serde_json::to_value(self.snapshot(&FeedRequest::newest(limit)))
             .unwrap_or(serde_json::Value::Null)
     }
 
     fn load_older(&self) -> bool {
-        // Window growth is driven by the snapshot request limit; the engine
-        // holds all roots bounded by D5, so "load older" widens the request
-        // limit at the call site. There is no separate paging cursor to
-        // advance in the engine itself.
-        false
+        // Read the current window and total root count to decide whether there
+        // are more roots to reveal. The engine holds all roots bounded by D5;
+        // pagination widens the visible window one page at a time.
+        let Ok(st) = self.state.lock() else {
+            return false;
+        };
+        let total = st.roots.len();
+        drop(st);
+        let current_limit = self.window_limit.load(Ordering::Relaxed);
+        if current_limit >= total || current_limit >= MAX_FEED_WINDOW_LIMIT {
+            // Already showing everything (or at the hard window ceiling) —
+            // nothing more to reveal.
+            return false;
+        }
+        // Grow the window by one page, clamped to the hard ceiling.
+        let new_limit = (current_limit + DEFAULT_FEED_WINDOW_LIMIT).min(MAX_FEED_WINDOW_LIMIT);
+        self.window_limit.store(new_limit, Ordering::Relaxed);
+        true
     }
 }
 
