@@ -3,22 +3,18 @@ use nmp_core::store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::IngestParser;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
-/// Wrap `rumor` for `receiver` via the ADR-0026 `SignerForSeal` seam. The
-/// blanket `SignerForSeal` impl on `nostr::Keys` resolves every `SignerOp`
-/// synchronously, so `.wait` returns immediately without spawning a driver.
+/// Wrap `rumor` for `receiver` with the sender's local keys via the pure
+/// `nmp_nip59::gift_wrap_local` composition (ADR-0050 §D5 — the `SignerForSeal`
+/// execution model is gone).
 fn gift_wrap_test(
     sender: &Keys,
     receiver: &nostr::PublicKey,
     rumor: nostr::UnsignedEvent,
 ) -> Event {
-    let signer: std::sync::Arc<dyn nmp_nip59::SignerForSeal> =
-        std::sync::Arc::new(sender.clone());
     // Tests pass deterministic timestamps via the rumor; reuse it for the
     // seal/wrap envelope so the test-stable ordering survives migration.
     let created_at = rumor.created_at;
-    nmp_nip59::gift_wrap_with_signer(&signer, receiver, &rumor, created_at)
-        .wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT)
-        .expect("gift wrap succeeds")
+    nmp_nip59::gift_wrap_local(sender, receiver, &rumor, created_at).expect("gift wrap succeeds")
 }
 
 /// Build a signed kind:1059 gift-wrap envelope carrying a kind:14 rumor

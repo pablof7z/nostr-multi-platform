@@ -1,14 +1,14 @@
 //! D13 — DM-path raw-key isolation (ADR-0026 enforcement).
 //!
 //! ADR-0026 establishes a single seam — `RemoteSignerHandle::nip44_encrypt` /
-//! `nip44_decrypt` plus the `SignerForSeal` indirection in
-//! `nmp_nip59::gift_wrap_with_signer` — for every code path that needs sender-
-//! held key material to seal a NIP-59 gift-wrap (NIP-17 DMs, future NIP-57
-//! zaps, future raw NIP-44 payloads). The point of the seam is that the same
-//! call site works for local keys (`nostr::Keys`) and a remote bunker
-//! (`Box<dyn RemoteSignerHandle>`); reaching past it to read raw key material
-//! on a DM path defeats the whole purpose — a bunker user's send silently
-//! breaks once the local-key branch is selected.
+//! `nip44_decrypt` — for every code path that needs sender-held key material to
+//! seal a NIP-59 gift-wrap (NIP-17 DMs, future NIP-57 zaps, future raw NIP-44
+//! payloads). ADR-0050 §D5 routes the seal step through the actor's signer port
+//! (`Nip44EncryptForAccount` → `SignEventForAccount`), so the same call site
+//! works for local keys (`nostr::Keys`) and a remote bunker
+//! (`Box<dyn RemoteSignerHandle>`); reaching past it to read raw key material on
+//! a DM path defeats the whole purpose — a bunker user's send silently breaks
+//! once the local-key branch is selected.
 //!
 //! ## What this catches
 //!
@@ -20,8 +20,8 @@
 //! of any of:
 //!
 //! - `active_local_keys` — `IdentityRuntime::active_local_keys` hands out a
-//!   raw `&Keys`; on the seal path it must instead resolve a
-//!   `SignerForSeal`.
+//!   raw `&Keys`; on the seal path it must instead sign through the port
+//!   (`Nip44EncryptForAccount` / `SignEventForAccount`).
 //! - `active_nsec_bech32` — the bech32 export of the active secret key.
 //! - `.secret_key()` — direct read of a `Keys`'s secret half.
 //! - `Keys::parse(` — building a `Keys` from a hex/bech32 nsec inside the
@@ -158,13 +158,13 @@ pub fn check_part_a(
                 col,
                 format!(
                     "raw key access `{}` on a DM seal path violates D13 — \
-                     ADR-0026 requires routing seal material through the \
-                     `SignerForSeal` seam (see `nmp_nip59::gift_wrap_with_signer`)",
+                     ADR-0050 §D5 requires routing seal material through the actor \
+                     signer port (`Nip44EncryptForAccount` / `SignEventForAccount`)",
                     banned
                 ),
-                "resolve a `SignerForSeal` via identity (`IdentityRuntime::active_signer_for_seal`) \
-                 and hand it to `gift_wrap_with_signer`; do not read raw `Keys` material from this \
-                 path"
+                "sign the seal through the port (send `Nip44EncryptForAccount` then \
+                 `SignEventForAccount` via the command sender); do not read raw `Keys` material \
+                 from this path"
                     .to_string(),
             ));
         }
@@ -298,8 +298,10 @@ mod tests {
 
     #[test]
     fn part_a_clean_signer_call_does_not_fire() {
+        // ADR-0050 §D5 — pinning the account via `active_account_pubkey` and
+        // signing through the port is the legitimate seam; no raw-key read.
         let hits = check_part_a(
-            "    let signer = identity.active_signer_for_seal()?;",
+            "    let signer_hex = ctx.active_account_pubkey()?;",
             false,
             false,
         );

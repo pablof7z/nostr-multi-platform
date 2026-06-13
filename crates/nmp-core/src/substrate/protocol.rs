@@ -124,8 +124,7 @@ pub trait LocalSignerAccess: Send + Sync {
     /// ADR-0050 §D5 — the gift-wrap DM chain resolves the active account's
     /// pubkey ONCE at step 1 through this accessor and pins every subsequent
     /// port step with `signer_pubkey: Some(hex)`, so a mid-chain account switch
-    /// signs the seal with the originating account (never re-resolving
-    /// "active"). This replaces the deleted `signer_for_seal` slot.
+    /// signs the seal with the originating account. Replaces `signer_for_seal`.
     fn active_account_pubkey(&self) -> Option<String>;
 }
 
@@ -534,12 +533,9 @@ impl<'a> ProtocolCommandContext<'a> {
             .unwrap_or(None)
     }
 
-    /// D15-wrapped [`LocalSignerAccess::active_account_pubkey`]. Returns
-    /// `None` on a panicking adapter (matches the genuinely-absent
-    /// account branch).
-    ///
-    /// ADR-0050 §D5 — the gift-wrap DM chain calls this ONCE at step 1 to pin
-    /// the originating account for the whole chain.
+    /// D15-wrapped [`LocalSignerAccess::active_account_pubkey`] — the §D5
+    /// account-pin source. Returns `None` on a panicking adapter (matches the
+    /// genuinely-absent account branch).
     #[must_use]
     pub fn active_account_pubkey(&self) -> Option<String> {
         let s = self.signers;
@@ -548,22 +544,12 @@ impl<'a> ProtocolCommandContext<'a> {
     }
 
     /// ADR-0050 §D1 cipher-port helper — the NIP-44 encrypt twin of
-    /// [`sign_event_for_account`](Self::sign_event_for_account). Build an
+    /// [`sign_event_for_account`](Self::sign_event_for_account). Sends an
     /// [`ActorCommand::Nip44EncryptForAccount`] for `plaintext` → `peer_pubkey`
-    /// (signed by the named `Some(hex)` or active `None` account) carrying
-    /// `continuation`, and send it back into the actor loop.
-    ///
-    /// Local-vs-bunker is invisible to the caller: a local account encrypts via
-    /// `nostr::nips::nip44` inside the runtime (keys never escape, D13); a NIP-46
-    /// bunker routes through `RemoteSignerHandle::nip44_encrypt` and parks under
-    /// the `CipherContinuation` sink. The continuation runs on the actor thread,
-    /// receives only the ciphertext (D13), and must only enqueue further work
-    /// (D8).
-    ///
-    /// A worker thread that already holds a [`command_sender_clone`] should use
-    /// [`build_nip44_encrypt_for_account`] instead.
-    ///
-    /// [`command_sender_clone`]: Self::command_sender_clone
+    /// (named `Some(hex)` or active `None` account). Local-vs-bunker is invisible
+    /// (D13 — only ciphertext crosses); the continuation runs on the actor thread
+    /// and only enqueues work (D8). Worker threads holding a `command_sender_clone`
+    /// use [`build_nip44_encrypt_for_account`] directly.
     pub fn nip44_encrypt_for_account(
         &self,
         peer_pubkey: String,
@@ -643,61 +629,6 @@ impl<'a> ProtocolCommandContext<'a> {
     }
 }
 
-/// Build an [`ActorCommand::SignEventForAccount`] (ADR-0043 Decision 2) the
-/// generic, backend-transparent sign-account port.
-///
-/// This free function lets a spawned worker thread — which holds only a
-/// [`CommandSender`](crate::actor::CommandSender) (via
-/// [`ProtocolCommandContext::command_sender_clone`]), not the actor-thread
-/// `ctx` — construct the command and `send` it itself.
-/// The actor's dispatch arm signs (active account when `signer_pubkey` is
-/// `None`, else the named roster key) and invokes `continuation` with the
-/// resolved [`crate::substrate::SignedEvent`] or an error string — inline for a
-/// local key, from the idle-loop drain for a parked NIP-46 bunker. The caller
-/// cannot tell which.
-///
-/// The continuation runs on the actor thread; it must only enqueue further
-/// work (D8) and never receives raw key bytes (D13).
-pub fn build_sign_event_for_account(
-    unsigned: crate::substrate::UnsignedEvent,
-    signer_pubkey: Option<String>,
-    continuation: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
-) -> ActorCommand {
-    ActorCommand::SignEventForAccount {
-        unsigned,
-        signer_pubkey,
-        continuation: crate::actor::SignContinuation::new(continuation),
-    }
-}
-
-/// Build an [`ActorCommand::Nip44EncryptForAccount`] (ADR-0050 §D1) — the
-/// NIP-44 encrypt twin of [`build_sign_event_for_account`].
-///
-/// Lets a spawned worker thread (holding only a
-/// [`CommandSender`](crate::actor::CommandSender) via
-/// [`ProtocolCommandContext::command_sender_clone`], not the actor-thread `ctx`)
-/// construct the cipher-port command and `send` it itself. The actor's dispatch
-/// arm encrypts `plaintext` → `peer_pubkey` with the named (`Some(hex)`) or
-/// active (`None`) account and invokes `continuation` with the ciphertext or an
-/// error string — inline for a local key, from the idle-loop drain for a parked
-/// NIP-46 bunker.
-///
-/// The continuation runs on the actor thread; it must only enqueue further work
-/// (D8) and receives only ciphertext (D13).
-pub fn build_nip44_encrypt_for_account(
-    peer_pubkey: String,
-    plaintext: String,
-    signer_pubkey: Option<String>,
-    continuation: impl FnOnce(Result<String, String>) + Send + 'static,
-) -> ActorCommand {
-    ActorCommand::Nip44EncryptForAccount {
-        peer_pubkey,
-        plaintext,
-        signer_pubkey,
-        continuation: crate::actor::CipherContinuation::new(continuation),
-    }
-}
-
 /// Open-seam command dispatched as [`ActorCommand::Protocol`].
 ///
 /// `Debug` is required because [`ActorCommand`] derives `Debug` and the
@@ -709,6 +640,10 @@ pub trait ProtocolCommand: Send + fmt::Debug + 'static {
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError>;
 }
+
+#[path = "protocol/builders.rs"]
+mod builders;
+pub use builders::{build_nip44_encrypt_for_account, build_sign_event_for_account};
 
 #[cfg(test)]
 #[path = "protocol/tests.rs"]
