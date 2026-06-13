@@ -6,8 +6,11 @@
 
 use std::sync::{Arc, Mutex};
 
-use jni::objects::GlobalRef;
-use jni::JavaVM;
+use jni::objects::{GlobalRef, JClass, JObject};
+use jni::sys::jlong;
+use jni::{JNIEnv, JavaVM};
+
+use crate::session::session_arc;
 
 /// JNI push listener for kernel update frames.
 ///
@@ -69,3 +72,53 @@ impl UpdatePushListener {
 /// drop the lock, and then invoke `push` without holding the mutex across
 /// the JNI boundary (deadlock prevention — see session.rs `on_update`).
 pub(crate) type UpdateListenerSlot = Mutex<Option<Arc<UpdatePushListener>>>;
+
+/// Register (or clear) the JNI push listener for kernel update frames
+/// (issue #614 — D8 no-polling; replaces the deleted `nativeNextUpdate`
+/// blocking drain).
+///
+/// `listener` must implement `fun onUpdate(frame: ByteArray)`. Frames are
+/// pushed from the kernel's update-listener thread (a Rust background thread),
+/// so Kotlin must treat `onUpdate` as a background callback and marshal to the
+/// main thread itself when needed. Pass `null` to deregister.
+///
+/// D6: a null/dead handle, or any JNI failure obtaining the `JavaVM` / global
+/// ref, is a silent no-op — never panics across the seam. The listener
+/// `GlobalRef` is dropped on teardown (`nativeClose`/`nativeFree`) after the
+/// update-callback quiescence gate guarantees no in-flight `on_update`.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeSetUpdateListener(
+    env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    listener: JObject,
+) {
+    let Some(s) = session_arc(handle) else {
+        return;
+    };
+    if listener.is_null() {
+        s.clear_push_listener();
+        return;
+    }
+    let Ok(vm) = env.get_java_vm() else {
+        return;
+    };
+    let Ok(global) = env.new_global_ref(&listener) else {
+        return;
+    };
+    s.set_push_listener(UpdatePushListener::new(vm, global));
+}
+
+/// Clear the JNI push listener without freeing the session (issue #614).
+///
+/// D6: a null/dead handle is a silent no-op.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClearUpdateListener(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if let Some(s) = session_arc(handle) {
+        s.clear_push_listener();
+    }
+}

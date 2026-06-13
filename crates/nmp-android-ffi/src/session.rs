@@ -15,7 +15,6 @@ use nmp_ffi::{nmp_app_free, nmp_app_set_capability_callback, nmp_app_set_update_
 
 use crate::capability::CapabilityHandlerSlot;
 use crate::signer_request_listener::SignerRequestListenerSlot;
-pub(crate) use crate::signer_request_listener::SignerRequestPushListener;
 use crate::update_listener::UpdateListenerSlot;
 pub(crate) use crate::update_listener::UpdatePushListener;
 
@@ -170,72 +169,6 @@ impl Session {
     /// Drop the JNI push listener (deregister). Safe to call when none is set.
     pub(crate) fn clear_push_listener(&self) {
         self.callback_state.clear_push_listener();
-    }
-
-    /// Register the JNI push listener for NIP-55 signer requests (issue #1284).
-    /// Replaces an existing listener if one is already set. Cleared on teardown
-    /// by [`Self::close_updates_locked`].
-    pub(crate) fn set_signer_request_listener(&self, listener: SignerRequestPushListener) {
-        if let Ok(mut slot) = self.signer_request_listener.lock() {
-            *slot = Some(Arc::new(listener));
-        }
-    }
-
-    /// Drop the NIP-55 signer-request push listener (deregister). Safe to call
-    /// when none is set.
-    pub(crate) fn clear_signer_request_listener(&self) {
-        if let Ok(mut slot) = self.signer_request_listener.lock() {
-            slot.take();
-        }
-    }
-
-    /// Push one `ExternalSignerRequest` JSON to the registered Kotlin listener,
-    /// if any. Returns `true` when a listener consumed the request.
-    ///
-    /// Lock ordering: snapshot the `Arc` clone under the slot lock, drop the
-    /// lock BEFORE the JNI upcall (mirrors `on_update`) so Kotlin re-entering a
-    /// Rust JNI entry-point from inside `onSignerRequest` cannot deadlock.
-    pub(crate) fn push_signer_request(&self, request_json: &str) -> bool {
-        let listener_snapshot: Option<Arc<SignerRequestPushListener>> = self
-            .signer_request_listener
-            .lock()
-            .ok()
-            .and_then(|g| g.clone());
-        if let Some(listener) = listener_snapshot {
-            listener.push(request_json);
-            return true;
-        }
-        // Test-only path: with no JVM-backed listener, route to the capture sink
-        // (when armed) so the trampoline tests can assert the pushed payload.
-        #[cfg(test)]
-        {
-            if let Ok(mut guard) = self.signer_request_capture.lock() {
-                if let Some(sink) = guard.as_mut() {
-                    sink.push(request_json.to_string());
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    /// Test-only: arm the signer-request capture sink so `push_signer_request`
-    /// records pushed payloads (no JVM available in unit tests).
-    #[cfg(test)]
-    pub(crate) fn arm_signer_request_capture(&self) {
-        if let Ok(mut guard) = self.signer_request_capture.lock() {
-            *guard = Some(Vec::new());
-        }
-    }
-
-    /// Test-only: drain the captured signer-request payloads.
-    #[cfg(test)]
-    pub(crate) fn captured_signer_requests(&self) -> Vec<String> {
-        self.signer_request_capture
-            .lock()
-            .ok()
-            .and_then(|g| g.clone())
-            .unwrap_or_default()
     }
 
     pub(crate) fn free_native(&self) {

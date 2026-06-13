@@ -7,10 +7,22 @@ const ACTION_RS: &str = include_str!("../src/action.rs");
 const PLATFORM_RS: &str = include_str!("../src/platform.rs");
 const SIGNER_RS: &str = include_str!("../src/signer.rs");
 const EXTERNAL_SIGNER_RS: &str = include_str!("../src/external_signer.rs");
+// The NIP-55 signer-request push-listener JNI symbols
+// (`nativeSetSignerRequestListener`/`nativeClearSignerRequestListener`) live in
+// this module, not `lib.rs`, so the parity grep must include it.
+const SIGNER_REQUEST_LISTENER_RS: &str = include_str!("../src/signer_request_listener.rs");
 
 #[test]
 fn android_bridge_declares_parity_jni_symbols() {
-    let rust = [LIB_RS, ACTION_RS, PLATFORM_RS, SIGNER_RS, EXTERNAL_SIGNER_RS].join("\n");
+    let rust = [
+        LIB_RS,
+        ACTION_RS,
+        PLATFORM_RS,
+        SIGNER_RS,
+        EXTERNAL_SIGNER_RS,
+        SIGNER_REQUEST_LISTENER_RS,
+    ]
+    .join("\n");
     for method in [
         "SetStoragePath",
         "LifecycleForeground",
