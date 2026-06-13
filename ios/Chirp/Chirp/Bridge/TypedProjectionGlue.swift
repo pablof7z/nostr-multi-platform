@@ -249,8 +249,8 @@ enum TypedProjectionGlue {
             reconnectCount: row.reconnectCount,
             bytesRxDisplay: row.hasBytesRxDisplay ? (row.bytesRxDisplay ?? "") : nil,
             bytesTxDisplay: row.hasBytesTxDisplay ? (row.bytesTxDisplay ?? "") : nil,
-            lastConnectedDisplay: row.hasLastConnectedDisplay ? (row.lastConnectedDisplay ?? "") : nil,
-            lastEventDisplay: row.hasLastEventDisplay ? (row.lastEventDisplay ?? "") : nil,
+            lastConnectedMs: row.lastConnectedMs,
+            lastEventMs: row.lastEventMs,
             lastNotice: row.hasLastNotice ? (row.lastNotice ?? "") : nil,
             lastError: row.hasLastError ? (row.lastError ?? "") : nil,
             wireSubs: row.wireSubs.map(relayDiagnosticsWireSub),
@@ -270,9 +270,9 @@ enum TypedProjectionGlue {
             consumerCountLabel: sub.consumerCountLabel ?? "",
             eventsRxDisplay: sub.hasEventsRxDisplay ? (sub.eventsRxDisplay ?? "") : nil,
             eoseObserved: sub.eoseObserved,
-            openedDisplay: sub.openedDisplay ?? "",
-            lastEventDisplay: sub.hasLastEventDisplay ? (sub.lastEventDisplay ?? "") : nil,
-            eoseDisplay: sub.hasEoseDisplay ? (sub.eoseDisplay ?? "") : nil,
+            openedMs: sub.openedMs,
+            lastEventMs: sub.lastEventMs,
+            eoseMs: sub.eoseMs,
             closeReason: sub.hasCloseReason ? (sub.closeReason ?? "") : nil
         )
     }

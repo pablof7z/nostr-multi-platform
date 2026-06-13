@@ -114,11 +114,21 @@ impl Kernel {
         self.update_relay_auth_status(role, RelayAuthState::ChallengeReceived, None);
         self.sync_transport_from_lane(role, delivering_relay_url);
 
-        let Some((signer, active_pubkey)) = self
-            .auth_signers
-            .get(&role)
-            .map(|c| (Arc::clone(&c.signer), c.pubkey_hex.clone()))
-        else {
+        // Resolve the signing account for this lane. Two disjoint bindings
+        // (kept disjoint by `bind_auth_signer` / `bind_auth_remote`):
+        //   * a synchronous local-key `AuthSignerFn` → sign inline below;
+        //   * a remote-signer AUTH pubkey (NIP-46 / NIP-55) → there is no
+        //     synchronous signer, so build the unsigned event and PARK it for
+        //     the async signer port (V-06 / #960). The relay stays
+        //     `ChallengeReceived` until the signed frame resolves.
+        let resolved = if let Some(c) = self.auth_signers.get(&role) {
+            Some((Some(Arc::clone(&c.signer)), c.pubkey_hex.clone()))
+        } else {
+            self.auth_remote_pubkeys
+                .get(&role)
+                .map(|pk| (None, pk.clone()))
+        };
+        let Some((sync_signer, active_pubkey)) = resolved else {
             self.log(format!(
                 "AUTH challenge from {} but no signer bound for this role — staying in ChallengeReceived",
                 role.key()
@@ -140,80 +150,118 @@ impl Kernel {
         // of the relay that issued the challenge (replay protection).
         let unsigned =
             build_auth_event(active_pubkey, delivering_relay_url, &challenge, created_at);
-        match signer(&unsigned) {
-            Ok(signed) => {
-                // Structural-validation guard against buggy/malicious signers
-                // that mutate the kind, drop the challenge tag, or return
-                // malformed ids/sigs. Schnorr verification is separately
-                // handled at the store boundary; this is the shape gate.
-                if let Err(reason) = super::super::auth::validate_signed_for(&signed, &challenge) {
-                    self.log(format!(
-                        "AUTH signer returned invalid event for {}: {reason}",
-                        role.key()
-                    ));
-                    let driver = self.auth_drivers.entry(role).or_default();
-                    driver.record_signer_failure();
-                    let _ = self
-                        .lifecycle
-                        .handle_auth_state_change(relay_url, RelayAuthState::Failed);
-                    self.update_relay_auth_status(role, RelayAuthState::Failed, Some(reason));
-                    self.sync_transport_from_lane(role, delivering_relay_url);
-                    // T76 fail-closed: discard any REQs already deferred for
-                    // this relay so they cannot leak unauthenticated.
-                    self.purge_deferred_reqs_for(role);
-                    return Vec::new();
-                }
-                let event_id = signed.id.clone();
-                let driver = self.auth_drivers.entry(role).or_default();
-                if !driver.record_dispatch(event_id.clone()) {
-                    return Vec::new();
-                }
-                let _ = self
-                    .lifecycle
-                    .handle_auth_state_change(relay_url, RelayAuthState::Authenticating);
-                self.update_relay_auth_status(role, RelayAuthState::Authenticating, None);
-                self.sync_transport_from_lane(role, delivering_relay_url);
-                let wire = json!([
-                    "AUTH",
-                    {
-                        "id": signed.id,
-                        "pubkey": signed.unsigned.pubkey,
-                        "kind": signed.unsigned.kind,
-                        "tags": signed.unsigned.tags,
-                        "content": signed.unsigned.content,
-                        "created_at": signed.unsigned.created_at,
-                        "sig": signed.sig,
-                    }
-                ])
-                .to_string();
-                self.log(format!(
-                    "AUTH dispatched to {} via {} ({event_id})",
-                    role.key(),
-                    delivering_relay_url
-                ));
-                // T125: route the AUTH response to the delivering socket. The
-                // URL-keyed transport pool (T105 / fada22b) dispatches by
-                // `relay_url`; pre-T125 this stamped `role.url()` (bootstrap),
-                // which mis-routed the response on any non-bootstrap relay.
-                vec![OutboundMessage {
-                    role,
-                    relay_url: delivering_relay_url.to_string(),
-                    text: wire,
-                }]
-            }
+
+        let Some(sync_signer) = sync_signer else {
+            // Remote signer: park the unsigned AUTH for the async signer port.
+            // The actor drains `take_pending_auth_signs()` after this frame,
+            // routes it through the same `sign_*_nonblocking` seam as every
+            // other write, and re-enters `dispatch_signed_auth` on resolution.
+            self.log(format!(
+                "AUTH challenge from {} — remote signer, parking kind:22242 for the async signer port",
+                role.key()
+            ));
+            self.pending_auth_signs.push(super::super::PendingAuthSign {
+                role,
+                relay_url: delivering_relay_url.to_string(),
+                unsigned,
+                challenge,
+            });
+            return Vec::new();
+        };
+
+        // Local key: resolve inline (preserves the synchronous fast path).
+        match sync_signer(&unsigned) {
+            Ok(signed) => self.dispatch_signed_auth(role, delivering_relay_url, &challenge, signed),
             Err(reason) => {
-                self.log(format!("AUTH signer failed for {}: {reason}", role.key()));
-                let driver = self.auth_drivers.entry(role).or_default();
-                driver.record_signer_failure();
-                let _ = self
-                    .lifecycle
-                    .handle_auth_state_change(relay_url, RelayAuthState::Failed);
-                self.update_relay_auth_status(role, RelayAuthState::Failed, Some(reason));
-                self.sync_transport_from_lane(role, delivering_relay_url);
-                self.purge_deferred_reqs_for(role);
+                self.fail_auth_sign(role, delivering_relay_url, reason);
                 Vec::new()
             }
         }
+    }
+
+    /// V-06 / #960 — re-entry point for a resolved AUTH signature (local inline
+    /// OR the async signer-port round-trip). Runs the structural validation
+    /// gate, drives the driver + per-URL `AuthGate` to `Authenticating`, and
+    /// emits the CLIENT-`["AUTH", <signed>]` frame routed back to the delivering
+    /// socket. On a structurally-invalid signature it fails closed (same as the
+    /// inline path) and returns no frames.
+    pub(crate) fn dispatch_signed_auth(
+        &mut self,
+        role: RelayRole,
+        delivering_relay_url: &str,
+        challenge: &str,
+        signed: crate::substrate::SignedEvent,
+    ) -> Vec<OutboundMessage> {
+        let relay_url = delivering_relay_url.to_string();
+        // Structural-validation guard against buggy/malicious signers that
+        // mutate the kind, drop the challenge tag, or return malformed ids/sigs.
+        // Schnorr verification is separately handled at the store boundary; this
+        // is the shape gate.
+        if let Err(reason) = super::super::auth::validate_signed_for(&signed, challenge) {
+            self.log(format!(
+                "AUTH signer returned invalid event for {}: {reason}",
+                role.key()
+            ));
+            self.fail_auth_sign(role, delivering_relay_url, reason);
+            return Vec::new();
+        }
+        let event_id = signed.id.clone();
+        let driver = self.auth_drivers.entry(role).or_default();
+        if !driver.record_dispatch(event_id.clone()) {
+            // No challenge pending (raced a disconnect) — drop silently.
+            return Vec::new();
+        }
+        let _ = self
+            .lifecycle
+            .handle_auth_state_change(relay_url, RelayAuthState::Authenticating);
+        self.update_relay_auth_status(role, RelayAuthState::Authenticating, None);
+        self.sync_transport_from_lane(role, delivering_relay_url);
+        let wire = json!([
+            "AUTH",
+            {
+                "id": signed.id,
+                "pubkey": signed.unsigned.pubkey,
+                "kind": signed.unsigned.kind,
+                "tags": signed.unsigned.tags,
+                "content": signed.unsigned.content,
+                "created_at": signed.unsigned.created_at,
+                "sig": signed.sig,
+            }
+        ])
+        .to_string();
+        self.log(format!(
+            "AUTH dispatched to {} via {} ({event_id})",
+            role.key(),
+            delivering_relay_url
+        ));
+        // T125: route the AUTH response to the delivering socket. The URL-keyed
+        // transport pool (T105 / fada22b) dispatches by `relay_url`.
+        vec![OutboundMessage {
+            role,
+            relay_url: delivering_relay_url.to_string(),
+            text: wire,
+        }]
+    }
+
+    /// V-06 / #960 — fail an AUTH sign (the signer rejected, threw, timed out,
+    /// or returned a structurally-invalid event). Drives the driver + gate to
+    /// `Failed`, surfaces the reason on the diagnostic surface, and fails closed
+    /// by purging any REQs deferred behind this relay's AUTH gate (T76).
+    pub(crate) fn fail_auth_sign(
+        &mut self,
+        role: RelayRole,
+        delivering_relay_url: &str,
+        reason: String,
+    ) {
+        self.log(format!("AUTH signer failed for {}: {reason}", role.key()));
+        let driver = self.auth_drivers.entry(role).or_default();
+        driver.record_signer_failure();
+        let _ = self
+            .lifecycle
+            .handle_auth_state_change(delivering_relay_url.to_string(), RelayAuthState::Failed);
+        self.update_relay_auth_status(role, RelayAuthState::Failed, Some(reason));
+        self.sync_transport_from_lane(role, delivering_relay_url);
+        self.purge_deferred_reqs_for(role);
     }
 
     /// M5+M2+M8 wiring: handle an `["OK", <event_id>, <accepted>, <reason>]`

@@ -10,15 +10,24 @@
 //!
 //! 1. After each update frame arrives in the listener thread, decode the KCEV
 //!    typed sidecar, call `nmp_content::resolve_embed_projection` on every row,
-//!    and store the pre-resolved JSON map in a shared slot.
-//! 2. A JSON snapshot projection closure registered at app-init reads from
-//!    that slot on every subsequent tick and contributes
-//!    `projections["claimed_event_embeds"]` to the snapshot.
+//!    and store the pre-resolved `primary_id -> EmbeddedEventEnvelope` map in a
+//!    shared slot (the single source of truth — see [`EmbedSidecarSlot`]).
+//! 2. TWO snapshot projection closures registered at app-init read from that one
+//!    slot on every subsequent tick and contribute `claimed_event_embeds`:
+//!    - a **JSON** `Value` projection (issue #1283 transitional) for the gallery
+//!      shell, which still decodes the JSON sidecar; and
+//!    - a **typed** `NEMB` FlatBuffer projection
+//!      ([`nmp_content::wire::encode_claimed_event_embeds`]) for the typed-frame
+//!      shells (Chirp iOS + chirp-desktop), which have no JSON `payload` and so
+//!      decode the typed sidecar.
 //!
-//! Shells decode the new key instead of duplicating the `match kind` resolver
-//! in Swift/Kotlin.  The iOS `EmbedHost.resolve()` / `parseProfileMetadata` /
-//! `extractTopLevelMedia` methods are deleted; the gallery `EmbedHost` clone
-//! is deleted identically.
+//! Both encoders consume the identical resolved map, so the two sidecars carry
+//! the same data — a host's `typed<K> ?? json<k>` fallback lines up. Typed-frame
+//! shells decode the typed key instead of duplicating the `match kind` resolver
+//! in Swift/Kotlin: the iOS `EmbedHost.resolve()` / `parseProfileMetadata` /
+//! `extractTopLevelMedia` methods are deleted (closing the EmbedHost D0
+//! violation #1283, and fixing the #1299 inverted display_name precedence by
+//! making the Rust resolver authoritative).
 //!
 //! ## One-tick lag
 //!
@@ -33,28 +42,42 @@
 //! - D0: kind-dispatch lives in `nmp-content`, not in the kernel.  `nmp-ffi`
 //!   bridges substrate → rendering at the C-ABI boundary — the one layer that
 //!   is legally above both `nmp-core` and `nmp-content`.
-//! - D8: the listener-thread processing (decode + resolve + JSON serialize) is
-//!   pure in-process Rust — no I/O, no blocking.  The projection closure is
-//!   a cheap `Arc::clone` + `Mutex::lock` read — non-blocking on the actor
-//!   thread (D8: projection closures must be non-blocking).
-//! - D6: all failure paths (missing KCEV entry, decode error, serialize error)
-//!   degrade to a `None`-valued slot which the projection closure maps to an
-//!   empty JSON object `{}` — never a panic.
+//! - D8: the listener-thread processing (decode + resolve) is pure in-process
+//!   Rust — no I/O, no blocking.  Each projection closure is a cheap
+//!   `Mutex::lock` read + encode — non-blocking on the actor thread (D8:
+//!   projection closures must be non-blocking).
+//! - D6: all failure paths (missing KCEV entry, decode error) degrade to an
+//!   empty map, which the JSON closure maps to `{}` and the typed closure to a
+//!   well-formed empty `NEMB` buffer — never a panic.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use nmp_content::{resolve_embed_projection, EmbedKindProjection, RenderContext};
+use nmp_content::wire::{encode_claimed_event_embeds, EMBED_SIDECAR_SCHEMA_VERSION};
+use nmp_content::{
+    resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContext,
+    RenderContextWire,
+};
 use nmp_core::{
     decode_snapshot_typed_projections,
     substrate::KernelEvent,
     typed_projections::{decode_claimed_events, ClaimedEventRow, CLAIMED_EVENTS_SCHEMA_ID},
+    TypedProjectionData,
 };
 use serde_json::Value;
 
-/// Shared slot that carries the latest resolved `claimed_event_embeds` JSON
-/// map (`primary_id -> EmbedKindProjection`).  `None` before the first frame
-/// arrives.  Always `Some({})` or `Some({ ... })` after the first frame.
-pub(crate) type EmbedSidecarSlot = Arc<Mutex<Option<Value>>>;
+/// Snapshot-projection key both sidecars share (the typed FlatBuffer and the
+/// transitional JSON `Value` carry the identical resolved map under this key, so
+/// a host's `typed<K> ?? json<k>` fallback lines up).
+const EMBED_SIDECAR_KEY: &str = "claimed_event_embeds";
+
+/// Shared slot that carries the latest resolved embed map
+/// (`primary_id -> EmbeddedEventEnvelope`). This is the SINGLE source of truth
+/// the listener thread writes; both the JSON projection (gallery shell) and the
+/// typed FlatBuffer projection (Chirp typed-frame shell) are derived from it on
+/// the actor thread. `None` before the first frame arrives; `Some(map)` (which
+/// may be empty) after.
+pub(crate) type EmbedSidecarSlot = Arc<Mutex<Option<BTreeMap<String, EmbeddedEventEnvelope>>>>;
 
 /// Construct a new, empty [`EmbedSidecarSlot`].
 pub(crate) fn new_embed_sidecar_slot() -> EmbedSidecarSlot {
@@ -85,15 +108,35 @@ fn row_to_kernel_event(row: &ClaimedEventRow) -> KernelEvent {
     }
 }
 
+/// Build the FFI-sidecar [`EmbeddedEventEnvelope`] around a resolved projection.
+///
+/// Mirrors the Phase 0 JSON envelope shape: `uri=""`, `depth=0`, `max_depth=4`,
+/// `collapsed=false`, `collapse_reason=None`. Both the JSON and typed encoders
+/// consume this shared shape so the two sidecars carry identical data.
+fn build_envelope(primary_id: &str, projection: EmbedKindProjection) -> EmbeddedEventEnvelope {
+    EmbeddedEventEnvelope {
+        uri: String::new(),
+        primary_id: primary_id.to_string(),
+        render_context: RenderContextWire {
+            depth: 0,
+            max_depth: 4,
+            visited: Vec::new(),
+        },
+        projection,
+        collapsed: false,
+        collapse_reason: None,
+    }
+}
+
 /// Called from the listener thread after every update frame.
 ///
 /// Decodes the KCEV (`claimed_events`) typed sidecar from `frame_bytes`,
-/// resolves each row's `EmbedKindProjection` via `nmp-content`, serialises
-/// the result as a `primary_id -> EmbedKindProjection` JSON object, and
-/// stores it in `slot`.  The next tick's projection closure reads from the
-/// slot (one-tick lag — see module doc).
+/// resolves each row's `EmbedKindProjection` via `nmp-content`, and stores the
+/// resolved `primary_id -> EmbeddedEventEnvelope` map in `slot`. The next tick's
+/// projection closures (JSON + typed) read from the slot and each encode their
+/// own wire form (one-tick lag — see module doc).
 ///
-/// Silent no-ops on any decode / serialize failure (D6).
+/// Silent no-ops on any decode failure (D6).
 pub(crate) fn update_embed_sidecar_from_frame(
     frame_bytes: &[u8],
     slot: &EmbedSidecarSlot,
@@ -119,71 +162,105 @@ pub(crate) fn update_embed_sidecar_from_frame(
     };
 
     if model.entries.is_empty() {
-        // Explicit empty map — clear the slot so EmbedHost sees {} not stale.
+        // Explicit empty map — clear the slot so both sidecars see {} not stale.
         if let Ok(mut guard) = slot.lock() {
-            *guard = Some(Value::Object(serde_json::Map::new()));
+            *guard = Some(BTreeMap::new());
         }
         return;
     }
 
-    // Resolve each entry.
+    // Resolve each entry into the shared envelope shape.
     let ctx = RenderContext::new();
-    let mut map = serde_json::Map::with_capacity(model.entries.len());
+    let mut map: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
     for (primary_id, row) in &model.entries {
         let event = row_to_kernel_event(row);
         let projection: EmbedKindProjection = resolve_embed_projection(&event, &ctx);
-        // Build the full envelope that the shell decodes. Mirrors
-        // `EmbeddedEventEnvelope` shape so the Swift Codable decode works
-        // against the existing F-CR-12 types without a new wire type.
-        //
-        // Keys are snake_case so the iOS `JSONDecoder.keyDecodingStrategy =
-        // .convertFromSnakeCase` maps them to the camelCase Swift properties.
-        // `projection` sub-object keys remain camelCase (serde `rename_all`)
-        // — convertFromSnakeCase is a no-op for already-camelCase tokens.
-        let envelope = serde_json::json!({
-            "uri": "",
-            "primary_id": primary_id,
-            "depth": 0u8,
-            "max_depth": 4u8,
-            "collapsed": false,
-            "collapse_reason": null,
-            "projection": projection,
-        });
-        map.insert(primary_id.clone(), envelope);
+        map.insert(primary_id.clone(), build_envelope(primary_id, projection));
     }
 
     if let Ok(mut guard) = slot.lock() {
-        *guard = Some(Value::Object(map));
+        *guard = Some(map);
     }
 }
 
-/// Read the current embed sidecar value from the slot.
-///
-/// Returns `Value::Object({})` when the slot is `None` (first tick, before
-/// the first frame has been processed) or when the mutex is poisoned (D6).
-pub(crate) fn read_embed_sidecar(slot: &EmbedSidecarSlot) -> Value {
+/// Read the current resolved embed map from the slot, cloning it out under the
+/// lock. Returns an empty map when the slot is `None` (first tick, before any
+/// frame is processed) or when the mutex is poisoned (D6).
+fn snapshot_map(slot: &EmbedSidecarSlot) -> BTreeMap<String, EmbeddedEventEnvelope> {
     slot.lock()
         .ok()
         .and_then(|g| g.clone())
-        .unwrap_or_else(|| Value::Object(serde_json::Map::new()))
+        .unwrap_or_default()
 }
 
-/// Register the `claimed_event_embeds` JSON snapshot projection on `app`.
+/// Build the transitional JSON `Value` form of the embed sidecar from the slot.
 ///
-/// Takes ownership of `slot` (the same `Arc` the listener thread holds a clone
-/// of) and moves it into the projection closure, which reads it on every tick.
+/// Mirrors the Phase 0 wire shape (snake_case envelope keys so the iOS gallery
+/// `JSONDecoder.keyDecodingStrategy = .convertFromSnakeCase` maps them to the
+/// camelCase Swift properties; the `projection` sub-object keys stay camelCase
+/// via serde `rename_all`). Returns `Value::Object({})` for an empty/absent slot
+/// (D1: always present).
+pub(crate) fn read_embed_sidecar(slot: &EmbedSidecarSlot) -> Value {
+    let map = snapshot_map(slot);
+    let mut out = serde_json::Map::with_capacity(map.len());
+    for (primary_id, env) in &map {
+        let envelope = serde_json::json!({
+            "uri": env.uri,
+            "primary_id": env.primary_id,
+            "depth": env.render_context.depth,
+            "max_depth": env.render_context.max_depth,
+            "collapsed": env.collapsed,
+            "collapse_reason": env.collapse_reason,
+            "projection": env.projection,
+        });
+        out.insert(primary_id.clone(), envelope);
+    }
+    Value::Object(out)
+}
+
+/// Build the TYPED FlatBuffer (`NEMB`) form of the embed sidecar from the slot.
+///
+/// Always returns a present [`TypedProjectionData`] — an empty map is a
+/// well-formed empty buffer (D1: present and typed even when empty). This is the
+/// surface a typed-frame shell (Chirp) decodes; it carries the identical
+/// resolved map as the JSON form. D6: a poisoned slot degrades to an empty
+/// buffer (via [`snapshot_map`]) rather than panicking on the actor thread.
+pub(crate) fn read_embed_sidecar_typed(slot: &EmbedSidecarSlot) -> TypedProjectionData {
+    let map = snapshot_map(slot);
+    TypedProjectionData {
+        key: EMBED_SIDECAR_KEY.to_string(),
+        schema_id: EMBED_SIDECAR_KEY.to_string(),
+        schema_version: EMBED_SIDECAR_SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(nmp_content::wire::EMBED_SIDECAR_FILE_IDENTIFIER)
+            .into_owned(),
+        payload: encode_claimed_event_embeds(&map),
+    }
+}
+
+/// Register BOTH the JSON and the typed `claimed_event_embeds` snapshot
+/// projections on `app`, each reading the same `slot` (the resolved map the
+/// listener thread writes).
+///
+/// * The JSON projection (`register_snapshot_projection`) feeds the gallery
+///   shell, which decodes the JSON `Value` sidecar (issue #1283 transitional).
+/// * The typed projection (`register_typed_snapshot_projection`) feeds the Chirp
+///   typed-frame shell, which decodes the `NEMB` FlatBuffer and so needs ZERO
+///   embed-resolution logic in Swift (closes the EmbedHost D0 violation #1283).
+///
 /// On the first tick (before the listener thread has processed any frame) the
-/// slot is `None` and the closure emits `{}` (D1: always present). After the
-/// first frame the slot holds the pre-resolved map. D8: pure `Mutex::lock` read,
-/// non-blocking. D0: kind dispatch lives in `nmp-content`; this is a thin reader.
+/// slot is `None`; both closures emit empty (D1: always present). After the
+/// first frame the slot holds the pre-resolved map. D8: each closure is a pure
+/// `Mutex::lock` read + encode, non-blocking on the actor thread. D0: kind
+/// dispatch lives in `nmp-content`; these are thin readers/encoders.
 ///
-/// The slot's lifetime is owned jointly by this closure and the listener
-/// thread's clone — no `NmpApp` field is needed. Called once at app-init (see
-/// `nmp_app_new`). Keeping the registration body here — rather than inline in
-/// `lib.rs` — keeps the already-over-cap `lib.rs` from growing (AGENTS.md
-/// file-size anti-cheat).
+/// Keeping the registration body here — rather than inline in `lib.rs` — keeps
+/// the already-over-cap `lib.rs` from growing (AGENTS.md file-size anti-cheat).
 pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp, slot: EmbedSidecarSlot) {
-    app.register_snapshot_projection("claimed_event_embeds", move || read_embed_sidecar(&slot));
+    let json_slot = Arc::clone(&slot);
+    app.register_snapshot_projection(EMBED_SIDECAR_KEY, move || read_embed_sidecar(&json_slot));
+    app.register_typed_snapshot_projection(EMBED_SIDECAR_KEY, move || {
+        Some(read_embed_sidecar_typed(&slot))
+    });
 }
 
 // ── Unit tests ──────────────────────────────────────────────────────────────
@@ -345,5 +422,68 @@ mod tests {
             Some("shortNote"),
             "ShortNote variant must serialize as `shortNote` (camelCase tag)"
         );
+    }
+
+    #[test]
+    fn typed_sidecar_is_present_and_empty_when_slot_is_none() {
+        let slot = new_embed_sidecar_slot();
+        let typed = read_embed_sidecar_typed(&slot);
+        assert_eq!(typed.key, EMBED_SIDECAR_KEY);
+        assert_eq!(typed.schema_id, EMBED_SIDECAR_KEY);
+        // An empty slot still yields a present, decodable (empty) NEMB buffer.
+        let decoded = nmp_content::wire::decode_claimed_event_embeds(&typed.payload)
+            .expect("empty typed sidecar must decode");
+        assert!(decoded.is_empty(), "absent slot ⇒ empty typed map");
+    }
+
+    #[test]
+    fn json_and_typed_sidecars_carry_the_same_resolved_map() {
+        // Populate the slot via the real resolve path, then prove the JSON and
+        // typed projections agree on the key set and per-key variant — the
+        // gallery (JSON) and Chirp (typed) shells must see identical embeds.
+        let slot = new_embed_sidecar_slot();
+        let ctx = RenderContext::new();
+        let mut map: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
+        for (pid, kind, content) in [
+            ("note", 1u32, "hi"),
+            ("art", 30023u32, "# A"),
+            ("unk", 30402u32, "x"),
+        ] {
+            let row = make_claimed_event_row(pid, pid, &"aa".repeat(32), kind, content, vec![]);
+            let proj = resolve_embed_projection(&row_to_kernel_event(&row), &ctx);
+            map.insert(pid.to_string(), build_envelope(pid, proj));
+        }
+        *slot.lock().unwrap() = Some(map);
+
+        let json = read_embed_sidecar(&slot);
+        let typed = read_embed_sidecar_typed(&slot);
+        let decoded = nmp_content::wire::decode_claimed_event_embeds(&typed.payload)
+            .expect("typed sidecar must decode");
+
+        let json_obj = json.as_object().expect("json is an object");
+        assert_eq!(json_obj.len(), decoded.len(), "same number of entries");
+        for key in ["note", "art", "unk"] {
+            assert!(json_obj.contains_key(key), "JSON missing {key}");
+            assert!(decoded.contains_key(key), "typed missing {key}");
+            // JSON envelope carries the snake_case primary_id mirror.
+            assert_eq!(
+                json_obj[key]["primary_id"].as_str(),
+                Some(key),
+                "JSON primary_id mismatch for {key}"
+            );
+            assert_eq!(decoded[key].primary_id, key, "typed primary_id mismatch for {key}");
+        }
+        assert!(matches!(
+            decoded["note"].projection,
+            EmbedKindProjection::ShortNote(_)
+        ));
+        assert!(matches!(
+            decoded["art"].projection,
+            EmbedKindProjection::Article(_)
+        ));
+        assert!(matches!(
+            decoded["unk"].projection,
+            EmbedKindProjection::Unknown(_)
+        ));
     }
 }

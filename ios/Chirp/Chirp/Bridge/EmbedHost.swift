@@ -4,17 +4,13 @@ import SwiftUI
 
 /// Raw wire shape for one entry in `projections["claimed_events"]` (ADR-0034 /
 /// F-CR-06). Hand-declared value type for the generated
-/// `SnapshotProjections.claimedEvents` field — Stage-2 codegen emits the
-/// `claimedEvents` field (see
-/// `crates/nmp-codegen/src/swift_projections_registry.rs`) but references this
-/// value type by name; per the registry's maintenance contract the value type
-/// itself stays hand-written until the Stage-3 sweep. Mirrors the kernel's
-/// `ClaimedEventDto` (`crates/nmp-core/src/kernel/types.rs`). The kernel emits
-/// snake_case keys; `KernelHandle.decode` applies `.convertFromSnakeCase`, so
-/// the property names below are the post-transform camelCase form. Extra
-/// kernel fields (`primaryId`, author profile hints) decode-tolerant: Codable
-/// ignores wire keys with no matching property, so the renderer-relevant
-/// subset below is all this host consumes.
+/// `SnapshotProjections.claimedEvents` field and the `claimed_events` typed
+/// decoder (`TypedClaimedEventsDecoder` / `TypedProjectionGlue.claimedEvents`).
+/// Mirrors the kernel's `ClaimedEventDto` (`crates/nmp-core/src/kernel/types.rs`).
+/// The kernel emits snake_case keys; `KernelHandle.decode` applies
+/// `.convertFromSnakeCase`, so the property names below are the post-transform
+/// camelCase form. Retained because `claimed_events` is still a live projection;
+/// it is no longer the embed-resolution input (see `EmbedHost`).
 struct ClaimedEventDto: Decodable, Equatable {
     let id: String
     let authorPubkey: String
@@ -24,36 +20,31 @@ struct ClaimedEventDto: Decodable, Equatable {
     let tags: [[String]]
 }
 
-/// Chirp mirror of the gallery EmbedHost. Reads claimed_events from the
-/// typed SnapshotProjections pushed by the kernel on every frame (D8 — push-driven).
+/// Holds the pre-resolved embed envelope map the kernel pushes on every frame.
 ///
-/// NOTE (issue #1283 / ADR-0034): Chirp uses a typed-only FlatBuffer decode path
-/// (the JSON snapshot payload is absent from Chirp's frame schema). The embed
-/// sidecar produced by `nmp-ffi` (`claimed_event_embeds`) is a JSON snapshot
-/// projection which is not currently accessible to Chirp. A follow-up PR will
-/// add a typed FlatBuffer sidecar so Chirp can decode the pre-resolved
-/// `EmbeddedEventEnvelope` map without the Swift resolver. Until then, this file
-/// retains the in-Swift `match kind` resolver.
+/// Issue #1283 Phase 1: the kind-dispatch + tag/JSON parsing that used to live in
+/// this file (`resolve()` / `parseProfileMetadata` / `extractTopLevelMedia`) is
+/// DELETED. The Rust resolver (`nmp_content::resolve_embed_projection`, invoked by
+/// the `nmp-ffi` `claimed_event_embeds` sidecar producer) does that work on the
+/// kernel side and ships the result as a typed `NEMB` FlatBuffer. Chirp now
+/// decodes that sidecar (`TypedClaimedEventEmbedsDecoder` →
+/// `TypedProjectionGlue.claimedEventEmbeds`) into `[String: EmbeddedEventEnvelope]`
+/// and this host just stores it — ZERO embed-resolution logic in Swift
+/// (D0 thin-shell; closes the EmbedHost D0 violation). This is also what fixes
+/// the #1299 inverted `display_name` precedence: the kernel's NIP-01/24-correct
+/// resolution is authoritative; Swift no longer re-parses kind:0 metadata.
 @MainActor
 @Observable
 final class EmbedHost {
     private(set) var envelopesByPrimaryID: [String: EmbeddedEventEnvelope] = [:]
     var count: Int { envelopesByPrimaryID.count }
 
-    /// Called on every snapshot tick. Rebuilds the envelope map from the
-    /// EFFECTIVE claimed-event map. The caller passes the typed-first value
-    /// (`typedClaimedEvents ?? projections.claimedEvents`) so the `KCEV` sidecar
-    /// wins when present and the generic JSON projection is the fallback
-    /// (ADR-0037 Commitment 4) — the resolver logic is identical either way
-    /// (both yield the same `ClaimedEventDto`).
-    func update(claimedEvents: [String: ClaimedEventDto]?) {
-        guard let claimed = claimedEvents, !claimed.isEmpty else { return }
-        var next: [String: EmbeddedEventEnvelope] = [:]
-        for (primaryID, dto) in claimed {
-            guard let envelope = envelope(primaryID: primaryID, dto: dto) else { continue }
-            next[primaryID] = envelope
-        }
-        envelopesByPrimaryID = next
+    /// Called on every snapshot tick with the pre-resolved embed map decoded from
+    /// the typed `claimed_event_embeds` sidecar. `nil`/empty leaves the previous
+    /// map intact (stable, not flicker) — mirroring the prior behaviour.
+    func update(envelopes: [String: EmbeddedEventEnvelope]?) {
+        guard let envelopes, !envelopes.isEmpty else { return }
+        envelopesByPrimaryID = envelopes
     }
 
     func envelopeForPrimaryID(_ id: String) -> EmbeddedEventEnvelope? {
@@ -63,96 +54,6 @@ final class EmbedHost {
     func envelopeForURI(_ uri: String) -> EmbeddedEventEnvelope? {
         if let direct = envelopesByPrimaryID[uri] { return direct }
         return envelopesByPrimaryID.values.first { $0.uri == uri }
-    }
-
-    // MARK: - Resolver
-
-    private func envelope(primaryID: String, dto: ClaimedEventDto) -> EmbeddedEventEnvelope? {
-        let kind = UInt32(dto.kind)
-        let createdAt = UInt64(max(0, dto.createdAt))
-        let projection = resolve(
-            kind: kind,
-            id: dto.id,
-            authorPubkey: dto.authorPubkey,
-            createdAt: createdAt,
-            content: dto.content,
-            tags: dto.tags
-        )
-        return EmbeddedEventEnvelope(
-            uri: "",
-            primaryId: primaryID,
-            projection: projection
-        )
-    }
-
-    private func resolve(kind: UInt32, id: String, authorPubkey: String,
-                         createdAt: UInt64, content: String, tags: [[String]]) -> EmbedKindProjection {
-        let tagValue: (String) -> String? = { key in
-            guard let row = tags.first(where: { $0.first == key }) else { return nil }
-            return row.count > 1 ? row[1] : nil
-        }
-        switch kind {
-        case 0:
-            let meta = parseProfileMetadata(content)
-            return .profile(ProfileProjection(
-                pubkey: authorPubkey,
-                displayName: meta["name"] ?? meta["display_name"],
-                pictureUrl: meta["picture"],
-                about: meta["about"],
-                nip05: meta["nip05"],
-                lud16: meta["lud16"],
-                bannerUrl: meta["banner"]
-            ))
-        case 1:
-            return .shortNote(ShortNoteProjection(
-                id: id, authorPubkey: authorPubkey, createdAt: createdAt,
-                content: content, mediaUrls: extractTopLevelMedia(content)
-            ))
-        case 9802:
-            return .highlight(HighlightProjection(
-                id: id, authorPubkey: authorPubkey, createdAt: createdAt,
-                highlightedText: content,
-                sourceEventId: tagValue("e"), sourceEventAddr: tagValue("a"),
-                sourceUrl: tagValue("r"), context: tagValue("context")
-            ))
-        case 30023:
-            return .article(ArticleProjection(
-                id: id, authorPubkey: authorPubkey, createdAt: createdAt,
-                title: tagValue("title"), summary: tagValue("summary"),
-                heroImageUrl: tagValue("image"), dTag: tagValue("d") ?? "",
-                content: content
-            ))
-        default:
-            return .unknown(UnknownProjection(
-                kind: kind, authorPubkey: authorPubkey, createdAt: createdAt,
-                content: content, tags: tags, altText: tagValue("alt")
-            ))
-        }
-    }
-}
-
-// MARK: - Helpers
-
-private func parseProfileMetadata(_ content: String) -> [String: String] {
-    guard !content.isEmpty,
-          let data = content.data(using: .utf8),
-          let parsed = try? JSONSerialization.jsonObject(with: data),
-          let dict = parsed as? [String: Any]
-    else { return [:] }
-    var out: [String: String] = [:]
-    for key in ["name", "display_name", "picture", "about", "nip05", "lud16", "banner"] {
-        if let value = dict[key] as? String, !value.isEmpty { out[key] = value }
-    }
-    return out
-}
-
-private func extractTopLevelMedia(_ content: String) -> [String] {
-    let exts = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm", ".mp3", ".wav"]
-    return content.split(whereSeparator: { $0.isWhitespace }).compactMap { token in
-        let lower = token.lowercased()
-        guard lower.hasPrefix("http://") || lower.hasPrefix("https://") else { return nil }
-        guard exts.contains(where: lower.hasSuffix) else { return nil }
-        return String(token)
     }
 }
 

@@ -4986,7 +4986,6 @@ dependencies = [
  "console_error_panic_hook",
  "gloo-timers",
  "js-sys",
- "nmp-chirp-config",
  "nmp-core",
  "nmp-network",
  "nmp-signer-iface",

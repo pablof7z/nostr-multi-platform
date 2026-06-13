@@ -103,11 +103,14 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// feeds `EmbedHost` from the SAME typed value in `apply(result:)`;
     /// `typedDmRelayList` is read through the `dmRelayList` accessor (no consumer
     /// yet — wired for parity).
-    /// NOTE (issue #1283): the embed resolver will move to Rust (`nmp-ffi` sidecar)
-    /// in a follow-up PR that adds a typed FlatBuffer sidecar for `claimed_event_embeds`.
+    /// Issue #1283 Phase 1: the embed resolver moved to Rust. `typedClaimedEventEmbeds`
+    /// carries the kernel-resolved `claimed_event_embeds` (`NEMB`) map that feeds
+    /// `EmbedHost`; `typedClaimedEvents` (`KCEV`) is retained as a separate live
+    /// projection but is no longer the embed-resolution input.
     @Published private(set) var typedDmInbox: DmInboxSnapshot?
     @Published private(set) var typedDmRelayList: DmRelayListSnapshot?
     @Published private(set) var typedClaimedEvents: [String: ClaimedEventDto]?
+    @Published private(set) var typedClaimedEventEmbeds: [String: EmbeddedEventEnvelope]?
 
     /// NIP-46 cluster typed sidecars (`bunker_handshake` / `nip46_onboarding`).
     /// `nil` ⇒ the `bunkerHandshake` / `nip46Onboarding` accessors return nil.
@@ -756,11 +759,12 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         let prevTimelineCount = modularTimeline.cards.count
         #endif
 
-        // Claimed-event map: `EmbedHost` rebuilds the embed envelope map from
-        // the typed `claimed_events` (`KCEV`) sidecar.
-        // TODO (issue #1283): replace with `claimed_event_embeds` typed FlatBuffer
-        // sidecar once the typed path is available in Chirp's frame schema.
-        embedHost.update(claimedEvents: result.typedClaimedEvents)
+        // Issue #1283 Phase 1: `EmbedHost` stores the kernel-resolved embed map
+        // decoded from the typed `claimed_event_embeds` (`NEMB`) sidecar. The
+        // in-Swift `match kind` resolver is DELETED — the Rust resolver
+        // (`nmp_content::resolve_embed_projection`) is the single source of truth,
+        // which also fixes the #1299 inverted display_name precedence.
+        embedHost.update(envelopes: result.typedClaimedEventEmbeds)
         // ADR-0038: store the typed home-feed result. `nil` ⇒ no home-feed
         // sidecar this tick (accessor collapses to `.empty`).
         typedHomeFeed = result.typedHomeFeed
@@ -789,11 +793,12 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedResolvedProfiles = result.typedResolvedProfiles
         // NIP-17 DM cluster + claimed-event map. `typedDmInbox` is consumed
         // below via the same typed value fed to the `dmInbox` store;
-        // `typedClaimedEvents` via the map fed to `EmbedHost.update` above;
+        // `typedClaimedEventEmbeds` via the map fed to `EmbedHost.update` above;
         // `typedDmRelayList` is read through the `dmRelayList` accessor.
         typedDmInbox = result.typedDmInbox
         typedDmRelayList = result.typedDmRelayList
         typedClaimedEvents = result.typedClaimedEvents
+        typedClaimedEventEmbeds = result.typedClaimedEventEmbeds
         // NIP-46 cluster: typed bunker-handshake / onboarding slots.
         typedBunkerHandshake = result.typedBunkerHandshake
         typedNip46Onboarding = result.typedNip46Onboarding
@@ -943,6 +948,7 @@ final class KernelModel: ObservableObject, NostrProfileHost {
         typedDmInbox = nil
         typedDmRelayList = nil
         typedClaimedEvents = nil
+        typedClaimedEventEmbeds = nil
         typedBunkerHandshake = nil
         typedNip46Onboarding = nil
         typedSignerState = nil

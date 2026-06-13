@@ -145,7 +145,6 @@ class TypedRelayDiagnosticsDecoderTest {
         val subStateLabel = b.createString("Listening")
         val subStateTone = b.createString("active")
         val subConsumer = b.createString("2 consumers")
-        val subOpened = b.createString("just now")
         RelayDiagnosticsWireSub.startRelayDiagnosticsWireSub(b)
         RelayDiagnosticsWireSub.addWireId(b, subWireId)
         RelayDiagnosticsWireSub.addShortWireId(b, subShort)
@@ -155,7 +154,8 @@ class TypedRelayDiagnosticsDecoderTest {
         RelayDiagnosticsWireSub.addStateTone(b, subStateTone)
         RelayDiagnosticsWireSub.addConsumerCountLabel(b, subConsumer)
         RelayDiagnosticsWireSub.addEoseObserved(b, true)
-        RelayDiagnosticsWireSub.addOpenedDisplay(b, subOpened)
+        // aim.md §62: raw Unix-epoch-ms timestamp (was the removed openedDisplay).
+        RelayDiagnosticsWireSub.addOpenedMs(b, 1_700_000_000_000UL)
         val sub = RelayDiagnosticsWireSub.endRelayDiagnosticsWireSub(b)
         val wireSubsVec = RelayDiagnosticsRow.createWireSubsVector(b, intArrayOf(sub))
 

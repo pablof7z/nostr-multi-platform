@@ -350,7 +350,7 @@ impl DesktopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in &feed.cards {
-                    feed_card(ui, &entry.card, &profiles, &mut self.tab, &self.bridge);
+                    feed_card(ui, &entry.card, &profiles, &snap.embeds, &mut self.tab, &self.bridge);
                     ui.add_space(6.0);
                 }
             });
@@ -387,7 +387,7 @@ impl DesktopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in &thread_feed.cards {
-                    feed_card(ui, &entry.card, &profiles, &mut self.tab, &self.bridge);
+                    feed_card(ui, &entry.card, &profiles, &snap.embeds, &mut self.tab, &self.bridge);
                     ui.add_space(4.0);
                 }
             });
@@ -396,7 +396,7 @@ impl DesktopApp {
     fn author_view(
         &mut self,
         ui: &mut Ui,
-        _snap: &Snapshot,
+        snap: &Snapshot,
         pubkey: &str,
         feed: Option<ModularTimelineSnapshot>,
         profiles: HashMap<String, ProfileCard>,
@@ -454,7 +454,7 @@ impl DesktopApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 for entry in &author_feed.cards {
-                    feed_card(ui, &entry.card, &profiles, &mut self.tab, &self.bridge);
+                    feed_card(ui, &entry.card, &profiles, &snap.embeds, &mut self.tab, &self.bridge);
                     ui.add_space(4.0);
                 }
             });
@@ -690,6 +690,7 @@ fn feed_card(
     ui: &mut Ui,
     card: &TimelineEventCard,
     profiles: &HashMap<String, ProfileCard>,
+    embeds: &HashMap<String, nmp_content::EmbeddedEventEnvelope>,
     tab: &mut AppTab,
     bridge: &AppRuntime,
 ) {
@@ -750,7 +751,7 @@ fn feed_card(
                         // capture the response of the whole group by wrapping in
                         // a `ui.scope` and checking `response.response.clicked()`.
                         let scope = ui.scope(|ui| {
-                            note_body(ui, text.as_ref());
+                            note_body(ui, text.as_ref(), embeds);
                         });
                         if scope.response.interact(egui::Sense::click()).clicked() {
                             *tab = AppTab::Thread(card.id.clone());

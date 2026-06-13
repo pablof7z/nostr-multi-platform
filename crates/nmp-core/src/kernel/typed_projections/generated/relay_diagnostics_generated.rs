@@ -36,13 +36,11 @@ impl<'a> RelayDiagnosticsWireSub<'a> {
   pub const VT_HAS_EVENTS_RX_DISPLAY: ::flatbuffers::VOffsetT = 18;
   pub const VT_EVENTS_RX_DISPLAY: ::flatbuffers::VOffsetT = 20;
   pub const VT_EOSE_OBSERVED: ::flatbuffers::VOffsetT = 22;
-  pub const VT_OPENED_DISPLAY: ::flatbuffers::VOffsetT = 24;
-  pub const VT_HAS_LAST_EVENT_DISPLAY: ::flatbuffers::VOffsetT = 26;
-  pub const VT_LAST_EVENT_DISPLAY: ::flatbuffers::VOffsetT = 28;
-  pub const VT_HAS_EOSE_DISPLAY: ::flatbuffers::VOffsetT = 30;
-  pub const VT_EOSE_DISPLAY: ::flatbuffers::VOffsetT = 32;
-  pub const VT_HAS_CLOSE_REASON: ::flatbuffers::VOffsetT = 34;
-  pub const VT_CLOSE_REASON: ::flatbuffers::VOffsetT = 36;
+  pub const VT_OPENED_MS: ::flatbuffers::VOffsetT = 24;
+  pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 26;
+  pub const VT_EOSE_MS: ::flatbuffers::VOffsetT = 28;
+  pub const VT_HAS_CLOSE_REASON: ::flatbuffers::VOffsetT = 30;
+  pub const VT_CLOSE_REASON: ::flatbuffers::VOffsetT = 32;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -54,10 +52,10 @@ impl<'a> RelayDiagnosticsWireSub<'a> {
     args: &'args RelayDiagnosticsWireSubArgs<'args>
   ) -> ::flatbuffers::WIPOffset<RelayDiagnosticsWireSub<'bldr>> {
     let mut builder = RelayDiagnosticsWireSubBuilder::new(_fbb);
+    builder.add_eose_ms(args.eose_ms);
+    builder.add_last_event_ms(args.last_event_ms);
+    builder.add_opened_ms(args.opened_ms);
     if let Some(x) = args.close_reason { builder.add_close_reason(x); }
-    if let Some(x) = args.eose_display { builder.add_eose_display(x); }
-    if let Some(x) = args.last_event_display { builder.add_last_event_display(x); }
-    if let Some(x) = args.opened_display { builder.add_opened_display(x); }
     if let Some(x) = args.events_rx_display { builder.add_events_rx_display(x); }
     if let Some(x) = args.consumer_count_label { builder.add_consumer_count_label(x); }
     if let Some(x) = args.state_tone { builder.add_state_tone(x); }
@@ -67,8 +65,6 @@ impl<'a> RelayDiagnosticsWireSub<'a> {
     if let Some(x) = args.short_wire_id { builder.add_short_wire_id(x); }
     if let Some(x) = args.wire_id { builder.add_wire_id(x); }
     builder.add_has_close_reason(args.has_close_reason);
-    builder.add_has_eose_display(args.has_eose_display);
-    builder.add_has_last_event_display(args.has_last_event_display);
     builder.add_eose_observed(args.eose_observed);
     builder.add_has_events_rx_display(args.has_events_rx_display);
     builder.finish()
@@ -146,39 +142,25 @@ impl<'a> RelayDiagnosticsWireSub<'a> {
     unsafe { self._tab.get::<bool>(RelayDiagnosticsWireSub::VT_EOSE_OBSERVED, Some(false)).unwrap()}
   }
   #[inline]
-  pub fn opened_display(&self) -> Option<&'a str> {
+  pub fn opened_ms(&self) -> u64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_OPENED_DISPLAY, None)}
+    unsafe { self._tab.get::<u64>(RelayDiagnosticsWireSub::VT_OPENED_MS, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn has_last_event_display(&self) -> bool {
+  pub fn last_event_ms(&self) -> u64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RelayDiagnosticsWireSub::VT_HAS_LAST_EVENT_DISPLAY, Some(false)).unwrap()}
+    unsafe { self._tab.get::<u64>(RelayDiagnosticsWireSub::VT_LAST_EVENT_MS, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn last_event_display(&self) -> Option<&'a str> {
+  pub fn eose_ms(&self) -> u64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_LAST_EVENT_DISPLAY, None)}
-  }
-  #[inline]
-  pub fn has_eose_display(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RelayDiagnosticsWireSub::VT_HAS_EOSE_DISPLAY, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn eose_display(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsWireSub::VT_EOSE_DISPLAY, None)}
+    unsafe { self._tab.get::<u64>(RelayDiagnosticsWireSub::VT_EOSE_MS, Some(0)).unwrap()}
   }
   #[inline]
   pub fn has_close_reason(&self) -> bool {
@@ -212,11 +194,9 @@ impl ::flatbuffers::Verifiable for RelayDiagnosticsWireSub<'_> {
      .visit_field::<bool>("has_events_rx_display", Self::VT_HAS_EVENTS_RX_DISPLAY, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("events_rx_display", Self::VT_EVENTS_RX_DISPLAY, false)?
      .visit_field::<bool>("eose_observed", Self::VT_EOSE_OBSERVED, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("opened_display", Self::VT_OPENED_DISPLAY, false)?
-     .visit_field::<bool>("has_last_event_display", Self::VT_HAS_LAST_EVENT_DISPLAY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("last_event_display", Self::VT_LAST_EVENT_DISPLAY, false)?
-     .visit_field::<bool>("has_eose_display", Self::VT_HAS_EOSE_DISPLAY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("eose_display", Self::VT_EOSE_DISPLAY, false)?
+     .visit_field::<u64>("opened_ms", Self::VT_OPENED_MS, false)?
+     .visit_field::<u64>("last_event_ms", Self::VT_LAST_EVENT_MS, false)?
+     .visit_field::<u64>("eose_ms", Self::VT_EOSE_MS, false)?
      .visit_field::<bool>("has_close_reason", Self::VT_HAS_CLOSE_REASON, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("close_reason", Self::VT_CLOSE_REASON, false)?
      .finish();
@@ -234,11 +214,9 @@ pub struct RelayDiagnosticsWireSubArgs<'a> {
     pub has_events_rx_display: bool,
     pub events_rx_display: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub eose_observed: bool,
-    pub opened_display: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_last_event_display: bool,
-    pub last_event_display: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_eose_display: bool,
-    pub eose_display: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub opened_ms: u64,
+    pub last_event_ms: u64,
+    pub eose_ms: u64,
     pub has_close_reason: bool,
     pub close_reason: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
@@ -256,11 +234,9 @@ impl<'a> Default for RelayDiagnosticsWireSubArgs<'a> {
       has_events_rx_display: false,
       events_rx_display: None,
       eose_observed: false,
-      opened_display: None,
-      has_last_event_display: false,
-      last_event_display: None,
-      has_eose_display: false,
-      eose_display: None,
+      opened_ms: 0,
+      last_event_ms: 0,
+      eose_ms: 0,
       has_close_reason: false,
       close_reason: None,
     }
@@ -313,24 +289,16 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayDiagnosticsWireSubBuilde
     self.fbb_.push_slot::<bool>(RelayDiagnosticsWireSub::VT_EOSE_OBSERVED, eose_observed, false);
   }
   #[inline]
-  pub fn add_opened_display(&mut self, opened_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_OPENED_DISPLAY, opened_display);
+  pub fn add_opened_ms(&mut self, opened_ms: u64) {
+    self.fbb_.push_slot::<u64>(RelayDiagnosticsWireSub::VT_OPENED_MS, opened_ms, 0);
   }
   #[inline]
-  pub fn add_has_last_event_display(&mut self, has_last_event_display: bool) {
-    self.fbb_.push_slot::<bool>(RelayDiagnosticsWireSub::VT_HAS_LAST_EVENT_DISPLAY, has_last_event_display, false);
+  pub fn add_last_event_ms(&mut self, last_event_ms: u64) {
+    self.fbb_.push_slot::<u64>(RelayDiagnosticsWireSub::VT_LAST_EVENT_MS, last_event_ms, 0);
   }
   #[inline]
-  pub fn add_last_event_display(&mut self, last_event_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_LAST_EVENT_DISPLAY, last_event_display);
-  }
-  #[inline]
-  pub fn add_has_eose_display(&mut self, has_eose_display: bool) {
-    self.fbb_.push_slot::<bool>(RelayDiagnosticsWireSub::VT_HAS_EOSE_DISPLAY, has_eose_display, false);
-  }
-  #[inline]
-  pub fn add_eose_display(&mut self, eose_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsWireSub::VT_EOSE_DISPLAY, eose_display);
+  pub fn add_eose_ms(&mut self, eose_ms: u64) {
+    self.fbb_.push_slot::<u64>(RelayDiagnosticsWireSub::VT_EOSE_MS, eose_ms, 0);
   }
   #[inline]
   pub fn add_has_close_reason(&mut self, has_close_reason: bool) {
@@ -368,11 +336,9 @@ impl ::core::fmt::Debug for RelayDiagnosticsWireSub<'_> {
       ds.field("has_events_rx_display", &self.has_events_rx_display());
       ds.field("events_rx_display", &self.events_rx_display());
       ds.field("eose_observed", &self.eose_observed());
-      ds.field("opened_display", &self.opened_display());
-      ds.field("has_last_event_display", &self.has_last_event_display());
-      ds.field("last_event_display", &self.last_event_display());
-      ds.field("has_eose_display", &self.has_eose_display());
-      ds.field("eose_display", &self.eose_display());
+      ds.field("opened_ms", &self.opened_ms());
+      ds.field("last_event_ms", &self.last_event_ms());
+      ds.field("eose_ms", &self.eose_ms());
       ds.field("has_close_reason", &self.has_close_reason());
       ds.field("close_reason", &self.close_reason());
       ds.finish()
@@ -848,16 +814,14 @@ impl<'a> RelayDiagnosticsRow<'a> {
   pub const VT_BYTES_RX_DISPLAY: ::flatbuffers::VOffsetT = 34;
   pub const VT_HAS_BYTES_TX_DISPLAY: ::flatbuffers::VOffsetT = 36;
   pub const VT_BYTES_TX_DISPLAY: ::flatbuffers::VOffsetT = 38;
-  pub const VT_HAS_LAST_CONNECTED_DISPLAY: ::flatbuffers::VOffsetT = 40;
-  pub const VT_LAST_CONNECTED_DISPLAY: ::flatbuffers::VOffsetT = 42;
-  pub const VT_HAS_LAST_EVENT_DISPLAY: ::flatbuffers::VOffsetT = 44;
-  pub const VT_LAST_EVENT_DISPLAY: ::flatbuffers::VOffsetT = 46;
-  pub const VT_HAS_LAST_NOTICE: ::flatbuffers::VOffsetT = 48;
-  pub const VT_LAST_NOTICE: ::flatbuffers::VOffsetT = 50;
-  pub const VT_HAS_LAST_ERROR: ::flatbuffers::VOffsetT = 52;
-  pub const VT_LAST_ERROR: ::flatbuffers::VOffsetT = 54;
-  pub const VT_WIRE_SUBS: ::flatbuffers::VOffsetT = 56;
-  pub const VT_INFO: ::flatbuffers::VOffsetT = 58;
+  pub const VT_LAST_CONNECTED_MS: ::flatbuffers::VOffsetT = 40;
+  pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 42;
+  pub const VT_HAS_LAST_NOTICE: ::flatbuffers::VOffsetT = 44;
+  pub const VT_LAST_NOTICE: ::flatbuffers::VOffsetT = 46;
+  pub const VT_HAS_LAST_ERROR: ::flatbuffers::VOffsetT = 48;
+  pub const VT_LAST_ERROR: ::flatbuffers::VOffsetT = 50;
+  pub const VT_WIRE_SUBS: ::flatbuffers::VOffsetT = 52;
+  pub const VT_INFO: ::flatbuffers::VOffsetT = 54;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -869,13 +833,13 @@ impl<'a> RelayDiagnosticsRow<'a> {
     args: &'args RelayDiagnosticsRowArgs<'args>
   ) -> ::flatbuffers::WIPOffset<RelayDiagnosticsRow<'bldr>> {
     let mut builder = RelayDiagnosticsRowBuilder::new(_fbb);
+    builder.add_last_event_ms(args.last_event_ms);
+    builder.add_last_connected_ms(args.last_connected_ms);
     builder.add_total_events_rx(args.total_events_rx);
     if let Some(x) = args.info { builder.add_info(x); }
     if let Some(x) = args.wire_subs { builder.add_wire_subs(x); }
     if let Some(x) = args.last_error { builder.add_last_error(x); }
     if let Some(x) = args.last_notice { builder.add_last_notice(x); }
-    if let Some(x) = args.last_event_display { builder.add_last_event_display(x); }
-    if let Some(x) = args.last_connected_display { builder.add_last_connected_display(x); }
     if let Some(x) = args.bytes_tx_display { builder.add_bytes_tx_display(x); }
     if let Some(x) = args.bytes_rx_display { builder.add_bytes_rx_display(x); }
     builder.add_reconnect_count(args.reconnect_count);
@@ -893,8 +857,6 @@ impl<'a> RelayDiagnosticsRow<'a> {
     if let Some(x) = args.relay_url { builder.add_relay_url(x); }
     builder.add_has_last_error(args.has_last_error);
     builder.add_has_last_notice(args.has_last_notice);
-    builder.add_has_last_event_display(args.has_last_event_display);
-    builder.add_has_last_connected_display(args.has_last_connected_display);
     builder.add_has_bytes_tx_display(args.has_bytes_tx_display);
     builder.add_has_bytes_rx_display(args.has_bytes_rx_display);
     builder.finish()
@@ -1028,32 +990,18 @@ impl<'a> RelayDiagnosticsRow<'a> {
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_BYTES_TX_DISPLAY, None)}
   }
   #[inline]
-  pub fn has_last_connected_display(&self) -> bool {
+  pub fn last_connected_ms(&self) -> u64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RelayDiagnosticsRow::VT_HAS_LAST_CONNECTED_DISPLAY, Some(false)).unwrap()}
+    unsafe { self._tab.get::<u64>(RelayDiagnosticsRow::VT_LAST_CONNECTED_MS, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn last_connected_display(&self) -> Option<&'a str> {
+  pub fn last_event_ms(&self) -> u64 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_LAST_CONNECTED_DISPLAY, None)}
-  }
-  #[inline]
-  pub fn has_last_event_display(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RelayDiagnosticsRow::VT_HAS_LAST_EVENT_DISPLAY, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn last_event_display(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayDiagnosticsRow::VT_LAST_EVENT_DISPLAY, None)}
+    unsafe { self._tab.get::<u64>(RelayDiagnosticsRow::VT_LAST_EVENT_MS, Some(0)).unwrap()}
   }
   #[inline]
   pub fn has_last_notice(&self) -> bool {
@@ -1123,10 +1071,8 @@ impl ::flatbuffers::Verifiable for RelayDiagnosticsRow<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("bytes_rx_display", Self::VT_BYTES_RX_DISPLAY, false)?
      .visit_field::<bool>("has_bytes_tx_display", Self::VT_HAS_BYTES_TX_DISPLAY, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("bytes_tx_display", Self::VT_BYTES_TX_DISPLAY, false)?
-     .visit_field::<bool>("has_last_connected_display", Self::VT_HAS_LAST_CONNECTED_DISPLAY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("last_connected_display", Self::VT_LAST_CONNECTED_DISPLAY, false)?
-     .visit_field::<bool>("has_last_event_display", Self::VT_HAS_LAST_EVENT_DISPLAY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("last_event_display", Self::VT_LAST_EVENT_DISPLAY, false)?
+     .visit_field::<u64>("last_connected_ms", Self::VT_LAST_CONNECTED_MS, false)?
+     .visit_field::<u64>("last_event_ms", Self::VT_LAST_EVENT_MS, false)?
      .visit_field::<bool>("has_last_notice", Self::VT_HAS_LAST_NOTICE, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("last_notice", Self::VT_LAST_NOTICE, false)?
      .visit_field::<bool>("has_last_error", Self::VT_HAS_LAST_ERROR, false)?
@@ -1156,10 +1102,8 @@ pub struct RelayDiagnosticsRowArgs<'a> {
     pub bytes_rx_display: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub has_bytes_tx_display: bool,
     pub bytes_tx_display: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_last_connected_display: bool,
-    pub last_connected_display: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_last_event_display: bool,
-    pub last_event_display: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub last_connected_ms: u64,
+    pub last_event_ms: u64,
     pub has_last_notice: bool,
     pub last_notice: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub has_last_error: bool,
@@ -1189,10 +1133,8 @@ impl<'a> Default for RelayDiagnosticsRowArgs<'a> {
       bytes_rx_display: None,
       has_bytes_tx_display: false,
       bytes_tx_display: None,
-      has_last_connected_display: false,
-      last_connected_display: None,
-      has_last_event_display: false,
-      last_event_display: None,
+      last_connected_ms: 0,
+      last_event_ms: 0,
       has_last_notice: false,
       last_notice: None,
       has_last_error: false,
@@ -1281,20 +1223,12 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayDiagnosticsRowBuilder<'a
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_BYTES_TX_DISPLAY, bytes_tx_display);
   }
   #[inline]
-  pub fn add_has_last_connected_display(&mut self, has_last_connected_display: bool) {
-    self.fbb_.push_slot::<bool>(RelayDiagnosticsRow::VT_HAS_LAST_CONNECTED_DISPLAY, has_last_connected_display, false);
+  pub fn add_last_connected_ms(&mut self, last_connected_ms: u64) {
+    self.fbb_.push_slot::<u64>(RelayDiagnosticsRow::VT_LAST_CONNECTED_MS, last_connected_ms, 0);
   }
   #[inline]
-  pub fn add_last_connected_display(&mut self, last_connected_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_LAST_CONNECTED_DISPLAY, last_connected_display);
-  }
-  #[inline]
-  pub fn add_has_last_event_display(&mut self, has_last_event_display: bool) {
-    self.fbb_.push_slot::<bool>(RelayDiagnosticsRow::VT_HAS_LAST_EVENT_DISPLAY, has_last_event_display, false);
-  }
-  #[inline]
-  pub fn add_last_event_display(&mut self, last_event_display: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayDiagnosticsRow::VT_LAST_EVENT_DISPLAY, last_event_display);
+  pub fn add_last_event_ms(&mut self, last_event_ms: u64) {
+    self.fbb_.push_slot::<u64>(RelayDiagnosticsRow::VT_LAST_EVENT_MS, last_event_ms, 0);
   }
   #[inline]
   pub fn add_has_last_notice(&mut self, has_last_notice: bool) {
@@ -1356,10 +1290,8 @@ impl ::core::fmt::Debug for RelayDiagnosticsRow<'_> {
       ds.field("bytes_rx_display", &self.bytes_rx_display());
       ds.field("has_bytes_tx_display", &self.has_bytes_tx_display());
       ds.field("bytes_tx_display", &self.bytes_tx_display());
-      ds.field("has_last_connected_display", &self.has_last_connected_display());
-      ds.field("last_connected_display", &self.last_connected_display());
-      ds.field("has_last_event_display", &self.has_last_event_display());
-      ds.field("last_event_display", &self.last_event_display());
+      ds.field("last_connected_ms", &self.last_connected_ms());
+      ds.field("last_event_ms", &self.last_event_ms());
       ds.field("has_last_notice", &self.has_last_notice());
       ds.field("last_notice", &self.last_notice());
       ds.field("has_last_error", &self.has_last_error());

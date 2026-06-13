@@ -15,6 +15,7 @@
 //! [`WireNode::Placeholder`], never a dropped subtree) and D6 (no panics — no
 //! `unwrap`/`expect`/indexing that can panic on non-test paths).
 
+pub mod embed_sidecar_fb;
 pub mod longform_fb;
 mod projection;
 pub mod typed_fb;
@@ -22,6 +23,11 @@ pub mod typed_fb;
 #[cfg(test)]
 mod tests;
 
+pub use embed_sidecar_fb::{
+    decode_claimed_event_embeds, encode_claimed_event_embeds,
+    FILE_IDENTIFIER as EMBED_SIDECAR_FILE_IDENTIFIER, PROJECTION_KEY as EMBED_SIDECAR_PROJECTION_KEY,
+    SCHEMA_ID as EMBED_SIDECAR_SCHEMA_ID, SCHEMA_VERSION as EMBED_SIDECAR_SCHEMA_VERSION,
+};
 pub use longform_fb::{
     decode_longform_articles, encode_longform_articles, LongformArticles,
     FILE_IDENTIFIER as LONGFORM_FILE_IDENTIFIER, SCHEMA_ID as LONGFORM_SCHEMA_ID,

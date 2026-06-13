@@ -9,8 +9,12 @@ use ratatui::Frame;
 use crate::app::AppState;
 use crate::snapshot::{RelayRow, RelayWireSubRow};
 use crate::ui::colors::{
-    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIMMER_TEXT, DIM_TEXT, LIST_BG, RELAY_CONNECTING,
-    RELAY_DOWN, RELAY_OK, SELECTED_BG, ZAP,
+    ACCENT_CYAN, BODY_TEXT, DETAIL_BG, DIMMER_TEXT, DIM_TEXT, LIST_BG, SELECTED_BG, ZAP,
+};
+
+mod format;
+use format::{
+    append_wrapped, empty_dash, format_ms_ago, label_line, short_relay_url, status_dot, truncate,
 };
 
 // ── Discovery-kind classification constants ────────────────────────────────
@@ -236,8 +240,8 @@ fn relay_detail_lines(state: &AppState, relay: &RelayRow, pane_width: usize) -> 
         "last",
         &format!(
             "connected {} · event {}",
-            relay.last_connected_display.as_deref().unwrap_or("never"),
-            relay.last_event_display.as_deref().unwrap_or("never")
+            format_ms_ago(relay.last_connected_ms),
+            format_ms_ago(relay.last_event_ms)
         ),
     ));
     if let Some(notice) = &relay.last_notice {
@@ -282,9 +286,9 @@ fn append_wire_sub(lines: &mut Vec<Line<'static>>, sub: &RelayWireSubRow, pane_w
     )));
     let timing = format!(
         "    opened {} · last {} · eose {}",
-        empty_dash(&sub.opened_display),
-        sub.last_event_display.as_deref().unwrap_or("never"),
-        sub.eose_display.as_deref().unwrap_or("not yet")
+        format_ms_ago(sub.opened_ms),
+        format_ms_ago(sub.last_event_ms),
+        if sub.eose_ms > 0 { format_ms_ago(sub.eose_ms) } else { "not yet".to_string() }
     );
     lines.push(Line::from(Span::styled(
         truncate(&timing, pane_width),
@@ -443,97 +447,6 @@ fn relay_role_display_label(role: &str) -> String {
         "read,indexer" => "Read + Index".to_string(),
         "write,indexer" => "Write + Index".to_string(),
         other => other.to_string(),
-    }
-}
-
-fn label_line(label: &str, value: &str) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(format!("{label}: "), Style::default().fg(DIM_TEXT)),
-        Span::styled(value.to_string(), Style::default().fg(BODY_TEXT)),
-    ])
-}
-
-fn append_wrapped(lines: &mut Vec<Line<'static>>, label: &str, value: &str, pane_width: usize) {
-    let prefix = format!("{label}: ");
-    let available = pane_width.saturating_sub(prefix.chars().count()).max(8);
-    let mut chunks = wrap_chunks(value, available);
-    if chunks.is_empty() {
-        chunks.push(String::new());
-    }
-    for (idx, chunk) in chunks.into_iter().enumerate() {
-        if idx == 0 {
-            lines.push(Line::from(vec![
-                Span::styled(prefix.clone(), Style::default().fg(DIM_TEXT)),
-                Span::styled(chunk, Style::default().fg(BODY_TEXT)),
-            ]));
-        } else {
-            lines.push(Line::from(vec![
-                Span::styled(" ".repeat(prefix.chars().count()), Style::default()),
-                Span::styled(chunk, Style::default().fg(BODY_TEXT)),
-            ]));
-        }
-    }
-}
-
-fn wrap_chunks(value: &str, width: usize) -> Vec<String> {
-    if width == 0 {
-        return Vec::new();
-    }
-    let mut chunks = Vec::new();
-    let mut current = String::new();
-    for ch in value.chars() {
-        if current.chars().count() >= width {
-            chunks.push(current);
-            current = String::new();
-        }
-        current.push(ch);
-    }
-    if !current.is_empty() {
-        chunks.push(current);
-    }
-    chunks
-}
-
-fn status_dot(connection_label: &str) -> (char, ratatui::style::Color) {
-    let lower = connection_label.to_ascii_lowercase();
-    if lower.contains("disconnected") || lower.contains("down") || lower.contains("failed") {
-        ('\u{25cb}', RELAY_DOWN)
-    } else if lower.contains("connected") || lower == "open" {
-        ('\u{25cf}', RELAY_OK)
-    } else {
-        ('\u{25cc}', RELAY_CONNECTING)
-    }
-}
-
-fn short_relay_url(url: &str) -> String {
-    url.strip_prefix("wss://")
-        .or_else(|| url.strip_prefix("ws://"))
-        .unwrap_or(url)
-        .trim_end_matches('/')
-        .to_string()
-}
-
-fn empty_dash(value: &str) -> String {
-    if value.is_empty() {
-        "-".to_string()
-    } else {
-        value.to_string()
-    }
-}
-
-fn truncate(value: &str, max: usize) -> String {
-    if max == 0 {
-        return String::new();
-    }
-    let count = value.chars().count();
-    if count <= max {
-        value.to_string()
-    } else if max <= 3 {
-        value.chars().take(max).collect()
-    } else {
-        let mut out: String = value.chars().take(max.saturating_sub(3)).collect();
-        out.push_str("...");
-        out
     }
 }
 

@@ -31,6 +31,11 @@ pub(crate) mod typed_projections;
 // always-compiled below so `publish/action.rs` and every NIP-crate
 // `ActionModule::execute` impl can still name `ActorCommand` without the
 // `native` feature.
+// V-06 / #960 — NIP-42 async-AUTH drain + obligation execution, extracted from
+// the actor main loop to keep `mod.rs` within its size budget. Native-only (uses
+// the native signer port + relay pool routing).
+#[cfg(feature = "native")]
+mod auth_sign;
 #[cfg(feature = "native")]
 mod capability_worker;
 #[cfg(feature = "native")]
@@ -86,6 +91,8 @@ mod signer_port_test_harness;
 mod cipher_for_account_tests;
 #[cfg(all(test, feature = "native"))]
 mod sign_event_for_account_tests;
+#[cfg(all(test, feature = "native"))]
+mod nip42_async_auth_tests;
 #[cfg(all(test, feature = "native"))]
 mod protocol_panic_isolation_tests;
 #[cfg(all(test, feature = "native"))]
@@ -217,7 +224,7 @@ use capability_worker::{spawn_capability_worker, CapabilityWorkSender};
 #[cfg(feature = "native")]
 use dispatch::{dispatch_command, ActorContext};
 #[cfg(feature = "native")]
-use pending_sign::{resolve_parked_op, ParkedOp, PublishObligation};
+use pending_sign::{resolve_parked_op, AuthObligation, ParkedOp, PublishObligation};
 
 use crate::kernel::LifecyclePhase;
 
@@ -2286,6 +2293,23 @@ pub fn run_actor_with_observers(
         if running && kernel.has_pending_cache_serves() {
             kernel.run_cache_serve_step();
         }
+        // ── V-06 / #960: drain kernel-emitted NIP-42 AUTH signs ──────────
+        // `handle_message` enqueues an AUTH kind:22242 for any relay lane whose
+        // active account is a REMOTE signer; route each through the async signer
+        // port (park under the `Auth` sink) — see `auth_sign::drain_pending_auth_signs`.
+        auth_sign::drain_pending_auth_signs(
+            &mut kernel,
+            &identity,
+            &mut parked_ops,
+            &mut auth_sign::RouteCtx {
+                running,
+                queued_publish_outbound: &mut queued_publish_outbound,
+                relay_controls: &mut relay_controls,
+                slot_to_url: &mut slot_to_url,
+                pool: &pool,
+                next_relay_generation: &mut next_relay_generation,
+            },
+        );
         // ── Poll the unified parked-op queue (ADR-0050 §D2) ──────────────
         // ONE `retain_mut` over ONE `Vec<ParkedOp>` replaces the two former
         // drains (the inline publish block + `resolve_pending_sign_return`). Each
@@ -2298,15 +2322,35 @@ pub fn run_actor_with_observers(
         // Empty `parked_ops` is a heap-free zero-item retain.
         if !parked_ops.is_empty() {
             let mut publish_obligations: Vec<PublishObligation> = Vec::new();
+            let mut auth_obligations: Vec<AuthObligation> = Vec::new();
             let mut any_changed = false;
             parked_ops.retain_mut(|parked| {
                 let outcome = resolve_parked_op(parked, &mut kernel);
                 if let Some(obligation) = outcome.publish {
                     publish_obligations.push(obligation);
                 }
+                if let Some(obligation) = outcome.auth {
+                    auth_obligations.push(obligation);
+                }
                 any_changed |= outcome.changed;
                 outcome.keep
             });
+            // V-06 / #960: execute the NIP-42 AUTH obligations the `Auth` sink
+            // handed back (re-enter `dispatch_signed_auth` / `fail_auth_sign` and
+            // route outbound) — see `auth_sign::run_auth_obligations`. Runs here
+            // after the retain so the drain's `&mut kernel` borrow has ended.
+            auth_sign::run_auth_obligations(
+                &mut kernel,
+                auth_obligations,
+                &mut auth_sign::RouteCtx {
+                    running,
+                    queued_publish_outbound: &mut queued_publish_outbound,
+                    relay_controls: &mut relay_controls,
+                    slot_to_url: &mut slot_to_url,
+                    pool: &pool,
+                    next_relay_generation: &mut next_relay_generation,
+                },
+            );
             // Execute the publish obligations the `Publish` sink handed back,
             // preserving ALL prior terminal behaviours exactly: a resolved sign
             // routes via the parked `target` + `correlation_id_override`; a

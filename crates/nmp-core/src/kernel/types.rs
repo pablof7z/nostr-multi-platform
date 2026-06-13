@@ -548,15 +548,15 @@ pub(super) struct ProfileRequestState {
 pub(super) struct TimingMilestones {
     /// When `Kernel::start` first ran.
     pub(super) started_at: Option<Instant>,
-    /// Most recent ingested event (drives `last_event_to_emit_ms`).
+    /// Byte-stable Unix-ms wall anchor (see `relay_diagnostics::event_to_unix_ms`).
+    pub(super) started_unix_ms: Option<u64>,
+    /// Most recent / first ingested event (drives `last_event_to_emit_ms`).
     pub(super) last_event_at: Option<Instant>,
-    /// First ingested event ever.
     pub(super) first_event_at: Option<Instant>,
     /// When the target profile's kind:0 first loaded.
     pub(super) target_profile_loaded_at: Option<Instant>,
-    /// When the timeline view was first opened.
+    /// When the timeline view was first opened / first item rendered.
     pub(super) timeline_opened_at: Option<Instant>,
-    /// When the first timeline item was rendered.
     pub(super) timeline_first_item_at: Option<Instant>,
 }
 

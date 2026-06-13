@@ -876,26 +876,18 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
         .collect::<Vec<_>>();
     kernel.set_accounts(summaries, active.clone());
 
-    // NIP-42 auth signer binding. Remote signers (NIP-46) cannot sign NIP-42
-    // challenges with the user's pubkey today — the broker's ephemeral key
-    // would sign as itself, not as the user. Clear the auth signer when a
-    // remote is active. V-06 Stage 1: toast on the transition so the user
-    // knows AUTH-required relays are degraded (replaces silent failure).
-    // V-06 Stage 2/3: broker-side sign_auth_challenge RPC + AuthSignerFn
-    // adapter (post-v1, tracked in issue #960).
+    // NIP-42 auth signer binding (V-06 / #960 — ONE uniform async sign seam).
+    //
+    // A REMOTE signer (NIP-46 / NIP-55) cannot sign synchronously — only the
+    // broker holds the key — so we bind the AUTH *pubkey* (the active id is the
+    // signer pubkey hex) and let `handle_auth_challenge` PARK the kind:22242 for
+    // the async signer port. A LOCAL key binds the synchronous `AuthSignerFn`
+    // and resolves inline. The kernel keeps these two bindings disjoint. No more
+    // remote bail / "bunker AUTH unsupported" toast — bunker accounts now pass
+    // NIP-42 AUTH gates as themselves.
     if let Some(active_id) = active.as_ref() {
         if identity.remote_signers.contains_key(active_id) {
-            // Toast only on the transition from having auth capability to
-            // losing it, not on every sync call (which runs frequently).
-            if kernel.has_auth_signer() {
-                kernel.set_last_error_toast(Some(
-                    "Relays requiring NIP-42 authentication are not supported \
-                     with bunker accounts yet. AUTH-required relays will be \
-                     accessed unauthenticated."
-                        .to_string(),
-                ));
-            }
-            kernel.clear_auth_signer();
+            kernel.bind_auth_remote(active_id.clone());
             return;
         }
     }
