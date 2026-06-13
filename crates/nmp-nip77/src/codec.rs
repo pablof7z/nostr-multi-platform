@@ -7,6 +7,8 @@ pub(crate) enum HexError {
     OddLength,
     /// One character was outside `[0-9a-fA-F]`.
     InvalidNibble,
+    /// Payload exceeds the inbound size cap (relay-controlled field guard).
+    TooLarge,
 }
 
 pub(crate) fn hex_encode(bytes: &[u8]) -> String {
@@ -28,6 +30,23 @@ pub(crate) fn hex_decode(s: &str) -> Result<Vec<u8>, HexError> {
         out.push((hex_nibble(pair[0])? << 4) | hex_nibble(pair[1])?);
     }
     Ok(out)
+}
+
+/// Size-limited hex decode for relay-controlled inbound fields.
+///
+/// Rejects any hex string whose length exceeds `FRAME_SIZE_LIMIT * 2`
+/// characters **before** allocating the output buffer.  Without this check a
+/// relay can send a ~64 MiB hex string (tungstenite's max frame size) and
+/// force a ~32 MiB heap allocation per `NEG-MSG`, a trivial memory-DoS
+/// amplification.  The outbound `FRAME_SIZE_LIMIT` cap (64 KiB, `lib.rs`)
+/// is enforced only on client-produced messages; this gate closes the
+/// inbound side.
+pub(crate) fn hex_decode_size_limited(s: &str) -> Result<Vec<u8>, HexError> {
+    use crate::FRAME_SIZE_LIMIT;
+    if s.len() > (FRAME_SIZE_LIMIT as usize) * 2 {
+        return Err(HexError::TooLarge);
+    }
+    hex_decode(s)
 }
 
 fn hex_nibble(b: u8) -> Result<u8, HexError> {
