@@ -1190,97 +1190,14 @@ pub fn run_actor(
     command_tx_self: CommandSender,
     update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
 ) {
-    run_actor_with_observers(
+    // This shim is exactly [`run_actor_with_lifecycle_observer`] with a
+    // throwaway lifecycle slot — delegate so the long throwaway-slot argument
+    // list lives in exactly one place (no duplicated ~30-arg call).
+    run_actor_with_lifecycle_observer(
         inbox_rx,
         command_tx_self,
         update_tx,
         new_lifecycle_observer_slot(),
-        new_event_observer_slot(),
-        new_raw_event_observer_slot(),
-        crate::kernel::new_snapshot_projection_slot(),
-        // V-38: the wallet runtime + status slot moved to `nmp-nip47`. The
-        // actor only carries a substrate-generic relay-text interceptor slot.
-        crate::substrate::new_relay_text_interceptor_slot(),
-        // ADR-0051: throwaway relay-connected hook slot (no FFI surface here).
-        crate::substrate::new_relay_connected_hook_slot(),
-        // D0: NIP-46 remote signing is an app noun — likewise a private
-        // throwaway bunker-handshake slot (no FFI surface to register the
-        // `"bunker_handshake"` projection here).
-        new_bunker_handshake_slot(),
-        // V-14 step b: throwaway connection-state slot (no FFI surface here).
-        new_signer_state_slot(),
-        // Typed slot constructor; the backwards-compatible entry
-        // point has no FFI surface to read the slot, so it's a throwaway.
-        crate::kernel::new_app_relay_slot(),
-        Arc::new(Mutex::new(None)),
-        // Active-account local-keys slot — private throwaway: this
-        // backwards-compatible entry point has no FFI surface for a
-        // non-substrate reader to consume it (production threads it through
-        // `nmp-ffi`'s `NmpApp::active_local_keys`).
-        Arc::new(Mutex::new(None)),
-        new_capability_callback_slot(),
-        Arc::new(Mutex::new(None)),
-        // G-S4 — no `NmpApp` is wired through this backwards-compatible entry
-        // point, so the queue-depth counter is a private throwaway.
-        Arc::new(AtomicU64::new(0)),
-        // D2 — no `NmpApp` is wired through this backwards-compatible entry
-        // point, so the coverage-gate hook slot is a private throwaway
-        // (`None`); the lifecycle keeps its default `coverage_hook: None`.
-        Arc::new(Mutex::new(None)),
-        crate::substrate::new_req_frame_interceptor_slot(),
-        // Host-op handler slot — no `NmpApp` is wired through this
-        // backwards-compatible entry point, so the handler slot is a private
-        // throwaway. Any `DispatchHostOp` command reaching the actor here
-        // would record a `Failed { reason: "no host op handler installed" }`
-        // terminal — tests on this path do not enqueue such commands.
-        crate::substrate::new_host_op_handler_slot(),
-        // V-40 — no `NmpApp` here, so the `IngestParser` registry + the
-        // `DmInboxRelayLookup` are both private throwaways (empty
-        // dispatcher + always-`None` lookup). Tests on this path don't
-        // exercise the gift-wrap publish gate or the kind:10050 parser
-        // — those use `run_actor_with_observers` directly with shared
-        // slots.
-        Arc::new(std::sync::RwLock::new(
-            crate::substrate::EventIngestDispatcher::new(),
-        )),
-        Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
-        // Throwaway blocked-relay lookup slot — no app composition here,
-        // so the kernel defaults to returning an empty `BlockedRelaySet`
-        // per account.
-        Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
-        // Throwaway bootstrap self-kinds override slot (`None` → builtin
-        // default).
-        Arc::new(Mutex::new(None)),
-        // V-51 phase 4 — no `NmpApp` is wired through this entry, so the
-        // routing-trace slot is a private throwaway (the actor still
-        // publishes its kernel's projection into it, but nothing reads it).
-        Arc::new(Mutex::new(None)),
-        // V-51 phase 5 — no `NmpApp` here, so the routing-substrate factory
-        // slot is a private throwaway. The kernel keeps its in-crate
-        // `EmptyOutboxRouter` + (test-only) `TestInMemoryMailboxCache`
-        // defaults (substrate-honest debt B).
-        Arc::new(Mutex::new(None)),
-        // Spec §271 (2026-05-25) — no `NmpApp` here, so the
-        // substrate-publish-resolver factory slot is a private throwaway.
-        // The kernel keeps its `NoopOutboxResolver` default; every publish
-        // through `PublishTarget::Auto` resolves to an empty set and the
-        // engine surfaces `NoTargets` (fail-closed).
-        Arc::new(Mutex::new(None)),
-        // No app composition is wired through this compatibility entry, so
-        // no raw-event forwarding policies are installed.
-        crate::slots::new_raw_event_forward_policy_slot(),
-        // V-82 — no `NmpApp` is wired through this backwards-compatible entry
-        // point, so the active-account slot is a private throwaway. The kernel
-        // still writes its active account into it on every identity mutation;
-        // nothing outside the actor reads it on this path.
-        crate::slots::new_active_account_slot(),
-        // V-83 — no `NmpApp` here, so the event-store slot is a private
-        // throwaway. The actor still publishes its kernel's store into it;
-        // nothing outside the actor reads it on this path.
-        crate::slots::new_event_store_slot(),
-        // Test-support kernel-clock slot — no `NmpApp` here, so it's a private
-        // throwaway (`None` → the kernel keeps its `SystemClock`).
-        crate::slots::new_kernel_clock_slot(),
     );
 }
 
@@ -1316,6 +1233,10 @@ pub fn run_actor_with_lifecycle_observer(
         new_bunker_handshake_slot(),
         // V-14 step b: throwaway connection-state slot (no FFI surface here).
         new_signer_state_slot(),
+        // ADR-0052 §D3: throwaway bunker + NIP-55 hook slots (no FFI surface
+        // here to install a broker/driver; an invocation degrades to a toast).
+        crate::bunker_hook::new_bunker_hook_slot(),
+        crate::external_signer_hook::new_external_signer_hook_slot(),
         // Typed slot constructor; private throwaway here.
         crate::kernel::new_app_relay_slot(),
         Arc::new(Mutex::new(None)),
@@ -1425,6 +1346,15 @@ pub fn run_actor_with_observers(
     // snapshot-projection closure; this one is handed to `IdentityRuntime`
     // (sole writer, D4).
     signer_state: SignerStateSlot,
+    // ADR-0052 §D3 — per-app bunker + NIP-55 external-signer hook slots. The
+    // `NmpApp` keeps one `Arc` clone of each (so `nmp_signer_broker_init` /
+    // `nmp_external_signer_init` can install the broker/driver hook
+    // post-construction); these clones are handed to the actor's
+    // `IdentityRuntime` via `set_signer_hook_slots`, which is the sole reader.
+    // Replace the deleted `bunker_hook::HOOK` / `external_signer_hook::HOOK`
+    // process-globals. D0: opaque `Fn`-of-request shape; no NIP type named.
+    bunker_hook: crate::bunker_hook::BunkerHookSlot,
+    external_signer_hook: crate::external_signer_hook::ExternalSignerHookSlot,
     // Typed slot ([`crate::kernel::AppRelaySlot`]) so the actor
     // parameter type signals the slot's purpose; D14 forbids new bare
     // `Arc<Mutex<Vec<…>>>` parameters here.
@@ -1914,6 +1844,9 @@ pub fn run_actor_with_observers(
     // projection registered above reads the same `Arc<Mutex<…>>` clone on
     // every tick. Same for `signer_state` (ADR-0048 D6).
     let mut identity = IdentityRuntime::new(bunker_handshake, signer_state);
+    // ADR-0052 §D3 — bind the per-app signer hook slots so the FFI broker /
+    // NIP-55 driver install into the SAME slots this runtime reads.
+    identity.set_signer_hook_slots(bunker_hook, external_signer_hook);
     // V-38: the wallet runtime moved to `nmp-nip47`. The actor no longer
     // owns it; the substrate relay-text interceptor slot
     // (`relay_text_interceptor`) is the only seam the actor calls for NIP-47

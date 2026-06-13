@@ -7,9 +7,7 @@ use crate::actor::capability_worker::spawn_capability_worker;
 use crate::actor::{ActorCommand, ActorMail, CommandSender};
 use crate::bunker_hook::BunkerHookRequest;
 use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
-use crate::external_signer_hook::{
-    register_external_signer_hook, ExternalSignerHookRequest,
-};
+use crate::external_signer_hook::ExternalSignerHookRequest;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
@@ -226,11 +224,14 @@ fn restores_nip46_from_persisted_remote_payload() {
 
     let calls: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     let calls_clone = Arc::clone(&calls);
-    crate::bunker_hook::register_bunker_hook(Arc::new(move |request| {
-        calls_clone.lock().unwrap().push(request);
-    }));
 
     let (mut identity, mut kernel) = fresh();
+    // ADR-0052 §D3 — install the recording hook into THIS runtime's per-app
+    // slot (no process-global). Restore reads it at invocation time, so
+    // install order relative to `fresh()` is irrelevant beyond pre-restore.
+    identity.install_bunker_hook_for_test(Arc::new(move |request| {
+        calls_clone.lock().unwrap().push(request);
+    }));
     let (restore_work_tx, _restore_cmd_rx) = {
         let (tx, rx) = channel::<ActorMail>();
         let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
@@ -261,10 +262,9 @@ fn restores_nip46_from_persisted_remote_payload() {
 /// hook exactly once via `ExternalSignerHookRequest::Restore`. This is the
 /// symmetric counterpart of `restores_nip46_from_persisted_remote_payload`
 /// (NIP-46 routes through the bunker hook; NIP-55 through the external-signer
-/// hook). The suspected init-order bug — restore running before the hook is
-/// registered — does not exist on master: the hook static is process-wide and
-/// the restore reads it at invocation time, so registration order is
-/// irrelevant. This test locks that invariant.
+/// hook). ADR-0052 §D3 — the hook is a per-app slot read at restore invocation
+/// time, so the suspected init-order bug (restore before install) does not
+/// exist: install-before-restore is the only ordering this test relies on.
 #[test]
 fn restores_nip55_from_persisted_remote_payload() {
     let _g = SERIAL.lock().unwrap();
@@ -288,11 +288,13 @@ fn restores_nip55_from_persisted_remote_payload() {
 
     let calls: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
     let calls_clone = Arc::clone(&calls);
-    register_external_signer_hook(Arc::new(move |request| {
-        calls_clone.lock().unwrap().push(request);
-    }));
 
     let (mut identity, mut kernel) = fresh();
+    // ADR-0052 §D3 — install the recording hook into THIS runtime's per-app
+    // slot (no process-global).
+    identity.install_external_signer_hook_for_test(Arc::new(move |request| {
+        calls_clone.lock().unwrap().push(request);
+    }));
     let (restore_work_tx, _restore_cmd_rx) = {
         let (tx, rx) = channel::<ActorMail>();
         let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
@@ -335,12 +337,11 @@ fn restore_nip55_without_hook_surfaces_unavailable_and_toast() {
     enqueue_persist_active_pointer(&work_tx, identity_id, "nip55");
     drain_worker_results(&cmd_rx, 3);
 
-    // `HOOK` is a process-wide static that the positive test may have
-    // registered into. Clear it so we genuinely exercise the *no hook*
-    // (D6 degradation) branch regardless of test execution order under the
-    // `SERIAL` lock. Production has no unregister path; this is test-only.
-    crate::external_signer_hook::clear_external_signer_hook_for_test();
-
+    // ADR-0052 §D3 — the external-signer hook is now a PER-APP slot. A fresh
+    // `IdentityRuntime` starts with an EMPTY slot, so this test exercises the
+    // *no hook* (D6 degradation) branch deterministically — no process-global
+    // to clear, no execution-order dependence (the old global needed a
+    // test-only `clear_external_signer_hook_for_test` workaround).
     let (mut identity, mut kernel) = fresh();
     let (restore_work_tx, _restore_cmd_rx) = {
         let (tx, rx) = channel::<ActorMail>();
