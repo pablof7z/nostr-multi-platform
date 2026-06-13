@@ -162,7 +162,6 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
         typedRunning: Bool
     ) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 2048)
-        let payload = placeholderPayload(&fbb)
 
         let metrics = distinctMetrics(&fbb)
         let relays = fbb.createVector(ofOffsets: [distinctRelayStatus(&fbb)])
@@ -175,7 +174,6 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
         let snapshot = nmp_transport_SnapshotFrame.createSnapshotFrame(
             &fbb,
             schemaVersion: 1,
-            payloadOffset: payload,
             rev: typedRev,
             running: typedRunning,
             metricsOffset: metrics,
@@ -194,19 +192,12 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
     /// `encode_snapshot_with_typed` wire shape), so `typedEnvelope` is nil.
     private func frameWithoutTypedEnvelope() -> Data {
         var fbb = FlatBufferBuilder(initialSize: 1024)
-        let payload = placeholderPayload(&fbb)
         let snapshot = nmp_transport_SnapshotFrame.createSnapshotFrame(
-            &fbb, schemaVersion: 1, payloadOffset: payload)
+            &fbb, schemaVersion: 1)
         let frame = nmp_transport_UpdateFrame.createUpdateFrame(
             &fbb, kind: .snapshot, snapshotOffset: snapshot)
         nmp_transport_UpdateFrame.finish(&fbb, end: frame)
         return fbb.data
-    }
-
-    /// A minimal generic `payload` Value tree. The decoder no longer reads it;
-    /// it exists only so the frame carries a `payload` like production does.
-    private func placeholderPayload(_ fbb: inout FlatBufferBuilder) -> Offset {
-        valueMap(&fbb, [("schema_version", valueInt(&fbb, 1))])
     }
 
     /// The typed `Metrics` table with the distinct values pinned by
@@ -307,22 +298,4 @@ final class TypedSnapshotEnvelopeDecoderTests: XCTestCase {
             openedAtMs: 1_700_000_333)
     }
 
-    // MARK: - generic Value builders (mirror OpFeedDecoderTests)
-
-    private func valueInt(_ fbb: inout FlatBufferBuilder, _ value: Int64) -> Offset {
-        nmp_transport_Value.createValue(&fbb, kind: .int, intValue: value)
-    }
-
-    private func valueList(_ fbb: inout FlatBufferBuilder, _ values: [Offset]) -> Offset {
-        nmp_transport_Value.createValue(
-            &fbb, kind: .list, listVectorOffset: fbb.createVector(ofOffsets: values))
-    }
-
-    private func valueMap(_ fbb: inout FlatBufferBuilder, _ entries: [(String, Offset)]) -> Offset {
-        let pairs = entries.map { key, value in
-            nmp_transport_Pair.createPair(&fbb, keyOffset: fbb.create(string: key), valueOffset: value)
-        }
-        return nmp_transport_Value.createValue(
-            &fbb, kind: .map, mapVectorOffset: fbb.createVector(ofOffsets: pairs))
-    }
 }
