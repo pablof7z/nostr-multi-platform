@@ -148,7 +148,8 @@ pub(super) struct Inner {
 /// on the actor thread while the FFI snapshot / dispatch run on the Swift
 /// bridge thread (low contention; the bridge serializes its calls).
 pub struct MarmotProjection {
-    inner: Mutex<Inner>,
+    // `pub(super)` so the sibling `resubscribe` module can lock it directly.
+    pub(super) inner: Mutex<Inner>,
 }
 
 // SAFETY: REQUIRED — `register_event_observer` casts

@@ -62,3 +62,9 @@ mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
 # round-trip tests in `src/ffi/tests.rs` (previously a dev-dep of
 # `nmp-app-chirp`).
 mdk-core = "0.8.0"
+# tempfile provides ephemeral SQLite paths for the two-session restart
+# regression test in `src/restart_resubscribe_tests.rs`. The test needs a
+# real file-backed store (not in-memory) to model the MDK SQLite persistence
+# that survives an app restart. `new_unencrypted` is from the `test-utils`
+# feature of `mdk-sqlite-storage` (already a dev-dep above).
+tempfile = "3"
