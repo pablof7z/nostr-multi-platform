@@ -257,33 +257,6 @@ enum TypedProjectionGlue {
             info: row.info.map(relayDiagnosticsInfo)
         )
     }
-
-    /// Map the optional `RelayDiagnosticsInfo` child table (ADR-0051 NIP-11
-    /// relay metadata). The table's PRESENCE on `RelayDiagnosticsRow.info` is the
-    /// discriminator (a null table — `row.info == nil` — maps to the domain's
-    /// `nil`, the JSON `info: null` case), so there is NO `has_info` flag. Each
-    /// `Option<String>` carries a `has_*` companion (`false` ⇒ `nil`); the three
-    /// `limitation` booleans are tri-state (`has_* == false` ⇒ `nil`);
-    /// `supportedNips` is the (possibly empty) `[uint]` vector. Byte-identical to
-    /// the JSON path by construction.
-    private static func relayDiagnosticsInfo(
-        _ info: nmp_kernel_RelayDiagnosticsInfo
-    ) -> RelayDiagnosticsInfo {
-        RelayDiagnosticsInfo(
-            name: info.hasName ? (info.name ?? "") : nil,
-            description: info.hasDescription ? (info.description ?? "") : nil,
-            icon: info.hasIcon ? (info.icon ?? "") : nil,
-            pubkey: info.hasPubkey ? (info.pubkey ?? "") : nil,
-            contact: info.hasContact ? (info.contact ?? "") : nil,
-            software: info.hasSoftware ? (info.software ?? "") : nil,
-            version: info.hasVersion ? (info.version ?? "") : nil,
-            supportedNips: info.supportedNips.map { $0 },
-            paymentRequired: info.hasPaymentRequired ? info.paymentRequired : nil,
-            authRequired: info.hasAuthRequired ? info.authRequired : nil,
-            restrictedWrites: info.hasRestrictedWrites ? info.restrictedWrites : nil
-        )
-    }
-
     private static func relayDiagnosticsWireSub(
         _ sub: nmp_kernel_RelayDiagnosticsWireSub
     ) -> RelayDiagnosticsWireSub {
