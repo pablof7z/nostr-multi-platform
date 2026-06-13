@@ -7,6 +7,9 @@ use crate::actor::capability_worker::spawn_capability_worker;
 use crate::actor::{ActorCommand, ActorMail, CommandSender};
 use crate::bunker_hook::BunkerHookRequest;
 use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
+use crate::external_signer_hook::{
+    register_external_signer_hook, ExternalSignerHookRequest,
+};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
@@ -250,4 +253,116 @@ fn restores_nip46_from_persisted_remote_payload() {
     // `"bunker_handshake"` projection), not a typed kernel field.
     let progress = identity.bunker_handshake_for_test().expect("progress");
     assert_eq!(progress.stage, "connecting");
+}
+
+/// Cold-start regression for issue #1238: a persisted NIP-55 remote-signer
+/// payload, plus a registered external-signer hook, drives the actor's
+/// cold-start `restore_active_session` to hand the opaque payload to the
+/// hook exactly once via `ExternalSignerHookRequest::Restore`. This is the
+/// symmetric counterpart of `restores_nip46_from_persisted_remote_payload`
+/// (NIP-46 routes through the bunker hook; NIP-55 through the external-signer
+/// hook). The suspected init-order bug — restore running before the hook is
+/// registered — does not exist on master: the hook static is process-wide and
+/// the restore reads it at invocation time, so registration order is
+/// irrelevant. This test locks that invariant.
+#[test]
+fn restores_nip55_from_persisted_remote_payload() {
+    let _g = SERIAL.lock().unwrap();
+    *STORE.lock().unwrap() = Some(HashMap::new());
+    let slot = registered_slot();
+    let (inbox_tx, cmd_rx): (Sender<ActorMail>, Receiver<ActorMail>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(inbox_tx));
+
+    let identity_id = "701eb015134aed0cb6582a86b9527f2db0241ca36a64bfd63ddbde59002c7c05";
+    // Opaque-to-nmp-core NIP-55 payload (ADR-0048 D4 — pubkey-only): the
+    // kernel persists and replays it verbatim, never parsing the body.
+    let payload_json = format!(
+        r#"{{"kind":"nip55","body":{{"user_pubkey_hex":"{}","signer_package":"com.greenart7c3.nostrsigner","granted_permissions":["sign_event","get_public_key"]}}}}"#,
+        identity_id
+    );
+
+    // Enqueue remote-payload persist (1 write) and active-pointer (2 writes).
+    enqueue_persist_remote_signer_payload(identity_id, &payload_json, &work_tx);
+    enqueue_persist_active_pointer(&work_tx, identity_id, "nip55");
+    drain_worker_results(&cmd_rx, 3);
+
+    let calls: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
+    let calls_clone = Arc::clone(&calls);
+    register_external_signer_hook(Arc::new(move |request| {
+        calls_clone.lock().unwrap().push(request);
+    }));
+
+    let (mut identity, mut kernel) = fresh();
+    let (restore_work_tx, _restore_cmd_rx) = {
+        let (tx, rx) = channel::<ActorMail>();
+        let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
+        (wtx, rx)
+    };
+    let _outbound = restore_active_session(
+        &mut identity,
+        &mut kernel,
+        &slot,
+        &restore_work_tx,
+        false,
+    );
+
+    assert_eq!(
+        calls.lock().unwrap().as_slice(),
+        &[ExternalSignerHookRequest::Restore { payload_json }]
+    );
+}
+
+/// D6 negative companion to `restores_nip55_from_persisted_remote_payload`:
+/// when NO external-signer hook is registered, cold-start NIP-55 restore must
+/// NOT silently no-op. It surfaces a degraded `signer_state` ("unavailable")
+/// and a `last_error_toast` so the host can prompt the user — the D6
+/// observable-degradation guarantee, never silence.
+#[test]
+fn restore_nip55_without_hook_surfaces_unavailable_and_toast() {
+    let _g = SERIAL.lock().unwrap();
+    *STORE.lock().unwrap() = Some(HashMap::new());
+    let slot = registered_slot();
+    let (inbox_tx, cmd_rx): (Sender<ActorMail>, Receiver<ActorMail>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(inbox_tx));
+
+    let identity_id = "701eb015134aed0cb6582a86b9527f2db0241ca36a64bfd63ddbde59002c7c05";
+    let payload_json = format!(
+        r#"{{"kind":"nip55","body":{{"user_pubkey_hex":"{}","signer_package":"com.greenart7c3.nostrsigner","granted_permissions":["sign_event"]}}}}"#,
+        identity_id
+    );
+
+    enqueue_persist_remote_signer_payload(identity_id, &payload_json, &work_tx);
+    enqueue_persist_active_pointer(&work_tx, identity_id, "nip55");
+    drain_worker_results(&cmd_rx, 3);
+
+    // `HOOK` is a process-wide static that the positive test may have
+    // registered into. Clear it so we genuinely exercise the *no hook*
+    // (D6 degradation) branch regardless of test execution order under the
+    // `SERIAL` lock. Production has no unregister path; this is test-only.
+    crate::external_signer_hook::clear_external_signer_hook_for_test();
+
+    let (mut identity, mut kernel) = fresh();
+    let (restore_work_tx, _restore_cmd_rx) = {
+        let (tx, rx) = channel::<ActorMail>();
+        let wtx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(tx));
+        (wtx, rx)
+    };
+    let _outbound = restore_active_session(
+        &mut identity,
+        &mut kernel,
+        &slot,
+        &restore_work_tx,
+        false,
+    );
+
+    let signer_state = identity
+        .signer_state_for_test()
+        .expect("signer_state must be set on degraded NIP-55 restore");
+    assert_eq!(signer_state.signer_kind, "nip55");
+    assert_eq!(signer_state.state, "unavailable");
+    assert!(signer_state.is_unavailable);
+    assert!(
+        kernel.last_error_toast_snapshot().is_some(),
+        "D6: missing NIP-55 driver must surface a last_error_toast, not silence"
+    );
 }

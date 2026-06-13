@@ -45,7 +45,7 @@ pub const DM_INBOX_SCHEMA_ID: &str = "nmp.nip17.dm_inbox";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const DM_INBOX_FILE_IDENTIFIER: &[u8; 4] = b"NDMI";
 /// Wire schema version. Bump on any breaking change to `dm_inbox.fbs`.
-pub const DM_INBOX_SCHEMA_VERSION: u32 = 1;
+pub const DM_INBOX_SCHEMA_VERSION: u32 = 2;
 
 // --- encode ---------------------------------------------------------------
 
@@ -63,12 +63,14 @@ pub fn encode_dm_inbox_snapshot(snapshot: &DmInboxSnapshot) -> Vec<u8> {
         .map(|conversation| encode_conversation(&mut fbb, conversation))
         .collect();
     let conversations = fbb.create_vector(&conversation_offsets);
+    let decrypt_state = fbb.create_string(&snapshot.decrypt_state);
 
     let root = fb::DmInboxSnapshot::create(
         &mut fbb,
         &fb::DmInboxSnapshotArgs {
             conversations: Some(conversations),
-            remote_signer_unsupported: snapshot.remote_signer_unsupported,
+            decrypt_state: Some(decrypt_state),
+            undecrypted_count: snapshot.undecrypted_count,
         },
     );
     fb::finish_dm_inbox_snapshot_buffer(&mut fbb, root);
@@ -146,7 +148,15 @@ pub fn decode_dm_inbox_snapshot(bytes: &[u8]) -> Result<DmInboxSnapshot, String>
 
     Ok(DmInboxSnapshot {
         conversations,
-        remote_signer_unsupported: root.remote_signer_unsupported(),
+        // §D7 — `decrypt_state` is a required string on the wire; an absent /
+        // empty value decodes to "unavailable" (the safe "host hides the screen"
+        // default, never a misleading "ok").
+        decrypt_state: root
+            .decrypt_state()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("unavailable")
+            .to_string(),
+        undecrypted_count: root.undecrypted_count(),
     })
 }
 
