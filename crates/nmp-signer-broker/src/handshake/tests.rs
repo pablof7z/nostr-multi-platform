@@ -172,7 +172,7 @@ fn cancellation_aborts_with_cancelled_error() {
     // so it observes this without any inbound traffic. No sleep needed.
     let canceller = std::thread::spawn(move || {
         let _ = frame_rx.recv();
-        cancel_clone.store(true, Ordering::Relaxed);
+        cancel_clone.store(true, Ordering::Release);
     });
 
     let err = run_handshake(

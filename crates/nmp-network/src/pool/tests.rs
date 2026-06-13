@@ -21,8 +21,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use super::{
-    inner::{canonicalize, classify_text_frame},
-    ClosedReason, HealthState, Pool, PoolConfig, PoolEvent, RelayFrame, RelayHandle, WireFrame,
+    inner::canonicalize, ClosedReason, HealthState, Pool, PoolConfig, PoolEvent, RelayFrame,
+    RelayHandle, WireFrame,
 };
 use crate::role::RelayRole;
 
@@ -406,85 +406,8 @@ fn ensure_open_with_explicit_role_overrides_default() {
     pool.shutdown();
 }
 
-// ─── Step 8 phase E — NIP-42 AUTH wire/FSM split ─────────────────────
-//
-// These tests lock the wire-layer side of the split: the pool's
-// translator pre-classifies `["AUTH", <challenge>]` into
-// `RelayFrame::Auth(challenge)` and leaves everything else as
-// `RelayFrame::Text`. The kind:22242 reply builder lives in
-// `nmp-nip42` and the per-relay pause/replay FSM lives in
-// `nmp-core::subs::AuthGate` — neither is named anywhere in this crate
-// (see `auth_gate_and_22242_are_not_named_in_this_crate`).
-
-#[test]
-fn classify_auth_extracts_non_empty_challenge() {
-    match classify_text_frame(r#"["AUTH","challenge-abc"]"#.to_string()) {
-        RelayFrame::Auth(c) => assert_eq!(c, "challenge-abc"),
-        other => panic!("expected RelayFrame::Auth, got {other:?}"),
-    }
-}
-
-#[test]
-fn classify_passes_non_auth_text_through_untouched() {
-    // EVENT/EOSE/OK/NOTICE/CLOSED all stay as Text — the kernel ingest
-    // path owns those semantics; the wire layer never duplicates the
-    // vocabulary.
-    let cases = [
-        r#"["EVENT","sub1",{"id":"x"}]"#,
-        r#"["EOSE","sub1"]"#,
-        r#"["OK","abcd",true,""]"#,
-        r#"["NOTICE","hi"]"#,
-        r#"["CLOSED","sub1","reason"]"#,
-    ];
-    for raw in cases {
-        match classify_text_frame(raw.to_string()) {
-            RelayFrame::Text(t) => assert_eq!(t, raw),
-            other => panic!("expected RelayFrame::Text for {raw}, got {other:?}"),
-        }
-    }
-}
-
-#[test]
-fn classify_malformed_auth_falls_through_to_text() {
-    // Empty challenge — NIP-42 forbids it (would yield an unsignable
-    // event). The pool must NOT silently swallow these; the kernel
-    // ingest path logs them as malformed.
-    match classify_text_frame(r#"["AUTH",""]"#.to_string()) {
-        RelayFrame::Text(t) => assert_eq!(t, r#"["AUTH",""]"#),
-        other => panic!("expected fall-through to Text, got {other:?}"),
-    }
-    // Wrong-typed challenge (number instead of string).
-    match classify_text_frame(r#"["AUTH",42]"#.to_string()) {
-        RelayFrame::Text(_) => {}
-        other => panic!("expected Text for typed-wrong challenge, got {other:?}"),
-    }
-    // Missing challenge.
-    match classify_text_frame(r#"["AUTH"]"#.to_string()) {
-        RelayFrame::Text(_) => {}
-        other => panic!("expected Text for missing challenge, got {other:?}"),
-    }
-}
-
-#[test]
-fn classify_does_not_misfire_on_auth_substring_in_other_frames() {
-    // A NOTICE that happens to mention AUTH must NOT be pre-classified.
-    let raw = r#"["NOTICE","AUTH required for write"]"#;
-    match classify_text_frame(raw.to_string()) {
-        RelayFrame::Text(t) => assert_eq!(t, raw),
-        other => panic!("expected Text, got {other:?}"),
-    }
-}
-
-#[test]
-fn classify_invalid_json_falls_through_to_text() {
-    // The pool must not crash on garbage; the kernel's parser owns the
-    // structural error path.
-    let raw = "not-json-at-all-AUTH";
-    match classify_text_frame(raw.to_string()) {
-        RelayFrame::Text(t) => assert_eq!(t, raw),
-        other => panic!("expected Text on garbage, got {other:?}"),
-    }
-}
+// `classify_text_frame` behaviour is tested next to its implementation in
+// `pool::frame`; the crate-wide doctrine guard below stays here.
 
 /// Doctrine guard: `nmp-network` MUST NOT name the planner-side
 /// `AuthGate`, the kind:22242 event, or the per-relay
@@ -541,6 +464,83 @@ fn auth_gate_and_22242_are_not_named_in_this_crate() {
          in `nmp-nip42::build_auth_event`); offenders:\n{}",
         offenders.join("\n")
     );
+}
+
+/// Defect 1 guard — the expensive `tungstenite::Message → RelayFrame`
+/// conversion (which JSON-parses every text frame for NIP-42 AUTH
+/// pre-classification) must run OUTSIDE the `PoolInner` lock, so it can never
+/// block concurrent `Pool::send` calls (which take the same lock).
+///
+/// Structurally: `tungstenite_to_relay_frame` must be called only inside
+/// `prepare_event` (the off-lock pre-translation step) and NEVER inside
+/// `apply_prepared` (the O(1) under-lock step). A regression that moves the
+/// conversion back under the lock — e.g. by reintroducing a single `translate`
+/// that runs while `inner.lock()` is held — trips this guard.
+///
+/// We assert on source structure rather than timing because a wall-clock race
+/// test would be flaky; the lock-discipline invariant is a property of where
+/// the call lives, which is exactly what this pins.
+#[test]
+fn frame_translation_runs_off_lock_not_inside_apply_prepared() {
+    let translate_src = include_str!("translate.rs");
+    let inner_src = include_str!("inner.rs");
+
+    let prepare = extract_fn_body(translate_src, "fn prepare_event")
+        .expect("translate.rs must define prepare_event");
+    let apply = extract_fn_body(translate_src, "fn apply_prepared")
+        .expect("translate.rs must define apply_prepared");
+
+    assert!(
+        prepare.contains("tungstenite_to_relay_frame"),
+        "the Message→RelayFrame conversion must happen in the off-lock \
+         `prepare_event`; if it moved, the lock-discipline guarantee is lost"
+    );
+    assert!(
+        !apply.contains("tungstenite_to_relay_frame"),
+        "`apply_prepared` runs under the PoolInner lock; it must NOT call \
+         `tungstenite_to_relay_frame` (the JSON-parsing frame converter) — \
+         that would re-introduce Defect 1 (lock held across frame translation)"
+    );
+    // The translator loop must do the conversion (prepare_event) BEFORE it
+    // acquires the lock. Pin that ordering in the loop body.
+    let loop_body = extract_fn_body(inner_src, "fn translator_loop")
+        .expect("inner.rs must define translator_loop");
+    let prepare_at = loop_body
+        .find("prepare_event(")
+        .expect("translator_loop must call prepare_event");
+    let lock_at = loop_body
+        .find("inner.lock()")
+        .expect("translator_loop must take the inner lock");
+    assert!(
+        prepare_at < lock_at,
+        "translator_loop must call prepare_event (off-lock translation) BEFORE \
+         taking inner.lock(); otherwise the parse happens under the lock"
+    );
+}
+
+/// Return the source text of a function body starting at the `needle`
+/// signature, up to the matching closing brace (best-effort brace counting).
+fn extract_fn_body<'a>(src: &'a str, needle: &str) -> Option<&'a str> {
+    let start = src.find(needle)?;
+    let after = &src[start..];
+    let open = after.find('{')?;
+    let bytes = after.as_bytes();
+    let mut depth = 0usize;
+    let mut i = open;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&after[open..=i]);
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
 }
 
 fn walk_rs_files(dir: &std::path::Path, sink: &mut dyn FnMut(&std::path::Path, &str)) {
