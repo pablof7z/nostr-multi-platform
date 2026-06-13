@@ -20,14 +20,20 @@ export default function App(): JSX.Element {
   // as feed cards mount, after the feed opened post-connect).
   let claimed = false;
   createEffect(() => {
-    if (runtime.anyRelayConnected() && !claimed) {
+    if (runtime.anyIndexerConnected() && !claimed) {
       claimed = true;
       runtime.host.claimProfile(SHOWCASE_PUBKEY, "gallery-root");
     }
   });
 
   const profile = () => runtime.host.profile(SHOWCASE_PUBKEY);
-  const ready = createMemo(() => profile() !== undefined);
+  // "Resolved" means real kind:0 data arrived — not just a placeholder entry.
+  // Demos render only on real resolution so screenshots never show empty cards.
+  const ready = createMemo(() => {
+    const p = profile();
+    return !!p && (!!p.displayName || !!p.pictureUrl);
+  });
+  const resolvedProfile = createMemo(() => (ready() ? profile() : undefined));
 
   return (
     <NostrProfileHostProvider host={runtime.host}>
@@ -63,7 +69,7 @@ export default function App(): JSX.Element {
           title="user-name"
           desc="Display-name text from the resolved kind:0."
         >
-          <Show when={profile()} fallback={<Resolving />} keyed>
+          <Show when={resolvedProfile()} fallback={<Resolving />} keyed>
             {(p) => (
               <div data-testid="name-demo" style={{ "font-size": "20px", "font-weight": "600" }}>
                 <NostrProfileName profile={p} />
@@ -77,7 +83,7 @@ export default function App(): JSX.Element {
           title="user-nip05"
           desc="NIP-05 verified-identity badge — renders only when the profile carries a nip05."
         >
-          <Show when={profile()} fallback={<Resolving />} keyed>
+          <Show when={resolvedProfile()} fallback={<Resolving />} keyed>
             {(p) => (
               <div data-testid="nip05-demo">
                 <NostrNip05Badge profile={p} />
@@ -91,7 +97,7 @@ export default function App(): JSX.Element {
           title="user-card"
           desc="Compact author header: avatar + name + NIP-05 badge."
         >
-          <Show when={profile()} fallback={<Resolving />} keyed>
+          <Show when={resolvedProfile()} fallback={<Resolving />} keyed>
             {(p) => (
               <div data-testid="card-demo" style={{ "max-width": "360px" }}>
                 <NostrUserCard profile={p} avatarSize={48} />

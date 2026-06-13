@@ -35,6 +35,9 @@ export type GalleryRuntime = {
   relays: Accessor<RelayStatusRow[]>;
   /** Reactive — true once at least one relay reports a connected state. */
   anyRelayConnected: Accessor<boolean>;
+  /** Reactive — true once a connected relay carries the `indexer` role. kind:0
+   *  profile REQs route to the indexer lane, so claims must wait for this. */
+  anyIndexerConnected: Accessor<boolean>;
   /** Reactive — number of resolved profiles currently held. */
   resolvedCount: Accessor<number>;
 };
@@ -229,6 +232,10 @@ export function createGalleryRuntime(): GalleryRuntime {
     status,
     relays,
     anyRelayConnected: () => relays().some((r) => r.connection.toLowerCase() === "connected"),
+    anyIndexerConnected: () =>
+      relays().some(
+        (r) => r.connection.toLowerCase() === "connected" && r.role.includes("indexer"),
+      ),
     resolvedCount,
   };
 }
