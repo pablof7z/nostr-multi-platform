@@ -420,22 +420,9 @@ fn sign_zap_request_rejects_out_of_range_kind() {
 // ────────────────────────────────────────────────────────────────────
 // `FetchLnurlInvoiceCommand::run` — sign-path branches (V-78 reconcile).
 //
-// `run` no longer signs directly: it emits exactly one
-// `ActorCommand::SignEventForAccount { signer_pubkey: None, .. }` carrying a
-// continuation. The actor's dispatch arm resolves the sign behind that port —
-// inline for a local nsec, parked-then-drained for a NIP-46 bunker — and calls
-// the continuation with the resolved `SignedEvent` (or an `Err`). That
-// backend-transparent resolution is proven in `nmp-core`'s
-// `sign_event_for_account_tests`; HERE we prove the nip57 half of the seam:
-//
-//  * `run` emits the port command (with the Requested stage first), and
-//  * driving its continuation with `Ok(signed)` spawns the HTTP worker, while
-//    `Err(reason)` fails closed (ShowToast [+ RecordActionFailure]).
-//
-// Composed, the two crates' tests preserve #938's bunker-zap proof across the
-// crate seam. The HTTP-success leg needs a live LN provider (the iOS shell
-// drives it end-to-end); we point the worker at a parse-failing target so the
-// continuation's worker thread never opens a socket.
+// `run` emits `SignEventForAccount` (the port); its continuation spawns the
+// HTTP worker. Driving with `Ok(signed)` spawns the worker; `Err` fails
+// closed. Backend-transparent resolution is proven in nmp-core.
 // ────────────────────────────────────────────────────────────────────
 
 use std::sync::Mutex;
@@ -455,16 +442,10 @@ impl Sink {
     }
 }
 
-/// A LNURL target that fails `lnurl_to_well_known_url` PARSE — no `@`, not
-/// `lnurl1…`, not `https://`. The HTTP worker errors at the very first line
-/// of `fetch_lnurl_invoice_blocking` (the parse), before opening any socket,
-/// so the sign-path tests below stay fully hermetic (no network egress from
-/// `cargo test`).
-const UNREACHABLE_LNURL: &str = "not-a-valid-lnurl-target";
+/// Valid lightning address whose HTTP leg will fail (domain nonexistent) so the
+/// sign-path tests stay hermetic while passing the `inject_lnurl_tag` gate.
+const UNREACHABLE_LNURL: &str = "zap-test@unreachable.invalid";
 
-/// What `run` emitted: the single `SignEventForAccount` port command's fields
-/// plus the recorded stages and a kept-alive command receiver (so the
-/// continuation's worker `send`s are observable, not dropped).
 struct PortCapture {
     signer_pubkey: Option<String>,
     unsigned: UnsignedEvent,
@@ -473,28 +454,16 @@ struct PortCapture {
     worker_rx: std::sync::mpsc::Receiver<nmp_core::ActorMail>,
 }
 
-/// Run the command with a parse-failing LNURL target and return the single
-/// `SignEventForAccount` port command it emitted (continuation extracted),
-/// the recorded stages, and the kept-alive command receiver. Asserts that
-/// `run` itself emits NOTHING on the actor-thread `send` closure other than
-/// the one port command — all terminal/worker traffic flows through the
-/// continuation + the worker's `command_sender` clone.
-fn run_and_capture_port(
-    correlation_id: Option<String>,
-) -> PortCapture {
+fn run_and_capture_port(correlation_id: Option<String>) -> PortCapture {
     let sink = Sink::new();
     let send = |c: ActorCommand| sink.sends.lock().unwrap().push(c);
     let clock = FixedClock(1_700_000_000);
     let stages = RecordingStages(Mutex::new(Vec::new()));
     let recipients = NoopRecipientRelayLookup;
-    // Keep the receiver alive so the continuation's worker `send`s are
-    // observable rather than landing on a dropped channel.
     let (worker_tx, worker_rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
     let signers = LocalSigner::none();
-
     {
-        let mut ctx =
-            ctx_with_sender(&send, nmp_core::CommandSender::new(worker_tx), &clock, &signers, &stages, &recipients);
+        let mut ctx = ctx_with_sender(&send, nmp_core::CommandSender::new(worker_tx), &clock, &signers, &stages, &recipients);
         let cmd = Box::new(FetchLnurlInvoiceCommand {
             unsigned: unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]),
             recipient_pubkey: RECIPIENT_HEX.to_string(),
@@ -504,28 +473,13 @@ fn run_and_capture_port(
         });
         cmd.run(&mut ctx).expect("run returns Ok");
     }
-
     let mut sends = sink.sends.into_inner().unwrap();
-    assert_eq!(
-        sends.len(),
-        1,
-        "run must emit exactly one command — the SignEventForAccount port command: {sends:?}"
-    );
+    assert_eq!(sends.len(), 1, "run must emit exactly one SignEventForAccount: {sends:?}");
     let (signer_pubkey, unsigned, continuation) = match sends.remove(0) {
-        ActorCommand::SignEventForAccount {
-            signer_pubkey,
-            unsigned,
-            continuation,
-        } => (signer_pubkey, unsigned, continuation),
-        other => panic!("expected SignEventForAccount port command, got {other:?}"),
+        ActorCommand::SignEventForAccount { signer_pubkey, unsigned, continuation } => (signer_pubkey, unsigned, continuation),
+        other => panic!("expected SignEventForAccount, got {other:?}"),
     };
-    PortCapture {
-        signer_pubkey,
-        unsigned,
-        continuation,
-        stages: stages.0.into_inner().unwrap(),
-        worker_rx,
-    }
+    PortCapture { signer_pubkey, unsigned, continuation, stages: stages.0.into_inner().unwrap(), worker_rx }
 }
 
 /// `run` must sign the kind:9734 through the unified `SignEventForAccount`
@@ -814,4 +768,42 @@ fn validate_bolt11_amount_rejects_malformed_amount_hrp() {
         result.is_err(),
         "an invoice with a malformed amount must be rejected: {result:?}"
     );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// `inject_lnurl_tag` — fail-closed contract (D6 fix).
+// Before the fix both error paths silently `return`'d; the fix returns
+// `Err` so the caller can abort the zap rather than proceed without the tag.
+// ────────────────────────────────────────────────────────────────────
+
+/// Valid lightning address → injects a bech32 lnurl1… tag.
+#[test]
+fn inject_lnurl_tag_inserts_tag_for_valid_lightning_address() {
+    let mut u = unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]);
+    assert!(inject_lnurl_tag("alice@pay.example.com", &mut u).is_ok());
+    let row = u.tags.iter().find(|t| t.first().map(String::as_str) == Some("lnurl"))
+        .expect("lnurl tag must be injected");
+    assert!(row.len() > 1 && row[1].starts_with("lnurl1"), "tag must be bech32: {row:?}");
+}
+
+/// Unparseable input → Err (caller aborts the zap), no tag added.
+#[test]
+fn inject_lnurl_tag_returns_err_for_unparseable_input() {
+    let mut u = unsigned_for(vec![vec!["p".to_string(), RECIPIENT_HEX.to_string()]]);
+    assert!(
+        inject_lnurl_tag("not-a-valid-lnurl-at-all", &mut u).is_err(),
+        "unparseable input must return Err"
+    );
+    assert!(!u.tags.iter().any(|t| t.first().map(String::as_str) == Some("lnurl")));
+}
+
+/// Existing non-empty lnurl tag → no-op (Ok, tag unchanged, no duplicate).
+#[test]
+fn inject_lnurl_tag_skips_when_tag_already_present() {
+    let existing = vec!["lnurl".to_string(), "lnurl1dp68gurn8ghj7arg9ekxzar9wd6xzarfwfjhgwf3h".to_string()];
+    let mut u = unsigned_for(vec![existing.clone(), vec!["p".to_string(), RECIPIENT_HEX.to_string()]]);
+    assert!(inject_lnurl_tag("alice@pay.example.com", &mut u).is_ok());
+    let rows: Vec<_> = u.tags.iter().filter(|t| t.first().map(String::as_str) == Some("lnurl")).collect();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(*rows[0], existing);
 }
