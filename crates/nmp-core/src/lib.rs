@@ -312,7 +312,7 @@ pub mod typed_projections {
 // so protocol crates that consume the port through
 // `ProtocolCommandContext::sign_event_for_account` (e.g. `nmp-nip57`'s zap
 // command) can name it — chiefly in tests that drive the continuation directly.
-pub use actor::{ActorCommand, SignContinuation, SignerSource};
+pub use actor::{ActorCommand, CipherContinuation, SignContinuation, SignerSource};
 // ADR-0050 §D3a — the unified actor-inbox transport seam. `CommandSender` is
 // the single command-send handle (replaces the bare `mpsc::Sender<ActorCommand>`
 // once handed to host code / workers); `ActorMail` is the inbox item;

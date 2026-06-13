@@ -30,7 +30,17 @@ pub struct BrokerTransport {
     remote_pubkey: PublicKey,
     /// The signer we feed inbound responses to. `Weak` so the transport does
     /// not extend the host adapter's signer lifetime.
+    ///
+    /// Kept solely so [`Self::bind_signer`] stays ABI-stable and so the
+    /// transport can decrypt with the session keys; ADR-0050 §D3b stops the
+    /// dispatcher from calling `ingest_rpc_response` directly — the decrypted
+    /// body now flows through [`Self::completion_sink`] to the actor instead.
     signer: Mutex<Weak<Nip46Signer>>,
+    /// ADR-0050 §D3b completion sink. When set, `dispatch_inbound` hands the
+    /// decrypted RPC body to this closure (which the host installs to send a
+    /// `DeliverSignerResponse` actor command) rather than resolving the signer
+    /// on the dispatcher thread. `None` until the host binds it.
+    completion_sink: Mutex<Option<crate::CompletionSink>>,
 }
 
 impl std::fmt::Debug for BrokerTransport {
@@ -56,6 +66,7 @@ impl BrokerTransport {
             local_keys,
             remote_pubkey,
             signer: Mutex::new(Weak::new()),
+            completion_sink: Mutex::new(None),
         })
     }
 
@@ -67,10 +78,26 @@ impl BrokerTransport {
         }
     }
 
+    /// Install the ADR-0050 §D3b completion sink. After this, `dispatch_inbound`
+    /// routes decrypted RPC bodies through `sink` (host → `DeliverSignerResponse`
+    /// command) instead of calling `Nip46Signer::ingest_rpc_response` directly.
+    pub fn bind_completion_sink(&self, sink: crate::CompletionSink) {
+        if let Ok(mut slot) = self.completion_sink.lock() {
+            *slot = Some(sink);
+        }
+    }
+
     /// Inbound dispatch: called for every kind:24133 event delivered by the
-    /// relay client. Decrypts the content, parses the JSON-RPC envelope,
-    /// and forwards `{id, result | error}` to
-    /// `Nip46Signer::ingest_rpc_response`.
+    /// relay client. Decrypts the content and hands the decrypted JSON-RPC body
+    /// (`{id, result | error}`) to the ADR-0050 §D3b completion sink — the host
+    /// installs a sink that sends a `DeliverSignerResponse` actor command, so
+    /// the parked op is resolved on the actor thread (D4 single-writer), not on
+    /// this dispatcher thread.
+    ///
+    /// Before §D3b this called `Nip46Signer::ingest_rpc_response` directly here;
+    /// that direct path is gone. If no sink has been bound yet (the host should
+    /// always bind one), the decrypted body is dropped and the originating op
+    /// falls through to its normal timeout (D6) — never a panic.
     ///
     /// Public so the broker's relay subscription callback can call this
     /// directly. Idempotent — safe to invoke from multiple frames.
@@ -79,14 +106,13 @@ impl BrokerTransport {
         else {
             return;
         };
-        let signer_arc = match self.signer.lock() {
-            Ok(guard) => guard.upgrade(),
+        let sink = match self.completion_sink.lock() {
+            Ok(guard) => guard.clone(),
             Err(_) => return,
         };
-        // If the signer has been dropped (account removed, app shutting
-        // down) the dispatch is a no-op.
-        let Some(signer) = signer_arc else { return };
-        signer.ingest_rpc_response(&plaintext);
+        if let Some(sink) = sink {
+            sink(plaintext);
+        }
     }
 }
 
@@ -251,5 +277,79 @@ mod tests {
         let transport = BrokerTransport::new(relay as Arc<dyn RelayClient>, local, remote);
         transport.dispatch_inbound(&serde_json::json!({"not": "an event"}));
         transport.dispatch_inbound(&serde_json::Value::Null);
+    }
+
+    /// ADR-0050 §D3b: a bound completion sink receives the DECRYPTED RPC body
+    /// (`{"id":...,"result":...}`) from a steady-state kind:24133 reply —
+    /// instead of the signer being resolved on the dispatcher thread. This is
+    /// the seam the host wires to a `DeliverSignerResponse` actor command.
+    #[test]
+    fn dispatch_inbound_routes_decrypted_body_to_completion_sink() {
+        use std::sync::Arc as StdArc;
+        let local = Keys::generate();
+        let bunker = Keys::generate();
+        let relay = Arc::new(CapturingRelay {
+            sent: StdMutex::new(Vec::new()),
+        });
+        let transport = BrokerTransport::new(
+            relay as Arc<dyn RelayClient>,
+            local.clone(),
+            bunker.public_key(),
+        );
+
+        // Install a sink that captures the body it is handed.
+        let captured: StdArc<StdMutex<Vec<String>>> = StdArc::new(StdMutex::new(Vec::new()));
+        let sink_slot = StdArc::clone(&captured);
+        transport.bind_completion_sink(StdArc::new(move |body: String| {
+            sink_slot.lock().unwrap().push(body);
+        }));
+
+        // A genuinely decryptable kind:24133 reply addressed to `local`.
+        let rpc = serde_json::json!({"id": "abc", "result": "signed-event-json"});
+        let ct = nostr::nips::nip44::encrypt(
+            bunker.secret_key(),
+            &local.public_key(),
+            rpc.to_string().as_bytes(),
+            nostr::nips::nip44::Version::V2,
+        )
+        .unwrap();
+        let event = serde_json::json!({
+            "pubkey": bunker.public_key().to_hex(),
+            "kind": 24133,
+            "content": ct,
+        });
+        transport.dispatch_inbound(&event);
+
+        let got = captured.lock().unwrap();
+        assert_eq!(got.len(), 1, "the sink receives exactly one decrypted body");
+        let parsed: Value = serde_json::from_str(&got[0]).expect("body is JSON");
+        assert_eq!(parsed.get("id").and_then(|v| v.as_str()), Some("abc"));
+        assert_eq!(
+            parsed.get("result").and_then(|v| v.as_str()),
+            Some("signed-event-json")
+        );
+    }
+
+    /// A malformed (undecryptable) inbound event must NOT call the sink — it is
+    /// dropped to a clean op timeout (D6), never forwarded as garbage.
+    #[test]
+    fn dispatch_inbound_does_not_call_sink_on_undecryptable_event() {
+        use std::sync::Arc as StdArc;
+        let local = Keys::generate();
+        let remote = Keys::generate().public_key();
+        let relay = Arc::new(CapturingRelay {
+            sent: StdMutex::new(Vec::new()),
+        });
+        let transport = BrokerTransport::new(relay as Arc<dyn RelayClient>, local, remote);
+        let called = StdArc::new(StdMutex::new(false));
+        let flag = StdArc::clone(&called);
+        transport.bind_completion_sink(StdArc::new(move |_| {
+            *flag.lock().unwrap() = true;
+        }));
+        transport.dispatch_inbound(&serde_json::json!({"not": "an event"}));
+        assert!(
+            !*called.lock().unwrap(),
+            "an undecryptable event must not reach the completion sink"
+        );
     }
 }

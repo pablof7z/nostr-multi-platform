@@ -11,7 +11,7 @@
 //! Unlike NIP-46 (relay round-trip, < 1s), an Android Intent round-trip
 //! requires the user to foreground Amber (5–30s). The per-op deadline is
 //! therefore `EXTERNAL_SIGN_TIMEOUT` = 90s (ADR-0048 D3), reported via
-//! `RemoteSignerHandle::sign_timeout()`.
+//! `RemoteSignerHandle::op_timeout()`.
 //!
 //! ## Key-material boundary
 //!

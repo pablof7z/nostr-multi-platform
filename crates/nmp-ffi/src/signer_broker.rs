@@ -38,8 +38,19 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) {
     };
     let tx = app.actor_sender();
     let _ = GLOBAL_BROKER.get_or_init(|| {
+        let event_tx = tx.clone();
         let broker = BunkerBroker::new(Arc::new(move |event| {
-            handle_broker_event(&tx, event);
+            handle_broker_event(&event_tx, event);
+        }));
+        // ADR-0050 §D3b — install the completion sink: every decrypted
+        // steady-state kind:24133 RPC reply is routed back to the actor as a
+        // `DeliverSignerResponse` command (waking the actor via the single
+        // inbox, §D3a) instead of resolving the parked op on the broker's
+        // dispatcher thread. nmp-core's dispatch arm fans the body out to the
+        // remote handles. D0: the broker sees only this opaque `Fn(String)`.
+        let sink_tx = tx.clone();
+        broker.set_completion_sink(Arc::new(move |response_json: String| {
+            let _ = sink_tx.send(ActorCommand::DeliverSignerResponse { response_json });
         }));
         let broker_for_hook = Arc::clone(&broker);
         register_bunker_hook(Arc::new(move |request| match request {

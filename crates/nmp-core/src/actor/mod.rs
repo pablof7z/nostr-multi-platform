@@ -33,6 +33,11 @@ mod typed_projections;
 mod capability_worker;
 #[cfg(feature = "native")]
 mod dispatch;
+// ADR-0050 §D1/§D3b signer-port dispatch helpers (cipher verbs + completion
+// delivery), split out to keep `dispatch.rs` within budget. Native-only (uses
+// the native `ActorContext`).
+#[cfg(feature = "native")]
+mod signer_port_dispatch;
 #[cfg(feature = "native")]
 mod fairness;
 // ADR-0050 §D3a — the single waking actor inbox. `ActorMail` + `CommandSender`
@@ -40,6 +45,9 @@ mod fairness;
 // `CommandSender` to workers, and `ActorCommand` itself is always-compiled);
 // the relay-side scheduler / sink / `Inbox` are `native`-gated inside.
 mod inbox;
+// Always-compiled port continuations (named by the always-compiled
+// `ActorCommand` sign / cipher verbs; not `native`-gated).
+mod continuations;
 // Generic raw signed-event forwarding dispatch. Native-only: depends on
 // `nmp_network::pool::Pool` for outbound `["EVENT", ...]` frames. Policy
 // crates provide target selection through a substrate trait object.
@@ -64,6 +72,8 @@ mod send_gate_universal_tests;
 mod session_persistence;
 #[cfg(all(test, feature = "native"))]
 mod session_persistence_tests;
+#[cfg(all(test, feature = "native"))]
+mod cipher_for_account_tests;
 #[cfg(all(test, feature = "native"))]
 mod sign_event_for_account_tests;
 #[cfg(all(test, feature = "native"))]
@@ -197,7 +207,7 @@ use dispatch::{dispatch_command, handle_relay_event, ActorContext};
 #[cfg(feature = "native")]
 use fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
 #[cfg(feature = "native")]
-use pending_sign::PendingSign;
+use pending_sign::{resolve_parked_op, ParkedOp, PublishObligation};
 
 use crate::kernel::LifecyclePhase;
 
@@ -208,6 +218,9 @@ use crate::app::KernelAction;
 // the broker adapter, and the actor's self-feedback path; `ActorMail` is what
 // the unified inbox carries. Both name no protocol concept (D0).
 pub use inbox::{ActorMail, CommandSendError, CommandSender};
+// ADR-0050 §D1 — always-compiled port continuations named by the (always-
+// compiled) `ActorCommand` sign / cipher verbs.
+pub use continuations::{CipherContinuation, SignContinuation};
 // Native-only relay-lane scheduler + receiver wrapper. (`RelayMailSink` is
 // constructed via `CommandSender::relay_sink()`, never named here.)
 #[cfg(feature = "native")]
@@ -335,40 +348,6 @@ impl std::fmt::Debug for SignerSource {
     }
 }
 
-/// Boxed continuation invoked with the resolved sign outcome.
-///
-/// Defined here (always-compiled) rather than in the `native`-gated
-/// `pending_sign` module so the always-compiled `ActorCommand::SignEventForAccount`
-/// variant can name it on `wasm32` / no-`native` builds — see the `[features]`
-/// note: the `ActorCommand` enum stays always-compiled; only the actor runtime
-/// that *consumes* it is gated. The newtype lets the enum's derived `Debug`
-/// compile despite holding a `Box<dyn FnOnce(..) + Send>` (neither `Debug` nor
-/// inspectable); the `Debug` impl below prints a fixed placeholder.
-pub struct SignContinuation(
-    pub Box<dyn FnOnce(Result<crate::substrate::SignedEvent, String>) + Send>,
-);
-
-impl SignContinuation {
-    /// Construct from any `FnOnce` matching the sign-outcome shape.
-    #[must_use]
-    pub fn new(
-        f: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
-    ) -> Self {
-        Self(Box::new(f))
-    }
-
-    /// Invoke the continuation with the sign outcome, consuming it.
-    pub fn call(self, outcome: Result<crate::substrate::SignedEvent, String>) {
-        (self.0)(outcome);
-    }
-}
-
-impl std::fmt::Debug for SignContinuation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("SignContinuation(<sign-account continuation>)")
-    }
-}
-
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
 /// through the `testing` re-export gate.  In normal (non-test-support) builds
@@ -395,7 +374,8 @@ pub enum ActorCommand {
     /// result in the `signed_events` snapshot projection keyed by
     /// `correlation_id`. The caller polls the projection to retrieve the
     /// signed event JSON. Works for both local nsec (resolves immediately) and
-    /// NIP-46 bunker (resolves asynchronously via `PendingSignReturn`).
+    /// NIP-46 bunker (resolves asynchronously via a parked `ParkedOp` with the
+    /// `SignedEventsProjection` sink).
     ///
     /// Unlike every other sign path in the actor, this NEVER publishes — the
     /// signed event is handed straight back to the host through the projection
@@ -426,8 +406,8 @@ pub enum ActorCommand {
     /// same functions the publish path uses, which look across BOTH local keys
     /// and remote signers). A local key resolves `Ready` and the continuation
     /// runs inline on the actor thread; a NIP-46 bunker resolves `Pending` and
-    /// is parked in [`crate::actor::pending_sign::PendingSignReturn`] with a
-    /// continuation sink — the idle-loop drain invokes the continuation when the
+    /// is parked in [`crate::actor::pending_sign::ParkedOp`] with the
+    /// `SignContinuation` sink — the idle-loop drain invokes the continuation when the
     /// broker turns the request around (or on timeout, with an `Err`). Either
     /// way the worker code path is identical.
     ///
@@ -455,6 +435,55 @@ pub enum ActorCommand {
         /// Invoked with the resolved sign outcome — inline (local) or from the
         /// idle-loop drain (bunker / timeout).
         continuation: SignContinuation,
+    },
+    /// Backend-transparent NIP-44 ENCRYPT-account port — the cipher sibling of
+    /// [`Self::SignEventForAccount`] (ADR-0050 §D1). Encrypt `plaintext` to
+    /// `peer_pubkey` with the named (`Some(hex)`) or active (`None`) account,
+    /// then invoke `continuation` with the ciphertext (or error). Local accounts
+    /// run `nostr::nips::nip44` inside the identity runtime (D13); remote
+    /// accounts route through `RemoteSignerHandle::nip44_encrypt` and park under
+    /// the `CipherContinuation` sink. The continuation runs on the actor thread,
+    /// only enqueues work (D8), and receives only ciphertext (D13). D0:
+    /// `nip44_*` is a crypto capability (present since ADR-0026), not an app noun.
+    Nip44EncryptForAccount {
+        /// Recipient pubkey (lowercase hex) the plaintext is encrypted to.
+        peer_pubkey: String,
+        /// The plaintext to encrypt.
+        plaintext: String,
+        /// `None` = active account; `Some(hex)` = a named roster key.
+        signer_pubkey: Option<String>,
+        /// Invoked with the resolved ciphertext (or an error string).
+        continuation: CipherContinuation,
+    },
+    /// Backend-transparent NIP-44 DECRYPT-account port — the inbound twin of
+    /// [`Self::Nip44EncryptForAccount`] (ADR-0050 §D1). Same contract; decrypts
+    /// `ciphertext` from `peer_pubkey` to plaintext.
+    Nip44DecryptForAccount {
+        /// Sender pubkey (lowercase hex) the ciphertext was encrypted from.
+        peer_pubkey: String,
+        /// The ciphertext to decrypt.
+        ciphertext: String,
+        /// `None` = active account; `Some(hex)` = a named roster key.
+        signer_pubkey: Option<String>,
+        /// Invoked with the resolved plaintext (or an error string).
+        continuation: CipherContinuation,
+    },
+    /// Deliver an inbound remote-signer response for correlation-keyed dispatch
+    /// (ADR-0050 §D3b) — the actor-mailbox completion path for steady-state
+    /// replies. Both backends route here instead of resolving the parked op on a
+    /// foreign thread: NIP-46 via the broker's opaque completion sink (installed
+    /// by nmp-ffi; broker stays `nmp-core`-free, D0), NIP-55 via
+    /// `external_signer.rs::deliver` (handshake path unaffected). The arm fans
+    /// the JSON to every remote handle (each drops non-matching ids — the trait
+    /// contract). Because the send lands on the single waking inbox (§D3a), the
+    /// completion wakes the actor and the SAME iteration drains the parked-op
+    /// queue — no ≤250ms tick dependence; the pending-map mutation is on the
+    /// actor thread (D4 single-writer).
+    DeliverSignerResponse {
+        /// The already-decoded signer response (NIP-46: decrypted RPC body;
+        /// NIP-55: serialized `ExternalSignerResponse`), passed verbatim to each
+        /// handle's `deliver_response`.
+        response_json: String,
     },
     /// Unified sign-in command. Adds a signer to the actor-local identity store
     /// from one of the [`SignerSource`] variants and, when `make_active` is set,
@@ -567,7 +596,7 @@ pub enum ActorCommand {
     /// Both local-keys and remote (NIP-46) signer accounts are supported —
     /// the dispatch arm delegates to the existing `publish_unsigned_event` /
     /// `publish_unsigned_event_to_relays` helpers, which already park bunker
-    /// signs in `PendingSign` (D8 — actor never blocks).
+    /// signs as a `ParkedOp` with the `Publish` sink (D8 — actor never blocks).
     PublishRawEvent {
         kind: u32,
         tags: Vec<Vec<String>>,
@@ -1912,16 +1941,12 @@ pub fn run_actor_with_observers(
     // (performance-timing) read, never the business clock — D9-clean.
     let mut last_gc = Instant::now();
     let mut startup_sent = false;
-    // Remote (NIP-46) sign ops parked off the blocking path. `dispatch_command`
-    // pushes a `PendingSign` when a publish-command sign goes `Pending`; the
-    // idle section below `poll()`s each one per tick and publishes on
-    // completion. Lives outside the loop so parked ops survive across ticks.
-    let mut pending_signs: Vec<PendingSign> = Vec::new();
-    // Sign-and-return ops (`SignEventForReturn`) whose NIP-46 signer went
-    // `Pending`. Polled on the same idle tick as `pending_signs`, but resolved
-    // into the `signed_events` projection (no publish). Lives outside the loop
-    // so parked ops survive across ticks.
-    let mut pending_sign_returns: Vec<pending_sign::PendingSignReturn> = Vec::new();
+    // The single unified parked-op queue (ADR-0050 §D2). `dispatch_command`
+    // pushes a `ParkedOp` whenever a remote (NIP-46 / NIP-55) signer goes
+    // `Pending` — publish, sign-and-return, the generic sign port, and the
+    // cipher port (§D1) all land here and are drained in ONE `retain_mut` below.
+    // Lives outside the loop so parked ops survive across ticks.
+    let mut parked_ops: Vec<ParkedOp> = Vec::new();
     let mut queued_publish_outbound = Vec::new();
     let mut first_command = Some(first_command);
 
@@ -2017,8 +2042,7 @@ pub fn run_actor_with_observers(
                         mls_local_nsec: &mls_local_nsec,
                         active_local_keys: &active_local_keys,
                         capability_callback: &capability_callback,
-                        pending_signs: &mut pending_signs,
-                        pending_sign_returns: &mut pending_sign_returns,
+                        parked_ops: &mut parked_ops,
                         command_tx_self: &command_tx_self,
                         capability_work_tx: &capability_work_tx,
                         coverage_hook_slot: &coverage_hook,
@@ -2352,63 +2376,45 @@ pub fn run_actor_with_observers(
         if running && kernel.has_pending_cache_serves() {
             kernel.run_cache_serve_step();
         }
-        // ── Poll parked NIP-46 remote sign ops ───────────────────────────
-        // Non-blocking per D8: `SignerOp::poll` is a `try_recv`. Each parked
-        // op is checked once per tick — completed ones publish their signed
-        // event and are removed; timed-out ones surface a toast and are
-        // removed; still-pending ones stay for the next tick. An empty
-        // `pending_signs` makes this a single `Vec::retain_mut` over zero
-        // items — heap-free, no false wakeups.
-        if !pending_signs.is_empty() {
-            pending_signs.retain_mut(|ps| {
-                // Poll first: a result that landed on the same tick as the
-                // deadline must not be lost to the timeout check.
-                match ps.op.poll() {
-                    None => {
-                        if ps.timed_out() {
-                            kernel.set_last_error_toast(Some("remote sign timed out".to_string()));
-                            // Broken-promise fix: a dispatched `PublishRaw` /
-                            // `PublishProfile` carries the registry-minted
-                            // `correlation_id` the host is waiting on. The
-                            // broker never responded, so the publish never
-                            // happens — record a terminal `"failed"` verdict so
-                            // `action_results` clears the host spinner instead
-                            // of leaving it to hang. Recorded BEFORE `emit_now`
-                            // so this tick's snapshot drains it. `None` (a
-                            // `react` / `follow` park) is a no-op — nothing is
-                            // waiting on an id.
-                            if let Some(id) = ps.correlation_id_override.clone() {
-                                kernel
-                                    .record_action_failure(id, "remote sign timed out".to_string());
-                            }
-                            // Surface the toast immediately rather than
-                            // waiting up to one periodic flush tick —
-                            // matches the success-path `emit_now` below.
-                            if running {
-                                emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                            }
-                            false // Abandon — broker did not respond in time.
-                        } else {
-                            true // Still pending — keep for the next tick.
-                        }
-                    }
-                    Some(Ok(signed)) => {
-                        // Route via the target the op was parked with —
-                        // `Auto` (NIP-65 outbox) for kind:1/3/7, `Explicit`
-                        // for host-pinned action executors (NIP-29 group
-                        // events). Without the parked target a bunker user's
-                        // group event would silently revert to the outbox.
-                        //
-                        // Carry the parked `correlation_id_override` too: a
-                        // dispatched `PublishRaw` signed by a remote (NIP-46)
-                        // broker must settle under the registry-minted id the
-                        // host is waiting on, not the freshly signed event's
-                        // id. `None` for every other parked publish.
+        // ── Poll the unified parked-op queue (ADR-0050 §D2) ──────────────
+        // ONE `retain_mut` over ONE `Vec<ParkedOp>` replaces the two former
+        // drains (the inline publish block + `resolve_pending_sign_return`). Each
+        // op is polled once per tick (D8 — `SignerOp::poll` is non-blocking; the
+        // deadline is the wall-clock gate). Projection / continuation sinks
+        // resolve against the kernel in `resolve_parked_op`; the `Publish` sink
+        // hands back a `PublishObligation` (the loop owns relay routing).
+        // Obligations are collected during the retain and run after it so the
+        // drain's `&mut kernel` borrow never overlaps `route_dispatch_outbound`.
+        // Empty `parked_ops` is a heap-free zero-item retain.
+        if !parked_ops.is_empty() {
+            let mut publish_obligations: Vec<PublishObligation> = Vec::new();
+            let mut any_changed = false;
+            parked_ops.retain_mut(|parked| {
+                let outcome = resolve_parked_op(parked, &mut kernel);
+                if let Some(obligation) = outcome.publish {
+                    publish_obligations.push(obligation);
+                }
+                any_changed |= outcome.changed;
+                outcome.keep
+            });
+            // Execute the publish obligations the `Publish` sink handed back,
+            // preserving ALL prior terminal behaviours exactly: a resolved sign
+            // routes via the parked `target` + `correlation_id_override`; a
+            // failure / timeout surfaces the toast and (for a dispatched action)
+            // records the `"failed"` verdict so the host spinner clears (D6).
+            for obligation in publish_obligations {
+                match obligation {
+                    PublishObligation::Publish {
+                        signed,
+                        p_tags,
+                        target,
+                        correlation_id_override,
+                    } => {
                         let outbound = kernel.publish_signed_to_with_correlation(
                             &signed,
-                            &ps.p_tags,
-                            ps.target.clone(),
-                            ps.correlation_id_override.clone(),
+                            &p_tags,
+                            target,
+                            correlation_id_override,
                         );
                         route_dispatch_outbound(
                             running,
@@ -2420,58 +2426,26 @@ pub fn run_actor_with_observers(
                             &mut next_relay_generation,
                             outbound,
                         );
-                        if running {
-                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                        }
-                        false // Done — remove.
                     }
-                    Some(Err(e)) => {
-                        let reason = format!("remote sign failed: {e}");
-                        kernel.set_last_error_toast(Some(reason.clone()));
-                        // Broken-promise fix: same as the timeout branch — a
-                        // dispatched action's `correlation_id` must reach
-                        // `action_results` as a terminal `"failed"` verdict so
-                        // the host spinner clears. The broker rejected the sign
-                        // (or its channel dropped), so the publish never
-                        // happens. Recorded BEFORE `emit_now` so this tick's
-                        // snapshot drains it; `None` is a no-op.
-                        if let Some(id) = ps.correlation_id_override.clone() {
-                            kernel.record_action_failure(id, reason);
+                    PublishObligation::Failed {
+                        toast,
+                        correlation_id_override,
+                    } => {
+                        kernel.set_last_error_toast(Some(toast.clone()));
+                        // Recorded BEFORE `emit_now` (below) so this tick's
+                        // snapshot drains it; `None` (a `react` / `follow` park)
+                        // is a no-op — nothing is waiting on an id.
+                        if let Some(id) = correlation_id_override {
+                            kernel.record_action_failure(id, toast);
                         }
-                        // Surface the toast immediately rather than waiting
-                        // up to one periodic flush tick — matches the
-                        // success-path `emit_now` above.
-                        if running {
-                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                        }
-                        false // Done — remove.
                     }
                 }
-            });
-        }
-        // ── Poll parked sign-and-return ops (D13 SignEventForReturn) ──────
-        // Non-blocking per D8, mirroring the `pending_signs` drain above: each
-        // parked op is `poll()`ed once per tick. A resolved op records its
-        // signed JSON (or error) into the `signed_events` projection keyed by
-        // `correlation_id` — it NEVER publishes. Completed and timed-out ops
-        // are removed; still-pending ones stay. `emit_now` after each record
-        // so the host's continuation resumes immediately rather than waiting
-        // up to one periodic flush tick. Empty `pending_sign_returns` makes
-        // this a single `Vec::retain_mut` over zero items — heap-free.
-        if !pending_sign_returns.is_empty() {
-            pending_sign_returns.retain_mut(|ps| {
-                // Resolve one parked op against its sink (signed_events
-                // projection OR generic continuation). Returns `true` to keep a
-                // still-pending op, `false` once it has resolved / timed-out so
-                // `retain_mut` drops it. Extracted into `pending_sign` so both
-                // sink terminals share one tested drain (no duplicated
-                // poll/timeout/dispatch machinery).
-                let keep = pending_sign::resolve_pending_sign_return(ps, &mut kernel);
-                if !keep && running {
-                    emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                }
-                keep
-            });
+            }
+            // Surface the changes immediately rather than waiting up to one
+            // periodic flush tick — matches the prior per-op `emit_now`.
+            if any_changed && running {
+                emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+            }
         }
         // Only emit when state actually changed; do not emit on every
         // idle tick (D8: zero false-wakeup allocations after warmup).

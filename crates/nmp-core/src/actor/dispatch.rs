@@ -57,7 +57,8 @@ use crate::subs::PlanCoverageHook;
 
 use super::capability_worker::CapabilityWorkSender;
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
-use super::pending_sign::{PendingSign, PendingSignReturn};
+use super::pending_sign::ParkedOp;
+use super::signer_port_dispatch;
 use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
     shutdown_relay_worker, spawn_missing_relays,
@@ -156,7 +157,7 @@ fn maybe_publish_relay_list_after_edit(
     identity: &commands::IdentityRuntime,
     kernel: &mut Kernel,
     projection_before: &[crate::kernel::AppRelay],
-    pending_signs: &mut Vec<super::pending_sign::PendingSign>,
+    parked_ops: &mut Vec<ParkedOp>,
 ) -> Vec<OutboundMessage> {
     // Guard 1: must have an active signer.
     if identity.active_pubkey().is_none() {
@@ -171,7 +172,7 @@ fn maybe_publish_relay_list_after_edit(
     let Some(unsigned) = commands::build_relay_list_event(projection_after) else {
         return Vec::new();
     };
-    commands::publish_unsigned_event(identity, kernel, unsigned, None, None, pending_signs)
+    commands::publish_unsigned_event(identity, kernel, unsigned, None, None, parked_ops)
 }
 
 /// Parse a host sign-and-return draft into an [`crate::substrate::UnsignedEvent`].
@@ -224,8 +225,8 @@ fn build_unsigned_for_return(
 /// `Authorization: Nostr …` header. NOT the kernel-internal `SignedEvent`
 /// serde shape (which nests under `unsigned`).
 ///
-/// `pub(super)` so the idle-loop `pending_sign_returns` drain in `mod.rs`
-/// reuses the exact same flat-event serialization the dispatch arm uses.
+/// `pub(super)` so the idle-loop parked-op drain in `mod.rs` reuses the exact
+/// same flat-event serialization the dispatch arm uses.
 pub(super) fn signed_event_to_json(signed: &crate::substrate::SignedEvent) -> String {
     // Delegates to the public `SignedEvent::to_nip01_json` so the flat-event
     // serialization has exactly one definition shared by the dispatch arm, the
@@ -278,13 +279,14 @@ pub(super) struct ActorContext<'a> {
     /// through the FFI shell's `NmpApp::active_local_keys` accessor.
     pub(super) active_local_keys: &'a ActiveLocalKeysSlot,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
-    pub(super) pending_signs: &'a mut Vec<PendingSign>,
-    /// Sign-and-return ops (`SignEventForReturn`) whose signer went `Pending`
-    /// (NIP-46 bunker). Parked here and `poll()`ed on the idle loop exactly
-    /// like `pending_signs`, but resolved into the `signed_events` snapshot
-    /// projection instead of the publish engine. Local-key signs resolve
-    /// inline in the dispatch arm and never reach this vec.
-    pub(super) pending_sign_returns: &'a mut Vec<PendingSignReturn>,
+    /// The single unified parked-op queue (ADR-0050 §D2). Publish signs
+    /// (`Publish` sink), sign-and-return (`SignedEventsProjection` sink), the
+    /// generic sign port (`SignContinuation` sink), and the cipher port
+    /// (`CipherContinuation` sink, §D1) all park here when a remote (NIP-46 /
+    /// NIP-55) signer goes `Pending`. The idle loop drains them in one
+    /// `retain_mut`. Local-key ops resolve inline in the dispatch arm and never
+    /// reach this vec.
+    pub(super) parked_ops: &'a mut Vec<ParkedOp>,
     /// Self-feedback [`crate::actor::CommandSender`] — the actor's own waking
     /// inbox handle (ADR-0050 §D3a) from the perspective of code running on
     /// the actor thread. `dispatch.rs` arms that spawn background workers
@@ -595,13 +597,14 @@ pub(super) fn dispatch_command(
                             .record_signed_event_return(&correlation_id, Err(e.to_string()));
                     }
                     None => {
-                        // Remote (NIP-46 / NIP-55) signer parked — resolved by
-                        // the idle loop into the `signed_events` projection. Use
-                        // the active signer's per-op deadline so NIP-55's 90s
-                        // budget applies without touching PENDING_SIGN_TIMEOUT
-                        // (ADR-0048 D3).
-                        let deadline = ctx.identity.active_sign_deadline();
-                        ctx.pending_sign_returns.push(PendingSignReturn::new(
+                        // Remote signer parked → `signed_events` projection. Use
+                        // the SIGNING account's per-op deadline (ADR-0050 D4): a
+                        // named 90s NIP-55 key must not inherit the active
+                        // account's (e.g. 5s) budget. `""` = active (`None`).
+                        let named =
+                            (!account_pubkey.is_empty()).then_some(account_pubkey.as_str());
+                        let deadline = ctx.identity.sign_deadline_for(named);
+                        ctx.parked_ops.push(ParkedOp::signed_events_projection(
                             op,
                             correlation_id.clone(),
                             deadline,
@@ -616,54 +619,33 @@ pub(super) fn dispatch_command(
             unsigned,
             signer_pubkey,
             continuation,
-        } => {
-            // ADR-0043 Decision 2 — generic, backend-transparent sign-account
-            // port. Sign with the active account (`signer_pubkey == None`) or a
-            // named roster key, then deliver the resolved `SignedEvent` (or an
-            // error string) to the boxed continuation. Local-vs-bunker is
-            // invisible: both resolve through the same nonblocking sign + park
-            // machinery (D8). The continuation is the sole consumer of the
-            // signed event — `nmp-core` never parses it and learns no protocol
-            // noun (D0). D13: only a `SignedEvent` ever crosses to the
-            // continuation, never raw key bytes.
-            let sign_result = match &signer_pubkey {
-                None => commands::sign_active_nonblocking(ctx.identity, &unsigned),
-                Some(pk) => commands::sign_with_account_nonblocking(ctx.identity, pk, &unsigned),
-            };
-            match sign_result {
-                Err(reason) => {
-                    // No active/named account, or no signer for the pubkey:
-                    // resolve the continuation with the error so the worker's
-                    // failure path runs and the host spinner clears (D6).
-                    continuation.call(Err(reason));
-                }
-                Ok(mut op) => match op.poll() {
-                    Some(Ok(signed)) => {
-                        // Local key — `Ready` resolves on the spot. Invoke the
-                        // continuation inline on the actor thread.
-                        continuation.call(Ok(signed));
-                    }
-                    Some(Err(e)) => {
-                        continuation.call(Err(e.to_string()));
-                    }
-                    None => {
-                        // Remote (NIP-46 / NIP-55) signer — `Pending`. Park with
-                        // the continuation sink; the idle-loop drain invokes the
-                        // continuation when the broker turns the request around
-                        // (or on timeout, with an `Err`). Use per-signer deadline
-                        // so NIP-55's 90s budget applies (ADR-0048 D3).
-                        let deadline = ctx.identity.active_sign_deadline();
-                        ctx.pending_sign_returns
-                            .push(PendingSignReturn::with_continuation(
-                                op,
-                                continuation,
-                                deadline,
-                            ));
-                    }
-                },
-            }
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
+        } => signer_port_dispatch::sign_for_account(ctx, &unsigned, signer_pubkey, continuation),
+        ActorCommand::Nip44EncryptForAccount {
+            peer_pubkey,
+            plaintext,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::nip44_encrypt_for_account(
+            ctx,
+            &peer_pubkey,
+            &plaintext,
+            signer_pubkey,
+            continuation,
+        ),
+        ActorCommand::Nip44DecryptForAccount {
+            peer_pubkey,
+            ciphertext,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::nip44_decrypt_for_account(
+            ctx,
+            &peer_pubkey,
+            &ciphertext,
+            signer_pubkey,
+            continuation,
+        ),
+        ActorCommand::DeliverSignerResponse { response_json } => {
+            signer_port_dispatch::deliver_signer_response(ctx, &response_json)
         }
         ActorCommand::AddSigner {
             source,
@@ -814,7 +796,7 @@ pub(super) fn dispatch_command(
             // Route on `target`: `Auto` resolves via NIP-65 outbox (D3);
             // `Explicit { relays }` pins to exactly those relays. Both
             // helpers handle local-keys (sync sign) and bunker (parked
-            // PendingSign) paths internally — `PublishRaw` inherits the
+            // ParkedOp Publish sink) paths internally — `PublishRaw` inherits the
             // same identity-kind support as `PublishProfile`.
             let outbound = match target {
                 crate::publish::PublishTarget::Auto => commands::publish_unsigned_event(
@@ -826,7 +808,7 @@ pub(super) fn dispatch_command(
                     // the active account; `Some(pubkey)` signs with that
                     // registered agent / per-podcast key (app-signer-slot.md).
                     signer_pubkey,
-                    ctx.pending_signs,
+                    ctx.parked_ops,
                 ),
                 crate::publish::PublishTarget::Explicit { relays } => {
                     commands::publish_unsigned_event_to_relays(
@@ -839,7 +821,7 @@ pub(super) fn dispatch_command(
                         // with the active account; `Some(pubkey)` signs with that
                         // registered agent / per-podcast key (app-signer-slot.md).
                         signer_pubkey,
-                        ctx.pending_signs,
+                        ctx.parked_ops,
                     )
                 }
             };
@@ -862,7 +844,7 @@ pub(super) fn dispatch_command(
                 ctx.kernel,
                 fields,
                 correlation_id,
-                ctx.pending_signs,
+                ctx.parked_ops,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -891,7 +873,7 @@ pub(super) fn dispatch_command(
                 unsigned,
                 correlation_id,
                 signer_pubkey,
-                ctx.pending_signs,
+                ctx.parked_ops,
             );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -923,7 +905,7 @@ pub(super) fn dispatch_command(
                 relays,
                 correlation_id,
                 signer_pubkey,
-                ctx.pending_signs,
+                ctx.parked_ops,
             );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -978,7 +960,7 @@ pub(super) fn dispatch_command(
                 &target_event_id,
                 &reaction,
                 correlation_id,
-                ctx.pending_signs,
+                ctx.parked_ops,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -1000,7 +982,7 @@ pub(super) fn dispatch_command(
                 &pubkey,
                 true,
                 correlation_id,
-                ctx.pending_signs,
+                ctx.parked_ops,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -1022,7 +1004,7 @@ pub(super) fn dispatch_command(
                 &pubkey,
                 false,
                 correlation_id,
-                ctx.pending_signs,
+                ctx.parked_ops,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -1056,7 +1038,7 @@ pub(super) fn dispatch_command(
                     ctx.identity,
                     ctx.kernel,
                     &projection_before,
-                    ctx.pending_signs,
+                    ctx.parked_ops,
                 ));
             }
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -1082,7 +1064,7 @@ pub(super) fn dispatch_command(
                 ctx.identity,
                 ctx.kernel,
                 &projection_before,
-                ctx.pending_signs,
+                ctx.parked_ops,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)

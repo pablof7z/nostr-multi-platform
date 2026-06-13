@@ -35,14 +35,20 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
         None
     }
 
-    /// Per-op deadline budget for parked sign operations.
+    /// Per-op deadline budget for parked signer operations.
     ///
     /// Default is 5s (correct for a NIP-46 relay RPC). `Nip55Signer` overrides
     /// to 90s because an Android Intent round-trip requires the user to
     /// foreground Amber and tap approve (ADR-0048 D3). The actor reads this via
     /// the handle it already holds; the constant itself lives in
     /// `nmp-signer-iface` (not here) so `nmp-core` never sees a NIP-55 noun.
-    fn sign_timeout(&self) -> Duration {
+    ///
+    /// Named `op_timeout` (ADR-0050 D4 — hard-break rename from `sign_timeout`,
+    /// no compat alias per repo rule) because it now budgets all three port
+    /// verbs — `sign`, `nip44_encrypt`, `nip44_decrypt` — uniformly. One budget
+    /// per backend (NIP-46 = 5s, NIP-55 = 90s); per-verb differentiation inside
+    /// one backend is deliberately not provided until a real backend needs it.
+    fn op_timeout(&self) -> Duration {
         nmp_signer_iface::PENDING_SIGN_TIMEOUT
     }
 

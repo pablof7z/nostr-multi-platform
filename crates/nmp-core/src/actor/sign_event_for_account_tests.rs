@@ -9,18 +9,17 @@
 //!    actor thread with a valid `SignedEvent` (id + sig + pubkey verified). No
 //!    op is parked.
 //! 2. **Mock bunker (parked → resolved)** — a remote signer returns
-//!    `SignerOp::Pending`; the dispatch arm parks a `PendingSignReturn` with a
-//!    continuation sink. The continuation has NOT run yet. After the broker
+//!    `SignerOp::Pending`; the dispatch arm parks a `ParkedOp` with the
+//!    `SignContinuation` sink. The continuation has NOT run yet. After the broker
 //!    turns the request around, the idle-loop drain
-//!    (`resolve_pending_sign_return`) invokes the SAME continuation with the
+//!    (`resolve_parked_op`) invokes the SAME continuation with the
 //!    `SignedEvent`.
 //! 3. **Mock bunker error** — a broker rejection / dropped channel resolves the
 //!    continuation with `Err(_)` so the worker's failure path runs (D6 — no
 //!    stuck spinner).
 //!
 //! The continuation in all three is a worker-supplied closure that records the
-//! outcome through a shared `Arc<Mutex<..>>`, modelling the Blossom worker's
-//! "spawn the PUT leg" continuation without any HTTP.
+//! outcome through a shared `Arc<Mutex<..>>` (the Blossom-worker shape, no HTTP).
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -32,7 +31,7 @@ use nostr::{EventBuilder, Keys, SecretKey, Timestamp};
 
 use super::commands::{self, IdentityRuntime};
 use super::dispatch::{dispatch_command, ActorContext};
-use super::pending_sign::{resolve_pending_sign_return, PendingSign, PendingSignReturn};
+use super::pending_sign::{resolve_parked_op, ParkedOp, ParkedOpSink};
 use super::{ActorCommand, ActorMail, CommandSender, SignContinuation};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
@@ -147,14 +146,14 @@ impl RemoteSignerHandle for PendingRemoteSigner {
 }
 
 /// Drive a single `dispatch_command(cmd, ctx)` against a freshly built
-/// `ActorContext`, returning the parked `PendingSignReturn` queue afterwards so
-/// the bunker tests can resolve + drain. The `kernel` / `identity` are threaded
-/// in so the caller controls the registered signer.
+/// `ActorContext`, returning the unified parked-op queue afterwards so the
+/// bunker tests can resolve + drain. The `kernel` / `identity` are threaded in
+/// so the caller controls the registered signer.
 fn dispatch_one(
     cmd: ActorCommand,
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
-) -> Vec<PendingSignReturn> {
+) -> Vec<ParkedOp> {
     use crate::relay::CanonicalRelayUrl;
     use std::collections::{HashMap, HashSet};
     use std::time::Instant;
@@ -178,8 +177,7 @@ fn dispatch_one(
     let mut running = true;
     let mut emit_hz = 4u32;
     let mut startup_sent = false;
-    let mut pending_signs: Vec<PendingSign> = Vec::new();
-    let mut pending_sign_returns: Vec<PendingSignReturn> = Vec::new();
+    let mut parked_ops: Vec<ParkedOp> = Vec::new();
     let capability_callback: crate::capability_socket::CapabilityCallbackSlot =
         Arc::new(Mutex::new(None));
     let (capability_work_inner_tx, _capability_work_rx) = channel::<ActorMail>();
@@ -226,8 +224,7 @@ fn dispatch_one(
         mls_local_nsec: &mls_local_nsec,
         active_local_keys: &active_local_keys,
         capability_callback: &capability_callback,
-        pending_signs: &mut pending_signs,
-        pending_sign_returns: &mut pending_sign_returns,
+        parked_ops: &mut parked_ops,
         command_tx_self: &command_tx,
         capability_work_tx: &capability_work_tx,
         coverage_hook_slot: &coverage_hook,
@@ -248,7 +245,7 @@ fn dispatch_one(
     };
 
     dispatch_command(cmd, &mut ctx);
-    pending_sign_returns
+    parked_ops
 }
 
 fn fresh_identity() -> IdentityRuntime {
@@ -469,21 +466,23 @@ fn bunker_backend_parks_then_drain_invokes_continuation_with_signed_event() {
     // polling and feed it the signed event.
     let signed = responder.signed_for(&unsigned);
     {
-        let ps = &mut parked[0];
-        // Replace the parked Pending op with one whose sender we control, then
-        // resolve it — mirrors the broker delivering on a later idle tick.
+        // Replace the parked op (inside the SignContinuation sink) with one whose
+        // sender we control, then resolve it — mirrors a later idle-tick delivery.
+        let ParkedOpSink::SignContinuation { op, .. } = &mut parked[0].sink else {
+            panic!("expected a SignContinuation sink");
+        };
         let (tx, rx): (
             Sender<Result<SignedEvent, SignerError>>,
             Receiver<Result<SignedEvent, SignerError>>,
         ) = channel();
-        ps.op = SignerOp::Pending(rx);
+        *op = SignerOp::Pending(rx);
         tx.send(Ok(signed.clone())).unwrap();
     }
 
     // First drain tick resolves it: the SAME continuation runs, now from the
     // idle-loop drain (not inline) — the worker code path is identical.
-    let keep = resolve_pending_sign_return(&mut parked[0], &mut kernel);
-    assert!(!keep, "a resolved op is dropped from the parked queue");
+    let drained = resolve_parked_op(&mut parked[0], &mut kernel);
+    assert!(!drained.keep, "a resolved op is dropped from the parked queue");
 
     let outcome = captured
         .lock()
@@ -535,17 +534,16 @@ fn bunker_backend_error_invokes_continuation_with_err_so_terminal_resolves() {
 
     // Broker rejects the sign request.
     {
-        let ps = &mut parked[0];
-        let (tx, rx): (
-            Sender<Result<SignedEvent, SignerError>>,
-            Receiver<Result<SignedEvent, SignerError>>,
-        ) = channel();
-        ps.op = SignerOp::Pending(rx);
+        let ParkedOpSink::SignContinuation { op, .. } = &mut parked[0].sink else {
+            panic!("expected SignContinuation sink");
+        };
+        let (tx, rx) = channel::<Result<SignedEvent, SignerError>>();
+        *op = SignerOp::Pending(rx);
         tx.send(Err(SignerError::Rejected("user declined".to_string())))
             .unwrap();
     }
-    let keep = resolve_pending_sign_return(&mut parked[0], &mut kernel);
-    assert!(!keep, "a rejected op is dropped");
+    let drained = resolve_parked_op(&mut parked[0], &mut kernel);
+    assert!(!drained.keep, "a rejected op is dropped");
 
     let outcome = captured
         .lock()

@@ -132,7 +132,7 @@ pub enum PublishAction {
     /// per-podcast key added via `AddSigner { make_active: false }` (see
     /// `app-signer-slot.md`). The active account is never changed. Whether the
     /// selected key is local (nsec, signs inline) or remote (NIP-46 bunker,
-    /// parks on the kernel's `PendingSign` path) is transparent to the caller.
+    /// parks on the kernel's `ParkedOp` path) is transparent to the caller.
     /// An unknown pubkey is **not** validated at dispatch time — it surfaces as
     /// a sign-time error toast through `sign_with_account_nonblocking`'s
     /// "no signer for account {pubkey}" path, the same contract as the rest of

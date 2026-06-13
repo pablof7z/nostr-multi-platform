@@ -63,3 +63,19 @@ pub use broker::BunkerBroker;
 pub use events::{BrokerEvent, BrokerEventHandler};
 pub use transport::BrokerTransport;
 pub use uri_encode::percent_encode_query_value;
+
+/// Opaque completion sink for steady-state NIP-46 responses (ADR-0050 §D3b).
+///
+/// When the broker's inbound dispatcher decrypts a kind:24133 RPC reply, it
+/// hands the plaintext RPC body (`{"id":...,"result":...}`) to this sink
+/// instead of resolving the signer's pending op directly on the dispatcher
+/// thread. The host composition (nmp-ffi) installs a sink that sends a
+/// `DeliverSignerResponse` actor command, so completion delivery rides the
+/// single waking actor inbox and the pending-map mutation happens on the actor
+/// thread (D4 single-writer).
+///
+/// `nmp-signer-broker` sees only this opaque `Fn(String)` — it never names
+/// `ActorCommand` or any `nmp-core` type, keeping the broker D0-clean. The
+/// handshake path is unaffected (it completes via the existing
+/// `BrokerEvent::SignerReady` re-entry, not this sink).
+pub type CompletionSink = std::sync::Arc<dyn Fn(String) + Send + Sync>;
