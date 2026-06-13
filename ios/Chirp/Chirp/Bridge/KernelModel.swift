@@ -99,6 +99,8 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// feeds `EmbedHost` from the SAME typed value in `apply(result:)`;
     /// `typedDmRelayList` is read through the `dmRelayList` accessor (no consumer
     /// yet — wired for parity).
+    /// NOTE (issue #1283): the embed resolver will move to Rust (`nmp-ffi` sidecar)
+    /// in a follow-up PR that adds a typed FlatBuffer sidecar for `claimed_event_embeds`.
     @Published private(set) var typedDmInbox: DmInboxSnapshot?
     @Published private(set) var typedDmRelayList: DmRelayListSnapshot?
     @Published private(set) var typedClaimedEvents: [String: ClaimedEventDto]?
@@ -752,6 +754,8 @@ final class KernelModel: ObservableObject, NostrProfileHost {
 
         // Claimed-event map: `EmbedHost` rebuilds the embed envelope map from
         // the typed `claimed_events` (`KCEV`) sidecar.
+        // TODO (issue #1283): replace with `claimed_event_embeds` typed FlatBuffer
+        // sidecar once the typed path is available in Chirp's frame schema.
         embedHost.update(claimedEvents: result.typedClaimedEvents)
         // ADR-0038: store the typed home-feed result. `nil` ⇒ no home-feed
         // sidecar this tick (accessor collapses to `.empty`).

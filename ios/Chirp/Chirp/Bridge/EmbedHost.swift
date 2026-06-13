@@ -26,6 +26,14 @@ struct ClaimedEventDto: Decodable, Equatable {
 
 /// Chirp mirror of the gallery EmbedHost. Reads claimed_events from the
 /// typed SnapshotProjections pushed by the kernel on every frame (D8 — push-driven).
+///
+/// NOTE (issue #1283 / ADR-0034): Chirp uses a typed-only FlatBuffer decode path
+/// (the JSON snapshot payload is absent from Chirp's frame schema). The embed
+/// sidecar produced by `nmp-ffi` (`claimed_event_embeds`) is a JSON snapshot
+/// projection which is not currently accessible to Chirp. A follow-up PR will
+/// add a typed FlatBuffer sidecar so Chirp can decode the pre-resolved
+/// `EmbeddedEventEnvelope` map without the Swift resolver. Until then, this file
+/// retains the in-Swift `match kind` resolver.
 @MainActor
 @Observable
 final class EmbedHost {

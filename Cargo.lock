@@ -4608,6 +4608,7 @@ dependencies = [
 name = "nmp-ffi"
 version = "0.6.2"
 dependencies = [
+ "nmp-content",
  "nmp-core",
  "nmp-feed",
  "nmp-signer-broker",
