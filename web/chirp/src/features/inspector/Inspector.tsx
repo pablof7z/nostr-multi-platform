@@ -1,7 +1,7 @@
-import { createSignal, For, Match, Show, Switch } from "solid-js";
+import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import { labelRuntimeStatus, protocolVersion } from "../../nmp/protocol";
 import "./inspector.css";
-import type { RuntimeSnapshot } from "../../nmp/client";
+import { decodeInspectorSnapshot, type DecodedSnapshot, type RuntimeSnapshot } from "../../nmp/client";
 import { PanelOverview, PanelFrames } from "./PanelOverview";
 import { PanelRelays } from "./PanelRelays";
 import { PanelSubs } from "./PanelSubs";
@@ -40,9 +40,18 @@ export function NmpInspector(props: {
   const [open, setOpen] = createSignal(false);
   const [tab, setTab] = createSignal<InspectorTab>("overview");
 
-  const ds = () => props.snapshot.latestDecodedSnapshot;
   const relays = () => props.snapshot.latestRelayStatuses ?? [];
-  const rev = () => ds()?.rev.toString() ?? "—";
+  // rev is decoded cheaply on every frame (latestRev) for the collapsed strip.
+  const rev = () => props.snapshot.latestRev?.toString() ?? "—";
+  // Full snapshot (logicalInterests, wireSubscriptions, metrics, KRDG tones)
+  // is decoded lazily only when the dock is open, so it never runs on the hot
+  // subscribe path while the user is reading the feed.
+  const decodedSnapshot = createMemo((): DecodedSnapshot | undefined => {
+    if (!open()) return undefined;
+    const bytes = props.snapshot.latestUpdateBytes;
+    if (!bytes) return undefined;
+    return decodeInspectorSnapshot(bytes);
+  });
 
   return (
     <aside
@@ -137,15 +146,15 @@ export function NmpInspector(props: {
         <div class="ins-content">
           <Switch>
             <Match when={tab() === "overview"}>
-              <PanelOverview snapshot={props.snapshot} />
+              <PanelOverview snapshot={props.snapshot} decodedSnapshot={decodedSnapshot()} />
             </Match>
             <Match when={tab() === "relays"}>
               <PanelRelays relayStatuses={props.snapshot.latestRelayStatuses} />
             </Match>
             <Match when={tab() === "subs"}>
               <PanelSubs
-                logicalInterests={ds()?.logicalInterests ?? []}
-                wireSubscriptions={ds()?.wireSubscriptions ?? []}
+                logicalInterests={decodedSnapshot()?.logicalInterests ?? []}
+                wireSubscriptions={decodedSnapshot()?.wireSubscriptions ?? []}
               />
             </Match>
             <Match when={tab() === "sync"}>

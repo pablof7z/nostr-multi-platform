@@ -37,8 +37,17 @@ export type KrdgTones = {
  * Returns `undefined` when the projection is absent or the buffer is corrupt
  * (callers should keep the last-good decoded tone state — keep-last-good).
  * Never throws (D6: error path returns `undefined`).
+ *
+ * @param options.skipDetails — When true, skip the per-relay `wireSubTones`
+ *   and the `interestTones` maps. Only the per-relay scalar tones
+ *   (`connectionTone`, `authTone`, `roleTone`) are decoded. Use on the hot
+ *   subscribe path where only the pulse-strip connection dots need tone data;
+ *   omit (or pass false) when the Inspector is open and panels need full data.
  */
-export function decodeKrdgTones(snapshot: SnapshotFrame): KrdgTones | undefined {
+export function decodeKrdgTones(
+  snapshot: SnapshotFrame,
+  options?: { skipDetails?: boolean },
+): KrdgTones | undefined {
   for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
     const proj = snapshot.typedProjections(i);
     if (!proj || proj.key() !== KRDG_PROJECTION_KEY) {
@@ -65,13 +74,17 @@ export function decodeKrdgTones(snapshot: SnapshotFrame): KrdgTones | undefined 
         if (!row) continue;
         const url = row.relayUrl();
         if (!url) continue;
+        // wireSubTones is skipped in skipDetails mode — only needed by
+        // PanelSubs/PanelRelays when the Inspector dock is expanded.
         const wireSubTones = new Map<string, string>();
-        for (let k = 0; k < row.wireSubsLength(); k += 1) {
-          const ws = row.wireSubs(k);
-          if (!ws) continue;
-          const wireId = ws.wireId();
-          if (!wireId) continue;
-          wireSubTones.set(wireId, ws.stateTone() ?? "muted");
+        if (!options?.skipDetails) {
+          for (let k = 0; k < row.wireSubsLength(); k += 1) {
+            const ws = row.wireSubs(k);
+            if (!ws) continue;
+            const wireId = ws.wireId();
+            if (!wireId) continue;
+            wireSubTones.set(wireId, ws.stateTone() ?? "muted");
+          }
         }
         relayTones.set(url, {
           connectionTone: row.connectionTone() ?? "muted",
@@ -81,13 +94,16 @@ export function decodeKrdgTones(snapshot: SnapshotFrame): KrdgTones | undefined 
         });
       }
 
+      // interestTones is skipped in skipDetails mode — only needed by PanelSubs.
       const interestTones = new Map<string, string>();
-      for (let j = 0; j < root.interestsLength(); j += 1) {
-        const interest = root.interests(j);
-        if (!interest) continue;
-        const key = interest.key();
-        if (!key) continue;
-        interestTones.set(key, interest.stateTone() ?? "muted");
+      if (!options?.skipDetails) {
+        for (let j = 0; j < root.interestsLength(); j += 1) {
+          const interest = root.interests(j);
+          if (!interest) continue;
+          const key = interest.key();
+          if (!key) continue;
+          interestTones.set(key, interest.stateTone() ?? "muted");
+        }
       }
 
       return { relayTones, interestTones };

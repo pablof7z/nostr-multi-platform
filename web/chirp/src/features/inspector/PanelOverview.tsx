@@ -26,8 +26,9 @@ function Row(props: { label: string; value: string; testId?: string }) {
 
 export function PanelOverview(props: {
   snapshot: RuntimeSnapshot;
+  decodedSnapshot: DecodedSnapshot | undefined;
 }) {
-  const ds = (): DecodedSnapshot | undefined => props.snapshot.latestDecodedSnapshot;
+  const ds = (): DecodedSnapshot | undefined => props.decodedSnapshot;
 
   return (
     <div class="ins-panel">

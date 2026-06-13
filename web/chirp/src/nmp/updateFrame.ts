@@ -177,7 +177,19 @@ function decodeWireSub(ws: WireSubscriptionStatus): DecodedWireSub {
   };
 }
 
-export function decodeUpdateFrameBytes(bytes: Uint8Array): DecodedUpdateFrame {
+/**
+ * Decode a raw FlatBuffers update-frame buffer.
+ *
+ * @param options.lite — When true, skip the expensive Tier-3 arrays
+ *   (`logicalInterests`, `wireSubscriptions`) and `metrics`. Returns empty
+ *   arrays / null for those fields. Use on the hot subscribe path to keep
+ *   the main thread lean; use without the flag when the Inspector is open
+ *   and needs the full data.
+ */
+export function decodeUpdateFrameBytes(
+  bytes: Uint8Array,
+  options?: { lite?: boolean },
+): DecodedUpdateFrame {
   if (bytes.length === 0) {
     throw new UpdateFrameDecodeError("invalid_flatbuffer", "empty update frame buffer");
   }
@@ -205,19 +217,27 @@ export function decodeUpdateFrameBytes(bytes: Uint8Array): DecodedUpdateFrame {
         if (relay) relayStatuses.push(decodeRelayStatus(relay));
       }
 
+      // logicalInterests and wireSubscriptions are skipped in lite mode — these
+      // loops can be large during the initial sync storm and are only needed by
+      // the Inspector's Subs panel (rendered only when the dock is expanded).
       const logicalInterests: DecodedLogicalInterest[] = [];
-      for (let i = 0; i < snapshot.logicalInterestsLength(); i += 1) {
-        const li = snapshot.logicalInterests(i, new LogicalInterestStatus());
-        if (li) logicalInterests.push(decodeLogicalInterest(li));
+      if (!options?.lite) {
+        for (let i = 0; i < snapshot.logicalInterestsLength(); i += 1) {
+          const li = snapshot.logicalInterests(i, new LogicalInterestStatus());
+          if (li) logicalInterests.push(decodeLogicalInterest(li));
+        }
       }
 
       const wireSubscriptions: DecodedWireSub[] = [];
-      for (let i = 0; i < snapshot.wireSubscriptionsLength(); i += 1) {
-        const ws = snapshot.wireSubscriptions(i, new WireSubscriptionStatus());
-        if (ws) wireSubscriptions.push(decodeWireSub(ws));
+      if (!options?.lite) {
+        for (let i = 0; i < snapshot.wireSubscriptionsLength(); i += 1) {
+          const ws = snapshot.wireSubscriptions(i, new WireSubscriptionStatus());
+          if (ws) wireSubscriptions.push(decodeWireSub(ws));
+        }
       }
 
-      const metricsObj = snapshot.metrics(new Metrics());
+      // metrics is also skipped in lite mode — only needed by PanelOverview.
+      const metricsObj = options?.lite ? null : snapshot.metrics(new Metrics());
       const metrics = metricsObj ? decodeMetrics(metricsObj) : null;
 
       return {
