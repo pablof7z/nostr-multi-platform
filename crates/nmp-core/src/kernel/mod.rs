@@ -81,6 +81,8 @@ mod cache_serve_budget_tests;
 mod cache_serve_tests;
 #[cfg(test)]
 mod cache_serve_universal_tests;
+#[cfg(test)]
+mod cache_serve_watermark_tests;
 pub(crate) mod closed_reason;
 mod diagnostic_counters;
 mod discovery;
