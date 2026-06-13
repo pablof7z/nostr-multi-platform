@@ -84,7 +84,7 @@ struct MarmotKeyPackage: Decodable, Equatable {
         ageSecs: nil,
         stale: false,
         ageDisplay: nil,
-        subtitle: "",
+        subtitle: "Sign in with an nsec to enable",
         actionLabel: ""
     )
 }

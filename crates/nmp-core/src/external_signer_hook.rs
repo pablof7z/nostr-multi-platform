@@ -1,13 +1,22 @@
 //! Pluggable hook for NIP-55 external-signer session restore (ADR-0048 D4).
-//! Registered by app/FFI composition at app init via
-//! [`register_external_signer_hook`]; invoked by the actor's cold-start
-//! session restore when the persisted active-signer kind is `"nip55"`.
+//! Installed by app/FFI composition at app init into a **per-app**
+//! [`ExternalSignerHookSlot`]; invoked by the actor's cold-start session
+//! restore when the persisted active-signer kind is `"nip55"`.
 //!
 //! Keeps `nmp-core` ignorant of NIP-55 protocol details (D0): the kernel
 //! knows there is *something* on the other side that can reconstruct a
 //! remote signer from an opaque payload, but it does not name
-//! `nmp-signers` or any NIP-55 type. Mirrors [`crate::bunker_hook`] — the
-//! ADR-0031 worker-feeds-actor indirection precedent.
+//! `nmp-signers` or any NIP-55 type. Structural twin of [`crate::bunker_hook`]
+//! — the ADR-0031 worker-feeds-actor indirection precedent.
+//!
+//! ## Per-app slot — no process-global (ADR-0052 §D3)
+//!
+//! Like the bunker hook, this lives in an `Arc<Mutex<Option<…>>>` slot created
+//! in `nmp_app_new` and dropped in `nmp_app_free` (mirroring ADR-0051's
+//! relay-connected hook slot). Two apps get two independent hooks; a
+//! freed-then-recreated app re-installs cleanly. The actor's `IdentityRuntime`
+//! owns one `Arc` clone; the FFI `nmp_external_signer_init` holds the other and
+//! installs the driver's restore hook into it.
 //!
 //! ## Threading model
 //!
@@ -18,11 +27,10 @@
 //!
 //! ## Registration semantics
 //!
-//! Mirror of the bunker hook: exactly one hook, latest registration wins,
-//! no unregister path. A missing hook degrades to a `last_error_toast`
-//! (D6), never a panic.
+//! Mirror of the bunker hook: at most one hook per app slot, latest-install
+//! wins. A missing hook degrades to a `last_error_toast` (D6), never a panic.
 
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, Mutex};
 
 /// Opaque NIP-55 driver request.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,53 +43,60 @@ pub enum ExternalSignerHookRequest {
 /// Hook signature: receives an opaque driver request.
 pub type ExternalSignerHookFn = Arc<dyn Fn(ExternalSignerHookRequest) + Send + Sync>;
 
-static HOOK: OnceLock<RwLock<Option<ExternalSignerHookFn>>> = OnceLock::new();
+/// Per-app slot holding the optional installed NIP-55 restore hook. Twin of
+/// [`crate::bunker_hook::BunkerHookSlot`].
+pub type ExternalSignerHookSlot = Arc<Mutex<Option<ExternalSignerHookFn>>>;
 
-/// Register the NIP-55 driver hook. Called once by the FFI adapter
-/// (`nmp-ffi`'s external-signer driver init) after constructing the driver.
-/// Replaces any previously-registered hook.
-pub fn register_external_signer_hook(hook: ExternalSignerHookFn) {
-    let slot = HOOK.get_or_init(|| RwLock::new(None));
-    if let Ok(mut guard) = slot.write() {
-        *guard = Some(hook);
-    }
+/// Construct a fresh, empty [`ExternalSignerHookSlot`].
+#[must_use]
+pub fn new_external_signer_hook_slot() -> ExternalSignerHookSlot {
+    Arc::new(Mutex::new(None))
 }
 
-/// Test-only: clear any registered hook so the "no driver" degradation
-/// branch (D6) can be exercised deterministically. Production has no
-/// unregister path (latest-registration-wins); this exists purely because
-/// `HOOK` is a process-wide static that other serialized tests register
-/// into.
-#[cfg(test)]
-pub(crate) fn clear_external_signer_hook_for_test() {
-    if let Some(slot) = HOOK.get() {
-        if let Ok(mut guard) = slot.write() {
-            *guard = None;
-        }
-    }
+/// Install the NIP-55 driver hook into a per-app slot. Called by the FFI
+/// adapter (`nmp_external_signer_init`) after constructing the driver.
+/// Replaces any previously-installed hook (latest-install-wins). A poisoned
+/// mutex recovers via `into_inner` (D6).
+pub fn install_external_signer_hook(slot: &ExternalSignerHookSlot, hook: ExternalSignerHookFn) {
+    let mut guard = slot
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    *guard = Some(hook);
 }
 
-/// Crate-internal: restore a NIP-55 signer from opaque payload. Returns
-/// `true` if a hook was registered (and called); `false` otherwise so the
+/// Restore a NIP-55 signer from opaque payload against the app's slot. Returns
+/// `true` if a hook was installed (and called); `false` otherwise so the
 /// caller can surface a fallback toast.
-pub(crate) fn invoke_external_signer_restore_hook(payload_json: &str) -> bool {
-    let Some(slot) = HOOK.get() else {
-        return false;
+pub(crate) fn invoke_external_signer_restore_hook(
+    slot: &ExternalSignerHookSlot,
+    payload_json: &str,
+) -> bool {
+    let hook = {
+        let guard = slot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Clone the `Arc` out under the lock, then drop the guard before
+        // calling the hook — the driver may, in theory, re-install from inside
+        // its handler; avoid deadlock.
+        match guard.as_ref() {
+            Some(hook) => Arc::clone(hook),
+            None => return false,
+        }
     };
-    let Ok(guard) = slot.read() else {
-        return false;
-    };
-    let Some(hook) = guard.as_ref() else {
-        return false;
-    };
-    let hook = Arc::clone(hook);
-    // Drop the read lock before calling the hook — the driver may, in
-    // theory, re-register from inside its handler; avoid deadlock.
-    drop(guard);
     hook(ExternalSignerHookRequest::Restore {
         payload_json: payload_json.to_string(),
     });
     true
+}
+
+/// Test-support: invoke a slot's restore hook from outside the crate (the
+/// rung-5.3 per-app isolation oracle in `nmp-testing`).
+#[cfg(any(test, feature = "test-support"))]
+pub fn invoke_external_signer_restore_hook_for_test(
+    slot: &ExternalSignerHookSlot,
+    payload_json: &str,
+) -> bool {
+    invoke_external_signer_restore_hook(slot, payload_json)
 }
 
 #[cfg(test)]
@@ -89,16 +104,19 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    // `HOOK` is process-wide static state — assert the full surface
-    // (register → invoke → replace) in one test, like the bunker hook.
     #[test]
-    fn register_invoke_replace() {
+    fn install_invoke_replace_is_per_slot() {
+        let slot = new_external_signer_hook_slot();
+
         let calls_a: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
         let calls_a_clone = Arc::clone(&calls_a);
-        register_external_signer_hook(Arc::new(move |request| {
-            calls_a_clone.lock().unwrap().push(request);
-        }));
-        assert!(invoke_external_signer_restore_hook("payload-a"));
+        install_external_signer_hook(
+            &slot,
+            Arc::new(move |request| {
+                calls_a_clone.lock().unwrap().push(request);
+            }),
+        );
+        assert!(invoke_external_signer_restore_hook(&slot, "payload-a"));
         assert_eq!(
             calls_a.lock().unwrap().as_slice(),
             &[ExternalSignerHookRequest::Restore {
@@ -106,14 +124,38 @@ mod tests {
             }]
         );
 
-        // Replace — latest registration wins.
+        // Replace — latest install wins.
         let calls_b: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
         let calls_b_clone = Arc::clone(&calls_b);
-        register_external_signer_hook(Arc::new(move |request| {
-            calls_b_clone.lock().unwrap().push(request);
-        }));
-        assert!(invoke_external_signer_restore_hook("payload-b"));
+        install_external_signer_hook(
+            &slot,
+            Arc::new(move |request| {
+                calls_b_clone.lock().unwrap().push(request);
+            }),
+        );
+        assert!(invoke_external_signer_restore_hook(&slot, "payload-b"));
         assert_eq!(calls_b.lock().unwrap().len(), 1);
         assert_eq!(calls_a.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn two_slots_are_independent() {
+        let slot_a = new_external_signer_hook_slot();
+        let slot_b = new_external_signer_hook_slot();
+        let calls_a: Arc<Mutex<Vec<ExternalSignerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
+        {
+            let c = Arc::clone(&calls_a);
+            install_external_signer_hook(&slot_a, Arc::new(move |r| c.lock().unwrap().push(r)));
+        }
+        // slot_b has no hook installed.
+        assert!(invoke_external_signer_restore_hook(&slot_a, "to-a"));
+        assert!(!invoke_external_signer_restore_hook(&slot_b, "to-none"));
+        assert_eq!(calls_a.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn empty_slot_returns_false() {
+        let slot = new_external_signer_hook_slot();
+        assert!(!invoke_external_signer_restore_hook(&slot, "none"));
     }
 }
