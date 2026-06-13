@@ -2101,9 +2101,8 @@ impl Kernel {
     /// - **Budget**: [`GcBudget::production`] — `2000` events / `50 ms` scan
     ///   bounds, LRU ceiling at [`crate::store::HOT_EVENT_CEILING`] (10 000
     ///   events, enabled by #1090 Stage 3 / #1327). When the floor-coherent
-    ///   pin-derivation scan (#1090 Stage 2) is truncated by its D8 event-visit
-    ///   budget, LRU eviction is conservatively skipped for that tick by
-    ///   substituting `max_total_events = usize::MAX` (#1348).
+    ///   pin scan is truncated by its D8 budget, [`Self::derive_store_gc_inputs`]
+    ///   returns a no-eviction budget so LRU is skipped this tick (#1348).
     /// - **`now_secs`**: read through the injected [`Clock`] via
     ///   [`Self::now_secs`] (D7/D9 — the store never reads the clock; the kernel
     ///   threads it in, so replay/tests stay deterministic).
@@ -2132,26 +2131,11 @@ impl Kernel {
                 "ram cache eviction pass",
             );
         }
-        // #1090 Stage 1 — derive the ephemeral store-tier pin set (see
-        // `derive_store_pin_set`) and thread it into Phase-2 LRU eviction.
-        //
-        // #1348 — if the floor-coherent pin scan was truncated (budget
-        // exhausted before all shapes were fully covered), we cannot guarantee
-        // every below-floor event was pinned. Substitute a no-eviction budget
-        // for this tick to prevent punching holes; the next tick retries.
-        let (pins, pin_scan_complete) = self.derive_store_pin_set();
-        let gc_budget = if pin_scan_complete {
-            crate::store::GcBudget::production()
-        } else {
-            crate::store::GcBudget {
-                max_total_events: usize::MAX, // LRU eviction deferred this tick
-                ..crate::store::GcBudget::production()
-            }
-        };
-        match self
-            .store
-            .gc_step_with_pins(gc_budget, now_secs, &pins)
-        {
+        // #1090 Stage 1 — derive the ephemeral store-tier pin set and the
+        // matching budget (#1348 truncation→no-eviction decision lives in
+        // `derive_store_gc_inputs`), then thread both into Phase-2 LRU eviction.
+        let (pins, gc_budget) = self.derive_store_gc_inputs();
+        match self.store.gc_step_with_pins(gc_budget, now_secs, &pins) {
             Ok(report) => {
                 self.last_gc_at_ms = Some(self.now_ms());
                 self.last_gc = Some(report.clone());

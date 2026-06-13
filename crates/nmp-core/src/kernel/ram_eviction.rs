@@ -294,6 +294,33 @@ impl Kernel {
         (pins, complete)
     }
 
+    /// Derive the store-tier pin set **and** the matching [`GcBudget`] for one
+    /// [`Kernel::run_gc_step`] pass (#1348).
+    ///
+    /// Wraps [`Self::derive_store_pin_set`] and owns the truncation→budget
+    /// decision so `run_gc_step` (in the already-at-baseline `kernel/mod.rs`)
+    /// stays a thin call site:
+    ///
+    /// - pin scan **complete** → [`GcBudget::production`] (LRU ceiling enabled);
+    /// - pin scan **truncated** → production budget with `max_total_events =
+    ///   usize::MAX` so LRU eviction is conservatively skipped for this tick.
+    ///   We cannot safely evict events the truncated scan may not have pinned;
+    ///   the next 60-second tick retries from scratch.
+    pub(crate) fn derive_store_gc_inputs(
+        &self,
+    ) -> (HashSet<crate::store::EventId>, crate::store::GcBudget) {
+        let (pins, complete) = self.derive_store_pin_set();
+        let budget = if complete {
+            crate::store::GcBudget::production()
+        } else {
+            crate::store::GcBudget {
+                max_total_events: usize::MAX, // LRU eviction deferred this tick
+                ..crate::store::GcBudget::production()
+            }
+        };
+        (pins, budget)
+    }
+
     /// Extend `pins` with every stored event at or below each active floored
     /// shape's `since`-floor (#1090 Stage 2).
     ///
