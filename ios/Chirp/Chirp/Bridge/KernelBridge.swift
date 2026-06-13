@@ -1551,26 +1551,25 @@ struct BunkerHandshake: Decodable, Equatable {
 struct SignerState: Decodable, Equatable {
     /// `"nip46"` | `"nip55"` | `"local"`. Picks the row icon/label copy.
     let signerKind: String
-    /// `"ready"` | `"awaiting_approval"` | `"reconnecting"` | `"unavailable"`
-    /// | `"failed"`. Carried verbatim from `SignerStateDto::state`. Prefer the
-    /// typed flag fields below.
+    /// `"ready"`|`"awaiting_approval"`|`"reconnecting"`|`"unavailable"`|`"failed"`.
+    /// Verbatim from `SignerStateDto::state`. Prefer the typed flags below.
     let state: String
     /// Optional human-readable reason (error message on degraded states).
     let reason: String?
     /// `state == "ready"`. Green indicator.
     let isReady: Bool
     /// `state == "awaiting_approval"` — NIP-55 Intent round-trip in flight.
-    /// Inline "Waiting for Amber…" affordance; no error styling.
     let isAwaitingApproval: Bool
-    /// `state == "reconnecting"` — transient NIP-46 flap, auto-reconnect in
-    /// progress. Amber badge; do NOT prompt re-auth yet.
+    /// `state == "reconnecting"` — transient NIP-46 flap, auto-reconnect.
     let isReconnecting: Bool
-    /// `state == "unavailable"` — NIP-55 signer app not installed /
-    /// uninstalled mid-session. Red badge; prompt re-auth.
+    /// `state == "unavailable"` — NIP-55 signer app missing. Prompt re-auth.
     let isUnavailable: Bool
-    /// `state == "failed"` — permanent error, session bricked.
-    /// Red badge; prompt re-auth.
+    /// `state == "failed"` — permanent error, session bricked. Prompt re-auth.
     let isFailed: Bool
+    /// Rust-precomputed display label (ADR-0032 / #1099) — rendered verbatim.
+    let statusLabel: String
+    /// Rust-precomputed tone — "active"|"warning"|"error"|"inactive".
+    let statusTone: String
 }
 
 /// NIP-46 onboarding read model — `projections["nip46_onboarding"]`.

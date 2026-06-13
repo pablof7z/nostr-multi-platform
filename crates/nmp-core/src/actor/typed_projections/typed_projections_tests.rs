@@ -182,6 +182,9 @@ fn signer_state_present_and_decodes_when_slot_some() {
     assert!(!decoded.is_unavailable);
     assert!(!decoded.is_failed);
     assert_eq!(decoded.reason, None);
+    // ADR-0032 / #1099: Rust-precomputed label/tone flow through the typed wire.
+    assert_eq!(decoded.status_label, "Waiting for approval…");
+    assert_eq!(decoded.status_tone, "warning");
 }
 
 #[test]
@@ -200,4 +203,6 @@ fn signer_state_typed_mirrors_json_for_nip46_degraded_state() {
     assert_eq!(decoded.state, "reconnecting");
     assert!(decoded.is_reconnecting);
     assert_eq!(decoded.reason.as_deref(), Some("connection reset by peer"));
+    assert_eq!(decoded.status_label, "Reconnecting…");
+    assert_eq!(decoded.status_tone, "warning");
 }

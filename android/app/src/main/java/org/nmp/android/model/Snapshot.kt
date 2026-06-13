@@ -230,4 +230,8 @@ data class SignerState(
     @SerialName("is_reconnecting") val isReconnecting: Boolean = false,
     @SerialName("is_unavailable") val isUnavailable: Boolean = false,
     @SerialName("is_failed") val isFailed: Boolean = false,
+    /** Rust-precomputed display label (ADR-0032 / #1099) — rendered verbatim. */
+    @SerialName("status_label") val statusLabel: String = "",
+    /** Rust-precomputed tone — "active"|"warning"|"error"|"inactive". */
+    @SerialName("status_tone") val statusTone: String = "",
 )

@@ -71,6 +71,9 @@ mod conformance_support;
 // Box::new(SendGiftWrappedDmCommand { ... }))`.
 mod event_observer;
 mod identity;
+// ADR-0032 / #1099: signer-state display label/tone derivation (split from
+// `identity.rs` for file-size; mirrors the `cipher` split).
+mod signer_state_label;
 // ADR-0050 §D1 NIP-44 cipher helpers (split from `identity.rs` for file-size).
 #[cfg(feature = "native")]
 mod cipher;
@@ -158,6 +161,13 @@ pub use identity::{new_signer_state_slot, SignerStateSlot};
 // `BunkerHandshakeDto` above (the DTO stays production-private).
 #[cfg(all(test, feature = "native"))]
 pub(crate) use identity::SignerStateDto;
+// ADR-0032 / #1099: the typed `signer_state` FlatBuffers decoder reuses this
+// label/tone derivation as its forward-compat fallback for buffers that predate
+// the tail-appended `status_label` / `status_tone` fields — one source of truth.
+// The decoder (`decode_signer_state`) is itself `#[cfg(test)]`, so the
+// re-export is test-only too (no unused-import warning in production builds).
+#[cfg(test)]
+pub(crate) use signer_state_label::signer_state_label_and_tone;
 // V-01 Phase 1c: lifecycle handler consumes the native dispatch path.
 #[cfg(feature = "native")]
 pub(super) use lifecycle::handle_lifecycle_event;
