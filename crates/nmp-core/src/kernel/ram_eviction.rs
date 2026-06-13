@@ -253,7 +253,16 @@ impl Kernel {
     /// This replaces the deleted persisted-claims sub-db: the pin set is
     /// recomputed from live kernel state on every GC pass and passed straight
     /// into `gc_step_with_pins`, never persisted.
-    pub(crate) fn derive_store_pin_set(&self) -> HashSet<crate::store::EventId> {
+    ///
+    /// ## Return value
+    ///
+    /// Returns `(pins, complete)`. When `complete` is `false` the floor-coherent
+    /// scan (#1090 Stage 2) hit its per-tick event-visit budget
+    /// ([`floor::PIN_SCAN_MAX_EVENTS`]) before covering all active shapes.
+    /// The caller (`run_gc_step`) must then skip LRU eviction for this tick
+    /// (pass `max_total_events = usize::MAX`) — we cannot safely evict events
+    /// we may not have pinned. The next tick retries from scratch. See #1348.
+    pub(crate) fn derive_store_pin_set(&self) -> (HashSet<crate::store::EventId>, bool) {
         let view_pins = self.open_view_pins();
 
         // Convert a hex64 event-id string into a store `EventId` ([u8; 32]).
@@ -279,9 +288,10 @@ impl Kernel {
         // content-derived `since`-floor, pin every stored event matching that
         // shape at or below the floor so LRU cannot evict a middle event the
         // floored REQ will never re-request.
-        self.add_floor_coherent_pins(&mut pins);
+        // Returns false when any shape's scan was truncated (D8 budget).
+        let complete = self.add_floor_coherent_pins(&mut pins);
 
-        pins
+        (pins, complete)
     }
 
     /// Extend `pins` with every stored event at or below each active floored
@@ -289,24 +299,48 @@ impl Kernel {
     ///
     /// For each active `LogicalInterest`, [`shape_floor`](floor::shape_floor)
     /// computes the same floor the `watermark_fn` would (the newest stored
-    /// matching event), then
-    /// every stored event matching that shape with `created_at <= floor` is
-    /// added to the pin set. Shapes with no floor (`None`) contribute nothing —
-    /// they are not floored, so the relay re-sends their history and no hole can
-    /// form.
-    fn add_floor_coherent_pins(&self, pins: &mut HashSet<crate::store::EventId>) {
-        use floor::{pin_shape_events_below_floor, shape_floor};
+    /// matching event), then every stored event matching that shape with
+    /// `created_at <= floor` is added to the pin set. Shapes with no floor
+    /// (`None`) contribute nothing — they are not floored, so the relay
+    /// re-sends their history and no hole can form.
+    ///
+    /// Returns `true` when all shapes were fully scanned, `false` when any
+    /// shape's scan was truncated by the [`floor::PIN_SCAN_MAX_EVENTS`] budget.
+    /// Callers must treat `false` conservatively — see `derive_store_pin_set`.
+    fn add_floor_coherent_pins(&self, pins: &mut HashSet<crate::store::EventId>) -> bool {
+        use floor::{pin_shape_events_below_floor, shape_floor, PinScanOutcome, PIN_SCAN_MAX_EVENTS};
 
         let active = self.lifecycle.registry().iter_active();
         if active.is_empty() {
-            return;
+            return true;
         }
+        let mut complete = true;
         for interest in &active {
             let Some(floor) = shape_floor(&interest.shape, self.store.as_ref()) else {
                 continue;
             };
-            pin_shape_events_below_floor(&interest.shape, floor, self.store.as_ref(), pins);
+            let outcome = pin_shape_events_below_floor(
+                &interest.shape,
+                floor,
+                self.store.as_ref(),
+                pins,
+                PIN_SCAN_MAX_EVENTS,
+            );
+            if outcome == PinScanOutcome::Truncated {
+                tracing::warn!(
+                    "floor-coherent pin scan truncated at {} events for shape \
+                     (Etag/Ptag with many matches); LRU eviction deferred this tick. \
+                     See #1348.",
+                    PIN_SCAN_MAX_EVENTS,
+                );
+                complete = false;
+                // Do not break: keep scanning remaining shapes so we pin as
+                // many events as possible within the overall budget. Each shape
+                // gets its own fresh PIN_SCAN_MAX_EVENTS allowance — truncation
+                // of one shape does not starve others.
+            }
         }
+        complete
     }
 
     // ─── events ────────────────────────────────────────────────────────────
