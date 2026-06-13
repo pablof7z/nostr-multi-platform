@@ -185,9 +185,9 @@ pub fn wire_group_defaults(app: &NmpApp) {
 /// after the actor loop starts. Requires `&mut NmpApp` because registration
 /// writes into the app's shared action registry.
 pub fn register_actions(app: &mut NmpApp) {
-    app.register_action::<PostChatMessageAction>();
-    app.register_action::<ReactInGroupAction>();
-    app.register_action::<CreatePublicGroupAction>();
-    app.register_action::<DiscoverGroupsAction>();
-    app.register_action::<JoinGroupAction>();
+    app.register_action(PostChatMessageAction);
+    app.register_action(ReactInGroupAction);
+    app.register_action(CreatePublicGroupAction);
+    app.register_action(DiscoverGroupsAction);
+    app.register_action(JoinGroupAction);
 }

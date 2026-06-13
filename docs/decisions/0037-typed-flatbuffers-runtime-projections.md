@@ -3,6 +3,12 @@
 > Note (ADR-0046, 2026-06-12): the `nmp-app-template` crate named below was
 > renamed to `nmp-defaults`. Read `nmp-app-template` / `nmp_app_template` here
 > as `nmp-defaults` / `nmp_defaults`.
+>
+> Current status (2026-06-13): ADR-0044 and the PR-B/F-05/F-10 work superseded
+> this ADR's permanence claim for `payload:Value`. Production `UpdateFrame`
+> snapshots no longer emit or decode a generic payload tree; hosts read typed
+> `SnapshotEnvelope` fields plus `typed_projections` sidecars. The text below is
+> the historical migration decision record.
 
 - **Status:** Accepted / Partially implemented (2026-05-28; PR-B in progress 2026-06-11)
 - **Relates to:** the FlatBuffers update-transport envelope (commits `021ba295`

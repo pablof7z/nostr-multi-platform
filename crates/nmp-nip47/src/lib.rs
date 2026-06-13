@@ -51,9 +51,9 @@ pub use protocol::{
     WalletPayInvoiceCommand,
 };
 pub use runtime::{
-    active_wallet_runtime, install_wallet_runtime, new_wallet_runtime_handle, HeartbeatOutbound,
-    WalletRuntime, WalletRuntimeHandle, HEARTBEAT_CADENCE_SECS, HEARTBEAT_MAX_FAILURES,
-    HEARTBEAT_PROBE_TIMEOUT_SECS, PENDING_PAYMENT_TTL_SECS,
+    new_wallet_runtime_handle, HeartbeatOutbound, WalletRuntime, WalletRuntimeHandle,
+    HEARTBEAT_CADENCE_SECS, HEARTBEAT_MAX_FAILURES, HEARTBEAT_PROBE_TIMEOUT_SECS,
+    PENDING_PAYMENT_TTL_SECS,
 };
 pub use status::{
     format_sats_display, new_wallet_status_slot, NwcConnectionState, WalletStatus, WalletStatusSlot,

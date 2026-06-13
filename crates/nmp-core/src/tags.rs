@@ -136,33 +136,64 @@ pub fn capped_contact_follows(tags: &[Vec<String>]) -> Vec<String> {
         .collect()
 }
 
-// ─── NIP-02 follow-list edit builders ────────────────────────────────────────
+// ─── NIP-02 kind:3 contact-list edit builders ────────────────────────────────
 
-/// Return the follow list that results from adding `target` to `current`.
+/// Return the FULL kind:3 tag set that results from adding a follow on `target`
+/// to `current` — splicing ONLY the `p` section while preserving everything
+/// else verbatim (issue #1246).
 ///
-/// Idempotent: if `target` is already in `current`, the list is returned
-/// unchanged (no duplicate inserted). Preserves document order. Callers MUST
-/// obtain `current` from a confirmed-loaded kind:3 (`try_current_follows` /
-/// `KernelReducer::try_current_follows`) — calling this on a not-yet-loaded
-/// list and re-publishing the result would silently overwrite a user's contacts
-/// with a near-empty set.
+/// `current` is the active account's existing kind:3 tag set
+/// (`Vec<Vec<String>>`), obtained from a confirmed-loaded kind:3 via
+/// [`crate::kernel_reducer::KernelReducer::try_current_kind3_event`] (or the
+/// native `Kernel::try_current_kind3_event`). Callers MUST confirm the kind:3
+/// is loaded first — editing a not-yet-loaded list and re-publishing would
+/// silently wipe the user's contacts.
+///
+/// Preservation contract:
+/// - Every **non-`p`** tag (legacy relay-list `["r", …]`, `["d", …]`, etc.) is
+///   carried through verbatim, in document order.
+/// - Every existing `["p", pk, relay?, petname?]` entry keeps its relay-hint
+///   (column 2) and petname (column 3) columns — the edit never strips them.
+/// - Document order of all retained tags is preserved.
+///
+/// Idempotent: if a `p` tag for `target` (matched on column 1, the pubkey) is
+/// already present, the set is returned unchanged — no duplicate, and the
+/// existing entry's relay-hint / petname survive. Otherwise a bare
+/// `["p", target]` is appended after the existing tags.
 #[must_use]
-pub fn follow_list_after_add(current: &[String], target: &str) -> Vec<String> {
-    let mut list: Vec<String> = current.to_vec();
-    if !list.iter().any(|p| p == target) {
-        list.push(target.to_string());
+pub fn kind3_tags_after_add(current: &[Vec<String>], target: &str) -> Vec<Vec<String>> {
+    let mut tags: Vec<Vec<String>> = current.to_vec();
+    let already_present = tags
+        .iter()
+        .any(|t| t.first().map(String::as_str) == Some("p") && t.get(1).map(String::as_str) == Some(target));
+    if !already_present {
+        tags.push(vec!["p".to_string(), target.to_string()]);
     }
-    list
+    tags
 }
 
-/// Return the follow list that results from removing `target` from `current`.
+/// Return the FULL kind:3 tag set that results from removing the follow on
+/// `target` from `current` — dropping ONLY the matching `p` entries while
+/// preserving everything else verbatim (issue #1246).
 ///
-/// Idempotent: if `target` is not in `current`, the list is returned
-/// unchanged. Preserves document order of the remaining entries. Same
-/// must-be-loaded safety constraint as [`follow_list_after_add`].
+/// Drops every `["p", target, …]` entry of ANY arity (bare, relay-hinted, or
+/// relay-hinted-with-petname) matched on column 1 (the pubkey). Every non-`p`
+/// tag and every `p` tag for a different pubkey — including its relay-hint and
+/// petname columns — is carried through verbatim in document order.
+///
+/// Idempotent: if no `p` tag for `target` is present, the set is returned
+/// unchanged. Same must-be-loaded safety constraint as
+/// [`kind3_tags_after_add`].
 #[must_use]
-pub fn follow_list_after_remove(current: &[String], target: &str) -> Vec<String> {
-    current.iter().filter(|p| p.as_str() != target).cloned().collect()
+pub fn kind3_tags_after_remove(current: &[Vec<String>], target: &str) -> Vec<Vec<String>> {
+    current
+        .iter()
+        .filter(|t| {
+            !(t.first().map(String::as_str) == Some("p")
+                && t.get(1).map(String::as_str) == Some(target))
+        })
+        .cloned()
+        .collect()
 }
 
 // ─── NIP-10 reply builder ────────────────────────────────────────────────────

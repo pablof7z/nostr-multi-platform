@@ -1,6 +1,11 @@
 # ADR-0044 — Typing the Tier-3 top-level snapshot envelope fields
 
-- **Status:** Accepted / In progress (proposed 2026-06-10; PR-B partial implementation 2026-06-11)
+> Current status (2026-06-13): implemented. PR-B/F-05/F-10 completed the
+> `payload:Value` removal that this ADR prepared: production `SnapshotFrame`
+> no longer emits or decodes the generic payload tree, and consumers read typed
+> `SnapshotEnvelope` fields plus typed projection sidecars.
+
+- **Status:** Accepted / implemented (proposed 2026-06-10; PR-B completed 2026-06-13)
 - **Relates to:** ADR-0037 (typed FlatBuffers sidecar for runtime projections —
   defines `TypedProjection` / `TypedPayload` and the `payload:Value` compatibility
   field), ADR-0038 (typed op-feed projection — first sidecar payload after the

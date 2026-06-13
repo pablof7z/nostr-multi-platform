@@ -171,7 +171,7 @@ impl ActionModule for TopicArticlesModule {
     const NAMESPACE: &'static str = TOPIC_ARTICLES_NAMESPACE;
     type Action = TopicArticlesAction;
 
-    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         let (topic, consumer_id) = action.parts();
         if topic.is_empty() {
             return Err(ActionRejection::Invalid(
@@ -187,6 +187,7 @@ impl ActionModule for TopicArticlesModule {
     }
 
     fn execute(
+        &self,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -235,7 +236,7 @@ impl TopicArticlesAction {
 /// Call this from your app's composition root (alongside
 /// [`nmp_defaults::register_defaults`]) before `nmp_app_start`.
 pub fn register_topic_articles_actions(app: &mut impl ActionRegistrar) {
-    app.register_action::<TopicArticlesModule>();
+    app.register_action(TopicArticlesModule);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -249,7 +250,7 @@ mod tests {
 
     fn run_execute(action: TopicArticlesAction) -> Vec<ActorCommand> {
         let cmds = std::cell::RefCell::new(Vec::new());
-        TopicArticlesModule::execute(action, "test-cid", &|cmd| cmds.borrow_mut().push(cmd))
+        TopicArticlesModule.execute(action, "test-cid", &|cmd| cmds.borrow_mut().push(cmd))
             .expect("execute must not fail for valid input");
         cmds.into_inner()
     }
@@ -322,7 +323,7 @@ mod tests {
             consumer_id: CONSUMER.to_string(),
         };
         assert!(matches!(
-            TopicArticlesModule::start(&mut ctx, action),
+            TopicArticlesModule.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -335,7 +336,7 @@ mod tests {
             consumer_id: String::new(),
         };
         assert!(matches!(
-            TopicArticlesModule::start(&mut ctx, action),
+            TopicArticlesModule.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }

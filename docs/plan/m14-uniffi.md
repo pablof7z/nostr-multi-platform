@@ -4,7 +4,7 @@
 
 **Demo product:** iOS app, podcast app, and (incoming) Android/Desktop/Web shells all bind to the kernel via generated bindings produced by `nmp gen modules`, not raw C FFI. Runtime update payloads use the canonical FlatBuffers schema; UniFFI owns object lifecycle, callback registration, and capability interfaces.
 
-**Scope.** Replace the current raw C FFI surface in `crates/nmp-core/src/ffi.rs` with the per-app generated `nmp-app-<name>` crate per ADR-0010. The iOS app stops importing `NmpCore.h` and instead imports the generated Swift module. This milestone does **not** make UniFFI the hot payload format: `AppUpdate` frames remain FlatBuffers, and there is no JSON runtime fallback.
+**Scope.** Replace the current raw C/JNI lifecycle/action FFI surface in `crates/nmp-ffi` with the per-app generated `nmp-app-<name>` crate per ADR-0010. The iOS app stops importing `NmpCore.h` and instead imports the generated Swift module. This milestone does **not** make UniFFI the hot payload format: `AppUpdate` frames remain FlatBuffers, and there is no JSON runtime fallback.
 
 **Subsystem deliverables.**
 

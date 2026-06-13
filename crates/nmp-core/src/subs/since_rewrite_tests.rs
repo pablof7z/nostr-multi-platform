@@ -49,6 +49,23 @@ fn timeline_interest_with_since(id: u64, author: &str, since: u64) -> LogicalInt
     i
 }
 
+/// A OneShot (backfill) interest with no since — models an all-time history
+/// fetch where T129 narrowing must NOT be applied (#1281).
+fn backfill_interest(id: u64, author: &str) -> LogicalInterest {
+    LogicalInterest {
+        id: InterestId(id),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors: [pubkey(author)].into_iter().collect(),
+            kinds: [1u32].into_iter().collect(),
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::OneShot,
+        is_indexer_discovery: false,
+    }
+}
+
 fn ephemeral_interest(id: u64, author: &str) -> LogicalInterest {
     LogicalInterest {
         id: InterestId(id),
@@ -108,14 +125,49 @@ fn relays_with_req(frames: &[WireFrame]) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
-// ─── 1) Basic rewrite ────────────────────────────────────────────────────────
+// ─── 1) since=None exemption (#1281) ─────────────────────────────────────────
+//
+// Owner decision #1281 (2026-06-13, refined): the backfill exemption applies
+// ONLY to non-Tailing (OneShot/backfill) interests. A non-Tailing since=None
+// interest requests all-time history; raising it to watermark+1 would
+// silently prevent the relay from returning events older than the local store.
+//
+// A TAILING since=None interest is a live feed that has not yet expressed a
+// lower bound. T129 applies normally — we narrow it to watermark+1 so the
+// relay does not re-send already-cached events (the core T129 optimisation).
 
+/// Non-Tailing (backfill/OneShot) + since=None: watermark rewrite must NOT
+/// introduce a lower bound (full history requested).
 #[test]
-fn rewrites_since_to_watermark_plus_one_when_filter_has_no_since() {
+fn since_none_stays_none_for_backfill_interest_after_watermark_rewrite() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
-    // Cache has events for this filter with newest created_at = 1700.
+    // Cache has events up to ts=1700 for this filter, but the interest is a
+    // backfill (OneShot, lifecycle!=Tailing) with no since. The watermark
+    // rewrite must NOT introduce a lower bound.
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
-    l.registry_mut().push(timeline_interest(1, "a"));
+    l.registry_mut().push(backfill_interest(1, "a"));
+
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let filters = req_filters(&frames);
+
+    assert!(!filters.is_empty(), "expected at least one REQ");
+    for filter in &filters {
+        assert!(
+            !filter.contains("\"since\""),
+            "backfill (OneShot) since=None must remain absent after watermark rewrite (#1281); got {filter}",
+        );
+    }
+}
+
+/// Tailing + since=None: T129 applies — rewrite to watermark+1 so the live
+/// feed does not re-request already-cached events on reconnect/recompile.
+#[test]
+fn tailing_since_none_is_narrowed_to_watermark_plus_one() {
+    let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
+    // Watermark = 1700; Tailing interest with no explicit since.
+    // T129 must narrow it to since=1701 so the relay skips cached events.
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+    l.registry_mut().push(timeline_interest(1, "a")); // lifecycle: Tailing
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -124,7 +176,28 @@ fn rewrites_since_to_watermark_plus_one_when_filter_has_no_since() {
     for filter in &filters {
         assert!(
             filter.contains("\"since\":1701"),
-            "since not rewritten to watermark+1 in filter {filter}",
+            "Tailing since=None must be narrowed to watermark+1 by T129; got {filter}",
+        );
+    }
+}
+
+#[test]
+fn some_since_is_raised_to_watermark_plus_one() {
+    let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1"]);
+    // Interest has an explicit since=500 (older than the watermark).
+    // Watermark = 1700, so the floor is 1701.  The rewrite must raise it.
+    l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
+    l.registry_mut()
+        .push(timeline_interest_with_since(1, "a", 500));
+
+    let frames = l.recompile_and_diff(&mailboxes).expect("compile");
+    let filters = req_filters(&frames);
+
+    assert!(!filters.is_empty(), "expected at least one REQ");
+    for filter in &filters {
+        assert!(
+            filter.contains("\"since\":1701"),
+            "existing since below watermark must be raised to watermark+1; got {filter}",
         );
     }
 }
@@ -295,6 +368,9 @@ fn multi_author_no_since_when_watermark_fn_returns_none() {
 
 /// When the watermark fn returns the minimum of per-author watermarks, the
 /// rewrite must use that minimum (not a higher value).
+///
+/// Owner decision #1281: since=None interests are exempt from the T129 rewrite.
+/// The interest must carry an explicit since so the watermark can be applied.
 #[test]
 fn multi_author_since_is_min_watermark_plus_one() {
     let (mut l, mailboxes) = lifecycle_with_two_authors_shared_relay("a", "b");
@@ -306,7 +382,10 @@ fn multi_author_since_is_min_watermark_plus_one() {
             Some(1700) // single-author path unchanged
         }
     }));
-    l.registry_mut().push(two_author_interest(11, "a", "b"));
+    // since=1 so the watermark rewrite applies (#1281: since=None is exempt).
+    let mut interest = two_author_interest(11, "a", "b");
+    interest.shape.since = Some(1);
+    l.registry_mut().push(interest);
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);
@@ -340,7 +419,9 @@ fn multi_relay_emits_identical_rewritten_since() {
     // confounded by selection-induced relay dropping.
     l.set_selection_budget(usize::MAX, usize::MAX);
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
-    l.registry_mut().push(timeline_interest(1, "a"));
+    // since=500 so the watermark rewrite applies (#1281: since=None is exempt).
+    l.registry_mut()
+        .push(timeline_interest_with_since(1, "a", 500));
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let filters = req_filters(&frames);

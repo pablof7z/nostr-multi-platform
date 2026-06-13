@@ -1,5 +1,8 @@
 # FFI hardening — scenarios S6–S11
 
+> Historical M10.5 scenario set. It names the FFI symbols that existed when the
+> stress plan was written; use `docs/ffi-surface.md` for the current ABI.
+
 See [`scenarios.md`](./scenarios.md) for S1–S5 and conventions.
 Numeric thresholds are in [`gates.md`](./gates.md).
 
