@@ -155,6 +155,65 @@ fn capped_follows_preserves_duplicate_slots_no_dedup() {
     assert_eq!(capped_contact_follows(&tags), vec![pk.clone(), pk]);
 }
 
+// ── NIP-02 follow-list edit builders ────────────────────────────────────
+
+const PUBKEY_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const PUBKEY_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const PUBKEY_X: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+#[test]
+fn follow_list_after_add_appends_new_pubkey() {
+    let current = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string()];
+    let result = follow_list_after_add(&current, PUBKEY_X);
+    assert_eq!(result, vec![PUBKEY_A, PUBKEY_B, PUBKEY_X]);
+}
+
+#[test]
+fn follow_list_after_add_is_idempotent() {
+    // Adding a pubkey that is already present must not create a duplicate.
+    let current = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string()];
+    let result = follow_list_after_add(&current, PUBKEY_A);
+    assert_eq!(result, vec![PUBKEY_A, PUBKEY_B], "no duplicate inserted");
+}
+
+#[test]
+fn follow_list_after_add_to_empty_list() {
+    let result = follow_list_after_add(&[], PUBKEY_A);
+    assert_eq!(result, vec![PUBKEY_A]);
+}
+
+#[test]
+fn follow_list_after_remove_removes_target() {
+    let current = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string(), PUBKEY_X.to_string()];
+    let result = follow_list_after_remove(&current, PUBKEY_B);
+    assert_eq!(result, vec![PUBKEY_A, PUBKEY_X]);
+}
+
+#[test]
+fn follow_list_after_remove_is_idempotent() {
+    // Removing a pubkey not in the list must return the list unchanged.
+    let current = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string()];
+    let result = follow_list_after_remove(&current, PUBKEY_X);
+    assert_eq!(result, vec![PUBKEY_A, PUBKEY_B]);
+}
+
+#[test]
+fn follow_list_after_remove_from_empty_list() {
+    let result = follow_list_after_remove(&[], PUBKEY_A);
+    assert!(result.is_empty());
+}
+
+#[test]
+fn follow_list_sequence_add_then_remove() {
+    // Simulate a real add-X-then-remove-B sequence on [A, B]:
+    // [A, B] → add X → [A, B, X] → remove B → [A, X]
+    let start = vec![PUBKEY_A.to_string(), PUBKEY_B.to_string()];
+    let after_add = follow_list_after_add(&start, PUBKEY_X);
+    assert_eq!(after_add, vec![PUBKEY_A, PUBKEY_B, PUBKEY_X]);
+    let after_remove = follow_list_after_remove(&after_add, PUBKEY_B);
+    assert_eq!(after_remove, vec![PUBKEY_A, PUBKEY_X]);
+}
+
 // ── NIP-10 marked form ──────────────────────────────────────────────────
 
 #[test]

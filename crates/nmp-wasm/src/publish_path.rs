@@ -25,12 +25,12 @@
 //! # Scope
 //!
 //! This module wires **`PublishNote` (kind:1)** including NIP-10 threaded
-//! replies, and **`React` (kind:7)** via
-//! [`nmp_core::KernelReducer::build_reaction_draft`]. `Follow` / `Unfollow`
-//! remain scoped to an honest `publish_path_not_wired_for_kind` error —
-//! kind:3 follow-set editing requires a `try_current_follows` kernel seam to
-//! distinguish "kind:3 not yet loaded" from "zero follows", to avoid silently
-//! destroying a user's existing contact list (PR-6b).
+//! replies, **`React` (kind:7)** via
+//! [`nmp_core::KernelReducer::build_reaction_draft`], and **`Follow` /
+//! `Unfollow` (kind:3)** via [`nmp_core::KernelReducer::try_current_follows`]
+//! (PR-6b). Follow / Unfollow fail closed with `follow_list_not_loaded` when
+//! the active account's kind:3 has not been ingested yet, to prevent silently
+//! overwriting an unloaded contact list.
 //!
 //! Reply tags are resolved through [`nmp_core::KernelReducer::build_reply_tags`]
 //! before the sign `.await` so no `RefCell` borrow ever lives across an async
@@ -122,6 +122,23 @@ pub(crate) fn unsupported_signer_backend_reason(backend: &SignerBackend) -> Stri
     )
 }
 
+/// Stable error-code prefix returned when a Follow or Unfollow action cannot
+/// proceed because the active account's kind:3 contact list has not been
+/// ingested yet.
+///
+/// Publishing a kind:3 without a loaded baseline would silently wipe the
+/// user's existing contact list — so the wasm path fails closed with this
+/// reason instead. The host should wait for the contact-list snapshot
+/// projection to populate before retrying.
+///
+/// The prefix is pinned by a test below so JS host pattern-matching is stable.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) fn follow_list_not_loaded_reason() -> String {
+    "follow_list_not_loaded: the active account's kind:3 contact list has not been \
+     ingested yet. Retry after the contact-list snapshot projection is populated."
+        .to_string()
+}
+
 // The fan-out helper previously lived here with a `.find()` loop (first
 // matching driver only), which dropped frames addressed to `"both"`-role
 // URLs that spawn two drivers sharing the same relay URL (issue #1143 fix 2).
@@ -133,16 +150,19 @@ pub(crate) fn unsupported_signer_backend_reason(backend: &SignerBackend) -> Stri
 /// V-01 Stage 3c — async publish path executed inside a `js_sys::Promise`.
 ///
 /// Lifecycle:
-/// 1. Validate the action variant. `React` (kind:7) and `PublishNote` (kind:1)
-///    are wired; `Follow` / `Unfollow` and all other variants return an honest
-///    `publish_path_not_wired_for_kind` failure inline (no sign call).
+/// 1. Validate the action variant. `React` (kind:7), `PublishNote` (kind:1),
+///    `Follow` (kind:3 add), and `Unfollow` (kind:3 remove) are wired; all
+///    other variants return an honest `publish_path_not_wired_for_kind` failure
+///    inline (no sign call).
 /// 2. Validate the installed signer's backend. Non-`Nip07` backends return
 ///    an `unsupported_signer_backend_for_writes` failure inline.
-/// 3. Resolve NIP-10 reply tags (if `reply_to_id` is set) via
-///    `reducer.borrow().build_reply_tags(id)` — a synchronous store lookup
-///    that returns `None` for unknown parents (fail-closed with
-///    `reply_target_unknown:` reason). Borrow is dropped before the await.
-/// 4. Build the `UnsignedEvent` (kind:1) with the resolved tags.
+/// 3. For Follow/Unfollow: read `try_current_follows()` synchronously before
+///    the sign await. `None` → honest `follow_list_not_loaded` failure (safety
+///    gate: never publish a kind:3 built on an unloaded baseline). `Some(list)`
+///    → edit via `follow_list_after_add` / `follow_list_after_remove` and build
+///    the kind:3 `UnsignedEvent`. For Note: resolve NIP-10 reply tags via
+///    `build_reply_tags(id)`. All borrows dropped before the sign await.
+/// 4. Build the `UnsignedEvent` with the resolved tags.
 /// 5. Await `nmp_signers::sign_event_via_extension(...)` — the JS Promise
 ///    bridge that yields control to the JS event loop. On rejection we
 ///    surface the signer error verbatim through `CapabilityFailure`.
@@ -262,7 +282,89 @@ pub(crate) async fn publish_app_action(
         };
     }
 
-    // Step 1b — Note branch. `action` was not React; destructure it here.
+    // Step 1b — Follow / Unfollow branch (kind:3). `action` was not React;
+    // check for Follow/Unfollow before falling through to Note.
+    if let AppAction::Follow { pubkey } | AppAction::Unfollow { pubkey } = &action {
+        let pubkey = pubkey.clone();
+        let is_add = matches!(action, AppAction::Follow { .. });
+
+        // Signer backend gate — same constraint as Note and React.
+        let backend = signer.backend();
+        if !matches!(backend, SignerBackend::Nip07) {
+            return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: action_type,
+                correlation_id,
+                reason: unsupported_signer_backend_reason(&backend),
+            });
+        }
+        let cached_pubkey = signer.pubkey();
+
+        // Safety gate: read the active account's current follow list before the
+        // sign await. `None` means the kind:3 has not been ingested yet — fail
+        // closed to prevent silently overwriting an unloaded contact list.
+        // The borrow is dropped before the await (RefCell borrow discipline).
+        let current_follows = {
+            let r = reducer.borrow();
+            r.try_current_follows()
+        };
+        let current_follows = match current_follows {
+            Some(list) => list,
+            None => {
+                return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                    capability: action_type,
+                    correlation_id,
+                    reason: follow_list_not_loaded_reason(),
+                });
+            }
+        };
+
+        // Edit the follow list using the shared canonical builders.
+        let new_follows = if is_add {
+            nmp_core::tags::follow_list_after_add(&current_follows, &pubkey)
+        } else {
+            nmp_core::tags::follow_list_after_remove(&current_follows, &pubkey)
+        };
+
+        let tags: Vec<Vec<String>> = new_follows
+            .iter()
+            .map(|p| vec!["p".to_string(), p.clone()])
+            .collect();
+
+        let unsigned = nmp_core::substrate::UnsignedEvent {
+            pubkey: cached_pubkey.to_hex(),
+            kind: 3,
+            tags,
+            content: String::new(),
+            created_at: now_secs,
+        };
+
+        // Await the extension — the only await; no RefCell borrow crosses it.
+        let signed = match nmp_signers::sign_event_via_extension(cached_pubkey, unsigned).await {
+            Ok(s) => s,
+            Err(error) => {
+                return WorkerEvent::CapabilityFailure(CapabilityFailure {
+                    capability: action_type,
+                    correlation_id,
+                    reason: format!("nip07_sign_failed: {error}"),
+                });
+            }
+        };
+
+        // Publish + fan-out. Thread `correlation_id` into the engine.
+        let outbound = {
+            let mut r = reducer.borrow_mut();
+            r.publish_signed_event(&signed, &[], Some(correlation_id.clone()))
+        };
+        crate::relay_pool::fan_out_outbound(&drivers, &outbound);
+        push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+
+        return WorkerEvent::ActionAccepted {
+            action_type,
+            correlation_id,
+        };
+    }
+
+    // Step 1c — Note branch. `action` was not React or Follow/Unfollow.
     let (content, reply_to_id) = match action {
         AppAction::PublishNote {
             content,
@@ -380,10 +482,19 @@ mod tests {
 
     #[test]
     fn write_path_not_wired_for_kind_reason_has_stable_prefix() {
-        // React (nmp.nip25.react) is now wired; use a genuinely-unwired action.
-        let reason = write_path_not_wired_for_kind_reason("nmp.follow");
+        // React / Follow / Unfollow are now wired; use a genuinely-unwired action.
+        let reason = write_path_not_wired_for_kind_reason("nmp.hypothetical_future_verb");
         assert!(reason.starts_with("publish_path_not_wired_for_kind"));
-        assert!(reason.contains("nmp.follow"));
+        assert!(reason.contains("nmp.hypothetical_future_verb"));
+    }
+
+    #[test]
+    fn follow_list_not_loaded_reason_has_stable_prefix() {
+        let reason = follow_list_not_loaded_reason();
+        assert!(
+            reason.starts_with("follow_list_not_loaded:"),
+            "prefix must be 'follow_list_not_loaded:'; got: {reason:?}"
+        );
     }
 
     #[test]

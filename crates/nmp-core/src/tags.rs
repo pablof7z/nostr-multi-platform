@@ -136,6 +136,35 @@ pub fn capped_contact_follows(tags: &[Vec<String>]) -> Vec<String> {
         .collect()
 }
 
+// ─── NIP-02 follow-list edit builders ────────────────────────────────────────
+
+/// Return the follow list that results from adding `target` to `current`.
+///
+/// Idempotent: if `target` is already in `current`, the list is returned
+/// unchanged (no duplicate inserted). Preserves document order. Callers MUST
+/// obtain `current` from a confirmed-loaded kind:3 (`try_current_follows` /
+/// `KernelReducer::try_current_follows`) — calling this on a not-yet-loaded
+/// list and re-publishing the result would silently overwrite a user's contacts
+/// with a near-empty set.
+#[must_use]
+pub fn follow_list_after_add(current: &[String], target: &str) -> Vec<String> {
+    let mut list: Vec<String> = current.to_vec();
+    if !list.iter().any(|p| p == target) {
+        list.push(target.to_string());
+    }
+    list
+}
+
+/// Return the follow list that results from removing `target` from `current`.
+///
+/// Idempotent: if `target` is not in `current`, the list is returned
+/// unchanged. Preserves document order of the remaining entries. Same
+/// must-be-loaded safety constraint as [`follow_list_after_add`].
+#[must_use]
+pub fn follow_list_after_remove(current: &[String], target: &str) -> Vec<String> {
+    current.iter().filter(|p| p.as_str() != target).cloned().collect()
+}
+
 // ─── NIP-10 reply builder ────────────────────────────────────────────────────
 
 /// Build the NIP-10 marked-form reply tag set for a new note that replies to
