@@ -19,8 +19,6 @@ the spec itself; this file no longer mirrors it.
 
 ## Active
 
-- 2026-06-13 — **refactor(chirp-tui): wire NMP nostr_avatar + nostr_nip05_badge registry components**. Branch: `refactor/chirp-tui-registry-avatar-nip05`. Worktree: agent-a8c107d3c4a7854fb. Replaces hand-rolled ██ block in profile_pane.rs and chats.rs with NostrAvatar registry widget (#[path]-include from nmp-cli registry); adds NostrNip05Badge to nostr_user module and profile_pane header. Remove when merged.
-
 - 2026-06-13 — **fix(nmp-marmot): resubscribe per-group kind:445 feeds on restart** (Marmot post-restart live receive dead). PR #1261. Branch: `fix/marmot-resubscribe-groups-on-restart`. Worktree: agent-a1aa60698b84ee860. Root cause: `register_with_keys` re-pushes only the giftwrap inbox interest; per-group kind:445 feeds are never re-registered for groups loaded from MDK SQLite store. Fix: `MarmotService::group_relays` read seam + `MarmotProjection::resubscribe_all_groups` + call from `register_with_keys`. Regression test: two-session file-backed round-trip in `crates/nmp-marmot/src/restart_resubscribe_tests.rs`. File-size gate kept green by extracting `projection/resubscribe.rs` + `service_reads.rs` (no path renames; baselines unchanged). Remove when merged.
 
 - 2026-06-13 — **PR-3 (final): Marmot op feedback — pending state + structured errors from snapshot; dismiss only on success** (iOS + Android, marmot-create-fix ladder). PR #1239. Branch: `feat/marmot-shell-op-feedback`. Reconciled onto master's structured v2 NMMS schema (#1235): PendingOpRow.age_secs + LastOpError table {op, reason, at_secs, correlation_id}, reason mapped to a banner shell-side (aim.md §2). iOS + Android build green; removed when merged.
