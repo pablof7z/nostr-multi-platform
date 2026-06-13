@@ -87,6 +87,8 @@ mod cipher_for_account_tests;
 #[cfg(all(test, feature = "native"))]
 mod sign_event_for_account_tests;
 #[cfg(all(test, feature = "native"))]
+mod nip42_async_auth_tests;
+#[cfg(all(test, feature = "native"))]
 mod tests;
 #[cfg(feature = "native")]
 mod tick;
@@ -215,7 +217,7 @@ use capability_worker::{spawn_capability_worker, CapabilityWorkSender};
 #[cfg(feature = "native")]
 use dispatch::{dispatch_command, ActorContext};
 #[cfg(feature = "native")]
-use pending_sign::{resolve_parked_op, ParkedOp, PublishObligation};
+use pending_sign::{resolve_parked_op, AuthObligation, ParkedOp, PublishObligation};
 
 use crate::kernel::LifecyclePhase;
 
@@ -2381,6 +2383,56 @@ pub fn run_actor_with_observers(
         if running && kernel.has_pending_cache_serves() {
             kernel.run_cache_serve_step();
         }
+        // ── V-06 / #960: drain kernel-emitted NIP-42 AUTH signs ──────────
+        // `handle_message` enqueues an AUTH kind:22242 for any relay lane whose
+        // active account is a REMOTE signer (no synchronous AuthSignerFn). Route
+        // each through the SAME async signer port every other write uses
+        // (`sign_with_account_nonblocking` → park under the `Auth` sink). A local
+        // key never reaches here — it resolves inline in the kernel. This is the
+        // single place that owns both `identity` and `parked_ops`, so the drain
+        // lives beside the parked-op poll rather than threading two params
+        // through `handle_relay_event`.
+        for req in kernel.take_pending_auth_signs() {
+            let signer_pk = req.unsigned.pubkey.clone();
+            match commands::sign_with_account_nonblocking(&identity, &signer_pk, &req.unsigned) {
+                Err(reason) => kernel.fail_auth_sign(req.role, &req.relay_url, reason),
+                Ok(mut op) => match op.poll() {
+                    // Defensive: a signer that resolves Ready inline (e.g. a key
+                    // promoted to local mid-session) dispatches immediately.
+                    Some(Ok(signed)) => {
+                        let outbound = kernel.dispatch_signed_auth(
+                            req.role,
+                            &req.relay_url,
+                            &req.challenge,
+                            signed,
+                        );
+                        route_dispatch_outbound(
+                            running,
+                            &mut queued_publish_outbound,
+                            &mut relay_controls,
+                            &mut slot_to_url,
+                            &pool,
+                            &mut kernel,
+                            &mut next_relay_generation,
+                            outbound,
+                        );
+                    }
+                    Some(Err(e)) => {
+                        kernel.fail_auth_sign(req.role, &req.relay_url, e.to_string())
+                    }
+                    None => {
+                        let deadline = identity.sign_deadline_for(Some(&signer_pk));
+                        parked_ops.push(ParkedOp::auth(
+                            op,
+                            req.role,
+                            req.relay_url,
+                            req.challenge,
+                            deadline,
+                        ));
+                    }
+                },
+            }
+        }
         // ── Poll the unified parked-op queue (ADR-0050 §D2) ──────────────
         // ONE `retain_mut` over ONE `Vec<ParkedOp>` replaces the two former
         // drains (the inline publish block + `resolve_pending_sign_return`). Each
@@ -2393,15 +2445,56 @@ pub fn run_actor_with_observers(
         // Empty `parked_ops` is a heap-free zero-item retain.
         if !parked_ops.is_empty() {
             let mut publish_obligations: Vec<PublishObligation> = Vec::new();
+            let mut auth_obligations: Vec<AuthObligation> = Vec::new();
             let mut any_changed = false;
             parked_ops.retain_mut(|parked| {
                 let outcome = resolve_parked_op(parked, &mut kernel);
                 if let Some(obligation) = outcome.publish {
                     publish_obligations.push(obligation);
                 }
+                if let Some(obligation) = outcome.auth {
+                    auth_obligations.push(obligation);
+                }
                 any_changed |= outcome.changed;
                 outcome.keep
             });
+            // V-06 / #960: execute the NIP-42 AUTH obligations the `Auth` sink
+            // handed back. A resolved remote sign re-enters `dispatch_signed_auth`
+            // (validate → Authenticating → emit the CLIENT-AUTH frame, routed
+            // back to the delivering socket); a failure / timeout drives the
+            // relay to `Failed` and fails closed (T76). The loop owns the
+            // `&mut Kernel` re-entry + relay routing, so this runs here after the
+            // retain (the drain's `&mut kernel` borrow has ended).
+            for obligation in auth_obligations {
+                match obligation {
+                    AuthObligation::Dispatch {
+                        role,
+                        relay_url,
+                        challenge,
+                        signed,
+                    } => {
+                        let outbound =
+                            kernel.dispatch_signed_auth(role, &relay_url, &challenge, signed);
+                        route_dispatch_outbound(
+                            running,
+                            &mut queued_publish_outbound,
+                            &mut relay_controls,
+                            &mut slot_to_url,
+                            &pool,
+                            &mut kernel,
+                            &mut next_relay_generation,
+                            outbound,
+                        );
+                    }
+                    AuthObligation::Failed {
+                        role,
+                        relay_url,
+                        reason,
+                    } => {
+                        kernel.fail_auth_sign(role, &relay_url, reason);
+                    }
+                }
+            }
             // Execute the publish obligations the `Publish` sink handed back,
             // preserving ALL prior terminal behaviours exactly: a resolved sign
             // routes via the parked `target` + `correlation_id_override`; a

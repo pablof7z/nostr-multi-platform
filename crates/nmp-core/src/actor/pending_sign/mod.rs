@@ -35,7 +35,7 @@ mod sinks;
 // `nmp_signer_iface`; no re-export here.
 
 pub(crate) use drain::resolve_parked_op;
-pub(crate) use sinks::{ParkedOp, PublishObligation};
+pub(crate) use sinks::{AuthObligation, ParkedOp, PublishObligation};
 // `ParkedOpSink` is named only by tests (the dispatch arms / drain construct it
 // via `ParkedOp::*` constructors); gate the re-export so a non-test lib build
 // does not warn it unused.
