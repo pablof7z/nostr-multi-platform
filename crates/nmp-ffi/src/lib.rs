@@ -13,6 +13,11 @@
 #[cfg(test)]
 #[path = "update_callback_quiescence_tests.rs"]
 mod update_callback_quiescence_tests;
+// Bug 1 (D6 fail-loud) — `NmpApp::remove_account_forgetting_keyring` checks the
+// keyring forget result and does NOT remove the account when the keychain
+// reports `Error` (otherwise the nsec is orphaned in the keychain). Lives in
+// its own module to keep `lib.rs` under its LOC ceiling.
+mod keyring_forget;
 // V-82 — `NmpApp::active_account_handle()` single-source-of-truth tests
 // (real sign-in / switch / Reset driven through the actor thread).
 #[cfg(test)]
@@ -1162,9 +1167,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             //    `in_flight`, and signal `drained` so a waiting setter can
             //    make progress.
             let registration = {
-                let Ok(mut guard) = listener_callback.inner.lock() else {
-                    continue;
-                };
+                // D6 fail-loud: a poisoned lock must NOT silently skip
+                // delivering the update frame to the host — that freezes the
+                // UI. The inner gate state stays structurally valid across a
+                // panic (it is plain counters + a registration handle), so we
+                // recover the guard and keep firing rather than `continue`.
+                let mut guard = listener_callback.inner.lock().unwrap_or_else(|e| {
+                    tracing::error!("listener lock was poisoned; recovering");
+                    e.into_inner()
+                });
                 let reg = guard.registration;
                 if reg.is_some() {
                     guard.in_flight += 1;
@@ -1183,12 +1194,17 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                         update.len(),
                     );
                 });
-                // Decrement in_flight and wake any waiting setter.
-                if let Ok(mut guard) = listener_callback.inner.lock() {
-                    guard.in_flight = guard.in_flight.saturating_sub(1);
-                    if guard.in_flight == 0 {
-                        listener_callback.drained.notify_all();
-                    }
+                // Decrement in_flight and wake any waiting setter. Recover from
+                // poison here too: a leaked `in_flight` would block a quiescing
+                // setter forever (another silent freeze), so we must always
+                // balance the increment above.
+                let mut guard = listener_callback.inner.lock().unwrap_or_else(|e| {
+                    tracing::error!("listener lock was poisoned; recovering");
+                    e.into_inner()
+                });
+                guard.in_flight = guard.in_flight.saturating_sub(1);
+                if guard.in_flight == 0 {
+                    listener_callback.drained.notify_all();
                 }
             }
         }
@@ -2152,16 +2168,9 @@ impl NmpApp {
         self.send_cmd(ActorCommand::RemoveAccount { identity_id });
     }
 
-    /// Forget the app-scoped local secret and remove the identity through the
-    /// actor-owned reducer.
-    pub fn remove_account_forgetting_keyring(&self, account_id: &str, identity_id: String) {
-        let req = nmp_core::substrate::KeyringIdentityWiring::forget_secret(
-            "nmp.identity.forget",
-            account_id,
-        );
-        let _ = self.dispatch_capability(&req);
-        self.remove_account(identity_id);
-    }
+    // `remove_account_forgetting_keyring` lives in `keyring_forget.rs` (kept out
+    // of this file to respect its LOC ceiling — the D6 fail-loud body is larger
+    // than the one-liner it replaced).
 
     /// Recall a previously-persisted local secret from the keyring capability.
     ///
