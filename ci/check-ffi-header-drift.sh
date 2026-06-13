@@ -102,6 +102,11 @@ FFI_FILE_ROOTS=(
     # nmp_app_chirp_{open,close}_{author,thread}_feed symbols.
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/register.rs"
+    # Chirp relay-bootstrap seeding (nmp_app_chirp_seed_default_relays /
+    # nmp_app_chirp_seed_relays_from_json): wraps nmp-chirp-config so the
+    # Swift shell stops hardcoding relay URLs (D7). iOS analogue of the
+    # Android nmp-android-ffi::relay_seeding glue.
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/relay_seeding.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/snapshot.rs"
     # Native action-envelope builder (nmp_app_chirp_action_spec): the symbol
     # is declared in NmpCore.h and #[no_mangle]-defined here, re-exported via

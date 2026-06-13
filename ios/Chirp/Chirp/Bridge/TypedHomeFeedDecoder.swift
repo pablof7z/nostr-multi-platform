@@ -100,7 +100,12 @@ enum TypedHomeFeedDecoder {
             // yet)" from "present empty string".
             authorDisplayName: optionalString(card?.authorDisplayName, present: card?.hasAuthorDisplayName ?? false),
             authorPictureUrl: optionalString(card?.authorPictureUrl, present: card?.hasAuthorPictureUrl ?? false),
-            contentPreview: card?.contentPreview ?? ""
+            contentPreview: card?.contentPreview ?? "",
+            // Typed NIP-18 repost signal (D0): the kernel stamps `reposted_by`
+            // when a kind:6 repost superseded the original note. We must read
+            // this typed table rather than re-derive `kind == 6` in the view —
+            // a repost card carries the *original* note's kind, not 6.
+            isRepost: card?.repostedBy != nil
         )
     }
 

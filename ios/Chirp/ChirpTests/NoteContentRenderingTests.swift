@@ -75,7 +75,8 @@ final class NoteContentRenderingTests: XCTestCase {
                     relationCounts: nil,
                     authorDisplayName: "pablof7z",
                     authorPictureUrl: "identicon:\(pubkey.prefix(16))",
-                    contentPreview: "embedded note body"
+                    contentPreview: "embedded note body",
+                    isRepost: false
                 ),
             ],
             timelineItems: [:]

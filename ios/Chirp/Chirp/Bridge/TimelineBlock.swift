@@ -199,6 +199,45 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
     /// First 180 Unicode scalars of `content`, no ellipsis. Used by the
     /// `syntheticItem` builder in `ModularBlockView`.
     let contentPreview: String
+    /// Typed NIP-18 repost signal. `true` when the kernel surfaced this card
+    /// because a kind:6 repost superseded the original note — i.e. the Rust
+    /// `TimelineEventCard.reposted_by` (FB `reposted_by` table) is present.
+    ///
+    /// This must NOT be re-derived as `kind == 6` in the view: for the
+    /// OP-centric feed the card's `kind` is the *original* note's kind (the
+    /// engine sources the body from the inner/target note and only stamps
+    /// `reposted_by` + the repost timestamp), so a repost card carries
+    /// `kind == 1` with `isRepost == true`. The kernel owns repost semantics
+    /// (D0); the view reads this typed flag.
+    let isRepost: Bool
+
+    /// Memberwise init used by the typed FlatBuffers decoder
+    /// (`TypedHomeFeedDecoder.makeCard`), which is the authoritative path.
+    init(
+        id: String,
+        authorPubkey: String,
+        kind: UInt32,
+        createdAt: UInt64,
+        content: String,
+        contentTree: ContentTreeWire?,
+        relationCounts: NoteRelationCounts?,
+        authorDisplayName: String?,
+        authorPictureUrl: String?,
+        contentPreview: String,
+        isRepost: Bool
+    ) {
+        self.id = id
+        self.authorPubkey = authorPubkey
+        self.kind = kind
+        self.createdAt = createdAt
+        self.content = content
+        self.contentTree = contentTree
+        self.relationCounts = relationCounts
+        self.authorDisplayName = authorDisplayName
+        self.authorPictureUrl = authorPictureUrl
+        self.contentPreview = contentPreview
+        self.isRepost = isRepost
+    }
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -211,6 +250,26 @@ struct ChirpEventCard: Decodable, Equatable, Identifiable, Sendable {
         case authorDisplayName
         case authorPictureUrl
         case contentPreview
+        case repostedBy
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        authorPubkey = try c.decode(String.self, forKey: .authorPubkey)
+        kind = try c.decode(UInt32.self, forKey: .kind)
+        createdAt = try c.decode(UInt64.self, forKey: .createdAt)
+        content = try c.decode(String.self, forKey: .content)
+        contentTree = try c.decodeIfPresent(ContentTreeWire.self, forKey: .contentTree)
+        relationCounts = try c.decodeIfPresent(NoteRelationCounts.self, forKey: .relationCounts)
+        authorDisplayName = try c.decodeIfPresent(String.self, forKey: .authorDisplayName)
+        authorPictureUrl = try c.decodeIfPresent(String.self, forKey: .authorPictureUrl)
+        contentPreview = try c.decode(String.self, forKey: .contentPreview)
+        // The Rust serde wire uses `#[serde(skip_serializing_if =
+        // "Option::is_none")]` on `reposted_by`, so the key is ABSENT for a
+        // plain note and a non-null object for a repost. Presence == repost.
+        isRepost = c.contains(.repostedBy)
+            && !((try? c.decodeNil(forKey: .repostedBy)) ?? false)
     }
 }
 

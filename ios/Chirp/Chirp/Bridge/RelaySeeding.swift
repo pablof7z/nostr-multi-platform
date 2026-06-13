@@ -2,30 +2,29 @@ import Foundation
 
 // Chirp's relay bootstrap, extracted from `KernelModel.start()`.
 //
-// When NMP_TEST_RELAYS is set (E2E / XCUITest harnesses) that JSON array
-// REPLACES the defaults entirely — no merge. Format:
-// [["ws://127.0.0.1:10547","both"]] (same shape as Android). Kotlin/Rust own
-// parsing on Android; here we do minimal array iteration so the Swift shell
-// stays thin. Rust validates each entry on add_relay. When NMP_TEST_RELAYS is
-// absent the production defaults are used.
+// Policy lives in Rust (`nmp-chirp-config`, surfaced via the
+// `nmp_app_chirp_seed_*` C-ABI symbols), not in Swift (D7 / thin-shell). The
+// shell's ONLY job here is env plumbing: read `NMP_TEST_RELAYS` and hand the
+// raw JSON to Rust. The default relay URL set and the override JSON parsing
+// both live in `nmp-chirp-config` / `nmp-app-chirp`, mirroring the Android
+// `nmp-android-ffi::relay_seeding` glue — so neither shell hardcodes relay
+// URLs (the Swift list had already drifted from the canonical config).
 //
-// nmp-core no longer carries a hardcoded relay fallback — the app owns its
-// default relay set. These pre-start `addRelay` calls populate
-// `configured_relays` so the kernel has discovery/content relays on a fresh
-// install; the actor dedups them against any session-restored relay list, so
-// re-seeding existing rows is a no-op. (Mirrors the Rust `NmpAppBuilder`
-// default-relay path.)
+// When `NMP_TEST_RELAYS` is set (E2E / XCUITest harnesses) that JSON array
+// REPLACES the defaults entirely — no merge. Format:
+// [["ws://127.0.0.1:10547","both"]] (same shape as Android). Rust parses and
+// validates each entry; a malformed or empty override falls back to the
+// production defaults. When `NMP_TEST_RELAYS` is absent the defaults are used.
+//
+// These pre-start `seed*` calls populate `configured_relays` so the kernel has
+// discovery/content relays on a fresh install; the actor dedups them against
+// any session-restored relay list, so re-seeding existing rows is a no-op.
 func seedChirpRelays(into kernel: KernelHandle) {
+    // Env plumbing stays in Swift; URL list + JSON parsing live in Rust.
     if let testRelaysJson = ProcessInfo.processInfo.environment["NMP_TEST_RELAYS"],
-       let data = testRelaysJson.data(using: .utf8),
-       let entries = try? JSONSerialization.jsonObject(with: data) as? [[String]],
-       !entries.isEmpty {
-        for entry in entries where entry.count == 2 {
-            kernel.addRelay(url: entry[0], role: entry[1])
-        }
-    } else {
-        // Default Chirp relay bootstrap (mirrors nmp-chirp-config).
-        kernel.addRelay(url: "wss://r.f7z.io", role: "both")
-        kernel.addRelay(url: "wss://purplepag.es", role: "indexer")
+       kernel.seedRelays(fromJSON: testRelaysJson) {
+        return
     }
+    // No override (or the override was malformed/empty) → production defaults.
+    kernel.seedDefaultRelays()
 }
