@@ -158,6 +158,184 @@ public struct nmp_kernel_RelayDiagnosticsWireSub: FlatBufferTable, FlatbuffersVe
   }
 }
 
+public struct nmp_kernel_RelayDiagnosticsInfo: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+
+  static func validateVersion() { FlatBuffersVersion_25_12_19() }
+  public var __buffer: ByteBuffer! { return _accessor.bb }
+  private var _accessor: Table
+
+  public static var id: String { "KRDG" } 
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_kernel_RelayDiagnosticsInfo.id, addPrefix: prefix) }
+  private init(_ t: Table) { _accessor = t }
+  public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
+
+  private enum VTOFFSET: VOffset {
+    case hasName = 4
+    case name = 6
+    case hasDescription = 8
+    case description = 10
+    case hasIcon = 12
+    case icon = 14
+    case hasPubkey = 16
+    case pubkey = 18
+    case hasContact = 20
+    case contact = 22
+    case hasSoftware = 24
+    case software = 26
+    case hasVersion = 28
+    case version = 30
+    case supportedNips = 32
+    case hasPaymentRequired = 34
+    case paymentRequired = 36
+    case hasAuthRequired = 38
+    case authRequired = 40
+    case hasRestrictedWrites = 42
+    case restrictedWrites = 44
+    var v: Int32 { Int32(self.rawValue) }
+    var p: VOffset { self.rawValue }
+  }
+
+  public var hasName: Bool { let o = _accessor.offset(VTOFFSET.hasName.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var name: String? { let o = _accessor.offset(VTOFFSET.name.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var nameSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.name.v) }
+  public var hasDescription: Bool { let o = _accessor.offset(VTOFFSET.hasDescription.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var description: String? { let o = _accessor.offset(VTOFFSET.description.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var descriptionSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.description.v) }
+  public var hasIcon: Bool { let o = _accessor.offset(VTOFFSET.hasIcon.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var icon: String? { let o = _accessor.offset(VTOFFSET.icon.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var iconSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.icon.v) }
+  public var hasPubkey: Bool { let o = _accessor.offset(VTOFFSET.hasPubkey.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var pubkey: String? { let o = _accessor.offset(VTOFFSET.pubkey.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var pubkeySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.pubkey.v) }
+  public var hasContact: Bool { let o = _accessor.offset(VTOFFSET.hasContact.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var contact: String? { let o = _accessor.offset(VTOFFSET.contact.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var contactSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.contact.v) }
+  public var hasSoftware: Bool { let o = _accessor.offset(VTOFFSET.hasSoftware.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var software: String? { let o = _accessor.offset(VTOFFSET.software.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var softwareSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.software.v) }
+  public var hasVersion: Bool { let o = _accessor.offset(VTOFFSET.hasVersion.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var version: String? { let o = _accessor.offset(VTOFFSET.version.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var versionSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.version.v) }
+  public var supportedNips: FlatbufferVector<UInt32> { return _accessor.vector(at: VTOFFSET.supportedNips.v, byteSize: 4) }
+  public func withUnsafePointerToSupportedNips<T>(_ body: (UnsafeRawBufferPointer, Int) throws -> T) rethrows -> T? { return try _accessor.withUnsafePointerToSlice(at: VTOFFSET.supportedNips.v, body: body) }
+  public var hasPaymentRequired: Bool { let o = _accessor.offset(VTOFFSET.hasPaymentRequired.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var paymentRequired: Bool { let o = _accessor.offset(VTOFFSET.paymentRequired.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var hasAuthRequired: Bool { let o = _accessor.offset(VTOFFSET.hasAuthRequired.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var authRequired: Bool { let o = _accessor.offset(VTOFFSET.authRequired.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var hasRestrictedWrites: Bool { let o = _accessor.offset(VTOFFSET.hasRestrictedWrites.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var restrictedWrites: Bool { let o = _accessor.offset(VTOFFSET.restrictedWrites.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public static func startRelayDiagnosticsInfo(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 21) }
+  public static func add(hasName: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasName, def: false,
+   at: VTOFFSET.hasName.p) }
+  public static func add(name: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: name, at: VTOFFSET.name.p) }
+  public static func add(hasDescription: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasDescription, def: false,
+   at: VTOFFSET.hasDescription.p) }
+  public static func add(description: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: description, at: VTOFFSET.description.p) }
+  public static func add(hasIcon: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasIcon, def: false,
+   at: VTOFFSET.hasIcon.p) }
+  public static func add(icon: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: icon, at: VTOFFSET.icon.p) }
+  public static func add(hasPubkey: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasPubkey, def: false,
+   at: VTOFFSET.hasPubkey.p) }
+  public static func add(pubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pubkey, at: VTOFFSET.pubkey.p) }
+  public static func add(hasContact: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasContact, def: false,
+   at: VTOFFSET.hasContact.p) }
+  public static func add(contact: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: contact, at: VTOFFSET.contact.p) }
+  public static func add(hasSoftware: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasSoftware, def: false,
+   at: VTOFFSET.hasSoftware.p) }
+  public static func add(software: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: software, at: VTOFFSET.software.p) }
+  public static func add(hasVersion: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasVersion, def: false,
+   at: VTOFFSET.hasVersion.p) }
+  public static func add(version: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: version, at: VTOFFSET.version.p) }
+  public static func addVectorOf(supportedNips: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: supportedNips, at: VTOFFSET.supportedNips.p) }
+  public static func add(hasPaymentRequired: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasPaymentRequired, def: false,
+   at: VTOFFSET.hasPaymentRequired.p) }
+  public static func add(paymentRequired: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: paymentRequired, def: false,
+   at: VTOFFSET.paymentRequired.p) }
+  public static func add(hasAuthRequired: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasAuthRequired, def: false,
+   at: VTOFFSET.hasAuthRequired.p) }
+  public static func add(authRequired: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: authRequired, def: false,
+   at: VTOFFSET.authRequired.p) }
+  public static func add(hasRestrictedWrites: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasRestrictedWrites, def: false,
+   at: VTOFFSET.hasRestrictedWrites.p) }
+  public static func add(restrictedWrites: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: restrictedWrites, def: false,
+   at: VTOFFSET.restrictedWrites.p) }
+  public static func endRelayDiagnosticsInfo(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createRelayDiagnosticsInfo(
+    _ fbb: inout FlatBufferBuilder,
+    hasName: Bool = false,
+    nameOffset name: Offset = Offset(),
+    hasDescription: Bool = false,
+    descriptionOffset description: Offset = Offset(),
+    hasIcon: Bool = false,
+    iconOffset icon: Offset = Offset(),
+    hasPubkey: Bool = false,
+    pubkeyOffset pubkey: Offset = Offset(),
+    hasContact: Bool = false,
+    contactOffset contact: Offset = Offset(),
+    hasSoftware: Bool = false,
+    softwareOffset software: Offset = Offset(),
+    hasVersion: Bool = false,
+    versionOffset version: Offset = Offset(),
+    supportedNipsVectorOffset supportedNips: Offset = Offset(),
+    hasPaymentRequired: Bool = false,
+    paymentRequired: Bool = false,
+    hasAuthRequired: Bool = false,
+    authRequired: Bool = false,
+    hasRestrictedWrites: Bool = false,
+    restrictedWrites: Bool = false
+  ) -> Offset {
+    let __start = nmp_kernel_RelayDiagnosticsInfo.startRelayDiagnosticsInfo(&fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasName: hasName, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(name: name, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasDescription: hasDescription, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(description: description, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasIcon: hasIcon, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(icon: icon, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasPubkey: hasPubkey, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(pubkey: pubkey, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasContact: hasContact, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(contact: contact, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasSoftware: hasSoftware, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(software: software, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasVersion: hasVersion, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(version: version, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.addVectorOf(supportedNips: supportedNips, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasPaymentRequired: hasPaymentRequired, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(paymentRequired: paymentRequired, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasAuthRequired: hasAuthRequired, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(authRequired: authRequired, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(hasRestrictedWrites: hasRestrictedWrites, &fbb)
+    nmp_kernel_RelayDiagnosticsInfo.add(restrictedWrites: restrictedWrites, &fbb)
+    return nmp_kernel_RelayDiagnosticsInfo.endRelayDiagnosticsInfo(&fbb, start: __start)
+  }
+
+  public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
+    var _v = try verifier.visitTable(at: position)
+    try _v.visit(field: VTOFFSET.hasName.p, fieldName: "hasName", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.name.p, fieldName: "name", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasDescription.p, fieldName: "hasDescription", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.description.p, fieldName: "description", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasIcon.p, fieldName: "hasIcon", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.icon.p, fieldName: "icon", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasPubkey.p, fieldName: "hasPubkey", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.pubkey.p, fieldName: "pubkey", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasContact.p, fieldName: "hasContact", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.contact.p, fieldName: "contact", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasSoftware.p, fieldName: "hasSoftware", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.software.p, fieldName: "software", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasVersion.p, fieldName: "hasVersion", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.version.p, fieldName: "version", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.supportedNips.p, fieldName: "supportedNips", required: false, type: ForwardOffset<Vector<UInt32, UInt32>>.self)
+    try _v.visit(field: VTOFFSET.hasPaymentRequired.p, fieldName: "hasPaymentRequired", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.paymentRequired.p, fieldName: "paymentRequired", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.hasAuthRequired.p, fieldName: "hasAuthRequired", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.authRequired.p, fieldName: "authRequired", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.hasRestrictedWrites.p, fieldName: "hasRestrictedWrites", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.restrictedWrites.p, fieldName: "restrictedWrites", required: false, type: Bool.self)
+    _v.finish()
+  }
+}
+
 public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
@@ -197,6 +375,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     case hasLastError = 52
     case lastError = 54
     case wireSubs = 56
+    case info = 58
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -243,7 +422,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
   public var lastError: String? { let o = _accessor.offset(VTOFFSET.lastError.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var lastErrorSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.lastError.v) }
   public var wireSubs: FlatbufferVector<nmp_kernel_RelayDiagnosticsWireSub> { return _accessor.vector(at: VTOFFSET.wireSubs.v, byteSize: 4) }
-  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 27) }
+  public var info: nmp_kernel_RelayDiagnosticsInfo? { let o = _accessor.offset(VTOFFSET.info.v); return o == 0 ? nil : nmp_kernel_RelayDiagnosticsInfo(_accessor.bb, o: _accessor.indirect(o + _accessor.position)) }
+  public static func startRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 28) }
   public static func add(relayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: relayUrl, at: VTOFFSET.relayUrl.p) }
   public static func add(shortUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: shortUrl, at: VTOFFSET.shortUrl.p) }
   public static func add(roleLabel: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: roleLabel, at: VTOFFSET.roleLabel.p) }
@@ -277,6 +457,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
    at: VTOFFSET.hasLastError.p) }
   public static func add(lastError: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: lastError, at: VTOFFSET.lastError.p) }
   public static func addVectorOf(wireSubs: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: wireSubs, at: VTOFFSET.wireSubs.p) }
+  public static func add(info: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: info, at: VTOFFSET.info.p) }
   public static func endRelayDiagnosticsRow(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createRelayDiagnosticsRow(
     _ fbb: inout FlatBufferBuilder,
@@ -306,7 +487,8 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     lastNoticeOffset lastNotice: Offset = Offset(),
     hasLastError: Bool = false,
     lastErrorOffset lastError: Offset = Offset(),
-    wireSubsVectorOffset wireSubs: Offset = Offset()
+    wireSubsVectorOffset wireSubs: Offset = Offset(),
+    infoOffset info: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_RelayDiagnosticsRow.startRelayDiagnosticsRow(&fbb)
     nmp_kernel_RelayDiagnosticsRow.add(relayUrl: relayUrl, &fbb)
@@ -336,6 +518,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     nmp_kernel_RelayDiagnosticsRow.add(hasLastError: hasLastError, &fbb)
     nmp_kernel_RelayDiagnosticsRow.add(lastError: lastError, &fbb)
     nmp_kernel_RelayDiagnosticsRow.addVectorOf(wireSubs: wireSubs, &fbb)
+    nmp_kernel_RelayDiagnosticsRow.add(info: info, &fbb)
     return nmp_kernel_RelayDiagnosticsRow.endRelayDiagnosticsRow(&fbb, start: __start)
   }
 
@@ -368,6 +551,7 @@ public struct nmp_kernel_RelayDiagnosticsRow: FlatBufferTable, FlatbuffersVector
     try _v.visit(field: VTOFFSET.hasLastError.p, fieldName: "hasLastError", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.lastError.p, fieldName: "lastError", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.wireSubs.p, fieldName: "wireSubs", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_kernel_RelayDiagnosticsWireSub>, nmp_kernel_RelayDiagnosticsWireSub>>.self)
+    try _v.visit(field: VTOFFSET.info.p, fieldName: "info", required: false, type: ForwardOffset<nmp_kernel_RelayDiagnosticsInfo>.self)
     _v.finish()
   }
 }
