@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
@@ -36,13 +35,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.components.LocalNostrProfileHost
+import org.nmp.android.components.NostrAvatar
 import org.nmp.android.model.ChirpEventCard
 import org.nmp.android.model.ChirpRootCard
 import org.nmp.android.model.ProfileCard
@@ -157,10 +156,12 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
     }
 
     val resolvedProfiles = s.projections?.resolvedProfiles ?: emptyMap()
+    val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
 
     CompositionLocalProvider(
         LocalProfileClaimer provides claimer,
         LocalResolvedProfiles provides resolvedProfiles,
+        LocalNostrProfileHost provides profileHost,
     ) {
         Box(modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
@@ -335,9 +336,9 @@ internal fun NoteRow(
     val authorPubkey = card?.authorPubkey?.nonEmptyOrNull()
         ?: item?.authorPubkey?.nonEmptyOrNull()
         ?: ""
-    if (authorPubkey.isNotEmpty()) {
-        RememberProfileClaim(authorPubkey, "note-author-$eventId")
-    }
+    // The NostrAvatar component below is self-claiming (claims the author kind:0
+    // from the kernel via LocalNostrProfileHost on composition, releases on
+    // dispose), so no manual RememberProfileClaim for the avatar is needed here.
     val shortPubkey = if (authorPubkey.length >= 16) {
         "${authorPubkey.take(8)}…${authorPubkey.takeLast(8)}"
     } else {
@@ -349,8 +350,6 @@ internal fun NoteRow(
     val author = card?.authorDisplayName?.nonEmptyOrNull()
         ?: resolvedProfiles[authorPubkey]?.displayName?.nonEmptyOrNull()
         ?: shortPubkey
-    val initials = author.take(2).uppercase()
-    val color = ""
     val createdAt = item?.createdAt?.takeIf { it > 0 }
         ?: card?.createdAt?.takeIf { it > 0 }
     val subtitle = createdAt?.let { ts ->
@@ -373,7 +372,11 @@ internal fun NoteRow(
                 }
             }
         ) {
-            Avatar(initials, color)
+            NostrAvatar(
+                pubkey = authorPubkey,
+                size = 36.dp,
+                consumerId = "note-author-$eventId",
+            )
             Spacer(Modifier.size(8.dp))
             Column {
                 Text(
@@ -435,35 +438,6 @@ private fun MissingEventRow(eventId: String) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().padding(12.dp),
-    )
-}
-
-@Composable
-private fun Avatar(initials: String, colorHex: String) {
-    Surface(
-        modifier = Modifier.size(36.dp).clip(CircleShape),
-        color = parseHexColor(colorHex) ?: MaterialTheme.colorScheme.secondary,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                initials,
-                color = Color.White,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-    }
-}
-
-/** `#RRGGBB` / `RRGGBB` → Color; null on malformed (caller falls back). */
-private fun parseHexColor(hex: String): Color? {
-    val clean = hex.trim().removePrefix("#")
-    if (clean.length != 6) return null
-    val v = clean.toLongOrNull(16) ?: return null
-    return Color(
-        red = ((v shr 16) and 0xFF) / 255f,
-        green = ((v shr 8) and 0xFF) / 255f,
-        blue = (v and 0xFF) / 255f,
     )
 }
 

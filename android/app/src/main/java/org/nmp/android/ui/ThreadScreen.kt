@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.components.LocalNostrProfileHost
 
 @Composable
 fun ThreadScreen(
@@ -46,8 +47,12 @@ fun ThreadScreen(
     val cards = projections?.flatFeeds?.get("nmp.feed.thread.$eventId")?.cards ?: emptyList()
     val cardLookup = cards.associate { it.card.id to it.card }
     val resolvedProfiles = projections?.resolvedProfiles ?: emptyMap()
+    val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
 
-    CompositionLocalProvider(LocalResolvedProfiles provides resolvedProfiles) {
+    CompositionLocalProvider(
+        LocalResolvedProfiles provides resolvedProfiles,
+        LocalNostrProfileHost provides profileHost,
+    ) {
         Column(modifier.fillMaxSize()) {
             Row(
                 Modifier

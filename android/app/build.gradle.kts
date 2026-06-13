@@ -53,6 +53,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlin:kotlin-reflect:1.9.24")
+    // Coil image loader — backs the registry NostrAvatar component's
+    // SubcomposeAsyncImage so profile pictures actually load. The prior
+    // hand-rolled initials-only avatars decoded `pictureUrl` but never rendered
+    // it; this is the dependency that fixes that.
+    implementation("io.coil-kt:coil-compose:2.6.0")
     // FlatBuffers Java/Kotlin runtime. Pin matches nmp_update.fbs header comment
     // ("Android/Kotlin runtime: 25.2.10") and the Rust+Swift pin asymmetry table.
     implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")
