@@ -11,12 +11,24 @@ description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailb
 # `IngestParser`, `RoutingContext`, `RoutedRelaySet`, plus the
 # `UnsignedEvent` / `ActionModule` types the absorbed
 # `nmp.nip65.publish_relay_list` action module depends on.
-nmp-core = { path = "../nmp-core" }
+# `default-features = false` so this Layer-2 crate compiles on wasm32: the
+# routing algorithm uses only nmp-core's pure surface (store traits +
+# MemEventStore, planner, publish, substrate, slots) — never the `native`-gated
+# LMDB/tungstenite/mio I/O. Native consumers re-enable it through this crate's
+# own `native` passthrough feature (default-on, so existing builds are
+# unchanged); wasm consumers depend with `default-features = false`.
+nmp-core = { path = "../nmp-core", default-features = false }
 # Layer-0 kind-constant registry — re-exports KIND_BLOCKED_RELAYS
 # so this crate no longer duplicates that value (V-57).
 nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
 tracing = "0.1"
+
+[features]
+# Default-on so existing native consumers (nmp-defaults, app FFI crates) are
+# byte-for-byte unchanged. Disable with `default-features = false` for wasm32.
+default = ["native"]
+native = ["nmp-core/native"]
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

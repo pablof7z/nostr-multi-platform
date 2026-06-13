@@ -14,6 +14,13 @@ crate-type = ["cdylib", "rlib"]
 # Kernel seams: KernelReducer composition methods + substrate types.
 # `default-features = false` because the wasm32 target has no mio/lmdb.
 nmp-core = { path = "../../../crates/nmp-core", default-features = false }
+# Production outbox router (GenericOutboxRouter + InMemoryMailboxCache).
+# `default-features = false` so it does NOT pull nmp-core/native (LMDB/mio),
+# which would break the wasm32 build via Cargo feature unification. Installed
+# via KernelReducer::set_routing in the composition so outbox-direction REQs
+# (kind:0 profile claims, kind:3 contacts, kind:10002) actually compile; the
+# kernel otherwise keeps its no-op EmptyOutboxRouter on web.
+nmp-router = { path = "../../../crates/nmp-router", default-features = false }
 # NIP-10 OP-feed engine + claim-sink helpers.
 # `default-features = false` → nmp-nip57 ureq omitted on wasm32.
 nmp-nip01 = { path = "../../../crates/nmp-nip01", default-features = false }

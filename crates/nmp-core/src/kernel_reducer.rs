@@ -423,6 +423,23 @@ impl KernelReducer {
         self.kernel.set_configured_relays(relay_rows);
     }
 
+    /// Install the production outbox-routing substrate on the wrapped kernel.
+    ///
+    /// The wasm32 composition has no `AppHost` / actor `set_routing_substrate`
+    /// seam (that path is native-only), so the chirp-web composition root calls
+    /// this directly to swap the kernel's default no-op
+    /// [`crate::substrate::EmptyOutboxRouter`] for the production
+    /// `nmp_router::GenericOutboxRouter` + a `MailboxCache`. Without this every
+    /// outbox-direction REQ (kind:0 profile claims, kind:3 contacts, kind:10002
+    /// NIP-65) silently resolves to no relays. Must be called before `Start`.
+    pub fn set_routing(
+        &mut self,
+        router: std::sync::Arc<dyn crate::substrate::OutboxRouter>,
+        cache: std::sync::Arc<dyn crate::substrate::MailboxCache>,
+    ) {
+        self.kernel.set_routing(router, cache);
+    }
+
 }
 
 /// Test-support seam: fire the observer slot directly with a `KernelEvent`.
