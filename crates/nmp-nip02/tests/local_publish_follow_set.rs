@@ -196,6 +196,22 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     inject_self_kind10002(app, &keys, "wss://write.example");
     await_kind(&rx, 10002);
 
+    // Establish the active account's kind:3 baseline (an empty-but-present
+    // contact list) BEFORE the first follow. The native `follow()` path fails
+    // CLOSED when the active account's kind:3 has not been ingested yet
+    // (issue #1246b): rebuilding a kind:3 from a not-loaded list would silently
+    // wipe the user's contacts, so `follow()` publishes nothing and the
+    // observer never fires. A real signed-in account always has its kind:3
+    // fetched from a relay first; we model that here with a self-authored,
+    // real-signature kind:3. Its `created_at` is strictly EARLIER than the
+    // kernel clock (1_700_000_000) so the follow's locally-published kind:3
+    // deterministically `Replaced`s it (rather than tying on the same second
+    // and being dropped as `Superseded` under NIP-01 id-tiebreak). Block on its
+    // kind:3 fan-out so the contact list is loaded before the follow dispatch
+    // (deterministic ordering — no sleep/poll).
+    inject_self_kind3_empty(app, &keys, 1_699_999_999);
+    await_kind(&rx, 3);
+
     // Precondition: BOB is not followed (only self-inclusion).
     assert!(
         !follow_set.predicate()(&bob),
@@ -234,15 +250,35 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
         "self-inclusion survives the local unfollow"
     );
 
-    // Exactly two accepted kind:3 fan-outs (follow + unfollow); the duplicate
-    // relay echo would NOT add a third (D4 — covered by the kernel-level test).
+    // Exactly three accepted kind:3 fan-outs: the injected baseline contact
+    // list (the precondition a real signed-in account always has), plus the
+    // local follow and the local unfollow — each fanning out exactly once. The
+    // duplicate relay echo of a locally-published kind:3 would NOT add a fourth
+    // (D4 — covered by the kernel-level test).
     assert_eq!(
         signal.kind3_count.load(Ordering::SeqCst),
-        2,
-        "follow + unfollow each fan out exactly once"
+        3,
+        "baseline + follow + unfollow each fan out exactly once"
     );
 
     nmp_app_free(app);
+}
+
+/// Inject a self-authored, real-signature kind:3 with an EMPTY `p` section so
+/// the active account's contact list is "present but empty" in the store —
+/// the precondition the native fail-closed `follow()` gate (issue #1246b)
+/// requires before any edit. `created_at` is supplied by the caller so the
+/// baseline can be stamped strictly EARLIER than the kernel clock, letting the
+/// follow's locally-published kind:3 `Replace` it (not tie + `Superseded`).
+fn inject_self_kind3_empty(app: *mut NmpApp, keys: &nostr::Keys, created_at: u64) {
+    let event = nostr::EventBuilder::new(nostr::Kind::from(3u16), "")
+        .custom_created_at(nostr::Timestamp::from(created_at))
+        .sign_with_keys(keys)
+        .expect("sign kind:3");
+    let json = event.as_json();
+    let json_c = CString::new(json).unwrap();
+    let ok = nmp_app_inject_signed_event_json(app, json_c.as_ptr());
+    assert!(ok, "kind:3 baseline injection must verify and accept");
 }
 
 /// Inject a self-authored, real-signature kind:10002 (NIP-65 write relay) so
