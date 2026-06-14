@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, type JSX } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, type JSX } from "solid-js";
 import { NostrProfileHostProvider } from "./components/user-avatar/NostrProfileHost";
 import { NostrAvatar } from "./components/user-avatar/NostrAvatar";
 import { NostrProfileName } from "./components/user-name/NostrProfileName";
@@ -7,8 +7,22 @@ import { NostrUserCard } from "./components/user-card/NostrUserCard";
 import { NostrRelayList } from "./components/relay-list/NostrRelayList";
 import { NostrLoginBlock } from "./components/login-block/NostrLoginBlock";
 import { NostrContentView } from "./components/content-view/NostrContentView";
-import { createGalleryRuntime, type ClaimedEventWire } from "./nmp/profileHost";
-import { SHOWCASE_PUBKEY, SHOWCASE_RELAYS, SHOWCASE_NOTE, SHOWCASE_ARTICLE } from "./showcase";
+import { NostrMinimalContentView } from "./components/content-minimal/NostrMinimalContentView";
+import { NostrMentionChip } from "./components/content-mention-chip/NostrMentionChip";
+import { NostrMediaGrid } from "./components/content-media-grid/NostrMediaGrid";
+import { NostrArticleCard } from "./components/content-kind-30023/NostrArticleCard";
+import { NostrHighlightCard } from "./components/content-kind-9802/NostrHighlightCard";
+import { NostrQuoteCard } from "./components/content-quote-card/NostrQuoteCard";
+import { NostrEmbeddedEvent, type EmbeddedEventModel } from "./components/content-kind-registry/NostrKindRegistry";
+import { NostrNpubChip } from "./components/user-npub/NostrNpubChip";
+import { createGalleryRuntime, type ClaimedEventWire, tagValue } from "./nmp/profileHost";
+import {
+  SHOWCASE_PUBKEY,
+  SHOWCASE_RELAYS,
+  SHOWCASE_NOTE,
+  SHOWCASE_ARTICLE,
+  SHOWCASE_HIGHLIGHT,
+} from "./showcase";
 import { WireNodeKind } from "./nmp/generated/nmp/content/wire-node-kind";
 
 const runtime = createGalleryRuntime();
@@ -41,8 +55,13 @@ export default function App(): JSX.Element {
       eventsClaimed = true;
       runtime.claimEvent(SHOWCASE_NOTE.uri, "gallery-note");
       runtime.claimEvent(SHOWCASE_ARTICLE.uri, "gallery-article");
+      runtime.claimEvent(SHOWCASE_HIGHLIGHT.uri, "gallery-highlight");
     }
   });
+
+  // Ask the kernel (Rust NIP-19 encoder) for the showcase identity's npub once
+  // the worker is up — never bech32-encode in the browser (aim.md §6.9).
+  runtime.requestNpub(SHOWCASE_PUBKEY);
 
   // A claimed event is "render-ready" only once the kernel has parsed it into a
   // non-empty, placeholder-free NFCT content tree. This is the honesty gate: it
@@ -52,6 +71,65 @@ export default function App(): JSX.Element {
   const articleEvent = createMemo(() =>
     contentReady(runtime.claimedEvent(SHOWCASE_ARTICLE.primaryId)),
   );
+  // The article/highlight CARDS render from event tags + content (not the NFCT
+  // tree), so they gate on the raw event being resolved, not on a content tree.
+  const articleRaw = createMemo(() => runtime.claimedEvent(SHOWCASE_ARTICLE.primaryId));
+  const highlightRaw = createMemo(() => runtime.claimedEvent(SHOWCASE_HIGHLIGHT.primaryId));
+  const noteRaw = createMemo(() => runtime.claimedEvent(SHOWCASE_NOTE.primaryId));
+  const showcaseNpub = createMemo(() => runtime.npub(SHOWCASE_PUBKEY));
+  // Captured once at mount for the relative-time labels on quoted events.
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  // Claim the author profile of every resolved event so the embed cards show a
+  // REAL display name + avatar, never an "unknown"/unresolved byline (the goal
+  // forbids unresolved data). The kernel re-enriches `claimed_events` with the
+  // author's kind:0 on the next snapshot once the profile resolves. Idempotent:
+  // claimProfile de-dupes per (pubkey, consumer).
+  const claimedAuthors = new Set<string>();
+  createEffect(() => {
+    for (const ev of [noteRaw(), articleRaw(), highlightRaw()]) {
+      const pk = ev?.authorPubkey;
+      if (pk && !claimedAuthors.has(pk)) {
+        claimedAuthors.add(pk);
+        runtime.host.claimProfile(pk, `embed-author-${pk.slice(0, 8)}`);
+      }
+    }
+  });
+
+  // Media-grid honesty: only show images that ACTUALLY load. Old articles can
+  // carry dead/relative image links; the goal forbids showing a broken image, so
+  // we preload each candidate and keep only the ones that decode. The component
+  // stays a pure renderer; the host curates real, loaded media.
+  const [loadedMedia, setLoadedMedia] = createSignal<string[]>([]);
+  const probedMedia = new Set<string>();
+  createEffect(() => {
+    const candidates = collectMediaUrls(articleRaw()).filter((u) => /^https?:\/\//.test(u));
+    for (const url of candidates) {
+      if (probedMedia.has(url)) continue;
+      probedMedia.add(url);
+      const img = new Image();
+      img.onload = () => {
+        if (img.naturalWidth > 0) setLoadedMedia((prev) => (prev.includes(url) ? prev : [...prev, url]));
+      };
+      img.src = url;
+    }
+  });
+
+  // Card "ready" gates: the embed cards must show a resolved author byline, so
+  // they wait for the kernel to enrich `author_display_name` (kind:0). This is
+  // the same no-unresolved-data discipline as the user-* sections.
+  const articleCard = createMemo(() => {
+    const ev = articleRaw();
+    return ev && ev.authorDisplayName ? ev : undefined;
+  });
+  const highlightCard = createMemo(() => {
+    const ev = highlightRaw();
+    return ev && ev.authorDisplayName ? ev : undefined;
+  });
+  const noteCard = createMemo(() => {
+    const ev = noteRaw();
+    return ev && ev.authorDisplayName ? ev : undefined;
+  });
 
   const profile = () => runtime.host.profile(SHOWCASE_PUBKEY);
   // "Resolved" means real kind:0 data arrived — not just a placeholder entry.
@@ -163,6 +241,146 @@ export default function App(): JSX.Element {
         </Section>
 
         <Section
+          id="content-minimal"
+          title="content-minimal"
+          desc="Minimal inline content renderer — flattens the kernel-parsed tree to a single flowing line (text + links + hashtags + mentions). The simplest timeline-cell renderer."
+        >
+          <Show when={noteEvent()} fallback={<Resolving />} keyed>
+            {(ev) => (
+              <div data-testid="content-minimal" class="nostr-content">
+                <NostrMinimalContentView tree={ev.contentTree} fallback={ev.content} />
+              </div>
+            )}
+          </Show>
+        </Section>
+
+        <Section
+          id="content-mention-chip"
+          title="content-mention-chip"
+          desc="Inline avatar + display-name chip for a referenced profile (also the embed-profile body). Renders the real resolved kind:0 — avatar picture or deterministic identicon + display name."
+        >
+          <Show when={resolvedProfile()} fallback={<Resolving />} keyed>
+            {(p) => (
+              <div data-testid="content-mention-chip">
+                <NostrMentionChip profile={p} />
+              </div>
+            )}
+          </Show>
+        </Section>
+
+        <Section
+          id="content-media-grid"
+          title="content-media-grid"
+          desc="Adaptive 1–4 image grid. Below: the real images the kernel parsed out of the showcase article (hero + inline figures) — network-loaded, no placeholders."
+        >
+          <Show when={loadedMedia().length > 0} fallback={<Resolving />} keyed>
+            {(_) => (
+              <div data-testid="content-media-grid" style={{ "max-width": "520px", width: "100%" }}>
+                <NostrMediaGrid urls={loadedMedia().slice(0, 4)} />
+              </div>
+            )}
+          </Show>
+        </Section>
+
+        <Section
+          id="content-quote-card"
+          title="content-quote-card"
+          desc="Quoted-note card (the embed-note body) — author header + content preview + relative time. Below: the real showcase kind:1 note resolved via its nevent."
+        >
+          <Show when={noteCard()} fallback={<Resolving />} keyed>
+            {(ev) => (
+              <div data-testid="content-quote-card" style={{ "max-width": "480px", width: "100%" }}>
+                <NostrQuoteCard
+                  quote={{
+                    authorName: ev.authorDisplayName,
+                    authorPicture: ev.authorPictureUrl,
+                    content: ev.content,
+                    createdAt: ev.createdAt,
+                  }}
+                  nowSeconds={nowSeconds}
+                />
+              </div>
+            )}
+          </Show>
+        </Section>
+
+        <Section
+          id="embed-article"
+          title="embed-article / content-kind-30023"
+          desc="NIP-23 long-form article card — hero image, title, summary, author byline. Below: the real showcase kind:30023 article resolved via its naddr."
+        >
+          <Show when={articleCard()} fallback={<Resolving />} keyed>
+            {(ev) => (
+              <div data-testid="embed-article" style={{ "max-width": "520px", width: "100%" }}>
+                <NostrArticleCard
+                  article={{
+                    title: tagValue(ev, "title") ?? "(untitled)",
+                    image: tagValue(ev, "image"),
+                    summary: tagValue(ev, "summary"),
+                    authorName: ev.authorDisplayName,
+                    authorPicture: ev.authorPictureUrl,
+                  }}
+                />
+              </div>
+            )}
+          </Show>
+        </Section>
+
+        <Section
+          id="embed-highlight"
+          title="embed-highlight / content-kind-9802"
+          desc="NIP-84 highlight card — pull-quote + optional context + source footer. Below: the real showcase kind:9802 highlight resolved via its nevent."
+        >
+          <Show when={highlightCard()} fallback={<Resolving />} keyed>
+            {(ev) => (
+              <div data-testid="embed-highlight" style={{ "max-width": "520px", width: "100%" }}>
+                <NostrHighlightCard
+                  highlight={{
+                    text: ev.content,
+                    context: tagValue(ev, "context"),
+                    sourceUrl: tagValue(ev, "r"),
+                    sourceEventId: tagValue(ev, "e"),
+                    sourceEventAddr: tagValue(ev, "a"),
+                  }}
+                />
+              </div>
+            )}
+          </Show>
+        </Section>
+
+        <Section
+          id="content-kind-registry"
+          title="content-kind-registry"
+          desc="Kind-dispatch registry — routes a resolved event to its per-kind card (kind:30023 → article, kind:9802 → highlight, else → quote). Below: the same three real events dispatched through the registry."
+        >
+          <div class="content-demos" data-testid="content-kind-registry">
+            <Show when={articleCard()} fallback={<Resolving />} keyed>
+              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev)} nowSeconds={nowSeconds} />}
+            </Show>
+            <Show when={highlightCard()} keyed>
+              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev)} nowSeconds={nowSeconds} />}
+            </Show>
+            <Show when={noteCard()} keyed>
+              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev)} nowSeconds={nowSeconds} />}
+            </Show>
+          </div>
+        </Section>
+
+        <Section
+          id="user-npub"
+          title="user-npub"
+          desc="Copyable short-npub chip. The npub is encoded by the canonical Rust NIP-19 encoder in the WASM kernel (never bech32-encoded in the browser) — click to copy the full npub."
+        >
+          <Show when={showcaseNpub()?.npubShort} fallback={<Resolving />} keyed>
+            {(short) => (
+              <div data-testid="user-npub">
+                <NostrNpubChip npub={showcaseNpub()?.npub ?? short} npubShort={short} />
+              </div>
+            )}
+          </Show>
+        </Section>
+
+        <Section
           id="relay-list"
           title="relay-list"
           desc="Configured relays with live connection-status dots and role badges — folded from the kernel's relay_statuses."
@@ -241,6 +459,47 @@ function contentReady(ev: ClaimedEventWire | undefined): ClaimedEventWire | unde
     if (tree.nodes(i)?.kind() === WireNodeKind.Placeholder) return undefined;
   }
   return ev;
+}
+
+/** Project a resolved claimed event into the generic embed envelope the kind
+ *  registry dispatches on. The kernel already enriched the author's kind:0. */
+function toEmbedded(ev: ClaimedEventWire): EmbeddedEventModel {
+  return {
+    kind: ev.kind,
+    content: ev.content,
+    createdAt: ev.createdAt,
+    tags: ev.tags,
+    authorName: ev.authorDisplayName,
+    authorPicture: ev.authorPictureUrl,
+  };
+}
+
+/** Collect the real image URLs the kernel parsed into a content tree (Image +
+ *  Media nodes). Used to feed the media grid real, network-loaded images. */
+function collectMediaUrls(ev: ClaimedEventWire | undefined): string[] {
+  const out: string[] = [];
+  const tree = ev?.contentTree;
+  if (tree) {
+    for (let i = 0; i < tree.nodesLength(); i += 1) {
+      const node = tree.nodes(i);
+      if (!node) continue;
+      if (node.kind() === WireNodeKind.Image) {
+        const url = node.url();
+        if (url) out.push(url);
+      } else if (node.kind() === WireNodeKind.Media) {
+        for (let m = 0; m < node.mediaUrlsLength(); m += 1) {
+          const url = node.mediaUrls(m) as string;
+          if (url) out.push(url);
+        }
+      }
+    }
+  }
+  // The article's hero `image` tag is also a real image — include it first.
+  if (ev) {
+    const hero = tagValue(ev, "image");
+    if (hero && !out.includes(hero)) out.unshift(hero);
+  }
+  return out;
 }
 
 function Resolving(): JSX.Element {

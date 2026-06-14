@@ -17,6 +17,14 @@ import tuiKindRegistryRust from "../vendor/tui/content-kind-registry/nostr_kind_
 // Embeds & Kinds — Desktop (iced)
 import desktopArticleCardRust from "../vendor/desktop/content-kind-30023/embed_article.rs?raw";
 
+// Embeds & Kinds — Web (SolidJS). Like SwiftUI, the embeds reuse the per-kind
+// content-* components: article → NostrArticleCard, highlight → NostrHighlightCard,
+// note → NostrQuoteCard, profile → NostrMentionChip.
+import webArticleCardTsx from "../vendor/web/content-kind-30023/NostrArticleCard.tsx?raw";
+import webHighlightCardTsx from "../vendor/web/content-kind-9802/NostrHighlightCard.tsx?raw";
+import webQuoteCardTsx from "../vendor/web/content-quote-card/NostrQuoteCard.tsx?raw";
+import webMentionChipTsx from "../vendor/web/content-mention-chip/NostrMentionChip.tsx?raw";
+
 export const embedComponents: Component[] = [
   {
     slug: "embed-article",
@@ -88,6 +96,22 @@ export const embedComponents: Component[] = [
           "Hero image loading is a documented follow-on — add an `iced::widget::image` row above the title once the host decodes the article `image` tag into a `Handle`.",
         ],
       },
+      web: {
+        status: "stable",
+        installId: "web/content-kind-30023",
+        version: "0.1.0",
+        dependencies: ["content-kind-registry"],
+        longDescription:
+          "`<NostrArticleCard article={...} />` renders a resolved kind:30023 inline: a 16:9 hero from the `image` tag, the `title` headline, an optional `summary`, and an author byline (avatar + name). The host hydrates the model from a `claimed_events` entry; per-kind dispatch lives in `content-kind-registry`'s `NostrEmbeddedEvent`. Verified live in the NMP web gallery against the real showcase article (author byline gated on the kernel resolving the author's kind:0 — never an unresolved 'unknown').",
+        files: [
+          { source: "web/content-kind-30023/NostrArticleCard.tsx", target: "src/components/nostr-content/NostrArticleCard.tsx", role: "source", content: webArticleCardTsx },
+        ],
+        screenshots: ["embed-article-web-preview.png"],
+        customization: [
+          "Swap the hero `<img>` for your own loader; the layout is plain HTML styled by `nostr-article-card__*` classes.",
+          "Dispatch kind:30023 event refs to this card via `content-kind-registry`; other kinds fall back to the quote card.",
+        ],
+      },
     },
   },
   {
@@ -118,6 +142,21 @@ export const embedComponents: Component[] = [
         screenshots: ["embed-profile-kotlin-preview.png"],
         customization: [],
       },
+      web: {
+        status: "stable",
+        installId: "web/content-mention-chip",
+        version: "0.1.0",
+        dependencies: ["user-avatar"],
+        longDescription:
+          "Web renders the inline npub mention as a `<NostrMentionChip profile={...} />` — an avatar + display-name chip resolved from the kernel profile projection (the same path the user-* components use). No embed claim is required for `npub:` URIs. Verified live in the NMP web gallery against a real resolved profile.",
+        files: [
+          { source: "web/content-mention-chip/NostrMentionChip.tsx", target: "src/components/nostr-content/NostrMentionChip.tsx", role: "source", content: webMentionChipTsx },
+        ],
+        screenshots: ["embed-profile-web-preview.png"],
+        customization: [
+          "The chip reuses `user-avatar`'s identicon + `displayLabel`, so its look matches the avatar/name components.",
+        ],
+      },
     },
   },
   {
@@ -147,6 +186,21 @@ export const embedComponents: Component[] = [
         files: [],
         screenshots: ["embed-note-kotlin-preview.png"],
         customization: [],
+      },
+      web: {
+        status: "stable",
+        installId: "web/content-quote-card",
+        version: "0.1.0",
+        dependencies: ["content-quote-card"],
+        longDescription:
+          "Web claims the referenced `nevent` and renders the resolved kind:1 note as a `<NostrQuoteCard quote={...} />` — author header (avatar + name + relative time) above the content preview. The host hydrates the model from a `claimed_events` entry; the card only renders. Verified live in the NMP web gallery against the real showcase note.",
+        files: [
+          { source: "web/content-quote-card/NostrQuoteCard.tsx", target: "src/components/nostr-content/NostrQuoteCard.tsx", role: "source", content: webQuoteCardTsx },
+        ],
+        screenshots: ["embed-note-web-preview.png"],
+        customization: [
+          "Pass `nowSeconds` from your app clock so the relative-time label stays pure.",
+        ],
       },
     },
   },
@@ -197,6 +251,22 @@ export const embedComponents: Component[] = [
         customization: [
           "Replace `DefaultHighlightRenderer` by registering your own `KindRenderer` for `HighlightProjection` — the default lives inline in `nostr_kind_registry.rs` for easy copy-paste editing.",
           "The source footer branches on `source_url` → `source_event_id` → `source_event_addr` in priority order; extend the match arms to render richer previews when the referenced event has been claimed.",
+        ],
+      },
+      web: {
+        status: "stable",
+        installId: "web/content-kind-9802",
+        version: "0.1.0",
+        dependencies: ["content-kind-registry"],
+        longDescription:
+          "`<NostrHighlightCard highlight={...} />` renders a resolved kind:9802 highlight: the highlighted text as a pull-quote in a yellow-accented box, an optional `context` line, and a source footer branching on the `r` → `e` → `a` tag. The host hydrates the model from a `claimed_events` entry; dispatch lives in `content-kind-registry`. Verified live in the NMP web gallery against the real showcase highlight. Mirrors the SwiftUI/TUI `HighlightEmbed`.",
+        files: [
+          { source: "web/content-kind-9802/NostrHighlightCard.tsx", target: "src/components/nostr-content/NostrHighlightCard.tsx", role: "source", content: webHighlightCardTsx },
+        ],
+        screenshots: ["embed-highlight-web-preview.png"],
+        customization: [
+          "Tweak the accent colour via the `nostr-highlight-card` border/background literals.",
+          "Extend the source footer to render a rich preview when the `e`-tag source event has been claimed.",
         ],
       },
     },

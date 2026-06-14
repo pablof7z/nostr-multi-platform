@@ -185,3 +185,28 @@ fn push_bytes_if_callback(
     array.copy_from(bytes);
     let _ = callback_fn.call1(&JsValue::NULL, &array.into());
 }
+
+/// Encode a 64-char hex pubkey as `{ "npub": "npub1…", "npubShort": "npub1abcd…wxyz" }`.
+///
+/// Both forms are produced by the canonical Rust NIP-19 encoder
+/// ([`nmp_core::nip19::encode_npub`]) and Rust-side truncation — never by the
+/// browser (aim.md §6.9: shells must not bech32-encode or reformat npubs
+/// locally). Returns `null` on an invalid hex pubkey (D6: no panic, no silent
+/// bad output). The web shell calls this to populate `ProfileWire.npub` /
+/// `npubShort` from the raw hex the kernel projection emits (ADR-0032).
+#[wasm_bindgen]
+#[must_use]
+pub fn nmp_encode_npub(hex: &str) -> Option<String> {
+    let npub = nmp_core::nip19::encode_npub(hex).ok()?;
+    // `npub1` + 58 data chars + checksum. Truncate the data section, keeping the
+    // `npub1` prefix and the trailing chars, with an ellipsis — a stable,
+    // Rust-owned short form (mirrors the tui/desktop `npub_short`).
+    let short = if npub.len() > 20 {
+        format!("{}…{}", &npub[..10], &npub[npub.len() - 6..])
+    } else {
+        npub.clone()
+    };
+    // Hand-built JSON: both values are bech32 (ASCII `[a-z0-9]` + `…`), so no
+    // escaping is needed beyond the fixed structure.
+    Some(format!("{{\"npub\":\"{npub}\",\"npubShort\":\"{short}\"}}"))
+}

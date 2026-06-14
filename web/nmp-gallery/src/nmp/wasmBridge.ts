@@ -13,9 +13,14 @@ type NmpWasmRuntime = {
   set_snapshot_callback?(callback: SnapshotCallback | null): void;
 };
 
+/** Free function exported by the wasm module: hex pubkey → JSON `{npub, npubShort}`
+ *  (canonical Rust NIP-19 encoder), or undefined/null on invalid input. */
+type EncodeNpubFn = (hex: string) => string | undefined | null;
+
 type NmpWasmModule = {
   default?: (input?: unknown) => Promise<unknown> | unknown;
   NmpWasmRuntime?: new () => NmpWasmRuntime;
+  nmp_encode_npub?: EncodeNpubFn;
 };
 
 export type WasmBridgeUnavailable = {
@@ -42,6 +47,7 @@ export class WasmBridge {
   constructor(
     private readonly runtime: NmpWasmRuntime,
     private readonly onUpdateBytes: UpdateBytesSink,
+    private readonly encodeNpubFn?: EncodeNpubFn,
   ) {
     runtime.set_snapshot_callback?.((bytes) => {
       // The runtime hands us a fresh `Uint8Array` owned by the JS heap
@@ -52,7 +58,28 @@ export class WasmBridge {
     });
   }
 
+  /** Encode a hex pubkey via the Rust NIP-19 encoder. Returns `{}` when the
+   *  encoder is absent or the pubkey is invalid (D6 — honest empty, no throw). */
+  encodeNpub(pubkey: string): { npub?: string; npubShort?: string } {
+    const json = this.encodeNpubFn?.(pubkey);
+    if (!json) return {};
+    try {
+      const parsed = JSON.parse(json) as { npub?: string; npubShort?: string };
+      return { npub: parsed.npub, npubShort: parsed.npubShort };
+    } catch {
+      return {};
+    }
+  }
+
   handle(request: WorkerRequest): WorkerEvent[] {
+    // npub encoding is a pure module function, not a kernel request — handle it
+    // here so it never touches handle_json.
+    if (request.type === "encode_npub") {
+      const { npub, npubShort } = this.encodeNpub(request.pubkey);
+      return [
+        { type: "npub_encoded", pubkey: request.pubkey, npub, npubShort, correlation_id: request.correlation_id },
+      ];
+    }
     try {
       return decodeWorkerEvents(this.runtime.handle_json(JSON.stringify(request)));
     } catch (error) {
@@ -86,7 +113,7 @@ export async function loadWasmBridge(
     }
     return {
       type: "loaded",
-      bridge: new WasmBridge(new wasmModule.NmpWasmRuntime(), onUpdateBytes),
+      bridge: new WasmBridge(new wasmModule.NmpWasmRuntime(), onUpdateBytes, wasmModule.nmp_encode_npub),
     };
   } catch (error) {
     return unavailable(`nmp-wasm module could not be loaded from ${modulePath}`);

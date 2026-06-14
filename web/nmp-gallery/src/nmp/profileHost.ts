@@ -36,9 +36,25 @@ export type ClaimedEventWire = {
   id: string;
   kind: number;
   content: string;
+  createdAt: number;
+  /** Author pubkey (hex). */
+  authorPubkey: string;
+  /** Author's resolved kind:0 display name, when the kernel enriched it. */
+  authorDisplayName?: string;
+  /** Author's resolved kind:0 picture URL, when the kernel enriched it. */
+  authorPictureUrl?: string;
+  /** Raw event tags (array of tag rows). Embed cards read `title`/`image`/
+   *  `summary`/`context`/source tags from here. */
+  tags: string[][];
   /** Decoded NFCT tree, present iff the kernel emitted non-empty NFCT bytes. */
   contentTree?: ContentTreeWire;
 };
+
+/** First value of the first tag row whose tag name (index 0) matches `name`. */
+export function tagValue(ev: ClaimedEventWire, name: string): string | undefined {
+  const row = ev.tags.find((t) => t[0] === name);
+  return row && row.length > 1 ? row[1] : undefined;
+}
 
 export type GalleryRuntime = {
   /** The profile host wired into the registry user-* components. */
@@ -67,6 +83,12 @@ export type GalleryRuntime = {
   /** Reactive — a claimed event keyed by its `primary_id`, or undefined until
    *  the kernel resolves it. */
   claimedEvent: (primaryId: string) => ClaimedEventWire | undefined;
+  /** Request the Rust-encoded npub for a pubkey (idempotent; fires once per
+   *  pubkey). The result lands reactively in `npub(pubkey)`. */
+  requestNpub: (pubkey: string) => void;
+  /** Reactive — the Rust-encoded `{ npub, npubShort }` for a pubkey, or
+   *  undefined until `requestNpub` resolves. */
+  npub: (pubkey: string) => { npub?: string; npubShort?: string } | undefined;
 };
 
 // ── Profile decode ───────────────────────────────────────────────────────────
@@ -145,11 +167,26 @@ function decodeClaimedEvents(snapshot: SnapshotFrame): Map<string, ClaimedEventW
         const key = entry.key();
         const ev = entry.value();
         if (!key || !ev) continue;
+        const tags: string[][] = [];
+        for (let t = 0; t < ev.tagsLength(); t += 1) {
+          const row = ev.tags(t);
+          if (!row) continue;
+          const values: string[] = [];
+          for (let v = 0; v < row.valuesLength(); v += 1) {
+            values.push((row.values(v) as string) ?? "");
+          }
+          tags.push(values);
+        }
         const wire: ClaimedEventWire = {
           primaryId: key,
           id: ev.id() ?? "",
           kind: ev.kind(),
           content: ev.content() ?? "",
+          createdAt: Number(ev.createdAt()),
+          authorPubkey: ev.authorPubkey() ?? "",
+          authorDisplayName: ev.hasAuthorDisplayName() ? ev.authorDisplayName() ?? undefined : undefined,
+          authorPictureUrl: ev.hasAuthorPictureUrl() ? ev.authorPictureUrl() ?? undefined : undefined,
+          tags,
         };
         const ctBytes = ev.contentTreeBytesArray();
         if (ctBytes && ctBytes.length > 0) {
@@ -205,6 +242,10 @@ export function createGalleryRuntime(): GalleryRuntime {
     );
   }
 
+  // Rust-encoded npub/npubShort per pubkey (aim.md §6.9 — never browser-encoded).
+  const [npubs, setNpubs] = createStore<Record<string, { npub?: string; npubShort?: string }>>({});
+  const requestedNpubs = new Set<string>();
+
   const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   const pending = new Map<string, () => void>();
   let resolveHello: (() => void) | undefined;
@@ -247,6 +288,8 @@ export function createGalleryRuntime(): GalleryRuntime {
     } else if (event.type === "update_bytes") {
       const bytes = event.bytes instanceof Uint8Array ? event.bytes : new Uint8Array(event.bytes);
       ingestBytes(bytes);
+    } else if (event.type === "npub_encoded") {
+      setNpubs(event.pubkey, { npub: event.npub, npubShort: event.npubShort });
     }
     const cid = eventCorrelationId(event);
     if (cid) {
@@ -336,5 +379,15 @@ export function createGalleryRuntime(): GalleryRuntime {
       });
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
+    requestNpub(pubkey: string) {
+      if (requestedNpubs.has(pubkey)) return;
+      requestedNpubs.add(pubkey);
+      void request({
+        type: "encode_npub",
+        pubkey,
+        correlation_id: `npub-${claimSeq++}`,
+      });
+    },
+    npub: (pubkey: string) => npubs[pubkey],
   };
 }

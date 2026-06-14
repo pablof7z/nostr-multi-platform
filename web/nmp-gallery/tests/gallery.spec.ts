@@ -84,6 +84,51 @@ test("gallery resolves a real profile from real relays — no mocks", async ({ p
   const articleLinks = await article.locator("a.nostr-url, a.nostr-link").count();
   expect(articleLinks, "article must render at least one tree-derived link").toBeGreaterThanOrEqual(1);
 
+  // 7 — content-minimal: inline render of the real note tree.
+  await expect(page.locator('[data-testid="content-minimal"]')).toContainText("grok cli", {
+    timeout: 60_000,
+  });
+
+  // 8 — content-mention-chip: real resolved display name (not hex).
+  const chip = page.locator('[data-testid="content-mention-chip"]');
+  await expect(chip).toBeVisible({ timeout: 60_000 });
+  expect((await chip.innerText()).trim().length).toBeGreaterThan(0);
+
+  // 9 — content-media-grid: a REAL image that decoded (naturalWidth > 0).
+  const mediaImg = page.locator('[data-testid="content-media-grid"] img').first();
+  await expect(mediaImg).toBeVisible({ timeout: 60_000 });
+  await expect
+    .poll(() => mediaImg.evaluate((el: HTMLImageElement) => el.naturalWidth), { timeout: 45_000 })
+    .toBeGreaterThan(0);
+
+  // 10 — content-quote-card (embed-note): the real note content.
+  await expect(page.locator('[data-testid="content-quote-card"]')).toContainText("grok cli", {
+    timeout: 60_000,
+  });
+
+  // 11 — embed-article (kind:30023): real title + a hero image that decoded.
+  const embedArticle = page.locator('[data-testid="embed-article"]');
+  await expect(embedArticle).toBeVisible({ timeout: 60_000 });
+  const articleTitle = (await embedArticle.locator(".nostr-article-card__title").innerText()).trim();
+  expect(articleTitle.length, "article card must show a real title").toBeGreaterThan(0);
+
+  // 12 — embed-highlight (kind:9802): real pull-quote text.
+  const embedHighlight = page.locator('[data-testid="embed-highlight"]');
+  await expect(embedHighlight).toBeVisible({ timeout: 60_000 });
+  const highlightText = (await embedHighlight.locator(".nostr-highlight-card__quote").innerText()).trim();
+  expect(highlightText.length, "highlight card must show real text").toBeGreaterThan(0);
+
+  // 13 — content-kind-registry: dispatches the article (a real title card).
+  await expect(
+    page.locator('[data-testid="content-kind-registry"] .nostr-article-card__title'),
+  ).toBeVisible({ timeout: 60_000 });
+
+  // 14 — user-npub: a REAL bech32 npub from the Rust encoder (starts with npub1).
+  const npubChip = page.locator('[data-testid="user-npub"]');
+  await expect(npubChip).toBeVisible({ timeout: 60_000 });
+  const npubText = (await npubChip.innerText()).trim();
+  expect(npubText, "npub chip must show a real bech32 npub").toContain("npub1");
+
   // Byproduct: per-component screenshots of the resolved state.
   mkdirSync(SHOTS, { recursive: true });
   const shot = (sel: string, name: string) =>
@@ -98,9 +143,18 @@ test("gallery resolves a real profile from real relays — no mocks", async ({ p
   await shot("#user-nip05 .component-stage", "web-user-nip05.png");
   await shot("#user-card .component-stage", "web-user-card.png");
   await shot("#content-view .component-stage", "web-content-view.png");
+  await shot("#content-minimal .component-stage", "web-content-minimal.png");
+  await shot("#content-mention-chip .component-stage", "web-content-mention-chip.png");
+  await shot("#content-media-grid .component-stage", "web-content-media-grid.png");
+  await shot("#content-quote-card .component-stage", "web-content-quote-card.png");
+  await shot("#embed-article .component-stage", "web-embed-article.png");
+  await shot("#embed-highlight .component-stage", "web-embed-highlight.png");
+  await shot("#content-kind-registry .component-stage", "web-content-kind-registry.png");
+  await shot("#user-npub .component-stage", "web-user-npub.png");
 
   console.log(
     `[proof] name="${name}" nip05="${nip05}" avatar="${src}" ` +
-      `note="${noteText.slice(0, 40)}" articleLinks=${articleLinks}`,
+      `note="${noteText.slice(0, 40)}" articleLinks=${articleLinks} ` +
+      `articleTitle="${articleTitle}" highlight="${highlightText.slice(0, 40)}" npub="${npubText}"`,
   );
 });

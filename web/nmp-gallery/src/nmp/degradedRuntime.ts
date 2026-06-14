@@ -68,6 +68,15 @@ export class DegradedRuntime {
             correlation_id: request.correlation_id,
           },
         ];
+      case "encode_npub":
+        // No wasm encoder in degraded mode — honest empty (npub absent).
+        return [
+          {
+            type: "npub_encoded",
+            pubkey: request.pubkey,
+            correlation_id: request.correlation_id,
+          },
+        ];
     }
   }
 

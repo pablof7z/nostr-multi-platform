@@ -21,6 +21,10 @@ export const SHOWCASE_ARTICLE = {
   uri: references.article.uri,
   primaryId: references.article.primary_id,
 };
+export const SHOWCASE_HIGHLIGHT = {
+  uri: references.highlight.uri,
+  primaryId: references.highlight.primary_id,
+};
 
 // Content relays where the showcase EVENTS actually live. Both the note's
 // `nevent` and the article's `naddr` embed `wss://nos.lol` as their relay hint

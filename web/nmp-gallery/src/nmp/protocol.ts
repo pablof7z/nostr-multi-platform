@@ -38,6 +38,13 @@ export type WorkerRequest =
       kind: string;
       pubkey_hex: string;
       correlation_id: string;
+    }
+  /** Encode a hex pubkey to npub via the canonical Rust NIP-19 encoder in the
+   *  wasm module (aim.md §6.9 — never bech32-encode in the browser). */
+  | {
+      type: "encode_npub";
+      pubkey: string;
+      correlation_id: string;
     };
 
 export type RuntimeStatus =
@@ -63,6 +70,15 @@ export type WorkerEvent =
       correlation_id: string;
       reason: string;
     }
+  /** Response to `encode_npub`. `npub`/`npubShort` are Rust-encoded; both are
+   *  absent (undefined) when the pubkey was invalid. */
+  | {
+      type: "npub_encoded";
+      pubkey: string;
+      npub?: string;
+      npubShort?: string;
+      correlation_id: string;
+    }
   | { type: "error"; code: string; message: string; correlation_id?: string };
 
 export type ChirpAction =
@@ -80,6 +96,8 @@ export function eventCorrelationId(event: WorkerEvent): string | undefined {
     case "error":
       return event.correlation_id;
     case "capability_failure":
+      return event.correlation_id;
+    case "npub_encoded":
       return event.correlation_id;
     case "hello_accepted":
     case "update_bytes":
