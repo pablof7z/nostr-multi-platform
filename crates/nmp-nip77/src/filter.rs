@@ -98,6 +98,43 @@ impl EligibleFilter {
         Ok(out)
     }
 
+    /// Return a copy of this filter with its `since` lower bound removed.
+    ///
+    /// K3 Stage A — the watermark rewrite (`apply_watermark_rewrite`) floors a
+    /// subscription's `since` to "newest stored event matching the shape + 1"
+    /// so a plain REQ does not re-fetch already-cached events. That floor is a
+    /// presence heuristic, not a coverage guarantee: a below-floor gap (an event
+    /// the client never fetched, e.g. an author's history older than the one
+    /// stray event that set the floor) is permanently unreachable through a
+    /// floored REQ.
+    ///
+    /// NIP-77 set reconciliation, by contrast, transfers exactly the symmetric
+    /// difference of the two id sets — so running it over the FULL window is
+    /// self-healing: any below-floor gap surfaces as a `need` id and is fetched.
+    /// Inheriting the floor would cap reconciliation at `[floor, ∞)` (a
+    /// spec-compliant relay scopes its set to the NEG-OPEN filter window),
+    /// exactly the window the floor already declared boring — defeating the
+    /// repair. The NEG path therefore reconciles over the un-floored filter.
+    ///
+    /// `until` and `limit` are preserved: they bound the *newest* side, which the
+    /// floor does not affect, and dropping them would change reconciliation
+    /// semantics. Only the `since` lower bound is removed.
+    #[must_use]
+    pub fn unfloored(&self) -> Self {
+        let mut value = self.value.clone();
+        if let Some(object) = value.as_object_mut() {
+            object.remove("since");
+        }
+        Self {
+            value,
+            authors: self.authors.clone(),
+            kinds: self.kinds.clone(),
+            since: None,
+            until: self.until,
+            limit: self.limit,
+        }
+    }
+
     /// Return the same filter as a live-only NIP-01 subscription.
     ///
     /// NIP-77 performs the stored-set reconciliation while this paired REQ asks
@@ -272,6 +309,44 @@ mod tests {
         let live: Value = serde_json::from_str(&filter.live_only_filter_json()).unwrap();
         assert_eq!(live["limit"], Value::from(0));
         assert_eq!(live["kinds"], serde_json::json!([1]));
+    }
+
+    #[test]
+    fn unfloored_drops_since_keeps_until_and_limit() {
+        let filter = EligibleFilter::parse(
+            &serde_json::json!({
+                "authors": [author(1)],
+                "kinds": [1],
+                "since": 5_000,
+                "until": 9_000,
+                "limit": 200,
+            })
+            .to_string(),
+        )
+        .unwrap();
+        assert_eq!(filter.since, Some(5_000));
+
+        let unfloored = filter.unfloored();
+        assert_eq!(unfloored.since, None, "since field must be cleared");
+        assert_eq!(unfloored.until, Some(9_000), "until is preserved");
+        assert_eq!(unfloored.limit, Some(200), "limit is preserved");
+        // The JSON value used for the NEG-OPEN frame must also drop `since`.
+        let obj = unfloored.value.as_object().unwrap();
+        assert!(!obj.contains_key("since"), "NEG-OPEN filter must not carry since");
+        assert_eq!(obj["until"], Value::from(9_000));
+        assert_eq!(obj["limit"], Value::from(200));
+        assert_eq!(obj["kinds"], serde_json::json!([1]));
+    }
+
+    #[test]
+    fn unfloored_is_a_noop_when_no_since_present() {
+        let filter = EligibleFilter::parse(
+            &serde_json::json!({ "authors": [author(1)], "kinds": [1] }).to_string(),
+        )
+        .unwrap();
+        let unfloored = filter.unfloored();
+        assert_eq!(unfloored.since, None);
+        assert!(!unfloored.value.as_object().unwrap().contains_key("since"));
     }
 
     #[test]

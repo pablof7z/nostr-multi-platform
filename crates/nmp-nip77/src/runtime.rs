@@ -171,10 +171,18 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
         if !self.gate.should_use_negentropy_for_filter(fanout, true) {
             return None;
         }
+        // K3 Stage A: reconcile over the FULL window, not the watermark-floored
+        // `[floor, ∞)`. The `since` floor is a presence heuristic (avoid
+        // re-fetching cached events on a plain REQ); NIP-77 transfers exactly the
+        // id-set symmetric difference, so an un-floored reconciliation is
+        // self-healing for below-floor gaps. The floored filter is retained only
+        // for the fallback / live-only plain REQs below, which legitimately keep
+        // the floor.
+        let neg_filter = filter.unfloored();
         let store = kernel.event_store_handle();
-        let items = filter.local_items(store.as_ref()).ok()?;
+        let items = neg_filter.local_items(store.as_ref()).ok()?;
         let local_item_count = items.len() as u64;
-        let nostr_filter: Filter = serde_json::from_value(filter.value.clone()).ok()?;
+        let nostr_filter: Filter = serde_json::from_value(neg_filter.value.clone()).ok()?;
         let mut reconciler = Reconciler::client(items).ok()?;
         let initial_msg = reconciler.initiate().ok()?;
         let session = Session {
