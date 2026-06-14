@@ -228,6 +228,9 @@ fn multi_author_no_floor_when_any_author_has_no_events() {
 #[test]
 fn multi_author_since_is_min_of_per_author_watermarks() {
     let mut kernel = Kernel::new(crate::relay::DEFAULT_VISIBLE_LIMIT);
+    // Presence-floor path: disable the now-default-ON ledger so the multi-author
+    // watermark MIN policy is exercised against the presence floor (Stage E removes it).
+    kernel.set_coverage_ledger_enabled(false);
     let store = kernel.event_store_handle();
 
     // A has events at t=100 and B at t=50.
@@ -275,6 +278,8 @@ fn multi_author_since_is_min_of_per_author_watermarks() {
 #[test]
 fn single_author_watermark_unchanged_after_fix() {
     let mut kernel = Kernel::new(crate::relay::DEFAULT_VISIBLE_LIMIT);
+    // Presence-floor path: disable the now-default-ON ledger (Stage E removes it).
+    kernel.set_coverage_ledger_enabled(false);
     let store = kernel.event_store_handle();
 
     insert_event(&store, "a", 200, 0x04);

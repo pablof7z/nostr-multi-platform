@@ -125,8 +125,11 @@ fn e1_aggregate_budget_chunks_across_ticks_for_many_follow_interests() {
 fn e1_watermark_serve_invariant_shapes_are_aligned() {
     use crate::planner::InterestShape;
 
-    // A live kernel with stored events for `author` (kind 1).
+    // A live kernel with stored events for `author` (kind 1). Presence-floor
+    // path: disable the now-default-ON ledger so the §6 watermark invariant is
+    // exercised against the presence floor (the path deleted in K3 Stage E).
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_coverage_ledger_enabled(false);
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
     kernel.timeline_authors.insert(author.clone());

@@ -90,11 +90,13 @@ fn eose_on_unfloored_req_advances_ledger_to_now_when_flag_on() {
 
 #[test]
 fn eose_writes_nothing_when_flag_off() {
-    // Default kernel: coverage_ledger_enabled is false.
+    // The ledger now defaults ON (K3 release-cut flip); this test pins the
+    // flag-OFF write-nothing path, which the kill-switch flag still exposes.
     let mut kernel = kernel_at(NOW_SECS);
+    kernel.set_coverage_ledger_enabled(false);
     assert!(
         !kernel.coverage_ledger_enabled(),
-        "the coverage ledger must be OFF by default — D1 ships dormant",
+        "explicitly disabled: with the flag OFF, EOSE must write zero rows",
     );
 
     register_req(
@@ -157,8 +159,9 @@ fn neg_done_advances_ledger_to_now_when_flag_on() {
 
 #[test]
 fn neg_done_writes_nothing_when_flag_off() {
-    let kernel = kernel_at(NOW_SECS);
-    // Flag off by default.
+    // The ledger defaults ON now; pin the flag-OFF write-nothing path explicitly.
+    let mut kernel = kernel_at(NOW_SECS);
+    kernel.set_coverage_ledger_enabled(false);
     kernel.record_neg_done_coverage(SUB_ID, RELAY, kernel.now_secs());
     assert_eq!(
         coverage(&kernel),
