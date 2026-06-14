@@ -287,6 +287,26 @@ pub fn zap_spec(
     )
 }
 
+/// Build the `nmp.nip65.publish_relay_list` action body from the host's
+/// configured relay set.
+///
+/// `relays` is a list of `(url, role)` pairs — the same shape the relay-config
+/// projection exposes to shells. The on-wire JSON is `{"relays":[{"url","role"}…]}`;
+/// `role` is the accepted alias for the router's `RelayListEntry::marker`, and
+/// URL canonicalisation / `wss://` gating happens kernel-side in the action
+/// module, not in the shell.
+#[must_use]
+pub fn publish_relay_list_spec(relays: &[(&str, &str)]) -> ActionDispatchSpec {
+    let entries: Vec<Value> = relays
+        .iter()
+        .map(|(url, role)| json!({ "url": url, "role": role }))
+        .collect();
+    ActionDispatchSpec::new(
+        "nmp.nip65.publish_relay_list",
+        json!({ "relays": entries }).to_string(),
+    )
+}
+
 impl ReplyTargetInput {
     fn into_note_record(self) -> NoteRecord {
         let refs = Nip10Refs {

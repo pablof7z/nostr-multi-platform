@@ -18,8 +18,8 @@ use std::ffi::{CStr, CString};
 use serde_json::{json, Value};
 
 use crate::action_specs::{
-    follow_spec, publish_note_spec, publish_profile_spec, react_spec, repost_spec, send_dm_spec,
-    unfollow_spec, zap_spec,
+    follow_spec, publish_note_spec, publish_profile_spec, publish_relay_list_spec, react_spec,
+    repost_spec, send_dm_spec, unfollow_spec, zap_spec,
 };
 use nmp_ffi::{nmp_app_dispatch_action, nmp_free_string, NmpApp};
 use nmp_nip01::NoteRecord;
@@ -134,6 +134,21 @@ impl ChirpClient {
     /// Unfollow a user by pubkey (remove from contacts list).
     pub fn unfollow(&self, pubkey: &str) -> Result<String, String> {
         let (namespace, action) = unfollow_action(pubkey);
+        self.dispatch_action(&namespace, &action)
+    }
+
+    /// Repost (kind:6) an event.
+    pub fn repost(&self, event_id: &str, author_pubkey: &str) -> Result<String, String> {
+        let (namespace, action) = repost_action(event_id, author_pubkey);
+        self.dispatch_action(&namespace, &action)
+    }
+
+    /// Publish the user's NIP-65 relay list (kind:10002).
+    ///
+    /// `relays` is a list of `(url, role)` pairs from the host's relay-config
+    /// UI; URL canonicalisation and `wss://` gating happen kernel-side.
+    pub fn publish_relay_list(&self, relays: &[(&str, &str)]) -> Result<String, String> {
+        let (namespace, action) = publish_relay_list_action(relays);
         self.dispatch_action(&namespace, &action)
     }
 
@@ -275,6 +290,15 @@ pub fn send_dm_action(recipient_pubkey: &str, content: &str) -> (String, String)
 /// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
 pub fn repost_action(event_id: &str, author_pubkey: &str) -> (String, String) {
     repost_spec(event_id, author_pubkey).into_tuple()
+}
+
+/// Build a NIP-65 relay-list publish action envelope (kind:10002).
+///
+/// `relays` is a list of `(url, role)` pairs. Returns `(namespace, action_json)`
+/// suitable for passing to `dispatch_action`.
+#[must_use]
+pub fn publish_relay_list_action(relays: &[(&str, &str)]) -> (String, String) {
+    publish_relay_list_spec(relays).into_tuple()
 }
 
 /// Build a Zap action envelope (send sats to an event or user).
