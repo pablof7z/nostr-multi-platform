@@ -17,7 +17,7 @@
 //! (Split out of `op_feed_defaults_test.rs` to keep both files under the
 //! 500-LOC ceiling.)
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use nmp_core::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::KernelEvent;
@@ -26,6 +26,35 @@ use nmp_core::KernelEventObserver as _;
 // `AttributionPayload` brings `author_pubkey()` into scope for the L-2 assertion.
 use nmp_feed::AttributionPayload as _;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
+
+// ─── Test-isolation guard ────────────────────────────────────────────────────
+//
+// Every test in this file drives a full `nmp_app_new()` lifecycle. `nmp_app_new`
+// eagerly spawns the actor thread (which itself constructs the relay `Pool` and
+// its per-URL worker / translator threads) and the update-listener thread —
+// BEFORE any `nmp_app_start`. `nmp_app_free` only drops the `NmpApp` box; it does
+// not *join* those background threads, so their teardown (the actor's
+// `inbox_rx.recv()` returning `Err` once the host `CommandSender` drops, the
+// listener's `update_rx.recv()` likewise) races forward asynchronously after the
+// test body returns.
+//
+// When these three tests run concurrently on the libtest thread pool, the leaked
+// teardown of one app overlaps the setup of the next (all three reuse the same
+// `REPOST_ID` / `OP_ID` constants and exercise the same `update_listener` →
+// `notify_identity_change_observers` / `update_embed_sidecar_from_frame` C-ABI
+// machinery). Under CI load that overlap is wide enough to intermittently
+// perturb the L-5 backward-hydration path, surfacing as `card.reposted_by ==
+// None` (the placeholder never gets its provenance rebuilt). The failure is pure
+// test-harness contention — the engine and the per-app event-store slot are
+// each correct in isolation.
+//
+// Serialize the whole-lifecycle tests so exactly one `NmpApp` is live at a time;
+// each test holds the guard across its entire body so the prior app's leaked
+// threads have quiesced before the next constructs its own. Poison-tolerant
+// (`into_inner`) so one failing test does not cascade into the siblings — the
+// same idiom the sibling `op_feed_identity_test.rs` / `typed_dm_runtime_sidecar.rs`
+// `nmp_app_new`-based integration tests already use.
+static SERIAL: Mutex<()> = Mutex::new(());
 
 // Valid-looking 64-hex pubkeys (distinct), mirroring the rung-4/rung-5 idioms.
 const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
@@ -148,6 +177,7 @@ fn repost_l5_backward_hydration_resolves_wrapper_via_real_event_lookup() {
     // banner survives. With the prior `|_| None` no-op the rebuild would use
     // `(target, None)` and LOSE the provenance — that is the regression these
     // assertions guard.
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let app = nmp_app_new();
     assert!(!app.is_null());
 
@@ -207,6 +237,7 @@ fn repost_l2_reply_to_kind6_wrapper_rekeys_via_real_event_lookup() {
     // prior no-op the wrapper would never resolve, so the attribution would
     // buffer against the kind:6 wrapper id — which never becomes a root — and
     // the OP would surface with ZERO attribution.
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let app = nmp_app_new();
     assert!(!app.is_null());
 
@@ -264,6 +295,7 @@ fn event_lookup_is_correctness_preserving_before_store_published() {
     // the L-5 placeholder shows, and the wrapper-less rebuild simply omits
     // provenance until a real read is available. This locks in the
     // "correctness-preserving" contract the former tracker V-83 entry highlighted.
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let app = nmp_app_new();
     assert!(!app.is_null());
 
