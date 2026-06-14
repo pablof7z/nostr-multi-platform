@@ -106,45 +106,56 @@ unchanged. Pure additive metadata.
 
 ---
 
-## Rung 3 — Producer omits Unchanged keys; host reuses prior buffer (the floor)
+## Rung 3 — Producer omits Unchanged keys; NMP-owned rev-aware host apply (the floor)
+
+> **Full design + sub-step ladder + codex review: [`0055-rung3.md`](0055-rung3.md).**
+> That addendum is the single source of truth for this rung; the summary below is
+> the ladder-level pointer only.
 
 **Goal:** the actual O(changed) win. The producer stops serializing projections
-whose `projection_rev` is unchanged since the last emit; the host reuses its
-cached decoded value for omitted keys.
+whose `projection_rev` is unchanged since the last emit; an NMP-owned (generated)
+host cache-merge layer retains the prior decoded value for omitted keys so the app
+keeps using the same accessors, oblivious to the delta mechanics.
 
-- Producer: maintain `last_emitted_revs: HashMap<&'static str, u64>`. In
-  `make_update`, a projection is serialized iff its rev advanced (or epoch reset).
-  Unchanged → omitted (D1/D3). `Cleared` emitted explicitly when a projection
-  goes absent (e.g. a view closes).
-- This is where the built-in typed projections + Tier-3 built-ins get gated —
-  the hot path that ADR-0037 left ungated.
-- Host (one PR per platform, can land independently — start iOS):
-  - `KernelModel.swift` / `KernelBridge.swift`: keep a per-key applied-rev map +
-    cached decoded value. On a frame: apply `Changed` keys, reuse cache for
-    omitted/`Unchanged`, drop on `Cleared`. **Only assign the slot whose rev
-    advanced** (D7) — this kills the SwiftUI broad-invalidation churn.
-  - **Host-side fine-graining caveat (UI-bridge research):** the slot must be a
-    per-projection `@Observable` property (iOS 17+ `ObservationRegistrar`), NOT a
-    single coarse `ObservableObject` whose `objectWillChange` fires for any
-    field — that would defeat the host-side win (every view re-renders regardless
-    of rev). A platform still on `ObservableObject` gets the producer-side win
-    (smaller frames) but not the host-apply win until it migrates.
-  - Per-key monotonic guard: ignore a `projection_rev ≤` already-applied (reorder
-    safety, D3).
-  - On `session_id` change OR `snapshot_epoch` change: reset the applied-rev map
-    and re-baseline (D4).
-- Crates: `nmp-core` (producer) + `ios/Chirp` (host). Android/desktop/TUI hosts
-  follow in sibling PRs; until they're rev-aware they still work (a host that
-  treats every present key as authoritative and ignores omission still renders
-  correctly — it just doesn't get the host-side win).
-- Test: **the core correctness property test** — generate a random sequence of
-  source mutations; assert that applying the incremental stream (with random
-  drops/reorders injected, each followed by the self-healing rules) yields a host
-  state byte-identical to a full snapshot of the final kernel state. Plus iOS
-  unit tests for the apply cache.
+- **Producer (R3-S1/S2, `nmp-core`):** new `update/rung3_omit.rs` drops
+  `Unchanged` rows entirely (omit the whole row, not an empty payload — D3-1),
+  keeps an explicit payload-less `Cleared` row, keeps full `Changed` rows.
+  Gated on a per-instance `nmp_app_declare_incremental_apply()` capability
+  (D3-2): the kernel emits full rows until a host advertises the cache-merge
+  layer. Advertising it (or any epoch bump) clears `last_emitted_revs` so the
+  next frame is a full baseline (D3-5). Plus FlatBufferBuilder reuse across ticks
+  (D3-6). This gates the Tier-2 built-ins (the ADR-0037-ungated hot path).
+- **Host (R3-S3 iOS, R3-S4 Android):** a GENERATED `ProjectionCache` interposer
+  (`ProjectionCache.generated.swift` / `ProjectionCache.kt`) sits between the raw
+  FlatBuffers decode and the existing per-key typed decoders. It keys a persistent
+  `key → (rev, raw bytes)` cache; `Changed` overwrites, `Cleared` drops,
+  omitted/`Unchanged` retained; then re-feeds the *merged full envelope set* to
+  the unchanged decoders — so app code and accessors do not change (D3-3). It
+  surfaces the changed-key set so `apply()` re-assigns only changed slots (D7
+  win). `TypedProjectionEnvelope` gains `projectionRev` + `state`.
+- **Self-healing floor (D3-4, codex-driven):** the channel is a synchronous
+  in-process callback (no in-transit loss/reorder), so **decode-before-commit +
+  a sticky `needsResync` latch is sufficient** — the host advances per-key
+  applied-rev only after a successful typed decode + commit; on failure it keeps
+  the prior value, does not advance rev, and latches `needsResync`. **No
+  per-frame full manifest in Rung 3.** The manifest-gap detector + the resync FFI
+  that drains `needsResync` are Rung 4.
+- **Tier-1 stays always-Changed (D3-7):** unregistered host projections (feed,
+  wallet, dm_inbox, …) are emitted `Changed` when live, explicit `Cleared` when
+  absent — never silently omitted. Their rev gating is a later rung; the S6 metric
+  is therefore labeled "Tier-2 / claimed_profiles churn," not whole-frame waste.
+- **Gallery: NO change** — it reads the deprecated generic `payload:Value` path,
+  not typed projections; do NOT regenerate its curated subset (it broke in Rung 2
+  exactly because of a blanket regen). See `0055-rung3.md` §6.
+- **Capstone gate (R3-S5):** re-run ffi-stress S6 with incremental apply ON vs
+  OFF; assert Tier-2 `waste_ratio < 0.05`, frame bytes ON < OFF, no `serialize_us`
+  regression, and an incremental-vs-full byte-identity oracle. Plus the Rung-1
+  biconditional oracle extended to the omission case (omitted ⟺ cache-unit
+  unchanged) and per-platform `ProjectionCache` unit tests.
 
 **Reviewable value:** this rung delivers the owner's MINIMUM bar (O(changed
-projections)) AND the host-apply win, with the self-healing invariant under test.
+projections)) AND the host-apply win, with the self-healing invariant under test
+and the 81.2 % Tier-2 waste empirically driven to ~0.
 
 ---
 
@@ -153,7 +164,10 @@ projections)) AND the host-apply win, with the self-healing invariant under test
 **Goal:** make the model unconditionally self-healing (D5).
 
 - Add `nmp_app_request_full_snapshot()` FFI (bumps epoch → next frame is a full
-  baseline). Host calls it on first attach, decode failure, unrecognized epoch.
+  baseline). Host calls it on first attach, unrecognized epoch, and **to drain the
+  `needsResync` latch the Rung-3 cache-merge layer sets on a typed-decode failure**
+  (`0055-rung3.md` D3-4). Until this FFI lands, Rung 3 only logs `needsResync` and
+  relies on the next genuine rev bump to re-emit the degraded key.
 - Wire the epoch bump into every reset path not already covered in Rung 2
   (background/foreground re-attach if relevant, store reopen).
 - Crates: `nmp-ffi` + `nmp-core` + host call sites.
