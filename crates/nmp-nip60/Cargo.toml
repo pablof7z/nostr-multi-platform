@@ -4,10 +4,10 @@
 # Remove from exclude and add back to [workspace] members when #1001 enters scope.
 [package]
 name = "nmp-nip60"
-version = { workspace = true }
-edition = { workspace = true }
-license = { workspace = true }
-repository.workspace = true
+version = "0.7.1"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/pablof7z/nostr-multi-platform"
 description = "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery. Provides a WalletBackend trait that is transparent to apps whether the user has a NIP-60 ecash wallet or a NWC-connected Lightning wallet. PARKED: post-v1 (Cashu / #1001)."
 
 [dependencies]

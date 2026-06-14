@@ -1,5 +1,10 @@
 # Changelog
 
+## nmp-v0.7.1
+
+- fix: parked crates (`nmp-blossom`, `nmp-nip60`) are now standalone-buildable — de-inherited the workspace `version`/`edition`/`license`/`repository` fields (and blossom's `nostr` dep) that are unresolvable for `[workspace].exclude`d crates. Restores the documented `cargo build --manifest-path crates/<crate>/Cargo.toml` escape hatch and unblocks external consumers (hl path-dep, podcast-player `[patch]`) that depend on `nmp-blossom`. No code change.
+
+
 All notable changes to the NMP workspace are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 

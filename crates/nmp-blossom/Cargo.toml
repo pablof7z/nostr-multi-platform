@@ -4,10 +4,10 @@
 # Remove from exclude and add back to [workspace] members when #998 enters scope.
 [package]
 name = "nmp-blossom"
-version = { workspace = true }
-edition = { workspace = true }
-license = { workspace = true }
-repository.workspace = true
+version = "0.7.1"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/pablof7z/nostr-multi-platform"
 description = "Blossom (BUD-02) blob uploads as an NMP protocol crate — kind:24242 auth builder + BlossomUploadCommand (ProtocolCommand) streaming PUT, signing via the generic backend-transparent SignEventForAccount port (ADR-0043). PARKED: post-v1 (M10 / #998)."
 
 [dependencies]
@@ -28,7 +28,7 @@ sha2 = "0.10"
 base64 = "0.22"
 # rust-nostr — kind:24242 construction + signing types. NEVER reimplement crypto
 # (docs/aim.md: rust-nostr is the protocol foundation).
-nostr = { workspace = true }
+nostr = "0.44"
 tracing = "0.1"
 
 [dev-dependencies]
