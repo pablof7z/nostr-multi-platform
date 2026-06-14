@@ -27,11 +27,9 @@ use std::collections::BTreeSet;
 fn floored_implies_served_holds_structurally_for_any_shape() {
     use crate::planner::{InterestShape, NaddrCoord};
 
+    use crate::planner::canonical_filter_hash;
+
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Presence-floor path: disable the now-default-ON ledger so the §6/#1119
-    // "floored ⇒ served" invariant is exercised against the presence floor
-    // (the path deleted in K3 Stage E).
-    kernel.set_coverage_ledger_enabled(false);
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
     kernel.timeline_authors.insert(author.clone());
@@ -44,13 +42,22 @@ fn floored_implies_served_holds_structurally_for_any_shape() {
     let mut shapes: Vec<(&str, InterestShape)> = Vec::new();
 
     // ── Covered shapes (serve is non-empty; floor may or may not fire) ───────
+    let single_author_shape = InterestShape {
+        authors: BTreeSet::from([author.clone()]),
+        kinds: BTreeSet::from([1u32]),
+        ..Default::default()
+    };
+    // K3 Stage E: seed a coverage row for the test relay so the single-author
+    // shape IS floored (non-vacuity guard below). The test relay used by
+    // `watermark_for_shape_for_test` is "wss://watermark-test.invalid".
+    kernel.event_store_handle().record_coverage(
+        &canonical_filter_hash(&single_author_shape),
+        "wss://watermark-test.invalid",
+        1_700_000_001,
+    );
     shapes.push((
-        "single-author+kind (seeded → floored)",
-        InterestShape {
-            authors: BTreeSet::from([author.clone()]),
-            kinds: BTreeSet::from([1u32]),
-            ..Default::default()
-        },
+        "single-author+kind (seeded + coverage row → floored)",
+        single_author_shape,
     ));
     shapes.push((
         "multi-author one-empty (one author has no events → abort)",

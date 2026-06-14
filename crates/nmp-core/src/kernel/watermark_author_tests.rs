@@ -66,7 +66,11 @@ fn insert_event(
         sig: "aa".repeat(64),
     };
     store
-        .insert(VerifiedEvent::from_raw_unchecked(raw), &"wss://r0/".to_string(), 0)
+        .insert(
+            VerifiedEvent::from_raw_unchecked(raw),
+            &"wss://r0/".to_string(),
+            0,
+        )
         .expect("insert must succeed");
 }
 
@@ -76,9 +80,7 @@ fn two_author_interest(id: u64, author_a: &str, author_b: &str) -> LogicalIntere
         id: InterestId(id),
         scope: InterestScope::Global,
         shape: InterestShape {
-            authors: [pubkey(author_a), pubkey(author_b)]
-                .into_iter()
-                .collect(),
+            authors: [pubkey(author_a), pubkey(author_b)].into_iter().collect(),
             kinds: [1u32].into_iter().collect(),
             ..Default::default()
         },
@@ -132,7 +134,9 @@ fn since_from_filter(filter_json: &str) -> Option<u64> {
     let needle = "\"since\":";
     let start = filter_json.find(needle)? + needle.len();
     let rest = &filter_json[start..];
-    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
     rest[..end].parse().ok()
 }
 
@@ -186,10 +190,7 @@ fn multi_author_no_floor_when_any_author_has_no_events() {
         .expect("compile");
     let filters = req_filters_from_frames(&frames);
 
-    assert!(
-        !filters.is_empty(),
-        "expected REQ frames; got {frames:?}"
-    );
+    assert!(!filters.is_empty(), "expected REQ frames; got {frames:?}");
     // The merged shape has authors [A, B] — since B has no events the floor
     // is unsafe and the watermark_fn must return None.
     let multi_author_filters: Vec<&String> = filters
@@ -211,104 +212,7 @@ fn multi_author_no_floor_when_any_author_has_no_events() {
     }
 }
 
-// ─── test 2: multi-author shape where both authors have events ────────────────
-//
-// Expected behaviour (owner decision #1281: since=None exempt from rewrite):
-//   Interest carries since=1 (an explicit lower bound below both watermarks).
-//   Author A newest = 100, Author B newest = 50.
-//   min(100, 50) = 50 → floor = 51.
-//   The interest's existing since=1 is below the floor → raised to 51.
-//   Result: REQ carries `"since":51`.
-//
-// This validates that the kernel watermark_fn computes min(per-author) correctly
-// AND that the rewrite raises an existing Some(t) floor to the watermark.
-//
-// On pre-fix master (KindTime branch):
-//   KindTime finds the global max which is A's t=100 → floor = 101 (wrong).
-#[test]
-fn multi_author_since_is_min_of_per_author_watermarks() {
-    let mut kernel = Kernel::new(crate::relay::DEFAULT_VISIBLE_LIMIT);
-    // Presence-floor path: disable the now-default-ON ledger so the multi-author
-    // watermark MIN policy is exercised against the presence floor (Stage E removes it).
-    kernel.set_coverage_ledger_enabled(false);
-    let store = kernel.event_store_handle();
-
-    // A has events at t=100 and B at t=50.
-    insert_event(&store, "a", 100, 0x02);
-    insert_event(&store, "b", 50, 0x03);
-
-    // Both authors share relay r1 so the planner produces a single merged
-    // sub-shape rather than per-relay shapes; raise the budget so no relay
-    // is dropped.
-    kernel.lifecycle_mut().set_selection_budget(usize::MAX, usize::MAX);
-
-    let mailboxes = mailboxes_for(&[("a", 1), ("b", 1)]);
-    // since=1 provides an explicit floor so the watermark rewrite applies
-    // (#1281: since=None interests are exempt; only Some(t) floors are raised).
-    kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .push(two_author_interest_with_since(2, "a", "b", 1));
-
-    let frames = kernel
-        .lifecycle_mut()
-        .recompile_and_diff(&mailboxes)
-        .expect("compile");
-    let filters = req_filters_from_frames(&frames);
-
-    assert!(!filters.is_empty(), "expected REQ frames; got {frames:?}");
-    for f in &filters {
-        let since = since_from_filter(f);
-        assert_eq!(
-            since,
-            Some(51),
-            "since must be min(50,100)+1 = 51; got {f}"
-        );
-    }
-}
-
-// ─── test 3: single-author watermark is unchanged (regression guard) ──────────
-//
-// The single-author `AuthorKind` path must continue to produce the correct
-// watermark (newest stored event + 1) after the fix.
-//
-// Owner decision #1281: since=None interests are exempt from the rewrite.
-// We supply since=1 so the watermark can be applied and the raising behaviour
-// is exercised on the single-author code path.
-#[test]
-fn single_author_watermark_unchanged_after_fix() {
-    let mut kernel = Kernel::new(crate::relay::DEFAULT_VISIBLE_LIMIT);
-    // Presence-floor path: disable the now-default-ON ledger (Stage E removes it).
-    kernel.set_coverage_ledger_enabled(false);
-    let store = kernel.event_store_handle();
-
-    insert_event(&store, "a", 200, 0x04);
-
-    let mailboxes = mailboxes_for(&[("a", 3)]);
-    // since=1 so the watermark rewrite applies (#1281 exempts since=None).
-    kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .push(one_author_interest_with_since(3, "a", 1));
-
-    let frames = kernel
-        .lifecycle_mut()
-        .recompile_and_diff(&mailboxes)
-        .expect("compile");
-    let filters = req_filters_from_frames(&frames);
-
-    assert!(!filters.is_empty(), "expected REQ frames; got {frames:?}");
-    for f in &filters {
-        let since = since_from_filter(f);
-        assert_eq!(
-            since,
-            Some(201),
-            "single-author watermark must be newest+1 = 201; got {f}"
-        );
-    }
-}
-
-// ─── test 4: single-author with no events returns None (no since) ─────────────
+// ─── test 2: single-author with no events returns None (no since) ────────────
 //
 // If the store is empty the first REQ must have no `since` — otherwise a brand
 // new user could never backfill.

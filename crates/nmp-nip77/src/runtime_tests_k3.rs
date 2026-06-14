@@ -316,13 +316,12 @@ fn small_followfeed_ctx() -> ReqFrameContext {
     }
 }
 
-/// Flag ON + NO coverage row ⇒ a SMALL filter (below the fanout threshold) is
+/// NO coverage row ⇒ a SMALL filter (below the fanout threshold) is
 /// "uncovered" and the staleness gate opens negentropy anyway — the self-heal
 /// path for a never-synced shape.
 #[test]
 fn uncovered_small_filter_opens_negentropy_when_ledger_enabled() {
     let mut kernel = Kernel::testing_new(50);
-    kernel.set_coverage_ledger_enabled(true);
     // No coverage row recorded for ("smallhash", relay) → uncovered.
 
     let runtime = NegentropySyncRuntime::new(CoverageGate::default());
@@ -340,14 +339,13 @@ fn uncovered_small_filter_opens_negentropy_when_ledger_enabled() {
     );
 }
 
-/// Flag ON + a coverage row PRESENT ⇒ the shape is covered, so the staleness
-/// path does NOT force negentropy; the small filter falls through to the fanout
-/// gate and (being below threshold) opens NO negentropy. Proves the gate is
-/// scoped to genuinely-uncovered shapes, not a blanket "always negentropy".
+/// A coverage row PRESENT ⇒ the shape is covered, so the staleness path does
+/// NOT force negentropy; the small filter falls through to the fanout gate and
+/// (being below threshold) opens NO negentropy. Proves the gate is scoped to
+/// genuinely-uncovered shapes, not a blanket "always negentropy".
 #[test]
 fn covered_small_filter_does_not_force_negentropy() {
     let mut kernel = Kernel::testing_new(50);
-    kernel.set_coverage_ledger_enabled(true);
     // Record completed coverage for this (filter_hash, relay) → covered.
     kernel
         .event_store_handle()
@@ -360,27 +358,6 @@ fn covered_small_filter_does_not_force_negentropy() {
         opened.is_none(),
         "a COVERED small filter must fall through to the fanout gate (below \
          threshold ⇒ plain REQ, no negentropy) — staleness must not blanket-force it",
-    );
-}
-
-/// Flag OFF (default) ⇒ the staleness gate is inert; the small filter is gated
-/// by fanout alone and opens NO negentropy. The zero-behaviour-change guard.
-#[test]
-fn small_filter_uses_fanout_only_when_ledger_disabled() {
-    let mut kernel = Kernel::testing_new(50);
-    // The ledger defaults ON now; pin the flag-OFF path explicitly. Even though
-    // there is no coverage row, staleness must not engage with the flag off, so
-    // the below-threshold filter stays a plain REQ.
-    kernel.set_coverage_ledger_enabled(false);
-    assert!(!kernel.coverage_ledger_enabled());
-
-    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
-    let opened = runtime.intercept_req(&mut kernel, &small_followfeed_ctx());
-
-    assert!(
-        opened.is_none(),
-        "flag OFF: the staleness gate must be inert and the below-threshold \
-         filter must use the fanout heuristic alone (no negentropy)",
     );
 }
 

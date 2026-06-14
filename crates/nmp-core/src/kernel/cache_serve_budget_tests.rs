@@ -5,6 +5,7 @@
 use super::cache_serve::shape_to_store_queries;
 use super::cache_serve_tests::{drain_cache_serves, hex_pk, seed_events, simulate_cold_restart};
 use super::*;
+use crate::planner::canonical_filter_hash;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::StoreQuery;
 use std::collections::BTreeSet;
@@ -87,7 +88,10 @@ fn e1_aggregate_budget_chunks_across_ticks_for_many_follow_interests() {
     // inside the helper). 500 events / 160 per tick → must finish well within
     // 20 steps.
     let steps = drain_cache_serves(&mut kernel, 20);
-    assert!(steps >= 2, "drain must have required multiple continuation ticks");
+    assert!(
+        steps >= 2,
+        "drain must have required multiple continuation ticks"
+    );
 
     // Everything on disk was served (ascending timestamps all beat the floor).
     assert_eq!(
@@ -125,11 +129,8 @@ fn e1_aggregate_budget_chunks_across_ticks_for_many_follow_interests() {
 fn e1_watermark_serve_invariant_shapes_are_aligned() {
     use crate::planner::InterestShape;
 
-    // A live kernel with stored events for `author` (kind 1). Presence-floor
-    // path: disable the now-default-ON ledger so the §6 watermark invariant is
-    // exercised against the presence floor (the path deleted in K3 Stage E).
+    // A live kernel with stored events for `author` (kind 1).
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.set_coverage_ledger_enabled(false);
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
     kernel.timeline_authors.insert(author.clone());
@@ -140,6 +141,14 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
         kinds: BTreeSet::from([1u32]),
         ..Default::default()
     };
+    // K3 Stage E: seed a coverage row so the single-author shape IS floored
+    // (the ledger is the sole floor source after Stage E). The test relay used
+    // by `watermark_for_shape_for_test` is "wss://watermark-test.invalid".
+    kernel.event_store_handle().record_coverage(
+        &canonical_filter_hash(&shape_single_author),
+        "wss://watermark-test.invalid",
+        1_700_000_001,
+    );
     let shape_author_no_events = InterestShape {
         authors: BTreeSet::from([author.clone(), hex_pk("ee")]),
         kinds: BTreeSet::from([1u32]),
@@ -222,7 +231,11 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
     }
 
     let queries2 = shape_to_store_queries(&shape_author_no_events);
-    assert_eq!(queries2.len(), 2, "2 authors + 1 kind → 2 AuthorKind queries");
+    assert_eq!(
+        queries2.len(),
+        2,
+        "2 authors + 1 kind → 2 AuthorKind queries"
+    );
     assert!(queries2
         .iter()
         .all(|q| matches!(q, StoreQuery::AuthorKind { .. })));

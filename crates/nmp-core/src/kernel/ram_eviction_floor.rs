@@ -1,32 +1,22 @@
-//! #1090 Stage 2 — floor-coherent store-scan helpers for
+//! #1090 Stage 2 — floor-coherent store-scan helper for
 //! [`Kernel::derive_store_pin_set`](super::super::Kernel::derive_store_pin_set).
 //!
-//! ## The hole these helpers close
+//! ## The hole this helper closes
 //!
-//! The live `since`-floor for a subscription is content-derived: the kernel's
-//! `watermark_fn` (`kernel/mod.rs`) floors each REQ's `since` to the newest
-//! stored event matching the shape + 1, so the relay does not re-emit events
-//! already on disk. LRU eviction (the Stage-3 `HOT_EVENT_CEILING`) is free to
-//! delete a *middle* event older than the surviving newest event — the floor
-//! stays at `newest + 1`, so the self-healing REQ never re-requests the evicted
-//! middle event: a permanent hole.
+//! The live `since`-floor for a subscription is content-derived: the coverage
+//! ledger (the sole since-floor source, ADR-0056 K3 Stage E) records how far
+//! each shape has been covered, and the kernel's `watermark_fn`
+//! (`kernel/mod.rs`) floors each REQ's `since` to that covered-through value, so
+//! the relay does not re-emit events already on disk. LRU eviction (the Stage-3
+//! `HOT_EVENT_CEILING`) is free to delete a *middle* event older than the
+//! surviving newest event — the floor stays put, so the self-healing REQ never
+//! re-requests the evicted middle event: a permanent hole.
 //!
-//! [`shape_floor`] computes the same floor the `watermark_fn` installs, and
 //! [`pin_shape_events_below_floor`] enumerates every stored event matching the
-//! shape at or below that floor so `derive_store_pin_set` can pin them.
-//!
-//! ## K3 Stage C — single shape→query mapping (ADR-0056 §3)
-//!
-//! Both helpers now read the SAME `shape_to_store_queries` mapping the live
-//! `watermark_fn` reads (`shape_floor` via `watermark_from_queries`,
-//! `pin_shape_events_below_floor` by iterating the mapping and applying the
-//! `<= floor` bound). The lockstep is therefore STRUCTURAL — there is one
-//! shape→`StoreQuery` mapping, not three hand-synced copies — so the floor can
-//! never floor on a shape (or at a timestamp) the serve mapping would not.
-//! `shape_floor` is byte-identical to the `watermark_fn` floor, including the
-//! K3 Stage B1 MIN/abort addressable rule and the Stage B3 truncated-serve
-//! refusal. (See `cache_serve_budget_tests` / `gc_floor_coherent_tests` for the
-//! floored⇒served and floor⇄serve guards.)
+//! shape at or below the ledger-derived floor so `derive_store_pin_set` can pin
+//! them. It derives its queries from the SAME `shape_to_store_queries` mapping
+//! the live `watermark_fn` reads, then applies the `<= floor` bound — so the pin
+//! scan can never miss an event the serve mapping would replay.
 //!
 //! ## D8 scan budget (#1348)
 //!
@@ -51,19 +41,9 @@
 
 use std::collections::HashSet;
 use std::ops::ControlFlow;
-use std::sync::{Arc, Mutex};
 
 use crate::planner::InterestShape;
 use crate::store::{EventStore, StoreQuery};
-
-/// Snapshot the live `Kernel::etag_ptag_truncated_serves` set for one GC sweep.
-///
-/// A poisoned lock degrades to the empty set — i.e. no shape is treated as
-/// truncated, the safe-degraded default (the pin floor then matches the
-/// non-truncation arm rather than refusing a floor it cannot evaluate).
-pub(super) fn truncated_serve_snapshot(set: &Arc<Mutex<HashSet<u64>>>) -> HashSet<u64> {
-    set.lock().map(|s| s.clone()).unwrap_or_default()
-}
 
 /// Per-call event-visit budget for [`pin_shape_events_below_floor`].
 ///
@@ -88,80 +68,19 @@ pub(super) enum PinScanOutcome {
     Truncated,
 }
 
-/// Compute the content-derived `since`-floor for `shape` against `store`.
-///
-/// ## K3 Stage C — single shape→query mapping (ADR-0056 §3)
-///
-/// This routes through [`watermark_from_queries`] over the SAME
-/// [`shape_to_store_queries`] mapping the live `watermark_fn` (`kernel/mod.rs`)
-/// installs — "one mapping read two ways". It therefore returns the floor the
-/// subscription `watermark_fn` would install **byte-identically**, including the
-/// K3 Stage B1 MIN/abort-on-empty rule for multi-coord addressable shapes and
-/// the Stage B3 truncated-serve refusal for cursor-less (`Etag`/`Ptag`) shapes.
-///
-/// Before Stage C this was a hand-rolled SECOND copy of the shape→`StoreQuery`
-/// mapping that had already drifted: its addressable branch folded with
-/// MAX-ignoring-empties (the pre-B1 unsafe policy) while `watermark_from_queries`
-/// uses MIN/abort. Collapsing the two to one removes the migration hazard the
-/// Stage D ledger swap must not inherit.
-///
-/// `truncated` is the live `Kernel::etag_ptag_truncated_serves` set so the floor
-/// here refuses exactly the cursor-less shapes the `watermark_fn` refuses
-/// (Stage B3) — keeping `shape_floor` and `watermark_fn` in exact lockstep, which
-/// the floor-coherent pin set relies on (see `cache_serve_budget_tests`).
-///
-/// Returns `None` for shapes the `watermark_fn` refuses to floor (id-pointer
-/// shapes, no-kind shapes, multi-tag/multi-value shapes, zero-author kind-only
-/// shapes, any author/coord with no stored events, and truncated cursor-less
-/// serves) — an unfloored shape needs no floor-coherent pin because the relay
-/// re-sends its full history.
-pub(super) fn shape_floor(
-    shape: &InterestShape,
-    store: &dyn EventStore,
-    truncated: &HashSet<u64>,
-) -> Option<u64> {
-    use super::super::cache_serve::{query_since_mut, query_until_mut, watermark_from_queries};
-
-    watermark_from_queries(
-        shape,
-        |q| {
-            // Normalize to the watermark scan form (newest match regardless of
-            // window), then read the newest stored `created_at`.
-            let mut q = q.clone();
-            if let Some(since) = query_since_mut(&mut q) {
-                *since = None;
-            }
-            if let Some(until) = query_until_mut(&mut q) {
-                *until = None;
-            }
-            let mut ts: Option<u64> = None;
-            let _ = store.query_visit(&q, 1, &mut |ev| {
-                ts = Some(ev.raw.created_at);
-                ControlFlow::Break(())
-            });
-            ts
-        },
-        |key| truncated.contains(&key),
-    )
-}
-
 /// Add to `pins` the store id of every event matching `shape` with
 /// `created_at <= floor` (#1090 Stage 2 floor-coherence).
 ///
-/// ## K3 Stage C — single shape→query mapping (ADR-0056 §3)
+/// ## K3 — single shape→query mapping (ADR-0056 §3)
 ///
-/// Derives its queries from the SAME [`shape_to_store_queries`] mapping
-/// `shape_floor` (and the live `watermark_fn`) read, then pins every match at or
-/// below `floor`. Queries that carry an `until` cursor (`AuthorKind`,
-/// `KindDtag`) push the `<= floor` bound into the index scan; cursor-less
-/// (`Etag`/`Ptag`) queries enumerate all matches and filter in the visitor.
-/// Zero-author `KindTime` global feeds are never floored (so `shape_floor`
-/// returns `None` and this is never reached for them); they are skipped
-/// defensively if ever present.
-///
-/// Before Stage C this was a hand-rolled THIRD copy of the shape→`StoreQuery`
-/// mapping kept "in lockstep" with `shape_floor` by comment; routing it through
-/// `shape_to_store_queries` removes that drift hazard.
+/// Derives its queries from the SAME [`shape_to_store_queries`] mapping the live
+/// `watermark_fn` (`kernel/mod.rs`) reads, then pins every match at or below
+/// `floor` (the ledger-derived since-floor for the shape). Queries that carry an
+/// `until` cursor (`AuthorKind`, `KindDtag`) push the `<= floor` bound into the
+/// index scan; cursor-less (`Etag`/`Ptag`) queries enumerate all matches and
+/// filter in the visitor. Zero-author `KindTime` global feeds are never floored
+/// (so the caller never supplies a floor for them); they are skipped defensively
+/// if ever present.
 ///
 /// ## Scan budget (#1348 — D8 fix)
 ///
@@ -217,12 +136,12 @@ pub(super) fn pin_shape_events_below_floor(
 
     for mut q in shape_to_store_queries(shape) {
         // Zero-author global feed: never floored (skip; defensive — the caller
-        // only reaches here for shapes `shape_floor` returned `Some` for).
+        // only supplies a floor for shapes the ledger covered).
         if matches!(q, StoreQuery::KindTime { .. }) {
             continue;
         }
         // Clear `since` BEFORE applying the `<= floor` bound, exactly mirroring
-        // `shape_floor`'s probe normalization above. `shape_to_store_queries`
+        // the `watermark_fn` probe normalization. `shape_to_store_queries`
         // embeds `shape.since`; a shape with `shape.since = Some(T)` where
         // `T > floor` would otherwise run an inverted range
         // `{ since: Some(T), until: Some(floor) }` → the store returns ZERO

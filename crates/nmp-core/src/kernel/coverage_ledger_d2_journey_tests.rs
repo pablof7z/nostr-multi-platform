@@ -101,22 +101,20 @@ impl RespondingRelay {
             .expect("relay set_nonblocking");
         let stop = Arc::new(AtomicBool::new(false));
         let stop_t = Arc::clone(&stop);
-        let handle = thread::spawn(move || {
-            loop {
-                if stop_t.load(Ordering::Relaxed) {
-                    return;
+        let handle = thread::spawn(move || loop {
+            if stop_t.load(Ordering::Relaxed) {
+                return;
+            }
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    let evs = events.clone();
+                    let stop_c = Arc::clone(&stop_t);
+                    thread::spawn(move || serve_conn(stream, evs, stop_c));
                 }
-                match listener.accept() {
-                    Ok((stream, _)) => {
-                        let evs = events.clone();
-                        let stop_c = Arc::clone(&stop_t);
-                        thread::spawn(move || serve_conn(stream, evs, stop_c));
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        thread::sleep(Duration::from_millis(5));
-                    }
-                    Err(_) => return,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(5));
                 }
+                Err(_) => return,
             }
         });
         Self {
@@ -168,7 +166,9 @@ fn serve_conn(stream: TcpStream, events: Vec<nostr::Event>, stop: Arc<AtomicBool
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
             continue;
         };
-        let Some(arr) = value.as_array() else { continue };
+        let Some(arr) = value.as_array() else {
+            continue;
+        };
         if arr.first().and_then(|v| v.as_str()) != Some("REQ") {
             continue;
         }
@@ -260,11 +260,7 @@ fn run_req_through_relay(kernel: &mut Kernel, relay_url: &str, req_text: &str) {
                 if text.starts_with("[\"EOSE\"") {
                     got_eose = true;
                 } else if text.starts_with("[\"EVENT\"") {
-                    kernel.handle_message(
-                        RelayRole::Content,
-                        relay_url,
-                        RelayFrame::Text(text),
-                    );
+                    kernel.handle_message(RelayRole::Content, relay_url, RelayFrame::Text(text));
                 }
             }
             Ok(_) => {}
@@ -303,10 +299,9 @@ fn stored_note_count(kernel: &Kernel, _author_hex: &str) -> usize {
 /// Build a kernel pre-loaded with the stray (t=300) event for `keys`, the
 /// author followed, and a follow-feed interest registered + recompiled against
 /// `relay_url`. Returns the kernel and the compiled follow-feed REQ text.
-fn scenario(keys: &Keys, relay_url: &str, flag_on: bool) -> (Kernel, String) {
+fn scenario(keys: &Keys, relay_url: &str) -> (Kernel, String) {
     let author_hex = keys.public_key().to_hex();
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.set_coverage_ledger_enabled(flag_on);
 
     // The user follows A (admits A's notes into the timeline store).
     kernel.timeline_authors.insert(author_hex.clone());
@@ -376,7 +371,7 @@ fn h1_followfeed_backfills_full_history_with_coverage_ledger() {
     ]);
     let url = relay.ws_url();
 
-    let (mut kernel, req_text) = scenario(&keys, &url, /* flag_on */ true);
+    let (mut kernel, req_text) = scenario(&keys, &url);
 
     // THE SWAP PROOF: with the flag ON and NO coverage row for the follow-feed
     // (filter_hash, relay), the floor is REFUSED — the REQ is un-floored.
@@ -395,40 +390,5 @@ fn h1_followfeed_backfills_full_history_with_coverage_ledger() {
         3,
         "H1: with the coverage ledger, following A AFTER a stray reply must \
          backfill A's FULL history (t=100, t=200, t=300), not just the stray",
-    );
-}
-
-// ─── Flag-OFF regression: today's presence floor still suppresses ──────────────
-
-#[test]
-fn h1_followfeed_is_suppressed_with_flag_off_unchanged_behaviour() {
-    let keys = Keys::generate();
-    let relay = RespondingRelay::spawn(vec![
-        signed_note(&keys, E1, "oldest"),
-        signed_note(&keys, E2, "middle"),
-        signed_note(&keys, E3_STRAY, "stray thread reply"),
-    ]);
-    let url = relay.ws_url();
-
-    let (mut kernel, req_text) = scenario(&keys, &url, /* flag_on */ false);
-
-    // Flag OFF: the presence floor finds the stray (t=300) and floors the REQ
-    // at since = stray + 1 = 301 — exactly today's behaviour.
-    assert!(
-        req_text.contains("\"since\":301"),
-        "flag OFF: the presence floor must still floor the follow-feed REQ at \
-         stray+1 (=301), proving the read swap is dormant by default; got {req_text}",
-    );
-
-    run_req_through_relay(&mut kernel, &url, &req_text);
-
-    // The floored REQ returns only the at/above-floor event (t=300). The older
-    // history (t=100, t=200) stays suppressed — the H1 bug, intact under the
-    // off flag (so the swap is the ONLY thing that fixes it).
-    assert_eq!(
-        stored_note_count(&kernel, &keys.public_key().to_hex()),
-        1,
-        "flag OFF: the floored REQ backfills only the at-floor stray (t=300); \
-         below-floor history stays suppressed (the H1 bug, unchanged)",
     );
 }

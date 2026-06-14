@@ -181,6 +181,12 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
 ///
 /// Returns `None` when the shape maps to no queries (uncovered → unfloored),
 /// which is exactly the §6 implication `floored ⇒ served`, now structural.
+///
+/// K3 Stage E: the coverage ledger is the sole production since-floor source, so
+/// this fold no longer has a production caller (its last one was the deleted
+/// presence-floor pin helper). It is retained `#[cfg(test)]` as the spec lock for
+/// the shape→floor fold policy, exercised by `cache_serve_watermark_tests`.
+#[cfg(test)]
 pub(in crate::kernel) fn watermark_from_queries(
     shape: &InterestShape,
     mut scan: impl FnMut(&StoreQuery) -> Option<u64>,

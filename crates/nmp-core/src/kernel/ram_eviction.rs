@@ -93,8 +93,8 @@
 use super::Kernel;
 use std::collections::HashSet;
 
-// Sibling files (kept out of at-baseline `kernel/mod.rs`): #1090 floor helpers +
-// tests, and the K3 Stage C (ADR-0056) floor⇄serve unification lock tests.
+// Sibling files (kept out of at-baseline `kernel/mod.rs`): #1090 floor helper +
+// tests.
 #[path = "ram_eviction_floor.rs"]
 mod floor;
 // K3 Stage D3 (ADR-0056 §3.D3) — pin-below-ledger-floor + coverage-guard set;
@@ -104,9 +104,6 @@ mod coverage;
 #[cfg(test)]
 #[path = "gc_floor_coherent_tests.rs"]
 mod gc_floor_coherent_tests;
-#[cfg(test)]
-#[path = "gc_floor_unification_tests.rs"]
-mod gc_floor_unification_tests;
 
 /// High-watermark for `self.events`.  2 × `TIMELINE_CACHE_LIMIT` (500).
 pub(super) const EVENTS_RAM_HWM: usize = 1_000;
@@ -237,13 +234,14 @@ impl Kernel {
     ///   ([`Self::open_view_pins`] — the same predicate `should_store_event`'s
     ///   `matches_active_open_interest` clause uses for admission);
     /// - **#1090 Stage 2 (floor-coherence):** it is a stored event matching an
-    ///   active floored shape with `created_at <= shape_floor`. The live
-    ///   `since`-floor for a subscription is content-derived (the `watermark_fn`
-    ///   floors each REQ's `since` to the newest stored matching event + 1), so
-    ///   LRU eviction of a *middle* event below that floor would punch a
-    ///   permanent hole — the floored self-healing REQ only re-requests events
-    ///   newer than the floor. Pinning every below-floor stored event closes
-    ///   that hole. See [`shape_floor`].
+    ///   active floored shape with `created_at <=` the shape's since-floor. The
+    ///   live `since`-floor for a subscription is content-derived (the coverage
+    ///   ledger records covered-through per shape and the `watermark_fn` floors
+    ///   each REQ's `since` to it), so LRU eviction of a *middle* event below
+    ///   that floor would punch a permanent hole — the floored self-healing REQ
+    ///   only re-requests events newer than the floor. Pinning every below-floor
+    ///   stored event closes that hole. See
+    ///   [`pin_shape_events_below_floor`](floor::pin_shape_events_below_floor).
     ///
     /// The result is a set of 32-byte store [`EventId`](crate::store::EventId)s.
     /// Hex strings that do not parse to a 32-byte id (e.g. coordinate keys) are

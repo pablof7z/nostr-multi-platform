@@ -330,9 +330,28 @@ enablement re-verified (`GcBudget::production` keeps `HOT_EVENT_CEILING`).
 
 ### Stage E — delete the presence heuristic; correct the docs
 
-Once Stage D is proven in a release, delete `watermark_fn`'s presence computation
-and the fallback, leaving the ledger as the sole floor source. Correct any doc
-still claiming the ledger "[LANDED M4]".
+**Disposition (2026-06-14). LANDED** — the `coverage_ledger_enabled` flag and
+every flag-gated presence-floor branch are deleted. The ledger is the
+**unconditional sole since-floor source**:
+
+- `build_watermark_fn` takes only `store: Arc<dyn EventStore>`; no flag, no
+  `truncated_query_keys` param.
+- `coverage_floor_with_fallback` renamed `coverage_floor`; no fallback, no
+  presence branch.
+- `set_coverage_ledger_enabled`, `coverage_ledger_enabled`, and
+  `coverage_floor_for` (the `#[cfg(test)]` `&self` wrapper) deleted from the
+  kernel.
+- `pin_floor_for_shape` and `derive_coverage_guards` are unconditional; the
+  `Ordering::Relaxed` flag reads are gone.
+- `relay_filter_is_uncovered` in `nmp-nip77` no longer gates on the flag.
+- All flag-OFF unit tests deleted (they tested deleted code paths); flag-ON
+  tests rewritten to drop `set_coverage_ledger_enabled(true)` calls; tests that
+  relied on presence-floor to produce a non-vacuous floor are rewritten to seed
+  a coverage row on `"wss://watermark-test.invalid"` instead.
+- `shape_floor` and `truncated_serve_snapshot` in `ram_eviction_floor.rs` are
+  kept — they are called directly by `gc_floor_coherent_tests` and
+  `gc_floor_unification_tests` as test oracles; they are no longer called from
+  any production path.
 
 ## 4. Gate — Stage D must not land without a fixture-relay journey test
 

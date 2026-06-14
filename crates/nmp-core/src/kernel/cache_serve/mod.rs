@@ -88,8 +88,15 @@ pub(super) mod queries;
 
 pub(in crate::kernel) use queries::{
     completion_key_for_interest, cursor_less_query_key, query_since_mut, query_until_mut,
-    shape_needs_ingest_parser_dispatch, shape_to_store_queries, watermark_from_queries,
+    shape_needs_ingest_parser_dispatch, shape_to_store_queries,
 };
+// `watermark_from_queries` is the unified shape→floor fold (K3 Stage B1/B3). Its
+// last production caller (the presence-floor pin helper) was deleted in Stage E
+// once the coverage ledger became the sole since-floor source; the fold itself
+// is retained as the spec lock for the fold policy, exercised only by
+// `cache_serve_watermark_tests`.
+#[cfg(test)]
+pub(in crate::kernel) use queries::watermark_from_queries;
 
 use std::collections::HashSet;
 
@@ -394,7 +401,7 @@ impl Kernel {
     /// write surface: `serve_chunk` inserts/removes by `pending.completion_key`,
     /// so one interest's natural exhaustion never clears another's mark. But the
     /// floor decision is made from a SHAPE (the shape-only `watermark_fn` closure
-    /// and the per-shape `shape_floor` probe cannot see `SubKey`), and two
+    /// cannot see `SubKey`), and two
     /// interests that share an Etag/Ptag shape collapse to ONE wire REQ with ONE
     /// `since` floor.
     ///

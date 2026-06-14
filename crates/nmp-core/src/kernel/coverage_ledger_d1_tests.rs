@@ -1,18 +1,14 @@
-//! K3 Stage D1 — kernel-side coverage-ledger WRITE-path tests (ADR-0056 §3).
+//! Coverage-ledger WRITE-path tests (ADR-0056 §3, Stage E).
 //!
 //! These tests drive the production `handle_message`/`handle_text` EOSE seam
 //! (the same surface `eose_ok_notice_ingest_tests` uses) and the
 //! `record_neg_done_coverage` NEG-DONE entry point, and assert what lands in the
-//! coverage ledger via `EventStore::get_coverage`. They lock the four D1
-//! contracts:
+//! coverage ledger via `EventStore::get_coverage`. They lock the contracts:
 //!
-//! 1. flag ON + un-floored EOSE ⇒ a row advances to `now` for `(hash, relay)`;
-//! 2. flag OFF ⇒ NO row is ever written (the default, zero-behavior-change case);
-//! 3. a `since`-floored EOSE is NOT over-claimed (no `[0, now]` row);
-//! 4. NEG-DONE advances the ledger to `now` (un-floored full-window per Stage A).
-//!
-//! The since-floor READ path (`apply_watermark_rewrite`) is deliberately NOT
-//! touched in D1 and is not exercised here — D2 swaps the read.
+//! 1. un-floored EOSE ⇒ a row advances to `now` for `(hash, relay)`;
+//! 2. a `since`-floored EOSE is NOT over-claimed (no `[0, now]` row);
+//! 3. NEG-DONE advances the ledger to `now` (un-floored full-window per Stage A);
+//! 4. the key is the canonical filter hash (not the full sub_id).
 
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -62,12 +58,11 @@ fn deliver_eose(kernel: &mut Kernel) {
     kernel.handle_message(RelayRole::Content, RELAY, RelayFrame::Text(eose));
 }
 
-// ─── 1. flag ON + un-floored EOSE advances the ledger ──────────────────────────
+// ─── 1. un-floored EOSE advances the ledger ─────────────────────────────────────
 
 #[test]
 fn eose_on_unfloored_req_advances_ledger_to_now_when_flag_on() {
     let mut kernel = kernel_at(NOW_SECS);
-    kernel.set_coverage_ledger_enabled(true);
 
     // Un-floored REQ (no `since`): an EOSE honestly proves `[0, now]`.
     register_req(
@@ -86,39 +81,11 @@ fn eose_on_unfloored_req_advances_ledger_to_now_when_flag_on() {
     );
 }
 
-// ─── 2. flag OFF writes nothing (the default, zero-behavior-change case) ────────
-
-#[test]
-fn eose_writes_nothing_when_flag_off() {
-    // The ledger now defaults ON (K3 release-cut flip); this test pins the
-    // flag-OFF write-nothing path, which the kill-switch flag still exposes.
-    let mut kernel = kernel_at(NOW_SECS);
-    kernel.set_coverage_ledger_enabled(false);
-    assert!(
-        !kernel.coverage_ledger_enabled(),
-        "explicitly disabled: with the flag OFF, EOSE must write zero rows",
-    );
-
-    register_req(
-        &mut kernel,
-        r#"{"kinds":[1],"authors":["aa"]}"#,
-        InterestLifecycle::OneShot,
-    );
-    deliver_eose(&mut kernel);
-
-    assert_eq!(
-        coverage(&kernel),
-        None,
-        "with the flag OFF, an EOSE must write zero coverage rows",
-    );
-}
-
-// ─── 3. a since-floored EOSE is NOT over-claimed ───────────────────────────────
+// ─── 2. a since-floored EOSE is NOT over-claimed ────────────────────────────────
 
 #[test]
 fn eose_on_floored_req_does_not_overclaim_below_floor() {
     let mut kernel = kernel_at(NOW_SECS);
-    kernel.set_coverage_ledger_enabled(true);
 
     // A `since`-floored REQ: the EOSE proves only `[floor, now]`, NOT `[0, now]`.
     // The downward-closed ledger must therefore NOT advance — recording `now`
@@ -138,12 +105,11 @@ fn eose_on_floored_req_does_not_overclaim_below_floor() {
     );
 }
 
-// ─── 4. NEG-DONE advances the ledger (un-floored full window per Stage A) ───────
+// ─── 3. NEG-DONE advances the ledger (un-floored full window per Stage A) ────────
 
 #[test]
 fn neg_done_advances_ledger_to_now_when_flag_on() {
     let mut kernel = kernel_at(NOW_SECS);
-    kernel.set_coverage_ledger_enabled(true);
 
     // The NIP-77 runtime calls this at the terminal `Done` outcome. Per Stage A
     // the NEG window is un-floored `[0, ∞)`, so a completed reconciliation
@@ -153,29 +119,15 @@ fn neg_done_advances_ledger_to_now_when_flag_on() {
     assert_eq!(
         coverage(&kernel),
         Some(NOW_SECS),
-        "NEG-DONE with the flag ON must advance coverage to now",
+        "NEG-DONE must advance coverage to now",
     );
 }
 
-#[test]
-fn neg_done_writes_nothing_when_flag_off() {
-    // The ledger defaults ON now; pin the flag-OFF write-nothing path explicitly.
-    let mut kernel = kernel_at(NOW_SECS);
-    kernel.set_coverage_ledger_enabled(false);
-    kernel.record_neg_done_coverage(SUB_ID, RELAY, kernel.now_secs());
-    assert_eq!(
-        coverage(&kernel),
-        None,
-        "with the flag OFF, NEG-DONE must write zero coverage rows",
-    );
-}
-
-// ─── 5. the key is the canonical filter hash (D2 reads by the same key) ─────────
+// ─── 4. the key is the canonical filter hash ─────────────────────────────────────
 
 #[test]
 fn coverage_is_keyed_by_canonical_filter_hash_not_full_sub_id() {
     let mut kernel = kernel_at(NOW_SECS);
-    kernel.set_coverage_ledger_enabled(true);
     register_req(
         &mut kernel,
         r#"{"kinds":[1],"authors":["aa"]}"#,

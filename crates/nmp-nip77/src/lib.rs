@@ -14,6 +14,8 @@ mod messages;
 mod reconciler;
 mod runtime;
 #[cfg(test)]
+mod runtime_size_gate_tests;
+#[cfg(test)]
 mod runtime_tests;
 #[cfg(test)]
 mod runtime_tests_k3;

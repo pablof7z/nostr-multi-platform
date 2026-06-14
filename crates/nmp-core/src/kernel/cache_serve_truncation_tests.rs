@@ -11,7 +11,7 @@
 use super::cache_serve::shape_to_store_queries;
 use super::cache_serve_tests::{hex_pk, register_interest_for_test, seed_events};
 use super::*;
-use crate::planner::InterestShape;
+use crate::planner::{canonical_filter_hash, InterestShape};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::StoreQuery;
 use std::collections::BTreeSet;
@@ -192,8 +192,6 @@ fn budget_truncated_etag_serve_is_not_floored() {
 #[test]
 fn fully_served_etag_shape_is_still_floored() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Presence-floor path: disable the now-default-ON ledger (deleted in Stage E).
-    kernel.set_coverage_ledger_enabled(false);
     let base_ts: u64 = 1_700_000_000;
     let target_hex = hex_pk("e8");
     // 2 stored matches — well within budget and depth, so no truncation.
@@ -204,6 +202,15 @@ fn fully_served_etag_shape_is_still_floored() {
     kernel.clear_served_interest_shapes();
     kernel.enqueue_cache_serve(&shape, 0xC0DE);
     kernel.run_cache_serve_step();
+
+    // K3 Stage E: the floor comes from the coverage ledger (sole source after
+    // Stage E). Seed a coverage row at `base_ts + 1` (the newest stored match)
+    // on the relay `watermark_for_shape_for_test` queries against.
+    kernel.event_store_handle().record_coverage(
+        &canonical_filter_hash(&shape),
+        "wss://watermark-test.invalid",
+        base_ts + 1,
+    );
 
     let floor = kernel.lifecycle.watermark_for_shape_for_test(&shape);
     assert_eq!(

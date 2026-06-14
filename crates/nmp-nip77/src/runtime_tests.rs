@@ -9,7 +9,7 @@ use nmp_coverage_gate::CoverageGate;
 use nostr::{ClientMessage, JsonUtil as _};
 use serde_json::Value;
 
-use crate::codec::{hex_decode, hex_decode_size_limited, hex_encode};
+use crate::codec::{hex_decode, hex_encode};
 use crate::{NegentropySyncRuntime, RelayNegentropyState, SyncedItem, FRAME_SIZE_LIMIT};
 
 fn author(n: u8) -> String {
@@ -63,12 +63,12 @@ fn counts_three_kinds_times_twenty_authors() {
 fn below_threshold_falls_back_to_raw_req() {
     let runtime = NegentropySyncRuntime::new(CoverageGate::default());
     let mut kernel = Kernel::testing_new(50);
-    // The coverage ledger now defaults ON, and an un-synced shape (no coverage
-    // row) prefers a full-window negentropy reconciliation regardless of fanout
-    // (the K3 staleness gate, exercised in runtime_tests_k3). This test pins the
-    // pure fanout-gate path, so disable the ledger to keep the staleness gate
-    // inert (the flag-off path removed in K3 Stage E).
-    kernel.set_coverage_ledger_enabled(false);
+    // K3 Stage E: seed a coverage row so the staleness gate sees the shape as
+    // "covered" and falls through to the fanout heuristic. The sub_id is
+    // "sub-large", so the filter_hash (ledger key) is "large".
+    kernel
+        .event_store_handle()
+        .record_coverage("large", "wss://relay.example", 1_700_000_000);
     assert!(runtime
         .intercept_req(&mut kernel, &ctx(24, &[3, 10_000]))
         .is_none());
@@ -321,8 +321,14 @@ fn done_reconcile_pushes_non_zero_session_stats_to_kernel() {
 
     // Relay server has event_B (shared) and event_C (relay-only).
     let relay_items = vec![
-        SyncedItem { created_at: 2_000, id: event_b },
-        SyncedItem { created_at: 3_000, id: event_c },
+        SyncedItem {
+            created_at: 2_000,
+            id: event_b,
+        },
+        SyncedItem {
+            created_at: 3_000,
+            id: event_c,
+        },
     ];
     let mut server = negentropy_server(relay_items);
     let mut client_payload = client_neg_payload(opened[0].text());
@@ -347,9 +353,18 @@ fn done_reconcile_pushes_non_zero_session_stats_to_kernel() {
     let need = kernel.negentropy_sync_need_ids_for_test();
     let avoided = kernel.negentropy_sync_transfer_avoided_bytes_for_test();
 
-    assert!(rounds > 0, "rounds must be non-zero after a completed session, got {rounds}");
-    assert!(have > 0, "have_ids must be non-zero (event_A is client-only), got {have}");
-    assert!(need > 0, "need_ids must be non-zero (event_C is relay-only), got {need}");
+    assert!(
+        rounds > 0,
+        "rounds must be non-zero after a completed session, got {rounds}"
+    );
+    assert!(
+        have > 0,
+        "have_ids must be non-zero (event_A is client-only), got {have}"
+    );
+    assert!(
+        need > 0,
+        "need_ids must be non-zero (event_C is relay-only), got {need}"
+    );
     assert!(
         avoided > 0,
         "transfer_avoided_bytes must be non-zero (event_B in both — no re-fetch), got {avoided}"
@@ -423,66 +438,4 @@ fn frame_filter(text: &str, verb: &str) -> Value {
     let value: Value = serde_json::from_str(text).expect("client message JSON");
     assert_eq!(value[0], Value::from(verb));
     value[2].clone()
-}
-
-/// GAP-6: a relay-controlled `NEG-MSG` whose hex payload exceeds
-/// `FRAME_SIZE_LIMIT * 2` characters must be rejected with a size-gate error
-/// before the hex-decode allocation, and the runtime must fall back to the
-/// plain `REQ` path.
-///
-/// The pre-fix code called `hex_decode` on the raw `message` field
-/// immediately, which did `Vec::with_capacity(s.len()/2)` before any size
-/// check — a relay could send ~64 MiB of hex (tungstenite frame limit) and
-/// trigger a ~32 MiB alloc per message.  The fix rejects oversize payloads
-/// via a length check before `hex_decode` is called at all.
-///
-/// This test verifies the runtime-level behavior (fallback REQ) AND that the
-/// codec-level size gate fires on the oversize string.
-#[test]
-fn oversize_neg_msg_falls_back_without_giant_alloc() {
-    // Build an oversized hex string: FRAME_SIZE_LIMIT*2 + 2 hex chars.
-    let oversize_len = (FRAME_SIZE_LIMIT as usize) * 2 + 2;
-    // A string of 'a' repeated is valid lowercase hex but far too large.
-    let oversize_hex = "aa".repeat(oversize_len / 2);
-    assert!(oversize_hex.len() > FRAME_SIZE_LIMIT as usize * 2);
-
-    // Verify the codec-level gate rejects before allocating.
-    assert!(
-        hex_decode_size_limited(&oversize_hex).is_err(),
-        "codec size gate must reject oversize hex before alloc"
-    );
-
-    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
-    let mut kernel = Kernel::testing_new(50);
-
-    // Open a NIP-77 session so the runtime has state for "sub-large".
-    let opened = runtime
-        .intercept_req(&mut kernel, &ctx(50, &[3]))
-        .expect("large filter must open NIP-77");
-    assert_eq!(opened.len(), 1);
-
-    // Deliver the oversize NEG-MSG from the relay.
-    let relay_msg = format!(r#"["NEG-MSG","sub-large","{}"]"#, oversize_hex);
-    let out = runtime.on_relay_text(&mut kernel, "wss://relay.example", &relay_msg);
-
-    // Must fall back to a plain REQ, not return empty or panic.
-    assert_eq!(out.len(), 1, "oversize NEG-MSG must produce a fallback REQ");
-    assert!(
-        out[0].text().starts_with(r#"["REQ","sub-large","#),
-        "fallback must be a REQ, got: {}",
-        out[0].text()
-    );
-}
-
-/// Within-limit NEG-MSG must still decode and reconcile normally (the size
-/// gate must not block legitimate messages).
-#[test]
-fn normal_size_neg_msg_is_not_rejected_by_size_gate() {
-    // A small valid hex payload (16 bytes = 32 hex chars) is well within limit.
-    let small_hex = "aa".repeat(16);
-    assert!(small_hex.len() <= FRAME_SIZE_LIMIT as usize * 2);
-    assert!(
-        hex_decode_size_limited(&small_hex).is_ok(),
-        "size gate must not block within-limit hex"
-    );
 }
