@@ -146,7 +146,7 @@ it is replaced:
   for that shape is not provably coherent with what eviction may have removed;
   refuse to floor that shape for the tick rather than risk a hole.
 
-### Stage C — unify the predicate (precondition for the ledger swap)
+### Stage C — unify the predicate (precondition for the ledger swap) — LANDED
 
 Implement `watermark_fn` OVER `shape_to_store_queries` so the floor computation
 and the store-serve read the SAME shape→query mapping. Collapse the three
@@ -154,6 +154,36 @@ hand-synced copies (`watermark_fn`, `shape_floor`, `shape_to_store_queries`) to
 one. This is the precondition that makes Stage D reviewable: one mapping to
 migrate from presence to ledger, not three copies to keep in lockstep across the
 swap.
+
+**Disposition (2026-06-14).** The first copy was already collapsed: the ADR-0045
+§6 / #1119 refactor routed the live `watermark_fn` (`kernel/mod.rs`) through
+`cache_serve::watermark_from_queries`, which folds over `shape_to_store_queries`
+— "one mapping read two ways". Stage C verified that and removed the **two
+residual copies** in the floor-coherent eviction helpers
+(`kernel/ram_eviction_floor.rs`):
+
+- `shape_floor` carried a hand-rolled shape→`StoreQuery` match that had ALREADY
+  DRIFTED — its addressable (`KindDtag`) branch folded multi-coord with
+  max-ignoring-empties (the pre-B1 unsafe policy) while `watermark_from_queries`
+  uses the Stage B1 min/abort rule. It now routes through
+  `watermark_from_queries`, gaining a `truncated: &HashSet<u64>` parameter wired
+  to the live `Kernel::etag_ptag_truncated_serves` set so it refuses exactly the
+  Stage B3 cursor-less shapes the installed floor refuses. `shape_floor` is now
+  byte-identical to the `watermark_fn` floor.
+- `pin_shape_events_below_floor` (which mirrored `shape_floor`'s mapping to pin
+  below-floor events) now derives its queries from `shape_to_store_queries` and
+  applies the `<= floor` bound, rather than re-deriving the mapping by hand.
+
+The unification is **locked** by `gc_floor_unification_tests.rs`:
+`shape_floor_matches_unified_floor_for_partial_addressable_shape` and
+`shape_floor_equals_unified_floor_for_shape_battery` assert that for a battery of
+representative `InterestShape`s the floor-coherent `shape_floor` equals
+`watermark_from_queries(shape, …)` exactly (same kinds/authors/tags/coords fold,
+same min/abort and truncation policy). Both were verified RED against the
+reintroduced drift (the addressable branch produced `Some(stored newest)` vs the
+unified `None`) before passing GREEN. There is now a SINGLE
+`shape_to_store_queries` mapping, so Stage D migrates one mapping from presence to
+ledger, not three.
 
 ### Stage D — wire the coverage ledger as the sole since-floor source (behind a flag)
 

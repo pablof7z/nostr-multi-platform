@@ -93,15 +93,16 @@
 use super::Kernel;
 use std::collections::HashSet;
 
-// #1090 Stage 2 — floor-coherent store-scan helpers, kept in a sibling file so
-// `ram_eviction.rs` stays under the 500-LOC cap. Declared here (not in
-// `kernel/mod.rs`) so the already-at-baseline `kernel/mod.rs` is not grown.
+// Sibling files (kept out of at-baseline `kernel/mod.rs`): #1090 floor helpers +
+// tests, and the K3 Stage C (ADR-0056) floor⇄serve unification lock tests.
 #[path = "ram_eviction_floor.rs"]
 mod floor;
-// #1090 Stage 2 — floor-coherence tests (sibling file, same rationale).
 #[cfg(test)]
 #[path = "gc_floor_coherent_tests.rs"]
 mod gc_floor_coherent_tests;
+#[cfg(test)]
+#[path = "gc_floor_unification_tests.rs"]
+mod gc_floor_unification_tests;
 
 /// High-watermark for `self.events`.  2 × `TIMELINE_CACHE_LIMIT` (500).
 pub(super) const EVENTS_RAM_HWM: usize = 1_000;
@@ -335,15 +336,16 @@ impl Kernel {
     /// shape's scan was truncated by the [`floor::PIN_SCAN_MAX_EVENTS`] budget.
     /// Callers must treat `false` conservatively — see `derive_store_pin_set`.
     fn add_floor_coherent_pins(&self, pins: &mut HashSet<crate::store::EventId>) -> bool {
-        use floor::{pin_shape_events_below_floor, shape_floor, PinScanOutcome, PIN_SCAN_MAX_EVENTS};
+        use floor::{pin_shape_events_below_floor, shape_floor, PinScanOutcome};
 
         let active = self.lifecycle.registry().iter_active();
         if active.is_empty() {
             return true;
         }
+        let truncated = floor::truncated_serve_snapshot(&self.etag_ptag_truncated_serves);
         let mut complete = true;
         for interest in &active {
-            let Some(floor) = shape_floor(&interest.shape, self.store.as_ref()) else {
+            let Some(floor) = shape_floor(&interest.shape, self.store.as_ref(), &truncated) else {
                 continue;
             };
             let outcome = pin_shape_events_below_floor(
@@ -351,14 +353,14 @@ impl Kernel {
                 floor,
                 self.store.as_ref(),
                 pins,
-                PIN_SCAN_MAX_EVENTS,
+                floor::PIN_SCAN_MAX_EVENTS,
             );
             if outcome == PinScanOutcome::Truncated {
                 tracing::warn!(
                     "floor-coherent pin scan truncated at {} events for shape \
                      (Etag/Ptag with many matches); LRU eviction deferred this tick. \
                      See #1348.",
-                    PIN_SCAN_MAX_EVENTS,
+                    floor::PIN_SCAN_MAX_EVENTS,
                 );
                 complete = false;
                 // Do not break: keep scanning remaining shapes so we pin as
