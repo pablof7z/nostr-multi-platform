@@ -67,7 +67,7 @@ struct NotificationsView: View {
             Image(systemName: "checkmark.seal")
                 .font(.system(size: 34, weight: .light))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(ChirpColor.success)
+                .foregroundStyle(.secondary)
             Text("All published")
                 .font(.headline)
             Text("No relay acknowledgements are outstanding.")

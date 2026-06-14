@@ -106,15 +106,20 @@ struct ComposeView: View {
         }
     }
 
+    @ViewBuilder
     private var composeFooter: some View {
-        HStack {
-            Spacer()
-            ComposeProgressRing(used: charCount, limit: characterLimit)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .overlay(alignment: .top) {
-            Divider()
+        // The character-count ring only earns space once the user is typing —
+        // an empty compose sheet should be a clean editor, not a stray ring.
+        if charCount > 0 {
+            HStack {
+                Spacer()
+                ComposeProgressRing(used: charCount, limit: characterLimit)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .overlay(alignment: .top) {
+                Divider()
+            }
         }
     }
 

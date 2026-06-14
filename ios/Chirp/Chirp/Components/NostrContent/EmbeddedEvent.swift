@@ -66,22 +66,48 @@ struct EmbeddedEvent: View {
             }
         } else {
             // Loading state — the kernel is fetching the event. No spinner
-            // (D8); show a subdued placeholder identical in shape to the
-            // resolved render.
-            VStack(alignment: .leading, spacing: 4) {
-                Text("loading embedded event…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(shortUri(uri))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+            // (D8); a subdued skeleton matching the resolved quote-card
+            // geometry. Never surface the raw bech32 URI to the user.
+            EmbeddedEventSkeleton()
         }
     }
+}
 
-    private func shortUri(_ value: String) -> String {
-        guard value.count > 24 else { return value }
-        return "\(value.prefix(14))…\(value.suffix(8))"
+/// Redacted placeholder shown while an embedded event is being fetched.
+/// Mirrors the avatar + name + two-line body shape of a resolved quote card
+/// so the row doesn't reflow when the real content arrives.
+private struct EmbeddedEventSkeleton: View {
+    private var bar: Color { ChirpColor.secondaryFill }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(bar)
+                    .frame(width: 22, height: 22)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(bar)
+                    .frame(width: 110, height: 10)
+                Spacer(minLength: 0)
+            }
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(bar)
+                .frame(maxWidth: .infinity)
+                .frame(height: 10)
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(bar)
+                .frame(width: 180, height: 10)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(ChirpColor.surface.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(ChirpColor.hairline.opacity(0.5), lineWidth: 0.5)
+        )
+        .accessibilityLabel("Loading embedded note")
     }
 }

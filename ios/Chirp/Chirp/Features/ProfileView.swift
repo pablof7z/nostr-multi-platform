@@ -126,18 +126,11 @@ struct ProfileView: View {
     @ViewBuilder
     private var profileHeader: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Screen-specific chrome: gradient banner the avatar overlaps.
+            // Neutral banner the avatar overlaps. A flat surface fill (no
+            // decorative gradient) keeps the screen monochrome; a real banner
+            // image can replace this once the projection carries one.
             Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            ChirpColor.avatarBase(from: profile?.pubkey.pubkeyColorHex).opacity(0.28),
-                            ChirpColor.surface
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(ChirpColor.surface)
                 .frame(height: 118)
                 .overlay(alignment: .bottom) {
                     Divider()
@@ -195,9 +188,10 @@ struct ProfileView: View {
                         .font(.body.monospaced())
                         .foregroundStyle(.secondary)
                     Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 11))
+                        .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                 }
+                .frame(minHeight: 44, alignment: .leading)
             }
             .buttonStyle(.plain)
 
@@ -226,23 +220,22 @@ struct ProfileView: View {
         } else {
             let context = noteRenderContext
             LazyVStack(spacing: 0) {
-                VStack(spacing: 8) {
-                    HStack(spacing: 6) {
-                        Text("Posts")
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Text("\(items.count)")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("profile-notes-count-value")
-                    }
-
-                    Capsule()
-                        .fill(ChirpColor.accent)
-                        .frame(width: 36, height: 3)
+                // Left-aligned section header — no decorative centered
+                // underline; the divider below carries the separation.
+                HStack(spacing: 8) {
+                    Text("Posts")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text("\(items.count)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("profile-notes-count-value")
+                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
 
                 Divider()
 
@@ -268,7 +261,6 @@ struct ProfileView: View {
                     if root.id != items.last?.id {
                         Divider()
                             .padding(.leading, 68)
-                            .opacity(0.35)
                     }
                 }
             }
