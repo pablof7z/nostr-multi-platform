@@ -35,7 +35,49 @@ struct ProfileView: View {
         )
     }
 
-    private var primaryAction: ProfileAction? { nil }
+    /// True when the screen shows the signed-in account's own profile.
+    private var isOwnProfile: Bool { model.activeAccount == pubkey }
+
+    /// True when the active account's NIP-02 follow set already contains
+    /// `pubkey`. Reads the same `FollowListStore` the kernel snapshot feeds
+    /// (`model.followList.follows`); the shell never recomputes graph state.
+    private var isFollowing: Bool {
+        model.followList.follows.contains { $0.pubkey == pubkey }
+    }
+
+    /// The single primary button rendered over the profile header. Own profile
+    /// ⇒ the local `edit_profile` intent (opens the edit sheet, `dispatch ==
+    /// nil`); another account ⇒ Follow / Unfollow, whose `perform()` routes
+    /// through the existing typed `KernelModel.follow(_:)` / `unfollow(_:)`
+    /// helpers (the `nmp-app-chirp` ActionModule seam). The shell authors only
+    /// the label/icon for presentation; it never builds namespaces or bodies.
+    private var primaryAction: ProfileAction? {
+        if isOwnProfile {
+            return ProfileAction(
+                kind: "edit_profile",
+                label: "Edit Profile",
+                targetPubkey: pubkey,
+                iconName: "pencil",
+                dispatch: nil
+            )
+        }
+        if isFollowing {
+            return ProfileAction(
+                kind: "unfollow",
+                label: "Following",
+                targetPubkey: pubkey,
+                iconName: "checkmark",
+                dispatch: nil
+            )
+        }
+        return ProfileAction(
+            kind: "follow",
+            label: "Follow",
+            targetPubkey: pubkey,
+            iconName: "person.badge.plus",
+            dispatch: nil
+        )
+    }
 
     /// Render context fed to each `ProfileNoteRow`. `mentionProfiles` is the
     /// Rust-derived projection (aim.md §4.2); the two remaining lookups are
@@ -235,14 +277,23 @@ struct ProfileView: View {
 
     // MARK: – Helpers
 
-    /// Branches on presence-of-dispatch (write vs local intent) — NOT on
-    /// `action.kind` (aim.md §4.4: writes flow through registered
-    /// ActionModules, shell binds blindly).
+    /// Routes the primary action to the existing typed write helpers.
+    ///
+    /// V-112 (ADR-0042) deleted the Rust `profile_action_for` authoring, so
+    /// follow/unfollow now flow through the `nmp-app-chirp` ActionModule seam
+    /// directly via `KernelModel.follow(_:)` / `unfollow(_:)` — Rust still
+    /// authors the namespace + body inside `nmp_app_chirp_action_spec`; the
+    /// shell only forwards the raw pubkey, exactly like the React / Repost row
+    /// buttons. `edit_profile` is a local UI intent (no write).
     private func perform(_ action: ProfileAction) {
-        if let dispatch = action.dispatch {
-            model.dispatchProfileAction(dispatch)
+        switch action.kind {
+        case "follow":
+            model.follow(action.targetPubkey)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        } else {
+        case "unfollow":
+            model.unfollow(action.targetPubkey)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        default:
             isEditingProfile = true
         }
     }

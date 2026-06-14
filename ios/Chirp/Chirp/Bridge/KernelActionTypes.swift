@@ -387,25 +387,32 @@ extension ProfileCard {
     var displayLabel: String { displayName ?? pubkey.shortHex }
 }
 
-/// Dispatch spec for a `ProfileAction` that fires a write through
-/// `nmp_app_dispatch_action`. Present for follow / unfollow, absent for the
-/// local-UI `edit_profile` intent. The shell branches on
-/// `profileAction.dispatch != nil`, never on `kind` — aim.md §4.4 forbids a
-/// Swift `switch action.kind { … }` deciding which write to perform.
+/// Generic dispatch spec carrying a Rust-authored `namespace` + `bodyJson`
+/// pair, fired verbatim through `nmp_app_dispatch_action`. Still used by the
+/// generic `KernelModel.dispatchProfileAction` seam (e.g. MarmotBridge); the
+/// `ProfileView` follow/unfollow buttons now route through the typed
+/// `KernelModel.follow(_:)` / `unfollow(_:)` helpers instead (see below).
 struct ProfileDispatchSpec: Decodable, Equatable {
     let namespace: String
     let bodyJson: String
 }
 
+/// A primary profile button. Post-V112 (ADR-0042) the Rust-side
+/// `profile_action_for` authoring was deleted, so `ProfileView` now builds
+/// this value host-side from the follow-set snapshot. `kind` selects the
+/// existing typed write helper (`follow` / `unfollow`) or the local
+/// `edit_profile` intent — the helper, not the shell, still authors the
+/// dispatch namespace + body inside `nmp_app_chirp_action_spec`, so no
+/// business logic leaks into Swift.
 struct ProfileAction: Decodable, Equatable {
-    /// Stable discriminator preserved for diagnostics/tests. The shell must
-    /// NOT switch on this — branch on `dispatch` instead.
+    /// Selects the typed write helper or the local edit intent.
     let kind: String
     let label: String
     let targetPubkey: String
     /// SF Symbol name the shell renders without further mapping.
     let iconName: String
-    /// Present for write actions; absent for local intents (edit sheet).
+    /// Retained for the generic dispatch seam; `nil` for the host-built
+    /// follow/unfollow/edit actions, which route through typed helpers.
     let dispatch: ProfileDispatchSpec?
 }
 
