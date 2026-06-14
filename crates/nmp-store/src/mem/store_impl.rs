@@ -177,4 +177,29 @@ impl EventStore for MemEventStore {
             state.replaceable_freshness.insert(key, ts_ms);
         }
     }
+
+    // ─── K3 coverage ledger (ADR-0056 §3, Stage D1) ────────────────────────────
+
+    fn record_coverage(&self, filter_hash: &str, relay: &str, covered_through: u64) {
+        if let Ok(mut state) = self.lock() {
+            let key = (filter_hash.to_string(), relay.to_string());
+            let existing = state.coverage.get(&key).copied().unwrap_or(0);
+            // Monotonic advance: a later completion can only raise the proven
+            // downward-closed bound, never lower it. Only insert when the bound
+            // actually advances above 0 — a `covered_through == 0` call (no
+            // coverage) must NOT materialise a misleading row, matching the LMDB
+            // backend's "write only when `next > existing`" semantics.
+            if covered_through > existing {
+                state.coverage.insert(key, covered_through);
+            }
+        }
+    }
+
+    fn get_coverage(&self, filter_hash: &str, relay: &str) -> Option<u64> {
+        self.lock()
+            .ok()?
+            .coverage
+            .get(&(filter_hash.to_string(), relay.to_string()))
+            .copied()
+    }
 }

@@ -187,21 +187,68 @@ ledger, not three.
 
 ### Stage D — wire the coverage ledger as the sole since-floor source (behind a flag)
 
+Stage D is the riskiest item in the program (it flips the read-path floor from
+presence-based to coverage-based), so it is split into three independently
+shippable, separately-gated units. D1 is additive and safe to land immediately;
+D2 is the read surgery (fixture-relay-gated); D3 is the eviction coherence leg.
+
+#### Stage D1 — additive ledger WRITE path, off-by-default flag (LANDED)
+
 - Re-create the ledger type (`CoverageRow { filter_hash, relay, covered_through }`)
-  and its store sub-db (the #1090-deleted machinery, rebuilt with real
-  readers/writers this time).
-- **Written** by the sync engine at EOSE (plain REQ) and NEG-DONE (negentropy),
-  per `(filter_hash, relay)`.
-- **Read** by `recompile` (the floor source) and by the coverage gate (refuse to
-  floor an uncovered `(filter, relay)`).
-- **Eviction⇄ledger coherence:** LRU eviction MUST lower `covered_through` for any
-  evicted range, or it punches a permanent hole (a separate High finding). The
-  existing floor-coherent pin set (#1090/#1327) already keeps below-floor events
-  pinned; Stage D extends the same coherence to the ledger by having eviction of a
-  range below `covered_through` lower the ledger rather than strand the floor.
-- Ship behind a **default-on flag for exactly ONE release cut**, so git-rev-pinning
-  external consumers (podcast-player, hl, win-the-day) can pin across the change.
-  The presence-derived floor remains as a fallback during migration ONLY.
+  and its store sub-db (the #1090-deleted `nmp-watermarks` machinery, rebuilt with
+  real readers/writers this time): `nmp-store/src/types/coverage.rs`,
+  `EventStore::record_coverage`/`get_coverage` on BOTH backends (`MemEventStore`
+  HashMap + LMDB `nmp-coverage` sub-db).
+- **Written** at EOSE (`kernel/ingest/eose.rs::handle_eose`) and NEG-DONE
+  (`nmp-nip77/runtime.rs` → `Kernel::record_neg_done_coverage`), per
+  `(filter_hash, relay)` where `filter_hash` is the SAME `canonical_filter_hash`
+  the `sub-<hash>` wire id and the recompile floor already key on.
+- **Honest coverage (the invariant that makes D2 sound where presence is not):**
+  `covered_through` is downward-closed — a row asserts coverage of `[0, T]` and
+  nothing weaker. NEG-DONE records `now` (un-floored `[0, ∞)` per Stage A); an
+  EOSE records `now` ONLY for an un-floored REQ, and `0` (no-op) for a
+  `since`-floored REQ whose EOSE proves only `[floor, now]` — it must NOT
+  over-claim `[0, floor)`. The REQ's `since` rides on `WireSub.since_floor`.
+- **No read change:** `recompile`/`apply_watermark_rewrite` is untouched; the
+  since-floor stays presence-derived. The write path is gated behind
+  `Kernel::set_coverage_ledger_enabled` (DEFAULT **false**), so D1 is a pure
+  additive no-op until D2.
+
+#### Stage D2 — the read swap (fixture-relay-gated)
+
+- `recompile`'s floor reads the ledger entry for `(filter_hash, relay)` instead of
+  computing presence; the presence-derived floor remains as a **fallback ONLY when
+  the ledger has no row** (migration safety). NOTE: the floor read site
+  (`apply_watermark_rewrite` → `watermark_fn(&shape)`) is currently per-shape, not
+  per-relay — D2 must thread the relay into the floor computation so the ledger is
+  read by `(filter_hash, relay)`.
+- The coverage gate consults ledger **staleness** (no completed-coverage row ⇒
+  refuse to floor) instead of fanout-only.
+- **MERGE GATE:** a `nak serve` in-memory fixture-relay journey test (via the
+  `nmp-testing` real-relay harness) proving **follow-a-user-AFTER-a-thread-reply
+  backfills the author's FULL history** (the H1 headline — presence-floor would
+  suppress it; ledger-floor must not). Unit tests on the ledger are necessary but
+  not sufficient.
+- The flag flips **default-on for exactly ONE release cut** (this PR or a later
+  release-cut PR, owner's call) so git-rev-pinning external consumers
+  (podcast-player, hl, win-the-day) can pin across the change. The presence floor
+  remains the fallback during migration ONLY.
+
+#### Stage D3 — eviction⇄ledger coherence
+
+- **LRU eviction IS ENABLED in production** (`GcBudget::production` sets
+  `max_total_events = HOT_EVENT_CEILING = 10_000`, #1090 Stage 3; only the
+  test/`default` budget is `usize::MAX`). So D3 is a real requirement, not
+  design-only.
+- Today the floor-coherent pin set (#1090 Stage 2 / #1327,
+  `ram_eviction_floor.rs::pin_shape_events_below_floor`) pins every event at/below
+  the PRESENCE floor so eviction never strands it. After D2 makes the ledger the
+  floor source, the same pin set keeps `shape_floor`/pin == the ledger floor for
+  covered shapes. **Rule:** if eviction can delete events below an active
+  `covered_through`, it MUST lower that `covered_through` in the **same
+  transaction** (or it punches the permanent hole the memory review flagged).
+  Specify both legs precisely (pin-below-ledger-floor + eviction-lowers-ledger) at
+  D3 start; re-verify eviction enablement and the pin-set wiring then.
 
 ### Stage E — delete the presence heuristic; correct the docs
 
