@@ -49,24 +49,41 @@ export default function App(): JSX.Element {
     if (!runtime.anyIndexerConnected() || profileRetryStarted) return;
     profileRetryStarted = true;
     let attempt = 0;
+    // Per-pubkey attempt at which we last (re)claimed it. We only release-reclaim
+    // a pubkey after it has stayed unresolved for RECLAIM_AFTER ticks — claiming
+    // every tick would cancel an in-flight kind:0 resolution that takes longer
+    // than one interval (the cause of a late-entering author never resolving).
+    const lastClaimAt = new Map<string, number>();
+    const RECLAIM_AFTER = 3; // ticks (×4s ≈ 12s) before assuming the REQ dropped
     const tick = () => {
+      const events = [noteRaw(), articleRaw(), highlightRaw()];
       const desired = new Set<string>([SHOWCASE_PUBKEY]);
-      for (const ev of [noteRaw(), articleRaw(), highlightRaw()]) {
-        if (ev?.authorPubkey) desired.add(ev.authorPubkey);
-      }
+      for (const ev of events) if (ev?.authorPubkey) desired.add(ev.authorPubkey);
       let allResolved = true;
       for (const pk of desired) {
         if (profileResolved(pk)) continue;
         allResolved = false;
         const c = profileConsumer(pk);
-        if (attempt > 0) runtime.host.releaseProfile(pk, c);
-        runtime.host.claimProfile(pk, c);
+        const claimedAt = lastClaimAt.get(pk);
+        if (claimedAt === undefined) {
+          runtime.host.claimProfile(pk, c); // first claim
+          lastClaimAt.set(pk, attempt);
+        } else if (attempt - claimedAt >= RECLAIM_AFTER) {
+          runtime.host.releaseProfile(pk, c); // clear dropped-REQ dedupe state
+          runtime.host.claimProfile(pk, c); // fresh REQ
+          lastClaimAt.set(pk, attempt);
+        }
       }
       attempt += 1;
-      if (allResolved || attempt >= 20) clearInterval(timer);
+      // Keep going until every event has resolved AND every author profile is
+      // resolved — otherwise we'd stop after the showcase resolves but before a
+      // late-arriving event adds its author to the desired set. The attempt
+      // budget bounds the loop if a relay never delivers.
+      const eventsAllResolved = events.every((ev) => ev !== undefined);
+      if ((allResolved && eventsAllResolved) || attempt >= 30) clearInterval(timer);
     };
     tick();
-    const timer = setInterval(tick, 3000);
+    const timer = setInterval(tick, 4000);
     onCleanup(() => clearInterval(timer));
   });
 
@@ -91,6 +108,11 @@ export default function App(): JSX.Element {
     if (!runtime.anyContentConnected() || claimStarted) return;
     claimStarted = true;
     let attempt = 0;
+    // Per-event last-(re)claim tick. As with profiles, we only release-reclaim
+    // after RECLAIM_AFTER idle ticks so we don't cancel an in-flight fetch that
+    // takes longer than one interval.
+    const lastClaimAt = new Map<string, number>();
+    const RECLAIM_AFTER = 3;
     const tick = () => {
       let allResolved = true;
       for (const t of claimTargets) {
@@ -98,16 +120,23 @@ export default function App(): JSX.Element {
         allResolved = false;
         // claim_event dedupes ("already requested → no fetch"), so a first REQ
         // dropped because its hint relay wasn't connected yet would never retry.
-        // Release first (drops the last consumer → clears the requested state),
-        // then re-claim to force a FRESH REQ now that more relays are connected.
-        if (attempt > 0) runtime.releaseEvent(t.uri, t.consumer);
-        runtime.claimEvent(t.uri, t.consumer);
+        // Release (drops the last consumer → clears the requested state) then
+        // re-claim to force a FRESH REQ once more relays are connected.
+        const claimedAt = lastClaimAt.get(t.id);
+        if (claimedAt === undefined) {
+          runtime.claimEvent(t.uri, t.consumer);
+          lastClaimAt.set(t.id, attempt);
+        } else if (attempt - claimedAt >= RECLAIM_AFTER) {
+          runtime.releaseEvent(t.uri, t.consumer);
+          runtime.claimEvent(t.uri, t.consumer);
+          lastClaimAt.set(t.id, attempt);
+        }
       }
       attempt += 1;
-      if (allResolved || attempt >= 15) clearInterval(timer);
+      if (allResolved || attempt >= 30) clearInterval(timer);
     };
     tick();
-    const timer = setInterval(tick, 3000);
+    const timer = setInterval(tick, 4000);
     onCleanup(() => clearInterval(timer));
   });
 
