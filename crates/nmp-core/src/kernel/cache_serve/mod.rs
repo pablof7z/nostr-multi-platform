@@ -87,7 +87,8 @@ pub(super) mod continuation;
 pub(super) mod queries;
 
 pub(in crate::kernel) use queries::{
-    completion_key_for_interest, shape_needs_ingest_parser_dispatch, shape_to_store_queries,
+    completion_key_for_interest, query_since_mut, query_until_mut,
+    shape_needs_ingest_parser_dispatch, shape_to_store_queries, watermark_from_queries,
 };
 
 use super::Kernel;

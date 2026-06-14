@@ -78,9 +78,15 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
     // the original E1 watermark refusal).
     if !shape.tags.is_empty() {
         if shape.tags.len() == 1 {
-            let (tag_key, values) = shape.tags.iter().next().unwrap(); // doctrine-allow: D6 — infallible: len==1 checked above; BTreeMap::iter().next() is always Some on a non-empty map
+            // let-else (queries.rs:156 idiom): a non-empty single-entry BTreeMap
+            // always yields one entry; treat absence as "not covered".
+            let Some((tag_key, values)) = shape.tags.iter().next() else {
+                return Vec::new();
+            };
             if values.len() == 1 {
-                let target_hex = values.iter().next().unwrap(); // doctrine-allow: D6 — infallible: len==1 checked above; BTreeSet::iter().next() is always Some on a non-empty set
+                let Some(target_hex) = values.iter().next() else {
+                    return Vec::new();
+                };
                 let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
 
                 if tag_key == "e" {
@@ -137,6 +143,68 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
             })
             .collect()
     }
+}
+
+/// Compute a watermark floor for `shape` by folding the per-query newest
+/// timestamps returned by `scan` over `shape_to_store_queries(shape)` — the
+/// SINGLE source of shape→store-query truth (ADR-0045 §6 "one table read two
+/// ways" / issue #1119).
+///
+/// `scan` runs the actual store probe for one query (typically a
+/// `query_visit(q, 1, …)` that returns the newest stored `created_at`, or
+/// `None` when nothing matches). It is invoked once per query in
+/// [`shape_to_store_queries`] order, with `since`/`until` already normalized to
+/// `None` (the watermark scan wants the newest match regardless of window).
+///
+/// Folding policy (preserves the prior `watermark_fn` semantics exactly):
+///
+/// - **`AuthorKind`** (per-author feed): `min` across authors, but any author
+///   with no stored events (`scan → None`) aborts the whole floor (`None`) —
+///   their history must be fetched in full (V-118).
+/// - **`KindDtag`** (addressable): `max` across coords, empties ignored.
+/// - **`Etag` / `Ptag`**: the single query's value (or `None`).
+/// - **`KindTime`** (zero-author global feed): never floored — no safe
+///   per-author floor exists, so the presence of any `KindTime` query forces
+///   `None`.
+///
+/// Returns `None` when the shape maps to no queries (uncovered → unfloored),
+/// which is exactly the §6 implication `floored ⇒ served`, now structural.
+pub(in crate::kernel) fn watermark_from_queries(
+    shape: &InterestShape,
+    mut scan: impl FnMut(&StoreQuery) -> Option<u64>,
+) -> Option<u64> {
+    let queries = shape_to_store_queries(shape);
+    if queries.is_empty() {
+        return None;
+    }
+
+    let mut author_min: Option<u64> = None;
+    let mut addr_max: Option<u64> = None;
+    let mut single: Option<u64> = None;
+
+    for query in &queries {
+        match query {
+            // Zero-author global feed: no safe floor exists.
+            StoreQuery::KindTime { .. } => return None,
+            StoreQuery::AuthorKind { .. } => {
+                // Any empty author aborts the whole floor (must backfill).
+                let ts = scan(query)?;
+                author_min = Some(author_min.map_or(ts, |prev| prev.min(ts)));
+            }
+            StoreQuery::KindDtag { .. } => {
+                if let Some(ts) = scan(query) {
+                    addr_max = Some(addr_max.map_or(ts, |prev| prev.max(ts)));
+                }
+            }
+            StoreQuery::Etag { .. } | StoreQuery::Ptag { .. } => {
+                single = scan(query);
+            }
+        }
+    }
+
+    // A shape maps to a homogeneous query family, so at most one of these is
+    // populated; `.or` picks whichever the family produced.
+    author_min.or(addr_max).or(single)
 }
 
 /// Whether a shape needs `IngestParser` dispatch in addition to normal
