@@ -24,7 +24,9 @@ mod s2_latency_hist;
 mod s3_snapshot_pressure;
 mod s4_reconciler_backpressure;
 mod s5_reentrancy;
-// ADR-0055 Rung 0 — single-projection-churn measurement (no hard gates).
+// ADR-0055 Rung 3 — single-projection-churn capstone measurement + gates.
+mod s6_gates;
+mod s6_oracle;
 mod s6_single_projection_churn;
 
 use report::{now_unix_seconds, write_scenario_report, ScenarioMetrics};
