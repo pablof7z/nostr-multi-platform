@@ -17,7 +17,14 @@ path = "src/main.rs"
 nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-content = { path = "../../../crates/nmp-content" }
-nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+# `test-support` is a TEST-ONLY feature ("Never enable in production builds" —
+# nmp-core/Cargo.toml). It compiles the ADR-0055 Rung-1 projection-rev oracle,
+# whose `run_projection_oracle` PANICS on any missed stamp. Enabling it on the
+# runtime dependency shipped that test harness inside the chirp-tui binary, so a
+# latent boot-time stale-stamp crashed the app and froze the terminal. The
+# feature is re-pinned under [dev-dependencies] below for the cfg(test) round-trip
+# test (`nmp_core::testing::spawn_actor`); it is never linked into the binary.
+nmp-core = { path = "../../../crates/nmp-core" }
 # ADR-0038: typed FlatBuffers sidecar decode for the `nmp.feed.home`
 # OP-centric feed projection (`nmp.nip01.opfeed` schema, descriptor `NOFS`).
 # The host prefers the typed `NOFS` payload when present and falls back to the
@@ -34,7 +41,12 @@ nmp-nip47 = { path = "../../../crates/nmp-nip47" }
 # `nmp-core::ffi` in step 11-final.
 # V-38: nmp-core no longer has a `wallet` feature; nmp-ffi exposes wallet
 # shims unconditionally that route through dispatch_action to `nmp-nip47`.
-nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
+# Runtime needs only the default `native` C-ABI surface (e.g.
+# `nmp_app_ack_action_stage`, which is `native`-gated — NOT test-support). The
+# `nmp_app_inject_*` / `nmp_app_read_projection_*` injectors are test-support and
+# are reached only by the cfg(test) round-trip test, so test-support is re-pinned
+# under [dev-dependencies] below rather than on the shipping binary.
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29"
@@ -51,6 +63,14 @@ ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }
+# `test-support` re-pin — TEST-ONLY. Enables nmp-core's `testing::spawn_actor` /
+# `ActorCommand` and the nmp-ffi `nmp_app_inject_*` injectors that the cfg(test)
+# round-trip test drives, AND the ADR-0055 projection-rev oracle (so the test
+# suite still fails loud on a missed stamp). Because these live in
+# [dev-dependencies], `cargo build`/`cargo run` of the binary never link them —
+# the oracle is present for `cargo test` only.
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
 # PR-B round-trip test: drives a REAL kernel actor (nmp_core::testing::spawn_actor)
 # and signs in with a local nsec, so the frame under test comes from the
 # production encoder (`encode_snapshot_with_envelope`).
