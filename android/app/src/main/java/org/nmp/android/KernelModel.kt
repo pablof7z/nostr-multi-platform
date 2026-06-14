@@ -91,78 +91,74 @@ class KernelModel : ViewModel() {
     }
 
     /**
-     * Android Keystore keyring capability handler. Registered synchronously
-     * before [start] calls identity-restore so the keyring is live when the
-     * kernel reads the persisted nsec.
+     * Cold-start the kernel: install the Keystore keyring capability, start the
+     * actor (which runs the Rust-side identity-restore read chain), wire the
+     * push listeners, and register Marmot against the restored key.
      *
-     * Initialised lazily on the first [start] call so the [Context] is not
-     * required at ViewModel construction time. Callers must invoke
-     * [startWithContext] instead of [start] when identity-restore is needed.
-     */
-    @Volatile
-    private var keystoreKeyringCapability: KeystoreKeyringCapability? = null
-
-    /**
-     * Start the kernel with a storage path and an Android [Context] for the
-     * Keystore keyring capability. Registers the keyring handler BEFORE
-     * calling identity-restore so the persisted secret can be retrieved on
-     * cold start. Prefer this over the context-free [start] when the app
-     * manages sign-in state across restarts.
+     * The keyring capability + identity-restore are UNCONDITIONAL (production
+     * and debug). This is the fix for the v1 regression where they only ran on a
+     * `BuildConfig.DEBUG`-gated test path: the kernel persists the active secret
+     * on sign-in and restores it on launch exclusively through this capability,
+     * so without it a signed-in user was logged out on every restart.
      *
-     * [testNsec] is null in production; pass only in headless UI tests.
-     * [testRelays] is null in production; when non-null it must be a JSON
-     * array of `["url","role"]` pairs that REPLACES the Chirp reference
-     * relays — used by E2E test harnesses to point the kernel at a local
-     * relay (e.g. `nak serve`). Kotlin ferries this string verbatim; all
-     * parsing and policy live in Rust (D7 / thin-shell principle).
+     * [testNsec] is null in production; pass a non-null nsec only in headless UI
+     * tests (it signs that secret in instead of reading the persisted one).
+     * [testRelays] is null in production; when non-null it must be a JSON array
+     * of `["url","role"]` pairs that REPLACES the Chirp reference relays — used
+     * by E2E harnesses to point the kernel at a local relay (e.g. `nak serve`).
+     * Both ride on top of the SAME launch path; they never select an alternate
+     * orchestration. Kotlin ferries them verbatim; all parsing and policy live
+     * in Rust (D7 / thin-shell principle).
      */
-    fun startWithContext(
+    fun start(
         context: Context,
         storagePath: String? = null,
         testNsec: String? = null,
         testRelays: String? = null,
     ) {
         if (started) return
-        keystoreKeyringCapability = KeystoreKeyringCapability(context.applicationContext)
-        bridge.setCapabilityHandler(keystoreKeyringCapability!!)
-        start(storagePath, testRelays)
-        bridge.identityRestore(
+        started = true
+        planKernelLaunch(
+            seam = BridgeLaunchSeam(
+                bridge = bridge,
+                // Installed unconditionally (production AND debug), mirroring iOS,
+                // which registers its keychain capability in `KernelModel.init`.
+                // The JNI bridge holds the GlobalRef once installed, so no Kotlin
+                // field needs to retain it.
+                capability = KeystoreKeyringCapability(context.applicationContext),
+                applyFrame = { bytes -> applyFrame(bytes) },
+                onSignerRequest = { requestJson -> dispatchSignerRequestToMain(requestJson) },
+            ),
+            storagePath = storagePath,
             dbDir = storagePath ?: context.filesDir.path,
             testNsec = testNsec,
+            testRelays = testRelays,
         )
     }
 
-    fun start(storagePath: String? = null, testRelays: String? = null) {
-        if (started) return
-        started = true
-        if (!storagePath.isNullOrBlank()) {
-            bridge.setStoragePath(storagePath)
-        }
-        bridge.start(visibleLimit = 80, emitHz = 4)
-        bridge.seedRelays(testRelays)
-        // Issue #614 — push model (D8 no-polling): the kernel invokes this
-        // callback on its update-listener thread for every frame, replacing the
-        // former blocking-drain coroutine. The kernel is the single writer, so
-        // the rev-monotonicity read/write below stays correct. `MutableStateFlow`
-        // value assignment is thread-safe; UI collectors observe on their own
-        // dispatcher.
-        bridge.setUpdateListener { bytes ->
-            val decoded = decodeUpdate(bytes) ?: return@setUpdateListener
-            if (decoded.rev <= _state.value.rev) return@setUpdateListener  // mirror only
-            _state.value = decoded
-            _snapshotCount.value += 1
-            _lastSnapshotAtMs.value = System.currentTimeMillis()
-        }
-        // ADR-0048 Stage 2 / issue #1284 — NIP-55 requests arrive via a JNI push
-        // callback (D8: no polling; mirrors the update-listener seam above).
-        // Rust invokes this on its capability-dispatch thread (a native
-        // background thread); the NIP-55 launch Intent requires the main thread,
-        // so we hop to Main before invoking the activity-owned handler.
-        bridge.setSignerRequestListener { requestJson ->
-            externalSignerHandler?.let { handler ->
-                viewModelScope.launch(Dispatchers.Main) { handler(requestJson) }
-            } ?: Log.w(TAG, "NIP-55 request dropped: no capability bridge registered")
-        }
+    /**
+     * Decode one pushed frame and republish it (mirror-only, rev-monotonic).
+     * Invoked on the kernel's update-listener thread (issue #614); single-writer
+     * kernel keeps the rev read/write correct and the assignment thread-safe.
+     */
+    private fun applyFrame(bytes: ByteArray) {
+        val decoded = decodeUpdate(bytes) ?: return
+        if (decoded.rev <= _state.value.rev) return  // mirror only
+        _state.value = decoded
+        _snapshotCount.value += 1
+        _lastSnapshotAtMs.value = System.currentTimeMillis()
+    }
+
+    /**
+     * Hop a pushed NIP-55 request (ADR-0048 Stage 2 / #1284) onto the main
+     * thread before handing it to the activity-owned handler — the NIP-55 launch
+     * Intent requires the main thread. Rust invokes the listener on its native
+     * capability-dispatch thread.
+     */
+    private fun dispatchSignerRequestToMain(requestJson: String) {
+        externalSignerHandler?.let { handler ->
+            viewModelScope.launch(Dispatchers.Main) { handler(requestJson) }
+        } ?: Log.w(TAG, "NIP-55 request dropped: no capability bridge registered")
     }
 
     fun openTimeline() {

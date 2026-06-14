@@ -63,25 +63,27 @@ class MainActivity : ComponentActivity(), SignInAmberDelegate {
         model.registerExternalSignerHandler { requestJson ->
             signerBridge.handleJson(requestJson)
         }
+        // Single cold-start path (production AND debug): always installs the
+        // Keystore keyring capability and restores the persisted identity, so a
+        // signed-in user survives a restart. Mirrors iOS, which registers its
+        // keychain capability + restores unconditionally at launch.
+        //
         // E2E test seams: adb shell am start -e nmp.test_nsec <nsec>
         //                                   -e nmp.test_relays '[["ws://…","both"]]'
-        // Both extras are ignored in production (no-op when absent or in
-        // release builds where BuildConfig.DEBUG is false). Kotlin ferries the
-        // raw strings verbatim; all parsing and policy live in Rust (D7).
+        // Both extras are null in production (absent, or in release builds where
+        // BuildConfig.DEBUG is false) and merely ride on top of the same launch
+        // path. Kotlin ferries the raw strings verbatim; all parsing and policy
+        // live in Rust (D7).
         val testNsec: String? = if (BuildConfig.DEBUG)
             intent?.getStringExtra("nmp.test_nsec") else null
         val testRelays: String? = if (BuildConfig.DEBUG)
             intent?.getStringExtra("nmp.test_relays") else null
-        if (testNsec != null || testRelays != null) {
-            model.startWithContext(
-                context = this,
-                storagePath = kernelStoragePath(),
-                testNsec = testNsec,
-                testRelays = testRelays,
-            )
-        } else {
-            model.start(storagePath = kernelStoragePath())
-        }
+        model.start(
+            context = this,
+            storagePath = kernelStoragePath(),
+            testNsec = testNsec,
+            testRelays = testRelays,
+        )
         setContent {
             MaterialTheme {
                 RootTabs(model, amberDelegate = this)
