@@ -138,20 +138,22 @@ export default function App(): JSX.Element {
   });
 
   // Card "ready" gates: the embed cards must show a resolved author byline, so
-  // they wait for the kernel to enrich `author_display_name` (kind:0). This is
-  // the same no-unresolved-data discipline as the user-* sections.
-  const articleCard = createMemo(() => {
-    const ev = articleRaw();
-    return ev && ev.authorDisplayName ? ev : undefined;
-  });
-  const highlightCard = createMemo(() => {
-    const ev = highlightRaw();
-    return ev && ev.authorDisplayName ? ev : undefined;
-  });
-  const noteCard = createMemo(() => {
-    const ev = noteRaw();
-    return ev && ev.authorDisplayName ? ev : undefined;
-  });
+  // they wait for the author's profile to resolve. We read it from the SAME
+  // resolved_profiles projection the avatar/name/mention-chip use (host.profile)
+  // rather than the kernel's claimed_events author enrichment — the former is the
+  // reliable path; the latter can lag for some authors. Same no-unresolved-data
+  // discipline as the user-* sections.
+  const authorOf = (ev: ClaimedEventWire) => runtime.host.profile(ev.authorPubkey);
+  const authorResolved = (ev: ClaimedEventWire | undefined): ClaimedEventWire | undefined => {
+    if (!ev) return undefined;
+    const p = authorOf(ev);
+    return p && (p.displayName || p.pictureUrl) ? ev : undefined;
+  };
+  const articleCard = createMemo(() => authorResolved(articleRaw()));
+  // The highlight card has no author byline (text + context + source only), so it
+  // gates only on the event resolving.
+  const highlightCard = createMemo(() => highlightRaw());
+  const noteCard = createMemo(() => authorResolved(noteRaw()));
 
   const profile = () => runtime.host.profile(SHOWCASE_PUBKEY);
   // "Resolved" means real kind:0 data arrived — not just a placeholder entry.
@@ -314,8 +316,8 @@ export default function App(): JSX.Element {
               <div data-testid="content-quote-card" style={{ "max-width": "480px", width: "100%" }}>
                 <NostrQuoteCard
                   quote={{
-                    authorName: ev.authorDisplayName,
-                    authorPicture: ev.authorPictureUrl,
+                    authorName: authorOf(ev)?.displayName,
+                    authorPicture: authorOf(ev)?.pictureUrl,
                     content: ev.content,
                     createdAt: ev.createdAt,
                   }}
@@ -339,8 +341,8 @@ export default function App(): JSX.Element {
                     title: tagValue(ev, "title") ?? "(untitled)",
                     image: tagValue(ev, "image"),
                     summary: tagValue(ev, "summary"),
-                    authorName: ev.authorDisplayName,
-                    authorPicture: ev.authorPictureUrl,
+                    authorName: authorOf(ev)?.displayName,
+                    authorPicture: authorOf(ev)?.pictureUrl,
                   }}
                 />
               </div>
@@ -377,13 +379,13 @@ export default function App(): JSX.Element {
         >
           <div class="content-demos" data-testid="content-kind-registry">
             <Show when={articleCard()} fallback={<Resolving />} keyed>
-              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev)} nowSeconds={nowSeconds} />}
+              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev, authorOf(ev))} nowSeconds={nowSeconds} />}
             </Show>
             <Show when={highlightCard()} keyed>
-              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev)} nowSeconds={nowSeconds} />}
+              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev, authorOf(ev))} nowSeconds={nowSeconds} />}
             </Show>
             <Show when={noteCard()} keyed>
-              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev)} nowSeconds={nowSeconds} />}
+              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev, authorOf(ev))} nowSeconds={nowSeconds} />}
             </Show>
           </div>
         </Section>
@@ -484,15 +486,19 @@ function contentReady(ev: ClaimedEventWire | undefined): ClaimedEventWire | unde
 }
 
 /** Project a resolved claimed event into the generic embed envelope the kind
- *  registry dispatches on. The kernel already enriched the author's kind:0. */
-function toEmbedded(ev: ClaimedEventWire): EmbeddedEventModel {
+ *  registry dispatches on. Author name/picture come from the host's resolved
+ *  profile (passed in) — the reliable resolved_profiles path. */
+function toEmbedded(
+  ev: ClaimedEventWire,
+  author: { displayName?: string; pictureUrl?: string } | undefined,
+): EmbeddedEventModel {
   return {
     kind: ev.kind,
     content: ev.content,
     createdAt: ev.createdAt,
     tags: ev.tags,
-    authorName: ev.authorDisplayName,
-    authorPicture: ev.authorPictureUrl,
+    authorName: author?.displayName,
+    authorPicture: author?.pictureUrl,
   };
 }
 
