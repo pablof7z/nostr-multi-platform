@@ -8,13 +8,13 @@ for independent, non-social applications.
 
 ---
 
-## Known external consumers (owner-verified 2026-06-11)
+## Known external consumers (re-verified 2026-06-14)
 
 | App | Description | Evidence |
 |-----|-------------|----------|
-| **podcast-player** | Podcast client | `~/Work/podcast-player` (external workspace); pins the composition-root library plus `nmp-core`, `nmp-ffi`, `nmp-signer-broker` at git rev `104c3f76` from `github.com/pablof7z/nostr-multi-platform` (at that rev the composition-root crate was still named `nmp-app-template`; it is `nmp-defaults` from ADR-0046 onward — see the rename note below). Contains `apps/nmp-app-podcast` (~56k LOC Rust composing `ffi/register.rs`, `nmp_dispatch.rs`, `android.rs`) and a ~100k-LOC Swift iOS app. |
-| **win-the-day** | Goal/habit tracker | Owner-operated NMP app. |
-| **hl** | Highlighter app | Owner-operated NMP app. |
+| **podcast-player** | Podcast client | `~/Work/podcast-player` (external workspace); pins `nmp-core`, `nmp-ffi`, `nmp-defaults`, `nmp-signer-broker`, `nmp-blossom`, `nmp-nip02` by git rev from `github.com/pablof7z/nostr-multi-platform` (bumped to **nmp-v0.7.0 / rev `ce0097cde`** on 2026-06-14, the keystone-series release — ADR-0050/0052/0056). Carries a local `[patch]` redirecting `nmp-blossom` to a `/tmp/nmp-at-<rev>/` extraction because blossom is parked out of the NMP cargo workspace (post-v1 dead island). Contains `apps/nmp-app-podcast` (~56k LOC Rust composing `ffi/register.rs`, `nmp_dispatch.rs`, `android.rs`) and a ~100k-LOC Swift iOS app. Fully on the post-keystone API (register-by-value `ActionModule`, `nmp_defaults::register_defaults`, per-app signer ports). |
+| **hl** | Highlighter app | `~/Work/hl` (external workspace). Does **not** pin by git rev — uses local `path` deps to `../../../nostr-multi-platform/crates/*` (nmp-core, nmp-ffi, nmp-defaults, nmp-signers, nmp-nip11, nmp-nip29, nmp-blossom, nmp-content, nmp-kinds), so it tracks whatever the monorepo checkout is at. On the post-keystone API (`NmpAppBuilder`, by-value `register_action`, `RawEventObserver`). |
+| **win-the-day** | — | **NOT an NMP consumer as checked out** (`~/Work/win-the-day-app`, 2026-06-14): pure SwiftUI/Watch app, zero Rust / zero `nmp-*` linkage (only `secp256k1.swift` + a `nostrsigner` URL scheme). Previously listed here as an "owner-operated NMP app"; the local checkout shows no NMP dependency. **Owner: reconcile — either a different app was intended, or it was never wired to NMP.** |
 
 ---
 
