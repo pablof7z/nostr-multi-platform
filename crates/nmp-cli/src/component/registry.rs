@@ -182,6 +182,134 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         "tui/user-card/nostr_user_card.rs",
         include_str!("../../registry/tui/user-card/nostr_user_card.rs"),
     ),
+    (
+        "swiftui/user-avatar/ProfileWire.swift",
+        include_str!("../../registry/swiftui/user-avatar/ProfileWire.swift"),
+    ),
+    (
+        "swiftui/user-avatar/NostrProfileHost.swift",
+        include_str!("../../registry/swiftui/user-avatar/NostrProfileHost.swift"),
+    ),
+    (
+        "swiftui/user-avatar/NostrAvatar.swift",
+        include_str!("../../registry/swiftui/user-avatar/NostrAvatar.swift"),
+    ),
+    (
+        "swiftui/user-name/NostrProfileName.swift",
+        include_str!("../../registry/swiftui/user-name/NostrProfileName.swift"),
+    ),
+    (
+        "swiftui/user-nip05/NostrNip05Badge.swift",
+        include_str!("../../registry/swiftui/user-nip05/NostrNip05Badge.swift"),
+    ),
+    (
+        "swiftui/user-npub/NostrNpubChip.swift",
+        include_str!("../../registry/swiftui/user-npub/NostrNpubChip.swift"),
+    ),
+    (
+        "swiftui/user-card/NostrUserCard.swift",
+        include_str!("../../registry/swiftui/user-card/NostrUserCard.swift"),
+    ),
+    (
+        "compose/user-avatar/ProfileWire.kt",
+        include_str!("../../registry/compose/user-avatar/ProfileWire.kt"),
+    ),
+    (
+        "compose/user-avatar/NostrProfileHost.kt",
+        include_str!("../../registry/compose/user-avatar/NostrProfileHost.kt"),
+    ),
+    (
+        "compose/user-avatar/NostrAvatar.kt",
+        include_str!("../../registry/compose/user-avatar/NostrAvatar.kt"),
+    ),
+    (
+        "compose/user-name/NostrProfileName.kt",
+        include_str!("../../registry/compose/user-name/NostrProfileName.kt"),
+    ),
+    (
+        "compose/user-nip05/NostrNip05Badge.kt",
+        include_str!("../../registry/compose/user-nip05/NostrNip05Badge.kt"),
+    ),
+    (
+        "compose/user-npub/NostrNpubChip.kt",
+        include_str!("../../registry/compose/user-npub/NostrNpubChip.kt"),
+    ),
+    (
+        "compose/user-card/NostrUserCard.kt",
+        include_str!("../../registry/compose/user-card/NostrUserCard.kt"),
+    ),
+    (
+        "desktop/user-core/profile_wire.rs",
+        include_str!("../../registry/desktop/user-core/profile_wire.rs"),
+    ),
+    (
+        "desktop/user-avatar/user_avatar.rs",
+        include_str!("../../registry/desktop/user-avatar/user_avatar.rs"),
+    ),
+    (
+        "desktop/user-name/user_name.rs",
+        include_str!("../../registry/desktop/user-name/user_name.rs"),
+    ),
+    (
+        "desktop/user-nip05/user_nip05.rs",
+        include_str!("../../registry/desktop/user-nip05/user_nip05.rs"),
+    ),
+    (
+        "desktop/user-npub/user_npub.rs",
+        include_str!("../../registry/desktop/user-npub/user_npub.rs"),
+    ),
+    (
+        "desktop/user-card/user_card.rs",
+        include_str!("../../registry/desktop/user-card/user_card.rs"),
+    ),
+    (
+        "swiftui/content-kind-registry/EmbedKindProjection.swift",
+        include_str!("../../registry/swiftui/content-kind-registry/EmbedKindProjection.swift"),
+    ),
+    (
+        "swiftui/content-kind-registry/NostrKindRegistry.swift",
+        include_str!("../../registry/swiftui/content-kind-registry/NostrKindRegistry.swift"),
+    ),
+    (
+        "swiftui/content-kind-registry/EmbedChromeContainer.swift",
+        include_str!("../../registry/swiftui/content-kind-registry/EmbedChromeContainer.swift"),
+    ),
+    (
+        "swiftui/content-kind-registry/EmbeddedEvent.swift",
+        include_str!("../../registry/swiftui/content-kind-registry/EmbeddedEvent.swift"),
+    ),
+    (
+        "swiftui/content-kind-30023/ArticleEmbed.swift",
+        include_str!("../../registry/swiftui/content-kind-30023/ArticleEmbed.swift"),
+    ),
+    (
+        "swiftui/content-kind-9802/HighlightEmbed.swift",
+        include_str!("../../registry/swiftui/content-kind-9802/HighlightEmbed.swift"),
+    ),
+    (
+        "compose/content-kind-30023/NostrArticleCard.kt",
+        include_str!("../../registry/compose/content-kind-30023/NostrArticleCard.kt"),
+    ),
+    (
+        "compose/login-block/NostrLoginBlock.kt",
+        include_str!("../../registry/compose/login-block/NostrLoginBlock.kt"),
+    ),
+    (
+        "compose/login-block/ExternalSignerWire.kt",
+        include_str!("../../registry/compose/login-block/ExternalSignerWire.kt"),
+    ),
+    (
+        "compose/login-block/ExternalSignerCapabilityBridge.kt",
+        include_str!("../../registry/compose/login-block/ExternalSignerCapabilityBridge.kt"),
+    ),
+    (
+        "compose/login-block/AmberIntentCodec.kt",
+        include_str!("../../registry/compose/login-block/AmberIntentCodec.kt"),
+    ),
+    (
+        "desktop/content-kind-30023/embed_article.rs",
+        include_str!("../../registry/desktop/content-kind-30023/embed_article.rs"),
+    ),
 ];
 
 #[derive(Deserialize)]
@@ -280,5 +408,39 @@ impl Registry {
         }
         order.push(component);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression gate: every `source` file declared in the builtin manifest must
+    // be embedded in BUILTIN_FILES so `read_source` resolves it. Without this,
+    // manifest-vs-BUILTIN_FILES drift ships silently (a component declares a file
+    // the embedded binary can't install — install fails with
+    // "builtin component source missing"). This caught the unwired
+    // swiftui/user-*, compose/user-*, desktop/user-*, login-block, and
+    // content-kind-* sources.
+    #[test]
+    fn every_declared_builtin_source_resolves() {
+        let registry = Registry::load(None).expect("builtin registry must load");
+        let mut missing = Vec::new();
+        for component in &registry.components {
+            for file in &component.files {
+                if file.role != "source" {
+                    continue;
+                }
+                if registry.read_source(Path::new(&file.source)).is_err() {
+                    missing.push(format!("{} ({})", file.source, component.id));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "builtin manifest declares source files not embedded in BUILTIN_FILES \
+             (add include_str! entries in registry.rs):\n{}",
+            missing.join("\n")
+        );
     }
 }
