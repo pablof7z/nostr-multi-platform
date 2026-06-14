@@ -5,6 +5,7 @@ import { RelationCountState } from "./generated/nmp/nip01/relation-count-state";
 import { ResolvedProfilesSnapshot } from "./generated/nmp/kernel/resolved-profiles-snapshot";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
+import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
 
 // ── Schema descriptor constants (ADR-0038) ──────────────────────────────────
 
@@ -70,8 +71,12 @@ export type FeedItem = {
   authorDisplayName?: string;
   /** Kind:0 profile picture URL, absent until a kind:0 arrives. */
   authorPictureUrl?: string;
-  /** Raw NIP-01 content string (sufficient before NFCT rendering). */
+  /** Raw NIP-01 content string (fallback when no NFCT tree is present). */
   content: string;
+  /** Decoded NFCT content tree — present when the kernel ships
+   *  `content_tree_bytes` in the timeline card. Rendered by NostrContentView;
+   *  falls back to `content` when absent. */
+  contentTree?: ContentTreeWire;
   /** Unix seconds created_at. */
   createdAt: number;
   /** Known-or-loading relation counts. */
@@ -167,6 +172,20 @@ function decodeRootCard(rootCard: RootCard): FeedItem | null {
   }
   if (repostedBy) {
     item.repostedBy = repostedBy;
+  }
+  // Decode the NFCT content tree when the card ships `content_tree_bytes`.
+  // Keep-last-good (honest-empty) on missing bytes / bad identifier / decode
+  // error — the caller falls back to the raw `content` string.
+  const ctBytes = card.contentTreeBytesArray();
+  if (ctBytes && ctBytes.length > 0) {
+    try {
+      const ctBb = new flatbuffers.ByteBuffer(ctBytes);
+      if (ContentTreeWire.bufferHasIdentifier(ctBb)) {
+        item.contentTree = ContentTreeWire.getRootAsContentTreeWire(ctBb);
+      }
+    } catch {
+      // Corrupt NFCT bytes — leave contentTree undefined.
+    }
   }
   return item;
 }

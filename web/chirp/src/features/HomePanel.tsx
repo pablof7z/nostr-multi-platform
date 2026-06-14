@@ -17,6 +17,7 @@ import {
 } from "../components/user-avatar/NostrProfileHost";
 import { NostrAvatar } from "../components/user-avatar/NostrAvatar";
 import { NostrProfileName } from "../components/user-name/NostrProfileName";
+import { NostrContentView } from "../nmp/content/NostrContentView";
 
 export function HomePanel(props: {
   rows: TimelineItem[];
@@ -177,7 +178,9 @@ function Post(props: {
           <strong data-testid="post-author"><NostrProfileName profile={authorProfile()} /></strong>
           <span>{props.item.relativeTime ?? labelTime(props.item.createdAt)}</span>
         </button>
-        <p data-testid="post-content">{props.item.content ?? ""}</p>
+        <div data-testid="post-content">
+          <NostrContentView tree={props.item.contentTree} fallback={props.item.content ?? ""} />
+        </div>
         <Show when={props.item.attribution && props.item.attribution.length > 0}>
           <div class="attribution-list" data-testid="attribution-list">
             <For each={props.item.attribution}>
