@@ -37,9 +37,18 @@ pub mod swift_projections_registry;
 // consumer off the JSON `payload` path. See module doc for the generated /
 // hand-written seam rationale.
 pub mod swift_typed_decoders;
+// ADR-0055 R3-S3 — generated `ProjectionMergeCache` (iOS). Sourced from the
+// SAME projection registry as `swift_typed_decoders` so the cache can never
+// drift from the decoder set. Implements the D3-3 merge algorithm +
+// decode-before-commit (D3-4) so app code is oblivious to delta mechanics.
+pub mod swift_projection_cache;
 
 pub use manifest::{AppManifest, ModuleSet, NmpDependency};
 pub use swift::{check_swift, generate_swift, SwiftCheckOutcome, SwiftEmitError};
+pub use swift_projection_cache::{
+    check_projection_cache, generate_projection_cache, render_projection_cache,
+    ProjectionCacheCheckOutcome,
+};
 pub use swift_typed_decoders::{
     check_typed_decoders, generate_typed_decoders, render_typed_decoders, TypedDecodersCheckOutcome,
 };

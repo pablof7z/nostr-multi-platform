@@ -204,6 +204,18 @@ struct KernelUpdateResult {
     let payloadBytes: Int
     let callbackReceivedAt: ContinuousClock.Instant
     let decodeMicros: Int
+    /// R3-S3 (ADR-0055 D7): the set of projection keys whose `projectionRev`
+    /// advanced in this frame. `KernelModel.apply(result:)` assigns ONLY the
+    /// `@Published` slots corresponding to these keys; slots NOT in the set
+    /// keep their prior value (the `ProjectionMergeCache` already retained the
+    /// decoded bytes). This is the SwiftUI broad-invalidation kill.
+    let changedKeys: Set<String>
+    /// R3-S3 (ADR-0055 D3-4): latched `true` when the cache-merge layer
+    /// encountered a typed-decode failure for at least one row. The prior cache
+    /// entry is retained (no silent corruption), but the host is
+    /// known-degraded for that key until the next genuine rev bump. Rung 3
+    /// logs this; Rung 4 drains it via `nmp_app_request_full_snapshot()`.
+    let needsResync: Bool
 }
 
 // ─── dispatch_action return envelope (PR-A) ───────────────────────────────
