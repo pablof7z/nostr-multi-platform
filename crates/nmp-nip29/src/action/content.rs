@@ -37,6 +37,7 @@ fn post_chat_message_plan(action: &PostChatMessageInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_CHAT_MESSAGE, action.content.clone(), tags)
 }
 
+#[derive(Default)]
 pub struct PostChatMessageAction;
 impl ActionModule for PostChatMessageAction {
     const NAMESPACE: &'static str = "nmp.nip29.post_chat_message";

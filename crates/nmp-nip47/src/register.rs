@@ -57,7 +57,11 @@ impl RelayTextInterceptor for WalletInterceptor {
         relay_url: &str,
         text: &str,
     ) -> Vec<OutboundMessage> {
-        dispatch_nwc_relay_text(&self.runtime, kernel, relay_url, text)
+        // ADR-0052 §D5: the runtime helpers name only the narrow
+        // `WalletKernelAccess` capability. The interceptor holds a real
+        // `&mut Kernel`, so wrap it through `as_wallet_access` — the same
+        // surface the `Protocol` dispatch arm installs on the command context.
+        dispatch_nwc_relay_text(&self.runtime, &kernel.as_wallet_access(), relay_url, text)
     }
 
     fn on_idle_tick(&self, kernel: &mut Kernel) -> Vec<OutboundMessage> {
@@ -99,7 +103,7 @@ impl RelayTextInterceptor for WalletInterceptor {
                 return outbound;
             };
             if let Some(rt) = guard.as_mut() {
-                rt.sync_connection_state(kernel);
+                rt.sync_connection_state(&kernel.as_wallet_access());
             }
         }
 
@@ -109,7 +113,7 @@ impl RelayTextInterceptor for WalletInterceptor {
                 return outbound;
             };
             if let Some(rt) = guard.as_mut() {
-                if let Some(msg) = rt.build_get_info_probe(kernel) {
+                if let Some(msg) = rt.build_get_info_probe(&kernel.as_wallet_access()) {
                     outbound.push(msg);
                 }
             }

@@ -9,9 +9,11 @@
 //! 2. `register_defaults` is the one function a new Nostr app calls to get the
 //!    standard NMP wiring (NIPs 02/17/57/65, routing substrate, coverage hook,
 //!    DM-inbox + zap-receipts runtimes, WOT bootstrap).
-//! 3. The builder's typestate enforces that a storage decision is made before
-//!    `start()` — if `.in_memory()` (or `.storage_path(p)`) is omitted, the
-//!    code does not compile.
+//! 3. The builder's typestate enforces that a storage decision AND an
+//!    ADR-0053 projection-consumption decision are both made before `start()`
+//!    — if `.in_memory()` (or `.storage_path(p)`) or the projection step
+//!    (`.declare_consumed_projections` / `.consume_all_builtin_projections`)
+//!    is omitted, the code does not compile.
 //!
 //! If this example outgrows ~20 lines of actual work, the template is
 //! regressing toward boilerplate.
@@ -32,12 +34,20 @@ fn main() {
     // 3. (Optional) Register any app-specific projections / actions here.
     //    e.g. nmp_nip29::register_actions(&mut builder) for group chat.
 
-    // 4. Commit the storage choice and start the kernel.
-    //    `.in_memory()` transitions to `NmpAppBuilder<StorageSet>`, unlocking
-    //    `.start()`. For production replace with `.storage_path("/path/to/lmdb")`.
+    // 4. Commit the storage choice, declare the consumed projections, and
+    //    start the kernel. `.in_memory()` advances to `StorageSet`;
+    //    `.consume_all_builtin_projections()` makes the ADR-0053 decision and
+    //    advances to `ProjectionsDeclared`, unlocking `.start()`. For
+    //    production replace `.in_memory()` with `.storage_path("/path/to/lmdb")`
+    //    and prefer `.declare_consumed_projections([..])` to narrow to the keys
+    //    your UI reads.
     //
-    //    Omitting this step is a COMPILE ERROR — V-94 typestate guarantee.
-    let app = builder.in_memory().start(RunConfig::default());
+    //    Omitting EITHER decision is a COMPILE ERROR — storage = V-94,
+    //    projections = ADR-0053 DEBT 2.
+    let app = builder
+        .in_memory()
+        .consume_all_builtin_projections()
+        .start(RunConfig::default());
 
     println!("nmp-defaults: NmpAppBuilder → start() complete.");
     println!("  - NIP-02 social actions wired");

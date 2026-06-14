@@ -7,7 +7,7 @@
 //! to keep that file under the 500-LOC ceiling (AGENTS.md), split by concrete
 //! sub-protocol (payment reconciliation) under the same crate owner.
 
-use nmp_core::Kernel;
+use nmp_core::substrate::WalletKernelAccess;
 use serde_json::json;
 
 use crate::payment_store::FsPaymentStore;
@@ -19,7 +19,7 @@ pub(crate) fn settle_payment_success(
     request_event_id: &str,
     correlation_id: Option<String>,
     preimage: Option<String>,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
 ) {
     if let Some(store) = store {
         // Terminal + resolved → the record no longer needs reconciliation.
@@ -48,7 +48,7 @@ pub(crate) fn settle_payment_failure(
     request_event_id: &str,
     correlation_id: Option<String>,
     reason: &str,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
 ) {
     if let Some(store) = store {
         if let Err(e) = store.delete(request_event_id) {
@@ -76,7 +76,7 @@ pub(crate) fn correct_unresolved_record(
     success: bool,
     preimage: Option<String>,
     failure_reason: Option<String>,
-    kernel: &mut Kernel,
+    kernel: &dyn WalletKernelAccess,
 ) -> bool {
     let Some(store) = store else {
         return false;
