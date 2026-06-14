@@ -5,6 +5,65 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## nmp-v0.7.0 — 2026-06-14
+
+**BREAKING release — the keystone series (ADR-0050 / ADR-0052 / ADR-0056).**
+Git-rev-pinning consumers must adapt to the API changes below before bumping
+their pinned rev. Three keystones land together:
+
+- **K1 — signer-session capability port** (ADR-0050)
+- **K2 — instance-scoped registration** (ADR-0052)
+- **K3 — coverage ledger** (ADR-0056)
+
+### Breaking — APIs consumers must adapt to
+
+- **(a) `ActionModule` is register-by-value.** The trait's methods now take
+  `&self` (not `&mut self` / associated statics), and modules are registered with
+  `register_action(&mut self, module)` — one owned instance per app. The process-
+  global registration path (`ACTIVE_WALLET_RUNTIME` and the static
+  register-executor seam) is deleted. Consumers that registered action modules
+  via the old global/`&mut`-method surface must construct the module by value and
+  call `register_action`.
+- **(b) The signer-session port replaces `SignerForSeal` + the per-crate raw-keys
+  slots.** The `SignerForSeal` execution model and the raw-`Keys` slots that NIP-59
+  / NIP-17 / Marmot held are gone; signing, gift-wrap/unwrap, and decrypt now flow
+  through the single three-verb signer-session capability port (uniform across
+  local-key and bunker/NIP-46 backends — the backend is invisible to callers).
+  Consumers that reached for a raw `Keys` to seal/sign must drive the port.
+- **(c) `ProtocolCommandContext::kernel_mut()` is removed.** Ambient mutable kernel
+  access from protocol command workers is replaced by narrow, explicit
+  capabilities. Protocol/extension code must request the specific capability it
+  needs instead of taking `&mut Kernel`.
+- **(d) `DispatchHostOp` is merged into the `Protocol` seam.** The separate
+  `DispatchHostOp` trait/dispatch is gone; host ops dispatch through the unified
+  `Protocol` seam (whole-body `catch_unwind` on `ProtocolCommand`). Consumers that
+  implemented `DispatchHostOp` move that logic onto the `Protocol` seam.
+- **(e) The five process-global hooks/runtimes are now per-app ports.** The
+  ambient process-global extension singletons (wallet runtime, coverage hook, and
+  the other global hook/runtime slots) are replaced by per-app instance ports
+  wired at app construction. Consumers must wire these per `NmpApp` instance
+  rather than installing a global.
+- **(f) The coverage-ledger floor is now ACTIVE (behavioral).** The since-floor is
+  sourced from a per-`(filter_hash, relay)` coverage ledger, replacing the
+  store-presence heuristic. Un-synced shapes are asked for their FULL history (an
+  un-floored REQ / full-window negentropy reconciliation) until the ledger records
+  completed coverage — so expect **more initial relay traffic** on cold/un-synced
+  shapes, in exchange for sound backfill (the H1 "follow-after-stray-reply"
+  suppression is fixed). No consumer API change; behavior only.
+
+### Changed
+
+- Coverage-ledger activation rode a single release cut (this release) so
+  git-rev-pinning consumers can pin across the change in one step (#1419 default-on
+  flip, #1421 presence-heuristic deletion).
+
+### Removed
+
+- The `coverage_ledger_enabled` flag and its plumbing; the presence-floor
+  heuristic (`shape_floor`, `watermark_from_queries`) and the Stage-B3
+  truncated-serve tracking — all superseded by the coverage ledger (ADR-0056
+  Stage E).
+
 ## nmp-v0.6.2 — 2026-06-13
 
 **No `nmp_app_*` C-ABI symbol change.** Additive release — existing FFI callers
