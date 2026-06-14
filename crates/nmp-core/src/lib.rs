@@ -174,12 +174,11 @@ pub mod stable_hash {
 pub mod store {
     pub use nmp_store::*;
 }
-// Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`)
-// and the actor runtime (`crate::actor`) both reach into. Used to live in
-// `crate::ffi::mod.rs` (private); promoted here so the actor module (a
-// crate-private module) can still name them after the FFI extraction.
-// `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
-pub mod projection_emission;
+pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection omit helper.
+// Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`) and the
+// actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
+// (private); promoted here so the crate-private actor module can still name them after
+// the FFI extraction. `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
 pub mod slots;
 pub mod subs;
 pub mod substrate;
@@ -216,11 +215,6 @@ pub use kernel::{
 // unchanged projection is served from cache instead of being re-serialized on
 // every emit.
 pub use kernel::ChangeGate;
-// ADR-0055 R6-S2: reusable per-typed-projection byte-equality omit helper.
-// `FrameIdentity` is the same (session_id, snapshot_epoch) pair the host
-// `ProjectionCache` resets on; `TypedProjectionEmissionState` wraps the omit
-// logic for any whole-value typed projection (not just the feed).
-pub use projection_emission::{FrameIdentity, TypedProjectionEmissionState};
 // Injectable kernel wall-clock trait. Re-exported (always) so the `pub`
 // `slots::KernelClockSlot` alias (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) is
 // nameable across crates. Production installs nothing (the kernel keeps its

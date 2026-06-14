@@ -22,7 +22,6 @@ use std::sync::{Arc, Mutex};
 
 use nmp_content::{
     EmbedKindProjection, EmbeddedEventEnvelope, RenderContextWire, UnknownProjection,
-    wire::ContentTreeWire,
 };
 use nmp_core::projection_emission::{FrameIdentity, TypedProjectionEmissionState};
 
