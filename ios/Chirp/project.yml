@@ -42,6 +42,10 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.f7z.chirp
         PRODUCT_MODULE_NAME: Chirp
         PRODUCT_NAME: Chirp7z
+        # Monochrome global accent (black in light, white in dark) so every
+        # system-accent consumer — List/Form row icons, cursors, switches —
+        # resolves to the single black accent, not iOS default blue.
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_ENTITLEMENTS: Chirp/Chirp.entitlements
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_OBJC_BRIDGING_HEADER: Chirp/Bridge/NmpCore.h
