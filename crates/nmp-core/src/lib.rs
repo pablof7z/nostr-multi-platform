@@ -201,7 +201,7 @@ pub use external_signer_hook::{install_external_signer_hook, new_external_signer
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.
 pub use kernel::{
-    read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel,
+    read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel, ProfileLiveness,
     KERNEL_BUILTIN_PROJECTION_KEYS,
 };
 // ADR-0049 — the composition ledger (explain-the-composition surface) and its

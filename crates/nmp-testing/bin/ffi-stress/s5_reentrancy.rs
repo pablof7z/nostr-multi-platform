@@ -88,7 +88,7 @@ extern "C" fn reentrant_cb(ctx: *mut c_void, payload: *const u8, payload_len: us
     // Reentrant dispatch: enqueues to actor mpsc channel (fire-and-forget, bible #3).
     // Must not block: the actor's Sender::send() is O(1) non-blocking.
     // V-68 / V-112 (ADR-0042): use claim_profile instead of deleted open_author.
-    nmp_app_claim_profile(app_ptr, pk_cstr.as_ptr(), consumer_cstr.as_ptr(), 0);
+    nmp_app_claim_profile(app_ptr, pk_cstr.as_ptr(), consumer_cstr.as_ptr(), 0, 0);
     REENTRANT_DISPATCHES.fetch_add(1, Ordering::Relaxed);
 
     let total_ns = t_start.elapsed().as_nanos() as u64;

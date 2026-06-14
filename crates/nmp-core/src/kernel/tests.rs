@@ -22,43 +22,43 @@ use crate::store::InsertOutcome;
 #[test]
 fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected(RelayRole::Content);
+    kernel.relay_connected(RelayRole::Indexer);
 
+    // M2 migration: claim_profile registers a kind:0 interest and returns empty
+    // (the planner emits the wire REQ on drain). Two consumers of one pubkey
+    // dedup to ONE interest while keeping the `profile_claims` refcount at 2.
     let first = kernel.claim_profile(
         FIATJAF_PUBKEY.to_string(),
         "timeline-row:first".to_string(),
         true,
         false,
+        crate::kernel::ProfileLiveness::CacheOk,
     );
     let second = kernel.claim_profile(
         FIATJAF_PUBKEY.to_string(),
         "timeline-row:second".to_string(),
         true,
         false,
+        crate::kernel::ProfileLiveness::CacheOk,
+    );
+    assert!(first.is_empty(), "claim_profile emits no outbound directly");
+    assert!(second.is_empty());
+
+    // The planner emits a kind:0 REQ for the claimed author (detailed routing /
+    // batching / probe assertions live in `profile_claim_tests`).
+    let reqs: Vec<OutboundMessage> = kernel
+        .drain_lifecycle_outbound()
+        .into_iter()
+        .filter(|m| m.text.starts_with("[\"REQ\""))
+        .collect();
+    assert!(
+        reqs.iter()
+            .any(|m| m.text.contains("\"kinds\":[0]") && m.text.contains(FIATJAF_PUBKEY)),
+        "the planner must emit a kind:0 REQ for the claimed author"
     );
 
-    // Cold-start profile claim must go to the indexer relay ONLY (not the content relay).
-    assert_eq!(
-        first.len(),
-        1,
-        "cold-start profile claim must emit exactly one REQ"
-    );
-    assert!(second.is_empty());
-    let joined = first
-        .iter()
-        .map(|r| r.text.as_str())
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(joined.contains("\"profile-claim-1-"));
-    assert!(joined.contains("\"kinds\":[0]"));
-    assert!(joined.contains(FIATJAF_PUBKEY));
-    for r in &first {
-        assert_eq!(
-            r.relay_url.as_str(),
-            crate::relay::INDEXER_RELAY_URL,
-            "cold-start profile claim must route to indexer only, got {}",
-            r.relay_url
-        );
-    }
+    // Two consumers dedup to one interest but the `profile_claims` refcount is 2.
     assert_eq!(
         kernel
             .profile_claims

@@ -80,6 +80,7 @@ pub(crate) fn profile_thrashing() -> Scenario {
                     pubkey: pubkey.to_string(),
                     consumer_id: consumer.clone(),
                     force: false,
+                    liveness: nmp_core::ProfileLiveness::CacheOk,
                 });
                 let _ = tx.send(ActorCommand::ReleaseProfile {
                     pubkey: pubkey.to_string(),

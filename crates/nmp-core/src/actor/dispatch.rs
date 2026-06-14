@@ -496,10 +496,11 @@ pub(super) fn dispatch_command(
             pubkey,
             consumer_id,
             force,
+            liveness,
         } => {
-            let outbound = ctx
-                .kernel
-                .claim_profile(pubkey, consumer_id, ctx.relays_ready, force);
+            let outbound =
+                ctx.kernel
+                    .claim_profile(pubkey, consumer_id, ctx.relays_ready, force, liveness);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }

@@ -229,10 +229,9 @@ impl Kernel {
         // This lets an nevent with a working hint resolve even if NO bootstrap
         // relay is up.
         if !can_send && uri_relay_hints.is_empty() {
-            // Cold-start parking. Mirrors `ProfileRequestState.pending`:
-            // the claim has already been refcounted into `event_claims`
-            // (so the renderer sees the claim row immediately) but no
-            // OneshotApi interest is registered yet — no relay is
+            // Cold-start parking: the claim has already been refcounted into
+            // `event_claims` (so the renderer sees the claim row immediately)
+            // but no OneshotApi interest is registered yet — no relay is
             // reachable, so there is nowhere to send a REQ.
             //
             // `pending_event_claim_requests` drains this queue from

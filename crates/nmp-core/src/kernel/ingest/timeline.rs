@@ -370,8 +370,9 @@ impl Kernel {
     /// milestone now means "the follow feed has been opened" regardless of
     /// which subsystem carries it.
     ///
-    /// Returns only the pending profile-claim requests (UI-driven, unrelated
-    /// to the follow feed).
+    /// Records the follow-feed open milestone. Emits no `OutboundMessage`s:
+    /// profile (kind:0) claims are registry interests (M2 migration), compiled
+    /// by the planner, not drained here.
     pub(in crate::kernel) fn maybe_open_timeline(&mut self) -> Vec<OutboundMessage> {
         if !self.timeline_requested && self.should_open_timeline() {
             self.timeline_requested = true;
@@ -383,7 +384,7 @@ impl Kernel {
             );
         }
 
-        self.pending_profile_claim_requests()
+        Vec::new()
     }
 
     pub(in crate::kernel) fn should_open_timeline(&self) -> bool {

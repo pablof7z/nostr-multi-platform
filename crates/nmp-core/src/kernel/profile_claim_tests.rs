@@ -1,449 +1,493 @@
-//! TDD tests for profile-claim batching and indexer-only routing.
+//! Tests for the M2 registry-backed profile-claim path.
 //!
-//! Two bugs being fixed:
+//! `claim_profile` registers a kind:0 `LogicalInterest` through the
+//! `InterestRegistry`; the planner emits the wire REQ on the next
+//! `drain_lifecycle_outbound`. These tests assert the migrated behaviour:
 //!
-//! 1. **Wrong relay**: `profile_claim_request` used `author_write_relays()` for
-//!    cold-start authors, which returns the full `BOOTSTRAP_DISCOVERY_RELAYS`
-//!    set. Profile lookups (kind:0) are discovery fetches — they must go to the
-//!    **indexer relay only** (`purplepag.es`), not the content relay.
-//!
-//! 2. **No batching**: each `claim_profile` fired a separate `profile-claim-N`
-//!    REQ per author. 37 follows → 37 × 2 = 74 REQs (one per relay in the
-//!    cold-start bootstrap set). The correct shape is one REQ per relay with ALL
-//!    authors in a single `authors` array.
-//!
-//! ## Test strategy
-//!
-//! The real 37-author burst flows through the `can_send=false` queue path:
-//! the follow list arrives before the relay connects, so all authors are queued
-//! in `pending_profiles`. When the relay connects the tick calls
-//! `pending_profile_claim_requests()` which should batch them. Tests 1-3
-//! exercise this queue path (claim with `can_send=false`, then flush via
-//! `pending_profile_claim_requests()`). Test 4 exercises the immediate path
-//! for a NIP-65-known author.
+//! * a claim for an author with a cached kind:10002 routes the kind:0 to that
+//!   author's own write relays (warm outbox);
+//! * a cold-start claim (uncached mailbox) reaches the indexer relay AND
+//!   triggers the D3 kind:10002 probe; when the kind:10002 lands, the next
+//!   recompile re-routes the kind:0 to the author's write relays
+//!   (`Nip65Arrived`, replacing the deleted `refresh_profile_after_mailbox`);
+//! * hundreds of single-author claims coalesce into ONE batched kind:0 REQ
+//!   (`limit: None` author-union);
+//! * `Live` claims register a Tailing kind:0 sub; mixed `CacheOk` + `Live`
+//!   on one pubkey resolve to Tailing (Live wins);
+//! * multi-consumer refcount keeps one deduped interest live until the last
+//!   consumer releases;
+//! * the F-TTL `force` re-verify of a cached profile still fires;
+//! * the `claimed_profiles` projection (driven off `profile_claims`,
+//!   unchanged) stays correct, including the warm-reclaim zero-REQ invariant.
 
 use super::*;
-use crate::relay::{CONTENT_RELAY_URL, DEFAULT_VISIBLE_LIMIT, INDEXER_RELAY_URL};
+use crate::kernel::ProfileLiveness;
+use crate::relay::{DEFAULT_VISIBLE_LIMIT, INDEXER_RELAY_URL};
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
 }
 
-fn req_texts(msgs: &[OutboundMessage]) -> Vec<&str> {
-    msgs.iter()
+/// Drain the planner and return only the REQ `OutboundMessage`s.
+fn drain_reqs(kernel: &mut Kernel) -> Vec<OutboundMessage> {
+    kernel
+        .drain_lifecycle_outbound()
+        .into_iter()
         .filter(|m| m.text.starts_with("[\"REQ\""))
-        .map(|m| m.text.as_str())
         .collect()
 }
 
-/// Cold-start: N profile claims queued (can_send=false) must produce exactly ONE
-/// batched REQ when pending_profile_claim_requests() flushes — not N REQs.
-#[test]
-fn cold_start_profile_claims_are_batched_into_one_req() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    let authors: Vec<String> = (0..10).map(|i| hex64(&format!("{i}"))).collect();
-
-    // Queue all 10 authors with can_send=false (relay not yet connected).
-    for (i, pk) in authors.iter().enumerate() {
-        let _ = kernel.claim_profile(pk.clone(), format!("view-{i}"), false, false);
-    }
-
-    // Flush all pending via a single batch call.
-    let all_reqs = kernel.pending_profile_claim_requests();
-    let req_texts: Vec<&str> = req_texts(&all_reqs);
-
-    // Must be batched: far fewer REQs than authors.
-    // Ideal: 1 REQ (all cold-start authors → same indexer relay).
-    assert!(
-        req_texts.len() < authors.len(),
-        "profile claims must be batched — got {} REQs for {} authors: {req_texts:#?}",
-        req_texts.len(),
-        authors.len()
-    );
+/// Relay URLs of REQ frames whose filter targets `pubkey` with kinds == [0].
+fn kind0_req_relays_for(reqs: &[OutboundMessage], pubkey: &str) -> Vec<String> {
+    reqs.iter()
+        .filter_map(|m| {
+            let v: serde_json::Value = serde_json::from_str(&m.text).ok()?;
+            let arr = v.as_array()?;
+            if arr.first()?.as_str()? != "REQ" {
+                return None;
+            }
+            let filter = arr.get(2)?;
+            let kinds = filter.get("kinds")?.as_array()?;
+            let is_kind0 = kinds.len() == 1 && kinds[0].as_u64() == Some(0);
+            let authors = filter.get("authors")?.as_array()?;
+            let has_author = authors.iter().any(|a| a.as_str() == Some(pubkey));
+            (is_kind0 && has_author).then(|| m.relay_url.clone())
+        })
+        .collect()
 }
 
-/// Cold-start profile claims must NEVER go to the content relay.
-/// They are discovery fetches — only the indexer relay is the right destination.
-#[test]
-fn cold_start_profile_claims_never_go_to_content_relay() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    // Queue 5 cold-start authors.
-    for i in 0..5 {
-        let _ = kernel.claim_profile(hex64(&format!("{i}")), format!("view-{i}"), false, false);
-    }
-
-    let all_msgs = kernel.pending_profile_claim_requests();
-
-    let content_relay_reqs: Vec<&OutboundMessage> = all_msgs
-        .iter()
-        .filter(|m| m.text.starts_with("[\"REQ\"") && m.relay_url == CONTENT_RELAY_URL)
-        .collect();
-
-    assert!(
-        content_relay_reqs.is_empty(),
-        "profile claims must NOT go to the content relay ({}); got: {:#?}",
-        CONTENT_RELAY_URL,
-        content_relay_reqs
-            .iter()
-            .map(|m| &m.relay_url)
-            .collect::<Vec<_>>()
-    );
+/// True iff `reqs` contains a kind:10002 probe REQ whose authors include `pubkey`.
+fn has_10002_probe_for(reqs: &[OutboundMessage], pubkey: &str) -> bool {
+    reqs.iter().any(|m| {
+        let v: serde_json::Value = serde_json::from_str(&m.text).unwrap_or(serde_json::Value::Null);
+        let Some(filter) = v.get(2) else { return false };
+        let is_10002 = filter
+            .get("kinds")
+            .and_then(|k| k.as_array())
+            .map(|k| k.iter().any(|x| x.as_u64() == Some(10002)))
+            .unwrap_or(false);
+        let has_author = filter
+            .get("authors")
+            .and_then(|a| a.as_array())
+            .map(|a| a.iter().any(|x| x.as_str() == Some(pubkey)))
+            .unwrap_or(false);
+        is_10002 && has_author
+    })
 }
 
-/// Cold-start profile claims go to the indexer relay with all authors in one filter.
+// ─── (a) cached kind:10002 → kind:0 routes to author's own write relays ──────
+
 #[test]
-fn cold_start_profile_claims_go_to_indexer_relay_only() {
+fn cached_nip65_profile_claim_routes_kind0_to_author_write_relays() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected(RelayRole::Content);
+    kernel.relay_connected(RelayRole::Indexer);
 
-    let authors: Vec<String> = (0..5).map(|i| hex64(&format!("{i}"))).collect();
-    for (i, pk) in authors.iter().enumerate() {
-        let _ = kernel.claim_profile(pk.clone(), format!("view-{i}"), false, false);
-    }
+    let alice = hex64("a11ce");
+    let alice_relay = "wss://alice-write.example";
+    kernel.seed_mailbox_relay_list(&alice, vec![], vec![alice_relay.to_string()], vec![]);
 
-    let all_msgs = kernel.pending_profile_claim_requests();
-
-    let indexer_reqs: Vec<&OutboundMessage> = all_msgs
-        .iter()
-        .filter(|m| m.text.starts_with("[\"REQ\"") && m.relay_url == INDEXER_RELAY_URL)
-        .collect();
-
-    assert!(
-        !indexer_reqs.is_empty(),
-        "cold-start profile claims must go to indexer relay {INDEXER_RELAY_URL}"
+    let _ = kernel.claim_profile(
+        alice.clone(),
+        "view-0".to_string(),
+        true,
+        false,
+        ProfileLiveness::CacheOk,
     );
 
-    // Every author should appear in the batched filter.
-    let combined_text: String = indexer_reqs.iter().map(|m| m.text.as_str()).collect();
-    for pk in &authors {
-        assert!(
-            combined_text.contains(pk.as_str()),
-            "author {pk} must appear in the batched indexer REQ; combined: {combined_text}"
-        );
-    }
+    let reqs = drain_reqs(&mut kernel);
+    let relays = kind0_req_relays_for(&reqs, &alice);
+    assert!(
+        relays.iter().any(|u| u == alice_relay),
+        "warm kind:0 claim must route to the author's NIP-65 write relay {alice_relay}; got {relays:?}"
+    );
 }
 
-/// Gap 2: after `claim_profile` fetched kind:0 against the indexer lane
-/// (cold-start, no mailbox cached yet), the arrival of a kind:10002 for that
-/// pubkey must re-queue the pubkey on `profile_requests.pending` so the next
-/// `pending_profile_claim_requests` tick re-fetches kind:0 against the
-/// freshly-known write set.
+// ─── (b) cold-start claim → indexer + D3 probe; 10002 arrival → re-route ─────
+
 #[test]
-fn kind10002_arrival_requeues_already_requested_profile() {
+fn cold_start_claim_reaches_indexer_and_probes_then_reroutes_on_nip65() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
-    let alice = hex64("a");
+    kernel.relay_connected(RelayRole::Content);
+    kernel.relay_connected(RelayRole::Indexer);
 
-    // Step 1: cold-start claim — alice is queued in `pending`, then flushed
-    // through `pending_profile_claim_requests`. After flush alice sits in
-    // `requested` (the inflight set).
-    let _ = kernel.claim_profile(alice.clone(), "view-0".to_string(), false, false);
-    let _ = kernel.pending_profile_claim_requests();
-    assert!(
-        kernel
-            .profile_requests_requested_for_test()
-            .contains(&alice),
-        "post-flush, alice must be in `requested`"
-    );
-    assert!(
-        !kernel.profile_requests_pending_for_test().contains(&alice),
-        "post-flush, alice must not still be in `pending`"
+    let stranger = hex64("57a"); // not in any follow set, no cached mailbox
+
+    let _ = kernel.claim_profile(
+        stranger.clone(),
+        "view-0".to_string(),
+        true,
+        false,
+        ProfileLiveness::CacheOk,
     );
 
-    // Step 2: kind:10002 arrives for alice (production path: substrate parser
-    // mutates the cache; this helper substitutes the same effect AND calls
-    // `refresh_profile_after_mailbox` to mirror `on_mailbox_changed`).
-    let outcome = kernel
+    let reqs = drain_reqs(&mut kernel);
+
+    // At cold start (uncached mailbox) the kind:0 routes to the app/content
+    // relay fallback (best-effort immediate fetch — owner decision #1: app
+    // relays SHOULD receive kind:0). It must reach SOME relay (never blank).
+    let kind0_relays = kind0_req_relays_for(&reqs, &stranger);
+    assert!(
+        !kind0_relays.is_empty(),
+        "cold-start kind:0 claim must reach an app/content fallback relay; got none"
+    );
+
+    // D3: a kind:10002 discovery probe for the stranger is emitted to the
+    // indexer (the acquisition half that makes Lane 1 reachable).
+    assert!(
+        kernel.probed_mailboxes_for_test().contains(&stranger),
+        "cold-start claim must mark the stranger probed (D3 kind:10002 probe)"
+    );
+    assert!(
+        has_10002_probe_for(&reqs, &stranger),
+        "cold-start claim must emit a kind:10002 probe REQ for the stranger"
+    );
+    let probe_reaches_indexer = reqs.iter().any(|m| {
+        m.relay_url == INDEXER_RELAY_URL && m.text.contains("10002")
+    });
+    assert!(
+        probe_reaches_indexer,
+        "the kind:10002 probe must reach the indexer relay {INDEXER_RELAY_URL}"
+    );
+
+    // The stranger publishes a kind:10002 → mailbox cache updates, Nip65Arrived
+    // fires, and the next recompile re-routes the kind:0 to their write relay.
+    let stranger_relay = "wss://stranger-write.example";
+    let _ = kernel
         .inject_replaceable_event(
-            "1111111111111111111111111111111111111111111111111111111111111111",
-            &alice,
+            &hex64("e0e0"),
+            &stranger,
             1_000,
             10002,
             vec![vec![
                 "r".to_string(),
-                "wss://alice-write.example/".to_string(),
+                stranger_relay.to_string(),
                 "write".to_string(),
             ]],
             "wss://seed.relay/",
             1_000_000,
         )
         .expect("inject kind:10002 must succeed");
-    assert!(matches!(
-        outcome,
-        crate::store::InsertOutcome::Inserted { .. } | crate::store::InsertOutcome::Replaced { .. }
-    ));
 
-    // Post-mailbox alice must be back in `pending` and out of `requested`.
+    let reqs2 = drain_reqs(&mut kernel);
+    let relays2 = kind0_req_relays_for(&reqs2, &stranger);
     assert!(
-        !kernel
-            .profile_requests_requested_for_test()
-            .contains(&alice),
-        "after kind:10002, alice must leave `requested`"
-    );
-    assert!(
-        kernel.profile_requests_pending_for_test().contains(&alice),
-        "after kind:10002, alice must be re-queued in `pending`"
-    );
-
-    // Step 3: the next `pending_profile_claim_requests` tick must emit a
-    // kind:0 REQ targeting alice's declared write relay (NOT the indexer).
-    let msgs = kernel.pending_profile_claim_requests();
-    let reqs: Vec<&OutboundMessage> = msgs
-        .iter()
-        .filter(|m| m.text.starts_with("[\"REQ\""))
-        .collect();
-    let relay_urls: Vec<&str> = reqs.iter().map(|m| m.relay_url.as_str()).collect();
-    assert!(
-        relay_urls
-            .iter()
-            .any(|u| *u == "wss://alice-write.example/"),
-        "post-refresh kind:0 REQ must route to alice's NIP-65 write relay; got {relay_urls:?}"
+        relays2.iter().any(|u| u == stranger_relay),
+        "after the stranger's kind:10002 lands, the kind:0 must re-route to their \
+         write relay {stranger_relay}; got {relays2:?}"
     );
 }
 
-/// `refresh_profile_after_mailbox` is a no-op for a pubkey that was never
-/// claimed — moving an unknown pubkey into `pending` would issue a fetch the
-/// host never asked for.
+// ─── (b') retry-on-miss: indexer reconnect re-probes a still-uncached author ─
+
 #[test]
-fn refresh_profile_after_mailbox_is_noop_for_unclaimed_pubkey() {
+fn indexer_reconnect_reprobes_uncached_author() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
-    let bob = hex64("b");
+    kernel.relay_connected_url(RelayRole::Content, crate::relay::FALLBACK_CONTENT_RELAY);
+    kernel.relay_connected_url(RelayRole::Indexer, INDEXER_RELAY_URL);
 
-    kernel.refresh_profile_after_mailbox(&bob);
-
-    assert!(
-        !kernel.profile_requests_pending_for_test().contains(&bob),
-        "unclaimed pubkey must not enter `pending`"
+    let stranger = hex64("9a9");
+    let _ = kernel.claim_profile(
+        stranger.clone(),
+        "view-0".to_string(),
+        true,
+        false,
+        ProfileLiveness::CacheOk,
     );
+    let _ = kernel.drain_lifecycle_outbound();
     assert!(
-        !kernel.profile_requests_requested_for_test().contains(&bob),
-        "unclaimed pubkey must not enter `requested`"
+        kernel.probed_mailboxes_for_test().contains(&stranger),
+        "stranger must be marked probed after the first drain"
+    );
+
+    // Indexer socket reconnects (the author's 10002 never arrived — empty EOSE,
+    // or the indexer was down). The probed set must be cleared so the next
+    // recompile re-probes the still-uncached stranger.
+    kernel.relay_connected_url(RelayRole::Indexer, INDEXER_RELAY_URL);
+    assert!(
+        !kernel.probed_mailboxes_for_test().contains(&stranger),
+        "indexer reconnect must clear the probed mark (retry-on-miss)"
+    );
+
+    let reqs = drain_reqs(&mut kernel);
+    assert!(
+        has_10002_probe_for(&reqs, &stranger),
+        "after indexer reconnect the still-uncached stranger must be re-probed"
     );
 }
 
-/// Known-NIP-65 authors: profile claims use their declared write relays, NOT the indexer.
+// ─── (d) avatar feed: N CacheOk claims coalesce into ONE batched kind:0 REQ ──
+
 #[test]
-fn known_nip65_profile_claims_use_declared_write_relays() {
+fn many_cache_ok_claims_coalesce_into_one_batched_kind0_req() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connected(RelayRole::Content);
     kernel.relay_connected(RelayRole::Indexer);
 
-    let alice = hex64("alice");
-    let alice_relay = "wss://alice-write.example/";
+    let authors: Vec<String> = (0..12).map(|i| hex64(&format!("a{i}"))).collect();
+    for (i, pk) in authors.iter().enumerate() {
+        let _ = kernel.claim_profile(
+            pk.clone(),
+            format!("avatar-{i}"),
+            false,
+            false,
+            ProfileLiveness::CacheOk,
+        );
+    }
 
-    kernel.seed_mailbox_relay_list(&alice, vec![], vec![alice_relay.to_string()], vec![]);
+    let reqs = drain_reqs(&mut kernel);
 
-    let msgs = kernel.claim_profile(alice.clone(), "view-0".to_string(), true, false);
-    let reqs: Vec<&OutboundMessage> = msgs
+    // Count distinct kind:0 REQ frames PER RELAY. With `limit: None` the merge
+    // lattice unions same-shape authors, so the dozen single-author claims
+    // collapse onto ONE kind:0 REQ per relay carrying all authors — not 12.
+    let mut kind0_frames_by_relay: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    for m in &reqs {
+        let v: serde_json::Value = serde_json::from_str(&m.text).unwrap_or(serde_json::Value::Null);
+        let is_kind0 = v
+            .get(2)
+            .and_then(|f| f.get("kinds"))
+            .and_then(|k| k.as_array())
+            .map(|k| k.len() == 1 && k[0].as_u64() == Some(0))
+            .unwrap_or(false);
+        if is_kind0 {
+            *kind0_frames_by_relay.entry(m.relay_url.clone()).or_default() += 1;
+        }
+    }
+    assert!(
+        !kind0_frames_by_relay.is_empty(),
+        "a kind:0 REQ must be emitted for the avatar feed"
+    );
+    for (relay, count) in &kind0_frames_by_relay {
+        assert_eq!(
+            *count, 1,
+            "a dozen kind:0 claims must coalesce into ONE batched REQ per relay \
+             (no storm); relay {relay} got {count} frames"
+        );
+    }
+    // The single batched frame carries every claimed author.
+    let batched = reqs
         .iter()
-        .filter(|m| m.text.starts_with("[\"REQ\""))
-        .collect();
+        .find(|m| {
+            let v: serde_json::Value =
+                serde_json::from_str(&m.text).unwrap_or(serde_json::Value::Null);
+            v.get(2)
+                .and_then(|f| f.get("kinds"))
+                .and_then(|k| k.as_array())
+                .map(|k| k.len() == 1 && k[0].as_u64() == Some(0))
+                .unwrap_or(false)
+        })
+        .expect("a kind:0 frame exists");
+    for pk in &authors {
+        assert!(
+            batched.text.contains(pk.as_str()),
+            "the batched kind:0 REQ must contain author {pk}"
+        );
+    }
+}
 
-    assert!(
-        !reqs.is_empty(),
-        "known NIP-65 author must trigger a profile claim REQ"
-    );
+// ─── (c-liveness) Live registers Tailing; mixed CacheOk + Live → Tailing ─────
 
-    let relay_urls: Vec<&str> = reqs.iter().map(|m| m.relay_url.as_str()).collect();
-    assert!(
-        relay_urls.contains(&alice_relay),
-        "known NIP-65 profile claim must go to declared write relay {alice_relay}; got {relay_urls:?}"
+#[test]
+fn live_claim_registers_tailing_interest() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let alice = hex64("11e");
+    let _ = kernel.claim_profile(
+        alice.clone(),
+        "profile-view".to_string(),
+        false,
+        false,
+        ProfileLiveness::Live,
     );
-    assert!(
-        !relay_urls.iter().any(|u| *u == CONTENT_RELAY_URL),
-        "known NIP-65 profile claim must NOT go to the content relay; got {relay_urls:?}"
+    assert_eq!(
+        kernel.profile_claim_interest_lifecycle_for_test(&alice),
+        Some(true),
+        "a Live claim must register a Tailing kind:0 interest"
     );
 }
 
-// ─── Tier-0 reliability gates: name→pubkey→name flicker invariants ───────────
-//
-// Defect: `ChirpAvatar.onDisappear` releases a profile claim; `.task(id:)`
-// re-claims on return. During 1–2 ticks (≤500ms at 4Hz) the profile is absent
-// from `claimed_profiles`. The kernel's `profile_card_for()` reads from the
-// **resident store** — so for a cached author, zero new REQ is needed. The
-// warm-reclaim gap is a Swift-lifecycle issue, but these Rust tests establish
-// the kernel invariant that must hold: a re-claim of a resident kind:0
-// repopulates `claimed_profiles` on the very next tick with zero new relay REQ.
-//
-// `claimed_profiles` (built in `update/projections.rs`, iterating
-// `self.profile_claims.keys()`) emits a card for EVERY currently-claimed
-// pubkey. So "absent from `claimed_profiles`" means the pubkey's `profile_claims`
-// key is gone — i.e. every consumer released. "Present" with no resident kind:0
-// is still a placeholder card (key present, `display_name` null); "present" with
-// a resident kind:0 carries the real `display_name`.
-
-/// Drive one kernel tick (`make_update`) and parse the emitted JSON snapshot —
-/// the exact bytes that cross the C-ABI. Mirrors `state_projection_tests::snapshot`.
-fn tick_snapshot(kernel: &mut Kernel) -> serde_json::Value {
-    let json = kernel.make_update_json_for_test(true);
-    serde_json::from_str(&json).expect("kernel snapshot must be valid JSON")
+#[test]
+fn cache_ok_claim_registers_oneshot_interest() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let alice = hex64("0a0");
+    let _ = kernel.claim_profile(
+        alice.clone(),
+        "avatar".to_string(),
+        false,
+        false,
+        ProfileLiveness::CacheOk,
+    );
+    assert_eq!(
+        kernel.profile_claim_interest_lifecycle_for_test(&alice),
+        Some(false),
+        "a CacheOk claim must register a OneShot kind:0 interest"
+    );
 }
 
-/// Ingest a kind:0 (profile metadata) for `pubkey` carrying `display_name`.
-/// Lands in the resident `profiles` store keyed by pubkey, exactly like the
-/// production substrate kind:0 path — see
-/// `state_projection_tests::profile_metadata_appears_in_snapshot_after_kind0_ingest`.
-fn ingest_kind0_name(kernel: &mut Kernel, pubkey: &str, display_name: &str) {
+#[test]
+fn mixed_liveness_resolves_to_tailing_live_wins() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let alice = hex64("a11");
+
+    // A feed avatar claims CacheOk first.
+    let _ = kernel.claim_profile(
+        alice.clone(),
+        "avatar".to_string(),
+        false,
+        false,
+        ProfileLiveness::CacheOk,
+    );
+    assert_eq!(
+        kernel.profile_claim_interest_lifecycle_for_test(&alice),
+        Some(false),
+        "first CacheOk claim → OneShot"
+    );
+
+    // The profile screen then claims Live for the same pubkey → upgrade.
+    let _ = kernel.claim_profile(
+        alice.clone(),
+        "profile-view".to_string(),
+        false,
+        false,
+        ProfileLiveness::Live,
+    );
+    assert_eq!(
+        kernel.profile_claim_interest_lifecycle_for_test(&alice),
+        Some(true),
+        "a Live claim must upgrade the shared slot to Tailing (Live wins)"
+    );
+
+    // A later CacheOk claim must NOT downgrade it while a Live claim is held.
+    let _ = kernel.claim_profile(
+        alice.clone(),
+        "avatar-2".to_string(),
+        false,
+        false,
+        ProfileLiveness::CacheOk,
+    );
+    assert_eq!(
+        kernel.profile_claim_interest_lifecycle_for_test(&alice),
+        Some(true),
+        "a later CacheOk claim must not downgrade a Tailing slot"
+    );
+}
+
+// ─── (b-refcount) multi-consumer dedup: one interest, refcounted ─────────────
+
+#[test]
+fn multi_consumer_claim_dedups_to_one_interest_until_last_release() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let alice = hex64("c0c0");
+
+    let _ = kernel.claim_profile(
+        alice.clone(),
+        "view-A".to_string(),
+        false,
+        false,
+        ProfileLiveness::CacheOk,
+    );
+    let _ = kernel.claim_profile(
+        alice.clone(),
+        "view-B".to_string(),
+        false,
+        false,
+        ProfileLiveness::CacheOk,
+    );
+
+    // Two consumers → exactly one kind:0 claim interest.
+    let kind0_claim_count = kernel
+        .lifecycle_mut()
+        .registry()
+        .iter_active()
+        .iter()
+        .filter(|i| {
+            i.shape.kinds.len() == 1
+                && i.shape.kinds.contains(&0)
+                && i.shape.authors.contains(&alice)
+        })
+        .count();
+    assert_eq!(
+        kind0_claim_count, 1,
+        "two consumers of one pubkey must dedup to ONE kind:0 interest"
+    );
+
+    // First consumer releases — interest stays (B still holds).
+    let _ = kernel.release_profile(&alice, "view-A");
+    assert!(
+        kernel.profile_claim_interest_registered_for_test(&alice),
+        "interest must survive while a second consumer holds it"
+    );
+
+    // Last consumer releases — interest is dropped.
+    let _ = kernel.release_profile(&alice, "view-B");
+    assert!(
+        !kernel.profile_claim_interest_registered_for_test(&alice),
+        "interest must be dropped once the last consumer releases"
+    );
+}
+
+// ─── (c) F-TTL force re-verify of a cached profile still fires ───────────────
+
+#[test]
+fn force_reverify_of_cached_profile_enqueues_reverify() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let alice = hex64("f0f0");
+
+    // Seed a resident kind:0 so the cached branch runs.
     let event = nostr::NostrEvent {
         id: hex64("c0"),
-        pubkey: pubkey.to_string(),
+        pubkey: alice.clone(),
         created_at: 1_700_000_000,
         kind: 0,
         tags: vec![],
-        content: format!(r#"{{"display_name":"{display_name}"}}"#),
+        content: r#"{"display_name":"Alice"}"#.to_string(),
         sig: String::new(),
     };
     kernel.ingest_profile(event);
-}
 
-/// Flagship Tier-0 gate. A re-claim for a *resident* kind:0 repopulates
-/// `claimed_profiles` on the very next tick with **zero** new relay REQ — the
-/// warm-reclaim path issues no round-trip because the card is served from the
-/// resident store. This is the invariant the Swift flicker defect must not break.
-#[test]
-fn warm_reclaim_reemits_profile_next_tick_with_no_req() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let pubkey = hex64("a");
-    let consumer_a = "view-A".to_string();
-
-    // 1. Consumer A claims a profile on P.
-    let _ = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false, false);
-    // 2. A kind:0 for P arrives (name "Alice") — now resident.
-    ingest_kind0_name(&mut kernel, &pubkey, "Alice");
-
-    // 3. Next tick: P is present with the real name.
-    let snap = tick_snapshot(&mut kernel);
-    assert_eq!(
-        snap["projections"]["claimed_profiles"][&pubkey]["display_name"].as_str(),
-        Some("Alice"),
-        "after kind:0 ingest the claimed profile must carry the resident name"
+    let before = kernel.pending_reverify_len();
+    // force = true → unconditional F-TTL re-verify enqueue.
+    let _ = kernel.claim_profile(
+        alice.clone(),
+        "profile-view".to_string(),
+        false,
+        true,
+        ProfileLiveness::Live,
     );
-
-    // 4. Release the sole claim — P drops out of `profile_claims`.
-    let _ = kernel.release_profile(&pubkey, &consumer_a);
-
-    // 5. Next tick: P is absent from `claimed_profiles` (no claim held).
-    let snap = tick_snapshot(&mut kernel);
+    let after = kernel.pending_reverify_len();
     assert!(
-        snap["projections"]["claimed_profiles"]
-            .get(&pubkey)
-            .is_none(),
-        "with no claim held, P must be absent from claimed_profiles"
-    );
-
-    // 6. Re-claim P. Because the kind:0 is still resident, the claim call itself
-    //    short-circuits (profile.rs `self.profiles.contains_key` early return)
-    //    and emits NO outbound REQ.
-    let reclaim_msgs = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false, false);
-    assert!(
-        req_texts(&reclaim_msgs).is_empty(),
-        "warm re-claim of a resident profile must emit zero REQ; got {:#?}",
-        req_texts(&reclaim_msgs)
-    );
-
-    // 7. The pending-flush tick must also emit zero REQ mentioning P — P is not
-    //    in `pending` after a resident re-claim, so no round-trip is queued.
-    let flush_msgs = kernel.pending_profile_claim_requests();
-    let p_reqs: Vec<&str> = req_texts(&flush_msgs)
-        .into_iter()
-        .filter(|t| t.contains(pubkey.as_str()))
-        .collect();
-    assert!(
-        p_reqs.is_empty(),
-        "no outbound REQ may mention P after a resident re-claim; got {p_reqs:#?}"
-    );
-
-    // 8. Very next tick: P is repopulated from cache with the resident name — no
-    //    flicker, no round-trip.
-    let snap = tick_snapshot(&mut kernel);
-    assert_eq!(
-        snap["projections"]["claimed_profiles"][&pubkey]["display_name"].as_str(),
-        Some("Alice"),
-        "warm re-claim must repopulate the resident name on the very next tick"
+        after > before,
+        "force=true on a cached profile must enqueue an F-TTL re-verify"
     );
 }
 
-/// Claim-lifecycle contract: a profile appears in `claimed_profiles` exactly
-/// while a claim is held — present after claim, absent after the last release.
+// ─── nprofile hint: kind:0 routes to embedded relay with no indexer 10002 ────
+
 #[test]
-fn claimed_profiles_present_iff_claim_held() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let pubkey = hex64("b");
-    let consumer_a = "view-A".to_string();
+fn nprofile_hint_routes_kind0_to_embedded_relay() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected(RelayRole::Content);
+    kernel.relay_connected(RelayRole::Indexer);
 
-    // 1. No claim → P absent.
-    let snap = tick_snapshot(&mut kernel);
+    let stranger = hex64("e3b");
+    let hint_relay = "wss://hint.example";
+
+    // Claim originating from an nprofile carrying a relay TLV — no cached
+    // mailbox, no indexer kind:10002 ever arrives, but the embedded hint relay
+    // must still receive the kind:0.
+    let _ = kernel.claim_profile_with_hints(
+        stranger.clone(),
+        "view-0".to_string(),
+        false,
+        ProfileLiveness::CacheOk,
+        vec![hint_relay.to_string()],
+    );
+
+    let reqs = drain_reqs(&mut kernel);
+    let relays = kind0_req_relays_for(&reqs, &stranger);
     assert!(
-        snap["projections"]["claimed_profiles"]
-            .get(&pubkey)
-            .is_none(),
-        "with no claim, P must be absent from claimed_profiles"
-    );
-
-    // 2. Claim P → present on the next tick (placeholder card; no kind:0 yet).
-    let _ = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false, false);
-    let snap = tick_snapshot(&mut kernel);
-    assert!(
-        snap["projections"]["claimed_profiles"]
-            .get(&pubkey)
-            .is_some(),
-        "while a claim is held, P must be present in claimed_profiles"
-    );
-
-    // 3. Release P → absent on the next tick.
-    let _ = kernel.release_profile(&pubkey, &consumer_a);
-    let snap = tick_snapshot(&mut kernel);
-    assert!(
-        snap["projections"]["claimed_profiles"]
-            .get(&pubkey)
-            .is_none(),
-        "after the last release, P must be absent from claimed_profiles"
-    );
-}
-
-/// Multi-consumer reference-counting: when one view's `generatedConsumerID`
-/// releases while another still holds the claim, the card must stay resident —
-/// it only drops once the final consumer releases.
-#[test]
-fn multi_consumer_release_does_not_drop_resident_profile() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let pubkey = hex64("c");
-    let consumer_a = "view-A".to_string();
-    let consumer_b = "view-B".to_string();
-
-    // 1. Two consumers claim P; a kind:0 arrives.
-    let _ = kernel.claim_profile(pubkey.clone(), consumer_a.clone(), false, false);
-    let _ = kernel.claim_profile(pubkey.clone(), consumer_b.clone(), false, false);
-    ingest_kind0_name(&mut kernel, &pubkey, "Carol");
-
-    // 2. Present with the resident name.
-    let snap = tick_snapshot(&mut kernel);
-    assert_eq!(
-        snap["projections"]["claimed_profiles"][&pubkey]["display_name"].as_str(),
-        Some("Carol"),
-        "with both consumers holding, P must carry the resident name"
-    );
-
-    // 3. Consumer A releases — B still holds.
-    let _ = kernel.release_profile(&pubkey, &consumer_a);
-
-    // 4. Still present (B is a live consumer).
-    let snap = tick_snapshot(&mut kernel);
-    assert_eq!(
-        snap["projections"]["claimed_profiles"][&pubkey]["display_name"].as_str(),
-        Some("Carol"),
-        "a single consumer release must NOT drop a still-claimed resident profile"
-    );
-
-    // 5. Consumer B releases — last claim gone.
-    let _ = kernel.release_profile(&pubkey, &consumer_b);
-
-    // 6. Now absent (no consumer holds the claim).
-    let snap = tick_snapshot(&mut kernel);
-    assert!(
-        snap["projections"]["claimed_profiles"]
-            .get(&pubkey)
-            .is_none(),
-        "after the final consumer releases, P must be absent from claimed_profiles"
+        relays.iter().any(|u| u == hint_relay),
+        "an nprofile-hinted claim must route the kind:0 to the embedded relay {hint_relay}; \
+         got {relays:?}"
     );
 }

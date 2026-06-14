@@ -209,7 +209,15 @@ pub(crate) fn execute_claim_dispatch(
 ) -> Vec<OutboundMessage> {
     match claim {
         ClaimDispatch::ClaimProfile { pubkey, consumer_id } => {
-            reducer.claim_profile(pubkey, consumer_id, can_send, false)
+            // Web preview: no liveness hint on the JSON action — default to
+            // CacheOk (OneShot kind:0 fetch; no tailing sub).
+            reducer.claim_profile(
+                pubkey,
+                consumer_id,
+                can_send,
+                false,
+                nmp_core::ProfileLiveness::CacheOk,
+            )
         }
         ClaimDispatch::ReleaseProfile { pubkey, consumer_id } => {
             reducer.release_profile(&pubkey, &consumer_id)

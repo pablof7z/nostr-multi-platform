@@ -42,6 +42,21 @@ impl Kernel {
         if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
+        // F-TTL / M2 retry-on-miss: an indexer socket coming up — a reconnect
+        // of an existing indexer OR a freshly-added one — is a new chance to
+        // resolve authors whose kind:10002 we probed once and never got
+        // (empty EOSE, or the indexer was down when we probed). Clear the
+        // implicit-discovery probed set so the next recompile re-probes every
+        // STILL-uncached author (resolved authors short-circuit on the cache
+        // hit, so this is bounded by the genuinely-unresolved set, not a
+        // re-probe storm). Replaces the deleted bespoke `profile_requests`
+        // requested→pending re-queue, and now covers feed authors + migrated
+        // claims uniformly through the one registry chokepoint.
+        if role == RelayRole::Indexer {
+            self.lifecycle.clear_probed_mailboxes();
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::IndexerSetChanged { generation: 0 });
+        }
     }
 
     fn mark_lane_connected(&mut self, role: RelayRole) {
@@ -129,24 +144,12 @@ impl Kernel {
         if let Some(driver) = self.auth_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
-        // Profile batch REQs for the legacy profile-requests pipeline are NOT
-        // tracked by the M2 SubscriptionLifecycle replay system, so they are
-        // NOT replayed on reconnect. Move `requested` pubkeys back to `pending`
-        // so `pending_profile_claim_requests` re-batches them on the next
-        // relay_connected → pending_view_requests call.
-        if role == RelayRole::Indexer {
-            let to_re_queue: Vec<String> = self
-                .profile_requests
-                .requested
-                .iter()
-                .filter(|pk| !self.profiles.contains_key(*pk))
-                .cloned()
-                .collect();
-            for pk in to_re_queue {
-                self.profile_requests.requested.remove(&pk);
-                self.profile_requests.pending.insert(pk);
-            }
-        }
+        // M2 migration: profile (kind:0) claims are registry interests now, so
+        // the planner's reconnect-replay re-emits them automatically — the
+        // bespoke `profile_requests` requested→pending re-queue is gone. The
+        // retry-on-miss for kind:10002 discovery probes is handled on the
+        // re-CONNECT side (`relay_connected_url`, role == Indexer), which clears
+        // the probed set so still-uncached authors are re-probed.
     }
 
     /// Global socket teardown for `role` (Stop / Reset / Shutdown): unlike the

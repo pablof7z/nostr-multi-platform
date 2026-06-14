@@ -142,7 +142,7 @@ impl Default for S6Config {
 
 fn drive_churn_cycles(app: *mut NmpApp, churn_pubkey: &std::ffi::CStr, consumer_id: &std::ffi::CStr, cycles: usize) {
     for _ in 0..cycles {
-        nmp_app_claim_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr(), 0);
+        nmp_app_claim_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
         std::thread::sleep(Duration::from_millis(200));
         nmp_app_configure(app, 0, 500, 12);
         std::thread::sleep(Duration::from_millis(50));

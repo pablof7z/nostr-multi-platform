@@ -252,7 +252,7 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimProfi
         return;
     };
     // F-TTL — Android JNI claim is a background/auto-claim → force = 0.
-    nmp_app_claim_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr(), 0);
+    nmp_app_claim_profile(s.app, pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
 }
 
 #[no_mangle]

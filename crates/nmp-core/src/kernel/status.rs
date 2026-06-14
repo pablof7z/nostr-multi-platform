@@ -219,33 +219,14 @@ impl Kernel {
                 .iter()
                 .filter(|pubkey| self.profiles.contains_key(*pubkey))
                 .count();
-            let pending = claimed_authors
-                .iter()
-                .filter(|pubkey| self.profile_requests.pending.contains(*pubkey))
-                .count();
-            let requested = claimed_authors
-                .iter()
-                .filter(|pubkey| self.profile_requests.requested.contains(*pubkey))
-                .count();
-            let active_reqs = self
-                .wire
-                .subs
-                .values()
-                .filter(|sub| {
-                    sub.id.starts_with("profile-claim-")
-                        && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
-                })
-                .count();
             let missing = claimed_authors.len().saturating_sub(loaded);
-            let state = if missing == 0 {
-                "complete"
-            } else if active_reqs > 0 {
-                "loading"
-            } else if pending > 0 {
-                "queued"
-            } else {
-                "tailing"
-            };
+            // M2 migration: profile claims are registry interests; there is no
+            // `profile_requests` pending/requested set and the planner assigns
+            // opaque `sub-<hash>` ids (not a `profile-claim-` prefix), so the
+            // diagnostic is now the honest loaded-vs-missing split. A missing
+            // claim always has a live registered kind:0 interest the planner is
+            // routing (and a kind:10002 probe in flight for uncached authors).
+            let state = if missing == 0 { "complete" } else { "loading" };
             interests.push(LogicalInterestStatus {
                 key: format!(
                     "UIProfileClaims({claim_count} components / {} pubkeys)",
@@ -255,7 +236,7 @@ impl Kernel {
                 refcount: claim_count.min(u32::MAX as usize) as u32,
                 relay_urls: self.bootstrap_urls_for_role(RelayRole::Indexer),
                 cache_coverage: format!(
-                    "{loaded}/{} loaded, {pending} pending, {requested} requested, {active_reqs} active REQs",
+                    "{loaded}/{} loaded, {missing} loading",
                     claimed_authors.len()
                 ),
                 warming_until_ms: None,

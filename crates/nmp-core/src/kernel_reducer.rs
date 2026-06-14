@@ -283,22 +283,22 @@ impl KernelReducer {
     /// cold-claim transition emits the batched-REQ `OutboundMessage`(s) the
     /// caller should fan to connected relays.
     ///
-    /// `can_send` should be `self.kernel.any_relay_connected()` at the call
-    /// site (`KernelReducer::any_relay_connected` exposes this). When
-    /// `can_send = false` the claim parks in `profile_requests.pending` and
-    /// is drained by `handle_relay_connected` → `pending_view_requests` on
-    /// the next relay connect event, or by the periodic `tick()` if the relay
-    /// is already connected when the claim arrives.
+    /// `can_send` is retained for call-site compatibility but is no longer a
+    /// gate: the claim registers a `LogicalInterest` immediately and the
+    /// planner lands the REQ when a relay connects (reconnect-replay). The
+    /// `liveness` hint maps to the registered interest's lifecycle
+    /// (`CacheOk` → OneShot, `Live` → Tailing).
     pub fn claim_profile(
         &mut self,
         pubkey: String,
         consumer_id: String,
         can_send: bool,
         force: bool,
+        liveness: crate::kernel::ProfileLiveness,
     ) -> Vec<OutboundMessage> {
         let outbound = self
             .kernel
-            .claim_profile(pubkey, consumer_id, can_send, force);
+            .claim_profile(pubkey, consumer_id, can_send, force, liveness);
         self.kernel.partition_auth_paused(outbound)
     }
 

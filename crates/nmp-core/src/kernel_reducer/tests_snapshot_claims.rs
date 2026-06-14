@@ -99,45 +99,49 @@ fn publish_signed_event_threads_correlation_id_into_engine() {
 
 #[test]
 fn claim_profile_on_fresh_reducer_parks_returns_empty() {
-    // Without a relay connected (`can_send = false`), `claim_profile`
-    // parks the pubkey in `profile_requests.pending` and returns no
-    // outbound. The refcount is still registered internally so a second
-    // claim for a different consumer does not double-fetch.
+    // M2 migration: `claim_profile` always returns empty outbound — it
+    // registers a kind:0 `LogicalInterest` and the planner emits the wire REQ
+    // on the next drain (the reducer drains inline via `drain_lifecycle_outbound`).
+    // A fresh reducer with no relay connected still returns empty from the call.
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
     // any_relay_connected is false on a fresh reducer — assert the gate.
     assert!(!r.any_relay_connected(), "fresh reducer: no relay connected");
-    let out = r.claim_profile(PK.to_string(), "chirp-web-author-1".to_string(), false, false);
-    assert!(out.is_empty(), "parked claim must emit no outbound");
+    let out = r.claim_profile(
+        PK.to_string(),
+        "chirp-web-author-1".to_string(),
+        false,
+        false,
+        crate::kernel::ProfileLiveness::CacheOk,
+    );
+    assert!(out.is_empty(), "claim_profile must emit no outbound directly");
 }
 
 #[test]
 fn claim_profile_refcount_dedup_does_not_double_fetch() {
-    // Two different consumer_ids for the same pubkey must NOT each issue a
-    // separate REQ once `can_send` becomes true. The second claim hits the
-    // `profile_requests.requested.contains` short-circuit and returns empty.
-    // (Detailed batch/routing assertions live in profile_claim_tests.rs.)
+    // Two different consumer_ids for the same pubkey dedup to ONE registry
+    // interest (registry owner refcount); neither claim emits outbound directly.
+    // (Detailed batch/routing/dedup assertions live in profile_claim_tests.rs.)
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
 
-    // First claim parks it.
     let _ = r.claim_profile(
         PK.to_string(),
         "chirp-web-author-card-a".to_string(),
         false,
         false,
+        crate::kernel::ProfileLiveness::CacheOk,
     );
-    // Second claim for same pubkey, different consumer — must be a no-op
-    // outbound (the profile is already pending / registered).
     let out2 = r.claim_profile(
         PK.to_string(),
         "chirp-web-author-card-b".to_string(),
         false,
         false,
+        crate::kernel::ProfileLiveness::CacheOk,
     );
     assert!(
         out2.is_empty(),
-        "second claim for same pubkey must not duplicate outbound: {out2:?}"
+        "second claim for same pubkey must not emit outbound directly: {out2:?}"
     );
 }
 

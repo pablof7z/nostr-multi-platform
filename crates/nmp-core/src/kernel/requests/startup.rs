@@ -143,7 +143,11 @@ impl Kernel {
         // during the brief window before the active account's kind:10002
         // lands (Tailing + Global + Nip65ReadRelays + #p →
         // bootstrap_content_relays).
-        self.profile_requests.requested.insert(self_pk);
+        //
+        // M2 migration: the self account's kind:0 is fetched by the
+        // `SELF_KINDS_TAILING` reactive interest registered above — there is no
+        // `profile_requests.requested` dedup set to seed any more.
+        let _ = self_pk;
         Vec::new()
     }
 

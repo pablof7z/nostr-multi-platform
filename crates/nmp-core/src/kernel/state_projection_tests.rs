@@ -525,7 +525,7 @@ fn mention_profiles_projection_empty_when_no_visible_items_or_views() {
 #[test]
 fn claimed_profiles_projection_refines_claimed_pubkey() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let _ = kernel.claim_profile(ACCOUNT.to_string(), "avatar".to_string(), false, false);
+    let _ = kernel.claim_profile(ACCOUNT.to_string(), "avatar".to_string(), false, false, crate::kernel::ProfileLiveness::CacheOk);
 
     let before = snapshot(&mut kernel);
     let entry = &before["projections"]["claimed_profiles"][ACCOUNT];
