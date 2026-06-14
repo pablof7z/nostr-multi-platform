@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createSignal, type JSX } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
 import { NostrProfileHostProvider } from "./components/user-avatar/NostrProfileHost";
 import { NostrAvatar } from "./components/user-avatar/NostrAvatar";
 import { NostrProfileName } from "./components/user-name/NostrProfileName";
@@ -49,14 +49,36 @@ export default function App(): JSX.Element {
   // claiming before the content socket is open drops the REQ (the wasm transport
   // has no on-demand dial or retry). Same edge-trigger discipline as the
   // indexer-gated profile claim above.
-  let eventsClaimed = false;
+  // Claim the showcase events, retrying any that haven't resolved. A claim can
+  // be dropped if its hint relay's socket isn't open yet when the REQ is sent
+  // (the wasm transport drops a frame to a not-yet-connected relay, no retry),
+  // and a relay can be transiently slow. So we re-claim each unresolved event on
+  // an interval with a FRESH consumer id (forcing a new REQ) until it resolves
+  // or we exhaust the budget. Idempotent and self-stopping.
+  let claimStarted = false;
+  const claimTargets = [
+    { uri: SHOWCASE_NOTE.uri, id: SHOWCASE_NOTE.primaryId, name: "note" },
+    { uri: SHOWCASE_ARTICLE.uri, id: SHOWCASE_ARTICLE.primaryId, name: "article" },
+    { uri: SHOWCASE_HIGHLIGHT.uri, id: SHOWCASE_HIGHLIGHT.primaryId, name: "highlight" },
+  ];
   createEffect(() => {
-    if (runtime.anyContentConnected() && !eventsClaimed) {
-      eventsClaimed = true;
-      runtime.claimEvent(SHOWCASE_NOTE.uri, "gallery-note");
-      runtime.claimEvent(SHOWCASE_ARTICLE.uri, "gallery-article");
-      runtime.claimEvent(SHOWCASE_HIGHLIGHT.uri, "gallery-highlight");
-    }
+    if (!runtime.anyContentConnected() || claimStarted) return;
+    claimStarted = true;
+    let attempt = 0;
+    const tick = () => {
+      let allResolved = true;
+      for (const t of claimTargets) {
+        if (!runtime.claimedEvent(t.id)) {
+          allResolved = false;
+          runtime.claimEvent(t.uri, `gallery-${t.name}-r${attempt}`);
+        }
+      }
+      attempt += 1;
+      if (allResolved || attempt >= 15) clearInterval(timer);
+    };
+    tick();
+    const timer = setInterval(tick, 3000);
+    onCleanup(() => clearInterval(timer));
   });
 
   // Ask the kernel (Rust NIP-19 encoder) for the showcase identity's npub once

@@ -40,6 +40,10 @@ export const SHOWCASE_HIGHLIGHT = {
 // separately (see WIP.md / wasm-on-demand-relay-dial memory).
 const CONTENT_RELAYS: { url: string; role: string }[] = [
   { url: "wss://nos.lol", role: "both" },
+  // Redundant content relay: the showcase note + article are also on damus, so a
+  // cold claim still resolves if one relay is slow/unreachable. (The highlight
+  // lives only on nos.lol.)
+  { url: "wss://relay.damus.io", role: "both" },
 ];
 
 export const SHOWCASE_RELAYS: { url: string; role: string }[] = [
